@@ -31,10 +31,11 @@ when Supabase is connected (phase 0, chunk 3).
 | --- | --- |
 | `pnpm dev` | Local dev server |
 | `pnpm build` | Production build |
-| `pnpm check` | Biome lint/format check + TypeScript |
+| `pnpm check` | Biome lint/format check + TypeScript + unit tests |
+| `pnpm test` | Unit tests (Vitest) for `packages/domain` |
 | `pnpm lint:fix` | Apply Biome fixes and formatting |
 
-CI runs Biome, the typecheck and a build on every push to `main` and every
+CI runs Biome, the typecheck, the unit tests and a build on every push to `main` and every
 pull request.
 
 ## Structure
@@ -46,6 +47,6 @@ See `CLAUDE.md` for the layout, the UI rules and the working agreement.
 Phase 0 — Foundations.
 
 - [x] Chunk 1: project skeleton (Next.js, TypeScript, Tailwind tokens, Hebrew RTL, Heebo, Biome, CI)
-- [ ] Chunk 2: design system components and `/design`
+- [x] Chunk 2: design system components and the `/design` gallery
 - [ ] Chunk 3: Supabase schema with RLS and isolation tests
 - [ ] Chunk 4: phone OTP login and an empty home in the business accent

@@ -42,7 +42,12 @@ supabase/           CLI config, edge functions, seed data
 
 - `<html lang="he" dir="rtl">`. Use logical utilities only: `ps-`/`pe-`,
   `ms-`/`me-`, `start-`/`end-`, `text-start`. Never `pl-`, `mr-`, `left-`.
-- Time, phone and number inputs get `dir="ltr"`.
+- `rtl:`/`ltr:` are redefined on CSS `:dir()` (see globals.css), so they follow
+  the element's real direction even inside a nested `dir` block. Use
+  `rtl:-scale-x-100` to mirror arrows and chevrons.
+- Time, phone and number inputs get `dir="ltr"` plus `ltrInputClass` (from
+  `@ui/text-field`), so digits read LTR but the field still aligns with the
+  page. (`text-align: match-parent` would be neater but Chromium lacks it.)
 - Colour only through tokens: `bg-bg`, `bg-surface`, `bg-surface-2`,
   `border-line`, `text-ink`, `text-ink-2`, `bg-accent`, `text-accent-ink`,
   `bg-accent-soft`, `text-success|warning|danger`. `bg-brand` (#9000FF) is
@@ -50,7 +55,17 @@ supabase/           CLI config, edge functions, seed data
 - Type scale: `text-sm` 13 · `text-base` 15 · `text-md` 17 · `text-lg` 20 ·
   `text-xl` 24 · `text-2xl` 30. Heebo only, weights 400/500/700.
 - Cards: flat (border), raised (`shadow-raised`), accent (`bg-accent-soft`,
-  at most one per screen). Radius `rounded-card` / `rounded-sheet`.
+  at most one per screen). Radius `rounded-control` (10px, buttons and
+  inputs) / `rounded-card` / `rounded-sheet`.
+- Components live in `packages/ui` and appear on `/design` (Hebrew and
+  English, any accent). Add a new component to the gallery in the same change.
+  Built so far: Button, IconButton, TextField, PhoneField, Card, ListRow and
+  ListGroup, Badge, Spinner.
+- A business accent is applied with `accentStyle(accentTokens(hex))` on a
+  wrapper. `accentTokens` darkens unreadable picks; text on light tints stays
+  `text-ink`, never `text-accent`.
+- Phone numbers are stored as E.164 (`normalizeIsraeliMobile` in
+  `@domain/phone`); `PhoneField` submits that form through a hidden input.
 - Touch targets at least 44px. Motion 150–200ms on state changes only.
 - All user-facing copy in Hebrew; plain words, no exclamation marks.
 
@@ -71,7 +86,8 @@ supabase/           CLI config, edge functions, seed data
 ```
 pnpm install
 pnpm dev          # http://localhost:3000
-pnpm check        # Biome + typecheck
+pnpm check        # Biome + typecheck + unit tests
+pnpm test         # unit tests only
 pnpm build
 pnpm lint:fix     # apply Biome fixes and formatting
 ```

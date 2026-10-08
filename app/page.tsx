@@ -1,3 +1,6 @@
+import { Button } from "@ui/button";
+import Link from "next/link";
+
 const chunks = [
   {
     n: 1,
@@ -9,7 +12,7 @@ const chunks = [
     n: 2,
     title: "מערכת עיצוב",
     detail: "טוקנים, רכיבי בסיס ודף ‎/design",
-    done: false,
+    done: true,
   },
   {
     n: 3,
@@ -38,10 +41,10 @@ export default function Home() {
       </header>
 
       <section className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">השלד עובד</h1>
+        <h1 className="text-2xl font-bold">שלב 0 בדרך</h1>
         <p className="text-ink-2">
-          אם הדף הזה מוצג בעברית, מימין לשמאל ובפונט Heebo, החתיכה הראשונה של
-          שלב 0 במקומה.
+          שתי החתיכות הראשונות של שלב 0 במקומן: השלד ומערכת העיצוב. השתיים הבאות
+          מחברות את בסיס הנתונים ואת הכניסה עם הטלפון.
         </p>
       </section>
 
@@ -69,9 +72,13 @@ export default function Home() {
       </ol>
 
       <p className="text-sm text-ink-2">
-        הצבע של העיגול הראשון הוא צבע העסק (ברירת המחדל: בורדו). כל עסק בוחר צבע
-        אחד, וכל השאר קבוע.
+        העיגולים הצבועים הם בצבע העסק (ברירת המחדל: בורדו). כל עסק בוחר צבע אחד,
+        וכל השאר קבוע.
       </p>
+
+      <Button asChild size="lg" className="w-full">
+        <Link href="/design">למערכת העיצוב</Link>
+      </Button>
     </main>
   );
 }

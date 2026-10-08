@@ -1,6 +1,14 @@
 @import "tailwindcss";
 
 /*
+ * Direction variants follow the element's real direction (:dir), so an LTR
+ * block inside the RTL page (English text, a phone field) flips correctly.
+ * Tailwind's built-in rtl:/ltr: also match any descendant of [dir=rtl].
+ */
+@custom-variant rtl (&:dir(rtl));
+@custom-variant ltr (&:dir(ltr));
+
+/*
  * ConceptApp design tokens — "calm utility", light first.
  * Source of truth for colour, type, radius and shadow. Components use the
  * Tailwind utilities generated from @theme below (bg-surface, text-ink,
@@ -25,14 +33,13 @@
   /* per-business accent (default: burgundy) */
   --accent: #8b2635;
   --accent-ink: #ffffff; /* text on accent; chosen by contrast at save time */
-  --accent-soft: color-mix(in oklab, var(--accent) 10%, white);
 
   /* ConceptApp's own brand colour — admin console and marketing only */
   --brand: #9000ff;
 
   /* status, fixed for every business */
-  --success: #1f7a4d;
-  --warning: #b26a00;
+  --success: #1c6f46; /* ≥4.5:1 on white and on its own 10% tint */
+  --warning: #8f5500; /* ≥4.5:1 on white and on its own 10% tint */
   --danger: #b3261e;
 }
 
@@ -45,7 +52,8 @@
   --color-ink-2: var(--ink-2);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
-  --color-accent-soft: var(--accent-soft);
+  /* mixed where it is used, so a business accent set on a wrapper updates it too */
+  --color-accent-soft: color-mix(in oklab, var(--accent) 10%, white);
   --color-brand: var(--brand);
   --color-success: var(--success);
   --color-warning: var(--warning);
@@ -67,6 +75,7 @@
   --text-2xl: 1.875rem;
   --text-2xl--line-height: 1.25;
 
+  --radius-control: 10px;
   --radius-card: 12px;
   --radius-sheet: 16px;
 
