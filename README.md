@@ -1,0 +1,51 @@
+# ConceptApp v2
+
+Operations app for small restaurants and cafés in Israel: staff scheduling,
+time clock, table reservations and a public page. Hebrew first, RTL,
+phone first.
+
+## Stack
+
+Next.js 16 (App Router) · React 19 · TypeScript (strict) · Tailwind CSS 4 ·
+Radix-based components in `packages/ui` · Supabase (Postgres + RLS, phone OTP,
+Realtime) · Biome · pnpm · Vercel.
+
+## Getting started
+
+Requires Node 22 and pnpm.
+
+```
+corepack enable
+pnpm install
+pnpm dev
+```
+
+Open http://localhost:3000.
+
+Environment variables are listed in `.env.example`. Copy it to `.env.local`
+when Supabase is connected (phase 0, chunk 3).
+
+## Scripts
+
+| Script | What it does |
+| --- | --- |
+| `pnpm dev` | Local dev server |
+| `pnpm build` | Production build |
+| `pnpm check` | Biome lint/format check + TypeScript |
+| `pnpm lint:fix` | Apply Biome fixes and formatting |
+
+CI runs Biome, the typecheck and a build on every push to `main` and every
+pull request.
+
+## Structure
+
+See `CLAUDE.md` for the layout, the UI rules and the working agreement.
+
+## Status
+
+Phase 0 — Foundations.
+
+- [x] Chunk 1: project skeleton (Next.js, TypeScript, Tailwind tokens, Hebrew RTL, Heebo, Biome, CI)
+- [ ] Chunk 2: design system components and `/design`
+- [ ] Chunk 3: Supabase schema with RLS and isolation tests
+- [ ] Chunk 4: phone OTP login and an empty home in the business accent

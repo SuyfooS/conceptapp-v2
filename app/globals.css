@@ -1,0 +1,105 @@
+@import "tailwindcss";
+
+/*
+ * ConceptApp design tokens — "calm utility", light first.
+ * Source of truth for colour, type, radius and shadow. Components use the
+ * Tailwind utilities generated from @theme below (bg-surface, text-ink,
+ * border-line, bg-accent…), never raw hex values.
+ *
+ * The accent is the one knob a business turns. The business app sets
+ * --accent (and --accent-ink) on a wrapper element from the business row;
+ * everything else is fixed.
+ */
+
+:root {
+  /* surfaces */
+  --bg: #faf8f5; /* warm paper */
+  --surface: #ffffff; /* cards, sheets */
+  --surface-2: #f3f0eb; /* grouped rows, table headers */
+  --line: #e6e1da; /* 1px borders, never a glow */
+
+  /* text */
+  --ink: #1c1b19; /* 16:1 on bg */
+  --ink-2: #5c5854; /* 6.3:1 on bg — lowest contrast allowed for text */
+
+  /* per-business accent (default: burgundy) */
+  --accent: #8b2635;
+  --accent-ink: #ffffff; /* text on accent; chosen by contrast at save time */
+  --accent-soft: color-mix(in oklab, var(--accent) 10%, white);
+
+  /* ConceptApp's own brand colour — admin console and marketing only */
+  --brand: #9000ff;
+
+  /* status, fixed for every business */
+  --success: #1f7a4d;
+  --warning: #b26a00;
+  --danger: #b3261e;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-brand: var(--brand);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+
+  --font-sans: "Heebo Variable", ui-sans-serif, system-ui, sans-serif;
+
+  /* type scale: 13 / 15 / 17 / 20 / 24 / 30 px, line height 1.5 */
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.5;
+  --text-base: 0.9375rem;
+  --text-base--line-height: 1.5;
+  --text-md: 1.0625rem;
+  --text-md--line-height: 1.5;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.4;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 1.3;
+  --text-2xl: 1.875rem;
+  --text-2xl--line-height: 1.25;
+
+  --radius-card: 12px;
+  --radius-sheet: 16px;
+
+  --shadow-raised:
+    0 1px 2px rgb(28 27 25 / 0.06), 0 4px 12px rgb(28 27 25 / 0.06);
+
+  --ease-calm: cubic-bezier(0.2, 0, 0, 1);
+}
+
+html {
+  background: var(--bg);
+  color: var(--ink);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Motion only on state changes, and none at all when the user asks for less. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion safety net must beat any component transition */
+    animation-duration: 0.01ms !important;
+    /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion safety net must beat any component transition */
+    animation-iteration-count: 1 !important;
+    /* biome-ignore lint/complexity/noImportantStyles: the reduced-motion safety net must beat any component transition */
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,6 @@
+# Keep LF everywhere (Biome formats with LF; Windows checkouts would otherwise get CRLF).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary
