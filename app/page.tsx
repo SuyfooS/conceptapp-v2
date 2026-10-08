@@ -76,9 +76,14 @@ export default function Home() {
         וכל השאר קבוע.
       </p>
 
-      <Button asChild size="lg" className="w-full">
-        <Link href="/design">למערכת העיצוב</Link>
-      </Button>
+      <div className="flex flex-col gap-2">
+        <Button asChild size="lg" className="w-full">
+          <Link href="/design/shell">דמו: האפליקציה בטלפון, בטאבלט ובמחשב</Link>
+        </Button>
+        <Button asChild variant="secondary" size="lg" className="w-full">
+          <Link href="/design">מערכת העיצוב</Link>
+        </Button>
+      </div>
     </main>
   );
 }

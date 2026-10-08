@@ -9,8 +9,11 @@ import { cn } from "@ui/cn";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
+import { Stat } from "@ui/stat";
 import { ltrInputClass, TextField } from "@ui/text-field";
+import { WeekStrip } from "@ui/week-strip";
 import { ArrowLeft, Bell, Plus } from "lucide-react";
+import Link from "next/link";
 import { type ReactNode, useState } from "react";
 
 type Lang = "he" | "en";
@@ -82,6 +85,14 @@ const T = {
     p3s: "4 סועדים · 20:30",
     p3b: "מאושר",
     badges: "תגיות",
+    layout: "פריסה ומספרים",
+    layoutLink: "לדמו: אותה אפליקציה בטלפון, בטאבלט ובמחשב",
+    stat1: "במשמרת עכשיו",
+    stat1h: "שירה עוד לא החתימה",
+    stat2: "הזמנות הערב",
+    stat2h: "46 סועדים",
+    week: "בחירת יום",
+    days: ["א׳", "ב׳", "ג׳", "ד׳", "ה׳", "ו׳", "ש׳"],
     neutral: "טיוטה",
     accentB: "מאושר",
     success: "פורסם",
@@ -146,6 +157,14 @@ const T = {
     p3s: "4 guests · 20:30",
     p3b: "Confirmed",
     badges: "Badges",
+    layout: "Layout and numbers",
+    layoutLink: "Demo: the same app on phone, tablet and desktop",
+    stat1: "On shift now",
+    stat1h: "Shira has not clocked in",
+    stat2: "Bookings tonight",
+    stat2h: "46 guests",
+    week: "Pick a day",
+    days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     neutral: "Draft",
     accentB: "Confirmed",
     success: "Published",
@@ -190,6 +209,7 @@ export function Gallery() {
   const [lang, setLang] = useState<Lang>("he");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
+  const [day, setDay] = useState("0");
 
   const switchLang = (next: Lang) => {
     setLang(next);
@@ -397,6 +417,28 @@ export function Gallery() {
             trailing={<Badge tone="accent">{t.p3b}</Badge>}
           />
         </ListGroup>
+      </Section>
+
+      <Section title={t.layout}>
+        <Button asChild variant="secondary" className="w-full">
+          <Link href="/design/shell">{t.layoutLink}</Link>
+        </Button>
+        <div className="grid grid-cols-2 gap-3">
+          <Stat label={t.stat1} value="2/3" hint={t.stat1h} tone="warning" />
+          <Stat label={t.stat2} value="14" hint={t.stat2h} />
+        </div>
+        <WeekStrip
+          label={t.week}
+          value={day}
+          onChange={setDay}
+          days={t.days.map((label, i) => ({
+            key: String(i),
+            label,
+            date: String(18 + i),
+            marked: i === 1 || i === 3,
+            markLabel: lang === "he" ? "חסר עובד" : "Open shift",
+          }))}
+        />
       </Section>
 
       <Section title={t.badges}>

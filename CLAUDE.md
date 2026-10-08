@@ -60,7 +60,8 @@ supabase/           CLI config, edge functions, seed data
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
   Built so far: Button, IconButton, TextField, PhoneField, Card, ListRow and
-  ListGroup, Badge, Spinner.
+  ListGroup, Badge, Spinner, Stat, WeekStrip, AppShell, PageBody/PageHeader/
+  PageSection.
 - A business accent is applied with `accentStyle(accentTokens(hex))` on a
   wrapper. `accentTokens` darkens unreadable picks; text on light tints stays
   `text-ink`, never `text-accent`.
@@ -68,6 +69,36 @@ supabase/           CLI config, edge functions, seed data
   `@domain/phone`); `PhoneField` submits that form through a hidden input.
 - Touch targets at least 44px. Motion 150–200ms on state changes only.
 - All user-facing copy in Hebrew; plain words, no exclamation marks.
+
+## Layout: three devices, three layouts
+
+- Breakpoints: phone < 768px (`md`), tablet 768–1279px, desktop ≥ 1280px (`xl`).
+- `AppShell` (`@ui/app-shell`) gives each its navigation: bottom tab bar on
+  phones, side rail on tablets, full sidebar on desktop. Same items, labels,
+  icons and order everywhere. At most five items.
+- Screens use `PageBody` + `PageHeader` (`@ui/page`). The page's main action
+  goes in `PageHeader actions`: full width under the title on phones, inline
+  from tablet up.
+- Each screen chooses its own shape per device instead of shrinking one
+  layout: phone = one thing at a time (a day, a list); tablet = two columns
+  or a compact grid; desktop = the full picture (tables, extra columns).
+  Render each shape and switch with `md:hidden` / `hidden md:block xl:hidden`
+  / `hidden xl:block`. Data and wording stay identical across shapes.
+- Living example: `/design/shell` (mock data). Check new screens at 390,
+  820 and 1440px wide before handing them back.
+
+## Easy for anyone
+
+- One main action per screen, in the accent colour, named with a verb that
+  says what happens ("פרסום הסידור", not "שמירה").
+- Icons never stand alone: nav items have labels, icon buttons have a label
+  and tooltip.
+- Show status before it is asked for: counts and badges for what needs
+  action ("2 משמרות חסרות עובד").
+- Every empty screen says what to do next. Destructive actions offer undo
+  rather than "are you sure".
+- Acceptance test for a screen: the least technical person on the pilot's
+  staff completes the task without help.
 
 ## Code rules
 

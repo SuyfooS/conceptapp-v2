@@ -48,5 +48,6 @@ Phase 0 — Foundations.
 
 - [x] Chunk 1: project skeleton (Next.js, TypeScript, Tailwind tokens, Hebrew RTL, Heebo, Biome, CI)
 - [x] Chunk 2: design system components and the `/design` gallery
+- [x] Chunk 2b: responsive app shell — phone tabs, tablet rail, desktop sidebar — and the `/design/shell` demo
 - [ ] Chunk 3: Supabase schema with RLS and isolation tests
 - [ ] Chunk 4: phone OTP login and an empty home in the business accent
