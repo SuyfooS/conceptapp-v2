@@ -47,7 +47,9 @@ his phone, so keep replies short and give links.
 9. **Report.** Add a first comment to `יומן הסוכן` ("הסוכן הוגדר", the run
    time, what happens next) and reply to Orel in Hebrew with: links to the log
    issue and the three questions, the schedule, the approval setting, and
-   anything he still has to do. At most ten lines.
+   anything he still has to do. Tell him how to talk to the agent live: the
+   Claude app, **Code** tab, this session or a new one with
+   `conceptapp-v2` (see "Live chat" in the brief). At most ten lines.
 
 ## Never
 
