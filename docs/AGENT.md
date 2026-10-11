@@ -138,6 +138,11 @@ Orel, and say so in the log.
   migrations to `conceptapp-dev` needs secrets Orel adds to GitHub
   (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF`);
   if they are missing, ask once and keep going locally.
+  Use the new key types only: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` in the
+  browser, `SUPABASE_SECRET_KEY` on the server (names in `.env.example`); the
+  legacy `anon` / `service_role` keys are retired by the end of 2026. A free
+  project pauses after a week without activity: if `conceptapp-dev` is paused,
+  ask Orel to press Restore and keep working locally.
 - **4 · Phone login.** Supabase phone OTP with `@supabase/ssr` cookies and
   session refresh in `proxy.ts`; sign-in screens (phone, then code) built from
   `packages/ui`; a test SMS hook that writes codes to a dev-only table; an

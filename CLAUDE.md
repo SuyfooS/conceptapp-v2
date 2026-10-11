@@ -106,8 +106,8 @@ supabase/           CLI config, edge functions, seed data
 - No secrets in the repo, ever. Real keys live in `.env.local`, Vercel and
   Supabase settings. `.env.example` lists the names.
 - Server-only writes (bookings, invite claims, punch codes, publishing) go
-  through server code with the service role; the browser talks to Supabase
-  under RLS only.
+  through server code with the secret key (`SUPABASE_SECRET_KEY`); the browser
+  uses the publishable key and talks to Supabase under RLS only.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.
 - Orel works on Windows PowerShell 5: when giving him commands, one per line,

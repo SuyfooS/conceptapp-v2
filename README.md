@@ -42,6 +42,7 @@ pull request.
 
 - App Design Document: https://claude.ai/code/artifact/ccdf7f39-afc1-4d64-aca5-0a7b918723b9
 - Business Model: https://claude.ai/code/artifact/be1331db-bb49-470c-8abc-53d6b109e5c1
+- Supabase guide (Hebrew: why, setup, keys, costs): https://claude.ai/code/artifact/bac793ad-cea3-43b6-a0be-e79733c10043
 - Autonomous agent (Oct–Nov 2026): brief in `docs/AGENT.md`, one-time setup
   in `docs/agent/KICKOFF.md`, log in `docs/agent/LOG.md`
 
