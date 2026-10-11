@@ -38,6 +38,12 @@ when Supabase is connected (phase 0, chunk 3).
 CI runs Biome, the typecheck, the unit tests and a build on every push to `main` and every
 pull request.
 
+## Plan and decisions
+
+- App Design Document: https://claude.ai/code/artifact/ccdf7f39-afc1-4d64-aca5-0a7b918723b9
+- Business Model: https://claude.ai/code/artifact/be1331db-bb49-470c-8abc-53d6b109e5c1
+- Autonomous agent (Oct–Nov 2026): `docs/AGENT.md`, log in `docs/agent/LOG.md`
+
 ## Structure
 
 See `CLAUDE.md` for the layout, the UI rules and the working agreement.

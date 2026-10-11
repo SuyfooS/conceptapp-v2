@@ -1,55 +1,69 @@
 # Agent brief — autonomous month (13 Oct – 12 Nov 2026)
 
-Orel is away for a month. A Claude agent works on this repo once a day and
-talks to him through the ConceptApp chat in the Claude app. This file is the
-standing brief. Read it, then `CLAUDE.md`, at the start of every run.
+Orel is away for a month. A Claude agent works on this repo once a day. This
+file is the standing brief: read it, then `CLAUDE.md`, at the start of every
+run. Everything the agent needs is in this repo; nothing depends on an earlier
+conversation.
 
 ## Decisions Orel made for this period
 
 - The agent merges to `main` on its own once every check passes. There are no
   real users before the pilot goes live in late December, so a bad merge costs
   a revert, not a customer.
-- One run a day at 10:00 Israel time.
+- One run a day, scheduled for 07:00 UTC (10:00 Israel time until 25 October,
+  09:00 after the clocks change).
 - Everything goes through GitHub (`SuyfooS/conceptapp-v2`). Orel's computer is
-  off; do not depend on it.
+  off; never depend on it.
+
+## Talking to Orel
+
+GitHub issues are the channel, because they survive between runs and Orel
+gets them as push notifications in the GitHub app.
+
+- **Questions from the agent:** one issue per question, label `question`,
+  written in Hebrew. The body gives the options, the agent's recommended
+  default, and a deadline 48 hours out: "אם לא תענה עד <date>, אני ממשיך
+  עם X". At most three new questions a day.
+- **Answers:** Orel replies with a comment. On the next run, apply the answer,
+  say what you did in a comment and close the issue. If the deadline passes,
+  apply the default, comment that the default was used, and close it.
+- **Instructions from Orel:** any open issue Orel opened (any label, or
+  `orel`) is an instruction. Read all of them every run, act on them before
+  backlog work, reply in the issue and close it when done.
+- **Daily note:** one pinned issue titled `יומן הסוכן`. Each run adds one
+  short comment in Hebrew: what was done, the merged commit, what is next,
+  and any default applied. Keep it to five lines.
+- **Urgent:** an issue with label `urgent` (see "Escalate" below). Mention
+  @SuyfooS in it.
+- **Weekly (Sundays):** a longer comment on `יומן הסוכן`: what changed this
+  week, which screens to open on the Vercel preview, and the questions still
+  open.
+- If Orel replies inside a run's own Claude conversation instead, act on it
+  in that conversation and copy the decision into the matching issue and the
+  log, so the next run sees it.
+- Work never waits on an answer. Take the next unblocked chunk, or proceed
+  with the default and log it.
 
 ## The daily run
 
-1. **Keep the schedule alive first.** Make sure wake-ups exist for the next two
-   days (one-shot reminders into the ConceptApp chat, named
-   `ConceptApp agent · DD.MM`). Create any that are missing. Never create
-   duplicates. 10:00 Israel time is 07:00 UTC until 25 Oct and 08:00 UTC after.
-2. **Catch up.** Read the agent log in the ConceptApp project
-   (`claude/agent-log.md`) and any answers Orel left in the chat since the last
-   run. Apply answers before starting new work.
-3. **Sync.** Clone or pull `main`. If `main` is red in CI, fixing it is today's
-   chunk.
-4. **Do one chunk** from the backlog below, in order, on a branch
+1. **Catch up.** Read `docs/agent/LOG.md`, then every open issue with label
+   `question`, `orel` or `urgent`, and every open issue opened by Orel, with
+   their comments. Apply answers and instructions first.
+2. **Sync.** Pull `main`. If CI on `main` is red, fixing it is today's chunk.
+3. **Do one chunk** from the backlog below, in order, on a branch
    `agent/<chunk-id>`. A chunk is the smallest piece that ends in something
-   demonstrable.
-5. **Prove it.** `pnpm check` and `pnpm build` must pass; add or update tests
-   for every behaviour change. For UI, screenshot at 390, 820 and 1440 px and
-   run axe; no violations, no horizontal scroll.
-6. **Merge.** Push the branch, wait for CI, then fast-forward or squash into
+   demonstrable; split big backlog items into several days.
+4. **Prove it.** `pnpm check` and `pnpm build` must pass; add or update tests
+   for every behaviour change. For UI, take screenshots at 390, 820 and
+   1440 px and run axe: no violations, no horizontal scroll.
+5. **Merge.** Push the branch, wait for CI to pass, then squash-merge into
    `main` and delete the branch. Never force-push `main`.
-7. **Log.** Append to `claude/agent-log.md`: date, chunk, what changed,
-   commit, what is next, and any decisions taken by default.
-8. **Ask, if needed** (see below), then post a short summary in the chat.
-9. **Sundays:** a weekly summary for Orel with screenshots of what changed on
-   phone, tablet and desktop, and the Vercel preview link.
-
-## Asking Orel
-
-- At most three questions a day, numbered, in Hebrew, each with a
-  recommended default: "if there is no answer by <date, 48 hours later>, I go
-  with X".
-- Work never waits on an answer. Pick another chunk or proceed with the default
-  and log that the default was used, so it is easy to revisit.
-- Send a push notification only when there are new questions or something is
-  broken. Routine progress goes in the log and the weekly summary.
-- Ask before: changing anything in the business model or pricing, anything a
-  restaurant owner will read (beyond UI copy that follows CLAUDE.md), any
-  product decision the docs leave open, and anything irreversible.
+6. **Log.** Append an entry to `docs/agent/LOG.md` (date, chunk, what changed,
+   commit, next, defaults applied) in the same merge, and add the daily note
+   to `יומן הסוכן`.
+7. **Check the schedule.** Confirm the daily scheduled task still exists and
+   is enabled. If it is missing or disabled and cannot be fixed, open an
+   `urgent` issue.
 
 ## Never
 
@@ -59,21 +73,23 @@ standing brief. Read it, then `CLAUDE.md`, at the start of every run.
   GitHub settings himself; code reads them from the environment.
 - Send SMS, push or email to real people or real phone numbers. Development
   uses Supabase test numbers and a logging SMS hook.
-- Contact the pilot restaurant or anyone else.
-- Delete repositories, other people's branches, or data outside the dev
-  project.
+- Contact the pilot restaurant or anyone else outside this repo.
+- Delete the repository, other people's branches, or data outside the dev
+  project. Never rewrite published history.
 - Lower a quality bar to finish a chunk: no skipped tests, no `any`, no
   disabled lint rules without a written reason, nothing marked done that is a
   stub.
+- Change the business model, pricing, or anything a restaurant owner will
+  read beyond UI copy that follows `CLAUDE.md`, without asking first.
 
-## Escalate at once (push notification)
+## Escalate at once (`urgent` issue)
 
 - `main` has been red for more than a day and the fix is not obvious.
 - A security problem: data visible across businesses, a secret in the repo,
   an RLS gap.
-- Lost access to GitHub, Vercel or Supabase.
-- The schedule broke (a run found no wake-up for tomorrow and could not create
-  one).
+- Lost access to GitHub, Vercel or Supabase, or a missing secret that blocks
+  every remaining chunk.
+- The daily schedule is broken.
 
 ## Backlog, in order
 
@@ -96,8 +112,9 @@ Orel, and say so in the log.
   tests: a member of business A cannot read business B; anonymous users read
   nothing; and a meta-test that fails if any table in `public` lacks RLS.
   Done when: the tests run in CI against a local Supabase and pass. Applying
-  migrations to `conceptapp-dev` needs secrets Orel adds to GitHub; if they are
-  missing, ask once and keep going locally.
+  migrations to `conceptapp-dev` needs secrets Orel adds to GitHub
+  (`SUPABASE_ACCESS_TOKEN`, `SUPABASE_DB_PASSWORD`, `SUPABASE_PROJECT_REF`);
+  if they are missing, ask once and keep going locally.
 - **4 · Phone login.** Supabase phone OTP with `@supabase/ssr` cookies and
   session refresh in `proxy.ts`; sign-in screens (phone, then code) built from
   `packages/ui`; a test SMS hook that writes codes to a dev-only table; an
@@ -118,7 +135,7 @@ Orel, and say so in the log.
   wizard (template → name, slug, address, accent → paste staff list → create →
   checklist). Roles `platform_admin` and `onboarder` (creates and invites, no
   billing, no templates, no delete). Done when: a Playwright test creates a
-  business from the restaurant template in under five minutes of clicks.
+  business from the restaurant template.
 - **1d · Invites.** Invite by phone with a link (logged, not sent, in dev),
   claimed only through a server function; the Team screen lists members and
   pending invites. Done when: an invited test number signs in and lands in the
@@ -135,9 +152,22 @@ Orel, and say so in the log.
   form with the Friday and Saturday rules, and the manager's "who has not
   submitted" list, in all three layouts.
 
+## Questions already known (open them on the first run)
+
+1. How did the meeting with the pilot restaurant go: did they agree, and when
+   is the intake call? Default: assume yes and keep building against the demo
+   restaurant.
+2. The restaurant's real shifts (names, hours, headcount per role). Default:
+   the demo shifts in `app/design/shell/data.ts` become the `restaurant`
+   template defaults.
+3. Supabase secrets for applying migrations to `conceptapp-dev` (see chunk 3).
+   Default: keep working against a local Supabase in CI.
+
 ## Where things live
 
-- Plan, decisions and roadmap: ConceptApp project doc `claude/v2-rebuild-plan.md`
-  and the App Design Document linked there.
-- Running log and questions: ConceptApp project doc `claude/agent-log.md`.
+- This brief and the run prompt: `docs/AGENT.md`, `docs/agent/RUN_PROMPT.md`.
+- Running log: `docs/agent/LOG.md` (plus the `יומן הסוכן` issue).
 - Rules for code and UI: `CLAUDE.md`.
+- Product decisions, roadmap and business model: the App Design Document and
+  Business Model in Orel's ConceptApp project on claude.ai (links in
+  `README.md`). The agent cannot edit those; record decisions in the log.
