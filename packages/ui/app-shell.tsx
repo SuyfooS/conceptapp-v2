@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { cn } from "./cn";
 
@@ -30,6 +31,7 @@ function isActive(pathname: string, item: NavItem) {
 }
 
 function Count({ value }: { value?: number }) {
+  const t = useTranslations("ui.appShell");
   if (!value) return null;
   return (
     <>
@@ -39,7 +41,7 @@ function Count({ value }: { value?: number }) {
       >
         {value}
       </span>
-      <span className="sr-only">, {value} דורשים טיפול</span>
+      <span className="sr-only">{t("needsAction", { count: value })}</span>
     </>
   );
 }
@@ -57,6 +59,7 @@ function Count({ value }: { value?: number }) {
  */
 export function AppShell({ businessName, user, nav, children }: AppShellProps) {
   const pathname = usePathname();
+  const t = useTranslations("ui.appShell");
 
   return (
     <div className="min-h-dvh bg-bg">
@@ -72,7 +75,7 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
           <span className="truncate font-bold text-md">{businessName}</span>
         </div>
         <nav
-          aria-label="ניווט ראשי"
+          aria-label={t("mainNav")}
           className="flex flex-1 flex-col gap-1 px-3"
         >
           {nav.map((item) => {
@@ -115,7 +118,7 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
 
       {/* tablet: side rail */}
       <nav
-        aria-label="ניווט ראשי"
+        aria-label={t("mainNav")}
         className="fixed inset-y-0 start-0 z-20 hidden w-22 flex-col items-center gap-1 border-line border-e bg-surface py-4 md:flex xl:hidden"
       >
         <span
@@ -169,7 +172,7 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
 
       {/* phone: bottom tab bar */}
       <nav
-        aria-label="ניווט ראשי"
+        aria-label={t("mainNav")}
         className="fixed inset-x-0 bottom-0 z-20 border-line border-t bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
       >
         <ul

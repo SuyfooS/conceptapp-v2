@@ -1,13 +1,18 @@
 import { Card, CardText, CardTitle } from "@ui/card";
 import { PageBody, PageHeader } from "@ui/page";
+import { useTranslations } from "next-intl";
 
 export default function ShellReservations() {
+  const t = useTranslations("shell");
   return (
     <PageBody>
-      <PageHeader title="הזמנות" subtitle="מפת שולחנות, הזמנות היום ואישורים" />
+      <PageHeader
+        title={t("reservations.title")}
+        subtitle={t("reservations.subtitle")}
+      />
       <Card tone="raised" padding="lg">
-        <CardTitle>המסך הזה ייבנה בשלבים 6–7</CardTitle>
-        <CardText>בדמו הזה הוא רק מראה שהניווט עובד בכל גודל מסך.</CardText>
+        <CardTitle as="h2">{t("reservations.placeholder")}</CardTitle>
+        <CardText>{t("placeholderText")}</CardText>
       </Card>
     </PageBody>
   );

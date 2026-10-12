@@ -36,8 +36,10 @@ modules/<key>/      one folder per module, each exporting a typed manifest
 packages/ui/        components + /design gallery          import "@ui/…"
 packages/db/        schema, migrations, queries, RLS tests import "@db/…"
 packages/domain/    pure logic with unit tests            import "@domain/…"
+messages/           he.json + en.json: every user-facing string (next-intl)
+i18n/               locale config and the next-intl request config
 supabase/           CLI config, edge functions, seed data
-tooling/            repo checks (layer boundaries) with their tests
+tooling/            repo checks (layer boundaries, Hebrew literals, message parity) with their tests
 ```
 
 Layer rules, enforced by Biome `noRestrictedImports` (per-folder overrides in
@@ -78,6 +80,13 @@ Only `app/` imports app code (`@/…`).
   `@domain/phone`); `PhoneField` submits that form through a hidden input.
 - Touch targets at least 44px. Motion 150–200ms on state changes only.
 - All user-facing copy in Hebrew; plain words, no exclamation marks.
+- Copy lives in `messages/he.json` with its English twin in `messages/en.json`
+  (same keys, same `{placeholders}`), read with next-intl's `useTranslations`
+  / `getTranslations`. Keys are typed from `he.json`. `pnpm check` fails on a
+  Hebrew string literal or JSX text in `app/`, `packages/ui` or `modules/`
+  (`tooling/hebrew-literals.ts`; mock data files are listed there with a
+  reason). Use ICU plurals for counts and `t.rich` with `<ltr>` for embedded
+  times and numbers.
 
 ## Layout: three devices, three layouts
 
