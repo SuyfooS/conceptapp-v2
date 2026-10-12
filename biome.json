@@ -35,5 +35,119 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["packages/domain/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@ui/**", "@db/**", "@modules/**", "@/**"],
+                    "message": "packages/domain is pure logic: it imports no other layer."
+                  },
+                  {
+                    "group": [
+                      "react",
+                      "react/**",
+                      "react-dom",
+                      "react-dom/**",
+                      "next",
+                      "next/**",
+                      "@supabase/**"
+                    ],
+                    "message": "packages/domain is pure logic: no framework or Supabase imports."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/ui/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@db/**", "@modules/**"],
+                    "message": "packages/ui may import only @domain."
+                  },
+                  {
+                    "group": ["@supabase/**"],
+                    "message": "packages/ui never talks to the database."
+                  },
+                  {
+                    "group": ["@/**"],
+                    "message": "Only app/ may import app code."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["packages/db/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@ui/**", "@modules/**"],
+                    "message": "packages/db may import only @domain."
+                  },
+                  {
+                    "group": ["react", "react/**", "react-dom", "react-dom/**"],
+                    "message": "packages/db has no UI."
+                  },
+                  {
+                    "group": ["@/**"],
+                    "message": "Only app/ may import app code."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["modules/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["@modules/**", "!@modules/*/manifest"],
+                    "message": "A module imports another module only through its manifest, and its own files by relative path. Share code via @domain or @db."
+                  },
+                  {
+                    "group": ["@/**"],
+                    "message": "Only app/ may import app code."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

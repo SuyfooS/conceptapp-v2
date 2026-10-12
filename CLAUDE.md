@@ -37,7 +37,15 @@ packages/ui/        components + /design gallery          import "@ui/…"
 packages/db/        schema, migrations, queries, RLS tests import "@db/…"
 packages/domain/    pure logic with unit tests            import "@domain/…"
 supabase/           CLI config, edge functions, seed data
+tooling/            repo checks (layer boundaries) with their tests
 ```
+
+Layer rules, enforced by Biome `noRestrictedImports` (per-folder overrides in
+`biome.json`) and `tooling/boundaries.test.ts`, both part of `pnpm check`:
+`packages/domain` imports no other layer and no framework; `packages/ui` and
+`packages/db` import only `@domain`; `modules/<key>` reaches another module
+only through `@modules/<other>/manifest` and its own files by relative path.
+Only `app/` imports app code (`@/…`).
 
 ## UI rules
 
