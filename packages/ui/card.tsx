@@ -36,9 +36,21 @@ export function Card({ tone, padding, className, ...props }: CardProps) {
   );
 }
 
-export function CardTitle({ className, ...props }: ComponentProps<"h3">) {
+export type CardTitleProps = ComponentProps<"h3"> & {
+  /** Heading level. `h2` when the card sits right under the page title. */
+  as?: "h2" | "h3";
+};
+
+export function CardTitle({
+  as: Heading = "h3",
+  className,
+  ...props
+}: CardTitleProps) {
   return (
-    <h3 className={cn("font-bold text-md text-ink", className)} {...props} />
+    <Heading
+      className={cn("font-bold text-md text-ink", className)}
+      {...props}
+    />
   );
 }
 

@@ -6,6 +6,7 @@ import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { Stat } from "@ui/stat";
 import { Send } from "lucide-react";
 import Link from "next/link";
+import { useFormatter, useTranslations } from "next-intl";
 import {
   activity,
   byId,
@@ -15,20 +16,26 @@ import {
   staff,
   tonight,
   totalOpenSlots,
+  user,
 } from "./data";
 
 export default function ShellHome() {
-  const missing = missingAvailability.map((id) => byId[id]?.name).join(" ו");
+  const t = useTranslations("shell.home");
+  const format = useFormatter();
+  const missing = format.list(
+    missingAvailability.map((id) => byId[id]?.name ?? id),
+    { type: "conjunction" },
+  );
   const inCount = onShiftNow.filter((p) => p.in).length;
 
   return (
     <PageBody>
       <PageHeader
-        title="בוקר טוב, שירן"
-        subtitle="יום שלישי, 13 באוקטובר · משמרת בוקר"
+        title={t("greeting", { name: user.name })}
+        subtitle={t("today")}
         actions={
           <Button asChild variant="secondary">
-            <Link href="/design/shell/schedule">לסידור של השבוע הבא</Link>
+            <Link href="/design/shell/schedule">{t("nextWeek")}</Link>
           </Button>
         }
       />
@@ -39,40 +46,44 @@ export default function ShellHome() {
         className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
       >
         <div className="flex flex-col gap-1">
-          <CardTitle>
-            {missingAvailability.length} עובדים לא הגישו זמינות לשבוע הבא
+          <CardTitle as="h2">
+            {t("missingTitle", { count: missingAvailability.length })}
           </CardTitle>
-          <CardText>{missing}. החלון נסגר ביום חמישי ב־12:00.</CardText>
+          <CardText>{t("missingText", { names: missing })}</CardText>
         </div>
         <Button className="w-full md:w-auto">
           <Send aria-hidden="true" className="rtl:-scale-x-100" />
-          שליחת תזכורת
+          {t("remind")}
         </Button>
       </Card>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Stat
-          label="במשמרת עכשיו"
+          label={t("onShift")}
           value={`${inCount}/${onShiftNow.length}`}
-          hint="שירה עוד לא החתימה"
+          hint={t("notClockedInHint")}
           tone="warning"
         />
         <Stat
-          label="הזמנות הערב"
+          label={t("tonight")}
           value={tonight.bookings}
-          hint={`${tonight.covers} סועדים`}
+          hint={t("covers", { count: tonight.covers })}
         />
         <Stat
-          label="זמינות לשבוע הבא"
+          label={t("availability")}
           value={`${staff.length - missingAvailability.length}/${staff.length}`}
-          hint={`${missingAvailability.length} עדיין לא הגישו`}
+          hint={t("notSubmitted", { count: missingAvailability.length })}
           tone="warning"
         />
-        <Stat label="משמרות חסרות" value={totalOpenSlots} hint="ב׳ וד׳ בבוקר" />
+        <Stat
+          label={t("openShifts")}
+          value={totalOpenSlots}
+          hint={t("openShiftsHint")}
+        />
       </div>
 
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        <PageSection title="במשמרת עכשיו">
+        <PageSection title={t("onShift")}>
           <ListGroup>
             {onShiftNow.map((p) => {
               const person = byId[p.id];
@@ -86,10 +97,13 @@ export default function ShellHome() {
                   trailing={
                     p.in ? (
                       <Badge tone="success">
-                        כניסה <span dir="ltr">{p.in}</span>
+                        {t.rich("clockedIn", {
+                          time: p.in,
+                          ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                        })}
                       </Badge>
                     ) : (
-                      <Badge tone="warning">לא החתימה</Badge>
+                      <Badge tone="warning">{t("notClockedIn")}</Badge>
                     )
                   }
                 />
@@ -99,9 +113,11 @@ export default function ShellHome() {
         </PageSection>
 
         <PageSection
-          title="הזמנות הערב"
+          title={t("tonight")}
           action={
-            <span className="text-ink-2 text-sm">{tonight.covers} סועדים</span>
+            <span className="text-ink-2 text-sm">
+              {t("covers", { count: tonight.covers })}
+            </span>
           }
         >
           <ListGroup>
@@ -111,13 +127,13 @@ export default function ShellHome() {
                 href="/design/shell/reservations"
                 leading={<span dir="ltr">{b.time}</span>}
                 title={b.name}
-                subtitle={`${b.party} סועדים · ${b.table}`}
+                subtitle={t("booking", { party: b.party, table: b.table })}
               />
             ))}
           </ListGroup>
         </PageSection>
 
-        <PageSection title="מה קרה לאחרונה" className="hidden xl:flex">
+        <PageSection title={t("activity")} className="hidden xl:flex">
           <ListGroup>
             {activity.map((a) => (
               <ListRow

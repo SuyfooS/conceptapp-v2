@@ -1,35 +1,17 @@
 import { Button } from "@ui/button";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 const chunks = [
-  {
-    n: 1,
-    title: "שלד הפרויקט",
-    detail: "עברית מימין לשמאל עם Next.js, TypeScript ו‑Tailwind",
-    done: true,
-  },
-  {
-    n: 2,
-    title: "מערכת עיצוב",
-    detail: "טוקנים, רכיבי בסיס ודף ‎/design",
-    done: true,
-  },
-  {
-    n: 3,
-    title: "בסיס נתונים",
-    detail: "עסקים וחברויות עם RLS ובדיקות בידוד",
-    done: false,
-  },
-  {
-    n: 4,
-    title: "כניסה בטלפון",
-    detail: "קוד חד‑פעמי ומסך בית בצבע העסק",
-    done: false,
-  },
-];
+  { n: 1, key: "skeleton", done: true },
+  { n: 2, key: "design", done: true },
+  { n: 3, key: "database", done: false },
+  { n: 4, key: "login", done: false },
+] as const;
 
 // Temporary landing for phase 0. Replaced by the public site in phase 5.
 export default function Home() {
+  const t = useTranslations("home");
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-[480px] flex-col gap-6 px-4 py-10">
       <header className="flex items-center justify-between">
@@ -37,15 +19,12 @@ export default function Home() {
           <span aria-hidden className="size-4 rounded-[5px] bg-brand" />
           ConceptApp
         </span>
-        <span className="text-sm text-ink-2">גרסה 2 · שלב 0</span>
+        <span className="text-sm text-ink-2">{t("version")}</span>
       </header>
 
       <section className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">שלב 0 בדרך</h1>
-        <p className="text-ink-2">
-          שתי החתיכות הראשונות של שלב 0 במקומן: השלד ומערכת העיצוב. השתיים הבאות
-          מחברות את בסיס הנתונים ואת הכניסה עם הטלפון.
-        </p>
+        <h1 className="text-2xl font-bold">{t("title")}</h1>
+        <p className="text-ink-2">{t("intro")}</p>
       </section>
 
       <ol className="flex flex-col overflow-hidden rounded-card border border-line bg-surface">
@@ -64,24 +43,23 @@ export default function Home() {
               {c.n}
             </span>
             <span className="flex flex-col">
-              <span className="font-medium">{c.title}</span>
-              <span className="text-sm text-ink-2">{c.detail}</span>
+              <span className="font-medium">{t(`chunks.${c.key}.title`)}</span>
+              <span className="text-sm text-ink-2">
+                {t(`chunks.${c.key}.detail`)}
+              </span>
             </span>
           </li>
         ))}
       </ol>
 
-      <p className="text-sm text-ink-2">
-        העיגולים הצבועים הם בצבע העסק (ברירת המחדל: בורדו). כל עסק בוחר צבע אחד,
-        וכל השאר קבוע.
-      </p>
+      <p className="text-sm text-ink-2">{t("accentNote")}</p>
 
       <div className="flex flex-col gap-2">
         <Button asChild size="lg" className="w-full">
-          <Link href="/design/shell">דמו: האפליקציה בטלפון, בטאבלט ובמחשב</Link>
+          <Link href="/design/shell">{t("shellLink")}</Link>
         </Button>
         <Button asChild variant="secondary" size="lg" className="w-full">
-          <Link href="/design">מערכת העיצוב</Link>
+          <Link href="/design">{t("designLink")}</Link>
         </Button>
       </div>
     </main>

@@ -6,11 +6,14 @@ import { Card } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { WeekStrip } from "@ui/week-strip";
 import { Plus } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { assigned, byId, days, initials, openSlots } from "../data";
 
 /** Phone: one day at a time, picked from a week strip. */
 export function PhoneDay() {
+  const t = useTranslations("shell.schedule");
+  const tDays = useTranslations("days");
   const [dayKey, setDayKey] = useState("sun");
   const day = days.find((d) => d.key === dayKey) ?? days[0];
   if (!day) return null;
@@ -18,20 +21,20 @@ export function PhoneDay() {
   return (
     <div className="flex flex-col gap-4">
       <WeekStrip
-        label="בחירת יום"
+        label={t("pickDay")}
         value={dayKey}
         onChange={setDayKey}
         days={days.map((d) => ({
           key: d.key,
-          label: d.label,
+          label: tDays(`${d.key}.short`),
           date: d.date,
           marked: openSlots(d) > 0,
-          markLabel: "חסר עובד",
+          markLabel: t("openShift"),
         }))}
       />
 
       <h2 className="font-bold text-lg">
-        יום {day.long}, {day.date} באוקטובר
+        {t("dayTitle", { day: tDays(`${day.key}.long`), date: day.date })}
       </h2>
 
       {day.shifts.map((shift) => {
@@ -47,7 +50,7 @@ export function PhoneDay() {
                 </span>
               </div>
               {missing > 0 ? (
-                <Badge tone="warning">חסר {missing}</Badge>
+                <Badge tone="warning">{t("missing", { count: missing })}</Badge>
               ) : (
                 <Badge tone="success">
                   {people.length}/{shift.needed}
@@ -76,7 +79,7 @@ export function PhoneDay() {
                   className="w-full border border-line border-dashed"
                 >
                   <Plus aria-hidden="true" />
-                  הוספת עובד למשמרת
+                  {t("addWorker")}
                 </Button>
               </div>
             ) : null}

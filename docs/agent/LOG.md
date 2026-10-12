@@ -3,6 +3,29 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-12 · run 2 · chunk 2c-2 (messages, next-intl)
+
+- next-intl 4.14.9 without locale routing: `i18n/request.ts` always serves
+  Hebrew, so every page stays static under `cacheComponents`. `i18n/config.ts`
+  lists `he`/`en` and the direction of each; keys are typed from `he.json`.
+- `messages/he.json` and `messages/en.json`: every string from `app/` and
+  `packages/ui` (home, gallery, shell demo, AppShell labels). Counts use ICU
+  plurals; the list of names uses `format.list`. The `/design` gallery
+  switches language through its own `NextIntlClientProvider`.
+- Checks in `pnpm check`: `tooling/hebrew-literals.ts` (TypeScript AST, so
+  comments are ignored) fails on Hebrew in strings or JSX text; verified by
+  planting a literal. `tooling/messages.test.ts`: same keys and placeholders
+  in both files. Demo data `app/design/shell/data.ts` is allowed (it stands
+  in for database rows); weekday names moved to messages.
+- Accessibility: axe was not clean before (gallery had no `<main>`, card
+  titles jumped from h1 to h3). Gallery root is now `<main>`; `CardTitle`
+  takes `as="h2"`. 0 violations at 390/820/1440 on all demo routes and the
+  English gallery; no horizontal scroll. 47 unit tests.
+- Commit: squash of PR `agent/2c-2-messages` (see the daily note in #1).
+- Next: chunk 3 (database), starting with Supabase CLI config and the first
+  migrations.
+- Defaults applied: none. Questions #2 and #3 open until 14.10 04:00.
+
 ## 2026-10-12 · run 1 · chunk 2c-1 (layer boundaries)
 
 - Split chunk 2c in two: 2c-1 layer boundaries (today), 2c-2 next-intl and

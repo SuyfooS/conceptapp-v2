@@ -1,13 +1,15 @@
 import { Card, CardText, CardTitle } from "@ui/card";
 import { PageBody, PageHeader } from "@ui/page";
+import { useTranslations } from "next-intl";
 
 export default function ShellMore() {
+  const t = useTranslations("shell");
   return (
     <PageBody>
-      <PageHeader title="עוד" subtitle="שעון נוכחות, דף העסק, הגדרות וחשבון" />
+      <PageHeader title={t("more.title")} subtitle={t("more.subtitle")} />
       <Card tone="raised" padding="lg">
-        <CardTitle>המסך הזה ייבנה לאורך שלבים 1–5</CardTitle>
-        <CardText>בדמו הזה הוא רק מראה שהניווט עובד בכל גודל מסך.</CardText>
+        <CardTitle as="h2">{t("more.placeholder")}</CardTitle>
+        <CardText>{t("placeholderText")}</CardText>
       </Card>
     </PageBody>
   );

@@ -1,4 +1,7 @@
 // Mock data for the layout demo. Fictional restaurant and people.
+// It stands in for database rows (names, roles, shift names a business
+// sets itself), so its Hebrew stays here rather than in messages/; the
+// Hebrew-literal check in tooling/ allows this one file.
 
 export const business = { name: "מסעדת הדגמה" };
 export const user = { name: "שירן", role: "מנהלת משמרת" };
@@ -42,25 +45,24 @@ const weekday: ShiftType[] = [
   { key: "e", name: "ערב", time: "16:00–23:30", hours: 7.5, needed: 4 },
 ];
 
+export type DayKey = "sun" | "mon" | "tue" | "wed" | "thu" | "fri" | "sat";
+
+/** Day names come from messages (`days.<key>.short` / `.long`). */
 export type Day = {
-  key: string;
-  label: string;
-  long: string;
+  key: DayKey;
   date: string;
   shifts: ShiftType[];
 };
 
 // Week of 18–24 October 2026. Friday closes early, Saturday opens after Shabbat.
 export const days: Day[] = [
-  { key: "sun", label: "א׳", long: "ראשון", date: "18", shifts: weekday },
-  { key: "mon", label: "ב׳", long: "שני", date: "19", shifts: weekday },
-  { key: "tue", label: "ג׳", long: "שלישי", date: "20", shifts: weekday },
-  { key: "wed", label: "ד׳", long: "רביעי", date: "21", shifts: weekday },
-  { key: "thu", label: "ה׳", long: "חמישי", date: "22", shifts: weekday },
+  { key: "sun", date: "18", shifts: weekday },
+  { key: "mon", date: "19", shifts: weekday },
+  { key: "tue", date: "20", shifts: weekday },
+  { key: "wed", date: "21", shifts: weekday },
+  { key: "thu", date: "22", shifts: weekday },
   {
     key: "fri",
-    label: "ו׳",
-    long: "שישי",
     date: "23",
     shifts: [
       { key: "m", name: "בוקר", time: "08:00–14:30", hours: 6.5, needed: 5 },
@@ -68,8 +70,6 @@ export const days: Day[] = [
   },
   {
     key: "sat",
-    label: "ש׳",
-    long: "מוצאי שבת",
     date: "24",
     shifts: [
       { key: "e", name: "מוצ״ש", time: "19:30–00:00", hours: 4.5, needed: 4 },
