@@ -36,3 +36,32 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Start local Postgres, apply migrations and seed
+        run: pnpm exec supabase db start
+
+      - name: RLS and isolation tests (pgTAP)
+        run: pnpm db:test
+
+      - name: Database lint
+        run: pnpm exec supabase db lint --level warning --fail-on warning
+
+      - name: Generated types are up to date
+        run: |
+          pnpm db:types
+          git diff --exit-code packages/db/database.types.ts

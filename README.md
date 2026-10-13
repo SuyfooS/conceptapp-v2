@@ -34,9 +34,14 @@ when Supabase is connected (phase 0, chunk 3).
 | `pnpm check` | Biome lint/format check + TypeScript + unit tests |
 | `pnpm test` | Unit tests (Vitest) for `packages/domain` |
 | `pnpm lint:fix` | Apply Biome fixes and formatting |
+| `pnpm db:start` | Local Postgres (Supabase CLI, needs Docker) with migrations and seed |
+| `pnpm db:test` | pgTAP tests: RLS and tenant isolation |
+| `pnpm db:reset` | Re-apply migrations and seed |
+| `pnpm db:types` | Regenerate `packages/db/database.types.ts` |
 
 CI runs Biome, the typecheck, the unit tests and a build on every push to `main` and every
-pull request.
+pull request, and in a second job starts a local Supabase database, applies the migrations
+and seed, runs the pgTAP tests and the database lint, and checks the generated types.
 
 ## Plan and decisions
 
