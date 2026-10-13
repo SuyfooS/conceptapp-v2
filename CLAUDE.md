@@ -139,4 +139,7 @@ pnpm check        # Biome + typecheck + unit tests
 pnpm test         # unit tests only
 pnpm build
 pnpm lint:fix     # apply Biome fixes and formatting
+pnpm db:start     # local Postgres via Supabase CLI (Docker): migrations + seed
+pnpm db:test      # pgTAP: RLS and tenant isolation
+pnpm db:types     # regenerate packages/db/database.types.ts
 ```

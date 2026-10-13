@@ -3,6 +3,34 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-13 · run 3 · chunk 3a (database: schema, RLS, tests)
+
+- Split chunk 3: 3a local schema and tests (today), 3b apply migrations to
+  `conceptapp-dev` from CI with the GitHub secrets, 3c remaining polish if
+  any (e.g. template seed with chunk 1b).
+- Supabase CLI 2.118.0 as a dev dependency; `supabase/config.toml` from
+  `supabase init` (Postgres 17). Scripts `db:start`, `db:test`, `db:reset`,
+  `db:types`.
+- Migrations: `templates`, `businesses`, `profiles` (created from
+  `auth.users` by a trigger, phone in E.164), `memberships` (role
+  owner/manager/worker + extra perms), `business_modules`, `invites` (token
+  hash only), `audit_log`. Helpers `is_member`, `has_role`, `has_perm`,
+  `module_enabled` in a `private` schema the API does not expose.
+- RLS on every table; anon has no table privileges. Writes are server-only
+  except: owners rename their business, people edit their own name and
+  language (column grants).
+- pgTAP (39 tests): RLS meta-test, anonymous reads nothing, A cannot read
+  or write B, role limits inside a business, inactive members, helpers.
+  Each kind of failure was planted (table without RLS, open policy, anon
+  grant) and the tests went red. New CI job `database`: start, test,
+  `db lint`, and a check that `packages/db/database.types.ts` is current.
+- Decision: schema as plain SQL migrations + generated types instead of
+  Drizzle (the old `packages/db` README named it). Fewer moving parts; the
+  types come from the real schema.
+- Commit: squash of PR `agent/3a-database` (see the daily note in #1).
+- Next: chunk 3b, a workflow that applies migrations to `conceptapp-dev`.
+- Defaults applied: none. Questions #2 and #3 open until 14.10 04:00.
+
 ## 2026-10-12 · run 2 · chunk 2c-2 (messages, next-intl)
 
 - next-intl 4.14.9 without locale routing: `i18n/request.ts` always serves
