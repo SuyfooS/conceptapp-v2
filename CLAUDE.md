@@ -142,4 +142,6 @@ pnpm lint:fix     # apply Biome fixes and formatting
 pnpm db:start     # local Postgres via Supabase CLI (Docker): migrations + seed
 pnpm db:test      # pgTAP: RLS and tenant isolation
 pnpm db:types     # regenerate packages/db/database.types.ts
+pnpm exec supabase start   # full local stack incl. auth (needed for sign-in)
+pnpm e2e          # Playwright at 390/820/1440 against `pnpm build` + local Supabase
 ```

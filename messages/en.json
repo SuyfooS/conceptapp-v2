@@ -11,7 +11,7 @@
   "home": {
     "version": "Version 2 · Phase 0",
     "title": "Phase 0 under way",
-    "intro": "The first two pieces of phase 0 are in place: the skeleton and the design system. The next two connect the database and phone sign-in.",
+    "intro": "All four pieces of phase 0 are in place: the skeleton, the design system, the database and phone sign-in. Next: the module system and the admin console.",
     "chunks": {
       "skeleton": {
         "title": "Project skeleton",
@@ -32,7 +32,8 @@
     },
     "accentNote": "The filled circles use the business accent (default: burgundy). Each business picks one colour; everything else stays fixed.",
     "shellLink": "Demo: the app on phone, tablet and desktop",
-    "designLink": "Design system"
+    "designLink": "Design system",
+    "signInLink": "Sign in to the app"
   },
   "days": {
     "sun": {
@@ -212,6 +213,55 @@
       "title": "More",
       "subtitle": "Time clock, business page, settings and account",
       "placeholder": "This screen arrives over phases 1–5"
+    }
+  },
+  "auth": {
+    "signIn": {
+      "metaTitle": "Sign in",
+      "title": "Sign in",
+      "phoneIntro": "We'll text a sign-in code to your mobile number.",
+      "phoneLabel": "Mobile number",
+      "send": "Send code",
+      "codeIntro": "We sent a 6-digit code to <ltr>{phone}</ltr>.",
+      "codeResent": "We sent a new code to <ltr>{phone}</ltr>.",
+      "codeLabel": "Code from the message",
+      "verify": "Sign in",
+      "resend": "Send a new code",
+      "changePhone": "Different number",
+      "errors": {
+        "invalidPhone": "Enter an Israeli mobile number, e.g. 050-123-4567.",
+        "unknownPhone": "This number isn't registered yet. A manager at your business can add it.",
+        "rateLimit": "You can ask for a new code in a few seconds.",
+        "invalidCode": "The code is 6 digits.",
+        "wrongCode": "The code is wrong or has expired. You can ask for a new one.",
+        "failed": "Something went wrong. Try again in a moment."
+      }
+    }
+  },
+  "app": {
+    "loading": "Loading",
+    "signOut": "Sign out",
+    "nav": {
+      "home": "Home"
+    },
+    "roles": {
+      "owner": "Owner",
+      "manager": "Manager",
+      "worker": "Staff"
+    },
+    "noBusiness": {
+      "title": "Not part of a business yet",
+      "body": "Your account works, but no business has added it yet. A manager at your business can send an invite to this number."
+    },
+    "home": {
+      "metaTitle": "Home",
+      "title": "Home",
+      "greeting": "Hello, {name}",
+      "empty": {
+        "title": "Your day will show up here",
+        "body": "Shifts, the time clock and reservations appear on this screen once they are switched on for your business."
+      },
+      "signOut": "Sign out"
     }
   }
 }

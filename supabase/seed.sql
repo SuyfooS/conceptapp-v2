@@ -18,6 +18,14 @@ values
    'authenticated', 'authenticated', '972500000003', now(),
    '{"provider":"phone","providers":["phone"]}', '{}', now(), now());
 
+-- The auth server reads these token columns as strings and fails on NULL,
+-- so seeded users need them empty, as real sign-ups leave them.
+update auth.users
+set confirmation_token = '', recovery_token = '', email_change = '',
+  email_change_token_new = '', email_change_token_current = '',
+  phone_change = '', phone_change_token = '', reauthentication_token = ''
+where id::text like '00000000-0000-4000-a000-%';
+
 -- Profiles come from the auth trigger; add the names.
 update public.profiles set full_name = 'אורי הדגמה' where id = '00000000-0000-4000-a000-000000000001';
 update public.profiles set full_name = 'שירן הדגמה' where id = '00000000-0000-4000-a000-000000000002';
@@ -38,3 +46,37 @@ values
 insert into public.business_modules (business_id, module_key)
 select '00000000-0000-4000-b000-000000000001', key
 from unnest(enum_range(null::public.module_key)) as key;
+
+-- Dev-only SMS: the auth `send_sms` hook (supabase/config.toml) writes each
+-- login code here instead of sending it, so local sign-in and the Playwright
+-- test can read it. Lives in seed.sql so it can never reach a real project.
+create schema if not exists dev;
+
+create table dev.sms_codes (
+  id bigint generated always as identity primary key,
+  phone text not null,
+  code text not null,
+  created_at timestamptz not null default now()
+);
+
+create function dev.send_sms(event jsonb)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  insert into dev.sms_codes (phone, code)
+  values (
+    '+' || ltrim(event #>> '{user,phone}', '+'),
+    event #>> '{sms,otp}'
+  );
+  return '{}'::jsonb;
+end;
+$$;
+
+revoke all on schema dev from public, anon, authenticated;
+revoke all on all tables in schema dev from public, anon, authenticated;
+revoke execute on function dev.send_sms(jsonb) from public, anon, authenticated;
+grant usage on schema dev to supabase_auth_admin;
+grant execute on function dev.send_sms(jsonb) to supabase_auth_admin;
