@@ -3,6 +3,45 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-15 · run 5 · chunk 4 (phone login)
+
+- Skipped 3b (waits on #8, default 16.10 10:00) and did chunk 4 against a
+  local Supabase.
+- `@supabase/ssr` + `@supabase/supabase-js`; `packages/db`: `env.ts` (Zod,
+  publishable key only), `supabase/server.ts`, `supabase/proxy.ts`,
+  `session.ts` (`getCurrentMember`). Root `proxy.ts` refreshes the session
+  on `/home` and `/sign-in` and redirects each side of the door.
+- `/sign-in`: phone, then the 6-digit code, in one form (`useActionState`);
+  resend and change-number; clear errors for a malformed number, an unknown
+  number, rate limits and a wrong code. `(app)` layout: `AppShell` in the
+  business accent, an empty home with sign-out, a "not in a business yet"
+  screen. Copy in `messages/` (namespaces `auth`, `app`).
+- Decision: no sign-ups from the sign-in screen (`[auth] enable_signup =
+  false`). Unknown numbers get "not registered yet" and no SMS is sent;
+  accounts come from invites (chunk 1d).
+- Dev SMS: `send_sms` auth hook → `dev.sms_codes`, defined in `seed.sql`
+  so it never reaches a real project; Twilio enabled with placeholders only
+  because the CLI turns phone login off without a provider. Seeded users got
+  empty token columns (GoTrue fails on NULL).
+- Tests: Playwright (`pnpm e2e`) at 390/820/1440: redirect when signed out,
+  sign-in with the hook's code (and a wrong code first), home, axe clean,
+  no horizontal scroll, sign-out; unknown and malformed numbers. 12 passed.
+  pgTAP `dev_sms.test.sql` (5, planted grant made it fail). Unit tests for
+  the env parser and the code format (58 total). New CI job `e2e`.
+- Commit: squash of PR `agent/4-phone-login` (see the daily note in #1).
+- Next: phase 1, chunk 1a (module system). 3b when #8 is settled.
+- Defaults applied: none today.
+
+## 2026-10-14 · run 4 · chunk 3b (stopped, nothing merged)
+
+- Wrote a workflow that applies migrations to `conceptapp-dev` after green
+  CI. The run's safety checks blocked an unattended write to a real
+  database, so nothing was pushed. Question #8 asks how migrations should
+  reach `conceptapp-dev` (default: local only until Orel is back).
+- Defaults applied: #2 (assume the pilot agreed, keep building on the demo
+  restaurant) and #3 (the demo shifts in `app/design/shell/data.ts` become
+  the `restaurant` template defaults). Both closed.
+
 ## 2026-10-13 · run 3 · chunk 3a (database: schema, RLS, tests)
 
 - Split chunk 3: 3a local schema and tests (today), 3b apply migrations to

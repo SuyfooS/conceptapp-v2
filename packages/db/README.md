@@ -29,3 +29,19 @@ language, and reads follow the policies.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
+
+## Clients and session
+
+- `@db/supabase/server`: `createClient()` for Server Components and Server
+  Actions, acting as the signed-in person under RLS (publishable key).
+- `@db/supabase/proxy`: `refreshSession()` for the root `proxy.ts`, which
+  refreshes the session cookies on every app request.
+- `@db/session`: `getCurrentMember()`, the signed-in person and their
+  business. `app/(app)/member.ts` wraps it in React `cache()`.
+- `@db/env`: the public settings, checked with Zod.
+
+Sign-in is phone + SMS code. Accounts are never created at sign-in
+(`[auth] enable_signup = false`); people arrive through the seed now and
+through invites from chunk 1d. Locally and in CI the `send_sms` auth hook
+writes codes to `dev.sms_codes` (defined in `supabase/seed.sql`, so it never
+reaches a real project); the Playwright test reads them from there.

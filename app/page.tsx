@@ -5,8 +5,8 @@ import { useTranslations } from "next-intl";
 const chunks = [
   { n: 1, key: "skeleton", done: true },
   { n: 2, key: "design", done: true },
-  { n: 3, key: "database", done: false },
-  { n: 4, key: "login", done: false },
+  { n: 3, key: "database", done: true },
+  { n: 4, key: "login", done: true },
 ] as const;
 
 // Temporary landing for phase 0. Replaced by the public site in phase 5.
@@ -56,6 +56,9 @@ export default function Home() {
 
       <div className="flex flex-col gap-2">
         <Button asChild size="lg" className="w-full">
+          <Link href="/sign-in">{t("signInLink")}</Link>
+        </Button>
+        <Button asChild variant="secondary" size="lg" className="w-full">
           <Link href="/design/shell">{t("shellLink")}</Link>
         </Button>
         <Button asChild variant="secondary" size="lg" className="w-full">
