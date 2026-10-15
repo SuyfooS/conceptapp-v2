@@ -43,3 +43,11 @@ export function publicEnv(): PublicEnv {
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   });
 }
+
+/** True when both public settings are present (e.g. not on a bare preview). */
+export function hasPublicEnv(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+  );
+}

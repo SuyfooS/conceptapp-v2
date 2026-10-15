@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import type { Database } from "../database.types";
-import { publicEnv } from "../env";
+import { hasPublicEnv, publicEnv } from "../env";
 
 /**
  * Refresh the Supabase session on every request and report who is signed
@@ -9,8 +9,12 @@ import { publicEnv } from "../env";
  * no-store headers Supabase asks for) and the user id, or null.
  */
 export async function refreshSession(request: NextRequest) {
-  const { url, publishableKey } = publicEnv();
   let response = NextResponse.next({ request });
+  // A deployment without Supabase settings (e.g. a preview before the keys
+  // are added) treats everyone as signed out instead of failing every page;
+  // sign-in then reports an error.
+  if (!hasPublicEnv()) return { response, userId: null };
+  const { url, publishableKey } = publicEnv();
 
   const supabase = createServerClient<Database>(url, publishableKey, {
     cookies: {
