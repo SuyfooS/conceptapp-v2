@@ -25,3 +25,22 @@ export async function latestCode(phone: string, since: Date): Promise<string> {
     await sql.end();
   }
 }
+
+/**
+ * Switch a module on or off for the demo restaurant, as the admin console
+ * will. Local database only.
+ */
+export async function setDemoModule(
+  key: string,
+  enabled: boolean,
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`
+      update public.business_modules set enabled = ${enabled}
+      where business_id = '00000000-0000-4000-b000-000000000001'
+        and module_key = ${key}`;
+  } finally {
+    await sql.end();
+  }
+}

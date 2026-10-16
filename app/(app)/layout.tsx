@@ -1,5 +1,7 @@
 import { accentTokens } from "@domain/color";
+import { moduleNav } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
+import { manifests } from "@modules/registry";
 import { accentStyle } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
 import { Button } from "@ui/button";
@@ -12,6 +14,8 @@ import { getTranslations } from "next-intl/server";
 import { type ReactNode, Suspense } from "react";
 import { signOut } from "../(auth)/actions";
 import { currentMember } from "./member";
+import { moduleIcons } from "./module-icons";
+import { currentModules } from "./modules";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -66,8 +70,16 @@ async function Shell({ children }: { children: ReactNode }) {
   }
 
   const { business, role } = member.membership;
+  const enabled = await currentModules();
+  const tm = await getTranslations("modules");
+  // Home, then one item per enabled module the role reaches.
   const nav: NavItem[] = [
     { href: "/home", label: t("nav.home"), icon: <House />, exact: true },
+    ...moduleNav(manifests, enabled, role).map((entry) => ({
+      href: entry.href,
+      label: tm(`${entry.key}.name`),
+      icon: moduleIcons[entry.icon],
+    })),
   ];
   const name =
     member.name ?? (member.phone ? displayIsraeliMobile(member.phone) : "");

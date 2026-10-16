@@ -3,6 +3,45 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-16 · run 6 · chunk 1a (module system)
+
+- `@domain/modules`: `ModuleManifest` + `defineManifest`, `enabledModules`
+  (row on and every requirement on, transitively; cycles count as off),
+  `moduleNav` (by role, ordered, at most 4 next to home), `moduleWidgets`,
+  `canOpenModule`, `readModuleSettings` (invalid fields fall back to
+  defaults one by one) and `validateModuleSettings` (throws, for writes).
+- Five manifests in `modules/<key>/manifest.ts` (folder = DB enum key)
+  with Zod settings and defaults, and `modules/registry.ts`. Nav: סידור,
+  שעון, הזמנות (worker+), דף העסק (manager+); notifications has no screen.
+- App: `@db/modules` reads `business_modules` under RLS; the `(app)` layout
+  and home build nav and home cards from the enabled modules. Module routes
+  `/schedule`, `/clock`, `/reservations`, `/storefront` show the module's
+  entry screen (says it opens in the next stage, link home) or the new
+  in-app not-found screen when the module is off or above the role.
+  `proxy.ts` guards the new routes.
+- Tests: 24 new unit tests (domain logic with fixtures; registry against
+  the DB enum, tab-bar limit, defaults, messages; proxy guard, planted a
+  missing route and it failed). 82 total. Playwright `modules.spec.ts`:
+  owner sees 5 items, switching reservations off in the DB removes the nav
+  item and home card and closes the route, back on restores it; a worker
+  does not see the storefront. Vitest now resolves the tsconfig aliases.
+- First CI run: `sign-in.spec` failed because `modules.spec` had just
+  signed in the same worker (the auth server refuses a second code to a
+  number within 5 s). Seeded a second demo worker (יואב לוי, 050-000-0004)
+  for the modules spec.
+- Not verified locally: the Supabase auth image could not be pulled here
+  (registry rate limit), so the e2e test ran only in CI.
+- `module_enabled` in RLS: no module table exists yet. Rule 5 in
+  `modules/README.md`: each module table's policies add it, starting with
+  availability (2b).
+- Note: `notFound()` after the shell has streamed keeps status 200 (Next.js
+  adds noindex); the test checks the screen, not the status.
+- Commit: squash of PR `agent/1a-modules` (see the daily note in #1).
+- Next: chunk 1b (templates `restaurant` and `cafe-bar` as data, applied in
+  one transaction).
+- Defaults applied: #8, no answer by 16.10 10:00: migrations stay local
+  until Orel is back; 3b waits.
+
 ## 2026-10-15 · run 5 · chunk 4 (phone login)
 
 - Skipped 3b (waits on #8, default 16.10 10:00) and did chunk 4 against a
