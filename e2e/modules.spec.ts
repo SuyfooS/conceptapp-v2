@@ -6,8 +6,10 @@ import { latestCode, setDemoModule } from "./sms";
 const t = he.auth.signIn;
 
 // Seeded in supabase/seed.sql. Every module starts on for the demo restaurant.
+// The worker here is not the one sign-in.spec.ts uses: the auth server
+// refuses a second code to the same number within 5 seconds.
 const OWNER = { local: "050-000-0001", e164: "+972500000001" };
-const WORKER = { local: "050-000-0003", e164: "+972500000003" };
+const WORKER = { local: "050-000-0004", e164: "+972500000004" };
 
 async function signIn(page: Page, person: { local: string; e164: string }) {
   await page.goto("/sign-in");

@@ -25,6 +25,10 @@ what is next, defaults applied.
   owner sees 5 items, switching reservations off in the DB removes the nav
   item and home card and closes the route, back on restores it; a worker
   does not see the storefront. Vitest now resolves the tsconfig aliases.
+- First CI run: `sign-in.spec` failed because `modules.spec` had just
+  signed in the same worker (the auth server refuses a second code to a
+  number within 5 s). Seeded a second demo worker (יואב לוי, 050-000-0004)
+  for the modules spec.
 - Not verified locally: the Supabase auth image could not be pulled here
   (registry rate limit), so the e2e test ran only in CI.
 - `module_enabled` in RLS: no module table exists yet. Rule 5 in

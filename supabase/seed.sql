@@ -1,5 +1,6 @@
 -- Local and CI seed: one demo restaurant with an owner, a shift manager and
--- a worker. Fictional business and people (the same as /design/shell).
+-- two workers (each Playwright spec signs in with its own number, so the
+-- SMS resend cooldown never trips between specs). Fictional business and people (the same as /design/shell).
 -- Phones are in the 050-000-00xx range and are never sent anything.
 -- This file runs on `supabase db reset` only; it never reaches a real project.
 
@@ -16,6 +17,9 @@ values
    '{"provider":"phone","providers":["phone"]}', '{}', now(), now()),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-000000000003',
    'authenticated', 'authenticated', '972500000003', now(),
+   '{"provider":"phone","providers":["phone"]}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-000000000004',
+   'authenticated', 'authenticated', '972500000004', now(),
    '{"provider":"phone","providers":["phone"]}', '{}', now(), now());
 
 -- The auth server reads these token columns as strings and fails on NULL,
@@ -30,6 +34,7 @@ where id::text like '00000000-0000-4000-a000-%';
 update public.profiles set full_name = 'אורי הדגמה' where id = '00000000-0000-4000-a000-000000000001';
 update public.profiles set full_name = 'שירן הדגמה' where id = '00000000-0000-4000-a000-000000000002';
 update public.profiles set full_name = 'נועה כהן' where id = '00000000-0000-4000-a000-000000000003';
+update public.profiles set full_name = 'יואב לוי' where id = '00000000-0000-4000-a000-000000000004';
 
 insert into public.businesses (id, slug, name, accent, address, latitude, longitude)
 values (
@@ -41,7 +46,8 @@ insert into public.memberships (business_id, user_id, role)
 values
   ('00000000-0000-4000-b000-000000000001', '00000000-0000-4000-a000-000000000001', 'owner'),
   ('00000000-0000-4000-b000-000000000001', '00000000-0000-4000-a000-000000000002', 'manager'),
-  ('00000000-0000-4000-b000-000000000001', '00000000-0000-4000-a000-000000000003', 'worker');
+  ('00000000-0000-4000-b000-000000000001', '00000000-0000-4000-a000-000000000003', 'worker'),
+  ('00000000-0000-4000-b000-000000000001', '00000000-0000-4000-a000-000000000004', 'worker');
 
 insert into public.business_modules (business_id, module_key)
 select '00000000-0000-4000-b000-000000000001', key
