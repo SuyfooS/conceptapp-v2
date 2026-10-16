@@ -1,0 +1,205 @@
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import {
+  atLeast,
+  canOpenModule,
+  defineManifest,
+  enabledModules,
+  MAX_MODULE_NAV,
+  type ModuleManifest,
+  type ModuleRow,
+  moduleNav,
+  moduleWidgets,
+  readModuleSettings,
+  validateModuleSettings,
+} from "./modules";
+
+// Fixtures, independent of the real manifests in modules/.
+const schedule = defineManifest({
+  key: "scheduling",
+  requires: [],
+  nav: { href: "/schedule", icon: "calendar", minRole: "worker", order: 10 },
+  homeWidget: { minRole: "worker" },
+  permissions: [{ key: "schedule.edit", defaultRole: "manager" }],
+  settings: z.object({
+    dueTime: z
+      .string()
+      .regex(/^\d\d:\d\d$/)
+      .default("18:00"),
+    weekStartsOn: z.int().min(0).max(1).default(0),
+  }),
+});
+const clock = defineManifest({
+  key: "time_clock",
+  requires: ["scheduling"],
+  nav: { href: "/clock", icon: "clock", minRole: "worker", order: 20 },
+  homeWidget: { minRole: "worker" },
+  permissions: [],
+  settings: z.object({}),
+});
+const notifications = defineManifest({
+  key: "notifications",
+  requires: ["time_clock"],
+  nav: null,
+  homeWidget: null,
+  permissions: [],
+  settings: z.object({}),
+});
+const storefront = defineManifest({
+  key: "storefront",
+  requires: [],
+  nav: { href: "/storefront", icon: "store", minRole: "manager", order: 5 },
+  homeWidget: null,
+  permissions: [],
+  settings: z.object({}),
+});
+const all: ModuleManifest[] = [schedule, clock, notifications, storefront];
+
+const rows = (...on: ModuleRow["key"][]): ModuleRow[] =>
+  on.map((key) => ({ key, enabled: true, settings: {} }));
+
+describe("atLeast", () => {
+  it("ranks owner over manager over worker", () => {
+    expect(atLeast("owner", "manager")).toBe(true);
+    expect(atLeast("manager", "manager")).toBe(true);
+    expect(atLeast("worker", "manager")).toBe(false);
+    expect(atLeast("manager", "owner")).toBe(false);
+  });
+});
+
+describe("enabledModules", () => {
+  it("returns switched-on modules in manifest order", () => {
+    expect(
+      enabledModules(all, rows("storefront", "time_clock", "scheduling")),
+    ).toEqual(["scheduling", "time_clock", "storefront"]);
+  });
+
+  it("treats a row with enabled = false like a missing row", () => {
+    expect(
+      enabledModules(all, [
+        { key: "scheduling", enabled: false, settings: {} },
+        { key: "storefront", enabled: true, settings: {} },
+      ]),
+    ).toEqual(["storefront"]);
+  });
+
+  it("turns off a module whose requirement is off, transitively", () => {
+    expect(enabledModules(all, rows("time_clock", "notifications"))).toEqual(
+      [],
+    );
+    expect(
+      enabledModules(all, rows("scheduling", "time_clock", "notifications")),
+    ).toEqual(["scheduling", "time_clock", "notifications"]);
+  });
+
+  it("ignores rows for modules without a manifest", () => {
+    expect(
+      enabledModules([schedule], rows("scheduling", "storefront")),
+    ).toEqual(["scheduling"]);
+  });
+
+  it("treats a dependency cycle as off", () => {
+    const a = { ...clock, requires: ["storefront"] } as ModuleManifest;
+    const b = { ...storefront, requires: ["time_clock"] } as ModuleManifest;
+    expect(enabledModules([a, b], rows("time_clock", "storefront"))).toEqual(
+      [],
+    );
+  });
+});
+
+describe("moduleNav", () => {
+  const on = enabledModules(
+    all,
+    rows("scheduling", "time_clock", "storefront"),
+  );
+
+  it("lists enabled modules with a nav item, by order", () => {
+    expect(moduleNav(all, on, "owner").map((e) => e.href)).toEqual([
+      "/storefront",
+      "/schedule",
+      "/clock",
+    ]);
+  });
+
+  it("hides items above the person's role", () => {
+    expect(moduleNav(all, on, "worker").map((e) => e.key)).toEqual([
+      "scheduling",
+      "time_clock",
+    ]);
+  });
+
+  it("drops a module that is switched off", () => {
+    const fewer = enabledModules(all, rows("scheduling", "storefront"));
+    expect(moduleNav(all, fewer, "owner").map((e) => e.key)).toEqual([
+      "storefront",
+      "scheduling",
+    ]);
+  });
+
+  it(`never returns more than ${MAX_MODULE_NAV} items`, () => {
+    const many = Array.from({ length: 6 }, (_, i) => ({
+      ...schedule,
+      nav: { ...schedule.nav, href: `/m${i}` as const, order: i },
+    })) as ModuleManifest[];
+    expect(moduleNav(many, ["scheduling"], "owner")).toHaveLength(
+      MAX_MODULE_NAV,
+    );
+  });
+});
+
+describe("moduleWidgets", () => {
+  it("shows home cards only for modules that declare one", () => {
+    const on = enabledModules(all, rows("scheduling", "storefront"));
+    expect(moduleWidgets(all, on, "owner").map((w) => w.key)).toEqual([
+      "scheduling",
+    ]);
+    expect(moduleWidgets(all, [], "owner")).toEqual([]);
+  });
+});
+
+describe("canOpenModule", () => {
+  it("needs the module on and the role in reach", () => {
+    expect(canOpenModule(storefront, ["storefront"], "manager")).toBe(true);
+    expect(canOpenModule(storefront, ["storefront"], "worker")).toBe(false);
+    expect(canOpenModule(storefront, [], "owner")).toBe(false);
+    expect(canOpenModule(notifications, ["notifications"], "owner")).toBe(
+      false,
+    );
+  });
+});
+
+describe("module settings", () => {
+  it("fill in defaults for an empty or missing row", () => {
+    expect(readModuleSettings(schedule, {})).toEqual({
+      dueTime: "18:00",
+      weekStartsOn: 0,
+    });
+    expect(readModuleSettings(schedule, null)).toEqual({
+      dueTime: "18:00",
+      weekStartsOn: 0,
+    });
+  });
+
+  it("keep valid stored fields and replace invalid ones with defaults", () => {
+    expect(
+      readModuleSettings(schedule, {
+        dueTime: "nonsense",
+        weekStartsOn: 1,
+        retired: true,
+      }),
+    ).toEqual({ dueTime: "18:00", weekStartsOn: 1 });
+    expect(readModuleSettings(schedule, "not an object")).toEqual({
+      dueTime: "18:00",
+      weekStartsOn: 0,
+    });
+  });
+
+  it("refuse invalid settings on write", () => {
+    expect(
+      validateModuleSettings(schedule, { dueTime: "09:30", weekStartsOn: 1 }),
+    ).toEqual({ dueTime: "09:30", weekStartsOn: 1 });
+    expect(() => validateModuleSettings(schedule, { weekStartsOn: 7 })).toThrow(
+      /scheduling/,
+    );
+  });
+});

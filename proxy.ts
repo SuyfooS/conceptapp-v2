@@ -1,9 +1,19 @@
 import { refreshSession, withSessionCookies } from "@db/supabase/proxy";
 import { type NextRequest, NextResponse } from "next/server";
 
-/** Screens for signed-in people. Everything else is public. */
+/**
+ * Screens for signed-in people: home and each module's screens (the `nav`
+ * hrefs in `modules/<key>/manifest.ts`; tooling/proxy.test.ts keeps both lists
+ * in step). Everything else is public.
+ */
 const HOME = "/home";
-const PRIVATE = [HOME];
+export const PRIVATE = [
+  HOME,
+  "/schedule",
+  "/clock",
+  "/reservations",
+  "/storefront",
+];
 const SIGN_IN = "/sign-in";
 
 function isPrivate(pathname: string) {
@@ -35,5 +45,12 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/home/:path*", "/sign-in"],
+  matcher: [
+    "/home/:path*",
+    "/schedule/:path*",
+    "/clock/:path*",
+    "/reservations/:path*",
+    "/storefront/:path*",
+    "/sign-in",
+  ],
 };

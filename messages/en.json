@@ -258,10 +258,42 @@
       "title": "Home",
       "greeting": "Hello, {name}",
       "empty": {
-        "title": "Your day will show up here",
-        "body": "Shifts, the time clock and reservations appear on this screen once they are switched on for your business."
+        "title": "Nothing here yet",
+        "body": "No modules are on for this business yet. The ConceptApp team turns them on when setting up the business, and they appear here and in the menu."
       },
-      "signOut": "Sign out"
+      "signOut": "Sign out",
+      "modulesTitle": "In your business"
+    },
+    "moduleSoon": {
+      "body": "This screen opens in the next stage of the build. Everything else is on the home screen meanwhile.",
+      "home": "Back to home"
+    },
+    "notFound": {
+      "title": "This screen isn't available",
+      "body": "It may be off for this business, or meant for another role. Everything available to you is on the home screen and in the menu.",
+      "home": "Back to home"
+    }
+  },
+  "modules": {
+    "scheduling": {
+      "name": "Schedule",
+      "description": "This week's shifts and your availability"
+    },
+    "time_clock": {
+      "name": "Clock",
+      "description": "Clock in and out of shifts"
+    },
+    "reservations": {
+      "name": "Reservations",
+      "description": "Today's bookings and tables"
+    },
+    "storefront": {
+      "name": "Public page",
+      "description": "Hours, address and a booking link"
+    },
+    "notifications": {
+      "name": "Notifications",
+      "description": "Shift reminders and team updates"
     }
   }
 }
