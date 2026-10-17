@@ -49,9 +49,9 @@ values
   ('00000000-0000-4000-b000-000000000001', '00000000-0000-4000-a000-000000000003', 'worker'),
   ('00000000-0000-4000-b000-000000000001', '00000000-0000-4000-a000-000000000004', 'worker');
 
-insert into public.business_modules (business_id, module_key)
-select '00000000-0000-4000-b000-000000000001', key
-from unnest(enum_range(null::public.module_key)) as key;
+-- Modules, positions, shifts and hours come from the restaurant template,
+-- the way every real business starts.
+select public.apply_template('00000000-0000-4000-b000-000000000001', 'restaurant');
 
 -- Dev-only SMS: the auth `send_sms` hook (supabase/config.toml) writes each
 -- login code here instead of sending it, so local sign-in and the Playwright

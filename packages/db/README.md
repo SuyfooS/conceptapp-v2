@@ -30,6 +30,28 @@ language, and reads follow the policies.
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 
+## Templates
+
+A business starts from a template (`restaurant`, `cafe-bar`): rows in
+`templates`, written by migrations (a change is a new migration that updates
+the row and bumps `version`). The definition's shape is `templateDefinition`
+in `@domain/templates`: every module with `enabled` and its settings
+(positions and the weekly shift pattern are scheduling settings), plus the
+opening hours.
+
+`public.apply_template(business, template)` copies one into a business
+that has none yet, in one transaction: a `business_modules` row per module,
+`opening_hours`, `template_key` and `template_version`. It refuses a
+business that is already set up, an unknown key, or a template that leaves
+out a module, and changes nothing then. Only `service_role` may run it;
+from TypeScript, `applyTemplate(adminClient, id, key)` in `@db/templates`.
+
+Tested twice: pgTAP (`templates.test.sql`: grants, refusals, nothing
+half-applied) and `pnpm test:db` (`modules/templates.db.test.ts`: each
+template in the database is valid against the real manifests, and applying
+it to a fresh business gives back the same valid definition). The seed sets
+up the demo restaurant with `apply_template`.
+
 ## Clients and session
 
 - `@db/supabase/server`: `createClient()` for Server Components and Server

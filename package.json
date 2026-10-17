@@ -12,6 +12,7 @@
     "typecheck": "next typegen && tsc --noEmit",
     "check": "biome check && next typegen && tsc --noEmit && vitest run",
     "test": "vitest run",
+    "test:db": "vitest run --config vitest.db.config.mts",
     "db:start": "supabase db start",
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",

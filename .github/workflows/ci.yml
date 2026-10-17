@@ -58,6 +58,9 @@ jobs:
       - name: RLS and isolation tests (pgTAP)
         run: pnpm db:test
 
+      - name: Templates against the manifests
+        run: pnpm test:db
+
       - name: Database lint
         run: pnpm exec supabase db lint --level warning --fail-on warning
 

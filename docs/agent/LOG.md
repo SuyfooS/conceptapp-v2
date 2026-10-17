@@ -3,6 +3,40 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-17 · run 7 · chunk 1b (templates)
+
+- Templates are data: migration `20261017000100_templates.sql` writes
+  `restaurant` and `cafe-bar` into `templates` (modules on/off, module
+  settings, positions, weekly shifts, opening hours, a storefront tagline).
+  New columns `businesses.opening_hours` and `template_version`.
+- `public.apply_template(business, template)`: one transaction, server only
+  (`service_role`); refuses a business already set up, unknown keys and a
+  template missing a module, changing nothing. `applyTemplate` in
+  `@db/templates` wraps it for the admin client (1c). The seed now sets up
+  the demo restaurant with it.
+- Domain: `@domain/hours` (times, ranges past midnight, opening hours with
+  no overlaps), `@domain/staffing` (positions, shift patterns, `shiftsOn`),
+  `@domain/templates` (`validateTemplate`: every module present, settings
+  valid with no unknown fields, requirements on). Scheduling settings gain
+  `positions` and `shifts`; storefront gains `tagline`.
+- Tests: 19 new unit tests (101 total); pgTAP `templates.test.sql` (18);
+  new `pnpm test:db` (CI `database` job): every template in the database is
+  valid against the real manifests and applying it to a fresh business
+  gives back the same valid definition; the seeded demo is valid. Planted
+  failures: an execute grant to `authenticated` and an unknown settings
+  field both went red.
+- Not verified locally: the Supabase CLI images could not be pulled here
+  (registry rate limit). Migrations, seed, pgTAP for templates and
+  `test:db` ran on the bare `supabase/postgres` image; the full suite runs
+  in CI.
+- Defaults (no question opened): the restaurant template's shifts are the
+  demo shifts (per #3); positions מלצר/ית, ברמן/ית, טבח/ית, מארח/ת. The
+  cafe-bar starts with reservations off (walk-in); the owner can switch it
+  on. Opening hours and taglines are editable starting values.
+- Commit: squash of PR `agent/1b-templates` (see the daily note in #1).
+- Next: chunk 1c (admin console and the new-business wizard), probably split.
+- Defaults applied: none today.
+
 ## 2026-10-16 · run 6 · chunk 1a (module system)
 
 - `@domain/modules`: `ModuleManifest` + `defineManifest`, `enabledModules`

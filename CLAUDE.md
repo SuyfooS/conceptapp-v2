@@ -137,6 +137,7 @@ pnpm install
 pnpm dev          # http://localhost:3000
 pnpm check        # Biome + typecheck + unit tests
 pnpm test         # unit tests only
+pnpm test:db      # template checks against the local database (after db:start)
 pnpm build
 pnpm lint:fix     # apply Biome fixes and formatting
 pnpm db:start     # local Postgres via Supabase CLI (Docker): migrations + seed
