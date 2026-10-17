@@ -11,5 +11,7 @@ export const manifest = defineManifest({
   settings: z.object({
     /** The public page is visible to everyone. */
     published: z.boolean().default(false),
+    /** One line under the business's name; the business's own words. */
+    tagline: z.string().trim().max(120).default(""),
   }),
 });

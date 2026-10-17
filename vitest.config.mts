@@ -9,6 +9,8 @@ export default defineConfig({
       "modules/**/*.test.ts",
       "tooling/**/*.test.ts",
     ],
+    // Database tests run on their own: `pnpm test:db`.
+    exclude: ["**/*.db.test.ts", "node_modules/**"],
     environment: "node",
   },
 });

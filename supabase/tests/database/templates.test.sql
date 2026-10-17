@@ -1,0 +1,117 @@
+-- Templates: apply_template turns an empty business into a complete one,
+-- refuses anything else without changing it, and is server-only.
+begin;
+select plan(18);
+
+insert into public.businesses (id, slug, name)
+values
+  ('40000000-0000-4000-b000-00000000000a', 'templates-a', 'Templates A'),
+  ('40000000-0000-4000-b000-00000000000b', 'templates-b', 'Templates B'),
+  ('40000000-0000-4000-b000-00000000000c', 'templates-c', 'Templates C');
+
+select results_eq(
+  'select key from public.templates where key in (''restaurant'', ''cafe-bar'') order by key',
+  array['cafe-bar', 'restaurant'],
+  'both templates are in the table'
+);
+
+-- Server only: no execute grant for browser roles, and a call fails.
+select ok(
+  not has_function_privilege('authenticated', 'public.apply_template(uuid, text)', 'execute')
+  and not has_function_privilege('anon', 'public.apply_template(uuid, text)', 'execute'),
+  'browser roles have no execute grant on apply_template'
+);
+select ok(
+  has_function_privilege('service_role', 'public.apply_template(uuid, text)', 'execute'),
+  'the server role may execute apply_template'
+);
+set local role authenticated;
+select throws_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-00000000000a', 'restaurant')$$,
+  '42501', null, 'signed-in users cannot apply a template'
+);
+reset role;
+set local role anon;
+select throws_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-00000000000a', 'restaurant')$$,
+  '42501', null, 'anonymous visitors cannot apply a template'
+);
+reset role;
+
+set local role service_role;
+select lives_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-00000000000a', 'restaurant')$$,
+  'the server applies the restaurant template'
+);
+select lives_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-00000000000b', 'cafe-bar')$$,
+  'the server applies the cafe-bar template'
+);
+reset role;
+
+select is(
+  (select count(*)::integer from public.business_modules
+   where business_id = '40000000-0000-4000-b000-00000000000a'),
+  cardinality(enum_range(null::public.module_key)),
+  'every module gets a row'
+);
+select is(
+  (select array_agg(module_key order by module_key) from public.business_modules
+   where business_id = '40000000-0000-4000-b000-00000000000b' and not enabled),
+  array['reservations']::public.module_key[],
+  'cafe-bar starts with reservations off'
+);
+select is(
+  (select jsonb_array_length(settings -> 'shifts') from public.business_modules
+   where business_id = '40000000-0000-4000-b000-00000000000a' and module_key = 'scheduling'),
+  4,
+  'the restaurant gets its shifts'
+);
+select is(
+  (select template_key || '@' || template_version from public.businesses
+   where id = '40000000-0000-4000-b000-00000000000a'),
+  'restaurant@1',
+  'the business records the template and its version'
+);
+select is(
+  (select jsonb_array_length(opening_hours) from public.businesses
+   where id = '40000000-0000-4000-b000-00000000000a'),
+  7,
+  'the business gets the opening hours'
+);
+
+-- Refusals leave the business as it was.
+select throws_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-00000000000a', 'cafe-bar')$$,
+  'P0001', null, 'a business that is already set up is refused'
+);
+select is(
+  (select template_key from public.businesses where id = '40000000-0000-4000-b000-00000000000a'),
+  'restaurant',
+  'and keeps its template'
+);
+select throws_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-00000000000c', 'no-such-template')$$,
+  'P0002', null, 'an unknown template is refused'
+);
+select throws_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-0000000000ff', 'restaurant')$$,
+  'P0002', null, 'an unknown business is refused'
+);
+
+-- A template that leaves out a module fails as a whole: no rows written.
+insert into public.templates (key, definition)
+values ('broken', '{"modules": {"scheduling": {"enabled": true, "settings": {}}}, "openingHours": []}');
+select throws_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-00000000000c', 'broken')$$,
+  'P0001', null, 'a template missing modules is refused'
+);
+select is(
+  (select count(*)::integer from public.business_modules
+   where business_id = '40000000-0000-4000-b000-00000000000c'),
+  0,
+  'and nothing is half-applied'
+);
+
+select * from finish();
+rollback;

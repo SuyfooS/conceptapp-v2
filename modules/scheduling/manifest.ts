@@ -1,4 +1,5 @@
 import { defineManifest } from "@domain/modules";
+import { positions, shiftPatterns } from "@domain/staffing";
 import { z } from "zod";
 
 /** Weekly schedule: availability, shifts, publishing (phase 2). */
@@ -20,5 +21,9 @@ export const manifest = defineManifest({
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
       .default("18:00"),
+    /** The business's positions (waiter, cook…); the template fills them. */
+    positions: positions.default([]),
+    /** Which shifts run on which days and how many people each needs. */
+    shifts: shiftPatterns.default([]),
   }),
 });

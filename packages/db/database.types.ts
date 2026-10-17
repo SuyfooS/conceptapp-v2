@@ -92,8 +92,10 @@ export type Database = {
           latitude: number | null;
           longitude: number | null;
           name: string;
+          opening_hours: NonNullable<Json>;
           slug: string;
           template_key: string | null;
+          template_version: number | null;
           timezone: string;
           updated_at: string;
         };
@@ -105,8 +107,10 @@ export type Database = {
           latitude?: number | null;
           longitude?: number | null;
           name: string;
+          opening_hours?: NonNullable<Json>;
           slug: string;
           template_key?: string | null;
+          template_version?: number | null;
           timezone?: string;
           updated_at?: string;
         };
@@ -118,8 +122,10 @@ export type Database = {
           latitude?: number | null;
           longitude?: number | null;
           name?: string;
+          opening_hours?: NonNullable<Json>;
           slug?: string;
           template_key?: string | null;
+          template_version?: number | null;
           timezone?: string;
           updated_at?: string;
         };
@@ -298,7 +304,10 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      apply_template: {
+        Args: { business: string; template: string };
+        Returns: undefined;
+      };
     };
     Enums: {
       member_role: "owner" | "manager" | "worker";
