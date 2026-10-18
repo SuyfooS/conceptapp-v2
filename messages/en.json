@@ -295,5 +295,43 @@
       "name": "Notifications",
       "description": "Shift reminders and team updates"
     }
+  },
+  "admin": {
+    "consoleName": "ConceptApp",
+    "roles": {
+      "platform_admin": "Platform admin",
+      "onboarder": "Onboarding"
+    },
+    "nav": {
+      "businesses": "Businesses"
+    },
+    "noAccess": {
+      "title": "You don't have access to the console",
+      "body": "The console is for the ConceptApp team. If your business uses the app, everything of yours is on the home screen.",
+      "home": "Go to home"
+    },
+    "businesses": {
+      "metaTitle": "Businesses",
+      "title": "Businesses",
+      "subtitle": "{count, plural, =0 {No businesses yet} one {One business} other {# businesses}}",
+      "listLabel": "Business list",
+      "name": "Business",
+      "slug": "Page address",
+      "template": "Template",
+      "members": "Team",
+      "invites": "Open invites",
+      "created": "Opened",
+      "membersCount": "{count, plural, =0 {No team} one {One person on the team} other {# on the team}}",
+      "invitesCount": "{count, plural, =0 {No open invites} one {One open invite} other {# open invites}}",
+      "templates": {
+        "restaurant": "Restaurant",
+        "cafe-bar": "Café and bar",
+        "none": "No template"
+      },
+      "empty": {
+        "title": "No businesses yet",
+        "body": "New businesses are opened from the new-business wizard, which comes in the next stage of the build. Every business opened will show here."
+      }
+    }
   }
 }

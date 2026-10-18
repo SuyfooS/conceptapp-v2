@@ -1,5 +1,6 @@
 -- Local and CI seed: one demo restaurant with an owner, a shift manager and
--- two workers (each Playwright spec signs in with its own number, so the
+-- two workers, plus two people on the ConceptApp team (a platform admin and
+-- an onboarder, in no business) (each Playwright spec signs in with its own number, so the
 -- SMS resend cooldown never trips between specs). Fictional business and people (the same as /design/shell).
 -- Phones are in the 050-000-00xx range and are never sent anything.
 -- This file runs on `supabase db reset` only; it never reaches a real project.
@@ -20,6 +21,12 @@ values
    '{"provider":"phone","providers":["phone"]}', '{}', now(), now()),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-000000000004',
    'authenticated', 'authenticated', '972500000004', now(),
+   '{"provider":"phone","providers":["phone"]}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-000000000005',
+   'authenticated', 'authenticated', '972500000005', now(),
+   '{"provider":"phone","providers":["phone"]}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-000000000006',
+   'authenticated', 'authenticated', '972500000006', now(),
    '{"provider":"phone","providers":["phone"]}', '{}', now(), now());
 
 -- The auth server reads these token columns as strings and fails on NULL,
@@ -35,6 +42,13 @@ update public.profiles set full_name = 'אורי הדגמה' where id = '0000000
 update public.profiles set full_name = 'שירן הדגמה' where id = '00000000-0000-4000-a000-000000000002';
 update public.profiles set full_name = 'נועה כהן' where id = '00000000-0000-4000-a000-000000000003';
 update public.profiles set full_name = 'יואב לוי' where id = '00000000-0000-4000-a000-000000000004';
+update public.profiles set full_name = 'דנה צוות' where id = '00000000-0000-4000-a000-000000000005';
+update public.profiles set full_name = 'רון צוות' where id = '00000000-0000-4000-a000-000000000006';
+
+insert into public.platform_staff (user_id, role)
+values
+  ('00000000-0000-4000-a000-000000000005', 'platform_admin'),
+  ('00000000-0000-4000-a000-000000000006', 'onboarder');
 
 insert into public.businesses (id, slug, name, accent, address, latitude, longitude)
 values (

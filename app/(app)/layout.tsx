@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { type ReactNode, Suspense } from "react";
+import { currentPlatformRole } from "../(admin)/staff";
 import { signOut } from "../(auth)/actions";
 import { currentMember } from "./member";
 import { moduleIcons } from "./module-icons";
@@ -50,6 +51,8 @@ async function Shell({ children }: { children: ReactNode }) {
   const t = await getTranslations("app");
 
   if (!member.membership) {
+    // The ConceptApp team works in the console, not inside a business.
+    if (await currentPlatformRole()) redirect("/admin");
     return (
       <main className="flex min-h-dvh items-start justify-center px-4 py-10 md:items-center">
         <Card
