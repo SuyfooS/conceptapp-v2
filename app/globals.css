@@ -36,6 +36,7 @@
 
   /* ConceptApp's own brand colour — admin console and marketing only */
   --brand: #9000ff;
+  --brand-ink: #ffffff; /* 5.8:1 on brand */
 
   /* status, fixed for every business */
   --success: #1c6f46; /* ≥4.5:1 on white and on its own 10% tint */

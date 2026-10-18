@@ -1,9 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { latestCode, setDemoModule } from "./sms";
-
-const t = he.auth.signIn;
+import { signIn } from "./session";
+import { setDemoModule } from "./sms";
 
 // Seeded in supabase/seed.sql. Every module starts on for the demo restaurant.
 // The worker here is not the one sign-in.spec.ts uses: the auth server
@@ -11,19 +10,6 @@ const t = he.auth.signIn;
 const OWNER = { local: "050-000-0001", e164: "+972500000001" };
 const WORKER = { local: "050-000-0004", e164: "+972500000004" };
 
-async function signIn(page: Page, person: { local: string; e164: string }) {
-  await page.goto("/sign-in");
-  const since = new Date(Date.now() - 1000);
-  await page.getByLabel(t.phoneLabel).fill(person.local);
-  await page.getByRole("button", { name: t.send }).click();
-  await expect(page.getByLabel(t.codeLabel)).toBeVisible();
-  const code = await latestCode(person.e164, since);
-  await page.getByLabel(t.codeLabel).fill(code);
-  await page.getByRole("button", { name: t.verify, exact: true }).click();
-  await expect(page).toHaveURL(/\/home$/);
-}
-
-/** Names of the main navigation items visible at this width, in order. */
 /**
  * A module screen that is off or out of reach shows the in-app not-found
  * screen. The status stays 200: the shell has already streamed (Next.js
@@ -36,6 +22,7 @@ async function expectUnavailable(page: Page, path: string) {
   ).toBeVisible();
 }
 
+/** Names of the main navigation items visible at this width, in order. */
 async function navItems(page: Page): Promise<string[]> {
   const nav = page
     .getByRole("navigation", { name: he.ui.appShell.mainNav })

@@ -248,6 +248,32 @@ export type Database = {
           },
         ];
       };
+      platform_staff: {
+        Row: {
+          created_at: string;
+          role: Database["public"]["Enums"]["platform_role"];
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          role: Database["public"]["Enums"]["platform_role"];
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          role?: Database["public"]["Enums"]["platform_role"];
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "platform_staff_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       profiles: {
         Row: {
           created_at: string;
@@ -304,6 +330,19 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_businesses: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          accent: string;
+          created_at: string;
+          id: string;
+          members: number;
+          name: string;
+          open_invites: number;
+          slug: string;
+          template_key: string;
+        }[];
+      };
       apply_template: {
         Args: { business: string; template: string };
         Returns: undefined;
@@ -317,6 +356,7 @@ export type Database = {
         | "reservations"
         | "storefront"
         | "notifications";
+      platform_role: "platform_admin" | "onboarder";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -455,6 +495,7 @@ export const Constants = {
         "storefront",
         "notifications",
       ],
+      platform_role: ["platform_admin", "onboarder"],
     },
   },
 } as const;

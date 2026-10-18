@@ -2,9 +2,10 @@ import { refreshSession, withSessionCookies } from "@db/supabase/proxy";
 import { type NextRequest, NextResponse } from "next/server";
 
 /**
- * Screens for signed-in people: home and each module's screens (the `nav`
- * hrefs in `modules/<key>/manifest.ts`; tooling/proxy.test.ts keeps both lists
- * in step). Everything else is public.
+ * Screens for signed-in people: home, each module's screens (the `nav`
+ * hrefs in `modules/<key>/manifest.ts`) and the admin console
+ * (tooling/proxy.test.ts keeps both lists in step). Everything else is
+ * public.
  */
 const HOME = "/home";
 export const PRIVATE = [
@@ -13,6 +14,7 @@ export const PRIVATE = [
   "/clock",
   "/reservations",
   "/storefront",
+  "/admin",
 ];
 const SIGN_IN = "/sign-in";
 
@@ -51,6 +53,7 @@ export const config = {
     "/clock/:path*",
     "/reservations/:path*",
     "/storefront/:path*",
+    "/admin/:path*",
     "/sign-in",
   ],
 };

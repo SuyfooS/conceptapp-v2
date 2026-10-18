@@ -14,3 +14,12 @@ export function accentStyle(
     "--accent-ink": tokens.accentInk,
   } as CSSProperties;
 }
+
+/**
+ * ConceptApp's own colour in the accent's place, for the admin console:
+ * buttons, selected nav items and soft tints there use the brand.
+ */
+export const brandStyle = {
+  "--accent": "var(--brand)",
+  "--accent-ink": "var(--brand-ink)",
+} as CSSProperties;

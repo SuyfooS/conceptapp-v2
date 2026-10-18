@@ -3,6 +3,41 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-18 · run 8 · chunk 1c-1 (admin console: roles and business list)
+
+- Split chunk 1c: 1c-1 roles and the business list (today), 1c-2 the
+  new-business wizard (template, name, slug, address, accent, create; the
+  admin client with the secret key), 1c-3 staff list paste and the
+  checklist, with the Playwright test that creates a business.
+- Migration `20261018000100_platform_staff.sql`: enum `platform_role`
+  (`platform_admin`, `onboarder`), table `platform_staff` (RLS: people read
+  only their own row; no browser writes), `private.is_platform_staff()`,
+  and `public.admin_businesses()` (security definer, staff only, raises
+  42501 for anyone else): every business with active members and open
+  invites. Staff get no extra policies on tenant tables.
+- `@domain/platform`: `platformCan(role, action)`. Onboarders read and
+  create businesses and invite staff; deleting, templates and billing are
+  platform admin only.
+- App: `/admin` in route group `(admin)`, AppShell in ConceptApp's brand
+  colour (`brandStyle`, new token `--brand-ink`). Business list: a list on
+  phones, a two-column grid on tablets, a table on desktop. Off-team people
+  get a "no access" screen; team members with no business are sent from
+  `/home` to `/admin`. `proxy.ts` guards `/admin`.
+- Seed: דנה צוות (050-000-0005, platform admin) and רון צוות
+  (050-000-0006, onboarder), in no business.
+- Tests: 10 new unit tests (111 total), pgTAP `platform_staff.test.sql`
+  (13; a planted open policy turned 3 red), Playwright `admin.spec.ts`
+  (signed out, admin, onboarder, a manager without access; axe and
+  overflow). `e2e/session.ts` holds the shared sign-in helper.
+- Not verified locally: the auth image could not be pulled (registry
+  limits), so the Playwright spec ran only in CI. Migrations, seed, pgTAP
+  and the generated types ran on the bare `supabase/postgres` image.
+- Decision: the console lives at `/admin` for now. An `admin.` subdomain
+  becomes a rewrite in `proxy.ts` when the production domain is set up.
+- Commit: squash of PR `agent/1c-1-admin-console` (see the daily note in #1).
+- Next: chunk 1c-2, the new-business wizard.
+- Defaults applied: none today.
+
 ## 2026-10-17 · run 7 · chunk 1b (templates)
 
 - Templates are data: migration `20261017000100_templates.sql` writes

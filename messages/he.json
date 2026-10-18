@@ -295,5 +295,43 @@
       "name": "התראות",
       "description": "תזכורות לפני משמרת ועדכונים לצוות"
     }
+  },
+  "admin": {
+    "consoleName": "ConceptApp",
+    "roles": {
+      "platform_admin": "ניהול מערכת",
+      "onboarder": "הקמת עסקים"
+    },
+    "nav": {
+      "businesses": "עסקים"
+    },
+    "noAccess": {
+      "title": "אין לך גישה לקונסולה",
+      "body": "הקונסולה מיועדת לצוות ConceptApp. אם העסק שלך משתמש באפליקציה, כל מה שלך נמצא בבית.",
+      "home": "מעבר לבית"
+    },
+    "businesses": {
+      "metaTitle": "עסקים",
+      "title": "עסקים",
+      "subtitle": "{count, plural, =0 {עוד אין עסקים} one {עסק אחד} other {# עסקים}}",
+      "listLabel": "רשימת העסקים",
+      "name": "עסק",
+      "slug": "כתובת הדף",
+      "template": "תבנית",
+      "members": "צוות",
+      "invites": "הזמנות פתוחות",
+      "created": "נפתח",
+      "membersCount": "{count, plural, =0 {אין צוות} one {אדם אחד בצוות} other {# בצוות}}",
+      "invitesCount": "{count, plural, =0 {אין הזמנות פתוחות} one {הזמנה פתוחה} other {# הזמנות פתוחות}}",
+      "templates": {
+        "restaurant": "מסעדה",
+        "cafe-bar": "בית קפה ובר",
+        "none": "בלי תבנית"
+      },
+      "empty": {
+        "title": "עוד אין עסקים",
+        "body": "עסק חדש נפתח מאשף העסק החדש, שמגיע בשלב הבא של הבנייה. כל עסק שייפתח יופיע כאן."
+      }
+    }
   }
 }
