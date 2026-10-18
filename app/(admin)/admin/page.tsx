@@ -165,7 +165,7 @@ function BusinessTable({
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-2 text-ink-2 text-sm">
                     <Initial name={b.name} />
                   </span>
-                  {b.name}
+                  <span>{b.name}</span>
                 </span>
               </th>
               <td className={cn(td, "text-ink-2")}>
