@@ -304,7 +304,7 @@ export function NewBusinessForm() {
           )}
         </div>
       </form>
-      <aside className="hidden xl:block">{summary}</aside>
+      <div className="hidden xl:block">{summary}</div>
     </div>
   );
 }
