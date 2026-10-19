@@ -347,6 +347,17 @@ export type Database = {
         Args: { business: string; template: string };
         Returns: undefined;
       };
+      create_business: {
+        Args: {
+          accent: string;
+          actor: string;
+          address: string;
+          name: string;
+          slug: string;
+          template: string;
+        };
+        Returns: string;
+      };
     };
     Enums: {
       member_role: "owner" | "manager" | "worker";

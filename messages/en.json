@@ -330,7 +330,107 @@
       },
       "empty": {
         "title": "No businesses yet",
-        "body": "New businesses are opened from the new-business wizard, which comes in the next stage of the build. Every business opened will show here."
+        "body": "Every business starts from a template. Open one with “Open a new business” and it will appear here."
+      },
+      "new": "Open a new business",
+      "opened": {
+        "title": "{name} is open",
+        "body": "The business is ready with the “{template}” template’s settings. Any setting can be changed later. Inviting the staff will be added to the wizard next."
+      }
+    },
+    "newBusiness": {
+      "metaTitle": "New business",
+      "title": "Open a new business",
+      "subtitle": "Three steps: the kind of business, the details and the colour.",
+      "progress": "Step {step} of {total}",
+      "steps": {
+        "template": "Kind of business",
+        "details": "Business details",
+        "accent": "Business colour"
+      },
+      "templates": {
+        "restaurant": {
+          "name": "Restaurant",
+          "body": "Scheduling, time clock, table reservations and a business page."
+        },
+        "cafe-bar": {
+          "name": "Café and bar",
+          "body": "Scheduling, time clock and a business page. Table reservations start switched off."
+        }
+      },
+      "templateHint": "Any setting can be changed later.",
+      "fields": {
+        "name": {
+          "label": "Business name",
+          "hint": "As the staff and guests know it."
+        },
+        "slug": {
+          "label": "Page address",
+          "hint": "Latin letters, digits and hyphens. For example: cafe-noa"
+        },
+        "address": {
+          "label": "Address",
+          "hint": "Optional. Used for Shabbat times and the business page."
+        }
+      },
+      "accent": {
+        "label": "Colour",
+        "presets": {
+          "blue": "Blue",
+          "teal": "Teal",
+          "green": "Green",
+          "orange": "Orange",
+          "red": "Red",
+          "pink": "Pink",
+          "purple": "Purple",
+          "brown": "Brown"
+        },
+        "custom": "Another colour",
+        "preview": "This is how buttons will look",
+        "previewButton": "Sample button",
+        "adjusted": "The colour was darkened a little so text on it stays readable."
+      },
+      "summary": {
+        "title": "Summary",
+        "template": "Kind",
+        "name": "Name",
+        "slug": "Page address",
+        "address": "Address",
+        "accent": "Colour",
+        "empty": "Not filled in"
+      },
+      "actions": {
+        "next": "Continue",
+        "back": "Back",
+        "cancel": "Cancel",
+        "create": "Open the business"
+      },
+      "errors": {
+        "template": {
+          "required": "Choose a kind of business.",
+          "invalid": "Choose a kind of business from the list."
+        },
+        "name": {
+          "required": "Write the business name.",
+          "tooLong": "Up to 80 characters."
+        },
+        "slug": {
+          "required": "Choose an address for the page.",
+          "tooShort": "At least 3 characters.",
+          "tooLong": "Up to 40 characters.",
+          "invalid": "Only Latin letters, digits and hyphens.",
+          "reserved": "This address is reserved. Choose another.",
+          "taken": "This address is taken. Choose another."
+        },
+        "address": {
+          "tooLong": "Up to 200 characters."
+        },
+        "accent": {
+          "required": "Choose a colour.",
+          "invalid": "Choose a colour."
+        },
+        "failed": "The business was not opened because of a fault. Try again in a moment.",
+        "noPermission": "You are not allowed to open businesses."
       }
     }
   }

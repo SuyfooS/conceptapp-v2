@@ -3,6 +3,46 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-19 · run 9 · chunk 1c-2 (new-business wizard)
+
+- `/admin/new`: a three-step wizard (kind of business → name, slug,
+  address → colour with a live preview and a summary), one step at a time
+  on phones; a two-column details step on tablets; the summary beside the
+  form on desktop. Each step is checked before moving on; the server
+  repeats every check. The list's main action "פתיחת עסק חדש" opens it
+  (both platform roles); back on the list an accent card says the
+  business is open.
+- `@domain/business`: `parseNewBusiness` (per step or whole), slug rules
+  (same as the DB check, plus reserved app paths such as `admin`,
+  `sign-in`), `normalizeSlug`, stored accent = `accentTokens(pick).accent`.
+  `ACCENT_PRESETS` in `@domain/color` (eight colours, none adjusted).
+- Migration `20261019000100_create_business.sql`:
+  `public.create_business(actor, …)`, service role only: refuses an actor
+  who is not platform staff, inserts the business, `apply_template`, and
+  writes `business.create` to `audit_log`, all in one transaction. A taken
+  slug fails with 23505 and the form goes back to the slug.
+- First use of the secret key: `@db/supabase/admin` (`createAdminClient`,
+  `server-only`), `parseSecretKey` (never echoes the value), and
+  `createBusiness` in `@db/admin`. CI's e2e job reads the local stack's
+  `SECRET_KEY` from `supabase status` (masked).
+- Tests: 20 new unit tests (131 total); pgTAP `create_business.test.sql`
+  (14; a planted missing staff check turned 3 red); Playwright
+  `new-business.spec.ts` (onboarder opens a café in three steps, empty
+  fields caught, a taken slug refused by the server, the result checked
+  in the database; a manager gets no access; axe and overflow per step).
+- Not verified locally: no Docker in this run's container, so the
+  Supabase stack could not start. The migrations and the new pgTAP file
+  ran on a local Postgres 16 with stubbed auth and a small pgTAP stand-in;
+  the wizard was checked in the dev server at 390/820/1440 (axe clean, no
+  horizontal scroll). Playwright and the real pgTAP run in CI.
+  `database.types.ts` was edited to the generator's format; CI's diff
+  check confirms it.
+- Commit: squash of PR `agent/1c-2-new-business` (see the daily note in #1).
+- Next: chunk 1c-3, pasting the staff list in the wizard and the
+  post-create checklist, with the Playwright test that creates a business
+  from the restaurant template.
+- Defaults applied: none today.
+
 ## 2026-10-18 · run 8 · chunk 1c-1 (admin console: roles and business list)
 
 - Split chunk 1c: 1c-1 roles and the business list (today), 1c-2 the

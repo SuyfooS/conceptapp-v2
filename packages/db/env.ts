@@ -2,8 +2,9 @@ import { z } from "zod";
 
 /**
  * Supabase connection settings, read from the environment and checked once.
- * Only the URL and the publishable key are read here: both are public by
- * design. The secret key is read by the server-only admin client (chunk 1c).
+ * The URL and the publishable key are public by design. The secret key is
+ * parsed here too but read only by the server-only admin client
+ * (`supabase/admin.ts`).
  */
 const PublicEnv = z.object({
   url: z.url(),
@@ -50,4 +51,20 @@ export function hasPublicEnv(): boolean {
     process.env.NEXT_PUBLIC_SUPABASE_URL &&
       process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
   );
+}
+
+const SecretKey = z.string().startsWith("sb_secret_");
+
+/**
+ * The secret key, checked. Throws without echoing the value, so a bad
+ * setting never ends up in a log.
+ */
+export function parseSecretKey(source: { SUPABASE_SECRET_KEY?: string }) {
+  const result = SecretKey.safeParse(source.SUPABASE_SECRET_KEY);
+  if (!result.success) {
+    throw new Error(
+      "Supabase secret key missing or invalid (SUPABASE_SECRET_KEY): expected an sb_secret_ key",
+    );
+  }
+  return result.data;
 }
