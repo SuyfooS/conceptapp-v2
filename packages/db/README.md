@@ -60,7 +60,15 @@ up the demo restaurant with `apply_template`.
   refreshes the session cookies on every app request.
 - `@db/session`: `getCurrentMember()`, the signed-in person and their
   business. `app/(app)/member.ts` wraps it in React `cache()`.
-- `@db/env`: the public settings, checked with Zod.
+- `@db/supabase/admin`: `createAdminClient()` with `SUPABASE_SECRET_KEY`,
+  for server-only writes. Bypasses RLS, so every caller checks who is
+  asking first.
+- `@db/admin`: the console's reads and writes. `createBusiness(actor,
+  business)` calls `public.create_business` (service role only): it opens
+  the business, applies its template and writes `business.create` to the
+  audit log in one transaction, and refuses an actor who is not platform
+  staff. A taken slug comes back as `slugTaken`.
+- `@db/env`: the public settings and the secret key, checked with Zod.
 
 Sign-in is phone + SMS code. Accounts are never created at sign-in
 (`[auth] enable_signup = false`); people arrive through the seed now and

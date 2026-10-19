@@ -89,13 +89,16 @@ jobs:
           pnpm exec supabase start
           -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
 
-      # The local stack's URL and publishable key are fixed development
-      # values, not secrets; read them from the CLI rather than hard-coding.
+      # The local stack's URL and keys are fixed development values, not
+      # real secrets; read them from the CLI rather than hard-coding. The
+      # secret key (server-only writes) is masked in the log all the same.
       - name: Point the app at local Supabase
         run: |
           eval "$(pnpm exec supabase status -o env)"
+          echo "::add-mask::$SECRET_KEY"
           echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
           echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY" >> "$GITHUB_ENV"
+          echo "SUPABASE_SECRET_KEY=$SECRET_KEY" >> "$GITHUB_ENV"
 
       - name: Install Chromium
         run: pnpm exec playwright install --with-deps chromium

@@ -2,11 +2,13 @@ import { type AdminBusiness, listBusinesses } from "@db/admin";
 import { platformCan } from "@domain/platform";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
 import { Badge } from "@ui/badge";
+import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
 import { ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getFormatter, getTranslations } from "next-intl/server";
 import { currentPlatformRole } from "../staff";
@@ -40,23 +42,55 @@ async function labelsFor() {
 // The console's first screen: every business, with what needs attention
 // (open invites) visible at a glance. Phone and tablet get a list, desktop
 // a table with every column.
-export default async function BusinessesPage() {
+export default async function BusinessesPage({
+  searchParams,
+}: PageProps<"/admin">) {
   const role = await currentPlatformRole();
   // The layout already shows the no-access screen; this keeps the list
   // from being read for anyone off the team.
   if (!platformCan(role, "businesses.read")) notFound();
-  const [businesses, labels] = await Promise.all([
+  const [businesses, labels, { created }] = await Promise.all([
     listBusinesses(),
     labelsFor(),
+    searchParams,
   ]);
   const { t } = labels;
+  // Back from the wizard: say the business is open, if it is in the list.
+  const opened =
+    typeof created === "string"
+      ? businesses.find((b) => b.slug === created)
+      : undefined;
 
   return (
     <PageBody>
       <PageHeader
         title={t("title")}
         subtitle={t("subtitle", { count: businesses.length })}
+        actions={
+          platformCan(role, "businesses.create") ? (
+            <Button asChild size="lg">
+              <Link href="/admin/new">{t("new")}</Link>
+            </Button>
+          ) : undefined
+        }
       />
+      {opened ? (
+        <Card
+          tone="accent"
+          padding="lg"
+          role="status"
+          className="flex flex-col gap-2 md:max-w-2xl"
+        >
+          <CardTitle as="h2">
+            {t("opened.title", { name: opened.name })}
+          </CardTitle>
+          <CardText className="text-ink">
+            {t("opened.body", {
+              template: labels.template(opened.templateKey),
+            })}
+          </CardText>
+        </Card>
+      ) : null}
       {businesses.length === 0 ? (
         <Card
           tone="flat"

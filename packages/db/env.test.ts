@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePublicEnv } from "./env";
+import { parsePublicEnv, parseSecretKey } from "./env";
 
 describe("parsePublicEnv", () => {
   it("accepts a URL and a publishable key", () => {
@@ -28,6 +28,31 @@ describe("parsePublicEnv", () => {
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: key,
         }),
       ).toThrow();
+    }
+  });
+});
+
+describe("parseSecretKey", () => {
+  it("accepts a secret key", () => {
+    expect(parseSecretKey({ SUPABASE_SECRET_KEY: "sb_secret_abc" })).toBe(
+      "sb_secret_abc",
+    );
+  });
+
+  it("refuses a missing, publishable or legacy key without echoing it", () => {
+    for (const key of [
+      undefined,
+      "sb_publishable_abc",
+      "eyJhbGciOiJIUzI1NiJ9.e30.x",
+    ]) {
+      let message = "";
+      try {
+        parseSecretKey({ SUPABASE_SECRET_KEY: key });
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message).toMatch(/SUPABASE_SECRET_KEY/);
+      if (key) expect(message).not.toContain(key);
     }
   });
 });

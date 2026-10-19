@@ -104,3 +104,21 @@ export function accentTokens(requested: string): AccentTokens {
   }
   return { accent: INK, accentInk: WHITE, adjusted: true };
 }
+
+/**
+ * Accents the new-business wizard offers in one tap (any other colour can
+ * still be picked). Each already passes the rules above, so none is
+ * adjusted. The first is the database default.
+ */
+export const ACCENT_PRESETS = [
+  { key: "blue", hex: "#2563eb" },
+  { key: "teal", hex: "#0f766e" },
+  { key: "green", hex: "#15803d" },
+  { key: "orange", hex: "#c2410c" },
+  { key: "red", hex: "#b91c1c" },
+  { key: "pink", hex: "#be185d" },
+  { key: "purple", hex: "#7c3aed" },
+  { key: "brown", hex: "#92400e" },
+] as const;
+
+export type AccentPresetKey = (typeof ACCENT_PRESETS)[number]["key"];
