@@ -3,6 +3,46 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-20 · run 10 · chunk 1c-3 (staff list and checklist)
+
+- Wizard step 4 "צוות": paste a staff list, one person per line (name and
+  mobile in any order; commas, tabs or dashes; an optional role word such
+  as בעלים, מנהל/ת, אחמ"ש, owner). A live preview shows who will be
+  invited with their role, and names each line to fix by number (no
+  number, not an Israeli mobile, no name, a repeated number). Optional;
+  at most 60 people. New `TextArea` in `@ui/text-field`, on `/design`.
+- `@domain/staff-list` (`parseStaffList`) and `@domain/setup`
+  (`setupChecklist`); `parseNewBusiness` gains `staff`.
+- Migration `20261020000100_business_staff.sql`: `invites.full_name`; one
+  open invite per number in a business (partial unique index);
+  `create_business(…, staff jsonb)` invites everyone in the same
+  transaction and counts them in the audit log. Each invite gets a random
+  token of which only the hash is kept, so sending (1d) issues a fresh one.
+  `admin_business(slug)` (team only) returns a business with its members
+  and open invites.
+- After opening, the console goes to `/admin/businesses/<slug>`: the
+  checklist (opened from the template, owner invited, staff invited,
+  address), worked out from the database, and the people (list on phone
+  and tablet, table on desktop). The business list links to it; the old
+  "opened" notice on the list moved here.
+- Tests: 10 new unit tests (141 total); pgTAP `business_staff.test.sql`
+  (12; dropping the unique index turned 2 red); Playwright: the café test
+  now ends on the checklist with nobody invited, and a new test has a
+  platform admin open a restaurant, fix a bad line, invite three people
+  and check the invites in the database (the backlog's done-when for 1c).
+- Not verified locally: no Docker in this run's container. Migrations,
+  seed and every pgTAP file ran on a local Postgres 16 with stubbed auth
+  and a small pgTAP stand-in (all green). The wizard's staff step and the
+  checklist were checked in a production build with a stubbed session at
+  390/820/1440: axe clean, no horizontal scroll. Playwright and the real
+  pgTAP run in CI; `database.types.ts` was edited to the generator's
+  format and CI's diff check confirms it.
+- Commit: squash of PR `agent/1c-3-staff-and-checklist` (see the daily
+  note in #1).
+- Next: chunk 1d, invites: send by link (logged, not sent, in dev), claim
+  through a server function, and the Team screen.
+- Defaults applied: none today.
+
 ## 2026-10-19 · run 9 · chunk 1c-2 (new-business wizard)
 
 - `/admin/new`: a three-step wizard (kind of business → name, slug,

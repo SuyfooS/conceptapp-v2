@@ -11,8 +11,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("metaTitle") };
 }
 
-// The new-business wizard: template, details, colour, then the business is
-// opened in one transaction. Staff list and checklist follow (chunk 1c-3).
+// The new-business wizard: template, details, colour and staff list, then
+// the business is opened and its staff invited in one transaction, and its
+// checklist opens.
 export default async function NewBusinessPage() {
   const role = await currentPlatformRole();
   if (!platformCan(role, "businesses.create")) notFound();

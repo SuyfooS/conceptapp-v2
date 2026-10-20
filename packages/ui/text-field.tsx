@@ -61,3 +61,50 @@ export function TextField({
     </div>
   );
 }
+
+export type TextAreaProps = ComponentProps<"textarea"> & {
+  label: string;
+  /** Helper text under the field. Replaced by the error when there is one. */
+  hint?: ReactNode;
+  error?: ReactNode;
+};
+
+/** Several lines of text: a pasted list, a note. Same frame as TextField. */
+export function TextArea({
+  label,
+  hint,
+  error,
+  id,
+  className,
+  rows = 5,
+  ...props
+}: TextAreaProps) {
+  const autoId = useId();
+  const inputId = id ?? autoId;
+  const messageId = `${inputId}-message`;
+  const message = error ?? hint;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={inputId} className="font-medium text-ink text-sm">
+        {label}
+      </label>
+      <textarea
+        id={inputId}
+        rows={rows}
+        aria-invalid={error ? true : undefined}
+        aria-describedby={message ? messageId : undefined}
+        className={cn(fieldInputClass, "h-auto min-h-24 py-2.5", className)}
+        {...props}
+      />
+      {message ? (
+        <p
+          id={messageId}
+          className={cn("text-sm", error ? "text-danger" : "text-ink-2")}
+        >
+          {message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
