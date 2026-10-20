@@ -86,7 +86,7 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await expectCleanPage(page);
   await next(page);
 
-  // Step 3: colour, with a live preview and the summary.
+  // Step 3: colour, with a live preview.
   await expect(
     page.getByRole("heading", { level: 2, name: w.steps.accent }),
   ).toBeVisible();
@@ -94,11 +94,6 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await expect(
     page.getByRole("radio", { name: w.accent.presets.teal }),
   ).toBeChecked();
-  await expect(
-    page
-      .getByText("demo-restaurant", { exact: true })
-      .filter({ visible: true }),
-  ).toHaveCount(1);
   await page.screenshot({
     path: testInfo.outputPath("new-business-3-accent.png"),
     fullPage: true,
@@ -111,6 +106,13 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
     page.getByRole("heading", { level: 2, name: w.steps.staff }),
   ).toBeVisible();
   await expect(page.getByText("עוד לא נוספו אנשים").first()).toBeVisible();
+  // The summary, beside the form on desktop and closing this step on
+  // phones and tablets.
+  await expect(
+    page
+      .getByText("demo-restaurant", { exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
   await page.getByRole("button", { name: w.actions.create }).click();
 
   // The server refuses the taken slug and the form goes back to it.
