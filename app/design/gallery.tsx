@@ -10,7 +10,7 @@ import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { Stat } from "@ui/stat";
-import { ltrInputClass, TextField } from "@ui/text-field";
+import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { WeekStrip } from "@ui/week-strip";
 import { ArrowLeft, Bell, Plus } from "lucide-react";
 import Link from "next/link";
@@ -244,6 +244,12 @@ function GalleryBody({
             defaultValue="22:00–17:00"
             dir="ltr"
             className={ltrInputClass}
+          />
+          <TextArea
+            label={t("note")}
+            hint={t("noteHint")}
+            placeholder={t("notePh")}
+            rows={3}
           />
           <TextField
             label={t("locked")}

@@ -38,8 +38,26 @@ describe("parseNewBusiness", () => {
         slug: "cafe-noa",
         address: "רחוב הרצל 1, חיפה",
         accent: "#2563eb",
+        staff: [],
       },
     });
+  });
+
+  it("carries the pasted staff list", () => {
+    const result = parseNewBusiness({
+      ...valid,
+      staff: "רונית בעלים 050-111-1111\nשי 0502222222",
+    });
+    expect(result.ok && result.value.staff).toEqual([
+      { name: "רונית", phone: "+972501111111", role: "owner" },
+      { name: "שי", phone: "+972502222222", role: "worker" },
+    ]);
+  });
+
+  it("refuses a staff list with a problem line", () => {
+    expect(
+      parseNewBusiness({ ...valid, staff: "שי 0502222222\nבלי מספר" }),
+    ).toEqual({ ok: false, errors: { staff: "invalid" } });
   });
 
   it("stores an empty address as null", () => {
@@ -125,6 +143,7 @@ describe("wizard steps", () => {
   it("go back to the first step with an error", () => {
     expect(firstStepWithError({ accent: "invalid" })).toBe(2);
     expect(firstStepWithError({ slug: "taken", accent: "invalid" })).toBe(1);
+    expect(firstStepWithError({ staff: "invalid" })).toBe(3);
     expect(firstStepWithError({})).toBe(0);
   });
 });

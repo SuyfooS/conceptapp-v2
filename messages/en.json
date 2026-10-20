@@ -108,6 +108,9 @@
     "hoursError": "End time is before start time",
     "locked": "Branch",
     "lockedValue": "Main branch",
+    "note": "Note for the shift",
+    "noteHint": "A few lines. Everyone on the shift sees it.",
+    "notePh": "For example: a group of 20 arrives at eight",
     "phone": "Mobile number",
     "phoneValid": "Valid",
     "phoneIncomplete": "Incomplete",
@@ -332,21 +335,18 @@
         "title": "No businesses yet",
         "body": "Every business starts from a template. Open one with “Open a new business” and it will appear here."
       },
-      "new": "Open a new business",
-      "opened": {
-        "title": "{name} is open",
-        "body": "The business is ready with the “{template}” template’s settings. Any setting can be changed later. Inviting the staff will be added to the wizard next."
-      }
+      "new": "Open a new business"
     },
     "newBusiness": {
       "metaTitle": "New business",
       "title": "Open a new business",
-      "subtitle": "Three steps: the kind of business, the details and the colour.",
+      "subtitle": "Four steps: the kind of business, the details, the colour and the staff.",
       "progress": "Step {step} of {total}",
       "steps": {
         "template": "Kind of business",
         "details": "Business details",
-        "accent": "Business colour"
+        "accent": "Business colour",
+        "staff": "Staff"
       },
       "templates": {
         "restaurant": {
@@ -397,7 +397,8 @@
         "slug": "Page address",
         "address": "Address",
         "accent": "Colour",
-        "empty": "Not filled in"
+        "empty": "Not filled in",
+        "staff": "Staff"
       },
       "actions": {
         "next": "Continue",
@@ -430,7 +431,81 @@
           "invalid": "Choose a colour."
         },
         "failed": "The business was not opened because of a fault. Try again in a moment.",
-        "noPermission": "You are not allowed to open businesses."
+        "noPermission": "You are not allowed to open businesses.",
+        "staff": {
+          "invalid": "Some lines need fixing.",
+          "tooMany": "Up to 60 people. The rest can be invited later."
+        }
+      },
+      "staff": {
+        "label": "Staff list",
+        "hint": "One line per person: a name and a mobile number. Add “owner” or “manager” where it fits. Optional.",
+        "placeholder": "Ronit Cohen 050-123-4567 owner\nShai Levi 052-765-4321",
+        "count": "{count, plural, =0 {Nobody added yet} one {One person will be invited} other {# people will be invited}}",
+        "problems": "{count, plural, one {One line needs fixing} other {# lines need fixing}}",
+        "line": "Line {line}",
+        "lineErrors": {
+          "noPhone": "No mobile number",
+          "invalidPhone": "The number does not look like an Israeli mobile",
+          "noName": "No name",
+          "nameTooLong": "The name is longer than 80 characters",
+          "duplicate": "The number is already on an earlier line"
+        },
+        "listLabel": "Who will be invited",
+        "notSent": "At this step the invites are only saved. Nobody gets a message."
+      }
+    },
+    "memberRoles": {
+      "owner": "Owner",
+      "manager": "Manager",
+      "worker": "Worker"
+    },
+    "setup": {
+      "opened": {
+        "title": "{name} is open",
+        "body": "The business is ready with the “{template}” template’s settings. Any setting can be changed later."
+      },
+      "subtitle": "Template: {template} · Page address: <ltr>{slug}</ltr>",
+      "back": "All businesses",
+      "checklist": {
+        "title": "What is left to do",
+        "remaining": "{count, plural, =0 {All done} one {One thing left} other {# things left}}",
+        "done": "Done",
+        "todo": "Missing",
+        "items": {
+          "opened": {
+            "title": "Open the business from the template",
+            "done": "The settings, positions and shifts of “{template}”."
+          },
+          "owner": {
+            "title": "Invite the owners",
+            "done": "{count, plural, one {One person} other {# people}} with the owner role.",
+            "todo": "No owner yet. Without one, nobody runs the business."
+          },
+          "staff": {
+            "title": "Invite the staff",
+            "done": "{count, plural, one {One person} other {# people}} on the staff.",
+            "todo": "No staff yet. Without staff there is nobody to schedule."
+          },
+          "address": {
+            "title": "Business address",
+            "done": "{address}",
+            "todo": "No address yet. It sets the Shabbat times and appears on the business page."
+          }
+        }
+      },
+      "people": {
+        "title": "People",
+        "count": "{count, plural, =0 {No one} one {One person} other {# people}}",
+        "empty": "Nobody is in the business yet. People who are invited appear here.",
+        "listLabel": "People in the business",
+        "name": "Name",
+        "phone": "Mobile",
+        "role": "Role",
+        "status": "Status",
+        "noName": "No name",
+        "member": "On the team",
+        "invited": "Invited"
       }
     }
   }

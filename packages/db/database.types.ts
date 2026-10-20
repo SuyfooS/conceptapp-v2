@@ -146,6 +146,7 @@ export type Database = {
           claimed_by: string | null;
           created_at: string;
           expires_at: string;
+          full_name: string | null;
           id: string;
           invited_by: string | null;
           phone: string;
@@ -158,6 +159,7 @@ export type Database = {
           claimed_by?: string | null;
           created_at?: string;
           expires_at?: string;
+          full_name?: string | null;
           id?: string;
           invited_by?: string | null;
           phone: string;
@@ -170,6 +172,7 @@ export type Database = {
           claimed_by?: string | null;
           created_at?: string;
           expires_at?: string;
+          full_name?: string | null;
           id?: string;
           invited_by?: string | null;
           phone?: string;
@@ -330,6 +333,7 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      admin_business: { Args: { business_slug: string }; Returns: Json };
       admin_businesses: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -354,6 +358,7 @@ export type Database = {
           address: string;
           name: string;
           slug: string;
+          staff?: Json;
           template: string;
         };
         Returns: string;

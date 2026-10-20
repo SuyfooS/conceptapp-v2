@@ -17,9 +17,9 @@ export type NewBusinessState = {
 
 /**
  * The wizard's last step: check who is asking and what they typed, then
- * open the business with the secret key (`createBusiness`). On success the
- * console's list shows the new business; otherwise the form goes back to
- * the step with the first error.
+ * open the business and invite its staff with the secret key
+ * (`createBusiness`). On success the business's checklist opens; otherwise
+ * the form goes back to the step with the first error.
  */
 export async function createBusinessAction(
   _prev: NewBusinessState,
@@ -44,5 +44,5 @@ export async function createBusinessAction(
   }
   if (!result.ok) return { errors: { slug: "taken" } };
 
-  redirect(`/admin?created=${encodeURIComponent(parsed.value.slug)}`);
+  redirect(`/admin/businesses/${parsed.value.slug}?created=1`);
 }

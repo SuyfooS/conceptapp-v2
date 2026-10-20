@@ -8,12 +8,15 @@ import {
   parseNewBusiness,
 } from "@domain/business";
 import { ACCENT_PRESETS, accentTokens } from "@domain/color";
+import { displayIsraeliMobile } from "@domain/phone";
+import { parseStaffList, type StaffList } from "@domain/staff-list";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
 import { accentStyle } from "@ui/accent";
+import { Badge } from "@ui/badge";
 import { Button, buttonVariants } from "@ui/button";
 import { Card, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
-import { ltrInputClass, TextField } from "@ui/text-field";
+import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import {
@@ -26,7 +29,7 @@ import {
 } from "react";
 import { createBusinessAction, type NewBusinessState } from "./actions";
 
-const STEP_KEYS = ["template", "details", "accent"] as const;
+const STEP_KEYS = ["template", "details", "accent", "staff"] as const;
 const LAST_STEP = NEW_BUSINESS_STEPS.length - 1;
 
 type Values = {
@@ -35,16 +38,18 @@ type Values = {
   slug: string;
   address: string;
   accent: string;
+  /** The pasted staff list, as typed. */
+  staff: string;
 };
 
 const initialState: NewBusinessState = {};
 
 /**
  * The new-business wizard: one step at a time (kind of business, details,
- * colour), checked as it goes with the same rules the server runs. Every
- * field stays in the one form, so the last step submits everything. On
- * desktop a summary sits beside the form; on phones and tablets it closes
- * the last step.
+ * colour, staff list), checked as it goes with the same rules the server
+ * runs. Every field stays in the one form, so the last step submits
+ * everything. On desktop a summary sits beside the form; on phones and
+ * tablets it closes the last step.
  */
 export function NewBusinessForm() {
   const t = useTranslations("admin.newBusiness");
@@ -60,6 +65,7 @@ export function NewBusinessForm() {
     slug: "",
     address: "",
     accent: ACCENT_PRESETS[0].hex,
+    staff: "",
   });
   const stepHeading = useRef<HTMLHeadingElement>(null);
 
@@ -107,7 +113,8 @@ export function NewBusinessForm() {
   }
 
   const tokens = accentTokens(values.accent);
-  const summary = <Summary values={values} />;
+  const staff = parseStaffList(values.staff);
+  const summary = <Summary values={values} staff={staff} />;
 
   return (
     <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
@@ -267,6 +274,29 @@ export function NewBusinessForm() {
               </p>
             ) : null}
           </div>
+        </Step>
+
+        <Step active={step === 3} legend={t("steps.staff")}>
+          <TextArea
+            name="staff"
+            label={t("staff.label")}
+            hint={t("staff.hint")}
+            error={errors.staff && t(`errors.staff.${errors.staff}`)}
+            placeholder={t("staff.placeholder")}
+            value={values.staff}
+            onChange={(e) => {
+              set("staff")(e.target.value);
+              // The preview shows each problem live; drop the error once
+              // the list is fine again.
+              if (!parseStaffList(e.target.value).error) {
+                setErrors(({ staff: _, ...rest }) => rest);
+              }
+            }}
+            rows={6}
+            spellCheck={false}
+          />
+          <StaffPreview staff={staff} />
+          <p className="text-ink-2 text-sm">{t("staff.notSent")}</p>
           <div className="xl:hidden">{summary}</div>
         </Step>
 
@@ -329,8 +359,63 @@ function Step({
   );
 }
 
+/**
+ * The pasted list as it will be invited, with each line that needs fixing
+ * named by its number. Phone: one column; tablet and up: two.
+ */
+function StaffPreview({ staff }: { staff: StaffList }) {
+  const t = useTranslations("admin");
+  const problems = staff.lines.flatMap((line) => (line.ok ? [] : [line]));
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="font-medium" aria-live="polite">
+        {problems.length > 0
+          ? t("newBusiness.staff.problems", { count: problems.length })
+          : t("newBusiness.staff.count", { count: staff.entries.length })}
+      </p>
+      {problems.length > 0 ? (
+        <ul className="flex flex-col gap-1 text-sm">
+          {problems.map((line) => (
+            <li key={line.line} className="flex flex-col">
+              <span className="text-danger">
+                {t("newBusiness.staff.line", { line: line.line })}
+                {" · "}
+                {t(`newBusiness.staff.lineErrors.${line.error}`)}
+              </span>
+              <span className="truncate text-ink-2">{line.text}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {staff.entries.length > 0 ? (
+        <ul
+          aria-label={t("newBusiness.staff.listLabel")}
+          className="grid gap-2 md:grid-cols-2"
+        >
+          {staff.entries.map((entry) => (
+            <li
+              key={entry.phone}
+              className="flex min-h-11 items-center justify-between gap-3 rounded-control border border-line bg-surface px-3 py-2"
+            >
+              <span className="flex min-w-0 flex-col">
+                <span className="truncate font-medium">{entry.name}</span>
+                <span className="text-ink-2 text-sm">
+                  <span dir="ltr">{displayIsraeliMobile(entry.phone)}</span>
+                </span>
+              </span>
+              <Badge tone={entry.role === "worker" ? "neutral" : "accent"}>
+                {t(`memberRoles.${entry.role}`)}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 /** What has been chosen so far. */
-function Summary({ values }: { values: Values }) {
+function Summary({ values, staff }: { values: Values; staff: StaffList }) {
   const t = useTranslations("admin.newBusiness");
   const empty = <span className="text-ink-2">{t("summary.empty")}</span>;
   const slug = normalizeSlug(values.slug);
@@ -357,6 +442,10 @@ function Summary({ values }: { values: Values }) {
           <span dir="ltr">{accentTokens(values.accent).accent}</span>
         </span>
       ),
+    },
+    {
+      label: t("summary.staff"),
+      value: t("staff.count", { count: staff.entries.length }),
     },
   ];
   return (

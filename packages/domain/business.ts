@@ -1,10 +1,11 @@
 import { accentTokens, parseHex } from "./color";
+import { parseStaffList, type StaffEntry } from "./staff-list";
 import { TEMPLATE_KEYS, type TemplateKey } from "./templates";
 
 /**
  * A new business as the admin console's wizard collects it: a template,
- * then the name, the slug (the public page's address), an optional address
- * and the accent. `parseNewBusiness` is the one check both the form (per
+ * then the name, the slug (the public page's address), an optional address,
+ * the accent and the staff list to invite (`@domain/staff-list`). `parseNewBusiness` is the one check both the form (per
  * step) and the server action run; the database repeats the hard limits.
  */
 
@@ -57,6 +58,7 @@ export const NEW_BUSINESS_FIELDS = [
   "slug",
   "address",
   "accent",
+  "staff",
 ] as const;
 export type NewBusinessField = (typeof NEW_BUSINESS_FIELDS)[number];
 
@@ -67,6 +69,8 @@ export type NewBusinessErrors = {
   slug?: "required" | "tooShort" | "tooLong" | "invalid" | "reserved" | "taken";
   address?: "tooLong";
   accent?: "required" | "invalid";
+  /** Details per line come from `parseStaffList`. */
+  staff?: "invalid" | "tooMany";
 };
 
 export type NewBusiness = {
@@ -77,6 +81,8 @@ export type NewBusiness = {
   address: string | null;
   /** The accent to store: the pick, darkened if it was not readable. */
   accent: string;
+  /** People to invite, possibly none. */
+  staff: StaffEntry[];
 };
 
 export type NewBusinessInput = Partial<Record<NewBusinessField, unknown>>;
@@ -124,6 +130,7 @@ export function parseNewBusiness(
   const slug = normalizeSlug(text(input.slug));
   const address = text(input.address).trim().replace(/\s+/g, " ");
   const accent = text(input.accent).trim();
+  const staff = parseStaffList(text(input.staff));
 
   const found: { [F in NewBusinessField]-?: NewBusinessErrors[F] | null } = {
     template: templateError(template),
@@ -131,6 +138,7 @@ export function parseNewBusiness(
     slug: slugError(slug),
     address: address.length > BUSINESS_ADDRESS_MAX ? "tooLong" : null,
     accent: accentError(accent),
+    staff: staff.error,
   };
 
   const errors: NewBusinessErrors = {};
@@ -149,6 +157,7 @@ export function parseNewBusiness(
       slug,
       address: address || null,
       accent: found.accent ? accent : accentTokens(accent).accent,
+      staff: staff.entries,
     },
   };
 }
@@ -158,6 +167,7 @@ export const NEW_BUSINESS_STEPS = [
   ["template"],
   ["name", "slug", "address"],
   ["accent"],
+  ["staff"],
 ] as const satisfies readonly (readonly NewBusinessField[])[];
 
 /** The first step holding one of the errors, so the form can go back to it. */

@@ -13,8 +13,8 @@ insert into public.platform_staff (user_id, role)
 values ('50000000-0000-4000-a000-00000000000a', 'onboarder');
 
 select ok(
-  not has_function_privilege('authenticated', 'public.create_business(uuid, text, text, text, text, text)', 'execute')
-  and not has_function_privilege('anon', 'public.create_business(uuid, text, text, text, text, text)', 'execute'),
+  not has_function_privilege('authenticated', 'public.create_business(uuid, text, text, text, text, text, jsonb)', 'execute')
+  and not has_function_privilege('anon', 'public.create_business(uuid, text, text, text, text, text, jsonb)', 'execute'),
   'browser roles have no execute grant on create_business'
 );
 set local role authenticated;
@@ -80,7 +80,7 @@ select results_eq(
     from public.audit_log a join public.businesses b on b.id = a.business_id
     where b.slug = 'cb-cafe-noa'$$,
   $$values ('50000000-0000-4000-a000-00000000000a'::uuid, 'business.create'::text,
-    '{"slug": "cb-cafe-noa", "template": "cafe-bar"}'::jsonb)$$,
+    '{"slug": "cb-cafe-noa", "template": "cafe-bar", "invites": 0}'::jsonb)$$,
   'the audit log records who opened it and from which template'
 );
 select is_empty(

@@ -40,26 +40,18 @@ async function labelsFor() {
 }
 
 // The console's first screen: every business, with what needs attention
-// (open invites) visible at a glance. Phone and tablet get a list, desktop
-// a table with every column.
-export default async function BusinessesPage({
-  searchParams,
-}: PageProps<"/admin">) {
+// (open invites) visible at a glance, each leading to its checklist. Phone
+// and tablet get a list, desktop a table with every column.
+export default async function BusinessesPage() {
   const role = await currentPlatformRole();
   // The layout already shows the no-access screen; this keeps the list
   // from being read for anyone off the team.
   if (!platformCan(role, "businesses.read")) notFound();
-  const [businesses, labels, { created }] = await Promise.all([
+  const [businesses, labels] = await Promise.all([
     listBusinesses(),
     labelsFor(),
-    searchParams,
   ]);
   const { t } = labels;
-  // Back from the wizard: say the business is open, if it is in the list.
-  const opened =
-    typeof created === "string"
-      ? businesses.find((b) => b.slug === created)
-      : undefined;
 
   return (
     <PageBody>
@@ -74,23 +66,6 @@ export default async function BusinessesPage({
           ) : undefined
         }
       />
-      {opened ? (
-        <Card
-          tone="accent"
-          padding="lg"
-          role="status"
-          className="flex flex-col gap-2 md:max-w-2xl"
-        >
-          <CardTitle as="h2">
-            {t("opened.title", { name: opened.name })}
-          </CardTitle>
-          <CardText className="text-ink">
-            {t("opened.body", {
-              template: labels.template(opened.templateKey),
-            })}
-          </CardText>
-        </Card>
-      ) : null}
       {businesses.length === 0 ? (
         <Card
           tone="flat"
@@ -113,6 +88,8 @@ export default async function BusinessesPage({
     </PageBody>
   );
 }
+
+const businessHref = (slug: string) => `/admin/businesses/${slug}`;
 
 function Initial({ name }: { name: string }) {
   return <span aria-hidden="true">{name.slice(0, 1)}</span>;
@@ -137,6 +114,7 @@ function BusinessList({
           className="md:overflow-hidden md:rounded-card md:border md:border-line md:bg-surface"
         >
           <ListRow
+            href={businessHref(b.slug)}
             leading={<Initial name={b.name} />}
             title={b.name}
             subtitle={`${template(b.templateKey)} · ${t("membersCount", { count: b.members })}`}
@@ -199,7 +177,12 @@ function BusinessTable({
                   <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-surface-2 text-ink-2 text-sm">
                     <Initial name={b.name} />
                   </span>
-                  <span>{b.name}</span>
+                  <Link
+                    href={businessHref(b.slug)}
+                    className="rounded-control underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+                  >
+                    {b.name}
+                  </Link>
                 </span>
               </th>
               <td className={cn(td, "text-ink-2")}>

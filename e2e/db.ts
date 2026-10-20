@@ -31,3 +31,19 @@ export async function businessBySlug(
     await sql.end();
   }
 }
+
+export type OpenInvite = { name: string | null; phone: string; role: string };
+
+/** The open invites of a business, by phone number. */
+export async function invitesBySlug(slug: string): Promise<OpenInvite[]> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    return await sql<OpenInvite[]>`
+      select i.full_name as name, i.phone, i.role::text as role
+      from public.invites i join public.businesses b on b.id = i.business_id
+      where b.slug = ${slug} and i.claimed_at is null
+      order by i.phone`;
+  } finally {
+    await sql.end();
+  }
+}
