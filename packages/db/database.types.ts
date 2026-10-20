@@ -333,10 +333,7 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      admin_business: {
-        Args: { business_slug: string };
-        Returns: Json;
-      };
+      admin_business: { Args: { business_slug: string }; Returns: Json };
       admin_businesses: {
         Args: Record<PropertyKey, never>;
         Returns: {
