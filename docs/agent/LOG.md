@@ -3,6 +3,25 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-21 · run 11 · fix: `main` red after 1c-3
+
+- CI on `main` failed at `abdcf64` (the PR's own run was green): the e2e
+  test "an onboarder opens a café" failed on desktop only, axe reporting
+  `document-title` on the checklist page. Cause: Next.js streams a page's
+  metadata in after its body (generateMetadata, "Streaming metadata"), and
+  the checklist's title depends on the slug, so after the wizard's
+  redirect axe could run before the `<title>` arrived. A race in the test,
+  not a missing title: the page sets one.
+- `e2e/new-business.spec.ts`: every axe check first waits for a title
+  ending in "ConceptApp"; both checklist steps assert the exact title
+  (`<slug> · ConceptApp`), which also tests it.
+- Not reproduced locally: no Docker in this run's container. `pnpm check`
+  (141 unit tests) and `pnpm build` pass; CI runs the e2e job.
+- Commit: squash of PR `agent/fix-main-title-race` (see the daily note in #1).
+- Next: chunk 1d, invites: send by link (logged, not sent, in dev), claim
+  through a server function, and the Team screen.
+- Defaults applied: none today.
+
 ## 2026-10-20 · run 10 · chunk 1c-3 (staff list and checklist)
 
 - Wizard step 4 "צוות": paste a staff list, one person per line (name and

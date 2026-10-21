@@ -14,6 +14,10 @@ const a = he.admin;
 const w = a.newBusiness;
 
 async function expectCleanPage(page: Page) {
+  // Next.js streams a page's metadata in after its body (see
+  // generateMetadata, "Streaming metadata"), so after a navigation the
+  // <title> can land a moment later than the content axe would check.
+  await expect(page).toHaveTitle(/ConceptApp$/);
   const { violations } = await new AxeBuilder({ page }).analyze();
   expect(violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
   const overflow = await page.evaluate(
@@ -127,6 +131,7 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
 
   // The checklist: open, with an address, but nobody invited yet.
   await expect(page).toHaveURL(`/admin/businesses/${slug}?created=1`);
+  await expect(page).toHaveTitle(`${slug} · ConceptApp`);
   await expect(
     page
       .getByRole("status")
@@ -222,6 +227,7 @@ test("a platform admin opens a restaurant and invites its staff", async ({
 
   // The checklist: everything done, and the three people invited.
   await expect(page).toHaveURL(`/admin/businesses/${slug}?created=1`);
+  await expect(page).toHaveTitle(`${slug} · ConceptApp`);
   await expect(page.getByText(remaining(0))).toBeVisible();
   for (const person of ["רונית בדיקה", "שי בדיקה", "תמר בדיקה"]) {
     await expect(
