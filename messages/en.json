@@ -239,6 +239,39 @@
         "wrongCode": "The code is wrong or has expired. You can ask for a new one.",
         "failed": "Something went wrong. Try again in a moment."
       }
+    },
+    "join": {
+      "metaTitle": "Join",
+      "title": "Join {business}",
+      "welcome": "You have been invited to join the team as {role}.",
+      "welcomeNamed": "Hello {name}, you have been invited to join the team as {role}.",
+      "roles": {
+        "owner": "owner",
+        "manager": "manager",
+        "worker": "worker"
+      },
+      "sendIntro": "We will text a code to the number ending in <ltr>{ending}</ltr>.",
+      "send": "Send code",
+      "codeIntro": "We sent a 6-digit code to the number ending in <ltr>{ending}</ltr>.",
+      "codeResent": "We sent a new code to the number ending in <ltr>{ending}</ltr>.",
+      "codeLabel": "Code from the message",
+      "verify": "Join the team",
+      "resend": "Send a new code",
+      "gone": {
+        "missing": {
+          "title": "This link is not active",
+          "body": "A newer link may have replaced it. Ask whoever invited you for a new one."
+        },
+        "expired": {
+          "title": "This link has expired",
+          "body": "Invite links last 14 days. Ask whoever invited you for a new one."
+        },
+        "claimed": {
+          "title": "You have already joined",
+          "body": "This invite has been used. Sign in with your mobile number.",
+          "signIn": "Sign in"
+        }
+      }
     }
   },
   "app": {
@@ -505,7 +538,20 @@
         "status": "Status",
         "noName": "No name",
         "member": "On the team",
-        "invited": "Invited"
+        "invited": "Invited",
+        "invite": "Invite"
+      },
+      "invite": {
+        "create": "Create invite link",
+        "createFor": "Create invite link for {name}",
+        "linkFor": "Invite link for {name}",
+        "hint": "Nothing is sent from here. Send the link in a message to this number. It lasts 14 days, and a new link cancels the old one.",
+        "copy": "Copy link",
+        "copied": "Link copied",
+        "errors": {
+          "failed": "Could not create a link. Try again in a moment.",
+          "noPermission": "You may not invite people."
+        }
       }
     }
   }

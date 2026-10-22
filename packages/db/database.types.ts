@@ -351,6 +351,10 @@ export type Database = {
         Args: { business: string; template: string };
         Returns: undefined;
       };
+      claim_invite: {
+        Args: { claimant: string; token_hash: string };
+        Returns: string;
+      };
       create_business: {
         Args: {
           accent: string;
@@ -361,6 +365,11 @@ export type Database = {
           staff?: Json;
           template: string;
         };
+        Returns: string;
+      };
+      invite_by_token: { Args: { token_hash: string }; Returns: Json };
+      issue_invite_link: {
+        Args: { actor: string; invite: string; new_token_hash: string };
         Returns: string;
       };
     };

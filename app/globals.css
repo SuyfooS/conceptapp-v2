@@ -55,6 +55,19 @@
   --color-accent-ink: var(--accent-ink);
   /* mixed where it is used, so a business accent set on a wrapper updates it too */
   --color-accent-soft: color-mix(in oklab, var(--accent) 10%, white);
+  /* hover and pressed accent: moved away from the text drawn on it (darker
+     under white ink, lighter under dark ink), so a state change only ever
+     raises the contrast that accentTokens guarantees */
+  --color-accent-hover: color-mix(
+    in oklab,
+    var(--accent) 88%,
+    rgb(from var(--accent-ink) calc(255 - r) calc(255 - g) calc(255 - b))
+  );
+  --color-accent-press: color-mix(
+    in oklab,
+    var(--accent) 78%,
+    rgb(from var(--accent-ink) calc(255 - r) calc(255 - g) calc(255 - b))
+  );
   --color-brand: var(--brand);
   --color-success: var(--success);
   --color-warning: var(--warning);

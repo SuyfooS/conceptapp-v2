@@ -16,6 +16,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { currentPlatformRole } from "../../../staff";
+import { InviteLink } from "./invite-link";
 
 export async function generateMetadata({
   params,
@@ -229,19 +230,27 @@ function People({ t, business }: { t: T; business: BusinessSetup }) {
               {people.map((person) => (
                 <li
                   key={`${person.status}-${person.phone}`}
-                  className="flex min-h-14 items-center gap-3 px-4 py-3"
+                  className="flex flex-col gap-3 px-4 py-3"
                 >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-medium">
-                      {name(person.name)}
+                  <span className="flex min-h-8 items-center gap-3">
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="truncate font-medium">
+                        {name(person.name)}
+                      </span>
+                      <span className="truncate text-ink-2 text-sm">
+                        {t(`memberRoles.${person.role}`)}
+                        {person.phone ? " · " : null}
+                        {phone(person.phone)}
+                      </span>
                     </span>
-                    <span className="truncate text-ink-2 text-sm">
-                      {t(`memberRoles.${person.role}`)}
-                      {person.phone ? " · " : null}
-                      {phone(person.phone)}
-                    </span>
+                    {status(person.status)}
                   </span>
-                  {status(person.status)}
+                  {person.inviteId ? (
+                    <InviteLink
+                      inviteId={person.inviteId}
+                      name={name(person.name)}
+                    />
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -265,6 +274,9 @@ function People({ t, business }: { t: T; business: BusinessSetup }) {
                   <th scope="col" className={th}>
                     {t("setup.people.status")}
                   </th>
+                  <th scope="col" className={th}>
+                    {t("setup.people.invite")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -284,6 +296,14 @@ function People({ t, business }: { t: T; business: BusinessSetup }) {
                     </td>
                     <td className={td}>{t(`memberRoles.${person.role}`)}</td>
                     <td className={td}>{status(person.status)}</td>
+                    <td className={cn(td, "w-2/5")}>
+                      {person.inviteId ? (
+                        <InviteLink
+                          inviteId={person.inviteId}
+                          name={name(person.name)}
+                        />
+                      ) : null}
+                    </td>
                   </tr>
                 ))}
               </tbody>
