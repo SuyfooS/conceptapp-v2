@@ -2,7 +2,7 @@
 -- the business, and read back by the console's checklist (admin_business),
 -- which only the ConceptApp team may call.
 begin;
-select plan(12);
+select plan(13);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -91,8 +91,10 @@ select is(
 -- The checklist's read -------------------------------------------------------
 select pg_temp.sign_in('60000000-0000-4000-a000-00000000000a');
 select is(
-  (select public.admin_business('bs-staff-cafe')
-    - 'id' - 'created_at'),
+  (select b - 'id' - 'created_at' || jsonb_build_object('people', (
+      select jsonb_agg(p - 'invite_id' order by n)
+      from jsonb_array_elements(b -> 'people') with ordinality as e(p, n)))
+    from public.admin_business('bs-staff-cafe') as b),
   jsonb_build_object(
     'slug', 'bs-staff-cafe',
     'name', 'Staff Cafe',
@@ -107,6 +109,13 @@ select is(
     )
   ),
   'a team member reads the business and its people'
+);
+select is(
+  (select count(distinct p ->> 'invite_id')::integer
+    from jsonb_array_elements(public.admin_business('bs-staff-cafe') -> 'people') p
+    where p ->> 'invite_id' ~ '^[0-9a-f-]{36}$'),
+  2,
+  'each invited person carries their own invite id'
 );
 select is(
   public.admin_business('bs-no-such-business'),

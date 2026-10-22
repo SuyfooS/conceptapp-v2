@@ -3,6 +3,52 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-22 · run 12 · chunk 1d-1 (invite links and joining)
+
+- Split chunk 1d: 1d-1 the link and joining through it (today), 1d-2 the
+  Team screen in the app (members and open invites, a manager invites by
+  phone).
+- Migration `20261022000100_invite_links.sql`, all three functions for the
+  secret key only: `issue_invite_link(actor, invite, hash)` (team only; a
+  fresh token replaces the old one and gives 14 more days; audit
+  `invite.send`), `invite_by_token(hash)` (the invite, its business and
+  open/claimed/expired), `claim_invite(hash, claimant)` (only the invited
+  number; membership with the invite's role, an inactive one comes back;
+  invite marked claimed; name copied to an empty profile; audit
+  `invite.claim`; one transaction). `admin_business` people carry
+  `invite_id`.
+- Console: on a business's page each invited person has "יצירת קישור
+  הזמנה". The link is shown with a copy button for the team member to send
+  themselves (WhatsApp or SMS from their phone). Nothing is sent from the
+  app; in development the link is also written to the server log.
+- `/join/<token>` in the business accent: who invited you and as what, the
+  code goes to the invited number (only its last four digits are shown),
+  then the server claims the invite and opens home. A number with no
+  account gets one first (admin API), since sign-in never creates
+  accounts. Used, expired and unknown links each say what to do.
+- `@domain/invites` (token shape, link, phone ending); `@db/invites`
+  (token + SHA-256, issue, find, ensure account, claim). Sign-in's code
+  sending and checking moved to `app/(auth)/otp.ts`, shared by both.
+- Local Supabase rate limits for SMS, sign-in and verification raised to
+  120 per window: the e2e suite now signs in about fifteen times per size.
+- Tests: 7 new unit tests (148 total); pgTAP `invite_links.test.sql` (19)
+  and one more in `business_staff.test.sql`; Playwright `invite.spec.ts`
+  (the backlog's done-when): a platform admin issues and copies a link,
+  the invited number opens it signed out, joins with the code and lands on
+  home in the demo restaurant as a manager; the used link and an unknown
+  link say so. axe and overflow on every step.
+- Not verified locally: no Docker in this run's container. Migrations,
+  seed and the two pgTAP files ran on a local Postgres 16 with stubbed
+  auth and a pgTAP stand-in (all green). The join page's "link not active"
+  state checked in a production build at 390/820/1440 (axe clean, no
+  horizontal scroll). Playwright and the real pgTAP run in CI.
+- Known limit: a person already in another business still lands in their
+  oldest one until the business switcher exists. Invites past 14 days drop
+  off the console's list (1d-2 shows them so a new link can be sent).
+- Commit: squash of PR `agent/1d-1-invite-links` (see the daily note in #1).
+- Next: chunk 1d-2, the Team screen.
+- Defaults applied: none today.
+
 ## 2026-10-21 · run 11 · fix: `main` red after 1c-3
 
 - CI on `main` failed at `abdcf64` (the PR's own run was green): the e2e

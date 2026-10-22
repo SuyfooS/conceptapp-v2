@@ -47,3 +47,46 @@ export async function invitesBySlug(slug: string): Promise<OpenInvite[]> {
     await sql.end();
   }
 }
+
+const DEMO_RESTAURANT = "00000000-0000-4000-b000-000000000001";
+
+/**
+ * An open invite to the demo restaurant, as the wizard leaves one. Clears
+ * an earlier run's invite and membership for the number first, so the
+ * spec can run again on the same local database.
+ */
+export async function inviteToDemo(invite: {
+  name: string;
+  phone: string;
+  role: "owner" | "manager" | "worker";
+}): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`delete from public.invites
+      where business_id = ${DEMO_RESTAURANT} and phone = ${invite.phone}`;
+    await sql`delete from public.memberships m using public.profiles p
+      where m.business_id = ${DEMO_RESTAURANT} and m.user_id = p.id
+        and p.phone = ${invite.phone}`;
+    await sql`insert into public.invites
+        (business_id, phone, role, full_name, token_hash)
+      values (${DEMO_RESTAURANT}, ${invite.phone}, ${invite.role},
+        ${invite.name}, md5(random()::text) || md5(random()::text))`;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** The person's role in the demo restaurant, or null when not a member. */
+export async function demoRole(phone: string): Promise<string | null> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const rows = await sql<{ role: string }[]>`
+      select m.role::text as role from public.memberships m
+      join public.profiles p on p.id = m.user_id
+      where m.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
+        and m.active`;
+    return rows[0]?.role ?? null;
+  } finally {
+    await sql.end();
+  }
+}

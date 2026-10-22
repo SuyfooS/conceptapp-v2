@@ -128,6 +128,7 @@ const BusinessSetupRow = z.object({
       phone: z.string().nullable(),
       role: z.enum(ROLES),
       status: z.enum(["member", "invited"]),
+      invite_id: z.uuid().nullable(),
     }),
   ),
 });
@@ -138,6 +139,8 @@ export type SetupPerson = {
   phone: string | null;
   role: Role;
   status: "member" | "invited";
+  /** The open invite, for people still invited; null for members. */
+  inviteId: string | null;
 };
 
 export type BusinessSetup = Omit<AdminBusiness, "members" | "openInvites"> & {
@@ -169,6 +172,9 @@ export async function getBusinessSetup(
     address: row.address,
     templateKey: row.template_key,
     createdAt: row.created_at,
-    people: row.people,
+    people: row.people.map(({ invite_id, ...person }) => ({
+      ...person,
+      inviteId: invite_id,
+    })),
   };
 }
