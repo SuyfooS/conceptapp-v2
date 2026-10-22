@@ -21,8 +21,15 @@ export function JoinForm({ token, ending }: { token: string; ending: string }) {
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
   if (state.step === "invite") {
+    // Each step is its own form (key), so the code step's button is a new
+    // element rather than the send button fading back from its busy state.
     return (
-      <form action={action} className="flex flex-col gap-5" noValidate>
+      <form
+        key="invite"
+        action={action}
+        className="flex flex-col gap-5"
+        noValidate
+      >
         <p className="text-ink-2">{t.rich("sendIntro", { ending, ltr })}</p>
         {error ? (
           <p role="alert" className="text-danger text-sm">
@@ -43,7 +50,7 @@ export function JoinForm({ token, ending }: { token: string; ending: string }) {
   }
 
   return (
-    <form action={action} className="flex flex-col gap-5" noValidate>
+    <form key="code" action={action} className="flex flex-col gap-5" noValidate>
       <p className="text-ink-2" aria-live="polite">
         {t.rich(state.resent ? "codeResent" : "codeIntro", { ending, ltr })}
       </p>
