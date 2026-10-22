@@ -22,7 +22,13 @@ async function expectCleanPage(page: Page) {
   // Metadata streams in after the body (see new-business.spec.ts).
   await expect(page).toHaveTitle(/ConceptApp$/);
   const { violations } = await new AxeBuilder({ page }).analyze();
-  expect(violations.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+  // Each failing element and axe's reason, so a CI log alone says what
+  // to fix.
+  expect(
+    violations.flatMap((v) =>
+      v.nodes.map((n) => `${v.id}: ${n.target.join(" ")} ${n.failureSummary}`),
+    ),
+  ).toEqual([]);
   const overflow = await page.evaluate(
     () => document.documentElement.scrollWidth - window.innerWidth,
   );
