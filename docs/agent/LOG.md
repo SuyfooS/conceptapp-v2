@@ -42,6 +42,16 @@ what is next, defaults applied.
   auth and a pgTAP stand-in (all green). The join page's "link not active"
   state checked in a production build at 390/820/1440 (axe clean, no
   horizontal scroll). Playwright and the real pgTAP run in CI.
+- Design-system fix found by the new spec: the primary button's hover
+  (`bg-accent/90`) lightened the accent toward white, so white text fell
+  to 4.31:1 on the demo blue (axe, tablet and desktop, where the pointer
+  stays on the button). New tokens `accent-hover` / `accent-press` in
+  `globals.css` move the accent away from its ink (darker under white,
+  lighter under dark text), so hover and press only raise the contrast
+  `accentTokens` guarantees. Checked on `/design` with blue and yellow
+  accents: axe clean while hovered. The join form also renders each step
+  as its own form, so the code step's button is never the faded send
+  button.
 - Known limit: a person already in another business still lands in their
   oldest one until the business switcher exists. Invites past 14 days drop
   off the console's list (1d-2 shows them so a new link can be sent).
