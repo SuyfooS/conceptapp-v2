@@ -59,6 +59,8 @@ export async function inviteToDemo(invite: {
   name: string;
   phone: string;
   role: "owner" | "manager" | "worker";
+  /** Days until it expires; negative for one that already has. */
+  expiresInDays?: number;
 }): Promise<void> {
   const sql = postgres(DB_URL, { max: 1 });
   try {
@@ -68,9 +70,10 @@ export async function inviteToDemo(invite: {
       where m.business_id = ${DEMO_RESTAURANT} and m.user_id = p.id
         and p.phone = ${invite.phone}`;
     await sql`insert into public.invites
-        (business_id, phone, role, full_name, token_hash)
+        (business_id, phone, role, full_name, token_hash, expires_at)
       values (${DEMO_RESTAURANT}, ${invite.phone}, ${invite.role},
-        ${invite.name}, md5(random()::text) || md5(random()::text))`;
+        ${invite.name}, md5(random()::text) || md5(random()::text),
+        now() + make_interval(days => ${invite.expiresInDays ?? 14}))`;
   } finally {
     await sql.end();
   }
@@ -86,6 +89,17 @@ export async function demoRole(phone: string): Promise<string | null> {
       where m.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
         and m.active`;
     return rows[0]?.role ?? null;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Remove the demo restaurant's invites to these numbers. */
+export async function removeDemoInvites(phones: string[]): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`delete from public.invites
+      where business_id = ${DEMO_RESTAURANT} and phone in ${sql(phones)}`;
   } finally {
     await sql.end();
   }

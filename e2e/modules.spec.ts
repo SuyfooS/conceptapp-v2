@@ -48,7 +48,8 @@ test("the owner's navigation follows the business's modules", async ({
     m.reservations.name,
     m.storefront.name,
   ]);
-  const cards = page.getByRole("main").getByRole("link");
+  // Module cards only: owners and managers also get a link to their team.
+  const cards = page.getByRole("main").locator('a:not([href="/team"])');
   await expect(cards).toHaveCount(3);
   await expect(cards.filter({ hasText: m.reservations.name })).toBeVisible();
   await page.screenshot({

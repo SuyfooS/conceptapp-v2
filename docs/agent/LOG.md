@@ -20,8 +20,40 @@ what is next, defaults applied.
   server's resend cooldown). A race in the specs that a faster build
   exposed. `e2e/session.ts`: when the form says "ask again in a few
   seconds", the helper waits 5.5 s and asks once more, as a person would.
-- Merged before today's chunk so the Vercel preview is patched first.
-- Next: chunk 1d-2a, the Team screen (same run).
+- Merged before today's chunk so the Vercel preview is patched first
+  (PR #17).
+
+## 2026-10-23 · run 13 · chunk 1d-2a (the Team screen)
+
+- Split chunk 1d-2: 1d-2a the Team screen, read only (today); 1d-2b a
+  manager invites by phone from it and sends a new link for an expired
+  invite.
+- `/team` in the app, for owners and managers (`canSeeTeam`); a worker
+  gets the not-found screen. Members (owners, managers, workers, by name)
+  and invites nobody has claimed, open first, then expired. Phone: two
+  lists stacked; tablet: side by side; desktop: one table with a status
+  column. The header and the invites section count the invites waiting,
+  and expired ones say who can send a new link (the ConceptApp team, until
+  1d-2b).
+- Home gains "ניהול העסק" with a row to the team for owners and managers,
+  showing invites waiting (or the head count). Not a nav item: the nav
+  holds home plus four modules, the five-item limit.
+- `@domain/team` (`canSeeTeam`, `buildTeam`: order, open/expired, counts);
+  `@db/team` (`getTeam`, read under RLS: managers already read their
+  business's invites, and members read colleagues' profiles). No
+  migration.
+- `/design/shell/team` now renders the real screen (`TeamView`) with mock
+  people instead of a placeholder; its placeholder copy is gone.
+- Tests: 5 new unit tests (153 total); Playwright `team.spec.ts`: the
+  owner sees the waiting count on home, opens the team, finds members and
+  an open and an expired invite in each layout; a worker has no row and
+  no screen. `modules.spec.ts` counts module cards apart from the team row.
+- Not verified locally: no Docker in this run's container, so Playwright
+  runs in CI. `/design/shell/team` checked in a production build at
+  390/820/1440: axe clean, no horizontal scroll.
+- Commit: squash of PR `agent/1d-2-team-screen` (see the daily note in #1).
+- Next: chunk 1d-2b, inviting from the Team screen.
+- Defaults applied: none today.
 
 ## 2026-10-22 · run 12 · chunk 1d-1 (invite links and joining)
 

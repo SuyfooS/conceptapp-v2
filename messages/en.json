@@ -207,11 +207,6 @@
       "subtitle": "Table map, today’s bookings and confirmations",
       "placeholder": "This screen arrives in phases 6–7"
     },
-    "team": {
-      "title": "Team",
-      "subtitle": "Staff, roles and permissions",
-      "placeholder": "This screen arrives in phase 1, with the business setup wizard"
-    },
     "more": {
       "title": "More",
       "subtitle": "Time clock, business page, settings and account",
@@ -298,7 +293,8 @@
         "body": "No modules are on for this business yet. The ConceptApp team turns them on when setting up the business, and they appear here and in the menu."
       },
       "signOut": "Sign out",
-      "modulesTitle": "In your business"
+      "modulesTitle": "In your business",
+      "manageTitle": "Running the business"
     },
     "moduleSoon": {
       "body": "This screen opens in the next stage of the build. Everything else is on the home screen meanwhile.",
@@ -308,6 +304,38 @@
       "title": "This screen isn't available",
       "body": "It may be off for this business, or meant for another role. Everything available to you is on the home screen and in the menu.",
       "home": "Back to home"
+    },
+    "team": {
+      "title": "Team",
+      "subtitle": "{members, plural, one {One person on the team} other {# people on the team}}{open, plural, =0 {} one { · one invite waiting} other { · # invites waiting}}",
+      "noName": "No name",
+      "everyone": "Everyone in the business",
+      "roles": {
+        "owner": "Owner",
+        "manager": "Manager",
+        "worker": "Worker"
+      },
+      "state": {
+        "member": "On the team",
+        "open": "Waiting to join",
+        "expired": "Expired"
+      },
+      "columns": {
+        "name": "Name",
+        "phone": "Mobile",
+        "role": "Role",
+        "status": "Status"
+      },
+      "members": {
+        "title": "On the team",
+        "count": "{count, plural, one {One person} other {# people}}"
+      },
+      "invites": {
+        "title": "Invites",
+        "open": "{count, plural, one {One invite waiting} other {# invites waiting}}",
+        "empty": "No open invites. To add someone to the team, the ConceptApp team sends them an invite link.",
+        "expiredHint": "{count, plural, one {One invite has expired} other {# invites have expired}}. The ConceptApp team can send a new link."
+      }
     }
   },
   "modules": {
