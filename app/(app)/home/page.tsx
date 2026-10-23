@@ -4,12 +4,14 @@ import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
+import { Users } from "lucide-react";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { signOut } from "../../(auth)/actions";
 import { currentMember } from "../member";
 import { moduleIcons } from "../module-icons";
 import { currentModules } from "../modules";
+import { currentTeam } from "../team";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("app.home");
@@ -17,14 +19,16 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 // Home: a card per enabled module the person's role reaches, from the
-// module manifests. Same content on every device; the shell around it
+// module manifests, and for owners and managers the way to their team. Same content on every device; the shell around it
 // changes shape.
 export default async function HomePage() {
-  const [t, tm, member, enabled] = await Promise.all([
+  const [t, tm, tt, member, enabled, team] = await Promise.all([
     getTranslations("app.home"),
     getTranslations("modules"),
+    getTranslations("app.team"),
     currentMember(),
     currentModules(),
+    currentTeam(),
   ]);
   const firstName = member?.name?.split(" ")[0];
   const role = member?.membership?.role;
@@ -60,6 +64,22 @@ export default async function HomePage() {
           <CardText>{t("empty.body")}</CardText>
         </Card>
       )}
+      {team ? (
+        <PageSection title={t("manageTitle")} className="md:max-w-xl">
+          <ListGroup>
+            <ListRow
+              href="/team"
+              leading={<Users />}
+              title={tt("title")}
+              subtitle={
+                team.counts.open > 0
+                  ? tt("invites.open", { count: team.counts.open })
+                  : tt("members.count", { count: team.counts.members })
+              }
+            />
+          </ListGroup>
+        </PageSection>
+      ) : null}
       <form action={signOut}>
         <Button type="submit" variant="secondary" className="w-full md:w-auto">
           {t("signOut")}

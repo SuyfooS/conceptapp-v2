@@ -3,6 +3,8 @@
 // sets itself), so its Hebrew stays here rather than in messages/; the
 // Hebrew-literal check in tooling/ allows this one file.
 
+import type { TeamInvite, TeamMember } from "@domain/team";
+
 export const business = { name: "מסעדת הדגמה" };
 export const user = { name: "שירן", role: "מנהלת משמרת" };
 
@@ -141,4 +143,40 @@ export const activity = [
   { time: "08:40", text: "הזמנה חדשה: גבאי, 8 סועדים, 20:30" },
   { time: "אתמול", text: "מאיה פרץ הגישה זמינות לשבוע הבא" },
   { time: "אתמול", text: "הסידור לשבוע הנוכחי פורסם" },
+];
+
+// The Team screen: members and invites as the database returns them.
+export const teamToday = new Date("2026-10-23T09:00:00+03:00");
+
+export const teamMembers: TeamMember[] = [
+  {
+    userId: "shiran",
+    name: "שירן אלון",
+    phone: "+972501234567",
+    role: "manager",
+  },
+  { userId: "uri", name: "אורי בן דוד", phone: "+972521234567", role: "owner" },
+  ...staff.slice(0, 6).map((s, i) => ({
+    userId: s.id,
+    name: s.name,
+    phone: `+97254123456${i}`,
+    role: "worker" as const,
+  })),
+];
+
+export const teamInvites: TeamInvite[] = [
+  {
+    id: "dana",
+    name: "דנה אברהם",
+    phone: "+972531234567",
+    role: "worker",
+    expiresAt: "2026-11-02T09:00:00+02:00",
+  },
+  {
+    id: "ron",
+    name: "רון שפירא",
+    phone: "+972581234567",
+    role: "worker",
+    expiresAt: "2026-10-18T09:00:00+03:00",
+  },
 ];
