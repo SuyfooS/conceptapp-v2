@@ -4,21 +4,11 @@ import { getPlatformStaff } from "@db/admin";
 import { issueInviteLink } from "@db/invites";
 import { inviteLink } from "@domain/invites";
 import { platformCan } from "@domain/platform";
-import { headers } from "next/headers";
+import { requestOrigin } from "@/app/origin";
 
 export type InviteLinkState =
   | { link?: undefined; failure?: "failed" | "noPermission" }
   | { link: string; failure?: undefined };
-
-/** The origin the console was opened on, so the link works where it is sent. */
-async function requestOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host");
-  if (!host) throw new Error("No host header");
-  const local = /^(localhost|127\.0\.0\.1)(:\d+)?$/.test(host);
-  const proto = h.get("x-forwarded-proto") ?? (local ? "http" : "https");
-  return `${proto}://${host}`;
-}
 
 /**
  * A fresh invite link for one open invite, shown to the team member to

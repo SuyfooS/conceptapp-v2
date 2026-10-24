@@ -1,4 +1,5 @@
-import { atLeast, type Role } from "./modules";
+import { atLeast, ROLES, type Role } from "./modules";
+import { normalizeIsraeliMobile } from "./phone";
 
 /**
  * The Team screen's rules, free of React and the database: who may open
@@ -75,4 +76,70 @@ export function buildTeam(
       expired: withState.length - open,
     },
   };
+}
+
+/**
+ * The roles an owner or manager may give someone they invite: their own
+ * and below. A manager invites managers and workers; only an owner invites
+ * an owner. The database checks the same rule.
+ */
+export function invitableRoles(role: Role): Role[] {
+  if (!canSeeTeam(role)) return [];
+  return ROLES.filter((r) => atLeast(role, r));
+}
+
+/** May someone in `role` send a link for an invite with `inviteRole`? */
+export function canResendInvite(role: Role, inviteRole: Role): boolean {
+  return canSeeTeam(role) && atLeast(role, inviteRole);
+}
+
+/** Same limit as `profiles.full_name` in the database. */
+export const TEAM_NAME_MAX = 80;
+
+export type TeamInviteInput = {
+  name: string;
+  /** Canonical E.164. */
+  phone: string;
+  role: Role;
+};
+
+export type TeamInviteErrors = {
+  name?: "required" | "tooLong";
+  phone?: "required" | "invalid";
+  role?: "required" | "notAllowed";
+};
+
+/**
+ * Checks the Team screen's invite form for someone in `actorRole`: a name,
+ * an Israeli mobile (any format; `PhoneField` already submits E.164) and a
+ * role they may give.
+ */
+export function parseTeamInvite(
+  input: Partial<Record<keyof TeamInviteInput, unknown>>,
+  actorRole: Role,
+):
+  | { ok: true; value: TeamInviteInput }
+  | { ok: false; errors: TeamInviteErrors } {
+  const text = (v: unknown) => (typeof v === "string" ? v : "");
+  const name = text(input.name).trim().replace(/\s+/g, " ");
+  const rawPhone = text(input.phone).trim();
+  const phone = normalizeIsraeliMobile(rawPhone);
+  const role = text(input.role) as Role;
+  const errors: TeamInviteErrors = {};
+
+  if (!name) errors.name = "required";
+  else if (name.length > TEAM_NAME_MAX) errors.name = "tooLong";
+
+  if (!rawPhone) errors.phone = "required";
+  else if (!phone) errors.phone = "invalid";
+
+  if (!role) errors.role = "required";
+  else if (!invitableRoles(actorRole).includes(role)) {
+    errors.role = "notAllowed";
+  }
+
+  if (errors.name || errors.phone || errors.role || !phone) {
+    return { ok: false, errors };
+  }
+  return { ok: true, value: { name, phone, role } };
 }

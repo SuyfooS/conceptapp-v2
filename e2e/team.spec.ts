@@ -106,4 +106,8 @@ test("a worker has no team screen", async ({ page }) => {
   await expect(
     page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
   ).toBeVisible();
+  await page.goto("/team/invite");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
+  ).toBeVisible();
 });

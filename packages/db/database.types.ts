@@ -372,6 +372,21 @@ export type Database = {
         Args: { actor: string; invite: string; new_token_hash: string };
         Returns: string;
       };
+      team_invite: {
+        Args: {
+          actor: string;
+          business: string;
+          invite_name: string;
+          invite_phone: string;
+          invite_role: Database["public"]["Enums"]["member_role"];
+          new_token_hash: string;
+        };
+        Returns: string;
+      };
+      team_invite_link: {
+        Args: { actor: string; invite: string; new_token_hash: string };
+        Returns: string;
+      };
     };
     Enums: {
       member_role: "owner" | "manager" | "worker";

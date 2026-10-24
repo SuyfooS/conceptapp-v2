@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   buildTeam,
+  canResendInvite,
   canSeeTeam,
+  invitableRoles,
+  parseTeamInvite,
+  TEAM_NAME_MAX,
   type TeamInvite,
   type TeamMember,
 } from "./team";
@@ -89,5 +93,80 @@ describe("buildTeam", () => {
     const members = [member("B", "worker"), member("A", "owner")];
     buildTeam(members, [], now);
     expect(members.map((m) => m.name)).toEqual(["B", "A"]);
+  });
+});
+
+describe("invitableRoles", () => {
+  it("lets owners give any role and managers their own and below", () => {
+    expect(invitableRoles("owner")).toEqual(["owner", "manager", "worker"]);
+    expect(invitableRoles("manager")).toEqual(["manager", "worker"]);
+    expect(invitableRoles("worker")).toEqual([]);
+  });
+});
+
+describe("canResendInvite", () => {
+  it("follows the same rule as inviting", () => {
+    expect(canResendInvite("owner", "owner")).toBe(true);
+    expect(canResendInvite("manager", "worker")).toBe(true);
+    expect(canResendInvite("manager", "manager")).toBe(true);
+    expect(canResendInvite("manager", "owner")).toBe(false);
+    expect(canResendInvite("worker", "worker")).toBe(false);
+  });
+});
+
+describe("parseTeamInvite", () => {
+  it("accepts a name, a mobile in any format and an allowed role", () => {
+    expect(
+      parseTeamInvite(
+        { name: "  גל   לוי ", phone: "050-123-4567", role: "worker" },
+        "manager",
+      ),
+    ).toEqual({
+      ok: true,
+      value: { name: "גל לוי", phone: "+972501234567", role: "worker" },
+    });
+  });
+
+  it("names each missing field", () => {
+    expect(parseTeamInvite({}, "owner")).toEqual({
+      ok: false,
+      errors: { name: "required", phone: "required", role: "required" },
+    });
+  });
+
+  it("rejects a number that is not an Israeli mobile", () => {
+    const result = parseTeamInvite(
+      { name: "גל", phone: "03-123-4567", role: "worker" },
+      "owner",
+    );
+    expect(result).toEqual({ ok: false, errors: { phone: "invalid" } });
+  });
+
+  it("rejects a name over the limit", () => {
+    const result = parseTeamInvite(
+      {
+        name: "א".repeat(TEAM_NAME_MAX + 1),
+        phone: "0501234567",
+        role: "worker",
+      },
+      "owner",
+    );
+    expect(result).toEqual({ ok: false, errors: { name: "tooLong" } });
+  });
+
+  it("refuses a role above the inviter's own or one that does not exist", () => {
+    const base = { name: "גל", phone: "0501234567" };
+    expect(parseTeamInvite({ ...base, role: "owner" }, "manager")).toEqual({
+      ok: false,
+      errors: { role: "notAllowed" },
+    });
+    expect(parseTeamInvite({ ...base, role: "chef" }, "owner")).toEqual({
+      ok: false,
+      errors: { role: "notAllowed" },
+    });
+    expect(parseTeamInvite({ ...base, role: "worker" }, "worker")).toEqual({
+      ok: false,
+      errors: { role: "notAllowed" },
+    });
   });
 });

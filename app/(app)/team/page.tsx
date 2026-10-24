@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { currentMember } from "../member";
 import { currentTeam } from "../team";
+import { resendInviteAction } from "./actions";
 import { TeamView } from "./team-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -19,5 +20,12 @@ export default async function TeamPage() {
   if (!role || !canSeeTeam(role)) notFound();
   const team = await currentTeam();
   if (!team) notFound();
-  return <TeamView team={team} />;
+  return (
+    <TeamView
+      team={team}
+      viewerRole={role}
+      inviteHref="/team/invite"
+      resend={resendInviteAction}
+    />
+  );
 }

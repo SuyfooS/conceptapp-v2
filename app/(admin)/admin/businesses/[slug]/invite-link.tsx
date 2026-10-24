@@ -1,10 +1,10 @@
 "use client";
 
 import { Button } from "@ui/button";
-import { ltrInputClass, TextField } from "@ui/text-field";
-import { Check, Copy, Link2 } from "lucide-react";
+import { Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useActionState, useState } from "react";
+import { useActionState } from "react";
+import { CopyLink } from "@/app/copy-link";
 import { type InviteLinkState, inviteLinkAction } from "./actions";
 
 const initial: InviteLinkState = {};
@@ -25,7 +25,6 @@ export function InviteLink({
     inviteLinkAction.bind(null, inviteId),
     initial,
   );
-  const [copied, setCopied] = useState(false);
 
   if (!state.link) {
     return (
@@ -49,32 +48,13 @@ export function InviteLink({
     );
   }
 
-  const copy = async () => {
-    await navigator.clipboard.writeText(state.link);
-    setCopied(true);
-  };
-
   return (
-    <div className="flex w-full min-w-0 flex-col gap-2">
-      <TextField
-        label={t("linkFor", { name })}
-        value={state.link}
-        readOnly
-        dir="ltr"
-        className={ltrInputClass}
-        onFocus={(event) => event.currentTarget.select()}
-        hint={t("hint")}
-      />
-      <Button
-        type="button"
-        variant="secondary"
-        onClick={copy}
-        aria-live="polite"
-        className="w-full md:w-auto md:self-start"
-      >
-        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
-        {copied ? t("copied") : t("copy")}
-      </Button>
-    </div>
+    <CopyLink
+      link={state.link}
+      label={t("linkFor", { name })}
+      hint={t("hint")}
+      copy={t("copy")}
+      copied={t("copied")}
+    />
   );
 }
