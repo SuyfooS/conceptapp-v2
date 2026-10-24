@@ -109,3 +109,67 @@ export async function claimInvite(
   }
   return { ok: true, businessId: z.uuid().parse(data) };
 }
+
+export type TeamInviteResult =
+  | { ok: true; token: string; phone: string }
+  | { ok: false; error: "alreadyMember" | "notAllowed" | "notOpen" };
+
+/** The database's refusals, as the Team screen explains them. */
+function teamInviteError(code: string | undefined) {
+  if (code === "23505") return "alreadyMember" as const;
+  if (code === "42501") return "notAllowed" as const;
+  if (code === "P0002") return "notOpen" as const;
+  return null;
+}
+
+/**
+ * An owner or manager invites someone to their business from the Team
+ * screen (`public.team_invite`): a new invite, or a fresh name, role and
+ * link for the number's unclaimed one. Returns the token for the link.
+ * Runs with the secret key: callers check the role with `parseTeamInvite`
+ * first, and the database checks it again against the actor's membership.
+ */
+export async function inviteToTeam(
+  actorId: string,
+  businessId: string,
+  invite: { name: string; phone: string; role: Role },
+): Promise<TeamInviteResult> {
+  const token = newInviteToken();
+  const { error } = await createAdminClient().rpc("team_invite", {
+    actor: actorId,
+    business: businessId,
+    invite_name: invite.name,
+    invite_phone: invite.phone,
+    invite_role: invite.role,
+    new_token_hash: hashInviteToken(token),
+  });
+  if (error) {
+    const known = teamInviteError(error.code);
+    if (known) return { ok: false, error: known };
+    throw new Error(`Could not invite: ${error.message}`);
+  }
+  return { ok: true, token, phone: invite.phone };
+}
+
+/**
+ * A fresh link for an invite nobody claimed, open or expired, from an
+ * owner or manager of its business (`public.team_invite_link`). The old
+ * link stops working and the invite gets another 14 days.
+ */
+export async function issueTeamInviteLink(
+  actorId: string,
+  inviteId: string,
+): Promise<TeamInviteResult> {
+  const token = newInviteToken();
+  const { data, error } = await createAdminClient().rpc("team_invite_link", {
+    actor: actorId,
+    invite: inviteId,
+    new_token_hash: hashInviteToken(token),
+  });
+  if (error) {
+    const known = teamInviteError(error.code);
+    if (known) return { ok: false, error: known };
+    throw new Error(`Could not issue invite link: ${error.message}`);
+  }
+  return { ok: true, token, phone: z.string().parse(data) };
+}

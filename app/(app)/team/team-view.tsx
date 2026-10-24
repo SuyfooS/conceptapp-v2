@@ -1,24 +1,45 @@
+import type { Role } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
-import type { Team } from "@domain/team";
+import { canResendInvite, type Team } from "@domain/team";
 import { Badge } from "@ui/badge";
+import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { ListGroup } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
+import { UserPlus } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
+import { ResendLink } from "./resend-link";
+
+type Resend = ComponentProps<typeof ResendLink>["resend"];
 
 type T = Awaited<ReturnType<typeof getTranslations<"app">>>;
 type Invite = Team["invites"][number];
+type ViewProps = { t: T; team: Team; viewerRole: Role; resend: Resend };
 
 /**
  * The Team screen's body: members, and invites nobody has claimed yet.
  * Phone: members, then invites, one list each; tablet: the two lists side
- * by side; desktop: everyone in one table. Also rendered with mock data
- * on /design/shell/team.
+ * by side; desktop: everyone in one table. The main action invites
+ * someone; each invite the viewer may send gets a "new link" button. Also
+ * rendered with mock data on /design/shell/team.
  */
-export async function TeamView({ team }: { team: Team }) {
+export async function TeamView({
+  team,
+  viewerRole,
+  inviteHref,
+  resend,
+}: {
+  team: Team;
+  /** The signed-in owner or manager. */
+  viewerRole: Role;
+  inviteHref: string;
+  resend: Resend;
+}) {
   const t = await getTranslations("app");
+  const view = { t, team, viewerRole, resend };
   return (
     <PageBody>
       <PageHeader
@@ -27,13 +48,21 @@ export async function TeamView({ team }: { team: Team }) {
           members: team.counts.members,
           open: team.counts.open,
         })}
+        actions={
+          <Button asChild>
+            <Link href={inviteHref}>
+              <UserPlus aria-hidden="true" />
+              {t("team.inviteAction")}
+            </Link>
+          </Button>
+        }
       />
       <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:hidden">
-        <Members t={t} team={team} />
-        <Invites t={t} team={team} />
+        <Members {...view} />
+        <Invites {...view} />
       </div>
       <div className="hidden xl:block">
-        <Everyone t={t} team={team} />
+        <Everyone {...view} />
       </div>
     </PageBody>
   );
@@ -55,23 +84,40 @@ function Row({
   title,
   subtitle,
   trailing,
+  below,
 }: {
   title: string;
   subtitle: ReactNode;
   trailing?: ReactNode;
+  /** Shown under the row, full width (the invite's link button). */
+  below?: ReactNode;
 }) {
   return (
-    <li className="flex min-h-14 items-center gap-3 px-4 py-3">
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-medium">{title}</span>
-        <span className="truncate text-ink-2 text-sm">{subtitle}</span>
-      </span>
-      {trailing}
+    <li className="flex min-h-14 flex-col gap-3 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <span className="flex min-w-0 flex-1 flex-col">
+          <span className="truncate font-medium">{title}</span>
+          <span className="truncate text-ink-2 text-sm">{subtitle}</span>
+        </span>
+        {trailing}
+      </div>
+      {below}
     </li>
   );
 }
 
-function Members({ t, team }: { t: T; team: Team }) {
+/** The "new link" button, when the viewer may send this invite. */
+function resendButton({ t, viewerRole, resend }: ViewProps, invite: Invite) {
+  return canResendInvite(viewerRole, invite.role) ? (
+    <ResendLink
+      inviteId={invite.id}
+      name={name(t, invite.name)}
+      resend={resend}
+    />
+  ) : null;
+}
+
+function Members({ t, team }: ViewProps) {
   return (
     <PageSection
       title={t("team.members.title")}
@@ -105,7 +151,8 @@ function Members({ t, team }: { t: T; team: Team }) {
   );
 }
 
-function Invites({ t, team }: { t: T; team: Team }) {
+function Invites(view: ViewProps) {
+  const { t, team } = view;
   const { open, expired } = team.counts;
   return (
     <PageSection
@@ -141,6 +188,7 @@ function Invites({ t, team }: { t: T; team: Team }) {
                     </>
                   }
                   trailing={<InviteBadge t={t} state={i.state} />}
+                  below={resendButton(view, i)}
                 />
               ))}
             </ul>
@@ -159,7 +207,8 @@ function Invites({ t, team }: { t: T; team: Team }) {
 const th = "px-4 py-2.5 text-start font-medium text-ink-2 text-sm";
 const td = "px-4 py-3";
 
-function Everyone({ t, team }: { t: T; team: Team }) {
+function Everyone(view: ViewProps) {
+  const { t, team } = view;
   const { open, expired } = team.counts;
   return (
     <PageSection
@@ -189,6 +238,9 @@ function Everyone({ t, team }: { t: T; team: Team }) {
               <th scope="col" className={th}>
                 {t("team.columns.status")}
               </th>
+              <th scope="col" className={th}>
+                {t("team.columns.link")}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -202,6 +254,7 @@ function Everyone({ t, team }: { t: T; team: Team }) {
                 <td className={td}>
                   <Badge tone="success">{t("team.state.member")}</Badge>
                 </td>
+                <td className={td} />
               </tr>
             ))}
             {team.invites.map((i) => (
@@ -214,6 +267,7 @@ function Everyone({ t, team }: { t: T; team: Team }) {
                 <td className={td}>
                   <InviteBadge t={t} state={i.state} />
                 </td>
+                <td className={cn(td, "w-96")}>{resendButton(view, i)}</td>
               </tr>
             ))}
           </tbody>

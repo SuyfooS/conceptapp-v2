@@ -3,6 +3,48 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-24 · run 14 · chunk 1d-2b (inviting from the Team screen)
+
+- `/team` gains the main action "הזמנה לצוות" → `/team/invite`: name,
+  mobile (`PhoneField`) and role, then the link with a copy button to send
+  on. Nothing is sent from the app; in development the link is also
+  logged. "הזמנה של מישהו נוסף" starts a fresh form.
+- Each invite nobody claimed (open or expired) has "קישור חדש": a fresh
+  link replaces the old one, the invite is open for 14 more days, and the
+  screen re-reads its counts (`refresh()` from `next/cache`). Phone and
+  tablet: under the row; desktop: a new "קישור" column.
+- Rule (default, no question opened): owners and managers invite at their
+  own role or below. A manager invites managers and workers and cannot
+  send or change an owner's invite; only an owner invites an owner.
+  `@domain/team`: `invitableRoles`, `canResendInvite`, `parseTeamInvite`.
+- Migration `20261024000100_team_invites.sql`, secret key only:
+  `team_invite(actor, business, phone, name, role, hash)` (refuses a
+  number already in the team; a number with an unclaimed invite gets that
+  invite refreshed; audit `invite.create` / `invite.send`) and
+  `team_invite_link(actor, invite, hash)`. Both check the actor's own
+  active membership and role in the invite's business.
+- `@db/invites`: `inviteToTeam`, `issueTeamInviteLink`. The link-and-copy
+  field is shared with the console (`app/copy-link.tsx`), and so is the
+  request origin (`app/origin.ts`).
+- `/design/shell/team` and the new `/design/shell/team/invite` render the
+  real screens with stand-in actions (same checks, a link that leads
+  nowhere, nothing stored).
+- Tests: 8 new unit tests (160 total); pgTAP `team_invites.test.sql`
+  (24); Playwright `team-invite.spec.ts` (a manager invites a worker and
+  copies the link, the invite is in the database, a member's number is
+  refused; a new link reopens an expired invite and an owner's invite has
+  no button for a manager); `team.spec.ts`: a worker gets not-found on
+  `/team/invite` too.
+- Not verified locally: no Docker in this run's container. Migrations,
+  seed and the new pgTAP file ran on a local Postgres 16 with stubbed auth
+  and a pgTAP stand-in (24/24; a planted bug in the role check turns it
+  red). Demo screens checked in a production build at 390/820/1440, before
+  and after submitting, with errors and with a link shown: axe clean, no
+  horizontal scroll. Playwright and the real pgTAP run in CI.
+- Commit: squash of PR `agent/1d-2b-team-invites` (see the daily note in #1).
+- Next: chunk 1e, "view as" a role with the audit log.
+- Defaults applied: the invite-role rule above.
+
 ## 2026-10-23 · run 13 · fix: Next.js 16.4.1 (security)
 
 - `pnpm build` stopped with a Next.js security notice, and `pnpm audit`
