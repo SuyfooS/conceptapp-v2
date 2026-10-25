@@ -8,12 +8,14 @@ describe("platformCan", () => {
     }
   });
 
-  it.each(["businesses.read", "businesses.create", "staff.invite"] as const)(
-    "lets an onboarder %s",
-    (action) => {
-      expect(platformCan("onboarder", action)).toBe(true);
-    },
-  );
+  it.each([
+    "businesses.read",
+    "businesses.create",
+    "businesses.view_as",
+    "staff.invite",
+  ] as const)("lets an onboarder %s", (action) => {
+    expect(platformCan("onboarder", action)).toBe(true);
+  });
 
   it.each(["businesses.delete", "templates.edit", "billing.manage"] as const)(
     "does not let an onboarder %s",

@@ -7,6 +7,7 @@ import {
   parseTeamInvite,
   type TeamInviteErrors,
 } from "@domain/team";
+import { canWrite } from "@domain/view-as";
 import { refresh, revalidatePath } from "next/cache";
 import { requestOrigin } from "@/app/origin";
 import { currentMember } from "../member";
@@ -16,7 +17,8 @@ export type TeamFailure =
   | "notAllowed"
   | "notOpen"
   | "failed"
-  | "noPermission";
+  | "noPermission"
+  | "viewOnly";
 
 export type InviteState =
   | {
@@ -32,11 +34,17 @@ export type ResendState =
   | { link?: undefined; failure?: TeamFailure }
   | { link: string; failure?: undefined };
 
-/** The signed-in owner or manager, or null. */
+/**
+ * The signed-in owner or manager, or why they may not invite. The
+ * ConceptApp team viewing as a role sees the screens but changes nothing.
+ */
 async function inviter() {
   const member = await currentMember();
   const membership = member?.membership;
-  if (!member || !membership || !canSeeTeam(membership.role)) return null;
+  if (!member || !membership || !canSeeTeam(membership.role)) {
+    return { failure: "noPermission" as const };
+  }
+  if (!canWrite(member.viewing)) return { failure: "viewOnly" as const };
   return { userId: member.userId, membership };
 }
 
@@ -64,7 +72,7 @@ export async function inviteAction(
     role: String(form.get("role") ?? ""),
   };
   const actor = await inviter();
-  if (!actor) return { failure: "noPermission", values };
+  if ("failure" in actor) return { failure: actor.failure, values };
 
   const parsed = parseTeamInvite(values, actor.membership.role);
   if (!parsed.ok) return { errors: parsed.errors, values };
@@ -97,7 +105,7 @@ export async function resendInviteAction(
   _form: FormData,
 ): Promise<ResendState> {
   const actor = await inviter();
-  if (!actor) return { failure: "noPermission" };
+  if ("failure" in actor) return { failure: actor.failure };
   try {
     const result = await issueTeamInviteLink(actor.userId, inviteId);
     if (!result.ok) return { failure: result.error };

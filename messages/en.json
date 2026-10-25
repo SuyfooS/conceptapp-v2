@@ -350,7 +350,8 @@
           "notAllowed": "You cannot invite to this role.",
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create a link. Try again in a moment.",
-          "noPermission": "Only owners and managers can invite to the team."
+          "noPermission": "Only owners and managers can invite to the team.",
+          "viewOnly": "This is view only, so no link was made."
         }
       },
       "invite": {
@@ -387,9 +388,16 @@
           "notAllowed": "You cannot invite to this role.",
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create the invite. Try again in a moment.",
-          "noPermission": "Only owners and managers can invite to the team."
+          "noPermission": "Only owners and managers can invite to the team.",
+          "viewOnly": "This is view only, so the invite was not saved."
         }
       }
+    },
+    "viewAs": {
+      "label": "Viewing mode",
+      "title": "Viewing as {role} · {business}",
+      "body": "You see the app the way this role sees it. No change is saved.",
+      "end": "Stop viewing"
     }
   },
   "modules": {
@@ -634,6 +642,16 @@
           "failed": "Could not create a link. Try again in a moment.",
           "noPermission": "You may not invite people."
         }
+      },
+      "viewAs": {
+        "title": "View the app",
+        "body": "Open {name}'s app the way a role sees it. View only: no change can be saved, the start and end are written to the audit log, and it ends by itself after two hours.",
+        "as": {
+          "owner": "View as owner",
+          "manager": "View as manager",
+          "worker": "View as worker"
+        },
+        "failed": "We could not open the view. Try again in a moment."
       }
     }
   }

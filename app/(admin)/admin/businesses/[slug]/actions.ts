@@ -2,8 +2,11 @@
 
 import { getPlatformStaff } from "@db/admin";
 import { issueInviteLink } from "@db/invites";
+import { startViewing } from "@db/view-as";
 import { inviteLink } from "@domain/invites";
 import { platformCan } from "@domain/platform";
+import { parseViewAsRole } from "@domain/view-as";
+import { notFound, redirect } from "next/navigation";
 import { requestOrigin } from "@/app/origin";
 
 export type InviteLinkState =
@@ -36,4 +39,27 @@ export async function inviteLinkAction(
     console.error("issueInviteLink failed", (error as Error).message);
     return { failure: "failed" };
   }
+}
+
+/**
+ * Open the business's app as the role in the form, read only. The session
+ * and the audit log entry are written by the database; the app then reads
+ * the business as that role until the session ends (two hours at most).
+ */
+export async function viewAsAction(
+  business: { id: string; slug: string },
+  form: FormData,
+): Promise<never> {
+  const staff = await getPlatformStaff();
+  const role = parseViewAsRole(form.get("role"));
+  if (!staff || !platformCan(staff.role, "businesses.view_as") || !role) {
+    notFound();
+  }
+  try {
+    await startViewing(staff.userId, business.id, role);
+  } catch (error) {
+    console.error("startViewing failed", (error as Error).message);
+    redirect(`/admin/businesses/${business.slug}?view=failed`);
+  }
+  redirect("/home");
 }

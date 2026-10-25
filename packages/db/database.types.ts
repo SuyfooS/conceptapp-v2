@@ -328,6 +328,51 @@ export type Database = {
         };
         Relationships: [];
       };
+      view_sessions: {
+        Row: {
+          business_id: string;
+          ended_at: string | null;
+          expires_at: string;
+          id: string;
+          role: Database["public"]["Enums"]["member_role"];
+          staff_id: string;
+          started_at: string;
+        };
+        Insert: {
+          business_id: string;
+          ended_at?: string | null;
+          expires_at?: string;
+          id?: string;
+          role: Database["public"]["Enums"]["member_role"];
+          staff_id: string;
+          started_at?: string;
+        };
+        Update: {
+          business_id?: string;
+          ended_at?: string | null;
+          expires_at?: string;
+          id?: string;
+          role?: Database["public"]["Enums"]["member_role"];
+          staff_id?: string;
+          started_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "view_sessions_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "view_sessions_staff_id_fkey";
+            columns: ["staff_id"];
+            isOneToOne: false;
+            referencedRelation: "platform_staff";
+            referencedColumns: ["user_id"];
+          },
+        ];
+      };
     };
     Views: {
       [_ in never]: never;
@@ -367,9 +412,18 @@ export type Database = {
         };
         Returns: string;
       };
+      end_view_session: { Args: { actor: string }; Returns: string };
       invite_by_token: { Args: { token_hash: string }; Returns: Json };
       issue_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };
+        Returns: string;
+      };
+      start_view_session: {
+        Args: {
+          actor: string;
+          business: string;
+          view_role: Database["public"]["Enums"]["member_role"];
+        };
         Returns: string;
       };
       team_invite: {

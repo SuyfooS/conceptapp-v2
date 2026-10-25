@@ -21,6 +21,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.has_role(business, min_role)` | has at least that role (owner > manager > worker) |
 | `private.has_perm(business, perm)` | holds the permission (owners hold all) |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
+| `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only) |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
 audit log) go through server code with `SUPABASE_SECRET_KEY`. From the
