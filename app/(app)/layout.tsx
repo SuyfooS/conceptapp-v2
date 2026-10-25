@@ -17,6 +17,7 @@ import { signOut } from "../(auth)/actions";
 import { currentMember } from "./member";
 import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
+import { ViewAsBanner } from "./view-as-banner";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -94,6 +95,9 @@ async function Shell({ children }: { children: ReactNode }) {
         user={{ name, role: t(`roles.${role}`) }}
         nav={nav}
       >
+        {member.viewing ? (
+          <ViewAsBanner viewing={member.viewing} businessName={business.name} />
+        ) : null}
         {children}
       </AppShell>
     </div>

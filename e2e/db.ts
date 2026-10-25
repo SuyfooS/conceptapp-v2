@@ -104,3 +104,36 @@ export async function removeDemoInvites(phones: string[]): Promise<void> {
     await sql.end();
   }
 }
+
+/** How many `view_as.start` and `view_as.end` entries the person has. */
+export async function viewAudit(
+  phone: string,
+): Promise<{ start: number; end: number }> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const rows = await sql<{ start: number; end: number }[]>`
+      select
+        count(*) filter (where a.action = 'view_as.start')::int as start,
+        count(*) filter (where a.action = 'view_as.end')::int as end
+      from public.audit_log a join public.profiles p on p.id = a.actor_id
+      where p.phone = ${phone}`;
+    return rows[0] ?? { start: 0, end: 0 };
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * End the person's open view session, so a failed spec never leaves the
+ * console's platform admin inside a business for the specs after it.
+ */
+export async function endViewSessions(phone: string): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`update public.view_sessions v set ended_at = now()
+      from public.profiles p
+      where p.id = v.staff_id and p.phone = ${phone} and v.ended_at is null`;
+  } finally {
+    await sql.end();
+  }
+}

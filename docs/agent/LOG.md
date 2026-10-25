@@ -3,6 +3,47 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-25 · run 15 · chunk 1e ("view as" and the audit log)
+
+- The console's business page gains "צפייה באפליקציה": three buttons
+  open the business's app as its owner, a manager or a worker. A banner
+  above every screen says who you are viewing as and that nothing is
+  saved, with "סיום הצפייה" back to the business in the console.
+  Platform admins and onboarders both may (`businesses.view_as`).
+- Migration `20261025000100_view_as.sql`: table `view_sessions` (one
+  open per team member, two hours at most, RLS: people read only their
+  own). `private.is_viewing(business, min_role)` and
+  `private.views_member` add read-only policies on businesses, profiles,
+  memberships and modules; invites only when viewing as a manager or
+  owner; the audit log stays closed. The viewer is never a member, so
+  every write policy and server write function keeps refusing them.
+  `start_view_session` / `end_view_session` (secret key only) write
+  `view_as.start` / `view_as.end` to the business's audit log.
+- App: `getCurrentMember` returns the viewed business and role plus
+  `viewing`; the Team actions refuse with "זו צפייה בלבד" before reaching
+  the database (`canWrite` in `@domain/view-as`).
+- Decision (default, no question opened): a view session lives in the
+  database rather than a cookie, so it follows the team member to every
+  device until it ends or expires, and a stale cookie can never outlive
+  it. Console writes stay allowed while viewing: they are the team's own.
+- Tests: 15 new unit tests (175 total); pgTAP `view_as.test.sql` (32):
+  only the server opens or ends sessions, X but not Y is readable while
+  viewing, worker views read no invites, no rename or invite as any
+  role, expired and ended sessions read nothing, audit rows for start
+  and end; `rls_enabled` lists the new table. Playwright
+  `view-as.spec.ts`: view as a worker (nav, no team screen, axe, end,
+  audit counts) and as a manager (team visible, inviting refused,
+  nothing stored).
+- Not verified locally: no Docker in this run's container. Migrations
+  and `view_as.test.sql` ran on a local Postgres 16 with stubbed auth and
+  a pgTAP stand-in (32/32, `team_invites` 24/24); three planted bugs
+  (invites open to a worker's view, a write policy for viewers, sessions
+  not scoped to the business) each turned it red. Playwright and the real
+  pgTAP run in CI.
+- Commit: squash of PR `agent/1e-view-as` (see the daily note in #1).
+- Next: phase 2, chunk 2a (Shabbat times in `@domain/shabbat`).
+- Defaults applied: the session-in-the-database decision above.
+
 ## 2026-10-24 · run 14 · chunk 1d-2b (inviting from the Team screen)
 
 - `/team` gains the main action "הזמנה לצוות" → `/team/invite`: name,

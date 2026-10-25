@@ -10,6 +10,7 @@ export type PlatformRole = (typeof PLATFORM_ROLES)[number];
 export const PLATFORM_ACTIONS = [
   "businesses.read",
   "businesses.create",
+  "businesses.view_as",
   "businesses.delete",
   "staff.invite",
   "templates.edit",
@@ -18,12 +19,14 @@ export const PLATFORM_ACTIONS = [
 export type PlatformAction = (typeof PLATFORM_ACTIONS)[number];
 
 /**
- * Onboarders set businesses up and invite their staff; deleting, templates
- * and billing stay with platform admins.
+ * Onboarders set businesses up, invite their staff and view the app as a
+ * role to check it; deleting, templates and billing stay with platform
+ * admins.
  */
 const ONBOARDER: ReadonlySet<PlatformAction> = new Set([
   "businesses.read",
   "businesses.create",
+  "businesses.view_as",
   "staff.invite",
 ]);
 

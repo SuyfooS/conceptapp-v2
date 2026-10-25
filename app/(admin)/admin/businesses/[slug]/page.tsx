@@ -4,18 +4,20 @@ import { displayIsraeliMobile } from "@domain/phone";
 import { platformCan } from "@domain/platform";
 import { type SetupItem, setupChecklist, setupRemaining } from "@domain/setup";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
+import { VIEW_AS_ROLES } from "@domain/view-as";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
 import { ListGroup } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
-import { CircleCheck, CircleDashed } from "lucide-react";
+import { CircleCheck, CircleDashed, Eye } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { currentPlatformRole } from "../../../staff";
+import { viewAsAction } from "./actions";
 import { InviteLink } from "./invite-link";
 
 export async function generateMetadata({
@@ -45,7 +47,7 @@ export default async function BusinessSetupPage({
 }: PageProps<"/admin/businesses/[slug]">) {
   const role = await currentPlatformRole();
   if (!platformCan(role, "businesses.read")) notFound();
-  const [{ slug }, { created }, t] = await Promise.all([
+  const [{ slug }, { created, view }, t] = await Promise.all([
     params,
     searchParams,
     getTranslations("admin"),
@@ -104,6 +106,9 @@ export default async function BusinessSetupPage({
         />
         <People t={t} business={business} />
       </div>
+      {platformCan(role, "businesses.view_as") ? (
+        <ViewAs t={t} business={business} failed={view === "failed"} />
+      ) : null}
     </PageBody>
   );
 }
@@ -189,6 +194,52 @@ function Checklist({
           ))}
         </ul>
       </ListGroup>
+    </PageSection>
+  );
+}
+
+// Open the business's app as one of its roles, read only.
+function ViewAs({
+  t,
+  business,
+  failed,
+}: {
+  t: T;
+  business: BusinessSetup;
+  failed: boolean;
+}) {
+  return (
+    <PageSection title={t("setup.viewAs.title")}>
+      <Card tone="flat" padding="lg" className="flex flex-col gap-4">
+        <CardText>{t("setup.viewAs.body", { name: business.name })}</CardText>
+        {failed ? (
+          <p role="alert" className="text-danger text-sm">
+            {t("setup.viewAs.failed")}
+          </p>
+        ) : null}
+        <form
+          action={viewAsAction.bind(null, {
+            id: business.id,
+            slug: business.slug,
+          })}
+          className="flex flex-col gap-2 md:flex-row md:flex-wrap"
+        >
+          {VIEW_AS_ROLES.map((r) => (
+            <Button
+              key={r}
+              type="submit"
+              name="role"
+              value={r}
+              variant="secondary"
+              size="lg"
+              className="w-full md:w-auto"
+            >
+              <Eye aria-hidden="true" />
+              {t(`setup.viewAs.as.${r}`)}
+            </Button>
+          ))}
+        </form>
+      </Card>
     </PageSection>
   );
 }
