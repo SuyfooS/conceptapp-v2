@@ -3,6 +3,34 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-26 · run 16 · chunk 2a (Shabbat times)
+
+- `@domain/shabbat` on `@hebcal/core` 6.14.6 (new dependency, pure
+  calculation, no network): `shabbatTimes(place, date)` gives the Friday,
+  candle lighting and havdalah for the Shabbat a date belongs to (Sunday
+  to Friday: the coming Friday; Saturday: the day before).
+  `shabbatPlace` (Zod): latitude, longitude, time zone (default
+  `Asia/Jerusalem`) and candle-lighting minutes (default 20).
+  `ISRAELI_CITIES` (Jerusalem 40, Tel Aviv 20, Haifa 30), `timeIn`
+  ("HH:MM" in a zone) and `isDuringShabbat` for the availability rules
+  in 2b.
+- Decision (default, no question opened): the Israeli customs hebcal
+  uses: candles 20 minutes before sunset (40 in Jerusalem, 30 in Haifa),
+  havdalah at 8.5° (three small stars), both rounded to the minute. A
+  per-business setting can come with 2b if a pilot asks.
+- Tests: 22 new (197 total): Jerusalem, Tel Aviv and Haifa on a summer
+  and a winter Friday, the Friday Israel's summer time starts, a full
+  year against hebcal's own Israeli calendar for each city, the same
+  answer with the server in UTC, Los Angeles and Kiritimati, bounds of
+  "during Shabbat", Zod limits. Two planted bugs (dates built in UTC, the
+  wrong havdalah angle) each turned them red. hebcal.com was not
+  reachable from the container, so the reference times are hebcal's
+  library rather than the website.
+- Commit: squash of PR `agent/2a-shabbat` (see the daily note in #1).
+- Next: chunk 2b, availability (starting with weeks and availability
+  ranges in the database).
+- Defaults applied: the Shabbat customs above.
+
 ## 2026-10-25 · run 15 · chunk 1e ("view as" and the audit log)
 
 - The console's business page gains "צפייה באפליקציה": three buttons
