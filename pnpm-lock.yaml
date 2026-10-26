@@ -11,6 +11,9 @@ importers:
       '@fontsource-variable/heebo':
         specifier: ^5.3.0
         version: 5.3.0
+      '@hebcal/core':
+        specifier: ^6.14.6
+        version: 6.14.6
       '@supabase/ssr':
         specifier: ^0.12.7
         version: 0.12.7(@supabase/supabase-js@2.117.3)
@@ -220,6 +223,17 @@ packages:
 
   '@formatjs/intl-localematcher@0.8.14':
     resolution: {integrity: sha512-8O7V38QmbB11+ryJ3KM/znrzXtiqgpXzqNoqDsndHZZ5/zDKTTL+cf5F0mzXkQEwhx8IlWnqYvEovf2S5EwLTw==}
+
+  '@hebcal/core@6.14.6':
+    resolution: {integrity: sha512-R1jN5Y1YxO+ZZcNhWufPlyxGvHc2rH1v+hohsCq9cSbhp8L/qXx0pJbF5GgLJV3RHzfdsDL3N+pefvMmkbV4qA==}
+    engines: {node: '>= 18'}
+
+  '@hebcal/hdate@0.23.1':
+    resolution: {integrity: sha512-lpvYpDc1Oe23XPClptNH6XEe2NA8Tb8iaUJ9/5Er1k04H9iHYB5YQnWsAg83R8l5SPOEUQnybeYizvSRSbBKCg==}
+
+  '@hebcal/noaa@0.12.4':
+    resolution: {integrity: sha512-M7bkeWUP54+h34OMlkyuu0ZuUV9URnEbG9dxakeA1totMhvIvHrVEVzKznmpykMbKkystC4C3BDg1fG7Qfl2pA==}
+    engines: {node: '>=18'}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -1961,6 +1975,10 @@ packages:
     resolution: {integrity: sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw==}
     engines: {node: '>=12'}
 
+  quick-lru@7.3.0:
+    resolution: {integrity: sha512-k9lSsjl36EJdK7I06v7APZCbyGT2vMTsYSRX1Q2nbYmnkBqgUhRkAuzH08Ciotteu/PLJmIF2+tti7o3C/ts2g==}
+    engines: {node: '>=18'}
+
   radix-ui@1.7.0:
     resolution: {integrity: sha512-x+z5TV2v6u0QpAQ4dQfNMcvtIdSQ1Op2oqBEyfDXjNldRZbMTP+hcjr5Iie31bep81Axeioa+70Ww7pZDzTEQQ==}
     peerDependencies:
@@ -2071,6 +2089,15 @@ packages:
   tapable@2.3.3:
     resolution: {integrity: sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A==}
     engines: {node: '>=6'}
+
+  temporal-polyfill@1.0.6:
+    resolution: {integrity: sha512-tYyEry1HLGUDbm2356W3iYD0OZdo7rlP7h98Zr/EnjqLZQwTAfcBDUvJnJbfA15v/vQad57hJZScG5O0W2oKEA==}
+
+  temporal-spec@1.0.1:
+    resolution: {integrity: sha512-wxVoanmDeavXie1vu2JaQ3WIc3JZnWAOYFBsJyATaVsXsycKYUflGsyBmrRSnoCpZJpwPyr38VpgSUlQ8CbFxg==}
+
+  temporal-utils@1.0.3:
+    resolution: {integrity: sha512-9jbTSX3HvkOWvDpNpFzwX/d1mkCrgQgwLmVTOEiuocZGKHsrQJtttGZFmybJ2zYP5zCSZuU5ZyeS8+eOEPABiQ==}
 
   tinybench@6.2.1:
     resolution: {integrity: sha512-IAbQaPJIIdhVxi0mqy9lez1wEwje0UQf9F1vwtbelEG5Nbgn0nPOxCvU+mNeNS9gyJTAhrHp74CbUaSynQpZcQ==}
@@ -2325,6 +2352,19 @@ snapshots:
   '@formatjs/intl-localematcher@0.8.14':
     dependencies:
       '@formatjs/fast-memoize': 3.1.7
+
+  '@hebcal/core@6.14.6':
+    dependencies:
+      '@hebcal/hdate': 0.23.1
+      '@hebcal/noaa': 0.12.4
+      quick-lru: 7.3.0
+      temporal-polyfill: 1.0.6
+
+  '@hebcal/hdate@0.23.1': {}
+
+  '@hebcal/noaa@0.12.4':
+    dependencies:
+      temporal-polyfill: 1.0.6
 
   '@img/colour@1.1.0':
     optional: true
@@ -3858,6 +3898,8 @@ snapshots:
 
   postgres@3.4.9: {}
 
+  quick-lru@7.3.0: {}
+
   radix-ui@1.7.0(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.0(react@19.3.0))(react@19.3.0):
     dependencies:
       '@radix-ui/primitive': 1.1.7
@@ -4045,6 +4087,15 @@ snapshots:
   tailwindcss@4.3.3: {}
 
   tapable@2.3.3: {}
+
+  temporal-polyfill@1.0.6:
+    dependencies:
+      temporal-spec: 1.0.1
+      temporal-utils: 1.0.3
+
+  temporal-spec@1.0.1: {}
+
+  temporal-utils@1.0.3: {}
 
   tinybench@6.2.1: {}
 
