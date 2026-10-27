@@ -25,7 +25,8 @@ select set_eq(
   array[
     'templates', 'businesses', 'profiles', 'memberships',
     'business_modules', 'invites', 'audit_log', 'platform_staff',
-    'view_sessions'
+    'view_sessions', 'schedule_weeks', 'availability_submissions',
+    'availability_ranges'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );
