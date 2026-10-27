@@ -3,6 +3,45 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-27 · run 17 · chunk 2b-1 (availability in the database)
+
+- Split chunk 2b in three: 2b-1 weeks and availability in the database
+  (today), 2b-2 the worker's availability form with the Friday and
+  Saturday rules, 2b-3 the manager's "who has not submitted" list.
+- Migration `20261027000100_availability.sql`: `schedule_weeks` (one per
+  business and start date, with the due moment), `availability_submissions`
+  (one per person and week, optional note) and `availability_ranges`
+  (day, start, end; an end at or before the start runs past midnight).
+  RLS: the team reads the weeks; a person reads their own availability,
+  managers and owners everyone's; "view as" a manager reads it, as a
+  worker does not; everything closes when scheduling is off.
+- Secret key only: `open_schedule_week(business, week_start, due_at)`
+  (refuses a start on another day than `weekStartsOn`, returns the week
+  already open) and `submit_availability(actor, week, ranges, note)`
+  (active members only, ranges inside the week, no overlaps on a day,
+  replaces the last answer; an empty list means not available).
+- `@domain/availability`: week dates (`weekStartOf`, `nextWeekStart`,
+  `weekDates`), `availabilityDueAt` (the due day before the week, at the
+  due time in the business's zone, clock changes included),
+  `availabilitySubmission` (Zod, the same rules as the database) and
+  `missingAvailability`. `@db/availability`: `openWeek`,
+  `saveAvailability`, `getWeek`, `getWeekAvailability`.
+- Decisions (defaults, no question opened): late answers are accepted
+  (the manager sees when each came in); owners can submit but are not
+  listed as missing.
+- Tests: 19 new unit tests (216 total); pgTAP `availability.test.sql`
+  (42); `rls_enabled` lists the three tables. Five planted bugs (a worker
+  reading everyone's, no week bounds, no overlap check, a worker's view
+  reading availability, members of any business saving) each turned it
+  red. Unit tests also pass with the server in Los Angeles.
+- Not verified locally: no Docker in this run's container. Migrations,
+  seed and every pgTAP file ran on a local Postgres 16 with real pgTAP and
+  stubbed auth; `database.types.ts` was written to match the generator,
+  which CI checks.
+- Commit: squash of PR `agent/2b-1-availability-db` (see the daily note in #1).
+- Next: chunk 2b-2, the worker's availability form.
+- Defaults applied: the two decisions above.
+
 ## 2026-10-26 · run 16 · chunk 2a (Shabbat times)
 
 - `@domain/shabbat` on `@hebcal/core` 6.14.6 (new dependency, pure

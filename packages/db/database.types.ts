@@ -51,6 +51,90 @@ export type Database = {
           },
         ];
       };
+      availability_ranges: {
+        Row: {
+          day: string;
+          ends_at: string;
+          id: string;
+          starts_at: string;
+          submission_id: string;
+        };
+        Insert: {
+          day: string;
+          ends_at: string;
+          id?: string;
+          starts_at: string;
+          submission_id: string;
+        };
+        Update: {
+          day?: string;
+          ends_at?: string;
+          id?: string;
+          starts_at?: string;
+          submission_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "availability_ranges_submission_id_fkey";
+            columns: ["submission_id"];
+            isOneToOne: false;
+            referencedRelation: "availability_submissions";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      availability_submissions: {
+        Row: {
+          business_id: string;
+          id: string;
+          note: string | null;
+          submitted_at: string;
+          updated_at: string;
+          user_id: string;
+          week_id: string;
+        };
+        Insert: {
+          business_id: string;
+          id?: string;
+          note?: string | null;
+          submitted_at?: string;
+          updated_at?: string;
+          user_id: string;
+          week_id: string;
+        };
+        Update: {
+          business_id?: string;
+          id?: string;
+          note?: string | null;
+          submitted_at?: string;
+          updated_at?: string;
+          user_id?: string;
+          week_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "availability_submissions_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "availability_submissions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "availability_submissions_week_id_fkey";
+            columns: ["week_id"];
+            isOneToOne: false;
+            referencedRelation: "schedule_weeks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       business_modules: {
         Row: {
           business_id: string;
@@ -304,6 +388,38 @@ export type Database = {
         };
         Relationships: [];
       };
+      schedule_weeks: {
+        Row: {
+          availability_due_at: string;
+          business_id: string;
+          created_at: string;
+          id: string;
+          starts_on: string;
+        };
+        Insert: {
+          availability_due_at: string;
+          business_id: string;
+          created_at?: string;
+          id?: string;
+          starts_on: string;
+        };
+        Update: {
+          availability_due_at?: string;
+          business_id?: string;
+          created_at?: string;
+          id?: string;
+          starts_on?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "schedule_weeks_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       templates: {
         Row: {
           created_at: string;
@@ -418,12 +534,20 @@ export type Database = {
         Args: { actor: string; invite: string; new_token_hash: string };
         Returns: string;
       };
+      open_schedule_week: {
+        Args: { business: string; due_at: string; week_start: string };
+        Returns: string;
+      };
       start_view_session: {
         Args: {
           actor: string;
           business: string;
           view_role: Database["public"]["Enums"]["member_role"];
         };
+        Returns: string;
+      };
+      submit_availability: {
+        Args: { actor: string; note?: string; ranges: Json; week: string };
         Returns: string;
       };
       team_invite: {
