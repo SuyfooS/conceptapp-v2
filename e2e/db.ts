@@ -137,3 +137,43 @@ export async function endViewSessions(phone: string): Promise<void> {
     await sql.end();
   }
 }
+
+/** Remove everything the person sent as availability to the demo restaurant. */
+export async function clearAvailability(phone: string): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`delete from public.availability_submissions s
+      using public.profiles p
+      where s.business_id = ${DEMO_RESTAURANT} and s.user_id = p.id
+        and p.phone = ${phone}`;
+  } finally {
+    await sql.end();
+  }
+}
+
+export type SavedAvailability = {
+  weekday: number;
+  start: string;
+  end: string;
+  note: string | null;
+};
+
+/** The person's saved ranges in the demo restaurant, by weekday (0 = Sunday). */
+export async function availabilityOf(
+  phone: string,
+): Promise<SavedAvailability[]> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    return await sql<SavedAvailability[]>`
+      select extract(dow from r.day)::int as weekday,
+        to_char(r.starts_at, 'HH24:MI') as start,
+        to_char(r.ends_at, 'HH24:MI') as end, s.note
+      from public.availability_submissions s
+      join public.profiles p on p.id = s.user_id
+      join public.availability_ranges r on r.submission_id = s.id
+      where s.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
+      order by r.day, r.starts_at`;
+  } finally {
+    await sql.end();
+  }
+}

@@ -393,6 +393,65 @@
         }
       }
     },
+    "availability": {
+      "title": "Availability for next week",
+      "subtitle": "The week of {from}–{to}",
+      "intro": "Mark the hours you can be scheduled each day. A day without hours is a day you are not available.",
+      "weekdays": {
+        "sun": "Sunday",
+        "mon": "Monday",
+        "tue": "Tuesday",
+        "wed": "Wednesday",
+        "thu": "Thursday",
+        "fri": "Friday",
+        "sat": "Saturday"
+      },
+      "day": "{day}, {date}",
+      "due": "Send by {day}, {date} at <ltr>{time}</ltr>.",
+      "late": "It was due {day}, {date} at <ltr>{time}</ltr>. You can still send it; your manager sees when it came in.",
+      "sent": "Your answer was saved on {date} at <ltr>{time}</ltr>. You can change it and send again.",
+      "noHours": "No hours this day",
+      "addRange": "Add hours",
+      "removeRange": "Remove {from}–{to}",
+      "start": "From",
+      "end": "Until",
+      "candleLighting": "Shabbat starts at <ltr>{time}</ltr>. You can mark hours until then.",
+      "havdalah": "Shabbat ends at <ltr>{time}</ltr>. You can mark hours from then.",
+      "note": "Note for your manager",
+      "noteHint": "Optional. For example: an exam on Tuesday morning.",
+      "summary": "{count, plural, =0 {You have not marked any hours. Sending without hours means you are not available this week.} one {You marked hours on one day.} other {You marked hours on # days.}}",
+      "submit": "Send availability",
+      "saved": "Availability saved.",
+      "fix": "Some hours need fixing. They are marked in red.",
+      "errors": {
+        "ranges": {
+          "time": "Enter a start and an end time.",
+          "same": "The end time must differ from the start time.",
+          "outside": "This day is not in this week.",
+          "overlap": "These hours overlap other hours on the same day.",
+          "friday": "On Friday you can mark hours until Shabbat starts ({time}).",
+          "saturday": "On Saturday you can mark hours from the end of Shabbat ({time})."
+        },
+        "note": {
+          "tooLong": "The note is too long, up to 300 characters."
+        },
+        "form": {
+          "invalid": "We could not read the form. Refresh the screen and try again."
+        },
+        "noAccess": "Scheduling is not on for your business.",
+        "viewOnly": "This is view only, so the availability was not saved.",
+        "weekChanged": "A new week has started. Refresh the screen to send for next week.",
+        "failed": "We could not save it. Try again in a moment."
+      },
+      "entry": {
+        "title": "Availability for next week",
+        "sent": "Sent. You can change it until {day} at {time}",
+        "notSent": "Not sent yet. Send it by {day} at {time}",
+        "late": "Not sent yet, and it is past due",
+        "badge": "To send"
+      },
+      "scheduleSoon": "The shift schedule itself appears here in the next stage of the build."
+    },
     "viewAs": {
       "label": "Viewing mode",
       "title": "Viewing as {role} · {business}",

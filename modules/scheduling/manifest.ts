@@ -21,6 +21,12 @@ export const manifest = defineManifest({
       .string()
       .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
       .default("18:00"),
+    /**
+     * Closed from candle lighting on Friday until havdalah: availability
+     * on Friday ends by candle lighting and on Saturday starts from
+     * havdalah. Both templates close on Shabbat.
+     */
+    closedOnShabbat: z.boolean().default(true),
     /** The business's positions (waiter, cook…); the template fills them. */
     positions: positions.default([]),
     /** Which shifts run on which days and how many people each needs. */

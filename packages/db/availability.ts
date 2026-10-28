@@ -110,3 +110,27 @@ export async function getWeekAvailability(
       .sort((a, b) => `${a.day}${a.start}`.localeCompare(`${b.day}${b.start}`)),
   }));
 }
+
+export type BusinessPlace = {
+  latitude: number | null;
+  longitude: number | null;
+  timeZone: string;
+};
+
+/** Where the business is, for its Shabbat times and its calendar (RLS). */
+export async function getBusinessPlace(
+  businessId: string,
+): Promise<BusinessPlace> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("businesses")
+    .select("latitude, longitude, timezone")
+    .eq("id", businessId)
+    .single();
+  if (error) throw error;
+  return {
+    latitude: data.latitude,
+    longitude: data.longitude,
+    timeZone: data.timezone,
+  };
+}
