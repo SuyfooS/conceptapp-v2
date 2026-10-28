@@ -12,7 +12,8 @@ const WORKER = { local: "050-000-0003", e164: "+972500000003" };
 const ta = he.app.availability;
 const day = (weekday: keyof typeof ta.weekdays) =>
   new RegExp(`^${ta.day.split("{day}")[0]}${ta.weekdays[weekday]},`);
-const before = (message: string) => message.split("{")[0] ?? message;
+// The text of a message up to its first placeholder or tag.
+const before = (message: string) => message.split(/[<{]/)[0] ?? message;
 
 async function expectCleanPage(page: Page) {
   // Metadata streams in after the body (see new-business.spec.ts).
@@ -83,7 +84,9 @@ test("a worker sends next week's availability around Shabbat", async ({
 
   await page.getByLabel(ta.note).fill("מבחן ביום שלישי");
   await page.getByRole("button", { name: ta.submit }).click();
-  await expect(page.getByRole("status")).toHaveText(ta.saved);
+  await expect(
+    page.getByRole("status").filter({ hasText: ta.saved }),
+  ).toBeVisible();
   await expect(page.getByText(before(ta.sent))).toBeVisible();
   expect(await availabilityOf(WORKER.e164)).toEqual([
     { weekday: 0, start: "09:00", end: "17:00", note: "מבחן ביום שלישי" },
@@ -107,7 +110,9 @@ test("a worker sends next week's availability around Shabbat", async ({
   }
   await page.getByLabel(ta.note).fill("");
   await page.getByRole("button", { name: ta.submit }).click();
-  await expect(page.getByRole("status")).toHaveText(ta.saved);
+  await expect(
+    page.getByRole("status").filter({ hasText: ta.saved }),
+  ).toBeVisible();
   expect(await availabilityOf(WORKER.e164)).toEqual([]);
 
   // The schedule shows it as sent.
