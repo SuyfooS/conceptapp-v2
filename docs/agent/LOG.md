@@ -3,6 +3,50 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-28 · run 18 · chunk 2b-2 (the worker's availability form)
+
+- `/schedule` is no longer a placeholder: a row "זמינות לשבוע הבא" with
+  its state up front (a "לשלוח" badge until sent, then "נשלחה" and until
+  when it can change). The schedule itself comes later.
+- `/schedule/availability`: every day of next week with any number of
+  hour ranges ("הוספת שעות", remove per range), a note for the manager,
+  the due moment (or "past due, still accepted") and when the last answer
+  was saved. "שליחת הזמינות" replaces the earlier answer; no hours means
+  not available that week. Phone: days one under another; tablet: two
+  columns; desktop: three (four cut the time fields). One form, so the
+  grid reflows instead of three rendered shapes.
+- Friday and Saturday rules: new scheduling setting `closedOnShabbat`
+  (default on; both templates close on Shabbat). When on, Friday shows
+  candle lighting and its hours must end by it (no past midnight);
+  Saturday shows havdalah and its hours must start from it. Times come
+  from the business's coordinates (`@db/availability` `getBusinessPlace`;
+  Tel Aviv when missing) in its time zone.
+- `@domain/availability-form`: `shabbatLimits`, `shabbatConflict`,
+  `parseAvailabilityForm` (one error per range: time, same, outside,
+  overlap, friday, saturday; note length), `dayMonth`. The browser and
+  the server action run the same checks; the database rechecks all but
+  Shabbat. Viewing as a role cannot save; an answer for a week that has
+  since begun is refused ("weekChanged"). The week opens in the database
+  with its first answer.
+- Demo: `/design/shell/schedule/availability` (a fixed week in Tel Aviv,
+  nothing stored), for the Vercel preview.
+- Decisions (defaults, no question opened): the Shabbat rule above; a
+  business without coordinates uses Tel Aviv; candle lighting is 20
+  minutes for every business until a per-business setting is needed
+  (Jerusalem's 40 is not applied yet).
+- Tests: 14 new unit tests (230 total); two planted bugs in the Shabbat
+  rule each turned them red. Playwright `availability.spec.ts`: a worker
+  sends Sunday, Friday and Saturday hours, Friday past candle lighting
+  and Saturday before havdalah are refused, the saved rows match, an
+  empty answer replaces them, `/schedule` shows "sent"; axe and no
+  horizontal scroll. Locally: `pnpm check`, `pnpm build`, and the demo
+  at 390/820/1440 with axe (0 violations, no horizontal scroll).
+- Not verified locally: no Docker in this run's container, so the
+  Playwright spec runs only in CI.
+- Commit: squash of PR `agent/2b-2-availability-form` (see the daily note in #1).
+- Next: chunk 2b-3, the manager's "who has not submitted" list.
+- Defaults applied: the decisions above.
+
 ## 2026-10-27 · run 17 · chunk 2b-1 (availability in the database)
 
 - Split chunk 2b in three: 2b-1 weeks and availability in the database
