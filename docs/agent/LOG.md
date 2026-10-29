@@ -32,7 +32,7 @@ what is next, defaults applied.
 - Not verified locally: no Docker daemon in this run's container, so the
   Playwright spec runs only in CI.
 - Commit: squash of PR `agent/2b-3-team-availability` (see the daily note in #1).
-- Next: chunk 2b ends the brief's backlog. Question opened (see #1) on
+- Next: chunk 2b ends the brief's backlog. Question #25 opened on
   what comes next; until Orel answers, the default is to keep building
   the scheduling module: 2c, the manager builds next week's schedule
   from the availability (shifts and who works them), then publishing.
