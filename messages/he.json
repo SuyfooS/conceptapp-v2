@@ -450,6 +450,35 @@
         "late": "עוד לא נשלחה, והמועד עבר",
         "badge": "לשלוח"
       },
+      "team": {
+        "title": "זמינות הצוות",
+        "due": "מועד ההגשה: יום {day}, {date} בשעה <ltr>{time}</ltr>.",
+        "missing": {
+          "title": "מי עוד לא שלח",
+          "count": "{count, plural, one {חסרה תשובה אחת} other {חסרות # תשובות}}",
+          "empty": "כל הצוות שלח זמינות לשבוע הזה."
+        },
+        "sent": {
+          "title": "מי שלח",
+          "count": "{count, plural, one {תשובה אחת} other {# תשובות}}",
+          "empty": "עוד אף אחד לא שלח. העובדים רואים במסך „סידור” שצריך לשלוח עד יום {day} בשעה <ltr>{time}</ltr>."
+        },
+        "sentAt": "נשלחה ב-{date} בשעה <ltr>{time}</ltr>",
+        "late": "באיחור",
+        "notSent": "עוד לא נשלחה",
+        "noHours": "בלי שעות בשבוע הזה",
+        "noHoursDay": "בלי שעות",
+        "note": "הערה: {note}",
+        "everyone": "כל הצוות",
+        "columns": {
+          "name": "שם",
+          "status": "מצב"
+        },
+        "entry": {
+          "subtitle": "{sent} מתוך {total} שלחו זמינות לשבוע הבא",
+          "allSent": "כולם שלחו"
+        }
+      },
       "scheduleSoon": "סידור המשמרות עצמו יופיע כאן בשלב הבא של הבנייה."
     },
     "viewAs": {

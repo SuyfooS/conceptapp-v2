@@ -5,18 +5,21 @@ import { Badge } from "@ui/badge";
 import { Card, CardText } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
-import { CalendarCheck } from "lucide-react";
+import { CalendarCheck, Users } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { moduleMetadata } from "../module-screen";
-import { currentAvailabilityWeek } from "./week";
+import { currentAvailabilityWeek, currentTeamAvailability } from "./week";
 
 export const generateMetadata = () => moduleMetadata("scheduling");
 
 // The schedule's entry: next week's availability, with its state shown
 // up front, and the schedule itself when it arrives.
 export default async function SchedulePage() {
-  const week = await currentAvailabilityWeek();
+  const [week, team] = await Promise.all([
+    currentAvailabilityWeek(),
+    currentTeamAvailability(),
+  ]);
   if (!week) notFound();
   const [t, tm] = await Promise.all([
     getTranslations("app.availability"),
@@ -54,11 +57,42 @@ export default async function SchedulePage() {
               )
             }
           />
+          {team ? <TeamRow t={t} counts={team.team.counts} /> : null}
         </ListGroup>
       </PageSection>
       <Card tone="flat" padding="lg" className="md:max-w-xl">
         <CardText>{t("scheduleSoon")}</CardText>
       </Card>
     </PageBody>
+  );
+}
+
+/** Owners and managers: how many answers are in, and how many missing. */
+function TeamRow({
+  t,
+  counts,
+}: {
+  t: Awaited<ReturnType<typeof getTranslations<"app.availability">>>;
+  counts: { sent: number; missing: number };
+}) {
+  return (
+    <ListRow
+      href="/schedule/availability/team"
+      leading={<Users />}
+      title={t("team.title")}
+      subtitle={t("team.entry.subtitle", {
+        sent: counts.sent,
+        total: counts.sent + counts.missing,
+      })}
+      trailing={
+        counts.missing > 0 ? (
+          <Badge tone="warning">
+            {t("team.missing.count", { count: counts.missing })}
+          </Badge>
+        ) : (
+          <Badge tone="success">{t("team.entry.allSent")}</Badge>
+        )
+      }
+    />
   );
 }

@@ -3,6 +3,42 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-29 · run 19 · chunk 2b-3 (who has not sent availability)
+
+- `/schedule/availability/team`, for owners and managers (and "view as"
+  a manager); workers get the not-found screen. Two lists: "מי עוד לא
+  שלח" (name, role, mobile) with a "חסרות N תשובות" badge, and "מי שלח"
+  (when it came in, a "באיחור" badge after the due moment, the hours per
+  day, the note). Phone: one under the other; tablet: side by side;
+  desktop: one table, a row per person and a column per day.
+- `/schedule` gains a row "זמינות הצוות" for managers: "N מתוך M שלחו"
+  and the missing badge, or "כולם שלחו".
+- `@domain/availability` `teamAvailability(members, answers, dueAt)`:
+  who is missing (`missingAvailability`: owners are not waited for),
+  who sent (owners included when they did), late, days with hours;
+  answers from people no longer on the team are left out.
+  `week.ts` reads the week and its answers once per request for both
+  the worker's form and the manager's view.
+- Demo: `/design/shell/schedule/availability/team` (mock answers: five
+  sent, one late, one with no hours; two missing).
+- Tests: 3 new unit tests (233 total); a planted bug (on-time answers
+  counted late) turned them red. Playwright `team-availability.spec.ts`:
+  the manager sees the seeded worker who sent (hours and note) and the
+  one who has not, the owner is not listed; a worker has no such row and
+  gets not-found; axe and no horizontal scroll. The new e2e helper
+  `sendDemoAvailability` ran against a local Postgres 16 with the
+  migrations and seed. Locally: `pnpm check`, `pnpm build`, the demo at
+  390/820/1440 with axe (0 violations, no horizontal scroll).
+- Not verified locally: no Docker daemon in this run's container, so the
+  Playwright spec runs only in CI.
+- Commit: squash of PR `agent/2b-3-team-availability` (see the daily note in #1).
+- Next: chunk 2b ends the brief's backlog. Question #25 opened on
+  what comes next; until Orel answers, the default is to keep building
+  the scheduling module: 2c, the manager builds next week's schedule
+  from the availability (shifts and who works them), then publishing.
+- Defaults applied: an answer changed after the due moment counts as
+  late; owners who send are listed among those who sent.
+
 ## 2026-10-28 · run 18 · chunk 2b-2 (the worker's availability form)
 
 - `/schedule` is no longer a placeholder: a row "זמינות לשבוע הבא" with

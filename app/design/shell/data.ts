@@ -3,6 +3,7 @@
 // sets itself), so its Hebrew stays here rather than in messages/; the
 // Hebrew-literal check in tooling/ allows this one file.
 
+import type { AvailabilityAnswer } from "@domain/availability";
 import type { TeamInvite, TeamMember } from "@domain/team";
 
 export const business = { name: "מסעדת הדגמה" };
@@ -178,5 +179,60 @@ export const teamInvites: TeamInvite[] = [
     phone: "+972581234567",
     role: "worker",
     expiresAt: "2026-10-18T09:00:00+03:00",
+  },
+];
+
+// Answers for the demo week of 1–7 November 2026 (due 28 October, 18:00).
+// Shira and Omer have not sent theirs; Yoav sent after the due moment.
+export const teamAnswers: AvailabilityAnswer[] = [
+  {
+    userId: "shiran",
+    note: null,
+    updatedAt: "2026-10-26T07:40:00.000Z",
+    ranges: [
+      { day: "2026-11-01", start: "08:00", end: "16:00" },
+      { day: "2026-11-02", start: "08:00", end: "16:00" },
+      { day: "2026-11-04", start: "08:00", end: "16:00" },
+      { day: "2026-11-05", start: "16:00", end: "23:30" },
+    ],
+  },
+  {
+    userId: "noa",
+    note: "מבחן ביום שלישי בבוקר",
+    updatedAt: "2026-10-27T09:12:00.000Z",
+    ranges: [
+      { day: "2026-11-01", start: "09:00", end: "17:00" },
+      { day: "2026-11-03", start: "17:00", end: "23:30" },
+      { day: "2026-11-06", start: "08:00", end: "14:00" },
+      { day: "2026-11-07", start: "19:30", end: "00:30" },
+    ],
+  },
+  {
+    userId: "yoav",
+    note: null,
+    updatedAt: "2026-10-28T19:05:00.000Z",
+    ranges: [
+      { day: "2026-11-02", start: "12:00", end: "16:00" },
+      { day: "2026-11-02", start: "18:00", end: "23:00" },
+      { day: "2026-11-05", start: "18:00", end: "02:00" },
+    ],
+  },
+  {
+    userId: "maya",
+    note: "בחופשה כל השבוע",
+    updatedAt: "2026-10-25T18:30:00.000Z",
+    ranges: [],
+  },
+  {
+    userId: "itay",
+    note: null,
+    updatedAt: "2026-10-28T10:00:00.000Z",
+    ranges: [
+      { day: "2026-11-01", start: "10:00", end: "18:00" },
+      { day: "2026-11-02", start: "10:00", end: "18:00" },
+      { day: "2026-11-03", start: "10:00", end: "18:00" },
+      { day: "2026-11-04", start: "10:00", end: "18:00" },
+      { day: "2026-11-05", start: "10:00", end: "18:00" },
+    ],
   },
 ];

@@ -186,3 +186,60 @@ export function missingAvailability<T extends { userId: string; role: Role }>(
     (member) => member.role !== "owner" && !submitted.has(member.userId),
   );
 }
+
+/** What the manager's overview needs from one person's answer. */
+export type AvailabilityAnswer = {
+  userId: string;
+  note: string | null;
+  /** ISO timestamp of the last time it was sent. */
+  updatedAt: string;
+  ranges: AvailabilityRange[];
+};
+
+export type TeamAvailability<
+  T extends { userId: string; role: Role },
+  A extends AvailabilityAnswer,
+> = {
+  /** Who still has to send, in the order given (`missingAvailability`). */
+  missing: T[];
+  /** Who sent, in the order given, with their answer. */
+  sent: (T & {
+    answer: A;
+    /** Sent or last changed after the due moment. */
+    late: boolean;
+    /** The days with hours, in week order. */
+    days: string[];
+  })[];
+  counts: { sent: number; missing: number };
+};
+
+/**
+ * A manager's view of a week's availability: who has not sent it yet and
+ * what everyone else sent. Answers from people no longer on the team are
+ * left out. `dueAt` is the week's due moment (ISO).
+ */
+export function teamAvailability<
+  T extends { userId: string; role: Role },
+  A extends AvailabilityAnswer,
+>(
+  members: readonly T[],
+  answers: readonly A[],
+  dueAt: string,
+): TeamAvailability<T, A> {
+  const byUser = new Map(answers.map((answer) => [answer.userId, answer]));
+  const due = Date.parse(dueAt);
+  const sent = members.flatMap((member) => {
+    const answer = byUser.get(member.userId);
+    if (!answer) return [];
+    const days = [...new Set(answer.ranges.map((range) => range.day))].sort();
+    return [
+      { ...member, answer, late: Date.parse(answer.updatedAt) > due, days },
+    ];
+  });
+  const missing = missingAvailability(members, byUser.keys());
+  return {
+    missing,
+    sent,
+    counts: { sent: sent.length, missing: missing.length },
+  };
+}
