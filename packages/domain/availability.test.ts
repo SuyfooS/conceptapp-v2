@@ -7,6 +7,7 @@ import {
   instantIn,
   missingAvailability,
   nextWeekStart,
+  teamAvailability,
   weekDates,
   weekdayOf,
   weekStartOf,
@@ -228,5 +229,64 @@ describe("missingAvailability", () => {
       { userId: "d", role: "worker" },
     ]);
     expect(missingAvailability(members, ["b", "c", "d"])).toEqual([]);
+  });
+});
+
+describe("teamAvailability", () => {
+  const members = [
+    { userId: "owner", role: "owner" as const },
+    { userId: "manager", role: "manager" as const },
+    { userId: "early", role: "worker" as const },
+    { userId: "late", role: "worker" as const },
+    { userId: "silent", role: "worker" as const },
+  ];
+  const dueAt = "2026-10-29T15:00:00.000Z";
+  const answer = (userId: string, updatedAt: string, days: string[] = []) => ({
+    userId,
+    note: null,
+    updatedAt,
+    ranges: days.map((day) => ({ day, start: "09:00", end: "17:00" })),
+  });
+
+  it("splits the team into who sent and who has not", () => {
+    const view = teamAvailability(
+      members,
+      [
+        answer("late", "2026-10-29T15:00:01.000Z", ["2026-11-03"]),
+        answer("early", "2026-10-27T08:00:00.000Z", [
+          "2026-11-06",
+          "2026-11-01",
+          "2026-11-01",
+        ]),
+        answer("owner", "2026-10-29T15:00:00.000Z"),
+      ],
+      dueAt,
+    );
+    expect(view.missing.map((m) => m.userId)).toEqual(["manager", "silent"]);
+    expect(
+      view.sent.map(({ userId, late, days }) => ({ userId, late, days })),
+    ).toEqual([
+      // An owner who sends is listed; exactly on time is not late.
+      { userId: "owner", late: false, days: [] },
+      { userId: "early", late: false, days: ["2026-11-01", "2026-11-06"] },
+      { userId: "late", late: true, days: ["2026-11-03"] },
+    ]);
+    expect(view.counts).toEqual({ sent: 3, missing: 2 });
+  });
+
+  it("ignores answers from people no longer on the team", () => {
+    const view = teamAvailability(
+      members.slice(0, 2),
+      [answer("gone", "2026-10-27T08:00:00.000Z", ["2026-11-01"])],
+      dueAt,
+    );
+    expect(view.sent).toEqual([]);
+    expect(view.counts).toEqual({ sent: 0, missing: 1 });
+  });
+
+  it("keeps the answer for the screen", () => {
+    const sent = answer("early", "2026-10-27T08:00:00.000Z", ["2026-11-01"]);
+    const [row] = teamAvailability(members, [sent], dueAt).sent;
+    expect(row?.answer).toBe(sent);
   });
 });

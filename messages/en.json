@@ -450,6 +450,35 @@
         "late": "Not sent yet, and it is past due",
         "badge": "To send"
       },
+      "team": {
+        "title": "Team availability",
+        "due": "Due {day}, {date} at <ltr>{time}</ltr>.",
+        "missing": {
+          "title": "Not sent yet",
+          "count": "{count, plural, one {One answer missing} other {# answers missing}}",
+          "empty": "Everyone on the team has sent availability for this week."
+        },
+        "sent": {
+          "title": "Sent",
+          "count": "{count, plural, one {One answer} other {# answers}}",
+          "empty": "Nobody has sent it yet. Staff see on the Schedule screen that it is due {day} at <ltr>{time}</ltr>."
+        },
+        "sentAt": "Sent on {date} at <ltr>{time}</ltr>",
+        "late": "Late",
+        "notSent": "Not sent yet",
+        "noHours": "No hours this week",
+        "noHoursDay": "No hours",
+        "note": "Note: {note}",
+        "everyone": "The whole team",
+        "columns": {
+          "name": "Name",
+          "status": "Status"
+        },
+        "entry": {
+          "subtitle": "{sent} of {total} sent availability for next week",
+          "allSent": "Everyone sent"
+        }
+      },
       "scheduleSoon": "The shift schedule itself appears here in the next stage of the build."
     },
     "viewAs": {

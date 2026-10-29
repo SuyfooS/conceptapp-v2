@@ -5,8 +5,11 @@ import {
   getWeekAvailability,
 } from "@db/availability";
 import {
+  type AvailabilityAnswer,
   availabilityDueAt,
   nextWeekStart,
+  type TeamAvailability,
+  teamAvailability,
   weekDates,
 } from "@domain/availability";
 import {
@@ -16,10 +19,12 @@ import {
 } from "@domain/availability-form";
 import { canOpenModule } from "@domain/modules";
 import { ISRAELI_CITIES, shabbatTimes } from "@domain/shabbat";
+import { canSeeTeam, type TeamMember } from "@domain/team";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
+import { currentTeam } from "../team";
 
 export type AvailabilityWeek = {
   /** The week people answer for: the one after this week. */
@@ -35,12 +40,14 @@ export type AvailabilityWeek = {
 };
 
 /**
- * The week the signed-in person submits availability for, read once per
- * request. Null when scheduling is off for them. The week may not be open
- * in the database yet; it opens with the first answer.
+ * Next week and every answer the signed-in person may read for it (RLS:
+ * their own, or everyone's for a manager or owner), read once per request.
  */
-export const currentAvailabilityWeek = cache(
-  async (): Promise<AvailabilityWeek | null> => {
+const availabilityContext = cache(
+  async (): Promise<{
+    week: AvailabilityWeek;
+    answers: Availability[];
+  } | null> => {
     const [member, enabled] = await Promise.all([
       currentMember(),
       currentModules(),
@@ -60,8 +67,8 @@ export const currentAvailabilityWeek = cache(
     ]);
     const { timeZone } = place;
     const start = nextWeekStart(new Date(), timeZone, settings.weekStartsOn);
-    const week = await getWeek(businessId, start);
-    const answers = week ? await getWeekAvailability(week.id) : [];
+    const open = await getWeek(businessId, start);
+    const answers = open ? await getWeekAvailability(open.id) : [];
 
     // A business without coordinates yet gets Tel Aviv's times.
     const coordinates =
@@ -75,11 +82,11 @@ export const currentAvailabilityWeek = cache(
         )
       : null;
 
-    return {
+    const week: AvailabilityWeek = {
       start,
       dates: weekDates(start),
       dueAt:
-        week?.dueAt ??
+        open?.dueAt ??
         availabilityDueAt(
           start,
           {
@@ -91,6 +98,44 @@ export const currentAvailabilityWeek = cache(
       timeZone,
       shabbat,
       mine: answers.find((a) => a.userId === member.userId) ?? null,
+    };
+    return { week, answers };
+  },
+);
+
+/**
+ * The week the signed-in person submits availability for. Null when
+ * scheduling is off for them. The week may not be open in the database
+ * yet; it opens with the first answer.
+ */
+export const currentAvailabilityWeek = cache(
+  async (): Promise<AvailabilityWeek | null> =>
+    (await availabilityContext())?.week ?? null,
+);
+
+export type TeamAvailabilityWeek = {
+  week: AvailabilityWeek;
+  team: TeamAvailability<TeamMember, AvailabilityAnswer>;
+};
+
+/**
+ * Next week's availability for the whole team: who has not sent it and
+ * what everyone else sent. Null unless the signed-in person is a manager
+ * or owner (or views as one) with scheduling on.
+ */
+export const currentTeamAvailability = cache(
+  async (): Promise<TeamAvailabilityWeek | null> => {
+    const member = await currentMember();
+    const role = member?.membership?.role;
+    if (!role || !canSeeTeam(role)) return null;
+    const [context, team] = await Promise.all([
+      availabilityContext(),
+      currentTeam(),
+    ]);
+    if (!context || !team) return null;
+    return {
+      week: context.week,
+      team: teamAvailability(team.members, context.answers, context.week.dueAt),
     };
   },
 );

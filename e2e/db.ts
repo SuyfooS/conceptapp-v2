@@ -177,3 +177,44 @@ export async function availabilityOf(
     await sql.end();
   }
 }
+
+/**
+ * Send availability for next week to the demo restaurant as the person,
+ * through the same database functions the app uses: 09:00–17:00 on the
+ * week's first day. Opens the week if nobody has yet.
+ */
+export async function sendDemoAvailability(
+  phone: string,
+  note: string,
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`
+      with business as (
+        select (now() at time zone b.timezone)::date as today,
+          coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+        from public.businesses b
+        join public.business_modules m
+          on m.business_id = b.id and m.module_key = 'scheduling'
+        where b.id = ${DEMO_RESTAURANT}
+      ),
+      next_week as (
+        select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+          + 7 as starts_on
+        from business
+      ),
+      week as (
+        select starts_on,
+          public.open_schedule_week(${DEMO_RESTAURANT}, starts_on,
+            now() + interval '1 day') as id
+        from next_week
+      )
+      select public.submit_availability(p.id, week.id,
+        jsonb_build_array(jsonb_build_object(
+          'day', week.starts_on::text, 'start', '09:00', 'end', '17:00')),
+        ${note})
+      from week, public.profiles p where p.phone = ${phone}`;
+  } finally {
+    await sql.end();
+  }
+}
