@@ -3,6 +3,50 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-30 · run 20 · chunk 2c-1 (the week's schedule in the database)
+
+- Question #25 (what comes next) is open until 31.10 10:00; per its
+  default, work continued on the scheduling module. Split chunk 2c in
+  three: 2c-1 shifts and assignments in the database (today), 2c-2 the
+  manager's screen that builds the week from the shift pattern and the
+  availability, 2c-3 publishing and the worker's own shifts.
+- Migration `20261030000100_week_schedule.sql`: `schedule_shifts` (a
+  week's shift on one day: name, start, end, people needed, the pattern
+  key it came from) and `shift_assignments` (a person on a shift,
+  optionally in one of the business's positions);
+  `schedule_weeks.schedule_saved_at`. RLS: managers and owners (and "view
+  as" a manager) read them; workers read nothing until publishing; all
+  closes when scheduling is off.
+- Secret key only: `save_week_schedule(actor, week, shifts)` replaces the
+  whole week in one statement. Active managers and owners only; days
+  inside the week; a name, different start and end, 1–50 people; people
+  are active members, each once per shift; positions from the settings;
+  nobody on two shifts at once (measured from the week's start, so a
+  night shift past midnight counts against the next morning). No
+  temporary tables, so it needs no TEMP right on the hosted database.
+- `@domain/schedule`: `weekSchedule` (Zod, the same rules), `draftWeek`
+  (the week's shifts from the pattern, empty), `stillNeeded` /
+  `scheduleGaps` (for "N משמרות חסרות עובד") and `availableFor` (a
+  person's availability covers a shift; touching ranges join).
+  `@db/schedule`: `saveWeekSchedule`, `getWeekSchedule`.
+- Decisions (defaults, no question opened): only managers and owners
+  edit the schedule (per-person permissions are not wired yet, as with
+  availability); a shift may have more people than it needs; an owner
+  may be put on a shift.
+- Tests: 13 new unit tests (246 total); pgTAP `week_schedule.test.sql`
+  (38); `rls_enabled` lists the two tables. Four planted bugs in the
+  migration (no overlap check, workers reading shifts, workers saving,
+  members of any business on a shift) and two in the domain each turned
+  them red. All 14 pgTAP files ran on a local Postgres 16 with real
+  pgTAP and stubbed auth; `pnpm check` and `pnpm build` pass.
+- Not verified locally: no Docker in this run's container, so the
+  Supabase CLI, `db lint` and the type generator run only in CI;
+  `database.types.ts` was written to match the generator.
+- Commit: squash of PR `agent/2c-1-schedule-db` (see the daily note in #1).
+- Next: chunk 2c-2, the manager's "build the week" screen.
+- Defaults applied: #25 default (keep building scheduling) while it is
+  open; the decisions above.
+
 ## 2026-10-29 · run 19 · chunk 2b-3 (who has not sent availability)
 
 - `/schedule/availability/team`, for owners and managers (and "view as"
