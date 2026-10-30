@@ -388,12 +388,64 @@ export type Database = {
         };
         Relationships: [];
       };
+      schedule_shifts: {
+        Row: {
+          business_id: string;
+          day: string;
+          ends_at: string;
+          id: string;
+          name: string;
+          needed: number;
+          pattern_key: string | null;
+          starts_at: string;
+          week_id: string;
+        };
+        Insert: {
+          business_id: string;
+          day: string;
+          ends_at: string;
+          id?: string;
+          name: string;
+          needed: number;
+          pattern_key?: string | null;
+          starts_at: string;
+          week_id: string;
+        };
+        Update: {
+          business_id?: string;
+          day?: string;
+          ends_at?: string;
+          id?: string;
+          name?: string;
+          needed?: number;
+          pattern_key?: string | null;
+          starts_at?: string;
+          week_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "schedule_shifts_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "schedule_shifts_week_id_fkey";
+            columns: ["week_id"];
+            isOneToOne: false;
+            referencedRelation: "schedule_weeks";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       schedule_weeks: {
         Row: {
           availability_due_at: string;
           business_id: string;
           created_at: string;
           id: string;
+          schedule_saved_at: string | null;
           starts_on: string;
         };
         Insert: {
@@ -401,6 +453,7 @@ export type Database = {
           business_id: string;
           created_at?: string;
           id?: string;
+          schedule_saved_at?: string | null;
           starts_on: string;
         };
         Update: {
@@ -408,6 +461,7 @@ export type Database = {
           business_id?: string;
           created_at?: string;
           id?: string;
+          schedule_saved_at?: string | null;
           starts_on?: string;
         };
         Relationships: [
@@ -416,6 +470,49 @@ export type Database = {
             columns: ["business_id"];
             isOneToOne: false;
             referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      shift_assignments: {
+        Row: {
+          business_id: string;
+          position_key: string | null;
+          shift_id: string;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          position_key?: string | null;
+          shift_id: string;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          position_key?: string | null;
+          shift_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "shift_assignments_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shift_assignments_shift_id_fkey";
+            columns: ["shift_id"];
+            isOneToOne: false;
+            referencedRelation: "schedule_shifts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shift_assignments_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
@@ -537,6 +634,10 @@ export type Database = {
       open_schedule_week: {
         Args: { business: string; due_at: string; week_start: string };
         Returns: string;
+      };
+      save_week_schedule: {
+        Args: { actor: string; shifts: Json; week: string };
+        Returns: number;
       };
       start_view_session: {
         Args: {

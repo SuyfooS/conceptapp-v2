@@ -1,0 +1,70 @@
+import "server-only";
+import { type ScheduledShift, weekSchedule } from "@domain/schedule";
+import { z } from "zod";
+import type { ScheduleWeek } from "./availability";
+import { createAdminClient } from "./supabase/admin";
+import { createClient } from "./supabase/server";
+
+export type WeekScheduleShift = ScheduledShift & { id: string };
+
+/**
+ * Replace a week's schedule (`public.save_week_schedule`). Validated here
+ * first with the rules the database checks; `positionKeys` are the
+ * business's positions from its scheduling settings. Runs with the secret
+ * key: callers check the actor is the signed-in manager or owner and not
+ * viewing as someone else. Returns the number of shifts saved.
+ */
+export async function saveWeekSchedule(
+  actorId: string,
+  week: ScheduleWeek,
+  positionKeys: readonly string[],
+  input: unknown,
+): Promise<number> {
+  const shifts = weekSchedule(week.startsOn, positionKeys).parse(input);
+  const { data, error } = await createAdminClient().rpc("save_week_schedule", {
+    actor: actorId,
+    week: week.id,
+    shifts,
+  });
+  if (error) throw new Error(`Could not save the schedule: ${error.message}`);
+  return z.int().parse(data);
+}
+
+/** "HH:MM:SS" from Postgres to "HH:MM". */
+const toMinute = (time: string) => time.slice(0, 5);
+
+/**
+ * A week's shifts with the people on each, as the signed-in person may
+ * read them (RLS: managers and owners for now). Day by day, earliest
+ * first; the people on a shift by id.
+ */
+export async function getWeekSchedule(
+  weekId: string,
+): Promise<WeekScheduleShift[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("schedule_shifts")
+    .select(
+      "id, day, name, starts_at, ends_at, needed, pattern_key, shift_assignments (user_id, position_key)",
+    )
+    .eq("week_id", weekId);
+  if (error) throw error;
+  return data
+    .map((row) => ({
+      id: row.id,
+      day: row.day,
+      name: row.name,
+      start: toMinute(row.starts_at),
+      end: toMinute(row.ends_at),
+      needed: row.needed,
+      pattern: row.pattern_key,
+      assignees: row.shift_assignments
+        .map((a) => ({ user: a.user_id, position: a.position_key }))
+        .sort((a, b) => a.user.localeCompare(b.user)),
+    }))
+    .sort((a, b) =>
+      `${a.day}${a.start}${a.name}`.localeCompare(
+        `${b.day}${b.start}${b.name}`,
+      ),
+    );
+}
