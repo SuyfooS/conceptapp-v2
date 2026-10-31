@@ -3,6 +3,48 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-10-31 · run 21 · chunk 2c-2 (the manager builds the week)
+
+- Question #25 passed its deadline (31.10 10:00) without an answer: the
+  default applies, keep building the scheduling module until 12.11.
+  Closed. Split 2c-2 in two: 2c-2a putting people on the pattern's shifts
+  (today), 2c-2b changing the shifts themselves (add or remove a shift,
+  people needed, positions). 2c-3 publishing stays next after that.
+- `/schedule/build`, for owners and managers (and "view as" a manager);
+  workers get not-found. Next week's shifts: the saved schedule, or a
+  draft from the shift pattern (`draftWeek`). Each shift shows its hours,
+  "N מתוך M עובדים" and a "חסרים N עובדים" badge; the page shows "N
+  משמרות חסרות עובד". "הוספת עובד" lists the team grouped: available
+  (their availability covers the shift), have not sent, not available,
+  and on another shift at the same time (disabled). People already put
+  outside their availability carry a warning line. Phone: the week
+  strip (a dot on days with gaps) and one day; tablet: the same, the
+  day's shifts in two columns; desktop: the whole week, a column a day.
+- "שמירת הטיוטה" saves through `save_week_schedule` (opens the week if
+  nobody has); copy says workers see it only after publishing.
+  `/schedule` gains a "סידור לשבוע הבא" row for managers with the gaps
+  badge; workers still see the "coming soon" card.
+- `@domain/schedule` `shiftCandidates`; `@db/availability` `getWeek`
+  returns `scheduleSavedAt`; `week.ts` `currentScheduleBuild`.
+- Demo: `/design/shell/schedule/build` (restaurant pattern, demo team and
+  answers, nothing stored).
+- Decisions (defaults, no question opened): people are added without a
+  position for now (positions come with 2c-2b); a saved week is shown as
+  saved even if it was saved empty.
+- Tests: 4 new unit tests (250 total). Playwright
+  `schedule-build.spec.ts`: the manager sees Noa among the available and
+  Yoav among those who have not sent, puts Noa on Sunday morning, saves
+  (the database has exactly that), reloads, takes her off and saves
+  again; a worker has no row and gets not-found; axe and no horizontal
+  scroll. Locally: `pnpm check`, `pnpm build`, the demo at 390/820/1440
+  with axe (0 violations, no horizontal scroll) and a save.
+- Not verified locally: no Docker in this run's container, so the
+  Playwright spec runs only in CI.
+- Commit: squash of PR `agent/2c-2a-build-week` (see the daily note in #1).
+- Next: chunk 2c-2b, changing the week's shifts (add, remove, people
+  needed, positions).
+- Defaults applied: #25 (keep building scheduling); the decisions above.
+
 ## 2026-10-30 · run 20 · chunk 2c-1 (the week's schedule in the database)
 
 - Question #25 (what comes next) is open until 31.10 10:00; per its

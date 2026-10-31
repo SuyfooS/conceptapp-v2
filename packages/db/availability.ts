@@ -9,6 +9,11 @@ import { createClient } from "./supabase/server";
 
 export type ScheduleWeek = { id: string; startsOn: string; dueAt: string };
 
+export type OpenScheduleWeek = ScheduleWeek & {
+  /** ISO timestamp of the last time its schedule was saved, if ever. */
+  scheduleSavedAt: string | null;
+};
+
 export type Availability = {
   userId: string;
   note: string | null;
@@ -63,17 +68,22 @@ export async function saveAvailability(
 export async function getWeek(
   businessId: string,
   startsOn: string,
-): Promise<ScheduleWeek | null> {
+): Promise<OpenScheduleWeek | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("schedule_weeks")
-    .select("id, starts_on, availability_due_at")
+    .select("id, starts_on, availability_due_at, schedule_saved_at")
     .eq("business_id", businessId)
     .eq("starts_on", startsOn)
     .maybeSingle();
   if (error) throw error;
   return data
-    ? { id: data.id, startsOn: data.starts_on, dueAt: data.availability_due_at }
+    ? {
+        id: data.id,
+        startsOn: data.starts_on,
+        dueAt: data.availability_due_at,
+        scheduleSavedAt: data.schedule_saved_at,
+      }
     : null;
 }
 

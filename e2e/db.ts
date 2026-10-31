@@ -218,3 +218,39 @@ export async function sendDemoAvailability(
     await sql.end();
   }
 }
+
+/** Remove the demo restaurant's saved schedules, back to drafts. */
+export async function clearSchedule(): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`delete from public.schedule_shifts
+      where business_id = ${DEMO_RESTAURANT}`;
+    await sql`update public.schedule_weeks set schedule_saved_at = null
+      where business_id = ${DEMO_RESTAURANT}`;
+  } finally {
+    await sql.end();
+  }
+}
+
+export type SavedAssignment = {
+  weekday: number;
+  pattern: string | null;
+  phone: string;
+};
+
+/** Who the demo restaurant's saved schedules put on which shift. */
+export async function scheduleAssignments(): Promise<SavedAssignment[]> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    return await sql<SavedAssignment[]>`
+      select extract(dow from s.day)::int as weekday,
+        s.pattern_key as pattern, p.phone
+      from public.schedule_shifts s
+      join public.shift_assignments a on a.shift_id = s.id
+      join public.profiles p on p.id = a.user_id
+      where s.business_id = ${DEMO_RESTAURANT}
+      order by s.day, s.starts_at, p.phone`;
+  } finally {
+    await sql.end();
+  }
+}

@@ -486,6 +486,54 @@
       "title": "Viewing as {role} · {business}",
       "body": "You see the app the way this role sees it. No change is saved.",
       "end": "Stop viewing"
+    },
+    "build": {
+      "title": "Next week's schedule",
+      "subtitle": "The week of {from}–{to}",
+      "intro": "Choose who works each shift. The list shows first the people who said they are free for the shift's hours.",
+      "gaps": "{count, plural, one {One shift is short of people} other {# shifts are short of people}}",
+      "full": "Every shift is staffed",
+      "days": "Days of the week",
+      "dayMissing": "A shift on this day is short of people",
+      "day": "{day}, {date}",
+      "noShifts": "No shifts on this day.",
+      "noPattern": "The business has no regular shifts yet, so there is nothing to fill. Tell the ConceptApp team which shifts you run each day and we will add them.",
+      "shift": "{name} shift, {day} {date}",
+      "time": "<ltr>{start}–{end}</ltr>",
+      "missing": "{count, plural, one {One person missing} other {# people missing}}",
+      "staffed": "Staffed",
+      "people": "{assigned} of {needed} people",
+      "nobody": "Nobody on this shift yet.",
+      "add": "Add a person",
+      "choose": "Choose from the list",
+      "groups": {
+        "available": "Available",
+        "noAnswer": "Have not sent availability",
+        "unavailable": "Not available at these hours",
+        "busy": "On another shift at the same time"
+      },
+      "notes": {
+        "unavailable": "Outside their availability",
+        "noAnswer": "Has not sent availability"
+      },
+      "remove": "Remove {name} from the shift",
+      "submit": "Save the draft",
+      "draft": "This draft is not saved yet. Workers see the schedule only after it is published.",
+      "savedAt": "Draft saved on {date} at <ltr>{time}</ltr>. Workers see the schedule only after it is published.",
+      "saved": "The draft is saved.",
+      "unsaved": "There are changes that are not saved yet.",
+      "errors": {
+        "noAccess": "Only managers and owners build the schedule.",
+        "viewOnly": "This is view only, so the schedule was not saved.",
+        "weekChanged": "A new week has started. Refresh the screen to build next week's schedule.",
+        "invalid": "Something in the schedule does not fit, for example someone on two shifts at the same time. Refresh the screen and try again.",
+        "failed": "We could not save. Try again in a moment."
+      },
+      "entry": {
+        "subtitleDraft": "Not saved yet",
+        "subtitleSaved": "Draft saved, not published yet",
+        "full": "Staffed"
+      }
     }
   },
   "modules": {
