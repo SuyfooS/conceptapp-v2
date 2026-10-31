@@ -185,3 +185,74 @@ export function availableFor(
   }
   return joined.some(([start, end]) => start <= from && end >= to);
 }
+
+/**
+ * Where a person stands for one shift of the week being built:
+ * - `assigned`: already on it;
+ * - `busy`: on another shift that overlaps it;
+ * - `available`: their availability covers the whole shift;
+ * - `unavailable`: they answered, and it does not;
+ * - `noAnswer`: they have not sent availability for the week.
+ */
+export type CandidateState =
+  | "assigned"
+  | "busy"
+  | "available"
+  | "unavailable"
+  | "noAnswer";
+
+export type Candidate<M> = { member: M; state: CandidateState };
+
+const CANDIDATE_ORDER: Record<CandidateState, number> = {
+  available: 0,
+  noAnswer: 1,
+  unavailable: 2,
+  busy: 3,
+  assigned: 4,
+};
+
+/**
+ * Everyone on the team for shift `index` of the week starting on
+ * `weekStart`, with where they stand, for the manager's "add a person"
+ * list: available first, then those who have not answered, then those who
+ * are not available, then those already working at the time. The team's
+ * order is kept within each group.
+ */
+export function shiftCandidates<M extends { userId: string }>(
+  weekStart: string,
+  shifts: readonly Pick<
+    ScheduledShift,
+    "day" | "start" | "end" | "assignees"
+  >[],
+  index: number,
+  members: readonly M[],
+  answers: readonly { userId: string; ranges: readonly AvailabilityRange[] }[],
+): Candidate<M>[] {
+  const shift = shifts[index];
+  if (!shift) return [];
+  const at = span(weekStart, shift);
+  const rangesOf = new Map(answers.map((a) => [a.userId, a.ranges]));
+  const stateOf = (userId: string): CandidateState => {
+    if (shift.assignees.some((a) => a.user === userId)) return "assigned";
+    const busy = shifts.some((other, i) => {
+      if (i === index || !other.assignees.some((a) => a.user === userId)) {
+        return false;
+      }
+      const taken = span(weekStart, other);
+      return taken[0] < at[1] && at[0] < taken[1];
+    });
+    if (busy) return "busy";
+    const ranges = rangesOf.get(userId);
+    if (!ranges) return "noAnswer";
+    return availableFor(shift, ranges) ? "available" : "unavailable";
+  };
+  return members
+    .map((member) => ({ member, state: stateOf(member.userId) }))
+    .map((c, order) => ({ ...c, order }))
+    .sort(
+      (a, b) =>
+        CANDIDATE_ORDER[a.state] - CANDIDATE_ORDER[b.state] ||
+        a.order - b.order,
+    )
+    .map(({ member, state }) => ({ member, state }));
+}

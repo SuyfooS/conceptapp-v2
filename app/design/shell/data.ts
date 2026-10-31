@@ -4,6 +4,7 @@
 // Hebrew-literal check in tooling/ allows this one file.
 
 import type { AvailabilityAnswer } from "@domain/availability";
+import type { ShiftPattern } from "@domain/staffing";
 import type { TeamInvite, TeamMember } from "@domain/team";
 
 export const business = { name: "מסעדת הדגמה" };
@@ -234,5 +235,42 @@ export const teamAnswers: AvailabilityAnswer[] = [
       { day: "2026-11-04", start: "10:00", end: "18:00" },
       { day: "2026-11-05", start: "10:00", end: "18:00" },
     ],
+  },
+];
+
+// The restaurant template's shift pattern (supabase/migrations, templates),
+// for the demo of building the week of 1–7 November 2026.
+export const demoShiftPatterns: ShiftPattern[] = [
+  {
+    key: "morning",
+    name: "בוקר",
+    days: [0, 1, 2, 3, 4],
+    start: "09:00",
+    end: "16:00",
+    needed: 3,
+  },
+  {
+    key: "evening",
+    name: "ערב",
+    days: [0, 1, 2, 3, 4],
+    start: "16:00",
+    end: "23:30",
+    needed: 4,
+  },
+  {
+    key: "friday",
+    name: "בוקר",
+    days: [5],
+    start: "08:00",
+    end: "14:30",
+    needed: 5,
+  },
+  {
+    key: "saturday-night",
+    name: "מוצ״ש",
+    days: [6],
+    start: "19:30",
+    end: "00:00",
+    needed: 4,
   },
 ];

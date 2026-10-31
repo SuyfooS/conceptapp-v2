@@ -3,7 +3,9 @@ import {
   getBusinessPlace,
   getWeek,
   getWeekAvailability,
+  type OpenScheduleWeek,
 } from "@db/availability";
+import { getWeekSchedule } from "@db/schedule";
 import {
   type AvailabilityAnswer,
   availabilityDueAt,
@@ -18,7 +20,9 @@ import {
   shabbatLimits,
 } from "@domain/availability-form";
 import { canOpenModule } from "@domain/modules";
+import { draftWeek, type ScheduledShift } from "@domain/schedule";
 import { ISRAELI_CITIES, shabbatTimes } from "@domain/shabbat";
+import type { Position, ShiftPattern } from "@domain/staffing";
 import { canSeeTeam, type TeamMember } from "@domain/team";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
@@ -47,6 +51,10 @@ const availabilityContext = cache(
   async (): Promise<{
     week: AvailabilityWeek;
     answers: Availability[];
+    /** The week in the database, once someone has opened it. */
+    open: OpenScheduleWeek | null;
+    positions: Position[];
+    patterns: ShiftPattern[];
   } | null> => {
     const [member, enabled] = await Promise.all([
       currentMember(),
@@ -99,7 +107,13 @@ const availabilityContext = cache(
       shabbat,
       mine: answers.find((a) => a.userId === member.userId) ?? null,
     };
-    return { week, answers };
+    return {
+      week,
+      answers,
+      open,
+      positions: settings.positions,
+      patterns: settings.shifts,
+    };
   },
 );
 
@@ -136,6 +150,52 @@ export const currentTeamAvailability = cache(
     return {
       week: context.week,
       team: teamAvailability(team.members, context.answers, context.week.dueAt),
+    };
+  },
+);
+
+export type ScheduleBuildWeek = {
+  week: AvailabilityWeek;
+  /** ISO timestamp of the last save, or null while it is a draft. */
+  savedAt: string | null;
+  /** The saved shifts, or the week drawn from the shift pattern. */
+  shifts: ScheduledShift[];
+  team: TeamMember[];
+  answers: Pick<Availability, "userId" | "ranges">[];
+  positions: Position[];
+};
+
+/**
+ * Next week's schedule as the manager builds it: what was saved, or a
+ * draft from the business's shift pattern with nobody on it yet, and the
+ * team with its availability. Null unless the signed-in person is a
+ * manager or owner (or views as one) with scheduling on.
+ */
+export const currentScheduleBuild = cache(
+  async (): Promise<ScheduleBuildWeek | null> => {
+    const member = await currentMember();
+    const role = member?.membership?.role;
+    if (!role || !canSeeTeam(role)) return null;
+    const [context, team] = await Promise.all([
+      availabilityContext(),
+      currentTeam(),
+    ]);
+    if (!context || !team) return null;
+    const { week, open } = context;
+    const savedAt = open?.scheduleSavedAt ?? null;
+    const saved = open && savedAt ? await getWeekSchedule(open.id) : null;
+    return {
+      week,
+      savedAt,
+      shifts:
+        saved?.map(({ id: _, ...shift }) => shift) ??
+        draftWeek(week.start, context.patterns),
+      team: team.members,
+      answers: context.answers.map(({ userId, ranges }) => ({
+        userId,
+        ranges,
+      })),
+      positions: context.positions,
     };
   },
 );

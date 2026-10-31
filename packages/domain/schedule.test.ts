@@ -4,6 +4,7 @@ import {
   draftWeek,
   type ScheduledShift,
   scheduleGaps,
+  shiftCandidates,
   stillNeeded,
   weekSchedule,
 } from "./schedule";
@@ -257,5 +258,89 @@ describe("availableFor", () => {
     expect(availableFor(morning, [at("2026-11-01", "05:00", "04:00")])).toBe(
       true,
     );
+  });
+});
+
+describe("shiftCandidates", () => {
+  const team = [
+    { userId: "noa" },
+    { userId: "yoav" },
+    { userId: "maya" },
+    { userId: "itay" },
+    { userId: "omer" },
+  ];
+  const sunday = (start: string, end: string, assignees: string[] = []) => ({
+    day: "2026-11-01",
+    start,
+    end,
+    assignees: assignees.map((user) => ({ user, position: null })),
+  });
+  const answers = [
+    {
+      userId: "noa",
+      ranges: [{ day: "2026-11-01", start: "09:00", end: "17:00" }],
+    },
+    {
+      userId: "yoav",
+      ranges: [{ day: "2026-11-02", start: "09:00", end: "17:00" }],
+    },
+    { userId: "maya", ranges: [] },
+    {
+      userId: "itay",
+      ranges: [{ day: "2026-11-01", start: "08:00", end: "23:59" }],
+    },
+  ];
+  const states = (shifts: ReturnType<typeof sunday>[], index: number) =>
+    shiftCandidates(WEEK, shifts, index, team, answers).map(
+      (c) => `${c.member.userId}:${c.state}`,
+    );
+
+  it("puts the available first, then no answer, then not available", () => {
+    expect(states([sunday("09:00", "16:00")], 0)).toEqual([
+      "noa:available",
+      "itay:available",
+      "omer:noAnswer",
+      "yoav:unavailable",
+      "maya:unavailable",
+    ]);
+  });
+
+  it("marks people already on the shift and on an overlapping one", () => {
+    const shifts = [
+      sunday("09:00", "16:00", ["noa"]),
+      sunday("15:00", "23:00", ["itay"]),
+      sunday("16:00", "23:30"),
+    ];
+    expect(states(shifts, 0)).toEqual([
+      "omer:noAnswer",
+      "yoav:unavailable",
+      "maya:unavailable",
+      "itay:busy",
+      "noa:assigned",
+    ]);
+    // Back to back is not overlapping; Noa's availability ends at 17:00.
+    expect(states(shifts, 2)).toEqual([
+      "omer:noAnswer",
+      "noa:unavailable",
+      "yoav:unavailable",
+      "maya:unavailable",
+      "itay:busy",
+    ]);
+  });
+
+  it("counts a night shift against the next morning", () => {
+    const shifts = [
+      { ...sunday("20:00", "02:00", ["omer"]) },
+      { day: "2026-11-02", start: "01:00", end: "08:00", assignees: [] },
+    ];
+    expect(
+      shiftCandidates(WEEK, shifts, 1, team, answers).find(
+        (c) => c.member.userId === "omer",
+      )?.state,
+    ).toBe("busy");
+  });
+
+  it("gives nothing for a shift that is not there", () => {
+    expect(shiftCandidates(WEEK, [], 0, team, answers)).toEqual([]);
   });
 });
