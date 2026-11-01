@@ -254,3 +254,29 @@ export async function scheduleAssignments(): Promise<SavedAssignment[]> {
     await sql.end();
   }
 }
+
+export type SavedShift = {
+  weekday: number;
+  name: string;
+  start: string;
+  end: string;
+  needed: number;
+  pattern: string | null;
+};
+
+/** The demo restaurant's saved shifts, day by day and earliest first. */
+export async function scheduleShifts(): Promise<SavedShift[]> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    return await sql<SavedShift[]>`
+      select extract(dow from day)::int as weekday, name,
+        to_char(starts_at, 'HH24:MI') as start,
+        to_char(ends_at, 'HH24:MI') as "end",
+        needed, pattern_key as pattern
+      from public.schedule_shifts
+      where business_id = ${DEMO_RESTAURANT}
+      order by day, starts_at, name`;
+  } finally {
+    await sql.end();
+  }
+}

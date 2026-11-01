@@ -5,12 +5,14 @@ import {
   clearAvailability,
   clearSchedule,
   scheduleAssignments,
+  scheduleShifts,
   sendDemoAvailability,
 } from "./db";
 import { signIn } from "./session";
 
 // Seeded in supabase/seed.sql: the demo restaurant (restaurant template:
-// a morning shift 09:00–16:00 for three people from Sunday to Thursday),
+// from Sunday to Thursday a morning shift 09:00–16:00 for three people and
+// an evening shift 16:00–23:30 for four; Friday morning; Saturday night),
 // its manager and two workers. Noa sends 09:00–17:00 for next Sunday;
 // Yoav sends nothing.
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
@@ -125,6 +127,123 @@ test("a manager puts people on next week's shifts", async ({
   await page.getByRole("button", { name: tb.submit }).click();
   await expect(page.getByRole("status")).toHaveText(tb.saved);
   expect(await scheduleAssignments()).toEqual([]);
+});
+
+test("a manager changes, adds and removes next week's shifts", async ({
+  page,
+}, testInfo) => {
+  const te = tb.editor;
+  const sunday = he.app.availability.weekdays.sun;
+  const region = (name: string) =>
+    page.getByRole("region", {
+      name: new RegExp(
+        `^${before(tb.shift.replace("{name}", name).replace("{day}", sunday))}`,
+      ),
+    });
+  const editButton = (name: string) =>
+    region(name).getByRole("button", { name: tb.edit.replace("{name}", name) });
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  const morning = region("בוקר");
+  const evening = region("ערב");
+  await expect(morning).toHaveCount(1);
+  await expect(evening).toHaveCount(1);
+
+  // Fewer people and an earlier end on Sunday morning.
+  await editButton("בוקר").click();
+  await morning.getByLabel(te.needed).fill("2");
+  await morning.getByLabel(te.end).fill("15:00");
+  await morning.getByRole("button", { name: te.apply }).click();
+  await expect(morning).toContainText(
+    tb.people.replace("{assigned}", "0").replace("{needed}", "2"),
+  );
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+
+  // Removing a shift can be undone; the second time it stays removed.
+  await editButton("ערב").click();
+  await evening.getByRole("button", { name: te.delete }).click();
+  await expect(evening).toHaveCount(0);
+  await page.getByRole("button", { name: tb.undoRemove }).click();
+  await expect(evening).toHaveCount(1);
+  await editButton("ערב").click();
+  await evening.getByRole("button", { name: te.delete }).click();
+  await expect(evening).toHaveCount(0);
+
+  // A new shift: a name is required first.
+  const addOnSunday = new RegExp(
+    `^${before(tb.addShiftOn.replace("{day}", sunday))}`,
+  );
+  await page.getByRole("button", { name: addOnSunday }).click();
+  const adding = page.getByRole("region", { name: addOnSunday });
+  await adding.getByRole("button", { name: te.add }).click();
+  await expect(adding.getByRole("alert")).toHaveText(te.problems.name);
+  await adding.getByLabel(te.name).fill("אמצע");
+  await adding.getByLabel(te.start).fill("14:00");
+  await adding.getByLabel(te.end).fill("20:00");
+  await adding.getByLabel(te.needed).fill("2");
+  await adding.getByRole("button", { name: te.add }).click();
+  const middle = region("אמצע");
+  await expect(middle).toHaveCount(1);
+  await expectCleanPage(page);
+
+  // Noa on two shifts that overlap: the screen says so and does not save.
+  await morning.getByLabel(tb.add).selectOption({ label: NOA.name });
+  await middle.getByLabel(tb.add).selectOption({ label: NOA.name });
+  await expect(page.getByText(tb.clashBadge)).toBeVisible();
+  await expect(middle).toContainText(tb.notes.busy);
+  await page.getByRole("button", { name: tb.submit }).click();
+  // (Next's route announcer is an empty alert of its own.)
+  await expect(
+    page.getByRole("alert").filter({ hasText: tb.errors.clash }),
+  ).toBeVisible();
+  expect(await scheduleShifts()).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath("schedule-shifts-clash.png"),
+    fullPage: true,
+  });
+
+  // The new shift starts when the morning ends: now it saves.
+  await editButton("אמצע").click();
+  await middle.getByLabel(te.start).fill("15:00");
+  await middle.getByRole("button", { name: te.apply }).click();
+  await expect(page.getByText(tb.clashBadge)).toHaveCount(0);
+  await page.getByRole("button", { name: tb.submit }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tb.saved }),
+  ).toBeVisible();
+
+  const saved = await scheduleShifts();
+  expect(saved.filter((s) => s.weekday === 0)).toEqual([
+    {
+      weekday: 0,
+      name: "בוקר",
+      start: "09:00",
+      end: "15:00",
+      needed: 2,
+      pattern: "morning",
+    },
+    {
+      weekday: 0,
+      name: "אמצע",
+      start: "15:00",
+      end: "20:00",
+      needed: 2,
+      pattern: null,
+    },
+  ]);
+  // The rest of the week is the pattern, untouched: morning and evening
+  // Monday to Thursday, Friday morning and Saturday night.
+  expect(saved.filter((s) => s.weekday !== 0)).toHaveLength(10);
+  expect(await scheduleAssignments()).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164 },
+    { weekday: 0, pattern: null, phone: NOA.e164 },
+  ]);
+
+  // It comes back after a reload.
+  await page.reload();
+  await expect(region("אמצע")).toHaveCount(1);
+  await expect(region("ערב")).toHaveCount(0);
+  await expectCleanPage(page);
 });
 
 test("a worker has no schedule building screen", async ({ page }) => {

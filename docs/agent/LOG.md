@@ -3,6 +3,41 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-01 · run 22 · chunk 2c-2b-1 (changing the week's shifts)
+
+- No open questions or instructions; `main` green at `45d6765`. Split
+  2c-2b in two: 2c-2b-1 changing the shifts themselves (today), 2c-2b-2
+  positions (a person's role on a shift). 2c-3 publishing after that.
+- `/schedule/build`: each shift has "עריכת המשמרת" (pencil): name, start,
+  end, people needed (an end before the start is the next day), with a
+  message per wrong field. "הסרת המשמרת" takes it off with an undo bar
+  ("החזרת המשמרת") instead of "are you sure". Every day has "הוספת
+  משמרת" for a shift that is not in the pattern (saved with no pattern
+  key). Changed hours move the shift to its place in the day.
+- Someone on two overlapping shifts (e.g. after hours changed): both
+  lines say "גם במשמרת אחרת באותה שעה", a "עובד בשתי משמרות באותה שעה"
+  badge shows, and saving is stopped on the screen with what to do
+  (the database refused it before, with a vague error).
+- A business with no shift pattern now gets the builder with empty days
+  and "add a shift" instead of a dead end; the note says so.
+- `@domain/schedule`: `doubleBooked`, `shiftDetailsProblem`, `shiftSlot`.
+  No database change: `save_week_schedule` already took any shifts.
+- Tests: 11 new unit tests (257 total). Playwright `schedule-build.spec.ts`
+  new test: the manager shortens Sunday morning to 2 people until 15:00,
+  removes the evening (undo once, then for good), adds "אמצע" (a name is
+  required first), puts Noa on two overlapping shifts and is stopped,
+  fixes the hours and saves; the database has exactly those shifts and
+  the rest of the week's 10; reload; axe and no horizontal scroll.
+- Verified locally this time: Docker ran in this container, so the
+  whole `schedule-build.spec.ts` (9 tests, 3 sizes) passed against a
+  local Supabase. Also `pnpm check`, `pnpm build`, the demo at
+  390/820/1440 with axe (0 violations, no horizontal scroll).
+- Commit: squash of PR `agent/2c-2b-1-edit-shifts` (see the daily note in #1).
+- Next: chunk 2c-2b-2, positions on the week's shifts.
+- Defaults applied (no question opened): changes to a week's shifts stay
+  in that week; the regular shift pattern is changed only by the
+  ConceptApp team in the settings, as before.
+
 ## 2026-10-31 · run 21 · chunk 2c-2 (the manager builds the week)
 
 - Question #25 passed its deadline (31.10 10:00) without an answer: the
