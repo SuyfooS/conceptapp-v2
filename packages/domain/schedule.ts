@@ -256,3 +256,82 @@ export function shiftCandidates<M extends { userId: string }>(
     )
     .map(({ member, state }) => ({ member, state }));
 }
+
+/**
+ * People put on two shifts of the week that overlap, for instance after a
+ * manager moved one shift's hours. Both sides are listed, as
+ * `${shiftIndex}:${userId}`, so each shift can say who clashes.
+ */
+export function doubleBooked(
+  weekStart: string,
+  shifts: readonly Pick<
+    ScheduledShift,
+    "day" | "start" | "end" | "assignees"
+  >[],
+): Set<string> {
+  const spans = shifts.map((shift) => span(weekStart, shift));
+  const clashes = new Set<string>();
+  shifts.forEach((shift, i) => {
+    for (const { user } of shift.assignees) {
+      for (let j = i + 1; j < shifts.length; j++) {
+        const other = shifts[j];
+        const [a, b] = [spans[i], spans[j]];
+        if (!other || !a || !b) continue;
+        if (!other.assignees.some((p) => p.user === user)) continue;
+        if (a[0] < b[1] && b[0] < a[1]) {
+          clashes.add(`${i}:${user}`);
+          clashes.add(`${j}:${user}`);
+        }
+      }
+    }
+  });
+  return clashes;
+}
+
+/** What is wrong with a shift's details as typed, if anything. */
+export type ShiftDetailsProblem = "name" | "time" | "same" | "needed";
+
+/**
+ * The manager's own edits to a shift (name, hours, people needed), checked
+ * field by field as the form shows them: a name, two times that differ
+ * (an end at or before the start runs past midnight), 1–50 people.
+ */
+export function shiftDetailsProblem(details: {
+  name: string;
+  start: string;
+  end: string;
+  needed: number;
+}): ShiftDetailsProblem | null {
+  const name = details.name.trim();
+  if (name.length === 0 || name.length > 40) return "name";
+  if (
+    !timeOfDay.safeParse(details.start).success ||
+    !timeOfDay.safeParse(details.end).success
+  ) {
+    return "time";
+  }
+  if (details.start === details.end) return "same";
+  if (
+    !Number.isInteger(details.needed) ||
+    details.needed < 1 ||
+    details.needed > 50
+  ) {
+    return "needed";
+  }
+  return null;
+}
+
+/**
+ * Where a shift goes in the week's list, which runs day by day and
+ * earliest first: after every shift that starts before it or at the same
+ * time on the same day. Returns the index to insert at.
+ */
+export function shiftSlot(
+  shifts: readonly Pick<ScheduledShift, "day" | "start">[],
+  shift: Pick<ScheduledShift, "day" | "start">,
+): number {
+  const at = shifts.findIndex(
+    (s) => s.day > shift.day || (s.day === shift.day && s.start > shift.start),
+  );
+  return at === -1 ? shifts.length : at;
+}

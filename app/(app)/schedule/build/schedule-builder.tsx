@@ -9,9 +9,13 @@ import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import {
   availableFor,
   type CandidateState,
+  doubleBooked,
   type ScheduledShift,
+  type ShiftDetailsProblem,
   scheduleGaps,
   shiftCandidates,
+  shiftDetailsProblem,
+  shiftSlot,
   stillNeeded,
 } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
@@ -21,11 +25,18 @@ import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { IconButton } from "@ui/icon-button";
-import { fieldInputClass } from "@ui/text-field";
+import { fieldInputClass, ltrInputClass } from "@ui/text-field";
 import { WeekStrip } from "@ui/week-strip";
-import { Save, X } from "lucide-react";
+import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type ReactNode, useActionState, useState } from "react";
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useActionState,
+  useId,
+  useRef,
+  useState,
+} from "react";
 import type { ScheduleState } from "./actions";
 
 const initialState: ScheduleState = {};
@@ -63,34 +74,92 @@ export function ScheduleBuilder({
 }: ScheduleBuilderProps) {
   const t = useTranslations();
   const [state, action, pending] = useActionState(save, initialState);
-  const [shifts, setShifts] = useState(initial);
+  // Each shift gets an id of its own on this screen, so cards keep their
+  // state while shifts are added and removed around them.
+  const nextId = useRef(initial.length);
+  const [rows, setRows] = useState(() =>
+    initial.map((shift, id) => ({ id, shift })),
+  );
   const [dirty, setDirty] = useState(false);
   const [day, setDay] = useState(week.dates[0] ?? week.start);
+  /** The shift last removed and where it was, until it is put back. */
+  const [removed, setRemoved] = useState<{
+    row: { id: number; shift: ScheduledShift };
+    at: number;
+  } | null>(null);
+  const [blocked, setBlocked] = useState(false);
 
+  const shifts = rows.map((r) => r.shift);
   const nameOf = new Map(
     team.map((m) => [m.userId, m.name ?? t("app.team.noName")]),
   );
   const rangesOf = new Map(answers.map((a) => [a.userId, a.ranges]));
   const gaps = scheduleGaps(shifts);
+  const clashes = doubleBooked(week.start, shifts);
   const weekday = (date: string) =>
     t(`app.availability.weekdays.${WEEKDAY_KEYS[weekdayOf(date)] ?? "sun"}`);
   const shortDay = (date: string) =>
     t(`days.${WEEKDAY_KEYS[weekdayOf(date)] ?? "sun"}.short`);
 
-  function change(index: number, assignees: ScheduledShift["assignees"]) {
-    setShifts((current) =>
-      current.map((s, i) => (i === index ? { ...s, assignees } : s)),
-    );
+  function edited(next: { id: number; shift: ScheduledShift }[]) {
+    setRows(next);
     setDirty(true);
+    setBlocked(false);
   }
 
-  // Shifts keep their place in the week, so their index is their key.
-  const indexed = shifts.map((shift, index) => ({ shift, index }));
-  const onDay = (date: string) => indexed.filter((s) => s.shift.day === date);
+  function change(id: number, shift: ScheduledShift) {
+    // New hours may move the shift within its day.
+    const rest = rows.filter((r) => r.id !== id);
+    const at = shiftSlot(
+      rest.map((r) => r.shift),
+      shift,
+    );
+    edited([...rest.slice(0, at), { id, shift }, ...rest.slice(at)]);
+  }
 
-  const card = ({ shift, index }: { shift: ScheduledShift; index: number }) => (
+  function remove(id: number) {
+    const at = rows.findIndex((r) => r.id === id);
+    const row = rows[at];
+    if (!row) return;
+    setRemoved({ row, at });
+    edited(rows.filter((r) => r.id !== id));
+  }
+
+  function undoRemove() {
+    if (!removed) return;
+    const at = Math.min(removed.at, rows.length);
+    edited([...rows.slice(0, at), removed.row, ...rows.slice(at)]);
+    setRemoved(null);
+  }
+
+  function addShift(date: string, details: ShiftDetails) {
+    const shift: ScheduledShift = {
+      day: date,
+      ...details,
+      pattern: null,
+      assignees: [],
+    };
+    const at = shiftSlot(shifts, shift);
+    const id = nextId.current++;
+    edited([...rows.slice(0, at), { id, shift }, ...rows.slice(at)]);
+  }
+
+  const onDay = (date: string) =>
+    rows
+      .map((row, index) => ({ ...row, index }))
+      .filter((r) => r.shift.day === date);
+
+  const card = ({
+    id,
+    shift,
+    index,
+  }: {
+    id: number;
+    shift: ScheduledShift;
+    index: number;
+  }) => (
     <ShiftCard
-      key={index}
+      key={id}
       label={t("app.build.shift", {
         name: shift.name,
         day: weekday(shift.day),
@@ -100,19 +169,35 @@ export function ScheduleBuilder({
       candidates={shiftCandidates(week.start, shifts, index, team, answers)}
       nameOf={nameOf}
       noteOf={(userId) => {
+        if (clashes.has(`${index}:${userId}`)) return "busy";
         const ranges = rangesOf.get(userId);
         if (!ranges) return "noAnswer";
         return availableFor(shift, ranges) ? null : "unavailable";
       }}
       onAdd={(user) =>
-        change(index, [...shift.assignees, { user, position: null }])
+        change(id, {
+          ...shift,
+          assignees: [...shift.assignees, { user, position: null }],
+        })
       }
       onRemove={(user) =>
-        change(
-          index,
-          shift.assignees.filter((a) => a.user !== user),
-        )
+        change(id, {
+          ...shift,
+          assignees: shift.assignees.filter((a) => a.user !== user),
+        })
       }
+      onChange={(details) => change(id, { ...shift, ...details })}
+      onDelete={() => remove(id)}
+    />
+  );
+
+  const addButton = (date: string) => (
+    <AddShift
+      label={t("app.build.addShiftOn", {
+        day: weekday(date),
+        date: dayMonth(date),
+      })}
+      onAdd={(details) => addShift(date, details)}
     />
   );
 
@@ -123,31 +208,56 @@ export function ScheduleBuilder({
       }
     : null;
 
-  if (shifts.length === 0) {
-    return (
-      <Card tone="flat" padding="lg" className="md:max-w-xl">
-        <CardText>{t("app.build.noPattern")}</CardText>
-      </Card>
-    );
-  }
-
   return (
     <form
       action={action}
-      onSubmit={() => setDirty(false)}
+      onSubmit={(event) => {
+        // Saving would fail on someone working two shifts at once.
+        if (clashes.size > 0) {
+          event.preventDefault();
+          setBlocked(true);
+          return;
+        }
+        setDirty(false);
+        setRemoved(null);
+      }}
       className="flex flex-col gap-5"
     >
       <input type="hidden" name="week" value={week.start} />
       <input type="hidden" name="shifts" value={JSON.stringify(shifts)} />
+      {initial.length === 0 ? (
+        <Card tone="flat" padding="lg" className="md:max-w-xl">
+          <CardText>{t("app.build.noPattern")}</CardText>
+        </Card>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2">
-        {gaps.shifts.length > 0 ? (
+        {shifts.length === 0 ? null : gaps.shifts.length > 0 ? (
           <Badge tone="warning">
             {t("app.build.gaps", { count: gaps.shifts.length })}
           </Badge>
         ) : (
           <Badge tone="success">{t("app.build.full")}</Badge>
         )}
+        {clashes.size > 0 ? (
+          <Badge tone="danger">{t("app.build.clashBadge")}</Badge>
+        ) : null}
       </div>
+      {removed ? (
+        <div
+          role="status"
+          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-line bg-surface-2 p-3 md:max-w-xl"
+        >
+          <span className="min-w-0 flex-1">
+            {t("app.build.removedShift", {
+              name: removed.row.shift.name,
+              day: weekday(removed.row.shift.day),
+            })}
+          </span>
+          <Button type="button" variant="secondary" onClick={undoRemove}>
+            {t("app.build.undoRemove")}
+          </Button>
+        </div>
+      ) : null}
 
       {/* Phone and tablet: one day at a time. */}
       <div className="flex flex-col gap-4 xl:hidden">
@@ -175,6 +285,9 @@ export function ScheduleBuilder({
               {onDay(day).map(card)}
             </div>
           )}
+          <div key={day} className="md:max-w-sm">
+            {addButton(day)}
+          </div>
         </section>
       </div>
 
@@ -193,6 +306,7 @@ export function ScheduleBuilder({
             ) : (
               onDay(date).map(card)
             )}
+            {addButton(date)}
           </section>
         ))}
       </div>
@@ -205,6 +319,11 @@ export function ScheduleBuilder({
               ? t.rich("app.build.savedAt", { ...savedMoment, ltr })
               : t("app.build.draft")}
         </p>
+        {blocked ? (
+          <p role="alert" className="text-danger">
+            {t("app.build.errors.clash")}
+          </p>
+        ) : null}
         {state.failure && !dirty && !pending ? (
           <p role="alert" className="text-danger">
             {t(`app.build.errors.${state.failure}`)}
@@ -237,6 +356,8 @@ function ShiftCard({
   noteOf,
   onAdd,
   onRemove,
+  onChange,
+  onDelete,
 }: {
   label: string;
   shift: ScheduledShift;
@@ -244,11 +365,14 @@ function ShiftCard({
     typeof shiftCandidates<Pick<TeamMember, "userId" | "name">>
   >;
   nameOf: Map<string, string>;
-  noteOf: (userId: string) => "unavailable" | "noAnswer" | null;
+  noteOf: (userId: string) => "busy" | "unavailable" | "noAnswer" | null;
   onAdd: (userId: string) => void;
   onRemove: (userId: string) => void;
+  onChange: (details: ShiftDetails) => void;
+  onDelete: () => void;
 }) {
   const t = useTranslations();
+  const [editing, setEditing] = useState(false);
   const missing = stillNeeded(shift);
   const byState = (state: CandidateState) =>
     candidates.filter((c) => c.state === state);
@@ -278,14 +402,40 @@ function ShiftCard({
             })}
           </span>
         </div>
-        {missing > 0 ? (
-          <Badge tone="warning">
-            {t("app.build.missing", { count: missing })}
-          </Badge>
-        ) : (
-          <Badge tone="success">{t("app.build.staffed")}</Badge>
-        )}
+        <div className="flex items-center gap-1">
+          {missing > 0 ? (
+            <Badge tone="warning">
+              {t("app.build.missing", { count: missing })}
+            </Badge>
+          ) : (
+            <Badge tone="success">{t("app.build.staffed")}</Badge>
+          )}
+          {editing ? null : (
+            <IconButton
+              label={t("app.build.edit", { name: shift.name })}
+              icon={<Pencil />}
+              onClick={() => setEditing(true)}
+            />
+          )}
+        </div>
       </div>
+      {editing ? (
+        <ShiftEditor
+          initial={shift}
+          submitLabel={t("app.build.editor.apply")}
+          onDone={(details) => {
+            onChange(details);
+            setEditing(false);
+          }}
+          onCancel={() => setEditing(false)}
+          extra={
+            <Button type="button" variant="ghost" onClick={onDelete}>
+              <Trash2 aria-hidden="true" />
+              {t("app.build.editor.delete")}
+            </Button>
+          }
+        />
+      ) : null}
       {shift.assignees.length === 0 ? (
         <p className="text-ink-2 text-sm">{t("app.build.nobody")}</p>
       ) : (
@@ -298,7 +448,12 @@ function ShiftCard({
                 <span className="flex min-w-0 flex-1 flex-col">
                   <span className="truncate font-medium">{name}</span>
                   {note ? (
-                    <span className="text-sm text-warning">
+                    <span
+                      className={cn(
+                        "text-sm",
+                        note === "busy" ? "text-danger" : "text-warning",
+                      )}
+                    >
                       {t(`app.build.notes.${note}`)}
                     </span>
                   ) : null}
@@ -344,5 +499,170 @@ function ShiftCard({
         </label>
       ) : null}
     </section>
+  );
+}
+
+type ShiftDetails = Pick<ScheduledShift, "name" | "start" | "end" | "needed">;
+
+/** "Add a shift" under a day: a button that opens the shift's details. */
+function AddShift({
+  label,
+  onAdd,
+}: {
+  label: string;
+  onAdd: (details: ShiftDetails) => void;
+}) {
+  const t = useTranslations();
+  const [open, setOpen] = useState(false);
+  if (!open) {
+    return (
+      <Button
+        type="button"
+        variant="secondary"
+        aria-label={label}
+        onClick={() => setOpen(true)}
+        className="w-full"
+      >
+        <Plus aria-hidden="true" />
+        {t("app.build.addShift")}
+      </Button>
+    );
+  }
+  return (
+    <section
+      aria-label={label}
+      className="flex flex-col gap-3 rounded-card border border-line bg-surface p-3"
+    >
+      <h3 className="font-bold">{t("app.build.addShift")}</h3>
+      <ShiftEditor
+        initial={{ name: "", start: "", end: "", needed: 1 }}
+        submitLabel={t("app.build.editor.add")}
+        onDone={(details) => {
+          onAdd(details);
+          setOpen(false);
+        }}
+        onCancel={() => setOpen(false)}
+      />
+    </section>
+  );
+}
+
+/**
+ * A shift's name, hours and people needed. It sits inside the schedule's
+ * form, so it has no form of its own: its buttons apply the change to the
+ * schedule on the screen, and Enter in a field does the same instead of
+ * saving the whole week.
+ */
+function ShiftEditor({
+  initial,
+  submitLabel,
+  onDone,
+  onCancel,
+  extra,
+}: {
+  initial: ShiftDetails;
+  submitLabel: string;
+  onDone: (details: ShiftDetails) => void;
+  onCancel: () => void;
+  extra?: ReactNode;
+}) {
+  const t = useTranslations("app.build.editor");
+  const id = useId();
+  const [name, setName] = useState(initial.name);
+  const [start, setStart] = useState(initial.start);
+  const [end, setEnd] = useState(initial.end);
+  const [needed, setNeeded] = useState(String(initial.needed));
+  const [problem, setProblem] = useState<ShiftDetailsProblem | null>(null);
+
+  function apply() {
+    const details = { name: name.trim(), start, end, needed: Number(needed) };
+    const found = shiftDetailsProblem(details);
+    setProblem(found);
+    if (!found) onDone(details);
+  }
+  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      apply();
+    }
+  };
+  const errorId = `${id}-error`;
+  const invalid = (field: ShiftDetailsProblem) =>
+    problem === field || (field === "time" && problem === "same")
+      ? { "aria-invalid": true, "aria-describedby": errorId }
+      : {};
+
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1.5">
+        <span className="font-medium text-sm">{t("name")}</span>
+        <input
+          value={name}
+          maxLength={40}
+          onChange={(event) => setName(event.target.value)}
+          onKeyDown={onKeyDown}
+          className={cn(fieldInputClass, "min-w-0")}
+          {...invalid("name")}
+        />
+      </label>
+      <div className="flex flex-wrap gap-3">
+        <label className="flex min-w-28 flex-1 flex-col gap-1.5">
+          <span className="font-medium text-sm">{t("start")}</span>
+          <input
+            type="time"
+            dir="ltr"
+            value={start}
+            onChange={(event) => setStart(event.target.value)}
+            onKeyDown={onKeyDown}
+            className={cn(fieldInputClass, ltrInputClass, "min-w-0")}
+            {...invalid("time")}
+          />
+        </label>
+        <label className="flex min-w-28 flex-1 flex-col gap-1.5">
+          <span className="font-medium text-sm">{t("end")}</span>
+          <input
+            type="time"
+            dir="ltr"
+            value={end}
+            onChange={(event) => setEnd(event.target.value)}
+            onKeyDown={onKeyDown}
+            className={cn(fieldInputClass, ltrInputClass, "min-w-0")}
+            {...invalid("time")}
+          />
+        </label>
+      </div>
+      <label className="flex flex-col gap-1.5">
+        <span className="font-medium text-sm">{t("needed")}</span>
+        <input
+          type="number"
+          dir="ltr"
+          inputMode="numeric"
+          min={1}
+          max={50}
+          value={needed}
+          onChange={(event) => setNeeded(event.target.value)}
+          onKeyDown={onKeyDown}
+          className={cn(fieldInputClass, ltrInputClass, "min-w-0")}
+          {...invalid("needed")}
+        />
+      </label>
+      <p className="text-ink-2 text-sm">{t("night")}</p>
+      {problem ? (
+        <p id={errorId} role="alert" className="text-danger text-sm">
+          {t(`problems.${problem}`)}
+        </p>
+      ) : null}
+      {/* Stacked where the card is narrow: the phone and the desktop's
+          day columns. */}
+      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap xl:flex-col xl:[&>button]:px-2">
+        <Button type="button" variant="secondary" onClick={apply}>
+          {submitLabel}
+        </Button>
+        <Button type="button" variant="ghost" onClick={onCancel}>
+          {t("cancel")}
+        </Button>
+        {extra}
+      </div>
+    </div>
   );
 }

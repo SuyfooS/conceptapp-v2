@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   availableFor,
+  doubleBooked,
   draftWeek,
   type ScheduledShift,
   scheduleGaps,
   shiftCandidates,
+  shiftDetailsProblem,
+  shiftSlot,
   stillNeeded,
   weekSchedule,
 } from "./schedule";
@@ -342,5 +345,99 @@ describe("shiftCandidates", () => {
 
   it("gives nothing for a shift that is not there", () => {
     expect(shiftCandidates(WEEK, [], 0, team, answers)).toEqual([]);
+  });
+});
+
+describe("doubleBooked", () => {
+  const shift = (
+    day: string,
+    start: string,
+    end: string,
+    people: string[],
+  ) => ({
+    day,
+    start,
+    end,
+    assignees: people.map((user) => ({ user, position: null })),
+  });
+
+  it("lists both shifts of a person working two at once", () => {
+    const shifts = [
+      shift("2026-11-01", "09:00", "16:00", [dana, avi]),
+      shift("2026-11-01", "15:00", "23:00", [dana]),
+      shift("2026-11-01", "16:00", "23:00", [avi]),
+    ];
+    expect([...doubleBooked(WEEK, shifts)].sort()).toEqual(
+      [`0:${dana}`, `1:${dana}`].sort(),
+    );
+  });
+
+  it("counts a night shift against the next morning", () => {
+    const shifts = [
+      shift("2026-11-01", "18:00", "02:00", [dana]),
+      shift("2026-11-02", "01:00", "09:00", [dana]),
+      shift("2026-11-02", "02:00", "09:00", [avi]),
+    ];
+    expect(doubleBooked(WEEK, shifts).size).toBe(2);
+    expect(doubleBooked(WEEK, shifts.slice(1)).size).toBe(0);
+  });
+
+  it("agrees with the save check", () => {
+    const shifts = [
+      { ...morning, assignees: [{ user: dana, position: null }] },
+      {
+        ...morning,
+        name: "Late",
+        start: "14:00",
+        end: "22:00",
+        assignees: [{ user: dana, position: null }],
+      },
+    ];
+    expect(doubleBooked(WEEK, shifts).size).toBe(2);
+    expect(issues(shifts)).toEqual(["Works another shift at the same time"]);
+  });
+});
+
+describe("shiftDetailsProblem", () => {
+  const ok = { name: "ערב", start: "17:00", end: "23:00", needed: 3 };
+
+  it("accepts a complete shift, also past midnight", () => {
+    expect(shiftDetailsProblem(ok)).toBeNull();
+    expect(shiftDetailsProblem({ ...ok, end: "01:00" })).toBeNull();
+  });
+
+  it("names the first field that is wrong", () => {
+    expect(shiftDetailsProblem({ ...ok, name: "  " })).toBe("name");
+    expect(shiftDetailsProblem({ ...ok, name: "א".repeat(41) })).toBe("name");
+    expect(shiftDetailsProblem({ ...ok, start: "" })).toBe("time");
+    expect(shiftDetailsProblem({ ...ok, end: "25:00" })).toBe("time");
+    expect(shiftDetailsProblem({ ...ok, end: "17:00" })).toBe("same");
+    expect(shiftDetailsProblem({ ...ok, needed: 0 })).toBe("needed");
+    expect(shiftDetailsProblem({ ...ok, needed: 51 })).toBe("needed");
+    expect(shiftDetailsProblem({ ...ok, needed: 1.5 })).toBe("needed");
+    expect(shiftDetailsProblem({ ...ok, needed: Number.NaN })).toBe("needed");
+  });
+
+  it("lets through only what the save check accepts", () => {
+    const shift = { ...ok, day: WEEK };
+    expect(issues([shift])).toEqual([]);
+    expect(issues([{ ...shift, end: "17:00" }])).not.toEqual([]);
+  });
+});
+
+describe("shiftSlot", () => {
+  const week = [
+    { day: "2026-11-01", start: "09:00" },
+    { day: "2026-11-01", start: "17:00" },
+    { day: "2026-11-03", start: "09:00" },
+  ];
+
+  it("keeps the week day by day and earliest first", () => {
+    expect(shiftSlot(week, { day: "2026-11-01", start: "07:00" })).toBe(0);
+    expect(shiftSlot(week, { day: "2026-11-01", start: "12:00" })).toBe(1);
+    expect(shiftSlot(week, { day: "2026-11-01", start: "17:00" })).toBe(2);
+    expect(shiftSlot(week, { day: "2026-11-02", start: "23:00" })).toBe(2);
+    expect(shiftSlot(week, { day: "2026-11-07", start: "08:00" })).toBe(3);
+    expect(shiftSlot([], { day: "2026-11-07", start: "08:00" })).toBe(0);
   });
 });

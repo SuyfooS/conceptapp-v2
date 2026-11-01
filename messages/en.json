@@ -497,7 +497,7 @@
       "dayMissing": "A shift on this day is short of people",
       "day": "{day}, {date}",
       "noShifts": "No shifts on this day.",
-      "noPattern": "The business has no regular shifts yet, so there is nothing to fill. Tell the ConceptApp team which shifts you run each day and we will add them.",
+      "noPattern": "No regular shifts are set up for the business yet. You can add shifts for any day of the week here, or tell the ConceptApp team which shifts you have and we will add them as regular shifts.",
       "shift": "{name} shift, {day} {date}",
       "time": "<ltr>{start}–{end}</ltr>",
       "missing": "{count, plural, one {One person missing} other {# people missing}}",
@@ -514,7 +514,8 @@
       },
       "notes": {
         "unavailable": "Outside their availability",
-        "noAnswer": "Has not sent availability"
+        "noAnswer": "Has not sent availability",
+        "busy": "Also on another shift at the same time"
       },
       "remove": "Remove {name} from the shift",
       "submit": "Save the draft",
@@ -527,12 +528,36 @@
         "viewOnly": "This is view only, so the schedule was not saved.",
         "weekChanged": "A new week has started. Refresh the screen to build next week's schedule.",
         "invalid": "Something in the schedule does not fit, for example someone on two shifts at the same time. Refresh the screen and try again.",
-        "failed": "We could not save. Try again in a moment."
+        "failed": "We could not save. Try again in a moment.",
+        "clash": "Someone is on two shifts at the same time, so the schedule was not saved. Take them off one of them or change the hours, then save again."
       },
       "entry": {
         "subtitleDraft": "Not saved yet",
         "subtitleSaved": "Draft saved, not published yet",
         "full": "Staffed"
+      },
+      "edit": "Edit the {name} shift",
+      "addShift": "Add a shift",
+      "addShiftOn": "Add a shift on {day}, {date}",
+      "removedShift": "The {name} shift on {day} was taken off the schedule.",
+      "undoRemove": "Put the shift back",
+      "clashBadge": "Someone is on two shifts at once",
+      "editor": {
+        "name": "Shift name",
+        "start": "Start",
+        "end": "End",
+        "needed": "People needed",
+        "night": "An end time before the start is on the next day, as in a night shift.",
+        "apply": "Update the shift",
+        "add": "Add to the schedule",
+        "cancel": "Cancel",
+        "delete": "Remove the shift",
+        "problems": {
+          "name": "The shift needs a name.",
+          "time": "Fill in a start time and an end time.",
+          "same": "The end time must differ from the start time.",
+          "needed": "The number of people must be between 1 and 50."
+        }
       }
     }
   },
