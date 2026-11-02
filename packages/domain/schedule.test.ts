@@ -3,6 +3,7 @@ import {
   availableFor,
   doubleBooked,
   draftWeek,
+  positionCounts,
   type ScheduledShift,
   scheduleGaps,
   shiftCandidates,
@@ -10,6 +11,7 @@ import {
   shiftSlot,
   stillNeeded,
   weekSchedule,
+  withKnownPositions,
 } from "./schedule";
 
 // 1 November 2026 is a Sunday.
@@ -439,5 +441,57 @@ describe("shiftSlot", () => {
     expect(shiftSlot(week, { day: "2026-11-02", start: "23:00" })).toBe(2);
     expect(shiftSlot(week, { day: "2026-11-07", start: "08:00" })).toBe(3);
     expect(shiftSlot([], { day: "2026-11-07", start: "08:00" })).toBe(0);
+  });
+});
+
+describe("positions on a shift", () => {
+  const positions = [
+    { key: "waiter", name: "Waiter" },
+    { key: "bartender", name: "Bartender" },
+    { key: "cook", name: "Cook" },
+  ];
+  const carmel = "65000000-0000-4000-a000-00000000000e";
+  const shift: ScheduledShift = {
+    ...morning,
+    needed: 3,
+    pattern: null,
+    assignees: [
+      { user: dana, position: "cook" },
+      { user: avi, position: null },
+      { user: carmel, position: "waiter" },
+    ],
+  };
+
+  it("counts people per position in the business's order", () => {
+    expect(
+      positionCounts(
+        {
+          assignees: [...shift.assignees, { user: "x", position: "waiter" }],
+        },
+        positions,
+      ).map(({ position, count }) => [position.key, count]),
+    ).toEqual([
+      ["waiter", 2],
+      ["cook", 1],
+    ]);
+    expect(positionCounts({ assignees: [] }, positions)).toEqual([]);
+    expect(positionCounts(shift, [])).toEqual([]);
+  });
+
+  it("takes removed positions off people and keeps the rest", () => {
+    const [kept] = withKnownPositions([shift], ["waiter"]);
+    expect(kept?.assignees).toEqual([
+      { user: dana, position: null },
+      { user: avi, position: null },
+      { user: carmel, position: "waiter" },
+    ]);
+    expect(withKnownPositions([shift], ["waiter", "cook"])).toEqual([shift]);
+    // What comes out passes the save check with the same positions.
+    expect(
+      issues(withKnownPositions([{ ...shift, day: WEEK }], ["waiter"]), [
+        "waiter",
+      ]),
+    ).toEqual([]);
+    expect(issues([shift], ["waiter"])).toEqual(["Unknown position"]);
   });
 });

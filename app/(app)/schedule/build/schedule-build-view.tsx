@@ -34,6 +34,7 @@ export async function ScheduleBuildView({
         shifts={data.shifts}
         team={data.team}
         answers={data.answers}
+        positions={data.positions}
         save={save}
       />
     </PageBody>

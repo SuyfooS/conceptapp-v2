@@ -20,7 +20,11 @@ import {
   shabbatLimits,
 } from "@domain/availability-form";
 import { canOpenModule } from "@domain/modules";
-import { draftWeek, type ScheduledShift } from "@domain/schedule";
+import {
+  draftWeek,
+  type ScheduledShift,
+  withKnownPositions,
+} from "@domain/schedule";
 import { ISRAELI_CITIES, shabbatTimes } from "@domain/shabbat";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import { canSeeTeam, type TeamMember } from "@domain/team";
@@ -187,9 +191,12 @@ export const currentScheduleBuild = cache(
     return {
       week,
       savedAt,
-      shifts:
-        saved?.map(({ id: _, ...shift }) => shift) ??
-        draftWeek(week.start, context.patterns),
+      shifts: saved
+        ? withKnownPositions(
+            saved.map(({ id: _, ...shift }) => shift),
+            context.positions.map((p) => p.key),
+          )
+        : draftWeek(week.start, context.patterns),
       team: team.members,
       answers: context.answers.map(({ userId, ranges }) => ({
         userId,

@@ -4,7 +4,7 @@
 // Hebrew-literal check in tooling/ allows this one file.
 
 import type { AvailabilityAnswer } from "@domain/availability";
-import type { ShiftPattern } from "@domain/staffing";
+import type { Position, ShiftPattern } from "@domain/staffing";
 import type { TeamInvite, TeamMember } from "@domain/team";
 
 export const business = { name: "מסעדת הדגמה" };
@@ -236,6 +236,14 @@ export const teamAnswers: AvailabilityAnswer[] = [
       { day: "2026-11-05", start: "10:00", end: "18:00" },
     ],
   },
+];
+
+// The restaurant template's positions (supabase/migrations, templates).
+export const demoPositions: Position[] = [
+  { key: "waiter", name: "מלצר/ית" },
+  { key: "bartender", name: "ברמן/ית" },
+  { key: "cook", name: "טבח/ית" },
+  { key: "host", name: "מארח/ת" },
 ];
 
 // The restaurant template's shift pattern (supabase/migrations, templates),

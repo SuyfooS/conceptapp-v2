@@ -335,3 +335,40 @@ export function shiftSlot(
   );
   return at === -1 ? shifts.length : at;
 }
+
+/**
+ * Who works each position on a shift, for "מלצר/ית 2 · טבח/ית 1": the
+ * business's positions in their own order, only those someone is in.
+ * People without a position are not counted here.
+ */
+export function positionCounts<P extends { key: string }>(
+  shift: Pick<ScheduledShift, "assignees">,
+  positions: readonly P[],
+): { position: P; count: number }[] {
+  return positions
+    .map((position) => ({
+      position,
+      count: shift.assignees.filter((a) => a.position === position.key).length,
+    }))
+    .filter(({ count }) => count > 0);
+}
+
+/**
+ * A saved week with positions the business no longer has taken off the
+ * people in them, so a position removed from the settings does not make
+ * the week impossible to save again. Everything else stays as it was.
+ */
+export function withKnownPositions(
+  shifts: readonly ScheduledShift[],
+  positionKeys: readonly string[],
+): ScheduledShift[] {
+  const known = new Set(positionKeys);
+  return shifts.map((shift) => ({
+    ...shift,
+    assignees: shift.assignees.map((a) =>
+      a.position === null || known.has(a.position)
+        ? a
+        : { ...a, position: null },
+    ),
+  }));
+}
