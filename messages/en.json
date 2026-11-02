@@ -518,6 +518,9 @@
         "busy": "Also on another shift at the same time"
       },
       "remove": "Remove {name} from the shift",
+      "position": "{name}'s position on the shift",
+      "noPosition": "No position",
+      "inPosition": "{name} {count}",
       "submit": "Save the draft",
       "draft": "This draft is not saved yet. Workers see the schedule only after it is published.",
       "savedAt": "Draft saved on {date} at <ltr>{time}</ltr>. Workers see the schedule only after it is published.",

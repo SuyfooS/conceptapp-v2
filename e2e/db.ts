@@ -236,15 +236,18 @@ export type SavedAssignment = {
   weekday: number;
   pattern: string | null;
   phone: string;
+  /** The position key the person works in, or null. */
+  position: string | null;
 };
 
-/** Who the demo restaurant's saved schedules put on which shift. */
+/** Who the demo restaurant's saved schedules put on which shift, and in
+ * which position. */
 export async function scheduleAssignments(): Promise<SavedAssignment[]> {
   const sql = postgres(DB_URL, { max: 1 });
   try {
     return await sql<SavedAssignment[]>`
       select extract(dow from s.day)::int as weekday,
-        s.pattern_key as pattern, p.phone
+        s.pattern_key as pattern, p.phone, a.position_key as position
       from public.schedule_shifts s
       join public.shift_assignments a on a.shift_id = s.id
       join public.profiles p on p.id = a.user_id

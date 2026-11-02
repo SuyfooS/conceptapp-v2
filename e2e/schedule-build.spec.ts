@@ -14,10 +14,11 @@ import { signIn } from "./session";
 // from Sunday to Thursday a morning shift 09:00–16:00 for three people and
 // an evening shift 16:00–23:30 for four; Friday morning; Saturday night),
 // its manager and two workers. Noa sends 09:00–17:00 for next Sunday;
-// Yoav sends nothing.
+// Yoav sends nothing. The template's positions include "מלצר/ית" (waiter).
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 const NOA = { name: "נועה כהן", e164: "+972500000003" };
 const YOAV = { name: "יואב לוי", local: "050-000-0004", e164: "+972500000004" };
+const WAITER = "מלצר/ית";
 
 const tb = he.app.build;
 // The text of a message up to its first placeholder or tag.
@@ -100,16 +101,27 @@ test("a manager puts people on next week's shifts", async ({
   await expect(shift.getByRole("listitem")).toContainText([NOA.name]);
   await expect(page.getByText(tb.unsaved)).toBeVisible();
 
+  // She works as a waiter on this shift; the shift counts its positions.
+  const position = shift.getByLabel(tb.position.replace("{name}", NOA.name));
+  await expect(position).toHaveValue("");
+  await position.selectOption({ label: WAITER });
+  await expect(shift).toContainText(
+    tb.inPosition.replace("{name}", WAITER).replace("{count}", "1"),
+  );
+
   await page.getByRole("button", { name: tb.submit }).click();
   await expect(page.getByRole("status")).toHaveText(tb.saved);
   expect(await scheduleAssignments()).toEqual([
-    { weekday: 0, pattern: "morning", phone: NOA.e164 },
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: "waiter" },
   ]);
 
   // Saved: it comes back after a reload, with when it was saved.
   await page.reload();
   const saved = page.getByRole("region", { name: sundayMorning });
   await expect(saved.getByRole("listitem")).toContainText([NOA.name]);
+  await expect(
+    saved.getByLabel(tb.position.replace("{name}", NOA.name)),
+  ).toHaveValue("waiter");
   await expect(page.getByText(before(tb.savedAt))).toBeVisible();
   await expectCleanPage(page);
   await page.screenshot({
@@ -235,8 +247,8 @@ test("a manager changes, adds and removes next week's shifts", async ({
   // Monday to Thursday, Friday morning and Saturday night.
   expect(saved.filter((s) => s.weekday !== 0)).toHaveLength(10);
   expect(await scheduleAssignments()).toEqual([
-    { weekday: 0, pattern: "morning", phone: NOA.e164 },
-    { weekday: 0, pattern: null, phone: NOA.e164 },
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+    { weekday: 0, pattern: null, phone: NOA.e164, position: null },
   ]);
 
   // It comes back after a reload.

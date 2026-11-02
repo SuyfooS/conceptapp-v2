@@ -10,6 +10,7 @@ import {
   availableFor,
   type CandidateState,
   doubleBooked,
+  positionCounts,
   type ScheduledShift,
   type ShiftDetailsProblem,
   scheduleGaps,
@@ -19,6 +20,7 @@ import {
   stillNeeded,
 } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
+import type { Position } from "@domain/staffing";
 import type { TeamMember } from "@domain/team";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -48,6 +50,8 @@ export type ScheduleBuilderProps = {
   shifts: ScheduledShift[];
   team: Pick<TeamMember, "userId" | "name">[];
   answers: { userId: string; ranges: AvailabilityRange[] }[];
+  /** The business's positions (waiter, cook…); none hides the choice. */
+  positions: Position[];
   /** `saveScheduleAction`, or the design demo's stand-in. */
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
 };
@@ -70,6 +74,7 @@ export function ScheduleBuilder({
   shifts: initial,
   team,
   answers,
+  positions,
   save,
 }: ScheduleBuilderProps) {
   const t = useTranslations();
@@ -168,6 +173,7 @@ export function ScheduleBuilder({
       shift={shift}
       candidates={shiftCandidates(week.start, shifts, index, team, answers)}
       nameOf={nameOf}
+      positions={positions}
       noteOf={(userId) => {
         if (clashes.has(`${index}:${userId}`)) return "busy";
         const ranges = rangesOf.get(userId);
@@ -178,6 +184,14 @@ export function ScheduleBuilder({
         change(id, {
           ...shift,
           assignees: [...shift.assignees, { user, position: null }],
+        })
+      }
+      onPosition={(user, position) =>
+        change(id, {
+          ...shift,
+          assignees: shift.assignees.map((a) =>
+            a.user === user ? { ...a, position } : a,
+          ),
         })
       }
       onRemove={(user) =>
@@ -353,8 +367,10 @@ function ShiftCard({
   shift,
   candidates,
   nameOf,
+  positions,
   noteOf,
   onAdd,
+  onPosition,
   onRemove,
   onChange,
   onDelete,
@@ -365,8 +381,10 @@ function ShiftCard({
     typeof shiftCandidates<Pick<TeamMember, "userId" | "name">>
   >;
   nameOf: Map<string, string>;
+  positions: Position[];
   noteOf: (userId: string) => "busy" | "unavailable" | "noAnswer" | null;
   onAdd: (userId: string) => void;
+  onPosition: (userId: string, position: string | null) => void;
   onRemove: (userId: string) => void;
   onChange: (details: ShiftDetails) => void;
   onDelete: () => void;
@@ -377,6 +395,7 @@ function ShiftCard({
   const byState = (state: CandidateState) =>
     candidates.filter((c) => c.state === state);
   const open = candidates.some((c) => c.state !== "assigned");
+  const inPositions = positionCounts(shift, positions);
   return (
     <section
       aria-label={label}
@@ -401,6 +420,15 @@ function ShiftCard({
               needed: shift.needed,
             })}
           </span>
+          {inPositions.length > 0 ? (
+            <span className="text-ink-2 text-sm">
+              {inPositions
+                .map(({ position, count }) =>
+                  t("app.build.inPosition", { name: position.name, count }),
+                )
+                .join(" · ")}
+            </span>
+          ) : null}
         </div>
         <div className="flex items-center gap-1">
           {missing > 0 ? (
@@ -440,29 +468,48 @@ function ShiftCard({
         <p className="text-ink-2 text-sm">{t("app.build.nobody")}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-line">
-          {shift.assignees.map(({ user }) => {
+          {shift.assignees.map(({ user, position }) => {
             const name = nameOf.get(user) ?? t("app.team.noName");
             const note = noteOf(user);
             return (
-              <li key={user} className="flex min-h-11 items-center gap-1">
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span className="truncate font-medium">{name}</span>
-                  {note ? (
-                    <span
-                      className={cn(
-                        "text-sm",
-                        note === "busy" ? "text-danger" : "text-warning",
-                      )}
-                    >
-                      {t(`app.build.notes.${note}`)}
-                    </span>
-                  ) : null}
+              <li key={user} className="flex flex-col gap-1 py-1">
+                <span className="flex min-h-11 items-center gap-1">
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <span className="truncate font-medium">{name}</span>
+                    {note ? (
+                      <span
+                        className={cn(
+                          "text-sm",
+                          note === "busy" ? "text-danger" : "text-warning",
+                        )}
+                      >
+                        {t(`app.build.notes.${note}`)}
+                      </span>
+                    ) : null}
+                  </span>
+                  <IconButton
+                    label={t("app.build.remove", { name })}
+                    icon={<X />}
+                    onClick={() => onRemove(user)}
+                  />
                 </span>
-                <IconButton
-                  label={t("app.build.remove", { name })}
-                  icon={<X />}
-                  onClick={() => onRemove(user)}
-                />
+                {positions.length > 0 ? (
+                  <select
+                    aria-label={t("app.build.position", { name })}
+                    value={position ?? ""}
+                    onChange={(event) =>
+                      onPosition(user, event.target.value || null)
+                    }
+                    className={cn(fieldInputClass, "min-w-0")}
+                  >
+                    <option value="">{t("app.build.noPosition")}</option>
+                    {positions.map((p) => (
+                      <option key={p.key} value={p.key}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
               </li>
             );
           })}

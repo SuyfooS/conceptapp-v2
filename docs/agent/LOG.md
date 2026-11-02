@@ -3,6 +3,34 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-02 · run 23 · chunk 2c-2b-2 (positions on the week's shifts)
+
+- No open questions or instructions; `main` green at `9339833`.
+- `/schedule/build`: under each person on a shift, a "התפקיד של {name}
+  במשמרת" choice with the business's positions (from the scheduling
+  settings) and "בלי תפקיד". The shift's card counts who works what
+  ("מלצר/ית 2 · טבח/ית 1"). A business with no positions sees no
+  choice, as before. Saved through `save_week_schedule`, which already
+  took a position per person; no database change.
+- A saved week whose position was since removed from the settings loads
+  with that person "without a position" (`withKnownPositions`), so the
+  week can still be saved; before, it failed as "invalid".
+- `@domain/schedule`: `positionCounts`, `withKnownPositions`. Demo
+  `/design/shell/schedule/build` has the restaurant's positions, with
+  Noa as a waiter and Itay as a cook on Sunday morning.
+- Tests: 2 new unit tests (259 total). Playwright `schedule-build.spec.ts`:
+  the manager makes Noa a waiter, the shift shows "מלצר/ית 1", the
+  database has `waiter`, and it is still chosen after a reload; the other
+  test checks people saved without a position. Locally: Docker ran, so
+  the whole spec (9 tests, 3 sizes) passed against a local Supabase;
+  `pnpm check`, `pnpm build`, the demo at 390/820/1440 with axe (0
+  violations, no horizontal scroll).
+- Commit: squash of PR `agent/2c-2b-2-positions` (see the daily note in #1).
+- Next: chunk 2c-3, publishing the schedule and the worker's own shifts.
+- Defaults applied (no question opened): a person added to a shift starts
+  without a position; a shift does not say how many of each position it
+  needs (only how many people). Both can become settings later.
+
 ## 2026-11-01 · run 22 · chunk 2c-2b-1 (changing the week's shifts)
 
 - No open questions or instructions; `main` green at `45d6765`. Split
