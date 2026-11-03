@@ -526,18 +526,25 @@
       "savedAt": "Draft saved on {date} at <ltr>{time}</ltr>. Workers see the schedule only after it is published.",
       "saved": "The draft is saved.",
       "unsaved": "There are changes that are not saved yet.",
+      "unpublished": "There are changes that are not published yet. The team sees the schedule as it was published.",
+      "publishedAt": "The schedule was published on {date} at <ltr>{time}</ltr>. The whole team can see it.",
+      "published": "The schedule is published. The whole team can see it now.",
+      "publishChanges": "Publish the changes",
+      "publish": "Publish the schedule",
       "errors": {
         "noAccess": "Only managers and owners build the schedule.",
         "viewOnly": "This is view only, so the schedule was not saved.",
         "weekChanged": "A new week has started. Refresh the screen to build next week's schedule.",
         "invalid": "Something in the schedule does not fit, for example someone on two shifts at the same time. Refresh the screen and try again.",
         "failed": "We could not save. Try again in a moment.",
-        "clash": "Someone is on two shifts at the same time, so the schedule was not saved. Take them off one of them or change the hours, then save again."
+        "clash": "Someone is on two shifts at the same time, so the schedule was not saved. Take them off one of them or change the hours, then save again.",
+        "published": "The schedule was published meanwhile. Refresh the screen and publish the changes."
       },
       "entry": {
         "subtitleDraft": "Not saved yet",
         "subtitleSaved": "Draft saved, not published yet",
-        "full": "Staffed"
+        "full": "Staffed",
+        "subtitlePublished": "Published to the team"
       },
       "edit": "Edit the {name} shift",
       "addShift": "Add a shift",

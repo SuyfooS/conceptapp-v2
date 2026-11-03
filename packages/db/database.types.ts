@@ -445,6 +445,7 @@ export type Database = {
           business_id: string;
           created_at: string;
           id: string;
+          schedule_published_at: string | null;
           schedule_saved_at: string | null;
           starts_on: string;
         };
@@ -453,6 +454,7 @@ export type Database = {
           business_id: string;
           created_at?: string;
           id?: string;
+          schedule_published_at?: string | null;
           schedule_saved_at?: string | null;
           starts_on: string;
         };
@@ -461,6 +463,7 @@ export type Database = {
           business_id?: string;
           created_at?: string;
           id?: string;
+          schedule_published_at?: string | null;
           schedule_saved_at?: string | null;
           starts_on?: string;
         };
@@ -634,6 +637,10 @@ export type Database = {
       open_schedule_week: {
         Args: { business: string; due_at: string; week_start: string };
         Returns: string;
+      };
+      publish_week_schedule: {
+        Args: { actor: string; shifts: Json; week: string };
+        Returns: number;
       };
       save_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };

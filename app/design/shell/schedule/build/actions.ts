@@ -2,7 +2,7 @@
 
 import type { ScheduleState } from "../../../../(app)/schedule/build/actions";
 
-// Stand-in for saving the schedule on the design demo: the form must
+// Stand-in for saving or publishing the schedule on the design demo: the form must
 // hold a list of shifts, and nothing is stored. (The demo's people are
 // not real accounts, so the full check with ids runs only in the app.)
 export async function demoSaveSchedule(
@@ -15,5 +15,8 @@ export async function demoSaveSchedule(
   } catch {
     return { failure: "invalid" };
   }
-  return { savedAt: new Date().toISOString() };
+  return {
+    savedAt: new Date().toISOString(),
+    published: form.get("intent") === "publish",
+  };
 }

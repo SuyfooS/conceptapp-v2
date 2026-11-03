@@ -12,6 +12,8 @@ export type ScheduleWeek = { id: string; startsOn: string; dueAt: string };
 export type OpenScheduleWeek = ScheduleWeek & {
   /** ISO timestamp of the last time its schedule was saved, if ever. */
   scheduleSavedAt: string | null;
+  /** ISO timestamp of the last time its schedule was published, if ever. */
+  schedulePublishedAt: string | null;
 };
 
 export type Availability = {
@@ -72,7 +74,9 @@ export async function getWeek(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("schedule_weeks")
-    .select("id, starts_on, availability_due_at, schedule_saved_at")
+    .select(
+      "id, starts_on, availability_due_at, schedule_saved_at, schedule_published_at",
+    )
     .eq("business_id", businessId)
     .eq("starts_on", startsOn)
     .maybeSingle();
@@ -83,6 +87,7 @@ export async function getWeek(
         startsOn: data.starts_on,
         dueAt: data.availability_due_at,
         scheduleSavedAt: data.schedule_saved_at,
+        schedulePublishedAt: data.schedule_published_at,
       }
     : null;
 }

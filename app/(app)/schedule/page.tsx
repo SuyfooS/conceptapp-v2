@@ -124,7 +124,11 @@ function BuildRow({
       leading={<CalendarDays />}
       title={t("title")}
       subtitle={
-        build.savedAt ? t("entry.subtitleSaved") : t("entry.subtitleDraft")
+        build.publishedAt
+          ? t("entry.subtitlePublished")
+          : build.savedAt
+            ? t("entry.subtitleSaved")
+            : t("entry.subtitleDraft")
       }
       trailing={
         build.shifts.length === 0 ? null : short > 0 ? (
