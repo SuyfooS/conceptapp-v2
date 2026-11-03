@@ -31,6 +31,7 @@ export async function ScheduleBuildView({
       <ScheduleBuilder
         week={week}
         savedAt={data.savedAt}
+        publishedAt={data.publishedAt}
         shifts={data.shifts}
         team={data.team}
         answers={data.answers}

@@ -38,6 +38,7 @@ export default function ShellScheduleBuild() {
       data={{
         week: demoWeek,
         savedAt: null,
+        publishedAt: null,
         shifts,
         team: members,
         answers: teamAnswers,

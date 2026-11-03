@@ -162,6 +162,8 @@ export type ScheduleBuildWeek = {
   week: AvailabilityWeek;
   /** ISO timestamp of the last save, or null while it is a draft. */
   savedAt: string | null;
+  /** ISO timestamp of the last publish, or null until it is published. */
+  publishedAt: string | null;
   /** The saved shifts, or the week drawn from the shift pattern. */
   shifts: ScheduledShift[];
   team: TeamMember[];
@@ -191,6 +193,7 @@ export const currentScheduleBuild = cache(
     return {
       week,
       savedAt,
+      publishedAt: open?.schedulePublishedAt ?? null,
       shifts: saved
         ? withKnownPositions(
             saved.map(({ id: _, ...shift }) => shift),

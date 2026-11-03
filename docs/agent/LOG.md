@@ -3,6 +3,43 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-03 · run 24 · chunk 2c-3a (publishing the schedule)
+
+- No open questions or instructions; `main` green at `a676cc8`. Split 2c-3
+  in two: 2c-3a publishing (today), 2c-3b the worker's own shifts screen.
+- Migration `publish_schedule`: `schedule_weeks.schedule_published_at`;
+  `publish_week_schedule` saves and publishes in one transaction. The
+  rules of 2c-1 moved unchanged into `private.replace_week_schedule`,
+  which both `save_week_schedule` and `publish_week_schedule` call.
+  Saving a draft into a published week is refused (55000).
+- RLS: once a week is published, every active member of the business
+  (and "view as" any role) reads all its shifts and who works each;
+  drafts stay with managers and owners. Helpers `private.week_published`,
+  `private.shift_published`.
+- `/schedule/build`: main action "פרסום הסידור", secondary "שמירת
+  הטיוטה". Once published, one button "פרסום השינויים"; the screen says
+  when it was published, and "יש שינויים שעוד לא פורסמו" while edited.
+  `/schedule` entry says "פורסם לצוות". Demo shows the same.
+- Tests: pgTAP `publish_schedule.test.sql` (24: who may publish, same
+  rules as saving, a published week cannot go back to a draft, who reads
+  it, other business, inactive, anonymous, view as, module off).
+  Playwright: the manager publishes, the database has it, reload shows
+  "published" without the draft button, a change is published again,
+  the entry says published. Locally: `pnpm check` (259 unit tests),
+  `pnpm build`, the demo at 390/820/1440 with axe (0 violations, no
+  horizontal scroll) before and after publishing.
+- Not verified locally: no Docker in this run's container, so pgTAP and
+  Playwright run only in CI; `database.types.ts` was edited by hand and
+  CI checks it against the generated one.
+- Commit: squash of PR `agent/2c-3a-publish` (see the daily note in #1).
+- Next: chunk 2c-3b, "המשמרות שלי": the worker's published shifts, and
+  the whole week's schedule for the team.
+- Defaults applied (no question opened): the whole team sees the whole
+  published schedule (not only their own shifts); after publishing there
+  is no separate draft, changes go out with "פרסום השינויים"; publishing
+  is allowed with shifts still short. No notification is sent yet (the
+  notifications module comes later).
+
 ## 2026-11-02 · run 23 · chunk 2c-2b-2 (positions on the week's shifts)
 
 - No open questions or instructions; `main` green at `9339833`.

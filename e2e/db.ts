@@ -225,8 +225,25 @@ export async function clearSchedule(): Promise<void> {
   try {
     await sql`delete from public.schedule_shifts
       where business_id = ${DEMO_RESTAURANT}`;
-    await sql`update public.schedule_weeks set schedule_saved_at = null
+    await sql`update public.schedule_weeks
+      set schedule_saved_at = null, schedule_published_at = null
       where business_id = ${DEMO_RESTAURANT}`;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Whether any of the demo restaurant's weeks has a published schedule. */
+export async function schedulePublished(): Promise<boolean> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const [row] = await sql<{ published: boolean }[]>`
+      select exists (
+        select 1 from public.schedule_weeks
+        where business_id = ${DEMO_RESTAURANT}
+          and schedule_published_at is not null
+      ) as published`;
+    return row?.published ?? false;
   } finally {
     await sql.end();
   }

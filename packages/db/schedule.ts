@@ -8,7 +8,8 @@ import { createClient } from "./supabase/server";
 export type WeekScheduleShift = ScheduledShift & { id: string };
 
 /**
- * Replace a week's schedule (`public.save_week_schedule`). Validated here
+ * Replace a week's draft schedule (`public.save_week_schedule`); refused
+ * once the week is published (use `publishWeekSchedule`). Validated here
  * first with the rules the database checks; `positionKeys` are the
  * business's positions from its scheduling settings. Runs with the secret
  * key: callers check the actor is the signed-in manager or owner and not
@@ -30,12 +31,36 @@ export async function saveWeekSchedule(
   return z.int().parse(data);
 }
 
+/**
+ * Save a week's schedule and publish it to the whole team
+ * (`public.publish_week_schedule`): the first time, or again with changes.
+ * Same checks and callers as `saveWeekSchedule`. Returns the number of
+ * shifts published.
+ */
+export async function publishWeekSchedule(
+  actorId: string,
+  week: ScheduleWeek,
+  positionKeys: readonly string[],
+  input: unknown,
+): Promise<number> {
+  const shifts = weekSchedule(week.startsOn, positionKeys).parse(input);
+  const { data, error } = await createAdminClient().rpc(
+    "publish_week_schedule",
+    { actor: actorId, week: week.id, shifts },
+  );
+  if (error) {
+    throw new Error(`Could not publish the schedule: ${error.message}`);
+  }
+  return z.int().parse(data);
+}
+
 /** "HH:MM:SS" from Postgres to "HH:MM". */
 const toMinute = (time: string) => time.slice(0, 5);
 
 /**
  * A week's shifts with the people on each, as the signed-in person may
- * read them (RLS: managers and owners for now). Day by day, earliest
+ * read them (RLS: managers and owners; everyone in the business once the
+ * week is published). Day by day, earliest
  * first; the people on a shift by id.
  */
 export async function getWeekSchedule(

@@ -29,7 +29,7 @@ import { cn } from "@ui/cn";
 import { IconButton } from "@ui/icon-button";
 import { fieldInputClass, ltrInputClass } from "@ui/text-field";
 import { WeekStrip } from "@ui/week-strip";
-import { Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Save, Send, Trash2, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   type KeyboardEvent,
@@ -47,12 +47,17 @@ export type ScheduleBuilderProps = {
   week: { start: string; dates: string[]; timeZone: string };
   /** ISO timestamp of the last save, or null while it is a draft. */
   savedAt: string | null;
+  /** ISO timestamp of the last publish, or null until it is published. */
+  publishedAt: string | null;
   shifts: ScheduledShift[];
   team: Pick<TeamMember, "userId" | "name">[];
   answers: { userId: string; ranges: AvailabilityRange[] }[];
   /** The business's positions (waiter, cook…); none hides the choice. */
   positions: Position[];
-  /** `saveScheduleAction`, or the design demo's stand-in. */
+  /**
+   * `saveScheduleAction`, or the design demo's stand-in. The form's
+   * `intent` says whether to save the draft or publish.
+   */
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
 };
 
@@ -71,6 +76,7 @@ const GROUPS = ["available", "noAnswer", "unavailable", "busy"] as const;
 export function ScheduleBuilder({
   week,
   savedAt,
+  publishedAt,
   shifts: initial,
   team,
   answers,
@@ -93,6 +99,8 @@ export function ScheduleBuilder({
     at: number;
   } | null>(null);
   const [blocked, setBlocked] = useState(false);
+  /** The button that sent the form last: save the draft, or publish. */
+  const [intent, setIntent] = useState<"save" | "publish">("publish");
 
   const shifts = rows.map((r) => r.shift);
   const nameOf = new Map(
@@ -215,12 +223,19 @@ export function ScheduleBuilder({
     />
   );
 
-  const savedMoment = savedAt
-    ? {
-        date: dayMonth(dateIn(new Date(savedAt), week.timeZone)),
-        time: timeIn(new Date(savedAt), week.timeZone),
-      }
-    : null;
+  const moment = (iso: string | null | undefined) =>
+    iso
+      ? {
+          date: dayMonth(dateIn(new Date(iso), week.timeZone)),
+          time: timeIn(new Date(iso), week.timeZone),
+        }
+      : null;
+  const savedMoment = moment(savedAt);
+  // The design demo stores nothing, so its publish shows through `state`.
+  const publishedMoment = moment(
+    publishedAt ?? (state.published ? state.savedAt : null),
+  );
+  const done = !dirty && !pending;
 
   return (
     <form
@@ -232,6 +247,10 @@ export function ScheduleBuilder({
           setBlocked(true);
           return;
         }
+        const submitter = (event.nativeEvent as SubmitEvent).submitter;
+        setIntent(
+          submitter?.getAttribute("value") === "save" ? "save" : "publish",
+        );
         setDirty(false);
         setRemoved(null);
       }}
@@ -327,36 +346,61 @@ export function ScheduleBuilder({
 
       <div className="flex w-full max-w-xl flex-col gap-3">
         <p className="text-ink-2">
-          {dirty
-            ? t("app.build.unsaved")
-            : savedMoment
-              ? t.rich("app.build.savedAt", { ...savedMoment, ltr })
-              : t("app.build.draft")}
+          {publishedMoment
+            ? dirty
+              ? t("app.build.unpublished")
+              : t.rich("app.build.publishedAt", { ...publishedMoment, ltr })
+            : dirty
+              ? t("app.build.unsaved")
+              : savedMoment
+                ? t.rich("app.build.savedAt", { ...savedMoment, ltr })
+                : t("app.build.draft")}
         </p>
         {blocked ? (
           <p role="alert" className="text-danger">
             {t("app.build.errors.clash")}
           </p>
         ) : null}
-        {state.failure && !dirty && !pending ? (
+        {state.failure && done ? (
           <p role="alert" className="text-danger">
             {t(`app.build.errors.${state.failure}`)}
           </p>
         ) : null}
-        {state.savedAt && !dirty && !pending ? (
+        {state.savedAt && done ? (
           <p role="status" className="font-medium text-success">
-            {t("app.build.saved")}
+            {state.published ? t("app.build.published") : t("app.build.saved")}
           </p>
         ) : null}
-        <Button
-          type="submit"
-          size="lg"
-          loading={pending}
-          className="md:self-start"
-        >
-          <Save aria-hidden="true" />
-          {t("app.build.submit")}
-        </Button>
+        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
+          <Button
+            type="submit"
+            name="intent"
+            value="publish"
+            size="lg"
+            loading={pending && intent === "publish"}
+            disabled={pending}
+          >
+            <Send aria-hidden="true" className="rtl:-scale-x-100" />
+            {publishedMoment
+              ? t("app.build.publishChanges")
+              : t("app.build.publish")}
+          </Button>
+          {/* Once published, what is saved is what the team sees. */}
+          {publishedMoment ? null : (
+            <Button
+              type="submit"
+              name="intent"
+              value="save"
+              variant="secondary"
+              size="lg"
+              loading={pending && intent === "save"}
+              disabled={pending}
+            >
+              <Save aria-hidden="true" />
+              {t("app.build.submit")}
+            </Button>
+          )}
+        </div>
       </div>
     </form>
   );

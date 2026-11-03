@@ -5,6 +5,7 @@ import {
   clearAvailability,
   clearSchedule,
   scheduleAssignments,
+  schedulePublished,
   scheduleShifts,
   sendDemoAvailability,
 } from "./db";
@@ -256,6 +257,51 @@ test("a manager changes, adds and removes next week's shifts", async ({
   await expect(region("אמצע")).toHaveCount(1);
   await expect(region("ערב")).toHaveCount(0);
   await expectCleanPage(page);
+});
+
+test("a manager publishes next week's schedule, then publishes changes", async ({
+  page,
+}, testInfo) => {
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  const shift = page.getByRole("region", { name: sundayMorning });
+  await shift.getByLabel(tb.add).selectOption({ label: NOA.name });
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+
+  // One step: saved and published together.
+  await page.getByRole("button", { name: tb.publish }).click();
+  await expect(page.getByRole("status")).toHaveText(tb.published);
+  expect(await schedulePublished()).toBe(true);
+  expect(await scheduleAssignments()).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+  ]);
+
+  // Published: no more draft. Changes are published, not saved aside.
+  await page.reload();
+  await expect(page.getByText(before(tb.publishedAt))).toBeVisible();
+  await expect(page.getByRole("button", { name: tb.submit })).toHaveCount(0);
+  const published = page.getByRole("region", { name: sundayMorning });
+  await expect(published.getByRole("listitem")).toContainText([NOA.name]);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("schedule-published.png"),
+    fullPage: true,
+  });
+
+  await published
+    .getByRole("button", { name: tb.remove.replace("{name}", NOA.name) })
+    .click();
+  await expect(page.getByText(tb.unpublished)).toBeVisible();
+  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await expect(page.getByRole("status")).toHaveText(tb.published);
+  expect(await scheduleAssignments()).toEqual([]);
+  expect(await schedulePublished()).toBe(true);
+
+  // The schedule's entry says it is out.
+  await page.goto("/schedule");
+  await expect(
+    page.getByRole("link", { name: new RegExp(tb.title) }),
+  ).toContainText(tb.entry.subtitlePublished);
 });
 
 test("a worker has no schedule building screen", async ({ page }) => {
