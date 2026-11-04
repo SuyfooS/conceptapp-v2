@@ -478,8 +478,7 @@
           "subtitle": "{sent} of {total} sent availability for next week",
           "allSent": "Everyone sent"
         }
-      },
-      "scheduleSoon": "The shift schedule itself appears here in the next stage of the build."
+      }
     },
     "viewAs": {
       "label": "Viewing mode",
@@ -568,6 +567,37 @@
           "same": "The end time must differ from the start time.",
           "needed": "The number of people must be between 1 and 50."
         }
+      }
+    },
+    "shifts": {
+      "title": "My shifts",
+      "subtitle": "The published schedule for this week and next week",
+      "mine": {
+        "title": "Your next shifts",
+        "count": "{count, plural, one {1 shift} other {# shifts}}",
+        "hours": "{hours, plural, =1 {1 hour} =2 {2 hours} other {# hours}}",
+        "empty": "You have no shifts in the published schedule. If that looks wrong, talk to your manager.",
+        "notPublished": "The schedule is not published yet. Once your manager publishes it, your shifts appear here.",
+        "line": "{name} · <ltr>{start}–{end}</ltr>"
+      },
+      "week": {
+        "this": "This week",
+        "next": "Next week",
+        "title": "{week}: the whole team's schedule",
+        "publishedAt": "<ltr>{from}–{to}</ltr> · published on {date} at <ltr>{time}</ltr>",
+        "notPublished": "The schedule for the week of <ltr>{from}–{to}</ltr> is not published yet."
+      },
+      "day": "{day}, {date}",
+      "shift": "{name} shift, {day} {date}",
+      "time": "<ltr>{start}–{end}</ltr>",
+      "noShifts": "No shifts on this day.",
+      "nobody": "Nobody is on this shift.",
+      "yours": "Your shift",
+      "noName": "No name",
+      "entry": {
+        "next": "Next shift: {day}, {name} at <ltr>{time}</ltr>",
+        "none": "You have no shifts in the published schedule",
+        "notPublished": "The schedule is not published yet"
       }
     }
   },

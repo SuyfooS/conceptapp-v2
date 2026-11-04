@@ -6,13 +6,17 @@ import {
   type OpenScheduleWeek,
 } from "@db/availability";
 import { getWeekSchedule } from "@db/schedule";
+import { type Colleague, getColleagues } from "@db/team";
 import {
   type AvailabilityAnswer,
+  addDays,
   availabilityDueAt,
+  dateIn,
   nextWeekStart,
   type TeamAvailability,
   teamAvailability,
   weekDates,
+  weekStartOf,
 } from "@domain/availability";
 import {
   fridayOf,
@@ -206,6 +210,84 @@ export const currentScheduleBuild = cache(
         ranges,
       })),
       positions: context.positions,
+    };
+  },
+);
+
+export type PublishedWeek = {
+  start: string;
+  dates: string[];
+  /** ISO timestamp of the last publish, or null while not published. */
+  publishedAt: string | null;
+  /** The published shifts; empty until the week is published. */
+  shifts: ScheduledShift[];
+};
+
+export type PublishedSchedule = {
+  /** The signed-in person, to find their own shifts. */
+  userId: string;
+  /** Today in the business's zone. */
+  today: string;
+  timeZone: string;
+  thisWeek: PublishedWeek;
+  nextWeek: PublishedWeek;
+  people: Colleague[];
+  positions: Position[];
+};
+
+/**
+ * This week's and next week's schedule as the team reads it: published
+ * weeks only (RLS keeps drafts with the managers). For everyone in the
+ * business with scheduling on; null otherwise.
+ */
+export const currentPublishedSchedule = cache(
+  async (): Promise<PublishedSchedule | null> => {
+    const [member, enabled] = await Promise.all([
+      currentMember(),
+      currentModules(),
+    ]);
+    const membership = member?.membership;
+    if (
+      !member ||
+      !membership ||
+      !canOpenModule(manifestFor("scheduling"), enabled, membership.role)
+    ) {
+      return null;
+    }
+    const businessId = membership.business.id;
+    const [settings, place, people] = await Promise.all([
+      currentModuleSettings("scheduling"),
+      getBusinessPlace(businessId),
+      getColleagues(businessId),
+    ]);
+    const { timeZone } = place;
+    const today = dateIn(new Date(), timeZone);
+    const thisStart = weekStartOf(today, settings.weekStartsOn);
+
+    const published = async (start: string): Promise<PublishedWeek> => {
+      const open = await getWeek(businessId, start);
+      const publishedAt = open?.schedulePublishedAt ?? null;
+      const shifts =
+        open && publishedAt
+          ? withKnownPositions(
+              (await getWeekSchedule(open.id)).map(({ id: _, ...s }) => s),
+              settings.positions.map((p) => p.key),
+            )
+          : [];
+      return { start, dates: weekDates(start), publishedAt, shifts };
+    };
+    const [thisWeek, nextWeek] = await Promise.all([
+      published(thisStart),
+      published(addDays(thisStart, 7)),
+    ]);
+    return {
+      userId: member.userId,
+      today,
+      timeZone,
+      thisWeek,
+      nextWeek,
+      people,
+      positions: settings.positions,
     };
   },
 );

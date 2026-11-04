@@ -8,7 +8,10 @@ import {
   scheduleGaps,
   shiftCandidates,
   shiftDetailsProblem,
+  shiftMinutes,
   shiftSlot,
+  shiftsByDay,
+  shiftsOf,
   stillNeeded,
   weekSchedule,
   withKnownPositions,
@@ -493,5 +496,96 @@ describe("positions on a shift", () => {
       ]),
     ).toEqual([]);
     expect(issues([shift], ["waiter"])).toEqual(["Unknown position"]);
+  });
+});
+
+describe("shiftsOf", () => {
+  const evening = {
+    ...morning,
+    name: "Evening",
+    start: "16:00",
+    end: "23:30",
+    pattern: null,
+    assignees: [{ user: dana, position: "waiter" }],
+  };
+  const monday = {
+    ...morning,
+    day: "2026-11-02",
+    pattern: null,
+    assignees: [
+      { user: avi, position: null },
+      { user: dana, position: null },
+    ],
+  };
+  const sunday = {
+    ...morning,
+    pattern: null,
+    assignees: [{ user: avi, position: "cook" }],
+  };
+
+  it("lists the person's shifts with their position, in order", () => {
+    expect(shiftsOf([sunday, evening, monday], dana)).toEqual([
+      { shift: evening, position: "waiter" },
+      { shift: monday, position: null },
+    ]);
+    expect(shiftsOf([sunday, evening, monday], avi)).toEqual([
+      { shift: sunday, position: "cook" },
+      { shift: monday, position: null },
+    ]);
+  });
+
+  it("leaves out the days before `from`", () => {
+    expect(shiftsOf([sunday, evening, monday], dana, "2026-11-02")).toEqual([
+      { shift: monday, position: null },
+    ]);
+    expect(
+      shiftsOf([sunday, evening, monday], dana, "2026-11-01"),
+    ).toHaveLength(2);
+  });
+
+  it("is empty for someone on no shift", () => {
+    expect(shiftsOf([sunday], "65000000-0000-4000-a000-00000000000e")).toEqual(
+      [],
+    );
+  });
+});
+
+describe("shiftMinutes", () => {
+  it("adds up the shifts, a night past midnight included", () => {
+    expect(shiftMinutes([])).toBe(0);
+    expect(
+      shiftMinutes([
+        { start: "09:00", end: "16:00" },
+        { start: "16:00", end: "23:30" },
+        { start: "22:00", end: "02:00" },
+      ]),
+    ).toBe(7 * 60 + 7.5 * 60 + 4 * 60);
+  });
+});
+
+describe("shiftsByDay", () => {
+  it("puts every date of the week in order, shifts earliest first", () => {
+    const late = { day: "2026-11-01", start: "16:00", name: "Evening" };
+    const early = { day: "2026-11-01", start: "07:00", name: "Morning" };
+    const alsoEarly = { day: "2026-11-01", start: "07:00", name: "Bar" };
+    const tuesday = { day: "2026-11-03", start: "09:00", name: "Morning" };
+    const days = shiftsByDay(
+      ["2026-11-01", "2026-11-02", "2026-11-03"],
+      [late, tuesday, early, alsoEarly],
+    );
+    expect(days).toEqual([
+      { day: "2026-11-01", shifts: [alsoEarly, early, late] },
+      { day: "2026-11-02", shifts: [] },
+      { day: "2026-11-03", shifts: [tuesday] },
+    ]);
+  });
+
+  it("leaves out shifts outside the dates", () => {
+    expect(
+      shiftsByDay(
+        ["2026-11-02"],
+        [{ day: "2026-11-01", start: "07:00", name: "x" }],
+      ),
+    ).toEqual([{ day: "2026-11-02", shifts: [] }]);
   });
 });

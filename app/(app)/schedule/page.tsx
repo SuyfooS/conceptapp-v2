@@ -3,36 +3,45 @@ import { WEEKDAY_KEYS } from "@domain/availability-form";
 import { scheduleGaps } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
 import { Badge } from "@ui/badge";
-import { Card, CardText } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
-import { CalendarCheck, CalendarDays, Users } from "lucide-react";
+import {
+  CalendarCheck,
+  CalendarClock,
+  CalendarDays,
+  Users,
+} from "lucide-react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { moduleMetadata } from "../module-screen";
+import { upcomingShifts } from "./shifts/my-shifts-view";
 import {
   currentAvailabilityWeek,
+  currentPublishedSchedule,
   currentScheduleBuild,
   currentTeamAvailability,
+  type PublishedSchedule,
   type ScheduleBuildWeek,
 } from "./week";
 
 export const generateMetadata = () => moduleMetadata("scheduling");
 
-// The schedule's entry: next week's availability, with its state shown
-// up front; for managers and owners, the team's answers and next week's
-// schedule with its gaps.
+// The schedule's entry: the person's next shift and next week's
+// availability, with their state shown up front; for managers and owners,
+// the team's answers and next week's schedule with its gaps.
 export default async function SchedulePage() {
-  const [week, team, build] = await Promise.all([
+  const [week, team, build, published] = await Promise.all([
     currentAvailabilityWeek(),
     currentTeamAvailability(),
     currentScheduleBuild(),
+    currentPublishedSchedule(),
   ]);
-  if (!week) notFound();
-  const [t, tm, tb] = await Promise.all([
+  if (!week || !published) notFound();
+  const [t, tm, tb, ts] = await Promise.all([
     getTranslations("app.availability"),
     getTranslations("modules.scheduling"),
     getTranslations("app.build"),
+    getTranslations("app"),
   ]);
   const due = new Date(week.dueAt);
   const dueDate = dateIn(due, week.timeZone);
@@ -47,6 +56,7 @@ export default async function SchedulePage() {
       <PageHeader title={tm("name")} subtitle={tm("description")} />
       <PageSection title={t("entry.title")} className="md:max-w-xl">
         <ListGroup>
+          <ShiftsRow t={ts} data={published} />
           <ListRow
             href="/schedule/availability"
             leading={<CalendarCheck />}
@@ -70,12 +80,49 @@ export default async function SchedulePage() {
           {build ? <BuildRow t={tb} build={build} /> : null}
         </ListGroup>
       </PageSection>
-      {build ? null : (
-        <Card tone="flat" padding="lg" className="md:max-w-xl">
-          <CardText>{t("scheduleSoon")}</CardText>
-        </Card>
-      )}
     </PageBody>
+  );
+}
+
+/** Everyone: their next shift in the published schedule. */
+function ShiftsRow({
+  t,
+  data,
+}: {
+  t: Awaited<ReturnType<typeof getTranslations<"app">>>;
+  data: PublishedSchedule;
+}) {
+  const mine = upcomingShifts(data);
+  const next = mine[0]?.shift;
+  const anyPublished =
+    data.thisWeek.publishedAt !== null || data.nextWeek.publishedAt !== null;
+  return (
+    <ListRow
+      href="/schedule/shifts"
+      leading={<CalendarClock />}
+      title={t("shifts.title")}
+      subtitle={
+        next
+          ? t.rich("shifts.entry.next", {
+              day: t(
+                `availability.weekdays.${WEEKDAY_KEYS[weekdayOf(next.day)] ?? "sun"}`,
+              ),
+              name: next.name,
+              time: next.start,
+              ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+            })
+          : anyPublished
+            ? t("shifts.entry.none")
+            : t("shifts.entry.notPublished")
+      }
+      trailing={
+        mine.length > 0 ? (
+          <Badge tone="accent">
+            {t("shifts.mine.count", { count: mine.length })}
+          </Badge>
+        ) : null
+      }
+    />
   );
 }
 
