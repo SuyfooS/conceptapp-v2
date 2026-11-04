@@ -11,6 +11,9 @@ const NOA = { name: "נועה כהן", e164: "+972500000003" };
 const YOAV = { name: "יואב לוי", local: "050-000-0004", e164: "+972500000004" };
 
 const ts = he.app.shifts;
+// Each screen size has its own layout in the page; only one is shown.
+const shown = (page: Page, text: string) =>
+  page.getByText(text).filter({ visible: true });
 const before = (message: string) => message.split(/[<{]/)[0] ?? message;
 const sunday = he.app.availability.weekdays.sun;
 // Next week's Sunday shift by name, whatever its date.
@@ -52,7 +55,7 @@ test("a worker sees nothing of a draft schedule", async ({ page }) => {
   await expect(entry).toContainText(ts.entry.notPublished);
   await entry.click();
   await expect(page).toHaveURL(/\/schedule\/shifts$/);
-  await expect(page.getByText(ts.mine.notPublished)).toBeVisible();
+  await expect(shown(page, ts.mine.notPublished)).toBeVisible();
   await expect(page.getByRole("region", { name: shift("בוקר") })).toHaveCount(
     0,
   );
@@ -84,7 +87,7 @@ test("a worker reads their shifts and the team's in the published schedule", asy
   await expect(mine.getByRole("listitem")).toHaveCount(1);
   await expect(mine).toContainText("בוקר");
   await expect(mine).toContainText("ברמן/ית");
-  await expect(page.getByText("7 שעות")).toBeVisible();
+  await expect(shown(page, "7 שעות")).toBeVisible();
 
   // The whole team's week: who works with them, and the evening without them.
   const morning = page.getByRole("region", { name: shift("בוקר") });

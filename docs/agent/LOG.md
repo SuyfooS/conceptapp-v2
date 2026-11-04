@@ -22,7 +22,7 @@ what is next, defaults applied.
   member). `week.ts` `currentPublishedSchedule`. No database change.
 - Demo: `/design/shell/schedule/shifts` (Noa on Tuesday 3.11, this week
   published, next week not).
-- Tests: 6 new unit tests (265 total). Playwright `my-shifts.spec.ts`: a
+- Tests: 6 new unit tests (265 total). Playwright `my-shifts.spec.ts` (first CI run failed: two text checks matched the hidden layout of another screen size too; now only the shown one counts): a
   saved draft shows nothing to a worker; a published week shows Yoav his
   morning as a bartender, 7 hours, who else works, and the evening without
   the "yours" badge; axe and no horizontal scroll. Locally: `pnpm check`,
