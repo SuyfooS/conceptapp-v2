@@ -300,3 +300,76 @@ export async function scheduleShifts(): Promise<SavedShift[]> {
     await sql.end();
   }
 }
+
+/**
+ * Put people on next week's Sunday shifts of the demo restaurant through
+ * the database functions the app uses, as its manager: a draft, or
+ * published to the team. `morning` and `evening` are phone numbers, each
+ * with a position key or null. Opens the week if nobody has yet.
+ */
+export async function scheduleDemoSunday(
+  people: {
+    morning: [phone: string, position: string | null][];
+    evening: [phone: string, position: string | null][];
+  },
+  publish: boolean,
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const ids = await sql<{ phone: string; id: string }[]>`
+      select phone, id::text from public.profiles
+      where phone in ${sql([...people.morning, ...people.evening].map(([p]) => p))}`;
+    const id = (phone: string) => ids.find((r) => r.phone === phone)?.id;
+    const [week] = await sql<{ id: string; starts_on: string }[]>`
+      with business as (
+        select (now() at time zone b.timezone)::date as today,
+          coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+        from public.businesses b
+        join public.business_modules m
+          on m.business_id = b.id and m.module_key = 'scheduling'
+        where b.id = ${DEMO_RESTAURANT}
+      ),
+      next_week as (
+        select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+          + 7 as starts_on
+        from business
+      )
+      select public.open_schedule_week(${DEMO_RESTAURANT}, starts_on,
+          now() + interval '1 day')::text as id,
+        starts_on::text as starts_on
+      from next_week`;
+    if (!week) throw new Error("Could not open next week");
+    const assignees = (list: [string, string | null][]) =>
+      list.map(([phone, position]) => ({ user: id(phone), position }));
+    const shifts = [
+      {
+        day: week.starts_on,
+        name: "בוקר",
+        start: "09:00",
+        end: "16:00",
+        needed: 3,
+        pattern: "morning",
+        assignees: assignees(people.morning),
+      },
+      {
+        day: week.starts_on,
+        name: "ערב",
+        start: "16:00",
+        end: "23:30",
+        needed: 4,
+        pattern: "evening",
+        assignees: assignees(people.evening),
+      },
+    ];
+    const manager = "00000000-0000-4000-a000-000000000002";
+    if (publish) {
+      await sql`select public.publish_week_schedule(${manager}, ${week.id},
+        ${sql.json(shifts)})`;
+    } else {
+      await sql`select public.save_week_schedule(${manager}, ${week.id},
+        ${sql.json(shifts)})`;
+    }
+  } finally {
+    await sql.end();
+  }
+}

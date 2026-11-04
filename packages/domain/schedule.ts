@@ -372,3 +372,53 @@ export function withKnownPositions(
     ),
   }));
 }
+
+/** A shift someone works in a published week, and their position on it. */
+export type OwnShift<S> = { shift: S; position: string | null };
+
+/**
+ * The shifts `userId` works, in the order given (day by day, earliest
+ * first), from `from` on when given (a calendar date, e.g. today), so
+ * "my next shifts" leaves out the days already behind.
+ */
+export function shiftsOf<S extends Pick<ScheduledShift, "day" | "assignees">>(
+  shifts: readonly S[],
+  userId: string,
+  from?: string,
+): OwnShift<S>[] {
+  return shifts.flatMap((shift) => {
+    if (from !== undefined && shift.day < from) return [];
+    const mine = shift.assignees.find((a) => a.user === userId);
+    return mine ? [{ shift, position: mine.position }] : [];
+  });
+}
+
+/** How long a list of shifts is in all, in minutes (past midnight counts). */
+export function shiftMinutes(
+  shifts: readonly Pick<ScheduledShift, "start" | "end">[],
+): number {
+  return shifts.reduce((sum, s) => sum + rangeMinutes(s.start, s.end), 0);
+}
+
+/**
+ * A week's shifts under each of its days, for the schedule as the team
+ * reads it: every date of `dates` (also days without shifts), and on each
+ * the shifts earliest first, then by name.
+ */
+export function shiftsByDay<
+  S extends Pick<ScheduledShift, "day" | "start" | "name">,
+>(
+  dates: readonly string[],
+  shifts: readonly S[],
+): { day: string; shifts: S[] }[] {
+  return dates.map((day) => ({
+    day,
+    shifts: shifts
+      .filter((s) => s.day === day)
+      .sort(
+        (a, b) =>
+          minutesOf(a.start) - minutesOf(b.start) ||
+          a.name.localeCompare(b.name),
+      ),
+  }));
+}

@@ -3,6 +3,41 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-04 · run 25 · chunk 2c-3b (my shifts)
+
+- No open questions or instructions; `main` green at `54ee5aa`.
+- `/schedule/shifts` "המשמרות שלי", for everyone with scheduling on (and
+  "view as"): the person's next shifts from today on, this week and next,
+  with the position and the total hours; then each week's published
+  schedule for the whole team, day by day, who works each shift and in
+  what position, "המשמרת שלך" on the person's own. A week not published
+  yet says so; drafts never show (RLS, as in 2c-3a). Phone: one under the
+  other; tablet: own shifts beside the team's days; desktop: own shifts,
+  then each week with a column a day. Today is marked.
+- `/schedule` gains a first row "המשמרות שלי" for everyone: the next
+  shift ("המשמרת הבאה: יום ראשון, בוקר ב-09:00") and a count badge, or
+  "not published yet". The "coming soon" card for workers is gone.
+- `@domain/schedule`: `shiftsOf`, `shiftMinutes`, `shiftsByDay`.
+  `@db/team` `getColleagues` (names of active members, readable by every
+  member). `week.ts` `currentPublishedSchedule`. No database change.
+- Demo: `/design/shell/schedule/shifts` (Noa on Tuesday 3.11, this week
+  published, next week not).
+- Tests: 6 new unit tests (265 total). Playwright `my-shifts.spec.ts`: a
+  saved draft shows nothing to a worker; a published week shows Yoav his
+  morning as a bartender, 7 hours, who else works, and the evening without
+  the "yours" badge; axe and no horizontal scroll. Locally: `pnpm check`,
+  `pnpm build`, the demo at 390/820/1440 with axe (0 violations, no
+  horizontal scroll).
+- Not verified locally: no Docker in this run's container, so the
+  Playwright spec runs only in CI.
+- Commit: squash of PR `agent/2c-3b-my-shifts` (see the daily note in #1).
+- Next: with 2c the scheduling module's core is done (availability, build,
+  publish, read). Next chunk: 2d, shift swaps between workers (ask, a
+  colleague takes it, the manager approves), unless Orel says otherwise.
+- Defaults applied (no question opened): workers see the shifts of the
+  current and the next week only; past days of this week stay in the
+  team's view but not in "my next shifts".
+
 ## 2026-11-03 · run 24 · chunk 2c-3a (publishing the schedule)
 
 - No open questions or instructions; `main` green at `a676cc8`. Split 2c-3

@@ -42,3 +42,23 @@ export async function getTeam(
     })),
   };
 }
+
+export type Colleague = { userId: string; name: string | null };
+
+/**
+ * The names of a business's active members, as anyone in it may read them
+ * (RLS): for the published schedule, which every member reads.
+ */
+export async function getColleagues(businessId: string): Promise<Colleague[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("memberships")
+    .select("user_id, profiles (full_name)")
+    .eq("business_id", businessId)
+    .eq("active", true);
+  if (error) throw error;
+  return data.map((row) => ({
+    userId: row.user_id,
+    name: row.profiles?.full_name?.trim() || null,
+  }));
+}
