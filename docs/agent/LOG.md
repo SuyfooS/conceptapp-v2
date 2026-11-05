@@ -24,7 +24,8 @@ what is next, defaults applied.
   a plain Postgres 16 with stand-ins for `auth` and pgTAP: 36/36, and four
   planted bugs (no overlap check, no "already started", wrong person
   moved, open read policy) each turned tests red. `pnpm check`, `pnpm
-  build`. `database.types.ts` edited by hand; CI checks it.
+  build`. First CI run failed: the RLS meta-test keeps a list of tables
+  and I had not added `shift_swaps` to it; added. `database.types.ts` edited by hand; CI checks it.
 - Commit: squash of PR `agent/2d-1-swaps-db` (see the daily note in #1).
 - Next: chunk 2d-2, the screens: "give away" on my shifts, open requests
   for colleagues to take, and the manager's approve/decline list.
