@@ -520,6 +520,84 @@ export type Database = {
           },
         ];
       };
+      shift_swaps: {
+        Row: {
+          business_id: string;
+          created_at: string;
+          decided_at: string | null;
+          decided_by: string | null;
+          id: string;
+          note: string | null;
+          requested_by: string;
+          shift_id: string;
+          status: Database["public"]["Enums"]["swap_status"];
+          taken_at: string | null;
+          taken_by: string | null;
+        };
+        Insert: {
+          business_id: string;
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          id?: string;
+          note?: string | null;
+          requested_by: string;
+          shift_id: string;
+          status?: Database["public"]["Enums"]["swap_status"];
+          taken_at?: string | null;
+          taken_by?: string | null;
+        };
+        Update: {
+          business_id?: string;
+          created_at?: string;
+          decided_at?: string | null;
+          decided_by?: string | null;
+          id?: string;
+          note?: string | null;
+          requested_by?: string;
+          shift_id?: string;
+          status?: Database["public"]["Enums"]["swap_status"];
+          taken_at?: string | null;
+          taken_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "shift_swaps_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shift_swaps_decided_by_fkey";
+            columns: ["decided_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shift_swaps_requested_by_fkey";
+            columns: ["requested_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shift_swaps_shift_id_fkey";
+            columns: ["shift_id"];
+            isOneToOne: false;
+            referencedRelation: "schedule_shifts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "shift_swaps_taken_by_fkey";
+            columns: ["taken_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       templates: {
         Row: {
           created_at: string;
@@ -612,6 +690,10 @@ export type Database = {
         Args: { business: string; template: string };
         Returns: undefined;
       };
+      cancel_shift_swap: {
+        Args: { actor: string; swap: string };
+        Returns: undefined;
+      };
       claim_invite: {
         Args: { claimant: string; token_hash: string };
         Returns: string;
@@ -628,6 +710,15 @@ export type Database = {
         };
         Returns: string;
       };
+      decide_shift_swap: {
+        Args: {
+          actor: string;
+          approve: boolean;
+          at_time?: string;
+          swap: string;
+        };
+        Returns: Database["public"]["Enums"]["swap_status"];
+      };
       end_view_session: { Args: { actor: string }; Returns: string };
       invite_by_token: { Args: { token_hash: string }; Returns: Json };
       issue_invite_link: {
@@ -641,6 +732,10 @@ export type Database = {
       publish_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
+      };
+      request_shift_swap: {
+        Args: { actor: string; at_time?: string; note?: string; shift: string };
+        Returns: string;
       };
       save_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
@@ -657,6 +752,10 @@ export type Database = {
       submit_availability: {
         Args: { actor: string; note?: string; ranges: Json; week: string };
         Returns: string;
+      };
+      take_shift_swap: {
+        Args: { actor: string; at_time?: string; swap: string };
+        Returns: undefined;
       };
       team_invite: {
         Args: {
@@ -683,6 +782,7 @@ export type Database = {
         | "storefront"
         | "notifications";
       platform_role: "platform_admin" | "onboarder";
+      swap_status: "open" | "taken" | "approved" | "declined" | "cancelled";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -822,6 +922,7 @@ export const Constants = {
         "notifications",
       ],
       platform_role: ["platform_admin", "onboarder"],
+      swap_status: ["open", "taken", "approved", "declined", "cancelled"],
     },
   },
 } as const;
