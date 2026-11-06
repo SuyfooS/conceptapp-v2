@@ -26,6 +26,7 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { ProgressRing } from "@ui/progress-ring";
+import { PunchCircle } from "@ui/punch-circle";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -37,6 +38,7 @@ import {
   ArrowLeft,
   Bell,
   CalendarDays,
+  Fingerprint,
   ListChecks,
   Plus,
   Save,
@@ -530,6 +532,28 @@ function GalleryBody({
                 {t("emptyAction")}
               </Button>
             </FloatingAction>
+          </div>
+        </Section>
+
+        <Section title={t("punchCircle")}>
+          <div className="grid gap-6 md:grid-cols-3">
+            <PunchCircle
+              tone="off"
+              figure={<Fingerprint aria-hidden="true" />}
+              label={t("punchIn")}
+            />
+            <PunchCircle
+              tone="live"
+              progress={0.45}
+              figure={<span dir="ltr">3:42:07</span>}
+              label={t("punchOut")}
+            />
+            <PunchCircle
+              tone="paused"
+              progress={0.45}
+              figure={<span dir="ltr">0:12:30</span>}
+              label={t("punchBack")}
+            />
           </div>
         </Section>
 

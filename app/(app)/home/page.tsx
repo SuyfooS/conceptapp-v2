@@ -4,6 +4,7 @@ import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { signOut } from "../../(auth)/actions";
+import { currentClockLine } from "../clock/clock";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
 import {
@@ -32,6 +33,7 @@ export default async function HomePage() {
     availability,
     teamAvailability,
     build,
+    clockLine,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -40,6 +42,7 @@ export default async function HomePage() {
     currentAvailabilityWeek(),
     currentTeamAvailability(),
     currentScheduleBuild(),
+    currentClockLine(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -57,6 +60,7 @@ export default async function HomePage() {
         role: membership.role,
         businessName: membership.business.name,
         widgets: moduleWidgets(manifests, enabled, membership.role),
+        clockLine,
         schedule:
           published && availability
             ? { published, availability, teamAvailability, build }

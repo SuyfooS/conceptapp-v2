@@ -3,6 +3,18 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · the clock
+
+- Orel's spec: clocking in and out through a big circle, this month's and last month's hours under it, a shift history, and a break that in some businesses comes off the hours by a business setting.
+- Built: `/clock` and `/clock/history`, `PunchCircle` in `packages/ui`, the demo at `/design/shell/clock`, and a line on Today while someone is at work. Pressing the circle after leaving offers undo for two minutes instead of asking "are you sure".
+- Database: migration `20261107000300_time_breaks`, with `time_breaks`, `start_break`, `end_break`, `undo_clock_out` and `set_clock_settings`. A break keeps whether it was unpaid when it began, so changing the setting never rewrites past hours. The migration is not on `conceptapp-dev` until Orel runs the workflow.
+- Defaults applied: breaks count as paid unless the business turns that off. Orel decided: no QR, the phone is enough. The punch code stays in the database as a setting that is off, with no screens.
+- The setting sits on the clock screen for owners and managers until the management page arrives.
+- Left out: "manual add" from Orel's old screenshot, since adding hours belongs to a manager and that screen is not built. No money anywhere: hours only.
+- A read-only review before merging found real problems, now fixed: undoing a clock-out left the break closed, hours kept growing on an entry left open (they stop at 24 now), a press with no signal took down the whole screen, and a screen left open went stale. Left as it is: the running time ticks from the phone's clock, since using the server's would go wrong after the back button, and phones keep their clocks right.
+- Known, not fixed here: Today's hero misses a Saturday night shift once Sunday begins, because it reads this week and next only. The clock screen handles it.
+- Next: the manager's side of the clock, with the management page.
+
 ## 2026-11-06 · chat · the screens, in the approved design
 
 - Five agents rebuilt the screens, each in its own worktree, against `docs/design/target-prototype.html`: Today (`/home`), the schedule tab with My shifts and swap approvals, build the week, availability with team availability, and the rest (team, invite, sign-in, join, console, view-as, error and not-found screens). Their commits were combined here.

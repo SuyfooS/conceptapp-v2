@@ -10,10 +10,9 @@ import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
 /*
- * The time clock (issue #41), database first: no screen calls these yet.
- * Writes run with the secret key; the database checks every rule for
- * `actorId`, and callers make sure the actor is the signed-in person and
- * not viewing as someone else.
+ * The time clock. Writes run with the secret key; the database checks every
+ * rule for `actorId`, and callers make sure the actor is the signed-in person
+ * and not viewing as someone else.
  */
 
 /** A fresh punch code: 24 random bytes, base64url (fits a small QR). */
@@ -93,6 +92,47 @@ export const clockOut = (
     }),
   );
 
+/** `actorId` goes on a break during their open entry. Returns its id. */
+export const startBreak = (actorId: string, businessId: string) =>
+  call(() =>
+    createAdminClient().rpc("start_break", {
+      actor: actorId,
+      business: businessId,
+    }),
+  );
+
+/** `actorId` comes back from their open break. Returns its id. */
+export const endBreak = (actorId: string, businessId: string) =>
+  call(() =>
+    createAdminClient().rpc("end_break", {
+      actor: actorId,
+      business: businessId,
+    }),
+  );
+
+/** `actorId` takes back leaving, right after they left. */
+export const undoClockOut = (actorId: string, entryId: string) =>
+  call(() =>
+    createAdminClient().rpc("undo_clock_out", {
+      actor: actorId,
+      entry: entryId,
+    }),
+  );
+
+/** An owner or manager chooses whether breaks come off the hours. */
+export const setClockSettings = (
+  actorId: string,
+  businessId: string,
+  unpaidBreaks: boolean,
+) =>
+  call(() =>
+    createAdminClient().rpc("set_clock_settings", {
+      actor: actorId,
+      business: businessId,
+      unpaid_breaks: unpaidBreaks,
+    }),
+  );
+
 /** A manager adds an entry someone forgot to punch. Returns its id. */
 export const addTimeEntry = (
   actorId: string,
@@ -129,24 +169,29 @@ export const correctTimeEntry = (
   );
 
 /**
- * A business's entries that start in [from, to), as the signed-in person
- * may read them (RLS: their own; managers, owners and `clock.edit` the
- * business's), oldest first. Open entries that started earlier are
- * included, so "at work now" sees a night shift from yesterday.
+ * A business's entries that start in [from, to) with their breaks, as the
+ * signed-in person may read them (RLS: their own; managers, owners and
+ * `clock.edit` the business's), oldest first. Open entries that started earlier
+ * are included, so "at work now" sees a night shift from yesterday. With
+ * `userId`, that person's only.
  */
 export async function getTimeEntries(
   businessId: string,
   from: Date,
   to: Date,
+  userId?: string,
 ): Promise<TimeEntry[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const query = supabase
     .from("time_entries")
-    .select("id, user_id, clock_in, clock_out, source")
+    .select(
+      "id, user_id, clock_in, clock_out, source, time_breaks (id, started_at, ended_at, unpaid)",
+    )
     .eq("business_id", businessId)
     .lt("clock_in", to.toISOString())
     .or(`clock_in.gte.${from.toISOString()},clock_out.is.null`)
     .order("clock_in");
+  const { data, error } = await (userId ? query.eq("user_id", userId) : query);
   if (error) throw error;
   return data.map((row) =>
     timeEntry.parse({
@@ -155,6 +200,12 @@ export async function getTimeEntries(
       clockIn: row.clock_in,
       clockOut: row.clock_out,
       source: row.source,
+      breaks: row.time_breaks.map((pause) => ({
+        id: pause.id,
+        startedAt: pause.started_at,
+        endedAt: pause.ended_at,
+        unpaid: pause.unpaid,
+      })),
     }),
   );
 }

@@ -664,6 +664,61 @@ export type Database = {
         };
         Relationships: [];
       };
+      time_breaks: {
+        Row: {
+          business_id: string;
+          created_at: string;
+          ended_at: string | null;
+          entry_id: string;
+          id: string;
+          started_at: string;
+          unpaid: boolean;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          created_at?: string;
+          ended_at?: string | null;
+          entry_id: string;
+          id?: string;
+          started_at: string;
+          unpaid: boolean;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          created_at?: string;
+          ended_at?: string | null;
+          entry_id?: string;
+          id?: string;
+          started_at?: string;
+          unpaid?: boolean;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "time_breaks_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_breaks_entry_id_fkey";
+            columns: ["entry_id"];
+            isOneToOne: false;
+            referencedRelation: "time_entries";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_breaks_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       time_entries: {
         Row: {
           business_id: string;
@@ -863,6 +918,10 @@ export type Database = {
         };
         Returns: Database["public"]["Enums"]["swap_status"];
       };
+      end_break: {
+        Args: { actor: string; at_time?: string; business: string };
+        Returns: string;
+      };
       end_view_session: { Args: { actor: string }; Returns: string };
       invite_by_token: { Args: { token_hash: string }; Returns: Json };
       issue_invite_link: {
@@ -894,6 +953,14 @@ export type Database = {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
       };
+      set_clock_settings: {
+        Args: { actor: string; business: string; unpaid_breaks: boolean };
+        Returns: undefined;
+      };
+      start_break: {
+        Args: { actor: string; at_time?: string; business: string };
+        Returns: string;
+      };
       start_view_session: {
         Args: {
           actor: string;
@@ -924,6 +991,10 @@ export type Database = {
       team_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };
         Returns: string;
+      };
+      undo_clock_out: {
+        Args: { actor: string; at_time?: string; entry: string };
+        Returns: undefined;
       };
     };
     Enums: {

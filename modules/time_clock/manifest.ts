@@ -17,6 +17,11 @@ export const manifest = defineManifest({
      * Clocking in and out needs the QR code shown on a manager's device at
      * the business, so nobody punches from home.
      */
-    requirePunchCode: z.boolean().default(true),
+    requirePunchCode: z.boolean().default(false),
+    /**
+     * A break comes off the hours: it is not counted as paid time. A break
+     * keeps what this said when it began.
+     */
+    unpaidBreaks: z.boolean().default(false),
   }),
 });

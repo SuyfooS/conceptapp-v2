@@ -1,6 +1,6 @@
--- Time clock: only the server writes. An active member clocks in and out
--- with a punch code that is still valid (unless the business switched the
--- code off); never twice at once. A manager, an owner or a holder of
+-- Time clock: only the server writes. An active member clocks in and out,
+-- with a punch code that is still valid when the business turned the code on;
+-- never twice at once. A manager, an owner or a holder of
 -- `clock.edit` issues codes, adds a forgotten entry and corrects one, and
 -- every write goes to the audit log. People read their own entries,
 -- managers the business's, other businesses and anonymous visitors
@@ -34,11 +34,11 @@ values
   ('68000000-0000-4000-b000-000000000002', '68000000-0000-4000-a000-00000000000e', 'worker', true, '{}'),
   ('68000000-0000-4000-b000-000000000001', '68000000-0000-4000-a000-00000000000f', 'worker', false, '{}');
 
--- X keeps the default (a code is required); Y switched the code off.
+-- X turned the code on; Y keeps the default (no code).
 insert into public.business_modules (business_id, module_key, enabled, settings)
 values
-  ('68000000-0000-4000-b000-000000000001', 'time_clock', true, '{}'),
-  ('68000000-0000-4000-b000-000000000002', 'time_clock', true, '{"requirePunchCode": false}');
+  ('68000000-0000-4000-b000-000000000001', 'time_clock', true, '{"requirePunchCode": true}'),
+  ('68000000-0000-4000-b000-000000000002', 'time_clock', true, '{}');
 
 insert into public.platform_staff (user_id, role)
 values ('68000000-0000-4000-a000-000000000010', 'onboarder');
