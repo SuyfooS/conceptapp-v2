@@ -7,7 +7,11 @@ import type { SignInState } from "../../(auth)/actions";
 import type { JoinState } from "../../(auth)/join/actions";
 
 // Stand-ins for the auth actions on the design demo: the same steps with no
-// code sent. Any complete code is "wrong", so the error state can be seen too.
+// code sent. 123456 is right and any other complete code is wrong, so both
+// endings can be seen.
+
+const DEMO_CODE = "123456";
+const DEMO_APP = "/design/shell";
 
 export async function demoSignIn(
   prev: SignInState,
@@ -27,6 +31,9 @@ export async function demoSignIn(
   if (intent === "verify" && prev.step === "code") {
     const raw = form.get("code");
     const code = normalizeOtpCode(typeof raw === "string" ? raw : "");
+    if (code === DEMO_CODE) {
+      return { ...prev, error: undefined, resent: false, to: DEMO_APP };
+    }
     return {
       ...prev,
       error: code ? "wrongCode" : "invalidCode",
@@ -47,6 +54,7 @@ export async function demoJoin(
   if (intent === "verify" && prev.step === "code") {
     const raw = form.get("code");
     const code = normalizeOtpCode(typeof raw === "string" ? raw : "");
+    if (code === DEMO_CODE) redirect(DEMO_APP);
     return { step: "code", error: code ? "wrongCode" : "invalidCode" };
   }
   return { step: "invite", error: "failed" };

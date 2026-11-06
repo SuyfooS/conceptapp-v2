@@ -6,6 +6,10 @@
     "appShell": {
       "mainNav": "ניווט ראשי",
       "needsAction": ", {count} דורשים טיפול"
+    },
+    "codeSlots": {
+      "count": "{filled} מתוך {total} ספרות",
+      "accepted": "הקוד התקבל"
     }
   },
   "days": {
@@ -173,7 +177,11 @@
     "punchIn": "כניסה",
     "punchOut": "יציאה",
     "punchBack": "חזרה לעבודה",
-    "skeleton": "לפני שהנתונים מגיעים"
+    "skeleton": "לפני שהנתונים מגיעים",
+    "codeSlots": "קוד מהודעה",
+    "codeWrong": "קוד שגוי",
+    "codeRight": "קוד נכון",
+    "codeAgain": "מההתחלה"
   },
   "shell": {
     "metaTitle": "דמו פריסה",

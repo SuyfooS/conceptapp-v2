@@ -1,11 +1,9 @@
 "use client";
 
-import { OTP_LENGTH } from "@domain/otp";
 import { Button } from "@ui/button";
-import { FieldGroup, GroupedField } from "@ui/field-group";
-import { ltrInputClass } from "@ui/text-field";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useActionState } from "react";
+import { CodeField } from "../../code-field";
 import type { JoinState } from "../actions";
 
 const initial: JoinState = { step: "invite" };
@@ -59,21 +57,12 @@ export function JoinForm({
       <p className="text-ink-2" aria-live="polite">
         {t.rich(state.resent ? "codeResent" : "codeIntro", { ending, ltr })}
       </p>
-      <FieldGroup className="bg-bg shadow-none">
-        <GroupedField
-          name="code"
-          label={t("codeLabel")}
-          error={error}
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          placeholder={"0".repeat(OTP_LENGTH)}
-          maxLength={OTP_LENGTH + 2}
-          dir="ltr"
-          className={`${ltrInputClass} font-medium text-xl tracking-[0.3em]`}
-          required
-          autoFocus
-        />
-      </FieldGroup>
+      <CodeField
+        label={t("codeLabel")}
+        error={error}
+        wrongCode={state.error === "wrongCode"}
+        pending={pending}
+      />
       <Button
         type="submit"
         name="intent"

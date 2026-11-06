@@ -10,6 +10,7 @@ import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
+import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { CoverageBar } from "@ui/coverage-bar";
 import { EmptyState } from "@ui/empty-state";
 import {
@@ -130,6 +131,8 @@ function GalleryBody({
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
   const [day, setDay] = useState("0");
+  const [codeStatus, setCodeStatus] = useState<CodeSlotsStatus>("idle");
+  const [codeRun, setCodeRun] = useState(0);
   const [appearance, setAppearance] = useState<Appearance>("system");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [needed, setNeeded] = useState("3");
@@ -560,6 +563,39 @@ function GalleryBody({
 
         <Section title={t("skeleton")}>
           <SkeletonBones />
+        <Section title={t("codeSlots")}>
+          <Card className="flex flex-col gap-3">
+            <CodeSlots
+              key={codeRun}
+              name="gallery-code"
+              label={t("codeSlots")}
+              status={codeStatus}
+              slotClassName="bg-surface-2 shadow-none"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setCodeStatus("error")}
+              >
+                {t("codeWrong")}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setCodeStatus("success")}
+              >
+                {t("codeRight")}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setCodeStatus("idle");
+                  setCodeRun((run) => run + 1);
+                }}
+              >
+                {t("codeAgain")}
+              </Button>
+            </div>
+          </Card>
         </Section>
 
         <Section title={t("ring")}>
