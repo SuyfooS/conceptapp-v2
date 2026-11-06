@@ -3,6 +3,37 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-05 · run 26 · chunk 2d-1 (shift swaps in the database)
+
+- No open questions or instructions; `main` green at `2505d0a`. Split 2d
+  (shift swaps) in two: 2d-1 the database (today), 2d-2 the screens.
+- Migration `shift_swaps`: table `shift_swaps` (open → taken → approved /
+  declined, or cancelled by the worker) and server-only functions
+  `request_shift_swap`, `take_shift_swap`, `cancel_shift_swap`,
+  `decide_shift_swap`, each written to `audit_log`. Rules: only your own
+  shift of a published week, before it starts (business time zone); one
+  live request per shift and person; the colleague is an active member,
+  not on the shift and on no other shift at the same time; an active
+  manager or owner decides, and on approval every rule is checked again
+  and the colleague takes the worker's place in the same position.
+- RLS: active members of the business (and "view as") read its swaps;
+  other businesses, inactive members and anonymous read nothing; module
+  off closes it.
+- Tests: pgTAP `shift_swaps.test.sql` (36). Supabase images could not be
+  pulled in this run's container, so I ran the migrations and the test on
+  a plain Postgres 16 with stand-ins for `auth` and pgTAP: 36/36, and four
+  planted bugs (no overlap check, no "already started", wrong person
+  moved, open read policy) each turned tests red. `pnpm check`, `pnpm
+  build`. First CI run failed: the RLS meta-test keeps a list of tables
+  and I had not added `shift_swaps` to it; added. `database.types.ts` edited by hand; CI checks it.
+- Commit: squash of PR `agent/2d-1-swaps-db` (see the daily note in #1).
+- Next: chunk 2d-2, the screens: "give away" on my shifts, open requests
+  for colleagues to take, and the manager's approve/decline list.
+- Defaults applied (no question opened): a manager always approves (no
+  direct swaps); the colleague does not need to have marked availability;
+  publishing changes to a week drops its pending requests (its shifts are
+  replaced); owners and managers can also give away and take shifts.
+
 ## 2026-11-04 · run 25 · chunk 2c-3b (my shifts)
 
 - No open questions or instructions; `main` green at `54ee5aa`.
