@@ -1,10 +1,7 @@
 import { weekDates } from "@domain/availability";
 import { shabbatLimits } from "@domain/availability-form";
-import {
-  ISRAEL_TIME_ZONE,
-  ISRAELI_CITIES,
-  shabbatTimes,
-} from "@domain/shabbat";
+import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "@domain/shabbat";
+import { shabbatTimes } from "@domain/shabbat-times";
 import type { AvailabilityWeek } from "../../../../(app)/schedule/week";
 
 // A fixed week for the demo, in Tel Aviv, with an answer sent before.

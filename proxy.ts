@@ -15,6 +15,7 @@ export const PRIVATE = [
   "/clock",
   "/reservations",
   "/storefront",
+  "/team",
   "/admin",
 ];
 /** Where signed-in people have no business: they go on to the app. `/` is the landing page. */
@@ -56,6 +57,7 @@ export const config = {
     "/clock/:path*",
     "/reservations/:path*",
     "/storefront/:path*",
+    "/team/:path*",
     "/admin/:path*",
     "/sign-in",
     "/enter",

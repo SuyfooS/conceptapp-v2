@@ -192,7 +192,8 @@
     "deckCard2": "Second card",
     "deckBody": "On a phone it stays put, and the next card slides over it.",
     "phoneLabel": "A sample phone with a screen inside",
-    "phoneText": "The app's screen"
+    "phoneText": "The app's screen",
+    "skeleton": "Before the data arrives"
   },
   "shell": {
     "metaTitle": "Layout demo",

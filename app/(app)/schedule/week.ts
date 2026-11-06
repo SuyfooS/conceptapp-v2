@@ -1,11 +1,11 @@
 import {
   type Availability,
-  getBusinessPlace,
   getWeek,
   getWeekAvailability,
   type OpenScheduleWeek,
 } from "@db/availability";
 import { getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
+import type { MemberBusiness } from "@db/session";
 import { getLiveSwaps } from "@db/swaps";
 import { type Colleague, getColleagues } from "@db/team";
 import {
@@ -30,7 +30,8 @@ import {
   type ScheduledShift,
   withKnownPositions,
 } from "@domain/schedule";
-import { ISRAELI_CITIES, shabbatTimes } from "@domain/shabbat";
+import { ISRAELI_CITIES } from "@domain/shabbat";
+import { shabbatTimes } from "@domain/shabbat-times";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { ShiftSwap } from "@domain/swaps";
 import { canSeeTeam, type TeamMember } from "@domain/team";
@@ -58,7 +59,7 @@ export type AvailabilityWeek = {
  * place. A business without coordinates yet gets Tel Aviv's times.
  */
 function shabbatOf(
-  place: Awaited<ReturnType<typeof getBusinessPlace>>,
+  place: MemberBusiness["place"],
   start: string,
 ): ShabbatLimits {
   const { timeZone } = place;
@@ -98,10 +99,8 @@ const availabilityContext = cache(
       return null;
     }
     const businessId = membership.business.id;
-    const [settings, place] = await Promise.all([
-      currentModuleSettings("scheduling"),
-      getBusinessPlace(businessId),
-    ]);
+    const settings = await currentModuleSettings("scheduling");
+    const { place } = membership.business;
     const { timeZone } = place;
     const start = nextWeekStart(new Date(), timeZone, settings.weekStartsOn);
     const open = await getWeek(businessId, start);
@@ -269,11 +268,8 @@ export const currentPublishedSchedule = cache(
       return null;
     }
     const businessId = membership.business.id;
-    const [settings, place, people] = await Promise.all([
-      currentModuleSettings("scheduling"),
-      getBusinessPlace(businessId),
-      getColleagues(businessId),
-    ]);
+    const settings = await currentModuleSettings("scheduling");
+    const { place } = membership.business;
     const { timeZone } = place;
     const today = dateIn(new Date(), timeZone);
     const thisStart = weekStartOf(today, settings.weekStartsOn);
@@ -296,10 +292,11 @@ export const currentPublishedSchedule = cache(
         shabbat: settings.closedOnShabbat ? shabbatOf(place, start) : null,
       };
     };
-    const [thisWeek, nextWeek, swaps] = await Promise.all([
+    const [thisWeek, nextWeek, swaps, people] = await Promise.all([
       published(thisStart),
       published(addDays(thisStart, 7)),
       getLiveSwaps(businessId),
+      getColleagues(businessId),
     ]);
     return {
       userId: member.userId,

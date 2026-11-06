@@ -462,6 +462,7 @@ export async function scheduleDemoSunday(
  */
 export async function scheduleDemoToday(
   people: [phone: string, position: string | null][],
+  times: { start: string; end: string } = { start: "09:00", end: "16:00" },
 ): Promise<void> {
   const sql = postgres(DB_URL, { max: 1 });
   try {
@@ -487,8 +488,7 @@ export async function scheduleDemoToday(
       {
         day: week.today,
         name: "בוקר",
-        start: "09:00",
-        end: "16:00",
+        ...times,
         needed: 3,
         pattern: "morning",
         assignees: people.map(([phone, position]) => ({

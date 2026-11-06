@@ -1,4 +1,3 @@
-import { getBusinessModules } from "@db/modules";
 import {
   enabledModules,
   type ModuleKey,
@@ -11,12 +10,11 @@ import { cache } from "react";
 import type { z } from "zod";
 import { currentMember } from "./member";
 
-/** The business's module rows, read once per request. */
-const currentModuleRows = cache(async (): Promise<ModuleRow[]> => {
-  const member = await currentMember();
-  if (!member?.membership) return [];
-  return getBusinessModules(member.membership.business.id);
-});
+/** The business's module rows, which come with the member. */
+const currentModuleRows = cache(
+  async (): Promise<ModuleRow[]> =>
+    (await currentMember())?.membership?.business.modules ?? [],
+);
 
 /**
  * The modules that are on for the signed-in person's business, read once

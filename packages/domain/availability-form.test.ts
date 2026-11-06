@@ -9,7 +9,8 @@ import {
   shabbatLimits,
   suggestedRange,
 } from "./availability-form";
-import { ISRAEL_TIME_ZONE, ISRAELI_CITIES, shabbatTimes } from "./shabbat";
+import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "./shabbat";
+import { shabbatTimes } from "./shabbat-times";
 
 // The week of Sunday 1 November 2026; its Shabbat in Tel Aviv: candles
 // 16:26, havdalah 17:24 (hebcal's Israeli calendar).

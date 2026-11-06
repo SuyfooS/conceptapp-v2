@@ -1,11 +1,8 @@
 import { addDays, teamAvailability, weekDates } from "@domain/availability";
 import { fridayOf, shabbatLimits } from "@domain/availability-form";
 import { draftWeek } from "@domain/schedule";
-import {
-  ISRAEL_TIME_ZONE,
-  ISRAELI_CITIES,
-  shabbatTimes,
-} from "@domain/shabbat";
+import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "@domain/shabbat";
+import { shabbatTimes } from "@domain/shabbat-times";
 import type { ShiftSwap } from "@domain/swaps";
 import { buildTeam } from "@domain/team";
 import type { ScheduleViewProps } from "../../../../(app)/schedule/schedule-view";
