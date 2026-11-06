@@ -29,6 +29,7 @@ import { ProgressRing } from "@ui/progress-ring";
 import { PunchCircle } from "@ui/punch-circle";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
+import { SkeletonBones } from "@ui/skeleton";
 import { StatusToast } from "@ui/status-toast";
 import { Stepper } from "@ui/stepper";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
@@ -555,6 +556,10 @@ function GalleryBody({
               label={t("punchBack")}
             />
           </div>
+        </Section>
+
+        <Section title={t("skeleton")}>
+          <SkeletonBones />
         </Section>
 
         <Section title={t("ring")}>

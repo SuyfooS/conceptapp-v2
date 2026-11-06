@@ -15,6 +15,7 @@ export const PRIVATE = [
   "/clock",
   "/reservations",
   "/storefront",
+  "/team",
   "/admin",
 ];
 const DOORS = ["/sign-in", "/enter"];
@@ -54,6 +55,7 @@ export const config = {
     "/clock/:path*",
     "/reservations/:path*",
     "/storefront/:path*",
+    "/team/:path*",
     "/admin/:path*",
     "/sign-in",
     "/enter",

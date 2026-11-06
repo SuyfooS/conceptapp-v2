@@ -37,6 +37,21 @@ function isActive(pathname: string, item: NavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
+/**
+ * The path a press is on its way to, shown at once, until the router gets there.
+ * Set from a Link's onNavigate, which doesn't fire when the unsaved-work guard
+ * stops the press. aria-current stays with the real path.
+ */
+function usePressedPath() {
+  const pathname = usePathname();
+  const [pressed, setPressed] = useState<string | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is what ends the press
+  useEffect(() => {
+    setPressed(null);
+  }, [pathname]);
+  return { pathname, shown: pressed ?? pathname, press: setPressed };
+}
+
 function Count({ value, className }: { value?: number; className?: string }) {
   const t = useTranslations("ui.appShell");
   if (!value) return null;
@@ -69,7 +84,7 @@ const NEAR_TOP = 40;
 const OPEN_AFTER = 140;
 
 function TabBar({ nav }: { nav: NavItem[] }) {
-  const pathname = usePathname();
+  const { pathname, shown, press } = usePressedPath();
   const t = useTranslations("ui.appShell");
   const bar = useRef<HTMLUListElement>(null);
   const [compact, setCompact] = useState(false);
@@ -77,7 +92,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
   const dragStart = useRef<number | null>(null);
   const dragged = useRef(false);
 
-  const activeIndex = nav.findIndex((item) => isActive(pathname, item));
+  const activeIndex = nav.findIndex((item) => isActive(shown, item));
   const lensIndex = drag ?? activeIndex;
   // With one place to go there is nothing to choose between: the bar stays
   // small, its compact shape, and a page's main action can sit beside it.
@@ -220,7 +235,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
             />
           ) : null}
           {nav.map((item) => {
-            const active = isActive(pathname, item);
+            const active = isActive(shown, item);
             return (
               <li
                 key={item.href}
@@ -234,12 +249,13 @@ function TabBar({ nav }: { nav: NavItem[] }) {
               >
                 <Link
                   href={item.href}
-                  aria-current={active ? "page" : undefined}
+                  onNavigate={() => press(item.href)}
+                  aria-current={isActive(pathname, item) ? "page" : undefined}
                   title={single ? item.label : undefined}
                   draggable={false}
                   tabIndex={compact && !active && !single ? -1 : undefined}
                   className={cn(
-                    "flex h-full flex-col items-center justify-center gap-px rounded-full",
+                    "pressable flex h-full flex-col items-center justify-center gap-px rounded-full",
                     "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",
                     active ? "text-accent" : "text-ink",
                   )}
@@ -290,7 +306,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
  * everywhere, so moving between devices needs no relearning.
  */
 export function AppShell({ businessName, user, nav, children }: AppShellProps) {
-  const pathname = usePathname();
+  const { pathname, shown, press } = usePressedPath();
   const t = useTranslations("ui.appShell");
 
   return (
@@ -311,12 +327,13 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
           className="flex flex-1 flex-col gap-1 px-3"
         >
           {nav.map((item) => {
-            const active = isActive(pathname, item);
+            const active = isActive(shown, item);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                aria-current={active ? "page" : undefined}
+                onNavigate={() => press(item.href)}
+                aria-current={isActive(pathname, item) ? "page" : undefined}
                 className={cn(
                   "flex min-h-12 items-center gap-3 rounded-control px-3 font-medium transition-colors duration-150",
                   "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",

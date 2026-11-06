@@ -10,6 +10,11 @@ import { manifests } from "../modules/registry";
 const source = readFileSync(join(__dirname, "..", "proxy.ts"), "utf8");
 
 describe("proxy", () => {
+  it("guards the team screens", () => {
+    expect(source).toContain('"/team",');
+    expect(source).toContain('"/team/:path*"');
+  });
+
   it("guards every module screen", () => {
     for (const m of manifests) {
       if (!m.nav) continue;

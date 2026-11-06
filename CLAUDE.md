@@ -82,7 +82,7 @@ Only `app/` imports app code (`@/…`).
   Built so far: Button, IconButton, TextField, PhoneField, FieldGroup, FieldRow, Stepper,
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
   and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
-  StatusToast, EmptyState, Ambient, Spinner, WeekStrip, AppShell, PageBody/PageHeader/
+  StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
   PageSection.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
   wrapper. `accentTokens` returns a pair for light and for dark, and darkens or lifts
