@@ -3,6 +3,29 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · the daily run becomes a nightly run
+
+- Orel is back. He cancelled the daily run and asked for a run every night: it
+  does the work he left the day before; if he left nothing, it guesses from
+  earlier conversations and keeps the version from before its changes, in case
+  he does not like them.
+- Scheduled task renamed `ConceptApp agent — nightly run`, now at 02:00 Israel
+  time (Orel named no hour; 02:00 is the default), with the new prompt from
+  `docs/agent/RUN_PROMPT.md`.
+- `docs/AGENT.md` rewritten for this: "What to work on" (left work first, then a
+  guess from what he said, the log's "Next", the backlog), "Restore point" (a tag
+  `before-night/<date>`, undone by writing `בטל` on the night's note), and a
+  shorter backlog. Stale parts of the first brief are gone; they are in git.
+- A run cannot read conversations, so live sessions now add `🤖 **משיחה:**`
+  comments to `יומן הסוכן` as things come up, and the run reads those.
+- Runs now stay until CI finishes: on 5.11 a run ended its turn to wait for a CI
+  event and stalled for a day.
+- Corrected: GitHub sends Orel no notification for what the agent writes, since
+  it writes through his account. The brief said it did.
+- Not tested yet: pushing a tag from a cloud run. The first night tries it, with
+  a branch as the fallback.
+- Next: the first nightly run. Unless Orel leaves work, it guesses chunk 2d-2b.
+
 ## 2026-11-06 · chat · apple-design skill
 
 - Orel is back and asked to install `dickwu/apple-design-skill`. The daily run
@@ -18,6 +41,7 @@ what is next, defaults applied.
   wins where they differ.
 - Note: upstream has no license and the guideline pages are Apple's text. Fine
   while this repo is private; take the skill out before it goes public.
+
 
 ## 2026-11-05 · run 26 · chunk 2d-1 (shift swaps in the database)
 

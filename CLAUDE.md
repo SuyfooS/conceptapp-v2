@@ -1,7 +1,7 @@
 # ConceptApp v2 — working agreement
 
 Read this before changing anything. Next.js version notes are in @AGENTS.md.
-Autonomous runs (Oct–Nov 2026) also follow @docs/AGENT.md.
+Nightly runs and live sessions also follow @docs/AGENT.md.
 
 ## What this is
 
