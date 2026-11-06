@@ -3,6 +3,13 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · the passive door
+
+- Orel put real sign-in and its security off, and asked for a "passive login" until then. My reading: `/enter` offers three fictional people of a demo restaurant, one press and no code (#51). `PASSIVE_SIGN_IN` in `@domain/passive-sign-in` goes false before real people use the project.
+- The door reaches only those people, row-level security is unchanged, and the console isn't on offer. Anyone with the address can change the demo restaurant, and the screen says so.
+- `supabase/hosted-demo.sql` adds the restaurant, from the "demo" box of the migration workflow. #49, which asked Orel for test numbers, is closed.
+- Inviting a real person still needs a phone code, so it won't work on the hosted project until real sign-in arrives.
+
 ## 2026-11-06 · chat · team hours
 
 - `/clock/team`: what needs fixing, who is at work now, and everyone's hours in a month. `/clock/team/[person]`: one person's shifts, with fixing a shift and adding a forgotten one, by owners and managers. No migration: it uses `correct_time_entry` and `add_time_entry`, which were already there.
