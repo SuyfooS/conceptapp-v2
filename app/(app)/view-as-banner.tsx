@@ -12,9 +12,12 @@ import { endViewAsAction } from "./view-as-actions";
 export async function ViewAsBanner({
   viewing,
   businessName,
+  end = endViewAsAction,
 }: {
   viewing: ViewSession;
   businessName: string;
+  /** `endViewAsAction`, or the design demo's stand-in. */
+  end?: () => Promise<void>;
 }) {
   const [t, tr] = await Promise.all([
     getTranslations("app.viewAs"),
@@ -23,16 +26,19 @@ export async function ViewAsBanner({
   return (
     <aside
       aria-label={t("label")}
-      className="border-line border-b bg-surface-2"
+      // No glow on the page under it: it would start in a hard line here.
+      className="mx-auto w-full max-w-7xl px-4 pt-[calc(env(safe-area-inset-top)+0.75rem)] md:px-6 md:pt-6 xl:px-8 [&+main]:bg-none"
     >
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-3 px-4 py-3 md:flex-row md:items-center md:justify-between md:px-6 xl:px-8">
-        <div className="flex min-w-0 items-start gap-3">
-          <Eye
+      <div className="flex flex-col gap-3 rounded-card bg-surface p-4 shadow-card md:flex-row md:items-center md:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span
             aria-hidden="true"
-            className="mt-0.5 size-5 shrink-0 text-warning"
-          />
-          <div className="flex min-w-0 flex-col gap-0.5">
-            <p className="font-medium">
+            className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-warning-soft text-warning [&_svg]:size-6 [&_svg]:stroke-[1.8]"
+          >
+            <Eye />
+          </span>
+          <div className="flex min-w-0 flex-col">
+            <p className="font-semibold text-base">
               {t("title", {
                 role: tr(viewing.role),
                 business: businessName,
@@ -41,7 +47,7 @@ export async function ViewAsBanner({
             <p className="text-ink-2 text-sm">{t("body")}</p>
           </div>
         </div>
-        <form action={endViewAsAction}>
+        <form action={end} className="shrink-0">
           <Button
             type="submit"
             variant="secondary"

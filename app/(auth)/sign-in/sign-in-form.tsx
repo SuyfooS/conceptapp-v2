@@ -3,15 +3,21 @@
 import { OTP_LENGTH } from "@domain/otp";
 import { displayIsraeliMobile } from "@domain/phone";
 import { Button } from "@ui/button";
-import { PhoneField } from "@ui/phone-field";
-import { ltrInputClass, TextField } from "@ui/text-field";
+import { FieldGroup, GroupedField, GroupedPhoneField } from "@ui/field-group";
+import { ltrInputClass } from "@ui/text-field";
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
-import { type SignInState, signIn } from "../actions";
+import type { SignInState } from "../actions";
+import { authFieldsClass } from "../auth-screen";
 
 const initial: SignInState = { step: "phone" };
 
-export function SignInForm() {
+export function SignInForm({
+  signIn,
+}: {
+  /** `signIn`, or the design demo's stand-in. */
+  signIn: (prev: SignInState, form: FormData) => Promise<SignInState>;
+}) {
   const t = useTranslations("auth.signIn");
   const [state, action, pending] = useActionState(signIn, initial);
   const error = state.error ? t(`errors.${state.error}`) : undefined;
@@ -19,14 +25,17 @@ export function SignInForm() {
   if (state.step === "phone") {
     return (
       <form action={action} className="flex flex-col gap-5" noValidate>
-        <p className="text-ink-2">{t("phoneIntro")}</p>
-        <PhoneField
-          name="phone"
-          label={t("phoneLabel")}
-          error={error}
-          required
-          autoFocus
-        />
+        <p className="px-1 text-ink-2">{t("phoneIntro")}</p>
+        <FieldGroup className={authFieldsClass}>
+          <GroupedPhoneField
+            name="phone"
+            label={t("phoneLabel")}
+            error={error}
+            className="font-medium text-xl"
+            required
+            autoFocus
+          />
+        </FieldGroup>
         <Button
           type="submit"
           name="intent"
@@ -42,24 +51,27 @@ export function SignInForm() {
 
   return (
     <form action={action} className="flex flex-col gap-5" noValidate>
-      <p className="text-ink-2" aria-live="polite">
+      <p className="px-1 text-ink-2" aria-live="polite">
         {t.rich(state.resent ? "codeResent" : "codeIntro", {
           phone: displayIsraeliMobile(state.phone),
           ltr: (chunks) => <span dir="ltr">{chunks}</span>,
         })}
       </p>
-      <TextField
-        name="code"
-        label={t("codeLabel")}
-        error={error}
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        maxLength={OTP_LENGTH + 2}
-        dir="ltr"
-        className={ltrInputClass}
-        required
-        autoFocus
-      />
+      <FieldGroup className={authFieldsClass}>
+        <GroupedField
+          name="code"
+          label={t("codeLabel")}
+          error={error}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder={"0".repeat(OTP_LENGTH)}
+          maxLength={OTP_LENGTH + 2}
+          dir="ltr"
+          className={`${ltrInputClass} font-medium text-xl tracking-[0.3em]`}
+          required
+          autoFocus
+        />
+      </FieldGroup>
       <Button
         type="submit"
         name="intent"
@@ -69,15 +81,14 @@ export function SignInForm() {
       >
         {t("verify")}
       </Button>
-      <div className="flex flex-col gap-2 md:flex-row">
+      <div className="flex justify-center gap-1">
         <Button
           type="submit"
           name="intent"
           value="resend"
-          variant="secondary"
+          variant="ghost"
           disabled={pending}
           formNoValidate
-          className="md:flex-1"
         >
           {t("resend")}
         </Button>
@@ -88,7 +99,6 @@ export function SignInForm() {
           variant="ghost"
           disabled={pending}
           formNoValidate
-          className="md:flex-1"
         >
           {t("changePhone")}
         </Button>

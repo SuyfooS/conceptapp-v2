@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { globalErrorCopy } from "../app/global-error-copy";
 import en from "../messages/en.json";
 import he from "../messages/he.json";
 
@@ -42,5 +43,10 @@ describe("messages", () => {
     for (const [key, value] of [...heLeaves, ...enLeaves]) {
       expect(value.trim(), key).not.toBe("");
     }
+  });
+
+  it("give global-error the same words as the error screen", () => {
+    const { title, body, retry, home } = he.errors;
+    expect(globalErrorCopy).toEqual({ title, body, retry, home });
   });
 });

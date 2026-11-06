@@ -14,10 +14,14 @@ import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
 import { accentProps } from "@ui/accent";
 import { Badge } from "@ui/badge";
 import { Button, buttonVariants } from "@ui/button";
-import { Card, CardTitle } from "@ui/card";
+import { Card } from "@ui/card";
+import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
-import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
-import Link from "next/link";
+import { FieldGroup, GroupedField, GroupedTextArea } from "@ui/field-group";
+import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
+import { PersonList, PersonRow } from "@ui/person-row";
+import { ltrInputClass } from "@ui/text-field";
+import { Coffee, UtensilsCrossed } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   type FormEvent,
@@ -27,10 +31,16 @@ import {
   useRef,
   useState,
 } from "react";
-import { createBusinessAction, type NewBusinessState } from "./actions";
+import { BusinessMark } from "../../business-mark";
+import type { NewBusinessState } from "./actions";
 
 const STEP_KEYS = ["template", "details", "accent", "staff"] as const;
 const LAST_STEP = NEW_BUSINESS_STEPS.length - 1;
+
+const TEMPLATE_ICONS: Record<TemplateKey, ReactNode> = {
+  restaurant: <UtensilsCrossed />,
+  "cafe-bar": <Coffee />,
+};
 
 type Values = {
   template: TemplateKey;
@@ -45,18 +55,21 @@ type Values = {
 const initialState: NewBusinessState = {};
 
 /**
- * The new-business wizard: one step at a time (kind of business, details,
- * colour, staff list), checked as it goes with the same rules the server
- * runs. Every field stays in the one form, so the last step submits
- * everything. On desktop a summary sits beside the form; on phones and
- * tablets it closes the last step.
+ * The new-business wizard: one clear step at a time (kind of business, details,
+ * colour, staff list), checked as it goes with the same rules the server runs.
+ * Every field stays in the one form, so the last step submits everything. On
+ * phones the step's main action floats beside the tab bar and a summary closes
+ * the last step; from tablet up the action ends the form and the summary sits
+ * beside it.
  */
-export function NewBusinessForm() {
+export function NewBusinessForm({
+  create,
+}: {
+  /** `createBusinessAction`, or the design demo's stand-in. */
+  create: (prev: NewBusinessState, form: FormData) => Promise<NewBusinessState>;
+}) {
   const t = useTranslations("admin.newBusiness");
-  const [state, formAction, pending] = useActionState(
-    createBusinessAction,
-    initialState,
-  );
+  const [state, formAction, pending] = useActionState(create, initialState);
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<NewBusinessErrors>({});
   const [values, setValues] = useState<Values>({
@@ -117,68 +130,65 @@ export function NewBusinessForm() {
   const summary = <Summary values={values} staff={staff} />;
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_22rem] xl:items-start">
-      <form
-        onSubmit={onSubmit}
-        noValidate
-        className="flex flex-col gap-6 md:rounded-card md:bg-surface md:p-6 md:shadow-raised"
-      >
-        <div className="flex flex-col gap-1">
-          <p className="text-ink-2 text-sm">
-            {t("progress", { step: step + 1, total: STEP_KEYS.length })}
-          </p>
-          <h2
-            ref={stepHeading}
-            tabIndex={-1}
-            className="font-bold text-lg outline-none"
-          >
-            {t(`steps.${STEP_KEYS[step] ?? "template"}`)}
-          </h2>
-        </div>
-
-        <Step active={step === 0} legend={t("steps.template")}>
-          <div className="grid gap-3 md:grid-cols-2">
-            {TEMPLATE_KEYS.map((key) => (
-              <label
+    <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-8 xl:grid-cols-[minmax(0,1fr)_22rem]">
+      <form onSubmit={onSubmit} noValidate className="flex flex-col gap-5">
+        <div className="flex flex-col gap-3">
+          <div aria-hidden="true" className="flex gap-1">
+            {STEP_KEYS.map((key, i) => (
+              <span
                 key={key}
                 className={cn(
-                  "flex min-h-11 cursor-pointer items-start gap-3 rounded-card border border-line bg-surface p-4",
-                  "transition-colors duration-150 ease-calm has-checked:border-accent has-checked:ring-1 has-checked:ring-accent",
+                  "h-1.5 flex-1 rounded-full transition-colors duration-200 ease-calm",
+                  i <= step ? "bg-accent" : "bg-surface-2",
                 )}
-              >
-                <input
-                  type="radio"
-                  name="template"
-                  value={key}
-                  checked={values.template === key}
-                  onChange={() => set("template")(key)}
-                  className="mt-0.5 size-5 shrink-0 accent-accent"
-                />
-                <span className="flex flex-col gap-1">
-                  <span className="font-medium">
-                    {t(`templates.${key}.name`)}
-                  </span>
-                  <span className="text-ink-2 text-sm">
-                    {t(`templates.${key}.body`)}
-                  </span>
-                </span>
-              </label>
+              />
             ))}
           </div>
-          {errors.template ? (
-            <p className="text-danger text-sm">
-              {t(`errors.template.${errors.template}`)}
+          <div className="flex flex-col px-1">
+            <p className="text-ink-2 text-sm">
+              {t("progress", { step: step + 1, total: STEP_KEYS.length })}
             </p>
-          ) : (
-            <p className="text-ink-2 text-sm">{t("templateHint")}</p>
-          )}
+            <h2
+              ref={stepHeading}
+              tabIndex={-1}
+              className="font-bold text-xl outline-none"
+            >
+              {t(`steps.${STEP_KEYS[step] ?? "template"}`)}
+            </h2>
+          </div>
+        </div>
+
+        <Step active={step === 0}>
+          <ChoiceList
+            legend={t("steps.template")}
+            legendClassName="sr-only"
+            error={
+              errors.template
+                ? t(`errors.template.${errors.template}`)
+                : undefined
+            }
+          >
+            {TEMPLATE_KEYS.map((key) => (
+              <ChoiceRow
+                key={key}
+                name="template"
+                value={key}
+                checked={values.template === key}
+                onChange={() => set("template")(key)}
+                leading={TEMPLATE_ICONS[key]}
+                title={t(`templates.${key}.name`)}
+                hint={t(`templates.${key}.body`)}
+              />
+            ))}
+          </ChoiceList>
         </Step>
 
         <Step active={step === 1} legend={t("steps.details")}>
-          <div className="grid gap-4 md:grid-cols-2">
-            <TextField
+          <FieldGroup>
+            <GroupedField
               name="name"
               label={t("fields.name.label")}
+              placeholder={t("fields.name.placeholder")}
               hint={t("fields.name.hint")}
               error={errors.name && t(`errors.name.${errors.name}`)}
               value={values.name}
@@ -187,9 +197,10 @@ export function NewBusinessForm() {
               maxLength={120}
               required
             />
-            <TextField
+            <GroupedField
               name="slug"
               label={t("fields.slug.label")}
+              placeholder={t("fields.slug.placeholder")}
               hint={t("fields.slug.hint")}
               error={errors.slug && t(`errors.slug.${errors.slug}`)}
               value={values.slug}
@@ -203,127 +214,130 @@ export function NewBusinessForm() {
               maxLength={60}
               required
             />
-          </div>
-          <TextField
-            name="address"
-            label={t("fields.address.label")}
-            hint={t("fields.address.hint")}
-            error={errors.address && t(`errors.address.${errors.address}`)}
-            value={values.address}
-            onChange={(e) => set("address")(e.target.value)}
-            autoComplete="street-address"
-            maxLength={240}
-          />
+            <GroupedField
+              name="address"
+              label={t("fields.address.label")}
+              placeholder={t("fields.address.placeholder")}
+              hint={t("fields.address.hint")}
+              error={errors.address && t(`errors.address.${errors.address}`)}
+              value={values.address}
+              onChange={(e) => set("address")(e.target.value)}
+              autoComplete="street-address"
+              maxLength={240}
+            />
+          </FieldGroup>
         </Step>
 
         <Step active={step === 2} legend={t("steps.accent")}>
           <input type="hidden" name="accent" value={values.accent} />
-          <div className="flex flex-wrap items-center gap-3">
-            {ACCENT_PRESETS.map((preset) => (
-              <label
-                key={preset.key}
-                title={t(`accent.presets.${preset.key}`)}
-                className="flex size-11 cursor-pointer items-center justify-center rounded-full has-checked:ring-2 has-checked:ring-ink has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ink"
+          <div {...accentProps(tokens)} className="flex flex-col">
+            <Card tone="hero" padding="none" className="px-5 pt-5 pb-[76px]">
+              <p className="font-medium text-base">{t("accent.preview")}</p>
+              <p className="mt-6 font-bold text-2xl">{values.name}</p>
+            </Card>
+            <Card
+              tone="float"
+              padding="md"
+              className="relative z-10 mx-3 -mt-14"
+            >
+              <span
+                className={cn(
+                  buttonVariants(),
+                  "pointer-events-none flex w-full",
+                )}
               >
-                <input
-                  type="radio"
-                  name="accentPreset"
-                  value={preset.hex}
-                  checked={values.accent === preset.hex}
-                  onChange={() => set("accent")(preset.hex)}
-                  className="sr-only"
-                />
-                <span
-                  aria-hidden="true"
-                  className="size-9 rounded-full border border-line"
-                  style={{ backgroundColor: preset.hex }}
-                />
-                <span className="sr-only">
-                  {t(`accent.presets.${preset.key}`)}
-                </span>
-              </label>
-            ))}
-            <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-control border border-line bg-surface ps-1.5 pe-3 text-sm">
+                {t("accent.previewButton")}
+              </span>
+            </Card>
+          </div>
+          {tokens.adjusted ? (
+            <p className="px-1 text-sm" aria-live="polite">
+              {t("accent.adjusted")}
+            </p>
+          ) : null}
+          <div className="rounded-card bg-surface shadow-card">
+            <div className="flex flex-wrap gap-1.5 p-3">
+              {ACCENT_PRESETS.map((preset) => (
+                <label
+                  key={preset.key}
+                  title={t(`accent.presets.${preset.key}`)}
+                  className="group grid size-11 cursor-pointer place-items-center rounded-full has-checked:shadow-[inset_0_0_0_2px_var(--ink)] has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ink"
+                >
+                  <input
+                    type="radio"
+                    name="accentPreset"
+                    value={preset.hex}
+                    checked={values.accent === preset.hex}
+                    onChange={() => set("accent")(preset.hex)}
+                    className="sr-only"
+                  />
+                  <span
+                    aria-hidden="true"
+                    className="size-[30px] rounded-full transition-transform duration-300 ease-spring group-has-checked:scale-[0.82]"
+                    style={{ backgroundColor: preset.hex }}
+                  />
+                  <span className="sr-only">
+                    {t(`accent.presets.${preset.key}`)}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <label className="relative flex min-h-14 cursor-pointer items-center justify-between gap-3 px-4 py-2 before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-line before:content-['']">
+              <span className="font-medium">{t("accent.custom")}</span>
               <input
                 type="color"
                 value={values.accent}
                 onChange={(e) => set("accent")(e.target.value.toLowerCase())}
-                className="size-8 cursor-pointer rounded-control border-0 bg-transparent p-0"
+                className="size-9 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
               />
-              {t("accent.custom")}
             </label>
           </div>
           {errors.accent ? (
-            <p className="text-danger text-sm">
+            <p className="px-1 text-danger text-sm">
               {t(`errors.accent.${errors.accent}`)}
             </p>
           ) : null}
-          <div
-            {...accentProps(tokens)}
-            className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4"
-          >
-            <p className="text-ink-2 text-sm">{t("accent.preview")}</p>
-            <span
-              className={cn(buttonVariants(), "pointer-events-none self-start")}
-            >
-              {t("accent.previewButton")}
-            </span>
-            {tokens.adjusted ? (
-              <p className="text-sm" aria-live="polite">
-                {t("accent.adjusted")}
-              </p>
-            ) : null}
-          </div>
         </Step>
 
         <Step active={step === 3} legend={t("steps.staff")}>
-          <TextArea
-            name="staff"
-            label={t("staff.label")}
-            hint={t("staff.hint")}
-            error={errors.staff && t(`errors.staff.${errors.staff}`)}
-            placeholder={t("staff.placeholder")}
-            value={values.staff}
-            onChange={(e) => {
-              set("staff")(e.target.value);
-              // The preview shows each problem live; drop the error once
-              // the list is fine again.
-              if (!parseStaffList(e.target.value).error) {
-                setErrors(({ staff: _, ...rest }) => rest);
-              }
-            }}
-            rows={6}
-            spellCheck={false}
-          />
+          <FieldGroup>
+            <GroupedTextArea
+              name="staff"
+              label={t("staff.label")}
+              hint={t("staff.hint")}
+              error={errors.staff && t(`errors.staff.${errors.staff}`)}
+              placeholder={t("staff.placeholder")}
+              value={values.staff}
+              onChange={(e) => {
+                set("staff")(e.target.value);
+                // The preview shows each problem live; drop the error once
+                // the list is fine again.
+                if (!parseStaffList(e.target.value).error) {
+                  setErrors(({ staff: _, ...rest }) => rest);
+                }
+              }}
+              rows={5}
+              spellCheck={false}
+            />
+          </FieldGroup>
           <StaffPreview staff={staff} />
-          <p className="text-ink-2 text-sm">{t("staff.notSent")}</p>
-          <div className="xl:hidden">{summary}</div>
+          <p className="px-1 text-ink-2 text-sm">{t("staff.notSent")}</p>
+          <div className="md:hidden">{summary}</div>
         </Step>
 
         {state.failure ? (
-          <p role="alert" className="text-danger">
+          <p role="alert" className="px-1 text-danger">
             {t(`errors.${state.failure}`)}
           </p>
         ) : null}
 
-        <div className="flex flex-col gap-2 md:flex-row-reverse md:justify-between">
-          <Button
-            type="submit"
-            size="lg"
-            loading={pending}
-            className="md:min-w-40"
-          >
-            {step === LAST_STEP ? t("actions.create") : t("actions.next")}
-          </Button>
-          {step === 0 ? (
-            <Button asChild variant="ghost" size="lg">
-              <Link href="/admin">{t("actions.cancel")}</Link>
-            </Button>
-          ) : (
+        <FloatingAction besideTabBar className="md:mt-1">
+          {step > 0 ? (
             <Button
-              variant="secondary"
+              variant="ghost"
               size="lg"
               disabled={pending}
+              className="min-h-16 max-md:glass md:min-h-13 md:bg-surface-2 md:hover:bg-surface-3"
               onClick={() => {
                 setErrors({});
                 goTo(step - 1);
@@ -331,10 +345,21 @@ export function NewBusinessForm() {
             >
               {t("actions.back")}
             </Button>
-          )}
-        </div>
+          ) : null}
+          <Button
+            type="submit"
+            size="lg"
+            loading={pending}
+            className={cn(
+              "min-h-16 flex-1 md:min-h-13 md:min-w-48 md:flex-none md:shadow-none",
+              floatingButtonClass,
+            )}
+          >
+            {step === LAST_STEP ? t("actions.create") : t("actions.next")}
+          </Button>
+        </FloatingAction>
       </form>
-      <div className="hidden xl:block">{summary}</div>
+      <div className="hidden md:sticky md:top-6 md:block">{summary}</div>
     </div>
   );
 }
@@ -346,14 +371,15 @@ function Step({
   children,
 }: {
   active: boolean;
-  legend: string;
+  /** Names the group for a screen reader; the step's heading shows it. */
+  legend?: string;
   children: ReactNode;
 }) {
   return (
     <fieldset
       className={cn("flex min-w-0 flex-col gap-4", !active && "hidden")}
     >
-      <legend className="sr-only">{legend}</legend>
+      {legend ? <legend className="sr-only">{legend}</legend> : null}
       {children}
     </fieldset>
   );
@@ -361,20 +387,20 @@ function Step({
 
 /**
  * The pasted list as it will be invited, with each line that needs fixing
- * named by its number. Phone: one column; tablet and up: two.
+ * named by its number.
  */
 function StaffPreview({ staff }: { staff: StaffList }) {
   const t = useTranslations("admin");
   const problems = staff.lines.flatMap((line) => (line.ok ? [] : [line]));
   return (
     <div className="flex flex-col gap-3">
-      <p className="font-medium" aria-live="polite">
+      <p className="px-1 font-semibold" aria-live="polite">
         {problems.length > 0
           ? t("newBusiness.staff.problems", { count: problems.length })
           : t("newBusiness.staff.count", { count: staff.entries.length })}
       </p>
       {problems.length > 0 ? (
-        <ul className="flex flex-col gap-1 text-sm">
+        <ul className="flex flex-col gap-1 px-1 text-sm">
           {problems.map((line) => (
             <li key={line.line} className="flex flex-col">
               <span className="text-danger">
@@ -382,85 +408,75 @@ function StaffPreview({ staff }: { staff: StaffList }) {
                 {" · "}
                 {t(`newBusiness.staff.lineErrors.${line.error}`)}
               </span>
-              <span className="truncate text-ink-2">{line.text}</span>
+              <span className="break-words text-ink-2">{line.text}</span>
             </li>
           ))}
         </ul>
       ) : null}
       {staff.entries.length > 0 ? (
-        <ul
-          aria-label={t("newBusiness.staff.listLabel")}
-          className="grid gap-2 md:grid-cols-2"
-        >
+        <PersonList aria-label={t("newBusiness.staff.listLabel")}>
           {staff.entries.map((entry) => (
-            <li
+            <PersonRow
               key={entry.phone}
-              className="flex min-h-11 items-center justify-between gap-3 rounded-control border border-line bg-surface px-3 py-2"
-            >
-              <span className="flex min-w-0 flex-col">
-                <span className="truncate font-medium">{entry.name}</span>
-                <span className="text-ink-2 text-sm">
-                  <span dir="ltr">{displayIsraeliMobile(entry.phone)}</span>
-                </span>
-              </span>
-              <Badge tone={entry.role === "worker" ? "neutral" : "accent"}>
-                {t(`memberRoles.${entry.role}`)}
-              </Badge>
-            </li>
+              name={entry.name}
+              title={entry.name}
+              subtitle={
+                <span dir="ltr">{displayIsraeliMobile(entry.phone)}</span>
+              }
+              trailing={
+                <Badge tone={entry.role === "worker" ? "neutral" : "accent"}>
+                  {t(`memberRoles.${entry.role}`)}
+                </Badge>
+              }
+            />
           ))}
-        </ul>
+        </PersonList>
       ) : null}
     </div>
   );
 }
 
-/** What has been chosen so far. */
+/** What has been chosen so far, under the business's own mark. */
 function Summary({ values, staff }: { values: Values; staff: StaffList }) {
   const t = useTranslations("admin.newBusiness");
   const empty = <span className="text-ink-2">{t("summary.empty")}</span>;
   const slug = normalizeSlug(values.slug);
+  const name = values.name.trim();
   const rows: { label: string; value: ReactNode }[] = [
     {
       label: t("summary.template"),
       value: t(`templates.${values.template}.name`),
     },
-    { label: t("summary.name"), value: values.name.trim() || empty },
+    { label: t("summary.name"), value: name || empty },
     {
       label: t("summary.slug"),
       value: slug ? <span dir="ltr">{slug}</span> : empty,
     },
     { label: t("summary.address"), value: values.address.trim() || empty },
     {
-      label: t("summary.accent"),
-      value: (
-        <span className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="size-5 rounded-full border border-line"
-            style={{ backgroundColor: accentTokens(values.accent).accent }}
-          />
-          <span dir="ltr">{accentTokens(values.accent).accent}</span>
-        </span>
-      ),
-    },
-    {
       label: t("summary.staff"),
       value: t("staff.count", { count: staff.entries.length }),
     },
   ];
   return (
-    <Card tone="flat" padding="lg" className="flex flex-col gap-3">
-      <CardTitle as="h2">{t("summary.title")}</CardTitle>
-      <dl className="flex flex-col gap-2">
+    <section className="overflow-hidden rounded-card bg-surface shadow-card">
+      <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+        <BusinessMark name={name || "·"} accent={values.accent} />
+        <h2 className="font-bold text-md">{t("summary.title")}</h2>
+      </div>
+      <dl>
         {rows.map((row) => (
-          <div key={row.label} className="flex justify-between gap-4">
-            <dt className="text-ink-2">{row.label}</dt>
-            <dd className="min-w-0 text-end font-medium break-words">
+          <div
+            key={row.label}
+            className="flex justify-between gap-4 border-line border-t px-4 py-2.5 text-base"
+          >
+            <dt className="shrink-0 text-ink-2">{row.label}</dt>
+            <dd className="min-w-0 break-words text-end font-medium">
               {row.value}
             </dd>
           </div>
         ))}
       </dl>
-    </Card>
+    </section>
   );
 }

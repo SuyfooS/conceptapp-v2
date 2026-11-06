@@ -8,33 +8,6 @@
       "needsAction": ", {count} need action"
     }
   },
-  "home": {
-    "version": "Version 2 · Phase 0",
-    "title": "Phase 0 under way",
-    "intro": "All four pieces of phase 0 are in place: the skeleton, the design system, the database and phone sign-in. Next: the module system and the admin console.",
-    "chunks": {
-      "skeleton": {
-        "title": "Project skeleton",
-        "detail": "Right-to-left Hebrew with Next.js, TypeScript and Tailwind"
-      },
-      "design": {
-        "title": "Design system",
-        "detail": "Tokens, base components and the /design page"
-      },
-      "database": {
-        "title": "Database",
-        "detail": "Businesses and memberships with RLS and isolation tests"
-      },
-      "login": {
-        "title": "Phone sign-in",
-        "detail": "One-time code and a home screen in the business accent"
-      }
-    },
-    "accentNote": "The filled circles use the business accent (default: burgundy). Each business picks one colour; everything else stays fixed.",
-    "shellLink": "Demo: the app on phone, tablet and desktop",
-    "designLink": "Design system",
-    "signInLink": "Sign in to the app"
-  },
   "days": {
     "sun": {
       "short": "Sun",
@@ -158,6 +131,18 @@
     "heroTitle": "Morning, 09:00",
     "floatText": "A card floating over the main card",
     "people": "People",
+    "fieldGroup": "Fields in a list",
+    "choices": "One choice out of several",
+    "choiceHint": "A short word about this option",
+    "personRow": "People in a list",
+    "emptyState": "A screen with no content",
+    "emptyTitle": "Nothing here yet",
+    "emptyBody": "Every empty screen says what to do next.",
+    "emptyAction": "The next step",
+    "floatingAction": "The floating main action",
+    "ring": "How much is done",
+    "errorDemoTitle": "A real error screen",
+    "errorDemoAction": "Show the error screen",
     "person1": "Noa Cohen",
     "person2": "Yoav Levi",
     "person3": "Maya Peretz",
@@ -239,6 +224,7 @@
     }
   },
   "auth": {
+    "brand": "ConceptApp",
     "signIn": {
       "metaTitle": "Sign in",
       "title": "Sign in",
@@ -262,6 +248,7 @@
     },
     "join": {
       "metaTitle": "Join",
+      "eyebrow": "An invitation to the team",
       "title": "Join {business}",
       "welcome": "You have been invited to join the team as {role}.",
       "welcomeNamed": "Hello {name}, you have been invited to join the team as {role}.",
@@ -383,6 +370,7 @@
         "title": "Invite to the team",
         "subtitle": "Name, mobile and role, and you get a link to send in a message.",
         "name": "Name",
+        "namePlaceholder": "First and last name",
         "phone": "Mobile",
         "phoneHint": "The sign-in code goes to this number.",
         "role": "Role",
@@ -713,6 +701,10 @@
   },
   "admin": {
     "consoleName": "ConceptApp",
+    "account": {
+      "title": "Your account",
+      "signOut": "Sign out"
+    },
     "roles": {
       "platform_admin": "Platform admin",
       "onboarder": "Onboarding"
@@ -752,7 +744,6 @@
     "newBusiness": {
       "metaTitle": "New business",
       "title": "Open a new business",
-      "subtitle": "Four steps: the kind of business, the details, the colour and the staff.",
       "progress": "Step {step} of {total}",
       "steps": {
         "template": "Kind of business",
@@ -767,22 +758,24 @@
         },
         "cafe-bar": {
           "name": "Café and bar",
-          "body": "Scheduling, time clock and a business page. Table reservations start switched off."
+          "body": "Scheduling, time clock and a business page, without table reservations."
         }
       },
-      "templateHint": "Any setting can be changed later.",
       "fields": {
         "name": {
           "label": "Business name",
+          "placeholder": "Café Noa",
           "hint": "As the staff and guests know it."
         },
         "slug": {
           "label": "Page address",
-          "hint": "Latin letters, digits and hyphens. For example: cafe-noa"
+          "placeholder": "cafe-noa",
+          "hint": "Latin letters, digits and hyphens."
         },
         "address": {
           "label": "Address",
-          "hint": "Optional. Used for Shabbat times and the business page."
+          "placeholder": "5 Herzl Street, Haifa",
+          "hint": "Optional."
         }
       },
       "accent": {
@@ -798,7 +791,7 @@
           "brown": "Brown"
         },
         "custom": "Another colour",
-        "preview": "This is how buttons will look",
+        "preview": "How the colour will look in the app",
         "previewButton": "Sample button",
         "adjusted": "The colour was darkened a little so text on it stays readable."
       },
@@ -808,14 +801,12 @@
         "name": "Name",
         "slug": "Page address",
         "address": "Address",
-        "accent": "Colour",
         "empty": "Not filled in",
         "staff": "Staff"
       },
       "actions": {
         "next": "Continue",
         "back": "Back",
-        "cancel": "Cancel",
         "create": "Open the business"
       },
       "errors": {
@@ -875,12 +866,13 @@
     "setup": {
       "opened": {
         "title": "{name} is open",
-        "body": "The business is ready with the “{template}” template’s settings. Any setting can be changed later."
+        "body": "The business is ready with the “{template}” template’s settings."
       },
       "subtitle": "Template: {template} · Page address: <ltr>{slug}</ltr>",
       "back": "All businesses",
       "checklist": {
         "title": "What is left to do",
+        "progress": "{done} of {total}",
         "remaining": "{count, plural, =0 {All done} one {One thing left} other {# things left}}",
         "done": "Done",
         "todo": "Missing",
@@ -902,7 +894,7 @@
           "address": {
             "title": "Business address",
             "done": "{address}",
-            "todo": "No address yet. It sets the Shabbat times and appears on the business page."
+            "todo": "No address yet."
           }
         }
       },
@@ -942,6 +934,16 @@
         },
         "failed": "We could not open the view. Try again in a moment."
       }
+    }
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "body": "The screen did not load because of a fault. You can try again in a moment.",
+    "retry": "Try again",
+    "home": "Back to home",
+    "notFound": {
+      "title": "We could not find this screen",
+      "body": "The link may be old or have a mistake in it."
     }
   }
 }

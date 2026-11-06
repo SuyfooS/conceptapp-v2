@@ -110,8 +110,8 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
     page.getByRole("heading", { level: 2, name: w.steps.staff }),
   ).toBeVisible();
   await expect(page.getByText("עוד לא נוספו אנשים").first()).toBeVisible();
-  // The summary, beside the form on desktop and closing this step on
-  // phones and tablets.
+  // The summary, beside the form from tablet up and closing this step on
+  // phones.
   await expect(
     page
       .getByText("demo-restaurant", { exact: true })

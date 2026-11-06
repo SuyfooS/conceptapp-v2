@@ -53,6 +53,12 @@ test("a platform admin lands in the console and sees every business", async ({
     () => document.documentElement.scrollWidth - window.innerWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
+
+  // The console has its own way out, and it closes the session.
+  await page.getByRole("button", { name: a.account.signOut }).click();
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await page.goto("/admin");
+  await expect(page).toHaveURL(/\/sign-in$/);
 });
 
 test("an onboarder sees the business list too", async ({ page }) => {

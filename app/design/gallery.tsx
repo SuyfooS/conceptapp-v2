@@ -6,10 +6,21 @@ import { Avatar, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
+import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
+import { EmptyState } from "@ui/empty-state";
+import {
+  FieldGroup,
+  GroupedField,
+  GroupedPhoneField,
+  GroupedTextArea,
+} from "@ui/field-group";
+import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
+import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
+import { ProgressRing } from "@ui/progress-ring";
 import { Sheet } from "@ui/sheet";
 import { Stat } from "@ui/stat";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
@@ -416,6 +427,95 @@ function GalleryBody({
             <Avatar name={t("person2")} />
             <AvatarStack names={[t("person1"), t("person2"), t("person3")]} />
           </div>
+        </Section>
+
+        <Section title={t("personRow")}>
+          <PersonList>
+            <PersonRow
+              name={t("person1")}
+              title={t("person1")}
+              subtitle={t("sheetRole")}
+              trailing={<Badge tone="success">{t("success")}</Badge>}
+            />
+            <PersonRow
+              name={null}
+              title={t("person2")}
+              subtitle={t("sheetRole")}
+              below={<Button variant="secondary">{t("emptyAction")}</Button>}
+            />
+          </PersonList>
+        </Section>
+
+        <Section title={t("fieldGroup")}>
+          <FieldGroup key={lang}>
+            <GroupedField
+              label={t("name")}
+              placeholder={t("namePh")}
+              leading={<PersonAvatar name={t("person1")} />}
+            />
+            <GroupedField
+              label={t("hours")}
+              error={t("hoursError")}
+              defaultValue="22:00–17:00"
+              dir="ltr"
+              className={ltrInputClass}
+            />
+            <GroupedPhoneField label={t("phone")} hint={t("shiftHint")} />
+            <GroupedTextArea
+              label={t("note")}
+              placeholder={t("notePh")}
+              rows={2}
+            />
+          </FieldGroup>
+        </Section>
+
+        <Section title={t("choices")}>
+          <ChoiceList legend={t("shift")} legendClassName="sr-only">
+            <ChoiceRow
+              name="galleryChoice"
+              defaultChecked
+              title={t("p1")}
+              hint={t("choiceHint")}
+              leading={<CalendarDays />}
+            />
+            <ChoiceRow
+              name="galleryChoice"
+              title={t("p2")}
+              hint={t("choiceHint")}
+              leading={<Users />}
+            />
+          </ChoiceList>
+        </Section>
+
+        <Section title={t("emptyState")}>
+          <Card padding="none">
+            <EmptyState
+              headingLevel="h2"
+              icon={<ListChecks />}
+              title={t("emptyTitle")}
+              body={t("emptyBody")}
+            >
+              <Button>{t("emptyAction")}</Button>
+            </EmptyState>
+          </Card>
+        </Section>
+
+        <Section title={t("floatingAction")}>
+          {/* A transform makes this box hold what is fixed, so the action stays here. */}
+          <div className="relative h-36 transform-gpu overflow-hidden rounded-card bg-surface-2">
+            <FloatingAction className="bottom-4 md:fixed">
+              <Button size="lg" className={cn("w-full", floatingButtonClass)}>
+                {t("emptyAction")}
+              </Button>
+            </FloatingAction>
+          </div>
+        </Section>
+
+        <Section title={t("ring")}>
+          <Card className="flex items-center gap-3">
+            <ProgressRing value={3} max={4} />
+            <span className="font-medium">{t("emptyBody")}</span>
+          </Card>
         </Section>
 
         <Section title={t("tiles")}>

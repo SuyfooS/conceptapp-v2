@@ -29,6 +29,10 @@ test("signed-out visitors are sent to sign-in", async ({ page }) => {
   await expect(page).toHaveURL(/\/sign-in$/);
   await expect(page.getByRole("heading", { name: t.title })).toBeVisible();
   await expectAccessible(page);
+
+  // The root has no page of its own: it opens the app, and so leads here too.
+  await page.goto("/");
+  await expect(page).toHaveURL(/\/sign-in$/);
 });
 
 test("a worker signs in with a phone code and lands on the home screen", async ({
@@ -67,8 +71,10 @@ test("a worker signs in with a phone code and lands on the home screen", async (
     fullPage: true,
   });
 
-  // Signed in: the sign-in screen sends you home.
+  // Signed in: the sign-in screen and the root both send you home.
   await page.goto("/sign-in");
+  await expect(page).toHaveURL(/\/home$/);
+  await page.goto("/");
   await expect(page).toHaveURL(/\/home$/);
 
   // Signing out closes the session.

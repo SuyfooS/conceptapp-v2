@@ -46,13 +46,12 @@ export function ResendLink({
   }
 
   return (
-    <form action={action} className="flex flex-col gap-1">
+    <form action={action} className="flex flex-col items-start gap-1">
       <Button
         type="submit"
         variant="secondary"
         loading={pending}
         aria-label={t("newFor", { name })}
-        className="w-full md:w-auto"
       >
         <Link2 aria-hidden="true" />
         {t("new")}

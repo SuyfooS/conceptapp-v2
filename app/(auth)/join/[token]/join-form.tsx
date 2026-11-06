@@ -2,21 +2,26 @@
 
 import { OTP_LENGTH } from "@domain/otp";
 import { Button } from "@ui/button";
-import { ltrInputClass, TextField } from "@ui/text-field";
+import { FieldGroup, GroupedField } from "@ui/field-group";
+import { ltrInputClass } from "@ui/text-field";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useActionState } from "react";
-import { type JoinState, join } from "../actions";
+import type { JoinState } from "../actions";
 
 const initial: JoinState = { step: "invite" };
 
 /** Send a code to the invited number, then join with it. */
-export function JoinForm({ token, ending }: { token: string; ending: string }) {
+export function JoinForm({
+  join,
+  ending,
+}: {
+  /** `join` for this link's token, or the design demo's stand-in. */
+  join: (prev: JoinState, form: FormData) => Promise<JoinState>;
+  ending: string;
+}) {
   const t = useTranslations("auth.join");
   const errors = useTranslations("auth.signIn.errors");
-  const [state, action, pending] = useActionState(
-    join.bind(null, token),
-    initial,
-  );
+  const [state, action, pending] = useActionState(join, initial);
   const error = state.error ? errors(state.error) : undefined;
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -27,7 +32,7 @@ export function JoinForm({ token, ending }: { token: string; ending: string }) {
       <form
         key="invite"
         action={action}
-        className="flex flex-col gap-5"
+        className="flex flex-col gap-4"
         noValidate
       >
         <p className="text-ink-2">{t.rich("sendIntro", { ending, ltr })}</p>
@@ -50,22 +55,25 @@ export function JoinForm({ token, ending }: { token: string; ending: string }) {
   }
 
   return (
-    <form key="code" action={action} className="flex flex-col gap-5" noValidate>
+    <form key="code" action={action} className="flex flex-col gap-4" noValidate>
       <p className="text-ink-2" aria-live="polite">
         {t.rich(state.resent ? "codeResent" : "codeIntro", { ending, ltr })}
       </p>
-      <TextField
-        name="code"
-        label={t("codeLabel")}
-        error={error}
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        maxLength={OTP_LENGTH + 2}
-        dir="ltr"
-        className={ltrInputClass}
-        required
-        autoFocus
-      />
+      <FieldGroup className="bg-bg shadow-none">
+        <GroupedField
+          name="code"
+          label={t("codeLabel")}
+          error={error}
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          placeholder={"0".repeat(OTP_LENGTH)}
+          maxLength={OTP_LENGTH + 2}
+          dir="ltr"
+          className={`${ltrInputClass} font-medium text-xl tracking-[0.3em]`}
+          required
+          autoFocus
+        />
+      </FieldGroup>
       <Button
         type="submit"
         name="intent"
@@ -79,7 +87,7 @@ export function JoinForm({ token, ending }: { token: string; ending: string }) {
         type="submit"
         name="intent"
         value="resend"
-        variant="secondary"
+        variant="ghost"
         disabled={pending}
         formNoValidate
       >
