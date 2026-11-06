@@ -19,6 +19,9 @@ it knows is this repo and its GitHub issues.
   a revert, not a customer.
 - Everything goes through GitHub (`SuyfooS/conceptapp-v2`). Orel's computer may
   be off; never depend on it.
+- The pilot needs scheduling, time clock, lists, a management page, and roles with
+  different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
+  old app, that is an assumption until Orel confirms it.
 - Still assumed, because these questions passed their deadlines unanswered: the
   pilot restaurant agreed (#2), the demo shifts are the `restaurant` template's
   defaults (#3), and migrations stay local (#8). Anything Orel says replaces
@@ -182,23 +185,30 @@ if a reverted migration reached one, open an `urgent` issue.
 
 ## Backlog, in order
 
-The first backlog is done (see the log), apart from what is listed here. Skip
-ahead only when an item is blocked on Orel, and say so in the log.
+The full picture and the reasoning are in `docs/ROADMAP.md`. Skip ahead only when an item is blocked on Orel, and say so in the log.
 
-- **2d-2b · Swap approvals.** The manager's list of taken swap requests to
-  approve or decline, and a count on `/schedule`. Done when: a Playwright test
-  has a manager approve a request and the colleague takes the shift.
-- **3b · Migrations on `conceptapp-dev`.** Blocked on Orel (#8): the run's safety
-  checks refuse unattended writes to a real database. Not for a nightly run.
-- **Time clock, reservations, storefront, notifications,** in that order: the
-  remaining modules from `CLAUDE.md`. Today each is an entry screen at most.
-  Split each into chunks, starting with the database, as scheduling did. Read
-  the App Design Document first if your tools can reach it.
+Until Orel decides on the design rework (`docs/design/apple-rework-plan.md`), it waits, and `CLAUDE.md` still rules the design. Do not change tokens, `packages/ui` or the look of a screen. Items marked "database first" stop before their screens, so nothing is built twice.
+
+- **2d-2b · Swap approvals.** The manager's list of taken swap requests to approve or decline, and a count on `/schedule`. Done when: a Playwright test has a manager approve a request and the colleague takes the shift.
+- **Holes in what exists.** Each smallest first:
+  - A business's Shabbat times from its location and a candle-lighting setting, since today every business gets Tel Aviv and 20 minutes.
+  - Editing the week that has already started, and not losing an unpublished draft when the week changes.
+  - A business stuck with expired invites and no owner: the console can add a person and revive an invite.
+  - A warning before republishing deletes swap requests.
+  - Remove a person, change a role, cancel an invite (database first).
+- **Roles and permissions, database first.** For each role and module: edit, view or none, enforced by RLS and covered by pgTAP, plus roles a business names itself. Today's owner, manager and worker keep working. See "מה הפיילוט חייב" in the roadmap.
+- **Time clock, database first.** Clock in and out, history, the week's total, who is at work now, a QR punch code on the server.
+- **Lists, database first.** A new module: templates with items and recipients, sending with a count per item, receiving, checking off, finishing, and permission to manage or send.
+- **Management page, database first.** Write paths for business details, branding, hours, module switches, and reading the audit log.
+- **3b · Migrations on `conceptapp-dev`.** Blocked on Orel (#8): the run's safety checks refuse unattended writes to a real database. Not for a nightly run.
+- **Not in the pilot, do not start:** reservations, storefront, the public page, notifications.
 
 ## Where things live
 
 - This brief and the run prompt: `docs/AGENT.md`, `docs/agent/RUN_PROMPT.md`.
 - The one-time setup from October, for the record: `docs/agent/KICKOFF.md`.
+- Roadmap, with what works and what is missing: `docs/ROADMAP.md`.
+- The proposed design rework: `docs/design/apple-rework-plan.md`.
 - Running log: `docs/agent/LOG.md` (plus the `יומן הסוכן` issue).
 - Rules for code and UI: `CLAUDE.md`.
 - Product decisions, roadmap and business model: the App Design Document and
