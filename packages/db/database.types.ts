@@ -388,6 +388,45 @@ export type Database = {
         };
         Relationships: [];
       };
+      punch_codes: {
+        Row: {
+          business_id: string;
+          code_hash: string;
+          created_at: string;
+          expires_at: string;
+          issued_by: string | null;
+        };
+        Insert: {
+          business_id: string;
+          code_hash: string;
+          created_at?: string;
+          expires_at: string;
+          issued_by?: string | null;
+        };
+        Update: {
+          business_id?: string;
+          code_hash?: string;
+          created_at?: string;
+          expires_at?: string;
+          issued_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "punch_codes_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "punch_codes_issued_by_fkey";
+            columns: ["issued_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       schedule_shifts: {
         Row: {
           business_id: string;
@@ -622,6 +661,67 @@ export type Database = {
         };
         Relationships: [];
       };
+      time_entries: {
+        Row: {
+          business_id: string;
+          clock_in: string;
+          clock_out: string | null;
+          created_at: string;
+          edited_at: string | null;
+          edited_by: string | null;
+          id: string;
+          note: string | null;
+          source: Database["public"]["Enums"]["time_entry_source"];
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          clock_in: string;
+          clock_out?: string | null;
+          created_at?: string;
+          edited_at?: string | null;
+          edited_by?: string | null;
+          id?: string;
+          note?: string | null;
+          source?: Database["public"]["Enums"]["time_entry_source"];
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          clock_in?: string;
+          clock_out?: string | null;
+          created_at?: string;
+          edited_at?: string | null;
+          edited_by?: string | null;
+          id?: string;
+          note?: string | null;
+          source?: Database["public"]["Enums"]["time_entry_source"];
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "time_entries_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_entries_edited_by_fkey";
+            columns: ["edited_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_entries_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       view_sessions: {
         Row: {
           business_id: string;
@@ -672,6 +772,18 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      add_time_entry: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          new_clock_in: string;
+          new_clock_out: string;
+          note?: string;
+          person: string;
+        };
+        Returns: string;
+      };
       admin_business: { Args: { business_slug: string }; Returns: Json };
       admin_businesses: {
         Args: Record<PropertyKey, never>;
@@ -698,6 +810,35 @@ export type Database = {
         Args: { claimant: string; token_hash: string };
         Returns: string;
       };
+      clock_in: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          code_hash?: string;
+        };
+        Returns: string;
+      };
+      clock_out: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          code_hash?: string;
+        };
+        Returns: string;
+      };
+      correct_time_entry: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          entry: string;
+          new_clock_in: string;
+          new_clock_out?: string;
+          note?: string;
+        };
+        Returns: undefined;
+      };
       create_business: {
         Args: {
           accent: string;
@@ -723,6 +864,15 @@ export type Database = {
       invite_by_token: { Args: { token_hash: string }; Returns: Json };
       issue_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };
+        Returns: string;
+      };
+      issue_punch_code: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          code_hash: string;
+        };
         Returns: string;
       };
       open_schedule_week: {
@@ -783,6 +933,7 @@ export type Database = {
         | "notifications";
       platform_role: "platform_admin" | "onboarder";
       swap_status: "open" | "taken" | "approved" | "declined" | "cancelled";
+      time_entry_source: "punch" | "manager";
     };
     CompositeTypes: {
       [_ in never]: never;
@@ -923,6 +1074,7 @@ export const Constants = {
       ],
       platform_role: ["platform_admin", "onboarder"],
       swap_status: ["open", "taken", "approved", "declined", "cancelled"],
+      time_entry_source: ["punch", "manager"],
     },
   },
 } as const;

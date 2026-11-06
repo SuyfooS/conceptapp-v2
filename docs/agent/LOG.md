@@ -3,6 +3,16 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · run 29 · time clock, database and logic (#41)
+
+- Left by Orel: #41 and #42 (label `orel`, from chat), fired in the afternoon rather than at 02:00. This entry is #41; #42 (profile pictures) follows in its own pull request. No screens; tokens and `packages/ui` untouched.
+- Restore point: the tag `before-night/2026-11-06-run29` was refused (403), so the branch `backup/before-night/2026-11-06-run29` at `6a3f9c2` holds it. The day already had a restore point from run 28, hence the suffix. #40 (design foundation, a chat session) merged after it; an undo keeps #40.
+- Migration `time_clock`: table `time_entries` (clock in, clock out or open, `punch` or `manager`, note, who edited). An exclusion constraint keeps one person's entries in a business from overlapping, so there is at most one open entry; an entry is at most 24 hours. Table `punch_codes` holds only SHA-256 hashes, for two minutes, with no policies at all. Server-only functions `issue_punch_code`, `clock_in`, `clock_out`, `add_time_entry`, `correct_time_entry`, each written to `audit_log` (a correction keeps the old and new times). RLS: your own entries; owners, managers, holders of `clock.edit` and "view as" at manager the business's; nothing with the module off.
+- `@domain/time-clock`: minutes in an entry, the week's summary per day and in all, totals per person, who is at work now, rounding, and the refusals mapped for the screens. `@db/time-clock`: making and hashing codes, the five writes and `getTimeEntries`. Manifest setting `requirePunchCode`.
+- Proof: pgTAP `time_clock.test.sql` (48), `rls_enabled` lists the two tables, 20 unit tests (296 in all), `pnpm check`, `pnpm build`, `supabase db lint`, `pnpm test:db`, all against a local Supabase this time.
+- Defaults: a code is required to clock in and out (setting `requirePunchCode`, on for every business); managers' additions and corrections need none. Codes are issued by owners, managers and `clock.edit`, last two minutes, and the device shows a fresh one every 30 seconds. An entry counts on the day it started, so an evening past midnight stays on the evening. An inactive worker cannot clock out; a manager closes the entry. There is no delete of an entry yet.
+- Next: #42, then the clock screens by day, in the new design.
+
 ## 2026-11-06 · chat · design foundation
 
 - Orel stopped the first attempt at the rework: new colours on the old screens looked like generic AI design. He sent an example, I built a two-screen prototype, and he approved it. It is now the target: `docs/design/target-prototype.html`.
