@@ -7,17 +7,11 @@ import {
 } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import {
-  availableFor,
-  type CandidateState,
   doubleBooked,
-  positionCounts,
   type ScheduledShift,
-  type ShiftDetailsProblem,
   scheduleGaps,
-  shiftCandidates,
-  shiftDetailsProblem,
+  shiftCoverage,
   shiftSlot,
-  stillNeeded,
 } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
 import type { Position } from "@domain/staffing";
@@ -25,26 +19,48 @@ import type { TeamMember } from "@domain/team";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
-import { cn } from "@ui/cn";
-import { IconButton } from "@ui/icon-button";
-import { fieldInputClass, ltrInputClass } from "@ui/text-field";
-import { WeekStrip } from "@ui/week-strip";
-import { Pencil, Plus, Save, Send, Trash2, X } from "lucide-react";
+import { DockButton, FloatingDock } from "@ui/floating-dock";
+import { Sheet } from "@ui/sheet";
+import { StatusToast } from "@ui/status-toast";
+import { Save, Send } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
-  type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   useActionState,
-  useId,
   useRef,
   useState,
 } from "react";
+import type { AvailabilityWeek } from "../week";
 import type { ScheduleState } from "./actions";
+import {
+  AddShiftRow,
+  type CardDensity,
+  RemovedShift,
+  ShiftCard,
+} from "./shift-card";
+import {
+  type SheetView,
+  type ShiftDetails,
+  type ShiftRow,
+  ShiftSheet,
+} from "./shift-sheet";
+import { useLeaveGuard } from "./use-leave-guard";
+import {
+  type DayInfo,
+  DesktopWeek,
+  PhoneWeek,
+  TabletWeek,
+} from "./week-shapes";
 
 const initialState: ScheduleState = {};
 
+/** A little longer than the sheet takes to slide away. */
+const SHEET_CLOSES_MS = 240;
+
 export type ScheduleBuilderProps = {
-  week: { start: string; dates: string[]; timeZone: string };
+  week: Pick<AvailabilityWeek, "start" | "dates" | "timeZone" | "shabbat">;
   /** ISO timestamp of the last save, or null while it is a draft. */
   savedAt: string | null;
   /** ISO timestamp of the last publish, or null until it is published. */
@@ -63,15 +79,24 @@ export type ScheduleBuilderProps = {
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
-/** Groups in the "add a person" list, in the order they are shown. */
-const GROUPS = ["available", "noAnswer", "unavailable", "busy"] as const;
+/** Moves focus to the one element matching `selector` that is on the screen. */
+function focusOnScreen(selector: string) {
+  for (const el of document.querySelectorAll<HTMLElement>(selector)) {
+    if (el.offsetParent !== null) {
+      el.focus();
+      return;
+    }
+  }
+}
 
 /**
- * The manager builds next week's schedule: who works each shift, picked
- * from the team with their availability. Phone: one day at a time with
- * the week strip; tablet: the same, the day's shifts in two columns;
- * desktop: the whole week, a column per day. One form, so both shapes
- * edit the same schedule.
+ * The manager builds next week's schedule. Phone: one day at a time under the
+ * week strip. Tablet: the whole week, a row per day. Desktop: the whole week, a
+ * column per day. Every shift opens the same sheet, where people go on and off
+ * it, and publishing floats within reach on all three.
+ *
+ * Nothing reaches the server until the dock's buttons send the form, and the
+ * form holds only what they need: the week as it stands on the screen.
  */
 export function ScheduleBuilder({
   week,
@@ -84,29 +109,49 @@ export function ScheduleBuilder({
   save,
 }: ScheduleBuilderProps) {
   const t = useTranslations();
-  const [state, action, pending] = useActionState(save, initialState);
-  // Each shift gets an id of its own on this screen, so cards keep their
-  // state while shifts are added and removed around them.
+  const router = useRouter();
+  // Each shift gets an id of its own on this screen, so cards and the open
+  // sheet keep their place while shifts are added and removed around them.
   const nextId = useRef(initial.length);
-  const [rows, setRows] = useState(() =>
+  const [rows, setRows] = useState<ShiftRow[]>(() =>
     initial.map((shift, id) => ({ id, shift })),
   );
+  /** Shifts taken off since the last save, each with the way back. */
+  const [removed, setRemoved] = useState<ShiftRow[]>([]);
   const [dirty, setDirty] = useState(false);
   const [day, setDay] = useState(week.dates[0] ?? week.start);
-  /** The shift last removed and where it was, until it is put back. */
-  const [removed, setRemoved] = useState<{
-    row: { id: number; shift: ScheduledShift };
-    at: number;
-  } | null>(null);
   const [blocked, setBlocked] = useState(false);
   /** The button that sent the form last: save the draft, or publish. */
   const [intent, setIntent] = useState<"save" | "publish">("publish");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [view, setView] = useState<SheetView>({
+    kind: "add",
+    date: week.start,
+  });
+  /** What opened the sheet: where focus goes back to when it closes. */
+  const opener = useRef<HTMLElement | null>(null);
+  const form = useRef<HTMLFormElement>(null);
+  /** Where to go once the save in progress has worked. */
+  const leaveTo = useRef<string | null>(null);
+
+  const [state, action, pending] = useActionState(
+    async (prev: ScheduleState, data: FormData) => {
+      const result = await save(prev, data);
+      const target = leaveTo.current;
+      leaveTo.current = null;
+      if (result.savedAt) {
+        setRemoved([]);
+        if (target) router.push(target);
+      }
+      return result;
+    },
+    initialState,
+  );
 
   const shifts = rows.map((r) => r.shift);
   const nameOf = new Map(
     team.map((m) => [m.userId, m.name ?? t("app.team.noName")]),
   );
-  const rangesOf = new Map(answers.map((a) => [a.userId, a.ranges]));
   const gaps = scheduleGaps(shifts);
   const clashes = doubleBooked(week.start, shifts);
   const weekday = (date: string) =>
@@ -114,7 +159,7 @@ export function ScheduleBuilder({
   const shortDay = (date: string) =>
     t(`days.${WEEKDAY_KEYS[weekdayOf(date)] ?? "sun"}.short`);
 
-  function edited(next: { id: number; shift: ScheduledShift }[]) {
+  function edited(next: ShiftRow[]) {
     setRows(next);
     setDirty(true);
     setBlocked(false);
@@ -131,18 +176,21 @@ export function ScheduleBuilder({
   }
 
   function remove(id: number) {
-    const at = rows.findIndex((r) => r.id === id);
-    const row = rows[at];
+    const row = rows.find((r) => r.id === id);
     if (!row) return;
-    setRemoved({ row, at });
+    setRemoved([...removed, row]);
     edited(rows.filter((r) => r.id !== id));
+    setSheetOpen(false);
+    // The card is gone, so focus goes to the way back instead.
+    opener.current = null;
+    setTimeout(() => focusOnScreen(`[data-undo="${id}"]`), SHEET_CLOSES_MS);
   }
 
-  function undoRemove() {
-    if (!removed) return;
-    const at = Math.min(removed.at, rows.length);
-    edited([...rows.slice(0, at), removed.row, ...rows.slice(at)]);
-    setRemoved(null);
+  function undoRemove(row: ShiftRow) {
+    setRemoved(removed.filter((r) => r.id !== row.id));
+    const at = shiftSlot(shifts, row.shift);
+    edited([...rows.slice(0, at), row, ...rows.slice(at)]);
+    setTimeout(() => focusOnScreen(`[data-shift-card="${row.id}"]`));
   }
 
   function addShift(date: string, details: ShiftDetails) {
@@ -155,73 +203,22 @@ export function ScheduleBuilder({
     const at = shiftSlot(shifts, shift);
     const id = nextId.current++;
     edited([...rows.slice(0, at), { id, shift }, ...rows.slice(at)]);
+    // Who works it is the next thing to decide.
+    setView({ kind: "shift", id });
   }
 
-  const onDay = (date: string) =>
-    rows
-      .map((row, index) => ({ ...row, index }))
-      .filter((r) => r.shift.day === date);
+  function openSheet(next: SheetView, event: MouseEvent<HTMLElement>) {
+    opener.current = event.currentTarget;
+    setView(next);
+    setSheetOpen(true);
+  }
 
-  const card = ({
-    id,
-    shift,
-    index,
-  }: {
-    id: number;
-    shift: ScheduledShift;
-    index: number;
-  }) => (
-    <ShiftCard
-      key={id}
-      label={t("app.build.shift", {
-        name: shift.name,
-        day: weekday(shift.day),
-        date: dayMonth(shift.day),
-      })}
-      shift={shift}
-      candidates={shiftCandidates(week.start, shifts, index, team, answers)}
-      nameOf={nameOf}
-      positions={positions}
-      noteOf={(userId) => {
-        if (clashes.has(`${index}:${userId}`)) return "busy";
-        const ranges = rangesOf.get(userId);
-        if (!ranges) return "noAnswer";
-        return availableFor(shift, ranges) ? null : "unavailable";
-      }}
-      onAdd={(user) =>
-        change(id, {
-          ...shift,
-          assignees: [...shift.assignees, { user, position: null }],
-        })
-      }
-      onPosition={(user, position) =>
-        change(id, {
-          ...shift,
-          assignees: shift.assignees.map((a) =>
-            a.user === user ? { ...a, position } : a,
-          ),
-        })
-      }
-      onRemove={(user) =>
-        change(id, {
-          ...shift,
-          assignees: shift.assignees.filter((a) => a.user !== user),
-        })
-      }
-      onChange={(details) => change(id, { ...shift, ...details })}
-      onDelete={() => remove(id)}
-    />
-  );
-
-  const addButton = (date: string) => (
-    <AddShift
-      label={t("app.build.addShiftOn", {
-        day: weekday(date),
-        date: dayMonth(date),
-      })}
-      onAdd={(details) => addShift(date, details)}
-    />
-  );
+  function closeSheet() {
+    setSheetOpen(false);
+    const back = opener.current;
+    // The sheet takes focus with it; give it back where the person was.
+    if (back) setTimeout(() => back.focus(), SHEET_CLOSES_MS);
+  }
 
   const moment = (iso: string | null | undefined) =>
     iso
@@ -236,524 +233,303 @@ export function ScheduleBuilder({
     publishedAt ?? (state.published ? state.savedAt : null),
   );
   const done = !dirty && !pending;
+  // A failed save leaves the work where it was: on the screen only.
+  const failed = done && state.failure !== undefined;
+  const unsaved = dirty || failed;
+
+  const guard = useLeaveGuard(unsaved || pending);
+
+  function saveAndLeave() {
+    leaveTo.current = guard.target;
+    guard.clear();
+    const button = form.current?.querySelector<HTMLButtonElement>(
+      publishedMoment ? 'button[value="publish"]' : 'button[value="save"]',
+    );
+    // A save already on its way goes on to the same place when it is done.
+    if (button && !button.disabled) form.current?.requestSubmit(button);
+  }
+
+  function leaveWithoutSaving() {
+    const target = guard.target;
+    guard.clear();
+    setDirty(false);
+    if (target) router.push(target);
+  }
+
+  /** A day's shifts in order, with the way back in place of any removed. */
+  const itemsOn = (date: string) =>
+    [
+      ...rows.map((row) => ({ row, gone: false })),
+      ...removed.map((row) => ({ row, gone: true })),
+    ]
+      .filter(({ row }) => row.shift.day === date)
+      .sort((a, b) => a.row.shift.start.localeCompare(b.row.shift.start));
+
+  const days: DayInfo[] = week.dates.map((date) => {
+    const onDay = shifts.filter((s) => s.day === date);
+    const { filled, needed } = shiftCoverage(onDay);
+    const shabbat = week.shabbat;
+    const candles = shabbat?.friday === date;
+    const havdalah = shabbat?.saturday === date;
+    return {
+      date,
+      short: shortDay(date),
+      weekday: weekday(date),
+      dayMonth: dayMonth(date),
+      heading: t("app.build.day", {
+        day: weekday(date),
+        date: dayMonth(date),
+      }),
+      filled,
+      needed,
+      hasShifts: onDay.length > 0,
+      empty: itemsOn(date).length === 0,
+      shabbatTime: candles
+        ? (shabbat?.candleLighting ?? null)
+        : havdalah
+          ? (shabbat?.havdalah ?? null)
+          : null,
+      shabbatNote: candles
+        ? t.rich("app.build.shabbat.candles", {
+            time: shabbat?.candleLighting ?? "",
+            ltr,
+          })
+        : havdalah
+          ? t.rich("app.build.shabbat.havdalah", {
+              time: shabbat?.havdalah ?? "",
+              ltr,
+            })
+          : null,
+    };
+  });
+
+  const renderAdd = (date: string, density: CardDensity) => {
+    const alone = itemsOn(date).length === 0;
+    return (
+      <AddShiftRow
+        label={t("app.build.addShiftOn", {
+          day: weekday(date),
+          date: dayMonth(date),
+        })}
+        alone={alone}
+        // A week with no shifts at all says this once, at the top.
+        hint={alone && rows.length > 0 ? t("app.build.noShifts") : undefined}
+        density={density}
+        onClick={(event) => openSheet({ kind: "add", date }, event)}
+      />
+    );
+  };
+
+  const renderCards = (date: string, density: CardDensity) =>
+    itemsOn(date).map(({ row, gone }) =>
+      gone ? (
+        <RemovedShift
+          key={row.id}
+          id={row.id}
+          shift={row.shift}
+          weekday={weekday(date)}
+          density={density}
+          onUndo={() => undoRemove(row)}
+        />
+      ) : (
+        <ShiftCard
+          key={row.id}
+          id={row.id}
+          label={t("app.build.shift", {
+            name: row.shift.name,
+            day: weekday(date),
+            date: dayMonth(date),
+          })}
+          shift={row.shift}
+          names={row.shift.assignees.map(
+            (a) => nameOf.get(a.user) ?? t("app.team.noName"),
+          )}
+          clashing={row.shift.assignees
+            .filter((a) => clashes.has(`${rows.indexOf(row)}:${a.user}`))
+            .map((a) => nameOf.get(a.user) ?? t("app.team.noName"))}
+          positions={positions}
+          density={density}
+          onOpen={(event) => openSheet({ kind: "shift", id: row.id }, event)}
+        />
+      ),
+    );
+
+  const status = publishedMoment
+    ? unsaved
+      ? t("app.build.unpublished")
+      : t.rich("app.build.publishedAt", { ...publishedMoment, ltr })
+    : unsaved
+      ? t("app.build.unsaved")
+      : savedMoment
+        ? t.rich("app.build.savedAt", { ...savedMoment, ltr })
+        : t("app.build.draft");
+
+  const problem = blocked
+    ? t("app.build.errors.clash")
+    : failed && state.failure
+      ? t(`app.build.errors.${state.failure}`)
+      : null;
 
   return (
-    <form
-      action={action}
-      onSubmit={(event) => {
-        // Saving would fail on someone working two shifts at once.
-        if (clashes.size > 0) {
-          event.preventDefault();
-          setBlocked(true);
-          return;
-        }
-        const submitter = (event.nativeEvent as SubmitEvent).submitter;
-        setIntent(
-          submitter?.getAttribute("value") === "save" ? "save" : "publish",
-        );
-        setDirty(false);
-        setRemoved(null);
-      }}
-      className="flex flex-col gap-5"
-    >
-      <input type="hidden" name="week" value={week.start} />
-      <input type="hidden" name="shifts" value={JSON.stringify(shifts)} />
+    <div className="flex flex-col gap-5 pb-20 xl:pb-16">
       {initial.length === 0 ? (
-        <Card tone="flat" padding="lg" className="md:max-w-xl">
+        <Card padding="lg" className="md:max-w-xl">
           <CardText>{t("app.build.noPattern")}</CardText>
         </Card>
       ) : null}
-      <div className="flex flex-wrap items-center gap-2">
-        {shifts.length === 0 ? null : gaps.shifts.length > 0 ? (
-          <Badge tone="warning">
-            {t("app.build.gaps", { count: gaps.shifts.length })}
-          </Badge>
-        ) : (
-          <Badge tone="success">{t("app.build.full")}</Badge>
-        )}
-        {clashes.size > 0 ? (
-          <Badge tone="danger">{t("app.build.clashBadge")}</Badge>
-        ) : null}
-      </div>
-      {removed ? (
-        <div
-          role="status"
-          className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-card border border-line bg-surface-2 p-3 md:max-w-xl"
-        >
-          <span className="min-w-0 flex-1">
-            {t("app.build.removedShift", {
-              name: removed.row.shift.name,
-              day: weekday(removed.row.shift.day),
-            })}
-          </span>
-          <Button type="button" variant="secondary" onClick={undoRemove}>
-            {t("app.build.undoRemove")}
-          </Button>
-        </div>
-      ) : null}
 
-      {/* Phone and tablet: one day at a time. */}
-      <div className="flex flex-col gap-4 xl:hidden">
-        <WeekStrip
-          label={t("app.build.days")}
-          value={day}
-          onChange={setDay}
-          days={week.dates.map((date) => ({
-            key: date,
-            label: shortDay(date),
-            date: date.slice(8).replace(/^0/, ""),
-            muted: onDay(date).length === 0,
-            marked: onDay(date).some(({ shift }) => stillNeeded(shift) > 0),
-            markLabel: t("app.build.dayMissing"),
-          }))}
-        />
-        <section className="flex flex-col gap-3">
-          <h2 className="font-bold text-md">
-            {t("app.build.day", { day: weekday(day), date: dayMonth(day) })}
-          </h2>
-          {onDay(day).length === 0 ? (
-            <p className="text-ink-2">{t("app.build.noShifts")}</p>
-          ) : (
-            <div className="grid gap-3 md:grid-cols-2 md:items-start">
-              {onDay(day).map(card)}
-            </div>
-          )}
-          <div key={day} className="md:max-w-sm">
-            {addButton(day)}
-          </div>
-        </section>
-      </div>
-
-      {/* Desktop: the whole week, a column per day. */}
-      <div className="hidden xl:grid xl:grid-cols-7 xl:items-start xl:gap-3">
-        {week.dates.map((date) => (
-          <section key={date} className="flex min-w-0 flex-col gap-3">
-            <h2 className="font-bold">
-              {weekday(date)}
-              <span className="block font-normal text-ink-2 text-sm">
-                {dayMonth(date)}
-              </span>
-            </h2>
-            {onDay(date).length === 0 ? (
-              <p className="text-ink-2 text-sm">{t("app.build.noShifts")}</p>
+      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap md:items-center md:gap-x-3">
+        {shifts.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {gaps.people > 0 ? (
+              <Badge tone="warning">
+                {t("app.build.openPlaces", { count: gaps.people })}
+              </Badge>
             ) : (
-              onDay(date).map(card)
+              <Badge tone="success">{t("app.build.full")}</Badge>
             )}
-            {addButton(date)}
-          </section>
-        ))}
+            {clashes.size > 0 ? (
+              <Badge tone="danger">{t("app.build.clashBadge")}</Badge>
+            ) : null}
+          </div>
+        ) : null}
+        <p className="min-w-0 text-base text-ink-2">{status}</p>
       </div>
 
-      <div className="flex w-full max-w-xl flex-col gap-3">
-        <p className="text-ink-2">
-          {publishedMoment
-            ? dirty
-              ? t("app.build.unpublished")
-              : t.rich("app.build.publishedAt", { ...publishedMoment, ltr })
-            : dirty
-              ? t("app.build.unsaved")
-              : savedMoment
-                ? t.rich("app.build.savedAt", { ...savedMoment, ltr })
-                : t("app.build.draft")}
-        </p>
-        {blocked ? (
-          <p role="alert" className="text-danger">
-            {t("app.build.errors.clash")}
-          </p>
-        ) : null}
-        {state.failure && done ? (
-          <p role="alert" className="text-danger">
-            {t(`app.build.errors.${state.failure}`)}
-          </p>
-        ) : null}
-        {state.savedAt && done ? (
-          <p role="status" className="font-medium text-success">
-            {state.published ? t("app.build.published") : t("app.build.saved")}
-          </p>
-        ) : null}
-        <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
-          <Button
-            type="submit"
-            name="intent"
-            value="publish"
-            size="lg"
-            loading={pending && intent === "publish"}
-            disabled={pending}
+      <PhoneWeek
+        days={days}
+        day={day}
+        onDay={setDay}
+        renderCards={renderCards}
+        renderAdd={renderAdd}
+      />
+      <TabletWeek days={days} renderCards={renderCards} renderAdd={renderAdd} />
+      <DesktopWeek
+        days={days}
+        renderCards={renderCards}
+        renderAdd={renderAdd}
+      />
+
+      <form
+        ref={form}
+        action={action}
+        onSubmit={(event) => {
+          // Saving would fail on someone working two shifts at once.
+          if (clashes.size > 0) {
+            event.preventDefault();
+            leaveTo.current = null;
+            setBlocked(true);
+            return;
+          }
+          const submitter = (event.nativeEvent as SubmitEvent).submitter;
+          setIntent(
+            submitter?.getAttribute("value") === "save" ? "save" : "publish",
+          );
+          setDirty(false);
+        }}
+      >
+        <input type="hidden" name="week" value={week.start} />
+        <input type="hidden" name="shifts" value={JSON.stringify(shifts)} />
+        {/* Once published and with nothing new, there is nothing to send. */}
+        {publishedMoment && !unsaved && !pending ? null : (
+          <FloatingDock
+            notice={
+              problem ? (
+                <p
+                  role="alert"
+                  className="rounded-card bg-surface px-4 py-3 font-medium text-base text-danger shadow-float"
+                >
+                  {problem}
+                </p>
+              ) : null
+            }
           >
-            <Send aria-hidden="true" className="rtl:-scale-x-100" />
-            {publishedMoment
-              ? t("app.build.publishChanges")
-              : t("app.build.publish")}
-          </Button>
-          {/* Once published, what is saved is what the team sees. */}
-          {publishedMoment ? null : (
-            <Button
+            {/* A draft can wait, while there is something to keep. What is
+                published is what the team sees, so it is only published. */}
+            {!publishedMoment && (unsaved || pending) ? (
+              <DockButton
+                type="submit"
+                name="intent"
+                value="save"
+                tone="quiet"
+                icon={<Save aria-hidden="true" />}
+                loading={pending && intent === "save"}
+                disabled={pending}
+              >
+                {t("app.build.submit")}
+              </DockButton>
+            ) : null}
+            <DockButton
               type="submit"
               name="intent"
-              value="save"
-              variant="secondary"
-              size="lg"
-              loading={pending && intent === "save"}
+              value="publish"
+              icon={<Send aria-hidden="true" className="rtl:-scale-x-100" />}
+              loading={pending && intent === "publish"}
               disabled={pending}
             >
-              <Save aria-hidden="true" />
-              {t("app.build.submit")}
-            </Button>
-          )}
-        </div>
-      </div>
-    </form>
-  );
-}
+              {publishedMoment
+                ? t("app.build.publishChanges")
+                : t("app.build.publish")}
+            </DockButton>
+          </FloatingDock>
+        )}
+      </form>
 
-function ShiftCard({
-  label,
-  shift,
-  candidates,
-  nameOf,
-  positions,
-  noteOf,
-  onAdd,
-  onPosition,
-  onRemove,
-  onChange,
-  onDelete,
-}: {
-  label: string;
-  shift: ScheduledShift;
-  candidates: ReturnType<
-    typeof shiftCandidates<Pick<TeamMember, "userId" | "name">>
-  >;
-  nameOf: Map<string, string>;
-  positions: Position[];
-  noteOf: (userId: string) => "busy" | "unavailable" | "noAnswer" | null;
-  onAdd: (userId: string) => void;
-  onPosition: (userId: string, position: string | null) => void;
-  onRemove: (userId: string) => void;
-  onChange: (details: ShiftDetails) => void;
-  onDelete: () => void;
-}) {
-  const t = useTranslations();
-  const [editing, setEditing] = useState(false);
-  const missing = stillNeeded(shift);
-  const byState = (state: CandidateState) =>
-    candidates.filter((c) => c.state === state);
-  const open = candidates.some((c) => c.state !== "assigned");
-  const inPositions = positionCounts(shift, positions);
-  return (
-    <section
-      aria-label={label}
-      className={cn(
-        "flex min-w-0 flex-col gap-3 rounded-card border bg-surface p-3",
-        missing > 0 ? "border-warning/40" : "border-line",
-      )}
-    >
-      <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
-        <div className="flex min-w-0 flex-col">
-          <h3 className="truncate font-bold">{shift.name}</h3>
-          <span className="text-ink-2 text-sm">
-            {t.rich("app.build.time", {
-              start: shift.start,
-              end: shift.end,
-              ltr,
-            })}
-          </span>
-          <span className="text-ink-2 text-sm">
-            {t("app.build.people", {
-              assigned: shift.assignees.length,
-              needed: shift.needed,
-            })}
-          </span>
-          {inPositions.length > 0 ? (
-            <span className="text-ink-2 text-sm">
-              {inPositions
-                .map(({ position, count }) =>
-                  t("app.build.inPosition", { name: position.name, count }),
-                )
-                .join(" · ")}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex items-center gap-1">
-          {missing > 0 ? (
-            <Badge tone="warning">
-              {t("app.build.missing", { count: missing })}
-            </Badge>
-          ) : (
-            <Badge tone="success">{t("app.build.staffed")}</Badge>
-          )}
-          {editing ? null : (
-            <IconButton
-              label={t("app.build.edit", { name: shift.name })}
-              icon={<Pencil />}
-              onClick={() => setEditing(true)}
-            />
-          )}
-        </div>
-      </div>
-      {editing ? (
-        <ShiftEditor
-          initial={shift}
-          submitLabel={t("app.build.editor.apply")}
-          onDone={(details) => {
-            onChange(details);
-            setEditing(false);
-          }}
-          onCancel={() => setEditing(false)}
-          extra={
-            <Button type="button" variant="ghost" onClick={onDelete}>
-              <Trash2 aria-hidden="true" />
-              {t("app.build.editor.delete")}
-            </Button>
-          }
-        />
-      ) : null}
-      {shift.assignees.length === 0 ? (
-        <p className="text-ink-2 text-sm">{t("app.build.nobody")}</p>
-      ) : (
-        <ul className="flex flex-col divide-y divide-line">
-          {shift.assignees.map(({ user, position }) => {
-            const name = nameOf.get(user) ?? t("app.team.noName");
-            const note = noteOf(user);
-            return (
-              <li key={user} className="flex flex-col gap-1 py-1">
-                <span className="flex min-h-11 items-center gap-1">
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate font-medium">{name}</span>
-                    {note ? (
-                      <span
-                        className={cn(
-                          "text-sm",
-                          note === "busy" ? "text-danger" : "text-warning",
-                        )}
-                      >
-                        {t(`app.build.notes.${note}`)}
-                      </span>
-                    ) : null}
-                  </span>
-                  <IconButton
-                    label={t("app.build.remove", { name })}
-                    icon={<X />}
-                    onClick={() => onRemove(user)}
-                  />
-                </span>
-                {positions.length > 0 ? (
-                  <select
-                    aria-label={t("app.build.position", { name })}
-                    value={position ?? ""}
-                    onChange={(event) =>
-                      onPosition(user, event.target.value || null)
-                    }
-                    className={cn(fieldInputClass, "min-w-0")}
-                  >
-                    <option value="">{t("app.build.noPosition")}</option>
-                    {positions.map((p) => (
-                      <option key={p.key} value={p.key}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-      {open ? (
-        <label className="flex flex-col gap-1.5">
-          <span className="font-medium text-sm">{t("app.build.add")}</span>
-          <select
-            value=""
-            onChange={(event) => {
-              if (event.target.value) onAdd(event.target.value);
-            }}
-            className={cn(fieldInputClass, "min-w-0")}
-          >
-            <option value="">{t("app.build.choose")}</option>
-            {GROUPS.map((group) => {
-              const people = byState(group);
-              return people.length === 0 ? null : (
-                <optgroup key={group} label={t(`app.build.groups.${group}`)}>
-                  {people.map(({ member }) => (
-                    <option
-                      key={member.userId}
-                      value={member.userId}
-                      disabled={group === "busy"}
-                    >
-                      {member.name ?? t("app.team.noName")}
-                    </option>
-                  ))}
-                </optgroup>
-              );
-            })}
-          </select>
-        </label>
-      ) : null}
-    </section>
-  );
-}
-
-type ShiftDetails = Pick<ScheduledShift, "name" | "start" | "end" | "needed">;
-
-/** "Add a shift" under a day: a button that opens the shift's details. */
-function AddShift({
-  label,
-  onAdd,
-}: {
-  label: string;
-  onAdd: (details: ShiftDetails) => void;
-}) {
-  const t = useTranslations();
-  const [open, setOpen] = useState(false);
-  if (!open) {
-    return (
-      <Button
-        type="button"
-        variant="secondary"
-        aria-label={label}
-        onClick={() => setOpen(true)}
-        className="w-full"
-      >
-        <Plus aria-hidden="true" />
-        {t("app.build.addShift")}
-      </Button>
-    );
-  }
-  return (
-    <section
-      aria-label={label}
-      className="flex flex-col gap-3 rounded-card border border-line bg-surface p-3"
-    >
-      <h3 className="font-bold">{t("app.build.addShift")}</h3>
-      <ShiftEditor
-        initial={{ name: "", start: "", end: "", needed: 1 }}
-        submitLabel={t("app.build.editor.add")}
-        onDone={(details) => {
-          onAdd(details);
-          setOpen(false);
-        }}
-        onCancel={() => setOpen(false)}
+      <StatusToast
+        message={
+          state.savedAt && done
+            ? state.published
+              ? t("app.build.published")
+              : t("app.build.saved")
+            : null
+        }
+        stamp={state.savedAt}
       />
-    </section>
-  );
-}
 
-/**
- * A shift's name, hours and people needed. It sits inside the schedule's
- * form, so it has no form of its own: its buttons apply the change to the
- * schedule on the screen, and Enter in a field does the same instead of
- * saving the whole week.
- */
-function ShiftEditor({
-  initial,
-  submitLabel,
-  onDone,
-  onCancel,
-  extra,
-}: {
-  initial: ShiftDetails;
-  submitLabel: string;
-  onDone: (details: ShiftDetails) => void;
-  onCancel: () => void;
-  extra?: ReactNode;
-}) {
-  const t = useTranslations("app.build.editor");
-  const id = useId();
-  const [name, setName] = useState(initial.name);
-  const [start, setStart] = useState(initial.start);
-  const [end, setEnd] = useState(initial.end);
-  const [needed, setNeeded] = useState(String(initial.needed));
-  const [problem, setProblem] = useState<ShiftDetailsProblem | null>(null);
+      <ShiftSheet
+        open={sheetOpen}
+        view={view}
+        weekStart={week.start}
+        rows={rows}
+        removed={removed}
+        team={team}
+        answers={answers}
+        positions={positions}
+        onClose={closeSheet}
+        onChange={change}
+        onRemove={remove}
+        onAdd={addShift}
+      />
 
-  function apply() {
-    const details = { name: name.trim(), start, end, needed: Number(needed) };
-    const found = shiftDetailsProblem(details);
-    setProblem(found);
-    if (!found) onDone(details);
-  }
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      apply();
-    }
-  };
-  const errorId = `${id}-error`;
-  const invalid = (field: ShiftDetailsProblem) =>
-    problem === field || (field === "time" && problem === "same")
-      ? { "aria-invalid": true, "aria-describedby": errorId }
-      : {};
-
-  return (
-    <div className="flex flex-col gap-3">
-      <label className="flex flex-col gap-1.5">
-        <span className="font-medium text-sm">{t("name")}</span>
-        <input
-          value={name}
-          maxLength={40}
-          onChange={(event) => setName(event.target.value)}
-          onKeyDown={onKeyDown}
-          className={cn(fieldInputClass, "min-w-0")}
-          {...invalid("name")}
-        />
-      </label>
-      <div className="flex flex-wrap gap-3">
-        <label className="flex min-w-28 flex-1 flex-col gap-1.5">
-          <span className="font-medium text-sm">{t("start")}</span>
-          <input
-            type="time"
-            dir="ltr"
-            value={start}
-            onChange={(event) => setStart(event.target.value)}
-            onKeyDown={onKeyDown}
-            className={cn(fieldInputClass, ltrInputClass, "min-w-0")}
-            {...invalid("time")}
-          />
-        </label>
-        <label className="flex min-w-28 flex-1 flex-col gap-1.5">
-          <span className="font-medium text-sm">{t("end")}</span>
-          <input
-            type="time"
-            dir="ltr"
-            value={end}
-            onChange={(event) => setEnd(event.target.value)}
-            onKeyDown={onKeyDown}
-            className={cn(fieldInputClass, ltrInputClass, "min-w-0")}
-            {...invalid("time")}
-          />
-        </label>
-      </div>
-      <label className="flex flex-col gap-1.5">
-        <span className="font-medium text-sm">{t("needed")}</span>
-        <input
-          type="number"
-          dir="ltr"
-          inputMode="numeric"
-          min={1}
-          max={50}
-          value={needed}
-          onChange={(event) => setNeeded(event.target.value)}
-          onKeyDown={onKeyDown}
-          className={cn(fieldInputClass, ltrInputClass, "min-w-0")}
-          {...invalid("needed")}
-        />
-      </label>
-      <p className="text-ink-2 text-sm">{t("night")}</p>
-      {problem ? (
-        <p id={errorId} role="alert" className="text-danger text-sm">
-          {t(`problems.${problem}`)}
-        </p>
-      ) : null}
-      {/* Stacked where the card is narrow: the phone and the desktop's
-          day columns. */}
-      <div className="flex flex-col gap-2 md:flex-row md:flex-wrap xl:flex-col xl:[&>button]:px-2">
-        <Button type="button" variant="secondary" onClick={apply}>
-          {submitLabel}
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          {t("cancel")}
-        </Button>
-        {extra}
-      </div>
+      <Sheet
+        open={guard.target !== null}
+        onOpenChange={(next) => {
+          if (!next) guard.clear();
+        }}
+        title={t("app.build.leave.title")}
+        closeLabel={t("app.build.leave.stay")}
+      >
+        <div className="flex flex-col gap-3 px-2 pb-1">
+          <p className="px-1 text-center text-ink-2">
+            {publishedMoment
+              ? t("app.build.leave.bodyPublished")
+              : t("app.build.leave.body")}
+          </p>
+          <Button size="lg" onClick={saveAndLeave}>
+            {publishedMoment
+              ? t("app.build.leave.publish")
+              : t("app.build.leave.save")}
+          </Button>
+          <Button
+            size="lg"
+            variant="ghost"
+            onClick={leaveWithoutSaving}
+            className="text-danger"
+          >
+            {t("app.build.leave.discard")}
+          </Button>
+        </div>
+      </Sheet>
     </div>
   );
 }

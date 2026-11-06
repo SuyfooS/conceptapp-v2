@@ -78,7 +78,8 @@ export function Sheet({
                 className="h-[5px] w-9 rounded-full bg-ink-2/40"
               />
             </div>
-            <div className="flex items-center gap-2 px-3 pt-0.5 pb-2.5">
+            {/* Positioned, so the glass's sheen does not wash out the buttons. */}
+            <div className="relative flex items-center gap-2 px-3 pt-0.5 pb-2.5">
               <Dialog.Close
                 aria-label={closeLabel}
                 className="pressable grid size-11 shrink-0 place-items-center rounded-full bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent [&_svg]:size-5"
@@ -101,7 +102,9 @@ export function Sheet({
                 <span aria-hidden="true" className="size-11 shrink-0" />
               )}
             </div>
-            <div className="min-h-0 overflow-y-auto px-2 pb-3">{children}</div>
+            <div className="relative min-h-0 overflow-y-auto rounded-b-sheet px-2 pb-3">
+              {children}
+            </div>
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

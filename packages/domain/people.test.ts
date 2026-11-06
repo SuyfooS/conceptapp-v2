@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { avatarHue, firstNameOf, initialsOf } from "./people";
+import { avatarHue, firstNameOf, initialsOf, shortNames } from "./people";
 
 describe("firstNameOf", () => {
   it("takes the first word, whatever the spacing", () => {
@@ -9,6 +9,24 @@ describe("firstNameOf", () => {
 
   it("is empty for an empty name", () => {
     expect(firstNameOf("")).toBe("");
+  });
+});
+
+describe("shortNames", () => {
+  it("keeps first names", () => {
+    expect(shortNames(["נועה כהן", "  איתי  מזרחי ", "שירן"])).toEqual([
+      "נועה",
+      "איתי",
+      "שירן",
+    ]);
+  });
+
+  it("keeps the full name where a first name repeats", () => {
+    expect(shortNames(["נועה כהן", "נועה לוי", "איתי מזרחי"])).toEqual([
+      "נועה כהן",
+      "נועה לוי",
+      "איתי",
+    ]);
   });
 });
 

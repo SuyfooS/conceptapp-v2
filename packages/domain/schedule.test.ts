@@ -4,11 +4,14 @@ import {
   coverageOf,
   doubleBooked,
   draftWeek,
+  overlappingShift,
   positionCounts,
+  rangesOn,
   type ScheduledShift,
   scheduleGaps,
   scheduleOpening,
   shiftCandidates,
+  shiftCoverage,
   shiftDetailsProblem,
   shiftMinutes,
   shiftSlot,
@@ -352,6 +355,95 @@ describe("shiftCandidates", () => {
 
   it("gives nothing for a shift that is not there", () => {
     expect(shiftCandidates(WEEK, [], 0, team, answers)).toEqual([]);
+  });
+});
+
+describe("overlappingShift", () => {
+  const shift = (
+    day: string,
+    start: string,
+    end: string,
+    people: string[] = [],
+  ) => ({
+    day,
+    start,
+    end,
+    assignees: people.map((user) => ({ user, position: null })),
+  });
+
+  it("finds the other shift someone works at the same time", () => {
+    const shifts = [
+      shift("2026-11-01", "09:00", "16:00"),
+      shift("2026-11-01", "15:00", "23:00", ["noa"]),
+    ];
+    expect(overlappingShift(WEEK, shifts, 0, "noa")).toBe(shifts[1]);
+  });
+
+  it("leaves out back to back shifts and the shift itself", () => {
+    const shifts = [
+      shift("2026-11-01", "09:00", "16:00", ["noa"]),
+      shift("2026-11-01", "16:00", "23:00", ["noa"]),
+    ];
+    expect(overlappingShift(WEEK, shifts, 0, "noa")).toBeNull();
+    expect(overlappingShift(WEEK, shifts, 1, "omer")).toBeNull();
+  });
+
+  it("counts a night shift against the next morning", () => {
+    const shifts = [
+      shift("2026-11-01", "20:00", "02:00", ["omer"]),
+      shift("2026-11-02", "01:00", "08:00"),
+    ];
+    expect(overlappingShift(WEEK, shifts, 1, "omer")).toBe(shifts[0]);
+  });
+
+  it("gives nothing for a shift that is not there", () => {
+    expect(overlappingShift(WEEK, [], 0, "noa")).toBeNull();
+  });
+});
+
+describe("shiftCoverage", () => {
+  const shift = (needed: number, people: number) => ({
+    needed,
+    assignees: Array.from({ length: people }, (_, i) => ({
+      user: String(i),
+      position: null,
+    })),
+  });
+
+  it("adds up the people placed and the people needed", () => {
+    expect(shiftCoverage([shift(3, 2), shift(4, 3)])).toEqual({
+      filled: 5,
+      needed: 7,
+    });
+  });
+
+  it("does not let a full shift hide a gap in another", () => {
+    expect(shiftCoverage([shift(2, 5), shift(2, 0)])).toEqual({
+      filled: 2,
+      needed: 4,
+    });
+  });
+
+  it("is empty for no shifts", () => {
+    expect(shiftCoverage([])).toEqual({ filled: 0, needed: 0 });
+  });
+});
+
+describe("rangesOn", () => {
+  it("keeps one day's ranges, earliest first", () => {
+    expect(
+      rangesOn(
+        [
+          { day: "2026-11-02", start: "18:00", end: "23:00" },
+          { day: "2026-11-01", start: "09:00", end: "17:00" },
+          { day: "2026-11-02", start: "08:00", end: "12:00" },
+        ],
+        "2026-11-02",
+      ),
+    ).toEqual([
+      { day: "2026-11-02", start: "08:00", end: "12:00" },
+      { day: "2026-11-02", start: "18:00", end: "23:00" },
+    ]);
   });
 });
 

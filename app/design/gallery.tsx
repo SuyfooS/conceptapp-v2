@@ -8,7 +8,6 @@ import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
-import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
 import {
   FieldGroup,
@@ -17,6 +16,11 @@ import {
   GroupedTextArea,
 } from "@ui/field-group";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
+import { ChoiceMenu } from "@ui/choice-menu";
+import { cn } from "@ui/cn";
+import { CoverageBar } from "@ui/coverage-bar";
+import { FieldRow, rowInputClass, rowPillInputClass } from "@ui/field-row";
+import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
@@ -24,6 +28,8 @@ import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { ProgressRing } from "@ui/progress-ring";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
+import { StatusToast } from "@ui/status-toast";
+import { Stepper } from "@ui/stepper";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
 import { WeekStrip } from "@ui/week-strip";
@@ -33,6 +39,8 @@ import {
   CalendarDays,
   ListChecks,
   Plus,
+  Save,
+  Send,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -121,6 +129,10 @@ function GalleryBody({
   const [day, setDay] = useState("0");
   const [appearance, setAppearance] = useState<Appearance>("system");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [needed, setNeeded] = useState("3");
+  const [position, setPosition] = useState("waiter");
+  const [toastAt, setToastAt] = useState<string | null>(null);
+  const [dock, setDock] = useState(false);
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -582,6 +594,99 @@ function GalleryBody({
               />
             </ListGroup>
           </Sheet>
+        </Section>
+
+        <Section title={t("groupedForm")}>
+          <ListGroup>
+            <FieldRow label={t("name")} htmlFor="gallery-row-name">
+              <input
+                id="gallery-row-name"
+                placeholder={t("namePh")}
+                className={rowInputClass}
+              />
+            </FieldRow>
+            <FieldRow label={t("startTime")} htmlFor="gallery-row-time">
+              <input
+                id="gallery-row-time"
+                type="time"
+                dir="ltr"
+                defaultValue="09:00"
+                className={rowPillInputClass}
+              />
+            </FieldRow>
+            <FieldRow label={t("peopleNeeded")} htmlFor="gallery-row-needed">
+              <Stepper
+                id="gallery-row-needed"
+                value={needed}
+                onValueChange={setNeeded}
+                min={1}
+                max={50}
+                decreaseLabel={t("fewer")}
+                increaseLabel={t("more")}
+              />
+            </FieldRow>
+            <ListRow
+              leading={<Avatar name={t("person1")} />}
+              title={t("person1")}
+              subtitle={
+                <ChoiceMenu
+                  label={t("positionLabel", {
+                    value:
+                      position === "host" ? t("positionHost") : t("sheetRole"),
+                  })}
+                  value={position}
+                  options={[
+                    { key: "waiter", label: t("sheetRole") },
+                    { key: "host", label: t("positionHost") },
+                  ]}
+                  onChange={setPosition}
+                  className="-my-3"
+                />
+              }
+            />
+          </ListGroup>
+        </Section>
+
+        <Section title={t("coverage")}>
+          <Card className="flex flex-col gap-3">
+            <CoverageBar filled={2} total={3} />
+            <CoverageBar filled={3} total={3} />
+            <CoverageBar filled={9} total={20} />
+          </Card>
+        </Section>
+
+        <Section title={t("floating")}>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setToastAt(new Date().toISOString())}
+            >
+              {t("toastShow")}
+            </Button>
+            <Button
+              variant="secondary"
+              aria-pressed={dock}
+              onClick={() => setDock(!dock)}
+            >
+              {dock ? t("dockHide") : t("dockShow")}
+            </Button>
+          </div>
+          <StatusToast
+            message={toastAt ? t("toastText") : null}
+            stamp={toastAt ?? undefined}
+          />
+          {dock ? (
+            <FloatingDock>
+              <DockButton tone="quiet" icon={<Save aria-hidden="true" />}>
+                {t("dockQuiet")}
+              </DockButton>
+              <DockButton
+                icon={<Send aria-hidden="true" className="rtl:-scale-x-100" />}
+              >
+                {t("dockMain")}
+              </DockButton>
+            </FloatingDock>
+          ) : null}
         </Section>
 
         <Section title={t("badges")}>

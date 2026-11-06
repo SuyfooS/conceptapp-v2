@@ -212,6 +212,28 @@ export function scheduleOpening<
 }
 
 /**
+ * How full a list of shifts is, for a day's coverage: the people placed out
+ * of the people needed. A shift with too many people counts as full and no
+ * more, so it cannot hide a gap in another shift.
+ */
+export function shiftCoverage(
+  shifts: readonly Pick<ScheduledShift, "needed" | "assignees">[],
+): { filled: number; needed: number } {
+  const needed = shifts.reduce((sum, shift) => sum + shift.needed, 0);
+  return { filled: needed - scheduleGaps(shifts).people, needed };
+}
+
+/** What someone sent for one day, earliest first. */
+export function rangesOn(
+  ranges: readonly AvailabilityRange[],
+  day: string,
+): AvailabilityRange[] {
+  return ranges
+    .filter((range) => range.day === day)
+    .sort((a, b) => minutesOf(a.start) - minutesOf(b.start));
+}
+
+/**
  * Someone's availability covers the whole shift: their ranges on the
  * shift's day, joined where they touch or overlap, include its start and
  * its end (both may run past midnight).
@@ -264,6 +286,32 @@ const CANDIDATE_ORDER: Record<CandidateState, number> = {
 };
 
 /**
+ * The other shift of the week `userId` works during shift `index`, if any:
+ * why someone cannot be put on it.
+ */
+export function overlappingShift<
+  S extends Pick<ScheduledShift, "day" | "start" | "end" | "assignees">,
+>(
+  weekStart: string,
+  shifts: readonly S[],
+  index: number,
+  userId: string,
+): S | null {
+  const shift = shifts[index];
+  if (!shift) return null;
+  const at = span(weekStart, shift);
+  return (
+    shifts.find((other, i) => {
+      if (i === index || !other.assignees.some((a) => a.user === userId)) {
+        return false;
+      }
+      const taken = span(weekStart, other);
+      return taken[0] < at[1] && at[0] < taken[1];
+    }) ?? null
+  );
+}
+
+/**
  * Everyone on the team for shift `index` of the week starting on
  * `weekStart`, with where they stand, for the manager's "add a person"
  * list: available first, then those who have not answered, then those who
@@ -282,18 +330,10 @@ export function shiftCandidates<M extends { userId: string }>(
 ): Candidate<M>[] {
   const shift = shifts[index];
   if (!shift) return [];
-  const at = span(weekStart, shift);
   const rangesOf = new Map(answers.map((a) => [a.userId, a.ranges]));
   const stateOf = (userId: string): CandidateState => {
     if (shift.assignees.some((a) => a.user === userId)) return "assigned";
-    const busy = shifts.some((other, i) => {
-      if (i === index || !other.assignees.some((a) => a.user === userId)) {
-        return false;
-      }
-      const taken = span(weekStart, other);
-      return taken[0] < at[1] && at[0] < taken[1];
-    });
-    if (busy) return "busy";
+    if (overlappingShift(weekStart, shifts, index, userId)) return "busy";
     const ranges = rangesOf.get(userId);
     if (!ranges) return "noAnswer";
     return availableFor(shift, ranges) ? "available" : "unavailable";

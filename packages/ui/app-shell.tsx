@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   type PointerEvent,
@@ -63,7 +63,6 @@ function Count({ value, className }: { value?: number; className?: string }) {
  */
 function TabBar({ nav }: { nav: NavItem[] }) {
   const pathname = usePathname();
-  const router = useRouter();
   const t = useTranslations("ui.appShell");
   const bar = useRef<HTMLUListElement>(null);
   const [compact, setCompact] = useState(false);
@@ -127,10 +126,15 @@ function TabBar({ nav }: { nav: NavItem[] }) {
   function onPointerUp(event: PointerEvent<HTMLUListElement>) {
     dragStart.current = null;
     if (!dragged.current) return;
-    const target = nav[Math.round(positionAt(event.clientX))];
+    const index = Math.round(positionAt(event.clientX));
+    const target = nav[index];
     setDrag(null);
     if (target && target.href !== nav[activeIndex]?.href) {
-      router.push(target.href);
+      // Through the link, so a screen guarding unsaved work sees this as it
+      // sees a tap. The real click that ends the drag stays swallowed.
+      dragged.current = false;
+      bar.current?.querySelectorAll("a")[index]?.click();
+      dragged.current = true;
     }
   }
 
@@ -139,6 +143,8 @@ function TabBar({ nav }: { nav: NavItem[] }) {
       aria-label={t("mainNav")}
       // Lets a floating action share the row while the bar is small.
       data-compact={compact || undefined}
+      // FloatingDock moves beside the bar while it is shrunk.
+      data-tab-compact={compact || undefined}
       className={cn(
         "pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-30 flex xl:hidden",
         "md:justify-center",

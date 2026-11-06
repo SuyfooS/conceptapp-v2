@@ -256,3 +256,14 @@ export const demoShiftPatterns: ShiftPattern[] = [
     needed: 4,
   },
 ];
+
+// A shift a manager added by hand on the demo week's Sunday, overlapping both
+// of the day's regular shifts, so its people show as busy on them.
+export const demoExtraShift = {
+  name: "אמצע",
+  start: "12:00",
+  end: "20:00",
+  needed: 2,
+  pattern: null,
+  assignees: [],
+};
