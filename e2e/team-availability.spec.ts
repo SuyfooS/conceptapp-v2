@@ -63,11 +63,12 @@ test("a manager sees who has not sent availability", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: tt.title }),
   ).toBeVisible();
-  // The hero counts the answers on every device.
+  // The hero counts the answers on every device. Anchored, because the list's
+  // own line carries the same count after what is still missing.
   await expect(
     page.getByText(
       new RegExp(
-        tt.progress.replace("{sent}", "\\d+").replace("{total}", "\\d+"),
+        `^${tt.progress.replace("{sent}", "\\d+").replace("{total}", "\\d+")}$`,
       ),
     ),
   ).toBeVisible();

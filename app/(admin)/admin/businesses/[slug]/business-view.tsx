@@ -380,7 +380,7 @@ function People({
                     >
                       <span className="flex items-center gap-3">
                         <PersonAvatar name={person.name || null} />
-                        {name(person.name)}
+                        <span>{name(person.name)}</span>
                       </span>
                     </th>
                     <td className={cn(td, "text-ink-2")}>
