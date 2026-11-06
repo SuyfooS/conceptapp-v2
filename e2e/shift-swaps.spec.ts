@@ -49,6 +49,8 @@ test.afterEach(async () => {
   await clearSchedule();
 });
 
+// Noa signs in first and Yoav second: sign-in.spec.ts runs next and asks
+// for a code for Noa, which the auth server refuses within 5 seconds.
 test("a worker gives a shift away, a colleague takes it, the worker cancels", async ({
   page,
   browser,
@@ -61,44 +63,46 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
     true,
   );
 
-  // Yoav gives away his morning.
-  await signIn(page, YOAV);
+  // Noa gives away her evening.
+  await signIn(page, NOA);
   await page.goto("/schedule/shifts");
   await expect(shown(page, sw.offers.empty)).toBeVisible();
   await button(page, sw.buttons.give).click();
   await expect(shown(page, sw.open)).toBeVisible();
   await expect(button(page, sw.buttons.cancel)).toBeVisible();
   expect(await demoSwaps()).toEqual([
-    { status: "open", from: YOAV.e164, to: null },
+    { status: "open", from: NOA.e164, to: null },
   ]);
   await expectCleanPage(page);
 
-  // Noa sees it among the shifts she can take, and takes it.
-  const noa = await as(browser, page, NOA);
-  const offers = noa
+  // Yoav sees it among the shifts he can take, and takes it.
+  const yoav = await as(browser, page, YOAV);
+  const offers = yoav
     .getByRole("list", { name: sw.offers.title })
     .filter({ visible: true });
   await expect(offers.getByRole("listitem")).toHaveCount(1);
-  await expect(offers).toContainText("ברמן/ית");
+  await expect(offers).toContainText("מלצר/ית");
   await expect(offers).toContainText(
-    sw.offers.from.replace("{name}", YOAV.name),
+    sw.offers.from.replace("{name}", NOA.name),
   );
-  await button(noa, sw.buttons.take).click();
-  await expect(shown(noa, sw.offers.takenByYou)).toBeVisible();
-  await expect(button(noa, sw.buttons.take)).toHaveCount(0);
+  await button(yoav, sw.buttons.take).click();
+  await expect(shown(yoav, sw.offers.takenByYou)).toBeVisible();
+  await expect(button(yoav, sw.buttons.take)).toHaveCount(0);
   expect(await demoSwaps()).toEqual([
-    { status: "taken", from: YOAV.e164, to: NOA.e164 },
+    { status: "taken", from: NOA.e164, to: YOAV.e164 },
   ]);
-  await expectCleanPage(noa);
-  await noa.screenshot({
+  await expectCleanPage(yoav);
+  await yoav.screenshot({
     path: testInfo.outputPath("shift-swaps-taken.png"),
     fullPage: true,
   });
-  await noa.context().close();
+  await yoav.context().close();
 
-  // Yoav sees who took it; until a manager decides he can still withdraw.
+  // Noa sees who took it; until a manager decides she can still withdraw.
   await page.reload();
-  await expect(shown(page, sw.taken.replace("{name}", NOA.name))).toBeVisible();
+  await expect(
+    shown(page, sw.taken.replace("{name}", YOAV.name)),
+  ).toBeVisible();
   await button(page, sw.buttons.cancel).click();
   await expect(button(page, sw.buttons.give)).toBeVisible();
   expect((await demoSwaps()).map((s) => s.status)).toEqual(["cancelled"]);

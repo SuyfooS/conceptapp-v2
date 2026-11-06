@@ -56,9 +56,12 @@ what is next, defaults applied.
 - Demo: `/design/shell/schedule/shifts` (Noa gives away Friday, can take
   Maya's Wednesday, took Yoav's Saturday night).
 - Tests: 8 new unit tests (273 total). Playwright `shift-swaps.spec.ts`:
-  Yoav gives away his morning, Noa sees it with his position and takes
-  it, Yoav sees who took it and cancels; each step checked in the
-  database; axe and no horizontal scroll. Locally: `pnpm check`,
+  Noa gives away her evening, Yoav sees it with her position and takes
+  it, Noa sees who took it and cancels; each step checked in the
+  database; axe and no horizontal scroll. First CI run failed in
+  `sign-in.spec.ts`, which runs next: the spec had signed Noa in last,
+  and the auth server refuses a second code to her within 5 seconds.
+  Noa now signs in first. Locally: `pnpm check`,
   `pnpm build`, the demo at 390/820/1440 with axe (0 violations, no
   horizontal scroll).
 - Not verified locally: no Docker in this run's container, so the
