@@ -271,6 +271,27 @@
           "signIn": "Sign in"
         }
       }
+    },
+    "enter": {
+      "metaTitle": "Enter",
+      "title": "Enter",
+      "intro": "Choose who is coming in. For now there's no phone or code.",
+      "warning": "This is a demo: anyone with the address can come in and change things. Don't enter real details here.",
+      "failed": "That didn't work. Try again.",
+      "people": {
+        "owner": {
+          "name": "Ori Demo",
+          "role": "Owner"
+        },
+        "manager": {
+          "name": "Shiran Demo",
+          "role": "Shift manager"
+        },
+        "worker": {
+          "name": "Noa Cohen",
+          "role": "Worker"
+        }
+      }
     }
   },
   "app": {

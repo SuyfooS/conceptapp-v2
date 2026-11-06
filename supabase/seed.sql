@@ -37,6 +37,14 @@ set confirmation_token = '', recovery_token = '', email_change = '',
   phone_change = '', phone_change_token = '', reauthentication_token = ''
 where id::text like '00000000-0000-4000-a000-%';
 
+-- The people the passive door offers (packages/domain/passive-sign-in.ts).
+update auth.users set email = 'owner@demo.conceptapp.invalid', email_confirmed_at = now()
+where id = '00000000-0000-4000-a000-000000000001';
+update auth.users set email = 'manager@demo.conceptapp.invalid', email_confirmed_at = now()
+where id = '00000000-0000-4000-a000-000000000002';
+update auth.users set email = 'worker@demo.conceptapp.invalid', email_confirmed_at = now()
+where id = '00000000-0000-4000-a000-000000000003';
+
 -- Profiles come from the auth trigger; add the names.
 update public.profiles set full_name = 'אורי הדגמה' where id = '00000000-0000-4000-a000-000000000001';
 update public.profiles set full_name = 'שירן הדגמה' where id = '00000000-0000-4000-a000-000000000002';

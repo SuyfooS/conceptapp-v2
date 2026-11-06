@@ -27,7 +27,7 @@ async function expectDemoRestaurant(page: Page) {
 
 test("signed-out visitors are sent to sign in", async ({ page }) => {
   await page.goto("/admin");
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/enter$/);
 });
 
 test("a platform admin lands in the console and sees every business", async ({
@@ -56,9 +56,9 @@ test("a platform admin lands in the console and sees every business", async ({
 
   // The console has its own way out, and it closes the session.
   await page.getByRole("button", { name: a.account.signOut }).click();
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/enter$/);
   await page.goto("/admin");
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/enter$/);
 });
 
 test("an onboarder sees the business list too", async ({ page }) => {

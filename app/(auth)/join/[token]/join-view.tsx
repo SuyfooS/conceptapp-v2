@@ -1,6 +1,7 @@
 import { accentTokens } from "@domain/color";
 import { phoneEnding } from "@domain/invites";
 import type { Role } from "@domain/modules";
+import { signInPath } from "@domain/passive-sign-in";
 import { accentProps } from "@ui/accent";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -81,7 +82,7 @@ export async function JoinGoneView({
       >
         {reason === "claimed" ? (
           <Button asChild size="lg">
-            <Link href="/sign-in">{t("gone.claimed.signIn")}</Link>
+            <Link href={signInPath}>{t("gone.claimed.signIn")}</Link>
           </Button>
         ) : null}
       </EmptyState>

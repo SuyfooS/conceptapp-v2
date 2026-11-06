@@ -1,5 +1,6 @@
 import { accentTokens } from "@domain/color";
 import { moduleNav } from "@domain/modules";
+import { signInPath } from "@domain/passive-sign-in";
 import { displayIsraeliMobile } from "@domain/phone";
 import { manifests } from "@modules/registry";
 import { accentProps } from "@ui/accent";
@@ -47,7 +48,7 @@ async function Loading() {
 
 async function Shell({ children }: { children: ReactNode }) {
   const member = await currentMember();
-  if (!member) redirect("/sign-in");
+  if (!member) redirect(signInPath);
   const t = await getTranslations("app");
 
   if (!member.membership) {
