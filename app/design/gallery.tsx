@@ -563,6 +563,8 @@ function GalleryBody({
 
         <Section title={t("skeleton")}>
           <SkeletonBones />
+        </Section>
+
         <Section title={t("codeSlots")}>
           <Card className="flex flex-col gap-3">
             <CodeSlots
