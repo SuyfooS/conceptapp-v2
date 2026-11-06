@@ -9,52 +9,225 @@
 @custom-variant ltr (&:dir(ltr));
 
 /*
- * ConceptApp design tokens — "calm utility", light first.
+ * ConceptApp design tokens: content on calm neutrals, one business colour, and
+ * navigation that floats above it as glass. The target is the approved example:
+ * docs/design/target-prototype.html.
  * Source of truth for colour, type, radius and shadow. Components use the
  * Tailwind utilities generated from @theme below (bg-surface, text-ink,
  * border-line, bg-accent…), never raw hex values.
  *
- * The accent is the one knob a business turns. The business app sets
- * --accent (and --accent-ink) on a wrapper element from the business row;
- * everything else is fixed.
+ * Appearance follows the system; there is no switch in the app. The classes
+ * .appearance-light and .appearance-dark exist so the /design gallery can show
+ * either one. tooling/tokens.test.ts checks that the blocks hold the same names
+ * and that every pairing stays readable.
+ *
+ * The accent is the one knob a business turns. accentProps() in @ui/accent sets
+ * a light and a dark pair on a wrapper, and the [data-accent] rules choose.
  */
 
-:root {
+:root,
+.appearance-light {
+  color-scheme: light;
   /* surfaces */
-  --bg: #faf8f5; /* warm paper */
-  --surface: #ffffff; /* cards, sheets */
-  --surface-2: #f3f0eb; /* grouped rows, table headers */
-  --line: #e6e1da; /* 1px borders, never a glow */
+  --bg: #eeeff2; /* the page */
+  --surface: #ffffff; /* groups and cards */
+  --elevated: #ffffff; /* groups inside a sheet */
+  --surface-2: #e6e7eb; /* fills and tracks on a card */
+  --surface-3: #d8dade; /* pressed */
+  --line: #e3e4e8; /* separators, not the edge of a control */
+  --edge: #787b83; /* edge of a field or control, 3:1 on bg and surface */
 
   /* text */
-  --ink: #1c1b19; /* 16:1 on bg */
-  --ink-2: #5c5854; /* 6.3:1 on bg — lowest contrast allowed for text */
+  --ink: #101114;
+  --ink-2: #565962; /* the lowest contrast allowed for real text */
+  --ink-3: #686b72; /* placeholders only, never on surface-2 */
 
-  /* per-business accent (default: burgundy) */
-  --accent: #8b2635;
-  --accent-ink: #ffffff; /* text on accent; chosen by contrast at save time */
-
-  /* ConceptApp's own brand colour — admin console and marketing only */
+  /* ConceptApp's own brand colour: admin console and marketing only */
   --brand: #9000ff;
-  --brand-ink: #ffffff; /* 5.8:1 on brand */
+  --brand-ink: #ffffff;
 
   /* status, fixed for every business */
-  --success: #1c6f46; /* ≥4.5:1 on white and on its own 10% tint */
-  --warning: #8f5500; /* ≥4.5:1 on white and on its own 10% tint */
+  --success: #1c6f46;
+  --warning: #8f5500;
   --danger: #b3261e;
+  --danger-ink: #ffffff;
+
+  /* how strongly a colour tints a surface */
+  --soft-amount: 13%;
+  --tint-amount: 11%;
+
+  /* glass, for what floats above the content */
+  --glass: rgb(255 255 255 / 0.5);
+  --glass-strong: rgb(255 255 255 / 0.78);
+  --glass-edge: rgb(255 255 255 / 0.85);
+  --glass-sheen: rgb(255 255 255 / 0.25);
+  --glass-lens: rgb(255 255 255 / 0.82);
+
+  --card-shadow:
+    0 1px 1px rgb(16 18 26 / 0.03), 0 8px 24px -10px rgb(16 18 26 / 0.1);
+  --float-shadow:
+    0 2px 4px rgb(16 18 26 / 0.05), 0 22px 44px -14px rgb(16 18 26 / 0.28);
+  --glass-shadow:
+    0 2px 6px rgb(16 18 26 / 0.06), 0 18px 40px -10px rgb(16 18 26 / 0.26);
+  --scrim: rgb(16 18 26 / 0.26);
+}
+
+:root {
+  color-scheme: light dark;
+
+  /* until a wrapper sets a business accent */
+  --accent: #2563eb;
+  --accent-ink: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #08090b;
+    --surface: #17181b;
+    --elevated: #202125;
+    --surface-2: #2c2d32;
+    --surface-3: #3a3b41;
+    --line: #2a2b30;
+    --edge: #85888f;
+
+    --ink: #f5f6f7;
+    --ink-2: #aeb1b8;
+    --ink-3: #94979e;
+
+    --brand: #971cff;
+    --brand-ink: #ffffff;
+
+    --success: #4fc48c;
+    --warning: #e8ad58;
+    --danger: #ff7b72;
+    --danger-ink: #101114;
+
+    --soft-amount: 22%;
+    --tint-amount: 16%;
+
+    --glass: rgb(66 68 75 / 0.46);
+    --glass-strong: rgb(44 45 51 / 0.82);
+    --glass-edge: rgb(255 255 255 / 0.3);
+    --glass-sheen: rgb(255 255 255 / 0.09);
+    --glass-lens: rgb(255 255 255 / 0.13);
+
+    --card-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.06);
+    --float-shadow:
+      0 0 0 0.5px rgb(255 255 255 / 0.08), 0 22px 44px -14px rgb(0 0 0 / 0.7);
+    --glass-shadow: 0 18px 40px -10px rgb(0 0 0 / 0.65);
+    --scrim: rgb(0 0 0 / 0.5);
+  }
+}
+
+.appearance-dark {
+  color-scheme: dark;
+  --bg: #08090b;
+  --surface: #17181b;
+  --elevated: #202125;
+  --surface-2: #2c2d32;
+  --surface-3: #3a3b41;
+  --line: #2a2b30;
+  --edge: #85888f;
+
+  --ink: #f5f6f7;
+  --ink-2: #aeb1b8;
+  --ink-3: #94979e;
+
+  --brand: #971cff;
+  --brand-ink: #ffffff;
+
+  --success: #4fc48c;
+  --warning: #e8ad58;
+  --danger: #ff7b72;
+  --danger-ink: #101114;
+
+  --soft-amount: 22%;
+  --tint-amount: 16%;
+
+  --glass: rgb(66 68 75 / 0.46);
+  --glass-strong: rgb(44 45 51 / 0.82);
+  --glass-edge: rgb(255 255 255 / 0.3);
+  --glass-sheen: rgb(255 255 255 / 0.09);
+  --glass-lens: rgb(255 255 255 / 0.13);
+
+  --card-shadow: 0 0 0 0.5px rgb(255 255 255 / 0.06);
+  --float-shadow:
+    0 0 0 0.5px rgb(255 255 255 / 0.08), 0 22px 44px -14px rgb(0 0 0 / 0.7);
+  --glass-shadow: 0 18px 40px -10px rgb(0 0 0 / 0.65);
+  --scrim: rgb(0 0 0 / 0.5);
+}
+
+/* A business accent: the pair for the current appearance. */
+[data-accent],
+.appearance-light[data-accent],
+.appearance-light [data-accent] {
+  --accent: var(--accent-light);
+  --accent-ink: var(--accent-ink-light);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent: #2d6cf4;
+  }
+
+  [data-accent] {
+    --accent: var(--accent-dark);
+    --accent-ink: var(--accent-ink-dark);
+  }
+}
+
+.appearance-dark[data-accent],
+.appearance-dark [data-accent] {
+  --accent: var(--accent-dark);
+  --accent-ink: var(--accent-ink-dark);
+}
+
+/* Increased contrast: stronger text and edges, on any surface. */
+@media (prefers-contrast: more) {
+  :root {
+    --ink: #000000;
+    --ink-2: #33353a;
+    --ink-3: #4c4f56;
+    --line: #7f828a;
+    --edge: #5a5d64;
+    --success: #145a38;
+    --warning: #6f4200;
+    --danger: #8e1c15;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ffffff;
+      --ink-2: #d6d8dd;
+      --ink-3: #b5b7bd;
+      --line: #85888f;
+      --edge: #a5a8af;
+      --success: #7fdcae;
+      --warning: #f3c987;
+      --danger: #ffa39c;
+    }
+  }
 }
 
 @theme inline {
   --color-bg: var(--bg);
   --color-surface: var(--surface);
+  --color-elevated: var(--elevated);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-line: var(--line);
+  --color-edge: var(--edge);
   --color-ink: var(--ink);
   --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
   --color-accent: var(--accent);
   --color-accent-ink: var(--accent-ink);
   /* mixed where it is used, so a business accent set on a wrapper updates it too */
-  --color-accent-soft: color-mix(in oklab, var(--accent) 10%, white);
+  --color-accent-soft: color-mix(
+    in oklab,
+    var(--accent) var(--soft-amount),
+    var(--surface)
+  );
   /* hover and pressed accent: moved away from the text drawn on it (darker
      under white ink, lighter under dark ink), so a state change only ever
      raises the contrast that accentTokens guarantees */
@@ -72,31 +245,79 @@
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+  --color-success-soft: color-mix(
+    in srgb,
+    var(--success) var(--tint-amount),
+    transparent
+  );
+  --color-warning-soft: color-mix(
+    in srgb,
+    var(--warning) var(--tint-amount),
+    transparent
+  );
+  --color-danger-soft: color-mix(
+    in srgb,
+    var(--danger) var(--tint-amount),
+    transparent
+  );
 
-  --font-sans: "Heebo Variable", ui-sans-serif, system-ui, sans-serif;
+  /* The device's own font on Apple devices (real SF, in Hebrew too), Heebo everywhere else. */
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Heebo Variable", ui-sans-serif,
+    sans-serif;
 
-  /* type scale: 13 / 15 / 17 / 20 / 24 / 30 px, line height 1.5 */
+  /* type scale: 13 / 15 / 17 / 20 / 24 / 34 px. Body is 17, as on iPhone. */
   --text-sm: 0.8125rem;
-  --text-sm--line-height: 1.5;
+  --text-sm--line-height: 1.385;
   --text-base: 0.9375rem;
-  --text-base--line-height: 1.5;
+  --text-base--line-height: 1.4;
   --text-md: 1.0625rem;
-  --text-md--line-height: 1.5;
+  --text-md--line-height: 1.412;
   --text-lg: 1.25rem;
-  --text-lg--line-height: 1.4;
+  --text-lg--line-height: 1.3;
   --text-xl: 1.5rem;
-  --text-xl--line-height: 1.3;
-  --text-2xl: 1.875rem;
-  --text-2xl--line-height: 1.25;
+  --text-xl--line-height: 1.25;
+  --text-2xl: 2.125rem;
+  --text-2xl--line-height: 1.176;
 
-  --radius-control: 10px;
-  --radius-card: 12px;
-  --radius-sheet: 16px;
+  --radius-control: 14px;
+  --radius-card: 24px;
+  --radius-sheet: 36px;
 
-  --shadow-raised:
-    0 1px 2px rgb(28 27 25 / 0.06), 0 4px 12px rgb(28 27 25 / 0.06);
+  --shadow-card: var(--card-shadow);
+  --shadow-raised: var(--card-shadow);
+  --shadow-float: var(--float-shadow);
 
   --ease-calm: cubic-bezier(0.2, 0, 0, 1);
+  --ease-spring: linear(
+    0,
+    0.009,
+    0.035 2.1%,
+    0.141,
+    0.281 6.7%,
+    0.723 12.9%,
+    0.938 16.7%,
+    1.017,
+    1.077,
+    1.121,
+    1.149 24.3%,
+    1.159,
+    1.163,
+    1.161,
+    1.154 29.9%,
+    1.129 32.8%,
+    1.051 39.6%,
+    1.017 43.1%,
+    0.991,
+    0.977 51%,
+    0.974 53.8%,
+    0.975 57.1%,
+    0.997 69.8%,
+    1.003 76.9%,
+    1.004 83.8%,
+    1
+  );
 }
 
 html {
@@ -107,10 +328,110 @@ html {
 
 body {
   font-family: var(--font-sans);
-  font-size: var(--text-base);
-  line-height: 1.5;
+  font-size: var(--text-md);
+  line-height: 1.412;
   font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Glass: only on what floats above the content (tab bar, floating title,
+ * sheets). Opaque when the device asks for less transparency or more contrast.
+ */
+@utility glass {
+  position: relative;
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(24px) saturate(190%);
+  backdrop-filter: blur(24px) saturate(190%);
+  box-shadow:
+    var(--glass-shadow),
+    inset 0 0.5px 0 var(--glass-edge),
+    inset 0 0 0 0.5px var(--glass-sheen);
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(180deg, var(--glass-sheen), transparent 42%);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  @media (prefers-contrast: more) {
+    background: var(--surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: inset 0 0 0 1px var(--ink);
+  }
+}
+
+/* The soft fade where content meets the floating bars. */
+@utility edge-fade-top {
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  mask-image: linear-gradient(#000 45%, transparent);
+}
+
+@utility edge-fade-bottom {
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  mask-image: linear-gradient(transparent, #000 60%);
+}
+
+/* The one strong moment on a screen: the business's colour, with depth. */
+@utility hero-surface {
+  background:
+    radial-gradient(
+      90% 90% at 8% 0%,
+      color-mix(in oklab, var(--accent) 72%, white) 0%,
+      transparent 62%
+    ),
+    radial-gradient(
+      110% 100% at 100% 100%,
+      color-mix(in oklab, var(--accent) 62%, black) 0%,
+      transparent 70%
+    ),
+    var(--accent);
+  color: var(--accent-ink);
+}
+
+/* Press feedback: a small spring, on anything people tap. */
+@utility pressable {
+  transition: transform 0.3s var(--ease-spring);
+
+  &:active {
+    transform: scale(0.97);
+  }
+}
+
+@keyframes sheet-in {
+  from {
+    transform: translateY(calc(100% + 16px));
+  }
+}
+
+@keyframes sheet-out {
+  to {
+    transform: translateY(calc(100% + 16px));
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
 }
 
 /* Motion only on state changes, and none at all when the user asks for less. */

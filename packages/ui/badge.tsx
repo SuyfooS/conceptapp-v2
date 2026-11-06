@@ -3,7 +3,7 @@ import type { ComponentProps } from "react";
 import { cn } from "./cn";
 
 const badgeVariants = cva(
-  "inline-flex h-6 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 font-medium text-sm",
+  "inline-flex min-h-[26px] items-center gap-1.5 rounded-full px-2.5 font-semibold text-sm",
   {
     variants: {
       tone: {
@@ -11,9 +11,12 @@ const badgeVariants = cva(
         // Text stays ink: an adjusted accent is only guaranteed 3:1, not 4.5:1, against light tints.
         accent:
           "bg-accent-soft text-ink before:size-1.5 before:rounded-full before:bg-accent before:content-['']",
-        success: "bg-success/10 text-success",
-        warning: "bg-warning/10 text-warning",
-        danger: "bg-danger/10 text-danger",
+        success:
+          "bg-success-soft text-success before:size-1.5 before:shrink-0 before:rounded-full before:bg-current before:content-['']",
+        warning:
+          "bg-warning-soft text-warning before:size-1.5 before:shrink-0 before:rounded-full before:bg-current before:content-['']",
+        danger:
+          "bg-danger-soft text-danger before:size-1.5 before:shrink-0 before:rounded-full before:bg-current before:content-['']",
       },
     },
     defaultVariants: { tone: "neutral" },

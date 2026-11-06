@@ -3,17 +3,21 @@ import type { ComponentProps } from "react";
 import { cn } from "./cn";
 
 /**
- * Three levels, so screens have hierarchy instead of identical blocks:
- * - flat: border only — list rows, secondary content
- * - raised: soft shadow — the primary object on a screen
- * - accent: tinted with the business accent — the one thing that needs action now (max one per screen)
+ * Levels, so screens have hierarchy instead of identical blocks:
+ * - flat: a soft card on the page, the default
+ * - raised: the same; kept so older screens read the same while they move over
+ * - float: a card lifted above what is under it, such as a request over the hero
+ * - accent: tinted with the business accent, the one thing that needs action now (max one per screen)
+ * - hero: filled with the business accent and given depth (max one per screen)
  */
 const cardVariants = cva("rounded-card", {
   variants: {
     tone: {
-      flat: "border border-line bg-surface",
-      raised: "bg-surface shadow-raised",
+      flat: "bg-surface shadow-card",
+      raised: "bg-surface shadow-card",
+      float: "bg-surface shadow-float",
       accent: "bg-accent-soft",
+      hero: "hero-surface rounded-[32px]",
     },
     padding: {
       none: "",
@@ -48,7 +52,7 @@ export function CardTitle({
 }: CardTitleProps) {
   return (
     <Heading
-      className={cn("font-bold text-md text-ink", className)}
+      className={cn("font-semibold text-md text-ink", className)}
       {...props}
     />
   );

@@ -11,7 +11,7 @@ import { ACCENT_PRESETS, accentTokens } from "@domain/color";
 import { displayIsraeliMobile } from "@domain/phone";
 import { parseStaffList, type StaffList } from "@domain/staff-list";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
-import { accentStyle } from "@ui/accent";
+import { accentProps } from "@ui/accent";
 import { Badge } from "@ui/badge";
 import { Button, buttonVariants } from "@ui/button";
 import { Card, CardTitle } from "@ui/card";
@@ -259,7 +259,7 @@ export function NewBusinessForm() {
             </p>
           ) : null}
           <div
-            style={accentStyle(tokens)}
+            {...accentProps(tokens)}
             className="flex flex-col gap-3 rounded-card border border-line bg-surface p-4"
           >
             <p className="text-ink-2 text-sm">{t("accent.preview")}</p>

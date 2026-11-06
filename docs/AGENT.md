@@ -193,7 +193,7 @@ if a reverted migration reached one, open an `urgent` issue.
 
 The full picture and the reasoning are in `docs/ROADMAP.md`. Skip ahead only when an item is blocked on Orel, and say so in the log.
 
-Until Orel decides on the design rework (`docs/design/apple-rework-plan.md`), it waits, and `CLAUDE.md` still rules the design. Do not change tokens, `packages/ui` or the look of a screen. Items marked "database first" stop before their screens, so nothing is built twice.
+The design rework is under way in day sessions with Orel, toward `docs/design/target-prototype.html`. A nightly run does not change tokens, `packages/ui` or the look of a screen unless Orel left that work. Items marked "database first" stop before their screens, so nothing is built twice.
 
 - **Holes in what exists.** Each smallest first:
   - A business's Shabbat times from its location and a candle-lighting setting, since today every business gets Tel Aviv and 20 minutes.
@@ -213,7 +213,8 @@ Until Orel decides on the design rework (`docs/design/apple-rework-plan.md`), it
 - This brief and the run prompt: `docs/AGENT.md`, `docs/agent/RUN_PROMPT.md`.
 - The one-time setup from October, for the record: `docs/agent/KICKOFF.md`.
 - Roadmap, with what works and what is missing: `docs/ROADMAP.md`.
-- The proposed design rework: `docs/design/apple-rework-plan.md`.
+- The approved look: `docs/design/target-prototype.html`. The earlier analysis:
+  `docs/design/apple-rework-plan.md`.
 - Running log: `docs/agent/LOG.md` (plus the `יומן הסוכן` issue).
 - Rules for code and UI: `CLAUDE.md`.
 - Product decisions, roadmap and business model: the App Design Document and

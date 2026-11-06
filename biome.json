@@ -7,7 +7,14 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!node_modules", "!.next", "!dist", "!build"]
+    "includes": [
+      "**",
+      "!node_modules",
+      "!.next",
+      "!dist",
+      "!build",
+      "!docs/design/target-prototype.html"
+    ]
   },
   "formatter": {
     "enabled": true,

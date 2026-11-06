@@ -1,6 +1,6 @@
 # Apple-style design rework: plan and corrections
 
-**Status: a proposal, 6 November 2026. Nothing here is approved or built.** Orel asked for the rework, but the direction, the order of work and the `CLAUDE.md` changes still need his decision. Until then no run changes tokens, `packages/ui` or the look of a screen.
+**Status: superseded on 6 November 2026.** Orel rejected the look this plan led to, and approved a different one: `docs/design/target-prototype.html`. Keep this document for its analysis of the screens, the accessibility findings and what will break in tests, not for its palette, tokens or order of work.
 
 This is two documents: a plan, and an independent critique that checked it against the code. **Where they disagree, the corrections in part 1 win.** The plan in part 2 has not been rewritten to match them.
 

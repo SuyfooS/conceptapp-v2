@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACCENT_PRESETS,
   accentTokens,
   contrastRatio,
+  DARK_SURFACES,
   INK,
+  LIGHT_SURFACES,
   parseHex,
   readableInk,
   WHITE,
@@ -38,10 +41,51 @@ describe("accentTokens", () => {
     (hex) => {
       const t = accentTokens(hex);
       expect(t.adjusted).toBe(true);
-      expect(contrastRatio(t.accent, WHITE)).toBeGreaterThanOrEqual(3);
+      for (const surface of LIGHT_SURFACES) {
+        expect(contrastRatio(t.accent, surface)).toBeGreaterThanOrEqual(3);
+      }
       expect(contrastRatio(t.accent, t.accentInk)).toBeGreaterThanOrEqual(4.5);
     },
   );
+
+  it.each([
+    ...ACCENT_PRESETS.map((p) => p.hex),
+    "#9000ff",
+    "#ffd400",
+    "#f4c2c2",
+    "#7dd3fc",
+    "#ffffff",
+    "#000000",
+    "#1c1b19",
+    "#450a0a",
+  ])("gives %s a readable pair on dark surfaces", (hex) => {
+    const t = accentTokens(hex);
+    for (const surface of DARK_SURFACES) {
+      expect(contrastRatio(t.accentDark, surface)).toBeGreaterThanOrEqual(3);
+    }
+    expect(contrastRatio(t.accentDark, t.accentDarkInk)).toBeGreaterThanOrEqual(
+      4.5,
+    );
+  });
+
+  it("keeps a colour already readable on dark surfaces", () => {
+    const t = accentTokens("#3b82f6");
+    expect(t.accentDark).toBe(t.accent);
+  });
+
+  it("lifts a dark accent for dark surfaces", () => {
+    const t = accentTokens("#8b2635");
+    expect(t.accent).toBe("#8b2635");
+    expect(contrastRatio(t.accentDark, "#17181b")).toBeGreaterThan(
+      contrastRatio(t.accent, "#17181b"),
+    );
+  });
+
+  it("adjusts none of the presets", () => {
+    for (const preset of ACCENT_PRESETS) {
+      expect(accentTokens(preset.hex).adjusted).toBe(false);
+    }
+  });
 
   it("rejects input that is not a colour", () => {
     expect(() => accentTokens("burgundy")).toThrow();

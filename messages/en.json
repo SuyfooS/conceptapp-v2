@@ -78,6 +78,12 @@
       "dustyPink": "Dusty pink",
       "mustard": "Mustard"
     },
+    "appearance": "Appearance",
+    "appearances": {
+      "system": "Match device",
+      "light": "Light",
+      "dark": "Dark"
+    },
     "direction": "Language and direction",
     "languages": {
       "he": "עברית",
@@ -116,9 +122,9 @@
     "phoneIncomplete": "Incomplete",
     "cards": "Cards",
     "flat": "Flat",
-    "flatText": "Border only. For rows and secondary content.",
+    "flatText": "A soft shadow on the page. The usual card.",
     "raised": "Raised",
-    "raisedText": "Soft shadow. For the main object on a screen.",
+    "raisedText": "Same as flat. Kept for older screens until they move over.",
     "accentCard": "Accent",
     "accentText": "In the business accent. For the one thing that needs action now, at most one per screen.",
     "rows": "List rows",
@@ -146,7 +152,26 @@
     "accentB": "Confirmed",
     "success": "Published",
     "warning": "Pending",
-    "dangerB": "No-show"
+    "dangerB": "No-show",
+    "depth": "Depth",
+    "heroLabel": "Your next shift",
+    "heroTitle": "Morning, 09:00",
+    "floatText": "A card floating over the main card",
+    "people": "People",
+    "person1": "Noa Cohen",
+    "person2": "Yoav Levi",
+    "person3": "Maya Peretz",
+    "tiles": "What needs action",
+    "tileGaps": "Open places",
+    "tileMissing": "Have not sent availability",
+    "tileLists": "Open list",
+    "sheet": "Sheet",
+    "sheetOpen": "Open the sheet",
+    "sheetTitle": "Morning, Sunday",
+    "sheetSubtitle": "2 of 3",
+    "sheetClose": "Close",
+    "sheetDone": "Done",
+    "sheetRole": "Waiter"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -767,7 +792,7 @@
           "teal": "Teal",
           "green": "Green",
           "orange": "Orange",
-          "red": "Red",
+          "burgundy": "Burgundy",
           "pink": "Pink",
           "purple": "Purple",
           "brown": "Brown"

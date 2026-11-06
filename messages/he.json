@@ -78,6 +78,12 @@
       "dustyPink": "ורוד עתיק",
       "mustard": "חרדל"
     },
+    "appearance": "מראה",
+    "appearances": {
+      "system": "כמו המכשיר",
+      "light": "בהיר",
+      "dark": "כהה"
+    },
     "direction": "שפה וכיוון",
     "languages": {
       "he": "עברית",
@@ -116,9 +122,9 @@
     "phoneIncomplete": "לא שלם",
     "cards": "כרטיסים",
     "flat": "שטוח",
-    "flatText": "גבול בלבד. לשורות ולתוכן משני.",
+    "flatText": "צל רך על הדף. הכרטיס הרגיל.",
     "raised": "מורם",
-    "raisedText": "צל רך. לדבר המרכזי במסך.",
+    "raisedText": "כמו שטוח. נשאר למסכים ישנים עד שיעברו.",
     "accentCard": "מודגש",
     "accentText": "בצבע העסק. לדבר אחד שדורש פעולה עכשיו, לכל היותר אחד במסך.",
     "rows": "שורות ברשימה",
@@ -146,7 +152,26 @@
     "accentB": "מאושר",
     "success": "פורסם",
     "warning": "ממתין",
-    "dangerB": "לא הגיע"
+    "dangerB": "לא הגיע",
+    "depth": "עומק",
+    "heroLabel": "המשמרת הבאה שלך",
+    "heroTitle": "בוקר, 09:00",
+    "floatText": "כרטיס שצף מעל הכרטיס הראשי",
+    "people": "אנשים",
+    "person1": "נועה כהן",
+    "person2": "יואב לוי",
+    "person3": "מאיה פרץ",
+    "tiles": "מה דורש פעולה",
+    "tileGaps": "מקומות פנויים",
+    "tileMissing": "לא שלחו זמינות",
+    "tileLists": "רשימה פתוחה",
+    "sheet": "חלונית",
+    "sheetOpen": "פתיחת החלונית",
+    "sheetTitle": "בוקר, יום ראשון",
+    "sheetSubtitle": "2 מתוך 3",
+    "sheetClose": "סגירה",
+    "sheetDone": "סיום",
+    "sheetRole": "מלצר/ית"
   },
   "shell": {
     "metaTitle": "דמו פריסה",
@@ -767,7 +792,7 @@
           "teal": "טורקיז",
           "green": "ירוק",
           "orange": "כתום",
-          "red": "אדום",
+          "burgundy": "בורדו",
           "pink": "ורוד",
           "purple": "סגול",
           "brown": "חום"

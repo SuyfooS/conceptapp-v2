@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · design foundation
+
+- Orel stopped the first attempt at the rework: new colours on the old screens looked like generic AI design. He sent an example, I built a two-screen prototype, and he approved it. It is now the target: `docs/design/target-prototype.html`.
+- Tokens from the prototype: neutrals, light and dark, soft shadows, larger radii, body 17, large titles 34, the device's font on Apple devices. `tooling/tokens.test.ts` checks the pairings.
+- Accents get a pair for light and for dark (`accentProps`), lifted in OKLab. The red preset became burgundy, because it read as danger.
+- `AppShell`: a floating glass tab bar on phones and tablets (a lens under the current tab, dragging, shrinking while scrolling), and the side rail is gone. New: `Avatar`, `Tile`, `Sheet`, `Card` tones `float` and `hero`, `WeekStrip` with notes and coverage, `PageHeader` with a floating title and `back`.
+- `e2e/design.spec.ts`: the demos in light and dark. Screens were not restructured yet: they inherit the look only.
+- Not checked: real iPhone and Android. Next: Today, then the schedule screens, on the new parts.
+
 ## 2026-11-06 · run 28 · chunk 2d-2b (swap approvals)
 
 - Left by Orel: #37 (from chat, label `orel`), asked to run now rather than at 02:00. Only this chunk; tokens, `packages/ui` and other screens untouched.

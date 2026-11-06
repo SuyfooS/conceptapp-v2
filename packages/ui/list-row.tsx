@@ -6,7 +6,7 @@ import { cn } from "./cn";
 type Content = {
   title: ReactNode;
   subtitle?: ReactNode;
-  /** Icon or initials in a round tile at the start of the row. */
+  /** Icon, initials or an Avatar at the start of the row. */
   leading?: ReactNode;
   /** Badge, time or value at the end of the row. */
   trailing?: ReactNode;
@@ -20,9 +20,10 @@ export type ListRowProps = Content &
     | { href?: never; onClick?: never }
   );
 
-const base = "flex min-h-14 w-full items-center gap-3 px-4 py-3 text-start";
+const base =
+  "relative flex min-h-16 w-full items-center gap-3 px-4 py-2.5 text-start not-first:before:absolute not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
 const interactiveClass =
-  "transition-colors duration-150 ease-calm hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
+  "transition-colors duration-150 ease-calm hover:bg-surface-2 active:bg-surface-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
 
 /** One row of a list. A link or button when it leads somewhere, plain otherwise. */
 export function ListRow({
@@ -35,6 +36,10 @@ export function ListRow({
   className,
 }: ListRowProps) {
   const interactive = href !== undefined || onClick !== undefined;
+  // The separator starts at the text, as in a grouped list.
+  const inset = leading
+    ? "not-first:before:start-[68px]"
+    : "not-first:before:start-4";
   const content = (
     <>
       {leading ? (
@@ -43,9 +48,9 @@ export function ListRow({
         </span>
       ) : null}
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate font-medium text-ink">{title}</span>
+        <span className="font-medium text-ink">{title}</span>
         {subtitle ? (
-          <span className="truncate text-ink-2 text-sm">{subtitle}</span>
+          <span className="text-ink-2 text-sm">{subtitle}</span>
         ) : null}
       </span>
       {trailing ? <span className="shrink-0">{trailing}</span> : null}
@@ -60,7 +65,10 @@ export function ListRow({
 
   if (href !== undefined) {
     return (
-      <Link href={href} className={cn(base, interactiveClass, className)}>
+      <Link
+        href={href}
+        className={cn(base, inset, interactiveClass, className)}
+      >
         {content}
       </Link>
     );
@@ -70,21 +78,21 @@ export function ListRow({
       <button
         type="button"
         onClick={onClick}
-        className={cn(base, interactiveClass, className)}
+        className={cn(base, inset, interactiveClass, className)}
       >
         {content}
       </button>
     );
   }
-  return <div className={cn(base, className)}>{content}</div>;
+  return <div className={cn(base, inset, className)}>{content}</div>;
 }
 
-/** Bordered container that separates rows with hairlines. */
+/** A grouped list: one soft card, with hairlines between its rows. */
 export function ListGroup({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "divide-y divide-line overflow-hidden rounded-card border border-line bg-surface",
+        "overflow-hidden rounded-card bg-surface shadow-card",
         className,
       )}
       {...props}

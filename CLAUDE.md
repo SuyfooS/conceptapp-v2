@@ -60,26 +60,35 @@ Only `app/` imports app code (`@/…`).
 - Time, phone and number inputs get `dir="ltr"` plus `ltrInputClass` (from
   `@ui/text-field`), so digits read LTR but the field still aligns with the
   page. (`text-align: match-parent` would be neater but Chromium lacks it.)
-- Colour only through tokens: `bg-bg`, `bg-surface`, `bg-surface-2`,
-  `border-line`, `text-ink`, `text-ink-2`, `bg-accent`, `text-accent-ink`,
-  `bg-accent-soft`, `text-success|warning|danger`. `bg-brand` (#9000FF) is
-  ConceptApp's own colour: admin console and marketing only.
-- Type scale: `text-sm` 13 · `text-base` 15 · `text-md` 17 · `text-lg` 20 ·
-  `text-xl` 24 · `text-2xl` 30. Heebo only, weights 400/500/700.
-- Cards: flat (border), raised (`shadow-raised`), accent (`bg-accent-soft`,
-  at most one per screen). Radius `rounded-control` (10px, buttons and
-  inputs) / `rounded-card` / `rounded-sheet`.
+- Colour only through tokens: `bg-bg` (page), `bg-surface` (cards), `bg-elevated`
+  (cards in a sheet), `bg-surface-2` (fills), `bg-surface-3` (pressed), `border-line`
+  (separators), `border-edge` (edges of controls), `text-ink`, `text-ink-2`,
+  `text-ink-3` (placeholders only), `bg-accent`, `text-accent-ink`, `bg-accent-soft`,
+  `text-success|warning|danger` with `bg-success-soft` and so on, `text-danger-ink`.
+  Every token has light and dark values and follows the device, with no switch in the
+  app. `bg-brand` is ConceptApp's own colour: admin console and marketing only.
+- Type scale: `text-sm` 13 · `text-base` 15 · `text-md` 17 (body) · `text-lg` 20 ·
+  `text-xl` 24 · `text-2xl` 34 (large titles). The device's font on Apple devices,
+  Heebo everywhere else. Weights 400/500/600/700. Real content wraps; no `truncate`.
+- Cards have no borders: `flat` (soft shadow, the default), `float` (lifted over what
+  is under it), `accent` (`bg-accent-soft`) and `hero` (the business's colour, with
+  depth), each of the last two at most once per screen. Radius `rounded-control` (14px,
+  inputs) / `rounded-card` (24px) / `rounded-sheet` (36px); buttons are pills.
+- `glass` is only for what floats above the content: the tab bar, the floating title
+  and sheets. Never on cards or rows. It turns opaque when the device asks for less
+  transparency or more contrast.
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
   Built so far: Button, IconButton, TextField, PhoneField, Card, ListRow and
-  ListGroup, Badge, Spinner, Stat, WeekStrip, AppShell, PageBody/PageHeader/
-  PageSection.
-- A business accent is applied with `accentStyle(accentTokens(hex))` on a
-  wrapper. `accentTokens` darkens unreadable picks; text on light tints stays
-  `text-ink`, never `text-accent`.
+  ListGroup, Badge, Avatar and AvatarStack, Tile, Sheet, Spinner, Stat, WeekStrip,
+  AppShell, PageBody/PageHeader/PageSection.
+- A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
+  wrapper. `accentTokens` returns a pair for light and for dark, and darkens or lifts
+  unreadable picks; text on light tints stays `text-ink`, never `text-accent`.
 - Phone numbers are stored as E.164 (`normalizeIsraeliMobile` in
   `@domain/phone`); `PhoneField` submits that form through a hidden input.
-- Touch targets at least 44px. Motion 150–200ms on state changes only.
+- Touch targets at least 44px. Motion on state changes only: 150–200ms, or the spring
+  (`ease-spring`, `pressable`) for what moves. Reduced motion turns it off.
 - All user-facing copy in Hebrew; plain words, no exclamation marks.
 - Copy lives in `messages/he.json` with its English twin in `messages/en.json`
   (same keys, same `{placeholders}`), read with next-intl's `useTranslations`
@@ -92,9 +101,10 @@ Only `app/` imports app code (`@/…`).
 ## Layout: three devices, three layouts
 
 - Breakpoints: phone < 768px (`md`), tablet 768–1279px, desktop ≥ 1280px (`xl`).
-- `AppShell` (`@ui/app-shell`) gives each its navigation: bottom tab bar on
-  phones, side rail on tablets, full sidebar on desktop. Same items, labels,
-  icons and order everywhere. At most five items.
+- `AppShell` (`@ui/app-shell`) gives each its navigation: a floating glass tab bar on
+  phones and tablets, which shrinks while scrolling down and follows a dragged finger,
+  and a full sidebar on desktop. Same items, labels, icons and order everywhere. At
+  most five items.
 - Screens use `PageBody` + `PageHeader` (`@ui/page`). The page's main action
   goes in `PageHeader actions`: full width under the title on phones, inline
   from tablet up.
@@ -119,14 +129,18 @@ Only `app/` imports app code (`@/…`).
 - Acceptance test for a screen: the least technical person on the pilot's
   staff completes the task without help.
 
-## Design reviews
+## Design language
 
-`.claude/skills/apple-design` reviews a screen against Apple's Human Interface
-Guidelines (`dickwu/apple-design-skill` at `ff4ebdd`, without its refresh
-script). This is a web app, so use its principles and its accessibility,
-colour, type, layout and writing rules, not Apple's platform conventions. This
-file wins wherever they differ: tokens, Heebo, the three layouts. Its
-improvement mode can suggest changes to the design system; it never replaces it.
+The target is the example Orel approved on 6 November 2026:
+`docs/design/target-prototype.html` (the same page: https://claude.ai/artifact/JydhY5gqSfeVikjr2hre2u).
+A new or reworked screen should look like it belongs there: large rounded cards with
+soft shadows, large titles, one business colour, glass only on what floats, and depth
+through overlap. Bordered cards, stat tiles and rows of pills read as generic, so avoid
+them.
+
+`.claude/skills/apple-design` (`dickwu/apple-design-skill` at `ff4ebdd`) is the
+reference for reviews and conventions. This file wins where they differ. Never ship SF
+font files or SF Symbols; asking the device for its own font is fine.
 
 ## Code rules
 

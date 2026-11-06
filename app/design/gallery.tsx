@@ -1,7 +1,8 @@
 "use client";
 
 import { accentTokens } from "@domain/color";
-import { accentStyle } from "@ui/accent";
+import { accentProps } from "@ui/accent";
+import { Avatar, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
@@ -9,10 +10,19 @@ import { cn } from "@ui/cn";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
+import { Sheet } from "@ui/sheet";
 import { Stat } from "@ui/stat";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
+import { Tile } from "@ui/tile";
 import { WeekStrip } from "@ui/week-strip";
-import { ArrowLeft, Bell, Plus } from "lucide-react";
+import {
+  ArrowLeft,
+  Bell,
+  CalendarDays,
+  ListChecks,
+  Plus,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { NextIntlClientProvider, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
@@ -32,13 +42,20 @@ const ACCENTS = [
 const MESSAGES = { he: heMessages, en: enMessages } as const;
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
+const APPEARANCES = ["system", "light", "dark"] as const;
+type Appearance = (typeof APPEARANCES)[number];
+
 const SWATCHES = [
   { token: "bg", cls: "bg-bg" },
   { token: "surface", cls: "bg-surface" },
+  { token: "elevated", cls: "bg-elevated" },
   { token: "surface-2", cls: "bg-surface-2" },
+  { token: "surface-3", cls: "bg-surface-3" },
   { token: "line", cls: "bg-line" },
+  { token: "edge", cls: "bg-edge" },
   { token: "ink", cls: "bg-ink" },
   { token: "ink-2", cls: "bg-ink-2" },
+  { token: "ink-3", cls: "bg-ink-3" },
   { token: "accent", cls: "bg-accent" },
   { token: "accent-soft", cls: "bg-accent-soft" },
   { token: "success", cls: "bg-success" },
@@ -47,7 +64,7 @@ const SWATCHES = [
 ] as const;
 
 const SCALE = [
-  { cls: "text-2xl font-bold", label: "2xl · 30" },
+  { cls: "text-2xl font-bold", label: "2xl · 34" },
   { cls: "text-xl font-bold", label: "xl · 24" },
   { cls: "text-lg font-medium", label: "lg · 20" },
   { cls: "text-md", label: "md · 17" },
@@ -88,6 +105,8 @@ function GalleryBody({
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
   const [day, setDay] = useState("0");
+  const [appearance, setAppearance] = useState<Appearance>("system");
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -99,257 +118,372 @@ function GalleryBody({
   const accentName = accent ? t(`accents.${accent.key}`) : requested;
 
   return (
-    <main
-      dir={direction(lang)}
-      lang={lang}
-      style={accentStyle(tokens)}
-      className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col gap-8 px-4 py-8"
+    <div
+      {...accentProps(tokens)}
+      className={cn(
+        "min-h-dvh bg-bg text-ink",
+        appearance !== "system" && `appearance-${appearance}`,
+      )}
     >
-      <header className="flex flex-col gap-2">
-        <span
-          dir="ltr"
-          className="flex items-center gap-2 self-start font-bold text-md"
-        >
-          <span aria-hidden="true" className="size-4 rounded-[5px] bg-brand" />
-          ConceptApp
-        </span>
-        <h1 className="font-bold text-2xl">{t("title")}</h1>
-        <p className="text-ink-2">{t("intro")}</p>
-      </header>
+      <main
+        dir={direction(lang)}
+        lang={lang}
+        className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col gap-8 px-4 py-8"
+      >
+        <header className="flex flex-col gap-2">
+          <span
+            dir="ltr"
+            className="flex items-center gap-2 self-start font-bold text-md"
+          >
+            <span
+              aria-hidden="true"
+              className="size-4 rounded-[5px] bg-brand"
+            />
+            ConceptApp
+          </span>
+          <h1 className="font-bold text-2xl">{t("title")}</h1>
+          <p className="text-ink-2">{t("intro")}</p>
+        </header>
 
-      <Card tone="raised" padding="lg" className="flex flex-col gap-5">
-        <div className="flex flex-col gap-2">
-          <span className="font-medium text-sm">{t("accent")}</span>
-          <div className="flex flex-wrap gap-2">
-            {ACCENTS.map((a) => (
-              <button
-                key={a.hex}
-                type="button"
-                onClick={() => setRequested(a.hex)}
-                aria-pressed={requested === a.hex}
-                className={cn(
-                  "flex h-11 items-center gap-2 rounded-full border px-3 text-sm transition-colors duration-150",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                  requested === a.hex
-                    ? "border-ink bg-surface"
-                    : "border-line bg-surface hover:bg-surface-2",
-                )}
+        <Card tone="raised" padding="lg" className="flex flex-col gap-5">
+          <div className="flex flex-col gap-2">
+            <span className="font-medium text-sm">{t("accent")}</span>
+            <div className="flex flex-wrap gap-2">
+              {ACCENTS.map((a) => (
+                <button
+                  key={a.hex}
+                  type="button"
+                  onClick={() => setRequested(a.hex)}
+                  aria-pressed={requested === a.hex}
+                  className={cn(
+                    "flex h-11 items-center gap-2 rounded-full border px-3 text-sm transition-colors duration-150",
+                    "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
+                    requested === a.hex
+                      ? "border-ink bg-surface"
+                      : "border-line bg-surface hover:bg-surface-2",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-4 rounded-full"
+                    style={{ background: a.hex }}
+                  />
+                  {t(`accents.${a.key}`)}
+                </button>
+              ))}
+            </div>
+            {tokens.adjusted ? (
+              <p className="text-ink-2 text-sm">
+                {t.rich("adjusted", {
+                  from: accentName,
+                  to: tokens.accent,
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                })}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <span className="font-medium text-sm">{t("appearance")}</span>
+            <div className="flex flex-wrap gap-2">
+              {APPEARANCES.map((a) => (
+                <Button
+                  key={a}
+                  variant={appearance === a ? "primary" : "secondary"}
+                  aria-pressed={appearance === a}
+                  onClick={() => setAppearance(a)}
+                >
+                  {t(`appearances.${a}`)}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <span className="font-medium text-sm">{t("direction")}</span>
+            <div className="flex gap-2">
+              <Button
+                variant={lang === "he" ? "primary" : "secondary"}
+                aria-pressed={lang === "he"}
+                onClick={() => switchLang("he")}
               >
+                {t("languages.he")}
+              </Button>
+              <Button
+                variant={lang === "en" ? "primary" : "secondary"}
+                aria-pressed={lang === "en"}
+                onClick={() => switchLang("en")}
+              >
+                {t("languages.en")}
+              </Button>
+            </div>
+          </div>
+        </Card>
+
+        <Section title={t("colors")}>
+          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+            {SWATCHES.map((s) => (
+              <div key={s.token} className="flex flex-col gap-1.5">
                 <span
-                  aria-hidden="true"
-                  className="size-4 rounded-full"
-                  style={{ background: a.hex }}
+                  className={cn(
+                    "h-12 rounded-control border border-line",
+                    s.cls,
+                  )}
                 />
-                {t(`accents.${a.key}`)}
-              </button>
+                <span dir="ltr" className="text-start text-ink-2 text-sm">
+                  {s.token}
+                </span>
+              </div>
             ))}
           </div>
-          {tokens.adjusted ? (
-            <p className="text-ink-2 text-sm">
-              {t.rich("adjusted", {
-                from: accentName,
-                to: tokens.accent,
-                ltr: (chunks) => <span dir="ltr">{chunks}</span>,
-              })}
-            </p>
-          ) : null}
-        </div>
+        </Section>
 
-        <div className="flex flex-col gap-2">
-          <span className="font-medium text-sm">{t("direction")}</span>
+        <Section title={t("type")}>
+          <Card className="flex flex-col gap-3">
+            {SCALE.map((s) => (
+              <div
+                key={s.label}
+                className="flex items-baseline justify-between gap-4"
+              >
+                <span className={cn(s.cls, "min-w-0")}>{t("sample")}</span>
+                <span dir="ltr" className="shrink-0 text-ink-2 text-sm">
+                  {s.label}
+                </span>
+              </div>
+            ))}
+          </Card>
+        </Section>
+
+        <Section title={t("buttons")}>
+          <div className="flex flex-wrap gap-2">
+            <Button>{t("primary")}</Button>
+            <Button variant="secondary">{t("secondary")}</Button>
+            <Button variant="ghost">{t("ghost")}</Button>
+            <Button variant="danger">{t("danger")}</Button>
+            <Button loading>{t("loading")}</Button>
+            <Button disabled>{t("disabled")}</Button>
+          </div>
+          <Button size="lg" className="w-full">
+            {t("wide")}
+          </Button>
           <div className="flex gap-2">
-            <Button
-              variant={lang === "he" ? "primary" : "secondary"}
-              aria-pressed={lang === "he"}
-              onClick={() => switchLang("he")}
-            >
-              {t("languages.he")}
-            </Button>
-            <Button
-              variant={lang === "en" ? "primary" : "secondary"}
-              aria-pressed={lang === "en"}
-              onClick={() => switchLang("en")}
-            >
-              {t("languages.en")}
-            </Button>
+            <IconButton label={t("add")} icon={<Plus />} variant="secondary" />
+            <IconButton label={t("notifications")} icon={<Bell />} />
+            <IconButton label={t("back")} icon={<ArrowLeft />} directional />
           </div>
-        </div>
-      </Card>
+        </Section>
 
-      <Section title={t("colors")}>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-          {SWATCHES.map((s) => (
-            <div key={s.token} className="flex flex-col gap-1.5">
-              <span
-                className={cn("h-12 rounded-control border border-line", s.cls)}
-              />
-              <span dir="ltr" className="text-start text-ink-2 text-sm">
-                {s.token}
-              </span>
-            </div>
-          ))}
-        </div>
-      </Section>
-
-      <Section title={t("type")}>
-        <Card className="flex flex-col gap-3">
-          {SCALE.map((s) => (
-            <div
-              key={s.label}
-              className="flex items-baseline justify-between gap-4"
-            >
-              <span className={cn(s.cls, "min-w-0")}>{t("sample")}</span>
-              <span dir="ltr" className="shrink-0 text-ink-2 text-sm">
-                {s.label}
-              </span>
-            </div>
-          ))}
-        </Card>
-      </Section>
-
-      <Section title={t("buttons")}>
-        <div className="flex flex-wrap gap-2">
-          <Button>{t("primary")}</Button>
-          <Button variant="secondary">{t("secondary")}</Button>
-          <Button variant="ghost">{t("ghost")}</Button>
-          <Button variant="danger">{t("danger")}</Button>
-          <Button loading>{t("loading")}</Button>
-          <Button disabled>{t("disabled")}</Button>
-        </div>
-        <Button size="lg" className="w-full">
-          {t("wide")}
-        </Button>
-        <div className="flex gap-2">
-          <IconButton label={t("add")} icon={<Plus />} variant="secondary" />
-          <IconButton label={t("notifications")} icon={<Bell />} />
-          <IconButton label={t("back")} icon={<ArrowLeft />} directional />
-        </div>
-      </Section>
-
-      <Section title={t("fields")}>
-        <Card key={lang} padding="lg" className="flex flex-col gap-4">
-          <TextField
-            label={t("name")}
-            placeholder={t("namePh")}
-            autoComplete="name"
-          />
-          <TextField
-            label={t("shift")}
-            hint={t("shiftHint")}
-            defaultValue={t("shiftDefault")}
-          />
-          <TextField
-            label={t("hours")}
-            error={t("hoursError")}
-            defaultValue="22:00–17:00"
-            dir="ltr"
-            className={ltrInputClass}
-          />
-          <TextArea
-            label={t("note")}
-            hint={t("noteHint")}
-            placeholder={t("notePh")}
-            rows={3}
-          />
-          <TextField
-            label={t("locked")}
-            defaultValue={t("lockedValue")}
-            disabled
-          />
-          <div className="flex flex-col gap-2">
-            <PhoneField
-              label={t("phone")}
-              name="phone"
-              onPhoneChange={setPhone}
+        <Section title={t("fields")}>
+          <Card key={lang} padding="lg" className="flex flex-col gap-4">
+            <TextField
+              label={t("name")}
+              placeholder={t("namePh")}
+              autoComplete="name"
             />
-            <div>
-              {phone.e164 ? (
-                <Badge tone="success">
-                  {t("phoneValid")} · <span dir="ltr">{phone.e164}</span>
-                </Badge>
-              ) : (
-                <Badge>{t("phoneIncomplete")}</Badge>
-              )}
+            <TextField
+              label={t("shift")}
+              hint={t("shiftHint")}
+              defaultValue={t("shiftDefault")}
+            />
+            <TextField
+              label={t("hours")}
+              error={t("hoursError")}
+              defaultValue="22:00–17:00"
+              dir="ltr"
+              className={ltrInputClass}
+            />
+            <TextArea
+              label={t("note")}
+              hint={t("noteHint")}
+              placeholder={t("notePh")}
+              rows={3}
+            />
+            <TextField
+              label={t("locked")}
+              defaultValue={t("lockedValue")}
+              disabled
+            />
+            <div className="flex flex-col gap-2">
+              <PhoneField
+                label={t("phone")}
+                name="phone"
+                onPhoneChange={setPhone}
+              />
+              <div>
+                {phone.e164 ? (
+                  <Badge tone="success">
+                    {t("phoneValid")} · <span dir="ltr">{phone.e164}</span>
+                  </Badge>
+                ) : (
+                  <Badge>{t("phoneIncomplete")}</Badge>
+                )}
+              </div>
             </div>
+          </Card>
+        </Section>
+
+        <Section title={t("cards")}>
+          <Card>
+            <CardTitle>{t("flat")}</CardTitle>
+            <CardText>{t("flatText")}</CardText>
+          </Card>
+          <Card tone="raised">
+            <CardTitle>{t("raised")}</CardTitle>
+            <CardText>{t("raisedText")}</CardText>
+          </Card>
+          <Card tone="accent">
+            <CardTitle>{t("accentCard")}</CardTitle>
+            <CardText>{t("accentText")}</CardText>
+          </Card>
+        </Section>
+
+        <Section title={t("rows")}>
+          <ListGroup>
+            <ListRow
+              href="/design"
+              leading={t("p1i")}
+              title={t("p1")}
+              subtitle={t("p1s")}
+              trailing={<Badge tone="success">{t("p1b")}</Badge>}
+            />
+            <ListRow
+              onClick={() => {}}
+              leading={t("p2i")}
+              title={t("p2")}
+              subtitle={t("p2s")}
+              trailing={<Badge tone="warning">{t("p2b")}</Badge>}
+            />
+            <ListRow
+              title={t("p3")}
+              subtitle={t("p3s")}
+              trailing={<Badge tone="accent">{t("p3b")}</Badge>}
+            />
+          </ListGroup>
+        </Section>
+
+        <Section title={t("layout")}>
+          <Button asChild variant="secondary" className="w-full">
+            <Link href="/design/shell">{t("layoutLink")}</Link>
+          </Button>
+          <div className="grid grid-cols-2 gap-3">
+            <Stat
+              label={t("stat1")}
+              value="2/3"
+              hint={t("stat1h")}
+              tone="warning"
+            />
+            <Stat label={t("stat2")} value="14" hint={t("stat2h")} />
           </div>
-        </Card>
-      </Section>
-
-      <Section title={t("cards")}>
-        <Card>
-          <CardTitle>{t("flat")}</CardTitle>
-          <CardText>{t("flatText")}</CardText>
-        </Card>
-        <Card tone="raised">
-          <CardTitle>{t("raised")}</CardTitle>
-          <CardText>{t("raisedText")}</CardText>
-        </Card>
-        <Card tone="accent">
-          <CardTitle>{t("accentCard")}</CardTitle>
-          <CardText>{t("accentText")}</CardText>
-        </Card>
-      </Section>
-
-      <Section title={t("rows")}>
-        <ListGroup>
-          <ListRow
-            href="/design"
-            leading={t("p1i")}
-            title={t("p1")}
-            subtitle={t("p1s")}
-            trailing={<Badge tone="success">{t("p1b")}</Badge>}
+          <WeekStrip
+            label={t("week")}
+            value={day}
+            onChange={setDay}
+            days={DAYS.map((key, i) => ({
+              key: String(i),
+              label: tDays(`${key}.short`),
+              date: String(18 + i),
+              marked: i === 1 || i === 3,
+              markLabel: t("openShift"),
+            }))}
           />
-          <ListRow
-            onClick={() => {}}
-            leading={t("p2i")}
-            title={t("p2")}
-            subtitle={t("p2s")}
-            trailing={<Badge tone="warning">{t("p2b")}</Badge>}
-          />
-          <ListRow
-            title={t("p3")}
-            subtitle={t("p3s")}
-            trailing={<Badge tone="accent">{t("p3b")}</Badge>}
-          />
-        </ListGroup>
-      </Section>
+        </Section>
 
-      <Section title={t("layout")}>
-        <Button asChild variant="secondary" className="w-full">
-          <Link href="/design/shell">{t("layoutLink")}</Link>
-        </Button>
-        <div className="grid grid-cols-2 gap-3">
-          <Stat
-            label={t("stat1")}
-            value="2/3"
-            hint={t("stat1h")}
-            tone="warning"
-          />
-          <Stat label={t("stat2")} value="14" hint={t("stat2h")} />
-        </div>
-        <WeekStrip
-          label={t("week")}
-          value={day}
-          onChange={setDay}
-          days={DAYS.map((key, i) => ({
-            key: String(i),
-            label: tDays(`${key}.short`),
-            date: String(18 + i),
-            marked: i === 1 || i === 3,
-            markLabel: t("openShift"),
-          }))}
-        />
-      </Section>
+        <Section title={t("depth")}>
+          <div>
+            <Card
+              tone="hero"
+              padding="lg"
+              className="flex flex-col gap-3 pb-16"
+            >
+              <span className="font-medium text-base">{t("heroLabel")}</span>
+              <span className="font-bold text-2xl">{t("heroTitle")}</span>
+            </Card>
+            <Card
+              tone="float"
+              className="relative mx-3 -mt-11 flex items-center gap-3"
+            >
+              <Avatar name={t("person1")} />
+              <span className="min-w-0 flex-1 font-semibold text-base">
+                {t("floatText")}
+              </span>
+            </Card>
+          </div>
+        </Section>
 
-      <Section title={t("badges")}>
-        <div className="flex flex-wrap gap-2">
-          <Badge>{t("neutral")}</Badge>
-          <Badge tone="accent">{t("accentB")}</Badge>
-          <Badge tone="success">{t("success")}</Badge>
-          <Badge tone="warning">{t("warning")}</Badge>
-          <Badge tone="danger">{t("dangerB")}</Badge>
-        </div>
-      </Section>
-    </main>
+        <Section title={t("people")}>
+          <div className="flex items-center gap-4">
+            <Avatar name={t("person1")} />
+            <Avatar name={t("person2")} />
+            <AvatarStack names={[t("person1"), t("person2"), t("person3")]} />
+          </div>
+        </Section>
+
+        <Section title={t("tiles")}>
+          <div className="grid grid-cols-3 gap-2.5">
+            <Tile
+              href="/design/shell"
+              tone="warning"
+              icon={<CalendarDays />}
+              value="5"
+              label={t("tileGaps")}
+            />
+            <Tile
+              href="/design/shell"
+              tone="danger"
+              icon={<Users />}
+              value="2"
+              label={t("tileMissing")}
+            />
+            <Tile
+              href="/design/shell"
+              tone="accent"
+              icon={<ListChecks />}
+              value="1"
+              label={t("tileLists")}
+            />
+          </div>
+        </Section>
+
+        <Section title={t("sheet")}>
+          <Button variant="secondary" onClick={() => setSheetOpen(true)}>
+            {t("sheetOpen")}
+          </Button>
+          <Sheet
+            open={sheetOpen}
+            onOpenChange={setSheetOpen}
+            title={t("sheetTitle")}
+            subtitle={t("sheetSubtitle")}
+            closeLabel={t("sheetClose")}
+            action={{
+              label: t("sheetDone"),
+              onClick: () => setSheetOpen(false),
+            }}
+          >
+            <ListGroup className="shadow-none">
+              <ListRow
+                leading={<Avatar name={t("person1")} />}
+                title={t("person1")}
+                subtitle={t("sheetRole")}
+              />
+              <ListRow
+                leading={<Avatar name={t("person2")} />}
+                title={t("person2")}
+                subtitle={t("sheetRole")}
+              />
+            </ListGroup>
+          </Sheet>
+        </Section>
+
+        <Section title={t("badges")}>
+          <div className="flex flex-wrap gap-2">
+            <Badge>{t("neutral")}</Badge>
+            <Badge tone="accent">{t("accentB")}</Badge>
+            <Badge tone="success">{t("success")}</Badge>
+            <Badge tone="warning">{t("warning")}</Badge>
+            <Badge tone="danger">{t("dangerB")}</Badge>
+          </div>
+        </Section>
+      </main>
+    </div>
   );
 }
