@@ -35,6 +35,7 @@ const m = he.modules;
 
 test.afterEach(async () => {
   await setDemoModule("reservations", true);
+  await setDemoModule("scheduling", true);
 });
 
 test("the owner's navigation follows the business's modules", async ({
@@ -48,10 +49,12 @@ test("the owner's navigation follows the business's modules", async ({
     m.reservations.name,
     m.storefront.name,
   ]);
-  // Module cards only: owners and managers also get a link to their team.
-  const cards = page.getByRole("main").locator('a:not([href="/team"])');
-  await expect(cards).toHaveCount(3);
-  await expect(cards.filter({ hasText: m.reservations.name })).toBeVisible();
+  // A module with nothing of its own to say yet keeps one row on Today.
+  const rows = page
+    .getByRole("main")
+    .locator('a[href="/clock"], a[href="/reservations"]');
+  await expect(rows).toHaveCount(2);
+  await expect(rows.filter({ hasText: m.reservations.name })).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("home-all-modules.png"),
     fullPage: true,
@@ -83,14 +86,47 @@ test("the owner's navigation follows the business's modules", async ({
     m.time_clock.name,
     m.storefront.name,
   ]);
-  await expect(cards).toHaveCount(2);
-  await expect(cards.filter({ hasText: m.reservations.name })).toHaveCount(0);
+  await expect(rows).toHaveCount(1);
+  await expect(rows.filter({ hasText: m.reservations.name })).toHaveCount(0);
   await expectUnavailable(page, "/reservations");
 
   // And switching it back on restores it.
   await setDemoModule("reservations", true);
   await page.goto("/home");
   expect(await navItems(page)).toContain(m.reservations.name);
+});
+
+test("switching scheduling off takes its part of Today with it", async ({
+  page,
+}) => {
+  const h = he.app.home;
+  await signIn(page, OWNER);
+  const hero = page.getByRole("region", { name: h.hero.businessNext });
+  const scheduling = page.getByRole("main").locator('a[href^="/schedule"]');
+  await expect(hero).toBeVisible();
+  await expect(scheduling.first()).toBeVisible();
+
+  await setDemoModule("scheduling", false);
+  await page.goto("/home");
+  expect(await navItems(page)).toEqual([
+    he.app.nav.home,
+    m.time_clock.name,
+    m.reservations.name,
+    m.storefront.name,
+  ]);
+  await expect(hero).toHaveCount(0);
+  await expect(scheduling).toHaveCount(0);
+  await expect(page.getByText(h.who.title)).toHaveCount(0);
+  // The rest of Today is still there, and so is the way out.
+  await expect(
+    page.getByRole("main").locator('a[href="/reservations"]'),
+  ).toBeVisible();
+  await expect(page.getByRole("main").locator('a[href="/team"]')).toBeVisible();
+  await expect(page.getByRole("button", { name: h.signOut })).toBeVisible();
+
+  await setDemoModule("scheduling", true);
+  await page.goto("/home");
+  await expect(hero).toBeVisible();
 });
 
 test("a worker does not see manager-only modules", async ({ page }) => {

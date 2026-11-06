@@ -5,6 +5,13 @@ import { expect, type Page, test } from "@playwright/test";
 const PAGES = [
   "/design",
   "/design/shell",
+  "/design/shell/today/on-shift",
+  "/design/shell/today/availability-missing",
+  "/design/shell/today/owner",
+  "/design/shell/today/worker",
+  "/design/shell/today/not-published",
+  "/design/shell/today/worker-not-published",
+  "/design/shell/today/scheduling-off",
   "/design/shell/schedule/availability",
   "/design/shell/schedule/build",
   "/design/shell/schedule/shifts",

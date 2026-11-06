@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { avatarHue, initialsOf } from "./people";
+import { avatarHue, firstNameOf, initialsOf } from "./people";
+
+describe("firstNameOf", () => {
+  it("takes the first word, whatever the spacing", () => {
+    expect(firstNameOf("נועה כהן")).toBe("נועה");
+    expect(firstNameOf("  שירן  ")).toBe("שירן");
+  });
+
+  it("is empty for an empty name", () => {
+    expect(firstNameOf("")).toBe("");
+  });
+});
 
 describe("initialsOf", () => {
   it("takes the first letter of the first two words", () => {

@@ -56,11 +56,9 @@ test("a worker signs in with a phone code and lands on the home screen", async (
   await page.getByRole("button", { name: t.verify, exact: true }).click();
 
   await expect(page).toHaveURL(/\/home$/);
+  // The greeting follows the hour; the name does not.
   await expect(
-    page.getByRole("heading", {
-      level: 1,
-      name: he.app.home.greeting.replace("{name}", "נועה"),
-    }),
+    page.getByRole("heading", { level: 1, name: /, נועה$/ }),
   ).toBeVisible();
   await expect(
     page.getByRole("link", { name: he.app.nav.home }).first(),

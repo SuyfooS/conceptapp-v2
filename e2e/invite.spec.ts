@@ -122,11 +122,9 @@ test("an invited number joins the demo restaurant as a manager", async ({
   // Home in the right business, with the manager's navigation and the
   // name from the invite.
   await expect(joining).toHaveURL(/\/home$/);
+  // The greeting follows the hour; the name does not.
   await expect(
-    joining.getByRole("heading", {
-      level: 1,
-      name: he.app.home.greeting.replace("{name}", "גל"),
-    }),
+    joining.getByRole("heading", { level: 1, name: /, גל$/ }),
   ).toBeVisible();
   await expect(
     joining.getByText("מסעדת הדגמה").filter({ visible: true }).first(),

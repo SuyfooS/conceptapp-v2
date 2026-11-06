@@ -115,10 +115,6 @@
     "badges": "Badges",
     "layout": "Layout and numbers",
     "layoutLink": "Demo: the same app on phone, tablet and desktop",
-    "stat1": "On shift now",
-    "stat1h": "Shira has not clocked in",
-    "stat2": "Bookings tonight",
-    "stat2h": "46 guests",
     "week": "Pick a day",
     "openShift": "Open shift",
     "neutral": "Draft",
@@ -126,6 +122,7 @@
     "success": "Published",
     "warning": "Pending",
     "dangerB": "No-show",
+    "ambient": "A soft glow in the business's colour, at the top of a screen",
     "depth": "Depth",
     "heroLabel": "Your next shift",
     "heroTitle": "Morning, 09:00",
@@ -161,33 +158,13 @@
   "shell": {
     "metaTitle": "Layout demo",
     "nav": {
-      "home": "Home",
+      "home": "Today",
       "schedule": "Schedule",
       "reservations": "Bookings",
       "team": "Team",
       "more": "More"
     },
     "placeholderText": "In this demo it only shows that navigation works at every screen size.",
-    "home": {
-      "greeting": "Good morning, {name}",
-      "today": "Tuesday, 13 October · Morning shift",
-      "nextWeek": "Next week’s schedule",
-      "missingTitle": "{count, plural, one {One person has} other {# people have}} not sent availability for next week",
-      "missingText": "{names}. The window closes on Thursday at 12:00.",
-      "remind": "Send a reminder",
-      "onShift": "On shift now",
-      "notClockedInHint": "Shira has not clocked in",
-      "tonight": "Bookings tonight",
-      "covers": "{count} guests",
-      "availability": "Availability for next week",
-      "notSubmitted": "{count} not sent yet",
-      "openShifts": "Open shifts",
-      "openShiftsHint": "Mon and Wed mornings",
-      "clockedIn": "In <ltr>{time}</ltr>",
-      "notClockedIn": "Not clocked in",
-      "booking": "{party} guests · {table}",
-      "activity": "Recent activity"
-    },
     "schedule": {
       "title": "Staff schedule",
       "subtitle": "Week of 18–24 October · Draft, staff cannot see it yet",
@@ -285,7 +262,7 @@
     "loading": "Loading",
     "signOut": "Sign out",
     "nav": {
-      "home": "Home"
+      "home": "Today"
     },
     "roles": {
       "owner": "Owner",
@@ -297,25 +274,99 @@
       "body": "Your account works, but no business has added it yet. A manager at your business can send an invite to this number."
     },
     "home": {
-      "metaTitle": "Home",
-      "title": "Home",
-      "greeting": "Hello, {name}",
+      "metaTitle": "Today",
+      "title": "Today",
+      "greeting": "{part, select, morning {Good morning} noon {Good afternoon} evening {Good evening} other {Good night}}, {name}",
+      "eyebrow": "{date} · {business}",
       "empty": {
         "title": "Nothing here yet",
         "body": "No modules are on for this business yet. The ConceptApp team turns them on when setting up the business, and they appear here and in the menu."
       },
       "signOut": "Sign out",
       "modulesTitle": "In your business",
-      "manageTitle": "Running the business"
+      "manageTitle": "Running the business",
+      "hero": {
+        "next": "Your next shift",
+        "now": "Your shift now",
+        "businessNext": "The business's next shift",
+        "businessNow": "The business's shift now",
+        "title": "{name}, <ltr>{start}</ltr>",
+        "until": "until <ltr>{end}</ltr>",
+        "filled": "{count} of {needed} placed",
+        "with": "with {names}",
+        "others": "{count} more",
+        "when": {
+          "minutes": "In {count, plural, one {a minute} two {two minutes} other {# minutes}}",
+          "hours": "In {count, plural, one {an hour} two {two hours} other {# hours}}",
+          "tomorrow": "Tomorrow"
+        },
+        "myShifts": "My shifts",
+        "weekSchedule": "This week's schedule",
+        "build": "Build the schedule",
+        "sendAvailability": "Send availability",
+        "updateAvailability": "Update availability",
+        "notPublished": {
+          "title": "The schedule is not published yet",
+          "worker": "When the manager publishes it, your next shift appears here.",
+          "manager": "When the schedule is published, the next shift appears here. You can start building it now."
+        },
+        "noShifts": {
+          "title": "No shifts coming up for you",
+          "body": "The published schedule has no more shifts for you. If that looks wrong, talk to the manager."
+        },
+        "allDone": {
+          "title": "No more shifts in the published schedule",
+          "body": "Every published shift has ended. You can build next week's schedule."
+        }
+      },
+      "swap": {
+        "title": "{to} instead of {from}",
+        "subtitle": "{shift}, {day} {date} · for your approval"
+      },
+      "needs": {
+        "title": "Needs you",
+        "waiting": "What's waiting for you",
+        "calm": "All taken care of",
+        "gaps": "{count, plural, one {open place next week} other {open places next week}}",
+        "missing": "{count, plural, =0 {Everyone sent availability} one {has not sent availability} other {have not sent availability}}",
+        "swaps": "{count, plural, one {swap request waiting for approval} other {swap requests waiting for approval}}",
+        "offers": "{count, plural, one {shift you can take} other {shifts you can take}}",
+        "availability": {
+          "sent": {
+            "value": "Sent",
+            "label": "Your availability for next week"
+          },
+          "due": {
+            "value": "To send",
+            "label": "Your availability for next week, by {day} at <ltr>{time}</ltr>"
+          },
+          "late": {
+            "value": "To send",
+            "label": "Your availability for next week. The time has passed"
+          },
+          "closed": {
+            "value": "Not sent",
+            "label": "Your availability for next week. The schedule is already published"
+          }
+        }
+      },
+      "who": {
+        "title": "Working today",
+        "week": "The whole week",
+        "now": "Now",
+        "short": "{count, plural, one {One person short} other {# people short}}",
+        "noShifts": "No shifts today in the published schedule. The rest of the week is under “The whole week”.",
+        "notPublished": "This week's schedule is not published yet. When it is, you will see here who works today."
+      }
     },
     "moduleSoon": {
-      "body": "This screen opens in the next stage of the build. Everything else is on the home screen meanwhile.",
-      "home": "Back to home"
+      "body": "This screen opens in the next stage of the build. Everything else is on the Today screen meanwhile.",
+      "home": "Back to Today"
     },
     "notFound": {
       "title": "This screen isn't available",
-      "body": "It may be off for this business, or meant for another role. Everything available to you is on the home screen and in the menu.",
-      "home": "Back to home"
+      "body": "It may be off for this business, or meant for another role. Everything available to you is on the Today screen and in the menu.",
+      "home": "Back to Today"
     },
     "team": {
       "title": "Team",
@@ -714,8 +765,8 @@
     },
     "noAccess": {
       "title": "You don't have access to the console",
-      "body": "The console is for the ConceptApp team. If your business uses the app, everything of yours is on the home screen.",
-      "home": "Go to home"
+      "body": "The console is for the ConceptApp team. If your business uses the app, everything of yours is on the Today screen.",
+      "home": "Go to Today"
     },
     "businesses": {
       "metaTitle": "Businesses",

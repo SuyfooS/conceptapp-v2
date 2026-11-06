@@ -8,6 +8,11 @@ export function initialsOf(name: string): string {
     .join("");
 }
 
+/** The name someone is called by: the first word of their full name. */
+export function firstNameOf(name: string): string {
+  return name.trim().split(/\s+/)[0] ?? "";
+}
+
 /** A stable hue (0 to 359) for a person, so their avatar keeps its colour. */
 export function avatarHue(name: string): number {
   let hash = 0;

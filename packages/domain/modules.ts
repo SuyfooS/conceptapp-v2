@@ -62,7 +62,10 @@ export type ModuleManifest<
     /** Position among module items; lower comes first. */
     order: number;
   } | null;
-  /** A card on the home screen (`modules.<key>.widget`), linking to `nav.href`. */
+  /**
+   * The module's part of the Today screen. Until it has one of its own, one
+   * row linking to `nav.href`.
+   */
   homeWidget: { minRole: Role } | null;
   /** Permissions the module checks, with the lowest role that holds each by default. */
   permissions: readonly { key: `${string}.${string}`; defaultRole: Role }[];
@@ -143,7 +146,7 @@ export function moduleNav(
     .map(({ key, href, icon }) => ({ key, href, icon }));
 }
 
-/** Home cards for `role`, from the enabled modules, in nav order. */
+/** What the Today screen shows for `role`, from the enabled modules, in nav order. */
 export function moduleWidgets(
   manifests: readonly ModuleManifest[],
   enabled: readonly ModuleKey[],

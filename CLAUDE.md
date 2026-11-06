@@ -80,7 +80,7 @@ Only `app/` imports app code (`@/…`).
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
   Built so far: Button, IconButton, TextField, PhoneField, Card, ListRow and
-  ListGroup, Badge, Avatar and AvatarStack, Tile, Sheet, Spinner, Stat, WeekStrip,
+  ListGroup, Badge, Avatar and AvatarStack, Tile, Sheet, Spinner, Ambient, WeekStrip,
   AppShell, PageBody/PageHeader/PageSection.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
   wrapper. `accentTokens` returns a pair for light and for dark, and darkens or lifts

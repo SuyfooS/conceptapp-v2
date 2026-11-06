@@ -12,7 +12,8 @@ show, gate or configure the module comes from it:
   counts as off)
 - `nav`: href, icon name, lowest role that sees it, order. The label is
   `modules.<key>.name` in `messages/`; manifests hold no copy.
-- `homeWidget`: a home card for roles from `minRole` up
+- `homeWidget`: the module's part of the Today screen, for roles from `minRole`
+  up. Until it has a part of its own, as scheduling does, that is one quiet row
   (`modules.<key>.description` under the name)
 - `permissions` (e.g. `schedule.publish`) with the lowest role that holds
   each by default

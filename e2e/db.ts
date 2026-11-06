@@ -374,6 +374,56 @@ export async function scheduleDemoSunday(
   }
 }
 
+/**
+ * Put people on a morning shift today at the demo restaurant, in this week's
+ * schedule published to the team, through the database functions the app
+ * uses, as its manager. Phone numbers, each with a position key or null.
+ */
+export async function scheduleDemoToday(
+  people: [phone: string, position: string | null][],
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const ids = await sql<{ phone: string; id: string }[]>`
+      select phone, id::text from public.profiles
+      where phone in ${sql(people.map(([phone]) => phone))}`;
+    const [week] = await sql<{ id: string; today: string }[]>`
+      with business as (
+        select (now() at time zone b.timezone)::date as today,
+          coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+        from public.businesses b
+        join public.business_modules m
+          on m.business_id = b.id and m.module_key = 'scheduling'
+        where b.id = ${DEMO_RESTAURANT}
+      )
+      select public.open_schedule_week(${DEMO_RESTAURANT},
+          today - ((extract(dow from today)::int - starts_on + 7) % 7),
+          now() + interval '1 day')::text as id,
+        today::text as today
+      from business`;
+    if (!week) throw new Error("Could not open this week");
+    const shifts = [
+      {
+        day: week.today,
+        name: "בוקר",
+        start: "09:00",
+        end: "16:00",
+        needed: 3,
+        pattern: "morning",
+        assignees: people.map(([phone, position]) => ({
+          user: ids.find((row) => row.phone === phone)?.id,
+          position,
+        })),
+      },
+    ];
+    const manager = "00000000-0000-4000-a000-000000000002";
+    await sql`select public.publish_week_schedule(${manager}, ${week.id},
+      ${sql.json(shifts)})`;
+  } finally {
+    await sql.end();
+  }
+}
+
 export type SavedSwap = {
   status: string;
   from: string;

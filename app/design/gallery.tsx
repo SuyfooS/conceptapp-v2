@@ -2,6 +2,7 @@
 
 import { accentTokens } from "@domain/color";
 import { accentProps } from "@ui/accent";
+import { Ambient } from "@ui/ambient";
 import { Avatar, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -22,7 +23,6 @@ import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { ProgressRing } from "@ui/progress-ring";
 import { Sheet } from "@ui/sheet";
-import { Stat } from "@ui/stat";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
 import { WeekStrip } from "@ui/week-strip";
@@ -376,15 +376,6 @@ function GalleryBody({
           <Button asChild variant="secondary" className="w-full">
             <Link href="/design/shell">{t("layoutLink")}</Link>
           </Button>
-          <div className="grid grid-cols-2 gap-3">
-            <Stat
-              label={t("stat1")}
-              value="2/3"
-              hint={t("stat1h")}
-              tone="warning"
-            />
-            <Stat label={t("stat2")} value="14" hint={t("stat2h")} />
-          </div>
           <WeekStrip
             label={t("week")}
             value={day}
@@ -418,6 +409,12 @@ function GalleryBody({
                 {t("floatText")}
               </span>
             </Card>
+          </div>
+        </Section>
+
+        <Section title={t("ambient")}>
+          <div className="relative isolate h-24 overflow-hidden rounded-card">
+            <Ambient />
           </div>
         </Section>
 
