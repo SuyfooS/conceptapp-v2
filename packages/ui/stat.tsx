@@ -21,7 +21,7 @@ export function Stat({
   return (
     <div
       className={cn(
-        "flex flex-col gap-1 rounded-card border border-line bg-surface p-4",
+        "flex flex-col gap-1 rounded-card bg-surface p-4 shadow-card",
         className,
       )}
     >

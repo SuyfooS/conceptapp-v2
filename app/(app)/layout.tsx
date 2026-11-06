@@ -2,7 +2,7 @@ import { accentTokens } from "@domain/color";
 import { moduleNav } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
 import { manifests } from "@modules/registry";
-import { accentStyle } from "@ui/accent";
+import { accentProps } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -89,7 +89,7 @@ async function Shell({ children }: { children: ReactNode }) {
     member.name ?? (member.phone ? displayIsraeliMobile(member.phone) : "");
 
   return (
-    <div style={accentStyle(accentTokens(business.accent))}>
+    <div {...accentProps(accentTokens(business.accent))}>
       <AppShell
         businessName={business.name}
         user={{ name, role: t(`roles.${role}`) }}

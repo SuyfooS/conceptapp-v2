@@ -4,8 +4,8 @@ import { type ComponentProps, type ReactNode, useId } from "react";
 import { cn } from "./cn";
 
 export const fieldInputClass = cn(
-  "h-11 w-full rounded-control border border-line bg-surface px-3 text-base text-ink",
-  "transition-colors duration-150 ease-calm placeholder:text-ink-2",
+  "min-h-12 w-full rounded-control border border-edge bg-surface px-3.5 py-2 text-md text-ink",
+  "transition-colors duration-150 ease-calm placeholder:text-ink-3",
   "focus-visible:border-accent focus-visible:outline-2 focus-visible:outline-accent/25",
   "disabled:cursor-not-allowed disabled:bg-surface-2 disabled:text-ink-2",
   "aria-invalid:border-danger aria-invalid:focus-visible:outline-danger/25",

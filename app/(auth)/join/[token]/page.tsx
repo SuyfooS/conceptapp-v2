@@ -1,7 +1,7 @@
 import { findInvite, type Invite } from "@db/invites";
 import { accentTokens } from "@domain/color";
 import { phoneEnding } from "@domain/invites";
-import { accentStyle } from "@ui/accent";
+import { accentProps } from "@ui/accent";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { Spinner } from "@ui/spinner";
@@ -73,7 +73,7 @@ async function InviteCard({
   return (
     <div
       className="flex w-full justify-center"
-      style={accentStyle(accentTokens(invite.business.accent))}
+      {...accentProps(accentTokens(invite.business.accent))}
     >
       <Card tone="raised" padding="lg" className={card}>
         <h1 className="font-bold text-xl md:text-2xl">

@@ -1,9 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import {
+  type PointerEvent,
+  type ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { Avatar } from "./avatar";
 import { cn } from "./cn";
 
 export type NavItem = {
@@ -20,7 +27,7 @@ export type NavItem = {
 export type AppShellProps = {
   businessName: string;
   user: { name: string; role: string };
-  /** At most five items: the phone tab bar has room for five. */
+  /** At most five items: the tab bar has room for five. */
   nav: NavItem[];
   children: ReactNode;
 };
@@ -30,14 +37,17 @@ function isActive(pathname: string, item: NavItem) {
   return pathname === item.href || pathname.startsWith(`${item.href}/`);
 }
 
-function Count({ value }: { value?: number }) {
+function Count({ value, className }: { value?: number; className?: string }) {
   const t = useTranslations("ui.appShell");
   if (!value) return null;
   return (
     <>
       <span
         aria-hidden="true"
-        className="min-w-5 rounded-full bg-danger px-1.5 text-center font-bold text-[11px] text-white leading-5"
+        className={cn(
+          "min-w-[18px] rounded-full bg-danger px-1.5 text-center font-bold text-[11px] text-danger-ink leading-[18px]",
+          className,
+        )}
       >
         {value}
       </span>
@@ -47,15 +57,198 @@ function Count({ value }: { value?: number }) {
 }
 
 /**
- * The frame of the business app. One component, three layouts:
+ * The floating glass tab bar. A lens sits under the current tab and follows a
+ * finger dragged along the bar. Scrolling down shrinks the bar to the current
+ * tab, out of the content's way; scrolling up, or a tap, brings it back.
+ */
+function TabBar({ nav }: { nav: NavItem[] }) {
+  const pathname = usePathname();
+  const router = useRouter();
+  const t = useTranslations("ui.appShell");
+  const bar = useRef<HTMLUListElement>(null);
+  const [compact, setCompact] = useState(false);
+  const [drag, setDrag] = useState<number | null>(null);
+  const dragStart = useRef<number | null>(null);
+  const dragged = useRef(false);
+
+  const activeIndex = nav.findIndex((item) => isActive(pathname, item));
+  const lensIndex = drag ?? activeIndex;
+
+  // A new screen starts with the full bar.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is what triggers the reset
+  useEffect(() => {
+    setCompact(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    let last = window.scrollY;
+    function onScroll() {
+      const y = window.scrollY;
+      const delta = y - last;
+      if (Math.abs(delta) < 6) return;
+      if (delta > 0 && y > 40) setCompact(true);
+      if (delta < 0) setCompact(false);
+      last = y;
+    }
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  /** Which tab a pointer is over, as a fraction of a tab: 0 is the first tab. */
+  function positionAt(clientX: number) {
+    const rect = bar.current?.getBoundingClientRect();
+    if (!rect) return 0;
+    const rtl = getComputedStyle(bar.current as Element).direction === "rtl";
+    const offset = rtl ? rect.right - clientX : clientX - rect.left;
+    const at = (offset / rect.width) * nav.length - 0.5;
+    return Math.max(0, Math.min(nav.length - 1, at));
+  }
+
+  function onPointerDown(event: PointerEvent<HTMLUListElement>) {
+    if (compact) return;
+    dragStart.current = event.clientX;
+    dragged.current = false;
+  }
+
+  function onPointerMove(event: PointerEvent<HTMLUListElement>) {
+    if (dragStart.current === null) return;
+    if (!dragged.current && Math.abs(event.clientX - dragStart.current) < 8) {
+      return;
+    }
+    dragged.current = true;
+    bar.current?.setPointerCapture(event.pointerId);
+    setDrag(positionAt(event.clientX));
+  }
+
+  function onPointerUp(event: PointerEvent<HTMLUListElement>) {
+    dragStart.current = null;
+    if (!dragged.current) return;
+    const target = nav[Math.round(positionAt(event.clientX))];
+    setDrag(null);
+    if (target && target.href !== nav[activeIndex]?.href) {
+      router.push(target.href);
+    }
+  }
+
+  return (
+    <nav
+      aria-label={t("mainNav")}
+      className={cn(
+        "pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-30 flex xl:hidden",
+        "md:justify-center",
+      )}
+    >
+      <ul
+        ref={bar}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={() => {
+          dragStart.current = null;
+          setDrag(null);
+        }}
+        onClickCapture={(event) => {
+          // The end of a drag is not a tap on whatever is under the finger.
+          if (dragged.current) {
+            event.preventDefault();
+            event.stopPropagation();
+            dragged.current = false;
+            return;
+          }
+          if (compact) {
+            event.preventDefault();
+            event.stopPropagation();
+            setCompact(false);
+          }
+        }}
+        onFocus={() => setCompact(false)}
+        className={cn(
+          "glass pointer-events-auto relative flex h-16 select-none touch-pan-y rounded-full p-1",
+          "transition-[width] duration-500 ease-spring",
+          compact ? "w-16" : "w-full md:max-w-[480px]",
+        )}
+      >
+        {activeIndex >= 0 ? (
+          <span
+            aria-hidden="true"
+            className={cn(
+              "pointer-events-none absolute inset-y-1 rounded-full bg-[var(--glass-lens)]",
+              "shadow-[0_2px_10px_rgb(16_18_26/0.12),inset_0_0.5px_0_var(--glass-edge)]",
+              drag === null
+                ? "transition-[inset-inline-start,opacity,scale] duration-500 ease-spring"
+                : "scale-[1.06]",
+              compact && "opacity-0",
+            )}
+            style={{
+              width: `calc((100% - 8px) / ${nav.length})`,
+              insetInlineStart: `calc(4px + (100% - 8px) * ${lensIndex / nav.length})`,
+            }}
+          />
+        ) : null}
+        {nav.map((item) => {
+          const active = isActive(pathname, item);
+          return (
+            <li
+              key={item.href}
+              className={cn(
+                "relative z-10 min-w-0 flex-1 basis-0 transition-[flex-grow,opacity] duration-300",
+                compact && !active && "grow-0 overflow-hidden opacity-0",
+              )}
+            >
+              <Link
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                draggable={false}
+                tabIndex={compact && !active ? -1 : undefined}
+                className={cn(
+                  "flex h-full flex-col items-center justify-center gap-px rounded-full",
+                  "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",
+                  active ? "text-accent" : "text-ink",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "flex [&_svg]:size-6 [&_svg]:stroke-[1.8]",
+                    active &&
+                      "[&_svg]:fill-[color-mix(in_srgb,currentColor_24%,transparent)]",
+                  )}
+                >
+                  {item.icon}
+                </span>
+                <span
+                  className={cn(
+                    "text-[11px] leading-[14px]",
+                    active ? "font-bold" : "font-medium",
+                    compact && "sr-only",
+                  )}
+                >
+                  {item.label}
+                </span>
+                {item.count && !compact ? (
+                  <span className="absolute top-1 start-[calc(50%+6px)]">
+                    <Count value={item.count} />
+                  </span>
+                ) : null}
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+/**
+ * The frame of the business app. One component, two navigations:
  *
- * - phone (< 768px): bottom tab bar, one column, actions within thumb reach
- * - tablet (768–1279px): side rail with icon + label, two columns where useful
+ * - phone and tablet (< 1280px): a floating glass tab bar; one column on a
+ *   phone, two where useful on a tablet
  * - desktop (≥ 1280px): full sidebar with business and user, multi-column content
  *
- * All three navigations are rendered and CSS shows one, so there is no
- * flash or layout jump while the page loads. Items, labels, icons and order
- * are identical everywhere, so moving between devices needs no relearning.
+ * Both are rendered and CSS shows one, so there is no flash or layout jump
+ * while the page loads. Items, labels, icons and order are identical
+ * everywhere, so moving between devices needs no relearning.
  */
 export function AppShell({ businessName, user, nav, children }: AppShellProps) {
   const pathname = usePathname();
@@ -64,15 +257,15 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
   return (
     <div className="min-h-dvh bg-bg">
       {/* desktop: full sidebar */}
-      <aside className="fixed inset-y-0 start-0 z-20 hidden w-64 flex-col border-line border-e bg-surface xl:flex">
+      <aside className="fixed inset-y-3 start-3 z-20 hidden w-64 flex-col rounded-card bg-surface shadow-card xl:flex">
         <div className="flex items-center gap-3 px-5 py-5">
           <span
             aria-hidden="true"
-            className="flex size-9 items-center justify-center rounded-control bg-accent font-bold text-accent-ink"
+            className="flex size-10 items-center justify-center rounded-control bg-accent font-bold text-accent-ink"
           >
             {businessName.slice(0, 1)}
           </span>
-          <span className="truncate font-bold text-md">{businessName}</span>
+          <span className="min-w-0 font-bold text-md">{businessName}</span>
         </div>
         <nav
           aria-label={t("mainNav")}
@@ -86,16 +279,20 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex h-11 items-center gap-3 rounded-control px-3 font-medium transition-colors duration-150",
+                  "flex min-h-12 items-center gap-3 rounded-control px-3 font-medium transition-colors duration-150",
                   "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",
                   active
-                    ? "bg-accent-soft text-ink"
+                    ? "bg-surface-2 text-ink"
                     : "text-ink-2 hover:bg-surface-2 hover:text-ink",
                 )}
               >
                 <span
                   aria-hidden="true"
-                  className={cn("flex [&_svg]:size-5", active && "text-accent")}
+                  className={cn(
+                    "flex [&_svg]:size-5",
+                    active &&
+                      "text-accent [&_svg]:fill-[color-mix(in_srgb,currentColor_24%,transparent)]",
+                  )}
                 >
                   {item.icon}
                 </span>
@@ -105,125 +302,25 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
             );
           })}
         </nav>
-        <div className="flex items-center gap-3 border-line border-t px-5 py-4">
-          <span className="flex size-9 items-center justify-center rounded-full bg-surface-2 font-medium text-ink-2 text-sm">
-            {user.name.slice(0, 1)}
-          </span>
+        <div className="flex items-center gap-3 px-5 py-4">
+          <Avatar name={user.name} />
           <span className="flex min-w-0 flex-col">
-            <span className="truncate font-medium">{user.name}</span>
-            <span className="truncate text-ink-2 text-sm">{user.role}</span>
+            <span className="font-medium">{user.name}</span>
+            <span className="text-ink-2 text-sm">{user.role}</span>
           </span>
         </div>
       </aside>
 
-      {/* tablet: side rail */}
-      <nav
-        aria-label={t("mainNav")}
-        className="fixed inset-y-0 start-0 z-20 hidden w-22 flex-col items-center gap-1 border-line border-e bg-surface py-4 md:flex xl:hidden"
-      >
-        <span
-          aria-hidden="true"
-          className="mb-3 flex size-10 items-center justify-center rounded-control bg-accent font-bold text-accent-ink"
-        >
-          {businessName.slice(0, 1)}
-        </span>
-        {nav.map((item) => {
-          const active = isActive(pathname, item);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              aria-current={active ? "page" : undefined}
-              className={cn(
-                "relative flex w-18 flex-col items-center gap-1 rounded-control py-2 text-[12px] transition-colors duration-150",
-                "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",
-                active
-                  ? "text-ink"
-                  : "text-ink-2 hover:bg-surface-2 hover:text-ink",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex h-8 w-14 items-center justify-center rounded-full transition-colors duration-150",
-                  active && "bg-accent-soft",
-                )}
-              >
-                <span
-                  aria-hidden="true"
-                  className={cn("flex [&_svg]:size-5", active && "text-accent")}
-                >
-                  {item.icon}
-                </span>
-              </span>
-              <span className={cn(active && "font-medium")}>{item.label}</span>
-              {item.count ? (
-                <span className="absolute top-1 end-2">
-                  <Count value={item.count} />
-                </span>
-              ) : null}
-            </Link>
-          );
-        })}
-      </nav>
-
-      <div className="pb-[calc(4rem+env(safe-area-inset-bottom))] md:ps-22 md:pb-0 xl:ps-64">
+      <div className="pb-[calc(env(safe-area-inset-bottom)+6.5rem)] xl:ps-[17.5rem] xl:pb-0">
         {children}
       </div>
 
-      {/* phone: bottom tab bar */}
-      <nav
-        aria-label={t("mainNav")}
-        className="fixed inset-x-0 bottom-0 z-20 border-line border-t bg-surface pb-[env(safe-area-inset-bottom)] md:hidden"
-      >
-        <ul
-          className="grid h-16"
-          style={{
-            gridTemplateColumns: `repeat(${nav.length}, minmax(0, 1fr))`,
-          }}
-        >
-          {nav.map((item) => {
-            const active = isActive(pathname, item);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "relative flex h-full flex-col items-center justify-center gap-0.5 text-[12px]",
-                    "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",
-                    active ? "text-ink" : "text-ink-2",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "flex h-7 w-12 items-center justify-center rounded-full transition-colors duration-150",
-                      active && "bg-accent-soft",
-                    )}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className={cn(
-                        "flex [&_svg]:size-5",
-                        active && "text-accent",
-                      )}
-                    >
-                      {item.icon}
-                    </span>
-                  </span>
-                  <span className={cn(active && "font-medium")}>
-                    {item.label}
-                  </span>
-                  {item.count ? (
-                    <span className="absolute top-1.5 start-[calc(50%+0.6rem)]">
-                      <Count value={item.count} />
-                    </span>
-                  ) : null}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
+      <div
+        aria-hidden="true"
+        className="edge-fade-bottom pointer-events-none fixed inset-x-0 bottom-0 z-20 h-24 xl:hidden"
+      />
+
+      <TabBar nav={nav} />
     </div>
   );
 }

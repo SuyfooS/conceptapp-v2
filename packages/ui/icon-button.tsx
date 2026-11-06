@@ -4,16 +4,17 @@ import { cn } from "./cn";
 
 const iconButtonVariants = cva(
   [
-    "inline-flex size-11 shrink-0 items-center justify-center rounded-control",
-    "transition-colors duration-150 ease-calm",
+    "pressable inline-flex size-11 shrink-0 items-center justify-center rounded-full",
     "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
     "disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-5",
   ],
   {
     variants: {
       variant: {
-        ghost: "text-ink hover:bg-surface-2",
-        secondary: "border border-line bg-surface text-ink hover:bg-surface-2",
+        ghost: "text-ink hover:bg-surface-2 active:bg-surface-3",
+        secondary:
+          "bg-surface-2 text-ink hover:bg-surface-3 active:bg-surface-3",
+        glass: "glass text-ink",
       },
       /** Mirror the icon in RTL — for arrows and chevrons that mean "back" or "forward". */
       directional: {

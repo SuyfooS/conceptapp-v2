@@ -1,5 +1,5 @@
 import { displayIsraeliMobile } from "@domain/phone";
-import { brandStyle } from "@ui/accent";
+import { brandProps } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -75,7 +75,7 @@ async function Shell({ children }: { children: ReactNode }) {
     member.name ?? (member.phone ? displayIsraeliMobile(member.phone) : "");
 
   return (
-    <div style={brandStyle}>
+    <div {...brandProps}>
       <AppShell
         businessName={t("consoleName")}
         user={{ name, role: t(`roles.${role}`) }}

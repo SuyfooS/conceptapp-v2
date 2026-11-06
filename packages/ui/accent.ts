@@ -1,25 +1,31 @@
-import type { AccentTokens } from "@domain/color";
+import { type AccentTokens, accentTokens, BRAND } from "@domain/color";
 import type { CSSProperties } from "react";
 
 /**
- * Inline style that applies a business accent to everything inside an
- * element. Pair with `accentTokens()` from @domain/color, which guarantees
- * the colours are readable.
+ * Props that apply a business accent to everything inside an element, in light
+ * and in dark. Pair with `accentTokens()` from @domain/color, which guarantees
+ * the colours are readable. The [data-accent] rules in globals.css choose the
+ * pair for the current appearance.
  */
-export function accentStyle(
-  tokens: Pick<AccentTokens, "accent" | "accentInk">,
-): CSSProperties {
+export function accentProps(
+  tokens: Pick<
+    AccentTokens,
+    "accent" | "accentInk" | "accentDark" | "accentDarkInk"
+  >,
+) {
   return {
-    "--accent": tokens.accent,
-    "--accent-ink": tokens.accentInk,
-  } as CSSProperties;
+    "data-accent": "",
+    style: {
+      "--accent-light": tokens.accent,
+      "--accent-ink-light": tokens.accentInk,
+      "--accent-dark": tokens.accentDark,
+      "--accent-ink-dark": tokens.accentDarkInk,
+    } as CSSProperties,
+  };
 }
 
 /**
  * ConceptApp's own colour in the accent's place, for the admin console:
  * buttons, selected nav items and soft tints there use the brand.
  */
-export const brandStyle = {
-  "--accent": "var(--brand)",
-  "--accent-ink": "var(--brand-ink)",
-} as CSSProperties;
+export const brandProps = accentProps(accentTokens(BRAND));
