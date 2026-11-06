@@ -1,7 +1,7 @@
 # Agent brief — nightly runs
 
-Orel works on the app during the day. A Claude agent works on this repo every
-night. This file is the standing brief: read it, then `CLAUDE.md`, at the start
+Orel builds the app with the agent during the day, in live sessions. At night a
+run adds the finishing touches. This file is the standing brief: read it, then `CLAUDE.md`, at the start
 of every run. A run starts with no memory of earlier runs or conversations: all
 it knows is this repo and its GitHub issues.
 
@@ -10,8 +10,9 @@ it knows is this repo and its GitHub issues.
 - On 6 November 2026 Orel came back from a month away and cancelled the daily
   09:50 run. There is now one run a night at 02:00 Israel time: cron
   `CRON_TZ=Asia/Jerusalem 0 2 * * *`, task `ConceptApp agent — nightly run`.
-- The run does the work Orel left for it during the day. If he left nothing, it
-  guesses what he would want next (see "What to work on").
+- The building happens by day, with Orel (his decision, 6 November). The nightly
+  run does the work he left for it. If he left nothing, it guesses a finishing
+  touch, never a new feature (see "What to work on").
 - Before changing anything, a run saves the version it started from, so Orel
   can go back if he does not like the result (see "Restore point").
 - The agent merges to `main` on its own once every check passes. There are no
@@ -76,8 +77,10 @@ rules.
 - A change he asks for follows the nightly run's rules: branch `chat/<topic>`,
   prove it, pull request, merge after CI. Finish or close what you start in
   the same conversation; never leave an open branch for the nightly run.
-- The nightly run owns the backlog. Take the next chunk in chat only when Orel
-  asks, and log it so the nightly run moves on.
+- The backlog belongs to these day sessions: work through it with Orel, in order
+  unless he says otherwise, and log what you did. To get something done now without
+  waiting, open an issue with label `orel` that states the work and its limits, and
+  fire the scheduled task. Never fire it twice at once, or on work a session is doing.
 - **The nightly run cannot read conversations,** so write down what it will
   need. Do it as it comes up, because a conversation can stop at any time:
   whenever Orel decides something, says what he wants next or states a
@@ -119,18 +122,20 @@ one branch and pull request per item. Reply in each issue and close it when
 done. If something is unclear, take the likeliest meaning, say which in the
 reply and go on. Do not add guessed work on such a night.
 
-**Orel left nothing:** guess, and do one chunk: the smallest piece that ends in
-something demonstrable. Look in this order and stop at the first that answers:
+**Orel left nothing:** guess one finishing touch on what was built that day. Look
+in this order and stop at the first that answers:
 
 1. What Orel said: the newest `🤖 **משיחה:**` comments and his own comments on
    recent issues.
-2. The "Next" line of the newest entry in `docs/agent/LOG.md`.
-3. The backlog below, in order.
+2. What merged since the last run: something broken or unfinished in it, a missing
+   test, an empty or error state, wording, accessibility, a layout at 390, 820 or
+   1440.
+3. If nothing merged, the smallest item from "מה לא עובד היום" in `docs/ROADMAP.md`.
 
-Prefer continuing what is under way to starting a new direction, and keep it
-small enough for Orel to read in the morning and undo in one step. A guess adds:
-it does not rework what Orel changed in the last few days, and it never reaches
-anything on the "Never" list or a hosted database.
+Keep it small enough for Orel to read in the morning and undo in one step. A guess
+does not start a module, a new screen or a new table, does not rework what Orel
+changed in the last few days, and never reaches anything on the "Never" list or a
+hosted database.
 
 Leave alone every branch other than `agent/*` and Orel's open pull requests. If
 one of them touches the files you would change, choose other work and say so.

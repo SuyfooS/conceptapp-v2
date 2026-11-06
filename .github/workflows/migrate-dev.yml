@@ -1,0 +1,53 @@
+# Applies migrations to conceptapp-dev. Only by hand: Orel presses Run workflow,
+# and with "apply" off it shows what would run and changes nothing. See issue #8.
+name: Migrate conceptapp-dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: Apply the migrations. Off shows what would run and changes nothing.
+        type: boolean
+        default: false
+
+concurrency:
+  group: migrate-dev
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Link the project
+        run: pnpm exec supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: What the project has now
+        run: pnpm exec supabase migration list --linked
+
+      - name: What would run
+        run: pnpm exec supabase db push --linked --dry-run
+
+      - name: Apply
+        if: inputs.apply
+        run: pnpm exec supabase db push --linked
+
+      - name: What the project has after
+        if: inputs.apply
+        run: pnpm exec supabase migration list --linked

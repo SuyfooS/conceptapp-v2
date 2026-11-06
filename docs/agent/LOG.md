@@ -3,6 +3,22 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · building by day, finishing touches at night, a migration button
+
+- Orel: start working now and do not wait for the nights; the nights give the
+  final touches. So the backlog belongs to day sessions, and a run with nothing
+  left guesses a finishing touch on what merged, never a new module, screen or
+  table. The scheduled task's prompt says the same.
+- A day session can open an `orel` issue and fire the task to get work done at
+  once. First use: #37, swap approvals (2d-2b).
+- New `.github/workflows/migrate-dev.yml`, for issue #8: applies migrations to
+  `conceptapp-dev` only when Orel presses Run workflow, from `main`, and shows
+  the dry run first. It is not unattended, which is what the safety checks
+  refused on 14 October. Not run yet.
+- The steps for the hosted project are in `supabase/README.md`, partly from
+  memory and not tried yet.
+- Next: Orel checks the project is not paused and starts the dry run.
+
 ## 2026-11-06 · chat · roadmap, pilot scope, design rework plan
 
 - Orel asked for a roadmap and for a rework of the whole design in Apple's style. Nine read-only agents audited the code, tests, CI and design, and one tried to refute every gap. Result: `docs/ROADMAP.md` (Hebrew, for Orel) and `docs/design/apple-rework-plan.md` (a plan plus the critique that corrects it).

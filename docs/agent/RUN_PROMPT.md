@@ -12,8 +12,8 @@ This is the nightly run: nobody is awake, and Orel reads the result in the morni
    follow them exactly.
 2. Do tonight's run as the brief describes: catch up on issues and the log,
    sync main, save the restore point, do the work Orel left or, if he left
-   none, guess the next chunk, merge when CI passes, log it, add the note to
-   the "יומן הסוכן" issue, and check the schedule.
+   none, guess a finishing touch, merge when CI passes, log it, add the note
+   to the "יומן הסוכן" issue, and check the schedule.
 3. Write to Orel in Hebrew. Never wait for an answer; use the defaults.
 4. Stay in the run until CI has finished and the merge is done. Do not end your
    turn to wait for an event.

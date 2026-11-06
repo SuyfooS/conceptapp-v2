@@ -21,3 +21,29 @@ pnpm db:types
 
 `db:reset` re-applies every migration and the seed. `db:types` regenerates
 `packages/db/database.types.ts` after a schema change.
+
+## Hosted project
+
+Migrations reach `conceptapp-dev` only by hand, and never from a nightly run:
+
+1. If the project is paused, press Restore in the Supabase dashboard. A free project
+   pauses after a week without activity.
+2. GitHub, Actions, "Migrate conceptapp-dev", Run workflow, with "apply" off. This
+   lists what would run and changes nothing.
+3. Read the list, then run it again with "apply" on. The seed never runs here.
+
+The rest is set in the dashboards, because `config.toml` is never pushed. Names are
+from memory, so check them on screen:
+
+- Authentication: phone sign-in on, new signups off (`[auth] enable_signup = false`).
+  Accounts come from invites, through the admin API.
+- SMS: a real provider, or test numbers with fixed codes until one exists.
+- URL configuration: the site URL is the deployed address, not `127.0.0.1`.
+- Vercel: the three variables in `.env.example`, for Production and Preview.
+- The first platform admin: add a user by phone in Authentication, then in the SQL
+  editor:
+
+  ```sql
+  insert into public.platform_staff (user_id, role)
+  values ('<the user id>', 'platform_admin');
+  ```
