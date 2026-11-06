@@ -11,6 +11,11 @@ what is next, defaults applied.
 - Proof: pgTAP `profile_photos.test.sql` (20), 8 unit tests (349 in all), `pnpm check`, `pnpm build`, db lint. Storage itself is not in CI's database job, so I also ran the full local stack and checked the real Storage API with a script: GIF and 2MB+1 refused, upload into a colleague's folder refused, a colleague gets a signed link and a stranger or anonymous visitor does not, the signed link downloads (200), the public URL does not (400).
 - Defaults: "view as" does not see photos (the issue says active colleagues only), so it shows initials. `avatar_path` is written only by the server. A new photo gets a new random path, so old links stop working.
 - Next: the screens by day (a photo picker in the profile, `Avatar` showing the photo).
+## 2026-11-06 · chat · decisions, and migrations through the pooler
+
+- Orel decided: the restaurant has not agreed, and work continues without it. SMS waits, with test numbers until then. Lists move between departments, and branches wait. A share on WhatsApp button after publishing. The three scheduling rules stay. Six improvements approved (see the backlog).
+- The first dry runs failed: `project is paused`, then `IPv6 is not supported on your current network`, because GitHub's runners have no IPv6. The workflow now connects through the session pooler. Not proven until it runs.
+- 29 merged branches deleted, and GitHub now deletes merged branches. Restore points (`backup/*`) stay.
 
 ## 2026-11-06 · run 29 · time clock, database and logic (#41)
 
