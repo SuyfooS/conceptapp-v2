@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · run 29 · profile photos, database and server (#42)
+
+- Left by Orel: #42, the second item of the run. No screens; `packages/ui` (including the new `Avatar`) untouched.
+- Migration `profile_photos`: a private Storage bucket `avatars` (JPEG, PNG or WebP, up to 2MB, enforced by the bucket too), `profiles.avatar_path` with a check that it points into the person's own folder (`<user id>/<key>.<ext>`), and policies on `storage.objects`: only the person uploads, replaces and removes in their own folder; the person and active members of a business they are active in read. Other businesses, former colleagues and anonymous visitors read nothing; the public URL does not work.
+- `@domain/profile-photos`: the type is read from the file's first bytes and must match what the browser says; size, paths. `@db/profile-photos`: `setProfilePhoto` (check, upload, point the profile, remove the old photo), `removeProfilePhoto`, `profilePhotoUrls` (signed links for an hour, signed with the person's own session, so Storage refuses paths they may not read).
+- Proof: pgTAP `profile_photos.test.sql` (20), 8 unit tests (349 in all), `pnpm check`, `pnpm build`, db lint. Storage itself is not in CI's database job, so I also ran the full local stack and checked the real Storage API with a script: GIF and 2MB+1 refused, upload into a colleague's folder refused, a colleague gets a signed link and a stranger or anonymous visitor does not, the signed link downloads (200), the public URL does not (400).
+- Defaults: "view as" does not see photos (the issue says active colleagues only), so it shows initials. `avatar_path` is written only by the server. A new photo gets a new random path, so old links stop working.
+- Next: the screens by day (a photo picker in the profile, `Avatar` showing the photo).
+
 ## 2026-11-06 · run 29 · time clock, database and logic (#41)
 
 - Left by Orel: #41 and #42 (label `orel`, from chat), fired in the afternoon rather than at 02:00. This entry is #41; #42 (profile pictures) follows in its own pull request. No screens; tokens and `packages/ui` untouched.
@@ -11,6 +20,7 @@ what is next, defaults applied.
 - `@domain/time-clock`: minutes in an entry, the week's summary per day and in all, totals per person, who is at work now, rounding, and the refusals mapped for the screens. `@db/time-clock`: making and hashing codes, the five writes and `getTimeEntries`. Manifest setting `requirePunchCode`.
 - Proof: pgTAP `time_clock.test.sql` (48), `rls_enabled` lists the two tables, 20 unit tests (296 in all), `pnpm check`, `pnpm build`, `supabase db lint`, `pnpm test:db`, all against a local Supabase this time.
 - Defaults: a code is required to clock in and out (setting `requirePunchCode`, on for every business); managers' additions and corrections need none. Codes are issued by owners, managers and `clock.edit`, last two minutes, and the device shows a fresh one every 30 seconds. An entry counts on the day it started, so an evening past midnight stays on the evening. An inactive worker cannot clock out; a manager closes the entry. There is no delete of an entry yet.
+- Merged: `79abd7d` (PR #43).
 - Next: #42, then the clock screens by day, in the new design.
 
 ## 2026-11-06 · chat · design foundation
