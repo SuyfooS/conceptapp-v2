@@ -1,5 +1,8 @@
 # Kickoff — one-time setup of the autonomous agent
 
+Done on 12 October 2026 and kept for the record. Do not run it again: the
+schedule and the run prompt have since changed (see `docs/AGENT.md`).
+
 Orel starts a new Claude Code session with the repo `SuyfooS/conceptapp-v2`
 attached and sends one line:
 
