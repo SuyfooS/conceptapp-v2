@@ -373,3 +373,25 @@ export async function scheduleDemoSunday(
     await sql.end();
   }
 }
+
+export type SavedSwap = {
+  status: string;
+  from: string;
+  to: string | null;
+};
+
+/** The demo restaurant's shift swaps, oldest first, by phone number. */
+export async function demoSwaps(): Promise<SavedSwap[]> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    return await sql<SavedSwap[]>`
+      select w.status::text as status, r.phone as "from", t.phone as "to"
+      from public.shift_swaps w
+      join public.profiles r on r.id = w.requested_by
+      left join public.profiles t on t.id = w.taken_by
+      where w.business_id = ${DEMO_RESTAURANT}
+      order by w.created_at`;
+  } finally {
+    await sql.end();
+  }
+}

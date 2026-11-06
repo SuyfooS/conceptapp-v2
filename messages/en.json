@@ -598,6 +598,32 @@
         "next": "Next shift: {day}, {name} at <ltr>{time}</ltr>",
         "none": "You have no shifts in the published schedule",
         "notPublished": "The schedule is not published yet"
+      },
+      "swap": {
+        "buttons": {
+          "give": "Give away the shift",
+          "cancel": "Cancel the request",
+          "take": "Take the shift"
+        },
+        "failures": {
+          "noAccess": "You do not have access to this.",
+          "viewOnly": "Nothing can be changed while viewing as someone else.",
+          "started": "The shift has already started and cannot be passed on.",
+          "closed": "This request is no longer open. Try refreshing the screen.",
+          "busy": "You have another shift at the same time, or this shift is already yours.",
+          "already": "You already asked to give this shift away.",
+          "failed": "Something went wrong. Please try again."
+        },
+        "open": "You asked to give this shift away. Waiting for someone on the team to take it.",
+        "taken": "{name} is taking the shift. Waiting for the manager to approve.",
+        "offers": {
+          "title": "Shifts you can take",
+          "count": "{count, plural, one {One shift} other {# shifts}}",
+          "empty": "Nobody on the team is giving away a shift right now. When someone does, it shows here.",
+          "from": "{name} is giving the shift away",
+          "busy": "You have another shift at the same time.",
+          "takenByYou": "You took the shift. Waiting for the manager to approve."
+        }
       }
     }
   },

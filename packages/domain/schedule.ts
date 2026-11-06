@@ -358,10 +358,10 @@ export function positionCounts<P extends { key: string }>(
  * people in them, so a position removed from the settings does not make
  * the week impossible to save again. Everything else stays as it was.
  */
-export function withKnownPositions(
-  shifts: readonly ScheduledShift[],
+export function withKnownPositions<S extends ScheduledShift>(
+  shifts: readonly S[],
   positionKeys: readonly string[],
-): ScheduledShift[] {
+): S[] {
   const known = new Set(positionKeys);
   return shifts.map((shift) => ({
     ...shift,
