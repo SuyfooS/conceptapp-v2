@@ -137,6 +137,8 @@ function TabBar({ nav }: { nav: NavItem[] }) {
   return (
     <nav
       aria-label={t("mainNav")}
+      // Lets a floating action share the row while the bar is small.
+      data-compact={compact || undefined}
       className={cn(
         "pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-30 flex xl:hidden",
         "md:justify-center",

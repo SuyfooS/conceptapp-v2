@@ -14,5 +14,5 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function TeamAvailabilityPage() {
   const data = await currentTeamAvailability();
   if (!data) notFound();
-  return <TeamAvailabilityView data={data} />;
+  return <TeamAvailabilityView data={data} backHref="/schedule" />;
 }

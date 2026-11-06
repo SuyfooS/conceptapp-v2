@@ -16,6 +16,7 @@ const ta = he.app.availability;
 const tt = ta.team;
 // The text of a message up to its first placeholder or tag.
 const before = (message: string) => message.split(/[<{]/)[0] ?? message;
+const callYoav = tt.call.replace("{name}", YOAV.name);
 // Any form of an ICU plural message, with # as a number.
 const plural = (message: string) =>
   new RegExp(
@@ -62,6 +63,14 @@ test("a manager sees who has not sent availability", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: tt.title }),
   ).toBeVisible();
+  // The hero counts the answers on every device.
+  await expect(
+    page.getByText(
+      new RegExp(
+        tt.progress.replace("{sent}", "\\d+").replace("{total}", "\\d+"),
+      ),
+    ),
+  ).toBeVisible();
 
   const desktop = (page.viewportSize()?.width ?? 0) >= 1280;
   if (desktop) {
@@ -69,6 +78,10 @@ test("a manager sees who has not sent availability", async ({
     const table = page.getByRole("table", { name: tt.everyone });
     const yoav = table.getByRole("row", { name: new RegExp(YOAV.name) });
     await expect(yoav).toContainText(tt.notSent);
+    await expect(yoav.getByRole("link", { name: callYoav })).toHaveAttribute(
+      "href",
+      `tel:${YOAV.e164}`,
+    );
     const noa = table.getByRole("row", { name: new RegExp(NOA.name) });
     await expect(noa).toContainText(before(tt.sentAt));
     await expect(noa).toContainText("09:00–17:00");
@@ -79,6 +92,10 @@ test("a manager sees who has not sent availability", async ({
     const sent = page.getByRole("list", { name: tt.sent.title });
     await expect(missing).toContainText(YOAV.name);
     await expect(missing).not.toContainText(NOA.name);
+    await expect(missing.getByRole("link", { name: callYoav })).toHaveAttribute(
+      "href",
+      `tel:${YOAV.e164}`,
+    );
     // Owners plan the schedule; they are not waited for.
     await expect(missing).not.toContainText(OWNER_NAME);
     const noa = sent.getByRole("listitem").filter({ hasText: NOA.name });

@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   dayMonth,
+  dayProblems,
   fridayOf,
   parseAvailabilityForm,
   type ShabbatLimits,
   shabbatConflict,
   shabbatLimits,
+  suggestedRange,
 } from "./availability-form";
 import { ISRAEL_TIME_ZONE, ISRAELI_CITIES, shabbatTimes } from "./shabbat";
 
@@ -165,6 +167,157 @@ describe("parseAvailabilityForm", () => {
       ok: false,
       errors: { ranges: { 0: "time" } },
     });
+  });
+});
+
+describe("dayProblems", () => {
+  const check = (
+    ranges: { start: string; end: string }[],
+    day: string,
+    limits: ShabbatLimits | null = LIMITS,
+  ) => dayProblems(ranges, day, WEEK, limits);
+
+  it("finds nothing on a day with no hours, or with fine ones", () => {
+    expect(check([], "2026-11-02")).toEqual({});
+    expect(
+      check(
+        [
+          { start: "09:00", end: "12:00" },
+          { start: "18:00", end: "23:00" },
+        ],
+        "2026-11-02",
+      ),
+    ).toEqual({});
+  });
+
+  it("names each problem by its index", () => {
+    expect(
+      check(
+        [
+          { start: "", end: "12:00" },
+          { start: "12:00", end: "12:00" },
+        ],
+        "2026-11-02",
+      ),
+    ).toEqual({ 0: "time", 1: "same" });
+  });
+
+  it("marks the later of two overlapping ranges", () => {
+    expect(
+      check(
+        [
+          { start: "09:00", end: "17:00" },
+          { start: "16:00", end: "20:00" },
+        ],
+        "2026-11-02",
+      ),
+    ).toEqual({ 1: "overlap" });
+  });
+
+  it("holds Friday and Saturday to Shabbat's limits", () => {
+    expect(check([{ start: "08:00", end: "23:00" }], LIMITS.friday)).toEqual({
+      0: "friday",
+    });
+    expect(check([{ start: "12:00", end: "14:00" }], LIMITS.saturday)).toEqual({
+      0: "saturday",
+    });
+  });
+
+  it("lets a business open on Shabbat use those hours", () => {
+    expect(
+      check([{ start: "08:00", end: "23:00" }], LIMITS.friday, null),
+    ).toEqual({});
+  });
+
+  it("finds what the whole form finds when only this day has hours", () => {
+    const hours = [
+      { start: "12:00", end: "18:00" },
+      { start: "17:00", end: "20:00" },
+    ];
+    const whole = parseAvailabilityForm(
+      {
+        ranges: hours.map((range) => ({ day: LIMITS.friday, ...range })),
+        note: "",
+      },
+      WEEK,
+      LIMITS,
+    );
+    expect(whole).toEqual({
+      ok: false,
+      errors: { ranges: check(hours, LIMITS.friday) },
+    });
+  });
+
+  it("finds an overlap that a problem on another day hides from the form", () => {
+    const monday = [
+      { start: "09:00", end: "13:00" },
+      { start: "12:00", end: "17:00" },
+    ];
+    const whole = parseAvailabilityForm(
+      {
+        ranges: [
+          ...monday.map((range) => ({ day: "2026-11-02", ...range })),
+          { day: LIMITS.friday, start: "08:00", end: "23:00" },
+        ],
+        note: "",
+      },
+      WEEK,
+      LIMITS,
+    );
+    expect(whole).toEqual({ ok: false, errors: { ranges: { 2: "friday" } } });
+    expect(check(monday, "2026-11-02")).toEqual({ 1: "overlap" });
+  });
+});
+
+describe("suggestedRange", () => {
+  it("offers the usual day, then the usual evening", () => {
+    expect(suggestedRange("2026-11-01", false, LIMITS)).toEqual({
+      start: "09:00",
+      end: "17:00",
+    });
+    expect(suggestedRange("2026-11-01", true, LIMITS)).toEqual({
+      start: "18:00",
+      end: "23:00",
+    });
+  });
+
+  it("ends Friday at 15:00, or at candle lighting when that is earlier", () => {
+    expect(suggestedRange(LIMITS.friday, false, LIMITS)).toEqual({
+      start: "08:00",
+      end: "15:00",
+    });
+    expect(
+      suggestedRange(LIMITS.friday, false, {
+        ...LIMITS,
+        candleLighting: "14:40",
+      }),
+    ).toEqual({ start: "08:00", end: "14:40" });
+  });
+
+  it("starts Saturday at havdalah", () => {
+    expect(suggestedRange(LIMITS.saturday, false, LIMITS)).toEqual({
+      start: "17:24",
+      end: "23:30",
+    });
+  });
+
+  it("treats Friday and Saturday as any day when open on Shabbat", () => {
+    expect(suggestedRange(LIMITS.friday, false, null)).toEqual({
+      start: "09:00",
+      end: "17:00",
+    });
+    expect(suggestedRange(LIMITS.saturday, true, null)).toEqual({
+      start: "18:00",
+      end: "23:00",
+    });
+  });
+
+  it("suggests hours that pass the day's own checks", () => {
+    for (const day of [LIMITS.friday, LIMITS.saturday, "2026-11-03"]) {
+      expect(
+        dayProblems([suggestedRange(day, false, LIMITS)], day, WEEK, LIMITS),
+      ).toEqual({});
+    }
   });
 });
 

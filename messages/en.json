@@ -460,7 +460,7 @@
     "availability": {
       "title": "Availability for next week",
       "subtitle": "The week of {from}–{to}",
-      "intro": "Mark the hours you can be scheduled each day. A day without hours is a day you are not available.",
+      "intro": "Mark when you can be scheduled each day.",
       "weekdays": {
         "sun": "Sunday",
         "mon": "Monday",
@@ -471,10 +471,26 @@
         "sat": "Saturday"
       },
       "day": "{day}, {date}",
-      "due": "Send by {day}, {date} at <ltr>{time}</ltr>.",
-      "late": "It was due {day}, {date} at <ltr>{time}</ltr>. You can still send it; your manager sees when it came in.",
-      "sent": "Your answer was saved on {date} at <ltr>{time}</ltr>. You can change it and send again.",
-      "noHours": "No hours this day",
+      "dayName": "{day}",
+      "hero": {
+        "sendBy": "Send by {date}",
+        "duePassed": "It was due on {date}",
+        "when": "{day}, <ltr>{time}</ltr>",
+        "notSent": "Not sent yet",
+        "sent": "Sent",
+        "stillCan": "You can still send it; your manager sees when it came in."
+      },
+      "sent": "Saved on {date} at <ltr>{time}</ltr>. You can change it and send again.",
+      "noHours": "No hours",
+      "dayProblem": "Some hours need fixing",
+      "candleLightingShort": "Shabbat starts <ltr>{time}</ltr>",
+      "havdalahShort": "Shabbat ends <ltr>{time}</ltr>",
+      "sheet": {
+        "close": "Close without saving",
+        "done": "Done",
+        "removed": "Removed <ltr>{from}–{to}</ltr>.",
+        "undo": "Undo"
+      },
       "addRange": "Add hours",
       "removeRange": "Remove {from}–{to}",
       "start": "From",
@@ -483,8 +499,9 @@
       "havdalah": "Shabbat ends at <ltr>{time}</ltr>. You can mark hours from then.",
       "note": "Note for your manager",
       "noteHint": "Optional. For example: an exam on Tuesday morning.",
-      "summary": "{count, plural, =0 {You have not marked any hours. Sending without hours means you are not available this week.} one {You marked hours on one day.} other {You marked hours on # days.}}",
+      "summary": "{count, plural, =0 {You have not marked any hours. Sending without hours means you are not available this week.} =7 {You marked hours on every day.} one {You marked hours on one day. You are not available on the other days.} other {You marked hours on # days. You are not available on the other days.}}",
       "submit": "Send availability",
+      "submitDays": "{count, plural, =0 {no hours} one {one day} other {# days}}",
       "saved": "Availability saved.",
       "fix": "Some hours need fixing. They are marked in red.",
       "errors": {
@@ -517,6 +534,11 @@
       "team": {
         "title": "Team availability",
         "due": "Due {day}, {date} at <ltr>{time}</ltr>.",
+        "heroLabel": "Answers for next week",
+        "progress": "{sent} of {total} sent",
+        "noTeam": "No staff on the team yet",
+        "noTeamHint": "Invite them on the Team screen, then see here who sent and who did not.",
+        "call": "Call {name}",
         "missing": {
           "title": "Not sent yet",
           "count": "{count, plural, one {One answer missing} other {# answers missing}}",
