@@ -17,6 +17,8 @@ const SCANNED = ["app", "packages/ui", "modules"];
 
 /** Files allowed to hold Hebrew, each with the reason. */
 export const ALLOWED: Record<string, string> = {
+  "app/design/shell/clock/team/data.ts":
+    "mock rows for the clock demo; stands in for database data, not UI copy",
   "app/design/shell/data.ts":
     "mock rows for the layout demo; stands in for database data, not UI copy",
   "app/design/console/data.ts":

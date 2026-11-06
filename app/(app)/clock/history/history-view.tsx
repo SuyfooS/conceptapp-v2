@@ -1,14 +1,13 @@
-import { addMonths, formatHours, type ShiftRecord } from "@domain/time-clock";
+import type { ShiftRecord } from "@domain/time-clock";
 import { Button } from "@ui/button";
-import { Card } from "@ui/card";
 import { EmptyState } from "@ui/empty-state";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { ChevronLeft, ChevronRight, History } from "lucide-react";
+import { History } from "lucide-react";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { useTranslations } from "next-intl";
 import type { ClockPaths } from "../clock-types";
+import { MonthHero } from "../month-hero";
 import { ShiftList } from "../shift-list";
 
 export type HistoryData = {
@@ -29,16 +28,6 @@ export function HistoryView({
   paths: ClockPaths;
 }) {
   const t = useTranslations("app.clock.history");
-  const format = useFormatter();
-  const monthName = (month: string) =>
-    format.dateTime(new Date(`${month}-15T12:00:00Z`), {
-      month: "long",
-      year: "numeric",
-      timeZone: "UTC",
-    });
-  const monthHref = (month: string) => `${paths.history}?month=${month}`;
-  const earlier = addMonths(data.month, -1);
-  const later = addMonths(data.month, 1);
 
   return (
     <PageBody className={pageGlowClass}>
@@ -48,37 +37,14 @@ export function HistoryView({
       />
 
       <div className="flex flex-col md:mx-auto md:w-full md:max-w-2xl xl:max-w-none">
-        <Card
-          tone="hero"
-          padding="lg"
-          className={data.records.length > 0 ? "pb-[76px]" : undefined}
-        >
-          <div className="flex items-center justify-between gap-2">
-            <MonthLink
-              href={monthHref(earlier)}
-              label={t("earlier", { month: monthName(earlier) })}
-              icon={<ChevronRight className="size-5 ltr:-scale-x-100" />}
-            />
-            <h2 className="font-semibold text-md">{monthName(data.month)}</h2>
-            {data.month < data.currentMonth ? (
-              <MonthLink
-                href={monthHref(later)}
-                label={t("later", { month: monthName(later) })}
-                icon={<ChevronLeft className="size-5 ltr:-scale-x-100" />}
-              />
-            ) : (
-              <span className="size-11" />
-            )}
-          </div>
-          <p className="mt-2 text-center">
-            <span dir="ltr" className="block font-bold text-2xl tabular-nums">
-              {formatHours(data.minutes)}
-            </span>
-            <span className="text-base">
-              {t("total", { count: data.records.length })}
-            </span>
-          </p>
-        </Card>
+        <MonthHero
+          month={data.month}
+          currentMonth={data.currentMonth}
+          hrefFor={(month) => `${paths.history}?month=${month}`}
+          minutes={data.minutes}
+          caption={t("total", { count: data.records.length })}
+          overlap={data.records.length > 0}
+        />
 
         {data.records.length > 0 ? (
           <ShiftList
@@ -100,26 +66,5 @@ export function HistoryView({
         )}
       </div>
     </PageBody>
-  );
-}
-
-function MonthLink({
-  href,
-  label,
-  icon,
-}: {
-  href: string;
-  label: string;
-  icon: ReactNode;
-}) {
-  return (
-    <Link
-      href={href}
-      aria-label={label}
-      title={label}
-      className="pressable grid size-11 shrink-0 place-items-center rounded-full bg-accent-press focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2"
-    >
-      {icon}
-    </Link>
   );
 }

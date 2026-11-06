@@ -3,6 +3,21 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · the passive door
+
+- Orel put real sign-in and its security off, and asked for a "passive login" until then. My reading: `/enter` offers three fictional people of a demo restaurant, one press and no code (#51). `PASSIVE_SIGN_IN` in `@domain/passive-sign-in` goes false before real people use the project.
+- The door reaches only those people, row-level security is unchanged, and the console isn't on offer. Anyone with the address can change the demo restaurant, and the screen says so.
+- `supabase/hosted-demo.sql` adds the restaurant, from the "demo" box of the migration workflow. #49, which asked Orel for test numbers, is closed.
+- Inviting a real person still needs a phone code, so it won't work on the hosted project until real sign-in arrives.
+
+## 2026-11-06 · chat · team hours
+
+- `/clock/team`: what needs fixing, who is at work now, and everyone's hours in a month. `/clock/team/[person]`: one person's shifts, with fixing a shift and adding a forgotten one, by owners and managers. No migration: it uses `correct_time_entry` and `add_time_entry`, which were already there.
+- Today's clock row tells a manager when a shift needs fixing. This closes the hole where someone who forgot to leave stayed stuck.
+- Migration `20261107000400_clock_corrections`: a correction can't reopen a shift that ended, and a shift that moves whole takes its breaks along.
+- Not in it yet: deleting a shift entered by mistake, editing a break's times, and holders of `clock.edit` who aren't managers, which waits for roles and permissions.
+- Known, left: someone who left shows as "no name" here, because RLS hides former members' profiles. Nothing can make a member inactive yet, so it belongs with "remove a person". Editing a shift that ended in the repeated hour of the autumn clock change can add an hour: one hour a year, not worth the extra state now.
+
 ## 2026-11-06 · chat · the clock
 
 - Orel's spec: clocking in and out through a big circle, this month's and last month's hours under it, a shift history, and a break that in some businesses comes off the hours by a business setting.

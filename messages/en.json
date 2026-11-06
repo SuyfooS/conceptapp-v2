@@ -917,7 +917,8 @@
         "times": "These hours clash with another shift. A manager can fix it.",
         "noAccess": "You don't have access to this business's clock.",
         "viewOnly": "In view mode you can't clock in or out.",
-        "failed": "That didn't go through. Check your connection and try again."
+        "failed": "That didn't go through. Check your connection and try again.",
+        "needsEnd": "An end time is needed too."
       },
       "settings": {
         "row": "Breaks",
@@ -952,17 +953,83 @@
           "in": "In",
           "out": "Out",
           "break": "Break",
-          "hours": "Hours"
+          "hours": "Hours",
+          "fix": "Fix"
         },
         "empty": {
           "title": "No shifts this month",
           "body": "When you clock in with the circle on the clock, the shift shows up here with its hours.",
           "action": "Go to the clock"
-        }
+        },
+        "needsFix": "Needs fixing",
+        "fix": "Fix",
+        "fixShift": "Fix the shift of {day}"
       },
       "todayLine": {
         "working": "On shift since <ltr>{time}</ltr>",
         "break": "On a break since <ltr>{time}</ltr>"
+      },
+      "team": {
+        "title": "Team hours",
+        "back": "Clock",
+        "atWork": {
+          "title": "At work now",
+          "empty": "Nobody is clocked in right now.",
+          "since": "Since <ltr>{time}</ltr>",
+          "onBreak": "On a break",
+          "count": "{count, plural, =0 {Nobody at work now} one {One person at work now} other {# people at work now}}"
+        },
+        "overdue": {
+          "title": "{count, plural, one {One shift needs fixing} other {# shifts need fixing}}",
+          "body": "Someone who hasn't clocked out for over 24 hours can't do it themselves. Press to open their shifts.",
+          "row": "Came in on {day}, <ltr>{time}</ltr>"
+        },
+        "caption": "hours, {count, plural, =0 {no shifts} one {one shift} other {# shifts}}",
+        "shifts": "{count, plural, =0 {No shifts} one {One shift} other {# shifts}}",
+        "former": "No longer on the team",
+        "noName": "No name",
+        "noPeople": "There's nobody on the team yet. Their hours will show up here once they join.",
+        "columns": {
+          "name": "Name",
+          "shifts": "Shifts",
+          "breaks": "Breaks",
+          "hours": "Hours"
+        },
+        "breakMinutes": "{minutes} min",
+        "noBreak": "No break",
+        "person": {
+          "add": "Add a shift",
+          "emptyTitle": "No shifts this month",
+          "emptyBody": "If someone forgot to clock in, you can add the shift here."
+        },
+        "sheet": {
+          "addTitle": "Add a shift",
+          "addSubtitle": "For someone who forgot to clock in. It's marked as recorded by a manager.",
+          "editTitle": "Fix a shift",
+          "editSubtitle": "The earlier times stay in the activity log.",
+          "date": "Date",
+          "in": "In",
+          "out": "Out",
+          "openHint": "If the person is still on shift, leave the end empty.",
+          "nextDayHint": "An end before the start counts as the next day.",
+          "saveEdit": "Save the hours",
+          "saveAdd": "Add the shift",
+          "close": "Close"
+        },
+        "failure": {
+          "invalid": "A valid date and start time are needed.",
+          "needsEnd": "An end time is needed too.",
+          "future": "Hours that haven't happened yet can't be recorded.",
+          "times": "These hours overlap another shift or run over 24 hours.",
+          "noAccess": "You don't have permission to change hours in this business.",
+          "viewOnly": "In view mode you can't change hours.",
+          "failed": "The hours weren't saved. Check your connection and try again.",
+          "sameTime": "The end is the same as the start. Check the times."
+        },
+        "done": {
+          "edit": "Hours saved",
+          "add": "Shift added"
+        }
       }
     }
   },

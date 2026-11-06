@@ -15,8 +15,10 @@ import {
   monthRange,
   monthRecords,
   openEntryOf,
+  parseEntryTimes,
   roundMinutes,
   type TimeEntry,
+  teamMonth,
   timeEntry,
   undoableEntry,
   weekSummary,
@@ -174,15 +176,30 @@ describe("atWorkNow", () => {
         now,
       ),
     ).toEqual([
-      { userId: "early", since: "2026-11-10T06:00:00Z", minutes: 240 },
-      { userId: "late", since: "2026-11-10T09:00:00Z", minutes: 60 },
+      {
+        userId: "early",
+        since: "2026-11-10T06:00:00Z",
+        minutes: 240,
+        onBreak: false,
+      },
+      {
+        userId: "late",
+        since: "2026-11-10T09:00:00Z",
+        minutes: 60,
+        onBreak: false,
+      },
     ]);
   });
 
   it("includes a night shift that started yesterday", () => {
     const night = entry("night", "2026-11-09T20:00:00Z", null);
     expect(atWorkNow([night], new Date("2026-11-10T01:00:00Z"))).toEqual([
-      { userId: "night", since: "2026-11-09T20:00:00Z", minutes: 300 },
+      {
+        userId: "night",
+        since: "2026-11-09T20:00:00Z",
+        minutes: 300,
+        onBreak: false,
+      },
     ]);
   });
 
@@ -394,6 +411,132 @@ describe("months", () => {
   });
 });
 
+describe("the manager's view", () => {
+  const now = new Date("2026-11-20T12:00:00Z");
+  const row = (
+    id: string,
+    userId: string,
+    clockIn: string,
+    clockOut: string | null,
+    breaks: TimeEntry["breaks"] = [],
+  ): TimeEntry => ({
+    id: `68000000-0000-4000-a000-00000000000${id}`,
+    userId,
+    clockIn,
+    clockOut,
+    source: "punch",
+    breaks,
+  });
+  const pause = {
+    id: "68000000-0000-4000-a000-000000000009",
+    startedAt: "2026-11-20T11:00:00Z",
+    endedAt: null,
+    unpaid: true,
+  };
+
+  it("tells who is on a break", () => {
+    expect(
+      atWorkNow([row("1", "u1", "2026-11-20T08:00:00Z", null, [pause])], now),
+    ).toMatchObject([{ userId: "u1", onBreak: true }]);
+  });
+
+  it("adds up each person's month, leaving out other months", () => {
+    const month = teamMonth(
+      [
+        row("1", "u1", "2026-11-10T06:00:00Z", "2026-11-10T08:00:00Z"),
+        row("2", "u1", "2026-11-11T06:00:00Z", "2026-11-11T07:00:00Z"),
+        row("3", "u2", "2026-11-12T06:00:00Z", "2026-11-12T06:30:00Z"),
+        row("4", "u3", "2026-10-12T06:00:00Z", "2026-10-12T06:30:00Z"),
+      ],
+      "2026-11",
+      TZ,
+      now,
+    );
+    expect(Object.fromEntries(month)).toEqual({
+      u1: { minutes: 180, shifts: 2, breakMinutes: 0 },
+      u2: { minutes: 30, shifts: 1, breakMinutes: 0 },
+    });
+  });
+
+  it("flags an entry left open too long in the history", () => {
+    const [record] = monthRecords(
+      [row("1", "u1", "2026-11-18T06:00:00Z", null)],
+      "2026-11",
+      TZ,
+      now,
+    );
+    expect(record).toMatchObject({ overdue: true, minutes: 24 * 60 });
+  });
+});
+
+describe("parseEntryTimes", () => {
+  const now = new Date("2026-11-20T12:00:00Z");
+  const parse = (
+    date: string,
+    start: string,
+    out: string,
+    endRequired = true,
+  ) => parseEntryTimes({ date, in: start, out }, TZ, now, { endRequired });
+
+  it("reads the times in the business's time zone", () => {
+    expect(parse("2026-11-10", "08:00", "16:00")).toEqual({
+      ok: true,
+      clockIn: "2026-11-10T06:00:00.000Z",
+      clockOut: "2026-11-10T14:00:00.000Z",
+    });
+  });
+
+  it("puts an end before the start on the next day", () => {
+    expect(parse("2026-11-10", "20:00", "02:00")).toMatchObject({
+      clockOut: "2026-11-11T00:00:00.000Z",
+    });
+  });
+
+  it("asks for an end only where one is needed", () => {
+    expect(parse("2026-11-10", "08:00", "")).toEqual({
+      ok: false,
+      problem: "needsEnd",
+    });
+    expect(parse("2026-11-20", "08:00", "", false)).toMatchObject({
+      ok: true,
+      clockOut: null,
+    });
+  });
+
+  it("refuses an end equal to the start, rather than 24 hours", () => {
+    expect(parse("2026-11-10", "08:00", "08:00")).toEqual({
+      ok: false,
+      problem: "sameTime",
+    });
+  });
+
+  it("refuses times that have not happened yet", () => {
+    expect(parse("2026-11-20", "16:00", "18:00")).toEqual({
+      ok: false,
+      problem: "future",
+    });
+    expect(parse("2026-11-20", "08:00", "18:00")).toEqual({
+      ok: false,
+      problem: "future",
+    });
+  });
+
+  it("refuses what is not a date and times", () => {
+    expect(parse("not-a-date", "08:00", "16:00")).toEqual({
+      ok: false,
+      problem: "invalid",
+    });
+    expect(parse("2026-11-10", "25:00", "16:00")).toEqual({
+      ok: false,
+      problem: "invalid",
+    });
+    expect(parseEntryTimes(null, TZ, now, { endRequired: true })).toEqual({
+      ok: false,
+      problem: "invalid",
+    });
+  });
+});
+
 describe("undoableEntry", () => {
   const row = (clockOut: string | null) => ({
     clockOut,
@@ -441,5 +584,8 @@ describe("clockFailureOf, for breaks", () => {
     );
     expect(clockFailureOf("55000", "Not on a break")).toBe("notOnBreak");
     expect(clockFailureOf("55000", "Too late to take it back")).toBe("tooLate");
+    expect(clockFailureOf("22023", "An entry that ended needs an end")).toBe(
+      "needsEnd",
+    );
   });
 });

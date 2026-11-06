@@ -15,6 +15,7 @@ export const demoRecords: ShiftRecord[] = [
     minutes: 456,
     breakMinutes: 30,
     byManager: false,
+    overdue: false,
   },
   {
     id: "68000000-0000-4000-a000-000000000012",
@@ -24,6 +25,7 @@ export const demoRecords: ShiftRecord[] = [
     minutes: 462,
     breakMinutes: 0,
     byManager: false,
+    overdue: false,
   },
   {
     id: "68000000-0000-4000-a000-000000000013",
@@ -33,6 +35,7 @@ export const demoRecords: ShiftRecord[] = [
     minutes: 450,
     breakMinutes: 30,
     byManager: true,
+    overdue: false,
   },
   {
     id: "68000000-0000-4000-a000-000000000014",
@@ -42,6 +45,7 @@ export const demoRecords: ShiftRecord[] = [
     minutes: 378,
     breakMinutes: 0,
     byManager: false,
+    overdue: false,
   },
 ];
 
@@ -95,6 +99,7 @@ export function demoClock(state: string | undefined, now: Date): ClockData {
         : null,
     unpaidBreaks: true,
     canManage: true,
+    team: { atWork: 2, overdue: state === "working" ? 0 : 1 },
     viewOnly: false,
   };
 }

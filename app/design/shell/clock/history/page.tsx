@@ -27,6 +27,7 @@ async function Demo({ searchParams }: Props) {
       paths={{
         clock: "/design/shell/clock",
         history: "/design/shell/clock/history",
+        team: "/design/shell/clock/team",
       }}
     />
   );

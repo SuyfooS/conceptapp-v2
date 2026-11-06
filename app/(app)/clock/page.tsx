@@ -8,7 +8,7 @@ import {
   startBreakAction,
   undoClockOutAction,
 } from "./actions";
-import { currentClock } from "./clock";
+import { clockPaths, currentClock } from "./clock";
 import { ClockView } from "./clock-view";
 
 export const generateMetadata = () => moduleMetadata("time_clock");
@@ -27,7 +27,7 @@ export default async function ClockPage() {
         undoClockOut: undoClockOutAction,
         saveSettings: saveClockSettingsAction,
       }}
-      paths={{ clock: "/clock", history: "/clock/history" }}
+      paths={clockPaths}
     />
   );
 }

@@ -73,7 +73,10 @@ export type TodayData = {
   /** From `moduleWidgets`: what the enabled modules bring for this role. */
   widgets: ModuleNavEntry[];
   /** Where the person stands on the clock, when they are at work. */
-  clockLine?: { status: "working" | "break"; at: string } | null;
+  clockLine?:
+    | { kind: "working" | "break"; at: string }
+    | { kind: "overdue"; count: number }
+    | null;
   schedule: TodaySchedule | null;
   /** Owners and managers only. */
   team: Team | null;
@@ -152,10 +155,14 @@ export async function TodayView({
                   title={tm(`${widget.key}.name`)}
                   subtitle={
                     widget.key === "time_clock" && data.clockLine
-                      ? t.rich(`clock.todayLine.${data.clockLine.status}`, {
-                          time: data.clockLine.at,
-                          ltr,
-                        })
+                      ? data.clockLine.kind === "overdue"
+                        ? t("clock.team.overdue.title", {
+                            count: data.clockLine.count,
+                          })
+                        : t.rich(`clock.todayLine.${data.clockLine.kind}`, {
+                            time: data.clockLine.at,
+                            ltr,
+                          })
                       : tm(`${widget.key}.description`)
                   }
                 />

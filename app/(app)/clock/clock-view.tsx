@@ -1,7 +1,7 @@
 import { timeIn } from "@domain/shabbat";
 import { clockStatus, formatHours } from "@domain/time-clock";
 import { Card } from "@ui/card";
-import { ListRow } from "@ui/list-row";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { useTranslations } from "next-intl";
@@ -61,6 +61,20 @@ export function ClockView({
             <PageSection title={t("recent")} className="hidden md:flex">
               <ShiftList records={data.recent} />
             </PageSection>
+          ) : null}
+
+          {data.team ? (
+            <ListGroup>
+              <ListRow
+                href={paths.team}
+                title={t("team.title")}
+                subtitle={
+                  data.team.overdue > 0
+                    ? t("team.overdue.title", { count: data.team.overdue })
+                    : t("team.atWork.count", { count: data.team.atWork })
+                }
+              />
+            </ListGroup>
           ) : null}
 
           {data.canManage ? (

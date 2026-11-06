@@ -168,6 +168,32 @@ export const correctTimeEntry = (
     }),
   );
 
+export type ClockPerson = {
+  userId: string;
+  name: string | null;
+  active: boolean;
+};
+
+/**
+ * Everyone who is or was in the business, for the hours of the month: someone
+ * who has left still has hours to pay.
+ */
+export async function getClockPeople(
+  businessId: string,
+): Promise<ClockPerson[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("memberships")
+    .select("user_id, active, profiles (full_name)")
+    .eq("business_id", businessId);
+  if (error) throw error;
+  return data.map((row) => ({
+    userId: row.user_id,
+    name: row.profiles?.full_name?.trim() || null,
+    active: row.active,
+  }));
+}
+
 /**
  * A business's entries that start in [from, to) with their breaks, as the
  * signed-in person may read them (RLS: their own; managers, owners and

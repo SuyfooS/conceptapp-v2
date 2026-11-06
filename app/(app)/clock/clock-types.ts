@@ -37,9 +37,11 @@ export type ClockData = {
   unpaidBreaks: boolean;
   /** The person may change the business's settings. */
   canManage: boolean;
+  /** For those who see the team: what its screen would show now. */
+  team: { atWork: number; overdue: number } | null;
   /** Someone from ConceptApp is looking; nothing can be pressed. */
   viewOnly: boolean;
 };
 
 /** Where this screen's links go; the demo keeps them inside the demo. */
-export type ClockPaths = { clock: string; history: string };
+export type ClockPaths = { clock: string; history: string; team: string };

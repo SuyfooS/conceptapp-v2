@@ -1,5 +1,6 @@
 import { formatHours, type ShiftRecord } from "@domain/time-clock";
 import { Badge } from "@ui/badge";
+import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { useFormatter, useTranslations } from "next-intl";
@@ -27,35 +28,52 @@ function useDayLabel() {
  */
 export function ShiftList({
   records,
+  onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  /** For a manager: pressing a shift offers to correct it. */
+  onEdit?: (record: ShiftRecord) => void;
   className?: string;
 }) {
   return (
     <>
-      <ShiftRows records={records} className={cn("xl:hidden", className)} />
-      <ShiftTable records={records} className={className} />
+      <ShiftRows
+        records={records}
+        onEdit={onEdit}
+        className={cn("xl:hidden", className)}
+      />
+      <ShiftTable records={records} onEdit={onEdit} className={className} />
     </>
+  );
+}
+
+function StateBadge({ record }: { record: ShiftRecord }) {
+  const t = useTranslations("app.clock.history");
+  return record.overdue ? (
+    <Badge tone="danger">{t("needsFix")}</Badge>
+  ) : (
+    <Badge tone="accent">{t("now")}</Badge>
   );
 }
 
 function ShiftRows({
   records,
+  onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  onEdit?: (record: ShiftRecord) => void;
   className?: string;
 }) {
   const t = useTranslations("app.clock.history");
   const dayLabel = useDayLabel();
   return (
     <ListGroup className={className}>
-      {records.map((record) => (
-        <ListRow
-          key={record.id}
-          title={dayLabel(record.date)}
-          subtitle={
+      {records.map((record) => {
+        const row = {
+          title: dayLabel(record.date),
+          subtitle: (
             <>
               {record.out
                 ? t.rich("times", { in: record.in, out: record.out, ltr })
@@ -65,27 +83,35 @@ function ShiftRows({
                 : null}
               {record.byManager ? t("byManager") : null}
             </>
-          }
-          trailing={
-            record.out ? (
-              <span dir="ltr" className="font-semibold text-ink tabular-nums">
-                {formatHours(record.minutes)}
-              </span>
-            ) : (
-              <Badge tone="accent">{t("now")}</Badge>
-            )
-          }
-        />
-      ))}
+          ),
+          trailing: (
+            <span className="flex items-center gap-2">
+              {record.out ? null : <StateBadge record={record} />}
+              {record.out || record.overdue ? (
+                <span dir="ltr" className="font-semibold text-ink tabular-nums">
+                  {formatHours(record.minutes)}
+                </span>
+              ) : null}
+            </span>
+          ),
+        };
+        return onEdit ? (
+          <ListRow key={record.id} {...row} onClick={() => onEdit(record)} />
+        ) : (
+          <ListRow key={record.id} {...row} />
+        );
+      })}
     </ListGroup>
   );
 }
 
 function ShiftTable({
   records,
+  onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  onEdit?: (record: ShiftRecord) => void;
   className?: string;
 }) {
   const t = useTranslations("app.clock.history");
@@ -116,6 +142,11 @@ function ShiftTable({
             <th scope="col" className={th}>
               {t("columns.hours")}
             </th>
+            {onEdit ? (
+              <th scope="col" className={th}>
+                <span className="sr-only">{t("columns.fix")}</span>
+              </th>
+            ) : null}
           </tr>
         </thead>
         <tbody>
@@ -139,7 +170,7 @@ function ShiftTable({
                 {record.out ? (
                   <span dir="ltr">{record.out}</span>
                 ) : (
-                  <Badge tone="accent">{t("now")}</Badge>
+                  <StateBadge record={record} />
                 )}
               </td>
               <td className={cn(td, "text-ink-2")}>
@@ -148,12 +179,23 @@ function ShiftTable({
                   : t("noBreak")}
               </td>
               <td className={cn(td, "font-semibold tabular-nums")}>
-                {record.out ? (
+                {record.out || record.overdue ? (
                   <span dir="ltr">{formatHours(record.minutes)}</span>
                 ) : (
                   t("running")
                 )}
               </td>
+              {onEdit ? (
+                <td className={cn(td, "text-end")}>
+                  <Button
+                    variant="ghost"
+                    aria-label={t("fixShift", { day: dayLabel(record.date) })}
+                    onClick={() => onEdit(record)}
+                  >
+                    {t("fix")}
+                  </Button>
+                </td>
+              ) : null}
             </tr>
           ))}
         </tbody>
