@@ -29,6 +29,10 @@ const PAGES = [
 
 async function expectCleanPage(page: Page) {
   await expect(page).toHaveTitle(/ConceptApp$/);
+  // The title can arrive before a demo's streamed part: check the page itself.
+  await expect(
+    page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
+  ).toBeVisible();
   const { violations } = await new AxeBuilder({ page }).analyze();
   expect(
     violations.flatMap((v) =>
