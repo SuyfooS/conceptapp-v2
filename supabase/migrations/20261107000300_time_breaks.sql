@@ -248,6 +248,12 @@ begin
   -- Refused by the no-overlap constraint if they have clocked in again since.
   update public.time_entries set clock_out = null where id = entry;
 
+  -- If leaving ended a break, they are back on it. It can't overlap another:
+  -- nothing in the entry starts after it left.
+  update public.time_breaks b
+  set ended_at = null
+  where b.entry_id = entry and b.ended_at = e.clock_out;
+
   insert into public.audit_log (business_id, actor_id, action, details)
   values (e.business_id, actor, 'clock.undo_out', jsonb_build_object('entry', entry));
 end;

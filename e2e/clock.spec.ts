@@ -34,15 +34,14 @@ async function expectCleanPage(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-test.beforeEach(async () => {
+async function startClean() {
   await clearTimeEntries(NOA.e164);
+  await clearTimeEntries(MANAGER.e164);
   await setDemoUnpaidBreaks(false);
-});
+}
 
-test.afterAll(async () => {
-  await clearTimeEntries(NOA.e164);
-  await setDemoUnpaidBreaks(false);
-});
+test.beforeEach(startClean);
+test.afterAll(startClean);
 
 test("a worker clocks in, goes on a break, comes back and leaves", async ({
   page,
@@ -86,8 +85,13 @@ test("a worker clocks in, goes on a break, comes back and leaves", async ({
   await page.getByRole("button", { name: c.undo }).click();
   await expect(title(page, c.title.working)).toBeVisible();
 
-  // On a break, leaving is still one press away.
+  // On a break, leaving is still one press away, and taking it back returns
+  // to the break.
   await page.getByRole("button", { name: c.startBreak }).click();
+  await expect(title(page, c.title.break)).toBeVisible();
+  await page.getByRole("button", { name: c.endShift }).click();
+  await expect(title(page, c.title.off)).toBeVisible();
+  await page.getByRole("button", { name: c.undo }).click();
   await expect(title(page, c.title.break)).toBeVisible();
   await page.getByRole("button", { name: c.endShift }).click();
   await expect(title(page, c.title.off)).toBeVisible();
@@ -166,5 +170,4 @@ test("a manager chooses that breaks come off the hours", async ({ page }) => {
   await expect(page.getByText(c.breakRule.unpaid)).toBeVisible();
   await circle(page, c.circle.out).click();
   await expect(title(page, c.title.off)).toBeVisible();
-  await clearTimeEntries(MANAGER.e164);
 });

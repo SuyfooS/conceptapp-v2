@@ -1,4 +1,5 @@
-import { getBusinessPlace } from "@db/availability";
+import { getBusinessPlace, getWeek } from "@db/availability";
+import { getWeekSchedule } from "@db/schedule";
 import { getTimeEntries } from "@db/time-clock";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
@@ -29,6 +30,8 @@ import type { HistoryData } from "./history/history-view";
 
 /** How many shifts the wider screens show beside the circle. */
 const RECENT_SHIFTS = 5;
+/** Clocked in earlier than this before a shift, they are not on that shift. */
+const EARLY_ARRIVAL_MS = 3_600_000;
 
 /**
  * The signed-in person and their business, when the clock is on for it and
@@ -58,12 +61,28 @@ const clockAccess = cache(async () => {
 });
 
 /** The person's shift that is on or still to come today, by the schedule. */
-async function shiftToday(userId: string, timeZone: string, now: Date) {
+async function shiftToday(
+  businessId: string,
+  userId: string,
+  timeZone: string,
+  now: Date,
+) {
   const published = await currentPublishedSchedule();
   if (!published) return { scheduling: false, shift: null };
   const clock = clockAt(now, timeZone);
+  // On a week's first day, last week's final shift may still be running.
+  const lastWeek =
+    published.today === published.thisWeek.start
+      ? await getWeek(businessId, addDays(published.thisWeek.start, -7))
+      : null;
   const shift = nextShift(
-    [...published.thisWeek.shifts, ...published.nextWeek.shifts],
+    [
+      ...(lastWeek?.schedulePublishedAt
+        ? await getWeekSchedule(lastWeek.id)
+        : []),
+      ...published.thisWeek.shifts,
+      ...published.nextWeek.shifts,
+    ],
     clock,
     userId,
   );
@@ -99,17 +118,23 @@ export async function currentClock(): Promise<ClockData | null> {
       monthRange(month, timeZone).to,
       userId,
     ),
-    shiftToday(userId, timeZone, now),
+    shiftToday(businessId, userId, timeZone, now),
   ]);
 
   const step = settings.roundToMinutes;
   const open = openEntryOf(entries, userId);
   const undo = open ? null : undoableEntry(entries, now);
+  // Still here after their shift, the next one ahead is not the one they are on.
+  const later =
+    open &&
+    today.shift &&
+    Date.parse(today.shift.from) - now.getTime() > EARLY_ARRIVAL_MS;
   return {
     now: now.toISOString(),
     timeZone,
     open,
-    ...today,
+    scheduling: today.scheduling,
+    shift: later ? null : today.shift,
     thisMonth: monthMinutes(entries, month, timeZone, now, step),
     lastMonth: monthMinutes(entries, lastMonth, timeZone, now, step),
     recent: [

@@ -11,6 +11,8 @@ what is next, defaults applied.
 - Defaults applied: breaks count as paid unless the business turns that off. Orel decided: no QR, the phone is enough. The punch code stays in the database as a setting that is off, with no screens.
 - The setting sits on the clock screen for owners and managers until the management page arrives.
 - Left out: "manual add" from Orel's old screenshot, since adding hours belongs to a manager and that screen is not built. No money anywhere: hours only.
+- A read-only review before merging found real problems, now fixed: undoing a clock-out left the break closed, hours kept growing on an entry left open (they stop at 24 now), a press with no signal took down the whole screen, and a screen left open went stale. Left as it is: the running time ticks from the phone's clock, since using the server's would go wrong after the back button, and phones keep their clocks right.
+- Known, not fixed here: Today's hero misses a Saturday night shift once Sunday begins, because it reads this week and next only. The clock screen handles it.
 - Next: the manager's side of the clock, with the management page.
 
 ## 2026-11-06 · chat · the screens, in the approved design

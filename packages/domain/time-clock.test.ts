@@ -7,6 +7,7 @@ import {
   clockStatus,
   entryDate,
   entryMinutes,
+  entryOverdue,
   formatElapsed,
   formatHours,
   monthMinutes,
@@ -254,7 +255,7 @@ describe("breaks", () => {
   it("leaves a paid break in the hours", () => {
     const breaks = [pause(false, "2026-11-10T10:30:00Z")];
     expect(entryMinutes({ ...shift, breaks }, after)).toBe(480);
-    expect(breakMinutes({ breaks }, after)).toBe(30);
+    expect(breakMinutes({ ...shift, breaks }, after)).toBe(30);
   });
 
   it("stops the hours during an open unpaid break", () => {
@@ -272,6 +273,32 @@ describe("breaks", () => {
     const breaks = [pause(true, "2026-11-10T11:00:00Z")];
     const week = weekSummary([{ ...shift, breaks }], "2026-11-08", TZ, after);
     expect(week.total).toBe(420);
+  });
+});
+
+describe("an entry left open", () => {
+  const open = { clockIn: "2026-11-01T06:00:00Z", clockOut: null };
+  const days = new Date("2026-11-06T10:00:00Z");
+
+  it("stops counting at the most an entry can be", () => {
+    expect(entryMinutes(open, days)).toBe(24 * 60);
+    expect(monthMinutes([open], "2026-11", TZ, days)).toBe(24 * 60);
+  });
+
+  it("does not lose the hours to a break left open too", () => {
+    const breaks = [
+      { startedAt: "2026-11-01T14:00:00Z", endedAt: null, unpaid: true },
+    ];
+    expect(entryMinutes({ ...open, breaks }, days)).toBe(8 * 60);
+    expect(breakMinutes({ ...open, breaks }, days)).toBe(16 * 60);
+  });
+
+  it("is overdue only past that time, and only while open", () => {
+    expect(entryOverdue(open, new Date("2026-11-02T06:00:00Z"))).toBe(false);
+    expect(entryOverdue(open, new Date("2026-11-02T06:01:00Z"))).toBe(true);
+    expect(
+      entryOverdue({ ...open, clockOut: "2026-11-01T14:00:00Z" }, days),
+    ).toBe(false);
   });
 });
 

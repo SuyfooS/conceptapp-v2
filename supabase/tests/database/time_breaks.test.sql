@@ -6,7 +6,7 @@
 -- own breaks, managers the business's, other businesses nothing. Every call
 -- passes the time so the test does not depend on today.
 begin;
-select plan(34);
+select plan(35);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -201,6 +201,11 @@ select is(
   (select clock_out from public.time_entries where id = (select id from ids where name = 'c1')),
   null,
   'the entry is open again'
+);
+select is(
+  (select ended_at from public.time_breaks where id = (select id from ids where name = 'b2')),
+  null,
+  'the break that leaving ended is open again'
 );
 
 -- A correction keeps breaks inside the entry.

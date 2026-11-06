@@ -171,16 +171,15 @@ export async function addDemoShift(
 ): Promise<void> {
   const sql = postgres(DB_URL, { max: 1 });
   try {
-    const now = new Date();
+    // The month as the business counts it, which is not always UTC's.
+    const [year = 0, month = 1] = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Jerusalem",
+    })
+      .format(new Date())
+      .split("-")
+      .map(Number);
     const day = shift.monthsAgo === 0 ? 1 : 10;
-    const start = new Date(
-      Date.UTC(
-        now.getUTCFullYear(),
-        now.getUTCMonth() - shift.monthsAgo,
-        day,
-        6,
-      ),
-    );
+    const start = new Date(Date.UTC(year, month - 1 - shift.monthsAgo, day, 6));
     const end = new Date(start.getTime() + shift.minutes * 60_000);
     const [entry] = await sql<{ id: string; user_id: string }[]>`
       insert into public.time_entries (business_id, user_id, clock_in, clock_out)

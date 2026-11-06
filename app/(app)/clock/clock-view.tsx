@@ -6,6 +6,7 @@ import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { RefreshOnReturn } from "../home/refresh-on-return";
 import { ClockPanel } from "./clock-panel";
 import { ClockSettings } from "./clock-settings";
 import type { ClockActions, ClockData, ClockPaths } from "./clock-types";
@@ -32,6 +33,7 @@ export function ClockView({
 
   return (
     <PageBody className={pageGlowClass}>
+      <RefreshOnReturn />
       <PageHeader
         title={t(`title.${status.state}`)}
         subtitle={<Line data={data} />}
@@ -64,6 +66,7 @@ export function ClockView({
           {data.canManage ? (
             <ClockSettings
               unpaidBreaks={data.unpaidBreaks}
+              viewOnly={data.viewOnly}
               save={actions.saveSettings}
             />
           ) : null}

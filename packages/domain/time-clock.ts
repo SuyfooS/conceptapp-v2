@@ -56,10 +56,32 @@ type Span = Pick<TimeEntry, "clockIn" | "clockOut"> & {
   breaks?: readonly BreakSpan[];
 };
 
-function breakMs(pause: BreakSpan, now: Date): number {
-  const end =
-    pause.endedAt === null ? now.getTime() : Date.parse(pause.endedAt);
-  return Math.max(0, end - Date.parse(pause.startedAt));
+const MAX_ENTRY_MS = MAX_ENTRY_HOURS * 3_600_000;
+
+/**
+ * Where an entry ends for counting: its end, or `now` while it is open. An
+ * entry left open stops at `MAX_ENTRY_HOURS`, the most the database accepts,
+ * so a forgotten clock-out does not keep adding to the month.
+ */
+function countedEnd(entry: Span, now: Date): number {
+  if (entry.clockOut !== null) return Date.parse(entry.clockOut);
+  return Math.min(now.getTime(), Date.parse(entry.clockIn) + MAX_ENTRY_MS);
+}
+
+function breakMs(pause: BreakSpan, end: number): number {
+  const until = pause.endedAt === null ? end : Date.parse(pause.endedAt);
+  return Math.max(0, until - Date.parse(pause.startedAt));
+}
+
+/** The entry is open for longer than one can be: only a manager can close it. */
+export function entryOverdue(
+  entry: Pick<Span, "clockIn" | "clockOut">,
+  now: Date,
+): boolean {
+  return (
+    entry.clockOut === null &&
+    now.getTime() - Date.parse(entry.clockIn) > MAX_ENTRY_MS
+  );
 }
 
 /**
@@ -67,11 +89,10 @@ function breakMs(pause: BreakSpan, now: Date): number {
  * breaks. An open entry and an open break count until `now`.
  */
 export function entryMs(entry: Span, now: Date): number {
-  const end =
-    entry.clockOut === null ? now.getTime() : Date.parse(entry.clockOut);
+  const end = countedEnd(entry, now);
   const unpaid = (entry.breaks ?? [])
     .filter((pause) => pause.unpaid)
-    .reduce((sum, pause) => sum + breakMs(pause, now), 0);
+    .reduce((sum, pause) => sum + breakMs(pause, end), 0);
   return Math.max(0, end - Date.parse(entry.clockIn) - unpaid);
 }
 
@@ -81,9 +102,10 @@ export function entryMinutes(entry: Span, now: Date): number {
 }
 
 /** Whole minutes on break in an entry, paid or not. */
-export function breakMinutes(entry: Pick<Span, "breaks">, now: Date): number {
+export function breakMinutes(entry: Span, now: Date): number {
+  const end = countedEnd(entry, now);
   const all = (entry.breaks ?? []).reduce(
-    (sum, pause) => sum + breakMs(pause, now),
+    (sum, pause) => sum + breakMs(pause, end),
     0,
   );
   return Math.floor(all / 60_000);

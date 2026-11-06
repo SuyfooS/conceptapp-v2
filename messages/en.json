@@ -863,7 +863,7 @@
       },
       "line": {
         "shift": "Your shift today: <ltr>{start}–{end}</ltr>",
-        "noShift": "You have no shift planned today",
+        "noShift": "No more shifts for you today",
         "idle": "Pressing the circle records when you started",
         "workingSince": "You came in at <ltr>{time}</ltr>",
         "workingUntil": "You came in at <ltr>{time}</ltr>, the shift ends at <ltr>{end}</ltr>",
@@ -879,10 +879,10 @@
       "undo": "Undo clock out",
       "viewOnly": "In view mode you can't clock in or out.",
       "done": {
-        "in": "Clocked in at {time}",
-        "out": "Clocked out at {time}",
-        "break": "On a break since {time}",
-        "back": "Back to work at {time}",
+        "in": "Clocked in",
+        "out": "Clocked out",
+        "break": "On a break",
+        "back": "Back to work",
         "undo": "Clock out undone, the shift goes on"
       },
       "failure": {
@@ -896,7 +896,7 @@
         "times": "These hours clash with another shift. A manager can fix it.",
         "noAccess": "You don't have access to this business's clock.",
         "viewOnly": "In view mode you can't clock in or out.",
-        "failed": "Something went wrong and nothing was recorded. Try again."
+        "failed": "That didn't go through. Check your connection and try again."
       },
       "settings": {
         "row": "Breaks",
@@ -908,7 +908,8 @@
         "unpaidHint": "Break time comes off the hours and is not paid",
         "save": "Save the setting",
         "close": "Close",
-        "failed": "The setting was not saved. Try again."
+        "failed": "The setting was not saved. Try again.",
+        "viewOnly": "In view mode you can't change settings."
       },
       "history": {
         "title": "Shift history",

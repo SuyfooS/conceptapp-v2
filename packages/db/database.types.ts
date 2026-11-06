@@ -918,12 +918,12 @@ export type Database = {
         };
         Returns: Database["public"]["Enums"]["swap_status"];
       };
-      end_view_session: { Args: { actor: string }; Returns: string };
-      invite_by_token: { Args: { token_hash: string }; Returns: Json };
       end_break: {
         Args: { actor: string; at_time?: string; business: string };
         Returns: string;
       };
+      end_view_session: { Args: { actor: string }; Returns: string };
+      invite_by_token: { Args: { token_hash: string }; Returns: Json };
       issue_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };
         Returns: string;

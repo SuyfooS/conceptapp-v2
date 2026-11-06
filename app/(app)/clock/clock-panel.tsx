@@ -1,8 +1,8 @@
 "use client";
 
-import { timeIn } from "@domain/shabbat";
 import {
   entryMs,
+  entryOverdue,
   formatElapsed,
   formatHours,
   type TimeBreak,
@@ -13,6 +13,7 @@ import { Card } from "@ui/card";
 import { PunchCircle } from "@ui/punch-circle";
 import { StatusToast } from "@ui/status-toast";
 import { Coffee, Fingerprint, LogOut } from "lucide-react";
+import { unstable_rethrow } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState, useTransition } from "react";
 import type { ClockActionResult, ClockActions, ClockData } from "./clock-types";
@@ -46,7 +47,7 @@ export function ClockPanel({
   const t = useTranslations("app.clock");
   const { open, undo } = data;
   const pause = open?.breaks.find((b) => b.endedAt === null) ?? null;
-  const now = useNow(data.now, open !== null || undo !== null);
+  const now = useNow(data.now, open !== null);
 
   const [pending, start] = useTransition();
   const [running, setRunning] = useState<Kind | null>(null);
@@ -61,21 +62,43 @@ export function ClockPanel({
     setRunning(kind);
     setFailure(null);
     start(async () => {
-      const result = await action();
-      setRunning(null);
-      if (!result.ok) {
-        setFailure(result.failure);
-        return;
+      try {
+        const result = await action();
+        setRunning(null);
+        if (result.ok) {
+          setToast({
+            text: t(`done.${kind}`),
+            stamp: new Date().toISOString(),
+          });
+        } else {
+          setFailure(result.failure);
+        }
+      } catch (error) {
+        // A press with no signal stays on this screen. A redirect is not a
+        // failure: the demo moves between its states that way.
+        unstable_rethrow(error);
+        setRunning(null);
+        setFailure("failed");
       }
-      const at = new Date();
-      setToast({
-        text: t(`done.${kind}`, { time: timeIn(at, data.timeZone) }),
-        stamp: at.toISOString(),
-      });
     });
   }
 
-  const undoLeft = undo && !open && Date.parse(undo.until) > now ? undo : null;
+  // How long taking it back stays open comes from the server's two times, so a
+  // phone whose clock is off neither hides it early nor keeps it too long.
+  const [expired, setExpired] = useState<string | null>(null);
+  useEffect(() => {
+    if (!undo) return;
+    const close = setTimeout(
+      () => setExpired(undo.entryId),
+      Date.parse(undo.until) - Date.parse(data.now),
+    );
+    return () => clearTimeout(close);
+  }, [undo, data.now]);
+  const undoLeft = undo && !open && expired !== undo.entryId ? undo : null;
+
+  // Pressing can't help here, so it says so before anyone tries.
+  const shownFailure =
+    failure ?? (open && entryOverdue(open, new Date(now)) ? "tooLong" : null);
 
   return (
     <div className="flex flex-col items-center gap-5">
@@ -122,9 +145,9 @@ export function ClockPanel({
         </p>
       ) : null}
 
-      {failure ? (
+      {shownFailure ? (
         <p role="alert" className="text-center font-medium text-danger">
-          {t(`failure.${failure}`)}
+          {t(`failure.${shownFailure}`)}
         </p>
       ) : null}
       {data.viewOnly ? (

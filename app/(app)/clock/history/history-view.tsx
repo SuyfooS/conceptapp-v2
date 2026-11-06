@@ -117,7 +117,7 @@ function MonthLink({
       href={href}
       aria-label={label}
       title={label}
-      className="pressable glass grid size-11 shrink-0 place-items-center rounded-full text-ink focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2"
+      className="pressable grid size-11 shrink-0 place-items-center rounded-full bg-accent-press focus-visible:outline-2 focus-visible:outline-current focus-visible:outline-offset-2"
     >
       {icon}
     </Link>

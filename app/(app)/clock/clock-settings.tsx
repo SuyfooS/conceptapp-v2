@@ -14,9 +14,11 @@ import type { ClockActionResult } from "./clock-types";
  */
 export function ClockSettings({
   unpaidBreaks,
+  viewOnly,
   save,
 }: {
   unpaidBreaks: boolean;
+  viewOnly: boolean;
   save: (unpaidBreaks: boolean) => Promise<ClockActionResult>;
 }) {
   const t = useTranslations("app.clock");
@@ -34,9 +36,13 @@ export function ClockSettings({
   function submit() {
     setFailed(false);
     start(async () => {
-      const result = await save(choice);
-      if (result.ok) setOpen(false);
-      else setFailed(true);
+      try {
+        const result = await save(choice);
+        if (result.ok) setOpen(false);
+        else setFailed(true);
+      } catch {
+        setFailed(true);
+      }
     });
   }
 
@@ -78,7 +84,15 @@ export function ClockSettings({
               {t("settings.failed")}
             </p>
           ) : null}
-          <Button size="lg" loading={pending} onClick={submit}>
+          {viewOnly ? (
+            <p className="text-ink-2 text-sm">{t("settings.viewOnly")}</p>
+          ) : null}
+          <Button
+            size="lg"
+            loading={pending}
+            disabled={viewOnly}
+            onClick={submit}
+          >
             {t("settings.save")}
           </Button>
         </div>
