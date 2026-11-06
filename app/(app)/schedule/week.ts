@@ -5,7 +5,8 @@ import {
   getWeekAvailability,
   type OpenScheduleWeek,
 } from "@db/availability";
-import { getWeekSchedule } from "@db/schedule";
+import { getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
+import { getLiveSwaps } from "@db/swaps";
 import { type Colleague, getColleagues } from "@db/team";
 import {
   type AvailabilityAnswer,
@@ -31,6 +32,7 @@ import {
 } from "@domain/schedule";
 import { ISRAELI_CITIES, shabbatTimes } from "@domain/shabbat";
 import type { Position, ShiftPattern } from "@domain/staffing";
+import type { ShiftSwap } from "@domain/swaps";
 import { canSeeTeam, type TeamMember } from "@domain/team";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
@@ -219,8 +221,8 @@ export type PublishedWeek = {
   dates: string[];
   /** ISO timestamp of the last publish, or null while not published. */
   publishedAt: string | null;
-  /** The published shifts; empty until the week is published. */
-  shifts: ScheduledShift[];
+  /** The published shifts, with their ids; empty until published. */
+  shifts: WeekScheduleShift[];
 };
 
 export type PublishedSchedule = {
@@ -233,6 +235,8 @@ export type PublishedSchedule = {
   nextWeek: PublishedWeek;
   people: Colleague[];
   positions: Position[];
+  /** Live shift swaps of the business (open, or waiting for a manager). */
+  swaps: ShiftSwap[];
 };
 
 /**
@@ -270,15 +274,16 @@ export const currentPublishedSchedule = cache(
       const shifts =
         open && publishedAt
           ? withKnownPositions(
-              (await getWeekSchedule(open.id)).map(({ id: _, ...s }) => s),
+              await getWeekSchedule(open.id),
               settings.positions.map((p) => p.key),
             )
           : [];
       return { start, dates: weekDates(start), publishedAt, shifts };
     };
-    const [thisWeek, nextWeek] = await Promise.all([
+    const [thisWeek, nextWeek, swaps] = await Promise.all([
       published(thisStart),
       published(addDays(thisStart, 7)),
+      getLiveSwaps(businessId),
     ]);
     return {
       userId: member.userId,
@@ -288,6 +293,7 @@ export const currentPublishedSchedule = cache(
       nextWeek,
       people,
       positions: settings.positions,
+      swaps,
     };
   },
 );

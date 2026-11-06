@@ -34,6 +34,42 @@ what is next, defaults applied.
   publishing changes to a week drops its pending requests (its shifts are
   replaced); owners and managers can also give away and take shifts.
 
+## 2026-11-06 · run 27 · chunk 2d-2a (giving away and taking shifts)
+
+- No open questions or instructions. Run 26 had left PR #32 (2d-1) open
+  with CI green and its daily note unwritten; merged it first as
+  `0a55efb`. Split 2d-2 in two: 2d-2a the worker's side (today), 2d-2b
+  the manager's approve/decline list.
+- `/schedule/shifts`: each of "my next shifts" has "מסירת המשמרת"; once
+  asked it says the request waits for someone (or who took it, waiting
+  for the manager) with "ביטול הבקשה". New section "משמרות שאפשר לקחת":
+  colleagues' open requests from today on, with who gives it away and the
+  position, "לקיחת המשמרת", a count badge; a shift at the same time as
+  one of yours says so instead of the button; a request you took says it
+  waits for the manager. Phone: under "my shifts"; tablet: same column;
+  desktop: beside "my shifts". Refusals from the database (started,
+  closed, busy, asked twice, view as) are explained under the button.
+- `@domain/swaps`: `offersFor`, `myRequestFor`, `shiftsOverlap`,
+  `swapFailureOf`. `@db/swaps`: `getLiveSwaps` (RLS) and the three steps
+  with the secret key. `swapAction` checks the member and "view as"
+  first. The published schedule now keeps shift ids and the live swaps.
+- Demo: `/design/shell/schedule/shifts` (Noa gives away Friday, can take
+  Maya's Wednesday, took Yoav's Saturday night).
+- Tests: 8 new unit tests (273 total). Playwright `shift-swaps.spec.ts`:
+  Yoav gives away his morning, Noa sees it with his position and takes
+  it, Yoav sees who took it and cancels; each step checked in the
+  database; axe and no horizontal scroll. Locally: `pnpm check`,
+  `pnpm build`, the demo at 390/820/1440 with axe (0 violations, no
+  horizontal scroll).
+- Not verified locally: no Docker in this run's container, so the
+  Playwright spec runs only in CI.
+- Commit: squash of PR `agent/2d-2a-swaps-ui` (see the daily note in #1).
+- Next: chunk 2d-2b, the manager's list of taken requests to approve or
+  decline, and a count on `/schedule`.
+- Defaults applied (no question opened): no note field on the request
+  yet (the database takes one); "take" is a secondary button, since the
+  screen has no single main action.
+
 ## 2026-11-04 · run 25 · chunk 2c-3b (my shifts)
 
 - No open questions or instructions; `main` green at `54ee5aa`.
