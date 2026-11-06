@@ -15,9 +15,10 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
 
 ## Principles
 
-1. One wedge, finished. Restaurants and cafés, five modules (scheduling, time
-   clock, reservations, storefront, notifications). Nothing from the deferred
-   list gets built before its trigger.
+1. One wedge, finished. Restaurants and cafés. For the pilot, by Orel's decision of
+   6 November 2026: scheduling, time clock, lists, a management page, and roles
+   with different permissions. Reservations, storefront and notifications wait
+   until after it. Nothing from the deferred list gets built before its trigger.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.

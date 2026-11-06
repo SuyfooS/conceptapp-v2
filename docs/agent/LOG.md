@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · roadmap, pilot scope, design rework plan
+
+- Orel asked for a roadmap and for a rework of the whole design in Apple's style. Nine read-only agents audited the code, tests, CI and design, and one tried to refute every gap. Result: `docs/ROADMAP.md` (Hebrew, for Orel) and `docs/design/apple-rework-plan.md` (a plan plus the critique that corrects it).
+- Decision: the pilot needs scheduling, time clock, a management page, roles with different permissions, and lists. Reservations, the public page and notifications wait. `CLAUDE.md` principle 1 and the backlog in `docs/AGENT.md` follow.
+- Assumption, not yet confirmed: lists, permissions and the management page work as in v1 (`modules/lists.js`, `manager.html`), which I read without running. The roadmap states what I took from them.
+- The rework is not approved and has not started. Until Orel decides, runs leave tokens, `packages/ui` and the look of screens alone, and build the new modules database first.
+- Not checked: the App Design Document and Business Model are Claude Docs this session could not read, so the order and the deferred list were not compared with them.
+- Next: the nightly run, chunk 2d-2b. Orel decides the rest in the roadmap's "החלטות שלך".
+
 ## 2026-11-06 · chat · the daily run becomes a nightly run
 
 - Orel is back. He cancelled the daily run and asked for a run every night: it
