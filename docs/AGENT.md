@@ -23,10 +23,12 @@ it knows is this repo and its GitHub issues.
 - The pilot needs scheduling, time clock, lists, a management page, and roles with
   different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
   old app, that is an assumption until Orel confirms it.
-- Still assumed, because these questions passed their deadlines unanswered: the
-  pilot restaurant agreed (#2), the demo shifts are the `restaurant` template's
-  defaults (#3), and migrations stay local (#8). Anything Orel says replaces
-  them.
+- The pilot restaurant has not agreed yet (Orel, 6 November). Work continues without
+  it, and the demo shifts stay the `restaurant` template's defaults.
+- A real SMS provider waits. Until then, test numbers with fixed codes on the hosted
+  project. Migrations reach it only through the manual workflow (`supabase/README.md`).
+- Kept as they are: the whole team sees the whole published schedule, a schedule can be
+  published with gaps, and every swap needs a manager's approval.
 
 ## Talking to Orel
 
@@ -203,9 +205,10 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   - Remove a person, change a role, cancel an invite (database first).
 - **Roles and permissions, database first.** For each role and module: edit, view or none, enforced by RLS and covered by pgTAP, plus roles a business names itself. Today's owner, manager and worker keep working. See "מה הפיילוט חייב" in the roadmap.
 - **Time clock, database first.** Clock in and out, history, the week's total, who is at work now, a QR punch code on the server.
-- **Lists, database first.** A new module: templates with items and recipients, sending with a count per item, receiving, checking off, finishing, and permission to manage or send.
+- **Lists, database first.** A new module: templates with items and recipients, sending with a count per item, receiving, checking off, finishing, and permission to manage or send. Lists move between departments inside the business (kitchen, bar, storeroom). Branches wait until after the pilot.
 - **Management page, database first.** Write paths for business details, branding, hours, module switches, and reading the audit log.
-- **3b · Migrations on `conceptapp-dev`.** Blocked on Orel (#8): the run's safety checks refuse unattended writes to a real database. Not for a nightly run.
+- **Approved improvements, built by day on the new screens:** install as an app; smooth transitions and skeletons; fill the week automatically and copy from last week; a moment when a schedule is published; a share on WhatsApp button for the manager after publishing; profile photos; a live shift card after clocking in.
+- **3b · Migrations on `conceptapp-dev`.** By hand only, through the workflow Orel starts (#8). Not for a nightly run.
 - **Not in the pilot, do not start:** reservations, storefront, the public page, notifications.
 
 ## Where things live

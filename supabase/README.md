@@ -37,7 +37,7 @@ from memory, so check them on screen:
 
 - Authentication: phone sign-in on, new signups off (`[auth] enable_signup = false`).
   Accounts come from invites, through the admin API.
-- SMS: a real provider, or test numbers with fixed codes until one exists.
+- SMS: test numbers with fixed codes for now. A real provider comes later (Orel, 6 November).
 - URL configuration: the site URL is the deployed address, not `127.0.0.1`.
 - Vercel: the three variables in `.env.example`, for Production and Preview.
 - The first platform admin: add a user by phone in Authentication, then in the SQL
