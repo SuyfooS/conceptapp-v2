@@ -7,7 +7,10 @@ import { Avatar, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
+import { ChoiceMenu } from "@ui/choice-menu";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
+import { cn } from "@ui/cn";
+import { CoverageBar } from "@ui/coverage-bar";
 import { EmptyState } from "@ui/empty-state";
 import {
   FieldGroup,
@@ -15,11 +18,8 @@ import {
   GroupedPhoneField,
   GroupedTextArea,
 } from "@ui/field-group";
-import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
-import { ChoiceMenu } from "@ui/choice-menu";
-import { cn } from "@ui/cn";
-import { CoverageBar } from "@ui/coverage-bar";
 import { FieldRow, rowInputClass, rowPillInputClass } from "@ui/field-row";
+import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";

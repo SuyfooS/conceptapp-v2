@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · the screens, in the approved design
+
+- Five agents rebuilt the screens, each in its own worktree, against `docs/design/target-prototype.html`: Today (`/home`), the schedule tab with My shifts and swap approvals, build the week, availability with team availability, and the rest (team, invite, sign-in, join, console, view-as, error and not-found screens). Their commits were combined here.
+- Holes closed: `/` redirects to `/home`, Hebrew error screens, sign-out in the console, the wizard no longer promises settings or Shabbat times by address.
+- Calls to review with Orel: an owner or manager with no shift of their own sees the business's next shift in the hero; tiles stay at 0 in grey; clock and reservations keep one quiet row on Today; invite and wizard field rows have no outline at rest.
+- Known duplicates from building in parallel, for a finishing touch: `FloatingAction` and `FloatingDock`, `coverageOf` and `shiftCoverage`, `firstNameOf` and `shortNames`.
+- Checked locally: Biome, types, unit tests, build, and the specs that need no database. The specs that need one run in CI.
+- Next: install as an app, transitions and skeletons; fill and copy a week; the publish moment and WhatsApp share; photos; the clock screens.
+
 ## 2026-11-06 · run 29 · profile photos, database and server (#42)
 
 - Left by Orel: #42, the second item of the run. No screens; `packages/ui` (including the new `Avatar`) untouched.
