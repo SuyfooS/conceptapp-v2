@@ -15,6 +15,7 @@ const PAGES = [
   "/design/shell/module",
   "/design/shell/unavailable",
   "/design/screens/sign-in",
+  "/design/screens/enter",
   "/design/screens/join",
   "/design/screens/join-expired",
   "/design/screens/join-claimed",

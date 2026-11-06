@@ -1,3 +1,4 @@
+import { signInPath } from "@domain/passive-sign-in";
 import { displayIsraeliMobile } from "@domain/phone";
 import { brandProps } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
@@ -44,7 +45,7 @@ async function Shell({ children }: { children: ReactNode }) {
     currentMember(),
     currentPlatformRole(),
   ]);
-  if (!member) redirect("/sign-in");
+  if (!member) redirect(signInPath);
   const t = await getTranslations("admin");
 
   // Signed in but not on the team: the console does not exist for them.

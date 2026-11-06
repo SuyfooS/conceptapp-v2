@@ -10,6 +10,10 @@ on:
         description: Apply the migrations. Off shows what would run and changes nothing.
         type: boolean
         default: false
+      demo:
+        description: Add the demo restaurant if it is not there yet (supabase/hosted-demo.sql).
+        type: boolean
+        default: false
 
 concurrency:
   group: migrate-dev
@@ -69,3 +73,7 @@ jobs:
       - name: What the project has after
         if: inputs.apply && github.ref == 'refs/heads/main'
         run: pnpm exec supabase migration list --db-url "$DB_URL"
+
+      - name: The demo restaurant
+        if: inputs.demo && github.ref == 'refs/heads/main'
+        run: psql "$DB_URL" -v ON_ERROR_STOP=1 -f supabase/hosted-demo.sql

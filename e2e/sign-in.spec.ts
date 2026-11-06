@@ -24,15 +24,16 @@ async function requestCode(page: Page, phone: string) {
   await page.getByRole("button", { name: t.send }).click();
 }
 
-test("signed-out visitors are sent to sign-in", async ({ page }) => {
-  await page.goto("/home");
-  await expect(page).toHaveURL(/\/sign-in$/);
+test("the sign-in page is clean, and the root leads to the door", async ({
+  page,
+}) => {
+  await page.goto("/sign-in");
   await expect(page.getByRole("heading", { name: t.title })).toBeVisible();
   await expectAccessible(page);
 
-  // The root has no page of its own: it opens the app, and so leads here too.
+  // The root has no page of its own: it opens the app, and so leads to the door.
   await page.goto("/");
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/enter$/);
 });
 
 test("a worker signs in with a phone code and lands on the home screen", async ({
@@ -77,9 +78,9 @@ test("a worker signs in with a phone code and lands on the home screen", async (
 
   // Signing out closes the session.
   await page.getByRole("button", { name: he.app.home.signOut }).click();
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/enter$/);
   await page.goto("/home");
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/enter$/);
 });
 
 test("an unknown number gets a clear answer and no code", async ({ page }) => {

@@ -1,4 +1,5 @@
 import { refreshSession, withSessionCookies } from "@db/supabase/proxy";
+import { signInPath } from "@domain/passive-sign-in";
 import { type NextRequest, NextResponse } from "next/server";
 
 /**
@@ -16,7 +17,7 @@ export const PRIVATE = [
   "/storefront",
   "/admin",
 ];
-const SIGN_IN = "/sign-in";
+const DOORS = ["/sign-in", "/enter"];
 
 function isPrivate(pathname: string) {
   return PRIVATE.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -34,10 +35,10 @@ export async function proxy(request: NextRequest) {
   if (!userId && isPrivate(pathname)) {
     return withSessionCookies(
       response,
-      NextResponse.redirect(new URL(SIGN_IN, request.url)),
+      NextResponse.redirect(new URL(signInPath, request.url)),
     );
   }
-  if (userId && pathname === SIGN_IN) {
+  if (userId && DOORS.includes(pathname)) {
     return withSessionCookies(
       response,
       NextResponse.redirect(new URL(HOME, request.url)),
@@ -55,5 +56,6 @@ export const config = {
     "/storefront/:path*",
     "/admin/:path*",
     "/sign-in",
+    "/enter",
   ],
 };

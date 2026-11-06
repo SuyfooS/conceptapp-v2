@@ -2,6 +2,7 @@
 
 import { normalizeOtpCode } from "@domain/otp";
 import { normalizeIsraeliMobile } from "@domain/phone";
+import { redirect } from "next/navigation";
 import type { SignInState } from "../../(auth)/actions";
 import type { JoinState } from "../../(auth)/join/actions";
 
@@ -52,3 +53,8 @@ export async function demoJoin(
 }
 
 export async function demoSignOut(): Promise<void> {}
+
+/** The passive door's stand-in: on to the demo app, nothing signed in. */
+export async function demoEnter(): Promise<{ failed: true }> {
+  redirect("/design/shell");
+}

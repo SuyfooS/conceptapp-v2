@@ -151,6 +151,9 @@ font files or SF Symbols; asking the device for its own font is fine.
 - Server-only writes (bookings, invite claims, punch codes, publishing) go
   through server code with the secret key (`SUPABASE_SECRET_KEY`); the browser
   uses the publishable key and talks to Supabase under RLS only.
+- Sign-in is passive for now (Orel, 6 November 2026): one press on a demo person at
+  `/enter`, reaching only those people, with RLS unchanged. `PASSIVE_SIGN_IN` in
+  `@domain/passive-sign-in` goes false before real people use the project.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.
 - Orel works on Windows PowerShell 5: when giving him commands, one per line,

@@ -2,6 +2,7 @@
 
 import { createClient } from "@db/supabase/server";
 import { normalizeOtpCode } from "@domain/otp";
+import { signInPath } from "@domain/passive-sign-in";
 import { normalizeIsraeliMobile } from "@domain/phone";
 import { redirect } from "next/navigation";
 import { type SignInError, sendCode, verifyCode } from "./otp";
@@ -57,5 +58,5 @@ export async function signIn(
 export async function signOut() {
   const supabase = await createClient();
   await supabase.auth.signOut();
-  redirect("/sign-in");
+  redirect(signInPath);
 }
