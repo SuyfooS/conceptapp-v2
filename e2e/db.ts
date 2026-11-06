@@ -395,3 +395,34 @@ export async function demoSwaps(): Promise<SavedSwap[]> {
     await sql.end();
   }
 }
+
+/**
+ * One worker gives away their shift of next week's Sunday (`pattern`) and
+ * a colleague takes it, through the database functions the app uses, so
+ * the request waits for a manager. By phone number.
+ */
+export async function takenDemoSwap(
+  pattern: string,
+  from: string,
+  to: string,
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`
+      with people as (
+        select
+          (select id from public.profiles where phone = ${from}) as giver,
+          (select id from public.profiles where phone = ${to}) as taker
+      ),
+      shift as (
+        select s.id from public.schedule_shifts s
+        where s.business_id = ${DEMO_RESTAURANT} and s.pattern_key = ${pattern}
+        order by s.day desc limit 1
+      )
+      select public.take_shift_swap(people.taker,
+        public.request_shift_swap(people.giver, shift.id))
+      from people, shift`;
+  } finally {
+    await sql.end();
+  }
+}

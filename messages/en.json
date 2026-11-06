@@ -625,6 +625,43 @@
           "takenByYou": "You took the shift. Waiting for the manager to approve."
         }
       }
+    },
+    "swaps": {
+      "title": "Swap approvals",
+      "subtitle": "Shifts a worker gave away and a colleague took, waiting for your decision",
+      "explain": "If you approve, the colleague who took the shift replaces the one who gave it away, in the same position. If you decline, the schedule stays as it is.",
+      "list": {
+        "title": "Waiting for your decision"
+      },
+      "count": "{count, plural, one {One request} other {# requests}}",
+      "empty": "No requests are waiting for approval. When a worker takes a shift a colleague gives away, the request shows up here.",
+      "people": "Giving away: {from} · Taking: {to}",
+      "subject": "{shift}: {from} gives it away, {to} takes it",
+      "noPosition": "No position",
+      "columns": {
+        "day": "Day",
+        "shift": "Shift",
+        "position": "Position",
+        "from": "Giving away",
+        "to": "Taking",
+        "decision": "Decision"
+      },
+      "buttons": {
+        "approve": "Approve the swap",
+        "decline": "Decline the request"
+      },
+      "failures": {
+        "noAccess": "Only managers and owners approve swaps.",
+        "viewOnly": "While viewing as someone else, nothing can be changed.",
+        "started": "The shift has already started and cannot be handed over.",
+        "closed": "The request is no longer waiting for a decision, or the person who gave it away is no longer on the shift. Try refreshing the screen.",
+        "busy": "The colleague who took the shift is now on another shift at the same time, or is already on this one.",
+        "already": "This was already decided. Try refreshing the screen.",
+        "failed": "Something went wrong. Try again."
+      },
+      "entry": {
+        "subtitle": "{count, plural, =0 {No requests waiting for you} one {One request is waiting for your decision} other {# requests are waiting for your decision}}"
+      }
     }
   },
   "modules": {
