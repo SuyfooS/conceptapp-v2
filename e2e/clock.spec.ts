@@ -1,7 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { addDemoShift, clearTimeEntries, setDemoUnpaidBreaks } from "./db";
+import {
+  addDemoShift,
+  clearSchedule,
+  clearTimeEntries,
+  scheduleDemoToday,
+  setDemoUnpaidBreaks,
+} from "./db";
 import { signIn } from "./session";
 
 // Seeded in supabase/seed.sql: the demo restaurant, its manager and a worker.
@@ -149,6 +155,27 @@ test("the month's hours and the history count what was worked", async ({
   await expect(
     main.getByText("0:30", { exact: true }).filter({ visible: true }),
   ).toHaveCount(2);
+});
+
+test("the clock knows the person's own shift today, and nobody else's", async ({
+  page,
+}) => {
+  // All day, so nothing here depends on the hour.
+  await clearSchedule();
+  await scheduleDemoToday([[NOA.e164, null]], { start: "00:00", end: "23:59" });
+  try {
+    await signIn(page, NOA);
+    await page.goto("/clock");
+    await expect(page.getByRole("main")).toContainText("00:00–23:59");
+
+    await page.context().clearCookies();
+    await signIn(page, MANAGER);
+    await page.goto("/clock");
+    await expect(page.getByText(c.line.noShift)).toBeVisible();
+    await expect(page.getByRole("main")).not.toContainText("00:00–23:59");
+  } finally {
+    await clearSchedule();
+  }
 });
 
 test("a manager chooses that breaks come off the hours", async ({ page }) => {

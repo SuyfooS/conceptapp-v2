@@ -1,4 +1,3 @@
-import { getBusinessPlace } from "@db/availability";
 import { moduleWidgets } from "@domain/modules";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
@@ -53,9 +52,7 @@ export default async function HomePage() {
       signOut={signOut}
       data={{
         now: new Date().toISOString(),
-        timeZone:
-          published?.timeZone ??
-          (await getBusinessPlace(membership.business.id)).timeZone,
+        timeZone: published?.timeZone ?? membership.business.place.timeZone,
         name: member.name,
         role: membership.role,
         businessName: membership.business.name,

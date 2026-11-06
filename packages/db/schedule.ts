@@ -58,6 +58,39 @@ export async function publishWeekSchedule(
 const toMinute = (time: string) => time.slice(0, 5);
 
 /**
+ * One person's published shifts between two dates, for the clock: it only needs
+ * to know the shift they are on, not the rest of the team's week.
+ */
+export async function getOwnPublishedShifts(
+  businessId: string,
+  userId: string,
+  from: string,
+  to: string,
+): Promise<Pick<WeekScheduleShift, "day" | "start" | "end" | "assignees">[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("schedule_shifts")
+    .select(
+      "day, starts_at, ends_at, shift_assignments!inner (user_id, position_key), schedule_weeks!inner (schedule_published_at)",
+    )
+    .eq("business_id", businessId)
+    .eq("shift_assignments.user_id", userId)
+    .gte("day", from)
+    .lte("day", to)
+    .not("schedule_weeks.schedule_published_at", "is", null);
+  if (error) throw error;
+  return data.map((row) => ({
+    day: row.day,
+    start: toMinute(row.starts_at),
+    end: toMinute(row.ends_at),
+    assignees: row.shift_assignments.map((a) => ({
+      user: a.user_id,
+      position: a.position_key,
+    })),
+  }));
+}
+
+/**
  * A week's shifts with the people on each, as the signed-in person may
  * read them (RLS: managers and owners; everyone in the business once the
  * week is published). Day by day, earliest

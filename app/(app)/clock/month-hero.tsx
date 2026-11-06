@@ -1,4 +1,4 @@
-import { addMonths, formatHours } from "@domain/time-clock";
+import { addMonths, formatHours } from "@domain/time-clock-format";
 import { Card } from "@ui/card";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";

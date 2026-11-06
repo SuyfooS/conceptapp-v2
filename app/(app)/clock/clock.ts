@@ -1,5 +1,4 @@
-import { getBusinessPlace, getWeek } from "@db/availability";
-import { getWeekSchedule } from "@db/schedule";
+import { getOwnPublishedShifts } from "@db/schedule";
 import { getTimeEntries } from "@db/time-clock";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
@@ -25,7 +24,6 @@ import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
-import { currentPublishedSchedule } from "../schedule/week";
 import type { ClockData } from "./clock-types";
 import type { HistoryData } from "./history/history-view";
 
@@ -57,13 +55,17 @@ export const clockAccess = cache(async () => {
   ) {
     return null;
   }
-  const { timeZone } = await getBusinessPlace(membership.business.id);
   return {
     userId: member.userId,
     businessId: membership.business.id,
     role: membership.role,
     viewOnly: !canWrite(member.viewing),
-    timeZone,
+    scheduling: canOpenModule(
+      manifestFor("scheduling"),
+      enabled,
+      membership.role,
+    ),
+    timeZone: membership.business.place.timeZone,
   };
 });
 
@@ -74,37 +76,26 @@ async function shiftToday(
   timeZone: string,
   now: Date,
 ) {
-  const published = await currentPublishedSchedule();
-  if (!published) return { scheduling: false, shift: null };
   const clock = clockAt(now, timeZone);
-  // On a week's first day, last week's final shift may still be running.
-  const lastWeek =
-    published.today === published.thisWeek.start
-      ? await getWeek(businessId, addDays(published.thisWeek.start, -7))
-      : null;
+  // Yesterday too: a shift past midnight may still be running, even from the
+  // last day of the week before.
   const shift = nextShift(
-    [
-      ...(lastWeek?.schedulePublishedAt
-        ? await getWeekSchedule(lastWeek.id)
-        : []),
-      ...published.thisWeek.shifts,
-      ...published.nextWeek.shifts,
-    ],
+    await getOwnPublishedShifts(
+      businessId,
+      userId,
+      addDays(clock.date, -1),
+      clock.date,
+    ),
     clock,
     userId,
   );
-  if (!shift || shift.day > clock.date) {
-    return { scheduling: true, shift: null };
-  }
+  if (!shift) return null;
   const endDate = shift.end > shift.start ? shift.day : addDays(shift.day, 1);
   return {
-    scheduling: true,
-    shift: {
-      start: shift.start,
-      end: shift.end,
-      from: instantIn(shift.day, shift.start, timeZone).toISOString(),
-      to: instantIn(endDate, shift.end, timeZone).toISOString(),
-    },
+    start: shift.start,
+    end: shift.end,
+    from: instantIn(shift.day, shift.start, timeZone).toISOString(),
+    to: instantIn(endDate, shift.end, timeZone).toISOString(),
   };
 }
 
@@ -112,7 +103,7 @@ async function shiftToday(
 export async function currentClock(): Promise<ClockData | null> {
   const access = await clockAccess();
   if (!access) return null;
-  const { userId, businessId, role, viewOnly, timeZone } = access;
+  const { userId, businessId, role, viewOnly, scheduling, timeZone } = access;
 
   const now = new Date();
   const settings = await currentModuleSettings("time_clock");
@@ -126,7 +117,7 @@ export async function currentClock(): Promise<ClockData | null> {
       monthRange(month, timeZone).to,
       userId,
     ),
-    shiftToday(businessId, userId, timeZone, now),
+    scheduling ? shiftToday(businessId, userId, timeZone, now) : null,
     manager ? getTimeEntries(businessId, now, now) : [],
   ]);
 
@@ -135,15 +126,13 @@ export async function currentClock(): Promise<ClockData | null> {
   const undo = open ? null : undoableEntry(entries, now);
   // Still here after their shift, the next one ahead is not the one they are on.
   const later =
-    open &&
-    today.shift &&
-    Date.parse(today.shift.from) - now.getTime() > EARLY_ARRIVAL_MS;
+    open && today && Date.parse(today.from) - now.getTime() > EARLY_ARRIVAL_MS;
   return {
     now: now.toISOString(),
     timeZone,
     open,
-    scheduling: today.scheduling,
-    shift: later ? null : today.shift,
+    scheduling,
+    shift: later ? null : today,
     thisMonth: monthMinutes(entries, month, timeZone, now, step),
     lastMonth: monthMinutes(entries, lastMonth, timeZone, now, step),
     recent: [

@@ -1,13 +1,12 @@
 "use client";
 
+import type { TimeBreak, TimeEntry } from "@domain/time-clock";
 import {
   entryMs,
   entryOverdue,
   formatElapsed,
   formatHours,
-  type TimeBreak,
-  type TimeEntry,
-} from "@domain/time-clock";
+} from "@domain/time-clock-format";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { PunchCircle } from "@ui/punch-circle";

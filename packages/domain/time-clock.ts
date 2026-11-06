@@ -1,6 +1,26 @@
 import { z } from "zod";
 import { addDays, dateIn, instantIn } from "./availability";
 import { timeIn } from "./shabbat";
+import {
+  addMonths,
+  breakMs,
+  countedEnd,
+  entryMs,
+  entryOverdue,
+  formatElapsed,
+  formatHours,
+  MAX_ENTRY_HOURS,
+  type Span,
+} from "./time-clock-format";
+
+export {
+  addMonths,
+  entryMs,
+  entryOverdue,
+  formatElapsed,
+  formatHours,
+  MAX_ENTRY_HOURS,
+};
 
 /**
  * The time clock: entries of time at work and the breaks inside them, as the
@@ -19,8 +39,6 @@ import { timeIn } from "./shabbat";
 export const PUNCH_CODE_TTL_SECONDS = 120;
 /** The device shows a fresh code this often, well inside its lifetime. */
 export const PUNCH_CODE_REFRESH_SECONDS = 30;
-/** An entry is at most this long; a longer open one waits for a manager. */
-export const MAX_ENTRY_HOURS = 24;
 /** How long after leaving a person can take it back themselves. */
 export const UNDO_CLOCK_OUT_SECONDS = 120;
 
@@ -50,51 +68,6 @@ export const timeEntry = z
     },
   );
 export type TimeEntry = z.infer<typeof timeEntry>;
-
-type BreakSpan = Pick<TimeBreak, "startedAt" | "endedAt" | "unpaid">;
-type Span = Pick<TimeEntry, "clockIn" | "clockOut"> & {
-  breaks?: readonly BreakSpan[];
-};
-
-const MAX_ENTRY_MS = MAX_ENTRY_HOURS * 3_600_000;
-
-/**
- * Where an entry ends for counting: its end, or `now` while it is open. An
- * entry left open stops at `MAX_ENTRY_HOURS`, the most the database accepts,
- * so a forgotten clock-out does not keep adding to the month.
- */
-function countedEnd(entry: Span, now: Date): number {
-  if (entry.clockOut !== null) return Date.parse(entry.clockOut);
-  return Math.min(now.getTime(), Date.parse(entry.clockIn) + MAX_ENTRY_MS);
-}
-
-function breakMs(pause: BreakSpan, end: number): number {
-  const until = pause.endedAt === null ? end : Date.parse(pause.endedAt);
-  return Math.max(0, until - Date.parse(pause.startedAt));
-}
-
-/** The entry is open for longer than one can be: only a manager can close it. */
-export function entryOverdue(
-  entry: Pick<Span, "clockIn" | "clockOut">,
-  now: Date,
-): boolean {
-  return (
-    entry.clockOut === null &&
-    now.getTime() - Date.parse(entry.clockIn) > MAX_ENTRY_MS
-  );
-}
-
-/**
- * What an entry counts for, in milliseconds: its length, without its unpaid
- * breaks. An open entry and an open break count until `now`.
- */
-export function entryMs(entry: Span, now: Date): number {
-  const end = countedEnd(entry, now);
-  const unpaid = (entry.breaks ?? [])
-    .filter((pause) => pause.unpaid)
-    .reduce((sum, pause) => sum + breakMs(pause, end), 0);
-  return Math.max(0, end - Date.parse(entry.clockIn) - unpaid);
-}
 
 /** The whole minutes an entry counts for. */
 export function entryMinutes(entry: Span, now: Date): number {
@@ -222,13 +195,6 @@ export function clockStatus<E extends Pick<TimeEntry, "breaks">>(
 
 /** A month as `YYYY-MM`: the first seven characters of a date. */
 export const monthOf = (date: string): string => date.slice(0, 7);
-
-export function addMonths(month: string, months: number): string {
-  const [year = 0, index = 1] = month.split("-").map(Number);
-  const total = year * 12 + (index - 1) + months;
-  const pad = String((total % 12) + 1).padStart(2, "0");
-  return `${Math.floor(total / 12)}-${pad}`;
-}
 
 /** The instants a month starts and ends in the business's time zone. */
 export function monthRange(
@@ -393,19 +359,6 @@ export function undoableEntry<E extends Pick<TimeEntry, "clockOut" | "source">>(
   if (closed?.source !== "punch") return null;
   const age = now.getTime() - Date.parse(closed.clockOut ?? "");
   return age <= UNDO_CLOCK_OUT_SECONDS * 1000 ? closed : null;
-}
-
-/** Minutes as hours and minutes: `86:05`. */
-export function formatHours(minutes: number): string {
-  const whole = Math.max(0, Math.floor(minutes));
-  return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, "0")}`;
-}
-
-/** A running time as `3:42:07`. */
-export function formatElapsed(ms: number): string {
-  const seconds = Math.max(0, Math.floor(ms / 1000));
-  const rest = String(seconds % 60).padStart(2, "0");
-  return `${formatHours(Math.floor(seconds / 60))}:${rest}`;
 }
 
 /** Minutes rounded to the nearest `step` (the module's `roundToMinutes`). */
