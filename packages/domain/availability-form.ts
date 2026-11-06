@@ -155,6 +155,48 @@ export function parseAvailabilityForm(
   return { ok: true, value: note ? { ranges, note } : { ranges } };
 }
 
+/**
+ * The problems of one day's hours, by their index, for checking a day on its
+ * own while it is being edited. The rules never look across days, so another
+ * day's problem cannot hide one here, as it can when checking the whole form.
+ */
+export function dayProblems(
+  ranges: readonly { start: string; end: string }[],
+  day: string,
+  weekStart: string,
+  shabbat: ShabbatLimits | null,
+): Record<number, RangeProblem> {
+  const parsed = parseAvailabilityForm(
+    { ranges: ranges.map(({ start, end }) => ({ day, start, end })), note: "" },
+    weekStart,
+    shabbat,
+  );
+  return parsed.ok ? {} : (parsed.errors.ranges ?? {});
+}
+
+/**
+ * The hours a new range starts with: the usual day on an empty day, the usual
+ * evening after that. On Shabbat's days it stays inside the limits: Friday ends
+ * by candle lighting (15:00 at the latest), Saturday starts at havdalah.
+ */
+export function suggestedRange(
+  day: string,
+  hasHours: boolean,
+  shabbat: ShabbatLimits | null,
+): { start: string; end: string } {
+  if (shabbat && day === shabbat.saturday) {
+    return { start: shabbat.havdalah, end: "23:30" };
+  }
+  if (shabbat && day === shabbat.friday) {
+    const end =
+      shabbat.candleLighting < "15:00" ? shabbat.candleLighting : "15:00";
+    return { start: "08:00", end };
+  }
+  return hasHours
+    ? { start: "18:00", end: "23:00" }
+    : { start: "09:00", end: "17:00" };
+}
+
 /** Message keys of the days of the week, 0 = Sunday. */
 export const WEEKDAY_KEYS = [
   "sun",

@@ -2,16 +2,34 @@
 
 import { accentTokens } from "@domain/color";
 import { accentProps } from "@ui/accent";
+import { Ambient } from "@ui/ambient";
 import { Avatar, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
+import { ChoiceMenu } from "@ui/choice-menu";
+import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
+import { CoverageBar } from "@ui/coverage-bar";
+import { EmptyState } from "@ui/empty-state";
+import {
+  FieldGroup,
+  GroupedField,
+  GroupedPhoneField,
+  GroupedTextArea,
+} from "@ui/field-group";
+import { FieldRow, rowInputClass, rowPillInputClass } from "@ui/field-row";
+import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
+import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
+import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
+import { ProgressRing } from "@ui/progress-ring";
+import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
-import { Stat } from "@ui/stat";
+import { StatusToast } from "@ui/status-toast";
+import { Stepper } from "@ui/stepper";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
 import { WeekStrip } from "@ui/week-strip";
@@ -21,6 +39,8 @@ import {
   CalendarDays,
   ListChecks,
   Plus,
+  Save,
+  Send,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -102,11 +122,17 @@ function GalleryBody({
 }) {
   const t = useTranslations("design");
   const tDays = useTranslations("days");
+  const tWeek = useTranslations("app.shifts.week");
+  const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
   const [day, setDay] = useState("0");
   const [appearance, setAppearance] = useState<Appearance>("system");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [needed, setNeeded] = useState("3");
+  const [position, setPosition] = useState("waiter");
+  const [toastAt, setToastAt] = useState<string | null>(null);
+  const [dock, setDock] = useState(false);
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -365,15 +391,6 @@ function GalleryBody({
           <Button asChild variant="secondary" className="w-full">
             <Link href="/design/shell">{t("layoutLink")}</Link>
           </Button>
-          <div className="grid grid-cols-2 gap-3">
-            <Stat
-              label={t("stat1")}
-              value="2/3"
-              hint={t("stat1h")}
-              tone="warning"
-            />
-            <Stat label={t("stat2")} value="14" hint={t("stat2h")} />
-          </div>
           <WeekStrip
             label={t("week")}
             value={day}
@@ -385,6 +402,16 @@ function GalleryBody({
               marked: i === 1 || i === 3,
               markLabel: t("openShift"),
             }))}
+          />
+          <Segmented
+            label={t("week")}
+            value={week}
+            onChange={setWeek}
+            options={[
+              { value: "this", label: tWeek("this") },
+              { value: "next", label: tWeek("next") },
+            ]}
+            className="self-start"
           />
         </Section>
 
@@ -410,12 +437,107 @@ function GalleryBody({
           </div>
         </Section>
 
+        <Section title={t("ambient")}>
+          <div className="relative isolate h-24 overflow-hidden rounded-card">
+            <Ambient />
+          </div>
+        </Section>
+
         <Section title={t("people")}>
           <div className="flex items-center gap-4">
             <Avatar name={t("person1")} />
             <Avatar name={t("person2")} />
             <AvatarStack names={[t("person1"), t("person2"), t("person3")]} />
           </div>
+        </Section>
+
+        <Section title={t("personRow")}>
+          <PersonList>
+            <PersonRow
+              name={t("person1")}
+              title={t("person1")}
+              subtitle={t("sheetRole")}
+              trailing={<Badge tone="success">{t("success")}</Badge>}
+            />
+            <PersonRow
+              name={null}
+              title={t("person2")}
+              subtitle={t("sheetRole")}
+              below={<Button variant="secondary">{t("emptyAction")}</Button>}
+            />
+          </PersonList>
+        </Section>
+
+        <Section title={t("fieldGroup")}>
+          <FieldGroup key={lang}>
+            <GroupedField
+              label={t("name")}
+              placeholder={t("namePh")}
+              leading={<PersonAvatar name={t("person1")} />}
+            />
+            <GroupedField
+              label={t("hours")}
+              error={t("hoursError")}
+              defaultValue="22:00–17:00"
+              dir="ltr"
+              className={ltrInputClass}
+            />
+            <GroupedPhoneField label={t("phone")} hint={t("shiftHint")} />
+            <GroupedTextArea
+              label={t("note")}
+              placeholder={t("notePh")}
+              rows={2}
+            />
+          </FieldGroup>
+        </Section>
+
+        <Section title={t("choices")}>
+          <ChoiceList legend={t("shift")} legendClassName="sr-only">
+            <ChoiceRow
+              name="galleryChoice"
+              defaultChecked
+              title={t("p1")}
+              hint={t("choiceHint")}
+              leading={<CalendarDays />}
+            />
+            <ChoiceRow
+              name="galleryChoice"
+              title={t("p2")}
+              hint={t("choiceHint")}
+              leading={<Users />}
+            />
+          </ChoiceList>
+        </Section>
+
+        <Section title={t("emptyState")}>
+          <Card padding="none">
+            <EmptyState
+              headingLevel="h2"
+              icon={<ListChecks />}
+              title={t("emptyTitle")}
+              body={t("emptyBody")}
+            >
+              <Button>{t("emptyAction")}</Button>
+            </EmptyState>
+          </Card>
+        </Section>
+
+        <Section title={t("floatingAction")}>
+          {/* A transform makes this box hold what is fixed, so the action stays here. */}
+          <div className="relative h-36 transform-gpu overflow-hidden rounded-card bg-surface-2">
+            <FloatingAction className="bottom-4 md:fixed">
+              <Button size="lg" className={cn("w-full", floatingButtonClass)}>
+                {t("emptyAction")}
+              </Button>
+            </FloatingAction>
+          </div>
+        </Section>
+
+        <Section title={t("ring")}>
+          <Card className="flex items-center gap-3">
+            <ProgressRing value={3} max={4} />
+            <span className="font-medium">{t("emptyBody")}</span>
+          </Card>
         </Section>
 
         <Section title={t("tiles")}>
@@ -472,6 +594,99 @@ function GalleryBody({
               />
             </ListGroup>
           </Sheet>
+        </Section>
+
+        <Section title={t("groupedForm")}>
+          <ListGroup>
+            <FieldRow label={t("name")} htmlFor="gallery-row-name">
+              <input
+                id="gallery-row-name"
+                placeholder={t("namePh")}
+                className={rowInputClass}
+              />
+            </FieldRow>
+            <FieldRow label={t("startTime")} htmlFor="gallery-row-time">
+              <input
+                id="gallery-row-time"
+                type="time"
+                dir="ltr"
+                defaultValue="09:00"
+                className={rowPillInputClass}
+              />
+            </FieldRow>
+            <FieldRow label={t("peopleNeeded")} htmlFor="gallery-row-needed">
+              <Stepper
+                id="gallery-row-needed"
+                value={needed}
+                onValueChange={setNeeded}
+                min={1}
+                max={50}
+                decreaseLabel={t("fewer")}
+                increaseLabel={t("more")}
+              />
+            </FieldRow>
+            <ListRow
+              leading={<Avatar name={t("person1")} />}
+              title={t("person1")}
+              subtitle={
+                <ChoiceMenu
+                  label={t("positionLabel", {
+                    value:
+                      position === "host" ? t("positionHost") : t("sheetRole"),
+                  })}
+                  value={position}
+                  options={[
+                    { key: "waiter", label: t("sheetRole") },
+                    { key: "host", label: t("positionHost") },
+                  ]}
+                  onChange={setPosition}
+                  className="-my-3"
+                />
+              }
+            />
+          </ListGroup>
+        </Section>
+
+        <Section title={t("coverage")}>
+          <Card className="flex flex-col gap-3">
+            <CoverageBar filled={2} total={3} />
+            <CoverageBar filled={3} total={3} />
+            <CoverageBar filled={9} total={20} />
+          </Card>
+        </Section>
+
+        <Section title={t("floating")}>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => setToastAt(new Date().toISOString())}
+            >
+              {t("toastShow")}
+            </Button>
+            <Button
+              variant="secondary"
+              aria-pressed={dock}
+              onClick={() => setDock(!dock)}
+            >
+              {dock ? t("dockHide") : t("dockShow")}
+            </Button>
+          </div>
+          <StatusToast
+            message={toastAt ? t("toastText") : null}
+            stamp={toastAt ?? undefined}
+          />
+          {dock ? (
+            <FloatingDock>
+              <DockButton tone="quiet" icon={<Save aria-hidden="true" />}>
+                {t("dockQuiet")}
+              </DockButton>
+              <DockButton
+                icon={<Send aria-hidden="true" className="rtl:-scale-x-100" />}
+              >
+                {t("dockMain")}
+              </DockButton>
+            </FloatingDock>
+          ) : null}
         </Section>
 
         <Section title={t("badges")}>

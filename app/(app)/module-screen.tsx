@@ -1,13 +1,15 @@
 import { canOpenModule, type ModuleKey } from "@domain/modules";
 import { manifestFor } from "@modules/registry";
 import { Button } from "@ui/button";
-import { Card, CardText } from "@ui/card";
+import { EmptyState } from "@ui/empty-state";
 import { PageBody, PageHeader } from "@ui/page";
+import { pageGlowClass } from "@ui/page-glow";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { currentMember } from "./member";
+import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
 
 export async function moduleMetadata(key: ModuleKey): Promise<Metadata> {
@@ -30,24 +32,34 @@ export async function ModuleScreen({ moduleKey }: { moduleKey: ModuleKey }) {
   if (!role || !canOpenModule(manifestFor(moduleKey), enabled, role)) {
     notFound();
   }
-  const t = await getTranslations();
+  return <ModuleSoonView moduleKey={moduleKey} homeHref="/home" />;
+}
 
+/** Also rendered with mock data on /design/shell/module. */
+export async function ModuleSoonView({
+  moduleKey,
+  homeHref,
+}: {
+  moduleKey: ModuleKey;
+  homeHref: string;
+}) {
+  const t = await getTranslations();
+  const icon = manifestFor(moduleKey).nav?.icon;
   return (
-    <PageBody>
+    <PageBody className={pageGlowClass}>
       <PageHeader
         title={t(`modules.${moduleKey}.name`)}
         subtitle={t(`modules.${moduleKey}.description`)}
       />
-      <Card
-        tone="flat"
-        padding="lg"
-        className="flex flex-col items-start gap-4 md:max-w-xl"
+      <EmptyState
+        icon={icon ? moduleIcons[icon] : null}
+        body={t("app.moduleSoon.body")}
+        className="md:py-16"
       >
-        <CardText>{t("app.moduleSoon.body")}</CardText>
-        <Button asChild variant="secondary">
-          <Link href="/home">{t("app.moduleSoon.home")}</Link>
+        <Button asChild variant="secondary" size="lg">
+          <Link href={homeHref}>{t("app.moduleSoon.home")}</Link>
         </Button>
-      </Card>
+      </EmptyState>
     </PageBody>
   );
 }

@@ -20,6 +20,7 @@ export default async function AvailabilityPage() {
       week={week}
       late={Date.parse(week.dueAt) < Date.now()}
       save={saveAvailabilityAction}
+      backHref="/schedule"
     />
   );
 }

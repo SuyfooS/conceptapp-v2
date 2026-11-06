@@ -15,6 +15,7 @@ const ts = he.app.shifts;
 const shown = (page: Page, text: string) =>
   page.getByText(text).filter({ visible: true });
 const before = (message: string) => message.split(/[<{]/)[0] ?? message;
+const first = (name: string) => name.split(" ")[0] ?? name;
 const sunday = he.app.availability.weekdays.sun;
 // Next week's Sunday shift by name, whatever its date.
 const shift = (name: string) =>
@@ -51,8 +52,13 @@ test("a worker sees nothing of a draft schedule", async ({ page }) => {
   );
   await signIn(page, YOAV);
   await page.goto("/schedule");
+  await expect(shown(page, ts.mine.notPublished)).toBeVisible();
+  await expect(page.getByRole("region", { name: shift("בוקר") })).toHaveCount(
+    0,
+  );
   const entry = page.getByRole("link", { name: new RegExp(ts.title) });
   await expect(entry).toContainText(ts.entry.notPublished);
+  await expectCleanPage(page);
   await entry.click();
   await expect(page).toHaveURL(/\/schedule\/shifts$/);
   await expect(shown(page, ts.mine.notPublished)).toBeVisible();
@@ -62,7 +68,7 @@ test("a worker sees nothing of a draft schedule", async ({ page }) => {
   await expectCleanPage(page);
 });
 
-test("a worker reads their shifts and the team's in the published schedule", async ({
+test("a worker's schedule tab opens on their next shift and the team's day", async ({
   page,
 }, testInfo) => {
   await scheduleDemoSunday(
@@ -77,29 +83,53 @@ test("a worker reads their shifts and the team's in the published schedule", asy
   );
   await signIn(page, YOAV);
   await page.goto("/schedule");
+
+  // No further tap: next week's Sunday, their own shift and position first.
+  const morning = page.getByRole("region", { name: shift("בוקר") });
+  await expect(morning).toContainText(ts.yours);
+  await expect(morning).toContainText("09:00");
+  await expect(morning).toContainText("ברמן/ית");
+  await expect(morning).toContainText(first(NOA.name));
+  // The same day's other shift, without them.
+  const evening = page.getByRole("region", { name: shift("ערב") });
+  await expect(evening).toContainText(first(NOA.name));
+  await expect(evening.getByText(ts.yours)).toHaveCount(0);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("schedule-tab.png"),
+    fullPage: true,
+  });
+
+  // A shift opens to everyone on it, with their positions. People come in a
+  // stable order (by id): Noa, then Yoav.
+  await morning
+    .getByRole("button", { name: new RegExp(`^${before(ts.board.open)}`) })
+    .click();
+  const people = page
+    .getByRole("dialog")
+    .getByRole("list", { name: ts.sheet.people })
+    .getByRole("listitem");
+  await expect(people).toHaveCount(2);
+  await expect(people.nth(0)).toContainText(NOA.name);
+  await expect(people.nth(0)).toContainText("מלצר/ית");
+  await expect(people.nth(1)).toContainText(YOAV.name);
+  await expect(people.nth(1)).toContainText("ברמן/ית");
+  await expectCleanPage(page);
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+
+  // My shifts: the next one, its position, and the hours.
   const entry = page.getByRole("link", { name: new RegExp(ts.title) });
   await expect(entry).toContainText(before(ts.entry.next));
   await expect(entry).toContainText("09:00");
   await entry.click();
-
-  // Their own shift, with the position they work in.
-  const mine = page.getByRole("list", { name: ts.mine.title });
-  await expect(mine.getByRole("listitem")).toHaveCount(1);
-  await expect(mine).toContainText("בוקר");
-  await expect(mine).toContainText("ברמן/ית");
+  await expect(page).toHaveURL(/\/schedule\/shifts$/);
+  const next = page.getByRole("region", { name: shift("בוקר") });
+  await expect(next).toContainText(ts.hero.next);
+  await expect(next).toContainText("ברמן/ית");
   await expect(shown(page, "7 שעות")).toBeVisible();
-
-  // The whole team's week: who works with them, and the evening without them.
-  const morning = page.getByRole("region", { name: shift("בוקר") });
-  // People come in a stable order (by id): Noa, then Yoav.
-  await expect(morning.getByRole("listitem")).toHaveText([
-    `${NOA.name} · מלצר/ית`,
-    `${YOAV.name} · ברמן/ית`,
-  ]);
-  await expect(morning.getByText(ts.yours)).toBeVisible();
-  const evening = page.getByRole("region", { name: shift("ערב") });
-  await expect(evening.getByRole("listitem")).toHaveText([NOA.name]);
-  await expect(evening.getByText(ts.yours)).toHaveCount(0);
+  // The team's week stays on the tab, so this screen has only their own.
+  await expect(page.getByRole("region", { name: shift("ערב") })).toHaveCount(0);
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("my-shifts.png"),

@@ -1,90 +1,68 @@
+import { getBusinessPlace } from "@db/availability";
 import { moduleWidgets } from "@domain/modules";
 import { manifests } from "@modules/registry";
-import { Button } from "@ui/button";
-import { Card, CardText, CardTitle } from "@ui/card";
-import { ListGroup, ListRow } from "@ui/list-row";
-import { PageBody, PageHeader, PageSection } from "@ui/page";
-import { Users } from "lucide-react";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { signOut } from "../../(auth)/actions";
 import { currentMember } from "../member";
-import { moduleIcons } from "../module-icons";
 import { currentModules } from "../modules";
+import {
+  currentAvailabilityWeek,
+  currentPublishedSchedule,
+  currentScheduleBuild,
+  currentTeamAvailability,
+} from "../schedule/week";
 import { currentTeam } from "../team";
+import { TodayView } from "./today-view";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("app.home");
   return { title: t("metaTitle") };
 }
 
-// Home: a card per enabled module the person's role reaches, from the
-// module manifests, and for owners and managers the way to their team. Same content on every device; the shell around it
-// changes shape.
+// Today: what is next for the person and what needs them, from the enabled
+// modules. Each read below is null when its module is off or the person's
+// role does not reach it.
 export default async function HomePage() {
-  const [t, tm, tt, member, enabled, team] = await Promise.all([
-    getTranslations("app.home"),
-    getTranslations("modules"),
-    getTranslations("app.team"),
+  const [
+    member,
+    enabled,
+    team,
+    published,
+    availability,
+    teamAvailability,
+    build,
+  ] = await Promise.all([
     currentMember(),
     currentModules(),
     currentTeam(),
+    currentPublishedSchedule(),
+    currentAvailabilityWeek(),
+    currentTeamAvailability(),
+    currentScheduleBuild(),
   ]);
-  const firstName = member?.name?.split(" ")[0];
-  const role = member?.membership?.role;
-  const widgets = role ? moduleWidgets(manifests, enabled, role) : [];
+  const membership = member?.membership;
+  // The layout has already sent these people elsewhere.
+  if (!member || !membership) return null;
 
   return (
-    <PageBody>
-      <PageHeader
-        title={firstName ? t("greeting", { name: firstName }) : t("title")}
-        subtitle={member?.membership?.business.name}
-      />
-      {widgets.length > 0 ? (
-        <PageSection title={t("modulesTitle")} className="md:max-w-xl">
-          <ListGroup>
-            {widgets.map((widget) => (
-              <ListRow
-                key={widget.key}
-                href={widget.href}
-                leading={moduleIcons[widget.icon]}
-                title={tm(`${widget.key}.name`)}
-                subtitle={tm(`${widget.key}.description`)}
-              />
-            ))}
-          </ListGroup>
-        </PageSection>
-      ) : (
-        <Card
-          tone="flat"
-          padding="lg"
-          className="flex flex-col gap-2 md:max-w-xl"
-        >
-          <CardTitle as="h2">{t("empty.title")}</CardTitle>
-          <CardText>{t("empty.body")}</CardText>
-        </Card>
-      )}
-      {team ? (
-        <PageSection title={t("manageTitle")} className="md:max-w-xl">
-          <ListGroup>
-            <ListRow
-              href="/team"
-              leading={<Users />}
-              title={tt("title")}
-              subtitle={
-                team.counts.open > 0
-                  ? tt("invites.open", { count: team.counts.open })
-                  : tt("members.count", { count: team.counts.members })
-              }
-            />
-          </ListGroup>
-        </PageSection>
-      ) : null}
-      <form action={signOut}>
-        <Button type="submit" variant="secondary" className="w-full md:w-auto">
-          {t("signOut")}
-        </Button>
-      </form>
-    </PageBody>
+    <TodayView
+      signOut={signOut}
+      data={{
+        now: new Date().toISOString(),
+        timeZone:
+          published?.timeZone ??
+          (await getBusinessPlace(membership.business.id)).timeZone,
+        name: member.name,
+        role: membership.role,
+        businessName: membership.business.name,
+        widgets: moduleWidgets(manifests, enabled, membership.role),
+        schedule:
+          published && availability
+            ? { published, availability, teamAvailability, build }
+            : null,
+        team,
+      }}
+    />
   );
 }

@@ -73,6 +73,13 @@ test("the team views a business as a worker and stops", async ({
     nav(page).getByRole("link", { name: m.storefront.name }),
   ).toHaveCount(0);
   await expect(page.getByText(he.app.home.manageTitle)).toHaveCount(0);
+  // Today as a worker has it: nothing is published, and no manager's tiles.
+  await expect(
+    page.getByRole("region", { name: he.app.home.hero.next }),
+  ).toContainText(he.app.home.hero.notPublished.title);
+  await expect(
+    page.getByRole("main").locator('a[href="/schedule/swaps"]'),
+  ).toHaveCount(0);
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("view-as-worker.png"),

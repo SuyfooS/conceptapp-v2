@@ -12,22 +12,28 @@ import { ScheduleBuilder } from "./schedule-builder";
 export async function ScheduleBuildView({
   data,
   save,
+  backHref = "/schedule",
 }: {
   data: ScheduleBuildWeek;
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
+  /** Where "back" goes: the schedule's entry, or the demo's. */
+  backHref?: string;
 }) {
-  const t = await getTranslations("app.build");
+  const [t, tm] = await Promise.all([
+    getTranslations("app.build"),
+    getTranslations("modules.scheduling"),
+  ]);
   const { week } = data;
   return (
     <PageBody>
       <PageHeader
         title={t("title")}
-        subtitle={t("subtitle", {
+        eyebrow={t("subtitle", {
           from: dayMonth(week.start),
           to: dayMonth(week.dates.at(-1) ?? week.start),
         })}
+        back={{ href: backHref, label: tm("name") }}
       />
-      <p className="max-w-2xl text-ink-2">{t("intro")}</p>
       <ScheduleBuilder
         week={week}
         savedAt={data.savedAt}

@@ -5,7 +5,7 @@ import { Link2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
 import { CopyLink } from "@/app/copy-link";
-import { type InviteLinkState, inviteLinkAction } from "./actions";
+import type { InviteLinkState } from "./actions";
 
 const initial: InviteLinkState = {};
 
@@ -16,25 +16,31 @@ const initial: InviteLinkState = {};
 export function InviteLink({
   inviteId,
   name,
+  issue,
 }: {
   inviteId: string;
   name: string;
+  /** `inviteLinkAction`, or the design demo's stand-in. */
+  issue: (
+    inviteId: string,
+    prev: InviteLinkState,
+    form: FormData,
+  ) => Promise<InviteLinkState>;
 }) {
   const t = useTranslations("admin.setup.invite");
   const [state, action, pending] = useActionState(
-    inviteLinkAction.bind(null, inviteId),
+    issue.bind(null, inviteId),
     initial,
   );
 
   if (!state.link) {
     return (
-      <form action={action} className="flex flex-col gap-1">
+      <form action={action} className="flex flex-col items-start gap-1">
         <Button
           type="submit"
           variant="secondary"
           loading={pending}
           aria-label={t("createFor", { name })}
-          className="w-full md:w-auto"
         >
           <Link2 aria-hidden="true" />
           {t("create")}

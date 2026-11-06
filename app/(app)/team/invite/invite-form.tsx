@@ -3,11 +3,13 @@
 import type { Role } from "@domain/modules";
 import { TEAM_NAME_MAX } from "@domain/team";
 import { Button } from "@ui/button";
-import { Card, CardText } from "@ui/card";
+import { Card } from "@ui/card";
+import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
-import { PhoneField } from "@ui/phone-field";
-import { TextField } from "@ui/text-field";
-import { Send } from "lucide-react";
+import { FieldGroup, GroupedField, GroupedPhoneField } from "@ui/field-group";
+import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
+import { PersonAvatar } from "@ui/person-row";
+import { Send, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useActionState, useState } from "react";
@@ -46,105 +48,120 @@ function InviteRound({
   const tr = useTranslations("app.team.roles");
   const tl = useTranslations("app.team.link");
   const [state, action, pending] = useActionState(invite, initial);
+  const values = state.done ? undefined : state.values;
+  // The avatar fills in as the name is typed, as it will look in the team.
+  const [typed, setTyped] = useState(values?.name ?? "");
 
   if (state.done) {
     const { name, link } = state.done;
     return (
-      <Card tone="raised" padding="lg" className="flex flex-col gap-4">
-        <h2 className="font-bold text-md">{t("ready", { name })}</h2>
-        <CardText>{t("readyBody")}</CardText>
-        <CopyLink
-          link={link}
-          label={tl("linkFor", { name })}
-          hint={tl("hint")}
-          copy={tl("copy")}
-          copied={tl("copied")}
-        />
-        <div className="flex flex-col gap-2 md:flex-row">
-          <Button asChild variant="secondary">
+      <div className="flex w-full max-w-xl flex-col">
+        <Card tone="hero" padding="none" className="px-5 pt-5 pb-24">
+          <h2 className="text-balance font-bold text-xl">
+            {t("ready", { name })}
+          </h2>
+          <p className="mt-1 text-base">{t("readyBody", { name })}</p>
+        </Card>
+        <Card
+          tone="float"
+          padding="md"
+          className="relative z-10 mx-3 -mt-[68px]"
+        >
+          <CopyLink
+            main
+            link={link}
+            label={tl("linkFor", { name })}
+            hint={tl("hint")}
+            copy={tl("copy")}
+            copied={tl("copied")}
+          />
+        </Card>
+        <div className="mt-5 flex flex-col gap-1 md:flex-row">
+          <Button asChild variant="ghost">
             <Link href={teamHref}>{t("backToTeam")}</Link>
           </Button>
           <Button type="button" variant="ghost" onClick={onAnother}>
             {t("another")}
           </Button>
         </div>
-      </Card>
+      </div>
     );
   }
 
   const errors = state.errors ?? {};
-  const values = state.values;
   const defaultRole = values?.role || roles[roles.length - 1];
 
   return (
-    <form action={action} noValidate className="flex flex-col gap-5">
-      <TextField
-        name="name"
-        label={t("name")}
-        autoComplete="off"
-        maxLength={TEAM_NAME_MAX}
-        defaultValue={values?.name}
-        error={errors.name ? t(`errors.name.${errors.name}`) : undefined}
-        required
-      />
-      <PhoneField
-        name="phone"
-        label={t("phone")}
-        autoComplete="off"
-        defaultValue={values?.phone}
-        error={errors.phone ? t(`errors.phone.${errors.phone}`) : undefined}
-        hint={t("phoneHint")}
-        required
-      />
-      <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
-        <legend className="mb-1.5 font-medium text-ink text-sm">
-          {t("role")}
-        </legend>
-        <div className="grid gap-2 md:grid-cols-3">
-          {roles.map((role) => (
-            <label
-              key={role}
-              className={cn(
-                "flex min-h-11 cursor-pointer items-center gap-3 rounded-control border border-line bg-surface px-4 py-3",
-                "transition-colors duration-150 ease-calm has-checked:border-accent has-checked:ring-1 has-checked:ring-accent",
-              )}
-            >
-              <input
-                type="radio"
-                name="role"
-                value={role}
-                defaultChecked={role === defaultRole}
-                className="size-5 shrink-0 accent-accent"
-              />
-              <span className="flex flex-col">
-                <span className="font-medium">{tr(role)}</span>
-                <span className="text-ink-2 text-sm">
-                  {t(`roleHint.${role}`)}
-                </span>
-              </span>
-            </label>
-          ))}
-        </div>
-        {errors.role ? (
-          <p className="text-danger text-sm">
-            {t(`errors.role.${errors.role}`)}
-          </p>
-        ) : null}
-      </fieldset>
+    <form
+      action={action}
+      noValidate
+      className="flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8"
+    >
+      <FieldGroup>
+        <GroupedField
+          name="name"
+          label={t("name")}
+          placeholder={t("namePlaceholder")}
+          autoComplete="off"
+          maxLength={TEAM_NAME_MAX}
+          defaultValue={values?.name}
+          onChange={(event) => setTyped(event.target.value)}
+          error={errors.name ? t(`errors.name.${errors.name}`) : undefined}
+          leading={<PersonAvatar name={typed} />}
+          required
+        />
+        <GroupedPhoneField
+          name="phone"
+          label={t("phone")}
+          autoComplete="off"
+          defaultValue={values?.phone}
+          error={errors.phone ? t(`errors.phone.${errors.phone}`) : undefined}
+          hint={t("phoneHint")}
+          leading={
+            <span className="grid size-10 place-items-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5">
+              <Smartphone />
+            </span>
+          }
+          required
+        />
+      </FieldGroup>
+      <ChoiceList
+        legend={t("role")}
+        error={errors.role ? t(`errors.role.${errors.role}`) : undefined}
+        className="md:row-span-2"
+      >
+        {roles.map((role) => (
+          <ChoiceRow
+            key={role}
+            name="role"
+            value={role}
+            defaultChecked={role === defaultRole}
+            title={tr(role)}
+            hint={t(`roleHint.${role}`)}
+          />
+        ))}
+      </ChoiceList>
       {state.failure ? (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="px-1 text-danger md:col-start-1">
           {t(`errors.${state.failure}`)}
         </p>
       ) : null}
-      <Button
-        type="submit"
-        size="lg"
-        loading={pending}
-        className="md:self-start"
-      >
-        <Send aria-hidden="true" className="rtl:-scale-x-100" />
-        {t("submit")}
-      </Button>
+      <div className="md:col-start-1">
+        <FloatingAction>
+          <Button
+            type="submit"
+            size="lg"
+            loading={pending}
+            className={cn(
+              "w-full md:w-auto md:shadow-none",
+              floatingButtonClass,
+            )}
+          >
+            <Send aria-hidden="true" className="rtl:-scale-x-100" />
+            {t("submit")}
+          </Button>
+        </FloatingAction>
+      </div>
     </form>
   );
 }

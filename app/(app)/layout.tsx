@@ -4,8 +4,6 @@ import { displayIsraeliMobile } from "@domain/phone";
 import { manifests } from "@modules/registry";
 import { accentProps } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
-import { Button } from "@ui/button";
-import { Card } from "@ui/card";
 import { Spinner } from "@ui/spinner";
 import { House } from "lucide-react";
 import type { Metadata } from "next";
@@ -17,6 +15,7 @@ import { signOut } from "../(auth)/actions";
 import { currentMember } from "./member";
 import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
+import { NoBusinessScreen } from "./no-business";
 import { ViewAsBanner } from "./view-as-banner";
 
 export const metadata: Metadata = {
@@ -54,23 +53,7 @@ async function Shell({ children }: { children: ReactNode }) {
   if (!member.membership) {
     // The ConceptApp team works in the console, not inside a business.
     if (await currentPlatformRole()) redirect("/admin");
-    return (
-      <main className="flex min-h-dvh items-start justify-center px-4 py-10 md:items-center">
-        <Card
-          tone="raised"
-          padding="lg"
-          className="flex w-full max-w-[400px] flex-col gap-4"
-        >
-          <h1 className="font-bold text-xl">{t("noBusiness.title")}</h1>
-          <p className="text-ink-2">{t("noBusiness.body")}</p>
-          <form action={signOut}>
-            <Button type="submit" variant="secondary" className="w-full">
-              {t("signOut")}
-            </Button>
-          </form>
-        </Card>
-      </main>
-    );
+    return <NoBusinessScreen signOut={signOut} />;
   }
 
   const { business, role } = member.membership;

@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { before, buildScreen } from "./build-screen";
 import {
   clearAvailability,
   clearSchedule,
@@ -17,13 +18,11 @@ import { signIn } from "./session";
 // its manager and two workers. Noa sends 09:00–17:00 for next Sunday;
 // Yoav sends nothing. The template's positions include "מלצר/ית" (waiter).
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
-const NOA = { name: "נועה כהן", e164: "+972500000003" };
+const NOA = { name: "נועה כהן", first: "נועה", e164: "+972500000003" };
 const YOAV = { name: "יואב לוי", local: "050-000-0004", e164: "+972500000004" };
 const WAITER = "מלצר/ית";
 
 const tb = he.app.build;
-// The text of a message up to its first placeholder or tag.
-const before = (message: string) => message.split(/[<{]/)[0] ?? message;
 // Any form of an ICU plural message, with # as a number.
 const plural = (message: string) =>
   new RegExp(
@@ -31,14 +30,6 @@ const plural = (message: string) =>
       .map((m) => (m[1] ?? "").replace("#", "\\d+"))
       .join("|"),
   );
-// Next week's Sunday morning shift, whatever its date.
-const sundayMorning = new RegExp(
-  `^${before(
-    tb.shift
-      .replace("{name}", "בוקר")
-      .replace("{day}", he.app.availability.weekdays.sun),
-  )}`,
-);
 
 async function expectCleanPage(page: Page) {
   // Metadata streams in after the body (see new-business.spec.ts).
@@ -70,6 +61,7 @@ test.afterEach(async () => {
 test("a manager puts people on next week's shifts", async ({
   page,
 }, testInfo) => {
+  const screen = buildScreen(page);
   await signIn(page, MANAGER);
   await page.goto("/schedule");
   const entry = page.getByRole("link", { name: new RegExp(tb.title) });
@@ -82,33 +74,31 @@ test("a manager puts people on next week's shifts", async ({
     page.getByRole("heading", { level: 1, name: tb.title }),
   ).toBeVisible();
 
-  // Phone and tablet open on the week's first day; desktop shows it all.
-  const shift = page.getByRole("region", { name: sundayMorning });
+  // A phone opens on the week's first day; tablet and desktop show it all.
+  const shift = screen.card("בוקר");
   await expect(shift).toHaveCount(1);
   await expect(shift).toContainText(tb.nobody);
-  const add = shift.getByLabel(tb.add);
-  // Noa said she is free, Yoav has not answered.
-  await expect(
-    add.locator(`optgroup[label="${tb.groups.available}"] option`, {
-      hasText: NOA.name,
-    }),
-  ).toHaveCount(1);
-  await expect(
-    add.locator(`optgroup[label="${tb.groups.noAnswer}"] option`, {
-      hasText: YOAV.name,
-    }),
-  ).toHaveCount(1);
-  await add.selectOption({ label: NOA.name });
-  await expect(shift.getByRole("listitem")).toContainText([NOA.name]);
-  await expect(page.getByText(tb.unsaved)).toBeVisible();
+
+  // Tapping the shift opens its sheet. Noa said she is free, Yoav has not
+  // answered.
+  await shift.click();
+  await expect(screen.group(tb.groups.assigned)).toContainText(tb.nobody);
+  await expect(screen.group(tb.groups.available)).toContainText(NOA.name);
+  await expect(screen.group(tb.groups.noAnswer)).toContainText(YOAV.name);
+  await expectCleanPage(page);
+  await screen.addButton(NOA.name).click();
+  await expect(screen.group(tb.groups.assigned)).toContainText(NOA.name);
 
   // She works as a waiter on this shift; the shift counts its positions.
-  const position = shift.getByLabel(tb.position.replace("{name}", NOA.name));
-  await expect(position).toHaveValue("");
-  await position.selectOption({ label: WAITER });
+  await screen.positionButton(NOA.name, tb.noPosition).click();
+  await page.getByRole("menuitemradio", { name: WAITER }).click();
+  await expect(screen.positionButton(NOA.name, WAITER)).toBeVisible();
+  await screen.closeSheet();
+  await expect(shift).toContainText(NOA.first);
   await expect(shift).toContainText(
     tb.inPosition.replace("{name}", WAITER).replace("{count}", "1"),
   );
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
 
   await page.getByRole("button", { name: tb.submit }).click();
   await expect(page.getByRole("status")).toHaveText(tb.saved);
@@ -118,24 +108,21 @@ test("a manager puts people on next week's shifts", async ({
 
   // Saved: it comes back after a reload, with when it was saved.
   await page.reload();
-  const saved = page.getByRole("region", { name: sundayMorning });
-  await expect(saved.getByRole("listitem")).toContainText([NOA.name]);
-  await expect(
-    saved.getByLabel(tb.position.replace("{name}", NOA.name)),
-  ).toHaveValue("waiter");
+  const saved = screen.card("בוקר");
+  await expect(saved).toContainText(NOA.first);
   await expect(page.getByText(before(tb.savedAt))).toBeVisible();
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("schedule-build.png"),
     fullPage: true,
   });
+  await saved.click();
+  await expect(screen.positionButton(NOA.name, WAITER)).toBeVisible();
 
   // Taking her off and saving leaves the shift empty again.
-  await saved
-    .getByRole("button", {
-      name: tb.remove.replace("{name}", NOA.name),
-    })
-    .click();
+  await screen.removeButton(NOA.name).click();
+  await expect(screen.group(tb.groups.assigned)).toContainText(tb.nobody);
+  await screen.closeSheet();
   await expect(saved).toContainText(tb.nobody);
   await page.getByRole("button", { name: tb.submit }).click();
   await expect(page.getByRole("status")).toHaveText(tb.saved);
@@ -146,48 +133,45 @@ test("a manager changes, adds and removes next week's shifts", async ({
   page,
 }, testInfo) => {
   const te = tb.editor;
-  const sunday = he.app.availability.weekdays.sun;
-  const region = (name: string) =>
-    page.getByRole("region", {
-      name: new RegExp(
-        `^${before(tb.shift.replace("{name}", name).replace("{day}", sunday))}`,
-      ),
-    });
-  const editButton = (name: string) =>
-    region(name).getByRole("button", { name: tb.edit.replace("{name}", name) });
+  const screen = buildScreen(page);
+  const { sheet } = screen;
   await signIn(page, MANAGER);
   await page.goto("/schedule/build");
-  const morning = region("בוקר");
-  const evening = region("ערב");
+  const morning = screen.card("בוקר");
+  const evening = screen.card("ערב");
+  const middle = screen.card("אמצע");
   await expect(morning).toHaveCount(1);
   await expect(evening).toHaveCount(1);
 
   // Fewer people and an earlier end on Sunday morning.
-  await editButton("בוקר").click();
-  await morning.getByLabel(te.needed).fill("2");
-  await morning.getByLabel(te.end).fill("15:00");
-  await morning.getByRole("button", { name: te.apply }).click();
+  await morning.click();
+  await screen.openDetails("בוקר");
+  await sheet.getByRole("button", { name: te.fewer }).click();
+  await expect(sheet.getByLabel(te.needed)).toHaveValue("2");
+  await sheet.getByLabel(te.end).fill("15:00");
+  await screen.closeSheet();
   await expect(morning).toContainText(
     tb.people.replace("{assigned}", "0").replace("{needed}", "2"),
   );
   await expect(page.getByText(tb.unsaved)).toBeVisible();
 
   // Removing a shift can be undone; the second time it stays removed.
-  await editButton("ערב").click();
-  await evening.getByRole("button", { name: te.delete }).click();
+  await evening.click();
+  await screen.openDetails("ערב");
+  await sheet.getByRole("button", { name: te.delete }).click();
+  await expect(sheet).toHaveCount(0);
   await expect(evening).toHaveCount(0);
   await page.getByRole("button", { name: tb.undoRemove }).click();
   await expect(evening).toHaveCount(1);
-  await editButton("ערב").click();
-  await evening.getByRole("button", { name: te.delete }).click();
+  await evening.click();
+  await screen.openDetails("ערב");
+  await sheet.getByRole("button", { name: te.delete }).click();
+  await expect(sheet).toHaveCount(0);
   await expect(evening).toHaveCount(0);
 
   // A new shift: a name is required first.
-  const addOnSunday = new RegExp(
-    `^${before(tb.addShiftOn.replace("{day}", sunday))}`,
-  );
-  await page.getByRole("button", { name: addOnSunday }).click();
-  const adding = page.getByRole("region", { name: addOnSunday });
+  await screen.addOnSunday().click();
+  const adding = page.getByRole("dialog", { name: tb.addShift });
   await adding.getByRole("button", { name: te.add }).click();
   await expect(adding.getByRole("alert")).toHaveText(te.problems.name);
   await adding.getByLabel(te.name).fill("אמצע");
@@ -195,15 +179,34 @@ test("a manager changes, adds and removes next week's shifts", async ({
   await adding.getByLabel(te.end).fill("20:00");
   await adding.getByLabel(te.needed).fill("2");
   await adding.getByRole("button", { name: te.add }).click();
-  const middle = region("אמצע");
+  // Once added, the sheet is that shift's, ready for its people.
+  await expect(screen.group(tb.groups.assigned)).toContainText(tb.nobody);
+  await screen.closeSheet();
   await expect(middle).toHaveCount(1);
   await expectCleanPage(page);
 
-  // Noa on two shifts that overlap: the screen says so and does not save.
-  await morning.getByLabel(tb.add).selectOption({ label: NOA.name });
-  await middle.getByLabel(tb.add).selectOption({ label: NOA.name });
+  // Noa on the morning, which overlaps the new shift: there she shows with
+  // the reason, and nothing puts her on it.
+  await morning.click();
+  await screen.addButton(NOA.name).click();
+  await screen.closeSheet();
+  await middle.click();
+  const busy = screen.group(tb.groups.busy);
+  await expect(busy).toContainText(NOA.name);
+  await expect(busy).toContainText(before(tb.busyOn.replace("{name}", "בוקר")));
+  await expect(screen.addButton(NOA.name)).toHaveCount(0);
+
+  // Once the new shift starts when the morning ends, she can go on it.
+  await screen.openDetails("אמצע");
+  await sheet.getByLabel(te.start).fill("15:00");
+  await screen.addButton(NOA.name).click();
+
+  // Moving the hours back puts her on two shifts at once: the screen says
+  // so and does not save.
+  await sheet.getByLabel(te.start).fill("14:00");
+  await expect(screen.group(tb.groups.assigned)).toContainText(tb.notes.busy);
+  await screen.closeSheet();
   await expect(page.getByText(tb.clashBadge)).toBeVisible();
-  await expect(middle).toContainText(tb.notes.busy);
   await page.getByRole("button", { name: tb.submit }).click();
   // (Next's route announcer is an empty alert of its own.)
   await expect(
@@ -216,9 +219,10 @@ test("a manager changes, adds and removes next week's shifts", async ({
   });
 
   // The new shift starts when the morning ends: now it saves.
-  await editButton("אמצע").click();
-  await middle.getByLabel(te.start).fill("15:00");
-  await middle.getByRole("button", { name: te.apply }).click();
+  await middle.click();
+  await screen.openDetails("אמצע");
+  await sheet.getByLabel(te.start).fill("15:00");
+  await screen.closeSheet();
   await expect(page.getByText(tb.clashBadge)).toHaveCount(0);
   await page.getByRole("button", { name: tb.submit }).click();
   await expect(
@@ -254,18 +258,23 @@ test("a manager changes, adds and removes next week's shifts", async ({
 
   // It comes back after a reload.
   await page.reload();
-  await expect(region("אמצע")).toHaveCount(1);
-  await expect(region("ערב")).toHaveCount(0);
+  await expect(middle).toHaveCount(1);
+  await expect(evening).toHaveCount(0);
   await expectCleanPage(page);
 });
 
 test("a manager publishes next week's schedule, then publishes changes", async ({
   page,
 }, testInfo) => {
+  const screen = buildScreen(page);
   await signIn(page, MANAGER);
   await page.goto("/schedule/build");
-  const shift = page.getByRole("region", { name: sundayMorning });
-  await shift.getByLabel(tb.add).selectOption({ label: NOA.name });
+  // The main action is in reach, with nothing to scroll past.
+  await expect(page.getByRole("button", { name: tb.publish })).toBeInViewport();
+  const shift = screen.card("בוקר");
+  await shift.click();
+  await screen.addButton(NOA.name).click();
+  await screen.closeSheet();
   await expect(page.getByText(tb.unsaved)).toBeVisible();
 
   // One step: saved and published together.
@@ -276,22 +285,27 @@ test("a manager publishes next week's schedule, then publishes changes", async (
     { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
   ]);
 
-  // Published: no more draft. Changes are published, not saved aside.
+  // Published: no more draft, and nothing to publish until something changes.
+  // Changes are published, not saved aside.
   await page.reload();
   await expect(page.getByText(before(tb.publishedAt))).toBeVisible();
   await expect(page.getByRole("button", { name: tb.submit })).toHaveCount(0);
-  const published = page.getByRole("region", { name: sundayMorning });
-  await expect(published.getByRole("listitem")).toContainText([NOA.name]);
+  await expect(
+    page.getByRole("button", { name: tb.publishChanges }),
+  ).toHaveCount(0);
+  const published = screen.card("בוקר");
+  await expect(published).toContainText(NOA.first);
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("schedule-published.png"),
     fullPage: true,
   });
 
-  await published
-    .getByRole("button", { name: tb.remove.replace("{name}", NOA.name) })
-    .click();
+  await published.click();
+  await screen.removeButton(NOA.name).click();
+  await screen.closeSheet();
   await expect(page.getByText(tb.unpublished)).toBeVisible();
+  await expect(page.getByRole("button", { name: tb.submit })).toHaveCount(0);
   await page.getByRole("button", { name: tb.publishChanges }).click();
   await expect(page.getByRole("status")).toHaveText(tb.published);
   expect(await scheduleAssignments()).toEqual([]);
@@ -302,6 +316,53 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   await expect(
     page.getByRole("link", { name: new RegExp(tb.title) }),
   ).toContainText(tb.entry.subtitlePublished);
+});
+
+test("a manager is warned before a tab takes unsaved work away", async ({
+  page,
+}) => {
+  const screen = buildScreen(page);
+  const home = page.getByRole("link", { name: he.app.nav.home, exact: true });
+  const warning = page.getByRole("dialog", { name: tb.leave.title });
+  const placeNoa = async () => {
+    await screen.card("בוקר").click();
+    await screen.addButton(NOA.name).click();
+    await screen.closeSheet();
+  };
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+
+  // Nothing changed yet: the tab just goes there.
+  await home.click();
+  await expect(page).toHaveURL(/\/home$/);
+  await page.goto("/schedule/build");
+
+  // A change holds the tab back and asks. Staying keeps the work.
+  await placeNoa();
+  await home.click();
+  await expect(warning).toBeVisible();
+  await expect(page).toHaveURL(/\/schedule\/build$/);
+  await expectCleanPage(page);
+  await warning.getByRole("button", { name: tb.leave.stay }).click();
+  await expect(warning).toHaveCount(0);
+  await expect(screen.card("בוקר")).toContainText(NOA.first);
+
+  // Leaving without saving saves nothing.
+  await home.click();
+  await warning.getByRole("button", { name: tb.leave.discard }).click();
+  await expect(page).toHaveURL(/\/home$/);
+  expect(await scheduleAssignments()).toEqual([]);
+
+  // Saving on the way out keeps it as a draft, and still goes there.
+  await page.goto("/schedule/build");
+  await placeNoa();
+  await home.click();
+  await warning.getByRole("button", { name: tb.leave.save }).click();
+  await expect(page).toHaveURL(/\/home$/);
+  expect(await scheduleAssignments()).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+  ]);
+  expect(await schedulePublished()).toBe(false);
 });
 
 test("a worker has no schedule building screen", async ({ page }) => {

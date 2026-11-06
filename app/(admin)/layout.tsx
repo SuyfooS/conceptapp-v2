@@ -1,16 +1,14 @@
 import { displayIsraeliMobile } from "@domain/phone";
 import { brandProps } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
-import { Button } from "@ui/button";
-import { Card } from "@ui/card";
 import { Spinner } from "@ui/spinner";
 import { Store } from "lucide-react";
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { type ReactNode, Suspense } from "react";
 import { currentMember } from "../(app)/member";
+import { NoAccessScreen } from "./no-access";
 import { currentPlatformRole } from "./staff";
 
 export const metadata: Metadata = {
@@ -50,23 +48,7 @@ async function Shell({ children }: { children: ReactNode }) {
   const t = await getTranslations("admin");
 
   // Signed in but not on the team: the console does not exist for them.
-  if (!role) {
-    return (
-      <main className="flex min-h-dvh items-start justify-center px-4 py-10 md:items-center">
-        <Card
-          tone="raised"
-          padding="lg"
-          className="flex w-full max-w-[400px] flex-col gap-4"
-        >
-          <h1 className="font-bold text-xl">{t("noAccess.title")}</h1>
-          <p className="text-ink-2">{t("noAccess.body")}</p>
-          <Button asChild variant="secondary" className="w-full">
-            <Link href="/home">{t("noAccess.home")}</Link>
-          </Button>
-        </Card>
-      </main>
-    );
-  }
+  if (!role) return <NoAccessScreen homeHref="/home" />;
 
   const nav: NavItem[] = [
     { href: "/admin", label: t("nav.businesses"), icon: <Store /> },

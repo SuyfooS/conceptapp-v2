@@ -54,6 +54,25 @@ export type AvailabilityWeek = {
 };
 
 /**
+ * Where Shabbat cuts the week starting on `start`, at the business's
+ * place. A business without coordinates yet gets Tel Aviv's times.
+ */
+function shabbatOf(
+  place: Awaited<ReturnType<typeof getBusinessPlace>>,
+  start: string,
+): ShabbatLimits {
+  const { timeZone } = place;
+  const coordinates =
+    place.latitude !== null && place.longitude !== null
+      ? { latitude: place.latitude, longitude: place.longitude }
+      : ISRAELI_CITIES.telAviv;
+  return shabbatLimits(
+    shabbatTimes({ ...coordinates, timeZone }, fridayOf(start)),
+    timeZone,
+  );
+}
+
+/**
  * Next week and every answer the signed-in person may read for it (RLS:
  * their own, or everyone's for a manager or owner), read once per request.
  */
@@ -87,18 +106,7 @@ const availabilityContext = cache(
     const start = nextWeekStart(new Date(), timeZone, settings.weekStartsOn);
     const open = await getWeek(businessId, start);
     const answers = open ? await getWeekAvailability(open.id) : [];
-
-    // A business without coordinates yet gets Tel Aviv's times.
-    const coordinates =
-      place.latitude !== null && place.longitude !== null
-        ? { latitude: place.latitude, longitude: place.longitude }
-        : ISRAELI_CITIES.telAviv;
-    const shabbat = settings.closedOnShabbat
-      ? shabbatLimits(
-          shabbatTimes({ ...coordinates, timeZone }, fridayOf(start)),
-          timeZone,
-        )
-      : null;
+    const shabbat = settings.closedOnShabbat ? shabbatOf(place, start) : null;
 
     const week: AvailabilityWeek = {
       start,
@@ -223,6 +231,8 @@ export type PublishedWeek = {
   publishedAt: string | null;
   /** The published shifts, with their ids; empty until published. */
   shifts: WeekScheduleShift[];
+  /** Set when the business is closed on Shabbat. */
+  shabbat: ShabbatLimits | null;
 };
 
 export type PublishedSchedule = {
@@ -278,7 +288,13 @@ export const currentPublishedSchedule = cache(
               settings.positions.map((p) => p.key),
             )
           : [];
-      return { start, dates: weekDates(start), publishedAt, shifts };
+      return {
+        start,
+        dates: weekDates(start),
+        publishedAt,
+        shifts,
+        shabbat: settings.closedOnShabbat ? shabbatOf(place, start) : null,
+      };
     };
     const [thisWeek, nextWeek, swaps] = await Promise.all([
       published(thisStart),

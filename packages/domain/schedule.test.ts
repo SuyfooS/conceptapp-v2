@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
   availableFor,
+  coverageOf,
   doubleBooked,
   draftWeek,
+  overlappingShift,
   positionCounts,
+  rangesOn,
   type ScheduledShift,
   scheduleGaps,
+  scheduleOpening,
   shiftCandidates,
+  shiftCoverage,
   shiftDetailsProblem,
   shiftMinutes,
   shiftSlot,
@@ -353,6 +358,95 @@ describe("shiftCandidates", () => {
   });
 });
 
+describe("overlappingShift", () => {
+  const shift = (
+    day: string,
+    start: string,
+    end: string,
+    people: string[] = [],
+  ) => ({
+    day,
+    start,
+    end,
+    assignees: people.map((user) => ({ user, position: null })),
+  });
+
+  it("finds the other shift someone works at the same time", () => {
+    const shifts = [
+      shift("2026-11-01", "09:00", "16:00"),
+      shift("2026-11-01", "15:00", "23:00", ["noa"]),
+    ];
+    expect(overlappingShift(WEEK, shifts, 0, "noa")).toBe(shifts[1]);
+  });
+
+  it("leaves out back to back shifts and the shift itself", () => {
+    const shifts = [
+      shift("2026-11-01", "09:00", "16:00", ["noa"]),
+      shift("2026-11-01", "16:00", "23:00", ["noa"]),
+    ];
+    expect(overlappingShift(WEEK, shifts, 0, "noa")).toBeNull();
+    expect(overlappingShift(WEEK, shifts, 1, "omer")).toBeNull();
+  });
+
+  it("counts a night shift against the next morning", () => {
+    const shifts = [
+      shift("2026-11-01", "20:00", "02:00", ["omer"]),
+      shift("2026-11-02", "01:00", "08:00"),
+    ];
+    expect(overlappingShift(WEEK, shifts, 1, "omer")).toBe(shifts[0]);
+  });
+
+  it("gives nothing for a shift that is not there", () => {
+    expect(overlappingShift(WEEK, [], 0, "noa")).toBeNull();
+  });
+});
+
+describe("shiftCoverage", () => {
+  const shift = (needed: number, people: number) => ({
+    needed,
+    assignees: Array.from({ length: people }, (_, i) => ({
+      user: String(i),
+      position: null,
+    })),
+  });
+
+  it("adds up the people placed and the people needed", () => {
+    expect(shiftCoverage([shift(3, 2), shift(4, 3)])).toEqual({
+      filled: 5,
+      needed: 7,
+    });
+  });
+
+  it("does not let a full shift hide a gap in another", () => {
+    expect(shiftCoverage([shift(2, 5), shift(2, 0)])).toEqual({
+      filled: 2,
+      needed: 4,
+    });
+  });
+
+  it("is empty for no shifts", () => {
+    expect(shiftCoverage([])).toEqual({ filled: 0, needed: 0 });
+  });
+});
+
+describe("rangesOn", () => {
+  it("keeps one day's ranges, earliest first", () => {
+    expect(
+      rangesOn(
+        [
+          { day: "2026-11-02", start: "18:00", end: "23:00" },
+          { day: "2026-11-01", start: "09:00", end: "17:00" },
+          { day: "2026-11-02", start: "08:00", end: "12:00" },
+        ],
+        "2026-11-02",
+      ),
+    ).toEqual([
+      { day: "2026-11-02", start: "08:00", end: "12:00" },
+      { day: "2026-11-02", start: "18:00", end: "23:00" },
+    ]);
+  });
+});
+
 describe("doubleBooked", () => {
   const shift = (
     day: string,
@@ -560,6 +654,108 @@ describe("shiftMinutes", () => {
         { start: "22:00", end: "02:00" },
       ]),
     ).toBe(7 * 60 + 7.5 * 60 + 4 * 60);
+  });
+});
+
+describe("coverageOf", () => {
+  const person = (user: string) => ({ user, position: null });
+
+  it("adds up the places taken and needed", () => {
+    expect(coverageOf([])).toEqual({ have: 0, need: 0 });
+    expect(
+      coverageOf([
+        { needed: 3, assignees: [person(dana), person(avi)] },
+        { needed: 4, assignees: [] },
+      ]),
+    ).toEqual({ have: 2, need: 7 });
+  });
+
+  it("does not let an extra person on one shift hide a gap on another", () => {
+    expect(
+      coverageOf([
+        { needed: 1, assignees: [person(dana), person(avi)] },
+        { needed: 1, assignees: [] },
+      ]),
+    ).toEqual({ have: 1, need: 2 });
+  });
+});
+
+describe("scheduleOpening", () => {
+  const dates = (start: number) =>
+    Array.from(
+      { length: 7 },
+      (_, i) => `2026-11-${String(start + i).padStart(2, "0")}`,
+    );
+  const onShift = (day: string, user: string) => ({
+    day,
+    assignees: [{ user, position: null }],
+  });
+  const base = {
+    today: "2026-11-03",
+    userId: dana,
+    manager: false,
+    thisWeek: { dates: dates(1), shifts: [] as ReturnType<typeof onShift>[] },
+    nextWeek: { dates: dates(8), shifts: [] as ReturnType<typeof onShift>[] },
+  };
+
+  it("opens a worker on their next shift", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        thisWeek: {
+          dates: dates(1),
+          shifts: [
+            onShift("2026-11-02", dana),
+            onShift("2026-11-04", avi),
+            onShift("2026-11-05", dana),
+          ],
+        },
+      }),
+    ).toEqual({ week: "this", day: "2026-11-05" });
+  });
+
+  it("opens a worker on next week when their next shift is there", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        thisWeek: { dates: dates(1), shifts: [onShift("2026-11-04", avi)] },
+        nextWeek: { dates: dates(8), shifts: [onShift("2026-11-09", dana)] },
+      }),
+    ).toEqual({ week: "next", day: "2026-11-09" });
+  });
+
+  it("opens on today without a shift of their own", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        thisWeek: { dates: dates(1), shifts: [onShift("2026-11-04", avi)] },
+        nextWeek: { dates: dates(8), shifts: [onShift("2026-11-09", avi)] },
+      }),
+    ).toEqual({ week: "this", day: "2026-11-03" });
+  });
+
+  it("opens a manager on today, even with a shift of their own", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        manager: true,
+        thisWeek: { dates: dates(1), shifts: [onShift("2026-11-05", dana)] },
+      }),
+    ).toEqual({ week: "this", day: "2026-11-03" });
+  });
+
+  it("moves to next week when this week has nothing to show", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        manager: true,
+        nextWeek: { dates: dates(8), shifts: [onShift("2026-11-08", avi)] },
+      }),
+    ).toEqual({ week: "next", day: "2026-11-08" });
+  });
+
+  it("stays on today when neither week has anything", () => {
+    expect(scheduleOpening(base)).toEqual({ week: "this", day: "2026-11-03" });
   });
 });
 

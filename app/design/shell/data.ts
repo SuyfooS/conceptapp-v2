@@ -121,32 +121,6 @@ export function weeklyHours(personId: string): number {
 
 export const totalOpenSlots = days.reduce((n, d) => n + openSlots(d), 0);
 
-// "Today" for the home screen: Tuesday 13 October, morning shift.
-export const onShiftNow = [
-  { id: "noa", in: "08:57" },
-  { id: "itay", in: "09:02" },
-  { id: "shira", in: null },
-] as const;
-
-export const tonight = {
-  bookings: 14,
-  covers: 46,
-  next: [
-    { time: "19:00", name: "משפחת לוי", party: 6, table: "שולחן 12" },
-    { time: "19:30", name: "כהן", party: 2, table: "שולחן 4" },
-    { time: "20:00", name: "אברהם", party: 4, table: "שולחן 7" },
-    { time: "20:30", name: "גבאי", party: 8, table: "חדר פרטי" },
-  ],
-};
-
-export const activity = [
-  { time: "09:02", text: "איתי מזרחי החתים כניסה" },
-  { time: "08:57", text: "נועה כהן החתימה כניסה" },
-  { time: "08:40", text: "הזמנה חדשה: גבאי, 8 סועדים, 20:30" },
-  { time: "אתמול", text: "מאיה פרץ הגישה זמינות לשבוע הבא" },
-  { time: "אתמול", text: "הסידור לשבוע הנוכחי פורסם" },
-];
-
 // The Team screen: members and invites as the database returns them.
 export const teamToday = new Date("2026-10-23T09:00:00+03:00");
 
@@ -282,3 +256,14 @@ export const demoShiftPatterns: ShiftPattern[] = [
     needed: 4,
   },
 ];
+
+// A shift a manager added by hand on the demo week's Sunday, overlapping both
+// of the day's regular shifts, so its people show as busy on them.
+export const demoExtraShift = {
+  name: "אמצע",
+  start: "12:00",
+  end: "20:00",
+  needed: 2,
+  pattern: null,
+  assignees: [],
+};

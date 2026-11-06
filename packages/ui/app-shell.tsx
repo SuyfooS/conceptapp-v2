@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
   type PointerEvent,
@@ -63,7 +63,6 @@ function Count({ value, className }: { value?: number; className?: string }) {
  */
 function TabBar({ nav }: { nav: NavItem[] }) {
   const pathname = usePathname();
-  const router = useRouter();
   const t = useTranslations("ui.appShell");
   const bar = useRef<HTMLUListElement>(null);
   const [compact, setCompact] = useState(false);
@@ -73,6 +72,10 @@ function TabBar({ nav }: { nav: NavItem[] }) {
 
   const activeIndex = nav.findIndex((item) => isActive(pathname, item));
   const lensIndex = drag ?? activeIndex;
+  // With one place to go there is nothing to choose between: the bar stays
+  // small, its compact shape, and a page's main action can sit beside it.
+  const single = nav.length === 1;
+  const small = compact || single;
 
   // A new screen starts with the full bar.
   // biome-ignore lint/correctness/useExhaustiveDependencies: pathname is what triggers the reset
@@ -123,16 +126,25 @@ function TabBar({ nav }: { nav: NavItem[] }) {
   function onPointerUp(event: PointerEvent<HTMLUListElement>) {
     dragStart.current = null;
     if (!dragged.current) return;
-    const target = nav[Math.round(positionAt(event.clientX))];
+    const index = Math.round(positionAt(event.clientX));
+    const target = nav[index];
     setDrag(null);
     if (target && target.href !== nav[activeIndex]?.href) {
-      router.push(target.href);
+      // Through the link, so a screen guarding unsaved work sees this as it
+      // sees a tap. The real click that ends the drag stays swallowed.
+      dragged.current = false;
+      bar.current?.querySelectorAll("a")[index]?.click();
+      dragged.current = true;
     }
   }
 
   return (
     <nav
       aria-label={t("mainNav")}
+      // Lets a floating action share the row while the bar is small.
+      data-compact={compact || undefined}
+      // FloatingDock moves beside the bar while it is shrunk.
+      data-tab-compact={compact || undefined}
       className={cn(
         "pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-30 flex xl:hidden",
         "md:justify-center",
@@ -155,7 +167,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
             dragged.current = false;
             return;
           }
-          if (compact) {
+          if (compact && !single) {
             event.preventDefault();
             event.stopPropagation();
             setCompact(false);
@@ -165,7 +177,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
         className={cn(
           "glass pointer-events-auto relative flex h-16 select-none touch-pan-y rounded-full p-1",
           "transition-[width] duration-500 ease-spring",
-          compact ? "w-16" : "w-full md:max-w-[480px]",
+          small ? "w-16" : "w-full md:max-w-[480px]",
         )}
       >
         {activeIndex >= 0 ? (
@@ -177,7 +189,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
               drag === null
                 ? "transition-[inset-inline-start,opacity,scale] duration-500 ease-spring"
                 : "scale-[1.06]",
-              compact && "opacity-0",
+              small && "opacity-0",
             )}
             style={{
               width: `calc((100% - 8px) / ${nav.length})`,
@@ -192,14 +204,18 @@ function TabBar({ nav }: { nav: NavItem[] }) {
               key={item.href}
               className={cn(
                 "relative z-10 min-w-0 flex-1 basis-0 transition-[flex-grow,opacity] duration-300",
-                compact && !active && "grow-0 overflow-hidden opacity-0",
+                compact &&
+                  !active &&
+                  !single &&
+                  "grow-0 overflow-hidden opacity-0",
               )}
             >
               <Link
                 href={item.href}
                 aria-current={active ? "page" : undefined}
+                title={single ? item.label : undefined}
                 draggable={false}
-                tabIndex={compact && !active ? -1 : undefined}
+                tabIndex={compact && !active && !single ? -1 : undefined}
                 className={cn(
                   "flex h-full flex-col items-center justify-center gap-px rounded-full",
                   "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",
@@ -220,12 +236,12 @@ function TabBar({ nav }: { nav: NavItem[] }) {
                   className={cn(
                     "text-[11px] leading-[14px]",
                     active ? "font-bold" : "font-medium",
-                    compact && "sr-only",
+                    small && "sr-only",
                   )}
                 >
                   {item.label}
                 </span>
-                {item.count && !compact ? (
+                {item.count && !small ? (
                   <span className="absolute top-1 start-[calc(50%+6px)]">
                     <Count value={item.count} />
                   </span>

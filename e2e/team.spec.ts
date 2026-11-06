@@ -45,7 +45,7 @@ test("the owner sees the team and who has not joined yet", async ({
 }, testInfo) => {
   await signIn(page, OWNER);
 
-  // Home says an invite is waiting before the team screen is opened.
+  // Today says an invite is waiting before the team screen is opened.
   const teamRow = page.getByRole("main").getByRole("link", {
     name: new RegExp(tt.title),
   });
