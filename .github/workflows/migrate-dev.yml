@@ -1,5 +1,6 @@
 # Applies migrations to conceptapp-dev. Only by hand: Orel presses Run workflow,
-# and with "apply" off it shows what would run and changes nothing. See issue #8.
+# and with "apply" off it shows what would run and changes nothing. Applying only
+# ever runs from main. See issue #8.
 name: Migrate conceptapp-dev
 
 on:
@@ -16,7 +17,6 @@ concurrency:
 
 jobs:
   migrate:
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -36,21 +36,25 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       # GitHub's runners have no IPv6, and the project's direct address is IPv6
-      # only, so connect through the session pooler. Its address comes from the
-      # Management API, and the whole URL is masked in the logs.
+      # only, so connect through the session pooler. Its shard is not fixed per
+      # region, so try each. Everything secret is masked in the logs.
       - name: Find the connection
+        env:
+          SUPABASE_REGION: eu-central-1
         run: |
-          DB_URL=$(curl -sSf \
-            -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN" \
-            "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/config/database/pooler" \
-            | node -e '
-              const pools = JSON.parse(require("node:fs").readFileSync(0, "utf8"));
-              const pool = pools.find((p) => p.database_type === "PRIMARY") ?? pools[0];
-              const password = encodeURIComponent(process.env.SUPABASE_DB_PASSWORD);
-              console.log(`postgresql://${pool.db_user}:${password}@${pool.db_host}:5432/${pool.db_name}`);
-            ')
-          echo "::add-mask::$DB_URL"
-          echo "DB_URL=$DB_URL" >> "$GITHUB_ENV"
+          PASSWORD=$(node -p 'encodeURIComponent(process.env.SUPABASE_DB_PASSWORD)')
+          echo "::add-mask::$PASSWORD"
+          for SHARD in aws-1 aws-0; do
+            URL="postgresql://postgres.$SUPABASE_PROJECT_REF:$PASSWORD@$SHARD-$SUPABASE_REGION.pooler.supabase.com:5432/postgres"
+            echo "::add-mask::$URL"
+            if pnpm exec supabase migration list --db-url "$URL"; then
+              echo "DB_URL=$URL" >> "$GITHUB_ENV"
+              echo "Connected through $SHARD"
+              exit 0
+            fi
+          done
+          echo "::error::No session pooler address worked"
+          exit 1
 
       - name: What the project has now
         run: pnpm exec supabase migration list --db-url "$DB_URL"
@@ -59,9 +63,9 @@ jobs:
         run: pnpm exec supabase db push --db-url "$DB_URL" --dry-run
 
       - name: Apply
-        if: inputs.apply
+        if: inputs.apply && github.ref == 'refs/heads/main'
         run: pnpm exec supabase db push --db-url "$DB_URL"
 
       - name: What the project has after
-        if: inputs.apply
+        if: inputs.apply && github.ref == 'refs/heads/main'
         run: pnpm exec supabase migration list --db-url "$DB_URL"
