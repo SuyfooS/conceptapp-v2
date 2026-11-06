@@ -202,6 +202,23 @@ export async function addDemoShift(
   }
 }
 
+/** Someone who clocked in some hours ago and is still on the clock. */
+export async function addOpenDemoEntry(
+  phone: string,
+  hoursAgo: number,
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`
+      insert into public.time_entries (business_id, user_id, clock_in)
+      select ${DEMO_RESTAURANT}::uuid, p.id,
+        ${new Date(Date.now() - hoursAgo * 3_600_000)}::timestamptz
+      from public.profiles p where p.phone = ${phone}`;
+  } finally {
+    await sql.end();
+  }
+}
+
 /** Whether breaks come off the hours at the demo restaurant. */
 export async function setDemoUnpaidBreaks(unpaid: boolean): Promise<void> {
   const sql = postgres(DB_URL, { max: 1 });

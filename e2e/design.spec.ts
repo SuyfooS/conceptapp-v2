@@ -24,6 +24,8 @@ const PAGES = [
   "/design/shell/clock?state=left",
   "/design/shell/clock/history",
   "/design/shell/clock/history?state=empty",
+  "/design/shell/clock/team",
+  "/design/shell/clock/team/noa",
   "/design/shell/team",
 ];
 

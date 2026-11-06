@@ -165,14 +165,20 @@ export function weekTotals(
   );
 }
 
-export type AtWork = { userId: string; since: string; minutes: number };
+export type AtWork = {
+  userId: string;
+  since: string;
+  minutes: number;
+  onBreak: boolean;
+};
 
 /**
  * Who is at work at `now`: everyone with an open entry that has started,
  * the longest there first.
  */
 export function atWorkNow(
-  entries: readonly Pick<TimeEntry, "userId" | "clockIn" | "clockOut">[],
+  entries: readonly (Pick<TimeEntry, "userId" | "clockIn" | "clockOut"> &
+    Pick<Span, "breaks">)[],
   now: Date,
 ): AtWork[] {
   return entries
@@ -184,6 +190,7 @@ export function atWorkNow(
       userId: e.userId,
       since: e.clockIn,
       minutes: entryMinutes(e, now),
+      onBreak: (e.breaks ?? []).some((pause) => pause.endedAt === null),
     }));
 }
 
@@ -264,6 +271,8 @@ export type ShiftRecord = {
   breakMinutes: number;
   /** A manager wrote it down instead of the person punching. */
   byManager: boolean;
+  /** Left open for longer than an entry can be: only a manager can close it. */
+  overdue: boolean;
 };
 
 /** One person's entries of a month as the history shows them, newest first. */
@@ -288,7 +297,82 @@ export function monthRecords(
       minutes: roundMinutes(entryMinutes(entry, now), step),
       breakMinutes: breakMinutes(entry, now),
       byManager: entry.source === "manager",
+      overdue: entryOverdue(entry, now),
     }));
+}
+
+export type PersonMonth = {
+  minutes: number;
+  shifts: number;
+  breakMinutes: number;
+};
+
+/** Each person's month, from a business's entries, for the manager's table. */
+export function teamMonth(
+  entries: readonly TimeEntry[],
+  month: string,
+  timeZone: string,
+  now: Date,
+  step: 0 | 5 | 15 = 0,
+): Map<string, PersonMonth> {
+  const people = new Map<string, PersonMonth>();
+  for (const entry of entries) {
+    if (monthOf(entryDate(entry, timeZone)) !== month) continue;
+    const sum = people.get(entry.userId) ?? {
+      minutes: 0,
+      shifts: 0,
+      breakMinutes: 0,
+    };
+    people.set(entry.userId, {
+      minutes: sum.minutes + roundMinutes(entryMinutes(entry, now), step),
+      shifts: sum.shifts + 1,
+      breakMinutes: sum.breakMinutes + breakMinutes(entry, now),
+    });
+  }
+  return people;
+}
+
+const clockTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+const entryTimes = z.object({
+  date: z.iso.date(),
+  in: clockTime,
+  out: z.union([clockTime, z.literal("")]),
+});
+export type EntryTimes = z.infer<typeof entryTimes>;
+
+export type EntryProblem = "invalid" | "needsEnd" | "future";
+
+/**
+ * What a manager typed for an entry, as instants in the business's time zone.
+ * An end at or before the start is on the next day, so an evening past midnight
+ * takes no extra field. The database has the last word on overlaps and length.
+ */
+export function parseEntryTimes(
+  input: unknown,
+  timeZone: string,
+  now: Date,
+  { endRequired }: { endRequired: boolean },
+):
+  | { ok: true; clockIn: string; clockOut: string | null }
+  | { ok: false; problem: EntryProblem } {
+  const parsed = entryTimes.safeParse(input);
+  if (!parsed.success) return { ok: false, problem: "invalid" };
+  const { date, in: start, out } = parsed.data;
+  if (out === "" && endRequired) return { ok: false, problem: "needsEnd" };
+
+  const clockIn = instantIn(date, start, timeZone);
+  const clockOut =
+    out === ""
+      ? null
+      : instantIn(out > start ? date : addDays(date, 1), out, timeZone);
+  if (Math.max(clockIn.getTime(), clockOut?.getTime() ?? 0) > now.getTime()) {
+    return { ok: false, problem: "future" };
+  }
+  return {
+    ok: true,
+    clockIn: clockIn.toISOString(),
+    clockOut: clockOut?.toISOString() ?? null,
+  };
 }
 
 /**

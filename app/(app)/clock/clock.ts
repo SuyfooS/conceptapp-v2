@@ -4,17 +4,18 @@ import { getTimeEntries } from "@db/time-clock";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
 import { timeIn } from "@domain/shabbat";
+import { canSeeTeam } from "@domain/team";
 import {
   addMonths,
-  type ClockStatus,
+  atWorkNow,
   clockStatus,
   entryMinutes,
+  entryOverdue,
   monthMinutes,
   monthOf,
   monthRange,
   monthRecords,
   openEntryOf,
-  type TimeEntry,
   UNDO_CLOCK_OUT_SECONDS,
   undoableEntry,
 } from "@domain/time-clock";
@@ -28,6 +29,12 @@ import { currentPublishedSchedule } from "../schedule/week";
 import type { ClockData } from "./clock-types";
 import type { HistoryData } from "./history/history-view";
 
+export const clockPaths = {
+  clock: "/clock",
+  history: "/clock/history",
+  team: "/clock/team",
+};
+
 /** How many shifts the wider screens show beside the circle. */
 const RECENT_SHIFTS = 5;
 /** Clocked in earlier than this before a shift, they are not on that shift. */
@@ -37,7 +44,7 @@ const EARLY_ARRIVAL_MS = 3_600_000;
  * The signed-in person and their business, when the clock is on for it and
  * their role reaches it. Null otherwise: the screens then do not exist for them.
  */
-const clockAccess = cache(async () => {
+export const clockAccess = cache(async () => {
   const [member, enabled] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -111,7 +118,8 @@ export async function currentClock(): Promise<ClockData | null> {
   const settings = await currentModuleSettings("time_clock");
   const month = monthOf(clockAt(now, timeZone).date);
   const lastMonth = addMonths(month, -1);
-  const [entries, today] = await Promise.all([
+  const manager = canSeeTeam(role);
+  const [entries, today, openNow] = await Promise.all([
     getTimeEntries(
       businessId,
       monthRange(lastMonth, timeZone).from,
@@ -119,6 +127,7 @@ export async function currentClock(): Promise<ClockData | null> {
       userId,
     ),
     shiftToday(businessId, userId, timeZone, now),
+    manager ? getTimeEntries(businessId, now, now) : [],
   ]);
 
   const step = settings.roundToMinutes;
@@ -154,6 +163,12 @@ export async function currentClock(): Promise<ClockData | null> {
         : null,
     unpaidBreaks: settings.unpaidBreaks,
     canManage: role === "owner" || role === "manager",
+    team: manager
+      ? {
+          atWork: atWorkNow(openNow, now).length,
+          overdue: openNow.filter((entry) => entryOverdue(entry, now)).length,
+        }
+      : null,
     viewOnly,
   };
 }
@@ -185,28 +200,27 @@ export async function currentClockHistory(
   };
 }
 
-export type ClockLine = {
-  status: Exclude<ClockStatus<TimeEntry>["state"], "off">;
-  at: string;
-};
+export type ClockLine =
+  | { kind: "working" | "break"; at: string }
+  | { kind: "overdue"; count: number };
 
-/** Where the person stands, for a line on Today. Null when away or out of reach. */
+/**
+ * What the clock's row on Today says: shifts a manager has to fix first, then
+ * where the person stands. Null when there is nothing to say.
+ */
 export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
   const access = await clockAccess();
   if (!access) return null;
   const now = new Date();
-  const entries = await getTimeEntries(
-    access.businessId,
-    now,
-    now,
-    access.userId,
-  );
-  const status = clockStatus(openEntryOf(entries, access.userId));
+  // A manager reads everyone's open entries here, and anyone else their own.
+  const open = await getTimeEntries(access.businessId, now, now);
+  const overdue = canSeeTeam(access.role)
+    ? open.filter((entry) => entryOverdue(entry, now)).length
+    : 0;
+  if (overdue > 0) return { kind: "overdue", count: overdue };
+  const status = clockStatus(openEntryOf(open, access.userId));
   if (status.state === "off") return null;
   const since =
     status.state === "break" ? status.pause.startedAt : status.entry.clockIn;
-  return {
-    status: status.state,
-    at: timeIn(new Date(since), access.timeZone),
-  };
+  return { kind: status.state, at: timeIn(new Date(since), access.timeZone) };
 });

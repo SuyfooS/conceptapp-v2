@@ -3,6 +3,12 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · team hours
+
+- `/clock/team`: what needs fixing, who is at work now, and everyone's hours in a month. `/clock/team/[person]`: one person's shifts, with fixing a shift and adding a forgotten one, by owners and managers. No migration: it uses `correct_time_entry` and `add_time_entry`, which were already there.
+- Today's clock row tells a manager when a shift needs fixing. This closes the hole where someone who forgot to leave stayed stuck.
+- Not in it yet: deleting a shift entered by mistake, editing a break's times, and holders of `clock.edit` who aren't managers, which waits for roles and permissions.
+
 ## 2026-11-06 · chat · the clock
 
 - Orel's spec: clocking in and out through a big circle, this month's and last month's hours under it, a shift history, and a break that in some businesses comes off the hours by a business setting.
