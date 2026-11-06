@@ -5,7 +5,7 @@ import { displayIsraeliMobile } from "@domain/phone";
 import { manifests } from "@modules/registry";
 import { accentProps } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
-import { Spinner } from "@ui/spinner";
+import { AppShellSkeleton } from "@ui/skeleton";
 import { House } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -35,15 +35,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
 async function Loading() {
   const t = await getTranslations("app");
-  return (
-    <div
-      role="status"
-      className="flex min-h-dvh items-center justify-center text-ink-2"
-    >
-      <Spinner className="size-6" />
-      <span className="sr-only">{t("loading")}</span>
-    </div>
-  );
+  return <AppShellSkeleton label={t("loading")} />;
 }
 
 async function Shell({ children }: { children: ReactNode }) {

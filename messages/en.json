@@ -172,7 +172,8 @@
     "punchCircle": "Clock in and out circle",
     "punchIn": "Clock in",
     "punchOut": "Clock out",
-    "punchBack": "Back to work"
+    "punchBack": "Back to work",
+    "skeleton": "Before the data arrives"
   },
   "shell": {
     "metaTitle": "Layout demo",
