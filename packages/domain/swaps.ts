@@ -65,6 +65,15 @@ export function shiftsOverlap(
   return a0 < b1 && b0 < a1;
 }
 
+/** Shift time order, for lists of requests. */
+const byShiftTime = <S extends SwappableShift>(
+  a: { shift: S },
+  b: { shift: S },
+) =>
+  `${a.shift.day}${a.shift.start}${a.shift.name}`.localeCompare(
+    `${b.shift.day}${b.shift.start}${b.shift.name}`,
+  );
+
 /** Where a colleague's request stands for the person reading it. */
 export type OfferState =
   /** They can take it. */
@@ -110,11 +119,42 @@ export function offersFor<S extends SwappableShift>(
       );
       return [{ swap, shift, state: busy ? "busy" : "available" }];
     })
-    .sort((a, b) =>
-      `${a.shift.day}${a.shift.start}${a.shift.name}`.localeCompare(
-        `${b.shift.day}${b.shift.start}${b.shift.name}`,
-      ),
-    );
+    .sort(byShiftTime);
+}
+
+/** A request a colleague took, waiting for a manager to decide. */
+export type Approval<S> = {
+  swap: ShiftSwap & { takenBy: string };
+  shift: S;
+  /** The position the worker giving it away holds on the shift. */
+  position: string | null;
+};
+
+/**
+ * What a manager approves or declines: the requests a colleague took,
+ * for shifts from `from` on (today), by shift time. Requests for days that
+ * have passed or for shifts no longer in the schedule are left out; the
+ * database refuses to decide on a shift that started.
+ */
+export function approvalsFor<S extends SwappableShift>(
+  swaps: readonly ShiftSwap[],
+  shifts: readonly S[],
+  from: string,
+): Approval<S>[] {
+  const byId = new Map(shifts.map((s) => [s.id, s]));
+  return swaps
+    .flatMap((swap): Approval<S>[] => {
+      const shift = byId.get(swap.shiftId);
+      const { takenBy } = swap;
+      if (swap.status !== "taken" || !takenBy || !shift || shift.day < from) {
+        return [];
+      }
+      const position =
+        shift.assignees.find((a) => a.user === swap.requestedBy)?.position ??
+        null;
+      return [{ swap: { ...swap, takenBy }, shift, position }];
+    })
+    .sort(byShiftTime);
 }
 
 /** Why the database refused a swap step, for the screen to explain. */

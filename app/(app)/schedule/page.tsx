@@ -9,12 +9,14 @@ import {
   CalendarCheck,
   CalendarClock,
   CalendarDays,
+  Repeat,
   Users,
 } from "lucide-react";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { moduleMetadata } from "../module-screen";
 import { upcomingShifts } from "./shifts/my-shifts-view";
+import { pendingApprovals } from "./swaps/swap-approvals-view";
 import {
   currentAvailabilityWeek,
   currentPublishedSchedule,
@@ -78,6 +80,7 @@ export default async function SchedulePage() {
           />
           {team ? <TeamRow t={t} counts={team.team.counts} /> : null}
           {build ? <BuildRow t={tb} build={build} /> : null}
+          {team ? <ApprovalsRow t={ts} data={published} /> : null}
         </ListGroup>
       </PageSection>
     </PageBody>
@@ -151,6 +154,30 @@ function TeamRow({
         ) : (
           <Badge tone="success">{t("team.entry.allSent")}</Badge>
         )
+      }
+    />
+  );
+}
+
+/** Owners and managers: the swaps a colleague took, waiting for them. */
+function ApprovalsRow({
+  t,
+  data,
+}: {
+  t: Awaited<ReturnType<typeof getTranslations<"app">>>;
+  data: PublishedSchedule;
+}) {
+  const count = pendingApprovals(data).length;
+  return (
+    <ListRow
+      href="/schedule/swaps"
+      leading={<Repeat />}
+      title={t("swaps.title")}
+      subtitle={t("swaps.entry.subtitle", { count })}
+      trailing={
+        count > 0 ? (
+          <Badge tone="warning">{t("swaps.count", { count })}</Badge>
+        ) : null
       }
     />
   );

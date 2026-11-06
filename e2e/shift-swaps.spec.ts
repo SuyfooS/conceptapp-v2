@@ -1,14 +1,22 @@
 import AxeBuilder from "@axe-core/playwright";
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { clearSchedule, demoSwaps, scheduleDemoSunday } from "./db";
+import {
+  clearSchedule,
+  demoSwaps,
+  scheduleAssignments,
+  scheduleDemoSunday,
+  takenDemoSwap,
+} from "./db";
 import { signIn } from "./session";
 
 // Seeded in supabase/seed.sql: the demo restaurant and two of its workers.
 const NOA = { name: "נועה כהן", local: "050-000-0003", e164: "+972500000003" };
 const YOAV = { name: "יואב לוי", local: "050-000-0004", e164: "+972500000004" };
+const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 
 const sw = he.app.shifts.swap;
+const ap = he.app.swaps;
 // Each screen size has its own layout in the page; only one is shown.
 const button = (page: Page, text: string) =>
   page
@@ -106,4 +114,65 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await button(page, sw.buttons.cancel).click();
   await expect(button(page, sw.buttons.give)).toBeVisible();
   expect((await demoSwaps()).map((s) => s.status)).toEqual(["cancelled"]);
+});
+
+test("a manager approves a taken request and the colleague takes the shift", async ({
+  page,
+}, testInfo) => {
+  await scheduleDemoSunday(
+    {
+      morning: [[YOAV.e164, "bartender"]],
+      evening: [[NOA.e164, "waiter"]],
+    },
+    true,
+  );
+  await takenDemoSwap("evening", NOA.e164, YOAV.e164);
+
+  // The schedule's entry shows the request waiting before it is opened.
+  await signIn(page, MANAGER);
+  await page.goto("/schedule");
+  const row = page.getByRole("link", { name: new RegExp(ap.title) });
+  await expect(row).toContainText(
+    ap.count.replace(/.*one \{([^}]*)\}.*/, "$1"),
+  );
+  await row.click();
+  await expect(page).toHaveURL(/\/schedule\/swaps$/);
+
+  const visible = (
+    testInfo.project.name === "desktop"
+      ? page.getByRole("table", { name: ap.list.title })
+      : page.getByRole("list", { name: ap.list.title })
+  ).filter({ visible: true });
+  await expect(visible).toContainText(NOA.name);
+  await expect(visible).toContainText(YOAV.name);
+  await expect(visible).toContainText("מלצר/ית");
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("swap-approvals.png"),
+    fullPage: true,
+  });
+
+  await button(page, ap.buttons.approve).click();
+  await expect(shown(page, ap.empty)).toBeVisible();
+  expect(await demoSwaps()).toEqual([
+    { status: "approved", from: NOA.e164, to: YOAV.e164 },
+  ]);
+  // Yoav works both Sunday shifts now, as a waiter in the evening.
+  expect(
+    (await scheduleAssignments()).map(({ pattern, phone, position }) => [
+      pattern,
+      phone,
+      position,
+    ]),
+  ).toEqual([
+    ["morning", YOAV.e164, "bartender"],
+    ["evening", YOAV.e164, "waiter"],
+  ]);
+  await expectCleanPage(page);
+
+  // Back on the entry, nothing waits any more.
+  await page.goto("/schedule");
+  await expect(
+    page.getByRole("link", { name: new RegExp(ap.title) }),
+  ).toContainText(ap.entry.subtitle.replace(/.*=0 \{([^}]*)\}.*/, "$1"));
 });

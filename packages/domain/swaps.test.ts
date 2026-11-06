@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  approvalsFor,
   myRequestFor,
   offersFor,
   type ShiftSwap,
@@ -156,5 +157,54 @@ describe("swapFailureOf", () => {
     expect(swapFailureOf("42501")).toBe("noAccess");
     expect(swapFailureOf("P0002")).toBe("noAccess");
     expect(swapFailureOf(undefined)).toBe("failed");
+  });
+});
+
+describe("approvalsFor", () => {
+  const shifts = [
+    {
+      ...shift("eve", "2026-11-08", "16:00", "23:00", []),
+      assignees: [
+        { user: "noa", position: "waiter" },
+        { user: "itay", position: "cook" },
+      ],
+    },
+    shift("morning", "2026-11-08", "08:00", "16:00", ["maya"]),
+    shift("past", "2026-11-05", "08:00", "16:00", ["omer"]),
+  ];
+
+  it("lists taken requests by shift time, with the giver's position", () => {
+    const swaps = [
+      swap("1", "eve", "noa", "yoav"),
+      swap("2", "morning", "maya", "shira"),
+    ];
+    expect(
+      approvalsFor(swaps, shifts, "2026-11-06").map((a) => [
+        a.swap.id,
+        a.position,
+      ]),
+    ).toEqual([
+      ["2", null],
+      ["1", "waiter"],
+    ]);
+  });
+
+  it("leaves out open requests, past days and unknown shifts", () => {
+    const swaps = [
+      swap("1", "eve", "noa"),
+      swap("2", "past", "omer", "yoav"),
+      swap("3", "gone", "maya", "yoav"),
+    ];
+    expect(approvalsFor(swaps, shifts, "2026-11-06")).toEqual([]);
+  });
+
+  it("keeps a request whose giver has left the shift, with no position", () => {
+    const [approval] = approvalsFor(
+      [swap("1", "morning", "noa", "yoav")],
+      shifts,
+      "2026-11-08",
+    );
+    expect(approval?.position).toBeNull();
+    expect(approval?.swap.takenBy).toBe("yoav");
   });
 });

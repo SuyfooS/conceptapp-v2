@@ -79,3 +79,20 @@ export const cancelShiftSwap = (actorId: string, swapId: string) =>
       swap: swapId,
     }),
   );
+
+/**
+ * A manager or owner approves (the colleague takes the worker's place) or
+ * declines a taken request. The database checks every rule again.
+ */
+export const decideShiftSwap = (
+  actorId: string,
+  swapId: string,
+  approve: boolean,
+) =>
+  call(() =>
+    createAdminClient().rpc("decide_shift_swap", {
+      actor: actorId,
+      swap: swapId,
+      approve,
+    }),
+  );

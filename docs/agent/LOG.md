@@ -3,6 +3,16 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · run 28 · chunk 2d-2b (swap approvals)
+
+- Left by Orel: #37 (from chat, label `orel`), asked to run now rather than at 02:00. Only this chunk; tokens, `packages/ui` and other screens untouched.
+- Restore point: the tag `before-night/2026-11-06` was refused (the push was cut off three times), so the branch `backup/before-night-2026-11-06` at `2cd3ba5` holds it. `docs/AGENT.md` now says to expect the branch, and its backlog drops 2d-2b.
+- `/schedule/swaps` (owners and managers; workers get not-found): the requests a colleague took, from today on, by shift time, with who gives it away, who takes it and the position, and "approve the swap" / "decline the request". Phone: one card under the other; tablet: two columns; desktop: a table. `/schedule` gains a row "אישור החלפות" with the number waiting.
+- `@domain/swaps` `approvalsFor`, `@db/swaps` `decideShiftSwap` (the existing `decide_shift_swap`, so no migration), `decideSwapAction`. Demo `/design/shell/schedule/swaps`; the demo's published week moved to `shifts/published.ts` so both demos share it.
+- Proof: 3 unit tests (276 in all), `pnpm check`, `pnpm build`; axe clean and no horizontal scroll on both demos at 390/820/1440. Playwright `shift-swaps.spec.ts` gains "a manager approves a taken request and the colleague takes the shift" (checks the database: approved, Yoav on the evening as a waiter). It runs in CI only: Docker Hub refused this container's image pulls (429), so no local Supabase.
+- Defaults: approve and decline are per request, with no undo; a declined worker can give the shift away again. Requests for past days are not listed. Nothing is sent to the workers yet (notifications wait).
+- Next: since #38 the backlog belongs to day sessions; its next item is a business's Shabbat times from its location and a candle-lighting setting. Tonight's 02:00 run, with nothing left, adds one finishing touch.
+
 ## 2026-11-06 · chat · building by day, finishing touches at night, a migration button
 
 - Orel: start working now and do not wait for the nights; the nights give the

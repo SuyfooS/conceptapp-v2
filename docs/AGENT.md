@@ -151,7 +151,8 @@ git push origin before-night/<YYYY-MM-DD>
 ```
 
 If the tag is refused, push a branch `backup/before-night-<YYYY-MM-DD>` at the
-same commit. If that is refused too, the commit is still in `main`'s history:
+same commit. (On 6 November the cloud run's tag push was cut off three times
+and the branch went through, so expect the branch.) If that is refused too, the commit is still in `main`'s history:
 write its hash in the note and say the restore point has no name. Never move or
 delete a restore point.
 
@@ -194,7 +195,6 @@ The full picture and the reasoning are in `docs/ROADMAP.md`. Skip ahead only whe
 
 Until Orel decides on the design rework (`docs/design/apple-rework-plan.md`), it waits, and `CLAUDE.md` still rules the design. Do not change tokens, `packages/ui` or the look of a screen. Items marked "database first" stop before their screens, so nothing is built twice.
 
-- **2d-2b · Swap approvals.** The manager's list of taken swap requests to approve or decline, and a count on `/schedule`. Done when: a Playwright test has a manager approve a request and the colleague takes the shift.
 - **Holes in what exists.** Each smallest first:
   - A business's Shabbat times from its location and a candle-lighting setting, since today every business gets Tel Aviv and 20 minutes.
   - Editing the week that has already started, and not losing an unpublished draft when the week changes.
