@@ -47,5 +47,7 @@ test("the console is not on offer", async ({ page }) => {
   await person(page, "owner").click();
   await expect(page).toHaveURL(/\/home$/);
   await page.goto("/admin");
-  await expect(page).not.toHaveURL(/\/admin$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.admin.noAccess.title }),
+  ).toBeVisible();
 });

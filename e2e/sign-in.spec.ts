@@ -78,9 +78,9 @@ test("a worker signs in with a phone code and lands on the home screen", async (
 
   // Signing out closes the session.
   await page.getByRole("button", { name: he.app.home.signOut }).click();
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/enter$/);
   await page.goto("/home");
-  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(page).toHaveURL(/\/enter$/);
 });
 
 test("an unknown number gets a clear answer and no code", async ({ page }) => {

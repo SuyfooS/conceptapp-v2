@@ -56,5 +56,6 @@ export const config = {
     "/storefront/:path*",
     "/admin/:path*",
     "/sign-in",
+    "/enter",
   ],
 };
