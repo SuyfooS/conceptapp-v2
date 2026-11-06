@@ -1,4 +1,5 @@
-import { formatHours, type ShiftRecord } from "@domain/time-clock";
+import type { ShiftRecord } from "@domain/time-clock";
+import { formatHours } from "@domain/time-clock-format";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";

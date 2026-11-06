@@ -11,9 +11,9 @@ import {
   isDuringShabbat,
   shabbatFriday,
   shabbatPlace,
-  shabbatTimes,
   timeIn,
 } from "./shabbat";
+import { shabbatTimes } from "./shabbat-times";
 
 type City = keyof typeof ISRAELI_CITIES;
 

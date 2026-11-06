@@ -1,4 +1,3 @@
-import { GeoLocation, Zmanim } from "@hebcal/core";
 import { z } from "zod";
 
 /**
@@ -54,7 +53,7 @@ export type ShabbatTimes = {
   havdalah: Date;
 };
 
-function parts(date: string): [number, number, number] {
+export function dateParts(date: string): [number, number, number] {
   const [year = 0, month = 1, day = 1] = calendarDate
     .parse(date)
     .split("-")
@@ -62,7 +61,7 @@ function parts(date: string): [number, number, number] {
   return [year, month, day];
 }
 
-function format(utc: Date): string {
+export function isoDate(utc: Date): string {
   return utc.toISOString().slice(0, 10);
 }
 
@@ -71,42 +70,12 @@ function format(utc: Date): string {
  * Sunday to Friday, the day before on Saturday.
  */
 export function shabbatFriday(date: string): string {
-  const [year, month, day] = parts(date);
+  const [year, month, day] = dateParts(date);
   const utc = new Date(Date.UTC(year, month - 1, day));
   const weekday = utc.getUTCDay();
   const offset = weekday === 6 ? -1 : 5 - weekday;
   utc.setUTCDate(utc.getUTCDate() + offset);
-  return format(utc);
-}
-
-/**
- * Hebcal reads the year, month and day of a `Date` in the process's own
- * time zone, so the date is built in local time to mean the same day
- * wherever the code runs.
- */
-function zmanimOn(gloc: GeoLocation, date: string): Zmanim {
-  const [year, month, day] = parts(date);
-  return new Zmanim(gloc, new Date(year, month - 1, day), false);
-}
-
-/** Candle lighting and havdalah for the Shabbat that `date` belongs to. */
-export function shabbatTimes(place: ShabbatPlace, date: string): ShabbatTimes {
-  const { latitude, longitude, timeZone, candleLightingMinutes } =
-    shabbatPlace.parse(place);
-  const gloc = new GeoLocation(null, latitude, longitude, 0, timeZone);
-  const friday = shabbatFriday(date);
-  const [year, month, day] = parts(friday);
-  const saturday = format(new Date(Date.UTC(year, month - 1, day + 1)));
-  return {
-    friday,
-    candleLighting: zmanimOn(gloc, friday).sunsetOffset(
-      -candleLightingMinutes,
-      true,
-    ),
-    havdalah: Zmanim.roundTime(
-      zmanimOn(gloc, saturday).tzeit(HAVDALAH_DEGREES),
-    ),
-  };
+  return isoDate(utc);
 }
 
 /** "HH:MM" on the 24-hour clock in the given time zone. */

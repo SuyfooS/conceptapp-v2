@@ -1,6 +1,5 @@
 "use server";
 
-import { getBusinessPlace } from "@db/availability";
 import {
   addTimeEntry,
   type ClockResult,
@@ -55,7 +54,7 @@ async function asManager(
   }
   if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };
 
-  const { timeZone } = await getBusinessPlace(membership.business.id);
+  const { timeZone } = membership.business.place;
   const times = parseEntryTimes(values, timeZone, new Date(), { endRequired });
   if (!times.ok) return { ok: false, failure: times.problem };
 
