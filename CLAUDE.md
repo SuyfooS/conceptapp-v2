@@ -118,6 +118,15 @@ Only `app/` imports app code (`@/…`).
 - Acceptance test for a screen: the least technical person on the pilot's
   staff completes the task without help.
 
+## Design reviews
+
+`.claude/skills/apple-design` reviews a screen against Apple's Human Interface
+Guidelines (`dickwu/apple-design-skill` at `ff4ebdd`, without its refresh
+script). This is a web app, so use its principles and its accessibility,
+colour, type, layout and writing rules, not Apple's platform conventions. This
+file wins wherever they differ: tokens, Heebo, the three layouts. Its
+improvement mode can suggest changes to the design system; it never replaces it.
+
 ## Code rules
 
 - No secrets in the repo, ever. Real keys live in `.env.local`, Vercel and

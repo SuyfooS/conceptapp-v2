@@ -3,6 +3,22 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-06 · chat · apple-design skill
+
+- Orel is back and asked to install `dickwu/apple-design-skill`. The daily run
+  continues as before until he decides otherwise.
+- `SKILL.md` and `references/` from upstream `ff4ebdd` copied unchanged to
+  `.claude/skills/apple-design/`, by hand, so nothing ran. Left out: its refresh
+  script and its files for other agents.
+- Checked first: read `SKILL.md`, `AGENTS.md`, `README.md` and
+  `references/code-audit.md`, and scanned all 135 files for hidden characters,
+  long encoded strings and agent-directed text. Only finding: two zero-width
+  spaces in a table in `icons.md`, harmless.
+- `CLAUDE.md` gains "Design reviews": its web-app scope, and that `CLAUDE.md`
+  wins where they differ.
+- Note: upstream has no license and the guideline pages are Apple's text. Fine
+  while this repo is private; take the skill out before it goes public.
+
 ## 2026-11-05 · run 26 · chunk 2d-1 (shift swaps in the database)
 
 - No open questions or instructions; `main` green at `2505d0a`. Split 2d
