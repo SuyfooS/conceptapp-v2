@@ -32,18 +32,22 @@ Migrations reach `conceptapp-dev` only by hand, and never from a nightly run:
    lists what would run and changes nothing.
 3. Read the list, then run it again with "apply" on. The seed never runs here.
 
-The rest is set in the dashboards, because `config.toml` is never pushed. Names are
-from memory, so check them on screen:
+The rest is set in the dashboards, because `config.toml` is never pushed:
 
-- Authentication: phone sign-in on, new signups off (`[auth] enable_signup = false`).
-  Accounts come from invites, through the admin API.
-- SMS: test numbers with fixed codes for now. A real provider comes later (Orel, 6 November).
+- Authentication, Sign In / Providers, Phone:
+  - Turn phone sign-in on. Supabase won't save test numbers without an SMS provider,
+    even though it texts them nothing. Choose Twilio and put placeholder text in its
+    required fields. A number that isn't a test number then fails on sign-in, so no
+    real person gets a message. A real provider comes later (Orel, 6 November).
+  - Test numbers, without the `+` and with a code you choose, kept out of the repo:
+    `972500000101=CODE,972500000102=CODE,972500000103=CODE,972500000104=CODE`.
+  - Test OTPs Valid Until: a date is required. Anyone with a test number and its code
+    can sign in, so end this before real people use this project.
+- Authentication, new signups off (`[auth] enable_signup = false`). Accounts come from
+  invites, through the admin API.
 - URL configuration: the site URL is the deployed address, not `127.0.0.1`.
 - Vercel: the three variables in `.env.example`, for Production and Preview.
-- The first platform admin: add a user by phone in Authentication, then in the SQL
-  editor:
-
-  ```sql
-  insert into public.platform_staff (user_id, role)
-  values ('<the user id>', 'platform_admin');
-  ```
+- SQL editor: paste `hosted-demo.sql` once. It adds a demo restaurant and the people
+  for those four numbers, including the first platform admin. Sign in with 050-000-0102
+  as its owner, 050-000-0103 as its manager, 050-000-0104 as a worker, or 050-000-0101
+  for the console.
