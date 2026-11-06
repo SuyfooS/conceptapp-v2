@@ -917,7 +917,8 @@
         "times": "These hours clash with another shift. A manager can fix it.",
         "noAccess": "You don't have access to this business's clock.",
         "viewOnly": "In view mode you can't clock in or out.",
-        "failed": "That didn't go through. Check your connection and try again."
+        "failed": "That didn't go through. Check your connection and try again.",
+        "needsEnd": "An end time is needed too."
       },
       "settings": {
         "row": "Breaks",
@@ -1022,7 +1023,8 @@
           "times": "These hours overlap another shift or run over 24 hours.",
           "noAccess": "You don't have permission to change hours in this business.",
           "viewOnly": "In view mode you can't change hours.",
-          "failed": "The hours weren't saved. Check your connection and try again."
+          "failed": "The hours weren't saved. Check your connection and try again.",
+          "sameTime": "The end is the same as the start. Check the times."
         },
         "done": {
           "edit": "Hours saved",

@@ -81,7 +81,7 @@ export function TeamHoursView({
               {data.atWork.map((person) => (
                 <ListRow
                   key={person.userId}
-                  href={personHref(person.userId, data.currentMonth)}
+                  href={personHref(person.userId, person.month)}
                   leading={<PersonAvatar name={person.name} />}
                   title={name(person.name)}
                   subtitle={t.rich("atWork.since", {

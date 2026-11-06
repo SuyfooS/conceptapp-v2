@@ -165,7 +165,10 @@ export async function currentClock(): Promise<ClockData | null> {
     canManage: role === "owner" || role === "manager",
     team: manager
       ? {
-          atWork: atWorkNow(openNow, now).length,
+          atWork: atWorkNow(
+            openNow.filter((entry) => !entryOverdue(entry, now)),
+            now,
+          ).length,
           overdue: openNow.filter((entry) => entryOverdue(entry, now)).length,
         }
       : null,

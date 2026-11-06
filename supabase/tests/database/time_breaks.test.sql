@@ -6,7 +6,7 @@
 -- own breaks, managers the business's, other businesses nothing. Every call
 -- passes the time so the test does not depend on today.
 begin;
-select plan(35);
+select plan(39);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -230,6 +230,47 @@ select throws_ok(
     (select id from ids where name = 'c1')),
   '55000', 'Too late to take it back', 'an entry a manager changed cannot be taken back'
 );
+
+-- A correction can't reopen a shift that ended.
+select throws_ok(
+  format($select public.correct_time_entry('69000000-0000-4000-a000-00000000000b', %L,
+    '2026-11-10 06:00+00', null, null, '2026-11-10 20:02+00')$,
+    (select id from ids where name = 'c1')),
+  '22023', 'An entry that ended needs an end', 'a correction cannot reopen a shift that ended'
+);
+
+-- A shift that moves whole takes its breaks along, even when they overlap their
+-- old times on the way.
+insert into ids
+select 'c2', public.add_time_entry('69000000-0000-4000-a000-00000000000b',
+  '69000000-0000-4000-b000-000000000001', '69000000-0000-4000-a000-00000000000d',
+  '2026-11-12 06:00+00', '2026-11-12 14:00+00', null, '2026-11-12 20:00+00');
+insert into public.time_breaks (entry_id, business_id, user_id, started_at, ended_at, unpaid)
+values
+  ((select id from ids where name = 'c2'), '69000000-0000-4000-b000-000000000001',
+    '69000000-0000-4000-a000-00000000000d', '2026-11-12 10:00+00', '2026-11-12 10:30+00', true),
+  ((select id from ids where name = 'c2'), '69000000-0000-4000-b000-000000000001',
+    '69000000-0000-4000-a000-00000000000d', '2026-11-12 10:40+00', '2026-11-12 11:00+00', true);
+select lives_ok(
+  format($select public.correct_time_entry('69000000-0000-4000-a000-00000000000b', %L,
+    '2026-11-12 06:30+00', '2026-11-12 14:30+00', null, '2026-11-12 20:01+00')$,
+    (select id from ids where name = 'c2')),
+  'a shift moves by half an hour'
+);
+select results_eq(
+  format($select started_at, ended_at from public.time_breaks where entry_id = %L order by started_at$,
+    (select id from ids where name = 'c2')),
+  $values ('2026-11-12 10:30+00'::timestamptz, '2026-11-12 11:00+00'::timestamptz),
+           ('2026-11-12 11:10+00'::timestamptz, '2026-11-12 11:30+00'::timestamptz)$,
+  'its breaks move with it'
+);
+select lives_ok(
+  format($select public.correct_time_entry('69000000-0000-4000-a000-00000000000b', %L,
+    '2026-11-11 06:30+00', '2026-11-11 14:30+00', null, '2026-11-12 20:02+00')$,
+    (select id from ids where name = 'c2')),
+  'a shift moves to another date, with its breaks kept'
+);
+delete from public.time_entries where id = (select id from ids where name = 'c2');
 
 -- Everything goes to the audit log.
 select is(

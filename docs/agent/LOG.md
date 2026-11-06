@@ -7,7 +7,9 @@ what is next, defaults applied.
 
 - `/clock/team`: what needs fixing, who is at work now, and everyone's hours in a month. `/clock/team/[person]`: one person's shifts, with fixing a shift and adding a forgotten one, by owners and managers. No migration: it uses `correct_time_entry` and `add_time_entry`, which were already there.
 - Today's clock row tells a manager when a shift needs fixing. This closes the hole where someone who forgot to leave stayed stuck.
+- Migration `20261107000400_clock_corrections`: a correction can't reopen a shift that ended, and a shift that moves whole takes its breaks along.
 - Not in it yet: deleting a shift entered by mistake, editing a break's times, and holders of `clock.edit` who aren't managers, which waits for roles and permissions.
+- Known, left: someone who left shows as "no name" here, because RLS hides former members' profiles. Nothing can make a member inactive yet, so it belongs with "remove a person". Editing a shift that ended in the repeated hour of the autumn clock change can add an hour: one hour a year, not worth the extra state now.
 
 ## 2026-11-06 · chat · the clock
 

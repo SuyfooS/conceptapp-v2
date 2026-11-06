@@ -340,12 +340,13 @@ const entryTimes = z.object({
 });
 export type EntryTimes = z.infer<typeof entryTimes>;
 
-export type EntryProblem = "invalid" | "needsEnd" | "future";
+export type EntryProblem = "invalid" | "needsEnd" | "sameTime" | "future";
 
 /**
  * What a manager typed for an entry, as instants in the business's time zone.
- * An end at or before the start is on the next day, so an evening past midnight
- * takes no extra field. The database has the last word on overlaps and length.
+ * An end before the start is on the next day, so an evening past midnight takes
+ * no extra field. An end equal to the start is a mistake, not 24 hours. The
+ * database has the last word on overlaps and length.
  */
 export function parseEntryTimes(
   input: unknown,
@@ -359,6 +360,7 @@ export function parseEntryTimes(
   if (!parsed.success) return { ok: false, problem: "invalid" };
   const { date, in: start, out } = parsed.data;
   if (out === "" && endRequired) return { ok: false, problem: "needsEnd" };
+  if (out === start) return { ok: false, problem: "sameTime" };
 
   const clockIn = instantIn(date, start, timeZone);
   const clockOut =
@@ -419,6 +421,7 @@ export type ClockFailure =
   | "alreadyOnBreak"
   | "notOnBreak"
   | "tooLate"
+  | "needsEnd"
   | "tooLong"
   | "times"
   | "noAccess"
@@ -440,7 +443,7 @@ export function clockFailureOf(
       if (/not on a break/i.test(message)) return "notOnBreak";
       return /too late/i.test(message) ? "tooLate" : "notIn";
     case "22023":
-      return "times";
+      return /needs an end/i.test(message) ? "needsEnd" : "times";
     case "42501":
     case "P0002":
       return "noAccess";

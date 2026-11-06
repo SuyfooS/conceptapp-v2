@@ -503,6 +503,13 @@ describe("parseEntryTimes", () => {
     });
   });
 
+  it("refuses an end equal to the start, rather than 24 hours", () => {
+    expect(parse("2026-11-10", "08:00", "08:00")).toEqual({
+      ok: false,
+      problem: "sameTime",
+    });
+  });
+
   it("refuses times that have not happened yet", () => {
     expect(parse("2026-11-20", "16:00", "18:00")).toEqual({
       ok: false,
@@ -577,5 +584,8 @@ describe("clockFailureOf, for breaks", () => {
     );
     expect(clockFailureOf("55000", "Not on a break")).toBe("notOnBreak");
     expect(clockFailureOf("55000", "Too late to take it back")).toBe("tooLate");
+    expect(clockFailureOf("22023", "An entry that ended needs an end")).toBe(
+      "needsEnd",
+    );
   });
 });

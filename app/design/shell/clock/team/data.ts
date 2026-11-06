@@ -19,8 +19,20 @@ export const demoTeamHours: TeamHoursData = {
   minutes: 212 * 60 + 12,
   shifts: 27,
   atWork: [
-    { userId: SHIRAN, name: "שירן הדגמה", since: "08:02", onBreak: false },
-    { userId: YOAV, name: "יואב לוי", since: "09:14", onBreak: true },
+    {
+      userId: SHIRAN,
+      name: "שירן הדגמה",
+      since: "08:02",
+      onBreak: false,
+      month: "2026-11",
+    },
+    {
+      userId: YOAV,
+      name: "יואב לוי",
+      since: "09:14",
+      onBreak: true,
+      month: "2026-11",
+    },
   ],
   overdue: [
     {

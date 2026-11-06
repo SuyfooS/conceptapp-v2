@@ -12,10 +12,10 @@ import { StatusToast } from "@ui/status-toast";
 import { History, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useId, useState, useTransition } from "react";
+import { RefreshOnReturn } from "../../home/refresh-on-return";
 import { MonthHero } from "../month-hero";
 import { ShiftList } from "../shift-list";
 import type {
-  EntryActionResult,
   EntryActions,
   EntryFailure,
   EntryValues,
@@ -36,22 +36,59 @@ export function PersonHoursView({
   paths: TeamPaths;
 }) {
   const t = useTranslations("app.clock.team");
-  const [target, setTarget] = useState<Target | null>(null);
+  // The sheet stays mounted, closed, so it opens already inside the business's
+  // colour; a sheet mounted open moves there on its first change and loses focus.
+  const [open, setOpen] = useState(false);
+  const [target, setTarget] = useState<Target>({ kind: "add" });
+  const [opened, setOpened] = useState(0);
+  const [saving, start] = useTransition();
   const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
     null,
   );
   const name = data.person.name ?? t("noName");
   const personHref = `${paths.team}/${data.person.userId}`;
-  const add = () => setTarget({ kind: "add" });
+  const record = target.kind === "edit" ? target.record : null;
+
+  function show(next: Target) {
+    setTarget(next);
+    setOpened((count) => count + 1);
+    setOpen(true);
+  }
+
+  function save(values: EntryValues, onFailure: (f: EntryFailure) => void) {
+    start(async () => {
+      try {
+        const result = record
+          ? await actions.correct(record.id, values)
+          : await actions.add(data.person.userId, values);
+        if (!result.ok) {
+          onFailure(result.failure);
+          return;
+        }
+        setToast({
+          text: t(`done.${target.kind}`),
+          stamp: new Date().toISOString(),
+        });
+        setOpen(false);
+      } catch {
+        onFailure("failed");
+      }
+    });
+  }
 
   return (
     <PageBody className={pageGlowClass}>
+      <RefreshOnReturn />
       <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
       <PageHeader
         back={{ href: `${paths.team}?month=${data.month}`, label: t("title") }}
         title={name}
         actions={
-          <Button size="lg" disabled={data.viewOnly} onClick={add}>
+          <Button
+            size="lg"
+            disabled={data.viewOnly}
+            onClick={() => show({ kind: "add" })}
+          >
             <Plus aria-hidden="true" />
             {t("person.add")}
           </Button>
@@ -73,7 +110,7 @@ export function PersonHoursView({
             onEdit={
               data.viewOnly
                 ? undefined
-                : (record) => setTarget({ kind: "edit", record })
+                : (shift) => show({ kind: "edit", record: shift })
             }
             className="relative z-10 mx-3 -mt-[56px] shadow-float xl:mx-5"
           />
@@ -94,67 +131,63 @@ export function PersonHoursView({
         </p>
       ) : null}
 
-      {target ? (
-        <EntrySheet
-          key={target.kind === "edit" ? target.record.id : "add"}
-          target={target}
-          today={data.today}
-          onClose={() => setTarget(null)}
-          save={(values) =>
-            target.kind === "edit"
-              ? actions.correct(target.record.id, values)
-              : actions.add(data.person.userId, values)
+      <Sheet
+        open={open}
+        onOpenChange={(next) => {
+          // A save under way finishes first: its answer belongs on this sheet.
+          if (!saving) setOpen(next);
+        }}
+        title={t(record ? "sheet.editTitle" : "sheet.addTitle")}
+        subtitle={t(record ? "sheet.editSubtitle" : "sheet.addSubtitle")}
+        closeLabel={t("sheet.close")}
+      >
+        <EntryForm
+          key={opened}
+          record={record}
+          // A new shift starts in the month on screen.
+          date={
+            data.month === data.currentMonth ? data.today : `${data.month}-01`
           }
-          onSaved={() => {
-            setToast({
-              text: t(`done.${target.kind}`),
-              stamp: new Date().toISOString(),
-            });
-            setTarget(null);
-          }}
+          today={data.today}
+          saving={saving}
+          save={save}
         />
-      ) : null}
+      </Sheet>
     </PageBody>
   );
 }
 
-function EntrySheet({
-  target,
+function EntryForm({
+  record,
+  date,
   today,
-  onClose,
+  saving,
   save,
-  onSaved,
 }: {
-  target: Target;
+  record: ShiftRecord | null;
+  date: string;
   today: string;
-  onClose: () => void;
-  save: (values: EntryValues) => Promise<EntryActionResult>;
-  onSaved: () => void;
+  saving: boolean;
+  save: (values: EntryValues, onFailure: (f: EntryFailure) => void) => void;
 }) {
   const t = useTranslations("app.clock.team");
   const id = useId();
-  const record = target.kind === "edit" ? target.record : null;
   const [values, setValues] = useState<EntryValues>({
-    date: record?.date ?? today,
+    date: record?.date ?? date,
     in: record?.in ?? "",
     out: record?.out ?? "",
   });
   const [failure, setFailure] = useState<EntryFailure | null>(null);
-  const [pending, start] = useTransition();
-  // Left open past the limit, it can't stay open.
+  // Only a shift still running may be left with no end, while it's within limits.
   const canStayOpen = record?.out === null && !record.overdue;
 
   function submit() {
+    if (!canStayOpen && record && values.out === "") {
+      setFailure("needsEnd");
+      return;
+    }
     setFailure(null);
-    start(async () => {
-      try {
-        const result = await save(values);
-        if (result.ok) onSaved();
-        else setFailure(result.failure);
-      } catch {
-        setFailure("failed");
-      }
-    });
+    save(values, setFailure);
   }
 
   const field = (key: keyof EntryValues, type: "date" | "time") => (
@@ -174,33 +207,23 @@ function EntrySheet({
   );
 
   return (
-    <Sheet
-      open
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      title={t(record ? "sheet.editTitle" : "sheet.addTitle")}
-      subtitle={t(record ? "sheet.editSubtitle" : "sheet.addSubtitle")}
-      closeLabel={t("sheet.close")}
-    >
-      <div className="flex flex-col gap-3">
-        <ListGroup className="bg-elevated">
-          {field("date", "date")}
-          {field("in", "time")}
-          {field("out", "time")}
-        </ListGroup>
-        <p className="px-1 text-ink-2 text-sm">
-          {canStayOpen ? t("sheet.openHint") : t("sheet.nextDayHint")}
+    <div className="flex flex-col gap-3">
+      <ListGroup className="bg-elevated">
+        {field("date", "date")}
+        {field("in", "time")}
+        {field("out", "time")}
+      </ListGroup>
+      <p className="px-1 text-ink-2 text-sm">
+        {canStayOpen ? t("sheet.openHint") : t("sheet.nextDayHint")}
+      </p>
+      {failure ? (
+        <p role="alert" className="px-1 font-medium text-danger">
+          {t(`failure.${failure}`)}
         </p>
-        {failure ? (
-          <p role="alert" className="px-1 font-medium text-danger">
-            {t(`failure.${failure}`)}
-          </p>
-        ) : null}
-        <Button size="lg" loading={pending} onClick={submit}>
-          {t(record ? "sheet.saveEdit" : "sheet.saveAdd")}
-        </Button>
-      </div>
-    </Sheet>
+      ) : null}
+      <Button size="lg" loading={saving} onClick={submit}>
+        {t(record ? "sheet.saveEdit" : "sheet.saveAdd")}
+      </Button>
+    </div>
   );
 }

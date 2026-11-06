@@ -73,6 +73,8 @@ test("a manager sees who is at work and fixes a shift left open", async ({
   ).toContainText(overdueOne);
   await page.goto("/clock/team");
   await expect(page.getByText(overdueOne)).toBeVisible();
+  // They need fixing; they aren't at work.
+  await expect(atWork.getByText(NOA.name)).toHaveCount(0);
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("team-overdue.png"),
@@ -95,8 +97,12 @@ test("a manager sees who is at work and fixes a shift left open", async ({
   const sheet = page.getByRole("dialog");
   await expect(sheet.getByLabel(t.sheet.in)).not.toHaveValue("");
   await expectCleanPage(page);
+
+  // Changing a field keeps the sheet as it is: focus stays, and a picker stays open.
+  await sheet.getByLabel(t.sheet.in).press("ArrowUp");
+  await expect(sheet.getByLabel(t.sheet.in)).toBeFocused();
   await sheet.getByRole("button", { name: t.sheet.saveEdit }).click();
-  await expect(sheet.getByRole("alert")).toHaveText(t.failure.times);
+  await expect(sheet.getByRole("alert")).toHaveText(t.failure.needsEnd);
 
   // An hour after it began, on the same date or the next.
   const start = await sheet.getByLabel(t.sheet.in).inputValue();
@@ -130,20 +136,29 @@ test("a manager adds a shift someone forgot, and hours can't be in the future", 
   await expect(main.getByText(t.person.emptyTitle)).toBeVisible();
 
   // A month back, so the date is always in the past.
+  const shown = page.url();
   await main
     .getByRole("link", { name: new RegExp(before(c.history.earlier)) })
     .click();
-  await expect(page).toHaveURL(/month=\d{4}-\d{2}$/);
+  await expect(page).not.toHaveURL(shown);
   const month = new URL(page.url()).searchParams.get("month");
   await page.getByRole("button", { name: t.person.add }).click();
   const sheet = page.getByRole("dialog");
   await expectCleanPage(page);
+
+  // It starts in the month on screen, not today's.
+  await expect(sheet.getByLabel(t.sheet.date)).toHaveValue(`${month}-01`);
 
   // No end yet.
   await sheet.getByLabel(t.sheet.date).fill(`${month}-10`);
   await sheet.getByLabel(t.sheet.in).fill("08:00");
   await sheet.getByRole("button", { name: t.sheet.saveAdd }).click();
   await expect(sheet.getByRole("alert")).toHaveText(t.failure.needsEnd);
+
+  // The same time twice is a mistake, not a full day.
+  await sheet.getByLabel(t.sheet.out).fill("08:00");
+  await sheet.getByRole("button", { name: t.sheet.saveAdd }).click();
+  await expect(sheet.getByRole("alert")).toHaveText(t.failure.sameTime);
 
   // In the future.
   await sheet.getByLabel(t.sheet.date).fill("2999-01-01");

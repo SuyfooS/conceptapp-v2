@@ -76,18 +76,28 @@ export async function currentTeamHours(
         breakMinutes: sum?.breakMinutes ?? 0,
       };
     })
-    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "he"));
+    .sort(
+      (a, b) =>
+        // Unnamed people go last, as on the team screen.
+        (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
+        (a.name ?? "").localeCompare(b.name ?? "", "he"),
+    );
 
   return {
     month,
     currentMonth,
     minutes: rows.reduce((sum, row) => sum + row.minutes, 0),
     shifts: rows.reduce((sum, row) => sum + row.shifts, 0),
-    atWork: atWorkNow(openNow, now).map((person) => ({
+    // Someone who forgot to leave days ago needs fixing; they aren't at work.
+    atWork: atWorkNow(
+      openNow.filter((entry) => !entryOverdue(entry, now)),
+      now,
+    ).map((person) => ({
       userId: person.userId,
       name: nameOf(person.userId),
       since: timeIn(new Date(person.since), timeZone),
       onBreak: person.onBreak,
+      month: monthOf(entryDate({ clockIn: person.since }, timeZone)),
     })),
     overdue: openNow
       .filter((entry) => entryOverdue(entry, now))

@@ -12,6 +12,8 @@ export type TeamHoursData = {
     name: string | null;
     since: string;
     onBreak: boolean;
+    /** The month its shift belongs to, which may be the one before. */
+    month: string;
   }[];
   /** Open for longer than an entry can be, wherever the month shown is. */
   overdue: {

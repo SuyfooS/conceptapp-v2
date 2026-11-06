@@ -26,6 +26,8 @@ function failureOf(
     case "times":
     case "tooLong":
       return "times";
+    case "needsEnd":
+      return "needsEnd";
     case "noAccess":
       return "noAccess";
     default:
@@ -62,7 +64,10 @@ async function asManager(
   return result.ok ? { ok: true } : { ok: false, failure: failureOf(result) };
 }
 
-/** Correct an entry. An open one may stay open by leaving out its end. */
+/**
+ * Correct an entry. An open one may stay open by leaving out its end; the
+ * database refuses that for one that has ended.
+ */
 export async function correctEntryAction(
   entryId: string,
   values: EntryValues,

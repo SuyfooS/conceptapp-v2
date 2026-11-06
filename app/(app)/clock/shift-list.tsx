@@ -84,12 +84,15 @@ function ShiftRows({
               {record.byManager ? t("byManager") : null}
             </>
           ),
-          trailing: record.out ? (
-            <span dir="ltr" className="font-semibold text-ink tabular-nums">
-              {formatHours(record.minutes)}
+          trailing: (
+            <span className="flex items-center gap-2">
+              {record.out ? null : <StateBadge record={record} />}
+              {record.out || record.overdue ? (
+                <span dir="ltr" className="font-semibold text-ink tabular-nums">
+                  {formatHours(record.minutes)}
+                </span>
+              ) : null}
             </span>
-          ) : (
-            <StateBadge record={record} />
           ),
         };
         return onEdit ? (
