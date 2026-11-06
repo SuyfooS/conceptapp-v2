@@ -12,6 +12,8 @@ export type WeekDay = {
   muted?: boolean;
   /** A dot under the day, e.g. it has an open shift or a warning. */
   marked?: boolean;
+  /** The dot's colour: warning by default, accent for the person's own days. */
+  markTone?: "warning" | "accent";
   /** What the dot or the coverage means, for screen readers ("חסר עובד"). */
   markLabel?: string;
   /** A small line under the date, such as candle lighting on Friday. */
@@ -92,7 +94,11 @@ export function WeekStrip({ days, value, onChange, label }: WeekStripProps) {
                 aria-hidden="true"
                 className={cn(
                   "mt-auto size-1.5 rounded-full",
-                  selected ? "bg-bg" : "bg-warning",
+                  selected
+                    ? "bg-bg"
+                    : d.markTone === "accent"
+                      ? "bg-accent"
+                      : "bg-warning",
                 )}
               />
             ) : null}

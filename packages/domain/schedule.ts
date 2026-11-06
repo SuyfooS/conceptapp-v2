@@ -160,6 +160,58 @@ export function scheduleGaps<
 }
 
 /**
+ * How filled a list of shifts is, for "5 מתוך 7" and the coverage track:
+ * the places taken and the places needed. Extra people on a full shift do
+ * not make up for a place missing on another.
+ */
+export function coverageOf(
+  shifts: readonly Pick<ScheduledShift, "needed" | "assignees">[],
+): { have: number; need: number } {
+  return shifts.reduce(
+    (sum, shift) => ({
+      have: sum.have + Math.min(shift.assignees.length, shift.needed),
+      need: sum.need + shift.needed,
+    }),
+    { have: 0, need: 0 },
+  );
+}
+
+/**
+ * Where the schedule tab opens. A worker opens on their next shift, in
+ * whichever week it falls. Everyone else, and a worker with nothing coming,
+ * opens on today; or, when this week has nothing to show and next week does,
+ * on next week's first shift.
+ */
+export function scheduleOpening<
+  S extends Pick<ScheduledShift, "day" | "assignees">,
+>({
+  today,
+  userId,
+  manager,
+  thisWeek,
+  nextWeek,
+}: {
+  today: string;
+  userId: string;
+  manager: boolean;
+  thisWeek: { dates: readonly string[]; shifts: readonly S[] };
+  nextWeek: { dates: readonly string[]; shifts: readonly S[] };
+}): { week: "this" | "next"; day: string } {
+  const own = manager
+    ? undefined
+    : shiftsOf([...thisWeek.shifts, ...nextWeek.shifts], userId, today)[0]
+        ?.shift.day;
+  if (own) {
+    return { week: thisWeek.dates.includes(own) ? "this" : "next", day: own };
+  }
+  const first = nextWeek.shifts[0]?.day;
+  if (thisWeek.shifts.length === 0 && first) {
+    return { week: "next", day: first };
+  }
+  return { week: "this", day: today };
+}
+
+/**
  * Someone's availability covers the whole shift: their ranges on the
  * shift's day, joined where they touch or overlap, include its start and
  * its end (both may run past midnight).

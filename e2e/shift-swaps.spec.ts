@@ -16,6 +16,7 @@ const YOAV = { name: "יואב לוי", local: "050-000-0004", e164: "+972500000
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 
 const sw = he.app.shifts.swap;
+const sheet = he.app.shifts.sheet;
 const ap = he.app.swaps;
 // Each screen size has its own layout in the page; only one is shown.
 const button = (page: Page, text: string) =>
@@ -75,7 +76,18 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   await signIn(page, NOA);
   await page.goto("/schedule/shifts");
   await expect(shown(page, sw.offers.empty)).toBeVisible();
+
+  // The sheet says what will happen, and nothing has happened yet.
   await button(page, sw.buttons.give).click();
+  const giving = page.getByRole("dialog");
+  await expect(giving).toContainText(sheet.give);
+  await expect(giving).toContainText(sheet.giveNote);
+  expect(await demoSwaps()).toEqual([]);
+  await expectCleanPage(page);
+  await giving
+    .getByRole("button", { name: new RegExp(`^${sw.buttons.give}, `) })
+    .click();
+  await expect(giving).toHaveCount(0);
   await expect(shown(page, sw.open)).toBeVisible();
   await expect(button(page, sw.buttons.cancel)).toBeVisible();
   expect(await demoSwaps()).toEqual([
@@ -94,6 +106,18 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
     sw.offers.from.replace("{name}", NOA.name),
   );
   await button(yoav, sw.buttons.take).click();
+  const taking = yoav.getByRole("dialog");
+  await expect(taking).toContainText(
+    sheet.take.replace("{name}", NOA.name.split(" ")[0] ?? NOA.name),
+  );
+  expect(await demoSwaps()).toEqual([
+    { status: "open", from: NOA.e164, to: null },
+  ]);
+  await expectCleanPage(yoav);
+  await taking
+    .getByRole("button", { name: new RegExp(`^${sw.buttons.take}, `) })
+    .click();
+  await expect(taking).toHaveCount(0);
   await expect(shown(yoav, sw.offers.takenByYou)).toBeVisible();
   await expect(button(yoav, sw.buttons.take)).toHaveCount(0);
   expect(await demoSwaps()).toEqual([
@@ -154,6 +178,17 @@ test("a manager approves a taken request and the colleague takes the shift", asy
 
   await button(page, ap.buttons.approve).click();
   await expect(shown(page, ap.empty)).toBeVisible();
+  // It says what was decided, since the decision cannot be undone.
+  await expect(
+    page.getByRole("status").filter({
+      hasText: (
+        ap.settled.approved
+          .replace("{to}", YOAV.name)
+          .replace("{from}", NOA.name)
+          .split("{")[0] ?? ""
+      ).trim(),
+    }),
+  ).toBeVisible();
   expect(await demoSwaps()).toEqual([
     { status: "approved", from: NOA.e164, to: YOAV.e164 },
   ]);

@@ -642,7 +642,54 @@
         "hours": "{hours, plural, =1 {1 hour} =2 {2 hours} other {# hours}}",
         "empty": "You have no shifts in the published schedule. If that looks wrong, talk to your manager.",
         "notPublished": "The schedule is not published yet. Once your manager publishes it, your shifts appear here.",
-        "line": "{name} · <ltr>{start}–{end}</ltr>"
+        "line": "{name} · <ltr>{start}–{end}</ltr>",
+        "later": "After that"
+      },
+      "board": {
+        "pickWeek": "Pick a week",
+        "pickDay": "Pick a day",
+        "yourDay": "You have a shift on this day",
+        "open": "Details of {shift}",
+        "count": "{count, plural, =0 {No shifts} one {1 shift} other {# shifts}}",
+        "filled": "{have} of {need}",
+        "filledLabel": "{have} of {need} placed",
+        "places": "{count, plural, one {1 open place} other {# open places}}",
+        "allFilled": "All shifts are staffed",
+        "missing": "{count, plural, one {1 person missing} other {# missing}}",
+        "full": "Full",
+        "noShifts": "No shifts on this day. Pick another day of the week.",
+        "noShiftsShort": "No shifts",
+        "candleLighting": "Candle lighting <ltr>{time}</ltr>",
+        "havdalah": "Havdalah <ltr>{time}</ltr>",
+        "publishedAt": "Published on {date} at <ltr>{time}</ltr>",
+        "draft": "Draft. The team does not see it yet, and tapping a shift opens the week builder.",
+        "canTake": "You can take it",
+        "tookIt": "You took it, waiting for approval",
+        "givingOpen": "You asked to give it away",
+        "givingTaken": "{name} is taking it",
+        "manage": "Managing the schedule",
+        "own": "Your shifts and availability",
+        "teamSent": "{sent} of {total} sent"
+      },
+      "hero": {
+        "next": "Your next shift",
+        "title": "{name}, <ltr>{start}</ltr>",
+        "until": "Until <ltr>{end}</ltr>",
+        "with": "with {names}",
+        "today": "Today",
+        "tomorrow": "Tomorrow",
+        "giveQuestion": "Can't make it?",
+        "giveHint": "You can offer it to the team"
+      },
+      "sheet": {
+        "close": "Close",
+        "title": "{name}, {day} {date}",
+        "people": "On this shift",
+        "me": "Me",
+        "give": "The shift is offered to the whole team. It stays yours, and you still need to come in, until someone takes it and the manager approves.",
+        "giveNote": "You can withdraw the request until the manager decides.",
+        "take": "Once the manager approves, the shift moves to you, in the same position. Until then it stays with {name}.",
+        "takeNote": "After you take it, only {name} or the manager can cancel."
       },
       "week": {
         "this": "This week",
@@ -701,6 +748,10 @@
       "empty": "No requests are waiting for approval. When a worker takes a shift a colleague gives away, the request shows up here.",
       "people": "Giving away: {from} · Taking: {to}",
       "subject": "{shift}: {from} gives it away, {to} takes it",
+      "settled": {
+        "approved": "Approved: {to} instead of {from}. {shift}.",
+        "declined": "Declined. {from} stays on the shift. {shift}."
+      },
       "noPosition": "No position",
       "columns": {
         "day": "Day",

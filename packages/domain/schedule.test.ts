@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   availableFor,
+  coverageOf,
   doubleBooked,
   draftWeek,
   positionCounts,
   type ScheduledShift,
   scheduleGaps,
+  scheduleOpening,
   shiftCandidates,
   shiftDetailsProblem,
   shiftMinutes,
@@ -560,6 +562,108 @@ describe("shiftMinutes", () => {
         { start: "22:00", end: "02:00" },
       ]),
     ).toBe(7 * 60 + 7.5 * 60 + 4 * 60);
+  });
+});
+
+describe("coverageOf", () => {
+  const person = (user: string) => ({ user, position: null });
+
+  it("adds up the places taken and needed", () => {
+    expect(coverageOf([])).toEqual({ have: 0, need: 0 });
+    expect(
+      coverageOf([
+        { needed: 3, assignees: [person(dana), person(avi)] },
+        { needed: 4, assignees: [] },
+      ]),
+    ).toEqual({ have: 2, need: 7 });
+  });
+
+  it("does not let an extra person on one shift hide a gap on another", () => {
+    expect(
+      coverageOf([
+        { needed: 1, assignees: [person(dana), person(avi)] },
+        { needed: 1, assignees: [] },
+      ]),
+    ).toEqual({ have: 1, need: 2 });
+  });
+});
+
+describe("scheduleOpening", () => {
+  const dates = (start: number) =>
+    Array.from(
+      { length: 7 },
+      (_, i) => `2026-11-${String(start + i).padStart(2, "0")}`,
+    );
+  const onShift = (day: string, user: string) => ({
+    day,
+    assignees: [{ user, position: null }],
+  });
+  const base = {
+    today: "2026-11-03",
+    userId: dana,
+    manager: false,
+    thisWeek: { dates: dates(1), shifts: [] as ReturnType<typeof onShift>[] },
+    nextWeek: { dates: dates(8), shifts: [] as ReturnType<typeof onShift>[] },
+  };
+
+  it("opens a worker on their next shift", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        thisWeek: {
+          dates: dates(1),
+          shifts: [
+            onShift("2026-11-02", dana),
+            onShift("2026-11-04", avi),
+            onShift("2026-11-05", dana),
+          ],
+        },
+      }),
+    ).toEqual({ week: "this", day: "2026-11-05" });
+  });
+
+  it("opens a worker on next week when their next shift is there", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        thisWeek: { dates: dates(1), shifts: [onShift("2026-11-04", avi)] },
+        nextWeek: { dates: dates(8), shifts: [onShift("2026-11-09", dana)] },
+      }),
+    ).toEqual({ week: "next", day: "2026-11-09" });
+  });
+
+  it("opens on today without a shift of their own", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        thisWeek: { dates: dates(1), shifts: [onShift("2026-11-04", avi)] },
+        nextWeek: { dates: dates(8), shifts: [onShift("2026-11-09", avi)] },
+      }),
+    ).toEqual({ week: "this", day: "2026-11-03" });
+  });
+
+  it("opens a manager on today, even with a shift of their own", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        manager: true,
+        thisWeek: { dates: dates(1), shifts: [onShift("2026-11-05", dana)] },
+      }),
+    ).toEqual({ week: "this", day: "2026-11-03" });
+  });
+
+  it("moves to next week when this week has nothing to show", () => {
+    expect(
+      scheduleOpening({
+        ...base,
+        manager: true,
+        nextWeek: { dates: dates(8), shifts: [onShift("2026-11-08", avi)] },
+      }),
+    ).toEqual({ week: "next", day: "2026-11-08" });
+  });
+
+  it("stays on today when neither week has anything", () => {
+    expect(scheduleOpening(base)).toEqual({ week: "this", day: "2026-11-03" });
   });
 });
 

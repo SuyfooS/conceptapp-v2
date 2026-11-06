@@ -22,6 +22,7 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { ProgressRing } from "@ui/progress-ring";
+import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
@@ -113,6 +114,8 @@ function GalleryBody({
 }) {
   const t = useTranslations("design");
   const tDays = useTranslations("days");
+  const tWeek = useTranslations("app.shifts.week");
+  const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
   const [day, setDay] = useState("0");
@@ -387,6 +390,16 @@ function GalleryBody({
               marked: i === 1 || i === 3,
               markLabel: t("openShift"),
             }))}
+          />
+          <Segmented
+            label={t("week")}
+            value={week}
+            onChange={setWeek}
+            options={[
+              { value: "this", label: tWeek("this") },
+              { value: "next", label: tWeek("next") },
+            ]}
+            className="self-start"
           />
         </Section>
 

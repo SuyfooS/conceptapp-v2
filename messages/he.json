@@ -642,7 +642,54 @@
         "hours": "{hours, plural, =1 {שעה אחת} =2 {שעתיים} other {# שעות}}",
         "empty": "אין לך משמרות בסידור שפורסם. אם נראה לך שזו טעות, כדאי לדבר עם המנהל.",
         "notPublished": "הסידור עוד לא פורסם. כשהמנהל יפרסם אותו, המשמרות שלך יופיעו כאן.",
-        "line": "{name} · <ltr>{start}–{end}</ltr>"
+        "line": "{name} · <ltr>{start}–{end}</ltr>",
+        "later": "אחר כך"
+      },
+      "board": {
+        "pickWeek": "בחירת שבוע",
+        "pickDay": "בחירת יום",
+        "yourDay": "יש לך משמרת ביום הזה",
+        "open": "פרטי {shift}",
+        "count": "{count, plural, =0 {אין משמרות} one {משמרת אחת} other {# משמרות}}",
+        "filled": "{have} מתוך {need}",
+        "filledLabel": "{have} מתוך {need} שובצו",
+        "places": "{count, plural, one {מקום פנוי אחד} other {# מקומות פנויים}}",
+        "allFilled": "כל המשמרות מאוישות",
+        "missing": "{count, plural, one {חסר עובד אחד} other {חסרים #}}",
+        "full": "מלא",
+        "noShifts": "אין משמרות ביום הזה. אפשר לבחור יום אחר בשבוע.",
+        "noShiftsShort": "אין משמרות",
+        "candleLighting": "כניסת שבת <ltr>{time}</ltr>",
+        "havdalah": "צאת שבת <ltr>{time}</ltr>",
+        "publishedAt": "פורסם ב-{date} בשעה <ltr>{time}</ltr>",
+        "draft": "טיוטה. הצוות עוד לא רואה אותה, ולחיצה על משמרת פותחת את בניית הסידור.",
+        "canTake": "אפשר לקחת",
+        "tookIt": "לקחת, מחכים לאישור",
+        "givingOpen": "ביקשת למסור",
+        "givingTaken": "{name} לוקח/ת",
+        "manage": "ניהול הסידור",
+        "own": "המשמרות והזמינות שלך",
+        "teamSent": "{sent} מתוך {total} שלחו"
+      },
+      "hero": {
+        "next": "המשמרת הבאה שלך",
+        "title": "{name}, <ltr>{start}</ltr>",
+        "until": "עד <ltr>{end}</ltr>",
+        "with": "עם {names}",
+        "today": "היום",
+        "tomorrow": "מחר",
+        "giveQuestion": "לא מסתדר לך?",
+        "giveHint": "אפשר להציע אותה לצוות"
+      },
+      "sheet": {
+        "close": "סגירה",
+        "title": "{name}, יום {day} {date}",
+        "people": "במשמרת",
+        "me": "אני",
+        "give": "המשמרת תוצע לכל הצוות. היא נשארת שלך, וצריך להגיע אליה, עד שמישהו ייקח אותה והמנהל יאשר.",
+        "giveNote": "אפשר לבטל את הבקשה עד שהמנהל מחליט.",
+        "take": "אחרי אישור המנהל המשמרת עוברת אליך, באותו תפקיד. עד אז היא נשארת של {name}.",
+        "takeNote": "אחרי שלוקחים, רק {name} או המנהל יכולים לבטל."
       },
       "week": {
         "this": "השבוע",
@@ -701,6 +748,10 @@
       "empty": "אין בקשות שמחכות לאישור. כשעובד ייקח משמרת שעמית מוסר, הבקשה תופיע כאן.",
       "people": "מוסר/ת: {from} · לוקח/ת: {to}",
       "subject": "{shift}: {from} מוסר/ת, {to} לוקח/ת",
+      "settled": {
+        "approved": "אישרת: {to} במקום {from}. {shift}.",
+        "declined": "דחית את הבקשה. {from} נשאר/ת במשמרת. {shift}."
+      },
       "noPosition": "בלי תפקיד",
       "columns": {
         "day": "יום",
