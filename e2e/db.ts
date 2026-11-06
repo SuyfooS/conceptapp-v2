@@ -164,10 +164,7 @@ export async function clearTimeEntries(phone: string): Promise<void> {
   }
 }
 
-/**
- * A shift already worked, on the 10th of this month or one before, or of the
- * 1st of this month when the 10th is still ahead.
- */
+/** A shift already worked: on the 1st of this month, or the 10th of an earlier one. */
 export async function addDemoShift(
   phone: string,
   shift: { monthsAgo: number; minutes: number; unpaidBreak: number },
@@ -187,7 +184,7 @@ export async function addDemoShift(
     const end = new Date(start.getTime() + shift.minutes * 60_000);
     const [entry] = await sql<{ id: string; user_id: string }[]>`
       insert into public.time_entries (business_id, user_id, clock_in, clock_out)
-      select ${DEMO_RESTAURANT}, p.id, ${start}, ${end}
+      select ${DEMO_RESTAURANT}::uuid, p.id, ${start}::timestamptz, ${end}::timestamptz
       from public.profiles p where p.phone = ${phone}
       returning id, user_id`;
     if (!entry) throw new Error(`no profile for ${phone}`);
@@ -212,7 +209,7 @@ export async function setDemoUnpaidBreaks(unpaid: boolean): Promise<void> {
   try {
     await sql`
       update public.business_modules
-      set settings = settings || ${sql.json({ unpaidBreaks: unpaid })}
+      set settings = settings || ${sql.json({ unpaidBreaks: unpaid })}::jsonb
       where business_id = ${DEMO_RESTAURANT} and module_key = 'time_clock'`;
   } finally {
     await sql.end();

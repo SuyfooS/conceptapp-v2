@@ -15,6 +15,10 @@ const c = he.app.clock;
 const title = (page: Page, name: string) =>
   page.getByRole("heading", { level: 1, name });
 
+/** The circle, by the last words of its name: the time may come before them. */
+const circle = (page: Page, label: string) =>
+  page.getByRole("button", { name: new RegExp(`(^|\\s)${label}$`) });
+
 async function expectCleanPage(page: Page) {
   // Metadata streams in after the body (see new-business.spec.ts).
   await expect(page).toHaveTitle(/ConceptApp$/);
@@ -54,7 +58,7 @@ test("a worker clocks in, goes on a break, comes back and leaves", async ({
   // Only owners and managers choose how breaks count.
   await expect(page.getByText(c.settings.row, { exact: true })).toHaveCount(0);
 
-  await page.getByRole("button", { name: c.circle.in }).click();
+  await circle(page, c.circle.in).click();
   await expect(title(page, c.title.working)).toBeVisible();
   await expect(page.getByText(c.breakRule.paid)).toBeVisible();
   await expectCleanPage(page);
@@ -73,11 +77,11 @@ test("a worker clocks in, goes on a break, comes back and leaves", async ({
   await page.getByRole("button", { name: c.startBreak }).click();
   await expect(title(page, c.title.break)).toBeVisible();
   await expectCleanPage(page);
-  await page.getByRole("button", { name: c.circle.back }).click();
+  await circle(page, c.circle.back).click();
   await expect(title(page, c.title.working)).toBeVisible();
 
   // Leaving can be taken back right after.
-  await page.getByRole("button", { name: c.circle.out }).click();
+  await circle(page, c.circle.out).click();
   await expect(title(page, c.title.off)).toBeVisible();
   await page.getByRole("button", { name: c.undo }).click();
   await expect(title(page, c.title.working)).toBeVisible();
@@ -157,10 +161,10 @@ test("a manager chooses that breaks come off the hours", async ({ page }) => {
   await expect(row).toContainText(c.settings.unpaid);
 
   // And the person on the clock is told.
-  await page.getByRole("button", { name: c.circle.in }).click();
+  await circle(page, c.circle.in).click();
   await expect(title(page, c.title.working)).toBeVisible();
   await expect(page.getByText(c.breakRule.unpaid)).toBeVisible();
-  await page.getByRole("button", { name: c.circle.out }).click();
+  await circle(page, c.circle.out).click();
   await expect(title(page, c.title.off)).toBeVisible();
   await clearTimeEntries(MANAGER.e164);
 });

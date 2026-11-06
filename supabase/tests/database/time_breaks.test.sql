@@ -6,7 +6,7 @@
 -- own breaks, managers the business's, other businesses nothing. Every call
 -- passes the time so the test does not depend on today.
 begin;
-select plan(35);
+select plan(34);
 
 insert into auth.users (id, aud, role, phone)
 values
