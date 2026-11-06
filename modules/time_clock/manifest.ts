@@ -13,5 +13,10 @@ export const manifest = defineManifest({
     roundToMinutes: z
       .union([z.literal(0), z.literal(5), z.literal(15)])
       .default(0),
+    /**
+     * Clocking in and out needs the QR code shown on a manager's device at
+     * the business, so nobody punches from home.
+     */
+    requirePunchCode: z.boolean().default(true),
   }),
 });
