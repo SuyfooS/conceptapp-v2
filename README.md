@@ -1,8 +1,8 @@
 # ConceptApp v2
 
-Operations app for small restaurants and cafés in Israel: staff scheduling,
-time clock, table reservations and a public page. Hebrew first, RTL,
-phone first.
+Operations app for small businesses with a team in Israel, restaurants and
+cafés first: staff scheduling, time clock, table reservations and a public
+page. Hebrew first, RTL, phone first.
 
 ## Stack
 

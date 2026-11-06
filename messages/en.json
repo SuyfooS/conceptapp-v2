@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "description": "Staff scheduling, time clock and table reservations for restaurants and cafés."
+    "description": "Staff scheduling and a time clock for businesses with a team, on everyone's phone."
   },
   "ui": {
     "appShell": {
@@ -172,7 +172,27 @@
     "punchCircle": "Clock in and out circle",
     "punchIn": "Clock in",
     "punchOut": "Clock out",
-    "punchBack": "Back to work"
+    "punchBack": "Back to work",
+    "grainFocus": "A title coming into focus, on grain",
+    "wordCycle": "Words that change on scroll",
+    "settling": "A pile that settles on scroll",
+    "deck": "Card deck",
+    "phoneFrame": "Phone with a screen",
+    "motionTitle": "Your business. In order.",
+    "cycleLead": "Right for",
+    "cycle1": "a restaurant",
+    "cycle2": "a carpentry shop",
+    "cycle3": "your business",
+    "settleTitle": "Scroll, and the pile settles",
+    "settleQ1": "Who's closing tomorrow?",
+    "settleA1": "The schedule is published",
+    "settleQ2": "How many hours did I work?",
+    "settleA2": "They're waiting in the clock",
+    "deckCard1": "First card",
+    "deckCard2": "Second card",
+    "deckBody": "On a phone it stays put, and the next card slides over it.",
+    "phoneLabel": "A sample phone with a screen inside",
+    "phoneText": "The app's screen"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -1289,6 +1309,151 @@
           "worker": "View as worker"
         },
         "failed": "We could not open the view. Try again in a moment."
+      }
+    }
+  },
+  "landing": {
+    "metaTitle": "ConceptApp: Your business. In order.",
+    "nav": {
+      "label": "Main navigation",
+      "signIn": "Sign in"
+    },
+    "mail": {
+      "action": "Send an email",
+      "subject": "I would like to hear about ConceptApp"
+    },
+    "hero": {
+      "title": "Your business. In order.",
+      "body": "Staff scheduling and a time clock, in one app on the whole team's phones.",
+      "demoLabel": "The app's Today screen with sample data: the next shift, a shift swap request and who is on shift now"
+    },
+    "questions": {
+      "title": "The same questions, every day.",
+      "body": "With ConceptApp the answer is already on the phone of whoever asked.",
+      "closing": {
+        "q": "Who's closing tomorrow?",
+        "a": "The schedule is published, and the whole team can see it"
+      },
+      "swap": {
+        "q": "Can we swap on Friday?",
+        "a": "The request goes to the manager, who approves it in one press"
+      },
+      "atWork": {
+        "q": "Who's at work right now?",
+        "a": "The manager sees it in the time clock"
+      },
+      "hours": {
+        "q": "How many hours did I work this month?",
+        "a": "The month's hours are waiting in the time clock"
+      },
+      "forgot": {
+        "q": "I forgot to clock out",
+        "a": "The manager fixes the time from their phone"
+      }
+    },
+    "features": {
+      "title": "What's in the app",
+      "schedule": {
+        "title": "Staff scheduling",
+        "body": "Workers send their availability, the manager builds the week and publishes it. Anyone who wants to swap asks from their phone, and the manager approves."
+      },
+      "clock": {
+        "title": "Time clock",
+        "body": "Clocking in, out and breaks in one press from the phone, with the whole month's hours. The manager sees who is at work now and fixes hours."
+      },
+      "soon": {
+        "title": "On the way",
+        "badge": "Soon",
+        "lists": {
+          "title": "Lists",
+          "body": "One department sends a list with quantities, and the one receiving it checks items off and finishes."
+        },
+        "manage": {
+          "title": "Management page",
+          "body": "The business's details, its colour, its opening hours and what is switched on, in one place."
+        },
+        "roles": {
+          "title": "Roles and permissions",
+          "body": "For each role: what it edits, what it only sees and what stays hidden from it."
+        }
+      }
+    },
+    "fit": {
+      "label": "Right for your business",
+      "lead": "Right for",
+      "words": {
+        "restaurant": "a restaurant",
+        "carpentry": "a carpentry shop",
+        "kitchen": "a kitchen",
+        "hotel": "a hotel",
+        "clothing": "a clothing store",
+        "electronics": "an electronics store",
+        "yours": "your business"
+      },
+      "body": "Restaurants, carpentry shops, kitchens, hotels, clothing stores and electronics stores. Any business with a team, shifts and working hours."
+    },
+    "steps": {
+      "title": "How to start",
+      "write": {
+        "title": "Write to us",
+        "body": "A few words by email about the business and the team."
+      },
+      "setup": {
+        "title": "We set up the business",
+        "body": "The ConceptApp team configures the app for you."
+      },
+      "invite": {
+        "title": "Invite the team",
+        "body": "Each worker gets a link and signs in from their phone."
+      }
+    },
+    "contact": {
+      "title": "Sounds like your business?",
+      "body": "Write us a few words and we'll get back to you.",
+      "direct": "Or directly to <mail>{email}</mail>"
+    },
+    "footer": {
+      "sample": "The screens on this page show sample data.",
+      "signIn": "Sign in to the app"
+    },
+    "demo": {
+      "today": {
+        "day": "Tuesday",
+        "greeting": "Good morning, Noa",
+        "heroLabel": "Your next shift",
+        "heroWhen": "In 48 minutes",
+        "heroTitle": "Morning, <ltr>09:00</ltr>",
+        "heroBody": "Until <ltr>16:00</ltr>, with Dana and Itay",
+        "punch": "Clock in",
+        "requestPerson": "Yoav Levi",
+        "requestTitle": "Yoav is giving away a shift",
+        "requestBody": "Thursday evening, Dana took it",
+        "onShift": "On shift now",
+        "person1": "Dana Avraham",
+        "person1Role": "Shift manager",
+        "person1Since": "From <ltr>08:57</ltr>",
+        "person2": "Itay Mizrahi",
+        "person2Role": "Team",
+        "person2Since": "From <ltr>09:02</ltr>",
+        "person3": "Shira Biton",
+        "person3Role": "Team",
+        "person3Late": "Hasn't clocked in"
+      },
+      "schedule": {
+        "label": "The week's schedule with sample data: Tuesday's morning shift is missing one worker",
+        "shift": "Morning",
+        "hours": "<ltr>09:00–16:00</ltr>",
+        "missing": "One worker missing",
+        "person1": "Dana Avraham",
+        "person2": "Itay Mizrahi",
+        "names": "Dana, Itay"
+      },
+      "clock": {
+        "label": "The time clock with sample data: a large circle to clock out, and the month's hours under it",
+        "running": "04:12",
+        "punchOut": "Clock out",
+        "month": "This month's hours",
+        "monthHours": "86"
       }
     }
   },

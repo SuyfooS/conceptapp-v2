@@ -24,16 +24,10 @@ async function requestCode(page: Page, phone: string) {
   await page.getByRole("button", { name: t.send }).click();
 }
 
-test("the sign-in page is clean, and the root leads to the door", async ({
-  page,
-}) => {
+test("the sign-in page is clean", async ({ page }) => {
   await page.goto("/sign-in");
   await expect(page.getByRole("heading", { name: t.title })).toBeVisible();
   await expectAccessible(page);
-
-  // The root has no page of its own: it opens the app, and so leads to the door.
-  await page.goto("/");
-  await expect(page).toHaveURL(/\/enter$/);
 });
 
 test("a worker signs in with a phone code and lands on the home screen", async ({

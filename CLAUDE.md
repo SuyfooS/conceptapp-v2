@@ -5,20 +5,24 @@ Nightly runs and live sessions also follow @docs/AGENT.md.
 
 ## What this is
 
-The operations app for small Israeli restaurants and cafés: staff scheduling,
-time clock, table reservations and a public page. Set up for each business by
-the ConceptApp team from a template; run daily by managers and staff on their
-phones. Hebrew first, RTL.
+The operations app for small Israeli businesses with a team, restaurants and
+cafés first: staff scheduling, time clock, table reservations and a public page.
+Set up for each business by the ConceptApp team from a template; run daily by
+managers and staff on their phones. Hebrew first, RTL.
 
 Plan and decisions: App Design Document and Business Model (links in the
 ConceptApp project, `claude/v2-rebuild-plan.md`).
 
 ## Principles
 
-1. One wedge, finished. Restaurants and cafés. For the pilot, by Orel's decision of
-   6 November 2026: scheduling, time clock, lists, a management page, and roles
-   with different permissions. Reservations, storefront and notifications wait
-   until after it. Nothing from the deferred list gets built before its trigger.
+1. One product, finished, for any business it can make more efficient (Orel, 7
+   November 2026): restaurants, carpentry shops, kitchens, hotels, shops. Templates
+   exist for restaurants and cafés so far, and the pilot starts in a restaurant;
+   other kinds of business get their own template as separate work. For the pilot,
+   by Orel's decision of 6 November 2026: scheduling, time clock, lists, a management
+   page, and roles with different permissions. Reservations, storefront and
+   notifications wait until after it. Nothing from the deferred list gets built
+   before its trigger.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.
@@ -68,7 +72,8 @@ Only `app/` imports app code (`@/…`).
   Every token has light and dark values and follows the device, with no switch in the
   app. `bg-brand` is ConceptApp's own colour: admin console and marketing only.
 - Type scale: `text-sm` 13 · `text-base` 15 · `text-md` 17 (body) · `text-lg` 20 ·
-  `text-xl` 24 · `text-2xl` 34 (large titles). The device's font on Apple devices,
+  `text-xl` 24 · `text-2xl` 34 (large titles). `text-3xl` and `text-4xl` grow with the
+  screen and are for the landing page only. The device's font on Apple devices,
   Heebo everywhere else. Weights 400/500/600/700. Real content wraps; no `truncate`.
 - Cards have no borders: `flat` (soft shadow, the default), `float` (lifted over what
   is under it), `accent` (`bg-accent-soft`) and `hero` (the business's colour, with
@@ -83,14 +88,16 @@ Only `app/` imports app code (`@/…`).
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
   and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, WeekStrip, AppShell, PageBody/PageHeader/
-  PageSection.
+  PageSection. For the landing page: FocusText, WordCycle, SettlingCards, DeckCard, PhoneFrame.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
   wrapper. `accentTokens` returns a pair for light and for dark, and darkens or lifts
   unreadable picks; text on light tints stays `text-ink`, never `text-accent`.
 - Phone numbers are stored as E.164 (`normalizeIsraeliMobile` in
   `@domain/phone`); `PhoneField` submits that form through a hidden input.
 - Touch targets at least 44px. Motion on state changes only: 150–200ms, or the spring
-  (`ease-spring`, `pressable`) for what moves. Reduced motion turns it off.
+  (`ease-spring`, `pressable`) for what moves. Reduced motion turns it off. The landing
+  page is the one exception: its motion follows the scroll, in CSS with no JavaScript,
+  plus one entrance for the slogan (the rules at the end of `globals.css`).
 - All user-facing copy in Hebrew; plain words, no exclamation marks.
 - Copy lives in `messages/he.json` with its English twin in `messages/en.json`
   (same keys, same `{placeholders}`), read with next-intl's `useTranslations`
@@ -143,6 +150,11 @@ them.
 `.claude/skills/apple-design` (`dickwu/apple-design-skill` at `ff4ebdd`) is the
 reference for reviews and conventions. This file wins where they differ. Never ship SF
 font files or SF Symbols; asking the device for its own font is fine.
+
+React Bits (reactbits.dev) is a source of ideas only, by Orel's request of 7 November
+2026. Its licence covers its code; a small change to that code doesn't make it ours. So
+write the effect from scratch in CSS, with no new animation library, and take only what
+suits this design: no cursor effects, glowing borders, particles or letter-by-letter text.
 
 ## Code rules
 

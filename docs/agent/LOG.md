@@ -3,6 +3,16 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-07 · chat · the landing page
+
+- Orel asked for a landing page and decided in chat: it speaks to owners of any business the app can make more efficient (restaurants, carpentry shops, kitchens, hotels, clothing and electronics stores), and the product opens to them too, not only restaurants and cafés. `CLAUDE.md` principle 1 follows. Templates for other kinds of business are separate work he hasn't scheduled. Until they exist, a carpentry shop or hotel opens on the restaurant template.
+- His other answers: the slogan "העסק שלך. מסודר." (my wording, his pick), the page at `/` with signed-in people sent on to `/home`, the whole pilot shown with lists, the management page and roles marked "בקרוב", and a main action that emails him, at the address he chose to show publicly. No prices, customers or numbers. The copy beyond the slogan is mine, for him to read.
+- `app/(public)/page.tsx`: hero with a phone showing Today, five everyday questions that settle into a list with their answers as you scroll, the features as a deck on phones and a grid from tablet up, a word that changes on scroll, how to start, and contact. Sample data only, and the footer says so.
+- He also asked for design elements from reactbits.dev, slightly changed to avoid copyright. Its licence (MIT + Commons Clause) allows use in a site if its notice is kept, and a small change would not make the code ours, so I wrote the ideas from scratch in CSS: no React Bits code, no new library, no JavaScript of the page's own. Ideas taken from: Blur Text, Grainient and Noise, Scroll Stack, Fade Content, Rotating Text, and Magic Bento's layout. The settling pile is ours. Scroll timelines need Chrome or Safari 26; elsewhere, and under reduced motion, the page is a plain list.
+- New in `packages/ui`, on `/design`: FocusText, WordCycle, SettlingCards, DeckCard, PhoneFrame. New tokens: `text-3xl`, `text-4xl`, `--bezel`.
+- The conversation note on `יומן הסוכן` was blocked by the session's permissions, so this entry is the record.
+- Proof: `pnpm check`, `pnpm build`; axe clean at 390, 820 and 1440 in light and dark, no horizontal scroll, contrast of the hero's text measured on its real pixels. Playwright `landing.spec.ts` runs in CI only. Not tested on a real iPhone or Android.
+
 ## 2026-11-06 · chat · the passive door
 
 - Orel put real sign-in and its security off, and asked for a "passive login" until then. My reading: `/enter` offers three fictional people of a demo restaurant, one press and no code (#51). `PASSIVE_SIGN_IN` in `@domain/passive-sign-in` goes false before real people use the project.

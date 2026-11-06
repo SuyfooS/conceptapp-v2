@@ -29,6 +29,14 @@ it knows is this repo and its GitHub issues.
   project. Migrations reach it only through the manual workflow (`supabase/README.md`).
 - Kept as they are: the whole team sees the whole published schedule, a schedule can be
   published with gaps, and every swap needs a manager's approval.
+- On 7 November Orel opened the product to any business it can make more efficient, not
+  only restaurants and cafés. The pilot and the backlog stay as they are; templates for
+  other kinds of business are separate work he hasn't scheduled yet. Don't start them
+  unasked.
+- The landing page at `/` promises what its copy says and nothing else. It has no prices,
+  customers or numbers, and shows lists, the management page and roles as "בקרוב". When
+  one of those is built, remove its mark in the same change. Don't add a claim, price or
+  customer without asking Orel.
 
 ## Talking to Orel
 

@@ -70,6 +70,7 @@
   --glass-shadow:
     0 2px 6px rgb(16 18 26 / 0.06), 0 18px 40px -10px rgb(16 18 26 / 0.26);
   --scrim: rgb(16 18 26 / 0.26);
+  --bezel: #16171a; /* the edge of a phone drawn on the landing page */
 }
 
 :root {
@@ -116,6 +117,7 @@
       0 0 0 0.5px rgb(255 255 255 / 0.08), 0 22px 44px -14px rgb(0 0 0 / 0.7);
     --glass-shadow: 0 18px 40px -10px rgb(0 0 0 / 0.65);
     --scrim: rgb(0 0 0 / 0.5);
+    --bezel: #000000;
   }
 }
 
@@ -155,6 +157,7 @@
     0 0 0 0.5px rgb(255 255 255 / 0.08), 0 22px 44px -14px rgb(0 0 0 / 0.7);
   --glass-shadow: 0 18px 40px -10px rgb(0 0 0 / 0.65);
   --scrim: rgb(0 0 0 / 0.5);
+  --bezel: #000000;
 }
 
 /* A business accent: the pair for the current appearance. */
@@ -280,6 +283,11 @@
   --text-xl--line-height: 1.25;
   --text-2xl: 2.125rem;
   --text-2xl--line-height: 1.176;
+  /* The landing page only: its section titles and its slogan. */
+  --text-3xl: clamp(2.125rem, 1.7rem + 1.8vw, 3.25rem);
+  --text-3xl--line-height: 1.1;
+  --text-4xl: clamp(3.5rem, 2.6rem + 3.4vw, 6.75rem);
+  --text-4xl--line-height: 1;
 
   --radius-control: 14px;
   --radius-card: 24px;
@@ -401,6 +409,44 @@ body {
   color: var(--accent-ink);
 }
 
+/*
+ * The hero of the landing page, as tall as a phone's whole screen and more. The
+ * light keeps a fixed size in the far corner, so the text stays readable at any
+ * width; hero-surface's light grows with the box and would reach it.
+ */
+@utility brand-surface {
+  background:
+    radial-gradient(
+      min(90vw, 900px) min(70vw, 560px) at 0% 0%,
+      color-mix(in oklab, var(--accent) 78%, white) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      110% 100% at 100% 100%,
+      color-mix(in oklab, var(--accent) 62%, black) 0%,
+      transparent 70%
+    ),
+    var(--accent);
+  color: var(--accent-ink);
+}
+
+/* A fine grain over a coloured surface, so its gradient reads as a material. */
+@utility grain {
+  isolation: isolate;
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: 0.12;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
 /* Press feedback: a small spring, on anything people tap. */
 @utility pressable {
   transition: transform 0.3s var(--ease-spring);
@@ -431,6 +477,184 @@ body {
 @keyframes fade-out {
   to {
     opacity: 0;
+  }
+}
+
+/*
+ * The landing page's motion, and the one exception to "motion on state changes
+ * only". It follows the scroll, so the visitor drives it, and it needs no
+ * JavaScript. Without scroll timelines (or under reduced motion) everything
+ * simply sits in its final place. These rules are the ideas behind a few React
+ * Bits components, written here from scratch; none of their code is used.
+ */
+@keyframes focus-in {
+  from {
+    opacity: 0;
+    filter: blur(14px);
+    transform: translateY(0.08em);
+  }
+}
+
+/* One word coming into focus on load; --i sets its place in the line. */
+@utility focus-in {
+  @media (prefers-reduced-motion: no-preference) {
+    animation: focus-in 0.7s var(--ease-calm) both;
+    animation-delay: calc(var(--i, 0) * 180ms + 100ms);
+  }
+}
+
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(28px);
+  }
+}
+
+/* Rises into place as it scrolls into view. */
+@utility reveal {
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+      animation: reveal linear both;
+      animation-timeline: view();
+      animation-range: entry 0% entry 60%;
+    }
+  }
+}
+
+@keyframes settle-card {
+  from {
+    transform: translate(
+        calc(var(--x) * var(--spread, 1)),
+        calc(var(--y) * var(--spread, 1))
+      )
+      rotate(var(--r));
+  }
+}
+
+@keyframes settle-answer {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes settle-question {
+  from {
+    transform: translateY(0.75rem);
+  }
+}
+
+/* The tall section whose scroll tidies the pile. */
+@utility settle-stage {
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) and (min-height: 640px) {
+      height: 200svh;
+      view-timeline-name: --settle;
+    }
+  }
+}
+
+/* What stays on screen while that happens. */
+@utility settle-pin {
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) and (min-height: 640px) {
+      position: sticky;
+      top: 0;
+      min-height: 100svh;
+      align-content: center;
+    }
+  }
+}
+
+/* One card of the pile: --x, --y and --r say how out of place it starts. */
+@utility settle-card {
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) and (min-height: 640px) {
+      animation: settle-card var(--ease-calm) both;
+      animation-timeline: --settle;
+      animation-range: contain calc(4% + var(--i) * 6%) contain
+        calc(42% + var(--i) * 7%);
+    }
+  }
+}
+
+@utility settle-question {
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) and (min-height: 640px) {
+      animation: settle-question linear both;
+      animation-timeline: --settle;
+      animation-range: contain calc(30% + var(--i) * 7%) contain
+        calc(42% + var(--i) * 7%);
+    }
+  }
+}
+
+/* The answer appears once its card has found its place. */
+@utility settle-answer {
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) and (min-height: 640px) {
+      animation: settle-answer linear both;
+      animation-timeline: --settle;
+      animation-range: contain calc(34% + var(--i) * 7%) contain
+        calc(46% + var(--i) * 7%);
+    }
+  }
+}
+
+@keyframes word-pass {
+  0% {
+    opacity: 0;
+    transform: translateY(0.35em);
+  }
+  25%,
+  75% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-0.35em);
+  }
+}
+
+@keyframes word-arrive {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+  }
+}
+
+/* A word on its way through the cycle: holds its width, unseen without timelines. */
+@utility word-pass {
+  visibility: hidden;
+
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+      visibility: visible;
+      animation: word-pass linear both;
+      animation-timeline: view();
+      animation-range: cover calc(12% + var(--i) * 7%) cover
+        calc(21% + var(--i) * 7%);
+    }
+  }
+}
+
+/* The word the cycle comes to rest on. */
+@utility word-arrive {
+  @supports (animation-timeline: view()) {
+    @media (prefers-reduced-motion: no-preference) {
+      animation: word-arrive linear both;
+      animation-timeline: view();
+      animation-range: cover calc(12% + var(--i) * 7%) cover
+        calc(16% + var(--i) * 7%);
+    }
+  }
+}
+
+/* A card of a deck: stays pinned while the next one slides over it. Phones only. */
+@utility deck-card {
+  @media (max-width: 767px) and (min-height: 640px) {
+    position: sticky;
+    top: calc(5rem + var(--i, 0) * 0.625rem);
   }
 }
 
