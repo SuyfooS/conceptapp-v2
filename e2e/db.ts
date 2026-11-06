@@ -151,6 +151,74 @@ export async function clearAvailability(phone: string): Promise<void> {
   }
 }
 
+/** A person starts with nothing on the clock. */
+export async function clearTimeEntries(phone: string): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`delete from public.time_entries e
+      using public.profiles p
+      where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
+        and p.phone = ${phone}`;
+  } finally {
+    await sql.end();
+  }
+}
+
+/**
+ * A shift already worked, on the 10th of this month or one before, or of the
+ * 1st of this month when the 10th is still ahead.
+ */
+export async function addDemoShift(
+  phone: string,
+  shift: { monthsAgo: number; minutes: number; unpaidBreak: number },
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const now = new Date();
+    const day = shift.monthsAgo === 0 ? 1 : 10;
+    const start = new Date(
+      Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth() - shift.monthsAgo,
+        day,
+        6,
+      ),
+    );
+    const end = new Date(start.getTime() + shift.minutes * 60_000);
+    const [entry] = await sql<{ id: string; user_id: string }[]>`
+      insert into public.time_entries (business_id, user_id, clock_in, clock_out)
+      select ${DEMO_RESTAURANT}, p.id, ${start}, ${end}
+      from public.profiles p where p.phone = ${phone}
+      returning id, user_id`;
+    if (!entry) throw new Error(`no profile for ${phone}`);
+    if (shift.unpaidBreak > 0) {
+      const breakEnd = new Date(
+        start.getTime() + (10 + shift.unpaidBreak) * 60_000,
+      );
+      await sql`
+        insert into public.time_breaks
+          (entry_id, business_id, user_id, started_at, ended_at, unpaid)
+        values (${entry.id}, ${DEMO_RESTAURANT}, ${entry.user_id},
+          ${new Date(start.getTime() + 10 * 60_000)}, ${breakEnd}, true)`;
+    }
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Whether breaks come off the hours at the demo restaurant. */
+export async function setDemoUnpaidBreaks(unpaid: boolean): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`
+      update public.business_modules
+      set settings = settings || ${sql.json({ unpaidBreaks: unpaid })}
+      where business_id = ${DEMO_RESTAURANT} and module_key = 'time_clock'`;
+  } finally {
+    await sql.end();
+  }
+}
+
 export type SavedAvailability = {
   weekday: number;
   start: string;

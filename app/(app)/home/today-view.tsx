@@ -72,6 +72,8 @@ export type TodayData = {
   businessName: string;
   /** From `moduleWidgets`: what the enabled modules bring for this role. */
   widgets: ModuleNavEntry[];
+  /** Where the person stands on the clock, when they are at work. */
+  clockLine?: { status: "working" | "break"; at: string } | null;
   schedule: TodaySchedule | null;
   /** Owners and managers only. */
   team: Team | null;
@@ -148,7 +150,14 @@ export async function TodayView({
                   href={path(widget.href)}
                   leading={moduleIcons[widget.icon]}
                   title={tm(`${widget.key}.name`)}
-                  subtitle={tm(`${widget.key}.description`)}
+                  subtitle={
+                    widget.key === "time_clock" && data.clockLine
+                      ? t.rich(`clock.todayLine.${data.clockLine.status}`, {
+                          time: data.clockLine.at,
+                          ltr,
+                        })
+                      : tm(`${widget.key}.description`)
+                  }
                 />
               ))}
             </ListGroup>

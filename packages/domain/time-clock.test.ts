@@ -1,12 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  addMonths,
   atWorkNow,
+  breakMinutes,
   clockFailureOf,
+  clockStatus,
   entryDate,
   entryMinutes,
+  formatElapsed,
+  formatHours,
+  monthMinutes,
+  monthOf,
+  monthRange,
+  monthRecords,
   openEntryOf,
   roundMinutes,
+  type TimeEntry,
   timeEntry,
+  undoableEntry,
   weekSummary,
   weekTotals,
 } from "./time-clock";
@@ -220,5 +231,188 @@ describe("clockFailureOf", () => {
     expect(clockFailureOf("42501")).toBe("noAccess");
     expect(clockFailureOf("P0002")).toBe("noAccess");
     expect(clockFailureOf(undefined)).toBe("failed");
+  });
+});
+
+describe("breaks", () => {
+  const shift = {
+    clockIn: "2026-11-10T06:00:00Z",
+    clockOut: "2026-11-10T14:00:00Z",
+  };
+  const pause = (unpaid: boolean, endedAt: string | null) => ({
+    startedAt: "2026-11-10T10:00:00Z",
+    endedAt,
+    unpaid,
+  });
+  const after = new Date("2026-11-10T15:00:00Z");
+
+  it("takes an unpaid break off the hours", () => {
+    const breaks = [pause(true, "2026-11-10T10:30:00Z")];
+    expect(entryMinutes({ ...shift, breaks }, after)).toBe(450);
+  });
+
+  it("leaves a paid break in the hours", () => {
+    const breaks = [pause(false, "2026-11-10T10:30:00Z")];
+    expect(entryMinutes({ ...shift, breaks }, after)).toBe(480);
+    expect(breakMinutes({ breaks }, after)).toBe(30);
+  });
+
+  it("stops the hours during an open unpaid break", () => {
+    const open = {
+      clockIn: shift.clockIn,
+      clockOut: null,
+      breaks: [pause(true, null)],
+    };
+    const at = (time: string) => entryMinutes(open, new Date(time));
+    expect(at("2026-11-10T10:05:00Z")).toBe(240);
+    expect(at("2026-11-10T10:55:00Z")).toBe(240);
+  });
+
+  it("carries through the week's sum", () => {
+    const breaks = [pause(true, "2026-11-10T11:00:00Z")];
+    const week = weekSummary([{ ...shift, breaks }], "2026-11-08", TZ, after);
+    expect(week.total).toBe(420);
+  });
+});
+
+describe("clockStatus", () => {
+  const open = { breaks: [] as TimeEntry["breaks"] };
+
+  it("tells away, working and on a break apart", () => {
+    expect(clockStatus(null).state).toBe("off");
+    expect(clockStatus(open).state).toBe("working");
+    const pause = {
+      id: "68000000-0000-4000-a000-000000000002",
+      startedAt: "2026-11-10T10:00:00Z",
+      endedAt: null,
+      unpaid: true,
+    };
+    expect(clockStatus({ breaks: [pause] })).toMatchObject({
+      state: "break",
+      pause,
+    });
+    expect(
+      clockStatus({
+        breaks: [{ ...pause, endedAt: "2026-11-10T10:30:00Z" }],
+      }).state,
+    ).toBe("working");
+  });
+});
+
+describe("months", () => {
+  it("steps across a year", () => {
+    expect(addMonths("2026-11", 1)).toBe("2026-12");
+    expect(addMonths("2026-12", 1)).toBe("2027-01");
+    expect(addMonths("2026-01", -1)).toBe("2025-12");
+    expect(monthOf("2026-11-06")).toBe("2026-11");
+  });
+
+  it("starts and ends in the business's time zone", () => {
+    const { from, to } = monthRange("2026-11", TZ);
+    expect(from.toISOString()).toBe("2026-10-31T22:00:00.000Z");
+    expect(to.toISOString()).toBe("2026-11-30T22:00:00.000Z");
+  });
+
+  const now = new Date("2026-11-20T12:00:00Z");
+
+  it("counts an entry in the month its day began in", () => {
+    const entries = [
+      // Starts 23:00 on 31 October in Israel and ends in November.
+      { clockIn: "2026-10-31T21:00:00Z", clockOut: "2026-10-31T23:00:00Z" },
+      { clockIn: "2026-11-10T06:00:00Z", clockOut: "2026-11-10T10:00:00Z" },
+    ];
+    expect(monthMinutes(entries, "2026-10", TZ, now)).toBe(120);
+    expect(monthMinutes(entries, "2026-11", TZ, now)).toBe(240);
+  });
+
+  it("rounds each entry by the business's step", () => {
+    const entries = [
+      { clockIn: "2026-11-10T06:00:00Z", clockOut: "2026-11-10T10:07:00Z" },
+      { clockIn: "2026-11-11T06:00:00Z", clockOut: "2026-11-11T10:07:00Z" },
+    ];
+    expect(monthMinutes(entries, "2026-11", TZ, now, 5)).toBe(490);
+  });
+
+  it("lists a month for the history, newest first", () => {
+    const row = (
+      id: string,
+      clockIn: string,
+      clockOut: string | null,
+      source: "punch" | "manager" = "punch",
+    ): TimeEntry => ({
+      id: `68000000-0000-4000-a000-00000000000${id}`,
+      userId: "u1",
+      clockIn,
+      clockOut,
+      source,
+      breaks: [],
+    });
+    const records = monthRecords(
+      [
+        row("1", "2026-11-10T06:00:00Z", "2026-11-10T14:00:00Z", "manager"),
+        row("2", "2026-11-20T06:00:00Z", null),
+        row("3", "2026-10-20T06:00:00Z", "2026-10-20T14:00:00Z"),
+      ],
+      "2026-11",
+      TZ,
+      now,
+    );
+    expect(records.map((r) => r.date)).toEqual(["2026-11-20", "2026-11-10"]);
+    expect(records[0]).toMatchObject({ in: "08:00", out: null, minutes: 360 });
+    expect(records[1]).toMatchObject({
+      out: "16:00",
+      minutes: 480,
+      byManager: true,
+    });
+  });
+});
+
+describe("undoableEntry", () => {
+  const row = (clockOut: string | null) => ({
+    clockOut,
+    source: "punch" as const,
+  });
+  const now = new Date("2026-11-10T14:01:00Z");
+
+  it("is the last entry left within the time allowed", () => {
+    const last = row("2026-11-10T14:00:00Z");
+    expect(undoableEntry([row("2026-11-09T14:00:00Z"), last], now)).toBe(last);
+  });
+
+  it("is nothing once the time has passed", () => {
+    expect(undoableEntry([row("2026-11-10T13:58:00Z")], now)).toBeNull();
+    expect(undoableEntry([row(null)], now)).toBeNull();
+  });
+
+  it("leaves what a manager wrote alone", () => {
+    expect(
+      undoableEntry(
+        [{ clockOut: "2026-11-10T14:00:00Z", source: "manager" as const }],
+        now,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("formats", () => {
+  it("writes hours and minutes", () => {
+    expect(formatHours(5)).toBe("0:05");
+    expect(formatHours(86 * 60 + 5)).toBe("86:05");
+    expect(formatHours(-3)).toBe("0:00");
+  });
+
+  it("writes a running time", () => {
+    expect(formatElapsed((3 * 3600 + 42 * 60 + 7) * 1000)).toBe("3:42:07");
+    expect(formatElapsed(-1)).toBe("0:00:00");
+  });
+});
+
+describe("clockFailureOf, for breaks", () => {
+  it("names the refusals", () => {
+    expect(clockFailureOf("23P01", "Already on a break")).toBe(
+      "alreadyOnBreak",
+    );
+    expect(clockFailureOf("55000", "Not on a break")).toBe("notOnBreak");
+    expect(clockFailureOf("55000", "Too late to take it back")).toBe("tooLate");
   });
 });

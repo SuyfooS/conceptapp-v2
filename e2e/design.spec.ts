@@ -18,6 +18,12 @@ const PAGES = [
   "/design/shell/schedule/availability",
   "/design/shell/schedule/build",
   "/design/shell/schedule/shifts",
+  "/design/shell/clock",
+  "/design/shell/clock?state=working",
+  "/design/shell/clock?state=break",
+  "/design/shell/clock?state=left",
+  "/design/shell/clock/history",
+  "/design/shell/clock/history?state=empty",
   "/design/shell/team",
 ];
 

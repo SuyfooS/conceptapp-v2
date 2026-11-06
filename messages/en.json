@@ -168,7 +168,11 @@
     "dockShow": "Show the main action",
     "dockHide": "Hide the main action",
     "dockQuiet": "Save",
-    "dockMain": "Publish"
+    "dockMain": "Publish",
+    "punchCircle": "Clock in and out circle",
+    "punchIn": "Clock in",
+    "punchOut": "Clock out",
+    "punchBack": "Back to work"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -838,6 +842,105 @@
       },
       "entry": {
         "subtitle": "{count, plural, =0 {No requests waiting for you} one {One request is waiting for your decision} other {# requests are waiting for your decision}}"
+      }
+    },
+    "clock": {
+      "title": {
+        "off": "Start a shift",
+        "working": "On shift",
+        "break": "On a break"
+      },
+      "circle": {
+        "in": "Clock in",
+        "out": "Clock out",
+        "back": "Back to work"
+      },
+      "startBreak": "Start a break",
+      "endShift": "Clock out",
+      "breakRule": {
+        "paid": "Breaks count as working hours",
+        "unpaid": "Breaks do not count as working hours"
+      },
+      "line": {
+        "shift": "Your shift today: <ltr>{start}–{end}</ltr>",
+        "noShift": "You have no shift planned today",
+        "idle": "Pressing the circle records when you started",
+        "workingSince": "You came in at <ltr>{time}</ltr>",
+        "workingUntil": "You came in at <ltr>{time}</ltr>, the shift ends at <ltr>{end}</ltr>",
+        "breakSince": "You went on a break at <ltr>{time}</ltr>"
+      },
+      "hours": {
+        "thisMonth": "This month",
+        "lastMonth": "Last month",
+        "unit": "hours"
+      },
+      "recent": "Latest shifts",
+      "left": "You left at <ltr>{time}</ltr>. The shift counted <ltr>{hours}</ltr> hours.",
+      "undo": "Undo clock out",
+      "viewOnly": "In view mode you can't clock in or out.",
+      "done": {
+        "in": "Clocked in at {time}",
+        "out": "Clocked out at {time}",
+        "break": "On a break since {time}",
+        "back": "Back to work at {time}",
+        "undo": "Clock out undone, the shift goes on"
+      },
+      "failure": {
+        "code": "This business needs a code from the manager. Ask them to record it.",
+        "alreadyIn": "You are already clocked in.",
+        "notIn": "You are not clocked in.",
+        "alreadyOnBreak": "You are already on a break.",
+        "notOnBreak": "That break has already ended.",
+        "tooLate": "Too long has passed since you left to undo it. A manager can fix it.",
+        "tooLong": "This shift has been open for more than 24 hours. A manager needs to fix it.",
+        "times": "These hours clash with another shift. A manager can fix it.",
+        "noAccess": "You don't have access to this business's clock.",
+        "viewOnly": "In view mode you can't clock in or out.",
+        "failed": "Something went wrong and nothing was recorded. Try again."
+      },
+      "settings": {
+        "row": "Breaks",
+        "title": "How breaks count",
+        "subtitle": "Applies to breaks from now on. What is already recorded stays as it was.",
+        "paid": "Count as working hours",
+        "paidHint": "Break time stays in the hours the person is paid for",
+        "unpaid": "Do not count as working hours",
+        "unpaidHint": "Break time comes off the hours and is not paid",
+        "save": "Save the setting",
+        "close": "Close",
+        "failed": "The setting was not saved. Try again."
+      },
+      "history": {
+        "title": "Shift history",
+        "back": "Clock",
+        "earlier": "Previous month: {month}",
+        "later": "Next month: {month}",
+        "total": "hours, {count, plural, =0 {no shifts} one {one shift} other {# shifts}}",
+        "times": "<ltr>{in}–{out}</ltr>",
+        "since": "From <ltr>{in}</ltr>",
+        "now": "Now",
+        "running": "Still on shift",
+        "withBreak": " · {minutes} min break",
+        "byManager": " · recorded by a manager",
+        "addedByManager": "Recorded by a manager",
+        "breakMinutes": "{minutes} min",
+        "noBreak": "No break",
+        "columns": {
+          "day": "Day",
+          "in": "In",
+          "out": "Out",
+          "break": "Break",
+          "hours": "Hours"
+        },
+        "empty": {
+          "title": "No shifts this month",
+          "body": "When you clock in with the circle on the clock, the shift shows up here with its hours.",
+          "action": "Go to the clock"
+        }
+      },
+      "todayLine": {
+        "working": "On shift since <ltr>{time}</ltr>",
+        "break": "On a break since <ltr>{time}</ltr>"
       }
     }
   },

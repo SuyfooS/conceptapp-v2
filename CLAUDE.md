@@ -81,7 +81,7 @@ Only `app/` imports app code (`@/…`).
   English, any accent). Add a new component to the gallery in the same change.
   Built so far: Button, IconButton, TextField, PhoneField, FieldGroup, FieldRow, Stepper,
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
-  and AvatarStack, Tile, CoverageBar, ProgressRing, Sheet, FloatingAction, FloatingDock,
+  and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, WeekStrip, AppShell, PageBody/PageHeader/
   PageSection.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
