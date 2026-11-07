@@ -20,14 +20,16 @@ it knows is this repo and its GitHub issues.
   a revert, not a customer.
 - Everything goes through GitHub (`SuyfooS/conceptapp-v2`). Orel's computer may
   be off; never depend on it.
-- The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Never write anything that assumes a restaurant: words, roles, shifts and defaults come from a template or a setting. Restaurants and cafés are only the first templates.
+- The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Don't write anything new that assumes a restaurant: roles, shifts, departments and defaults are data from a template or a setting. Restaurants and cafés are only the first templates.
+- Everything is dynamic (Orel, 7 November 2026): what differs between businesses can be changed without touching code, and every new setting can be edited from a screen. A little new code for one business is fine, as a module in the same system switched on for it. Owners, managers and the ConceptApp team can all edit a business's settings, and the team also has advanced ones. Nothing gets rebuilt. The order of this work is in `docs/ROADMAP.md`, and its first steps wait for a day session with Orel: a nightly run does not start them on a guess.
 - The pilot needs scheduling, time clock, lists, a management page, and roles with
   different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
   old app, that is an assumption until Orel confirms it.
-- The pilot restaurant has not agreed yet (Orel, 6 November). Work continues without
+- No business has agreed to the pilot yet (Orel, 6 November). Work continues without
   it, and the demo shifts stay the `restaurant` template's defaults.
-- A real SMS provider waits. Until then, test numbers with fixed codes on the hosted
-  project. Migrations reach it only through the manual workflow (`supabase/README.md`).
+- Real sign-in and its security wait (Orel, 6 November). Until then, the passive door
+  at `/enter`, reaching only the demo people. Migrations reach the hosted project only
+  through the manual workflow (`supabase/README.md`).
 - Kept as they are: the whole team sees the whole published schedule, a schedule can be
   published with gaps, and every swap needs a manager's approval.
 
@@ -198,6 +200,7 @@ The full picture and the reasoning are in `docs/ROADMAP.md`. Skip ahead only whe
 
 The design rework is under way in day sessions with Orel, toward `docs/design/target-prototype.html`. A nightly run does not change tokens, `packages/ui` or the look of a screen unless Orel left that work. Items marked "database first" stop before their screens, so nothing is built twice.
 
+- **The settings engine and global templates, with Orel by day:** steps 1 to 3 in the roadmap. These come first, so everything after is built on them.
 - **Holes in what exists.** Each smallest first:
   - A business's Shabbat times from its location and a candle-lighting setting, since today every business gets Tel Aviv and 20 minutes.
   - Editing the week that has already started, and not losing an unpublished draft when the week changes.
@@ -206,9 +209,9 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   - Remove a person, change a role, cancel an invite (database first).
 - **Roles and permissions, database first.** For each role and module: edit, view or none, enforced by RLS and covered by pgTAP, plus roles a business names itself. Today's owner, manager and worker keep working. See "מה הפיילוט חייב" in the roadmap.
 - **Time clock, what's left.** The worker's and manager's screens are built. Still missing: deleting a shift entered by mistake and editing a break's times, both database first. No QR punch code: Orel decided on 6 November 2026 that clocking in from the phone is enough. Build no screens for it.
-- **Lists, database first.** A new module: templates with items and recipients, sending with a count per item, receiving, checking off, finishing, and permission to manage or send. Lists move between departments inside the business (kitchen, bar, storeroom). Branches wait until after the pilot.
-- **Management page, database first.** Write paths for business details, branding, hours, module switches, and reading the audit log.
-- **Approved improvements, built by day on the new screens:** install as an app; smooth transitions and skeletons; fill the week automatically and copy from last week; a moment when a schedule is published; a share on WhatsApp button for the manager after publishing; profile photos; a live shift card after clocking in.
+- **Lists, database first.** A new module: templates with items and recipients, sending with a count per item, receiving, checking off, finishing, and permission to manage or send. Lists move between departments inside the business, and departments are the business's own data, from its template, like positions. Branches wait until after the pilot.
+- **Management page, database first.** Write paths for business details, branding, positions, shift patterns, Shabbat, module switches, and reading the audit log. Week start is set only before a business's first week, since changing it hides published weeks. Opening hours wait: nothing reads them yet.
+- **Approved improvements, built by day on the new screens:** install as an app; fill the week automatically and copy from last week; a moment when a schedule is published; a share on WhatsApp button for the manager after publishing; profile photos; a live shift card after clocking in.
 - **3b · Migrations on `conceptapp-dev`.** By hand only, through the workflow Orel starts (#8). Not for a nightly run.
 - **Not in the pilot, do not start:** reservations, storefront, the public page, notifications.
 

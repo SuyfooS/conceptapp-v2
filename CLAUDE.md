@@ -15,23 +15,23 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
 
 ## Principles
 
-1. Every kind of business, through global templates (Orel, 7 November 2026). A
-   business type is a template: its words, roles, shifts and defaults come from there,
-   so nothing in the code assumes a restaurant, and the work per business stays minimal.
-   Restaurants and cafés are the first templates, not the limit. The pilot is finished
-   before it grows, by Orel's decision of 6 November 2026: scheduling, time clock, lists,
-   a management page, and roles with different permissions. Reservations, storefront and
-   notifications wait until after it. Nothing from the deferred list gets built before
-   its trigger.
+1. Every kind of business, through global templates, with minimal work per business
+   (Orel, 7 November 2026). Don't write anything new that assumes a restaurant:
+   restaurants and cafés are only the first templates. The pilot's scope, by Orel's
+   decision of 6 November 2026: scheduling, time clock, lists, a management page, and
+   roles with different permissions. Reservations, storefront and notifications wait
+   until after it. Nothing from the deferred list gets built before its trigger.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.
 4. One design system, in code. Tokens in `app/globals.css`, components in
    `packages/ui`. No page-level CSS, no raw hex in components.
 5. Small phases, each with a demo.
-6. Configuration, never customisation. A business is a template plus
-   settings. A business-specific request becomes a setting or a module for
-   everyone. Never a per-business branch, flag or fork.
+6. One system, and everything dynamic (Orel, 7 November 2026). What differs between
+   businesses is data, easy to change without touching code: a business is a template
+   plus settings, edited from a screen. When settings can't do it, a little new code for
+   one business is fine, as a module in the same system that's switched on for it. Never
+   a branch, a copy or a rebuild.
 
 ## Layout
 
