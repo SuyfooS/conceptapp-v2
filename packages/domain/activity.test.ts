@@ -410,6 +410,39 @@ describe("buildActivity: a run of edits reads as one", () => {
     expect(buildActivity(rows, lookups)).toEqual([]);
   });
 
+  it("knows a setting never set began at its default", () => {
+    const breaks = (from: boolean | null, to: boolean, minute: number) =>
+      row(
+        "module.settings",
+        {
+          module: "time_clock",
+          from: { unpaidBreaks: from },
+          to: { unpaidBreaks: to },
+        },
+        NOA,
+        at(minute),
+      );
+    const defaults = new Map([["time_clock", { unpaidBreaks: false }]]);
+    // On and off again, from never set: nothing changed.
+    expect(
+      buildActivity(
+        [breaks(true, false, 2), breaks(null, true, 1)],
+        lookups,
+        defaults,
+      ),
+    ).toEqual([]);
+    // Saving the default it already had says nothing either.
+    expect(buildActivity([breaks(null, false, 1)], lookups, defaults)).toEqual(
+      [],
+    );
+    // Away from the default is a change, and still says it was never set.
+    expect(
+      buildActivity([breaks(null, true, 1)], lookups, defaults)[0]?.line,
+    ).toMatchObject({
+      changes: [{ key: "unpaidBreaks", from: null, to: true }],
+    });
+  });
+
   it("leaves out a save that changed nothing, and keeps what did", () => {
     const [entry] = buildActivity(
       [

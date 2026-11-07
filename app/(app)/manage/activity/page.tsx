@@ -9,7 +9,7 @@ import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { manageAccess, modulesToManage } from "../manage";
+import { manageAccess, modulesToManage, settingDefaults } from "../manage";
 import { ActivityView } from "./activity-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -27,8 +27,19 @@ export default async function ManageActivityPage({
   const access = await manageAccess();
   if (!access) notFound();
   const before = parseActivityCursor((await searchParams).before);
-  const page = await getBusinessActivity(access.businessId, before);
-  const entries = buildActivity(page.rows, page.lookups);
+  const defaults = settingDefaults();
+  let page = await getBusinessActivity(access.businessId, before);
+  let entries = buildActivity(page.rows, page.lookups, defaults);
+  // A page can fold away to nothing (a switch flipped on and off forty
+  // times): read on a little, rather than show an empty page.
+  for (
+    let more = 0;
+    entries.length === 0 && page.older !== null && more < 3;
+    more++
+  ) {
+    page = await getBusinessActivity(access.businessId, page.older);
+    entries = buildActivity(page.rows, page.lookups, defaults);
+  }
   return (
     <ActivityView
       days={activityByDay(entries, access.timeZone, new Date())}

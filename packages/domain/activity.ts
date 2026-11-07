@@ -473,15 +473,30 @@ function fold(newer: Parsed, older: Parsed): Parsed {
   return newer;
 }
 
-/** A settings or details line whose every change ended where it began says nothing. */
-function withoutNoChange(entry: Parsed): Parsed | null {
+/** Each module's settings as they are when a business never set them, by module. */
+export type SettingDefaults = ReadonlyMap<
+  string,
+  Readonly<Record<string, unknown>>
+>;
+
+/**
+ * A settings or details line whose every change ended where it began says
+ * nothing. A setting never set before had the module's default, so going back
+ * to the default is no change either.
+ */
+function withoutNoChange(
+  entry: Parsed,
+  defaults: SettingDefaults,
+): Parsed | null {
   const { line } = entry;
   if (line.action === "business.details") {
     const changes = line.changes.filter((c) => !same(c.from, c.to));
     return changes.length ? { ...entry, line: { ...line, changes } } : null;
   }
   if (line.action === "module.settings") {
-    const changes = line.changes.filter((c) => !same(c.from, c.to));
+    const before = (c: FieldChange) =>
+      c.from === null ? (defaults.get(line.module)?.[c.key] ?? null) : c.from;
+    const changes = line.changes.filter((c) => !same(before(c), c.to));
     return changes.length ? { ...entry, line: { ...line, changes } } : null;
   }
   return entry;
@@ -491,11 +506,13 @@ function withoutNoChange(entry: Parsed): Parsed | null {
  * The log's lines from its rows, newest first as given. Typing into a setting
  * saves a moment after each pause, so a run of edits by one person to the same
  * settings reads as one change from where it began to where it ended, and a
- * run that ended where it began is left out.
+ * run that ended where it began is left out. `defaults` says where a setting
+ * never set began.
  */
 export function buildActivity(
   rows: readonly ActivityRow[],
   lookups: ActivityLookups,
+  defaults: SettingDefaults = new Map(),
 ): ActivityEntry[] {
   const lines: Parsed[] = [];
   for (const row of rows) {
@@ -517,7 +534,7 @@ export function buildActivity(
     lines.push(entry);
   }
   return lines.flatMap((parsed) => {
-    const kept = withoutNoChange(parsed);
+    const kept = withoutNoChange(parsed, defaults);
     return kept
       ? [{ id: kept.id, at: kept.at, actor: kept.actor, line: kept.line }]
       : [];

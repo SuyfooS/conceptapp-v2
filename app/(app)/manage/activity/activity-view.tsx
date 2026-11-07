@@ -321,21 +321,38 @@ export function ActivityView({
                 in: clockTime(line.times.clockIn),
               }),
         );
-      case "clock.correct":
+      case "clock.correct": {
+        // When the fix moved the shift to another day, each side says its day.
+        const moved = clockDay(line.from) !== clockDay(line.to);
+        const side = (times: ClockTimes) =>
+          moved
+            ? t.rich("actions.clock.onDay", {
+                day: clockDay(times),
+                hours: () => hours(times),
+              })
+            : hours(times);
+        const sameHours =
+          !moved &&
+          clockTime(line.from.clockIn) === clockTime(line.to.clockIn) &&
+          (line.from.clockOut && clockTime(line.from.clockOut)) ===
+            (line.to.clockOut && clockTime(line.to.clockOut));
         return {
           what: t("actions.clock.correct", {
             person: who(line.person),
             day: clockDay(line.to),
           }),
           notes: [],
-          changes: [
-            {
-              key: "hours",
-              label: t("actions.clock.hours"),
-              values: { from: hours(line.from), to: hours(line.to) },
-            },
-          ],
+          changes: sameHours
+            ? []
+            : [
+                {
+                  key: "hours",
+                  label: t("actions.clock.hours"),
+                  values: { from: side(line.from), to: side(line.to) },
+                },
+              ],
         };
+      }
       case "invite.create":
         return plain(
           line.name && line.role
@@ -429,8 +446,13 @@ export function ActivityView({
           ],
           changes: [],
         };
-      default:
+      case "other":
         return plain(t("actions.other"));
+      default: {
+        // A new kind of line needs its words here: typecheck says so.
+        const unhandled: never = line;
+        return unhandled;
+      }
     }
   }
 
@@ -485,7 +507,10 @@ export function ActivityView({
       ) : null}
 
       {lines.length === 0 ? (
-        earlier ? (
+        older !== null ? (
+          // Everything on these pages went back to what it was.
+          <p className="px-1 text-ink-2 md:max-w-2xl">{t("quiet")}</p>
+        ) : earlier ? (
           <EmptyState
             headingLevel="h2"
             icon={<History />}
@@ -584,7 +609,7 @@ export function ActivityView({
                             {row.href ? (
                               <Link
                                 href={row.href}
-                                className="font-medium text-ink hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+                                className="flex min-h-11 items-center rounded-control font-medium text-ink hover:underline focus-visible:outline-2 focus-visible:outline-accent"
                               >
                                 {row.what}
                               </Link>

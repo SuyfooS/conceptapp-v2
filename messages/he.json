@@ -1174,6 +1174,7 @@
         "yesterday": "אתמול",
         "older": "פעולות קודמות",
         "newest": "לפעולות האחרונות",
+        "quiet": "כל מה שהשתנה כאן חזר למה שהיה, אז אין מה להראות.",
         "caption": "הפעולות של {day}",
         "columns": {
           "time": "שעה",
@@ -1225,6 +1226,7 @@
             "add": "הוספת משמרת לשעות של {person}: {day}, <ltr>{in}–{out}</ltr>",
             "addOpen": "הוספת משמרת לשעות של {person}: {day}, מ-<ltr>{in}</ltr>",
             "correct": "תיקון משמרת של {person} ב{day}",
+            "onDay": "{day}, <hours></hours>",
             "hours": "שעות"
           },
           "invite": {

@@ -1,7 +1,10 @@
 import { activityByDay, buildActivity } from "@domain/activity";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { ActivityView } from "../../../../(app)/manage/activity/activity-view";
-import { modulesToManage } from "../../../../(app)/manage/manage";
+import {
+  modulesToManage,
+  settingDefaults,
+} from "../../../../(app)/manage/manage";
 import {
   demoActivityLookups,
   demoActivityRows,
@@ -15,12 +18,12 @@ export default function ShellManageActivity() {
   return (
     <ActivityView
       days={activityByDay(
-        buildActivity(demoActivityRows, demoActivityLookups),
+        buildActivity(demoActivityRows, demoActivityLookups, settingDefaults()),
         ISRAEL_TIME_ZONE,
         demoNow,
       )}
       timeZone={ISRAEL_TIME_ZONE}
-      older={102}
+      older={null}
       earlier={false}
       manageable={modulesToManage(demoModuleRows)}
       clockOn

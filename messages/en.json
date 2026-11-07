@@ -1174,6 +1174,7 @@
         "yesterday": "Yesterday",
         "older": "Earlier activity",
         "newest": "Latest activity",
+        "quiet": "Everything that changed here went back to what it was, so there's nothing to show.",
         "caption": "Activity on {day}",
         "columns": {
           "time": "Time",
@@ -1225,6 +1226,7 @@
             "add": "Added a shift to {person}'s hours: {day}, <ltr>{in}–{out}</ltr>",
             "addOpen": "Added a shift to {person}'s hours: {day}, from <ltr>{in}</ltr>",
             "correct": "Fixed {person}'s shift on {day}",
+            "onDay": "{day}, <hours></hours>",
             "hours": "Hours"
           },
           "invite": {
