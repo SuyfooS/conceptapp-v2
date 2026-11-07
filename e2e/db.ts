@@ -681,3 +681,16 @@ export async function takenDemoSwap(
     await sql.end();
   }
 }
+
+/**
+ * Lets the door's reset run now: it skips a demo business reset in the last
+ * few seconds, which another screen size's run may have just done.
+ */
+export async function allowDemoReset(): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`update private.demo_businesses set reset_at = null`;
+  } finally {
+    await sql.end();
+  }
+}

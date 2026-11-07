@@ -8,7 +8,7 @@ import { Spinner } from "@ui/spinner";
 import { StatusToast } from "@ui/status-toast";
 import { unstable_rethrow } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useId, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { authFieldsClass } from "../auth-screen";
 import type { EnterResult, ResetResult } from "./actions";
 
@@ -95,10 +95,25 @@ export function EnterForm({
  */
 function ResetDemo({ reset }: { reset: () => Promise<ResetResult> }) {
   const t = useTranslations("auth.enter.reset");
+  const panelId = useId();
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
   const [failed, setFailed] = useState(false);
   const [done, setDone] = useState(0);
+  const trigger = useRef<HTMLButtonElement>(null);
+  const warning = useRef<HTMLParagraphElement>(null);
+  const opened = useRef(false);
+
+  // Opening reads out what the reset removes; closing, by cancelling or by
+  // resetting, goes back to the button that opened it.
+  useEffect(() => {
+    if (open) {
+      opened.current = true;
+      warning.current?.focus();
+    } else if (opened.current) {
+      trigger.current?.focus();
+    }
+  }, [open]);
 
   function confirm() {
     setFailed(false);
@@ -120,9 +135,27 @@ function ResetDemo({ reset }: { reset: () => Promise<ResetResult> }) {
 
   return (
     <div className="flex flex-col gap-3">
+      <Button
+        ref={trigger}
+        variant="ghost"
+        className="self-start"
+        aria-expanded={open}
+        aria-controls={panelId}
+        onClick={() => {
+          setFailed(false);
+          setOpen((now) => !now);
+        }}
+      >
+        {t("open")}
+      </Button>
       {open ? (
-        <div className="flex flex-col gap-3 rounded-card bg-surface-2 p-4">
-          <p>{t("body")}</p>
+        <div
+          id={panelId}
+          className="flex flex-col gap-3 rounded-card bg-surface-2 p-4"
+        >
+          <p ref={warning} tabIndex={-1} className="outline-none">
+            {t("body")}
+          </p>
           <div className="flex flex-wrap gap-2">
             <Button variant="danger" loading={pending} onClick={confirm}>
               {t("confirm")}
@@ -136,18 +169,7 @@ function ResetDemo({ reset }: { reset: () => Promise<ResetResult> }) {
             </Button>
           </div>
         </div>
-      ) : (
-        <Button
-          variant="ghost"
-          className="self-start"
-          onClick={() => {
-            setFailed(false);
-            setOpen(true);
-          }}
-        >
-          {t("open")}
-        </Button>
-      )}
+      ) : null}
       {failed ? (
         <p role="alert" className="px-1 font-medium text-danger">
           {t("failed")}

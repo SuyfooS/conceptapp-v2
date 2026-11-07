@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
+  allowDemoReset,
   demoBusinessDetails,
   demoShopWeek,
   setDemoBusinessDetails,
@@ -109,46 +110,79 @@ test("in the shop, this week is already published and no tab is empty", async ({
   expect(week.assigned).toBeGreaterThan(0);
   await expectAccessible(page);
 
+  // Both tabs open a real screen. This week reads as published on the
+  // schedule, whichever day of the week it is.
+  const notFound = page.getByRole("heading", {
+    level: 1,
+    name: he.app.notFound.title,
+  });
   await page.goto("/schedule");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(notFound).toHaveCount(0);
+  await page
+    .getByRole("button", { name: he.app.shifts.week.this, exact: true })
+    .click();
+  await expect(page.getByText(/פורסם ב-/).first()).toBeVisible();
   await expectAccessible(page);
   await page.screenshot({
     path: testInfo.outputPath("enter-shop-schedule.png"),
     fullPage: true,
   });
+
+  await page.goto("/clock");
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(notFound).toHaveCount(0);
+  await expectAccessible(page);
 });
+
+// The restaurant as supabase/seed.sql starts it.
+const SEEDED_RESTAURANT = {
+  name: e.businesses.restaurant.name,
+  accent: "#2563eb",
+  address: "רחוב הדגמה 1, תל אביב",
+  shabbatCity: "telAviv",
+};
 
 test("the door puts the demo back the way it started", async ({
   page,
 }, testInfo) => {
-  const before = await demoBusinessDetails();
-  await setDemoBusinessDetails({ ...before, name: "שם ששונה בבדיקה" });
+  const changed = "שם ששונה בבדיקה";
+  // Another screen size may have reset it seconds ago; this test's reset
+  // must not be skipped for that.
+  await allowDemoReset();
+  await setDemoBusinessDetails({ ...SEEDED_RESTAURANT, name: changed });
+  try {
+    const r = e.reset;
+    const open = page.getByRole("button", { name: r.open });
+    await page.goto("/enter");
+    await open.click();
+    await expect(open).toHaveAttribute("aria-expanded", "true");
+    // The warning is read out first.
+    await expect(page.getByText(r.body)).toBeFocused();
+    await expectAccessible(page);
+    await page.screenshot({
+      path: testInfo.outputPath("enter-reset.png"),
+      fullPage: true,
+    });
+    // Changing one's mind leaves everything as it is.
+    await page.getByRole("button", { name: r.cancel }).click();
+    await expect(page.getByText(r.body)).toHaveCount(0);
+    await expect(open).toBeFocused();
+    expect((await demoBusinessDetails()).name).toBe(changed);
 
-  const r = e.reset;
-  await page.goto("/enter");
-  await page.getByRole("button", { name: r.open }).click();
-  await expect(page.getByText(r.body)).toBeVisible();
-  await expectAccessible(page);
-  await page.screenshot({
-    path: testInfo.outputPath("enter-reset.png"),
-    fullPage: true,
-  });
-  // Changing one's mind leaves everything as it is.
-  await page.getByRole("button", { name: r.cancel }).click();
-  await expect(page.getByText(r.body)).toHaveCount(0);
-  expect((await demoBusinessDetails()).name).toBe("שם ששונה בבדיקה");
-
-  await page.getByRole("button", { name: r.open }).click();
-  await page.getByRole("button", { name: r.confirm }).click();
-  await expect(
-    page.getByRole("status").filter({ hasText: r.done }),
-  ).toBeVisible();
-  expect(await demoBusinessDetails()).toEqual({
-    name: e.businesses.restaurant.name,
-    accent: "#2563eb",
-    address: "רחוב הדגמה 1, תל אביב",
-    shabbatCity: "telAviv",
-  });
-  // The shop's week is published again straight after.
-  expect((await demoShopWeek()).published).toBe(true);
+    await open.click();
+    await page.getByRole("button", { name: r.confirm }).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: r.done }),
+    ).toBeVisible();
+    await expect(open).toBeFocused();
+    expect(await demoBusinessDetails()).toEqual(SEEDED_RESTAURANT);
+    // The shop's week is published again straight after.
+    expect((await demoShopWeek()).published).toBe(true);
+  } finally {
+    // Whatever failed above, later specs find the restaurant as seeded.
+    if ((await demoBusinessDetails()).name === changed) {
+      await setDemoBusinessDetails(SEEDED_RESTAURANT);
+    }
+  }
 });

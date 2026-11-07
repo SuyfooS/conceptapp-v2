@@ -30,9 +30,10 @@ export type DemoPerson = (typeof DEMO_PEOPLE)[number];
 
 /**
  * The demo businesses at the door, in the order it shows them, each with the
- * people it offers. A business that `renews` always has this week's and next
- * week's schedule published, so there is something to see the moment one
- * comes in. The restaurant doesn't: its schedule is the visitor's to build.
+ * people it offers. A business that `renews` always has this week's schedule
+ * published, so there is something to see the moment one comes in; next week
+ * is left for the visitor to collect availability, build and publish. The
+ * restaurant doesn't renew: its schedule is the visitor's to build.
  */
 export const DEMO_BUSINESSES = [
   {
