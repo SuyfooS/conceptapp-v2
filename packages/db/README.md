@@ -44,8 +44,8 @@ built for one business touches no template.
 `public.apply_template(business, template)` copies one into a business
 that has none yet, in one transaction: a `business_modules` row per module,
 `opening_hours`, `template_key` and `template_version`. It refuses a
-business that is already set up, an unknown key, or a template that leaves
-out a module, and changes nothing then. Only `service_role` may run it;
+business that is already set up, an unknown key, or a template that names a
+module nobody has, and changes nothing then. Only `service_role` may run it;
 from TypeScript, `applyTemplate(adminClient, id, key)` in `@db/templates`.
 
 Tested twice: pgTAP (`templates.test.sql`: grants, refusals, nothing

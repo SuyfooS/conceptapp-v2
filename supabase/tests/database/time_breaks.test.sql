@@ -276,8 +276,8 @@ delete from public.time_entries where id = (select id from ids where name = 'c2'
 select is(
   (select array_agg(distinct action order by action) from public.audit_log
     where business_id = '69000000-0000-4000-b000-000000000001'
-      and action in ('clock.break_start', 'clock.break_end', 'clock.undo_out', 'clock.settings')),
-  array['clock.break_end', 'clock.break_start', 'clock.settings', 'clock.undo_out'],
+      and action in ('clock.break_start', 'clock.break_end', 'clock.undo_out', 'module.settings')),
+  array['clock.break_end', 'clock.break_start', 'clock.undo_out', 'module.settings'],
   'breaks, settings and taking back are in the audit log'
 );
 reset role;

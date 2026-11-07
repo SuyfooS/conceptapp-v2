@@ -641,7 +641,7 @@
         "havdalah": "Shabbat ends <ltr>{time}</ltr>"
       },
       "noShifts": "No shifts on this day. You can add one here.",
-      "noPattern": "No regular shifts are set up for the business yet. You can add shifts for any day of the week here, or tell the ConceptApp team which shifts you have and we will add them as regular shifts.",
+      "noPattern": "This week has no shifts. You can add shifts for this week here. Regular shifts, which every new week starts from, are set in <manage>Running the business</manage>.",
       "shift": "{name} shift, {day} {date}",
       "time": "<ltr>{start}–{end}</ltr>",
       "missing": "{count, plural, one {One person missing} other {# missing}}",
@@ -1071,7 +1071,8 @@
         "add": "Add position",
         "remove": "Remove {name}",
         "removed": "The position {name} was removed",
-        "taken": "There's already a position called {name}."
+        "taken": "There's already a position called {name}.",
+        "emptyViewOnly": "No positions yet."
       },
       "shifts": {
         "empty": "No shifts yet. Add the first one, and it will appear in every new week.",
@@ -1096,9 +1097,13 @@
           "name": "The shift needs a name.",
           "days": "Choose at least one day.",
           "needed": "The number of people must be between 1 and 50.",
-          "times": "The start and end times must differ."
-        }
-      }
+          "times": "The start and end times must differ.",
+          "time": "Choose a start time and an end time."
+        },
+        "emptyViewOnly": "No shifts yet.",
+        "notSaved": "The shift wasn't saved. Check your connection and try again."
+      },
+      "between": "A number from {min} to {max}"
     }
   },
   "modules": {
@@ -1123,7 +1128,7 @@
         },
         "closedOnShabbat": {
           "label": "Closed on Shabbat",
-          "hint": "On Friday availability ends at candle lighting, and on Saturday it starts after Shabbat ends."
+          "hint": "On Friday availability ends at candle lighting, and on Saturday it starts after Shabbat ends. A shift in those hours gets no availability, and answers already sent stay until the person sends again."
         },
         "positions": {
           "label": "Positions",
@@ -1141,7 +1146,7 @@
       "settings": {
         "roundToMinutes": {
           "label": "Rounding hours",
-          "hint": "Clock-ins and clock-outs round like this when hours are counted.",
+          "hint": "Each shift's total hours round like this, in past months too. The clock-in and clock-out times stay exact.",
           "options": {
             "0": "No rounding",
             "5": "5 minutes",
@@ -1156,46 +1161,15 @@
     },
     "reservations": {
       "name": "Reservations",
-      "description": "Today's bookings and tables",
-      "settings": {
-        "slotMinutes": {
-          "label": "Time between bookings",
-          "options": {
-            "15": "Quarter of an hour",
-            "30": "Half an hour"
-          }
-        },
-        "durationMinutes": {
-          "label": "Minutes per booking",
-          "hint": "How long the place is held for whoever booked."
-        },
-        "maxPartySize": {
-          "label": "Most people in a booking",
-          "hint": "A larger group is asked to call."
-        }
-      }
+      "description": "Today's bookings and tables"
     },
     "storefront": {
       "name": "Public page",
-      "description": "Hours, address and a booking link",
-      "settings": {
-        "published": {
-          "label": "The page is open to everyone"
-        },
-        "tagline": {
-          "label": "A line under the business's name"
-        }
-      }
+      "description": "Hours, address and a booking link"
     },
     "notifications": {
       "name": "Notifications",
-      "description": "Shift reminders and team updates",
-      "settings": {
-        "shiftReminderHours": {
-          "label": "Hours for a reminder before a shift",
-          "hint": "0 means no reminder."
-        }
-      }
+      "description": "Shift reminders and team updates"
     }
   },
   "admin": {

@@ -46,14 +46,19 @@ export function SettingsForm({
   const tm = useTranslations("modules");
   // What this person changed on this screen; the rest is as the server read it.
   const [changed, setChanged] = useState<Record<string, unknown>>({});
-  const [failure, setFailure] = useState<SettingsFailure | null>(null);
+  // The last thing that didn't save, until that setting saves.
+  const [failure, setFailure] = useState<{
+    key: string;
+    reason: SettingsFailure;
+  } | null>(null);
   const [saved, setSaved] = useState(0);
   const latest = useRef<Record<string, number>>({});
 
   const currentOf = (key: string) =>
     key in changed ? changed[key] : values[key];
 
-  async function change(key: string, value: unknown) {
+  /** Says whether it saved, for a control with more to do either way. */
+  async function change(key: string, value: unknown): Promise<boolean> {
     const mine = (latest.current[key] ?? 0) + 1;
     latest.current[key] = mine;
     setChanged((current) => ({ ...current, [key]: value }));
@@ -64,15 +69,16 @@ export function SettingsForm({
       result = { ok: false, failure: "failed" };
     }
     if (result.ok) {
-      setFailure(null);
+      setFailure((current) => (current?.key === key ? null : current));
       setSaved((count) => count + 1);
-      return;
+      return true;
     }
-    setFailure(result.failure);
+    setFailure({ key, reason: result.failure });
     // A later change to the same setting has the last word.
     if (latest.current[key] === mine) {
       setChanged(({ [key]: _, ...rest }) => rest);
     }
+    return false;
   }
 
   // The keys come from the manifest; tooling/settings-words.test.ts checks them.
@@ -100,7 +106,7 @@ export function SettingsForm({
   return (
     <>
       <StatusToast
-        message={saved > 0 && !failure ? t("saved") : null}
+        message={saved > 0 ? t("saved") : null}
         stamp={String(saved)}
         duration={1800}
       />
@@ -111,7 +117,7 @@ export function SettingsForm({
           role="alert"
           className="sticky top-[calc(env(safe-area-inset-top)+4rem)] z-10 font-medium text-danger xl:top-4"
         >
-          {t(`failed.${failure}`)}
+          {tm(words(failure.key, "label"))}: {t(`failed.${failure.reason}`)}
         </Card>
       ) : null}
       {viewOnly ? <p className="text-ink-2">{t("viewOnly")}</p> : null}
@@ -185,9 +191,8 @@ function PlainField({
   value: unknown;
   optionName: (option: string) => string;
   disabled: boolean;
-  onChange: (value: unknown) => void;
+  onChange: (value: unknown) => unknown;
 }) {
-  const t = useTranslations("app.manage");
   const tDays = useTranslations("days");
   const id = useId();
 
@@ -230,18 +235,17 @@ function PlainField({
           name={name}
           hint={hint}
           value={typeof value === "number" ? value : 0}
-          min={field.min ?? 0}
-          max={field.max ?? 999}
+          plainName={plainName}
+          min={field.min}
+          max={field.max}
           disabled={disabled}
-          decreaseLabel={t("decrease", { name: plainName })}
-          increaseLabel={t("increase", { name: plainName })}
           onChange={onChange}
         />
       );
     case "text":
       return (
         <TextField
-          name={plainName}
+          name={name}
           hint={hint}
           value={typeof value === "string" ? value : ""}
           maxLength={field.maxLength}
@@ -331,6 +335,7 @@ function useDraft(
 
   return {
     draft,
+    whole: isWhole(draft),
     edit(next: string) {
       setDraft(next);
       settle();
@@ -351,34 +356,37 @@ const TYPING_MS = 500;
 function NumberField({
   id,
   name,
+  plainName,
   hint,
   value,
   min,
   max,
   disabled,
-  decreaseLabel,
-  increaseLabel,
   onChange,
 }: {
   id: string;
   name: ReactNode;
+  plainName: string;
   hint: string | undefined;
   value: number;
   min: number;
   max: number;
   disabled: boolean;
-  decreaseLabel: string;
-  increaseLabel: string;
-  onChange: (value: number) => void;
+  onChange: (value: number) => unknown;
 }) {
-  const { draft, edit, leave } = useDraft(
+  const t = useTranslations("app.manage");
+  const { draft, whole, edit, leave } = useDraft(
     String(value),
     (text) => /^\d+$/.test(text) && Number(text) >= min && Number(text) <= max,
     (text) => onChange(Number(text)),
     TYPING_MS,
   );
   return (
-    <FieldRow label={name} hint={hint} htmlFor={id}>
+    <FieldRow
+      label={name}
+      hint={whole ? hint : t("between", { min, max })}
+      htmlFor={id}
+    >
       {disabled ? (
         <span dir="ltr" className="font-medium text-ink-2">
           {value}
@@ -389,10 +397,11 @@ function NumberField({
           value={draft}
           onValueChange={edit}
           onBlur={leave}
+          invalid={!whole}
           min={min}
           max={max}
-          decreaseLabel={decreaseLabel}
-          increaseLabel={increaseLabel}
+          decreaseLabel={t("decrease", { name: plainName })}
+          increaseLabel={t("increase", { name: plainName })}
         />
       )}
     </FieldRow>
@@ -412,7 +421,7 @@ function TimeField({
   hint: string | undefined;
   value: string;
   disabled: boolean;
-  onChange: (value: string) => void;
+  onChange: (value: string) => unknown;
 }) {
   const { draft, edit, leave } = useDraft(
     value,
@@ -444,12 +453,12 @@ function TextField({
   disabled,
   onChange,
 }: {
-  name: string;
+  name: ReactNode;
   hint: string | undefined;
   value: string;
   maxLength: number | undefined;
   disabled: boolean;
-  onChange: (value: string) => void;
+  onChange: (value: string) => unknown;
 }) {
   const { draft, edit, leave } = useDraft(
     value,

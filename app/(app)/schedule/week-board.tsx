@@ -393,7 +393,7 @@ function DayShifts({
         .filter((shift) => shift !== hero)
         .map((shift) => (
           <ShiftCard
-            key={shift.id ?? `${shift.start}/${shift.name}`}
+            key={shift.id ?? `${shift.pattern}/${shift.start}/${shift.name}`}
             shift={shift}
             data={data}
             offers={offers.filter((o) => o.shift.id === shift.id)}
@@ -489,7 +489,9 @@ function FullWeek({
             ) : (
               shifts.map((shift) => (
                 <WeekShift
-                  key={shift.id ?? `${shift.start}/${shift.name}`}
+                  key={
+                    shift.id ?? `${shift.pattern}/${shift.start}/${shift.name}`
+                  }
                   shift={shift}
                   data={data}
                   offers={offers.filter((o) => o.shift.id === shift.id)}

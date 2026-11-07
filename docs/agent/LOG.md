@@ -3,6 +3,18 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-07 · chat · the settings engine
+
+- Orel asked for everything to be editable without code, with the manager and the app's team both editing and the team having more advanced settings. This is step 1 of the roadmap.
+- A module's manifest now says what each setting is and who edits it (`.meta()`: `level`, `hidden`, `editor`). `@domain/settings-form` turns that into a form. A new setting is one field and its words, and `tooling/settings-words.test.ts` refuses a field with no words.
+- `/manage` and `/manage/[module]` for owners and managers, reached from Today. Each control saves itself, with an undo row for what's removed. Positions and shifts have editors of their own. The clock's own settings row is gone.
+- `/admin/businesses/[slug]/settings`: every setting and a switch per module, for the team. On the deployed app it can only be seen as a demo at `/design/console/businesses/demo-restaurant/settings`.
+- Migration `20261107000500_module_settings`: `set_module_settings`, `set_module_enabled`, drops `set_clock_settings`. Both make the row for a module added after the business was set up, and `apply_template` no longer needs every module. Needs the Migrate workflow after merging.
+- My reading, not Orel's words: the availability deadline, the positions, the shifts, Shabbat and whether breaks are paid are for managers. Week start and rounding hours are team-only, since each can quietly change something past. The settings of reservations, the public page and notifications are on no screen, since nothing reads them yet.
+- A read-only review found 18 real problems, all fixed here. The ones that mattered: a pgTAP check that would have failed, a changed availability deadline that never reached the open week (it now comes from the settings), an undo that could duplicate a position after a failed save, and a hint that described rounding wrongly.
+- Known, left: anyone at the deployed address can empty the demo restaurant, and nothing restores it until the reset in step 2. Rounding applies to past months too, and the hint says so. A shift inside Shabbat while the business closes on Shabbat gets no warning on the shift list, only in the Shabbat hint. A week can still be published with no shifts.
+- Next: `/manage/business` (name, colour, address), then step 2, global templates.
+
 ## 2026-11-07 · run 30 · Saturday night on Today
 
 - Guessed: nothing left by Orel. The finishing touch is the hole logged with the clock (#48): Today's hero lost a shift that runs past midnight from the week's last day, because it read this week and next only. On Sunday at 00:30 a worker still on Saturday night saw Sunday's shift as next.

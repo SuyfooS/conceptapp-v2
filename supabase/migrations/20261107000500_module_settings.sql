@@ -61,13 +61,15 @@ begin
     raise exception 'Settings must be an object' using errcode = '22023';
   end if;
 
+  -- A module added after this business was set up has no row yet. It starts off.
+  insert into public.business_modules (business_id, module_key, enabled)
+  values (business, module, false)
+  on conflict (business_id, module_key) do nothing;
+
   select bm.settings into old
   from public.business_modules bm
   where bm.business_id = business and bm.module_key = module
   for update;
-  if not found then
-    raise exception 'Unknown module for this business' using errcode = 'P0002';
-  end if;
 
   update public.business_modules bm
   set settings = old || patch
@@ -106,12 +108,11 @@ begin
     raise exception 'The ConceptApp team only' using errcode = '42501';
   end if;
 
-  update public.business_modules bm
-  set enabled = set_module_enabled.enabled
-  where bm.business_id = business and bm.module_key = module;
-  if not found then
-    raise exception 'Unknown module for this business' using errcode = 'P0002';
-  end if;
+  -- A module added after this business was set up has no row until now.
+  insert into public.business_modules (business_id, module_key, enabled)
+  values (business, module, set_module_enabled.enabled)
+  on conflict (business_id, module_key)
+  do update set enabled = excluded.enabled;
 
   insert into public.audit_log (business_id, actor_id, action, details)
   values (

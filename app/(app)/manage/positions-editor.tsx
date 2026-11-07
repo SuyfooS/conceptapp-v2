@@ -23,7 +23,8 @@ const inputClass =
 
 /**
  * The jobs people do at this business, in its own words. Each is a name to type
- * over, and a person keeps their shift when the job they had on it goes.
+ * over, and a person keeps their shift when the job they had on it goes. Whatever
+ * doesn't save comes back as it was, with the way back still there.
  */
 export function PositionsEditor({
   title,
@@ -36,7 +37,8 @@ export function PositionsEditor({
   hint: string | undefined;
   positions: Position[];
   disabled: boolean;
-  onChange: (next: Position[]) => void;
+  /** Saves the list; says whether it saved. */
+  onChange: (next: Position[]) => Promise<boolean>;
 }) {
   const t = useTranslations("app.manage.positions");
   const [name, setName] = useState("");
@@ -54,7 +56,7 @@ export function PositionsEditor({
         position.name.toLowerCase() === text.toLowerCase(),
     );
 
-  function add(event: FormEvent) {
+  async function add(event: FormEvent) {
     event.preventDefault();
     const text = name.trim();
     if (!text) return;
@@ -67,13 +69,14 @@ export function PositionsEditor({
       { key: newStaffingKey("position"), name: text },
     ];
     if (!positionsSchema.safeParse(next).success) return;
-    setRemoved(null);
     setName("");
     setTaken(null);
-    onChange(next);
+    if (await onChange(next)) setRemoved(null);
+    else setName((current) => current || text);
   }
 
-  function rename(position: Position, text: string) {
+  /** False when the name stays as it was. */
+  function rename(position: Position, text: string): boolean {
     const clean = text.trim();
     if (!clean || clean === position.name) return false;
     if (named(clean, position.key)) {
@@ -81,8 +84,7 @@ export function PositionsEditor({
       return false;
     }
     setTaken(null);
-    setRemoved(null);
-    onChange(
+    void onChange(
       positions.map((other) =>
         other.key === position.key ? { ...other, name: clean } : other,
       ),
@@ -90,26 +92,32 @@ export function PositionsEditor({
     return true;
   }
 
-  function remove(index: number) {
+  async function remove(index: number) {
     const position = positions[index];
     if (!position) return;
+    const before = removed;
     setRemoved({ position, index });
-    onChange(positions.filter((_, at) => at !== index));
+    const saved = await onChange(positions.filter((_, at) => at !== index));
+    if (!saved) setRemoved(before);
   }
 
-  function undo() {
+  async function undo() {
     if (!removed) return;
-    const next = [...positions];
-    next.splice(removed.index, 0, removed.position);
+    const { position, index } = removed;
     setRemoved(null);
-    onChange(next);
+    if (positions.some((other) => other.key === position.key)) return;
+    const next = [...positions];
+    next.splice(index, 0, position);
+    if (!(await onChange(next))) setRemoved({ position, index });
   }
 
   return (
     <PageSection title={title}>
       <ListGroup>
         {positions.length === 0 ? (
-          <p className="px-4 py-3.5 text-ink-2">{t("empty")}</p>
+          <p className="px-4 py-3.5 text-ink-2">
+            {t(disabled ? "emptyViewOnly" : "empty")}
+          </p>
         ) : null}
         {positions.map((position, index) => (
           <div key={position.key} className={rowClass}>

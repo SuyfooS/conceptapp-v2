@@ -49,13 +49,15 @@ export function BusinessSettingsView({
             />
           }
         >
-          <SettingsForm
-            module={module.key}
-            fields={module.fields}
-            values={module.values}
-            save={save.bind(null, module.key)}
-            viewOnly={false}
-          />
+          {module.fields.length > 0 ? (
+            <SettingsForm
+              module={module.key}
+              fields={module.fields}
+              values={module.values}
+              save={save.bind(null, module.key)}
+              viewOnly={false}
+            />
+          ) : null}
         </PageSection>
       ))}
     </PageBody>

@@ -13,7 +13,7 @@ type Written = { ok: true } | { ok: false; code: string | undefined };
 
 function written(error: { code?: string; message: string } | null): Written {
   if (!error) return { ok: true };
-  if (error.code !== "42501" && error.code !== "P0002") {
+  if (error.code !== "42501") {
     console.error("saving settings failed", error.message);
   }
   return { ok: false, code: error.code };

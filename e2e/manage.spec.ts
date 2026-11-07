@@ -65,6 +65,10 @@ test("signed-out visitors are sent to the door", async ({ page }) => {
 
 test("a worker has no way in", async ({ page }) => {
   await signIn(page, WORKER);
+  // The greeting follows the hour; the name does not.
+  await expect(
+    page.getByRole("heading", { level: 1, name: /, יואב$/ }),
+  ).toBeVisible();
   await expect(page.getByRole("link", { name: m.row })).toHaveCount(0);
   for (const path of ["/manage", "/manage/scheduling"]) {
     await page.goto(path);
@@ -89,6 +93,12 @@ test("a manager fits the schedule to the business, and it stays", async ({
     .getByRole("link", { name: new RegExp(he.modules.scheduling.name) })
     .click();
   await expect(page).toHaveURL(/\/manage\/scheduling$/);
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: he.modules.scheduling.name,
+    }),
+  ).toBeVisible();
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("manage-scheduling.png"),

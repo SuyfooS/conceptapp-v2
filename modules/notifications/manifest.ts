@@ -8,6 +8,7 @@ export const manifest = defineManifest({
   nav: null,
   homeWidget: null,
   permissions: [],
+  // Nothing reads this yet: no screen offers it until the module is built.
   settings: z.object({
     /** Remind a worker this many hours before a shift (0 = no reminder). */
     shiftReminderHours: z
@@ -15,6 +16,6 @@ export const manifest = defineManifest({
       .min(0)
       .max(24)
       .default(2)
-      .meta({ level: "team" }),
+      .meta({ hidden: true }),
   }),
 });

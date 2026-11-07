@@ -41,7 +41,7 @@ export type SettingField = Common &
   (
     | { kind: "toggle" }
     | { kind: "choice"; options: (string | number)[] }
-    | { kind: "number"; min?: number; max?: number }
+    | { kind: "number"; min: number; max: number }
     | { kind: "text"; maxLength?: number }
     | { kind: "editor"; editor: SettingEditor }
   );
@@ -57,6 +57,9 @@ type JsonSchema = SettingMeta & {
   properties?: Record<string, JsonSchema>;
 };
 
+/** Zod fills in the largest safe integer for a bound nobody set. */
+const MAX_NUMBER_SETTING = 100_000;
+
 function shapeOf(schema: JsonSchema) {
   if (schema.editor) {
     return { kind: "editor" as const, editor: schema.editor };
@@ -68,7 +71,13 @@ function shapeOf(schema: JsonSchema) {
       option.const === undefined ? [] : [option.const],
     );
   if (options?.length) return { kind: "choice" as const, options };
-  if (schema.type === "integer" || schema.type === "number") {
+  // Whole numbers with both ends: anything else needs an editor of its own.
+  if (
+    schema.type === "integer" &&
+    schema.minimum !== undefined &&
+    schema.maximum !== undefined &&
+    schema.maximum <= MAX_NUMBER_SETTING
+  ) {
     return {
       kind: "number" as const,
       min: schema.minimum,

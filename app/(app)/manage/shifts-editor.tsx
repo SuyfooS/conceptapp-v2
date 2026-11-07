@@ -49,7 +49,8 @@ export function ShiftsEditor({
   hint: string | undefined;
   shifts: ShiftPattern[];
   disabled: boolean;
-  onChange: (next: ShiftPattern[]) => void;
+  /** Saves the list; says whether it saved. */
+  onChange: (next: ShiftPattern[]) => Promise<boolean>;
 }) {
   const t = useTranslations("app.manage.shifts");
   const tDays = useTranslations("days");
@@ -58,6 +59,7 @@ export function ShiftsEditor({
   const [editing, setEditing] = useState<{
     shift: ShiftPattern;
     isNew: boolean;
+    failed: boolean;
   } | null>(null);
   const [removed, setRemoved] = useState<{
     shift: ShiftPattern;
@@ -73,42 +75,55 @@ export function ShiftsEditor({
           .join(" ");
 
   function show(shift: ShiftPattern, isNew: boolean) {
-    setEditing({ shift, isNew });
+    setEditing({ shift, isNew, failed: false });
     setOpen(true);
   }
 
-  function saveShift(shift: ShiftPattern) {
-    setRemoved(null);
+  async function saveShift(shift: ShiftPattern) {
+    const known = shifts.some((other) => other.key === shift.key);
     setOpen(false);
-    onChange(
-      shifts.some((other) => other.key === shift.key)
+    const saved = await onChange(
+      known
         ? shifts.map((other) => (other.key === shift.key ? shift : other))
         : [...shifts, shift],
     );
+    if (saved) {
+      setRemoved(null);
+      return;
+    }
+    // Nothing typed is lost: the sheet comes back with it.
+    setEditing({ shift, isNew: !known, failed: true });
+    setOpen(true);
   }
 
-  function removeShift(key: string) {
+  async function removeShift(key: string) {
     const index = shifts.findIndex((shift) => shift.key === key);
     const shift = shifts[index];
     setOpen(false);
     if (!shift) return;
+    const before = removed;
     setRemoved({ shift, index });
-    onChange(shifts.filter((other) => other.key !== key));
+    const saved = await onChange(shifts.filter((other) => other.key !== key));
+    if (!saved) setRemoved(before);
   }
 
-  function undo() {
+  async function undo() {
     if (!removed) return;
-    const next = [...shifts];
-    next.splice(removed.index, 0, removed.shift);
+    const { shift, index } = removed;
     setRemoved(null);
-    onChange(next);
+    if (shifts.some((other) => other.key === shift.key)) return;
+    const next = [...shifts];
+    next.splice(index, 0, shift);
+    if (!(await onChange(next))) setRemoved({ shift, index });
   }
 
   return (
     <PageSection title={title}>
       <ListGroup>
         {shifts.length === 0 ? (
-          <p className="px-4 py-3.5 text-ink-2">{t("empty")}</p>
+          <p className="px-4 py-3.5 text-ink-2">
+            {t(disabled ? "emptyViewOnly" : "empty")}
+          </p>
         ) : null}
         {shifts.map((shift) => {
           const summary = (
@@ -159,6 +174,7 @@ export function ShiftsEditor({
             key={editing.shift.key}
             shift={editing.shift}
             isNew={editing.isNew}
+            failed={editing.failed}
             onSave={saveShift}
             onRemove={() => removeShift(editing.shift.key)}
           />
@@ -168,16 +184,19 @@ export function ShiftsEditor({
   );
 }
 
-type Problem = "name" | "days" | "needed" | "times";
+type Problem = "name" | "days" | "needed" | "time" | "times";
 
 function ShiftForm({
   shift,
   isNew,
+  failed,
   onSave,
   onRemove,
 }: {
   shift: ShiftPattern;
   isNew: boolean;
+  /** The sheet came back because saving this failed. */
+  failed: boolean;
   onSave: (shift: ShiftPattern) => void;
   onRemove: () => void;
 }) {
@@ -213,11 +232,14 @@ function ShiftForm({
       onSave(parsed.data);
       return;
     }
+    // An issue with no field is the two times being the same.
     const field = parsed.error.issues[0]?.path[0];
     setProblem(
       field === "name" || field === "days" || field === "needed"
         ? field
-        : "times",
+        : field === "start" || field === "end"
+          ? "time"
+          : "times",
     );
   }
 
@@ -240,7 +262,9 @@ function ShiftForm({
             type="time"
             dir="ltr"
             value={start}
-            aria-invalid={problem === "times" || undefined}
+            aria-invalid={
+              problem === "times" || problem === "time" || undefined
+            }
             className={cn(rowPillInputClass, ltrInputClass)}
             onChange={(event) => {
               setStart(event.target.value);
@@ -258,7 +282,9 @@ function ShiftForm({
             type="time"
             dir="ltr"
             value={end}
-            aria-invalid={problem === "times" || undefined}
+            aria-invalid={
+              problem === "times" || problem === "time" || undefined
+            }
             className={cn(rowPillInputClass, ltrInputClass)}
             onChange={(event) => {
               setEnd(event.target.value);
@@ -311,6 +337,10 @@ function ShiftForm({
       {problem && problem !== "name" ? (
         <p role="alert" className="px-2 font-medium text-danger">
           {t(`problem.${problem}`)}
+        </p>
+      ) : failed ? (
+        <p role="alert" className="px-2 font-medium text-danger">
+          {t("notSaved")}
         </p>
       ) : null}
 

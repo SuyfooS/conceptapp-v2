@@ -3,7 +3,7 @@
 -- team switches a module on or off. Nobody reaches another business, and every
 -- write goes to the audit log.
 begin;
-select plan(19);
+select plan(21);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -106,10 +106,18 @@ select throws_ok(
     '6a000000-0000-4000-b000-000000000001', 'time_clock', '[1]')$$,
   '22023', null, 'settings must be an object'
 );
-select throws_ok(
-  $$select public.set_module_settings('6a000000-0000-4000-a000-00000000000b',
-    '6a000000-0000-4000-b000-000000000001', 'scheduling', '{}')$$,
-  'P0002', null, 'a module the business has no row for is refused'
+
+-- A module added after the business was set up has no row yet.
+select lives_ok(
+  $$select public.set_module_settings('6a000000-0000-4000-a000-00000000000e',
+    '6a000000-0000-4000-b000-000000000001', 'scheduling', '{"closedOnShabbat": false}')$$,
+  'a module with no row yet can be set up'
+);
+select is(
+  (select enabled from public.business_modules
+    where business_id = '6a000000-0000-4000-b000-000000000001' and module_key = 'scheduling'),
+  false,
+  'and it starts off'
 );
 
 -- The audit log keeps what changed.
@@ -145,15 +153,21 @@ select is(
   true,
   'and only for that business'
 );
-select throws_ok(
+select lives_ok(
   $$select public.set_module_enabled('6a000000-0000-4000-a000-00000000000e',
-    '6a000000-0000-4000-b000-000000000001', 'scheduling', true)$$,
-  'P0002', null, 'a module the business has no row for cannot be switched'
+    '6a000000-0000-4000-b000-000000000001', 'reservations', true)$$,
+  'a module with no row yet can be switched on'
+);
+select is(
+  (select enabled from public.business_modules
+    where business_id = '6a000000-0000-4000-b000-000000000001' and module_key = 'reservations'),
+  true,
+  'and it is on'
 );
 select is(
   (select count(*)::int from public.audit_log
     where business_id = '6a000000-0000-4000-b000-000000000001' and action = 'module.enabled'),
-  1,
+  2,
   'switching goes to the log'
 );
 reset role;

@@ -23,6 +23,7 @@ import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { Save, Send } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
@@ -66,6 +67,8 @@ export type ScheduleBuilderProps = {
   /** ISO timestamp of the last publish, or null until it is published. */
   publishedAt: string | null;
   shifts: ScheduledShift[];
+  /** Where the regular shifts are set, for a week with none. */
+  manageHref: string;
   team: Pick<TeamMember, "userId" | "name">[];
   answers: { userId: string; ranges: AvailabilityRange[] }[];
   /** The business's positions (waiter, cook…); none hides the choice. */
@@ -103,6 +106,7 @@ export function ScheduleBuilder({
   savedAt,
   publishedAt,
   shifts: initial,
+  manageHref,
   team,
   answers,
   positions,
@@ -374,7 +378,18 @@ export function ScheduleBuilder({
     <div className="flex flex-col gap-5 pb-20 xl:pb-16">
       {initial.length === 0 ? (
         <Card padding="lg" className="md:max-w-xl">
-          <CardText>{t("app.build.noPattern")}</CardText>
+          <CardText>
+            {t.rich("app.build.noPattern", {
+              manage: (chunks) => (
+                <Link
+                  href={manageHref}
+                  className="font-medium text-ink underline"
+                >
+                  {chunks}
+                </Link>
+              ),
+            })}
+          </CardText>
         </Card>
       ) : null}
 

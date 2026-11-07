@@ -56,6 +56,17 @@ describe("describeSettings", () => {
       describeSettings(z.object({ list: z.array(z.string()).default([]) })),
     ).toThrow(/list/);
   });
+
+  it("draws only whole numbers with both ends", () => {
+    for (const [field, schema] of Object.entries({
+      decimal: z.number().min(1).max(3).default(1),
+      open: z.int().min(0).default(0),
+    })) {
+      expect(() => describeSettings(z.object({ [field]: schema }))).toThrow(
+        field,
+      );
+    }
+  });
 });
 
 describe("fieldsFor", () => {

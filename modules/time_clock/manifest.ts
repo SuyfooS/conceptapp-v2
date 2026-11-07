@@ -9,7 +9,10 @@ export const manifest = defineManifest({
   homeWidget: { minRole: "worker" },
   permissions: [{ key: "clock.edit", defaultRole: "manager" }],
   settings: z.object({
-    /** Punches are rounded to this many minutes in reports (0 = exact). */
+    /**
+     * Each shift's hours are rounded to this many minutes (0 = exact), in every
+     * month shown, past ones too. The times of day stay as they were punched.
+     */
     roundToMinutes: z
       .union([z.literal(0), z.literal(5), z.literal(15)])
       .default(0)
