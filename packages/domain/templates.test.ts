@@ -54,10 +54,13 @@ describe("validateTemplate", () => {
     });
   });
 
-  it("refuses a template that leaves out a module", () => {
+  it("starts a module the template leaves out off, with its defaults", () => {
     const input = template();
     delete input.modules.notifications;
-    expect(() => validateTemplate(manifests, input)).toThrow(/notifications/);
+    expect(validateTemplate(manifests, input).modules.notifications).toEqual({
+      enabled: false,
+      settings: { level: 1 },
+    });
   });
 
   it("refuses invalid and unknown settings", () => {

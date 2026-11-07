@@ -5,7 +5,6 @@ import {
   demoClockIn,
   demoClockOut,
   demoEndBreak,
-  demoSaveSettings,
   demoStartBreak,
   demoUndoClockOut,
 } from "./actions";
@@ -35,7 +34,6 @@ async function Demo({ searchParams }: Props) {
         startBreak: demoStartBreak,
         endBreak: demoEndBreak,
         undoClockOut: demoUndoClockOut,
-        saveSettings: demoSaveSettings,
       }}
       paths={{
         clock: "/design/shell/clock",

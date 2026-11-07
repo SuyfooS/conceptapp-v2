@@ -128,4 +128,14 @@ test("viewing as a manager shows the team but saves nothing", async ({
     (await invitesBySlug("demo-restaurant")).map((i) => i.phone),
   ).not.toContain(NEW.e164);
   await expectCleanPage(page);
+
+  // The business's settings can be read, not changed.
+  await page.goto("/manage/scheduling");
+  await expect(page.getByText(he.app.manage.viewOnly)).toBeVisible();
+  await expect(
+    page.getByRole("switch", {
+      name: he.modules.scheduling.settings.closedOnShabbat.label,
+    }),
+  ).toBeDisabled();
+  await expectCleanPage(page);
 });

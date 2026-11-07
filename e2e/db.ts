@@ -232,6 +232,49 @@ export async function setDemoUnpaidBreaks(unpaid: boolean): Promise<void> {
   }
 }
 
+/** A module's stored settings at the demo restaurant, to put back afterwards. */
+export async function demoModuleSettings(
+  module: string,
+): Promise<Record<string, unknown>> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const rows = await sql<{ settings: Record<string, unknown> }[]>`
+      select settings from public.business_modules
+      where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
+    return rows[0]?.settings ?? {};
+  } finally {
+    await sql.end();
+  }
+}
+
+/** Whether a module is on at the demo restaurant. */
+export async function demoModuleEnabled(module: string): Promise<boolean> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const rows = await sql<{ enabled: boolean }[]>`
+      select enabled from public.business_modules
+      where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
+    return rows[0]?.enabled ?? false;
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function setDemoModuleSettings(
+  module: string,
+  settings: Record<string, unknown>,
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`
+      update public.business_modules
+      set settings = ${sql.json(settings as never)}::jsonb
+      where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
+  } finally {
+    await sql.end();
+  }
+}
+
 export type SavedAvailability = {
   weekday: number;
   start: string;

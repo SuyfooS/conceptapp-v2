@@ -2,7 +2,7 @@ import { z } from "zod";
 import { type AvailabilityRange, weekDates, weekdayOf } from "./availability";
 import { minutesOf, rangeMinutes, timeOfDay } from "./hours";
 import { calendarDate } from "./shabbat";
-import { type ShiftPattern, shiftsOn } from "./staffing";
+import { MAX_SHIFTS_IN_A_WEEK, type ShiftPattern, shiftsOn } from "./staffing";
 
 /**
  * The week's schedule: the shifts of one week and who works each. A
@@ -67,7 +67,7 @@ export function weekSchedule(
   const positions = new Set(positionKeys);
   return z
     .array(scheduledShift)
-    .max(200)
+    .max(MAX_SHIFTS_IN_A_WEEK)
     .superRefine((shifts, ctx) => {
       const busy = new Map<string, { at: [number, number]; shift: number }[]>();
       shifts.forEach((shift, i) => {

@@ -17,6 +17,8 @@ export type StepperProps = {
   invalid?: boolean;
   describedBy?: string;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
+  /** When the typed number loses focus; the buttons never take it there. */
+  onBlur?: () => void;
   className?: string;
 };
 
@@ -35,6 +37,7 @@ export function Stepper({
   invalid,
   describedBy,
   onKeyDown,
+  onBlur,
   className,
 }: StepperProps) {
   const current = Number(value);
@@ -62,6 +65,7 @@ export function Stepper({
         value={value}
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={onKeyDown}
+        onBlur={onBlur}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
         className="min-h-11 w-9 bg-transparent text-center font-semibold text-md text-ink [appearance:textfield] focus-visible:outline-2 focus-visible:outline-accent aria-invalid:text-danger [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"

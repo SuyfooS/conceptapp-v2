@@ -953,8 +953,22 @@ export type Database = {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
       };
-      set_clock_settings: {
-        Args: { actor: string; business: string; unpaid_breaks: boolean };
+      set_module_enabled: {
+        Args: {
+          actor: string;
+          business: string;
+          enabled: boolean;
+          module: Database["public"]["Enums"]["module_key"];
+        };
+        Returns: undefined;
+      };
+      set_module_settings: {
+        Args: {
+          actor: string;
+          business: string;
+          module: Database["public"]["Enums"]["module_key"];
+          patch: Json;
+        };
         Returns: undefined;
       };
       start_break: {

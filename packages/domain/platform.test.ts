@@ -11,6 +11,7 @@ describe("platformCan", () => {
   it.each([
     "businesses.read",
     "businesses.create",
+    "businesses.edit",
     "businesses.view_as",
     "staff.invite",
   ] as const)("lets an onboarder %s", (action) => {

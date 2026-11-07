@@ -53,8 +53,8 @@ select throws_ok(
   '42501', null, 'a signed-in worker cannot start a break through the function'
 );
 select throws_ok(
-  $$select public.set_clock_settings('69000000-0000-4000-a000-00000000000c',
-    '69000000-0000-4000-b000-000000000001', true)$$,
+  $$select public.set_module_settings('69000000-0000-4000-a000-00000000000c',
+    '69000000-0000-4000-b000-000000000001', 'time_clock', '{"unpaidBreaks": true}')$$,
   '42501', null, 'a signed-in worker cannot change settings through the function'
 );
 select throws_ok(
@@ -136,18 +136,18 @@ select is(
 
 -- The setting.
 select throws_ok(
-  $$select public.set_clock_settings('69000000-0000-4000-a000-00000000000c',
-    '69000000-0000-4000-b000-000000000001', true)$$,
-  '42501', 'Managers and owners only', 'a worker cannot change the setting'
+  $$select public.set_module_settings('69000000-0000-4000-a000-00000000000c',
+    '69000000-0000-4000-b000-000000000001', 'time_clock', '{"unpaidBreaks": true}')$$,
+  '42501', 'Managers, owners and the team only', 'a worker cannot change the setting'
 );
 select throws_ok(
-  $$select public.set_clock_settings('69000000-0000-4000-a000-00000000000e',
-    '69000000-0000-4000-b000-000000000001', true)$$,
-  '42501', 'Managers and owners only', 'a manager of Y cannot change X''s setting'
+  $$select public.set_module_settings('69000000-0000-4000-a000-00000000000e',
+    '69000000-0000-4000-b000-000000000001', 'time_clock', '{"unpaidBreaks": true}')$$,
+  '42501', 'Managers, owners and the team only', 'a manager of Y cannot change X''s setting'
 );
 select lives_ok(
-  $$select public.set_clock_settings('69000000-0000-4000-a000-00000000000b',
-    '69000000-0000-4000-b000-000000000001', true)$$,
+  $$select public.set_module_settings('69000000-0000-4000-a000-00000000000b',
+    '69000000-0000-4000-b000-000000000001', 'time_clock', '{"unpaidBreaks": true}')$$,
   'a manager chooses that breaks come off the hours'
 );
 select is(
@@ -276,8 +276,8 @@ delete from public.time_entries where id = (select id from ids where name = 'c2'
 select is(
   (select array_agg(distinct action order by action) from public.audit_log
     where business_id = '69000000-0000-4000-b000-000000000001'
-      and action in ('clock.break_start', 'clock.break_end', 'clock.undo_out', 'clock.settings')),
-  array['clock.break_end', 'clock.break_start', 'clock.settings', 'clock.undo_out'],
+      and action in ('clock.break_start', 'clock.break_end', 'clock.undo_out', 'module.settings')),
+  array['clock.break_end', 'clock.break_start', 'clock.undo_out', 'module.settings'],
   'breaks, settings and taking back are in the audit log'
 );
 reset role;

@@ -27,7 +27,7 @@ const moduleEntry = z.strictObject({
 });
 
 export const templateDefinition = z.strictObject({
-  modules: z.record(z.enum(MODULE_KEYS), moduleEntry),
+  modules: z.partialRecord(z.enum(MODULE_KEYS), moduleEntry),
   openingHours,
 });
 
@@ -39,9 +39,10 @@ export type ValidTemplate = {
 };
 
 /**
- * Checks a template (or a business it produced) against the manifests:
- * every module present, every module's settings valid with no unknown
- * fields, and every switched-on module's requirements switched on too.
+ * Checks a template (or a business it produced) against the manifests: every
+ * module's settings valid with no unknown fields, and every switched-on
+ * module's requirements switched on too. A module it doesn't name starts off,
+ * with its defaults, so a module built for one business touches no template.
  * Throws with a readable message on the first problem.
  */
 export function validateTemplate(
@@ -54,15 +55,9 @@ export function validateTemplate(
   }
   const { modules } = parsed.data;
 
-  const missing = MODULE_KEYS.filter((key) => !(key in modules));
-  if (missing.length > 0) {
-    throw new Error(`Template leaves out modules: ${missing.join(", ")}`);
-  }
-
   const result = {} as ValidTemplate["modules"];
   for (const manifest of manifests) {
-    const entry = modules[manifest.key];
-    if (!entry) continue;
+    const entry = modules[manifest.key] ?? { enabled: false, settings: {} };
     const settings = validateModuleSettings(manifest, entry.settings);
     const unknown = Object.keys(entry.settings).filter(
       (field) => !(field in (settings as Record<string, unknown>)),

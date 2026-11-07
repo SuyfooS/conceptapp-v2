@@ -13,11 +13,14 @@ export async function ScheduleBuildView({
   data,
   save,
   backHref = "/schedule",
+  manageHref = "/manage/scheduling",
 }: {
   data: ScheduleBuildWeek;
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
   /** Where "back" goes: the schedule's entry, or the demo's. */
   backHref?: string;
+  /** Where the regular shifts are set. */
+  manageHref?: string;
 }) {
   const [t, tm] = await Promise.all([
     getTranslations("app.build"),
@@ -42,6 +45,7 @@ export async function ScheduleBuildView({
         team={data.team}
         answers={data.answers}
         positions={data.positions}
+        manageHref={manageHref}
         save={save}
       />
     </PageBody>

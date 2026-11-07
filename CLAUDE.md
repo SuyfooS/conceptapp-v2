@@ -31,7 +31,10 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
    businesses is data, easy to change without touching code: a business is a template
    plus settings, edited from a screen. When settings can't do it, a little new code for
    one business is fine, as a module in the same system that's switched on for it. Never
-   a branch, a copy or a rebuild.
+   a branch, a copy or a rebuild. A new setting is one field in the module's manifest, with
+   `.meta()` for who edits it, and its words under `modules.<key>.settings` in the
+   messages: `/manage` and the console then draw it (`@domain/settings-form`). A field
+   only the team should touch takes `level: "team"`.
 
 ## Layout
 
@@ -83,7 +86,7 @@ Only `app/` imports app code (`@/…`).
   transparency or more contrast.
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
-  Built so far: Button, IconButton, TextField, PhoneField, CodeSlots, FieldGroup, FieldRow, Stepper,
+  Built so far: Button, IconButton, TextField, PhoneField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
   and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/

@@ -23,7 +23,7 @@ export function FieldGroup({ className, ...props }: ComponentProps<"div">) {
 }
 
 type Frame = {
-  label: string;
+  label: ReactNode;
   /** Helper text under the field. Replaced by the error when there is one. */
   hint?: ReactNode;
   error?: ReactNode;

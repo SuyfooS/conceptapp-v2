@@ -15,6 +15,11 @@ describe("proxy", () => {
     expect(source).toContain('"/team/:path*"');
   });
 
+  it("guards the management screens", () => {
+    expect(source).toContain('"/manage",');
+    expect(source).toContain('"/manage/:path*"');
+  });
+
   it("guards every module screen", () => {
     for (const m of manifests) {
       if (!m.nav) continue;

@@ -111,16 +111,16 @@ const availabilityContext = cache(
     const week: AvailabilityWeek = {
       start,
       dates: weekDates(start),
-      dueAt:
-        open?.dueAt ??
-        availabilityDueAt(
-          start,
-          {
-            day: settings.availabilityDueDay,
-            time: settings.availabilityDueTime,
-          },
-          timeZone,
-        ).toISOString(),
+      // From the settings, not the week's stored row: a manager who moves the
+      // deadline moves it for the week people are answering now.
+      dueAt: availabilityDueAt(
+        start,
+        {
+          day: settings.availabilityDueDay,
+          time: settings.availabilityDueTime,
+        },
+        timeZone,
+      ).toISOString(),
       timeZone,
       shabbat,
       mine: answers.find((a) => a.userId === member.userId) ?? null,

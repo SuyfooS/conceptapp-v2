@@ -27,6 +27,10 @@ const PAGES = [
   "/design/shell/clock/team",
   "/design/shell/clock/team/noa",
   "/design/shell/team",
+  "/design/shell/manage",
+  "/design/shell/manage/scheduling",
+  "/design/shell/manage/time_clock",
+  "/design/console/businesses/demo-restaurant/settings",
 ];
 
 async function expectCleanPage(page: Page) {

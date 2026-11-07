@@ -2,11 +2,21 @@
 
 import { getPlatformStaff } from "@db/admin";
 import { issueInviteLink } from "@db/invites";
+import {
+  getBusinessModulesForTeam,
+  setModuleEnabled,
+  setModuleSettings,
+} from "@db/module-settings";
 import { startViewing } from "@db/view-as";
 import { inviteLink } from "@domain/invites";
+import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
 import { platformCan } from "@domain/platform";
+import { checkSettingsChange } from "@domain/settings-form";
 import { parseViewAsRole } from "@domain/view-as";
+import { manifestFor } from "@modules/registry";
+import { refresh } from "next/cache";
 import { notFound, redirect } from "next/navigation";
+import type { SettingsResult } from "@/app/(app)/manage/settings-types";
 import { requestOrigin } from "@/app/origin";
 
 export type InviteLinkState =
@@ -62,4 +72,51 @@ export async function viewAsAction(
     redirect(`/admin/businesses/${business.slug}?view=failed`);
   }
   redirect("/home");
+}
+
+/** Someone on the team saves a module's settings, the advanced ones too. */
+export async function saveBusinessSettingsAction(
+  businessId: string,
+  module: string,
+  change: unknown,
+): Promise<SettingsResult> {
+  const staff = await getPlatformStaff();
+  const key = moduleKeyOf(module);
+  if (!staff || !platformCan(staff.role, "businesses.edit") || !key) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const manifest: ModuleManifest = manifestFor(key);
+  const rows = await getBusinessModulesForTeam(businessId);
+  const stored = rows.find((row) => row.key === key)?.settings;
+  const checked = checkSettingsChange(manifest, stored, change, "team");
+  if (!checked.ok) return { ok: false, failure: checked.problem };
+  const result = await setModuleSettings(
+    staff.userId,
+    businessId,
+    key,
+    checked.patch,
+  );
+  refresh();
+  return result.ok ? { ok: true } : { ok: false, failure: "failed" };
+}
+
+/** Someone on the team switches a module on or off for one business. */
+export async function setBusinessModuleAction(
+  businessId: string,
+  module: string,
+  enabled: boolean,
+): Promise<SettingsResult> {
+  const staff = await getPlatformStaff();
+  const key = moduleKeyOf(module);
+  if (
+    !staff ||
+    !platformCan(staff.role, "businesses.edit") ||
+    !key ||
+    typeof enabled !== "boolean"
+  ) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const result = await setModuleEnabled(staff.userId, businessId, key, enabled);
+  refresh();
+  return result.ok ? { ok: true } : { ok: false, failure: "failed" };
 }
