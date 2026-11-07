@@ -125,7 +125,8 @@ select is(
   (select details from public.audit_log
     where business_id = '6a000000-0000-4000-b000-000000000001'
       and action = 'module.settings'
-      and actor_id = '6a000000-0000-4000-a000-00000000000e'),
+      and actor_id = '6a000000-0000-4000-a000-00000000000e'
+      and details->>'module' = 'time_clock'),
   '{"module": "time_clock", "from": {"roundToMinutes": 5}, "to": {"roundToMinutes": 15}}'::jsonb,
   'the log has the setting before and after'
 );
