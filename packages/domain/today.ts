@@ -76,6 +76,15 @@ export function nextShift<S extends Timed & Pick<ScheduledShift, "assignees">>(
   return ahead[0]?.shift ?? null;
 }
 
+/**
+ * The day before the week when `today` is the week's first day, else null. A
+ * shift on that day that runs past midnight can still be on, and it belongs
+ * to the week before, which this week's schedule does not hold.
+ */
+export function overnightDay(today: string, weekStart: string): string | null {
+  return today === weekStart ? addDays(weekStart, -1) : null;
+}
+
 /** How far off a shift is, in the words someone would use for it. */
 export type ShiftWhen =
   | { kind: "now" }

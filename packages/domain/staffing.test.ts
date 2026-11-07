@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { positions, shiftPatterns, shiftsOn } from "./staffing";
+import { newStaffingKey, positions, shiftPatterns, shiftsOn } from "./staffing";
 
 const morning = {
   key: "morning",
@@ -24,6 +24,15 @@ const friday = {
   end: "14:30",
 };
 
+describe("newStaffingKey", () => {
+  it("makes keys the schemas take", () => {
+    const key = newStaffingKey("position");
+    expect(key).toMatch(/^p-[0-9a-f]{8}$/);
+    expect(newStaffingKey("shift")).toMatch(/^s-[0-9a-f]{8}$/);
+    expect(positions.safeParse([{ key, name: "x" }]).success).toBe(true);
+  });
+});
+
 describe("positions", () => {
   it("takes keyed, named positions", () => {
     expect(positions.parse([{ key: "cook", name: " Cook " }])).toEqual([
@@ -44,6 +53,21 @@ describe("positions", () => {
 });
 
 describe("shift patterns", () => {
+  it("refuses a list that makes more shifts than a week holds", () => {
+    const everyDay = (i: number) => ({
+      key: `s-${i}`,
+      name: "x",
+      days: [0, 1, 2, 3, 4, 5, 6],
+      start: "08:00",
+      end: "16:00",
+      needed: 1,
+    });
+    const list = (count: number) =>
+      Array.from({ length: count }, (_, i) => everyDay(i));
+    expect(shiftPatterns.safeParse(list(28)).success).toBe(true);
+    expect(shiftPatterns.safeParse(list(29)).success).toBe(false);
+  });
+
   it("takes shifts, including one that ends at midnight", () => {
     expect(shiftPatterns.parse([morning, evening, friday])).toHaveLength(3);
   });

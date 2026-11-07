@@ -12,6 +12,26 @@ what is next, defaults applied.
 - New in `packages/ui`, on `/design`: FocusText, WordCycle, SettlingCards, DeckCard, PhoneFrame. New tokens: `text-3xl`, `text-4xl`, `--bezel`.
 - The conversation note on `יומן הסוכן` was blocked by the session's permissions, so this entry is the record.
 - Proof: `pnpm check`, `pnpm build`; axe clean at 390, 820 and 1440 in light and dark, no horizontal scroll, contrast of the hero's text measured on its real pixels. Playwright `landing.spec.ts` runs in CI only. Not tested on a real iPhone or Android.
+## 2026-11-07 · chat · the settings engine
+
+- Orel asked for everything to be editable without code, with the manager and the app's team both editing and the team having more advanced settings. This is step 1 of the roadmap.
+- A module's manifest now says what each setting is and who edits it (`.meta()`: `level`, `hidden`, `editor`). `@domain/settings-form` turns that into a form. A new setting is one field and its words, and `tooling/settings-words.test.ts` refuses a field with no words.
+- `/manage` and `/manage/[module]` for owners and managers, reached from Today. Each control saves itself, with an undo row for what's removed. Positions and shifts have editors of their own. The clock's own settings row is gone.
+- `/admin/businesses/[slug]/settings`: every setting and a switch per module, for the team. On the deployed app it can only be seen as a demo at `/design/console/businesses/demo-restaurant/settings`.
+- Migration `20261107000500_module_settings`: `set_module_settings`, `set_module_enabled`, drops `set_clock_settings`. Both make the row for a module added after the business was set up, and `apply_template` no longer needs every module. Needs the Migrate workflow after merging.
+- Orel approved who edits what (7 November 2026): the availability deadline, the positions, the shifts, Shabbat and whether breaks are paid are for managers. Week start and rounding hours are team-only, since each can quietly change something past. The settings of reservations, the public page and notifications are on no screen, since nothing reads them yet.
+- A read-only review found 18 real problems, all fixed here. The ones that mattered: a pgTAP check that would have failed, a changed availability deadline that never reached the open week (it now comes from the settings), an undo that could duplicate a position after a failed save, and a hint that described rounding wrongly.
+- Known, left: anyone at the deployed address can empty the demo restaurant, and nothing restores it until the reset in step 2. Rounding applies to past months too, and the hint says so. A shift inside Shabbat while the business closes on Shabbat gets no warning on the shift list, only in the Shabbat hint. A week can still be published with no shifts.
+- Next: `/manage/business` (name, colour, address), then step 2, global templates.
+
+## 2026-11-07 · run 30 · Saturday night on Today
+
+- Guessed: nothing left by Orel. The finishing touch is the hole logged with the clock (#48): Today's hero lost a shift that runs past midnight from the week's last day, because it read this week and next only. On Sunday at 00:30 a worker still on Saturday night saw Sunday's shift as next.
+- On the week's first day only, `currentPublishedSchedule` also reads last week and keeps the day before (`overnight`); the hero looks at those shifts too. Other days read nothing extra. `overnightDay` in `@domain/today`, with tests. "Who works today" is unchanged.
+- Restore point: the tag `before-night/2026-11-07` was cut off again, so the branch `backup/before-night-2026-11-07` at `d138383` holds it.
+- Checked yesterday's screens too: axe clean and no horizontal scroll at 390/820/1440, light and dark, on the clock, team hours, a person's hours, the skeleton and `/enter`. Seen, not fixed: the demo of one person's hours shows Noa's shifts and total for everyone (Yoav: 4 shifts on his page, 8 in the team list).
+- Not proven in a browser: the hero only changes at that hour, and the server's clock can't be moved in a test. Unit tests and types cover it.
+- Next: the backlog's first hole, a business's Shabbat times from its location, by day with Orel. Open pull requests #54 and #57 untouched.
 
 ## 2026-11-06 · chat · the passive door
 

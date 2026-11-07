@@ -10,3 +10,12 @@ properties only (`ps-`/`pe-`, `ms-`/`me-`, `start-`/`end-`), so they work in
 RTL and LTR without changes.
 
 Import as `@ui/<file>`. `cn()` lives in `@ui/cn`.
+
+## Third party
+
+Some components follow designs from [React Bits](https://reactbits.dev) (MIT + Commons
+Clause, © 2026 David Haz), rebuilt here on our tokens and CSS. The licence allows this
+as part of an application; it doesn't allow selling or redistributing the components
+themselves, so this folder must not become a package of its own. They say so in a comment.
+The landing page's FocusText, WordCycle and DeckCard, and the scroll rules at the end of
+`app/globals.css`, take only the idea of a React Bits component and none of its code.

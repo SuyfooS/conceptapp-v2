@@ -42,6 +42,7 @@ export function HistoryView({
           currentMonth={data.currentMonth}
           hrefFor={(month) => `${paths.history}?month=${month}`}
           minutes={data.minutes}
+          countId="history"
           caption={t("total", { count: data.records.length })}
           overlap={data.records.length > 0}
         />

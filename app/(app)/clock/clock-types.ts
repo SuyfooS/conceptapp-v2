@@ -11,7 +11,6 @@ export type ClockActions = {
   startBreak: () => Promise<ClockActionResult>;
   endBreak: () => Promise<ClockActionResult>;
   undoClockOut: (entryId: string) => Promise<ClockActionResult>;
-  saveSettings: (unpaidBreaks: boolean) => Promise<ClockActionResult>;
 };
 
 export type ClockData = {
@@ -35,8 +34,6 @@ export type ClockData = {
   undo: { entryId: string; out: string; minutes: number; until: string } | null;
   /** The business's setting: whether a break comes off the hours. */
   unpaidBreaks: boolean;
-  /** The person may change the business's settings. */
-  canManage: boolean;
   /** For those who see the team: what its screen would show now. */
   team: { atWork: number; overdue: number } | null;
   /** Someone from ConceptApp is looking; nothing can be pressed. */

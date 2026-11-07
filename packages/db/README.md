@@ -24,8 +24,10 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only) |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
-audit log) go through server code with `SUPABASE_SECRET_KEY`. From the
-browser: owners rename their business, everyone edits their own name and
+audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
+business's own details: `public.set_business_details(actor, business, patch)`
+saves its name, colour, address and Shabbat city for an owner, a manager or the
+team, and logs what changed. From the browser: everyone edits their own name and
 language, and reads follow the policies.
 
 The tests that must always pass: a member of business A cannot read
@@ -36,15 +38,16 @@ business B; anonymous visitors read nothing; every table in `public` has RLS.
 A business starts from a template (`restaurant`, `cafe-bar`): rows in
 `templates`, written by migrations (a change is a new migration that updates
 the row and bumps `version`). The definition's shape is `templateDefinition`
-in `@domain/templates`: every module with `enabled` and its settings
-(positions and the weekly shift pattern are scheduling settings), plus the
-opening hours.
+in `@domain/templates`: modules with `enabled` and their settings (positions
+and the weekly shift pattern are scheduling settings), plus the opening hours.
+A module the template doesn't name starts off, with its defaults, so a module
+built for one business touches no template.
 
 `public.apply_template(business, template)` copies one into a business
 that has none yet, in one transaction: a `business_modules` row per module,
 `opening_hours`, `template_key` and `template_version`. It refuses a
-business that is already set up, an unknown key, or a template that leaves
-out a module, and changes nothing then. Only `service_role` may run it;
+business that is already set up, an unknown key, or a template that names a
+module nobody has, and changes nothing then. Only `service_role` may run it;
 from TypeScript, `applyTemplate(adminClient, id, key)` in `@db/templates`.
 
 Tested twice: pgTAP (`templates.test.sql`: grants, refusals, nothing

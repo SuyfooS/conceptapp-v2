@@ -52,6 +52,8 @@ export async function join(
     if ("error" in result) return { step: "code", error: result.error };
     const claim = await claimInvite(token, result.userId);
     if (!claim.ok) redirect(back);
+    // Straight on: the page would now say the link was used, so nothing here
+    // can stay on screen to show a check first.
     redirect("/home");
   }
 

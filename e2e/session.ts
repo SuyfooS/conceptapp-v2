@@ -33,7 +33,7 @@ export async function signIn(
   }
   await expect(codeField).toBeVisible();
   const code = await latestCode(person.e164, since);
+  // The form sends itself once the last digit is in.
   await page.getByLabel(t.codeLabel).fill(code);
-  await page.getByRole("button", { name: t.verify, exact: true }).click();
   await expect(page).toHaveURL(landing);
 }

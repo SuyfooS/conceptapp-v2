@@ -58,10 +58,10 @@ values
   ('00000000-0000-4000-a000-000000000005', 'platform_admin'),
   ('00000000-0000-4000-a000-000000000006', 'onboarder');
 
-insert into public.businesses (id, slug, name, accent, address, latitude, longitude)
+insert into public.businesses (id, slug, name, accent, address, shabbat_city)
 values (
   '00000000-0000-4000-b000-000000000001', 'demo-restaurant', 'מסעדת הדגמה',
-  '#2563EB', 'רחוב הדגמה 1, תל אביב', 32.0853, 34.7818
+  '#2563eb', 'רחוב הדגמה 1, תל אביב', 'telAviv'
 );
 
 insert into public.memberships (business_id, user_id, role)

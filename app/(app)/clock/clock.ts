@@ -151,7 +151,6 @@ export async function currentClock(): Promise<ClockData | null> {
           }
         : null,
     unpaidBreaks: settings.unpaidBreaks,
-    canManage: role === "owner" || role === "manager",
     team: manager
       ? {
           atWork: atWorkNow(

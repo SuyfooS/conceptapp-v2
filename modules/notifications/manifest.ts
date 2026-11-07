@@ -8,8 +8,14 @@ export const manifest = defineManifest({
   nav: null,
   homeWidget: null,
   permissions: [],
+  // Nothing reads this yet: no screen offers it until the module is built.
   settings: z.object({
     /** Remind a worker this many hours before a shift (0 = no reminder). */
-    shiftReminderHours: z.int().min(0).max(24).default(2),
+    shiftReminderHours: z
+      .int()
+      .min(0)
+      .max(24)
+      .default(2)
+      .meta({ hidden: true }),
   }),
 });

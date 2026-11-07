@@ -88,6 +88,7 @@ export default function ShellScheduleBuild() {
     }));
   return (
     <ScheduleBuildView
+      manageHref="/design/shell/manage/scheduling"
       data={{
         week: demoWeek,
         savedAt: null,

@@ -1,5 +1,5 @@
 import { timeIn } from "@domain/shabbat";
-import { clockStatus, formatHours } from "@domain/time-clock";
+import { clockStatus } from "@domain/time-clock";
 import { Card } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
@@ -8,8 +8,8 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { RefreshOnReturn } from "../home/refresh-on-return";
 import { ClockPanel } from "./clock-panel";
-import { ClockSettings } from "./clock-settings";
 import type { ClockActions, ClockData, ClockPaths } from "./clock-types";
+import { HoursCount } from "./hours-count";
 import { ShiftList } from "./shift-list";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -47,8 +47,16 @@ export function ClockView({
         <div className="flex flex-col gap-6">
           <Card tone="float" padding="none" className="overflow-hidden">
             <dl className="grid grid-cols-2">
-              <Hours label={t("hours.thisMonth")} minutes={data.thisMonth} />
-              <Hours label={t("hours.lastMonth")} minutes={data.lastMonth} />
+              <Hours
+                label={t("hours.thisMonth")}
+                minutes={data.thisMonth}
+                id="this-month"
+              />
+              <Hours
+                label={t("hours.lastMonth")}
+                minutes={data.lastMonth}
+                id="last-month"
+              />
             </dl>
             <ListRow
               href={paths.history}
@@ -76,14 +84,6 @@ export function ClockView({
               />
             </ListGroup>
           ) : null}
-
-          {data.canManage ? (
-            <ClockSettings
-              unpaidBreaks={data.unpaidBreaks}
-              viewOnly={data.viewOnly}
-              save={actions.saveSettings}
-            />
-          ) : null}
         </div>
       </div>
     </PageBody>
@@ -110,15 +110,25 @@ function Line({ data }: { data: ClockData }) {
   return t(scheduling ? "noShift" : "idle");
 }
 
-function Hours({ label, minutes }: { label: string; minutes: number }) {
+function Hours({
+  label,
+  minutes,
+  id,
+}: {
+  label: string;
+  minutes: number;
+  id: string;
+}) {
   const t = useTranslations("app.clock.hours");
   return (
     <div className="flex flex-col gap-0.5 p-4 not-first:border-line not-first:border-s">
       <dt className="text-ink-2 text-sm">{label}</dt>
       <dd className="flex items-baseline gap-1.5">
-        <span dir="ltr" className="font-bold text-xl text-ink tabular-nums">
-          {formatHours(minutes)}
-        </span>
+        <HoursCount
+          minutes={minutes}
+          id={id}
+          className="font-bold text-xl text-ink tabular-nums"
+        />
         <span className="text-ink-2 text-sm">{t("unit")}</span>
       </dd>
     </div>

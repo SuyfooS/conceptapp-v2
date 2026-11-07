@@ -43,12 +43,10 @@ test("a worker signs in with a phone code and lands on the home screen", async (
 
   // A wrong code is refused and the person stays on the code step.
   await codeField.fill("000000");
-  await page.getByRole("button", { name: t.verify, exact: true }).click();
   await expect(page.getByText(t.errors.wrongCode)).toBeVisible();
 
   const code = await latestCode(WORKER.e164, since);
   await page.getByLabel(t.codeLabel).fill(code);
-  await page.getByRole("button", { name: t.verify, exact: true }).click();
 
   await expect(page).toHaveURL(/\/home$/);
   // The greeting follows the hour; the name does not.

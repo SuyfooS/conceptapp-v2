@@ -1,14 +1,13 @@
 "use client";
 
-import { OTP_LENGTH } from "@domain/otp";
 import { displayIsraeliMobile } from "@domain/phone";
 import { Button } from "@ui/button";
-import { FieldGroup, GroupedField, GroupedPhoneField } from "@ui/field-group";
-import { ltrInputClass } from "@ui/text-field";
+import { FieldGroup, GroupedPhoneField } from "@ui/field-group";
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
 import type { SignInState } from "../actions";
 import { authFieldsClass } from "../auth-screen";
+import { CodeField } from "../code-field";
 
 const initial: SignInState = { step: "phone" };
 
@@ -57,21 +56,13 @@ export function SignInForm({
           ltr: (chunks) => <span dir="ltr">{chunks}</span>,
         })}
       </p>
-      <FieldGroup className={authFieldsClass}>
-        <GroupedField
-          name="code"
-          label={t("codeLabel")}
-          error={error}
-          inputMode="numeric"
-          autoComplete="one-time-code"
-          placeholder={"0".repeat(OTP_LENGTH)}
-          maxLength={OTP_LENGTH + 2}
-          dir="ltr"
-          className={`${ltrInputClass} font-medium text-xl tracking-[0.3em]`}
-          required
-          autoFocus
-        />
-      </FieldGroup>
+      <CodeField
+        label={t("codeLabel")}
+        error={error}
+        wrongCode={state.error === "wrongCode"}
+        pending={pending}
+        to={state.to}
+      />
       <Button
         type="submit"
         name="intent"

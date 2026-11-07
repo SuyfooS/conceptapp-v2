@@ -101,6 +101,7 @@ export function PersonHoursView({
           currentMonth={data.currentMonth}
           hrefFor={(month) => `${personHref}?month=${month}`}
           minutes={data.minutes}
+          countId={`person-${data.person.userId}`}
           caption={t("caption", { count: data.records.length })}
           overlap={data.records.length > 0}
         />

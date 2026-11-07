@@ -82,8 +82,10 @@ select is_empty('select 1 from public.invites', 'a worker reads no invites');
 select is_empty('select 1 from public.audit_log', 'a worker reads no audit log');
 select throws_ok('select 1 from public.templates', '42501', null, 'templates are server-only');
 
-select is_empty(
-  $$update public.businesses set name = 'Hacked' where slug = 'business-a' returning 1$$,
+select throws_ok(
+  $$update public.businesses set name = 'Hacked' where slug = 'business-a'$$,
+  '42501',
+  null,
   'a worker cannot rename the business'
 );
 select throws_ok(
@@ -123,20 +125,27 @@ select results_eq(
   array['test.a'],
   'manager of A reads the audit log of A only'
 );
-select is_empty(
-  $$update public.businesses set name = 'Renamed' where slug = 'business-a' returning 1$$,
-  'a manager cannot rename the business'
+select throws_ok(
+  $$update public.businesses set name = 'Renamed' where slug = 'business-a'$$,
+  '42501',
+  null,
+  'a manager does not rename the business from the browser'
 );
 
 -- Owner of A ---------------------------------------------------------------
 select pg_temp.sign_in('20000000-0000-4000-a000-00000000000a');
 
-select isnt_empty(
-  $$update public.businesses set name = 'Business A2' where slug = 'business-a' returning 1$$,
-  'the owner can rename their business'
+-- Renaming goes through the server (set_business_details), for owners too.
+select throws_ok(
+  $$update public.businesses set name = 'Business A2' where slug = 'business-a'$$,
+  '42501',
+  null,
+  'the owner renames only through the server'
 );
-select is_empty(
-  $$update public.businesses set name = 'Taken over' where slug = 'business-b' returning 1$$,
+select throws_ok(
+  $$update public.businesses set name = 'Taken over' where slug = 'business-b'$$,
+  '42501',
+  null,
   'the owner of A cannot rename business B'
 );
 select throws_ok(

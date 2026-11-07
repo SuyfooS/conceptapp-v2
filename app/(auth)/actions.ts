@@ -9,7 +9,14 @@ import { type SignInError, sendCode, verifyCode } from "./otp";
 
 export type SignInState =
   | { step: "phone"; error?: SignInError }
-  | { step: "code"; phone: string; error?: SignInError; resent?: boolean };
+  | {
+      step: "code";
+      phone: string;
+      error?: SignInError;
+      resent?: boolean;
+      /** The code was right: where to go, once the screen has shown it. */
+      to?: string;
+    };
 
 /**
  * The two-step sign-in: phone → SMS code → session cookies. The form posts
@@ -49,7 +56,7 @@ export async function signIn(
     if ("error" in result) {
       return { ...prev, error: result.error, resent: false };
     }
-    redirect("/home");
+    return { ...prev, error: undefined, resent: false, to: "/home" };
   }
 
   return { step: "phone", error: "failed" };

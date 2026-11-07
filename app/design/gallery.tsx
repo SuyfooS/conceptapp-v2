@@ -11,6 +11,8 @@ import { DeckCard } from "@ui/card-deck";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
+import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
+import { useCountUp } from "@ui/count-up";
 import { CoverageBar } from "@ui/coverage-bar";
 import { EmptyState } from "@ui/empty-state";
 import {
@@ -36,6 +38,7 @@ import { Sheet } from "@ui/sheet";
 import { SkeletonBones } from "@ui/skeleton";
 import { StatusToast } from "@ui/status-toast";
 import { Stepper } from "@ui/stepper";
+import { Switch } from "@ui/switch";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
 import { WeekStrip } from "@ui/week-strip";
@@ -137,12 +140,17 @@ function GalleryBody({
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
   const [day, setDay] = useState("0");
+  const [codeStatus, setCodeStatus] = useState<CodeSlotsStatus>("idle");
+  const [codeRun, setCodeRun] = useState(0);
+  const [total, setTotal] = useState(120);
+  const shownTotal = useCountUp(total, "gallery");
   const [appearance, setAppearance] = useState<Appearance>("system");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [needed, setNeeded] = useState("3");
   const [position, setPosition] = useState("waiter");
   const [toastAt, setToastAt] = useState<string | null>(null);
   const [dock, setDock] = useState(false);
+  const [switchOn, setSwitchOn] = useState(true);
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -425,6 +433,22 @@ function GalleryBody({
           />
         </Section>
 
+        <Section title={t("switchTitle")}>
+          <FieldGroup className="md:max-w-md">
+            <FieldRow
+              label={t("switchLabel")}
+              hint={t("switchHint")}
+              htmlFor="gallery-switch"
+            >
+              <Switch
+                id="gallery-switch"
+                checked={switchOn}
+                onChange={setSwitchOn}
+              />
+            </FieldRow>
+          </FieldGroup>
+        </Section>
+
         <Section title={t("depth")}>
           <div>
             <Card
@@ -567,6 +591,55 @@ function GalleryBody({
 
         <Section title={t("skeleton")}>
           <SkeletonBones />
+        </Section>
+
+        <Section title={t("codeSlots")}>
+          <Card className="flex flex-col gap-3">
+            <CodeSlots
+              key={codeRun}
+              name="gallery-code"
+              label={t("codeSlots")}
+              status={codeStatus}
+              slotClassName="bg-surface-2 shadow-none"
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="secondary"
+                onClick={() => setCodeStatus("error")}
+              >
+                {t("codeWrong")}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setCodeStatus("success")}
+              >
+                {t("codeRight")}
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setCodeStatus("idle");
+                  setCodeRun((run) => run + 1);
+                }}
+              >
+                {t("codeAgain")}
+              </Button>
+            </div>
+          </Card>
+        </Section>
+
+        <Section title={t("countUp")}>
+          <Card className="flex items-center justify-between gap-3">
+            <span dir="ltr" className="font-bold text-xl tabular-nums">
+              {shownTotal}
+            </span>
+            <Button
+              variant="secondary"
+              onClick={() => setTotal((value) => value + 86)}
+            >
+              {t("countUpAdd")}
+            </Button>
+          </Card>
         </Section>
 
         <Section title={t("ring")}>

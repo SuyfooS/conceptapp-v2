@@ -27,7 +27,3 @@ export async function demoEndBreak(): Promise<ClockActionResult> {
 export async function demoUndoClockOut(): Promise<ClockActionResult> {
   redirect(`${CLOCK}?state=working`);
 }
-
-export async function demoSaveSettings(): Promise<ClockActionResult> {
-  return { ok: true };
-}

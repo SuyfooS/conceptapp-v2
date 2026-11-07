@@ -5,7 +5,6 @@ import {
   clockIn,
   clockOut,
   endBreak,
-  setClockSettings,
   startBreak,
   undoClockOut,
 } from "@db/time-clock";
@@ -54,14 +53,4 @@ export async function undoClockOutAction(
   const entry = z.uuid().safeParse(entryId);
   if (!entry.success) return { ok: false, failure: "failed" };
   return asMember((actor) => undoClockOut(actor, entry.data));
-}
-
-export async function saveClockSettingsAction(
-  unpaidBreaks: boolean,
-): Promise<ClockActionResult> {
-  const unpaid = z.boolean().safeParse(unpaidBreaks);
-  if (!unpaid.success) return { ok: false, failure: "failed" };
-  return asMember((actor, business) =>
-    setClockSettings(actor, business, unpaid.data),
-  );
 }

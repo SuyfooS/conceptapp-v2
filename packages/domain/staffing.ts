@@ -15,6 +15,9 @@ const key = z
 
 const name = z.string().trim().min(1).max(40);
 
+/** A week holds at most this many shifts; `save_week_schedule` says the same. */
+export const MAX_SHIFTS_IN_A_WEEK = 200;
+
 export const position = z.object({ key, name });
 
 export type Position = z.infer<typeof position>;
@@ -55,7 +58,22 @@ export type ShiftPattern = z.infer<typeof shiftPattern>;
 export const shiftPatterns = z
   .array(shiftPattern)
   .max(30)
-  .refine(uniqueKeys, { message: "Shift keys must be unique" });
+  .refine(uniqueKeys, { message: "Shift keys must be unique" })
+  .refine(
+    (patterns) =>
+      patterns.reduce((sum, shift) => sum + shift.days.length, 0) <=
+      MAX_SHIFTS_IN_A_WEEK,
+    { message: "More shifts than a week can hold" },
+  );
+
+/**
+ * A key for a position or shift added on a screen. Nobody types it: names
+ * change, and saved weeks keep pointing at the key.
+ */
+export function newStaffingKey(kind: "position" | "shift"): string {
+  const [random = 0] = crypto.getRandomValues(new Uint32Array(1));
+  return `${kind[0]}-${random.toString(16).padStart(8, "0")}`;
+}
 
 /** The shifts that run on `day`, earliest first. */
 export function shiftsOn(

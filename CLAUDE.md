@@ -5,33 +5,36 @@ Nightly runs and live sessions also follow @docs/AGENT.md.
 
 ## What this is
 
-The operations app for small Israeli businesses with a team, restaurants and
-cafés first: staff scheduling, time clock, table reservations and a public page.
-Set up for each business by the ConceptApp team from a template; run daily by
-managers and staff on their phones. Hebrew first, RTL.
+The operations app for small Israeli businesses of every kind: staff scheduling,
+time clock, lists and more. Set up for each business by the ConceptApp team from a
+global template, with as little work per business as possible; run daily by managers
+and staff on their phones. Hebrew first, RTL.
 
 Plan and decisions: App Design Document and Business Model (links in the
 ConceptApp project, `claude/v2-rebuild-plan.md`).
 
 ## Principles
 
-1. One product, finished, for any business it can make more efficient (Orel, 7
-   November 2026): restaurants, carpentry shops, kitchens, hotels, shops. Templates
-   exist for restaurants and cafés so far, and the pilot starts in a restaurant;
-   other kinds of business get their own template as separate work. For the pilot,
-   by Orel's decision of 6 November 2026: scheduling, time clock, lists, a management
-   page, and roles with different permissions. Reservations, storefront and
-   notifications wait until after it. Nothing from the deferred list gets built
-   before its trigger.
+1. Every kind of business, through global templates, with minimal work per business
+   (Orel, 7 November 2026). Don't write anything new that assumes a restaurant:
+   restaurants and cafés are only the first templates. The pilot's scope, by Orel's
+   decision of 6 November 2026: scheduling, time clock, lists, a management page, and
+   roles with different permissions. Reservations, storefront and notifications wait
+   until after it. Nothing from the deferred list gets built before its trigger.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.
 4. One design system, in code. Tokens in `app/globals.css`, components in
    `packages/ui`. No page-level CSS, no raw hex in components.
 5. Small phases, each with a demo.
-6. Configuration, never customisation. A business is a template plus
-   settings. A business-specific request becomes a setting or a module for
-   everyone. Never a per-business branch, flag or fork.
+6. One system, and everything dynamic (Orel, 7 November 2026). What differs between
+   businesses is data, easy to change without touching code: a business is a template
+   plus settings, edited from a screen. When settings can't do it, a little new code for
+   one business is fine, as a module in the same system that's switched on for it. Never
+   a branch, a copy or a rebuild. A new setting is one field in the module's manifest, with
+   `.meta()` for who edits it, and its words under `modules.<key>.settings` in the
+   messages: `/manage` and the console then draw it (`@domain/settings-form`). A field
+   only the team should touch takes `level: "team"`.
 
 ## Layout
 
@@ -84,7 +87,7 @@ Only `app/` imports app code (`@/…`).
   transparency or more contrast.
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
-  Built so far: Button, IconButton, TextField, PhoneField, FieldGroup, FieldRow, Stepper,
+  Built so far: Button, IconButton, TextField, PhoneField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
   and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
@@ -147,14 +150,12 @@ soft shadows, large titles, one business colour, glass only on what floats, and 
 through overlap. Bordered cards, stat tiles and rows of pills read as generic, so avoid
 them.
 
+For new ideas, Orel keeps React Bits: `docs/design/react-bits.md` says what fits which
+screen and how to rebuild it here, without its libraries.
+
 `.claude/skills/apple-design` (`dickwu/apple-design-skill` at `ff4ebdd`) is the
 reference for reviews and conventions. This file wins where they differ. Never ship SF
 font files or SF Symbols; asking the device for its own font is fine.
-
-React Bits (reactbits.dev) is a source of ideas only, by Orel's request of 7 November
-2026. Its licence covers its code; a small change to that code doesn't make it ours. So
-write the effect from scratch in CSS, with no new animation library, and take only what
-suits this design: no cursor effects, glowing borders, particles or letter-by-letter text.
 
 ## Code rules
 

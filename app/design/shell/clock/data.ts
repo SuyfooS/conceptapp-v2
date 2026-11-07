@@ -98,7 +98,6 @@ export function demoClock(state: string | undefined, now: Date): ClockData {
           }
         : null,
     unpaidBreaks: true,
-    canManage: true,
     team: { atWork: 2, overdue: state === "working" ? 0 : 1 },
     viewOnly: false,
   };

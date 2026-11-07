@@ -21,8 +21,13 @@ export const rowPillInputClass = cn(
 
 export type FieldRowProps = {
   label: ReactNode;
-  /** The id of the input in the row. */
-  htmlFor: string;
+  /** A line under the label, for what the setting does. */
+  hint?: ReactNode;
+  /**
+   * The id of the input in the row. Leave it out for a control that names
+   * itself, such as a menu: the label is then a plain line.
+   */
+  htmlFor?: string;
   /** The input or control, at the row's end. */
   children: ReactNode;
   className?: string;
@@ -35,10 +40,19 @@ export type FieldRowProps = {
  */
 export function FieldRow({
   label,
+  hint,
   htmlFor,
   children,
   className,
 }: FieldRowProps) {
+  const labelClass = cn("font-medium text-ink", !hint && "shrink-0");
+  const name = htmlFor ? (
+    <label htmlFor={htmlFor} className={labelClass}>
+      {label}
+    </label>
+  ) : (
+    <span className={labelClass}>{label}</span>
+  );
   return (
     <div
       className={cn(
@@ -47,10 +61,22 @@ export function FieldRow({
         className,
       )}
     >
-      <label htmlFor={htmlFor} className="shrink-0 font-medium text-ink">
-        {label}
-      </label>
-      <div className="flex min-w-0 items-center justify-end">{children}</div>
+      {hint ? (
+        <div className="flex min-w-0 flex-1 flex-col py-1.5">
+          {name}
+          <p className="text-ink-2 text-sm">{hint}</p>
+        </div>
+      ) : (
+        name
+      )}
+      <div
+        className={cn(
+          "flex min-w-0 items-center justify-end",
+          hint && "shrink-0",
+        )}
+      >
+        {children}
+      </div>
     </div>
   );
 }

@@ -40,10 +40,10 @@ begin
   update public.profiles set full_name = 'נועה כהן' where id = '10000000-0000-4000-a000-000000000104';
   update public.profiles set full_name = 'יואב לוי' where id = '10000000-0000-4000-a000-000000000105';
 
-  insert into public.businesses (id, slug, name, accent, address, latitude, longitude)
+  insert into public.businesses (id, slug, name, accent, address, shabbat_city)
   values (
     restaurant, 'demo-restaurant', 'מסעדת הדגמה',
-    '#2563EB', 'רחוב הדגמה 1, תל אביב', 32.0853, 34.7818
+    '#2563eb', 'רחוב הדגמה 1, תל אביב', 'telAviv'
   );
 
   insert into public.memberships (business_id, user_id, role)

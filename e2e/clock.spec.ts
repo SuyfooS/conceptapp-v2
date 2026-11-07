@@ -60,8 +60,6 @@ test("a worker clocks in, goes on a break, comes back and leaves", async ({
     path: testInfo.outputPath("clock-off.png"),
     fullPage: true,
   });
-  // Only owners and managers choose how breaks count.
-  await expect(page.getByText(c.settings.row, { exact: true })).toHaveCount(0);
 
   await circle(page, c.circle.in).click();
   await expect(title(page, c.title.working)).toBeVisible();
@@ -180,18 +178,18 @@ test("the clock knows the person's own shift today, and nobody else's", async ({
 
 test("a manager chooses that breaks come off the hours", async ({ page }) => {
   await signIn(page, MANAGER);
-  await page.goto("/clock");
-  const row = page.getByRole("button", { name: c.settings.row });
-  await expect(row).toContainText(c.settings.paid);
-  await row.click();
-  const sheet = page.getByRole("dialog");
-  await sheet.getByText(c.settings.unpaid, { exact: true }).click();
-  await expectCleanPage(page);
-  await sheet.getByRole("button", { name: c.settings.save }).click();
-  await expect(sheet).toBeHidden();
-  await expect(row).toContainText(c.settings.unpaid);
+  await page.goto("/manage/time_clock");
+  const unpaid = page.getByRole("switch", {
+    name: he.modules.time_clock.settings.unpaidBreaks.label,
+  });
+  await expect(unpaid).toHaveAttribute("aria-checked", "false");
+  await unpaid.click();
+  await expect(
+    page.getByText(he.app.manage.saved, { exact: true }),
+  ).toBeVisible();
 
   // And the person on the clock is told.
+  await page.goto("/clock");
   await circle(page, c.circle.in).click();
   await expect(title(page, c.title.working)).toBeVisible();
   await expect(page.getByText(c.breakRule.unpaid)).toBeVisible();

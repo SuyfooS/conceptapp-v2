@@ -3,10 +3,14 @@
 import { randomBytes } from "node:crypto";
 import { NEW_BUSINESS_FIELDS, parseNewBusiness } from "@domain/business";
 import { inviteLink } from "@domain/invites";
+import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
+import { checkSettingsChange } from "@domain/settings-form";
+import { manifestFor } from "@modules/registry";
 import { redirect } from "next/navigation";
 import { requestOrigin } from "@/app/origin";
 import type { InviteLinkState } from "../../(admin)/admin/businesses/[slug]/actions";
 import type { NewBusinessState } from "../../(admin)/admin/new/actions";
+import type { SettingsResult } from "../../(app)/manage/settings-types";
 
 // Stand-ins for the console's actions on the design demo: the same checks, a
 // link that leads nowhere, and nothing stored.
@@ -14,6 +18,24 @@ import type { NewBusinessState } from "../../(admin)/admin/new/actions";
 export async function demoSignOut(): Promise<void> {}
 
 export async function demoViewAs(_form: FormData): Promise<void> {}
+
+export async function demoSaveBusinessSettings(
+  module: string,
+  change: unknown,
+): Promise<SettingsResult> {
+  const key = moduleKeyOf(module);
+  if (!key) return { ok: false, failure: "noAccess" };
+  const manifest: ModuleManifest = manifestFor(key);
+  const checked = checkSettingsChange(manifest, {}, change, "team");
+  return checked.ok ? { ok: true } : { ok: false, failure: checked.problem };
+}
+
+export async function demoSetBusinessModule(
+  _module: string,
+  _enabled: boolean,
+): Promise<SettingsResult> {
+  return { ok: true };
+}
 
 export async function demoIssueLink(
   _inviteId: string,
