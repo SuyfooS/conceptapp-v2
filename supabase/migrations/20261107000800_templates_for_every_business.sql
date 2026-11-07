@@ -127,10 +127,10 @@ declare
   next_position integer := 0;
   span_from integer;
   span_to integer;
-  taken_user uuid[] := '{}';
-  taken_day date[] := '{}';
-  taken_from integer[] := '{}';
-  taken_to integer[] := '{}';
+  taken_user uuid[] := '{}'::uuid[];
+  taken_day date[] := '{}'::date[];
+  taken_from integer[] := '{}'::integer[];
+  taken_to integer[] := '{}'::integer[];
 begin
   select m.settings, b.timezone into sched, tz
   from public.businesses b
