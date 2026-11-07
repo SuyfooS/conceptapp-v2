@@ -417,6 +417,9 @@ body {
   }
   50%,
   100% {
+    opacity: 0;
+  }
+}
 
 @keyframes page-in {
   from {
