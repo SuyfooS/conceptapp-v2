@@ -18,8 +18,10 @@ export type ResetResult = { ok: boolean };
 /**
  * Open a session for a demo person without asking them anything: the secret key
  * makes a one-time sign-in token, which nothing is sent for, and it is used here
- * on the spot. Only for the people `demoEmailOf` knows. A business whose week
- * renews gets it published first, so there is a schedule to see on arrival.
+ * on the spot. Only for the people `demoEmailOf` knows, and only once their
+ * account exists: a recovery link, unlike a magic link, never signs anyone up.
+ * A business whose week renews gets it published first, so there is a
+ * schedule to see on arrival.
  */
 export async function enterAs(person: string): Promise<EnterResult> {
   const known = demoPersonOf(person);
@@ -28,14 +30,14 @@ export async function enterAs(person: string): Promise<EnterResult> {
 
   try {
     const { data, error } = await createAdminClient().auth.admin.generateLink({
-      type: "magiclink",
+      type: "recovery",
       email,
     });
     if (error) throw error;
     const supabase = await createClient();
     const verified = await supabase.auth.verifyOtp({
       token_hash: data.properties.hashed_token,
-      type: "magiclink",
+      type: "recovery",
     });
     if (verified.error) throw verified.error;
   } catch (error) {
