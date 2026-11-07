@@ -3,6 +3,16 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-07 · chat · the activity log
+
+- Orel confirmed that by "more kinds and sides" he meant the people who use the app, so the roadmap's order stands; he answered after step 1 was already built.
+- `/manage/activity` for owners and managers, from a row of its own on `/manage`: who changed what, and when, a day at a time in the business's time zone. A list on phones and tablets, a table with before and after on a computer, 40 rows a page with "פעולות קודמות". Punches are left out (about nine in ten rows), with a line to the team's hours. Edits by one person to the same settings within ten minutes of each other read as one change, from where it began to where it ended, and a run that ended where it began is left out: typing saves after each pause, so one Stepper or a name typed slowly wrote several rows.
+- Read as the signed-in person under RLS, never with the secret key: names come from the business's own memberships, so someone who left reads "מי שכבר לא בצוות", and an actor who is no member is the ConceptApp team. A row's details are read leniently, an unknown action reads "פעולה אחרת באפליקציה", and swaps whose shift was replaced by a later publish read without the shift. Hidden settings show as "שינוי בהגדרה מתקדמת", without values. No ids reach the page.
+- Database in #64, merged and migrated first: publishing writes `schedule.publish` (the week, its shifts, whether it was the first time, and how many waiting swap requests went with the old shifts), and a view as manager or owner reads the log, as a manager does. That reverses "the audit log stays closed" in the view-as migration, which was my own default, not Orel's; a view as a worker still reads none of it.
+- A read-only design study (four agents: what's logged, how to read it safely, the screen, and a critic) settled the shape; the critic's smallest useful version is what's built, plus the publish row and the view.
+- Known, left: role changes and removing someone aren't logged because they don't exist yet. A worker can't see corrections to their own hours. The console has no log screen of its own; the team reads it by viewing as a manager. Filters wait until a log is long enough to need them.
+- Next: step 2, global templates.
+
 ## 2026-11-07 · chat · the business's own details
 
 - `/manage/business` for owners and managers, and the same form at the top of the console's settings page for the team: the name, the colour, the address and the city Shabbat times follow. Each saves itself. A pick that fails goes back to what last saved; something typed that fails stays on screen and tries again on leaving the field. The colour the screen opened with stays offered while it's open, so trying a preset never loses a business's own colour.

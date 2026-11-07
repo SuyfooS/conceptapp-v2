@@ -1164,7 +1164,103 @@
         "emptyViewOnly": "No shifts yet.",
         "notSaved": "The shift wasn't saved. Check your connection and try again."
       },
-      "between": "A number from {min} to {max}"
+      "between": "A number from {min} to {max}",
+      "activity": {
+        "title": "Activity log",
+        "subtitle": "Who changed what in the business, and when.",
+        "row": "Who changed what in the business, and when",
+        "clockNote": "Clocking in and out isn't shown here. It's in <link>the team's hours</link>.",
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "older": "Earlier activity",
+        "newest": "Latest activity",
+        "caption": "Activity on {day}",
+        "columns": {
+          "time": "Time",
+          "who": "Who",
+          "what": "What",
+          "before": "Before",
+          "after": "After"
+        },
+        "empty": {
+          "title": "No activity yet",
+          "body": "Every change to the settings, the team and the schedule shows here, with who made it and when.",
+          "action": "Back to running the business"
+        },
+        "noOlder": {
+          "title": "No earlier activity",
+          "body": "This is where the business's log begins.",
+          "action": "Latest activity"
+        },
+        "who": {
+          "team": "ConceptApp team",
+          "former": "Someone no longer on the team",
+          "unknown": "Someone no longer in the app",
+          "noName": "No name"
+        },
+        "change": "{label}: <to></to>, instead of <from></from>",
+        "changeTo": "{label}: <to></to>",
+        "changedList": "Changed {label}",
+        "advanced": "Changed an advanced setting",
+        "aModule": "a module",
+        "yes": "Yes",
+        "no": "No",
+        "noAddress": "No address",
+        "noCity": "Not chosen",
+        "accentNew": "The new colour",
+        "accentOld": "The previous colour",
+        "shift": "{name} on {day}",
+        "times": "<ltr>{in}–{out}</ltr>",
+        "timesOpen": "<ltr>{in}</ltr>, no clock-out",
+        "actions": {
+          "business": {
+            "create": "{invites, plural, =0 {Opened the business in the app} one {Opened the business in the app, with one team invite} other {Opened the business in the app, with # team invites}}",
+            "details": "Changed the business's details"
+          },
+          "module": {
+            "settings": "Changed the {module} settings",
+            "enabled": "{enabled, select, true {Switched on {module}} other {Switched off {module}}}"
+          },
+          "clock": {
+            "add": "Added a shift to {person}'s hours: {day}, <ltr>{in}–{out}</ltr>",
+            "addOpen": "Added a shift to {person}'s hours: {day}, from <ltr>{in}</ltr>",
+            "correct": "Fixed {person}'s shift on {day}",
+            "hours": "Hours"
+          },
+          "invite": {
+            "create": "Invited to the team: {name}, {role}",
+            "createNoName": "Invited to the team as {role}",
+            "createPlain": "Invited to the team",
+            "send": "Sent an invite link to {name}",
+            "sendNoName": "Sent a team invite link",
+            "claim": "Joined the team as {role}",
+            "claimPlain": "Joined the team"
+          },
+          "view_as": {
+            "start": "Viewed the app as {role}",
+            "startPlain": "Viewed the app",
+            "end": "Stopped viewing the app"
+          },
+          "swap": {
+            "request": "Asked to give away a shift: {shift}",
+            "requestPlain": "Asked to give away a shift",
+            "take": "Took {from}'s shift: {shift}",
+            "takePlain": "Took a shift that was up for grabs",
+            "cancel": "Withdrew a request to give away a shift: {shift}",
+            "cancelPlain": "Withdrew a request to give away a shift",
+            "approve": "Approved a swap: {to} instead of {from}",
+            "approveShift": "Approved a swap: {to} instead of {from}, {shift}",
+            "decline": "Declined {from}'s swap request",
+            "declineShift": "Declined {from}'s swap request: {shift}"
+          },
+          "schedule": {
+            "publish": "{first, select, true {Published the schedule for the week of {week}} other {Published changes to the schedule for the week of {week}}}",
+            "shifts": "{count, plural, =0 {No shifts} one {One shift} other {# shifts}}",
+            "swapsRemoved": "{count, plural, one {One swap request was removed} other {# swap requests were removed}}"
+          },
+          "other": "Something else in the app"
+        }
+      }
     }
   },
   "modules": {

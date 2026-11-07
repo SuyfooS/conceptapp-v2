@@ -1164,7 +1164,103 @@
         "emptyViewOnly": "עוד אין משמרות.",
         "notSaved": "המשמרת לא נשמרה. בדקו את החיבור ונסו שוב."
       },
-      "between": "מספר בין {min} ל-{max}"
+      "between": "מספר בין {min} ל-{max}",
+      "activity": {
+        "title": "יומן פעולות",
+        "subtitle": "מי שינה מה בעסק, ומתי.",
+        "row": "מי שינה מה בעסק, ומתי",
+        "clockNote": "כניסות ויציאות מהשעון לא מופיעות כאן. הן ב<link>שעות הצוות</link>.",
+        "today": "היום",
+        "yesterday": "אתמול",
+        "older": "פעולות קודמות",
+        "newest": "לפעולות האחרונות",
+        "caption": "הפעולות של {day}",
+        "columns": {
+          "time": "שעה",
+          "who": "מי",
+          "what": "מה",
+          "before": "לפני",
+          "after": "אחרי"
+        },
+        "empty": {
+          "title": "עוד אין פעולות",
+          "body": "כל שינוי בהגדרות, בצוות ובסידור יופיע כאן, עם מי שעשה אותו ומתי.",
+          "action": "חזרה לניהול העסק"
+        },
+        "noOlder": {
+          "title": "אין פעולות קודמות",
+          "body": "זו תחילת היומן של העסק.",
+          "action": "לפעולות האחרונות"
+        },
+        "who": {
+          "team": "צוות ConceptApp",
+          "former": "מי שכבר לא בצוות",
+          "unknown": "מי שכבר לא באפליקציה",
+          "noName": "בלי שם"
+        },
+        "change": "{label}: <to></to>, במקום <from></from>",
+        "changeTo": "{label}: <to></to>",
+        "changedList": "שינוי ב{label}",
+        "advanced": "שינוי בהגדרה מתקדמת",
+        "aModule": "מודול",
+        "yes": "כן",
+        "no": "לא",
+        "noAddress": "בלי כתובת",
+        "noCity": "לא נבחרה",
+        "accentNew": "הצבע החדש",
+        "accentOld": "הצבע הקודם",
+        "shift": "{name} ב{day}",
+        "times": "<ltr>{in}–{out}</ltr>",
+        "timesOpen": "<ltr>{in}</ltr> בלי יציאה",
+        "actions": {
+          "business": {
+            "create": "{invites, plural, =0 {פתיחת העסק באפליקציה} one {פתיחת העסק באפליקציה, עם הזמנה אחת לצוות} other {פתיחת העסק באפליקציה, עם # הזמנות לצוות}}",
+            "details": "שינוי בפרטי העסק"
+          },
+          "module": {
+            "settings": "שינוי בהגדרות {module}",
+            "enabled": "{enabled, select, true {הפעלת {module}} other {כיבוי {module}}}"
+          },
+          "clock": {
+            "add": "הוספת משמרת לשעות של {person}: {day}, <ltr>{in}–{out}</ltr>",
+            "addOpen": "הוספת משמרת לשעות של {person}: {day}, מ-<ltr>{in}</ltr>",
+            "correct": "תיקון משמרת של {person} ב{day}",
+            "hours": "שעות"
+          },
+          "invite": {
+            "create": "הזמנה לצוות: {name}, {role}",
+            "createNoName": "הזמנה לצוות בתור {role}",
+            "createPlain": "הזמנה לצוות",
+            "send": "שליחת קישור הזמנה ל{name}",
+            "sendNoName": "שליחת קישור הזמנה לצוות",
+            "claim": "הצטרפות לצוות בתור {role}",
+            "claimPlain": "הצטרפות לצוות"
+          },
+          "view_as": {
+            "start": "צפייה באפליקציה בתור {role}",
+            "startPlain": "צפייה באפליקציה",
+            "end": "סיום הצפייה באפליקציה"
+          },
+          "swap": {
+            "request": "בקשה למסור משמרת: {shift}",
+            "requestPlain": "בקשה למסור משמרת",
+            "take": "לקיחת המשמרת של {from}: {shift}",
+            "takePlain": "לקיחת משמרת שעמדה למסירה",
+            "cancel": "ביטול הבקשה למסור משמרת: {shift}",
+            "cancelPlain": "ביטול בקשה למסור משמרת",
+            "approve": "אישור החלפה: {to} במקום {from}",
+            "approveShift": "אישור החלפה: {to} במקום {from}, {shift}",
+            "decline": "דחיית בקשת ההחלפה של {from}",
+            "declineShift": "דחיית בקשת ההחלפה של {from}: {shift}"
+          },
+          "schedule": {
+            "publish": "{first, select, true {פרסום הסידור לשבוע של {week}} other {פרסום שינויים בסידור לשבוע של {week}}}",
+            "shifts": "{count, plural, =0 {בלי משמרות} one {משמרת אחת} other {# משמרות}}",
+            "swapsRemoved": "{count, plural, one {בקשת החלפה אחת בוטלה} other {# בקשות החלפה בוטלו}}"
+          },
+          "other": "פעולה אחרת באפליקציה"
+        }
+      }
     }
   },
   "modules": {

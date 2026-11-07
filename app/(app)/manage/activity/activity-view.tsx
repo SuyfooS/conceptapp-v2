@@ -1,0 +1,680 @@
+import type {
+  ActivityDay,
+  ActivityEntry,
+  ActivityPerson,
+  ActivityShift,
+  ClockTimes,
+  FieldChange,
+} from "@domain/activity";
+import { dateIn } from "@domain/availability";
+import { WEEKDAY_KEYS } from "@domain/availability-form";
+import { accentTokens } from "@domain/color";
+import {
+  type ModuleKey,
+  type ModuleManifest,
+  type Role,
+  readModuleSettings,
+} from "@domain/modules";
+import { describeSettings } from "@domain/settings-form";
+import { shabbatCityOf, timeIn } from "@domain/shabbat";
+import { manifests } from "@modules/registry";
+import { accentProps } from "@ui/accent";
+import { Button } from "@ui/button";
+import { cn } from "@ui/cn";
+import { EmptyState } from "@ui/empty-state";
+import { ListGroup, ListRow } from "@ui/list-row";
+import { PageBody, PageHeader, PageSection } from "@ui/page";
+import { pageGlowClass } from "@ui/page-glow";
+import { PersonAvatar } from "@ui/person-row";
+import { History, ShieldCheck } from "lucide-react";
+import Link from "next/link";
+import { useFormatter, useTranslations } from "next-intl";
+import type { ReactNode } from "react";
+
+export type ActivityPaths = {
+  manage: string;
+  /** This screen, for the newest page and the cursor of an older one. */
+  self: string;
+  business: string;
+  clockTeam: string;
+};
+
+/**
+ * A setting or detail as words. Without `values` the label says it all ("changed
+ * the shifts"); `from` is left out when nothing says what it was.
+ */
+type Change = {
+  key: string;
+  label: string;
+  values?: { from?: ReactNode; to: ReactNode };
+};
+
+type Described = {
+  what: ReactNode;
+  notes: ReactNode[];
+  changes: Change[];
+  href?: string;
+};
+
+const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+const HEX = /^#[0-9a-f]{6}$/i;
+
+const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
+const td = "border-line border-t px-4 py-3 align-top";
+
+/** The colour a business picked, as a dot in that colour, readable or not by eye. */
+function Swatch({ hex, label }: { hex: string; label: string }) {
+  return (
+    <span
+      {...accentProps(accentTokens(hex))}
+      className="inline-flex items-center align-middle"
+    >
+      <span
+        aria-hidden="true"
+        className="inline-block size-4 rounded-full border border-edge bg-accent"
+      />
+      <span className="sr-only">{label}</span>
+    </span>
+  );
+}
+
+function ActorAvatar({ actor }: { actor: ActivityPerson }) {
+  if (actor.kind === "team") {
+    return (
+      <span
+        aria-hidden="true"
+        className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5"
+      >
+        <ShieldCheck />
+      </span>
+    );
+  }
+  return <PersonAvatar name={actor.kind === "member" ? actor.name : null} />;
+}
+
+/**
+ * The business's activity log: who changed what, and when, a day at a time,
+ * newest first. A list on phones and tablets, a table with what each change was
+ * before and after on a computer. The words are worked out once per line, so
+ * every shape says the same. Also on the design demo.
+ */
+export function ActivityView({
+  days,
+  timeZone,
+  older,
+  earlier,
+  manageable,
+  clockOn,
+  paths,
+}: {
+  days: ActivityDay[];
+  timeZone: string;
+  /** The cursor of the next older page, or null at the start of the log. */
+  older: number | null;
+  /** Whether this is an older page rather than the newest. */
+  earlier: boolean;
+  /** Modules whose settings this business edits on its own screen. */
+  manageable: readonly ModuleKey[];
+  /** The time clock is on, so its punches, left out here, exist somewhere. */
+  clockOn: boolean;
+  paths: ActivityPaths;
+}) {
+  const t = useTranslations("app.manage.activity");
+  const tRoles = useTranslations("app.team.roles");
+  const tm = useTranslations("modules");
+  const tCities = useTranslations("cities");
+  const tDays = useTranslations("days");
+  const tDetails = useTranslations("app.manage.business");
+  const tManage = useTranslations("app.manage");
+  const format = useFormatter();
+
+  const dayName = (date: string) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      weekday: "long",
+      day: "numeric",
+      month: "numeric",
+      timeZone: "UTC",
+    });
+  const shortDate = (date: string) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      day: "numeric",
+      month: "numeric",
+      timeZone: "UTC",
+    });
+  const who = (person: ActivityPerson) =>
+    person.kind === "member"
+      ? (person.name ?? t("who.noName"))
+      : t(`who.${person.kind}`);
+  const roleName = (role: Role) => tRoles(role);
+  const moduleWords = (key: string, part: string) => `${key}.${part}` as never;
+  const moduleName = (key: string) =>
+    tm.has(moduleWords(key, "name"))
+      ? tm(moduleWords(key, "name"))
+      : t("aModule");
+  const shiftWords = (shift: ActivityShift) =>
+    t("shift", { name: shift.name, day: dayName(shift.day) });
+  const clockDay = (times: ClockTimes) =>
+    dayName(dateIn(new Date(times.clockIn), timeZone));
+  const clockTime = (instant: string) => timeIn(new Date(instant), timeZone);
+  const hours = (times: ClockTimes) =>
+    times.clockOut
+      ? t.rich("times", {
+          ltr,
+          in: clockTime(times.clockIn),
+          out: clockTime(times.clockOut),
+        })
+      : t.rich("timesOpen", { ltr, in: clockTime(times.clockIn) });
+
+  /** A module's setting as words, from what its manifest says the field is. */
+  function settingChanges(module: string, changes: FieldChange[]): Change[] {
+    const manifest: ModuleManifest | undefined = manifests.find(
+      (m) => m.key === module,
+    );
+    if (!manifest) {
+      return [{ key: "advanced", label: t("advanced") }];
+    }
+    const fields = describeSettings(manifest.settings);
+    const defaults = readModuleSettings(manifest, {}) as Record<
+      string,
+      unknown
+    >;
+    let advanced = false;
+    const words: Change[] = [];
+    // In the order the settings screen shows them.
+    const order = (key: string) => {
+      const index = fields.findIndex((f) => f.key === key);
+      return index === -1 ? fields.length : index;
+    };
+    const ordered = [...changes].sort((a, b) => order(a.key) - order(b.key));
+    for (const change of ordered) {
+      const field = fields.find((f) => f.key === change.key);
+      const label = tm.has(moduleWords(module, `settings.${change.key}.label`))
+        ? tm(moduleWords(module, `settings.${change.key}.label`))
+        : null;
+      if (!field || label === null) {
+        advanced = true;
+        continue;
+      }
+      if (
+        field.kind === "editor" &&
+        (field.editor === "positions" || field.editor === "shifts")
+      ) {
+        words.push({ key: change.key, label: t("changedList", { label }) });
+        continue;
+      }
+      const value = (raw: unknown): ReactNode => {
+        switch (field.kind) {
+          case "toggle":
+            return raw === true ? t("yes") : t("no");
+          case "choice": {
+            const option = moduleWords(
+              module,
+              `settings.${change.key}.options.${String(raw)}`,
+            );
+            return tm.has(option) ? tm(option) : String(raw);
+          }
+          case "editor": {
+            if (field.editor === "weekday" && typeof raw === "number") {
+              const day = WEEKDAY_KEYS[raw];
+              return day ? tDays(`${day}.long`) : String(raw);
+            }
+            return <span dir="ltr">{String(raw)}</span>;
+          }
+          case "number":
+            return <span dir="ltr">{String(raw)}</span>;
+          default:
+            return String(raw);
+        }
+      };
+      // Never set: it had the module's default. Unknown: say only what it is now.
+      const before = change.from === null ? defaults[change.key] : change.from;
+      words.push({
+        key: change.key,
+        label,
+        values:
+          before === undefined
+            ? { to: value(change.to) }
+            : { from: value(before), to: value(change.to) },
+      });
+    }
+    if (advanced) words.push({ key: "advanced", label: t("advanced") });
+    return words;
+  }
+
+  function detailValue(key: string, value: unknown, label: string): ReactNode {
+    if (key === "accent") {
+      return typeof value === "string" && HEX.test(value) ? (
+        <Swatch hex={value} label={label} />
+      ) : (
+        "—"
+      );
+    }
+    if (key === "shabbatCity") {
+      const city = shabbatCityOf(value);
+      return city ? tCities(city) : t("noCity");
+    }
+    if (key === "address") {
+      return typeof value === "string" ? value : t("noAddress");
+    }
+    return typeof value === "string" ? value : "—";
+  }
+
+  function describe(entry: ActivityEntry): Described {
+    const { line } = entry;
+    const plain = (what: ReactNode, href?: string): Described => ({
+      what,
+      notes: [],
+      changes: [],
+      href,
+    });
+    switch (line.action) {
+      case "business.create":
+        return plain(t("actions.business.create", { invites: line.invites }));
+      case "business.details":
+        return {
+          what: t("actions.business.details"),
+          notes: [],
+          href: paths.business,
+          changes: line.changes.map((change) => {
+            return {
+              key: change.key,
+              label: tDetails(`${change.key}.label`),
+              values: {
+                from: detailValue(change.key, change.from, t("accentOld")),
+                to: detailValue(change.key, change.to, t("accentNew")),
+              },
+            };
+          }),
+        };
+      case "module.settings":
+        return {
+          what: t("actions.module.settings", {
+            module: moduleName(line.module),
+          }),
+          notes: [],
+          changes: settingChanges(line.module, line.changes),
+          href: (manageable as readonly string[]).includes(line.module)
+            ? `${paths.manage}/${line.module}`
+            : undefined,
+        };
+      case "module.enabled":
+        return plain(
+          t("actions.module.enabled", {
+            enabled: String(line.enabled),
+            module: moduleName(line.module),
+          }),
+        );
+      case "clock.add":
+        return plain(
+          line.times.clockOut
+            ? t.rich("actions.clock.add", {
+                ltr,
+                person: who(line.person),
+                day: clockDay(line.times),
+                in: clockTime(line.times.clockIn),
+                out: clockTime(line.times.clockOut),
+              })
+            : t.rich("actions.clock.addOpen", {
+                ltr,
+                person: who(line.person),
+                day: clockDay(line.times),
+                in: clockTime(line.times.clockIn),
+              }),
+        );
+      case "clock.correct":
+        return {
+          what: t("actions.clock.correct", {
+            person: who(line.person),
+            day: clockDay(line.to),
+          }),
+          notes: [],
+          changes: [
+            {
+              key: "hours",
+              label: t("actions.clock.hours"),
+              values: { from: hours(line.from), to: hours(line.to) },
+            },
+          ],
+        };
+      case "invite.create":
+        return plain(
+          line.name && line.role
+            ? t("actions.invite.create", {
+                name: line.name,
+                role: roleName(line.role),
+              })
+            : line.role
+              ? t("actions.invite.createNoName", { role: roleName(line.role) })
+              : t("actions.invite.createPlain"),
+        );
+      case "invite.send":
+        return plain(
+          line.name
+            ? t("actions.invite.send", { name: line.name })
+            : t("actions.invite.sendNoName"),
+        );
+      case "invite.claim":
+        return plain(
+          line.role
+            ? t("actions.invite.claim", { role: roleName(line.role) })
+            : t("actions.invite.claimPlain"),
+        );
+      case "view_as.start":
+        return plain(
+          line.role
+            ? t("actions.view_as.start", { role: roleName(line.role) })
+            : t("actions.view_as.startPlain"),
+        );
+      case "view_as.end":
+        return plain(t("actions.view_as.end"));
+      case "swap.request":
+        return plain(
+          line.shift
+            ? t("actions.swap.request", { shift: shiftWords(line.shift) })
+            : t("actions.swap.requestPlain"),
+        );
+      case "swap.take":
+        return plain(
+          line.shift && line.from
+            ? t("actions.swap.take", {
+                from: who(line.from),
+                shift: shiftWords(line.shift),
+              })
+            : t("actions.swap.takePlain"),
+        );
+      case "swap.cancel":
+        return plain(
+          line.shift
+            ? t("actions.swap.cancel", { shift: shiftWords(line.shift) })
+            : t("actions.swap.cancelPlain"),
+        );
+      case "swap.approve": {
+        const people = {
+          from: who(line.from),
+          to: line.to ? who(line.to) : t("who.unknown"),
+        };
+        return plain(
+          line.shift
+            ? t("actions.swap.approveShift", {
+                ...people,
+                shift: shiftWords(line.shift),
+              })
+            : t("actions.swap.approve", people),
+        );
+      }
+      case "swap.decline":
+        return plain(
+          line.shift
+            ? t("actions.swap.declineShift", {
+                from: who(line.from),
+                shift: shiftWords(line.shift),
+              })
+            : t("actions.swap.decline", { from: who(line.from) }),
+        );
+      case "schedule.publish":
+        return {
+          what: t("actions.schedule.publish", {
+            first: String(line.first),
+            week: shortDate(line.startsOn),
+          }),
+          notes: [
+            t("actions.schedule.shifts", { count: line.shifts }),
+            ...(line.swapsRemoved > 0
+              ? [
+                  t("actions.schedule.swapsRemoved", {
+                    count: line.swapsRemoved,
+                  }),
+                ]
+              : []),
+          ],
+          changes: [],
+        };
+      default:
+        return plain(t("actions.other"));
+    }
+  }
+
+  /** One change on one line: what it is now, and what it was when that's known. */
+  const changeLine = ({ label, values }: Change) =>
+    !values
+      ? label
+      : values.from === undefined
+        ? t.rich("changeTo", { label, to: () => values.to })
+        : t.rich("change", {
+            label,
+            to: () => values.to,
+            from: () => values.from,
+          });
+
+  const lines = days.map((day) => ({
+    ...day,
+    title:
+      day.relative === "today"
+        ? t("today")
+        : day.relative === "yesterday"
+          ? t("yesterday")
+          : dayName(day.date),
+    rows: day.entries.map((entry) => ({
+      entry,
+      time: timeIn(new Date(entry.at), timeZone),
+      ...describe(entry),
+    })),
+  }));
+
+  return (
+    <PageBody className={pageGlowClass}>
+      <PageHeader
+        back={{ href: paths.manage, label: tManage("title") }}
+        title={t("title")}
+        subtitle={t("subtitle")}
+      />
+
+      {clockOn && lines.length > 0 ? (
+        <p className="px-1 text-ink-2 text-sm md:max-w-2xl">
+          {t.rich("clockNote", {
+            link: (chunks) => (
+              <Link
+                href={paths.clockTeam}
+                className="font-medium text-ink underline underline-offset-2"
+              >
+                {chunks}
+              </Link>
+            ),
+          })}
+        </p>
+      ) : null}
+
+      {lines.length === 0 ? (
+        earlier ? (
+          <EmptyState
+            headingLevel="h2"
+            icon={<History />}
+            title={t("noOlder.title")}
+            body={t("noOlder.body")}
+          >
+            <Button asChild variant="secondary">
+              <Link href={paths.self}>{t("noOlder.action")}</Link>
+            </Button>
+          </EmptyState>
+        ) : (
+          <EmptyState
+            headingLevel="h2"
+            icon={<History />}
+            title={t("empty.title")}
+            body={t("empty.body")}
+          >
+            <Button asChild variant="secondary">
+              <Link href={paths.manage}>{t("empty.action")}</Link>
+            </Button>
+          </EmptyState>
+        )
+      ) : (
+        <div className="flex flex-col gap-8">
+          {lines.map((day) => (
+            <PageSection key={day.date} title={day.title}>
+              <ListGroup className="md:max-w-2xl xl:hidden">
+                {day.rows.map((row) => {
+                  const content = {
+                    leading: <ActorAvatar actor={row.entry.actor} />,
+                    title: who(row.entry.actor),
+                    subtitle: (
+                      <RowLines
+                        what={row.what}
+                        more={[...row.notes, ...row.changes.map(changeLine)]}
+                      />
+                    ),
+                    trailing: (
+                      <span
+                        dir="ltr"
+                        className="text-ink-2 text-sm tabular-nums"
+                      >
+                        {row.time}
+                      </span>
+                    ),
+                  };
+                  return row.href ? (
+                    <ListRow key={row.entry.id} href={row.href} {...content} />
+                  ) : (
+                    <ListRow key={row.entry.id} {...content} />
+                  );
+                })}
+              </ListGroup>
+
+              <div className="hidden overflow-hidden rounded-card bg-surface shadow-card xl:block">
+                <table className="w-full border-collapse">
+                  <caption className="sr-only">
+                    {t("caption", { day: dayName(day.date) })}
+                  </caption>
+                  <thead>
+                    <tr>
+                      <th scope="col" className={cn(th, "w-24")}>
+                        {t("columns.time")}
+                      </th>
+                      <th scope="col" className={th}>
+                        {t("columns.who")}
+                      </th>
+                      <th scope="col" className={th}>
+                        {t("columns.what")}
+                      </th>
+                      <th scope="col" className={th}>
+                        {t("columns.before")}
+                      </th>
+                      <th scope="col" className={th}>
+                        {t("columns.after")}
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {day.rows.map((row) => (
+                      <tr key={row.entry.id}>
+                        <td className={cn(td, "text-ink-2 tabular-nums")}>
+                          <span dir="ltr">{row.time}</span>
+                        </td>
+                        <th
+                          scope="row"
+                          className={cn(td, "text-start font-medium")}
+                        >
+                          <span className="flex items-center gap-3">
+                            <ActorAvatar actor={row.entry.actor} />
+                            <span>{who(row.entry.actor)}</span>
+                          </span>
+                        </th>
+                        <td className={td}>
+                          <span className="flex flex-col gap-0.5">
+                            {row.href ? (
+                              <Link
+                                href={row.href}
+                                className="font-medium text-ink hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+                              >
+                                {row.what}
+                              </Link>
+                            ) : (
+                              <span className="text-ink">{row.what}</span>
+                            )}
+                            {row.notes.map((note, index) => (
+                              <span
+                                // biome-ignore lint/suspicious/noArrayIndexKey: a line's notes have no ids and never move
+                                key={index}
+                                className="text-ink-2 text-sm"
+                              >
+                                {note}
+                              </span>
+                            ))}
+                          </span>
+                        </td>
+                        <td className={cn(td, "text-ink-2")}>
+                          <ChangeCells changes={row.changes} side="from" />
+                        </td>
+                        <td className={td}>
+                          <ChangeCells changes={row.changes} side="to" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </PageSection>
+          ))}
+        </div>
+      )}
+
+      {older !== null || earlier ? (
+        <nav
+          aria-label={t("older")}
+          className="flex flex-col gap-2 md:max-w-2xl md:flex-row"
+        >
+          {older !== null ? (
+            <Button asChild variant="secondary">
+              <Link href={`${paths.self}?before=${older}`}>{t("older")}</Link>
+            </Button>
+          ) : null}
+          {earlier && lines.length > 0 ? (
+            <Button asChild variant="ghost">
+              <Link href={paths.self}>{t("newest")}</Link>
+            </Button>
+          ) : null}
+        </nav>
+      ) : null}
+    </PageBody>
+  );
+}
+
+/** What happened, then a line for each detail of it. */
+function RowLines({ what, more }: { what: ReactNode; more: ReactNode[] }) {
+  return (
+    <span className="flex flex-col gap-0.5">
+      <span className="text-ink">{what}</span>
+      {more.map((text, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: a line's details have no ids and never move
+        <span key={index}>{text}</span>
+      ))}
+    </span>
+  );
+}
+
+/** One side of each change, a line apiece, in the table's before or after column. */
+function ChangeCells({
+  changes,
+  side,
+}: {
+  changes: Change[];
+  side: "from" | "to";
+}) {
+  if (changes.length === 0) return null;
+  return (
+    <span className="flex flex-col gap-0.5">
+      {changes.map(({ key, label, values }) =>
+        !values ? (
+          side === "to" ? (
+            <span key={key}>{label}</span>
+          ) : null
+        ) : (
+          <span key={key}>
+            <span className="text-ink-2">{label}: </span>
+            {side === "to" ? values.to : (values.from ?? "—")}
+          </span>
+        ),
+      )}
+    </span>
+  );
+}
