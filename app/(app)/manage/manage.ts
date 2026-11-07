@@ -1,7 +1,9 @@
+import type { SettingDefaults } from "@domain/activity";
 import type { BusinessDetails } from "@domain/business-details";
 import {
   enabledModules,
   type ModuleKey,
+  type ModuleManifest,
   type ModuleRow,
   readModuleSettings,
 } from "@domain/modules";
@@ -65,6 +67,16 @@ export function closesOnShabbat(rows: readonly ModuleRow[]): boolean {
     rows.find((row) => row.key === "scheduling")?.settings,
   );
   return settings.closedOnShabbat;
+}
+
+/** Each module's settings as a business that never set them has them. */
+export function settingDefaults(): SettingDefaults {
+  return new Map(
+    manifests.map((manifest: ModuleManifest) => [
+      manifest.key,
+      readModuleSettings(manifest, {}) as Record<string, unknown>,
+    ]),
+  );
 }
 
 /** What /manage says about the business's Shabbat city. */

@@ -29,6 +29,8 @@ const PAGES = [
   "/design/shell/team",
   "/design/shell/manage",
   "/design/shell/manage/business",
+  "/design/shell/manage/activity",
+  "/design/shell/manage/activity/empty",
   "/design/shell/manage/scheduling",
   "/design/shell/manage/time_clock",
   "/design/console/businesses/demo-restaurant/settings",

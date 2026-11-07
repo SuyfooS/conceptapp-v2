@@ -3,6 +3,7 @@
 // sets itself), so its Hebrew stays here rather than in messages/; the
 // Hebrew-literal check in tooling/ allows this one file.
 
+import type { ActivityLookups, ActivityRow } from "@domain/activity";
 import type { AvailabilityAnswer } from "@domain/availability";
 import type { BusinessDetails } from "@domain/business-details";
 import type { ModuleRow } from "@domain/modules";
@@ -295,3 +296,133 @@ export const demoExtraShift = {
   pattern: null,
   assignees: [],
 };
+
+// The demo business's activity log, as rows from its audit log and what they
+// point at: three days around the demo's Wednesday, newest first. Two edits to
+// the availability time a moment apart read as one change.
+const demoPerson = (id: string) => ({
+  active: true,
+  name: byId[id]?.name ?? null,
+});
+
+export const demoActivityLookups: ActivityLookups = {
+  members: new Map([
+    ["shiran", { active: true, name: user.name }],
+    ["noa", demoPerson("noa")],
+    ["yoav", demoPerson("yoav")],
+    ["dana", demoPerson("dana")],
+  ]),
+  invites: new Map([["invite-dana", { name: "דנה אברהם", role: "worker" }]]),
+  shifts: new Map([
+    [
+      "shift-thu-evening",
+      { day: "2026-11-05", name: "ערב", start: "16:00", end: "23:00" },
+    ],
+  ]),
+  swaps: new Map([
+    [
+      "swap-thu",
+      { shiftId: "shift-thu-evening", requestedBy: "noa", takenBy: "yoav" },
+    ],
+  ]),
+};
+
+const demoRow = (
+  id: number,
+  createdAt: string,
+  actorId: string | null,
+  action: string,
+  details: unknown,
+): ActivityRow => ({ id, action, details, createdAt, actorId });
+
+export const demoActivityRows: ActivityRow[] = [
+  demoRow(120, "2026-11-04T11:40:00+02:00", "shiran", "business.details", {
+    from: { address: "רחוב הדגמה 1, תל אביב" },
+    to: { address: "רחוב הרצל 12, תל אביב" },
+  }),
+  demoRow(119, "2026-11-04T11:05:00+02:00", "team", "module.settings", {
+    module: "time_clock",
+    from: { roundToMinutes: null },
+    to: { roundToMinutes: 15 },
+  }),
+  demoRow(118, "2026-11-04T10:30:00+02:00", "shiran", "swap.approve", {
+    swap: "swap-thu",
+    shift: "shift-thu-evening",
+    from: "noa",
+    to: "yoav",
+  }),
+  demoRow(117, "2026-11-04T10:12:00+02:00", "yoav", "swap.take", {
+    swap: "swap-thu",
+  }),
+  demoRow(116, "2026-11-04T09:50:00+02:00", "noa", "swap.request", {
+    swap: "swap-thu",
+    shift: "shift-thu-evening",
+  }),
+  demoRow(115, "2026-11-04T09:20:00+02:00", "shiran", "clock.correct", {
+    entry: "entry-noa",
+    person: "noa",
+    from: { clock_in: "2026-11-03T16:00:00+02:00", clock_out: null },
+    to: {
+      clock_in: "2026-11-03T16:00:00+02:00",
+      clock_out: "2026-11-03T23:30:00+02:00",
+    },
+  }),
+  demoRow(114, "2026-11-04T09:03:00+02:00", "shiran", "module.settings", {
+    module: "scheduling",
+    from: { availabilityDueTime: "17:00" },
+    to: { availabilityDueTime: "18:00" },
+  }),
+  demoRow(113, "2026-11-04T09:01:00+02:00", "shiran", "module.settings", {
+    module: "scheduling",
+    from: { availabilityDueTime: "16:00" },
+    to: { availabilityDueTime: "17:00" },
+  }),
+  demoRow(112, "2026-11-03T18:10:00+02:00", "shiran", "schedule.publish", {
+    week: "week-8",
+    starts_on: "2026-11-08",
+    shifts: 14,
+    first: false,
+    swaps_removed: 1,
+  }),
+  demoRow(111, "2026-11-03T12:00:00+02:00", "shiran", "schedule.publish", {
+    week: "week-8",
+    starts_on: "2026-11-08",
+    shifts: 13,
+    first: true,
+    swaps_removed: 0,
+  }),
+  demoRow(110, "2026-11-03T11:20:00+02:00", "dana", "invite.claim", {
+    invite: "invite-dana",
+    role: "worker",
+  }),
+  demoRow(109, "2026-11-03T10:45:00+02:00", "shiran", "invite.create", {
+    invite: "invite-dana",
+    role: "worker",
+  }),
+  demoRow(108, "2026-11-03T10:40:00+02:00", "team", "view_as.end", {
+    session: "view-1",
+    role: "manager",
+  }),
+  demoRow(107, "2026-11-03T10:02:00+02:00", "team", "view_as.start", {
+    session: "view-1",
+    role: "manager",
+  }),
+  demoRow(106, "2026-11-03T09:15:00+02:00", "shiran", "module.settings", {
+    module: "time_clock",
+    from: { unpaidBreaks: false },
+    to: { unpaidBreaks: true },
+  }),
+  demoRow(105, "2026-11-01T10:00:00+02:00", "shiran", "business.details", {
+    from: { accent: "#7c3aed" },
+    to: { accent: "#2563eb" },
+  }),
+  demoRow(104, "2026-11-01T09:30:00+02:00", "team", "module.enabled", {
+    module: "time_clock",
+    enabled: true,
+  }),
+  demoRow(103, "2026-11-01T09:00:00+02:00", "team", "business.create", {
+    template: "restaurant",
+    slug: "demo-restaurant",
+    invites: 6,
+  }),
+];

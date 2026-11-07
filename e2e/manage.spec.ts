@@ -21,6 +21,7 @@ const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 
 const m = he.app.manage;
 const b = he.app.manage.business;
+const a = he.app.manage.activity;
 const s = he.modules.scheduling.settings;
 const clock = he.modules.time_clock.settings;
 const team = he.admin.settings;
@@ -78,7 +79,12 @@ test("a worker has no way in", async ({ page }) => {
     page.getByRole("heading", { level: 1, name: /, יואב$/ }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: m.row })).toHaveCount(0);
-  for (const path of ["/manage", "/manage/scheduling", "/manage/business"]) {
+  for (const path of [
+    "/manage",
+    "/manage/scheduling",
+    "/manage/business",
+    "/manage/activity",
+  ]) {
     await page.goto(path);
     await expect(
       page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
@@ -267,6 +273,39 @@ test("a manager changes the business's own details", async ({
   expect(await demoDetailsLogged()).toBe(logged + 3);
   await page.goto("/manage");
   await expect(row).not.toContainText(b.noCity);
+
+  // The log says who changed what: one change, from where it began.
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(a.title) })
+    .click();
+  await expect(page).toHaveURL(/\/manage\/activity$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: a.title }),
+  ).toBeVisible();
+  const main = page.getByRole("main");
+  await expect(
+    main.getByText("שירן הדגמה").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    main
+      .getByRole("link", { name: new RegExp(a.actions.business.details) })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  for (const words of [
+    `${b.name.label}: מסעדת מבחן`,
+    `${b.shabbatCity.label}: ${he.cities.jerusalem}`,
+  ]) {
+    await expect(
+      main.getByText(words).filter({ visible: true }).first(),
+    ).toBeVisible();
+  }
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("manage-activity.png"),
+    fullPage: true,
+  });
 });
 
 test("availability closes at the business's own city's candle lighting", async ({

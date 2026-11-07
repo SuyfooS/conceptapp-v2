@@ -146,4 +146,31 @@ test("viewing as a manager shows the team but saves nothing", async ({
     page.getByLabel(he.app.manage.business.name.label, { exact: true }),
   ).toBeDisabled();
   await expectCleanPage(page);
+
+  // And its activity log, where this view is the newest thing that happened.
+  const activity = he.app.manage.activity;
+  await page.goto("/manage/activity");
+  await expect(
+    page.getByRole("heading", { level: 1, name: activity.title }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("main")
+      .getByText(
+        activity.actions.view_as.start.replace(
+          "{role}",
+          he.app.team.roles.manager,
+        ),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("main")
+      .getByText(activity.who.team)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expectCleanPage(page);
 });

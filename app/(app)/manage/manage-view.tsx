@@ -4,7 +4,7 @@ import { Badge } from "@ui/badge";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { Building2, SlidersHorizontal, Users } from "lucide-react";
+import { Building2, History, SlidersHorizontal, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { moduleIcons } from "../module-icons";
 
@@ -72,6 +72,15 @@ export function ManageView({
           leading={<Users />}
           title={t("team.title")}
           subtitle={t("team.subtitle")}
+        />
+      </ListGroup>
+      {/* Looking back, apart from what's changed here. */}
+      <ListGroup className="md:max-w-2xl">
+        <ListRow
+          href={`${base}/manage/activity`}
+          leading={<History />}
+          title={t("activity.title")}
+          subtitle={t("activity.row")}
         />
       </ListGroup>
     </PageBody>
