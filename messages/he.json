@@ -181,7 +181,9 @@
     "codeSlots": "קוד מהודעה",
     "codeWrong": "קוד שגוי",
     "codeRight": "קוד נכון",
-    "codeAgain": "מההתחלה"
+    "codeAgain": "מההתחלה",
+    "countUp": "מספר שמשתנה",
+    "countUpAdd": "להוסיף"
   },
   "shell": {
     "metaTitle": "דמו פריסה",

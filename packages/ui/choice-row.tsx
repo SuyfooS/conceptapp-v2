@@ -1,4 +1,3 @@
-import { Check } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
 import { cn } from "./cn";
 
@@ -41,8 +40,9 @@ export type ChoiceRowProps = Omit<ComponentProps<"input">, "type" | "title"> & {
 };
 
 /**
- * A row with a real radio button, drawn as a check in a circle. The whole row
- * is the label, so anywhere on it selects it.
+ * A row with a real radio button, drawn as a check in a circle that fills and
+ * draws itself, after Spring Check from React Bits (see packages/ui/README.md).
+ * The whole row is the label, so anywhere on it selects it.
  */
 export function ChoiceRow({
   title,
@@ -83,11 +83,24 @@ export function ChoiceRow({
           )}
           {...input}
         />
-        <Check
+        <span
           aria-hidden="true"
-          strokeWidth={3}
-          className="pointer-events-none absolute size-4 scale-50 text-accent-ink opacity-0 transition-[opacity,scale] duration-300 ease-spring peer-checked:scale-100 peer-checked:opacity-100"
+          className="pointer-events-none absolute inset-0 scale-0 rounded-full bg-accent transition-[scale] duration-300 ease-spring peer-checked:scale-100"
         />
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 24 24"
+          className="pointer-events-none absolute size-4 fill-none stroke-[3.2] stroke-accent-ink peer-checked:[&_path]:[stroke-dashoffset:0]"
+        >
+          <path
+            d="M5 12.5 9.8 17.3 19 7.2"
+            pathLength={1}
+            strokeDasharray={1}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="transition-[stroke-dashoffset] delay-75 duration-200 ease-calm [stroke-dashoffset:1]"
+          />
+        </svg>
       </span>
     </label>
   );

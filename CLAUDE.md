@@ -5,20 +5,24 @@ Nightly runs and live sessions also follow @docs/AGENT.md.
 
 ## What this is
 
-The operations app for small Israeli restaurants and cafés: staff scheduling,
-time clock, table reservations and a public page. Set up for each business by
-the ConceptApp team from a template; run daily by managers and staff on their
-phones. Hebrew first, RTL.
+The operations app for small Israeli businesses of every kind: staff scheduling,
+time clock, lists and more. Set up for each business by the ConceptApp team from a
+global template, with as little work per business as possible; run daily by managers
+and staff on their phones. Hebrew first, RTL.
 
 Plan and decisions: App Design Document and Business Model (links in the
 ConceptApp project, `claude/v2-rebuild-plan.md`).
 
 ## Principles
 
-1. One wedge, finished. Restaurants and cafés. For the pilot, by Orel's decision of
-   6 November 2026: scheduling, time clock, lists, a management page, and roles
-   with different permissions. Reservations, storefront and notifications wait
-   until after it. Nothing from the deferred list gets built before its trigger.
+1. Every kind of business, through global templates (Orel, 7 November 2026). A
+   business type is a template: its words, roles, shifts and defaults come from there,
+   so nothing in the code assumes a restaurant, and the work per business stays minimal.
+   Restaurants and cafés are the first templates, not the limit. The pilot is finished
+   before it grows, by Orel's decision of 6 November 2026: scheduling, time clock, lists,
+   a management page, and roles with different permissions. Reservations, storefront and
+   notifications wait until after it. Nothing from the deferred list gets built before
+   its trigger.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.
@@ -139,6 +143,9 @@ A new or reworked screen should look like it belongs there: large rounded cards 
 soft shadows, large titles, one business colour, glass only on what floats, and depth
 through overlap. Bordered cards, stat tiles and rows of pills read as generic, so avoid
 them.
+
+For new ideas, Orel keeps React Bits: `docs/design/react-bits.md` says what fits which
+screen and how to rebuild it here, without its libraries.
 
 `.claude/skills/apple-design` (`dickwu/apple-design-skill` at `ff4ebdd`) is the
 reference for reviews and conventions. This file wins where they differ. Never ship SF

@@ -20,6 +20,7 @@ it knows is this repo and its GitHub issues.
   a revert, not a customer.
 - Everything goes through GitHub (`SuyfooS/conceptapp-v2`). Orel's computer may
   be off; never depend on it.
+- The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Never write anything that assumes a restaurant: words, roles, shifts and defaults come from a template or a setting. Restaurants and cafés are only the first templates.
 - The pilot needs scheduling, time clock, lists, a management page, and roles with
   different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
   old app, that is an assumption until Orel confirms it.

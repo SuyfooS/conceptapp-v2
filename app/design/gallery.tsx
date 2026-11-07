@@ -11,6 +11,7 @@ import { ChoiceMenu } from "@ui/choice-menu";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
+import { useCountUp } from "@ui/count-up";
 import { CoverageBar } from "@ui/coverage-bar";
 import { EmptyState } from "@ui/empty-state";
 import {
@@ -133,6 +134,8 @@ function GalleryBody({
   const [day, setDay] = useState("0");
   const [codeStatus, setCodeStatus] = useState<CodeSlotsStatus>("idle");
   const [codeRun, setCodeRun] = useState(0);
+  const [total, setTotal] = useState(120);
+  const shownTotal = useCountUp(total, "gallery");
   const [appearance, setAppearance] = useState<Appearance>("system");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [needed, setNeeded] = useState("3");
@@ -597,6 +600,20 @@ function GalleryBody({
                 {t("codeAgain")}
               </Button>
             </div>
+          </Card>
+        </Section>
+
+        <Section title={t("countUp")}>
+          <Card className="flex items-center justify-between gap-3">
+            <span dir="ltr" className="font-bold text-xl tabular-nums">
+              {shownTotal}
+            </span>
+            <Button
+              variant="secondary"
+              onClick={() => setTotal((value) => value + 86)}
+            >
+              {t("countUpAdd")}
+            </Button>
           </Card>
         </Section>
 
