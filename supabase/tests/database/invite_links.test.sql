@@ -96,7 +96,7 @@ select is(
     'id', '61000000-0000-4000-c000-000000000001',
     'phone', '+972500000652', 'role', 'manager', 'name', 'Shai',
     'business', jsonb_build_object('id', '61000000-0000-4000-b000-000000000001',
-      'name', 'Link Cafe', 'accent', '#2563EB'),
+      'name', 'Link Cafe', 'accent', '#2563eb'),
     'status', 'open'),
   'the new link reads as open, with its business'
 );

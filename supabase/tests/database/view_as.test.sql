@@ -2,7 +2,7 @@
 -- its roles while a session is open, writes nothing, and every start and
 -- end is in the audit log. Only the server may open or end a session.
 begin;
-select plan(32);
+select plan(34);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -157,8 +157,11 @@ select results_eq(
 );
 
 -- Writes stay closed while viewing, whatever the role.
-update public.businesses set name = 'Changed'
-  where id = '63000000-0000-4000-b000-000000000001';
+select throws_ok(
+  $$update public.businesses set name = 'Changed'
+    where id = '63000000-0000-4000-b000-000000000001'$$,
+  '42501', null, 'a viewer cannot write the business row'
+);
 reset role;
 select is(
   (select name from public.businesses where id = '63000000-0000-4000-b000-000000000001'),
@@ -192,8 +195,11 @@ select is(
   1,
   'an owner''s view reads the business''s invites'
 );
-update public.businesses set name = 'Changed'
-  where id = '63000000-0000-4000-b000-000000000001';
+select throws_ok(
+  $$update public.businesses set name = 'Changed'
+    where id = '63000000-0000-4000-b000-000000000001'$$,
+  '42501', null, 'an owner''s view cannot write the business row'
+);
 select is_empty(
   $$select 1 from public.businesses where name = 'Changed'$$,
   'an owner''s view cannot rename the business either'

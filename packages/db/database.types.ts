@@ -177,6 +177,7 @@ export type Database = {
           longitude: number | null;
           name: string;
           opening_hours: NonNullable<Json>;
+          shabbat_city: string | null;
           slug: string;
           template_key: string | null;
           template_version: number | null;
@@ -192,6 +193,7 @@ export type Database = {
           longitude?: number | null;
           name: string;
           opening_hours?: NonNullable<Json>;
+          shabbat_city?: string | null;
           slug: string;
           template_key?: string | null;
           template_version?: number | null;
@@ -207,6 +209,7 @@ export type Database = {
           longitude?: number | null;
           name?: string;
           opening_hours?: NonNullable<Json>;
+          shabbat_city?: string | null;
           slug?: string;
           template_key?: string | null;
           template_version?: number | null;
@@ -952,6 +955,10 @@ export type Database = {
       save_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
+      };
+      set_business_details: {
+        Args: { actor: string; business: string; patch: Json };
+        Returns: undefined;
       };
       set_module_enabled: {
         Args: {

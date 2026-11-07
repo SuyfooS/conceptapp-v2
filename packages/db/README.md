@@ -24,8 +24,10 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only) |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
-audit log) go through server code with `SUPABASE_SECRET_KEY`. From the
-browser: owners rename their business, everyone edits their own name and
+audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
+business's own details: `public.set_business_details(actor, business, patch)`
+saves its name, colour, address and Shabbat city for an owner, a manager or the
+team, and logs what changed. From the browser: everyone edits their own name and
 language, and reads follow the policies.
 
 The tests that must always pass: a member of business A cannot read
