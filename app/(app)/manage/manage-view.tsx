@@ -1,27 +1,32 @@
 import type { ModuleKey } from "@domain/modules";
 import { manifestFor } from "@modules/registry";
+import { Badge } from "@ui/badge";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { SlidersHorizontal, Users } from "lucide-react";
+import { Building2, SlidersHorizontal, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { moduleIcons } from "../module-icons";
 
 /**
- * The way into everything a business can change by itself. Each module that is
- * on brings its row, so a new module needs nothing here. `base` keeps the links
- * inside the demo, which also renders this on /design/shell/manage.
+ * The way into everything a business can change by itself: its own details,
+ * then each module that is on, which brings its row, so a new module needs
+ * nothing here. `base` keeps the links inside the demo, which also renders
+ * this on /design/shell/manage.
  */
 export function ManageView({
   modules,
   base = "",
   home,
   team,
+  needsCity,
 }: {
   modules: ModuleKey[];
   base?: string;
   home: string;
   team: string;
+  /** The business closes on Shabbat and hasn't said which city's times. */
+  needsCity: boolean;
 }) {
   const t = useTranslations("app.manage");
   const tm = useTranslations("modules");
@@ -33,6 +38,17 @@ export function ManageView({
         subtitle={t("subtitle")}
       />
       <ListGroup className="md:max-w-2xl">
+        <ListRow
+          href={`${base}/manage/business`}
+          leading={<Building2 />}
+          title={t("business.title")}
+          subtitle={t(needsCity ? "business.rowNoCity" : "business.row")}
+          trailing={
+            needsCity ? (
+              <Badge tone="warning">{t("business.noCity")}</Badge>
+            ) : undefined
+          }
+        />
         {modules.map((key) => {
           const nav = manifestFor(key).nav;
           return (

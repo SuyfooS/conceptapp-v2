@@ -9,9 +9,11 @@ import { createAdminClient } from "./supabase/admin";
  * (`checkSettingsChange`) and that the actor is the signed-in person.
  */
 
-type Written = { ok: true } | { ok: false; code: string | undefined };
+export type Written = { ok: true } | { ok: false; code: string | undefined };
 
-function written(error: { code?: string; message: string } | null): Written {
+export function written(
+  error: { code?: string; message: string } | null,
+): Written {
   if (!error) return { ok: true };
   if (error.code !== "42501") {
     console.error("saving settings failed", error.message);

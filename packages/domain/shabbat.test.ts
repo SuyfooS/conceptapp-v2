@@ -6,16 +6,33 @@ import {
 } from "@hebcal/core";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  DEFAULT_SHABBAT_CITY,
   ISRAEL_TIME_ZONE,
   ISRAELI_CITIES,
   isDuringShabbat,
+  SHABBAT_CITIES,
+  type ShabbatCity,
+  shabbatCityOf,
   shabbatFriday,
   shabbatPlace,
+  shabbatPlaceOf,
   timeIn,
 } from "./shabbat";
 import { shabbatTimes } from "./shabbat-times";
 
-type City = keyof typeof ISRAELI_CITIES;
+type City = ShabbatCity;
+
+// hebcal's names for our cities, to check them against its own list.
+const HEBCAL_NAMES: Record<City, string> = {
+  jerusalem: "Jerusalem",
+  telAviv: "Tel Aviv",
+  haifa: "Haifa",
+  beerSheva: "Beer Sheva",
+  ashdod: "Ashdod",
+  petahTikva: "Petach Tikvah",
+  tiberias: "Tiberias",
+  eilat: "Eilat",
+};
 
 function local(city: City, date: string) {
   const times = shabbatTimes(ISRAELI_CITIES[city], date);
@@ -100,12 +117,8 @@ describe("Shabbat times", () => {
   });
 
   it("agrees with hebcal's own Israeli calendar through a whole year", () => {
-    const names: Record<City, string> = {
-      jerusalem: "Jerusalem",
-      telAviv: "Tel Aviv",
-      haifa: "Haifa",
-    };
-    for (const city of Object.keys(names) as City[]) {
+    const names = HEBCAL_NAMES;
+    for (const city of SHABBAT_CITIES) {
       const events = HebrewCalendar.calendar({
         start: new Date(2026, 9, 25),
         end: new Date(2027, 9, 24),
@@ -173,6 +186,62 @@ describe("during Shabbat", () => {
       (60 * minute);
     expect(hours).toBeGreaterThan(24);
     expect(hours).toBeLessThan(26);
+  });
+});
+
+describe("the cities", () => {
+  it("are hebcal's Israeli cities, where hebcal puts them", () => {
+    expect([...SHABBAT_CITIES].sort()).toEqual(
+      Object.keys(ISRAELI_CITIES).sort(),
+    );
+    for (const city of SHABBAT_CITIES) {
+      const location = Location.lookup(HEBCAL_NAMES[city]);
+      expect(location?.getIsrael(), city).toBe(true);
+      expect(ISRAELI_CITIES[city].latitude, city).toBe(location?.getLatitude());
+      expect(ISRAELI_CITIES[city].longitude, city).toBe(
+        location?.getLongitude(),
+      );
+    }
+  });
+
+  it("keep their keys in the form the database checks", () => {
+    for (const city of SHABBAT_CITIES) {
+      expect(city).toMatch(/^[a-z][A-Za-z]{1,39}$/);
+    }
+  });
+
+  it("are read from what's stored, and nothing else", () => {
+    expect(shabbatCityOf("jerusalem")).toBe("jerusalem");
+    for (const value of [
+      null,
+      undefined,
+      "",
+      "Jerusalem",
+      "toString",
+      "constructor",
+      5,
+    ]) {
+      expect(shabbatCityOf(value)).toBeNull();
+    }
+  });
+
+  it("give a business its city's place and custom", () => {
+    expect(
+      shabbatPlaceOf({ shabbatCity: "jerusalem", timeZone: ISRAEL_TIME_ZONE }),
+    ).toEqual({ ...ISRAELI_CITIES.jerusalem, timeZone: ISRAEL_TIME_ZONE });
+    // Jerusalem lights candles 40 minutes before sunset.
+    expect(local("jerusalem", "2026-12-18").candleLighting).toBe("15:58");
+  });
+
+  it("read as Tel Aviv until one is chosen, or for one no longer listed", () => {
+    for (const shabbatCity of [null, "atlantis"]) {
+      expect(
+        shabbatPlaceOf({ shabbatCity, timeZone: ISRAEL_TIME_ZONE }),
+      ).toEqual({
+        ...ISRAELI_CITIES[DEFAULT_SHABBAT_CITY],
+        timeZone: ISRAEL_TIME_ZONE,
+      });
+    }
   });
 });
 

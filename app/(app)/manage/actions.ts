@@ -1,6 +1,8 @@
 "use server";
 
-import { setModuleSettings } from "@db/module-settings";
+import { setBusinessDetails } from "@db/business-details";
+import { setModuleSettings, type Written } from "@db/module-settings";
+import { checkBusinessDetailsChange } from "@domain/business-details";
 import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
 import { checkSettingsChange } from "@domain/settings-form";
 import { manifestFor } from "@modules/registry";
@@ -37,10 +39,40 @@ export async function saveModuleSettingsAction(
     checked.patch,
   );
   refresh();
-  return result.ok
-    ? { ok: true }
-    : {
-        ok: false,
-        failure: result.code === "42501" ? "noAccess" : "failed",
-      };
+  return settingsResult(result);
+}
+
+/**
+ * An owner or manager saves some of the business's own details: its name,
+ * colour, address or Shabbat city. Checked the same way, and refreshed, since
+ * the name and colour frame every screen.
+ */
+export async function saveBusinessDetailsAction(
+  change: unknown,
+): Promise<SettingsResult> {
+  const access = await manageAccess();
+  if (!access) return { ok: false, failure: "noAccess" };
+  if (access.viewOnly) return { ok: false, failure: "viewOnly" };
+
+  const checked = checkBusinessDetailsChange(change);
+  if (!checked.ok) return { ok: false, failure: checked.problem };
+
+  const result = await setBusinessDetails(
+    access.userId,
+    access.businessId,
+    checked.patch,
+  );
+  refresh();
+  return settingsResult(result);
+}
+
+/** What the screen hears back: who may not, what doesn't fit, or try again. */
+function settingsResult(result: Written): SettingsResult {
+  if (result.ok) return { ok: true };
+  if (result.code === "42501") return { ok: false, failure: "noAccess" };
+  // The database's own checks: the wrong shape, or a value it won't store.
+  if (result.code === "22023" || result.code === "23514") {
+    return { ok: false, failure: "invalid" };
+  }
+  return { ok: false, failure: "failed" };
 }

@@ -22,6 +22,7 @@ import type {
   SettingsResult,
 } from "./settings-types";
 import { ShiftsEditor } from "./shifts-editor";
+import { TYPING_MS, useDraft } from "./use-draft";
 
 /**
  * A module's settings, drawn from what its manifest declares: a new setting
@@ -308,50 +309,6 @@ function MenuOrValue({
   }
   return <ChoiceMenu {...menu} />;
 }
-
-/**
- * A value that's typed, so it can be half written for a moment: what's on
- * screen until it's whole, saved shortly after the typing stops or on leaving.
- * Comes back to what's stored when a save fails.
- */
-function useDraft(
-  stored: string,
-  isWhole: (draft: string) => boolean,
-  save: (draft: string) => void,
-  delay: number | null,
-) {
-  const [draft, setDraft] = useState(stored);
-  const [seen, setSeen] = useState(stored);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  if (seen !== stored) {
-    setSeen(stored);
-    setDraft(stored);
-  }
-
-  function settle() {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-  }
-
-  return {
-    draft,
-    whole: isWhole(draft),
-    edit(next: string) {
-      setDraft(next);
-      settle();
-      if (delay !== null && isWhole(next) && next !== stored) {
-        timer.current = setTimeout(() => save(next), delay);
-      }
-    },
-    leave() {
-      settle();
-      if (!isWhole(draft)) setDraft(stored);
-      else if (draft !== stored) save(draft);
-    },
-  };
-}
-
-const TYPING_MS = 500;
 
 function NumberField({
   id,

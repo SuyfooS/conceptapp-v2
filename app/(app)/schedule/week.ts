@@ -30,7 +30,7 @@ import {
   type ScheduledShift,
   withKnownPositions,
 } from "@domain/schedule";
-import { ISRAELI_CITIES } from "@domain/shabbat";
+import { shabbatPlaceOf } from "@domain/shabbat";
 import { shabbatTimes } from "@domain/shabbat-times";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { ShiftSwap } from "@domain/swaps";
@@ -56,21 +56,16 @@ export type AvailabilityWeek = {
 };
 
 /**
- * Where Shabbat cuts the week starting on `start`, at the business's
- * place. A business without coordinates yet gets Tel Aviv's times.
+ * Where Shabbat cuts the week starting on `start`, by the city the business
+ * chose, with its custom. Until it chooses one, Tel Aviv's times.
  */
 function shabbatOf(
   place: MemberBusiness["place"],
   start: string,
 ): ShabbatLimits {
-  const { timeZone } = place;
-  const coordinates =
-    place.latitude !== null && place.longitude !== null
-      ? { latitude: place.latitude, longitude: place.longitude }
-      : ISRAELI_CITIES.telAviv;
   return shabbatLimits(
-    shabbatTimes({ ...coordinates, timeZone }, fridayOf(start)),
-    timeZone,
+    shabbatTimes(shabbatPlaceOf(place), fridayOf(start)),
+    place.timeZone,
   );
 }
 

@@ -275,6 +275,56 @@ export async function setDemoModuleSettings(
   }
 }
 
+export type DemoDetails = {
+  name: string;
+  accent: string;
+  address: string | null;
+  shabbatCity: string | null;
+};
+
+/** The demo restaurant's own details, to check a save and put them back. */
+export async function demoBusinessDetails(): Promise<DemoDetails> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const rows = await sql<DemoDetails[]>`
+      select name, accent, address, shabbat_city as "shabbatCity"
+      from public.businesses where id = ${DEMO_RESTAURANT}`;
+    const row = rows[0];
+    if (!row) throw new Error("The demo restaurant is missing");
+    return row;
+  } finally {
+    await sql.end();
+  }
+}
+
+export async function setDemoBusinessDetails(
+  details: DemoDetails,
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    await sql`
+      update public.businesses
+      set name = ${details.name}, accent = ${details.accent},
+        address = ${details.address}, shabbat_city = ${details.shabbatCity}
+      where id = ${DEMO_RESTAURANT}`;
+  } finally {
+    await sql.end();
+  }
+}
+
+/** How many saves of the demo restaurant's details its log holds. */
+export async function demoDetailsLogged(): Promise<number> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const rows = await sql<{ count: number }[]>`
+      select count(*)::int as count from public.audit_log
+      where business_id = ${DEMO_RESTAURANT} and action = 'business.details'`;
+    return rows[0]?.count ?? 0;
+  } finally {
+    await sql.end();
+  }
+}
+
 export type SavedAvailability = {
   weekday: number;
   start: string;

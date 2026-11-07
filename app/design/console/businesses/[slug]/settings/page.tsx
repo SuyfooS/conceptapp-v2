@@ -1,7 +1,10 @@
+import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { notFound } from "next/navigation";
 import { BusinessSettingsView } from "../../../../../(admin)/admin/businesses/[slug]/settings/business-settings-view";
 import { teamModuleSettings } from "../../../../../(admin)/admin/businesses/[slug]/settings/module-settings";
-import { demoModuleRows } from "../../../../shell/data";
+import { shabbatByCity } from "../../../../../(app)/manage/shabbat-by-city";
+import { demoModuleRows, demoToday } from "../../../../shell/data";
+import { demoSaveBusinessDetails } from "../../../../shell/manage/actions";
 import {
   demoSaveBusinessSettings,
   demoSetBusinessModule,
@@ -25,6 +28,14 @@ export default async function ConsoleSettingsDemo({
     <BusinessSettingsView
       name={setup.business.name}
       backHref={`/design/console/businesses/${slug}`}
+      details={{
+        name: setup.business.name,
+        accent: setup.business.accent,
+        address: setup.business.address,
+        shabbatCity: null,
+      }}
+      saveDetails={demoSaveBusinessDetails}
+      cities={shabbatByCity(demoToday, ISRAEL_TIME_ZONE)}
       modules={teamModuleSettings(demoModuleRows)}
       save={demoSaveBusinessSettings}
       setEnabled={demoSetBusinessModule}

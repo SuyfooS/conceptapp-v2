@@ -1,6 +1,6 @@
-import { modulesToManage } from "../../../(app)/manage/manage";
+import { closesOnShabbat, modulesToManage } from "../../../(app)/manage/manage";
 import { ManageView } from "../../../(app)/manage/manage-view";
-import { demoModuleRows } from "../data";
+import { demoBusinessDetails, demoModuleRows } from "../data";
 
 // The real management page, with the demo's modules.
 export default function ShellManage() {
@@ -10,6 +10,10 @@ export default function ShellManage() {
       base="/design/shell"
       home="/design/shell"
       team="/design/shell/team"
+      needsCity={
+        closesOnShabbat(demoModuleRows) &&
+        demoBusinessDetails.shabbatCity === null
+      }
     />
   );
 }

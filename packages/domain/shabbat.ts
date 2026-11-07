@@ -35,7 +35,13 @@ export const shabbatPlace = z.object({
 
 export type ShabbatPlace = z.input<typeof shabbatPlace>;
 
-/** Cities whose candle-lighting custom differs from the default, and the tests' reference points. */
+/**
+ * The cities a business's Shabbat times can follow: hebcal's own Israeli
+ * cities, with its coordinates (a test holds them to the library) and its
+ * customs. A business elsewhere picks the nearest. A key is stored in
+ * `businesses.shabbat_city`, so keys never change; names are in the messages
+ * under `cities`.
+ */
 export const ISRAELI_CITIES = {
   jerusalem: {
     latitude: 31.76904,
@@ -44,7 +50,49 @@ export const ISRAELI_CITIES = {
   },
   telAviv: { latitude: 32.08088, longitude: 34.78057 },
   haifa: { latitude: 32.81841, longitude: 34.9885, candleLightingMinutes: 30 },
+  beerSheva: { latitude: 31.25181, longitude: 34.7913 },
+  ashdod: { latitude: 31.79213, longitude: 34.64966 },
+  petahTikva: { latitude: 32.08707, longitude: 34.88747 },
+  tiberias: { latitude: 32.79221, longitude: 35.53124 },
+  eilat: { latitude: 29.55805, longitude: 34.94821 },
 } as const satisfies Record<string, ShabbatPlace>;
+
+export type ShabbatCity = keyof typeof ISRAELI_CITIES;
+
+/** In the order a menu shows them: the largest first, roughly north to south after. */
+export const SHABBAT_CITIES = [
+  "jerusalem",
+  "telAviv",
+  "haifa",
+  "petahTikva",
+  "tiberias",
+  "ashdod",
+  "beerSheva",
+  "eilat",
+] as const satisfies readonly ShabbatCity[];
+
+/** Until a business picks a city, its times are Tel Aviv's. */
+export const DEFAULT_SHABBAT_CITY: ShabbatCity = "telAviv";
+
+/** The city a stored value names, or null for one no list has. */
+export function shabbatCityOf(value: unknown): ShabbatCity | null {
+  return typeof value === "string" && Object.hasOwn(ISRAELI_CITIES, value)
+    ? (value as ShabbatCity)
+    : null;
+}
+
+/** Where a business is, as far as its Shabbat times and its calendar go. */
+export type BusinessPlace = {
+  /** The stored key; null (or one no longer listed) reads as Tel Aviv. */
+  shabbatCity: string | null;
+  timeZone: string;
+};
+
+/** The place a business's Shabbat times are worked out for. */
+export function shabbatPlaceOf(place: BusinessPlace): ShabbatPlace {
+  const city = shabbatCityOf(place.shabbatCity) ?? DEFAULT_SHABBAT_CITY;
+  return { ...ISRAELI_CITIES[city], timeZone: place.timeZone };
+}
 
 export type ShabbatTimes = {
   /** The Friday, "YYYY-MM-DD". */

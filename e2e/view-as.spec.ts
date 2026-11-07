@@ -138,4 +138,12 @@ test("viewing as a manager shows the team but saves nothing", async ({
     }),
   ).toBeDisabled();
   await expectCleanPage(page);
+
+  // So can its own details.
+  await page.goto("/manage/business");
+  await expect(page.getByText(he.app.manage.viewOnly)).toBeVisible();
+  await expect(
+    page.getByLabel(he.app.manage.business.name.label, { exact: true }),
+  ).toBeDisabled();
+  await expectCleanPage(page);
 });
