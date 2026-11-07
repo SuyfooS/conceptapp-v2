@@ -20,13 +20,16 @@ it knows is this repo and its GitHub issues.
   a revert, not a customer.
 - Everything goes through GitHub (`SuyfooS/conceptapp-v2`). Orel's computer may
   be off; never depend on it.
-- The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Don't write anything new that assumes a restaurant: roles, shifts, departments and defaults are data from a template or a setting. Restaurants and cafés are only the first templates.
+- The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Don't write anything new that assumes a restaurant: roles, shifts, departments and defaults are data from a template or a setting. The templates are a shop (`retail`), a restaurant, a café and bar, and `general` for any other kind, which fills in its own positions and shifts. A template switches on only what is built, and no more modules with a tab than the tab bar holds (`fitsTabBar`).
 - Everything is dynamic (Orel, 7 November 2026): what differs between businesses can be changed without touching code, and every new setting can be edited from a screen. A little new code for one business is fine, as a module in the same system switched on for it. Owners, managers and the ConceptApp team can all edit a business's settings, and the team also has advanced ones. Nothing gets rebuilt. The order of this work is in `docs/ROADMAP.md`, and its first steps wait for a day session with Orel: a nightly run does not start them on a guess.
 - The pilot needs scheduling, time clock, lists, a management page, and roles with
   different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
   old app, that is an assumption until Orel confirms it.
 - No business has agreed to the pilot yet (Orel, 6 November). Work continues without
-  it, and the demo shifts stay the `restaurant` template's defaults.
+  it. There are two demo businesses, a restaurant and a shop, each starting from its
+  template's defaults. The shop's week is always published; the restaurant's is the
+  visitor's to build. How each starts is in `private.demo_businesses`, and the door's
+  reset puts both back (`public.reset_demo_business`).
 - Real sign-in and its security wait (Orel, 6 November). Until then, the passive door
   at `/enter`, reaching only the demo people. Migrations reach the hosted project only
   through the manual workflow (`supabase/README.md`).
@@ -200,7 +203,7 @@ The full picture and the reasoning are in `docs/ROADMAP.md`. Skip ahead only whe
 
 The design rework is under way in day sessions with Orel, toward `docs/design/target-prototype.html`. A nightly run does not change tokens, `packages/ui` or the look of a screen unless Orel left that work. Items marked "database first" stop before their screens, so nothing is built twice.
 
-- **Global templates and exact fit, with Orel by day:** steps 2 and 3 in the roadmap. These come first, so everything after is built on them. Step 1, the settings engine, is done.
+- **Exact fit, with Orel by day:** step 3 in the roadmap (wording per business and template, editing templates from the console). It comes first, so everything after is built on it. Steps 1 and 2, the settings engine and global templates, are done.
 - **Holes in what exists.** Each smallest first:
   - Editing the week that has already started, and not losing an unpublished draft when the week changes.
   - A business stuck with expired invites and no owner: the console can add a person and revive an invite.
