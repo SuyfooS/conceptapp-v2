@@ -269,10 +269,12 @@ function NextShift({
   const { published, availability } = schedule;
   const shifts = allShifts(published);
   const manager = canSeeTeam(role);
-  const own = nextShift(shifts, clock, published.userId);
+  // Last night's shift can still be on in the first hours of the week.
+  const ahead = [...published.overnight, ...shifts];
+  const own = nextShift(ahead, clock, published.userId);
   // Someone who runs the place and is on no shift still has a next shift to
   // look out for: the business's.
-  const shift = own ?? (manager ? nextShift(shifts, clock) : null);
+  const shift = own ?? (manager ? nextShift(ahead, clock) : null);
   const request = manager
     ? approvalsFor(published.swaps, shifts, clock.date)[0]
     : null;

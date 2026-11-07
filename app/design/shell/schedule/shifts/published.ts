@@ -152,6 +152,7 @@ export function demoPublished(
       shifts: [],
       shabbat: limitsOf(NEXT_WEEK),
     },
+    overnight: [],
     people: teamMembers.map(({ userId, name }) => ({ userId, name })),
     positions: demoPositions,
     swaps,
