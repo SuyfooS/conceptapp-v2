@@ -1290,7 +1290,11 @@
             "shifts": "{count, plural, =0 {No shifts} one {One shift} other {# shifts}}",
             "swapsRemoved": "{count, plural, one {One swap request was removed} other {# swap requests were removed}}"
           },
-          "other": "Something else in the app"
+          "other": "Something else in the app",
+          "wording": {
+            "change": "Changed a sentence in the app: “{to}”",
+            "clear": "Brought back the app's sentence instead of “{from}”"
+          }
         }
       }
     }

@@ -129,6 +129,30 @@ describe("buildActivity: each action", () => {
     });
   });
 
+  it("reads a sentence replaced for the business, and one brought back", () => {
+    expect(
+      lineOf(
+        row("wording.change", {
+          key: "app.team.title",
+          from: null,
+          to: "הצוות של החנות",
+        }),
+      ),
+    ).toEqual({ action: "wording.change", from: null, to: "הצוות של החנות" });
+    expect(
+      lineOf(
+        row("wording.change", {
+          key: "app.team.title",
+          from: "הצוות של החנות",
+          to: null,
+        }),
+      ),
+    ).toEqual({ action: "wording.change", from: "הצוות של החנות", to: null });
+    expect(lineOf(row("wording.change", { from: "x" }))).toEqual({
+      action: "other",
+    });
+  });
+
   it("reads hours added and corrected, with whose they are", () => {
     expect(
       lineOf(

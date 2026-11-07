@@ -1,0 +1,176 @@
+import { describe, expect, it } from "vitest";
+import {
+  baseSentence,
+  checkSentence,
+  editableKeys,
+  fittingWording,
+  isEditableKey,
+  layerWording,
+  type MessageTree,
+  mergeWording,
+  placeholdersOf,
+  sentenceFits,
+  WORDING_MAX,
+} from "./wording";
+
+// A small stand-in for messages/he.json.
+const tree: MessageTree = {
+  admin: { nav: { businesses: "עסקים" } },
+  app: {
+    loading: "טוען",
+    notFound: { title: "לא נמצא" },
+    nav: { home: "היום" },
+    team: {
+      title: "הצוות",
+      metaTitle: "צוות",
+      count: "{count, plural, one {אדם אחד} other {# אנשים}}",
+      hint: "<ltr>{phone}</ltr> לא בצוות",
+    },
+  },
+  modules: { scheduling: { name: "סידור" } },
+};
+
+describe("which sentences may be replaced", () => {
+  it("offers the app's and the modules' copy", () => {
+    expect(editableKeys(tree)).toEqual([
+      "app.nav.home",
+      "app.team.title",
+      "app.team.count",
+      "app.team.hint",
+      "modules.scheduling.name",
+    ]);
+  });
+
+  it("never what shows before or outside a business, or page titles", () => {
+    for (const key of [
+      "app.loading",
+      "app.notFound.title",
+      "app.noBusiness.title",
+      "app.team.metaTitle",
+      "admin.nav.businesses",
+      "auth.enter.title",
+      "app",
+      "app..nav",
+    ]) {
+      expect(isEditableKey(key), key).toBe(false);
+    }
+  });
+
+  it("finds the app's sentence at a key", () => {
+    expect(baseSentence(tree, "app.team.title")).toBe("הצוות");
+    expect(baseSentence(tree, "app.team")).toBeNull();
+    expect(baseSentence(tree, "app.team.title.more")).toBeNull();
+    expect(baseSentence(tree, "app.nothing")).toBeNull();
+  });
+});
+
+describe("placeholders", () => {
+  it("lists each argument with its kind, and every tag", () => {
+    expect(
+      placeholdersOf("{count, plural, one {אדם אחד} other {# אנשים}}"),
+    ).toEqual({ args: ["{count,plural}"], tags: [] });
+    expect(placeholdersOf("<ltr>{phone}</ltr> ו-<ltr>{other}</ltr>")).toEqual({
+      args: ["{other}", "{phone}"],
+      tags: ["</ltr>", "</ltr>", "<ltr>", "<ltr>"],
+    });
+  });
+
+  it("lets a replacement move and repeat arguments, but not lose one", () => {
+    expect(sentenceFits("{name} ב{day}", "ב{day}: {name}, {name}")).toBe(true);
+    expect(sentenceFits("{name} ב{day}", "{name}")).toBe(false);
+    expect(sentenceFits("{name}", "{name} {extra}")).toBe(false);
+  });
+
+  it("refuses a plural made plain, or a dropped closing tag", () => {
+    expect(
+      sentenceFits("{count, plural, one {אחד} other {#}}", "{count} אנשים"),
+    ).toBe(false);
+    expect(sentenceFits("<ltr>{phone}</ltr>", "<ltr>{phone}")).toBe(false);
+  });
+});
+
+describe("layers", () => {
+  it("puts a business's sentence over its template's", () => {
+    expect(
+      layerWording(
+        { "app.nav.home": "תבנית", "app.team.title": "תבנית" },
+        { "app.nav.home": "עסק" },
+      ),
+    ).toEqual({ "app.nav.home": "עסק", "app.team.title": "תבנית" });
+  });
+
+  it("keeps only what can show", () => {
+    expect(
+      fittingWording(tree, {
+        "app.nav.home": "הבית",
+        "app.team.hint": "{phone} לא בצוות",
+        "app.team.gone": "משפט שכבר אין",
+        "app.loading": "רגע",
+        "admin.nav.businesses": "חנויות",
+      }),
+    ).toEqual({ "app.nav.home": "הבית" });
+  });
+});
+
+describe("mergeWording", () => {
+  it("replaces sentences in a new tree and leaves the app's alone", () => {
+    const merged = mergeWording(tree, {
+      "app.nav.home": "הבית",
+      "app.team.title": "החנות",
+    });
+    expect(baseSentence(merged, "app.nav.home")).toBe("הבית");
+    expect(baseSentence(merged, "app.team.title")).toBe("החנות");
+    expect(baseSentence(merged, "app.team.count")).toBe(
+      "{count, plural, one {אדם אחד} other {# אנשים}}",
+    );
+    expect(baseSentence(tree, "app.nav.home")).toBe("היום");
+    expect(baseSentence(tree, "app.team.title")).toBe("הצוות");
+    // Untouched branches are shared, not copied.
+    expect(merged.modules).toBe(tree.modules);
+  });
+
+  it("returns the tree itself when nothing is replaced", () => {
+    expect(mergeWording(tree, {})).toBe(tree);
+  });
+
+  it("adds nothing at a key the app doesn't have", () => {
+    const merged = mergeWording(tree, {
+      "app.team.gone": "x",
+      "app.nav.home.deeper": "y",
+    });
+    expect(baseSentence(merged, "app.team.gone")).toBeNull();
+    expect(baseSentence(merged, "app.nav.home")).toBe("היום");
+  });
+});
+
+describe("checkSentence", () => {
+  it("tidies a sentence that fits", () => {
+    expect(checkSentence(tree, "app.team.title", "  הצוות של החנות ")).toEqual({
+      ok: true,
+      sentence: "הצוות של החנות",
+      base: "הצוות",
+    });
+  });
+
+  it("says what is wrong", () => {
+    expect(checkSentence(tree, "app.loading", "רגע")).toEqual({
+      ok: false,
+      problem: "notEditable",
+    });
+    expect(checkSentence(tree, "app.team.title", "   ")).toEqual({
+      ok: false,
+      problem: "empty",
+    });
+    expect(checkSentence(tree, "app.team.title", 7)).toEqual({
+      ok: false,
+      problem: "empty",
+    });
+    expect(
+      checkSentence(tree, "app.team.title", "א".repeat(WORDING_MAX + 1)),
+    ).toEqual({ ok: false, problem: "tooLong" });
+    expect(checkSentence(tree, "app.team.hint", "{phone} לא כאן")).toEqual({
+      ok: false,
+      problem: "placeholders",
+    });
+  });
+});

@@ -297,6 +297,12 @@ export function ActivityView({
             ? `${paths.manage}/${line.module}`
             : undefined,
         };
+      case "wording.change":
+        return plain(
+          line.to === null
+            ? t("actions.wording.clear", { from: line.from ?? "" })
+            : t("actions.wording.change", { to: line.to }),
+        );
       case "module.enabled":
         return plain(
           t("actions.module.enabled", {
