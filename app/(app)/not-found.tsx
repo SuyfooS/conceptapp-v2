@@ -5,12 +5,13 @@ import { PageBody } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Compass } from "lucide-react";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { baseWording, translator } from "./wording";
 
 // Inside the app: a screen that does not exist, or a module that is off for
 // the business or above the person's role. The shell stays around it.
 export default async function AppNotFound() {
-  const t = await getTranslations("app.notFound");
+  // Drawn before the business is known: the app's own words.
+  const t = translator(baseWording, "app.notFound");
   return (
     <PageBody className={cn("min-h-[70dvh] justify-center", pageGlowClass)}>
       <EmptyState icon={<Compass />} title={t("title")} body={t("body")}>

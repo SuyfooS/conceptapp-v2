@@ -9,15 +9,17 @@ import { AppShellSkeleton } from "@ui/skeleton";
 import { House } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getTranslations } from "next-intl/server";
 import { type ReactNode, Suspense } from "react";
 import { currentPlatformRole } from "../(admin)/staff";
 import { signOut } from "../(auth)/actions";
+import { currentWording } from "./current-wording";
 import { currentMember } from "./member";
 import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
 import { NoBusinessScreen } from "./no-business";
 import { ViewAsBanner } from "./view-as-banner";
+import { baseWording, translator } from "./wording";
+import { WordingProvider } from "./wording-provider";
 
 export const metadata: Metadata = {
   robots: { index: false, follow: false },
@@ -33,15 +35,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   );
 }
 
-async function Loading() {
-  const t = await getTranslations("app");
+// Before anyone is read: the app's own words.
+function Loading() {
+  const t = translator(baseWording, "app");
   return <AppShellSkeleton label={t("loading")} />;
 }
 
 async function Shell({ children }: { children: ReactNode }) {
   const member = await currentMember();
   if (!member) redirect(signInPath);
-  const t = await getTranslations("app");
 
   if (!member.membership) {
     // The ConceptApp team works in the console, not inside a business.
@@ -50,8 +52,13 @@ async function Shell({ children }: { children: ReactNode }) {
   }
 
   const { business, role } = member.membership;
-  const enabled = await currentModules();
-  const tm = await getTranslations("modules");
+  const [enabled, wording] = await Promise.all([
+    currentModules(),
+    currentWording(),
+  ]);
+  // The business's words: its tab names and role names may be its own.
+  const t = translator(wording, "app");
+  const tm = translator(wording, "modules");
   // Home, then one item per enabled module the role reaches.
   const nav: NavItem[] = [
     { href: "/home", label: t("nav.home"), icon: <House />, exact: true },
@@ -66,16 +73,22 @@ async function Shell({ children }: { children: ReactNode }) {
 
   return (
     <div {...accentProps(accentTokens(business.accent))}>
-      <AppShell
-        businessName={business.name}
-        user={{ name, role: t(`roles.${role}`) }}
-        nav={nav}
-      >
-        {member.viewing ? (
-          <ViewAsBanner viewing={member.viewing} businessName={business.name} />
-        ) : null}
-        {children}
-      </AppShell>
+      <WordingProvider overrides={wording.overrides}>
+        <AppShell
+          businessName={business.name}
+          user={{ name, role: t(`roles.${role}`) }}
+          nav={nav}
+        >
+          {member.viewing ? (
+            <ViewAsBanner
+              viewing={member.viewing}
+              businessName={business.name}
+              wording={wording}
+            />
+          ) : null}
+          {children}
+        </AppShell>
+      </WordingProvider>
     </div>
   );
 }

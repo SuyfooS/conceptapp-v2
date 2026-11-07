@@ -694,3 +694,29 @@ export async function allowDemoReset(): Promise<void> {
     await sql.end();
   }
 }
+
+/**
+ * One of the demo restaurant's own sentences (`business_wording`), written
+ * straight to the local database as the console will. Null clears it.
+ */
+export async function setDemoWording(
+  key: string,
+  sentence: string | null,
+  base: string,
+): Promise<void> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    if (sentence === null) {
+      await sql`delete from public.business_wording
+        where business_id = ${DEMO_RESTAURANT} and key = ${key}`;
+    } else {
+      await sql`insert into public.business_wording
+          (business_id, key, sentence, base_sentence)
+        values (${DEMO_RESTAURANT}, ${key}, ${sentence}, ${base})
+        on conflict (business_id, key) do update
+        set sentence = excluded.sentence, base_sentence = excluded.base_sentence`;
+    }
+  } finally {
+    await sql.end();
+  }
+}
