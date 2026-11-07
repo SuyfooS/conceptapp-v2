@@ -66,3 +66,8 @@ export async function demoSignOut(): Promise<void> {}
 export async function demoEnter(): Promise<{ failed: true }> {
   redirect("/design/shell");
 }
+
+/** The door's reset, as a stand-in: there is nothing here to put back. */
+export async function demoReset(): Promise<{ ok: boolean }> {
+  return { ok: true };
+}

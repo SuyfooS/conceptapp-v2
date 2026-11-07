@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { AuthScreen } from "../auth-screen";
-import { enterAs } from "./actions";
+import { enterAs, resetDemo } from "./actions";
 import { EnterForm } from "./enter-form";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -17,7 +17,7 @@ export default function EnterPage() {
   if (!PASSIVE_SIGN_IN) notFound();
   return (
     <AuthScreen title={t("title")}>
-      <EnterForm enter={enterAs} />
+      <EnterForm enter={enterAs} reset={resetDemo} />
     </AuthScreen>
   );
 }

@@ -9,6 +9,8 @@ export type MemberRole = Database["public"]["Enums"]["member_role"];
 
 export type MemberBusiness = {
   id: string;
+  /** Its address in the app, unique: how the demo businesses are told apart. */
+  slug: string;
   name: string;
   accent: string;
   address: string | null;
@@ -35,6 +37,7 @@ export type CurrentMember = {
 
 function memberBusiness(row: {
   id: string;
+  slug: string;
   name: string;
   accent: string;
   address: string | null;
@@ -48,6 +51,7 @@ function memberBusiness(row: {
 }): MemberBusiness {
   return {
     id: row.id,
+    slug: row.slug,
     name: row.name,
     accent: row.accent,
     address: row.address,
@@ -84,7 +88,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     supabase
       .from("memberships")
       .select(
-        "role, businesses (id, name, accent, address, shabbat_city, timezone, business_modules (module_key, enabled, settings))",
+        "role, businesses (id, name, accent, slug, address, shabbat_city, timezone, business_modules (module_key, enabled, settings))",
       )
       .eq("user_id", userId)
       .eq("active", true)

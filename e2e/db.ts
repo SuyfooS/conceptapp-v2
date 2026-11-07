@@ -297,6 +297,37 @@ export async function demoBusinessDetails(): Promise<DemoDetails> {
   }
 }
 
+/**
+ * Whether the demo shop's week has a published schedule, and how many people
+ * it puts on shifts. This week is the one today falls in, in the shop's zone.
+ */
+export async function demoShopWeek(): Promise<{
+  published: boolean;
+  assigned: number;
+}> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const [row] = await sql<{ published: boolean; assigned: number }[]>`
+      with week as (
+        select w.id, w.schedule_published_at
+        from public.schedule_weeks w
+        join public.businesses b on b.id = w.business_id
+        where b.slug = 'demo-shop'
+          and (now() at time zone b.timezone)::date
+            between w.starts_on and w.starts_on + 6
+      )
+      select
+        coalesce(bool_or(week.schedule_published_at is not null), false) as published,
+        (select count(*)::int from public.shift_assignments a
+         join public.schedule_shifts s on s.id = a.shift_id
+         where s.week_id in (select id from week)) as assigned
+      from week`;
+    return row ?? { published: false, assigned: 0 };
+  } finally {
+    await sql.end();
+  }
+}
+
 export async function setDemoBusinessDetails(
   details: DemoDetails,
 ): Promise<void> {
