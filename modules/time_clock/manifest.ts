@@ -12,12 +12,14 @@ export const manifest = defineManifest({
     /** Punches are rounded to this many minutes in reports (0 = exact). */
     roundToMinutes: z
       .union([z.literal(0), z.literal(5), z.literal(15)])
-      .default(0),
+      .default(0)
+      .meta({ level: "team" }),
     /**
      * Clocking in and out needs the QR code shown on a manager's device at
-     * the business, so nobody punches from home.
+     * the business, so nobody punches from home. No screen offers it: Orel
+     * decided on 6 November 2026 that the phone is enough.
      */
-    requirePunchCode: z.boolean().default(false),
+    requirePunchCode: z.boolean().default(false).meta({ hidden: true }),
     /**
      * A break comes off the hours: it is not counted as paid time. A break
      * keeps what this said when it began.

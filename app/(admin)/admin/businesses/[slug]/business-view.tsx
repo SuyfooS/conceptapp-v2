@@ -9,10 +9,17 @@ import { accentProps } from "@ui/accent";
 import { Badge } from "@ui/badge";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
-import { Check, ChevronRight, CircleDashed, Eye } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  CircleDashed,
+  Eye,
+  SlidersHorizontal,
+} from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import type { ComponentProps } from "react";
 import { InviteLink } from "./invite-link";
@@ -38,6 +45,7 @@ export async function BusinessView({
   listHref,
   created,
   viewFailed,
+  settingsHref,
   viewAs,
   issue,
 }: {
@@ -45,6 +53,8 @@ export async function BusinessView({
   listHref: string;
   created: boolean;
   viewFailed: boolean;
+  /** Where this business's settings are, when the person may edit them. */
+  settingsHref: string | null;
   /** Bound to this business, when the person may view it as a role. */
   viewAs: ((form: FormData) => Promise<void>) | null;
   issue: Issue;
@@ -97,13 +107,23 @@ export async function BusinessView({
         </Card>
       ) : null}
       <div className="flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8">
-        <div className="md:col-start-1 md:row-start-1">
+        <div className="flex flex-col gap-6 md:col-start-1 md:row-start-1">
           <Checklist
             t={t}
             items={items}
             business={business}
             template={template}
           />
+          {settingsHref ? (
+            <ListGroup>
+              <ListRow
+                href={settingsHref}
+                leading={<SlidersHorizontal />}
+                title={t("setup.settings.row")}
+                subtitle={t("setup.settings.subtitle")}
+              />
+            </ListGroup>
+          ) : null}
         </div>
         <div className="md:col-start-2 md:row-span-2 md:row-start-1 xl:col-span-2 xl:col-start-1 xl:row-span-1 xl:row-start-2">
           <People t={t} business={business} issue={issue} />

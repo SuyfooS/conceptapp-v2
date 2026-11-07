@@ -10,6 +10,7 @@ export type PlatformRole = (typeof PLATFORM_ROLES)[number];
 export const PLATFORM_ACTIONS = [
   "businesses.read",
   "businesses.create",
+  "businesses.edit",
   "businesses.view_as",
   "businesses.delete",
   "staff.invite",
@@ -26,6 +27,7 @@ export type PlatformAction = (typeof PLATFORM_ACTIONS)[number];
 const ONBOARDER: ReadonlySet<PlatformAction> = new Set([
   "businesses.read",
   "businesses.create",
+  "businesses.edit",
   "businesses.view_as",
   "staff.invite",
 ]);

@@ -8,7 +8,6 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { RefreshOnReturn } from "../home/refresh-on-return";
 import { ClockPanel } from "./clock-panel";
-import { ClockSettings } from "./clock-settings";
 import type { ClockActions, ClockData, ClockPaths } from "./clock-types";
 import { HoursCount } from "./hours-count";
 import { ShiftList } from "./shift-list";
@@ -84,14 +83,6 @@ export function ClockView({
                 }
               />
             </ListGroup>
-          ) : null}
-
-          {data.canManage ? (
-            <ClockSettings
-              unpaidBreaks={data.unpaidBreaks}
-              viewOnly={data.viewOnly}
-              save={actions.saveSettings}
-            />
           ) : null}
         </div>
       </div>

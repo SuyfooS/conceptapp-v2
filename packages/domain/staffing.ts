@@ -57,6 +57,15 @@ export const shiftPatterns = z
   .max(30)
   .refine(uniqueKeys, { message: "Shift keys must be unique" });
 
+/**
+ * A key for a position or shift added on a screen. Nobody types it: names
+ * change, and saved weeks keep pointing at the key.
+ */
+export function newStaffingKey(kind: "position" | "shift"): string {
+  const [random = 0] = crypto.getRandomValues(new Uint32Array(1));
+  return `${kind[0]}-${random.toString(16).padStart(8, "0")}`;
+}
+
 /** The shifts that run on `day`, earliest first. */
 export function shiftsOn(
   patterns: readonly ShiftPattern[],

@@ -1,7 +1,7 @@
 -- Templates: apply_template turns an empty business into a complete one,
 -- refuses anything else without changing it, and is server-only.
 begin;
-select plan(18);
+select plan(22);
 
 insert into public.businesses (id, slug, name)
 values
@@ -99,18 +99,44 @@ select throws_ok(
   'P0002', null, 'an unknown business is refused'
 );
 
--- A template that leaves out a module fails as a whole: no rows written.
+-- A template that names a module nobody has fails as a whole: no rows written.
 insert into public.templates (key, definition)
-values ('broken', '{"modules": {"scheduling": {"enabled": true, "settings": {}}}, "openingHours": []}');
+values ('broken', '{"modules": {"bakery": {"enabled": true, "settings": {}}}, "openingHours": []}');
 select throws_ok(
   $$select public.apply_template('40000000-0000-4000-b000-00000000000c', 'broken')$$,
-  'P0001', null, 'a template missing modules is refused'
+  'P0001', null, 'a template naming an unknown module is refused'
 );
 select is(
   (select count(*)::integer from public.business_modules
    where business_id = '40000000-0000-4000-b000-00000000000c'),
   0,
   'and nothing is half-applied'
+);
+
+-- A template may leave modules out: they start off, with their defaults.
+insert into public.templates (key, definition)
+values ('short', '{"modules": {"scheduling": {"enabled": true, "settings": {"closedOnShabbat": false}}}, "openingHours": []}');
+select lives_ok(
+  $$select public.apply_template('40000000-0000-4000-b000-00000000000c', 'short')$$,
+  'a template that leaves modules out applies'
+);
+select is(
+  (select count(*)::integer from public.business_modules
+   where business_id = '40000000-0000-4000-b000-00000000000c'),
+  cardinality(enum_range(null::public.module_key)),
+  'a short template still gives every module a row'
+);
+select is(
+  (select array_agg(module_key::text) from public.business_modules
+   where business_id = '40000000-0000-4000-b000-00000000000c' and enabled),
+  array['scheduling'],
+  'only what it names is on'
+);
+select is(
+  (select settings from public.business_modules
+   where business_id = '40000000-0000-4000-b000-00000000000c' and module_key = 'time_clock'),
+  '{}'::jsonb,
+  'what it leaves out has no settings of its own'
 );
 
 select * from finish();

@@ -4,7 +4,6 @@ import {
   clockInAction,
   clockOutAction,
   endBreakAction,
-  saveClockSettingsAction,
   startBreakAction,
   undoClockOutAction,
 } from "./actions";
@@ -25,7 +24,6 @@ export default async function ClockPage() {
         startBreak: startBreakAction,
         endBreak: endBreakAction,
         undoClockOut: undoClockOutAction,
-        saveSettings: saveClockSettingsAction,
       }}
       paths={clockPaths}
     />

@@ -18,12 +18,12 @@ Orel keeps [React Bits](https://reactbits.dev/get-started/index) as a source of 
 | Rubber Segment | `Segmented`: the lens slides with a spring | This week and next, on the schedule |
 | Spring Check | the check fills and draws itself | `ChoiceRow` |
 | Count Up | `useCountUp`, when a number changes | Hours in the history and the clock |
+| Squish Switch | `Switch`: the thumb squashes under the finger and springs across | Settings, and modules in the console |
 
 ## Waiting for their screen
 
 | React Bits | For | When |
 |---|---|---|
-| Squish Switch | Turning modules and settings on and off | Management page |
 | Spring Check, as a checkbox | Ticking off items | Lists |
 | Swipe Row | Tick or act on a row with a swipe | Lists, then shifts |
 | Swipe Toast | A toast with undo, swiped away | The first deletion that offers undo |

@@ -183,7 +183,10 @@
     "codeRight": "Right code",
     "codeAgain": "Start over",
     "countUp": "A number that changes",
-    "countUpAdd": "Add"
+    "countUpAdd": "Add",
+    "switchTitle": "Switch",
+    "switchLabel": "Closed on Shabbat",
+    "switchHint": "What changes at once, with no save button"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -931,19 +934,6 @@
         "failed": "That didn't go through. Check your connection and try again.",
         "needsEnd": "An end time is needed too."
       },
-      "settings": {
-        "row": "Breaks",
-        "title": "How breaks count",
-        "subtitle": "Applies to breaks from now on. What is already recorded stays as it was.",
-        "paid": "Count as working hours",
-        "paidHint": "Break time stays in the hours the person is paid for",
-        "unpaid": "Do not count as working hours",
-        "unpaidHint": "Break time comes off the hours and is not paid",
-        "save": "Save the setting",
-        "close": "Close",
-        "failed": "The setting was not saved. Try again.",
-        "viewOnly": "In view mode you can't change settings."
-      },
       "history": {
         "title": "Shift history",
         "back": "Clock",
@@ -1042,28 +1032,170 @@
           "add": "Shift added"
         }
       }
+    },
+    "manage": {
+      "title": "Running the business",
+      "subtitle": "Here you fit the app exactly to your business.",
+      "home": "Today",
+      "row": "Settings",
+      "rowSubtitle": "What fits your business exactly",
+      "savesItself": "Every change saves right away.",
+      "saved": "Saved",
+      "advanced": "Advanced",
+      "viewOnly": "Settings can't be changed while viewing.",
+      "undo": "Undo",
+      "decrease": "Less: {name}",
+      "increase": "More: {name}",
+      "summary": {
+        "scheduling": "Positions, shifts, availability and Shabbat",
+        "time_clock": "How breaks count",
+        "reservations": "Booking times and party size",
+        "storefront": "The business's public page",
+        "notifications": "Reminders to the team"
+      },
+      "team": {
+        "title": "Team",
+        "subtitle": "Who works here, and inviting new people"
+      },
+      "failed": {
+        "noAccess": "You don't have permission to change this.",
+        "viewOnly": "Settings can't be changed while viewing.",
+        "notAllowed": "Only the ConceptApp team can change this setting.",
+        "invalid": "That value doesn't fit. Check it and try again.",
+        "failed": "The change wasn't saved. Check your connection and try again."
+      },
+      "positions": {
+        "empty": "No positions yet. Add the first one in the row below.",
+        "nameOf": "Name of the position {name}",
+        "newName": "New position",
+        "add": "Add position",
+        "remove": "Remove {name}",
+        "removed": "The position {name} was removed",
+        "taken": "There's already a position called {name}."
+      },
+      "shifts": {
+        "empty": "No shifts yet. Add the first one, and it will appear in every new week.",
+        "everyDay": "Every day",
+        "people": "{count, plural, one {1 person} other {# people}}",
+        "add": "Add shift",
+        "removed": "The shift {name} was removed",
+        "newTitle": "New shift",
+        "close": "Close",
+        "name": "Shift name",
+        "start": "Start",
+        "end": "End",
+        "nextDay": "Ends the next day",
+        "needed": "People needed",
+        "fewer": "Fewer people",
+        "more": "More people",
+        "days": "On which days",
+        "create": "Add the shift",
+        "save": "Save the shift",
+        "remove": "Remove the shift",
+        "problem": {
+          "name": "The shift needs a name.",
+          "days": "Choose at least one day.",
+          "needed": "The number of people must be between 1 and 50.",
+          "times": "The start and end times must differ."
+        }
+      }
     }
   },
   "modules": {
     "scheduling": {
       "name": "Schedule",
-      "description": "This week's shifts and your availability"
+      "description": "This week's shifts and your availability",
+      "settings": {
+        "weekStartsOn": {
+          "label": "Week starts on",
+          "hint": "Changing this moves every week, and weeks already published won't be found. Change it only before the first week.",
+          "options": {
+            "0": "Sunday",
+            "1": "Monday"
+          }
+        },
+        "availabilityDueDay": {
+          "label": "Last day to send availability",
+          "hint": "By this day and time, staff send their availability for next week."
+        },
+        "availabilityDueTime": {
+          "label": "Last time to send availability"
+        },
+        "closedOnShabbat": {
+          "label": "Closed on Shabbat",
+          "hint": "On Friday availability ends at candle lighting, and on Saturday it starts after Shabbat ends."
+        },
+        "positions": {
+          "label": "Positions",
+          "hint": "Removing a position takes nobody off the schedule: whoever was assigned stays on the shift, without the position."
+        },
+        "shifts": {
+          "label": "Shifts",
+          "hint": "Every new week starts from these shifts. A week already saved doesn't change."
+        }
+      }
     },
     "time_clock": {
       "name": "Clock",
-      "description": "Clock in and out of shifts"
+      "description": "Clock in and out of shifts",
+      "settings": {
+        "roundToMinutes": {
+          "label": "Rounding hours",
+          "hint": "Clock-ins and clock-outs round like this when hours are counted.",
+          "options": {
+            "0": "No rounding",
+            "5": "5 minutes",
+            "15": "Quarter of an hour"
+          }
+        },
+        "unpaidBreaks": {
+          "label": "Breaks come off the hours",
+          "hint": "Break time isn't counted in the hours worked. Applies to breaks from now on; what's already recorded stays as it was."
+        }
+      }
     },
     "reservations": {
       "name": "Reservations",
-      "description": "Today's bookings and tables"
+      "description": "Today's bookings and tables",
+      "settings": {
+        "slotMinutes": {
+          "label": "Time between bookings",
+          "options": {
+            "15": "Quarter of an hour",
+            "30": "Half an hour"
+          }
+        },
+        "durationMinutes": {
+          "label": "Minutes per booking",
+          "hint": "How long the place is held for whoever booked."
+        },
+        "maxPartySize": {
+          "label": "Most people in a booking",
+          "hint": "A larger group is asked to call."
+        }
+      }
     },
     "storefront": {
       "name": "Public page",
-      "description": "Hours, address and a booking link"
+      "description": "Hours, address and a booking link",
+      "settings": {
+        "published": {
+          "label": "The page is open to everyone"
+        },
+        "tagline": {
+          "label": "A line under the business's name"
+        }
+      }
     },
     "notifications": {
       "name": "Notifications",
-      "description": "Shift reminders and team updates"
+      "description": "Shift reminders and team updates",
+      "settings": {
+        "shiftReminderHours": {
+          "label": "Hours for a reminder before a shift",
+          "hint": "0 means no reminder."
+        }
+      }
     }
   },
   "admin": {
@@ -1300,7 +1432,17 @@
           "worker": "View as worker"
         },
         "failed": "We could not open the view. Try again in a moment."
+      },
+      "settings": {
+        "row": "Business settings",
+        "subtitle": "Modules, regular settings and advanced settings"
       }
+    },
+    "settings": {
+      "title": "Business settings",
+      "subtitle": "Everything {name} can change themselves, and advanced settings only the team sees. Every change saves right away.",
+      "on": "{module} is on for this business",
+      "switchFailed": "Not saved"
     }
   },
   "errors": {

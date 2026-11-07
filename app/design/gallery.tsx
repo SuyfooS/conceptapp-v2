@@ -34,6 +34,7 @@ import { Sheet } from "@ui/sheet";
 import { SkeletonBones } from "@ui/skeleton";
 import { StatusToast } from "@ui/status-toast";
 import { Stepper } from "@ui/stepper";
+import { Switch } from "@ui/switch";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
 import { WeekStrip } from "@ui/week-strip";
@@ -142,6 +143,7 @@ function GalleryBody({
   const [position, setPosition] = useState("waiter");
   const [toastAt, setToastAt] = useState<string | null>(null);
   const [dock, setDock] = useState(false);
+  const [switchOn, setSwitchOn] = useState(true);
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -422,6 +424,22 @@ function GalleryBody({
             ]}
             className="self-start"
           />
+        </Section>
+
+        <Section title={t("switchTitle")}>
+          <FieldGroup className="md:max-w-md">
+            <FieldRow
+              label={t("switchLabel")}
+              hint={t("switchHint")}
+              htmlFor="gallery-switch"
+            >
+              <Switch
+                id="gallery-switch"
+                checked={switchOn}
+                onChange={setSwitchOn}
+              />
+            </FieldRow>
+          </FieldGroup>
         </Section>
 
         <Section title={t("depth")}>

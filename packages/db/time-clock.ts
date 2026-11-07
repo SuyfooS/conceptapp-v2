@@ -119,20 +119,6 @@ export const undoClockOut = (actorId: string, entryId: string) =>
     }),
   );
 
-/** An owner or manager chooses whether breaks come off the hours. */
-export const setClockSettings = (
-  actorId: string,
-  businessId: string,
-  unpaidBreaks: boolean,
-) =>
-  call(() =>
-    createAdminClient().rpc("set_clock_settings", {
-      actor: actorId,
-      business: businessId,
-      unpaid_breaks: unpaidBreaks,
-    }),
-  );
-
 /** A manager adds an entry someone forgot to punch. Returns its id. */
 export const addTimeEntry = (
   actorId: string,

@@ -15,10 +15,18 @@ export const manifest = defineManifest({
   permissions: [{ key: "reservations.edit", defaultRole: "worker" }],
   settings: z.object({
     /** Bookable start times are this many minutes apart. */
-    slotMinutes: z.union([z.literal(15), z.literal(30)]).default(30),
+    slotMinutes: z
+      .union([z.literal(15), z.literal(30)])
+      .default(30)
+      .meta({ level: "team" }),
     /** How long a table is held for one booking. */
-    durationMinutes: z.int().min(30).max(300).default(90),
+    durationMinutes: z
+      .int()
+      .min(30)
+      .max(300)
+      .default(90)
+      .meta({ level: "team" }),
     /** Larger parties are asked to call. */
-    maxPartySize: z.int().min(1).max(50).default(10),
+    maxPartySize: z.int().min(1).max(50).default(10).meta({ level: "team" }),
   }),
 });

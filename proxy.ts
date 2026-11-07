@@ -16,6 +16,7 @@ export const PRIVATE = [
   "/reservations",
   "/storefront",
   "/team",
+  "/manage",
   "/admin",
 ];
 const DOORS = ["/sign-in", "/enter"];
@@ -56,6 +57,7 @@ export const config = {
     "/reservations/:path*",
     "/storefront/:path*",
     "/team/:path*",
+    "/manage/:path*",
     "/admin/:path*",
     "/sign-in",
     "/enter",

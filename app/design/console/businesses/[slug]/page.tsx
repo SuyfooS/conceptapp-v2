@@ -22,6 +22,7 @@ export default async function ConsoleBusinessDemo({
       listHref="/design/console"
       created={setup.created}
       viewFailed={false}
+      settingsHref={`/design/console/businesses/${slug}/settings`}
       viewAs={demoViewAs}
       issue={demoIssueLink}
     />

@@ -36,9 +36,10 @@ business B; anonymous visitors read nothing; every table in `public` has RLS.
 A business starts from a template (`restaurant`, `cafe-bar`): rows in
 `templates`, written by migrations (a change is a new migration that updates
 the row and bumps `version`). The definition's shape is `templateDefinition`
-in `@domain/templates`: every module with `enabled` and its settings
-(positions and the weekly shift pattern are scheduling settings), plus the
-opening hours.
+in `@domain/templates`: modules with `enabled` and their settings (positions
+and the weekly shift pattern are scheduling settings), plus the opening hours.
+A module the template doesn't name starts off, with its defaults, so a module
+built for one business touches no template.
 
 `public.apply_template(business, template)` copies one into a business
 that has none yet, in one transaction: a `business_modules` row per module,

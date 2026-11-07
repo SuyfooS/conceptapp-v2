@@ -39,6 +39,7 @@ import {
   CalendarPlus,
   ChevronRight,
   Repeat,
+  SlidersHorizontal,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -184,6 +185,12 @@ export async function TodayView({
                         count: data.team.counts.members,
                       })
                 }
+              />
+              <ListRow
+                href={path("/manage")}
+                leading={<SlidersHorizontal />}
+                title={t("manage.row")}
+                subtitle={t("manage.rowSubtitle")}
               />
             </ListGroup>
           </PageSection>

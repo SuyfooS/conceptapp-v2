@@ -10,8 +10,8 @@ export const manifest = defineManifest({
   permissions: [{ key: "storefront.edit", defaultRole: "manager" }],
   settings: z.object({
     /** The public page is visible to everyone. */
-    published: z.boolean().default(false),
+    published: z.boolean().default(false).meta({ level: "team" }),
     /** One line under the business's name; the business's own words. */
-    tagline: z.string().trim().max(120).default(""),
+    tagline: z.string().trim().max(120).default("").meta({ level: "team" }),
   }),
 });

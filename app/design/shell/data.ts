@@ -4,6 +4,7 @@
 // Hebrew-literal check in tooling/ allows this one file.
 
 import type { AvailabilityAnswer } from "@domain/availability";
+import type { ModuleRow } from "@domain/modules";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { TeamInvite, TeamMember } from "@domain/team";
 
@@ -255,6 +256,20 @@ export const demoShiftPatterns: ShiftPattern[] = [
     end: "00:00",
     needed: 4,
   },
+];
+
+// The demo business's modules, for the management demos. What's left out takes
+// the module's defaults.
+export const demoModuleRows: ModuleRow[] = [
+  {
+    key: "scheduling",
+    enabled: true,
+    settings: { positions: demoPositions, shifts: demoShiftPatterns },
+  },
+  { key: "time_clock", enabled: true, settings: { unpaidBreaks: true } },
+  { key: "reservations", enabled: false, settings: {} },
+  { key: "storefront", enabled: false, settings: {} },
+  { key: "notifications", enabled: false, settings: {} },
 ];
 
 // A shift a manager added by hand on the demo week's Sunday, overlapping both

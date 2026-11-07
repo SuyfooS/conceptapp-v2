@@ -18,6 +18,11 @@ export const MODULE_KEYS = [
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
 
+/** The module a piece of text names, if it names one. */
+export function moduleKeyOf(value: unknown): ModuleKey | null {
+  return MODULE_KEYS.find((key) => key === value) ?? null;
+}
+
 export const ROLES = ["owner", "manager", "worker"] as const;
 
 export type Role = (typeof ROLES)[number];

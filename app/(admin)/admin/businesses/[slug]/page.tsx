@@ -34,6 +34,11 @@ export default async function BusinessSetupPage({
       listHref="/admin"
       created={Boolean(created)}
       viewFailed={view === "failed"}
+      settingsHref={
+        platformCan(role, "businesses.edit")
+          ? `/admin/businesses/${business.slug}/settings`
+          : null
+      }
       viewAs={
         platformCan(role, "businesses.view_as")
           ? viewAsAction.bind(null, { id: business.id, slug: business.slug })
