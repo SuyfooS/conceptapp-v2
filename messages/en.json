@@ -181,7 +181,9 @@
     "codeSlots": "Code from a message",
     "codeWrong": "Wrong code",
     "codeRight": "Right code",
-    "codeAgain": "Start over"
+    "codeAgain": "Start over",
+    "countUp": "A number that changes",
+    "countUpAdd": "Add"
   },
   "shell": {
     "metaTitle": "Layout demo",

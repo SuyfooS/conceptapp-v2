@@ -13,13 +13,15 @@ import { cn } from "./cn";
 
 /**
  * Page frame used inside AppShell. Width and spacing grow with the device:
- * phone 16px gutters, tablet 24px, desktop 32px with a readable max width.
+ * phone 16px gutters, tablet 24px, desktop 32px with a readable max width. It
+ * fades in as it replaces a skeleton. Opacity only: a moving page would become
+ * the frame of its fixed parts, such as the floating title, for that moment.
  */
 export function PageBody({ className, ...props }: ComponentProps<"main">) {
   return (
     <main
       className={cn(
-        "mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 pt-[calc(env(safe-area-inset-top)+1.25rem)] pb-5 md:gap-8 md:px-6 md:py-8 xl:px-8",
+        "mx-auto flex w-full max-w-7xl animate-[page-in_180ms_var(--ease-calm)] flex-col gap-6 px-4 pt-[calc(env(safe-area-inset-top)+1.25rem)] pb-5 md:gap-8 md:px-6 md:py-8 xl:px-8",
         className,
       )}
       {...props}

@@ -1,9 +1,10 @@
-import { addMonths, formatHours } from "@domain/time-clock-format";
+import { addMonths } from "@domain/time-clock-format";
 import { Card } from "@ui/card";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
+import { HoursCount } from "./hours-count";
 
 /**
  * A month's total on the business's colour, with the way to the months around
@@ -15,6 +16,7 @@ export function MonthHero({
   hrefFor,
   minutes,
   caption,
+  countId,
   overlap = false,
 }: {
   /** `YYYY-MM`. */
@@ -24,6 +26,8 @@ export function MonthHero({
   hrefFor: (month: string) => string;
   minutes: number;
   caption: ReactNode;
+  /** Names the total, so it counts from the last month shown of the same list. */
+  countId: string;
   overlap?: boolean;
 }) {
   const t = useTranslations("app.clock.history");
@@ -61,9 +65,11 @@ export function MonthHero({
         )}
       </div>
       <p className="mt-2 text-center">
-        <span dir="ltr" className="block font-bold text-2xl tabular-nums">
-          {formatHours(minutes)}
-        </span>
+        <HoursCount
+          minutes={minutes}
+          id={countId}
+          className="block font-bold text-2xl tabular-nums"
+        />
         <span className="text-base">{caption}</span>
       </p>
     </Card>

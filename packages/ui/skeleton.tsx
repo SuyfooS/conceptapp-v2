@@ -48,7 +48,7 @@ export function SkeletonBones() {
  */
 export function PageSkeleton({ label }: { label: string }) {
   return (
-    <PageBody className={pageGlowClass}>
+    <PageBody className={`${pageGlowClass} animate-none`}>
       <div role="status">
         <h1 className="sr-only">{label}</h1>
       </div>

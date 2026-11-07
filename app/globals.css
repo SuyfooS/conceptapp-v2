@@ -410,6 +410,7 @@ body {
   }
 }
 
+<<<<<<< HEAD
 @keyframes caret-blink {
   0%,
   49.9% {
@@ -417,6 +418,10 @@ body {
   }
   50%,
   100% {
+=======
+@keyframes page-in {
+  from {
+>>>>>>> 61f4f01 (Premium touches from React Bits, and the product is for every kind of business)
     opacity: 0;
   }
 }

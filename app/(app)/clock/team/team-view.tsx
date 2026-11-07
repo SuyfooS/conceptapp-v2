@@ -109,6 +109,7 @@ export function TeamHoursView({
             currentMonth={data.currentMonth}
             hrefFor={(month) => `${paths.team}?month=${month}`}
             minutes={data.minutes}
+            countId="team"
             caption={t("caption", { count: data.shifts })}
             overlap={data.people.length > 0}
           />

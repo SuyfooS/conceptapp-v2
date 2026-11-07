@@ -14,6 +14,8 @@ export default defineConfig({
   reporter: process.env.CI ? [["github"], ["list"]] : "list",
   use: {
     baseURL: `http://127.0.0.1:${port}`,
+    // Pages at rest: an accessibility check mid-fade would read colours wrong.
+    contextOptions: { reducedMotion: "reduce" },
     locale: "he-IL",
     trace: "retain-on-failure",
     launchOptions: process.env.PLAYWRIGHT_CHROMIUM_PATH
