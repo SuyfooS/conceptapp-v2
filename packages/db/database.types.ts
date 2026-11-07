@@ -851,6 +851,7 @@ export type Database = {
         Returns: {
           accent: string;
           created_at: string;
+          expired_invites: number;
           id: string;
           members: number;
           name: string;
@@ -858,6 +859,17 @@ export type Database = {
           slug: string;
           template_key: string;
         }[];
+      };
+      admin_invite: {
+        Args: {
+          actor: string;
+          business: string;
+          invite_name: string;
+          invite_phone: string;
+          invite_role: Database["public"]["Enums"]["member_role"];
+          new_token_hash: string;
+        };
+        Returns: string;
       };
       apply_template: {
         Args: { business: string; template: string };

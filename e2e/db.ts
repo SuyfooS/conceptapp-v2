@@ -79,6 +79,30 @@ export async function inviteToDemo(invite: {
   }
 }
 
+/**
+ * The demo restaurant's unclaimed invite to this number: its role, whether
+ * it is still open, and whether someone on the ConceptApp team sent it.
+ */
+export async function demoInvite(phone: string): Promise<{
+  role: string;
+  open: boolean;
+  byTeam: boolean;
+} | null> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const rows = await sql<{ role: string; open: boolean; byTeam: boolean }[]>`
+      select i.role::text as role, i.expires_at > now() as open,
+        exists (select 1 from public.platform_staff s
+          where s.user_id = i.invited_by) as "byTeam"
+      from public.invites i
+      where i.business_id = ${DEMO_RESTAURANT} and i.phone = ${phone}
+        and i.claimed_at is null`;
+    return rows[0] ?? null;
+  } finally {
+    await sql.end();
+  }
+}
+
 /** The person's role in the demo restaurant, or null when not a member. */
 export async function demoRole(phone: string): Promise<string | null> {
   const sql = postgres(DB_URL, { max: 1 });

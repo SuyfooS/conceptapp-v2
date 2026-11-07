@@ -11,15 +11,19 @@ const initial: InviteLinkState = {};
 
 /**
  * One invited person's link: a button that issues it, then the link with
- * a copy button, for the team member to send on themselves.
+ * a copy button, for the team member to send on themselves. For an invite
+ * that ran out, the same button renews it for another 14 days.
  */
 export function InviteLink({
   inviteId,
   name,
+  renew = false,
   issue,
 }: {
   inviteId: string;
   name: string;
+  /** The invite expired: the button renews it. */
+  renew?: boolean;
   /** `inviteLinkAction`, or the design demo's stand-in. */
   issue: (
     inviteId: string,
@@ -40,10 +44,10 @@ export function InviteLink({
           type="submit"
           variant="secondary"
           loading={pending}
-          aria-label={t("createFor", { name })}
+          aria-label={t(renew ? "renewFor" : "createFor", { name })}
         >
           <Link2 aria-hidden="true" />
-          {t("create")}
+          {t(renew ? "renew" : "create")}
         </Button>
         {state.failure ? (
           <p role="alert" className="text-danger text-sm">

@@ -25,7 +25,8 @@ const initial: InviteState = {};
  */
 type InviteFormProps = {
   roles: readonly Role[];
-  teamHref: string;
+  /** Where "back" goes once the link is ready: the team, or the console's business. */
+  back: { href: string; label: string };
   /** `inviteAction`, or the design demo's stand-in. */
   invite: (prev: InviteState, form: FormData) => Promise<InviteState>;
 };
@@ -40,7 +41,7 @@ export function InviteForm(props: InviteFormProps) {
 
 function InviteRound({
   roles,
-  teamHref,
+  back,
   invite,
   onAnother,
 }: InviteFormProps & { onAnother: () => void }) {
@@ -78,7 +79,7 @@ function InviteRound({
         </Card>
         <div className="mt-5 flex flex-col gap-1 md:flex-row">
           <Button asChild variant="ghost">
-            <Link href={teamHref}>{t("backToTeam")}</Link>
+            <Link href={back.href}>{back.label}</Link>
           </Button>
           <Button type="button" variant="ghost" onClick={onAnother}>
             {t("another")}
