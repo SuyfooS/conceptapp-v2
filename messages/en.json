@@ -6,6 +6,10 @@
     "appShell": {
       "mainNav": "Main navigation",
       "needsAction": ", {count} need action"
+    },
+    "codeSlots": {
+      "count": "{filled} of {total} digits",
+      "accepted": "Code accepted"
     }
   },
   "days": {
@@ -173,7 +177,11 @@
     "punchIn": "Clock in",
     "punchOut": "Clock out",
     "punchBack": "Back to work",
-    "skeleton": "Before the data arrives"
+    "skeleton": "Before the data arrives",
+    "codeSlots": "Code from a message",
+    "codeWrong": "Wrong code",
+    "codeRight": "Right code",
+    "codeAgain": "Start over"
   },
   "shell": {
     "metaTitle": "Layout demo",

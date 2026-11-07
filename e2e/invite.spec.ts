@@ -117,7 +117,6 @@ test("an invited number joins the demo restaurant as a manager", async ({
 
   const code = await latestCode(person.e164, since);
   await joining.getByLabel(j.codeLabel).fill(code);
-  await joining.getByRole("button", { name: j.verify }).click();
 
   // Home in the right business, with the manager's navigation and the
   // name from the invite.
