@@ -21,7 +21,7 @@ it knows is this repo and its GitHub issues.
 - Everything goes through GitHub (`SuyfooS/conceptapp-v2`). Orel's computer may
   be off; never depend on it.
 - The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Don't write anything new that assumes a restaurant: roles, shifts, departments and defaults are data from a template or a setting. Restaurants and cafés are only the first templates.
-- Everything is dynamic (Orel, 7 November 2026): what differs between businesses can be changed without touching code, and every new setting can be edited from a screen. A little new code for one business is fine, as a module in the same system switched on for it. Nothing gets rebuilt. The order of this work is in `docs/ROADMAP.md`, and its first steps wait for a day session with Orel: a nightly run does not start them on a guess.
+- Everything is dynamic (Orel, 7 November 2026): what differs between businesses can be changed without touching code, and every new setting can be edited from a screen. A little new code for one business is fine, as a module in the same system switched on for it. Owners, managers and the ConceptApp team can all edit a business's settings, and the team also has advanced ones. Nothing gets rebuilt. The order of this work is in `docs/ROADMAP.md`, and its first steps wait for a day session with Orel: a nightly run does not start them on a guess.
 - The pilot needs scheduling, time clock, lists, a management page, and roles with
   different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
   old app, that is an assumption until Orel confirms it.
