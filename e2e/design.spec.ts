@@ -28,6 +28,7 @@ const PAGES = [
   "/design/shell/clock/team/noa",
   "/design/shell/team",
   "/design/shell/manage",
+  "/design/shell/manage/business",
   "/design/shell/manage/scheduling",
   "/design/shell/manage/time_clock",
   "/design/console/businesses/demo-restaurant/settings",

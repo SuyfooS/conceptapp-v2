@@ -94,9 +94,9 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await expect(
     page.getByRole("heading", { level: 2, name: w.steps.accent }),
   ).toBeVisible();
-  await page.getByTitle(w.accent.presets.teal).click();
+  await page.getByTitle(he.ui.accentPicker.presets.teal).click();
   await expect(
-    page.getByRole("radio", { name: w.accent.presets.teal }),
+    page.getByRole("radio", { name: he.ui.accentPicker.presets.teal }),
   ).toBeChecked();
   await page.screenshot({
     path: testInfo.outputPath("new-business-3-accent.png"),

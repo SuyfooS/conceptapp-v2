@@ -1,4 +1,5 @@
 import { describeSettings } from "@domain/settings-form";
+import { SHABBAT_CITIES } from "@domain/shabbat";
 import { describe, expect, it } from "vitest";
 import he from "../messages/he.json";
 import { manifests } from "../modules/registry";
@@ -27,4 +28,16 @@ describe("settings", () => {
       }
     });
   }
+});
+
+// A business's Shabbat city is a key in the code's list; its name is in the
+// messages, so a city added to the list needs its words.
+describe("the cities for Shabbat times", () => {
+  it("each have a name", () => {
+    const names = he.cities as Record<string, string>;
+    for (const city of SHABBAT_CITIES) {
+      expect(names[city], city).toBeTruthy();
+    }
+    expect(Object.keys(names).sort()).toEqual([...SHABBAT_CITIES].sort());
+  });
 });

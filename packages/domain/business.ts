@@ -91,12 +91,16 @@ export type NewBusinessInput = Partial<Record<NewBusinessField, unknown>>;
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
+/** A name or address as stored: trimmed, with single spaces. */
+export const tidyText = (value: unknown) =>
+  text(value).trim().replace(/\s+/g, " ");
+
 function templateError(value: string): NewBusinessErrors["template"] | null {
   if (!value) return "required";
   return TEMPLATE_KEYS.includes(value as TemplateKey) ? null : "invalid";
 }
 
-function nameError(value: string): NewBusinessErrors["name"] | null {
+export function nameError(value: string): NewBusinessErrors["name"] | null {
   if (!value) return "required";
   return value.length > BUSINESS_NAME_MAX ? "tooLong" : null;
 }
@@ -109,7 +113,7 @@ function slugError(value: string): NewBusinessErrors["slug"] | null {
   return RESERVED_SLUGS.has(value) ? "reserved" : null;
 }
 
-function accentError(value: string): NewBusinessErrors["accent"] | null {
+export function accentError(value: string): NewBusinessErrors["accent"] | null {
   if (!value) return "required";
   return /^#[0-9a-f]{6}$/i.test(value) && parseHex(value) ? null : "invalid";
 }
@@ -128,9 +132,9 @@ export function parseNewBusiness(
   only: readonly NewBusinessField[] = NEW_BUSINESS_FIELDS,
 ): ParsedNewBusiness {
   const template = text(input.template).trim();
-  const name = text(input.name).trim().replace(/\s+/g, " ");
+  const name = tidyText(input.name);
   const slug = normalizeSlug(text(input.slug));
-  const address = text(input.address).trim().replace(/\s+/g, " ");
+  const address = tidyText(input.address);
   const accent = text(input.accent).trim();
   const staff = parseStaffList(text(input.staff));
 

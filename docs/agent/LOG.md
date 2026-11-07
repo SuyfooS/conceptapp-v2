@@ -3,6 +3,17 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-07 · chat · the business's own details
+
+- `/manage/business` for owners and managers, and the same form at the top of the console's settings page for the team: the name, the colour, the address and the city Shabbat times follow. Each saves itself. A pick that fails goes back to what last saved; something typed that fails stays on screen and tries again on leaving the field. The colour the screen opened with stays offered while it's open, so trying a preset never loses a business's own colour.
+- Shabbat times come from the city, with its custom: Jerusalem lights candles 40 minutes before sunset and Haifa 30, which the code never passed before, so a Jerusalem business got 20. The cities are hebcal's eight in Israel, held to the library's coordinates and to a year of its calendar by a test. A business elsewhere picks the nearest. Until one is chosen, Tel Aviv, and `/manage` shows "חסרה עיר" only when the schedule closes on Shabbat, so a shop open on Shabbat isn't asked.
+- Database in #62, merged and migrated first: `businesses.shabbat_city`, the 200-character address limit, colours in lower case, `set_business_details` (owners, managers, the team; logs only what changed). The direct path where an owner could write the row from the browser is closed: it skipped the log and left managers out. latitude and longitude stay unread.
+- `AccentPicker` and `AccentPreview` moved out of the wizard into `packages/ui`, with their words under `ui.accentPicker`; the swatches sit four to a row where eight don't fit.
+- A read-only review (four areas, a skeptic each, then a critic) found nothing in the server or the database, and seven smaller problems on screen, all fixed: typing on while a save was on its way lost what came after (the typing helper now follows what's stored only while the draft hasn't moved on, for the settings form too), one failure line hid another, a trailing space saved again on every blur, Saturday night showed the Shabbat that had just ended, the /manage row promised Shabbat times to businesses that aren't asked for them, the colour heading sat beside the details in the console instead of under them, and a business's own colour was called "the previous colour" before anything changed.
+- My reading, not Orel's words: nothing in the details is team-only yet. The slug, the time zone and coordinates of its own wait until something needs them.
+- Known, left: a business near Jerusalem that picks it gets Jerusalem's 40 minutes. The hosted demo restaurant has no city until someone picks one, so it shows the badge.
+- Next: `/manage/activity` (the audit log), then step 2, global templates.
+
 ## 2026-11-07 · chat · the settings engine
 
 - Orel asked for everything to be editable without code, with the manager and the app's team both editing and the team having more advanced settings. This is step 1 of the roadmap.

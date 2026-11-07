@@ -13,6 +13,8 @@ export type ChoiceMenuProps = {
   value: string;
   options: { key: string; label: string }[];
   onChange: (key: string) => void;
+  /** Shown while no option is chosen yet. */
+  placeholder?: string;
   className?: string;
 };
 
@@ -27,6 +29,7 @@ export function ChoiceMenu({
   value,
   options,
   onChange,
+  placeholder,
   className,
 }: ChoiceMenuProps) {
   const locale = useLocale();
@@ -53,7 +56,7 @@ export function ChoiceMenu({
           className,
         )}
       >
-        {current?.label}
+        {current?.label ?? placeholder}
         <ChevronDown aria-hidden="true" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal container={container ?? undefined}>

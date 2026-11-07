@@ -4,6 +4,7 @@
 // Hebrew-literal check in tooling/ allows this one file.
 
 import type { AvailabilityAnswer } from "@domain/availability";
+import type { BusinessDetails } from "@domain/business-details";
 import type { ModuleRow } from "@domain/modules";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { TeamInvite, TeamMember } from "@domain/team";
@@ -257,6 +258,18 @@ export const demoShiftPatterns: ShiftPattern[] = [
     needed: 4,
   },
 ];
+
+// The demo business's own details. No city yet, so the demo shows what asks
+// for one.
+export const demoBusinessDetails: BusinessDetails = {
+  name: business.name,
+  accent: "#2563eb",
+  address: "רחוב הדגמה 1, תל אביב",
+  shabbatCity: null,
+};
+
+// A moment in the demo's week, for the Shabbat times it shows.
+export const demoNow = new Date("2026-11-04T12:00:00+02:00");
 
 // The demo business's modules, for the management demos. What's left out takes
 // the module's defaults.

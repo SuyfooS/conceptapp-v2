@@ -1,6 +1,7 @@
 "use server";
 
 import { getPlatformStaff } from "@db/admin";
+import { setBusinessDetails } from "@db/business-details";
 import { issueInviteLink } from "@db/invites";
 import {
   getBusinessModulesForTeam,
@@ -8,6 +9,7 @@ import {
   setModuleSettings,
 } from "@db/module-settings";
 import { startViewing } from "@db/view-as";
+import { checkBusinessDetailsChange } from "@domain/business-details";
 import { inviteLink } from "@domain/invites";
 import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
 import { platformCan } from "@domain/platform";
@@ -98,6 +100,31 @@ export async function saveBusinessSettingsAction(
   );
   refresh();
   return result.ok ? { ok: true } : { ok: false, failure: "failed" };
+}
+
+/** Someone on the team saves some of a business's own details. */
+export async function saveTeamBusinessDetailsAction(
+  businessId: string,
+  change: unknown,
+): Promise<SettingsResult> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const checked = checkBusinessDetailsChange(change);
+  if (!checked.ok) return { ok: false, failure: checked.problem };
+  const result = await setBusinessDetails(
+    staff.userId,
+    businessId,
+    checked.patch,
+  );
+  refresh();
+  if (result.ok) return { ok: true };
+  return {
+    ok: false,
+    failure:
+      result.code === "22023" || result.code === "23514" ? "invalid" : "failed",
+  };
 }
 
 /** Someone on the team switches a module on or off for one business. */

@@ -10,6 +10,22 @@
     "codeSlots": {
       "count": "{filled} of {total} digits",
       "accepted": "Code accepted"
+    },
+    "accentPicker": {
+      "presets": {
+        "blue": "Blue",
+        "teal": "Teal",
+        "green": "Green",
+        "orange": "Orange",
+        "burgundy": "Burgundy",
+        "pink": "Pink",
+        "purple": "Purple",
+        "brown": "Brown"
+      },
+      "custom": "Another colour",
+      "current": "The current colour",
+      "kept": "The previous colour",
+      "adjusted": "The colour was darkened a little so text on it stays readable."
     }
   },
   "days": {
@@ -41,6 +57,16 @@
       "short": "Sat",
       "long": "Saturday night"
     }
+  },
+  "cities": {
+    "jerusalem": "Jerusalem",
+    "telAviv": "Tel Aviv",
+    "haifa": "Haifa",
+    "petahTikva": "Petah Tikva",
+    "tiberias": "Tiberias",
+    "ashdod": "Ashdod",
+    "beerSheva": "Beersheba",
+    "eilat": "Eilat"
   },
   "design": {
     "metaTitle": "Design system",
@@ -186,7 +212,10 @@
     "countUpAdd": "Add",
     "switchTitle": "Switch",
     "switchLabel": "Closed on Shabbat",
-    "switchHint": "What changes at once, with no save button"
+    "switchHint": "What changes at once, with no save button",
+    "accentPickerTitle": "Choosing a colour",
+    "accentPickerCaption": "How the colour will look in the app",
+    "accentPickerButton": "Sample button"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -1039,6 +1068,38 @@
       "home": "Today",
       "row": "Settings",
       "rowSubtitle": "What fits your business exactly",
+      "business": {
+        "title": "Business details",
+        "row": "Name, colour, address and Shabbat times",
+        "rowNoCity": "No city chosen for Shabbat times yet",
+        "rowNoShabbat": "Name, colour and address",
+        "noCity": "City missing",
+        "preview": "How your team sees the business",
+        "previewButton": "Sample button",
+        "name": {
+          "label": "Business name",
+          "hint": "How your team sees it in the app and in invitations.",
+          "required": "Write the business's name.",
+          "tooLong": "The name is too long. Up to 80 characters."
+        },
+        "address": {
+          "label": "Address",
+          "hint": "Optional.",
+          "placeholder": "5 Herzl Street, Haifa"
+        },
+        "accent": {
+          "label": "Colour"
+        },
+        "shabbatCity": {
+          "label": "Shabbat times for"
+        },
+        "city": {
+          "none": "Not chosen",
+          "times": "This coming Shabbat in {city}: candles at <ltr>{candles}</ltr>, havdalah at <ltr>{havdalah}</ltr>.",
+          "timesNone": "Until you choose a city, the times are {city}'s: candles at <ltr>{candles}</ltr>, havdalah at <ltr>{havdalah}</ltr>.",
+          "nearest": "If your city isn't listed, choose the nearest."
+        }
+      },
       "savesItself": "Every change saves right away.",
       "saved": "Saved",
       "advanced": "Advanced",
@@ -1128,7 +1189,7 @@
         },
         "closedOnShabbat": {
           "label": "Closed on Shabbat",
-          "hint": "On Friday availability ends at candle lighting, and on Saturday it starts after Shabbat ends. A shift in those hours gets no availability, and answers already sent stay until the person sends again."
+          "hint": "Friday availability ends at candle lighting and Saturday's starts at havdalah, by the city in the business details. Shifts in those hours get no availability, and answers already sent stay until the worker sends again."
         },
         "positions": {
           "label": "Positions",
@@ -1253,20 +1314,8 @@
       },
       "accent": {
         "label": "Colour",
-        "presets": {
-          "blue": "Blue",
-          "teal": "Teal",
-          "green": "Green",
-          "orange": "Orange",
-          "burgundy": "Burgundy",
-          "pink": "Pink",
-          "purple": "Purple",
-          "brown": "Brown"
-        },
-        "custom": "Another colour",
         "preview": "How the colour will look in the app",
-        "previewButton": "Sample button",
-        "adjusted": "The colour was darkened a little so text on it stays readable."
+        "previewButton": "Sample button"
       },
       "summary": {
         "title": "Summary",
@@ -1415,6 +1464,7 @@
     "settings": {
       "title": "Business settings",
       "subtitle": "Everything {name} can change themselves, and advanced settings only the team sees. Every change saves right away.",
+      "details": "Business details",
       "on": "{module} is on for this business",
       "switchFailed": "Not saved"
     }

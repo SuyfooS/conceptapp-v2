@@ -1,4 +1,5 @@
 import { GeoLocation, Zmanim } from "@hebcal/core";
+import { addDays, dateIn } from "./availability";
 import {
   dateParts,
   HAVDALAH_DEGREES,
@@ -42,4 +43,19 @@ export function shabbatTimes(place: ShabbatPlace, date: string): ShabbatTimes {
       zmanimOn(gloc, saturday).tzeit(HAVDALAH_DEGREES),
     ),
   };
+}
+
+/**
+ * The Shabbat still ahead at `now`, or the one under way. After havdalah on
+ * Saturday night that is next week's, though the date still says Saturday.
+ */
+export function comingShabbatTimes(
+  place: ShabbatPlace,
+  now: Date,
+): ShabbatTimes {
+  const today = dateIn(now, shabbatPlace.parse(place).timeZone);
+  const times = shabbatTimes(place, today);
+  return now.getTime() < times.havdalah.getTime()
+    ? times
+    : shabbatTimes(place, addDays(today, 1));
 }
