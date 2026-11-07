@@ -11,15 +11,21 @@ import {
 import { startViewing } from "@db/view-as";
 import { checkBusinessDetailsChange } from "@domain/business-details";
 import { inviteLink } from "@domain/invites";
-import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
+import {
+  enabledModules,
+  fitsTabBar,
+  type ModuleManifest,
+  moduleKeyOf,
+} from "@domain/modules";
 import { platformCan } from "@domain/platform";
 import { checkSettingsChange } from "@domain/settings-form";
 import { parseViewAsRole } from "@domain/view-as";
-import { manifestFor } from "@modules/registry";
+import { manifestFor, manifests } from "@modules/registry";
 import { refresh } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import type { SettingsResult } from "@/app/(app)/manage/settings-types";
 import { requestOrigin } from "@/app/origin";
+import type { ModuleSwitchResult } from "./settings/module-switch";
 
 export type InviteLinkState =
   | { link?: undefined; failure?: "failed" | "noPermission" }
@@ -127,12 +133,15 @@ export async function saveTeamBusinessDetailsAction(
   };
 }
 
-/** Someone on the team switches a module on or off for one business. */
+/**
+ * Someone on the team switches a module on or off for one business. Switching
+ * one on is refused when its tab would not fit next to the business's others.
+ */
 export async function setBusinessModuleAction(
   businessId: string,
   module: string,
   enabled: boolean,
-): Promise<SettingsResult> {
+): Promise<ModuleSwitchResult> {
   const staff = await getPlatformStaff();
   const key = moduleKeyOf(module);
   if (
@@ -142,6 +151,16 @@ export async function setBusinessModuleAction(
     typeof enabled !== "boolean"
   ) {
     return { ok: false, failure: "noAccess" };
+  }
+  if (enabled) {
+    const rows = await getBusinessModulesForTeam(businessId);
+    const after = [
+      ...rows.filter((row) => row.key !== key),
+      { key, enabled: true, settings: {} },
+    ];
+    if (!fitsTabBar(manifests, enabledModules(manifests, after))) {
+      return { ok: false, failure: "noRoom" };
+    }
   }
   const result = await setModuleEnabled(staff.userId, businessId, key, enabled);
   refresh();

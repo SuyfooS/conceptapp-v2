@@ -118,8 +118,8 @@ test("an invited number joins the demo restaurant as a manager", async ({
   const code = await latestCode(person.e164, since);
   await joining.getByLabel(j.codeLabel).fill(code);
 
-  // Home in the right business, with the manager's navigation and the
-  // name from the invite.
+  // Home in the right business, with what a manager reaches and the name
+  // from the invite.
   await expect(joining).toHaveURL(/\/home$/);
   // The greeting follows the hour; the name does not.
   await expect(
@@ -129,10 +129,7 @@ test("an invited number joins the demo restaurant as a manager", async ({
     joining.getByText("מסעדת הדגמה").filter({ visible: true }).first(),
   ).toBeVisible();
   await expect(
-    joining
-      .getByRole("navigation", { name: he.ui.appShell.mainNav })
-      .filter({ visible: true })
-      .getByRole("link", { name: he.modules.storefront.name }),
+    joining.getByRole("main").locator('a[href="/manage"]'),
   ).toBeVisible();
   expect(await demoRole(person.e164)).toBe("manager");
   await joining.screenshot({

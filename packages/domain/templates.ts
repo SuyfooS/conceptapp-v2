@@ -2,6 +2,8 @@ import { z } from "zod";
 import { openingHours } from "./hours";
 import {
   enabledModules,
+  fitsTabBar,
+  MAX_MODULE_NAV,
   MODULE_KEYS,
   type ModuleKey,
   type ModuleManifest,
@@ -17,7 +19,13 @@ import {
  * against.
  */
 
-export const TEMPLATE_KEYS = ["restaurant", "cafe-bar"] as const;
+/** In the order the wizard offers them: kinds first, the general one last. */
+export const TEMPLATE_KEYS = [
+  "retail",
+  "restaurant",
+  "cafe-bar",
+  "general",
+] as const;
 
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
@@ -40,8 +48,9 @@ export type ValidTemplate = {
 
 /**
  * Checks a template (or a business it produced) against the manifests: every
- * module's settings valid with no unknown fields, and every switched-on
- * module's requirements switched on too. A module it doesn't name starts off,
+ * module's settings valid with no unknown fields, every switched-on module's
+ * requirements switched on too, and no more tabs than the tab bar holds. A
+ * module it doesn't name starts off,
  * with its defaults, so a module built for one business touches no template.
  * Throws with a readable message on the first problem.
  */
@@ -83,6 +92,11 @@ export function validateTemplate(
   if (blocked.length > 0) {
     throw new Error(
       `Modules switched on without what they require: ${blocked.join(", ")}`,
+    );
+  }
+  if (!fitsTabBar(manifests, on)) {
+    throw new Error(
+      `More tabs than the tab bar holds (${MAX_MODULE_NAV}): ${on.join(", ")}`,
     );
   }
 

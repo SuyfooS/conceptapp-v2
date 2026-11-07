@@ -948,9 +948,18 @@ export type Database = {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
       };
+      renew_demo_schedules: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
+      };
       request_shift_swap: {
         Args: { actor: string; at_time?: string; note?: string; shift: string };
         Returns: string;
+      };
+      reset_demo_business: { Args: { business: string }; Returns: undefined };
+      reset_demo_businesses: {
+        Args: Record<PropertyKey, never>;
+        Returns: number;
       };
       save_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };

@@ -4,7 +4,9 @@ import he from "../messages/he.json" with { type: "json" };
 import { signIn } from "./session";
 import { setDemoModule } from "./sms";
 
-// Seeded in supabase/seed.sql. Every module starts on for the demo restaurant.
+// Seeded in supabase/seed.sql. The demo restaurant starts with the schedule and
+// the clock, the modules that are built; a test that needs another switches it
+// on itself, as the ConceptApp team would from the console.
 // The worker here is not the one sign-in.spec.ts uses: the auth server
 // refuses a second code to the same number within 5 seconds.
 const OWNER = { local: "050-000-0001", e164: "+972500000001" };
@@ -34,7 +36,8 @@ async function navItems(page: Page): Promise<string[]> {
 const m = he.modules;
 
 test.afterEach(async () => {
-  await setDemoModule("reservations", true);
+  await setDemoModule("reservations", false);
+  await setDemoModule("storefront", false);
   await setDemoModule("scheduling", true);
 });
 
@@ -42,17 +45,28 @@ test("the owner's navigation follows the business's modules", async ({
   page,
 }, testInfo) => {
   await signIn(page, OWNER);
+  // Only what is built: no tab leads to an empty screen.
+  expect(await navItems(page)).toEqual([
+    he.app.nav.home,
+    m.scheduling.name,
+    m.time_clock.name,
+  ]);
+  const rows = page
+    .getByRole("main")
+    .locator('a[href="/clock"], a[href="/reservations"]');
+  await expect(rows).toHaveCount(1);
+
+  // Switching a module on adds its tab and its row on Today, with no code
+  // change.
+  await setDemoModule("reservations", true);
+  await page.goto("/home");
   expect(await navItems(page)).toEqual([
     he.app.nav.home,
     m.scheduling.name,
     m.time_clock.name,
     m.reservations.name,
-    m.storefront.name,
   ]);
   // A module with nothing of its own to say yet keeps one row on Today.
-  const rows = page
-    .getByRole("main")
-    .locator('a[href="/clock"], a[href="/reservations"]');
   await expect(rows).toHaveCount(2);
   await expect(rows.filter({ hasText: m.reservations.name })).toBeVisible();
   await page.screenshot({
@@ -77,23 +91,17 @@ test("the owner's navigation follows the business's modules", async ({
   );
   expect(overflow).toBeLessThanOrEqual(0);
 
-  // Switching reservations off removes it everywhere, with no code change.
+  // Switching it off again removes it everywhere.
   await setDemoModule("reservations", false);
   await page.goto("/home");
   expect(await navItems(page)).toEqual([
     he.app.nav.home,
     m.scheduling.name,
     m.time_clock.name,
-    m.storefront.name,
   ]);
   await expect(rows).toHaveCount(1);
   await expect(rows.filter({ hasText: m.reservations.name })).toHaveCount(0);
   await expectUnavailable(page, "/reservations");
-
-  // And switching it back on restores it.
-  await setDemoModule("reservations", true);
-  await page.goto("/home");
-  expect(await navItems(page)).toContain(m.reservations.name);
 });
 
 test("switching scheduling off takes its part of Today with it", async ({
@@ -108,18 +116,13 @@ test("switching scheduling off takes its part of Today with it", async ({
 
   await setDemoModule("scheduling", false);
   await page.goto("/home");
-  expect(await navItems(page)).toEqual([
-    he.app.nav.home,
-    m.time_clock.name,
-    m.reservations.name,
-    m.storefront.name,
-  ]);
+  expect(await navItems(page)).toEqual([he.app.nav.home, m.time_clock.name]);
   await expect(hero).toHaveCount(0);
   await expect(scheduling).toHaveCount(0);
   await expect(page.getByText(h.who.title)).toHaveCount(0);
   // The rest of Today is still there, and so is the way out.
   await expect(
-    page.getByRole("main").locator('a[href="/reservations"]'),
+    page.getByRole("main").locator('a[href="/clock"]'),
   ).toBeVisible();
   await expect(page.getByRole("main").locator('a[href="/team"]')).toBeVisible();
   await expect(page.getByRole("button", { name: h.signOut })).toBeVisible();
@@ -130,12 +133,12 @@ test("switching scheduling off takes its part of Today with it", async ({
 });
 
 test("a worker does not see manager-only modules", async ({ page }) => {
+  await setDemoModule("storefront", true);
   await signIn(page, WORKER);
   expect(await navItems(page)).toEqual([
     he.app.nav.home,
     m.scheduling.name,
     m.time_clock.name,
-    m.reservations.name,
   ]);
   await expectUnavailable(page, "/storefront");
 });

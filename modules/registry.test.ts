@@ -1,6 +1,5 @@
 import { Constants } from "@db/database.types";
 import {
-  MAX_MODULE_NAV,
   MODULE_KEYS,
   type ModuleManifest,
   ROLES,
@@ -32,10 +31,10 @@ describe("module registry", () => {
     }
   });
 
-  it("fits every nav item in the phone tab bar next to home", () => {
-    const withNav = manifests.filter((m) => m.nav);
-    expect(withNav.length).toBeLessThanOrEqual(MAX_MODULE_NAV);
-    const hrefs = withNav.map((m) => m.nav?.href);
+  it("gives every nav item its own place next to home", () => {
+    // How many fit is checked per business and template (`fitsTabBar`),
+    // so the registry may hold more modules with a tab than the bar does.
+    const hrefs = manifests.filter((m) => m.nav).map((m) => m.nav?.href);
     expect(new Set(hrefs).size).toBe(hrefs.length);
     expect(hrefs).not.toContain("/home");
   });

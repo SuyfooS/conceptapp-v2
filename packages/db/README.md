@@ -61,8 +61,10 @@ from TypeScript, `applyTemplate(adminClient, id, key)` in `@db/templates`.
 Tested twice: pgTAP (`templates.test.sql`: grants, refusals, nothing
 half-applied) and `pnpm test:db` (`modules/templates.db.test.ts`: each
 template in the database is valid against the real manifests, and applying
-it to a fresh business gives back the same valid definition). The seed sets
-up the demo restaurant with `apply_template`.
+it to a fresh business gives back the same valid definition). The seed makes
+the demo restaurant and the demo shop with `reset_demo_business`, which applies
+their templates; `demo_reset.test.sql` tests the reset and the shop's renewed
+week.
 
 ## Clients and session
 

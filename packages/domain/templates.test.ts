@@ -79,6 +79,24 @@ describe("validateTemplate", () => {
     expect(() => validateTemplate(manifests, input)).toThrow(/time_clock/);
   });
 
+  it("refuses more tabs than the tab bar holds", () => {
+    // Every fixture module gets a tab; the bar holds MAX_MODULE_NAV of them.
+    const tabbed = manifests.map((m, i) => ({
+      ...m,
+      nav: {
+        href: `/m${i}` as const,
+        icon: "calendar" as const,
+        minRole: "worker" as const,
+        order: i,
+      },
+    }));
+    expect(() => validateTemplate(tabbed, template())).toThrow(/tab bar/);
+
+    const fewer = template();
+    fewer.modules.notifications = { enabled: false, settings: {} };
+    expect(() => validateTemplate(tabbed, fewer)).not.toThrow();
+  });
+
   it("refuses unknown modules, unknown fields and bad hours", () => {
     const extraModule = template();
     extraModule.modules.payroll = { enabled: true, settings: {} };
