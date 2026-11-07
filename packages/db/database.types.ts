@@ -688,25 +688,25 @@ export type Database = {
       template_wording: {
         Row: {
           base_sentence: string;
-          template_key: string;
           key: string;
           sentence: string;
+          template_key: string;
           updated_at: string;
           updated_by: string | null;
         };
         Insert: {
           base_sentence: string;
-          template_key: string;
           key: string;
           sentence: string;
+          template_key: string;
           updated_at?: string;
           updated_by?: string | null;
         };
         Update: {
           base_sentence?: string;
-          template_key?: string;
           key?: string;
           sentence?: string;
+          template_key?: string;
           updated_at?: string;
           updated_by?: string | null;
         };
