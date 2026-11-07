@@ -91,7 +91,8 @@ export function EnterForm({
 
 /**
  * Both demo businesses back the way they start. Nothing can bring back what
- * the reset removes, so it says what goes before it runs.
+ * the reset removes, so it says what goes before it runs: the one exception
+ * to "undo rather than are you sure" (CLAUDE.md, Orel, 7 November 2026).
  */
 function ResetDemo({ reset }: { reset: () => Promise<ResetResult> }) {
   const t = useTranslations("auth.enter.reset");

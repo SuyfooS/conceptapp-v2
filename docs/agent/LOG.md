@@ -13,7 +13,7 @@ what is next, defaults applied.
 - The door signs in with a recovery link instead of a magic link: an admin magic link for an unknown address signs it up, and a stray account would have stopped `hosted-demo.sql`, which now also clears one if it finds it.
 - Database in #66, merged and migrated first, with "demo" on to add the shop.
 - CI and two read-only reviews (four areas and three, a skeptic each) found nine problems, all fixed: a pgTAP test that counted every business's shifts, a lint warning on untyped empty lists, the stray-account risk above, the console checklist promising a `general` business positions and shifts, focus lost when the reset opened or closed, the wizard's new error not being announced, and three weaknesses in the door's tests (the reset could be skipped across screen sizes, a failure left the restaurant renamed, and the shop's schedule was checked only in the database).
-- My default, for Orel to confirm: the reset asks once and says what goes, because nothing can bring it back. CLAUDE.md says destructive actions offer undo instead, and this is the one exception.
+- Orel decided (7 November 2026) that the reset keeps its confirmation: it asks once and says what goes, because nothing can bring it back. CLAUDE.md now names it as the one exception to "undo rather than are you sure".
 - Also: copy that assumed a restaurant (the site description, the manager's invite hint, the wizard's placeholders, the template descriptions that promised table bookings).
 - Known, left: anyone at the door can reset while someone else is showing the demo. A team member viewing the shop also renews it. Opening hours are still stored and unread.
 - Next: step 3, exact fit (wording per business and template, editing templates from the console).
