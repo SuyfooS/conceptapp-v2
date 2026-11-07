@@ -66,6 +66,21 @@ the demo restaurant and the demo shop with `reset_demo_business`, which applies
 their templates; `demo_reset.test.sql` tests the reset and the shop's renewed
 week.
 
+## Wording
+
+A template or a business can replace a whole sentence of the app's copy
+(`template_wording`, `business_wording`), keyed by its message key under
+`app.*` or `modules.*`. A business's sentence wins over its template's, which
+wins over messages/he.json; deleting a row brings back the layer below.
+Template sentences are read live through `businesses.template_key`, so a
+change reaches every business opened from the template at once (Orel,
+7 November 2026). Members read their own business's sentences and its
+template's under RLS, and the team while viewing; only the team writes, with
+`set_business_wording` (platform staff) and `set_template_wording` (platform
+admins), each logging `wording.change`. Seeds hold no wording, so screens
+read as messages/he.json. Console reads and writes are in `@db/wording`;
+`wording.test.sql` covers who reads and writes what.
+
 ## Clients and session
 
 - `@db/supabase/server`: `createClient()` for Server Components and Server

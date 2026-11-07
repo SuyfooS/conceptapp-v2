@@ -24,6 +24,7 @@ select set_eq(
   $$,
   array[
     'templates', 'businesses', 'profiles', 'memberships',
+    'template_wording', 'business_wording',
     'business_modules', 'invites', 'audit_log', 'platform_staff',
     'view_sessions', 'schedule_weeks', 'availability_submissions',
     'availability_ranges', 'schedule_shifts', 'shift_assignments',

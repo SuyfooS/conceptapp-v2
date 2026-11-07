@@ -167,6 +167,48 @@ export type Database = {
           },
         ];
       };
+      business_wording: {
+        Row: {
+          base_sentence: string;
+          business_id: string;
+          key: string;
+          sentence: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          base_sentence: string;
+          business_id: string;
+          key: string;
+          sentence: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          base_sentence?: string;
+          business_id?: string;
+          key?: string;
+          sentence?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_wording_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_wording_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       businesses: {
         Row: {
           accent: string;
@@ -643,6 +685,48 @@ export type Database = {
           },
         ];
       };
+      template_wording: {
+        Row: {
+          base_sentence: string;
+          template_key: string;
+          key: string;
+          sentence: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          base_sentence: string;
+          template_key: string;
+          key: string;
+          sentence: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          base_sentence?: string;
+          template_key?: string;
+          key?: string;
+          sentence?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "template_wording_template_key_fkey";
+            columns: ["template_key"];
+            isOneToOne: false;
+            referencedRelation: "templates";
+            referencedColumns: ["key"];
+          },
+          {
+            foreignKeyName: "template_wording_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       templates: {
         Row: {
           created_at: string;
@@ -969,6 +1053,16 @@ export type Database = {
         Args: { actor: string; business: string; patch: Json };
         Returns: undefined;
       };
+      set_business_wording: {
+        Args: {
+          actor: string;
+          base: string;
+          business: string;
+          new_sentence: string;
+          word_key: string;
+        };
+        Returns: string;
+      };
       set_module_enabled: {
         Args: {
           actor: string;
@@ -986,6 +1080,16 @@ export type Database = {
           patch: Json;
         };
         Returns: undefined;
+      };
+      set_template_wording: {
+        Args: {
+          actor: string;
+          base: string;
+          new_sentence: string;
+          template: string;
+          word_key: string;
+        };
+        Returns: string;
       };
       start_break: {
         Args: { actor: string; at_time?: string; business: string };
