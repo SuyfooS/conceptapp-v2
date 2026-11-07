@@ -146,7 +146,10 @@ export async function BusinessView({
             </ListGroup>
           ) : null}
         </div>
-        <div className="md:col-start-2 md:row-span-2 md:row-start-1 xl:col-span-2 xl:col-start-1 xl:row-span-1 xl:row-start-2">
+        <div
+          id="people"
+          className="scroll-mt-4 md:col-start-2 md:row-span-2 md:row-start-1 xl:col-span-2 xl:col-start-1 xl:row-span-1 xl:row-start-2"
+        >
           <People t={t} business={business} issue={issue} />
         </div>
         {viewAs ? (
@@ -187,9 +190,15 @@ function Checklist({
   const ownerExpired = business.people.some(
     (p) => p.role === "owner" && p.status === "expired",
   );
+  // A missing owner is invited as an owner; one whose invite ran out is
+  // renewed in the people list, never invited again in another role.
   const href = (item: SetupItem) => {
     if (item.done) return null;
-    if (item.key === "owner" || item.key === "staff") return hrefs.people;
+    if (item.key === "owner") {
+      if (!hrefs.people) return null;
+      return ownerExpired ? "#people" : `${hrefs.people}?role=owner`;
+    }
+    if (item.key === "staff") return hrefs.people;
     if (item.key === "address") return hrefs.settings;
     return null;
   };

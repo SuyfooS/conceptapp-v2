@@ -1,4 +1,4 @@
-import { ROLES } from "@domain/modules";
+import { ROLES, type Role } from "@domain/modules";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { getTranslations } from "next-intl/server";
@@ -13,10 +13,13 @@ import { InviteForm } from "@/app/(app)/team/invite/invite-form";
 export async function AddPersonView({
   name,
   businessHref,
+  defaultRole,
   invite,
 }: {
   name: string;
   businessHref: string;
+  /** The role to start with, e.g. an owner from the checklist. */
+  defaultRole?: Role;
   /** `addPersonAction` bound to the business, or the demo's stand-in. */
   invite: (prev: InviteState, form: FormData) => Promise<InviteState>;
 }) {
@@ -31,6 +34,7 @@ export async function AddPersonView({
       <InviteForm
         roles={ROLES}
         back={{ href: businessHref, label: t("back", { name }) }}
+        defaultRole={defaultRole}
         invite={invite}
       />
     </PageBody>

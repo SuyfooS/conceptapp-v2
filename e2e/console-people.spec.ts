@@ -160,3 +160,32 @@ test("someone working in another business is not added", async ({ page }) => {
   await page.getByRole("button", { name: ti.submit }).click();
   await expect(page.getByText(ti.errors.elsewhere)).toBeVisible();
 });
+
+test("the checklist opens the right way to fix a missing owner", async ({
+  page,
+}) => {
+  const owner = new RegExp(a.setup.checklist.items.owner.title);
+  // On the design console (no sign-in): a business with nobody yet invites
+  // its owner as an owner, and one whose owner's invite ran out renews it.
+  await page.goto("/design/console/businesses/cafe-noa");
+  await expect(page.getByRole("link", { name: owner })).toHaveAttribute(
+    "href",
+    /\/people\/new\?role=owner$/,
+  );
+  await page.goto("/design/console/businesses/bar-hayam");
+  await expect(page.getByRole("link", { name: owner })).toHaveAttribute(
+    "href",
+    "#people",
+  );
+
+  // The real form starts on the role it was opened for.
+  await signIn(page, PLATFORM_ADMIN, /\/admin$/);
+  await page.goto("/admin/businesses/demo-restaurant/people/new?role=owner");
+  await expect(
+    page.getByRole("radio", { name: new RegExp(he.app.team.roles.owner) }),
+  ).toBeChecked();
+  await page.goto("/admin/businesses/demo-restaurant/people/new");
+  await expect(
+    page.getByRole("radio", { name: new RegExp(he.app.team.roles.worker) }),
+  ).toBeChecked();
+});

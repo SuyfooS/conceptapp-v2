@@ -27,6 +27,8 @@ type InviteFormProps = {
   roles: readonly Role[];
   /** Where "back" goes once the link is ready: the team, or the console's business. */
   back: { href: string; label: string };
+  /** The role picked to start with; the last of `roles` (worker) otherwise. */
+  defaultRole?: Role;
   /** `inviteAction`, or the design demo's stand-in. */
   invite: (prev: InviteState, form: FormData) => Promise<InviteState>;
 };
@@ -42,6 +44,7 @@ export function InviteForm(props: InviteFormProps) {
 function InviteRound({
   roles,
   back,
+  defaultRole: startRole,
   invite,
   onAnother,
 }: InviteFormProps & { onAnother: () => void }) {
@@ -90,7 +93,7 @@ function InviteRound({
   }
 
   const errors = state.errors ?? {};
-  const defaultRole = values?.role || roles[roles.length - 1];
+  const defaultRole = values?.role || startRole || roles[roles.length - 1];
 
   return (
     <form
