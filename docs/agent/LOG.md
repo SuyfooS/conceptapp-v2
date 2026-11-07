@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-07 · run 30 · Saturday night on Today
+
+- Guessed: nothing left by Orel. The finishing touch is the hole logged with the clock (#48): Today's hero lost a shift that runs past midnight from the week's last day, because it read this week and next only. On Sunday at 00:30 a worker still on Saturday night saw Sunday's shift as next.
+- On the week's first day only, `currentPublishedSchedule` also reads last week and keeps the day before (`overnight`); the hero looks at those shifts too. Other days read nothing extra. `overnightDay` in `@domain/today`, with tests. "Who works today" is unchanged.
+- Restore point: the tag `before-night/2026-11-07` was cut off again, so the branch `backup/before-night-2026-11-07` at `d138383` holds it.
+- Checked yesterday's screens too: axe clean and no horizontal scroll at 390/820/1440, light and dark, on the clock, team hours, a person's hours, the skeleton and `/enter`. Seen, not fixed: the demo of one person's hours shows Noa's shifts and total for everyone (Yoav: 4 shifts on his page, 8 in the team list).
+- Not proven in a browser: the hero only changes at that hour, and the server's clock can't be moved in a test. Unit tests and types cover it.
+- Next: the backlog's first hole, a business's Shabbat times from its location, by day with Orel. Open pull requests #54 and #57 untouched.
+
 ## 2026-11-06 · chat · the passive door
 
 - Orel put real sign-in and its security off, and asked for a "passive login" until then. My reading: `/enter` offers three fictional people of a demo restaurant, one press and no code (#51). `PASSIVE_SIGN_IN` in `@domain/passive-sign-in` goes false before real people use the project.

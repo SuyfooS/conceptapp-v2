@@ -4,6 +4,7 @@ import {
   clockAt,
   dayPart,
   nextShift,
+  overnightDay,
   shiftPhase,
   shiftWhen,
   type TodayTile,
@@ -107,6 +108,26 @@ describe("nextShift", () => {
   it("does not depend on the order it is given", () => {
     const backwards = [...shifts].reverse();
     expect(nextShift(backwards, at("2026-11-03", "08:00"))).toBe(shifts[0]);
+  });
+});
+
+describe("overnightDay", () => {
+  it("is the last day of the week before on the week's first day", () => {
+    expect(overnightDay("2026-11-08", "2026-11-08")).toBe("2026-11-07");
+  });
+
+  it("is null on any other day, whose yesterday is in this week", () => {
+    expect(overnightDay("2026-11-09", "2026-11-08")).toBeNull();
+    expect(overnightDay("2026-11-14", "2026-11-08")).toBeNull();
+  });
+
+  it("with nextShift, finds Saturday night's shift after midnight", () => {
+    const saturday = overnightDay("2026-11-08", "2026-11-08") ?? "";
+    const late = shift(saturday, "20:00", "02:00", ["noa"]);
+    const sunday = shift("2026-11-08", "16:00", "23:00", ["noa"]);
+    const clock = at("2026-11-08", "00:30");
+    expect(nextShift([sunday], clock, "noa")).toBe(sunday);
+    expect(nextShift([late, sunday], clock, "noa")).toBe(late);
   });
 });
 

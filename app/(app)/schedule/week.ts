@@ -35,6 +35,7 @@ import { shabbatTimes } from "@domain/shabbat-times";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { ShiftSwap } from "@domain/swaps";
 import { canSeeTeam, type TeamMember } from "@domain/team";
+import { overnightDay } from "@domain/today";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
@@ -242,6 +243,11 @@ export type PublishedSchedule = {
   timeZone: string;
   thisWeek: PublishedWeek;
   nextWeek: PublishedWeek;
+  /**
+   * On the week's first day, the published shifts of the day before, since
+   * one past midnight may still be on; empty on any other day.
+   */
+  overnight: WeekScheduleShift[];
   people: Colleague[];
   positions: Position[];
   /** Live shift swaps of the business (open, or waiting for a manager). */
@@ -292,9 +298,15 @@ export const currentPublishedSchedule = cache(
         shabbat: settings.closedOnShabbat ? shabbatOf(place, start) : null,
       };
     };
-    const [thisWeek, nextWeek, swaps, people] = await Promise.all([
+    const yesterday = overnightDay(today, thisStart);
+    const [thisWeek, nextWeek, overnight, swaps, people] = await Promise.all([
       published(thisStart),
       published(addDays(thisStart, 7)),
+      yesterday
+        ? published(addDays(thisStart, -7)).then((week) =>
+            week.shifts.filter((shift) => shift.day === yesterday),
+          )
+        : [],
       getLiveSwaps(businessId),
       getColleagues(businessId),
     ]);
@@ -304,6 +316,7 @@ export const currentPublishedSchedule = cache(
       timeZone,
       thisWeek,
       nextWeek,
+      overnight,
       people,
       positions: settings.positions,
       swaps,
