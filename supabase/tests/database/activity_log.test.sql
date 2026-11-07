@@ -161,11 +161,7 @@ select throws_ok(
     gen_random_uuid(), '[]')$$,
   'P0002', null, 'an unknown week cannot be published'
 );
-select is(
-  (select count(*)::int from public.audit_log where action = 'schedule.publish'),
-  4,
-  'and none of them is in the log'
-);
+select is(pg_temp.published_rows(), 4, 'and none of them is in the log');
 
 -- Y's own publish, for the isolation checks below.
 select public.publish_week_schedule('6c000000-0000-4000-a000-00000000000e',

@@ -35,11 +35,19 @@ begin
   -- Read before the shifts are replaced: their waiting swap requests go with
   -- them (on delete cascade). Nothing read here is returned, and the rules
   -- below refuse anyone who may not publish, so it tells a stranger nothing.
-  select * into w from public.schedule_weeks where id = week;
+  -- Locked, so what's logged is what happened: two publishes of the week take
+  -- turns, a request for one of its shifts waits (and then finds the shift
+  -- gone), and a decision on a waiting request waits until this is done.
+  select * into w from public.schedule_weeks where id = week for update;
+  perform 1 from public.schedule_shifts s where s.week_id = week for update;
   select count(*) into swaps_removed
-  from public.shift_swaps sw
-  join public.schedule_shifts s on s.id = sw.shift_id
-  where s.week_id = week and sw.status in ('open', 'taken');
+  from (
+    select 1
+    from public.shift_swaps sw
+    join public.schedule_shifts s on s.id = sw.shift_id
+    where s.week_id = week and sw.status in ('open', 'taken')
+    for update of sw
+  ) waiting;
 
   shift_count := private.replace_week_schedule(actor, week, shifts);
 
