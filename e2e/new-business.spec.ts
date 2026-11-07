@@ -57,6 +57,13 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await expect(
     page.getByRole("heading", { level: 2, name: w.steps.template }),
   ).toBeVisible();
+  // No kind of business is assumed: going on without one asks for it.
+  await expect(page.getByRole("radio", { checked: true })).toHaveCount(0);
+  await next(page);
+  await expect(page.getByText(w.errors.template.required)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 2, name: w.steps.template }),
+  ).toBeVisible();
   await page
     .getByRole("radio", { name: new RegExp(w.templates["cafe-bar"].name) })
     .check();

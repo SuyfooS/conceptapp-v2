@@ -134,7 +134,9 @@ Only `app/` imports app code (`@/…`).
 - Show status before it is asked for: counts and badges for what needs
   action ("2 משמרות חסרות עובד").
 - Every empty screen says what to do next. Destructive actions offer undo
-  rather than "are you sure".
+  rather than "are you sure". The one exception (Orel, 7 November 2026): what
+  nothing can bring back, like the demo reset at `/enter`, asks once and says
+  what goes.
 - Acceptance test for a screen: the least technical person on the pilot's
   staff completes the task without help.
 

@@ -1,6 +1,6 @@
 {
   "metadata": {
-    "description": "Staff scheduling, time clock and table reservations for restaurants and cafés."
+    "description": "Staff scheduling and a time clock for small businesses."
   },
   "ui": {
     "appShell": {
@@ -322,9 +322,19 @@
     "enter": {
       "metaTitle": "Enter",
       "title": "Enter",
-      "intro": "Choose who is coming in. For now there's no phone or code.",
+      "intro": "Choose a business and who is coming in. For now there's no phone or code.",
       "warning": "This is a demo: anyone with the address can come in and change things. Don't enter real details here.",
       "failed": "That didn't work. Try again.",
+      "businesses": {
+        "restaurant": {
+          "name": "Demo restaurant",
+          "body": "Next week's schedule is yours to build and publish."
+        },
+        "shop": {
+          "name": "Demo shop",
+          "body": "This week's schedule is already published."
+        }
+      },
       "people": {
         "owner": {
           "name": "Ori Demo",
@@ -337,7 +347,27 @@
         "worker": {
           "name": "Noa Cohen",
           "role": "Worker"
+        },
+        "shopOwner": {
+          "name": "Michal Demo",
+          "role": "Owner"
+        },
+        "shopManager": {
+          "name": "Omer Demo",
+          "role": "Shop manager"
+        },
+        "shopWorker": {
+          "name": "Tamar Avraham",
+          "role": "Worker"
         }
+      },
+      "reset": {
+        "open": "Put the demo back to the start",
+        "body": "Both businesses go back to how they started: the name, the colour, the settings and the people. Everything changed in them is deleted, schedules and hours too.",
+        "confirm": "Reset the demo",
+        "cancel": "Cancel",
+        "done": "The demo is back to the start",
+        "failed": "The reset didn't work. Try again."
       }
     }
   },
@@ -510,7 +540,7 @@
         "role": "Role",
         "roleHint": {
           "owner": "Everything in the business",
-          "manager": "Schedule, team and reservations",
+          "manager": "Schedule and team",
           "worker": "Shifts and time clock"
         },
         "submit": "Create invite link",
@@ -1406,12 +1436,12 @@
       "fields": {
         "name": {
           "label": "Business name",
-          "placeholder": "Café Noa",
-          "hint": "As the staff and guests know it."
+          "placeholder": "Noa's Studio",
+          "hint": "As the staff and customers know it."
         },
         "slug": {
           "label": "Page address",
-          "placeholder": "cafe-noa",
+          "placeholder": "studio-noa",
           "hint": "Latin letters, digits and hyphens."
         },
         "address": {
@@ -1509,7 +1539,7 @@
         "items": {
           "opened": {
             "title": "Open the business from the template",
-            "done": "The settings, positions and shifts of “{template}”."
+            "done": "The settings of “{template}”."
           },
           "owner": {
             "title": "Invite the owners",

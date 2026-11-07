@@ -3,6 +3,21 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-07 · chat · step 2, templates for every kind of business
+
+- Two new templates: `retail` (a shop: cashier, sales, stock and shift lead; morning and evening Sunday to Thursday and a short Friday; closed on Shabbat, the manifest's default) and `general` (the schedule and the clock, with positions and shifts left to the business). `restaurant` and `cafe-bar` v2 stop switching on reservations, the public page and notifications, and every business already set up gets the same, so no tab leads to an empty screen. Their settings stay in the templates for when those modules are built.
+- The tab limit (home plus four) was a test over every module with a tab in the code, so a fifth, like lists, would have failed even for a business that doesn't use it. Now `validateTemplate` refuses a template with more tabs than the bar holds, and the console's switch refuses one that wouldn't fit ("אין מקום בסרגל לטאב נוסף").
+- The wizard assumes no kind of business: nothing is picked, and going on without one asks for it, aloud for a screen reader too (`ChoiceList` announces its error).
+- A demo shop beside the restaurant, offered at the door in its own group. Its week is always published from its own shifts as they are now, by `public.renew_demo_schedules`: at the door, on Today, and after a reset. Managers and workers in turn, one shift a day each, positions in turn; owners fill no shift. Only this week, so next week's availability, build and publish stay for the visitor, and each renewal shows in the shop's log as the owner's publish.
+- The door's reset ("החזרת ההדגמה להתחלה") puts both demo businesses back: `public.reset_demo_business` deletes a business with everything that cascades from it and makes it again with the same id, from `private.demo_businesses` (written by the seed and `hosted-demo.sql`). A reset a few seconds after another is skipped. The seed makes both businesses this way, so CI runs the reset on every database start.
+- The door signs in with a recovery link instead of a magic link: an admin magic link for an unknown address signs it up, and a stray account would have stopped `hosted-demo.sql`, which now also clears one if it finds it.
+- Database in #66, merged and migrated first, with "demo" on to add the shop.
+- CI and two read-only reviews (four areas and three, a skeptic each) found nine problems, all fixed: a pgTAP test that counted every business's shifts, a lint warning on untyped empty lists, the stray-account risk above, the console checklist promising a `general` business positions and shifts, focus lost when the reset opened or closed, the wizard's new error not being announced, and three weaknesses in the door's tests (the reset could be skipped across screen sizes, a failure left the restaurant renamed, and the shop's schedule was checked only in the database).
+- Orel decided (7 November 2026) that the reset keeps its confirmation: it asks once and says what goes, because nothing can bring it back. CLAUDE.md now names it as the one exception to "undo rather than are you sure".
+- Also: copy that assumed a restaurant (the site description, the manager's invite hint, the wizard's placeholders, the template descriptions that promised table bookings).
+- Known, left: anyone at the door can reset while someone else is showing the demo. A team member viewing the shop also renews it. Opening hours are still stored and unread.
+- Next: step 3, exact fit (wording per business and template, editing templates from the console).
+
 ## 2026-11-07 · chat · the activity log
 
 - Orel confirmed that by "more kinds and sides" he meant the people who use the app, so the roadmap's order stands; he answered after step 1 was already built.

@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, type ReactNode, useId } from "react";
 import { cn } from "./cn";
 
 /** One choice out of several, as a grouped list under a section title. */
@@ -12,14 +12,16 @@ export function ChoiceList({
   legend: ReactNode;
   /** The legend is a section title; pass `sr-only` when a heading says it already. */
   legendClassName?: string;
-  /** Under the list, in place of nothing: what is wrong with the choice. */
+  /** Under the list, in place of nothing: what is wrong with the choice, read out as it appears. */
   error?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
+  const errorId = useId();
   return (
     <fieldset
       className={cn("m-0 flex min-w-0 flex-col border-0 p-0", className)}
+      aria-describedby={error ? errorId : undefined}
     >
       <legend className={cn("mb-3 px-1 font-bold text-lg", legendClassName)}>
         {legend}
@@ -27,7 +29,11 @@ export function ChoiceList({
       <div className="overflow-hidden rounded-card bg-surface shadow-card">
         {children}
       </div>
-      {error ? <p className="mt-2 px-1 text-danger text-sm">{error}</p> : null}
+      {error ? (
+        <p id={errorId} role="alert" className="mt-2 px-1 text-danger text-sm">
+          {error}
+        </p>
+      ) : null}
     </fieldset>
   );
 }

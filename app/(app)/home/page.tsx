@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { signOut } from "../../(auth)/actions";
 import { currentClockLine } from "../clock/clock";
+import { renewDemoWeek } from "../demo";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
 import {
@@ -24,6 +25,7 @@ export async function generateMetadata(): Promise<Metadata> {
 // modules. Each read below is null when its module is off or the person's
 // role does not reach it.
 export default async function HomePage() {
+  await renewDemoWeek();
   const [
     member,
     enabled,
