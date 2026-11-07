@@ -122,7 +122,13 @@ test("in the shop, this week is already published and no tab is empty", async ({
   await page
     .getByRole("button", { name: he.app.shifts.week.this, exact: true })
     .click();
-  await expect(page.getByText(/פורסם ב-/).first()).toBeVisible();
+  // Each screen size draws its own shape; only the one on screen counts.
+  await expect(
+    page
+      .getByText(/פורסם ב-/)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
   await expectAccessible(page);
   await page.screenshot({
     path: testInfo.outputPath("enter-shop-schedule.png"),
