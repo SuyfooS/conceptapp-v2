@@ -1363,8 +1363,10 @@
       "membersCount": "{count, plural, =0 {No team} one {One person on the team} other {# on the team}}",
       "invitesCount": "{count, plural, =0 {No open invites} one {One open invite} other {# open invites}}",
       "templates": {
+        "retail": "Shop",
         "restaurant": "Restaurant",
         "cafe-bar": "Café and bar",
+        "general": "Another kind",
         "none": "No template"
       },
       "empty": {
@@ -1384,13 +1386,21 @@
         "staff": "Staff"
       },
       "templates": {
+        "retail": {
+          "name": "Shop",
+          "body": "Scheduling and time clock, with a shop's positions and shifts."
+        },
         "restaurant": {
           "name": "Restaurant",
-          "body": "Scheduling, time clock, table reservations and a business page."
+          "body": "Scheduling and time clock, with a restaurant's positions and shifts."
         },
         "cafe-bar": {
           "name": "Café and bar",
-          "body": "Scheduling, time clock and a business page, without table reservations."
+          "body": "Scheduling and time clock, with a café and bar's positions and shifts."
+        },
+        "general": {
+          "name": "Another kind",
+          "body": "Scheduling and time clock. The business sets its own positions and shifts."
         }
       },
       "fields": {
@@ -1564,7 +1574,8 @@
       "subtitle": "Everything {name} can change themselves, and advanced settings only the team sees. Every change saves right away.",
       "details": "Business details",
       "on": "{module} is on for this business",
-      "switchFailed": "Not saved"
+      "switchFailed": "Not saved",
+      "noRoom": "No room in the tab bar for another tab"
     }
   },
   "errors": {

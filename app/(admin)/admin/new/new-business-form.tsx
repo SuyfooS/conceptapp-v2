@@ -20,7 +20,7 @@ import { FieldGroup, GroupedField, GroupedTextArea } from "@ui/field-group";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { PersonList, PersonRow } from "@ui/person-row";
 import { ltrInputClass } from "@ui/text-field";
-import { Coffee, UtensilsCrossed } from "lucide-react";
+import { Briefcase, Coffee, ShoppingBag, UtensilsCrossed } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   type FormEvent,
@@ -37,8 +37,10 @@ const STEP_KEYS = ["template", "details", "accent", "staff"] as const;
 const LAST_STEP = NEW_BUSINESS_STEPS.length - 1;
 
 const TEMPLATE_ICONS: Record<TemplateKey, ReactNode> = {
+  retail: <ShoppingBag />,
   restaurant: <UtensilsCrossed />,
   "cafe-bar": <Coffee />,
+  general: <Briefcase />,
 };
 
 type Values = {

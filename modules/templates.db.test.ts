@@ -104,14 +104,17 @@ describe("templates in the database", () => {
     }
   });
 
-  it("set up the seeded demo restaurant from the restaurant template", async () => {
+  it.each([
+    ["demo-restaurant", "restaurant"],
+    ["demo-shop", "retail"],
+  ])("set up the seeded %s from the %s template", async (slug, key) => {
     const [demo] = await sql<{ id: string }[]>`
-      select id from public.businesses where slug = 'demo-restaurant'`;
+      select id from public.businesses where slug = ${slug}`;
     const { business, definition } = await businessAsTemplate(
       sql,
       demo?.id ?? "",
     );
-    expect(business?.template_key).toBe("restaurant");
+    expect(business?.template_key).toBe(key);
     expect(() => validateTemplate(manifests, definition)).not.toThrow();
   });
 });
