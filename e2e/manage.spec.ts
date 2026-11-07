@@ -2,8 +2,12 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
+  type DemoDetails,
+  demoBusinessDetails,
+  demoDetailsLogged,
   demoModuleEnabled,
   demoModuleSettings,
+  setDemoBusinessDetails,
   setDemoModuleSettings,
 } from "./db";
 import { signIn } from "./session";
@@ -16,6 +20,8 @@ const WORKER = { local: "050-000-0004", e164: "+972500000004" };
 const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 
 const m = he.app.manage;
+const b = he.app.manage.business;
+const a = he.app.manage.activity;
 const s = he.modules.scheduling.settings;
 const clock = he.modules.time_clock.settings;
 const team = he.admin.settings;
@@ -46,16 +52,19 @@ const stored = async () => {
 
 let scheduling: Record<string, unknown>;
 let timeClock: Record<string, unknown>;
+let details: DemoDetails;
 
 test.beforeAll(async () => {
   scheduling = await demoModuleSettings("scheduling");
   timeClock = await demoModuleSettings("time_clock");
+  details = await demoBusinessDetails();
 });
 
 test.afterEach(async () => {
   await setDemoModuleSettings("scheduling", scheduling);
   await setDemoModuleSettings("time_clock", timeClock);
   await setDemoModule("reservations", true);
+  await setDemoBusinessDetails(details);
 });
 
 test("signed-out visitors are sent to the door", async ({ page }) => {
@@ -70,7 +79,12 @@ test("a worker has no way in", async ({ page }) => {
     page.getByRole("heading", { level: 1, name: /, יואב$/ }),
   ).toBeVisible();
   await expect(page.getByRole("link", { name: m.row })).toHaveCount(0);
-  for (const path of ["/manage", "/manage/scheduling"]) {
+  for (const path of [
+    "/manage",
+    "/manage/scheduling",
+    "/manage/business",
+    "/manage/activity",
+  ]) {
     await page.goto(path);
     await expect(
       page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
@@ -192,6 +206,138 @@ test("a manager fits the schedule to the business, and it stays", async ({
   await expect.poll(async () => (await stored()).shifts).toContain("פתיחה");
 });
 
+test("a manager changes the business's own details", async ({
+  page,
+}, testInfo) => {
+  await setDemoBusinessDetails({ ...details, shabbatCity: null });
+  const logged = await demoDetailsLogged();
+  await signIn(page, MANAGER);
+  await page.goto("/manage");
+
+  // A business closed on Shabbat that hasn't said where it is is told so.
+  const row = page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(b.title) });
+  await expect(row).toContainText(b.noCity);
+  await row.click();
+  await expect(page).toHaveURL(/\/manage\/business$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: b.title }),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("manage-business.png"),
+    fullPage: true,
+  });
+
+  // The name saves on leaving the field, tidied.
+  const name = page.getByLabel(b.name.label, { exact: true });
+  await name.fill("  מסעדת   מבחן ");
+  await name.press("Enter");
+  await expect(page.getByText(m.saved, { exact: true })).toBeVisible();
+  await expect
+    .poll(async () => (await demoBusinessDetails()).name)
+    .toBe("מסעדת מבחן");
+  await expect(name).toHaveValue("מסעדת מבחן");
+
+  // An empty name says why, and isn't saved.
+  await name.fill("");
+  await expect(page.getByText(b.name.required)).toBeVisible();
+  await name.press("Enter");
+  await expect(name).toHaveValue("מסעדת מבחן");
+
+  // A colour saves at a tap.
+  await page.getByTitle(he.ui.accentPicker.presets.teal).click();
+  await expect
+    .poll(async () => (await demoBusinessDetails()).accent)
+    .toBe("#0f766e");
+
+  // The city, with this coming Shabbat's times in it.
+  await page
+    .getByRole("button", { name: new RegExp(b.shabbatCity.label) })
+    .click();
+  await page.getByRole("menuitemradio", { name: he.cities.jerusalem }).click();
+  await expect
+    .poll(async () => (await demoBusinessDetails()).shabbatCity)
+    .toBe("jerusalem");
+  await expect(
+    page.getByText(
+      b.city.times.split(":")[0]?.replace("{city}", he.cities.jerusalem) ?? "",
+    ),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  // All of it stays, and each change is in the log.
+  await page.reload();
+  await expect(name).toHaveValue("מסעדת מבחן");
+  expect(await demoDetailsLogged()).toBe(logged + 3);
+  await page.goto("/manage");
+  await expect(row).not.toContainText(b.noCity);
+
+  // The log says who changed what: one change, from where it began.
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(a.title) })
+    .click();
+  await expect(page).toHaveURL(/\/manage\/activity$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: a.title }),
+  ).toBeVisible();
+  const main = page.getByRole("main");
+  await expect(
+    main.getByText("שירן הדגמה").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    main
+      .getByRole("link", { name: new RegExp(a.actions.business.details) })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  for (const words of [
+    `${b.name.label}: מסעדת מבחן`,
+    `${b.shabbatCity.label}: ${he.cities.jerusalem}`,
+  ]) {
+    await expect(
+      main.getByText(words).filter({ visible: true }).first(),
+    ).toBeVisible();
+  }
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("manage-activity.png"),
+    fullPage: true,
+  });
+});
+
+test("availability closes at the business's own city's candle lighting", async ({
+  page,
+}) => {
+  const ta = he.app.availability;
+  const shabbatStarts = ta.candleLightingShort.split("<")[0] ?? "";
+  const friday = page.getByRole("button", {
+    name: ta.dayName.replace("{day}", ta.weekdays.fri),
+  });
+  // Friday's candle lighting on the screen, in minutes after midnight.
+  const candles = async () => {
+    await expect(friday).toContainText(shabbatStarts);
+    const text = (await friday.textContent())?.split(shabbatStarts)[1] ?? "";
+    const [, hours, minutes] = text.match(/(\d{2}):(\d{2})/) ?? [];
+    return Number(hours) * 60 + Number(minutes);
+  };
+
+  await setDemoBusinessDetails({ ...details, shabbatCity: "telAviv" });
+  await signIn(page, WORKER);
+  await page.goto("/schedule/availability");
+  const telAviv = await candles();
+
+  // Jerusalem lights candles 40 minutes before sunset, not 20, and its sun
+  // sets a minute or two before Tel Aviv's.
+  await setDemoBusinessDetails({ ...details, shabbatCity: "jerusalem" });
+  await page.reload();
+  const earlier = telAviv - (await candles());
+  expect(earlier).toBeGreaterThanOrEqual(19);
+  expect(earlier).toBeLessThanOrEqual(25);
+});
+
 test("settings older than the manifest don't take the screen down", async ({
   page,
 }) => {
@@ -229,6 +375,14 @@ test("the team sees every setting and switches modules", async ({
     path: testInfo.outputPath("console-settings.png"),
     fullPage: true,
   });
+
+  // The business's own details come first, its Shabbat city among them.
+  await expect(
+    page.getByRole("heading", { level: 2, name: team.details }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: new RegExp(b.shabbatCity.label) }),
+  ).toBeVisible();
 
   // The advanced settings, which managers don't see.
   await expect(page.getByText(s.weekStartsOn.label)).toBeVisible();

@@ -1,5 +1,6 @@
 "use server";
 
+import { checkBusinessDetailsChange } from "@domain/business-details";
 import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
 import { checkSettingsChange } from "@domain/settings-form";
 import { manifestFor } from "@modules/registry";
@@ -15,5 +16,13 @@ export async function demoSaveSettings(
   if (!key) return { ok: false, failure: "noAccess" };
   const manifest: ModuleManifest = manifestFor(key);
   const checked = checkSettingsChange(manifest, {}, change, "business");
+  return checked.ok ? { ok: true } : { ok: false, failure: checked.problem };
+}
+
+// The same for the business's own details.
+export async function demoSaveBusinessDetails(
+  change: unknown,
+): Promise<SettingsResult> {
+  const checked = checkBusinessDetailsChange(change);
   return checked.ok ? { ok: true } : { ok: false, failure: checked.problem };
 }

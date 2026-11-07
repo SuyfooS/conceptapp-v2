@@ -10,6 +10,22 @@
     "codeSlots": {
       "count": "{filled} of {total} digits",
       "accepted": "Code accepted"
+    },
+    "accentPicker": {
+      "presets": {
+        "blue": "Blue",
+        "teal": "Teal",
+        "green": "Green",
+        "orange": "Orange",
+        "burgundy": "Burgundy",
+        "pink": "Pink",
+        "purple": "Purple",
+        "brown": "Brown"
+      },
+      "custom": "Another colour",
+      "current": "The current colour",
+      "kept": "The previous colour",
+      "adjusted": "The colour was darkened a little so text on it stays readable."
     }
   },
   "days": {
@@ -41,6 +57,16 @@
       "short": "Sat",
       "long": "Saturday night"
     }
+  },
+  "cities": {
+    "jerusalem": "Jerusalem",
+    "telAviv": "Tel Aviv",
+    "haifa": "Haifa",
+    "petahTikva": "Petah Tikva",
+    "tiberias": "Tiberias",
+    "ashdod": "Ashdod",
+    "beerSheva": "Beersheba",
+    "eilat": "Eilat"
   },
   "design": {
     "metaTitle": "Design system",
@@ -206,7 +232,10 @@
     "countUpAdd": "Add",
     "switchTitle": "Switch",
     "switchLabel": "Closed on Shabbat",
-    "switchHint": "What changes at once, with no save button"
+    "switchHint": "What changes at once, with no save button",
+    "accentPickerTitle": "Choosing a colour",
+    "accentPickerCaption": "How the colour will look in the app",
+    "accentPickerButton": "Sample button"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -1059,6 +1088,38 @@
       "home": "Today",
       "row": "Settings",
       "rowSubtitle": "What fits your business exactly",
+      "business": {
+        "title": "Business details",
+        "row": "Name, colour, address and Shabbat times",
+        "rowNoCity": "No city chosen for Shabbat times yet",
+        "rowNoShabbat": "Name, colour and address",
+        "noCity": "City missing",
+        "preview": "How your team sees the business",
+        "previewButton": "Sample button",
+        "name": {
+          "label": "Business name",
+          "hint": "How your team sees it in the app and in invitations.",
+          "required": "Write the business's name.",
+          "tooLong": "The name is too long. Up to 80 characters."
+        },
+        "address": {
+          "label": "Address",
+          "hint": "Optional.",
+          "placeholder": "5 Herzl Street, Haifa"
+        },
+        "accent": {
+          "label": "Colour"
+        },
+        "shabbatCity": {
+          "label": "Shabbat times for"
+        },
+        "city": {
+          "none": "Not chosen",
+          "times": "This coming Shabbat in {city}: candles at <ltr>{candles}</ltr>, havdalah at <ltr>{havdalah}</ltr>.",
+          "timesNone": "Until you choose a city, the times are {city}'s: candles at <ltr>{candles}</ltr>, havdalah at <ltr>{havdalah}</ltr>.",
+          "nearest": "If your city isn't listed, choose the nearest."
+        }
+      },
       "savesItself": "Every change saves right away.",
       "saved": "Saved",
       "advanced": "Advanced",
@@ -1123,7 +1184,105 @@
         "emptyViewOnly": "No shifts yet.",
         "notSaved": "The shift wasn't saved. Check your connection and try again."
       },
-      "between": "A number from {min} to {max}"
+      "between": "A number from {min} to {max}",
+      "activity": {
+        "title": "Activity log",
+        "subtitle": "Who changed what in the business, and when.",
+        "row": "Who changed what in the business, and when",
+        "clockNote": "Clocking in and out isn't shown here. It's in <link>the team's hours</link>.",
+        "today": "Today",
+        "yesterday": "Yesterday",
+        "older": "Earlier activity",
+        "newest": "Latest activity",
+        "quiet": "Everything that changed here went back to what it was, so there's nothing to show.",
+        "caption": "Activity on {day}",
+        "columns": {
+          "time": "Time",
+          "who": "Who",
+          "what": "What",
+          "before": "Before",
+          "after": "After"
+        },
+        "empty": {
+          "title": "No activity yet",
+          "body": "Every change to the settings, the team and the schedule shows here, with who made it and when.",
+          "action": "Back to running the business"
+        },
+        "noOlder": {
+          "title": "No earlier activity",
+          "body": "This is where the business's log begins.",
+          "action": "Latest activity"
+        },
+        "who": {
+          "team": "ConceptApp team",
+          "former": "Someone no longer on the team",
+          "unknown": "Someone no longer in the app",
+          "noName": "No name"
+        },
+        "change": "{label}: <to></to>, instead of <from></from>",
+        "changeTo": "{label}: <to></to>",
+        "changedList": "Changed {label}",
+        "advanced": "Changed an advanced setting",
+        "aModule": "a module",
+        "yes": "Yes",
+        "no": "No",
+        "noAddress": "No address",
+        "noCity": "Not chosen",
+        "accentNew": "The new colour",
+        "accentOld": "The previous colour",
+        "shift": "{name} on {day}",
+        "times": "<ltr>{in}–{out}</ltr>",
+        "timesOpen": "<ltr>{in}</ltr>, no clock-out",
+        "actions": {
+          "business": {
+            "create": "{invites, plural, =0 {Opened the business in the app} one {Opened the business in the app, with one team invite} other {Opened the business in the app, with # team invites}}",
+            "details": "Changed the business's details"
+          },
+          "module": {
+            "settings": "Changed the {module} settings",
+            "enabled": "{enabled, select, true {Switched on {module}} other {Switched off {module}}}"
+          },
+          "clock": {
+            "add": "Added a shift to {person}'s hours: {day}, <ltr>{in}–{out}</ltr>",
+            "addOpen": "Added a shift to {person}'s hours: {day}, from <ltr>{in}</ltr>",
+            "correct": "Fixed {person}'s shift on {day}",
+            "onDay": "{day}, <hours></hours>",
+            "hours": "Hours"
+          },
+          "invite": {
+            "create": "Invited to the team: {name}, {role}",
+            "createNoName": "Invited to the team as {role}",
+            "createPlain": "Invited to the team",
+            "send": "Sent an invite link to {name}",
+            "sendNoName": "Sent a team invite link",
+            "claim": "Joined the team as {role}",
+            "claimPlain": "Joined the team"
+          },
+          "view_as": {
+            "start": "Viewed the app as {role}",
+            "startPlain": "Viewed the app",
+            "end": "Stopped viewing the app"
+          },
+          "swap": {
+            "request": "Asked to give away a shift: {shift}",
+            "requestPlain": "Asked to give away a shift",
+            "take": "Took {from}'s shift: {shift}",
+            "takePlain": "Took a shift that was up for grabs",
+            "cancel": "Withdrew a request to give away a shift: {shift}",
+            "cancelPlain": "Withdrew a request to give away a shift",
+            "approve": "Approved a swap: {to} instead of {from}",
+            "approveShift": "Approved a swap: {to} instead of {from}, {shift}",
+            "decline": "Declined {from}'s swap request",
+            "declineShift": "Declined {from}'s swap request: {shift}"
+          },
+          "schedule": {
+            "publish": "{first, select, true {Published the schedule for the week of {week}} other {Published changes to the schedule for the week of {week}}}",
+            "shifts": "{count, plural, =0 {No shifts} one {One shift} other {# shifts}}",
+            "swapsRemoved": "{count, plural, one {One swap request was removed} other {# swap requests were removed}}"
+          },
+          "other": "Something else in the app"
+        }
+      }
     }
   },
   "modules": {
@@ -1148,7 +1307,7 @@
         },
         "closedOnShabbat": {
           "label": "Closed on Shabbat",
-          "hint": "On Friday availability ends at candle lighting, and on Saturday it starts after Shabbat ends. A shift in those hours gets no availability, and answers already sent stay until the person sends again."
+          "hint": "Friday availability ends at candle lighting and Saturday's starts at havdalah, by the city in the business details. Shifts in those hours get no availability, and answers already sent stay until the worker sends again."
         },
         "positions": {
           "label": "Positions",
@@ -1273,20 +1432,8 @@
       },
       "accent": {
         "label": "Colour",
-        "presets": {
-          "blue": "Blue",
-          "teal": "Teal",
-          "green": "Green",
-          "orange": "Orange",
-          "burgundy": "Burgundy",
-          "pink": "Pink",
-          "purple": "Purple",
-          "brown": "Brown"
-        },
-        "custom": "Another colour",
         "preview": "How the colour will look in the app",
-        "previewButton": "Sample button",
-        "adjusted": "The colour was darkened a little so text on it stays readable."
+        "previewButton": "Sample button"
       },
       "summary": {
         "title": "Summary",
@@ -1435,6 +1582,7 @@
     "settings": {
       "title": "Business settings",
       "subtitle": "Everything {name} can change themselves, and advanced settings only the team sees. Every change saves right away.",
+      "details": "Business details",
       "on": "{module} is on for this business",
       "switchFailed": "Not saved"
     }
@@ -1488,6 +1636,10 @@
         "title": "Time clock",
         "body": "Clocking in, out and breaks in one press from the phone, with the whole month's hours. The manager sees who is at work now and fixes hours."
       },
+      "manage": {
+        "title": "Managing the business",
+        "body": "The business's name, colour and address, its roles and shifts, and settings that fit the app exactly to your business. An activity log shows who changed what, and when."
+      },
       "soon": {
         "title": "On the way",
         "badge": "Soon",
@@ -1495,12 +1647,8 @@
           "title": "Lists",
           "body": "One department sends a list with quantities, and the one receiving it checks items off and finishes."
         },
-        "manage": {
-          "title": "Management page",
-          "body": "The business's details, its colour, its opening hours and what is switched on, in one place."
-        },
         "roles": {
-          "title": "Roles and permissions",
+          "title": "Permissions for each role",
           "body": "For each role: what it edits, what it only sees and what stays hidden from it."
         }
       }
@@ -1581,6 +1729,19 @@
         "punchOut": "Clock out",
         "month": "This month's hours",
         "monthHours": "86"
+      },
+      "manage": {
+        "label": "The management activity log with sample data: the last three changes and who made them",
+        "title": "Activity log",
+        "person1": "Dana Avraham",
+        "action1": "Dana changed the business's colour",
+        "when1": "Today, <ltr>09:12</ltr>",
+        "person2": "Yoav Levi",
+        "action2": "Yoav published the schedule",
+        "when2": "Today, <ltr>08:40</ltr>",
+        "person3": "Dana Avraham",
+        "action3": "Dana added an evening shift",
+        "when3": "Yesterday"
       }
     }
   },

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { manageAccess, modulesToManage } from "./manage";
+import { manageAccess, modulesToManage, shabbatCityState } from "./manage";
 import { ManageView } from "./manage-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -17,6 +17,7 @@ export default async function ManagePage() {
       modules={modulesToManage(access.rows)}
       home="/home"
       team="/team"
+      shabbatCity={shabbatCityState(access.rows, access.details)}
     />
   );
 }

@@ -1,7 +1,7 @@
 import "server-only";
 import type { ModuleRow } from "@domain/modules";
+import type { BusinessPlace } from "@domain/shabbat";
 import type { ViewSession } from "@domain/view-as";
-import type { BusinessPlace } from "./availability";
 import type { Database } from "./database.types";
 import { createClient } from "./supabase/server";
 
@@ -11,6 +11,7 @@ export type MemberBusiness = {
   id: string;
   name: string;
   accent: string;
+  address: string | null;
   /** Where it is, for its Shabbat times and its calendar. */
   place: BusinessPlace;
   modules: ModuleRow[];
@@ -36,8 +37,8 @@ function memberBusiness(row: {
   id: string;
   name: string;
   accent: string;
-  latitude: number | null;
-  longitude: number | null;
+  address: string | null;
+  shabbat_city: string | null;
   timezone: string;
   business_modules: {
     module_key: ModuleRow["key"];
@@ -49,11 +50,8 @@ function memberBusiness(row: {
     id: row.id,
     name: row.name,
     accent: row.accent,
-    place: {
-      latitude: row.latitude,
-      longitude: row.longitude,
-      timeZone: row.timezone,
-    },
+    address: row.address,
+    place: { shabbatCity: row.shabbat_city, timeZone: row.timezone },
     modules: row.business_modules.map((module) => ({
       key: module.module_key,
       enabled: module.enabled,
@@ -86,7 +84,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     supabase
       .from("memberships")
       .select(
-        "role, businesses (id, name, accent, latitude, longitude, timezone, business_modules (module_key, enabled, settings))",
+        "role, businesses (id, name, accent, address, shabbat_city, timezone, business_modules (module_key, enabled, settings))",
       )
       .eq("user_id", userId)
       .eq("active", true)
@@ -97,7 +95,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     supabase
       .from("view_sessions")
       .select(
-        "role, businesses (id, name, accent, slug, latitude, longitude, timezone, business_modules (module_key, enabled, settings))",
+        "role, businesses (id, name, accent, slug, address, shabbat_city, timezone, business_modules (module_key, enabled, settings))",
       )
       .eq("staff_id", userId)
       .is("ended_at", null)

@@ -91,7 +91,8 @@ Only `app/` imports app code (`@/…`).
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
   and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
-  PageSection. For the landing page: FocusText, WordCycle, SettlingCards, DeckCard, PhoneFrame.
+  PageSection, AccentPicker and AccentPreview. For the landing page: FocusText, WordCycle,
+  SettlingCards, DeckCard, PhoneFrame.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
   wrapper. `accentTokens` returns a pair for light and for dark, and darkens or lifts
   unreadable picks; text on light tints stays `text-ink`, never `text-accent`.

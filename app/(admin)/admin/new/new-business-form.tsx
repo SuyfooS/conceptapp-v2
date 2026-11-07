@@ -7,14 +7,13 @@ import {
   normalizeSlug,
   parseNewBusiness,
 } from "@domain/business";
-import { ACCENT_PRESETS, accentTokens } from "@domain/color";
+import { ACCENT_PRESETS } from "@domain/color";
 import { displayIsraeliMobile } from "@domain/phone";
 import { parseStaffList, type StaffList } from "@domain/staff-list";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
-import { accentProps } from "@ui/accent";
+import { AccentPicker, AccentPreview } from "@ui/accent-picker";
 import { Badge } from "@ui/badge";
-import { Button, buttonVariants } from "@ui/button";
-import { Card } from "@ui/card";
+import { Button } from "@ui/button";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { FieldGroup, GroupedField, GroupedTextArea } from "@ui/field-group";
@@ -125,7 +124,6 @@ export function NewBusinessForm({
     startTransition(() => formAction(data));
   }
 
-  const tokens = accentTokens(values.accent);
   const staff = parseStaffList(values.staff);
   const summary = <Summary values={values} staff={staff} />;
 
@@ -230,68 +228,16 @@ export function NewBusinessForm({
 
         <Step active={step === 2} legend={t("steps.accent")}>
           <input type="hidden" name="accent" value={values.accent} />
-          <div {...accentProps(tokens)} className="flex flex-col">
-            <Card tone="hero" padding="none" className="px-5 pt-5 pb-[76px]">
-              <p className="font-medium text-base">{t("accent.preview")}</p>
-              <p className="mt-6 font-bold text-2xl">{values.name}</p>
-            </Card>
-            <Card
-              tone="float"
-              padding="md"
-              className="relative z-10 mx-3 -mt-14"
-            >
-              <span
-                className={cn(
-                  buttonVariants(),
-                  "pointer-events-none flex w-full",
-                )}
-              >
-                {t("accent.previewButton")}
-              </span>
-            </Card>
-          </div>
-          {tokens.adjusted ? (
-            <p className="px-1 text-sm" aria-live="polite">
-              {t("accent.adjusted")}
-            </p>
-          ) : null}
-          <div className="rounded-card bg-surface shadow-card">
-            <div className="flex flex-wrap gap-1.5 p-3">
-              {ACCENT_PRESETS.map((preset) => (
-                <label
-                  key={preset.key}
-                  title={t(`accent.presets.${preset.key}`)}
-                  className="group grid size-11 cursor-pointer place-items-center rounded-full has-checked:shadow-[inset_0_0_0_2px_var(--ink)] has-focus-visible:outline-2 has-focus-visible:outline-offset-2 has-focus-visible:outline-ink"
-                >
-                  <input
-                    type="radio"
-                    name="accentPreset"
-                    value={preset.hex}
-                    checked={values.accent === preset.hex}
-                    onChange={() => set("accent")(preset.hex)}
-                    className="sr-only"
-                  />
-                  <span
-                    aria-hidden="true"
-                    className="size-[30px] rounded-full transition-transform duration-300 ease-spring group-has-checked:scale-[0.82]"
-                    style={{ backgroundColor: preset.hex }}
-                  />
-                  <span className="sr-only">
-                    {t(`accent.presets.${preset.key}`)}
-                  </span>
-                </label>
-              ))}
-            </div>
-            <label className="relative flex min-h-14 cursor-pointer items-center justify-between gap-3 px-4 py-2 before:absolute before:inset-x-4 before:top-0 before:h-px before:bg-line before:content-['']">
-              <span className="font-medium">{t("accent.custom")}</span>
-              <input
-                type="color"
-                value={values.accent}
-                onChange={(e) => set("accent")(e.target.value.toLowerCase())}
-                className="size-9 cursor-pointer appearance-none rounded-full border-0 bg-transparent p-0 [&::-moz-color-swatch]:rounded-full [&::-moz-color-swatch]:border-0 [&::-webkit-color-swatch]:rounded-full [&::-webkit-color-swatch]:border-0 [&::-webkit-color-swatch-wrapper]:p-0"
-              />
-            </label>
-          </div>
+          <AccentPreview
+            accent={values.accent}
+            caption={t("accent.preview")}
+            title={values.name}
+            button={t("accent.previewButton")}
+          />
+          <AccentPicker
+            value={values.accent}
+            onPick={(hex) => set("accent")(hex)}
+          />
           {errors.accent ? (
             <p className="px-1 text-danger text-sm">
               {t(`errors.accent.${errors.accent}`)}

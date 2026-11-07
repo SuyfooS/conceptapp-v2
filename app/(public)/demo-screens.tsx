@@ -150,6 +150,31 @@ export async function ScheduleDemo() {
   );
 }
 
+const LOG = ["1", "2", "3"] as const;
+
+export async function ManageDemo() {
+  const t = await getTranslations("landing.demo.manage");
+  return (
+    <div
+      role="img"
+      aria-label={t("label")}
+      className="flex flex-col gap-2 rounded-[28px] bg-bg p-2"
+    >
+      <p className="px-3 pt-2 font-bold text-lg">{t("title")}</p>
+      <ListGroup className="rounded-[22px]">
+        {LOG.map((n) => (
+          <ListRow
+            key={n}
+            leading={<Avatar name={t(`person${n}`)} />}
+            title={t(`action${n}`)}
+            subtitle={t.rich(`when${n}`, { ltr })}
+          />
+        ))}
+      </ListGroup>
+    </div>
+  );
+}
+
 export async function ClockDemo() {
   const t = await getTranslations("landing.demo.clock");
   return (

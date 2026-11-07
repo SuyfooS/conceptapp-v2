@@ -30,6 +30,14 @@ saves its name, colour, address and Shabbat city for an owner, a manager or the
 team, and logs what changed. From the browser: everyone edits their own name and
 language, and reads follow the policies.
 
+The audit log is the business's activity log. Only server functions write it,
+each for its own action (`business.details`, `module.settings`, `clock.correct`,
+`schedule.publish`, `swap.approve` and the rest). Owners and managers read their
+own business's rows, and so does the team while viewing it as a manager or owner.
+Publishing a week's schedule logs its first day, the number of shifts, whether it
+was the first time, and how many waiting swap requests the old shifts took with
+them (`activity_log.test.sql`).
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

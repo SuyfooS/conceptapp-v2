@@ -117,7 +117,7 @@ test("the wizard shows one step at a time and goes back to a taken address", asy
   await next.click();
 
   await expect(step(w.steps.accent)).toBeVisible();
-  await page.getByTitle(w.accent.presets.teal).click();
+  await page.getByTitle(he.ui.accentPicker.presets.teal).click();
   await next.click();
 
   await expect(step(w.steps.staff)).toBeVisible();

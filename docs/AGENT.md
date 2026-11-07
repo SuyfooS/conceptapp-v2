@@ -33,7 +33,7 @@ it knows is this repo and its GitHub issues.
 - Kept as they are: the whole team sees the whole published schedule, a schedule can be
   published with gaps, and every swap needs a manager's approval.
 - The landing page at `/` promises what its copy says and nothing else. It has no prices,
-  customers or numbers, and shows lists, the management page and roles as "בקרוב". When
+  customers or numbers, and shows lists and permissions per role as "בקרוב". When
   one of those is built, remove its mark in the same change. Don't add a claim, price or
   customer without asking Orel.
 
@@ -206,7 +206,6 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
 
 - **Global templates and exact fit, with Orel by day:** steps 2 and 3 in the roadmap. These come first, so everything after is built on them. Step 1, the settings engine, is done.
 - **Holes in what exists.** Each smallest first:
-  - A business's Shabbat times from its location and a candle-lighting setting, since today every business gets Tel Aviv and 20 minutes.
   - Editing the week that has already started, and not losing an unpublished draft when the week changes.
   - A business stuck with expired invites and no owner: the console can add a person and revive an invite.
   - A warning before republishing deletes swap requests.
@@ -214,7 +213,7 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
 - **Roles and permissions, database first.** For each role and module: edit, view or none, enforced by RLS and covered by pgTAP, plus roles a business names itself. Today's owner, manager and worker keep working. See "מה הפיילוט חייב" in the roadmap.
 - **Time clock, what's left.** The worker's and manager's screens are built. Still missing: deleting a shift entered by mistake and editing a break's times, both database first. No QR punch code: Orel decided on 6 November 2026 that clocking in from the phone is enough. Build no screens for it.
 - **Lists, database first.** A new module: templates with items and recipients, sending with a count per item, receiving, checking off, finishing, and permission to manage or send. Lists move between departments inside the business, and departments are the business's own data, from its template, like positions. Branches wait until after the pilot.
-- **Management page, what's left, database first.** Module settings and module switches are built (`/manage` and the console). Still missing: writing business details and branding, and reading the audit log. Week start is a team-level setting, since changing it hides published weeks. Opening hours wait: nothing reads them yet.
+- **Management page.** Module settings, module switches, the business's own details and the activity log are built (`/manage`, `/manage/business`, `/manage/activity` and the console). Week start is a team-level setting, since changing it hides published weeks. Opening hours wait: nothing reads them yet. A new server write that changes a business also writes its own row to `audit_log`, and the activity log needs to read it: a case in `@domain/activity`, its words under `app.manage.activity.actions`, and a case in `describe()` in `app/(app)/manage/activity/activity-view.tsx`, which typecheck asks for once the line exists. Until then it shows as "something else".
 - **Approved improvements, built by day on the new screens:** install as an app; fill the week automatically and copy from last week; a moment when a schedule is published; a share on WhatsApp button for the manager after publishing; profile photos; a live shift card after clocking in.
 - **3b · Migrations on `conceptapp-dev`.** By hand only, through the workflow Orel starts (#8). Not for a nightly run.
 - **Not in the pilot, do not start:** reservations, storefront, the public page, notifications.

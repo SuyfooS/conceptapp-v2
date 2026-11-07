@@ -2,6 +2,7 @@
 
 import { accentTokens } from "@domain/color";
 import { accentProps } from "@ui/accent";
+import { AccentPicker, AccentPreview } from "@ui/accent-picker";
 import { Ambient } from "@ui/ambient";
 import { Avatar, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
@@ -151,6 +152,7 @@ function GalleryBody({
   const [toastAt, setToastAt] = useState<string | null>(null);
   const [dock, setDock] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
+  const [picked, setPicked] = useState("#4f46e5");
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -447,6 +449,22 @@ function GalleryBody({
               />
             </FieldRow>
           </FieldGroup>
+        </Section>
+
+        <Section title={t("accentPickerTitle")}>
+          <AccentPreview
+            accent={picked}
+            caption={t("accentPickerCaption")}
+            title={t("heroTitle")}
+            button={t("accentPickerButton")}
+          />
+          <AccentPicker
+            value={picked}
+            kept="#4f46e5"
+            label={t("accentPickerTitle")}
+            name="gallery-accent"
+            onPick={(hex) => setPicked(hex)}
+          />
         </Section>
 
         <Section title={t("depth")}>
