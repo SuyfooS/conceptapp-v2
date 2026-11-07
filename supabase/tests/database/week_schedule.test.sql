@@ -103,6 +103,7 @@ select results_eq(
 select results_eq(
   $$select s.name, a.user_id, a.position_key
     from public.shift_assignments a join public.schedule_shifts s on s.id = a.shift_id
+    where a.business_id = '65000000-0000-4000-b000-000000000001'
     order by s.starts_at, a.user_id$$,
   $$values ('Morning', '65000000-0000-4000-a000-00000000000c'::uuid, 'waiter'),
            ('Morning', '65000000-0000-4000-a000-00000000000d'::uuid, null),
@@ -124,7 +125,8 @@ select is(
 );
 select is(
   (select count(*)::int from public.schedule_shifts where week_id = (select id from ids where name = 'x'))
-    || '/' || (select count(*)::int from public.shift_assignments),
+    || '/' || (select count(*)::int from public.shift_assignments
+      where business_id = '65000000-0000-4000-b000-000000000001'),
   '1/1',
   'saving again replaces the whole week'
 );
