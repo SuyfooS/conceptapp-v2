@@ -58,6 +58,7 @@ export function BusinessSettingsView({
           viewOnly={false}
           showCity
           cities={cities}
+          nested
         />
       </PageSection>
       {modules.map((module) => (

@@ -268,8 +268,8 @@ export const demoBusinessDetails: BusinessDetails = {
   shabbatCity: null,
 };
 
-// A day in the demo's week, for the Shabbat times it shows.
-export const demoToday = "2026-11-04";
+// A moment in the demo's week, for the Shabbat times it shows.
+export const demoNow = new Date("2026-11-04T12:00:00+02:00");
 
 // The demo business's modules, for the management demos. What's left out takes
 // the module's defaults.

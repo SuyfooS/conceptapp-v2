@@ -18,7 +18,7 @@ import {
   shabbatPlaceOf,
   timeIn,
 } from "./shabbat";
-import { shabbatTimes } from "./shabbat-times";
+import { comingShabbatTimes, shabbatTimes } from "./shabbat-times";
 
 type City = ShabbatCity;
 
@@ -275,5 +275,38 @@ describe("times of day", () => {
     expect(timeIn(new Date("2026-07-17T21:05:00Z"), ISRAEL_TIME_ZONE)).toBe(
       "00:05",
     );
+  });
+});
+
+describe("the coming Shabbat", () => {
+  const jerusalem = ISRAELI_CITIES.jerusalem;
+  const at = (instant: string) => {
+    const times = comingShabbatTimes(jerusalem, new Date(instant));
+    return {
+      friday: times.friday,
+      candleLighting: timeIn(times.candleLighting, ISRAEL_TIME_ZONE),
+      havdalah: timeIn(times.havdalah, ISRAEL_TIME_ZONE),
+    };
+  };
+  const this13 = {
+    friday: "2026-11-13",
+    candleLighting: "16:00",
+    havdalah: "17:18",
+  };
+  const next20 = {
+    friday: "2026-11-20",
+    candleLighting: "15:57",
+    havdalah: "17:16",
+  };
+
+  it("is this week's until it ends", () => {
+    expect(at("2026-11-10T12:00:00+02:00")).toEqual(this13);
+    expect(at("2026-11-13T18:00:00+02:00")).toEqual(this13);
+    expect(at("2026-11-14T12:00:00+02:00")).toEqual(this13);
+  });
+
+  it("is next week's from havdalah on Saturday night", () => {
+    expect(at("2026-11-14T17:18:00+02:00")).toEqual(next20);
+    expect(at("2026-11-14T21:00:00+02:00")).toEqual(next20);
   });
 });

@@ -23,6 +23,7 @@
         "brown": "Brown"
       },
       "custom": "Another colour",
+      "current": "The current colour",
       "kept": "The previous colour",
       "adjusted": "The colour was darkened a little so text on it stays readable."
     }
@@ -1071,6 +1072,7 @@
         "title": "Business details",
         "row": "Name, colour, address and Shabbat times",
         "rowNoCity": "No city chosen for Shabbat times yet",
+        "rowNoShabbat": "Name, colour and address",
         "noCity": "City missing",
         "preview": "How your team sees the business",
         "previewButton": "Sample button",

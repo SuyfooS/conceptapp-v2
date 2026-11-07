@@ -5,22 +5,25 @@ import {
   type ShabbatCity,
   timeIn,
 } from "@domain/shabbat";
-import { shabbatTimes } from "@domain/shabbat-times";
+import { comingShabbatTimes } from "@domain/shabbat-times";
 
 export type CityShabbat = { candleLighting: string; havdalah: string };
 
 /**
- * The Shabbat that `date` belongs to in every city, as a clock there reads it,
- * so choosing a city shows what it changes. Worked out here because the
- * library that knows the sun is too big for the browser.
+ * The coming Shabbat at `now` in every city, as a clock there reads it, so
+ * choosing a city shows what it changes. Worked out here because the library
+ * that knows the sun is too big for the browser.
  */
 export function shabbatByCity(
-  date: string,
+  now: Date,
   timeZone: string,
 ): Record<ShabbatCity, CityShabbat> {
   return Object.fromEntries(
     SHABBAT_CITIES.map((city) => {
-      const times = shabbatTimes({ ...ISRAELI_CITIES[city], timeZone }, date);
+      const times = comingShabbatTimes(
+        { ...ISRAELI_CITIES[city], timeZone },
+        now,
+      );
       return [
         city,
         {

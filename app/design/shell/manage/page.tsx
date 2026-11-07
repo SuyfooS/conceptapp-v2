@@ -1,4 +1,7 @@
-import { closesOnShabbat, modulesToManage } from "../../../(app)/manage/manage";
+import {
+  modulesToManage,
+  shabbatCityState,
+} from "../../../(app)/manage/manage";
 import { ManageView } from "../../../(app)/manage/manage-view";
 import { demoBusinessDetails, demoModuleRows } from "../data";
 
@@ -10,10 +13,7 @@ export default function ShellManage() {
       base="/design/shell"
       home="/design/shell"
       team="/design/shell/team"
-      needsCity={
-        closesOnShabbat(demoModuleRows) &&
-        demoBusinessDetails.shabbatCity === null
-      }
+      shabbatCity={shabbatCityState(demoModuleRows, demoBusinessDetails)}
     />
   );
 }

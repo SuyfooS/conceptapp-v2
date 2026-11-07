@@ -1,7 +1,6 @@
 import { getBusinessSetup } from "@db/admin";
 import { getBusinessDetailsForTeam } from "@db/business-details";
 import { getBusinessModulesForTeam } from "@db/module-settings";
-import { dateIn } from "@domain/availability";
 import { platformCan } from "@domain/platform";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -40,7 +39,7 @@ export default async function BusinessSettingsPage({
       backHref={`/admin/businesses/${slug}`}
       details={own.details}
       saveDetails={saveTeamBusinessDetailsAction.bind(null, business.id)}
-      cities={shabbatByCity(dateIn(new Date(), own.timeZone), own.timeZone)}
+      cities={shabbatByCity(new Date(), own.timeZone)}
       modules={teamModuleSettings(rows)}
       save={saveBusinessSettingsAction.bind(null, business.id)}
       setEnabled={setBusinessModuleAction.bind(null, business.id)}

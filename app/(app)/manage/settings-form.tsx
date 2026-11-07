@@ -337,6 +337,7 @@ function NumberField({
     (text) => /^\d+$/.test(text) && Number(text) >= min && Number(text) <= max,
     (text) => onChange(Number(text)),
     TYPING_MS,
+    (text) => (/^\d+$/.test(text) ? String(Number(text)) : text),
   );
   return (
     <FieldRow
@@ -422,6 +423,7 @@ function TextField({
     () => true,
     (text) => onChange(text.trim()),
     null,
+    (text) => text.trim(),
   );
   return (
     <GroupedField

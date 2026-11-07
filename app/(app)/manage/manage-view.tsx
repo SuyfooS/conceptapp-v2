@@ -19,14 +19,14 @@ export function ManageView({
   base = "",
   home,
   team,
-  needsCity,
+  shabbatCity,
 }: {
   modules: ModuleKey[];
   base?: string;
   home: string;
   team: string;
-  /** The business closes on Shabbat and hasn't said which city's times. */
-  needsCity: boolean;
+  /** Whether the details ask for a Shabbat city, and whether it's missing. */
+  shabbatCity: "missing" | "chosen" | "notAsked";
 }) {
   const t = useTranslations("app.manage");
   const tm = useTranslations("modules");
@@ -42,9 +42,15 @@ export function ManageView({
           href={`${base}/manage/business`}
           leading={<Building2 />}
           title={t("business.title")}
-          subtitle={t(needsCity ? "business.rowNoCity" : "business.row")}
+          subtitle={t(
+            shabbatCity === "missing"
+              ? "business.rowNoCity"
+              : shabbatCity === "chosen"
+                ? "business.row"
+                : "business.rowNoShabbat",
+          )}
           trailing={
-            needsCity ? (
+            shabbatCity === "missing" ? (
               <Badge tone="warning">{t("business.noCity")}</Badge>
             ) : undefined
           }

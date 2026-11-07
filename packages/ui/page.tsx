@@ -121,18 +121,22 @@ export function PageHeader({
 export function PageSection({
   title,
   action,
+  level = 2,
   className,
   children,
 }: {
   title: ReactNode;
   action?: ReactNode;
+  /** 3 for a section inside another section. */
+  level?: 2 | 3;
   className?: string;
   children: ReactNode;
 }) {
+  const Heading = level === 3 ? "h3" : "h2";
   return (
     <section className={cn("flex min-w-0 flex-col gap-3", className)}>
       <div className="flex items-center justify-between gap-3 px-1">
-        <h2 className="font-bold text-lg">{title}</h2>
+        <Heading className="font-bold text-lg">{title}</Heading>
         {action}
       </div>
       {children}

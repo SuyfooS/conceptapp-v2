@@ -2,6 +2,7 @@
 
 import { nameError, tidyText } from "@domain/business";
 import {
+  BUSINESS_DETAIL_KEYS,
   type BusinessDetailKey,
   type BusinessDetails,
   businessDetailProblem,
@@ -40,6 +41,7 @@ export function BusinessDetailsForm({
   viewOnly,
   showCity,
   cities,
+  nested = false,
 }: {
   details: BusinessDetails;
   save: SaveSettings;
@@ -48,16 +50,26 @@ export function BusinessDetailsForm({
   showCity: boolean;
   /** The coming Shabbat in each city. */
   cities: Record<ShabbatCity, CityShabbat>;
+  /** Inside a section of its own, as in the console. */
+  nested?: boolean;
 }) {
   const t = useTranslations("app.manage.business");
   const tm = useTranslations("app.manage");
   const tc = useTranslations("cities");
   // What was changed on this screen; the rest is as the server read it.
   const [changed, setChanged] = useState<Partial<BusinessDetails>>({});
-  const [failure, setFailure] = useState<{
-    key: BusinessDetailKey;
-    reason: SettingsFailure;
-  } | null>(null);
+  // What didn't save, per detail. Something typed that failed stays on screen,
+  // so its line stays until it saves. A pick went back to what's stored, so
+  // its line goes with the next save of anything.
+  const [failures, setFailures] = useState<
+    Partial<Record<BusinessDetailKey, SettingsFailure>>
+  >({});
+  const clearFailure = (key: BusinessDetailKey) =>
+    setFailures(({ [key]: _, ...rest }) => rest);
+  const clearAfterSave = (key: BusinessDetailKey) =>
+    setFailures(
+      ({ [key]: _, accent: _accent, shabbatCity: _city, ...typed }) => typed,
+    );
   const [saved, setSaved] = useState(0);
   const latest = useRef<Partial<Record<BusinessDetailKey, number>>>({});
   // What did save from this screen, for a pick that fails to go back to.
@@ -87,11 +99,12 @@ export function BusinessDetailsForm({
     if (result.ok) {
       confirmed.current = { ...confirmed.current, [key]: value };
       if (!picked) setChanged((before) => ({ ...before, [key]: value }));
-      setFailure((before) => (before?.key === key ? null : before));
+      clearAfterSave(key);
       setSaved((count) => count + 1);
       return;
     }
-    setFailure({ key, reason: result.failure });
+    const reason = result.failure;
+    setFailures((before) => ({ ...before, [key]: reason }));
     // Back to what last saved; a later change to the same detail has the last word.
     if (picked && latest.current[key] === mine) {
       setChanged(({ [key]: _, ...rest }) =>
@@ -107,12 +120,14 @@ export function BusinessDetailsForm({
     (text) => !businessDetailProblem("name", text),
     (text) => void change("name", tidyText(text), false),
     null,
+    tidyText,
   );
   const address = useDraft(
     current.address ?? "",
     (text) => !businessDetailProblem("address", text),
     (text) => void change("address", tidyText(text) || null, false),
     null,
+    tidyText,
   );
   const accent = useDraft(
     current.accent,
@@ -148,14 +163,21 @@ export function BusinessDetailsForm({
         stamp={String(saved)}
         duration={1800}
       />
-      {failure ? (
+      {Object.keys(failures).length > 0 ? (
         <Card
           tone="float"
           padding="md"
           role="alert"
-          className="sticky top-[calc(env(safe-area-inset-top)+4rem)] z-10 font-medium text-danger xl:top-4"
+          className="sticky top-[calc(env(safe-area-inset-top)+4rem)] z-10 flex flex-col gap-1 font-medium text-danger xl:top-4"
         >
-          {t(`${failure.key}.label`)}: {tm(`failed.${failure.reason}`)}
+          {BUSINESS_DETAIL_KEYS.map((key) => {
+            const reason = failures[key];
+            return reason ? (
+              <p key={key}>
+                {t(`${key}.label`)}: {tm(`failed.${reason}`)}
+              </p>
+            ) : null;
+          })}
         </Card>
       ) : null}
       {viewOnly ? <p className="text-ink-2">{tm("viewOnly")}</p> : null}
@@ -179,7 +201,10 @@ export function BusinessDetailsForm({
             enterKeyHint="done"
             disabled={viewOnly}
             onChange={(event) => name.edit(event.target.value)}
-            onBlur={name.leave}
+            onBlur={() => {
+              if (tidyText(name.draft) === current.name) clearFailure("name");
+              name.leave();
+            }}
             onKeyDown={leaveOnEnter}
           />
           <GroupedField
@@ -192,7 +217,12 @@ export function BusinessDetailsForm({
             enterKeyHint="done"
             disabled={viewOnly}
             onChange={(event) => address.edit(event.target.value)}
-            onBlur={address.leave}
+            onBlur={() => {
+              if (tidyText(address.draft) === (current.address ?? "")) {
+                clearFailure("address");
+              }
+              address.leave();
+            }}
             onKeyDown={leaveOnEnter}
           />
           {showCity ? (
@@ -221,6 +251,7 @@ export function BusinessDetailsForm({
         </FieldGroup>
         <PageSection
           title={t("accent.label")}
+          level={nested ? 3 : 2}
           className="md:col-start-1 md:row-start-2"
         >
           <AccentPicker

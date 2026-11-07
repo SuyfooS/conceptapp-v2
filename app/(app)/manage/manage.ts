@@ -66,3 +66,12 @@ export function closesOnShabbat(rows: readonly ModuleRow[]): boolean {
   );
   return settings.closedOnShabbat;
 }
+
+/** What /manage says about the business's Shabbat city. */
+export function shabbatCityState(
+  rows: readonly ModuleRow[],
+  details: BusinessDetails,
+): "missing" | "chosen" | "notAsked" {
+  if (!closesOnShabbat(rows)) return "notAsked";
+  return details.shabbatCity ? "chosen" : "missing";
+}

@@ -45,7 +45,7 @@ export function AccentPicker({
       label: t(`presets.${preset.key}`),
     })),
     ...(keptHex && !ACCENT_PRESETS.some((preset) => preset.hex === keptHex)
-      ? [{ hex: keptHex, label: t("kept") }]
+      ? [{ hex: keptHex, label: t(current === keptHex ? "current" : "kept") }]
       : []),
   ];
 

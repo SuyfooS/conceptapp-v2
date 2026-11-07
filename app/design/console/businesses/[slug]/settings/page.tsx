@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { BusinessSettingsView } from "../../../../../(admin)/admin/businesses/[slug]/settings/business-settings-view";
 import { teamModuleSettings } from "../../../../../(admin)/admin/businesses/[slug]/settings/module-settings";
 import { shabbatByCity } from "../../../../../(app)/manage/shabbat-by-city";
-import { demoModuleRows, demoToday } from "../../../../shell/data";
+import { demoModuleRows, demoNow } from "../../../../shell/data";
 import { demoSaveBusinessDetails } from "../../../../shell/manage/actions";
 import {
   demoSaveBusinessSettings,
@@ -35,7 +35,7 @@ export default async function ConsoleSettingsDemo({
         shabbatCity: null,
       }}
       saveDetails={demoSaveBusinessDetails}
-      cities={shabbatByCity(demoToday, ISRAEL_TIME_ZONE)}
+      cities={shabbatByCity(demoNow, ISRAEL_TIME_ZONE)}
       modules={teamModuleSettings(demoModuleRows)}
       save={demoSaveBusinessSettings}
       setEnabled={demoSetBusinessModule}

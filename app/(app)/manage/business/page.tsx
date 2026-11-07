@@ -1,4 +1,3 @@
-import { dateIn } from "@domain/availability";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -23,10 +22,7 @@ export default async function ManageBusinessPage() {
       save={saveBusinessDetailsAction}
       viewOnly={access.viewOnly}
       showCity={closesOnShabbat(access.rows)}
-      cities={shabbatByCity(
-        dateIn(new Date(), access.timeZone),
-        access.timeZone,
-      )}
+      cities={shabbatByCity(new Date(), access.timeZone)}
       backHref="/manage"
     />
   );
