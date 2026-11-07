@@ -11,6 +11,30 @@
 
 do $$
 begin
+  create temporary table demo_people (id uuid, email text, phone text) on commit drop;
+  insert into demo_people (id, email, phone)
+  values
+    -- The restaurant.
+    ('10000000-0000-4000-a000-000000000102', 'owner@demo.conceptapp.invalid', '972500000102'),
+    ('10000000-0000-4000-a000-000000000103', 'manager@demo.conceptapp.invalid', '972500000103'),
+    ('10000000-0000-4000-a000-000000000104', 'worker@demo.conceptapp.invalid', '972500000104'),
+    ('10000000-0000-4000-a000-000000000105', 'worker2@demo.conceptapp.invalid', '972500000105'),
+    -- The shop.
+    ('10000000-0000-4000-a000-000000000106', 'shop-owner@demo.conceptapp.invalid', '972500000106'),
+    ('10000000-0000-4000-a000-000000000107', 'shop-manager@demo.conceptapp.invalid', '972500000107'),
+    ('10000000-0000-4000-a000-000000000108', 'shop-worker@demo.conceptapp.invalid', '972500000108'),
+    ('10000000-0000-4000-a000-000000000109', 'shop-worker2@demo.conceptapp.invalid', '972500000109'),
+    ('10000000-0000-4000-a000-000000000110', 'shop-worker3@demo.conceptapp.invalid', '972500000110'),
+    ('10000000-0000-4000-a000-000000000111', 'shop-worker4@demo.conceptapp.invalid', '972500000111');
+
+  -- An account holding a demo address or number under another id would stop
+  -- the insert below on every run. It can only be a stray demo account (one
+  -- made by mistake before this file ran), so it goes.
+  delete from auth.users u
+  using demo_people person
+  where (u.email = person.email or u.phone = person.phone)
+    and u.id <> person.id;
+
   insert into auth.users (
     instance_id, id, aud, role, email, email_confirmed_at, phone, phone_confirmed_at,
     raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
@@ -22,21 +46,7 @@ begin
     person.email, now(), person.phone, now(),
     '{"provider":"email","providers":["email"]}', '{}', now(), now(),
     '', '', '', '', '', '', '', ''
-  from (
-    values
-      -- The restaurant.
-      ('10000000-0000-4000-a000-000000000102'::uuid, 'owner@demo.conceptapp.invalid', '972500000102'),
-      ('10000000-0000-4000-a000-000000000103'::uuid, 'manager@demo.conceptapp.invalid', '972500000103'),
-      ('10000000-0000-4000-a000-000000000104'::uuid, 'worker@demo.conceptapp.invalid', '972500000104'),
-      ('10000000-0000-4000-a000-000000000105'::uuid, 'worker2@demo.conceptapp.invalid', '972500000105'),
-      -- The shop.
-      ('10000000-0000-4000-a000-000000000106'::uuid, 'shop-owner@demo.conceptapp.invalid', '972500000106'),
-      ('10000000-0000-4000-a000-000000000107'::uuid, 'shop-manager@demo.conceptapp.invalid', '972500000107'),
-      ('10000000-0000-4000-a000-000000000108'::uuid, 'shop-worker@demo.conceptapp.invalid', '972500000108'),
-      ('10000000-0000-4000-a000-000000000109'::uuid, 'shop-worker2@demo.conceptapp.invalid', '972500000109'),
-      ('10000000-0000-4000-a000-000000000110'::uuid, 'shop-worker3@demo.conceptapp.invalid', '972500000110'),
-      ('10000000-0000-4000-a000-000000000111'::uuid, 'shop-worker4@demo.conceptapp.invalid', '972500000111')
-  ) as person (id, email, phone)
+  from demo_people person
   on conflict (id) do nothing;
 
   -- How each one starts. Written again on every run, so a change here reaches
