@@ -5,8 +5,8 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Building2, History, SlidersHorizontal, Users } from "lucide-react";
-import { useTranslations } from "next-intl";
 import { moduleIcons } from "../module-icons";
+import { type AppWording, translator } from "../wording";
 
 /**
  * The way into everything a business can change by itself: its own details,
@@ -20,6 +20,7 @@ export function ManageView({
   home,
   team,
   shabbatCity,
+  wording,
 }: {
   modules: ModuleKey[];
   base?: string;
@@ -27,9 +28,11 @@ export function ManageView({
   team: string;
   /** Whether the details ask for a Shabbat city, and whether it's missing. */
   shabbatCity: "missing" | "chosen" | "notAsked";
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.manage");
-  const tm = useTranslations("modules");
+  const t = translator(wording, "app.manage");
+  const tm = translator(wording, "modules");
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader

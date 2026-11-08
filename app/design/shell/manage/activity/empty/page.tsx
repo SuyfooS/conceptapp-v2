@@ -1,6 +1,7 @@
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { ActivityView } from "../../../../../(app)/manage/activity/activity-view";
 import { modulesToManage } from "../../../../../(app)/manage/manage";
+import { baseWording } from "../../../../../(app)/wording";
 import { demoModuleRows } from "../../../data";
 import { demoActivityPaths } from "../paths";
 
@@ -15,6 +16,7 @@ export default function ShellManageActivityEmpty() {
       manageable={modulesToManage(demoModuleRows)}
       clockOn
       paths={demoActivityPaths}
+      wording={baseWording}
     />
   );
 }

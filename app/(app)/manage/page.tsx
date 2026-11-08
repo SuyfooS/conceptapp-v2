@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { currentWording } from "../current-wording";
+import { baseWording, translator } from "../wording";
 import { manageAccess, modulesToManage, shabbatCityState } from "./manage";
 import { ManageView } from "./manage-view";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.manage");
+  const t = translator(baseWording, "app.manage");
   return { title: t("title") };
 }
 
@@ -18,6 +19,7 @@ export default async function ManagePage() {
       home="/home"
       team="/team"
       shabbatCity={shabbatCityState(access.rows, access.details)}
+      wording={await currentWording()}
     />
   );
 }

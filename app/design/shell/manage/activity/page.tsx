@@ -5,6 +5,7 @@ import {
   modulesToManage,
   settingDefaults,
 } from "../../../../(app)/manage/manage";
+import { baseWording } from "../../../../(app)/wording";
 import {
   demoActivityLookups,
   demoActivityRows,
@@ -28,6 +29,7 @@ export default function ShellManageActivity() {
       manageable={modulesToManage(demoModuleRows)}
       clockOn
       paths={demoActivityPaths}
+      wording={baseWording}
     />
   );
 }
