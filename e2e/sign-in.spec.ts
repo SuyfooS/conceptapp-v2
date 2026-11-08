@@ -1,7 +1,8 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { latestCode } from "./sms";
+import { askForCode, SMS_COOLDOWN_MS } from "./session";
+import { latestCode, restartSmsWait } from "./sms";
 
 const t = he.auth.signIn;
 
@@ -79,6 +80,40 @@ test("a worker signs in with a phone code and lands on the home screen", async (
   await expect(page).toHaveURL(/\/enter$/);
   await page.goto("/home");
   await expect(page).toHaveURL(/\/enter$/);
+});
+
+test("a second code asked for too soon is refused until the wait is over", async ({
+  page,
+}) => {
+  // A code is on its way: the auth server's wait for this number starts now.
+  await askForCode(page, WORKER);
+  const codeField = page.getByLabel(t.codeLabel);
+  const tooSoon = page.getByText(t.errors.rateLimit);
+
+  // On the code step, a new code at once is refused, and the step stays.
+  // The wait restarts right before each refused request, so the test does
+  // not depend on how fast the runner is.
+  await restartSmsWait(WORKER.e164);
+  await page.getByRole("button", { name: t.resend }).click();
+  await expect(tooSoon).toBeVisible();
+  await expect(codeField).toBeVisible();
+
+  // Back to the number and asking again at once: refused, on the phone step.
+  await page.getByRole("button", { name: t.changePhone }).click();
+  await page.getByLabel(t.phoneLabel).fill(WORKER.local);
+  await restartSmsWait(WORKER.e164);
+  await page.getByRole("button", { name: t.send }).click();
+  await expect(tooSoon).toBeVisible();
+  await expect(codeField).toHaveCount(0);
+  await expectAccessible(page);
+
+  // Once the wait is over, the same request sends a code that signs in.
+  await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
+  const since = new Date(Date.now() - 1000);
+  await requestCode(page, WORKER.local);
+  await expect(codeField).toBeVisible();
+  await codeField.fill(await latestCode(WORKER.e164, since));
+  await expect(page).toHaveURL(/\/home$/);
 });
 
 test("an unknown number gets a clear answer and no code", async ({ page }) => {

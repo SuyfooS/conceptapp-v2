@@ -1,9 +1,4 @@
-import postgres from "postgres";
-
-/** The local database started by the Supabase CLI. Never a real project. */
-const DB_URL =
-  process.env.E2E_DB_URL ??
-  "postgresql://postgres:postgres@127.0.0.1:54322/postgres";
+import { sql } from "./pg";
 
 export type OpenedBusiness = {
   name: string;
@@ -17,35 +12,25 @@ export type OpenedBusiness = {
 export async function businessBySlug(
   slug: string,
 ): Promise<OpenedBusiness | null> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<OpenedBusiness[]>`
-      select b.name, b.accent, b.template_key as "templateKey",
-        (select count(*)::int from public.business_modules m
-          where m.business_id = b.id) as modules,
-        (select count(*)::int from public.audit_log a
-          where a.business_id = b.id and a.action = 'business.create') as audited
-      from public.businesses b where b.slug = ${slug}`;
-    return rows[0] ?? null;
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<OpenedBusiness[]>`
+    select b.name, b.accent, b.template_key as "templateKey",
+      (select count(*)::int from public.business_modules m
+        where m.business_id = b.id) as modules,
+      (select count(*)::int from public.audit_log a
+        where a.business_id = b.id and a.action = 'business.create') as audited
+    from public.businesses b where b.slug = ${slug}`;
+  return rows[0] ?? null;
 }
 
 export type OpenInvite = { name: string | null; phone: string; role: string };
 
 /** The open invites of a business, by phone number. */
 export async function invitesBySlug(slug: string): Promise<OpenInvite[]> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    return await sql<OpenInvite[]>`
-      select i.full_name as name, i.phone, i.role::text as role
-      from public.invites i join public.businesses b on b.id = i.business_id
-      where b.slug = ${slug} and i.claimed_at is null
-      order by i.phone`;
-  } finally {
-    await sql.end();
-  }
+  return await sql<OpenInvite[]>`
+    select i.full_name as name, i.phone, i.role::text as role
+    from public.invites i join public.businesses b on b.id = i.business_id
+    where b.slug = ${slug} and i.claimed_at is null
+    order by i.phone`;
 }
 
 const DEMO_RESTAURANT = "00000000-0000-4000-b000-000000000001";
@@ -62,21 +47,16 @@ export async function inviteToDemo(invite: {
   /** Days until it expires; negative for one that already has. */
   expiresInDays?: number;
 }): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`delete from public.invites
-      where business_id = ${DEMO_RESTAURANT} and phone = ${invite.phone}`;
-    await sql`delete from public.memberships m using public.profiles p
-      where m.business_id = ${DEMO_RESTAURANT} and m.user_id = p.id
-        and p.phone = ${invite.phone}`;
-    await sql`insert into public.invites
-        (business_id, phone, role, full_name, token_hash, expires_at)
-      values (${DEMO_RESTAURANT}, ${invite.phone}, ${invite.role},
-        ${invite.name}, md5(random()::text) || md5(random()::text),
-        now() + make_interval(days => ${invite.expiresInDays ?? 14}))`;
-  } finally {
-    await sql.end();
-  }
+  await sql`delete from public.invites
+    where business_id = ${DEMO_RESTAURANT} and phone = ${invite.phone}`;
+  await sql`delete from public.memberships m using public.profiles p
+    where m.business_id = ${DEMO_RESTAURANT} and m.user_id = p.id
+      and p.phone = ${invite.phone}`;
+  await sql`insert into public.invites
+      (business_id, phone, role, full_name, token_hash, expires_at)
+    values (${DEMO_RESTAURANT}, ${invite.phone}, ${invite.role},
+      ${invite.name}, md5(random()::text) || md5(random()::text),
+      now() + make_interval(days => ${invite.expiresInDays ?? 14}))`;
 }
 
 /**
@@ -88,63 +68,43 @@ export async function demoInvite(phone: string): Promise<{
   open: boolean;
   byTeam: boolean;
 } | null> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<{ role: string; open: boolean; byTeam: boolean }[]>`
-      select i.role::text as role, i.expires_at > now() as open,
-        exists (select 1 from public.platform_staff s
-          where s.user_id = i.invited_by) as "byTeam"
-      from public.invites i
-      where i.business_id = ${DEMO_RESTAURANT} and i.phone = ${phone}
-        and i.claimed_at is null`;
-    return rows[0] ?? null;
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<{ role: string; open: boolean; byTeam: boolean }[]>`
+    select i.role::text as role, i.expires_at > now() as open,
+      exists (select 1 from public.platform_staff s
+        where s.user_id = i.invited_by) as "byTeam"
+    from public.invites i
+    where i.business_id = ${DEMO_RESTAURANT} and i.phone = ${phone}
+      and i.claimed_at is null`;
+  return rows[0] ?? null;
 }
 
 /** The person's role in the demo restaurant, or null when not a member. */
 export async function demoRole(phone: string): Promise<string | null> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<{ role: string }[]>`
-      select m.role::text as role from public.memberships m
-      join public.profiles p on p.id = m.user_id
-      where m.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
-        and m.active`;
-    return rows[0]?.role ?? null;
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<{ role: string }[]>`
+    select m.role::text as role from public.memberships m
+    join public.profiles p on p.id = m.user_id
+    where m.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
+      and m.active`;
+  return rows[0]?.role ?? null;
 }
 
 /** Remove the demo restaurant's invites to these numbers. */
 export async function removeDemoInvites(phones: string[]): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`delete from public.invites
-      where business_id = ${DEMO_RESTAURANT} and phone in ${sql(phones)}`;
-  } finally {
-    await sql.end();
-  }
+  await sql`delete from public.invites
+    where business_id = ${DEMO_RESTAURANT} and phone in ${sql(phones)}`;
 }
 
 /** How many `view_as.start` and `view_as.end` entries the person has. */
 export async function viewAudit(
   phone: string,
 ): Promise<{ start: number; end: number }> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<{ start: number; end: number }[]>`
-      select
-        count(*) filter (where a.action = 'view_as.start')::int as start,
-        count(*) filter (where a.action = 'view_as.end')::int as end
-      from public.audit_log a join public.profiles p on p.id = a.actor_id
-      where p.phone = ${phone}`;
-    return rows[0] ?? { start: 0, end: 0 };
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<{ start: number; end: number }[]>`
+    select
+      count(*) filter (where a.action = 'view_as.start')::int as start,
+      count(*) filter (where a.action = 'view_as.end')::int as end
+    from public.audit_log a join public.profiles p on p.id = a.actor_id
+    where p.phone = ${phone}`;
+  return rows[0] ?? { start: 0, end: 0 };
 }
 
 /**
@@ -152,40 +112,25 @@ export async function viewAudit(
  * console's platform admin inside a business for the specs after it.
  */
 export async function endViewSessions(phone: string): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`update public.view_sessions v set ended_at = now()
-      from public.profiles p
-      where p.id = v.staff_id and p.phone = ${phone} and v.ended_at is null`;
-  } finally {
-    await sql.end();
-  }
+  await sql`update public.view_sessions v set ended_at = now()
+    from public.profiles p
+    where p.id = v.staff_id and p.phone = ${phone} and v.ended_at is null`;
 }
 
 /** Remove everything the person sent as availability to the demo restaurant. */
 export async function clearAvailability(phone: string): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`delete from public.availability_submissions s
-      using public.profiles p
-      where s.business_id = ${DEMO_RESTAURANT} and s.user_id = p.id
-        and p.phone = ${phone}`;
-  } finally {
-    await sql.end();
-  }
+  await sql`delete from public.availability_submissions s
+    using public.profiles p
+    where s.business_id = ${DEMO_RESTAURANT} and s.user_id = p.id
+      and p.phone = ${phone}`;
 }
 
 /** A person starts with nothing on the clock. */
 export async function clearTimeEntries(phone: string): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`delete from public.time_entries e
-      using public.profiles p
-      where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
-        and p.phone = ${phone}`;
-  } finally {
-    await sql.end();
-  }
+  await sql`delete from public.time_entries e
+    using public.profiles p
+    where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
+      and p.phone = ${phone}`;
 }
 
 /** A shift already worked: on the 1st of this month, or the 10th of an earlier one. */
@@ -193,36 +138,31 @@ export async function addDemoShift(
   phone: string,
   shift: { monthsAgo: number; minutes: number; unpaidBreak: number },
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    // The month as the business counts it, which is not always UTC's.
-    const [year = 0, month = 1] = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Jerusalem",
-    })
-      .format(new Date())
-      .split("-")
-      .map(Number);
-    const day = shift.monthsAgo === 0 ? 1 : 10;
-    const start = new Date(Date.UTC(year, month - 1 - shift.monthsAgo, day, 6));
-    const end = new Date(start.getTime() + shift.minutes * 60_000);
-    const [entry] = await sql<{ id: string; user_id: string }[]>`
-      insert into public.time_entries (business_id, user_id, clock_in, clock_out)
-      select ${DEMO_RESTAURANT}::uuid, p.id, ${start}::timestamptz, ${end}::timestamptz
-      from public.profiles p where p.phone = ${phone}
-      returning id, user_id`;
-    if (!entry) throw new Error(`no profile for ${phone}`);
-    if (shift.unpaidBreak > 0) {
-      const breakEnd = new Date(
-        start.getTime() + (10 + shift.unpaidBreak) * 60_000,
-      );
-      await sql`
-        insert into public.time_breaks
-          (entry_id, business_id, user_id, started_at, ended_at, unpaid)
-        values (${entry.id}, ${DEMO_RESTAURANT}, ${entry.user_id},
-          ${new Date(start.getTime() + 10 * 60_000)}, ${breakEnd}, true)`;
-    }
-  } finally {
-    await sql.end();
+  // The month as the business counts it, which is not always UTC's.
+  const [year = 0, month = 1] = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Jerusalem",
+  })
+    .format(new Date())
+    .split("-")
+    .map(Number);
+  const day = shift.monthsAgo === 0 ? 1 : 10;
+  const start = new Date(Date.UTC(year, month - 1 - shift.monthsAgo, day, 6));
+  const end = new Date(start.getTime() + shift.minutes * 60_000);
+  const [entry] = await sql<{ id: string; user_id: string }[]>`
+    insert into public.time_entries (business_id, user_id, clock_in, clock_out)
+    select ${DEMO_RESTAURANT}::uuid, p.id, ${start}::timestamptz, ${end}::timestamptz
+    from public.profiles p where p.phone = ${phone}
+    returning id, user_id`;
+  if (!entry) throw new Error(`no profile for ${phone}`);
+  if (shift.unpaidBreak > 0) {
+    const breakEnd = new Date(
+      start.getTime() + (10 + shift.unpaidBreak) * 60_000,
+    );
+    await sql`
+      insert into public.time_breaks
+        (entry_id, business_id, user_id, started_at, ended_at, unpaid)
+      values (${entry.id}, ${DEMO_RESTAURANT}, ${entry.user_id},
+        ${new Date(start.getTime() + 10 * 60_000)}, ${breakEnd}, true)`;
   }
 }
 
@@ -231,72 +171,47 @@ export async function addOpenDemoEntry(
   phone: string,
   hoursAgo: number,
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`
-      insert into public.time_entries (business_id, user_id, clock_in)
-      select ${DEMO_RESTAURANT}::uuid, p.id,
-        ${new Date(Date.now() - hoursAgo * 3_600_000)}::timestamptz
-      from public.profiles p where p.phone = ${phone}`;
-  } finally {
-    await sql.end();
-  }
+  await sql`
+    insert into public.time_entries (business_id, user_id, clock_in)
+    select ${DEMO_RESTAURANT}::uuid, p.id,
+      ${new Date(Date.now() - hoursAgo * 3_600_000)}::timestamptz
+    from public.profiles p where p.phone = ${phone}`;
 }
 
 /** Whether breaks come off the hours at the demo restaurant. */
 export async function setDemoUnpaidBreaks(unpaid: boolean): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`
-      update public.business_modules
-      set settings = settings || ${sql.json({ unpaidBreaks: unpaid })}::jsonb
-      where business_id = ${DEMO_RESTAURANT} and module_key = 'time_clock'`;
-  } finally {
-    await sql.end();
-  }
+  await sql`
+    update public.business_modules
+    set settings = settings || ${sql.json({ unpaidBreaks: unpaid })}::jsonb
+    where business_id = ${DEMO_RESTAURANT} and module_key = 'time_clock'`;
 }
 
 /** A module's stored settings at the demo restaurant, to put back afterwards. */
 export async function demoModuleSettings(
   module: string,
 ): Promise<Record<string, unknown>> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<{ settings: Record<string, unknown> }[]>`
-      select settings from public.business_modules
-      where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
-    return rows[0]?.settings ?? {};
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<{ settings: Record<string, unknown> }[]>`
+    select settings from public.business_modules
+    where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
+  return rows[0]?.settings ?? {};
 }
 
 /** Whether a module is on at the demo restaurant. */
 export async function demoModuleEnabled(module: string): Promise<boolean> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<{ enabled: boolean }[]>`
-      select enabled from public.business_modules
-      where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
-    return rows[0]?.enabled ?? false;
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<{ enabled: boolean }[]>`
+    select enabled from public.business_modules
+    where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
+  return rows[0]?.enabled ?? false;
 }
 
 export async function setDemoModuleSettings(
   module: string,
   settings: Record<string, unknown>,
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`
-      update public.business_modules
-      set settings = ${sql.json(settings as never)}::jsonb
-      where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
-  } finally {
-    await sql.end();
-  }
+  await sql`
+    update public.business_modules
+    set settings = ${sql.json(settings as never)}::jsonb
+    where business_id = ${DEMO_RESTAURANT} and module_key = ${module}`;
 }
 
 export type DemoDetails = {
@@ -308,17 +223,12 @@ export type DemoDetails = {
 
 /** The demo restaurant's own details, to check a save and put them back. */
 export async function demoBusinessDetails(): Promise<DemoDetails> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<DemoDetails[]>`
-      select name, accent, address, shabbat_city as "shabbatCity"
-      from public.businesses where id = ${DEMO_RESTAURANT}`;
-    const row = rows[0];
-    if (!row) throw new Error("The demo restaurant is missing");
-    return row;
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<DemoDetails[]>`
+    select name, accent, address, shabbat_city as "shabbatCity"
+    from public.businesses where id = ${DEMO_RESTAURANT}`;
+  const row = rows[0];
+  if (!row) throw new Error("The demo restaurant is missing");
+  return row;
 }
 
 /**
@@ -329,55 +239,40 @@ export async function demoShopWeek(): Promise<{
   published: boolean;
   assigned: number;
 }> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const [row] = await sql<{ published: boolean; assigned: number }[]>`
-      with week as (
-        select w.id, w.schedule_published_at
-        from public.schedule_weeks w
-        join public.businesses b on b.id = w.business_id
-        where b.slug = 'demo-shop'
-          and (now() at time zone b.timezone)::date
-            between w.starts_on and w.starts_on + 6
-      )
-      select
-        coalesce(bool_or(week.schedule_published_at is not null), false) as published,
-        (select count(*)::int from public.shift_assignments a
-         join public.schedule_shifts s on s.id = a.shift_id
-         where s.week_id in (select id from week)) as assigned
-      from week`;
-    return row ?? { published: false, assigned: 0 };
-  } finally {
-    await sql.end();
-  }
+  const [row] = await sql<{ published: boolean; assigned: number }[]>`
+    with week as (
+      select w.id, w.schedule_published_at
+      from public.schedule_weeks w
+      join public.businesses b on b.id = w.business_id
+      where b.slug = 'demo-shop'
+        and (now() at time zone b.timezone)::date
+          between w.starts_on and w.starts_on + 6
+    )
+    select
+      coalesce(bool_or(week.schedule_published_at is not null), false) as published,
+      (select count(*)::int from public.shift_assignments a
+       join public.schedule_shifts s on s.id = a.shift_id
+       where s.week_id in (select id from week)) as assigned
+    from week`;
+  return row ?? { published: false, assigned: 0 };
 }
 
 export async function setDemoBusinessDetails(
   details: DemoDetails,
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`
-      update public.businesses
-      set name = ${details.name}, accent = ${details.accent},
-        address = ${details.address}, shabbat_city = ${details.shabbatCity}
-      where id = ${DEMO_RESTAURANT}`;
-  } finally {
-    await sql.end();
-  }
+  await sql`
+    update public.businesses
+    set name = ${details.name}, accent = ${details.accent},
+      address = ${details.address}, shabbat_city = ${details.shabbatCity}
+    where id = ${DEMO_RESTAURANT}`;
 }
 
 /** How many saves of the demo restaurant's details its log holds. */
 export async function demoDetailsLogged(): Promise<number> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<{ count: number }[]>`
-      select count(*)::int as count from public.audit_log
-      where business_id = ${DEMO_RESTAURANT} and action = 'business.details'`;
-    return rows[0]?.count ?? 0;
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log
+    where business_id = ${DEMO_RESTAURANT} and action = 'business.details'`;
+  return rows[0]?.count ?? 0;
 }
 
 export type SavedAvailability = {
@@ -391,20 +286,15 @@ export type SavedAvailability = {
 export async function availabilityOf(
   phone: string,
 ): Promise<SavedAvailability[]> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    return await sql<SavedAvailability[]>`
-      select extract(dow from r.day)::int as weekday,
-        to_char(r.starts_at, 'HH24:MI') as start,
-        to_char(r.ends_at, 'HH24:MI') as end, s.note
-      from public.availability_submissions s
-      join public.profiles p on p.id = s.user_id
-      join public.availability_ranges r on r.submission_id = s.id
-      where s.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
-      order by r.day, r.starts_at`;
-  } finally {
-    await sql.end();
-  }
+  return await sql<SavedAvailability[]>`
+    select extract(dow from r.day)::int as weekday,
+      to_char(r.starts_at, 'HH24:MI') as start,
+      to_char(r.ends_at, 'HH24:MI') as end, s.note
+    from public.availability_submissions s
+    join public.profiles p on p.id = s.user_id
+    join public.availability_ranges r on r.submission_id = s.id
+    where s.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
+    order by r.day, r.starts_at`;
 }
 
 /**
@@ -416,66 +306,51 @@ export async function sendDemoAvailability(
   phone: string,
   note: string,
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`
-      with business as (
-        select (now() at time zone b.timezone)::date as today,
-          coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
-        from public.businesses b
-        join public.business_modules m
-          on m.business_id = b.id and m.module_key = 'scheduling'
-        where b.id = ${DEMO_RESTAURANT}
-      ),
-      next_week as (
-        select today - ((extract(dow from today)::int - starts_on + 7) % 7)
-          + 7 as starts_on
-        from business
-      ),
-      week as (
-        select starts_on,
-          public.open_schedule_week(${DEMO_RESTAURANT}, starts_on,
-            now() + interval '1 day') as id
-        from next_week
-      )
-      select public.submit_availability(p.id, week.id,
-        jsonb_build_array(jsonb_build_object(
-          'day', week.starts_on::text, 'start', '09:00', 'end', '17:00')),
-        ${note})
-      from week, public.profiles p where p.phone = ${phone}`;
-  } finally {
-    await sql.end();
-  }
+  await sql`
+    with business as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    ),
+    next_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        + 7 as starts_on
+      from business
+    ),
+    week as (
+      select starts_on,
+        public.open_schedule_week(${DEMO_RESTAURANT}, starts_on,
+          now() + interval '1 day') as id
+      from next_week
+    )
+    select public.submit_availability(p.id, week.id,
+      jsonb_build_array(jsonb_build_object(
+        'day', week.starts_on::text, 'start', '09:00', 'end', '17:00')),
+      ${note})
+    from week, public.profiles p where p.phone = ${phone}`;
 }
 
 /** Remove the demo restaurant's saved schedules, back to drafts. */
 export async function clearSchedule(): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`delete from public.schedule_shifts
-      where business_id = ${DEMO_RESTAURANT}`;
-    await sql`update public.schedule_weeks
-      set schedule_saved_at = null, schedule_published_at = null
-      where business_id = ${DEMO_RESTAURANT}`;
-  } finally {
-    await sql.end();
-  }
+  await sql`delete from public.schedule_shifts
+    where business_id = ${DEMO_RESTAURANT}`;
+  await sql`update public.schedule_weeks
+    set schedule_saved_at = null, schedule_published_at = null
+    where business_id = ${DEMO_RESTAURANT}`;
 }
 
 /** Whether any of the demo restaurant's weeks has a published schedule. */
 export async function schedulePublished(): Promise<boolean> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const [row] = await sql<{ published: boolean }[]>`
-      select exists (
-        select 1 from public.schedule_weeks
-        where business_id = ${DEMO_RESTAURANT}
-          and schedule_published_at is not null
-      ) as published`;
-    return row?.published ?? false;
-  } finally {
-    await sql.end();
-  }
+  const [row] = await sql<{ published: boolean }[]>`
+    select exists (
+      select 1 from public.schedule_weeks
+      where business_id = ${DEMO_RESTAURANT}
+        and schedule_published_at is not null
+    ) as published`;
+  return row?.published ?? false;
 }
 
 export type SavedAssignment = {
@@ -489,19 +364,14 @@ export type SavedAssignment = {
 /** Who the demo restaurant's saved schedules put on which shift, and in
  * which position. */
 export async function scheduleAssignments(): Promise<SavedAssignment[]> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    return await sql<SavedAssignment[]>`
-      select extract(dow from s.day)::int as weekday,
-        s.pattern_key as pattern, p.phone, a.position_key as position
-      from public.schedule_shifts s
-      join public.shift_assignments a on a.shift_id = s.id
-      join public.profiles p on p.id = a.user_id
-      where s.business_id = ${DEMO_RESTAURANT}
-      order by s.day, s.starts_at, p.phone`;
-  } finally {
-    await sql.end();
-  }
+  return await sql<SavedAssignment[]>`
+    select extract(dow from s.day)::int as weekday,
+      s.pattern_key as pattern, p.phone, a.position_key as position
+    from public.schedule_shifts s
+    join public.shift_assignments a on a.shift_id = s.id
+    join public.profiles p on p.id = a.user_id
+    where s.business_id = ${DEMO_RESTAURANT}
+    order by s.day, s.starts_at, p.phone`;
 }
 
 export type SavedShift = {
@@ -515,19 +385,14 @@ export type SavedShift = {
 
 /** The demo restaurant's saved shifts, day by day and earliest first. */
 export async function scheduleShifts(): Promise<SavedShift[]> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    return await sql<SavedShift[]>`
-      select extract(dow from day)::int as weekday, name,
-        to_char(starts_at, 'HH24:MI') as start,
-        to_char(ends_at, 'HH24:MI') as "end",
-        needed, pattern_key as pattern
-      from public.schedule_shifts
-      where business_id = ${DEMO_RESTAURANT}
-      order by day, starts_at, name`;
-  } finally {
-    await sql.end();
-  }
+  return await sql<SavedShift[]>`
+    select extract(dow from day)::int as weekday, name,
+      to_char(starts_at, 'HH24:MI') as start,
+      to_char(ends_at, 'HH24:MI') as "end",
+      needed, pattern_key as pattern
+    from public.schedule_shifts
+    where business_id = ${DEMO_RESTAURANT}
+    order by day, starts_at, name`;
 }
 
 /**
@@ -543,63 +408,58 @@ export async function scheduleDemoSunday(
   },
   publish: boolean,
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const ids = await sql<{ phone: string; id: string }[]>`
-      select phone, id::text from public.profiles
-      where phone in ${sql([...people.morning, ...people.evening].map(([p]) => p))}`;
-    const id = (phone: string) => ids.find((r) => r.phone === phone)?.id;
-    const [week] = await sql<{ id: string; starts_on: string }[]>`
-      with business as (
-        select (now() at time zone b.timezone)::date as today,
-          coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
-        from public.businesses b
-        join public.business_modules m
-          on m.business_id = b.id and m.module_key = 'scheduling'
-        where b.id = ${DEMO_RESTAURANT}
-      ),
-      next_week as (
-        select today - ((extract(dow from today)::int - starts_on + 7) % 7)
-          + 7 as starts_on
-        from business
-      )
-      select public.open_schedule_week(${DEMO_RESTAURANT}, starts_on,
-          now() + interval '1 day')::text as id,
-        starts_on::text as starts_on
-      from next_week`;
-    if (!week) throw new Error("Could not open next week");
-    const assignees = (list: [string, string | null][]) =>
-      list.map(([phone, position]) => ({ user: id(phone), position }));
-    const shifts = [
-      {
-        day: week.starts_on,
-        name: "בוקר",
-        start: "09:00",
-        end: "16:00",
-        needed: 3,
-        pattern: "morning",
-        assignees: assignees(people.morning),
-      },
-      {
-        day: week.starts_on,
-        name: "ערב",
-        start: "16:00",
-        end: "23:30",
-        needed: 4,
-        pattern: "evening",
-        assignees: assignees(people.evening),
-      },
-    ];
-    const manager = "00000000-0000-4000-a000-000000000002";
-    if (publish) {
-      await sql`select public.publish_week_schedule(${manager}, ${week.id},
-        ${sql.json(shifts)})`;
-    } else {
-      await sql`select public.save_week_schedule(${manager}, ${week.id},
-        ${sql.json(shifts)})`;
-    }
-  } finally {
-    await sql.end();
+  const ids = await sql<{ phone: string; id: string }[]>`
+    select phone, id::text from public.profiles
+    where phone in ${sql([...people.morning, ...people.evening].map(([p]) => p))}`;
+  const id = (phone: string) => ids.find((r) => r.phone === phone)?.id;
+  const [week] = await sql<{ id: string; starts_on: string }[]>`
+    with business as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    ),
+    next_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        + 7 as starts_on
+      from business
+    )
+    select public.open_schedule_week(${DEMO_RESTAURANT}, starts_on,
+        now() + interval '1 day')::text as id,
+      starts_on::text as starts_on
+    from next_week`;
+  if (!week) throw new Error("Could not open next week");
+  const assignees = (list: [string, string | null][]) =>
+    list.map(([phone, position]) => ({ user: id(phone), position }));
+  const shifts = [
+    {
+      day: week.starts_on,
+      name: "בוקר",
+      start: "09:00",
+      end: "16:00",
+      needed: 3,
+      pattern: "morning",
+      assignees: assignees(people.morning),
+    },
+    {
+      day: week.starts_on,
+      name: "ערב",
+      start: "16:00",
+      end: "23:30",
+      needed: 4,
+      pattern: "evening",
+      assignees: assignees(people.evening),
+    },
+  ];
+  const manager = "00000000-0000-4000-a000-000000000002";
+  if (publish) {
+    await sql`select public.publish_week_schedule(${manager}, ${week.id},
+      ${sql.json(shifts)})`;
+  } else {
+    await sql`select public.save_week_schedule(${manager}, ${week.id},
+      ${sql.json(shifts)})`;
   }
 }
 
@@ -612,45 +472,40 @@ export async function scheduleDemoToday(
   people: [phone: string, position: string | null][],
   times: { start: string; end: string } = { start: "09:00", end: "16:00" },
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const ids = await sql<{ phone: string; id: string }[]>`
-      select phone, id::text from public.profiles
-      where phone in ${sql(people.map(([phone]) => phone))}`;
-    const [week] = await sql<{ id: string; today: string }[]>`
-      with business as (
-        select (now() at time zone b.timezone)::date as today,
-          coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
-        from public.businesses b
-        join public.business_modules m
-          on m.business_id = b.id and m.module_key = 'scheduling'
-        where b.id = ${DEMO_RESTAURANT}
-      )
-      select public.open_schedule_week(${DEMO_RESTAURANT},
-          today - ((extract(dow from today)::int - starts_on + 7) % 7),
-          now() + interval '1 day')::text as id,
-        today::text as today
-      from business`;
-    if (!week) throw new Error("Could not open this week");
-    const shifts = [
-      {
-        day: week.today,
-        name: "בוקר",
-        ...times,
-        needed: 3,
-        pattern: "morning",
-        assignees: people.map(([phone, position]) => ({
-          user: ids.find((row) => row.phone === phone)?.id,
-          position,
-        })),
-      },
-    ];
-    const manager = "00000000-0000-4000-a000-000000000002";
-    await sql`select public.publish_week_schedule(${manager}, ${week.id},
-      ${sql.json(shifts)})`;
-  } finally {
-    await sql.end();
-  }
+  const ids = await sql<{ phone: string; id: string }[]>`
+    select phone, id::text from public.profiles
+    where phone in ${sql(people.map(([phone]) => phone))}`;
+  const [week] = await sql<{ id: string; today: string }[]>`
+    with business as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    )
+    select public.open_schedule_week(${DEMO_RESTAURANT},
+        today - ((extract(dow from today)::int - starts_on + 7) % 7),
+        now() + interval '1 day')::text as id,
+      today::text as today
+    from business`;
+  if (!week) throw new Error("Could not open this week");
+  const shifts = [
+    {
+      day: week.today,
+      name: "בוקר",
+      ...times,
+      needed: 3,
+      pattern: "morning",
+      assignees: people.map(([phone, position]) => ({
+        user: ids.find((row) => row.phone === phone)?.id,
+        position,
+      })),
+    },
+  ];
+  const manager = "00000000-0000-4000-a000-000000000002";
+  await sql`select public.publish_week_schedule(${manager}, ${week.id},
+    ${sql.json(shifts)})`;
 }
 
 export type SavedSwap = {
@@ -661,18 +516,13 @@ export type SavedSwap = {
 
 /** The demo restaurant's shift swaps, oldest first, by phone number. */
 export async function demoSwaps(): Promise<SavedSwap[]> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    return await sql<SavedSwap[]>`
-      select w.status::text as status, r.phone as "from", t.phone as "to"
-      from public.shift_swaps w
-      join public.profiles r on r.id = w.requested_by
-      left join public.profiles t on t.id = w.taken_by
-      where w.business_id = ${DEMO_RESTAURANT}
-      order by w.created_at`;
-  } finally {
-    await sql.end();
-  }
+  return await sql<SavedSwap[]>`
+    select w.status::text as status, r.phone as "from", t.phone as "to"
+    from public.shift_swaps w
+    join public.profiles r on r.id = w.requested_by
+    left join public.profiles t on t.id = w.taken_by
+    where w.business_id = ${DEMO_RESTAURANT}
+    order by w.created_at`;
 }
 
 /**
@@ -685,25 +535,20 @@ export async function takenDemoSwap(
   from: string,
   to: string,
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`
-      with people as (
-        select
-          (select id from public.profiles where phone = ${from}) as giver,
-          (select id from public.profiles where phone = ${to}) as taker
-      ),
-      shift as (
-        select s.id from public.schedule_shifts s
-        where s.business_id = ${DEMO_RESTAURANT} and s.pattern_key = ${pattern}
-        order by s.day desc limit 1
-      )
-      select public.take_shift_swap(people.taker,
-        public.request_shift_swap(people.giver, shift.id))
-      from people, shift`;
-  } finally {
-    await sql.end();
-  }
+  await sql`
+    with people as (
+      select
+        (select id from public.profiles where phone = ${from}) as giver,
+        (select id from public.profiles where phone = ${to}) as taker
+    ),
+    shift as (
+      select s.id from public.schedule_shifts s
+      where s.business_id = ${DEMO_RESTAURANT} and s.pattern_key = ${pattern}
+      order by s.day desc limit 1
+    )
+    select public.take_shift_swap(people.taker,
+      public.request_shift_swap(people.giver, shift.id))
+    from people, shift`;
 }
 
 /**
@@ -711,12 +556,7 @@ export async function takenDemoSwap(
  * few seconds, which another screen size's run may have just done.
  */
 export async function allowDemoReset(): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    await sql`update private.demo_businesses set reset_at = null`;
-  } finally {
-    await sql.end();
-  }
+  await sql`update private.demo_businesses set reset_at = null`;
 }
 
 /**
@@ -728,32 +568,22 @@ export async function setDemoWording(
   sentence: string | null,
   base: string,
 ): Promise<void> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    if (sentence === null) {
-      await sql`delete from public.business_wording
-        where business_id = ${DEMO_RESTAURANT} and key = ${key}`;
-    } else {
-      await sql`insert into public.business_wording
-          (business_id, key, sentence, base_sentence)
-        values (${DEMO_RESTAURANT}, ${key}, ${sentence}, ${base})
-        on conflict (business_id, key) do update
-        set sentence = excluded.sentence, base_sentence = excluded.base_sentence`;
-    }
-  } finally {
-    await sql.end();
+  if (sentence === null) {
+    await sql`delete from public.business_wording
+      where business_id = ${DEMO_RESTAURANT} and key = ${key}`;
+  } else {
+    await sql`insert into public.business_wording
+        (business_id, key, sentence, base_sentence)
+      values (${DEMO_RESTAURANT}, ${key}, ${sentence}, ${base})
+      on conflict (business_id, key) do update
+      set sentence = excluded.sentence, base_sentence = excluded.base_sentence`;
   }
 }
 
 /** One of the demo restaurant's own sentences, or null when it has none. */
 export async function demoWording(key: string): Promise<string | null> {
-  const sql = postgres(DB_URL, { max: 1 });
-  try {
-    const rows = await sql<{ sentence: string }[]>`
-      select sentence from public.business_wording
-      where business_id = ${DEMO_RESTAURANT} and key = ${key}`;
-    return rows[0]?.sentence ?? null;
-  } finally {
-    await sql.end();
-  }
+  const rows = await sql<{ sentence: string }[]>`
+    select sentence from public.business_wording
+    where business_id = ${DEMO_RESTAURANT} and key = ${key}`;
+  return rows[0]?.sentence ?? null;
 }

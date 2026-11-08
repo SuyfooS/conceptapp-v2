@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { expect, type Page } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { latestCode } from "./sms";
@@ -8,6 +10,49 @@ const t = he.auth.signIn;
 export type Person = { local: string; e164: string };
 
 /**
+ * How long the auth server makes a number wait between two codes:
+ * `[auth.sms] max_frequency` in supabase/config.toml, read so the two never
+ * drift apart. Paths are from the repo root, where `pnpm e2e` runs.
+ */
+export const SMS_COOLDOWN_MS = (() => {
+  const config = fs.readFileSync(path.resolve("supabase/config.toml"), "utf8");
+  const start = config.search(/^\[auth\.sms\]\s*$/m);
+  const seconds =
+    start < 0
+      ? undefined
+      : /^max_frequency = "(\d+)s"\s*$/m.exec(config.slice(start))?.[1];
+  if (!seconds) {
+    throw new Error(
+      "No [auth.sms] max_frequency in seconds in supabase/config.toml",
+    );
+  }
+  return Number(seconds) * 1000;
+})();
+
+/**
+ * Ask for a code on the sign-in screen and wait for the code step. When a
+ * spec before signed this person in moments ago, the auth server says it is
+ * too soon: like a person would, wait it out and ask again once. Returns the
+ * time to read the code from (`latestCode`).
+ */
+export async function askForCode(page: Page, person: Person): Promise<Date> {
+  await page.goto("/sign-in");
+  let since = new Date(Date.now() - 1000);
+  await page.getByLabel(t.phoneLabel).fill(person.local);
+  await page.getByRole("button", { name: t.send }).click();
+  const codeField = page.getByLabel(t.codeLabel);
+  const tooSoon = page.getByText(t.errors.rateLimit);
+  await expect(codeField.or(tooSoon)).toBeVisible();
+  if (await tooSoon.isVisible()) {
+    await page.waitForTimeout(SMS_COOLDOWN_MS + 500);
+    since = new Date(Date.now() - 1000);
+    await page.getByRole("button", { name: t.send }).click();
+  }
+  await expect(codeField).toBeVisible();
+  return since;
+}
+
+/**
  * Sign in with the code the dev SMS hook stored, and wait for the screen
  * the person lands on (home by default).
  */
@@ -16,24 +61,8 @@ export async function signIn(
   person: Person,
   landing: RegExp = /\/home$/,
 ): Promise<void> {
-  await page.goto("/sign-in");
-  let since = new Date(Date.now() - 1000);
-  await page.getByLabel(t.phoneLabel).fill(person.local);
-  await page.getByRole("button", { name: t.send }).click();
-  // The auth server refuses a second code to the same number within 5
-  // seconds, and specs that run back to back may sign the same person in.
-  // Like a person would, wait and ask again once.
-  const codeField = page.getByLabel(t.codeLabel);
-  const tooSoon = page.getByText(t.errors.rateLimit);
-  await expect(codeField.or(tooSoon)).toBeVisible();
-  if (await tooSoon.isVisible()) {
-    await page.waitForTimeout(5_500);
-    since = new Date(Date.now() - 1000);
-    await page.getByRole("button", { name: t.send }).click();
-  }
-  await expect(codeField).toBeVisible();
-  const code = await latestCode(person.e164, since);
+  const since = await askForCode(page, person);
   // The form sends itself once the last digit is in.
-  await page.getByLabel(t.codeLabel).fill(code);
+  await page.getByLabel(t.codeLabel).fill(await latestCode(person.e164, since));
   await expect(page).toHaveURL(landing);
 }
