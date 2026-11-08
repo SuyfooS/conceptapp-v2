@@ -1,4 +1,21 @@
-import type { EntryProblem, ShiftRecord } from "@domain/time-clock";
+import type {
+  Attendance,
+  ConfirmRow,
+  EntryProblem,
+  ShiftRecord,
+} from "@domain/time-clock";
+
+/**
+ * An entry waiting for this viewer's approval, as the confirm card lists it:
+ * what waits and the time it names come from `confirmRowOf`.
+ */
+export type EntryToConfirm = ConfirmRow & {
+  entryId: string;
+  userId: string;
+  name: string | null;
+  /** The business day it began on. */
+  date: string;
+};
 
 export type TeamHoursData = {
   /** The month shown, `YYYY-MM`. */
@@ -7,6 +24,14 @@ export type TeamHoursData = {
   /** Everyone's minutes and shifts in the month. */
   minutes: number;
   shifts: number;
+  /** The business asks for a code to clock in and out. */
+  required: boolean;
+  /** The code can be shown on this person's phone: the header's action. */
+  showCode: boolean;
+  /** Someone from ConceptApp is looking; nothing can be pressed. */
+  viewOnly: boolean;
+  /** What this viewer may approve, oldest first. */
+  toConfirm: EntryToConfirm[];
   atWork: {
     userId: string;
     name: string | null;
@@ -14,6 +39,8 @@ export type TeamHoursData = {
     onBreak: boolean;
     /** The month its shift belongs to, which may be the one before. */
     month: string;
+    /** How their entry was recorded so far. */
+    attendance: Attendance | null;
   }[];
   /** Open for longer than an entry can be, wherever the month shown is. */
   overdue: {
@@ -48,6 +75,10 @@ export type PersonHoursData = {
 export type EntryFailure =
   | EntryProblem
   | "times"
+  /** Someone else approves a person's own hours. */
+  | "ownHours"
+  /** Hours someone set for themselves wait for an owner. */
+  | "ownerOnly"
   | "noAccess"
   | "viewOnly"
   | "failed";
@@ -64,5 +95,10 @@ export type EntryActions = {
   add: (personId: string, values: EntryValues) => Promise<EntryActionResult>;
 };
 
+/** What the team's screen can do. The demo passes a stand-in. */
+export type TeamActions = {
+  confirm: (entryId: string) => Promise<EntryActionResult>;
+};
+
 /** Where this screen's links go; the demo keeps them inside the demo. */
-export type TeamPaths = { clock: string; team: string };
+export type TeamPaths = { clock: string; team: string; code: string };

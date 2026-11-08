@@ -31,14 +31,18 @@ export default async function ManageModulePage({
     currentWording(),
   ]);
   const key = moduleKeyOf(module);
-  if (!access || !key || !modulesToManage(access.rows).includes(key)) {
+  if (
+    !access ||
+    !key ||
+    !modulesToManage(access.rows, access.level).includes(key)
+  ) {
     notFound();
   }
   const manifest: ModuleManifest = manifestFor(key);
   return (
     <ModuleSettingsView
       module={key}
-      fields={fieldsFor(manifest.settings, "business")}
+      fields={fieldsFor(manifest.settings, access.level)}
       values={
         readModuleSettings(
           manifest,

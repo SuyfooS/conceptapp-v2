@@ -28,7 +28,7 @@ export default async function ShellManageModule({
   return (
     <ModuleSettingsView
       module={key}
-      fields={fieldsFor(manifest.settings, "business")}
+      fields={fieldsFor(manifest.settings, "owner")}
       values={
         readModuleSettings(
           manifest,

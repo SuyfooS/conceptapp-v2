@@ -6,8 +6,8 @@ import { checkSettingsChange } from "@domain/settings-form";
 import { manifestFor } from "@modules/registry";
 import type { SettingsResult } from "../../../(app)/manage/settings-types";
 
-// A stand-in for saving settings on the design demo: the same checks, and
-// nothing stored. A reload shows the demo's own values again.
+// A stand-in for saving settings on the design demo: the same checks, as the
+// owner the demo shows, and nothing stored. A reload shows the demo's own values again.
 export async function demoSaveSettings(
   module: string,
   change: unknown,
@@ -15,7 +15,7 @@ export async function demoSaveSettings(
   const key = moduleKeyOf(module);
   if (!key) return { ok: false, failure: "noAccess" };
   const manifest: ModuleManifest = manifestFor(key);
-  const checked = checkSettingsChange(manifest, {}, change, "business");
+  const checked = checkSettingsChange(manifest, {}, change, "owner");
   return checked.ok ? { ok: true } : { ok: false, failure: checked.problem };
 }
 

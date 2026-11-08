@@ -1,7 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { addOpenDemoEntry, clearTimeEntries } from "./db";
+import {
+  addOpenDemoEntry,
+  clearPunchState,
+  clearTimeEntries,
+  setDemoRequirePunchCode,
+} from "./db";
 import { signIn } from "./session";
 
 // Seeded in supabase/seed.sql: the demo restaurant, its manager and a worker.
@@ -34,8 +39,14 @@ async function expectCleanPage(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-test.beforeEach(() => clearTimeEntries(NOA.e164));
-test.afterAll(() => clearTimeEntries(NOA.e164));
+async function startClean() {
+  await clearTimeEntries(NOA.e164);
+  await setDemoRequirePunchCode(false);
+  await clearPunchState();
+}
+
+test.beforeEach(startClean);
+test.afterAll(startClean);
 
 test("a worker has no team hours", async ({ page }) => {
   await signIn(page, NOA);

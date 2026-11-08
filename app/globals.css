@@ -71,6 +71,10 @@
     0 2px 6px rgb(16 18 26 / 0.06), 0 18px 40px -10px rgb(16 18 26 / 0.26);
   --scrim: rgb(16 18 26 / 0.26);
   --thumb: #ffffff;
+
+  /* a QR code: dark on white in every appearance, as cameras read it best */
+  --qr-ink: #111214;
+  --qr-paper: #ffffff;
 }
 
 :root {
@@ -118,6 +122,9 @@
     --glass-shadow: 0 18px 40px -10px rgb(0 0 0 / 0.65);
     --scrim: rgb(0 0 0 / 0.5);
     --thumb: #ffffff;
+
+    --qr-ink: #111214;
+    --qr-paper: #ffffff;
   }
 }
 
@@ -158,6 +165,9 @@
   --glass-shadow: 0 18px 40px -10px rgb(0 0 0 / 0.65);
   --scrim: rgb(0 0 0 / 0.5);
   --thumb: #ffffff;
+
+  --qr-ink: #111214;
+  --qr-paper: #ffffff;
 }
 
 /* A business accent: the pair for the current appearance. */
@@ -252,6 +262,8 @@
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-danger-ink: var(--danger-ink);
+  --color-qr-ink: var(--qr-ink);
+  --color-qr-paper: var(--qr-paper);
   --color-success-soft: color-mix(
     in srgb,
     var(--success) var(--tint-amount),

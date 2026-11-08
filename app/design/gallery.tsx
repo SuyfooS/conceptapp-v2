@@ -1,6 +1,7 @@
 "use client";
 
 import { accentTokens } from "@domain/color";
+import { punchPayload, spokenDigits } from "@domain/punch-code-format";
 import { accentProps } from "@ui/accent";
 import { AccentPicker, AccentPreview } from "@ui/accent-picker";
 import { Ambient } from "@ui/ambient";
@@ -11,6 +12,7 @@ import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
+import { CodeDisplay } from "@ui/code-display";
 import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { useCountUp } from "@ui/count-up";
 import { CoverageBar } from "@ui/coverage-bar";
@@ -31,6 +33,7 @@ import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { ProgressRing } from "@ui/progress-ring";
 import { PunchCircle } from "@ui/punch-circle";
+import { QrCode } from "@ui/qr-code";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { SkeletonBones } from "@ui/skeleton";
@@ -68,6 +71,9 @@ const ACCENTS = [
 ] as const;
 
 const MESSAGES = { he: heMessages, en: enMessages } as const;
+/** A fixed clock code, so the gallery's QR is the same on every visit. */
+const GALLERY_QR = punchPayload("c0nceptApp-gallery-qr1");
+const GALLERY_DIGITS = "482915";
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 const APPEARANCES = ["system", "light", "dark"] as const;
@@ -131,6 +137,7 @@ function GalleryBody({
   const t = useTranslations("design");
   const tDays = useTranslations("days");
   const tWeek = useTranslations("app.shifts.week");
+  const tCode = useTranslations("app.clock.code");
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
@@ -602,6 +609,38 @@ function GalleryBody({
               label={t("punchBack")}
             />
           </div>
+        </Section>
+
+        <Section title={t("qrCode")}>
+          <Card className="flex flex-col items-center gap-4 bg-qr-paper text-qr-ink sm:flex-row sm:justify-center sm:gap-8">
+            <QrCode
+              value={GALLERY_QR}
+              label={tCode("qrLabel")}
+              className="w-44 shrink-0"
+            />
+            <div className="flex flex-col items-center gap-1">
+              <span className="font-medium text-qr-ink/70 text-sm">
+                {tCode("digitsLabel")}
+              </span>
+              <CodeDisplay
+                digits={GALLERY_DIGITS}
+                spoken={tCode("digitsSpoken", {
+                  digits: spokenDigits(GALLERY_DIGITS),
+                })}
+              />
+              <span className="flex min-h-7 items-center gap-2 text-qr-ink/70 text-sm">
+                {/* The ring on the paper keeps its light colours in dark mode. */}
+                <ProgressRing
+                  value={12}
+                  max={20}
+                  tone="paper"
+                  className="size-6"
+                />
+                {tCode("next", { seconds: 12 })}
+              </span>
+            </div>
+          </Card>
+          <p className="text-ink-2 text-sm">{t("qrCodeText")}</p>
         </Section>
 
         <Section title={t("skeleton")}>

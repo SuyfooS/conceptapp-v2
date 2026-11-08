@@ -1,13 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   addMonths,
+  attendanceOf,
   atWorkNow,
   breakMinutes,
+  canConfirm,
   clockFailureOf,
   clockStatus,
+  confirmRowOf,
+  type EntryProof,
   entryDate,
   entryMinutes,
   entryOverdue,
+  entryToConfirm,
   formatElapsed,
   formatHours,
   monthMinutes,
@@ -16,6 +21,7 @@ import {
   monthRecords,
   openEntryOf,
   parseEntryTimes,
+  punchFailureOf,
   roundMinutes,
   type TimeEntry,
   teamMonth,
@@ -52,6 +58,198 @@ describe("timeEntry", () => {
       timeEntry.safeParse({ ...row, clockOut: "2026-11-10T05:00:00+00:00" })
         .success,
     ).toBe(false);
+  });
+
+  it("reads how each time was made, and rows from before", () => {
+    expect(
+      timeEntry.parse({
+        ...row,
+        inProof: "typed",
+        outProof: "none",
+        confirmedAt: "2026-11-10T15:00:00+00:00",
+      }),
+    ).toMatchObject({
+      inProof: "typed",
+      outProof: "none",
+      confirmedAt: "2026-11-10T15:00:00+00:00",
+    });
+    expect(timeEntry.parse(row)).toMatchObject({
+      inProof: null,
+      outProof: null,
+      confirmedAt: null,
+    });
+    expect(timeEntry.safeParse({ ...row, inProof: "guessed" }).success).toBe(
+      false,
+    );
+  });
+});
+
+describe("confirming what was made without a code", () => {
+  const IN = "2026-11-10T06:00:00Z";
+  const OUT = "2026-11-10T14:00:00Z";
+  const made = (
+    inProof: EntryProof | null,
+    outProof: EntryProof | null,
+    confirmedAt: string | null = null,
+    clockOut: string | null = OUT,
+  ) => ({ inProof, outProof, confirmedAt, clockOut });
+
+  it("knows what still needs confirming", () => {
+    const table: [ReturnType<typeof made>, unknown][] = [
+      // An arrival without a code, until it is confirmed.
+      [
+        made("none", "typed"),
+        { arrival: true, departure: false, ownerOnly: false },
+      ],
+      [made("none", "typed", "2026-11-10T07:00:00Z"), null],
+      // A departure made after the confirmation needs its own.
+      [
+        made("none", "none", "2026-11-10T07:00:00Z"),
+        { arrival: false, departure: true, ownerOnly: false },
+      ],
+      [made("none", "none", "2026-11-10T15:00:00Z"), null],
+      [
+        made("scan", "none"),
+        { arrival: false, departure: true, ownerOnly: false },
+      ],
+      [
+        made("none", null, null, null),
+        { arrival: true, departure: false, ownerOnly: false },
+      ],
+      // A time someone set for themselves is an owner's to confirm.
+      [
+        made("self", "self"),
+        { arrival: true, departure: true, ownerOnly: true },
+      ],
+      [
+        made("none", "self", "2026-11-10T07:00:00Z"),
+        { arrival: false, departure: true, ownerOnly: true },
+      ],
+      // Nothing waits otherwise.
+      [made("owner", "owner"), null],
+      [made("off", "off"), null],
+      [made("scan", "typed"), null],
+      [made("manager", "manager"), null],
+      [made(null, null), null],
+    ];
+    for (const [entry, expected] of table) {
+      expect(entryToConfirm(entry), JSON.stringify(entry)).toEqual(expected);
+    }
+  });
+
+  it("lets a manager approve others' entries, and only an owner a manager's own", () => {
+    const plain = { arrival: true, departure: false, ownerOnly: false };
+    const self = { arrival: true, departure: false, ownerOnly: true };
+    const manager = { userId: "m", role: "manager" as const };
+    const owner = { userId: "o", role: "owner" as const };
+    const worker = { userId: "w", role: "worker" as const };
+    expect(canConfirm(plain, "noa", manager)).toBe(true);
+    expect(canConfirm(plain, "m", manager)).toBe(false);
+    expect(canConfirm(self, "m", manager)).toBe(false);
+    expect(canConfirm(self, "other-manager", manager)).toBe(false);
+    expect(canConfirm(self, "m", owner)).toBe(true);
+    expect(canConfirm(plain, "o", owner)).toBe(true);
+    expect(canConfirm(plain, "noa", worker)).toBe(false);
+  });
+
+  it("says what an approval row waits for, and which time it names", () => {
+    const waits = (
+      arrival: boolean,
+      departure: boolean,
+      ownerOnly = false,
+    ) => ({
+      arrival,
+      departure,
+      ownerOnly,
+    });
+    const closed = { in: "09:14", out: "17:02" };
+    const open = { in: "09:14", out: null };
+    const table: [
+      { in: string; out: string | null },
+      ReturnType<typeof waits>,
+      ReturnType<typeof confirmRowOf>,
+    ][] = [
+      [closed, waits(true, false), { what: "in", time: "09:14" }],
+      [open, waits(true, false), { what: "in", time: "09:14" }],
+      [closed, waits(false, true), { what: "out", time: "17:02" }],
+      // No departure to name: the row keeps the arrival.
+      [open, waits(false, true), { what: "out", time: "09:14" }],
+      [closed, waits(true, true), { what: "both", time: "09:14–17:02" }],
+      [open, waits(true, true), { what: "both", time: "09:14" }],
+      // A time set for oneself is named by its arrival, whatever waits.
+      [closed, waits(true, true, true), { what: "self", time: "09:14" }],
+      [closed, waits(false, true, true), { what: "self", time: "09:14" }],
+    ];
+    for (const [times, toConfirm, expected] of table) {
+      expect(
+        confirmRowOf(times, toConfirm),
+        JSON.stringify({ times, toConfirm }),
+      ).toEqual(expected);
+    }
+  });
+
+  it("names the weakest way an entry was made", () => {
+    expect(attendanceOf(made("scan", "scan"))).toEqual({
+      how: "scan",
+      pending: false,
+    });
+    expect(attendanceOf(made("scan", "typed"))).toEqual({
+      how: "typed",
+      pending: false,
+    });
+    expect(attendanceOf(made("typed", "none"))).toEqual({
+      how: "none",
+      pending: true,
+    });
+    expect(attendanceOf(made("none", "scan", "2026-11-10T07:00:00Z"))).toEqual({
+      how: "none",
+      pending: false,
+    });
+    expect(attendanceOf(made("none", "self"))).toEqual({
+      how: "self",
+      pending: true,
+    });
+    expect(attendanceOf(made("owner", "manager"))).toEqual(
+      attendanceOf(made(null, null)),
+    );
+    expect(attendanceOf(made("off", null, null, null))).toBeNull();
+  });
+
+  it("monthRecords carries the attendance", () => {
+    const [record] = monthRecords(
+      [
+        {
+          id: "68000000-0000-4000-a000-000000000001",
+          userId: "u1",
+          clockIn: IN,
+          source: "punch",
+          breaks: [],
+          ...made("none", "typed"),
+        },
+      ],
+      "2026-11",
+      TZ,
+      new Date("2026-11-20T12:00:00Z"),
+    );
+    expect(record?.attendance).toEqual({ how: "none", pending: true });
+  });
+});
+
+describe("what a punch can answer", () => {
+  it("says what a punch can answer", () => {
+    expect(punchFailureOf("code", "plain")).toBe("codeNeeded");
+    expect(punchFailureOf("code", "typed")).toBe("code");
+    expect(punchFailureOf("code", "scan")).toBe("code");
+    expect(punchFailureOf("codeLocked", "typed")).toBe("codeLocked");
+    expect(punchFailureOf("ownCode", "typed")).toBe("ownCode");
+    expect(punchFailureOf("alreadyOnBreak", null)).toBe("alreadyOnBreak");
+    for (const refusal of [
+      "ownHours",
+      "ownerOnly",
+      "nothingToConfirm",
+    ] as const) {
+      expect(punchFailureOf(refusal, "typed")).toBe("failed");
+    }
   });
 });
 
@@ -250,6 +448,43 @@ describe("clockFailureOf", () => {
     expect(clockFailureOf("P0002")).toBe("noAccess");
     expect(clockFailureOf(undefined)).toBe("failed");
   });
+
+  it("tells a locked, own or wrong code apart, and the confirm refusals", () => {
+    // The exact words of 20261108000300_sealed.sql and 20261108000200_qr_clock.sql.
+    expect(clockFailureOf("28000", "Too many wrong codes; scan instead")).toBe(
+      "codeLocked",
+    );
+    expect(
+      clockFailureOf("28000", "A code you showed yourself does not count"),
+    ).toBe("ownCode");
+    expect(
+      clockFailureOf("28000", "The punch code is missing or expired"),
+    ).toBe("code");
+    expect(
+      clockFailureOf("42501", "This business shows codes on its stations only"),
+    ).toBe("stationsOnly");
+    expect(
+      clockFailureOf("42501", "Someone else confirms your own hours"),
+    ).toBe("ownHours");
+    expect(
+      clockFailureOf(
+        "42501",
+        "Only an owner confirms hours someone set for themselves",
+      ),
+    ).toBe("ownerOnly");
+    expect(
+      clockFailureOf(
+        "55000",
+        "Only an entry made without a code needs confirming",
+      ),
+    ).toBe("nothingToConfirm");
+    expect(clockFailureOf("42501", "Managers and owners only")).toBe(
+      "noAccess",
+    );
+    expect(
+      clockFailureOf("42501", "The time clock is off for this business"),
+    ).toBe("noAccess");
+  });
 });
 
 describe("breaks", () => {
@@ -390,6 +625,9 @@ describe("months", () => {
       clockOut,
       source,
       breaks: [],
+      inProof: null,
+      outProof: null,
+      confirmedAt: null,
     });
     const records = monthRecords(
       [
@@ -426,6 +664,9 @@ describe("the manager's view", () => {
     clockOut,
     source: "punch",
     breaks,
+    inProof: null,
+    outProof: null,
+    confirmedAt: null,
   });
   const pause = {
     id: "68000000-0000-4000-a000-000000000009",

@@ -218,7 +218,9 @@
     "switchHint": "What changes at once, with no save button",
     "accentPickerTitle": "Choosing a colour",
     "accentPickerCaption": "How the colour will look in the app",
-    "accentPickerButton": "Sample button"
+    "accentPickerButton": "Sample button",
+    "qrCode": "QR code",
+    "qrCodeText": "Always dark on white, in dark mode too. The digits under it are for typing."
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -958,7 +960,9 @@
       "circle": {
         "in": "Clock in",
         "out": "Clock out",
-        "back": "Back to work"
+        "back": "Back to work",
+        "codeIn": "Clock in with a code",
+        "codeOut": "Clock out with a code"
       },
       "startBreak": "Start a break",
       "endShift": "Clock out",
@@ -972,7 +976,8 @@
         "idle": "Pressing the circle records when you started",
         "workingSince": "You came in at <ltr>{time}</ltr>",
         "workingUntil": "You came in at <ltr>{time}</ltr>, the shift ends at <ltr>{end}</ltr>",
-        "breakSince": "You went on a break at <ltr>{time}</ltr>"
+        "breakSince": "You went on a break at <ltr>{time}</ltr>",
+        "idleCode": "Press the circle, then type the digits a manager is showing"
       },
       "hours": {
         "thisMonth": "This month",
@@ -988,10 +993,12 @@
         "out": "Clocked out",
         "break": "On a break",
         "back": "Back to work",
-        "undo": "Clock out undone, the shift goes on"
+        "undo": "Clock out undone, the shift goes on",
+        "inNone": "Clocked in without a code. A manager will approve it.",
+        "outNone": "Clocked out without a code. A manager will approve it."
       },
       "failure": {
-        "code": "This business needs a code from the manager. Ask them to record it.",
+        "code": "Those digits are wrong, or the code has changed. Type the digits shown now.",
         "alreadyIn": "You are already clocked in.",
         "notIn": "You are not clocked in.",
         "alreadyOnBreak": "You are already on a break.",
@@ -1002,7 +1009,11 @@
         "noAccess": "You don't have access to this business's clock.",
         "viewOnly": "In view mode you can't clock in or out.",
         "failed": "That didn't go through. Check your connection and try again.",
-        "needsEnd": "An end time is needed too."
+        "needsEnd": "An end time is needed too.",
+        "codeLocked": "Too many tries with wrong digits, so typing is blocked for a while. You can go ahead without a code.",
+        "ownCode": "A code shown on your own phone doesn't count for you. Use a code another manager is showing, or go ahead without one.",
+        "stationsOnly": "This business shows the code only on its station.",
+        "codeNeeded": "This business now needs a code to clock in or out. Press the circle again."
       },
       "history": {
         "title": "Shift history",
@@ -1034,7 +1045,27 @@
         },
         "needsFix": "Needs fixing",
         "fix": "Fix",
-        "fixShift": "Fix the shift of {day}"
+        "fixShift": "Fix the shift of {day}",
+        "withProof": " · {proof}",
+        "proof": {
+          "scan": "Scanned",
+          "typed": "Typed",
+          "nonePending": "No code, waiting for approval",
+          "noneConfirmed": "No code, approved",
+          "selfPending": "Own entry, waiting for the owner",
+          "selfConfirmed": "Own entry, approved",
+          "pendingShort": "Waiting for approval"
+        },
+        "proofInline": {
+          "scan": "scanned",
+          "typed": "typed",
+          "none": "no code",
+          "self": "own entry",
+          "nonePending": "no code, waiting for approval",
+          "noneConfirmed": "no code, approved",
+          "selfPending": "own entry, waiting for the owner",
+          "selfConfirmed": "own entry, approved"
+        }
       },
       "todayLine": {
         "working": "On shift since <ltr>{time}</ltr>",
@@ -1095,12 +1126,68 @@
           "noAccess": "You don't have permission to change hours in this business.",
           "viewOnly": "In view mode you can't change hours.",
           "failed": "The hours weren't saved. Check your connection and try again.",
-          "sameTime": "The end is the same as the start. Check the times."
+          "sameTime": "The end is the same as the start. Check the times.",
+          "ownHours": "Another manager or the owner approves your own hours.",
+          "ownerOnly": "Only the owner approves hours a manager recorded for themselves."
         },
         "done": {
           "edit": "Hours saved",
           "add": "Shift added"
+        },
+        "confirm": {
+          "title": "{count, plural, one {One entry is waiting for approval} other {# entries are waiting for approval}}",
+          "body": "Recorded without a code, or by a manager for themselves. Approve, or open to fix.",
+          "row": "{what, select, in {In without a code} out {Out without a code} both {In and out without a code} other {Own entry}} on {day}, <ltr>{time}</ltr>",
+          "approve": "Approve",
+          "fix": "Fix",
+          "approveLabel": "Approve {name}'s hours",
+          "fixLabel": "Fix {name}'s hours",
+          "done": "Hours approved"
         }
+      },
+      "breakNote": "A break needs no code. Leaving the shift needs a code again.",
+      "showCode": {
+        "title": "Show the clock code",
+        "hint": "For the team, as they clock in and out"
+      },
+      "type": {
+        "titleIn": "Clock in with the digits",
+        "titleOut": "Clock out with the digits",
+        "subtitle": "The digits under the code a manager is showing",
+        "label": "The clock code's six digits"
+      },
+      "none": {
+        "open": "Can't? Go ahead without a code",
+        "titleIn": "Clock in without a code",
+        "titleOut": "Clock out without a code",
+        "body": "The time is saved now, as it is. A manager will see it was without a code and approve it.",
+        "confirmIn": "Clock in without a code",
+        "confirmOut": "Clock out without a code",
+        "back": "Back to the code"
+      },
+      "code": {
+        "title": "Clock code",
+        "how": "Open ConceptApp, press the circle on the Clock screen and type the digits.",
+        "digitsLabel": "The digits to type",
+        "digitsSpoken": "The digits: {digits}",
+        "qrLabel": "QR code to clock in and out",
+        "next": "{seconds, plural, one {New code in 1 second} other {New code in # seconds}}",
+        "loading": "Getting a code",
+        "offline": "No internet connection, so no code. Meanwhile people go ahead without a code, and you can approve it later in Team hours.",
+        "retry": "Try again",
+        "failed": "We couldn't get a code. Trying again in a moment.",
+        "reconnecting": "No connection right now. The code shown still works.",
+        "settingOffOwner": "For now nobody needs this code. To ask for it, switch on “Clock in and out with a code” in the clock's settings.",
+        "openSettings": "Open the clock's settings",
+        "settingOffManager": "For now nobody needs this code. The owner can ask for it in the clock's settings.",
+        "notCounted": "A code shown here doesn't count for you: clock yourself in with another manager's code, or without one.",
+        "stationsOnly": "This business shows the code only on its station, not on a phone.",
+        "signedOut": "Sign in again to show the code.",
+        "signIn": "Sign in",
+        "awakeOff": "The screen may turn off. To keep the code showing, lengthen the screen timeout in the phone's settings.",
+        "fullScreen": "Full screen",
+        "exitFullScreen": "Exit full screen",
+        "viewOnly": "No code is shown in view-only mode."
       }
     },
     "manage": {
@@ -1268,7 +1355,9 @@
             "addOpen": "Added a shift to {person}'s hours: {day}, from <ltr>{in}</ltr>",
             "correct": "Fixed {person}'s shift on {day}",
             "onDay": "{day}, <hours></hours>",
-            "hours": "Hours"
+            "hours": "Hours",
+            "confirm": "Approved {person}'s hours",
+            "codeLocked": "Typing the clock code was blocked after wrong tries"
           },
           "invite": {
             "create": "Invited to the team: {name}, {role}",
@@ -1307,7 +1396,8 @@
             "clear": "Brought back the app's sentence instead of “{from}”"
           }
         }
-      }
+      },
+      "ownerOnly": "Owners only"
     }
   },
   "modules": {
@@ -1360,6 +1450,10 @@
         "unpaidBreaks": {
           "label": "Breaks come off the hours",
           "hint": "Break time isn't counted in the hours worked. Applies to breaks from now on; what's already recorded stays as it was."
+        },
+        "requirePunchCode": {
+          "label": "Clock in and out with a code",
+          "hint": "To clock in and out, people type the digits a manager shows on their phone. Anyone who can't goes ahead without a code, and a manager approves it. Each shift keeps how it was recorded. Owners need no code."
         }
       }
     },

@@ -3,9 +3,11 @@ import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   addDemoShift,
+  clearPunchState,
   clearSchedule,
   clearTimeEntries,
   scheduleDemoToday,
+  setDemoRequirePunchCode,
   setDemoUnpaidBreaks,
 } from "./db";
 import { signIn } from "./session";
@@ -44,6 +46,9 @@ async function startClean() {
   await clearTimeEntries(NOA.e164);
   await clearTimeEntries(MANAGER.e164);
   await setDemoUnpaidBreaks(false);
+  // One press clocks in here: no code asked for, whatever ran before.
+  await setDemoRequirePunchCode(false);
+  await clearPunchState();
 }
 
 test.beforeEach(startClean);
@@ -183,6 +188,10 @@ test("a manager chooses that breaks come off the hours", async ({ page }) => {
     name: he.modules.time_clock.settings.unpaidBreaks.label,
   });
   await expect(unpaid).toHaveAttribute("aria-checked", "false");
+  // Whether a code is asked for is the owner's to change.
+  await expect(
+    page.getByText(he.modules.time_clock.settings.requirePunchCode.label),
+  ).toHaveCount(0);
   await unpaid.click();
   await expect(
     page.getByText(he.app.manage.saved, { exact: true }),

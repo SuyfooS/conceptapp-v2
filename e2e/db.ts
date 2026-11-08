@@ -166,16 +166,77 @@ export async function addDemoShift(
   }
 }
 
-/** Someone who clocked in some hours ago and is still on the clock. */
+/**
+ * Someone who clocked in some hours ago and is still on the clock, by default
+ * with no proof, as before codes; `inProof: "none"` as if without a code.
+ */
 export async function addOpenDemoEntry(
   phone: string,
   hoursAgo: number,
+  inProof: "none" | "typed" | null = null,
 ): Promise<void> {
   await sql`
-    insert into public.time_entries (business_id, user_id, clock_in)
+    insert into public.time_entries (business_id, user_id, clock_in, in_proof)
     select ${DEMO_RESTAURANT}::uuid, p.id,
-      ${new Date(Date.now() - hoursAgo * 3_600_000)}::timestamptz
+      ${new Date(Date.now() - hoursAgo * 3_600_000)}::timestamptz, ${inProof}
     from public.profiles p where p.phone = ${phone}`;
+}
+
+/** Whether the demo restaurant asks for the clock's code to clock in and out. */
+export async function setDemoRequirePunchCode(on: boolean): Promise<void> {
+  await sql`
+    update public.business_modules
+    set settings = settings || ${sql.json({ requirePunchCode: on })}::jsonb
+    where business_id = ${DEMO_RESTAURANT} and module_key = 'time_clock'`;
+}
+
+/** No live codes at the demo restaurant, and nobody's typing blocked. */
+export async function clearPunchState(): Promise<void> {
+  await sql`delete from public.punch_codes
+    where business_id = ${DEMO_RESTAURANT}`;
+  await sql`delete from private.punch_attempts
+    where business_id = ${DEMO_RESTAURANT}`;
+}
+
+/** How many typed codes the person has had counted at the demo restaurant. */
+export async function demoPunchAttempts(phone: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from private.punch_attempts a
+    join public.profiles p on p.id = a.user_id
+    where a.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}`;
+  return row?.count ?? 0;
+}
+
+export type EntryProofs = {
+  inProof: string | null;
+  outProof: string | null;
+  confirmed: boolean;
+};
+
+/** How each of the person's entries at the demo restaurant was made, oldest first. */
+export async function demoEntryProofs(phone: string): Promise<EntryProofs[]> {
+  return await sql<EntryProofs[]>`
+    select e.in_proof as "inProof", e.out_proof as "outProof",
+      e.confirmed_at is not null as confirmed
+    from public.time_entries e
+    join public.profiles p on p.id = e.user_id
+    where e.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
+    order by e.clock_in`;
+}
+
+/**
+ * How many rows of `action` the demo restaurant's log has had since `since`:
+ * the log keeps earlier runs' rows on the same local database.
+ */
+export async function demoActivityActions(
+  action: string,
+  since: Date,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log
+    where business_id = ${DEMO_RESTAURANT} and action = ${action}
+      and created_at >= ${since}`;
+  return row?.count ?? 0;
 }
 
 /** Whether breaks come off the hours at the demo restaurant. */

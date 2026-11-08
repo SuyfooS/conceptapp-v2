@@ -44,6 +44,11 @@ export type CodeSlotsProps = {
   /** Called once the last digit is in, also when they arrive together. */
   onComplete?: (code: string) => void;
   autoFocus?: boolean;
+  /**
+   * one-time-code lets the phone offer a code from a text message, as signing
+   * in wants. off for digits read off another screen, such as the clock's.
+   */
+  autoComplete?: "one-time-code" | "off";
   /** For the surface the slots sit on. */
   slotClassName?: string;
   className?: string;
@@ -64,6 +69,7 @@ export function CodeSlots({
   status = "idle",
   onComplete,
   autoFocus = false,
+  autoComplete = "one-time-code",
   slotClassName,
   className,
 }: CodeSlotsProps) {
@@ -204,7 +210,7 @@ export function CodeSlots({
           ref={input}
           type="text"
           inputMode="numeric"
-          autoComplete="one-time-code"
+          autoComplete={autoComplete}
           pattern="[0-9]*"
           value=""
           aria-label={label}

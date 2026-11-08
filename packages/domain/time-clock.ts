@@ -1,5 +1,7 @@
 import { z } from "zod";
 import { addDays, dateIn, instantIn } from "./availability";
+import { atLeast, type Role } from "./modules";
+import type { PunchProof } from "./punch-code-format";
 import { timeIn } from "./shabbat";
 import {
   addMonths,
@@ -53,6 +55,24 @@ export const timeBreak = z.object({
 });
 export type TimeBreak = z.infer<typeof timeBreak>;
 
+/**
+ * How a time of an entry was made (20261108000200_qr_clock.sql and
+ * 20261108000300_sealed.sql): scan, typed (the digits under the QR), none
+ * (without a code, for a manager to confirm), owner (owners need no code), off
+ * (the business asks for none), manager (a manager set it), self (someone set
+ * it for themselves, for an owner to confirm). Null for times from before.
+ */
+export const ENTRY_PROOFS = [
+  "scan",
+  "typed",
+  "none",
+  "owner",
+  "off",
+  "manager",
+  "self",
+] as const;
+export type EntryProof = (typeof ENTRY_PROOFS)[number];
+
 export const timeEntry = z
   .object({
     id: z.uuid(),
@@ -61,6 +81,10 @@ export const timeEntry = z
     clockOut: z.iso.datetime({ offset: true }).nullable(),
     source: z.enum(["punch", "manager"]),
     breaks: z.array(timeBreak).default([]),
+    inProof: z.enum(ENTRY_PROOFS).nullable().default(null),
+    outProof: z.enum(ENTRY_PROOFS).nullable().default(null),
+    /** When a manager last confirmed what was made without a code. */
+    confirmedAt: z.iso.datetime({ offset: true }).nullable().default(null),
   })
   .refine(
     (e) =>
@@ -229,6 +253,116 @@ export function monthMinutes(
     );
 }
 
+/** A time made without a code, or set by someone for themselves, waits for a confirmation. */
+const awaitsConfirming = (proof: EntryProof | null) =>
+  proof === "none" || proof === "self";
+
+export type ToConfirm = {
+  arrival: boolean;
+  departure: boolean;
+  /** A time someone set for themselves: only an owner confirms it. */
+  ownerOnly: boolean;
+};
+
+/**
+ * What still needs confirming: the arrival until confirmed, and a departure
+ * made after the last confirmation. Null when nothing does. The same rules as
+ * the database's confirm_time_entry.
+ */
+export function entryToConfirm(
+  e: Pick<TimeEntry, "inProof" | "outProof" | "confirmedAt" | "clockOut">,
+): ToConfirm | null {
+  const arrival = awaitsConfirming(e.inProof) && e.confirmedAt === null;
+  const departure =
+    awaitsConfirming(e.outProof) &&
+    (e.confirmedAt === null ||
+      (e.clockOut !== null &&
+        Date.parse(e.confirmedAt) < Date.parse(e.clockOut)));
+  if (!arrival && !departure) return null;
+  return {
+    arrival,
+    departure,
+    ownerOnly:
+      (arrival && e.inProof === "self") || (departure && e.outProof === "self"),
+  };
+}
+
+/**
+ * Who may confirm it: any owner or manager but the person, unless an owner;
+ * a time someone set for themselves, only an owner.
+ */
+export function canConfirm(
+  toConfirm: ToConfirm,
+  entryUserId: string,
+  viewer: { userId: string; role: Role },
+): boolean {
+  if (!atLeast(viewer.role, "manager")) return false;
+  const owner = viewer.role === "owner";
+  if (entryUserId === viewer.userId && !owner) return false;
+  return owner || !toConfirm.ownerOnly;
+}
+
+/** What an approval row says waits, and the time it names. */
+export type ConfirmRow = {
+  /** The arrival, the departure, both, or a time someone set for themselves. */
+  what: "in" | "out" | "both" | "self";
+  /** `HH:MM`, or `HH:MM–HH:MM` when both times wait. */
+  time: string;
+};
+
+/**
+ * An approval row from an entry's times (as the business's clock shows them)
+ * and what waits on it: the arrival's time for an arrival and for a time set
+ * for oneself, the departure's for a departure (the arrival's while there is
+ * none), and both for both.
+ */
+export function confirmRowOf(
+  times: { in: string; out: string | null },
+  toConfirm: ToConfirm,
+): ConfirmRow {
+  if (toConfirm.ownerOnly) return { what: "self", time: times.in };
+  if (toConfirm.arrival && toConfirm.departure) {
+    return {
+      what: "both",
+      time: times.out ? `${times.in}–${times.out}` : times.in,
+    };
+  }
+  return toConfirm.arrival
+    ? { what: "in", time: times.in }
+    : { what: "out", time: times.out ?? times.in };
+}
+
+/** How an entry was recorded, for its label: the weaker of its two times. */
+export type Attendance = {
+  how: "scan" | "typed" | "none" | "self";
+  /** Still waiting for a confirmation. */
+  pending: boolean;
+};
+
+/** From strongest to weakest. */
+const ATTENDANCE: readonly Attendance["how"][] = [
+  "scan",
+  "typed",
+  "none",
+  "self",
+];
+
+/**
+ * How an entry was recorded, the weaker of its two times (self > none > typed
+ * > scan). Null when there is nothing to say: no code was asked for, an owner
+ * punched, a manager set it, or it is from before codes.
+ */
+export function attendanceOf(
+  e: Pick<TimeEntry, "inProof" | "outProof" | "confirmedAt" | "clockOut">,
+): Attendance | null {
+  const rank = (proof: EntryProof | null) =>
+    ATTENDANCE.indexOf(proof as Attendance["how"]);
+  const weakest = Math.max(rank(e.inProof), rank(e.outProof));
+  const how = ATTENDANCE[weakest];
+  if (!how) return null;
+  return { how, pending: entryToConfirm(e) !== null };
+}
+
 export type ShiftRecord = {
   id: string;
   /** The business day it belongs to. */
@@ -242,6 +376,8 @@ export type ShiftRecord = {
   byManager: boolean;
   /** Left open for longer than an entry can be: only a manager can close it. */
   overdue: boolean;
+  /** How it was recorded, when the business asks for a code or it waits. */
+  attendance: Attendance | null;
 };
 
 /** One person's entries of a month as the history shows them, newest first. */
@@ -267,6 +403,7 @@ export function monthRecords(
       breakMinutes: breakMinutes(entry, now),
       byManager: entry.source === "manager",
       overdue: entryOverdue(entry, now),
+      attendance: attendanceOf(entry),
     }));
 }
 
@@ -372,6 +509,12 @@ export function roundMinutes(minutes: number, step: 0 | 5 | 15): number {
 /** Why the database refused a clock write, for the screen to say. */
 export type ClockFailure =
   | "code"
+  /** Too many wrong digits: typing waits a while. */
+  | "codeLocked"
+  /** A code shown on the person's own phone. */
+  | "ownCode"
+  /** The business shows codes on its stations only. */
+  | "stationsOnly"
   | "alreadyIn"
   | "notIn"
   | "alreadyOnBreak"
@@ -380,8 +523,45 @@ export type ClockFailure =
   | "needsEnd"
   | "tooLong"
   | "times"
+  /** Confirming: someone else confirms a person's own hours. */
+  | "ownHours"
+  /** Confirming: a time someone set for themselves waits for an owner. */
+  | "ownerOnly"
+  /** Confirming: nothing on the entry waits for it. */
+  | "nothingToConfirm"
   | "noAccess"
   | "failed";
+
+/**
+ * What a punch, a break or taking a clock-out back can answer, for the clock
+ * screen's words: never a confirmation's refusals, and `codeNeeded` for a
+ * press sent without a code to a business that now asks for one.
+ */
+export type PunchFailure =
+  | Exclude<ClockFailure, "ownHours" | "ownerOnly" | "nothingToConfirm">
+  | "codeNeeded";
+
+/**
+ * A clock write's refusal as the clock screen says it. `proof` is how the
+ * punch was proved, or null for a break and for taking a clock-out back.
+ */
+export function punchFailureOf(
+  failure: ClockFailure,
+  proof: PunchProof["kind"] | null,
+): PunchFailure {
+  switch (failure) {
+    case "ownHours":
+    case "ownerOnly":
+    case "nothingToConfirm":
+      return "failed";
+    case "code":
+      // The owner switched codes on after the page loaded: no digits were
+      // wrong, the press had none.
+      return proof === "plain" ? "codeNeeded" : "code";
+    default:
+      return failure;
+  }
+}
 
 /** Maps an error from the clock functions to what the screen says. */
 export function clockFailureOf(
@@ -390,17 +570,23 @@ export function clockFailureOf(
 ): ClockFailure {
   switch (code) {
     case "28000":
-      return "code";
+      if (/too many/i.test(message)) return "codeLocked";
+      return /yourself/i.test(message) ? "ownCode" : "code";
     case "23P01":
       if (/already clocked in/i.test(message)) return "alreadyIn";
       return /already on a break/i.test(message) ? "alreadyOnBreak" : "times";
     case "55000":
       if (/24 hours/i.test(message)) return "tooLong";
       if (/not on a break/i.test(message)) return "notOnBreak";
+      if (/needs confirming/i.test(message)) return "nothingToConfirm";
       return /too late/i.test(message) ? "tooLate" : "notIn";
     case "22023":
       return /needs an end/i.test(message) ? "needsEnd" : "times";
     case "42501":
+      if (/stations only/i.test(message)) return "stationsOnly";
+      if (/your own hours/i.test(message)) return "ownHours";
+      if (/only an owner/i.test(message)) return "ownerOnly";
+      return "noAccess";
     case "P0002":
       return "noAccess";
     default:

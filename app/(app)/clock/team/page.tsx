@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
 import { baseWording, translator } from "../../wording";
 import { clockPaths } from "../clock";
+import { confirmEntryAction } from "./actions";
 import { currentTeamHours } from "./team-hours";
 import { TeamHoursView } from "./team-view";
 
@@ -23,6 +24,7 @@ export default async function ClockTeamPage({
   return (
     <TeamHoursView
       data={data}
+      actions={{ confirm: confirmEntryAction }}
       paths={clockPaths}
       wording={await currentWording()}
     />

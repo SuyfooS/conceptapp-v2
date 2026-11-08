@@ -47,7 +47,7 @@ export default async function ManageActivityPage({
       timeZone={access.timeZone}
       older={page.older}
       earlier={before !== null}
-      manageable={modulesToManage(access.rows)}
+      manageable={modulesToManage(access.rows, access.level)}
       clockOn={enabledModules(manifests, access.rows).includes("time_clock")}
       paths={{
         manage: "/manage",
