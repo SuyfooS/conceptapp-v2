@@ -1320,7 +1320,10 @@ export type Database = {
       };
       team_phones: {
         Args: { business: string };
-        Returns: { phone: string; user_id: string }[];
+        Returns: {
+          phone: string;
+          user_id: string;
+        }[];
       };
       undo_clock_out: {
         Args: { actor: string; at_time?: string; entry: string };
