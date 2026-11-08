@@ -566,7 +566,8 @@
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create the invite. Try again in a moment.",
           "noPermission": "Only owners and managers can invite to the team.",
-          "viewOnly": "This is view only, so the invite was not saved."
+          "viewOnly": "This is view only, so the invite was not saved.",
+          "elsewhere": "This number is already active in another business. For now a person can be in one business only."
         }
       }
     },
@@ -1403,7 +1404,8 @@
         "title": "No businesses yet",
         "body": "Every business starts from a template. Open one with “Open a new business” and it will appear here."
       },
-      "new": "Open a new business"
+      "new": "Open a new business",
+      "expiredCount": "{count, plural, one {One invite expired} other {# invites expired}}"
     },
     "newBusiness": {
       "metaTitle": "New business",
@@ -1544,7 +1546,8 @@
           "owner": {
             "title": "Invite the owners",
             "done": "{count, plural, one {One person} other {# people}} with the owner role.",
-            "todo": "No owner yet. Without one, nobody runs the business."
+            "todo": "No owner yet. Without one, nobody runs the business.",
+            "expired": "The owner's invite ran out before they joined. Renew it in the people list and send the new link."
           },
           "staff": {
             "title": "Invite the staff",
@@ -1570,7 +1573,9 @@
         "noName": "No name",
         "member": "On the team",
         "invited": "Invited",
-        "invite": "Invite"
+        "invite": "Invite",
+        "add": "Add a person",
+        "expired": "Invite expired"
       },
       "invite": {
         "create": "Create invite link",
@@ -1582,7 +1587,9 @@
         "errors": {
           "failed": "Could not create a link. Try again in a moment.",
           "noPermission": "You may not invite people."
-        }
+        },
+        "renew": "Renew the invite",
+        "renewFor": "Renew {name}'s invite"
       },
       "viewAs": {
         "title": "View the app",
@@ -1606,6 +1613,11 @@
       "on": "{module} is on for this business",
       "switchFailed": "Not saved",
       "noRoom": "No room in the tab bar for another tab"
+    },
+    "addPerson": {
+      "title": "Add a person to the business",
+      "subtitle": "A name, a mobile and a role at {name}, and you get a link to send in a message.",
+      "back": "Back to {name}"
     }
   },
   "errors": {

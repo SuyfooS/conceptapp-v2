@@ -2,7 +2,11 @@
 
 import { getPlatformStaff } from "@db/admin";
 import { setBusinessDetails } from "@db/business-details";
-import { issueInviteLink } from "@db/invites";
+import {
+  activeElsewhere,
+  inviteFromConsole,
+  issueInviteLink,
+} from "@db/invites";
 import {
   getBusinessModulesForTeam,
   setModuleEnabled,
@@ -19,11 +23,13 @@ import {
 } from "@domain/modules";
 import { platformCan } from "@domain/platform";
 import { checkSettingsChange } from "@domain/settings-form";
+import { parseTeamInvite } from "@domain/team";
 import { parseViewAsRole } from "@domain/view-as";
 import { manifestFor, manifests } from "@modules/registry";
-import { refresh } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import type { SettingsResult } from "@/app/(app)/manage/settings-types";
+import type { InviteState } from "@/app/(app)/team/actions";
 import { requestOrigin } from "@/app/origin";
 import type { ModuleSwitchResult } from "./settings/module-switch";
 
@@ -52,10 +58,62 @@ export async function inviteLinkAction(
     if (process.env.NODE_ENV !== "production") {
       console.info(`[invite] not sent, link for ${phone}: ${link}`);
     }
+    // A renewed invite is open again: the page reads it afresh (rows are
+    // keyed by invite, so the new link stays on screen).
+    refresh();
     return { link };
   } catch (error) {
     console.error("issueInviteLink failed", (error as Error).message);
     return { failure: "failed" };
+  }
+}
+
+/**
+ * Someone on the team adds a person to a business, in any role, from the
+ * console: the result is a link for them to send on, as from the Team
+ * screen. A number with an invite nobody claimed, open or expired, gets that
+ * invite renewed. A number already working in another business is refused:
+ * the app opens a person's oldest business, so they would never see this one.
+ */
+export async function addPersonAction(
+  business: { id: string; slug: string },
+  _prev: InviteState,
+  form: FormData,
+): Promise<InviteState> {
+  const values = {
+    name: String(form.get("name") ?? ""),
+    phone: String(form.get("phone") ?? ""),
+    role: String(form.get("role") ?? ""),
+  };
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "staff.invite")) {
+    return { failure: "noPermission", values };
+  }
+  // The team may give any role, as an owner may.
+  const parsed = parseTeamInvite(values, "owner");
+  if (!parsed.ok) return { errors: parsed.errors, values };
+
+  try {
+    if (await activeElsewhere(parsed.value.phone, business.id)) {
+      return { failure: "elsewhere", values };
+    }
+    const result = await inviteFromConsole(
+      staff.userId,
+      business.id,
+      parsed.value,
+    );
+    if (!result.ok) return { failure: result.error, values };
+    const link = inviteLink(await requestOrigin(), result.token);
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`[invite] not sent, link for ${result.phone}: ${link}`);
+    }
+    revalidatePath(`/admin/businesses/${business.slug}`);
+    return {
+      done: { name: parsed.value.name, phone: parsed.value.phone, link },
+    };
+  } catch (error) {
+    console.error("inviteFromConsole failed", (error as Error).message);
+    return { failure: "failed", values };
   }
 }
 

@@ -1,4 +1,4 @@
-import type { BusinessSetup } from "@db/admin";
+import type { BusinessSetup, SetupPerson } from "@db/admin";
 import { accentTokens } from "@domain/color";
 import type { Role } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
@@ -7,6 +7,7 @@ import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
 import { VIEW_AS_ROLES } from "@domain/view-as";
 import { accentProps } from "@ui/accent";
 import { Badge } from "@ui/badge";
+import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
 import { cn } from "@ui/cn";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -19,9 +20,11 @@ import {
   CircleDashed,
   Eye,
   SlidersHorizontal,
+  UserPlus,
 } from "lucide-react";
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { InviteLink } from "./invite-link";
 
 type T = Awaited<ReturnType<typeof getTranslations<"admin">>>;
@@ -39,6 +42,8 @@ function templateName(t: T, key: string | null) {
  * the people in it. Phone: one column; tablet: the checklist beside the people;
  * desktop: the checklist beside viewing as a role, and the people as a table
  * under them. Also rendered with mock data on /design/console/businesses.
+ * Invites that ran out stay on the page, with a way to renew them, so a
+ * business whose owner never joined is not stuck.
  */
 export async function BusinessView({
   business,
@@ -46,6 +51,7 @@ export async function BusinessView({
   created,
   viewFailed,
   settingsHref,
+  addHref,
   viewAs,
   issue,
 }: {
@@ -55,14 +61,18 @@ export async function BusinessView({
   viewFailed: boolean;
   /** Where this business's settings are, when the person may edit them. */
   settingsHref: string | null;
+  /** Where to add a person, when the person may invite staff. */
+  addHref: string | null;
   /** Bound to this business, when the person may view it as a role. */
   viewAs: ((form: FormData) => Promise<void>) | null;
   issue: Issue;
 }) {
   const t = await getTranslations("admin");
   const template = templateName(t, business.templateKey);
+  // Someone whose invite ran out can't join through it, so they don't count.
   const count = (r: Role) =>
-    business.people.filter((person) => person.role === r).length;
+    business.people.filter((p) => p.role === r && p.status !== "expired")
+      .length;
   const items = setupChecklist({
     people: {
       owner: count("owner"),
@@ -82,6 +92,16 @@ export async function BusinessView({
           slug: business.slug,
           ltr: (chunks) => <span dir="ltr">{chunks}</span>,
         })}
+        actions={
+          addHref ? (
+            <Button asChild>
+              <Link href={addHref}>
+                <UserPlus aria-hidden="true" />
+                {t("setup.people.add")}
+              </Link>
+            </Button>
+          ) : undefined
+        }
       />
       {created ? (
         <Card
@@ -113,6 +133,7 @@ export async function BusinessView({
             items={items}
             business={business}
             template={template}
+            hrefs={{ people: addHref, settings: settingsHref }}
           />
           {settingsHref ? (
             <ListGroup>
@@ -125,7 +146,10 @@ export async function BusinessView({
             </ListGroup>
           ) : null}
         </div>
-        <div className="md:col-start-2 md:row-span-2 md:row-start-1 xl:col-span-2 xl:col-start-1 xl:row-span-1 xl:row-start-2">
+        <div
+          id="people"
+          className="scroll-mt-4 md:col-start-2 md:row-span-2 md:row-start-1 xl:col-span-2 xl:col-start-1 xl:row-span-1 xl:row-start-2"
+        >
           <People t={t} business={business} issue={issue} />
         </div>
         {viewAs ? (
@@ -149,15 +173,35 @@ function Checklist({
   items,
   business,
   template,
+  hrefs,
 }: {
   t: T;
   items: SetupItem[];
   business: BusinessSetup;
   template: string;
+  /** Where a missing item is fixed, when the person may fix it. */
+  hrefs: { people: string | null; settings: string | null };
 }) {
   const remaining = setupRemaining(items);
   const people = (roles: Role[]) =>
-    business.people.filter((p) => roles.includes(p.role)).length;
+    business.people.filter(
+      (p) => roles.includes(p.role) && p.status !== "expired",
+    ).length;
+  const ownerExpired = business.people.some(
+    (p) => p.role === "owner" && p.status === "expired",
+  );
+  // A missing owner is invited as an owner; one whose invite ran out is
+  // renewed in the people list, never invited again in another role.
+  const href = (item: SetupItem) => {
+    if (item.done) return null;
+    if (item.key === "owner") {
+      if (!hrefs.people) return null;
+      return ownerExpired ? "#people" : `${hrefs.people}?role=owner`;
+    }
+    if (item.key === "staff") return hrefs.people;
+    if (item.key === "address") return hrefs.settings;
+    return null;
+  };
   const body = (item: SetupItem) => {
     switch (item.key) {
       case "opened":
@@ -167,7 +211,9 @@ function Checklist({
           ? t("setup.checklist.items.owner.done", {
               count: people(["owner"]),
             })
-          : t("setup.checklist.items.owner.todo");
+          : ownerExpired
+            ? t("setup.checklist.items.owner.expired")
+            : t("setup.checklist.items.owner.todo");
       case "staff":
         return item.done
           ? t("setup.checklist.items.staff.done", {
@@ -206,10 +252,7 @@ function Checklist({
       </Card>
       <ul className="relative z-10 mx-3 -mt-[60px] overflow-hidden rounded-card bg-surface shadow-float">
         {items.map((item) => (
-          <li
-            key={item.key}
-            className="relative flex min-h-16 items-center gap-3 px-4 py-2.5 not-first:before:absolute not-first:before:end-0 not-first:before:start-[56px] not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']"
-          >
+          <ChecklistRow key={item.key} href={href(item)}>
             {item.done ? (
               <span
                 aria-hidden="true"
@@ -239,10 +282,38 @@ function Checklist({
                 {body(item)}
               </span>
             </span>
-          </li>
+          </ChecklistRow>
         ))}
       </ul>
     </section>
+  );
+}
+
+const rowClass =
+  "relative flex min-h-16 items-center gap-3 px-4 py-2.5 not-first:before:absolute not-first:before:end-0 not-first:before:start-[56px] not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
+
+/** A checklist item; one that is missing leads to where it is fixed. */
+function ChecklistRow({
+  href,
+  children,
+}: {
+  href: string | null;
+  children: ReactNode;
+}) {
+  if (!href) return <li className={rowClass}>{children}</li>;
+  return (
+    <li className={cn(rowClass, "p-0")}>
+      <Link
+        href={href}
+        className="flex min-h-16 w-full items-center gap-3 px-4 py-2.5 transition-colors duration-150 ease-calm hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent active:bg-surface-3"
+      >
+        {children}
+        <ChevronRight
+          aria-hidden="true"
+          className="ms-auto size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
+        />
+      </Link>
+    </li>
   );
 }
 
@@ -314,12 +385,18 @@ function People({
   const name = (n: string) => n || t("setup.people.noName");
   const phone = (p: string | null) =>
     p ? <span dir="ltr">{displayIsraeliMobile(p)}</span> : null;
-  const status = (s: "member" | "invited") =>
-    s === "invited" ? (
+  const status = (s: SetupPerson["status"]) =>
+    s === "expired" ? (
+      <Badge tone="danger">{t("setup.people.expired")}</Badge>
+    ) : s === "invited" ? (
       <Badge tone="warning">{t("setup.people.invited")}</Badge>
     ) : (
       <span className="text-ink-2">{t("setup.people.member")}</span>
     );
+  // Keyed by the invite, so a renewed one keeps its new link on screen when
+  // the page reads again and the row moves up.
+  const key = (p: SetupPerson) =>
+    p.inviteId ?? `member-${p.phone ?? ""}-${p.name}`;
 
   return (
     <PageSection
@@ -342,7 +419,7 @@ function People({
           >
             {people.map((person) => (
               <PersonRow
-                key={`${person.status}-${person.phone}`}
+                key={key(person)}
                 name={person.name || null}
                 title={name(person.name)}
                 subtitle={
@@ -353,13 +430,14 @@ function People({
                   </>
                 }
                 trailing={
-                  person.status === "invited" ? status(person.status) : null
+                  person.status === "member" ? null : status(person.status)
                 }
                 below={
                   person.inviteId ? (
                     <InviteLink
                       inviteId={person.inviteId}
                       name={name(person.name)}
+                      renew={person.status === "expired"}
                       issue={issue}
                     />
                   ) : null
@@ -393,7 +471,7 @@ function People({
               </thead>
               <tbody>
                 {people.map((person) => (
-                  <tr key={`${person.status}-${person.phone}`}>
+                  <tr key={key(person)}>
                     <th
                       scope="row"
                       className={cn(td, "text-start font-medium")}
@@ -413,6 +491,7 @@ function People({
                         <InviteLink
                           inviteId={person.inviteId}
                           name={name(person.name)}
+                          renew={person.status === "expired"}
                           issue={issue}
                         />
                       ) : null}
