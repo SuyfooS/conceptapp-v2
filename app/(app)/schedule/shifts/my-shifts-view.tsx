@@ -1,6 +1,6 @@
 import { shiftMinutes } from "@domain/schedule";
 import { PageBody, PageHeader } from "@ui/page";
-import { getTranslations } from "next-intl/server";
+import { type AppWording, translator } from "../../wording";
 import type { PublishedSchedule } from "../week";
 import { MyShiftsBoard } from "./my-shifts-board";
 import type { SwapAction } from "./shift-sheet";
@@ -15,17 +15,18 @@ export { upcomingShifts };
  * or the demo's stand-in. Also rendered with mock data on
  * /design/shell/schedule/shifts.
  */
-export async function MyShiftsView({
+export function MyShiftsView({
   data,
   swap,
+  wording,
 }: {
   data: PublishedSchedule;
   swap: SwapAction;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const [t, tm] = await Promise.all([
-    getTranslations("app"),
-    getTranslations("modules.scheduling"),
-  ]);
+  const t = translator(wording, "app");
+  const tm = translator(wording, "modules.scheduling");
   const mine = upcomingShifts(data);
   const hours =
     Math.round((shiftMinutes(mine.map(({ shift }) => shift)) / 60) * 10) / 10;

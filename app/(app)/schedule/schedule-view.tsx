@@ -13,8 +13,9 @@ import {
   Repeat,
   Users,
 } from "lucide-react";
-import { getLocale, getTranslations } from "next-intl/server";
+import { getLocale } from "next-intl/server";
 import type { ReactNode } from "react";
+import { type AppWording, type Translator, translator } from "../wording";
 import type { SwapAction } from "./shifts/shift-sheet";
 import { ltr, upcomingShifts } from "./shifts/shift-text";
 import { pendingApprovals } from "./swaps/swap-approvals-view";
@@ -26,7 +27,7 @@ import type {
 } from "./week";
 import { type BoardWeek, WeekBoard } from "./week-board";
 
-type T = Awaited<ReturnType<typeof getTranslations<"app">>>;
+type T = Translator<"app">;
 
 /** A group of rows: under each other, and side by side on a desktop. */
 const groupClass =
@@ -65,12 +66,14 @@ export async function ScheduleView({
   team,
   build,
   swap,
-}: ScheduleViewProps) {
-  const [t, tm, locale] = await Promise.all([
-    getTranslations("app"),
-    getTranslations("modules.scheduling"),
-    getLocale(),
-  ]);
+  wording,
+}: ScheduleViewProps & {
+  /** The business's words. */
+  wording: AppWording;
+}) {
+  const t = translator(wording, "app");
+  const tm = translator(wording, "modules.scheduling");
+  const locale = await getLocale();
   const manager = team !== null;
   const range = new Intl.DateTimeFormat(locale, {
     day: "numeric",

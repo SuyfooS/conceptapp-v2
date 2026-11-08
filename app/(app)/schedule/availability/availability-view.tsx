@@ -1,6 +1,6 @@
 import { dayMonth } from "@domain/availability-form";
 import { PageBody, PageHeader } from "@ui/page";
-import { getTranslations } from "next-intl/server";
+import { type AppWording, translator } from "../../wording";
 import type { AvailabilityWeek } from "../week";
 import {
   AvailabilityForm,
@@ -14,19 +14,20 @@ export type AvailabilityViewProps = {
   save: AvailabilityFormProps["save"];
   /** The schedule screen this one sits under. */
   backHref: string;
+  /** The business's words. */
+  wording: AppWording;
 };
 
 /** Also rendered on /design/shell/schedule/availability. */
-export async function AvailabilityView({
+export function AvailabilityView({
   week,
   late,
   save,
   backHref,
+  wording,
 }: AvailabilityViewProps) {
-  const [t, tm] = await Promise.all([
-    getTranslations("app.availability"),
-    getTranslations("modules.scheduling"),
-  ]);
+  const t = translator(wording, "app.availability");
+  const tm = translator(wording, "modules.scheduling");
   return (
     <PageBody>
       <PageHeader
