@@ -9,8 +9,12 @@ import {
   type MessageTree,
   mergeWording,
   placeholdersOf,
+  searchable,
   sentenceFits,
+  shownSentence,
   WORDING_MAX,
+  wordingEntries,
+  wordingGroupOf,
 } from "./wording";
 
 // A small stand-in for messages/he.json.
@@ -172,5 +176,48 @@ describe("checkSentence", () => {
       ok: false,
       problem: "placeholders",
     });
+  });
+});
+
+describe("the editor's groups and search", () => {
+  it("puts role, module and tab names first, then each screen", () => {
+    expect(wordingGroupOf("app.team.roles.worker")).toBe("common");
+    expect(wordingGroupOf("app.nav.home")).toBe("common");
+    expect(wordingGroupOf("modules.scheduling.name")).toBe("common");
+    expect(wordingGroupOf("modules.scheduling.settings.positions.label")).toBe(
+      "schedule",
+    );
+    expect(wordingGroupOf("app.home.greeting")).toBe("home");
+    expect(wordingGroupOf("app.build.title")).toBe("schedule");
+    expect(wordingGroupOf("app.clock.title")).toBe("clock");
+    expect(wordingGroupOf("app.team.title")).toBe("team");
+    expect(wordingGroupOf("app.manage.title")).toBe("manage");
+    expect(wordingGroupOf("app.viewAs.label")).toBe("other");
+  });
+
+  it("finds a sentence without its slashes, geresh or niqqud", () => {
+    expect(searchable("עוֹבֵד/ת  בצוות")).toBe("עובדת בצוות");
+    expect(searchable("מוצ״ש")).toBe("מוצש");
+    expect(searchable("Shift  Lead")).toBe("shift lead");
+  });
+
+  it("lists every sentence with what the business shows and from where", () => {
+    const entries = wordingEntries(
+      tree,
+      { "app.team.title": "צוות החנות", "app.team.hint": "{phone} לא כאן" },
+      { "app.nav.home": "הבית" },
+    );
+    expect(entries.map((e) => e.key)).toEqual(editableKeys(tree));
+    const byKey = new Map(entries.map((e) => [e.key, shownSentence(e)]));
+    expect(byKey.get("app.nav.home")).toEqual({
+      sentence: "הבית",
+      source: "business",
+    });
+    expect(byKey.get("app.team.title")).toEqual({
+      sentence: "צוות החנות",
+      source: "template",
+    });
+    // A template sentence that no longer fits is left out.
+    expect(byKey.get("app.team.hint")?.source).toBe("app");
   });
 });

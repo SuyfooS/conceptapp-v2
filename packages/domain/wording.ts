@@ -171,3 +171,97 @@ export function checkSentence(
   }
   return { ok: true, sentence, base };
 }
+
+/** How the console's editor groups the sentences, most often changed first. */
+export const WORDING_GROUPS = [
+  "common",
+  "home",
+  "schedule",
+  "clock",
+  "team",
+  "manage",
+  "other",
+] as const;
+
+export type WordingGroup = (typeof WORDING_GROUPS)[number];
+
+const GROUP_RULES: readonly (readonly [WordingGroup, RegExp])[] = [
+  // Role and module names and the tab bar: what a kind of business renames.
+  [
+    "common",
+    /^(app\.nav\.|app\.roles\.|app\.team\.roles\.|modules\.\w+\.(name|description)$)/,
+  ],
+  ["home", /^app\.home\./],
+  [
+    "schedule",
+    /^(app\.(availability|build|shifts|swaps)\.|modules\.scheduling\.)/,
+  ],
+  ["clock", /^(app\.clock\.|modules\.time_clock\.)/],
+  ["team", /^app\.team\./],
+  ["manage", /^(app\.manage\.|modules\.)/],
+];
+
+/** The group a sentence is shown under. */
+export function wordingGroupOf(key: string): WordingGroup {
+  return GROUP_RULES.find(([, rule]) => rule.test(key))?.[0] ?? "other";
+}
+
+/**
+ * Text as a search compares it: without niqqud, slashes or geresh, so
+ * "עובד/ת" is found by typing "עובדת", and without case or extra spaces.
+ */
+export function searchable(text: string): string {
+  return text
+    .replace(/[֑-ׇ]/g, "")
+    .replace(/[/'"׳״]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+/** Where the sentence a business shows comes from. */
+export type WordingSource = "app" | "template" | "business";
+
+export type WordingEntry = {
+  key: string;
+  /** The app's own sentence. */
+  app: string;
+  /** The template's sentence, when it replaces the app's. */
+  template: string | null;
+  /** The business's own sentence, when it has one. */
+  business: string | null;
+};
+
+/** What the business shows, and where it comes from. */
+export function shownSentence(entry: WordingEntry): {
+  sentence: string;
+  source: WordingSource;
+} {
+  if (entry.business !== null) {
+    return { sentence: entry.business, source: "business" };
+  }
+  if (entry.template !== null) {
+    return { sentence: entry.template, source: "template" };
+  }
+  return { sentence: entry.app, source: "app" };
+}
+
+/**
+ * Every sentence a business may replace, with its template's and its own,
+ * for the console: the app's order, with stored sentences that no longer fit
+ * left out (they don't show either).
+ */
+export function wordingEntries(
+  tree: MessageTree,
+  template: Wording,
+  business: Wording,
+): WordingEntry[] {
+  const fitTemplate = fittingWording(tree, template);
+  const fitBusiness = fittingWording(tree, business);
+  return editableKeys(tree).map((key) => ({
+    key,
+    app: baseSentence(tree, key) ?? "",
+    template: fitTemplate[key] ?? null,
+    business: fitBusiness[key] ?? null,
+  }));
+}

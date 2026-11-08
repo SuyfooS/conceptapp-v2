@@ -5,10 +5,14 @@ import { NEW_BUSINESS_FIELDS, parseNewBusiness } from "@domain/business";
 import { inviteLink } from "@domain/invites";
 import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
 import { checkSettingsChange } from "@domain/settings-form";
+import { checkSentence, type MessageTree } from "@domain/wording";
 import { manifestFor } from "@modules/registry";
 import { redirect } from "next/navigation";
 import { requestOrigin } from "@/app/origin";
+import he from "@/messages/he.json";
 import type { InviteLinkState } from "../../(admin)/admin/businesses/[slug]/actions";
+import { formatsCleanly } from "../../(admin)/admin/businesses/[slug]/wording/formats";
+import type { WordingSaveResult } from "../../(admin)/admin/businesses/[slug]/wording/wording-types";
 import type { NewBusinessState } from "../../(admin)/admin/new/actions";
 import type { SettingsResult } from "../../(app)/manage/settings-types";
 
@@ -63,4 +67,21 @@ export async function demoCreateBusiness(
     return { errors: { slug: "taken" } };
   }
   redirect("/design/console/businesses/cafe-noa");
+}
+
+/**
+ * The wording editor's stand-in save: the same checks, and nothing stored.
+ * The sentence is shown as saved until the page is opened again.
+ */
+export async function demoSaveWording(
+  key: string,
+  sentence: string | null,
+): Promise<WordingSaveResult> {
+  if (sentence === null) return { ok: true, previous: null };
+  const checked = checkSentence(he as MessageTree, key, sentence);
+  if (!checked.ok) return { ok: false, problem: checked.problem };
+  if (!formatsCleanly(checked.sentence)) {
+    return { ok: false, problem: "syntax" };
+  }
+  return { ok: true, previous: null };
 }

@@ -13,6 +13,7 @@ import {
   setModuleSettings,
 } from "@db/module-settings";
 import { startViewing } from "@db/view-as";
+import { setBusinessWording } from "@db/wording";
 import { checkBusinessDetailsChange } from "@domain/business-details";
 import { inviteLink } from "@domain/invites";
 import {
@@ -25,13 +26,22 @@ import { platformCan } from "@domain/platform";
 import { checkSettingsChange } from "@domain/settings-form";
 import { parseTeamInvite } from "@domain/team";
 import { parseViewAsRole } from "@domain/view-as";
+import {
+  baseSentence,
+  checkSentence,
+  isEditableKey,
+  type MessageTree,
+} from "@domain/wording";
 import { manifestFor, manifests } from "@modules/registry";
 import { refresh, revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import type { SettingsResult } from "@/app/(app)/manage/settings-types";
 import type { InviteState } from "@/app/(app)/team/actions";
 import { requestOrigin } from "@/app/origin";
+import he from "@/messages/he.json";
 import type { ModuleSwitchResult } from "./settings/module-switch";
+import { formatsCleanly } from "./wording/formats";
+import type { WordingSaveResult } from "./wording/wording-types";
 
 export type InviteLinkState =
   | { link?: undefined; failure?: "failed" | "noPermission" }
@@ -223,4 +233,54 @@ export async function setBusinessModuleAction(
   const result = await setModuleEnabled(staff.userId, businessId, key, enabled);
   refresh();
   return result.ok ? { ok: true } : { ok: false, failure: "failed" };
+}
+
+/**
+ * Someone on the team replaces one of the business's sentences, or clears it
+ * with null so its template's or the app's shows again. Checked against the
+ * app's sentence (what it must keep) and formatted once (that it reads),
+ * then written and logged. Returns what it replaced, for an undo.
+ */
+export async function saveBusinessWordingAction(
+  businessId: string,
+  key: string,
+  sentence: string | null,
+): Promise<WordingSaveResult> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, problem: "noAccess" };
+  }
+  const base = baseSentence(he as MessageTree, key);
+  if (base === null || !isEditableKey(key)) {
+    return { ok: false, problem: "notEditable" };
+  }
+  let text: string | null = null;
+  if (sentence !== null) {
+    const checked = checkSentence(he as MessageTree, key, sentence);
+    if (!checked.ok) return { ok: false, problem: checked.problem };
+    if (!formatsCleanly(checked.sentence)) {
+      return { ok: false, problem: "syntax" };
+    }
+    text = checked.sentence;
+  }
+  try {
+    const result = await setBusinessWording(
+      staff.userId,
+      businessId,
+      key,
+      text,
+      text === null ? null : base,
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        problem: result.error === "notAllowed" ? "noAccess" : "failed",
+      };
+    }
+    refresh();
+    return { ok: true, previous: result.previous };
+  } catch (error) {
+    console.error("setBusinessWording failed", (error as Error).message);
+    return { ok: false, problem: "failed" };
+  }
 }
