@@ -15,7 +15,7 @@ export default async function ManagePage() {
   if (!access) notFound();
   return (
     <ManageView
-      modules={modulesToManage(access.rows)}
+      modules={modulesToManage(access.rows, access.level)}
       home="/home"
       team="/team"
       shabbatCity={shabbatCityState(access.rows, access.details)}

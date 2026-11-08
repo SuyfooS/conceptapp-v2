@@ -32,6 +32,7 @@ language, and reads follow the policies.
 
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
+`clock.confirm` from `confirm_time_entry`, `clock.code.locked`,
 `schedule.publish`, `swap.approve` and the rest). Owners and managers read their
 own business's rows, and so does the team while viewing it as a manager or owner.
 Publishing a week's schedule logs its first day, the number of shifts, whether it

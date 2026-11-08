@@ -3,6 +3,7 @@
 import {
   addTimeEntry,
   type ClockResult,
+  confirmTimeEntry,
   correctTimeEntry,
 } from "@db/time-clock";
 import { canSeeTeam } from "@domain/team";
@@ -76,6 +77,39 @@ export async function correctEntryAction(
   return asManager(values, false, (actor, _business, times) =>
     correctTimeEntry(actor, entry.data, times),
   );
+}
+
+/**
+ * Approve an entry made without a code, or one a manager set for themselves
+ * (an owner's to approve). Approved by someone else first is approved all the
+ * same. There is nothing to take back: a wrong approval is fixed by correcting
+ * the shift.
+ */
+export async function confirmEntryAction(
+  entryId: string,
+): Promise<EntryActionResult> {
+  const entry = z.uuid().safeParse(entryId);
+  if (!entry.success) return { ok: false, failure: "failed" };
+  const member = await currentMember();
+  const membership = member?.membership;
+  if (!member || !membership || !canSeeTeam(membership.role)) {
+    return { ok: false, failure: "noAccess" };
+  }
+  if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };
+
+  const result = await confirmTimeEntry(member.userId, entry.data);
+  refresh();
+  if (result.ok) return { ok: true };
+  switch (result.failure) {
+    case "nothingToConfirm":
+      return { ok: true };
+    case "ownHours":
+    case "ownerOnly":
+    case "noAccess":
+      return { ok: false, failure: result.failure };
+    default:
+      return { ok: false, failure: "failed" };
+  }
 }
 
 /** Add a shift someone forgot to punch. */

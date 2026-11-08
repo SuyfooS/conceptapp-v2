@@ -29,6 +29,7 @@ async function Demo({ searchParams }: Props) {
         clock: "/design/shell/clock",
         history: "/design/shell/clock/history",
         team: "/design/shell/clock/team",
+        code: "/design/shell/clock/code",
       }}
       wording={baseWording}
     />

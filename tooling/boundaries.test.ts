@@ -1,5 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
@@ -66,6 +72,141 @@ describe("crossModuleImports", () => {
 
   it("finds no violations in the repository", () => {
     expect(crossModuleViolations(root)).toEqual([]);
+  });
+});
+
+// The clock runs on workers' phones, so its browser files keep Zod out of the
+// download: from @domain they take only files that import no Zod, and types
+// (erased before the browser gets anything).
+describe("the clock's browser files", () => {
+  const read = (file: string) => readFileSync(join(root, file), "utf8");
+
+  /** Each import or re-export with a `from`, its clause and its specifier. */
+  const STATEMENT =
+    /\b(import|export)\s+(type\s+)?([^"'`;]*?)\s*\bfrom\s*["']([^"']+)["']/g;
+
+  /** Whether one statement brings in types only, so nothing reaches the browser. */
+  function typeOnly(typeKeyword: string | undefined, clause: string): boolean {
+    if (typeKeyword) return true;
+    const inside = /^\{([^}]*)\}$/.exec(clause.trim())?.[1];
+    if (inside === undefined) return false;
+    const names = inside
+      .split(",")
+      .map((name) => name.trim())
+      .filter(Boolean);
+    return names.length > 0 && names.every((name) => name.startsWith("type "));
+  }
+
+  /**
+   * Modules a file takes values from: every specifier `importSpecifiers` finds
+   * (static, re-export, side-effect, dynamic), unless each statement naming it
+   * brings in types only.
+   */
+  function valueImports(source: string): string[] {
+    const typesOnly = new Map<string, boolean>();
+    for (const [, , keyword, clause = "", specifier = ""] of source.matchAll(
+      STATEMENT,
+    )) {
+      typesOnly.set(
+        specifier,
+        (typesOnly.get(specifier) ?? true) && typeOnly(keyword, clause),
+      );
+    }
+    // A side-effect or dynamic import has no `from`: it is a value.
+    return [...new Set(importSpecifiers(source))].filter(
+      (specifier) => typesOnly.get(specifier) !== true,
+    );
+  }
+
+  /** @domain modules a file takes values from. */
+  const domainValues = (source: string) =>
+    valueImports(source).filter((specifier) =>
+      specifier.startsWith("@domain/"),
+    );
+
+  it("tells value imports from type imports", () => {
+    expect(
+      domainValues(
+        [
+          'import type { A } from "@domain/a";',
+          'import { type B, type C } from "@domain/b";',
+          'import { type D, e } from "@domain/d";',
+          'import { f } from "@domain/f";',
+          'import G, { g } from "@domain/g";',
+          'import * as h from "@domain/h";',
+          'export { i } from "@domain/i";',
+          'export type { J } from "@domain/j";',
+          'export { type K } from "@domain/k";',
+          'export * from "@domain/l";',
+          'import "@domain/m";',
+          'const n = await import("@domain/n");',
+          // Types from one statement don't cover a value from another.
+          'import type { O } from "@domain/o";',
+          'import { o } from "@domain/o";',
+          "import {",
+          "  type P,",
+          "  p,",
+          '} from "@domain/p";',
+        ].join("\n"),
+      ),
+    ).toEqual([
+      "@domain/d",
+      "@domain/f",
+      "@domain/g",
+      "@domain/h",
+      "@domain/i",
+      "@domain/l",
+      "@domain/m",
+      "@domain/n",
+      "@domain/o",
+      "@domain/p",
+    ]);
+  });
+
+  /** What the clock's browser files may take values from, and what each may import. */
+  const allowed: Record<string, string[]> = {
+    "@domain/time-clock-format": [],
+    "@domain/punch-code-format": [],
+    // PR B loads the QR reader on demand; it brings the decoder and nothing else.
+    "@domain/qr-decode": ["qr/decode.js"],
+  };
+
+  it("import no Zod", () => {
+    for (const [module, imports] of Object.entries(allowed)) {
+      const file = `packages/domain/${module.slice("@domain/".length)}.ts`;
+      if (!existsSync(join(root, file))) continue;
+      expect(importSpecifiers(read(file)), file).toEqual(imports);
+    }
+    /** Each file checked, with how many steps were followed from it. */
+    const checked = new Map<string, number>();
+    const check = (file: string, depth: number) => {
+      if ((checked.get(file) ?? -1) >= depth) return;
+      checked.set(file, depth);
+      const source = read(file);
+      expect(importSpecifiers(source), file).not.toContain("zod");
+      expect(
+        domainValues(source).filter((module) => !(module in allowed)),
+        file,
+      ).toEqual([]);
+      if (depth === 0) return;
+      // One step into the files it takes values from beside it.
+      for (const specifier of valueImports(source)) {
+        if (!specifier.startsWith(".")) continue;
+        const base = join(dirname(file), specifier);
+        const next = [`${base}.ts`, `${base}.tsx`].find((path) =>
+          existsSync(join(root, path)),
+        );
+        if (next) check(next.replaceAll("\\", "/"), depth - 1);
+      }
+    };
+    for (const file of [
+      "app/(app)/clock/clock-panel.tsx",
+      "app/(app)/clock/punch-code-sheet.tsx",
+      "app/(app)/clock/without-code-sheet.tsx",
+      "app/(app)/clock/scan-punch.tsx",
+    ].filter((path) => existsSync(join(root, path)))) {
+      check(file, 1);
+    }
   });
 });
 

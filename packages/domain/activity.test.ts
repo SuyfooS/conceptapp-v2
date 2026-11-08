@@ -194,6 +194,37 @@ describe("buildActivity: each action", () => {
     });
   });
 
+  it("reads an approval of someone's hours", () => {
+    expect(
+      lineOf(row("clock.confirm", { entry: GONE, person: NOA }, YOAV)),
+    ).toEqual({
+      action: "clock.confirm",
+      person: { kind: "member", name: "Noa" },
+    });
+    expect(lineOf(row("clock.confirm", { entry: GONE, person: LEFT }))).toEqual(
+      { action: "clock.confirm", person: { kind: "former" } },
+    );
+    for (const details of [{ entry: GONE }, { person: 5 }, "x", null]) {
+      expect(lineOf(row("clock.confirm", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("reads a typing block", () => {
+    expect(lineOf(row("clock.code.locked", { person: NOA }))).toEqual({
+      action: "clock.code.locked",
+    });
+    expect(lineOf(row("clock.code.locked", {}))).toEqual({
+      action: "clock.code.locked",
+    });
+    for (const details of [{ person: 5 }, "x", null]) {
+      expect(lineOf(row("clock.code.locked", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
   it("reads invites with the invited name, the row's role first", () => {
     expect(
       lineOf(row("invite.create", { invite: INVITE, role: "manager" })),

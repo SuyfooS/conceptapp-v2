@@ -98,6 +98,10 @@ export function SettingsForm({
         <Badge tone="neutral" className="ms-2 align-middle">
           {t("advanced")}
         </Badge>
+      ) : field.level === "owner" ? (
+        <Badge tone="neutral" className="ms-2 align-middle">
+          {t("ownerOnly")}
+        </Badge>
       ) : null}
     </>
   );

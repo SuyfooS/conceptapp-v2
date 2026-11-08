@@ -39,7 +39,7 @@ export function ClockView({
       <RefreshOnReturn />
       <PageHeader
         title={t(`title.${status.state}`)}
-        subtitle={<Line data={data} wording={wording} />}
+        subtitle={headerLine(data, wording)}
       />
 
       <div className="flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -81,6 +81,13 @@ export function ClockView({
 
           {data.team ? (
             <ListGroup>
+              {data.punch.required && data.punch.canShowCode ? (
+                <ListRow
+                  href={paths.code}
+                  title={t("showCode.title")}
+                  subtitle={t("showCode.hint")}
+                />
+              ) : null}
               <ListRow
                 href={paths.team}
                 title={t("team.title")}
@@ -98,7 +105,12 @@ export function ClockView({
   );
 }
 
-function Line({ data, wording }: { data: ClockData; wording: AppWording }) {
+/**
+ * The line under the title: the shift or the time at work. Nothing when a code
+ * is asked for and there is no shift to name: the line under the circle says
+ * what pressing it does then.
+ */
+function headerLine(data: ClockData, wording: AppWording): ReactNode {
   const t = translator(wording, "app.clock.line");
   const { open, shift, scheduling, timeZone } = data;
   const at = (instant: string) => timeIn(new Date(instant), timeZone);
@@ -115,7 +127,8 @@ function Line({ data, wording }: { data: ClockData; wording: AppWording }) {
   if (shift) {
     return t.rich("shift", { start: shift.start, end: shift.end, ltr });
   }
-  return t(scheduling ? "noShift" : "idle");
+  if (scheduling) return t("noShift");
+  return data.punch.needsCode ? null : t("idle");
 }
 
 function Hours({

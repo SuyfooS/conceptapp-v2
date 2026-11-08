@@ -1,5 +1,6 @@
-import { formatHours } from "@domain/time-clock";
+import { type Attendance, formatHours } from "@domain/time-clock";
 import { Badge } from "@ui/badge";
+import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -10,9 +11,11 @@ import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import { RefreshOnReturn } from "../../home/refresh-on-return";
-import { type AppWording, translator } from "../../wording";
+import { type AppWording, type Translator, translator } from "../../wording";
 import { MonthHero } from "../month-hero";
-import type { TeamHoursData, TeamPaths } from "./team-types";
+import { proofInline } from "../shift-list";
+import { ConfirmCard } from "./confirm-card";
+import type { TeamActions, TeamHoursData, TeamPaths } from "./team-types";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -20,20 +23,40 @@ const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
 const td = "border-line border-t px-4 py-3";
 
 /**
- * The team on the clock: what needs fixing, who is at work now, and each
- * person's hours in a month, leading to their shifts.
+ * How someone at work came in, to follow their start time: nothing when there
+ * is nothing to say. In the line, not a badge, so it wraps on a phone.
+ */
+function attendanceLine(
+  attendance: Attendance | null,
+  required: boolean,
+  t: Translator<"app.clock.history">,
+): string | null {
+  if (!attendance || (!required && attendance.how === "scan")) return null;
+  const label = proofInline(attendance, t);
+  return label ? t("withProof", { proof: label }) : null;
+}
+
+/**
+ * The team on the clock: hours waiting for approval, what needs fixing, who
+ * is at work now and how they came in, and each person's hours in a month,
+ * leading to their shifts. When the business asks for a code, showing it is
+ * the screen's main action.
  */
 export function TeamHoursView({
   data,
+  actions,
   paths,
   wording,
 }: {
   data: TeamHoursData;
+  actions: TeamActions;
   paths: TeamPaths;
   /** The business's words. */
   wording: AppWording;
 }) {
   const t = translator(wording, "app.clock.team");
+  const tClock = translator(wording, "app.clock");
+  const tHistory = translator(wording, "app.clock.history");
   const format = useFormatter();
   const personHref = (userId: string, month = data.month) =>
     `${paths.team}/${userId}?month=${month}`;
@@ -52,6 +75,20 @@ export function TeamHoursView({
       <PageHeader
         back={{ href: paths.clock, label: t("back") }}
         title={t("title")}
+        actions={
+          data.showCode ? (
+            <Button asChild size="lg">
+              <Link href={paths.code}>{tClock("showCode.title")}</Link>
+            </Button>
+          ) : undefined
+        }
+      />
+
+      <ConfirmCard
+        rows={data.toConfirm}
+        confirm={actions.confirm}
+        teamPath={paths.team}
+        viewOnly={data.viewOnly}
       />
 
       {data.overdue.length > 0 ? (
@@ -88,10 +125,16 @@ export function TeamHoursView({
                   href={personHref(person.userId, person.month)}
                   leading={<PersonAvatar name={person.name} />}
                   title={name(person.name)}
-                  subtitle={t.rich("atWork.since", {
-                    time: person.since,
-                    ltr,
-                  })}
+                  subtitle={
+                    <>
+                      {t.rich("atWork.since", { time: person.since, ltr })}
+                      {attendanceLine(
+                        person.attendance,
+                        data.required,
+                        tHistory,
+                      )}
+                    </>
+                  }
                   trailing={
                     person.onBreak ? (
                       <Badge tone="warning">{t("atWork.onBreak")}</Badge>
@@ -115,7 +158,7 @@ export function TeamHoursView({
             minutes={data.minutes}
             countId="team"
             caption={t("caption", { count: data.shifts })}
-            t={translator(wording, "app.clock.history")}
+            t={tHistory}
             overlap={data.people.length > 0}
           />
           {data.people.length > 0 ? (

@@ -11,10 +11,11 @@ import {
 } from "./actions";
 import { demoClock } from "./data";
 
-type Props = { searchParams: Promise<{ state?: string }> };
+type Props = { searchParams: Promise<{ state?: string; code?: string }> };
 
 // The real clock screen with mock data and stand-in actions. ?state=working
 // and ?state=break show someone at work, and ?state=left just after leaving.
+// ?code=on: the business asks for the clock's code ("000000" is refused).
 export default function ShellClock({ searchParams }: Props) {
   return (
     <Suspense>
@@ -25,10 +26,10 @@ export default function ShellClock({ searchParams }: Props) {
 
 async function Demo({ searchParams }: Props) {
   await connection();
-  const { state } = await searchParams;
+  const { state, code } = await searchParams;
   return (
     <ClockView
-      data={demoClock(state, new Date())}
+      data={demoClock(state, new Date(), code === "on")}
       actions={{
         clockIn: demoClockIn,
         clockOut: demoClockOut,
@@ -40,6 +41,7 @@ async function Demo({ searchParams }: Props) {
         clock: "/design/shell/clock",
         history: "/design/shell/clock/history",
         team: "/design/shell/clock/team",
+        code: "/design/shell/clock/code",
       }}
       wording={baseWording}
     />

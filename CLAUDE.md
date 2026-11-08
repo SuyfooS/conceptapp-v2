@@ -34,7 +34,8 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
    a branch, a copy or a rebuild. A new setting is one field in the module's manifest, with
    `.meta()` for who edits it, and its words under `modules.<key>.settings` in the
    messages: `/manage` and the console then draw it (`@domain/settings-form`). A field
-   only the team should touch takes `level: "team"`.
+   only the team should touch takes `level: "team"`, and one only an owner and the team
+   should touch (the punch code) takes `level: "owner"`.
 
 ## Layout
 
@@ -90,7 +91,7 @@ Only `app/` imports app code (`@/…`).
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
   and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
-  PageSection, AccentPicker and AccentPreview, Logo and LogoMark.
+  PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay.
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a

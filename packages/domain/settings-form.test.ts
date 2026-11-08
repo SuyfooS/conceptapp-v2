@@ -5,6 +5,8 @@ import {
   checkSettingsChange,
   describeSettings,
   fieldsFor,
+  type SettingLevel,
+  settingLevelOf,
 } from "./settings-form";
 
 const settings = z.object({
@@ -16,6 +18,7 @@ const settings = z.object({
   due: z.string().default("18:00").meta({ editor: "time" }),
   people: z.array(z.string()).default([]).meta({ editor: "positions" }),
   advanced: z.boolean().default(false).meta({ level: "team" }),
+  ownersOnly: z.boolean().default(false).meta({ level: "owner" }),
   secret: z.boolean().default(false).meta({ hidden: true }),
 });
 
@@ -70,11 +73,30 @@ describe("describeSettings", () => {
 });
 
 describe("fieldsFor", () => {
+  const keys = (level: SettingLevel) =>
+    fieldsFor(settings, level).map((field) => field.key);
+
   it("shows the team's fields to the team only", () => {
-    const keys = (level: "business" | "team") =>
-      fieldsFor(settings, level).map((field) => field.key);
     expect(keys("business")).not.toContain("advanced");
+    expect(keys("owner")).not.toContain("advanced");
     expect(keys("team")).toContain("advanced");
+  });
+
+  it("shows owners' fields to owners and the team, not to managers", () => {
+    expect(keys("business")).not.toContain("ownersOnly");
+    expect(keys("owner")).toContain("ownersOnly");
+    expect(keys("team")).toContain("ownersOnly");
+    // Owners still see everything a manager does.
+    expect(keys("owner")).toEqual(expect.arrayContaining(keys("business")));
+    expect(
+      describeSettings(settings).find((field) => field.key === "ownersOnly"),
+    ).toMatchObject({ level: "owner", kind: "toggle" });
+  });
+
+  it("gives owners the owner level and everyone else the business level", () => {
+    expect(settingLevelOf("owner")).toBe("owner");
+    expect(settingLevelOf("manager")).toBe("business");
+    expect(settingLevelOf("worker")).toBe("business");
   });
 });
 
@@ -92,6 +114,27 @@ describe("checkSettingsChange", () => {
     expect(
       checkSettingsChange(manifest, {}, { advanced: true }, "team"),
     ).toEqual({ ok: true, patch: { advanced: true } });
+  });
+
+  it("refuses an owner's setting from a manager, and saves it from an owner", () => {
+    expect(
+      checkSettingsChange(manifest, {}, { ownersOnly: true }, "business"),
+    ).toEqual({ ok: false, problem: "notAllowed" });
+    expect(
+      checkSettingsChange(manifest, {}, { ownersOnly: true }, "owner"),
+    ).toEqual({ ok: true, patch: { ownersOnly: true } });
+    expect(
+      checkSettingsChange(manifest, {}, { ownersOnly: true }, "team"),
+    ).toEqual({ ok: true, patch: { ownersOnly: true } });
+    // A manager's own change goes through while the owner's field is left alone.
+    expect(
+      checkSettingsChange(
+        manifest,
+        { ownersOnly: true },
+        { on: true },
+        "business",
+      ),
+    ).toEqual({ ok: true, patch: { on: true } });
   });
 
   it("refuses a hidden field and an unknown one, even from the team", () => {

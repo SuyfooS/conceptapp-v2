@@ -363,6 +363,13 @@ export function ActivityView({
               ],
         };
       }
+      case "clock.confirm":
+        return plain(
+          t("actions.clock.confirm", { person: who(line.person) }),
+          paths.clockTeam,
+        );
+      case "clock.code.locked":
+        return plain(t("actions.clock.codeLocked"));
       case "invite.create":
         return plain(
           line.name && line.role

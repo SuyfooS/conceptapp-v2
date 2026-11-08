@@ -387,8 +387,8 @@ test("the team sees every setting and switches modules", async ({
   // The advanced settings, which managers don't see.
   await expect(page.getByText(s.weekStartsOn.label)).toBeVisible();
   await expect(page.getByText(clock.roundToMinutes.label)).toBeVisible();
-  // QR stays out of every screen, by Orel's decision.
-  await expect(page.getByText(/QR/)).toHaveCount(0);
+  // Whether a code is asked for, which managers don't see either.
+  await expect(page.getByText(clock.requirePunchCode.label)).toBeVisible();
 
   // An advanced setting saves like any other.
   await page

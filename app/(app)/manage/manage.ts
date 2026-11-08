@@ -7,7 +7,11 @@ import {
   type ModuleRow,
   readModuleSettings,
 } from "@domain/modules";
-import { fieldsFor } from "@domain/settings-form";
+import {
+  fieldsFor,
+  type SettingLevel,
+  settingLevelOf,
+} from "@domain/settings-form";
 import { shabbatCityOf } from "@domain/shabbat";
 import { canSeeTeam } from "@domain/team";
 import { canWrite } from "@domain/view-as";
@@ -16,8 +20,8 @@ import { currentMember } from "../member";
 
 /**
  * What the signed-in person may do here: owners and managers edit their
- * business's settings and details. Null for anyone else, who gets the
- * not-found screen.
+ * business's settings and details, owners also the few that are theirs alone
+ * (`level`). Null for anyone else, who gets the not-found screen.
  */
 export async function manageAccess() {
   const member = await currentMember();
@@ -37,6 +41,7 @@ export async function manageAccess() {
     timeZone: business.place.timeZone,
     rows: business.modules,
     viewOnly: !canWrite(member.viewing),
+    level: settingLevelOf(membership.role),
   };
 }
 
@@ -44,14 +49,20 @@ export type ManageAccess = NonNullable<
   Awaited<ReturnType<typeof manageAccess>>
 >;
 
-/** The modules that are on and have something the business itself may change. */
-export function modulesToManage(rows: readonly ModuleRow[]): ModuleKey[] {
+/**
+ * The modules that are on and have something the business itself may change,
+ * at this level.
+ */
+export function modulesToManage(
+  rows: readonly ModuleRow[],
+  level: SettingLevel = "business",
+): ModuleKey[] {
   const enabled = enabledModules(manifests, rows);
   return manifests
     .filter(
       (manifest) =>
         enabled.includes(manifest.key) &&
-        fieldsFor(manifest.settings, "business").length > 0,
+        fieldsFor(manifest.settings, level).length > 0,
     )
     .map((manifest) => manifest.key);
 }

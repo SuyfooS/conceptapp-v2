@@ -99,6 +99,10 @@ export type ActivityLine =
       from: ClockTimes;
       to: ClockTimes;
     }
+  /** A manager approved hours made without a code, or set by someone for themselves. */
+  | { action: "clock.confirm"; person: ActivityPerson }
+  /** Typing the clock's code was blocked after too many wrong tries; the actor is who typed. */
+  | { action: "clock.code.locked" }
   | {
       action: "invite.create" | "invite.send";
       name: string | null;
@@ -175,6 +179,8 @@ const schemas = {
     clock_out: instant.nullable().optional(),
   }),
   "clock.correct": z.object({ person: id, from: times, to: times }),
+  "clock.confirm": z.object({ person: id }),
+  "clock.code.locked": z.object({ person: id.optional() }),
   invite: z.object({ invite: id, role: z.unknown().optional() }),
   role: z.object({ role: z.unknown().optional() }),
   "swap.request": z.object({ swap: id, shift: id }),
@@ -337,6 +343,16 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         to: clockTimes(details.to),
       };
     }
+    case "clock.confirm": {
+      const details = read(schemas["clock.confirm"]);
+      return details
+        ? { action: row.action, person: personOf(details.person, lookups) }
+        : other;
+    }
+    case "clock.code.locked":
+      return read(schemas["clock.code.locked"])
+        ? { action: row.action }
+        : other;
     case "invite.create":
     case "invite.send": {
       const details = read(schemas.invite);

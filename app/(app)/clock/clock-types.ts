@@ -1,13 +1,22 @@
-import type { ClockFailure, ShiftRecord, TimeEntry } from "@domain/time-clock";
+import type { PunchProof } from "@domain/punch-code-format";
+import type { PunchFailure, ShiftRecord, TimeEntry } from "@domain/time-clock";
 
 export type ClockActionResult =
-  | { ok: true }
-  | { ok: false; failure: ClockFailure | "viewOnly" };
+  | {
+      ok: true;
+      /**
+       * A punch the database recorded without a code, for a manager to approve.
+       * Not the same as asking without one: with codes switched off since the
+       * page loaded, nothing waits.
+       */
+      marked?: boolean;
+    }
+  | { ok: false; failure: PunchFailure | "viewOnly" };
 
 /** What the screen can do. The demo passes stand-ins that store nothing. */
 export type ClockActions = {
-  clockIn: () => Promise<ClockActionResult>;
-  clockOut: () => Promise<ClockActionResult>;
+  clockIn: (proof: PunchProof) => Promise<ClockActionResult>;
+  clockOut: (proof: PunchProof) => Promise<ClockActionResult>;
   startBreak: () => Promise<ClockActionResult>;
   endBreak: () => Promise<ClockActionResult>;
   undoClockOut: (entryId: string) => Promise<ClockActionResult>;
@@ -34,6 +43,15 @@ export type ClockData = {
   undo: { entryId: string; out: string; minutes: number; until: string } | null;
   /** The business's setting: whether a break comes off the hours. */
   unpaidBreaks: boolean;
+  /** The clock's code (issue #78). */
+  punch: {
+    /** The business asks for a code to clock in and out. */
+    required: boolean;
+    /** This person needs one: everyone but owners, while it is asked for. */
+    needsCode: boolean;
+    /** This person may show the code on their phone. */
+    canShowCode: boolean;
+  };
   /** For those who see the team: what its screen would show now. */
   team: { atWork: number; overdue: number } | null;
   /** Someone from ConceptApp is looking; nothing can be pressed. */
@@ -41,4 +59,10 @@ export type ClockData = {
 };
 
 /** Where this screen's links go; the demo keeps them inside the demo. */
-export type ClockPaths = { clock: string; history: string; team: string };
+export type ClockPaths = {
+  clock: string;
+  history: string;
+  team: string;
+  /** The clock's code, shown on a manager's phone. */
+  code: string;
+};

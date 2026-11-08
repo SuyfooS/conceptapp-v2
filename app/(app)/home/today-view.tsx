@@ -78,6 +78,7 @@ export type TodayData = {
   clockLine?:
     | { kind: "working" | "break"; at: string }
     | { kind: "overdue"; count: number }
+    | { kind: "confirm"; count: number }
     | null;
   schedule: TodaySchedule | null;
   /** Owners and managers only. */
@@ -153,7 +154,13 @@ export async function TodayView({
               {quiet.map((widget) => (
                 <ListRow
                   key={widget.key}
-                  href={path(widget.href)}
+                  href={
+                    // Hours waiting for approval are approved on the team's hours.
+                    widget.key === "time_clock" &&
+                    data.clockLine?.kind === "confirm"
+                      ? path("/clock/team")
+                      : path(widget.href)
+                  }
                   leading={moduleIcons[widget.icon]}
                   title={tm(`${widget.key}.name`)}
                   subtitle={
@@ -162,10 +169,14 @@ export async function TodayView({
                         ? t("clock.team.overdue.title", {
                             count: data.clockLine.count,
                           })
-                        : t.rich(`clock.todayLine.${data.clockLine.kind}`, {
-                            time: data.clockLine.at,
-                            ltr,
-                          })
+                        : data.clockLine.kind === "confirm"
+                          ? t("clock.team.confirm.title", {
+                              count: data.clockLine.count,
+                            })
+                          : t.rich(`clock.todayLine.${data.clockLine.kind}`, {
+                              time: data.clockLine.at,
+                              ltr,
+                            })
                       : tm(`${widget.key}.description`)
                   }
                 />

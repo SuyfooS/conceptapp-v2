@@ -1,6 +1,11 @@
 import fs from "node:fs";
 import path from "node:path";
-import { expect, type Page } from "@playwright/test";
+import {
+  type Browser,
+  expect,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { latestCode } from "./sms";
 
@@ -50,6 +55,30 @@ export async function askForCode(page: Page, person: Person): Promise<Date> {
   }
   await expect(codeField).toBeVisible();
   return since;
+}
+
+/**
+ * A second person's page beside the test's own, as another device of the same
+ * screen size, with its own cookies. Built from the project's fields one by
+ * one: the whole `use` object holds keys a context doesn't take (trace,
+ * launchOptions). Close its context at the end of the test.
+ */
+export async function secondPage(
+  browser: Browser,
+  testInfo: TestInfo,
+): Promise<Page> {
+  const use = testInfo.project.use;
+  const context = await browser.newContext({
+    viewport: use.viewport,
+    userAgent: use.userAgent,
+    deviceScaleFactor: use.deviceScaleFactor,
+    isMobile: use.isMobile,
+    hasTouch: use.hasTouch,
+    locale: use.locale,
+    baseURL: use.baseURL,
+    reducedMotion: "reduce",
+  });
+  return await context.newPage();
 }
 
 /**

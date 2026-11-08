@@ -11,6 +11,7 @@ const SHIRAN = "shiran";
 export const demoTeamPaths = {
   clock: "/design/shell/clock",
   team: "/design/shell/clock/team",
+  code: "/design/shell/clock/code",
 };
 
 export const demoTeamHours: TeamHoursData = {
@@ -18,6 +19,27 @@ export const demoTeamHours: TeamHoursData = {
   currentMonth: "2026-11",
   minutes: 212 * 60 + 12,
   shifts: 27,
+  required: true,
+  showCode: true,
+  viewOnly: false,
+  toConfirm: [
+    {
+      entryId: "68000000-0000-4000-a000-000000000031",
+      userId: YOAV,
+      name: "יואב לוי",
+      date: "2026-11-05",
+      what: "in",
+      time: "09:14",
+    },
+    {
+      entryId: "68000000-0000-4000-a000-000000000032",
+      userId: NOA,
+      name: "נועה כהן",
+      date: "2026-11-04",
+      what: "both",
+      time: "16:00–23:42",
+    },
+  ],
   atWork: [
     {
       userId: SHIRAN,
@@ -25,6 +47,7 @@ export const demoTeamHours: TeamHoursData = {
       since: "08:02",
       onBreak: false,
       month: "2026-11",
+      attendance: { how: "typed", pending: false },
     },
     {
       userId: YOAV,
@@ -32,6 +55,7 @@ export const demoTeamHours: TeamHoursData = {
       since: "09:14",
       onBreak: true,
       month: "2026-11",
+      attendance: { how: "none", pending: true },
     },
   ],
   overdue: [
@@ -86,6 +110,7 @@ export const demoPersonHours: PersonHoursData = {
       breakMinutes: 0,
       byManager: false,
       overdue: true,
+      attendance: null,
     },
     ...demoRecords.filter((record) => record.date !== "2026-11-04"),
   ],

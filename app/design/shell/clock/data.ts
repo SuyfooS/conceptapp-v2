@@ -16,6 +16,7 @@ export const demoRecords: ShiftRecord[] = [
     breakMinutes: 30,
     byManager: false,
     overdue: false,
+    attendance: { how: "typed", pending: false },
   },
   {
     id: "68000000-0000-4000-a000-000000000012",
@@ -26,6 +27,7 @@ export const demoRecords: ShiftRecord[] = [
     breakMinutes: 0,
     byManager: false,
     overdue: false,
+    attendance: { how: "none", pending: true },
   },
   {
     id: "68000000-0000-4000-a000-000000000013",
@@ -36,6 +38,7 @@ export const demoRecords: ShiftRecord[] = [
     breakMinutes: 30,
     byManager: true,
     overdue: false,
+    attendance: null,
   },
   {
     id: "68000000-0000-4000-a000-000000000014",
@@ -46,11 +49,20 @@ export const demoRecords: ShiftRecord[] = [
     breakMinutes: 0,
     byManager: false,
     overdue: false,
+    attendance: { how: "none", pending: false },
   },
 ];
 
-/** The screen in each of its states, the time running from now. */
-export function demoClock(state: string | undefined, now: Date): ClockData {
+/**
+ * The screen in each of its states, the time running from now. With `code`,
+ * the business asks for the clock's code, and the demo person is a manager
+ * who needs one and may show it.
+ */
+export function demoClock(
+  state: string | undefined,
+  now: Date,
+  code = false,
+): ClockData {
   const at = (hoursAgo: number) =>
     new Date(now.getTime() - hoursAgo * HOUR).toISOString();
   const entry = {
@@ -59,6 +71,9 @@ export function demoClock(state: string | undefined, now: Date): ClockData {
     clockIn: at(3.7),
     clockOut: null,
     source: "punch" as const,
+    inProof: code ? ("typed" as const) : null,
+    outProof: null,
+    confirmedAt: null,
   };
   const pause = {
     id: "68000000-0000-4000-a000-000000000002",
@@ -98,6 +113,7 @@ export function demoClock(state: string | undefined, now: Date): ClockData {
           }
         : null,
     unpaidBreaks: true,
+    punch: { required: code, needsCode: code, canShowCode: true },
     team: { atWork: 2, overdue: state === "working" ? 0 : 1 },
     viewOnly: false,
   };
