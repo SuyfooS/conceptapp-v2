@@ -1151,6 +1151,10 @@ export type Database = {
         Returns: string;
       };
       end_view_session: { Args: { actor: string }; Returns: string };
+      forget_auth_attempt: {
+        Args: { at_time: string; caller: string; kind: string; phone: string };
+        Returns: undefined;
+      };
       invite_by_token: { Args: { token_hash: string }; Returns: Json };
       issue_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };
@@ -1175,14 +1179,24 @@ export type Database = {
         };
         Returns: Json;
       };
+      note_auth_attempt: {
+        Args: { at_time?: string; caller: string; kind: string; phone: string };
+        Returns: number;
+      };
       note_punch_attempt: {
-        Args: { actor: string; at_time?: string; business: string };
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          short_hash: string;
+        };
         Returns: boolean;
       };
       open_schedule_week: {
         Args: { business: string; due_at: string; week_start: string };
         Returns: string;
       };
+      own_phone: { Args: Record<PropertyKey, never>; Returns: string };
       publish_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
@@ -1303,6 +1317,13 @@ export type Database = {
       team_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };
         Returns: string;
+      };
+      team_phones: {
+        Args: { business: string };
+        Returns: {
+          phone: string;
+          user_id: string;
+        }[];
       };
       undo_clock_out: {
         Args: { actor: string; at_time?: string; entry: string };

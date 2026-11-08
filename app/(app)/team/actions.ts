@@ -21,6 +21,8 @@ export type TeamFailure =
   | "elsewhere"
   | "notAllowed"
   | "notOpen"
+  | "demo"
+  | "hasOwner"
   | "failed"
   | "noPermission"
   | "viewOnly";
@@ -37,8 +39,11 @@ export type InviteState =
 
 export type ResendState =
   // A fresh link is for someone already invited here, never refused for
-  // being in another business.
-  | { link?: undefined; failure?: Exclude<TeamFailure, "elsewhere"> }
+  // being in another business; only the console is refused an owner's.
+  | {
+      link?: undefined;
+      failure?: Exclude<TeamFailure, "elsewhere" | "hasOwner">;
+    }
   | { link: string; failure?: undefined };
 
 /**
@@ -122,7 +127,11 @@ export async function resendInviteAction(
   if ("failure" in actor) return { failure: actor.failure };
   try {
     const result = await issueTeamInviteLink(actor.userId, inviteId);
-    if (!result.ok) return { failure: result.error };
+    if (!result.ok) {
+      return {
+        failure: result.error === "hasOwner" ? "notAllowed" : result.error,
+      };
+    }
     const link = await linkFor(result.token, result.phone);
     // The invite is open again: the screen re-reads its list and counts.
     refresh();

@@ -21,20 +21,30 @@ export function hashInviteToken(token: string): string {
  * (`public.issue_invite_link`). Returns the token to put in the link and the
  * number to send it to. Runs with the secret key: callers check the person
  * may invite staff first, and the database checks again that `actorId` is on
- * the team. Throws when the invite was claimed or is unknown.
+ * the team. Refused in a demo business, and for an owner invite nobody may
+ * claim any more; throws when the invite was claimed or is unknown.
  */
 export async function issueInviteLink(
   actorId: string,
   inviteId: string,
-): Promise<{ token: string; phone: string }> {
+): Promise<
+  | { ok: true; token: string; phone: string }
+  | { ok: false; error: "demo" | "hasOwner" }
+> {
   const token = newInviteToken();
   const { data, error } = await createAdminClient().rpc("issue_invite_link", {
     actor: actorId,
     invite: inviteId,
     new_token_hash: hashInviteToken(token),
   });
-  if (error) throw new Error(`Could not issue invite link: ${error.message}`);
-  return { token, phone: z.string().parse(data) };
+  if (error) {
+    const known = teamInviteError(error.code);
+    if (known === "demo" || known === "hasOwner") {
+      return { ok: false, error: known };
+    }
+    throw new Error(`Could not issue invite link: ${error.message}`);
+  }
+  return { ok: true, token, phone: z.string().parse(data) };
 }
 
 const InviteRow = z.object({
@@ -112,13 +122,21 @@ export async function claimInvite(
 
 export type TeamInviteResult =
   | { ok: true; token: string; phone: string }
-  | { ok: false; error: "alreadyMember" | "notAllowed" | "notOpen" };
+  | {
+      ok: false;
+      error: "alreadyMember" | "notAllowed" | "notOpen" | "demo" | "hasOwner";
+    };
 
-/** The database's refusals, as the Team screen explains them. */
+/**
+ * The database's refusals, as the screens explain them: a demo business takes
+ * no invites, and the console makes no second owner.
+ */
 function teamInviteError(code: string | undefined) {
   if (code === "23505") return "alreadyMember" as const;
   if (code === "42501") return "notAllowed" as const;
   if (code === "P0002") return "notOpen" as const;
+  if (code === "55000") return "demo" as const;
+  if (code === "23P01") return "hasOwner" as const;
   return null;
 }
 

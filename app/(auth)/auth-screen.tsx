@@ -5,10 +5,11 @@ import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
 /**
- * The door to the app. Phone: no card, a large title, and the task right under
- * the thumb. Tablet and desktop: the same task on a floating card in the middle
- * of the page. Fields on the card sit in a well (`authFieldsClass`), since the
- * card and a field group are both white.
+ * The door to the app. Phone and tablet (a foldable opened up too): no card,
+ * a large title, and the task right under the thumb, from the top of the
+ * screen; on a tablet the column keeps a readable width. Desktop: the same task
+ * on a floating card in the middle of the page. Fields on the card sit in a
+ * well (`authFieldsClass`), since the card and a field group are both white.
  */
 export function AuthScreen({
   title,
@@ -20,7 +21,7 @@ export function AuthScreen({
   return (
     <AuthPage>
       <Wordmark />
-      <h1 className="mt-[9dvh] mb-3 text-balance px-1 font-bold text-2xl md:mt-6">
+      <h1 className="mt-[9dvh] mb-3 text-balance px-1 font-bold text-2xl xl:mt-6">
         {title}
       </h1>
       {children}
@@ -28,9 +29,9 @@ export function AuthScreen({
   );
 }
 
-export const authFieldsClass = "md:bg-bg md:shadow-none";
+export const authFieldsClass = "xl:bg-bg xl:shadow-none";
 
-/** The page and, from tablet up, the card. Without the title, for a hero. */
+/** The page and, on desktop, the card. Without the title, for a hero. */
 export function AuthPage({
   className,
   children,
@@ -41,14 +42,14 @@ export function AuthPage({
   return (
     <main
       className={cn(
-        "flex min-h-dvh flex-col px-4 pt-[calc(env(safe-area-inset-top)+1.25rem)] pb-8 md:items-center md:justify-center md:px-8 md:py-16",
+        "flex min-h-dvh flex-col px-4 pt-[calc(env(safe-area-inset-top)+1.25rem)] pb-8 md:items-center md:px-8 xl:justify-center xl:py-16",
         glowClass,
-        "md:bg-size-[100%_560px]",
+        "xl:bg-size-[100%_560px]",
       )}
     >
       <div
         className={cn(
-          "flex w-full flex-col md:max-w-[460px] md:rounded-sheet md:bg-surface md:p-10 md:shadow-float",
+          "flex w-full flex-col md:max-w-[560px] xl:max-w-[460px] xl:rounded-sheet xl:bg-surface xl:p-10 xl:shadow-float",
           className,
         )}
       >

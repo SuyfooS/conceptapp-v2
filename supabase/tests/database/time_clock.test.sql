@@ -286,8 +286,9 @@ select is(
     'entry', (select id from ids where name = 'c1'),
     'person', '68000000-0000-4000-a000-00000000000c',
     'from', jsonb_build_object('clock_in', '2026-11-10 06:01:30+00'::timestamptz, 'clock_out', '2026-11-10 22:30:30+00'::timestamptz),
-    'to', jsonb_build_object('clock_in', '2026-11-10 06:00+00'::timestamptz, 'clock_out', '2026-11-10 14:00+00'::timestamptz)),
-  'a correction keeps the old and new times in the audit log'
+    'to', jsonb_build_object('clock_in', '2026-11-10 06:00+00'::timestamptz, 'clock_out', '2026-11-10 14:00+00'::timestamptz),
+    'proof', jsonb_build_object('in', 'manager', 'out', 'manager')),
+  'a correction keeps the old and new times in the audit log, and what they now rest on'
 );
 select results_eq(
   $$select action, count(*)::int from public.audit_log

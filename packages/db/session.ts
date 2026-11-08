@@ -4,6 +4,7 @@ import type { BusinessPlace } from "@domain/shabbat";
 import type { ViewSession } from "@domain/view-as";
 import type { Wording } from "@domain/wording";
 import type { Database } from "./database.types";
+import { isMissingFunction } from "./missing";
 import { createClient } from "./supabase/server";
 
 export type MemberRole = Database["public"]["Enums"]["member_role"];
@@ -127,13 +128,15 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
   const userId = auth?.claims.sub;
   if (!userId) return null;
 
-  const [profile, membership, view, businessWording, templateWording] =
+  const [profile, phone, membership, view, businessWording, templateWording] =
     await Promise.all([
       supabase
         .from("profiles")
-        .select("full_name, phone")
+        .select("full_name")
         .eq("id", userId)
         .maybeSingle(),
+      // Numbers are not read from the table, the person's own included.
+      supabase.rpc("own_phone"),
       supabase
         .from("memberships")
         .select(
@@ -160,6 +163,18 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       supabase.from("template_wording").select("template_key, key, sentence"),
     ]);
   if (profile.error) throw profile.error;
+  // Before its migration reaches a project there is no own_phone yet, and
+  // the number is still read from the table, as before.
+  if (phone.error && !isMissingFunction(phone.error)) throw phone.error;
+  const ownPhone = phone.error
+    ? ((
+        await supabase
+          .from("profiles")
+          .select("phone")
+          .eq("id", userId)
+          .maybeSingle()
+      ).data?.phone ?? null)
+    : (phone.data ?? null);
   if (membership.error) throw membership.error;
   if (view.error) throw view.error;
   const wording: WordingRows = {
@@ -170,7 +185,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
   const person = {
     userId,
     name: profile.data?.full_name ?? null,
-    phone: profile.data?.phone ?? null,
+    phone: ownPhone,
   };
   const viewed = view.data?.businesses;
   if (view.data && viewed) {

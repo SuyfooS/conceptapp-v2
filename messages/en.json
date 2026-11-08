@@ -284,6 +284,7 @@
         "invalidPhone": "Enter an Israeli mobile number, e.g. 050-123-4567.",
         "unknownPhone": "This number isn't registered yet. A manager at your business can add it.",
         "rateLimit": "You can ask for a new code in a few seconds.",
+        "tooMany": "There were too many tries. You can try again in a few minutes.",
         "invalidCode": "The code is 6 digits.",
         "wrongCode": "The code is wrong or has expired. You can ask for a new one.",
         "failed": "Something went wrong. Try again in a moment."
@@ -533,7 +534,8 @@
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create a link. Try again in a moment.",
           "noPermission": "Only owners and managers can invite to the team.",
-          "viewOnly": "This is view only, so no link was made."
+          "viewOnly": "This is view only, so no link was made.",
+          "demo": "This is a demo business, so nobody is invited to it."
         }
       },
       "invite": {
@@ -573,7 +575,9 @@
           "failed": "We could not create the invite. Try again in a moment.",
           "noPermission": "Only owners and managers can invite to the team.",
           "viewOnly": "This is view only, so the invite was not saved.",
-          "elsewhere": "This number is already active in another business. For now a person can be in one business only."
+          "elsewhere": "This number is already active in another business. For now a person can be in one business only.",
+          "demo": "This is a demo business, so nobody is invited to it.",
+          "hasOwner": "The business already has an owner. Another owner is invited by the owner, from the Team screen."
         }
       }
     },
@@ -1596,7 +1600,9 @@
         "copied": "Link copied",
         "errors": {
           "failed": "Could not create a link. Try again in a moment.",
-          "noPermission": "You may not invite people."
+          "noPermission": "You may not invite people.",
+          "demo": "This is a demo business, so nobody is invited to it.",
+          "hasOwner": "The business already has an owner, so this invite no longer works. Another owner is invited by the owner."
         },
         "renew": "Renew the invite",
         "renewFor": "Renew {name}'s invite"
