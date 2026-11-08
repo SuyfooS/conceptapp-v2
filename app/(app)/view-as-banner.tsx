@@ -1,28 +1,29 @@
 import type { ViewSession } from "@domain/view-as";
 import { Button } from "@ui/button";
 import { Eye } from "lucide-react";
-import { getTranslations } from "next-intl/server";
 import { endViewAsAction } from "./view-as-actions";
+import { type AppWording, translator } from "./wording";
 
 /**
  * Above every screen while someone on the ConceptApp team views the
  * business as a role: what they are looking at, that nothing is saved,
  * and the way out.
  */
-export async function ViewAsBanner({
+export function ViewAsBanner({
   viewing,
   businessName,
+  wording,
   end = endViewAsAction,
 }: {
   viewing: ViewSession;
   businessName: string;
+  /** The viewed business's words. */
+  wording: AppWording;
   /** `endViewAsAction`, or the design demo's stand-in. */
   end?: () => Promise<void>;
 }) {
-  const [t, tr] = await Promise.all([
-    getTranslations("app.viewAs"),
-    getTranslations("app.team.roles"),
-  ]);
+  const t = translator(wording, "app.viewAs");
+  const tr = translator(wording, "app.team.roles");
   return (
     <aside
       aria-label={t("label")}

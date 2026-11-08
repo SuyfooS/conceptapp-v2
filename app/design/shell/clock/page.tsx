@@ -1,6 +1,7 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ClockView } from "../../../(app)/clock/clock-view";
+import { baseWording } from "../../../(app)/wording";
 import {
   demoClockIn,
   demoClockOut,
@@ -40,6 +41,7 @@ async function Demo({ searchParams }: Props) {
         history: "/design/shell/clock/history",
         team: "/design/shell/clock/team",
       }}
+      wording={baseWording}
     />
   );
 }

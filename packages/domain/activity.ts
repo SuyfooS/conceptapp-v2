@@ -127,6 +127,12 @@ export type ActivityLine =
       first: boolean;
       swapsRemoved: number;
     }
+  | {
+      /** One of the app's sentences, replaced for the business or cleared. */
+      action: "wording.change";
+      to: string | null;
+      from: string | null;
+    }
   | { action: "other" };
 
 /** One line of the log. Holds no ids, so it can go anywhere. */
@@ -184,6 +190,11 @@ const schemas = {
     shifts: z.int().min(0),
     first: z.boolean(),
     swaps_removed: z.int().min(0),
+  }),
+  "wording.change": z.object({
+    key: z.string(),
+    from: z.string().nullable().optional(),
+    to: z.string().nullable().optional(),
   }),
 };
 
@@ -283,6 +294,16 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
           { key: "unpaidBreaks", from: undefined, to: details.unpaid_breaks },
         ],
       };
+    }
+    case "wording.change": {
+      const details = read(schemas["wording.change"]);
+      return details
+        ? {
+            action: row.action,
+            to: details.to ?? null,
+            from: details.from ?? null,
+          }
+        : other;
     }
     case "module.enabled": {
       const details = read(schemas["module.enabled"]);

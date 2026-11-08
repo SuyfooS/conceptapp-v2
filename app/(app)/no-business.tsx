@@ -1,8 +1,8 @@
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
 import { Store } from "lucide-react";
-import { getTranslations } from "next-intl/server";
 import { CenteredScreen } from "@/app/centered-screen";
+import { baseWording, translator } from "./wording";
 
 /**
  * Signed in, but no business has added this number yet. Also rendered on
@@ -14,7 +14,8 @@ export async function NoBusinessScreen({
   /** `signOut`, or the design demo's stand-in. */
   signOut: () => Promise<void>;
 }) {
-  const t = await getTranslations("app");
+  // No business, so no business's words.
+  const t = translator(baseWording, "app");
   return (
     <CenteredScreen>
       <EmptyState

@@ -4,9 +4,9 @@ import { Card } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { RefreshOnReturn } from "../home/refresh-on-return";
+import { type AppWording, translator } from "../wording";
 import { ClockPanel } from "./clock-panel";
 import type { ClockActions, ClockData, ClockPaths } from "./clock-types";
 import { HoursCount } from "./hours-count";
@@ -23,12 +23,15 @@ export function ClockView({
   data,
   actions,
   paths,
+  wording,
 }: {
   data: ClockData;
   actions: ClockActions;
   paths: ClockPaths;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.clock");
+  const t = translator(wording, "app.clock");
   const status = clockStatus(data.open);
 
   return (
@@ -36,7 +39,7 @@ export function ClockView({
       <RefreshOnReturn />
       <PageHeader
         title={t(`title.${status.state}`)}
-        subtitle={<Line data={data} />}
+        subtitle={<Line data={data} wording={wording} />}
       />
 
       <div className="flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -51,11 +54,13 @@ export function ClockView({
                 label={t("hours.thisMonth")}
                 minutes={data.thisMonth}
                 id="this-month"
+                wording={wording}
               />
               <Hours
                 label={t("hours.lastMonth")}
                 minutes={data.lastMonth}
                 id="last-month"
+                wording={wording}
               />
             </dl>
             <ListRow
@@ -67,7 +72,10 @@ export function ClockView({
 
           {data.recent.length > 0 ? (
             <PageSection title={t("recent")} className="hidden md:flex">
-              <ShiftList records={data.recent} />
+              <ShiftList
+                records={data.recent}
+                t={translator(wording, "app.clock.history")}
+              />
             </PageSection>
           ) : null}
 
@@ -90,8 +98,8 @@ export function ClockView({
   );
 }
 
-function Line({ data }: { data: ClockData }) {
-  const t = useTranslations("app.clock.line");
+function Line({ data, wording }: { data: ClockData; wording: AppWording }) {
+  const t = translator(wording, "app.clock.line");
   const { open, shift, scheduling, timeZone } = data;
   const at = (instant: string) => timeIn(new Date(instant), timeZone);
   if (open) {
@@ -114,12 +122,14 @@ function Hours({
   label,
   minutes,
   id,
+  wording,
 }: {
   label: string;
   minutes: number;
   id: string;
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.clock.hours");
+  const t = translator(wording, "app.clock.hours");
   return (
     <div className="flex flex-col gap-0.5 p-4 not-first:border-line not-first:border-s">
       <dt className="text-ink-2 text-sm">{label}</dt>

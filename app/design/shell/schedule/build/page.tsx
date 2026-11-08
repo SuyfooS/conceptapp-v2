@@ -1,6 +1,7 @@
 import { draftWeek } from "@domain/schedule";
 import { buildTeam } from "@domain/team";
 import { ScheduleBuildView } from "../../../../(app)/schedule/build/schedule-build-view";
+import { baseWording } from "../../../../(app)/wording";
 import {
   demoExtraShift,
   demoPositions,
@@ -100,6 +101,7 @@ export default function ShellScheduleBuild() {
       }}
       save={demoSaveSchedule}
       backHref="/design/shell/schedule"
+      wording={baseWording}
     />
   );
 }

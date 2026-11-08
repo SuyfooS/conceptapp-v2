@@ -19,6 +19,7 @@ import {
   ChevronRight,
   CircleDashed,
   Eye,
+  MessageSquareText,
   SlidersHorizontal,
   UserPlus,
 } from "lucide-react";
@@ -51,6 +52,7 @@ export async function BusinessView({
   created,
   viewFailed,
   settingsHref,
+  wordingHref,
   addHref,
   viewAs,
   issue,
@@ -61,6 +63,8 @@ export async function BusinessView({
   viewFailed: boolean;
   /** Where this business's settings are, when the person may edit them. */
   settingsHref: string | null;
+  /** Where this business's sentences are, when the person may edit them. */
+  wordingHref: string | null;
   /** Where to add a person, when the person may invite staff. */
   addHref: string | null;
   /** Bound to this business, when the person may view it as a role. */
@@ -135,14 +139,24 @@ export async function BusinessView({
             template={template}
             hrefs={{ people: addHref, settings: settingsHref }}
           />
-          {settingsHref ? (
+          {settingsHref || wordingHref ? (
             <ListGroup>
-              <ListRow
-                href={settingsHref}
-                leading={<SlidersHorizontal />}
-                title={t("setup.settings.row")}
-                subtitle={t("setup.settings.subtitle")}
-              />
+              {settingsHref ? (
+                <ListRow
+                  href={settingsHref}
+                  leading={<SlidersHorizontal />}
+                  title={t("setup.settings.row")}
+                  subtitle={t("setup.settings.subtitle")}
+                />
+              ) : null}
+              {wordingHref ? (
+                <ListRow
+                  href={wordingHref}
+                  leading={<MessageSquareText />}
+                  title={t("wording.row")}
+                  subtitle={t("wording.rowSubtitle")}
+                />
+              ) : null}
             </ListGroup>
           ) : null}
         </div>

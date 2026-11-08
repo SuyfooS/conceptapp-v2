@@ -28,8 +28,9 @@ import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
 import { History, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
+import { type AppWording, translator } from "../../wording";
 
 export type ActivityPaths = {
   manage: string;
@@ -106,6 +107,7 @@ export function ActivityView({
   manageable,
   clockOn,
   paths,
+  wording,
 }: {
   days: ActivityDay[];
   timeZone: string;
@@ -118,14 +120,16 @@ export function ActivityView({
   /** The time clock is on, so its punches, left out here, exist somewhere. */
   clockOn: boolean;
   paths: ActivityPaths;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.manage.activity");
-  const tRoles = useTranslations("app.team.roles");
-  const tm = useTranslations("modules");
-  const tCities = useTranslations("cities");
-  const tDays = useTranslations("days");
-  const tDetails = useTranslations("app.manage.business");
-  const tManage = useTranslations("app.manage");
+  const t = translator(wording, "app.manage.activity");
+  const tRoles = translator(wording, "app.team.roles");
+  const tm = translator(wording, "modules");
+  const tCities = translator(wording, "cities");
+  const tDays = translator(wording, "days");
+  const tDetails = translator(wording, "app.manage.business");
+  const tManage = translator(wording, "app.manage");
   const format = useFormatter();
 
   const dayName = (date: string) =>
@@ -297,6 +301,12 @@ export function ActivityView({
             ? `${paths.manage}/${line.module}`
             : undefined,
         };
+      case "wording.change":
+        return plain(
+          line.to === null
+            ? t("actions.wording.clear", { from: line.from ?? "" })
+            : t("actions.wording.change", { to: line.to }),
+        );
       case "module.enabled":
         return plain(
           t("actions.module.enabled", {

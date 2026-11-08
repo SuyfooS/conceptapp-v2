@@ -2,7 +2,7 @@ import type { ModuleKey } from "@domain/modules";
 import type { SettingField } from "@domain/settings-form";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { useTranslations } from "next-intl";
+import { type AppWording, translator } from "../wording";
 import { SettingsForm } from "./settings-form";
 import type { SaveSettings } from "./settings-types";
 
@@ -14,6 +14,7 @@ export function ModuleSettingsView({
   save,
   viewOnly,
   backHref,
+  wording,
 }: {
   module: ModuleKey;
   fields: SettingField[];
@@ -21,9 +22,11 @@ export function ModuleSettingsView({
   save: SaveSettings;
   viewOnly: boolean;
   backHref: string;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.manage");
-  const tm = useTranslations("modules");
+  const t = translator(wording, "app.manage");
+  const tm = translator(wording, "modules");
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader

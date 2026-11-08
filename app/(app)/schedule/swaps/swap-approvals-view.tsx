@@ -1,7 +1,7 @@
 import type { WeekScheduleShift } from "@db/schedule";
 import { type Approval, approvalsFor } from "@domain/swaps";
 import { PageBody, PageHeader } from "@ui/page";
-import { getTranslations } from "next-intl/server";
+import { type AppWording, translator } from "../../wording";
 import type { PublishedSchedule } from "../week";
 import type { DecideState } from "./actions";
 import { ApprovalsBoard } from "./approvals-board";
@@ -28,17 +28,18 @@ export function pendingApprovals(data: PublishedSchedule): Row[] {
  * `decideSwapAction`, or the demo's stand-in. Also rendered with mock
  * data on /design/shell/schedule/swaps.
  */
-export async function SwapApprovalsView({
+export function SwapApprovalsView({
   data,
   decide,
+  wording,
 }: {
   data: PublishedSchedule;
   decide: DecideAction;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const [t, tm] = await Promise.all([
-    getTranslations("app"),
-    getTranslations("modules.scheduling"),
-  ]);
+  const t = translator(wording, "app");
+  const tm = translator(wording, "modules.scheduling");
   return (
     <PageBody>
       <PageHeader

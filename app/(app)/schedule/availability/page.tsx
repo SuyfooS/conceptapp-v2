@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { currentWording } from "../../current-wording";
+import { baseWording, translator } from "../../wording";
 import { currentAvailabilityWeek } from "../week";
 import { saveAvailabilityAction } from "./actions";
 import { AvailabilityView } from "./availability-view";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.availability");
+  const t = translator(baseWording, "app.availability");
   return { title: t("title") };
 }
 
@@ -21,6 +22,7 @@ export default async function AvailabilityPage() {
       late={Date.parse(week.dueAt) < Date.now()}
       save={saveAvailabilityAction}
       backHref="/schedule"
+      wording={await currentWording()}
     />
   );
 }

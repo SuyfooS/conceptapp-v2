@@ -1,14 +1,19 @@
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { getTranslations } from "next-intl/server";
+import { type AppWording, translator } from "../../wording";
 import { InviteForm } from "./invite-form";
 
 /** Also rendered on /design/shell/team/invite. */
-export async function TeamInviteView({
+export function TeamInviteView({
   teamHref,
+  wording,
   ...props
-}: Omit<Parameters<typeof InviteForm>[0], "back"> & { teamHref: string }) {
-  const t = await getTranslations("app.team");
+}: Omit<Parameters<typeof InviteForm>[0], "back"> & {
+  teamHref: string;
+  /** The business's words; the app's own on the demo. */
+  wording: AppWording;
+}) {
+  const t = translator(wording, "app.team");
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader

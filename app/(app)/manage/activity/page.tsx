@@ -8,12 +8,13 @@ import { enabledModules } from "@domain/modules";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { currentWording } from "../../current-wording";
+import { baseWording, translator } from "../../wording";
 import { manageAccess, modulesToManage, settingDefaults } from "../manage";
 import { ActivityView } from "./activity-view";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.manage.activity");
+  const t = translator(baseWording, "app.manage.activity");
   return { title: t("title") };
 }
 
@@ -54,6 +55,7 @@ export default async function ManageActivityPage({
         business: "/manage/business",
         clockTeam: "/clock/team",
       }}
+      wording={await currentWording()}
     />
   );
 }

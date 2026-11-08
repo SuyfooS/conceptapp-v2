@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { currentWording } from "../current-wording";
 import { moduleMetadata } from "../module-screen";
 import {
   clockInAction,
@@ -26,6 +27,7 @@ export default async function ClockPage() {
         undoClockOut: undoClockOutAction,
       }}
       paths={clockPaths}
+      wording={await currentWording()}
     />
   );
 }

@@ -1,4 +1,5 @@
 import { SwapApprovalsView } from "../../../../(app)/schedule/swaps/swap-approvals-view";
+import { baseWording } from "../../../../(app)/wording";
 import { demoPublished, demoRequest } from "../shifts/published";
 import { demoDecide } from "./actions";
 
@@ -11,5 +12,7 @@ export default function ShellSwapApprovals() {
     demoRequest("2", "2026-11-04/morning", "maya", "itay"),
     demoRequest("3", "2026-11-07/saturday-night", "yoav", "noa"),
   ]);
-  return <SwapApprovalsView data={data} decide={demoDecide} />;
+  return (
+    <SwapApprovalsView data={data} decide={demoDecide} wording={baseWording} />
+  );
 }

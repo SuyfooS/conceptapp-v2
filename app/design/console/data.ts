@@ -180,3 +180,12 @@ export const setups: Record<
     },
   },
 };
+
+/** Sentences the demo restaurant's template and the business replace. */
+export const demoWording = {
+  template: { "modules.scheduling.name": "משמרות" },
+  business: {
+    "app.nav.home": "הבית",
+    "app.team.title": "הצוות של המסעדה",
+  },
+};

@@ -1291,7 +1291,11 @@
             "shifts": "{count, plural, =0 {No shifts} one {One shift} other {# shifts}}",
             "swapsRemoved": "{count, plural, one {One swap request was removed} other {# swap requests were removed}}"
           },
-          "other": "Something else in the app"
+          "other": "Something else in the app",
+          "wording": {
+            "change": "Changed a sentence in the app: “{to}”",
+            "clear": "Brought back the app's sentence instead of “{from}”"
+          }
         }
       }
     }
@@ -1618,6 +1622,58 @@
       "title": "Add a person to the business",
       "subtitle": "A name, a mobile and a role at {name}, and you get a link to send in a message.",
       "back": "Back to {name}"
+    },
+    "wording": {
+      "title": "The business's sentences",
+      "subtitle": "Any sentence the business sees in the app can be replaced with another whole sentence. A sentence of the business wins over one of its template.",
+      "search": "Search a sentence",
+      "searchHint": "Slashes don't matter: type “worker”.",
+      "changed": "Changed for this business",
+      "groups": {
+        "common": "Names, roles and tabs",
+        "home": "Today",
+        "schedule": "Schedule",
+        "clock": "Clock",
+        "team": "Team",
+        "manage": "Management",
+        "other": "More"
+      },
+      "count": "{count, plural, one {One sentence} other {# sentences}}",
+      "showAll": "Show every sentence",
+      "showLess": "Hide the sentences",
+      "results": "{count, plural, =0 {No sentence found} one {One sentence found} other {# sentences found}}",
+      "more": "And {count} more. Narrow the search.",
+      "source": {
+        "app": "The app's",
+        "template": "From the template",
+        "business": "The business's"
+      },
+      "sheet": {
+        "title": "Edit a sentence",
+        "close": "Close",
+        "app": "The app's sentence",
+        "template": "The template's sentence",
+        "field": "The business's sentence",
+        "keep": "Must stay in the sentence: {list}",
+        "save": "Save the sentence",
+        "toTemplate": "Back to the template's sentence",
+        "toApp": "Back to the app's sentence"
+      },
+      "errors": {
+        "notEditable": "This sentence can't be replaced.",
+        "empty": "Write a sentence.",
+        "tooLong": "The sentence is too long, up to 400 characters.",
+        "placeholders": "The sentence must keep every part the app fills in: {list}.",
+        "apostrophe": "A ' before a brace or a tag hides what follows it. Write the Hebrew geresh, ׳, instead.",
+        "syntax": "Something is wrong with the sentence's braces. Copy them exactly from the app's sentence.",
+        "failed": "Not saved. Try again in a moment.",
+        "noAccess": "You may not change sentences."
+      },
+      "saved": "The sentence is saved",
+      "restored": "The previous sentence is back",
+      "undo": "Undo",
+      "row": "The business's sentences",
+      "rowSubtitle": "Replace the app's sentences for this business"
     }
   },
   "errors": {

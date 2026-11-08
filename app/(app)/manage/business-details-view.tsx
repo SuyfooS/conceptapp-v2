@@ -2,7 +2,7 @@ import type { BusinessDetails } from "@domain/business-details";
 import type { ShabbatCity } from "@domain/shabbat";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { useTranslations } from "next-intl";
+import { type AppWording, translator } from "../wording";
 import { BusinessDetailsForm } from "./business-details-form";
 import type { SaveSettings } from "./settings-types";
 import type { CityShabbat } from "./shabbat-by-city";
@@ -15,6 +15,7 @@ export function BusinessDetailsView({
   showCity,
   cities,
   backHref,
+  wording,
 }: {
   details: BusinessDetails;
   save: SaveSettings;
@@ -22,8 +23,10 @@ export function BusinessDetailsView({
   showCity: boolean;
   cities: Record<ShabbatCity, CityShabbat>;
   backHref: string;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.manage");
+  const t = translator(wording, "app.manage");
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader

@@ -56,6 +56,30 @@ export async function getTemplateWordingForTeam(
   return data.map(rowOf);
 }
 
+/** The sentence a business's template gives a key, as stored, or null. */
+export async function getTemplateSentence(
+  businessId: string,
+  key: string,
+): Promise<string | null> {
+  const admin = createAdminClient();
+  const business = await admin
+    .from("businesses")
+    .select("template_key")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (business.error) throw business.error;
+  const templateKey = business.data?.template_key;
+  if (!templateKey) return null;
+  const row = await admin
+    .from("template_wording")
+    .select("sentence")
+    .eq("template_key", templateKey)
+    .eq("key", key)
+    .maybeSingle();
+  if (row.error) throw row.error;
+  return row.data?.sentence ?? null;
+}
+
 function rowOf(row: {
   key: string;
   sentence: string;

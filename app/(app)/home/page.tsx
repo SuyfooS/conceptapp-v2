@@ -1,9 +1,9 @@
 import { moduleWidgets } from "@domain/modules";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
 import { signOut } from "../../(auth)/actions";
 import { currentClockLine } from "../clock/clock";
+import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
@@ -14,10 +14,12 @@ import {
   currentTeamAvailability,
 } from "../schedule/week";
 import { currentTeam } from "../team";
+import { baseWording, translator } from "../wording";
 import { TodayView } from "./today-view";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.home");
+  // Page titles stay in the app's own words.
+  const t = translator(baseWording, "app.home");
   return { title: t("metaTitle") };
 }
 
@@ -35,6 +37,7 @@ export default async function HomePage() {
     teamAvailability,
     build,
     clockLine,
+    wording,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -44,6 +47,7 @@ export default async function HomePage() {
     currentTeamAvailability(),
     currentScheduleBuild(),
     currentClockLine(),
+    currentWording(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -51,6 +55,7 @@ export default async function HomePage() {
 
   return (
     <TodayView
+      wording={wording}
       signOut={signOut}
       data={{
         now: new Date().toISOString(),

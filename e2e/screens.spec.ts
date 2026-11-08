@@ -12,6 +12,7 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant",
   "/design/console/businesses/bar-hayam",
   "/design/console/businesses/bar-hayam/people/new",
+  "/design/console/businesses/demo-restaurant/wording",
   "/design/shell/team/invite",
   "/design/shell/view-as",
   "/design/shell/module",

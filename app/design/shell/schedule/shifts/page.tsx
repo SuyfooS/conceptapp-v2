@@ -1,4 +1,5 @@
 import { MyShiftsView } from "../../../../(app)/schedule/shifts/my-shifts-view";
+import { baseWording } from "../../../../(app)/wording";
 import { demoSwap } from "./actions";
 import { demoPublished, demoRequest } from "./published";
 
@@ -12,5 +13,5 @@ export default function ShellMyShifts() {
     demoRequest("2", "2026-11-04/morning", "maya"),
     demoRequest("3", "2026-11-07/saturday-night", "yoav", "noa"),
   ]);
-  return <MyShiftsView data={data} swap={demoSwap} />;
+  return <MyShiftsView data={data} swap={demoSwap} wording={baseWording} />;
 }

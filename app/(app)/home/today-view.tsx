@@ -43,7 +43,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { getFormatter, getTranslations } from "next-intl/server";
+import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { moduleIcons } from "../module-icons";
 import type {
@@ -52,6 +52,7 @@ import type {
   ScheduleBuildWeek,
   TeamAvailabilityWeek,
 } from "../schedule/week";
+import { type AppWording, type Translator, translator } from "../wording";
 import { RefreshOnReturn } from "./refresh-on-return";
 
 /** What the schedule module brings to Today; null when it is off. */
@@ -83,7 +84,7 @@ export type TodayData = {
   team: Team | null;
 };
 
-type T = Awaited<ReturnType<typeof getTranslations<"app">>>;
+type T = Translator<"app">;
 type Format = Awaited<ReturnType<typeof getFormatter>>;
 /** A route in the app, or in the demo when it runs under /design/shell. */
 type Path = (to: string) => string;
@@ -120,18 +121,19 @@ const nameIn = (t: T, published: PublishedSchedule, userId: string) =>
  */
 export async function TodayView({
   data,
+  wording,
   signOut,
   base = "",
 }: {
   data: TodayData;
+  /** The business's words; the app's own on the demo. */
+  wording: AppWording;
   signOut: () => Promise<void>;
   base?: string;
 }) {
-  const [t, tm, format] = await Promise.all([
-    getTranslations("app"),
-    getTranslations("modules"),
-    getFormatter(),
-  ]);
+  const t = translator(wording, "app");
+  const tm = translator(wording, "modules");
+  const format = await getFormatter();
   const clock = clockAt(new Date(data.now), data.timeZone);
   const path: Path = (to) => `${base}${to}`;
   const part = dayPart(clock.time);
