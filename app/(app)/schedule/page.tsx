@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { currentWording } from "../current-wording";
 import { moduleMetadata } from "../module-screen";
 import { ScheduleView } from "./schedule-view";
 import { swapAction } from "./shifts/actions";
@@ -15,11 +16,12 @@ export const generateMetadata = () => moduleMetadata("scheduling");
 // then the screens around it. Owners and managers also get building the
 // week, the team's answers and approvals, and next week's draft.
 export default async function SchedulePage() {
-  const [week, team, build, data] = await Promise.all([
+  const [week, team, build, data, wording] = await Promise.all([
     currentAvailabilityWeek(),
     currentTeamAvailability(),
     currentScheduleBuild(),
     currentPublishedSchedule(),
+    currentWording(),
   ]);
   if (!week || !data) notFound();
   return (
@@ -30,6 +32,7 @@ export default async function SchedulePage() {
       team={team}
       build={build}
       swap={swapAction}
+      wording={wording}
     />
   );
 }

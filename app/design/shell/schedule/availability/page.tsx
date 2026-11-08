@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { AvailabilityView } from "../../../../(app)/schedule/availability/availability-view";
+import { baseWording } from "../../../../(app)/wording";
 import { demoSaveAvailability } from "./actions";
 import { demoWeek } from "./week";
 
@@ -42,6 +43,7 @@ async function Demo({ searchParams }: Props) {
       late={state === "late"}
       save={demoSaveAvailability}
       backHref="/design/shell/schedule"
+      wording={baseWording}
     />
   );
 }

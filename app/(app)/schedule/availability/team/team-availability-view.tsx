@@ -9,12 +9,12 @@ import { cn } from "@ui/cn";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { Check, Phone } from "lucide-react";
-import { getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
+import { type AppWording, type Translator, translator } from "../../../wording";
 import type { TeamAvailabilityWeek } from "../../week";
 import { HeroChip } from "../hero-chip";
 
-type T = Awaited<ReturnType<typeof getTranslations<"app">>>;
+type T = Translator<"app">;
 type Team = TeamAvailabilityWeek["team"];
 type Sent = Team["sent"][number];
 type Missing = Team["missing"][number];
@@ -45,18 +45,19 @@ function moment(t: T, iso: string, timeZone: string) {
  * two in two columns; desktop: one table with a column per day. Also rendered
  * with mock data on /design/shell/schedule/availability/team.
  */
-export async function TeamAvailabilityView({
+export function TeamAvailabilityView({
   data,
   backHref,
+  wording,
 }: {
   data: TeamAvailabilityWeek;
   /** The schedule screen this one sits under. */
   backHref: string;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const [t, tm] = await Promise.all([
-    getTranslations("app"),
-    getTranslations("modules.scheduling"),
-  ]);
+  const t = translator(wording, "app");
+  const tm = translator(wording, "modules.scheduling");
   const { week, team } = data;
   const view = { t, data };
   const hasTeam = team.counts.sent + team.counts.missing > 0;

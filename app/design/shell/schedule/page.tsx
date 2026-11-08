@@ -1,4 +1,5 @@
 import { ScheduleView } from "../../../(app)/schedule/schedule-view";
+import { baseWording } from "../../../(app)/wording";
 import { demoSwap } from "./shifts/actions";
 import { demoManagerSchedule, demoRequest } from "./shifts/published";
 
@@ -13,6 +14,7 @@ export default function ShellSchedule() {
         demoRequest("3", "2026-11-07/saturday-night", "yoav", "noa"),
       ])}
       swap={demoSwap}
+      wording={baseWording}
     />
   );
 }
