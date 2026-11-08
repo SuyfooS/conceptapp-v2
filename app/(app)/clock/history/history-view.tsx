@@ -5,7 +5,7 @@ import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { History } from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { type AppWording, translator } from "../../wording";
 import type { ClockPaths } from "../clock-types";
 import { MonthHero } from "../month-hero";
 import { ShiftList } from "../shift-list";
@@ -23,11 +23,14 @@ export type HistoryData = {
 export function HistoryView({
   data,
   paths,
+  wording,
 }: {
   data: HistoryData;
   paths: ClockPaths;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.clock.history");
+  const t = translator(wording, "app.clock.history");
 
   return (
     <PageBody className={pageGlowClass}>
@@ -44,12 +47,14 @@ export function HistoryView({
           minutes={data.minutes}
           countId="history"
           caption={t("total", { count: data.records.length })}
+          t={t}
           overlap={data.records.length > 0}
         />
 
         {data.records.length > 0 ? (
           <ShiftList
             records={data.records}
+            t={t}
             className="relative z-10 mx-3 -mt-[56px] shadow-float xl:mx-5"
           />
         ) : (

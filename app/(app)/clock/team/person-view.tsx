@@ -36,6 +36,8 @@ export function PersonHoursView({
   paths: TeamPaths;
 }) {
   const t = useTranslations("app.clock.team");
+  // The month and the shifts speak the history's words.
+  const tHistory = useTranslations("app.clock.history");
   // The sheet stays mounted, closed, so it opens already inside the business's
   // colour; a sheet mounted open moves there on its first change and loses focus.
   const [open, setOpen] = useState(false);
@@ -103,11 +105,13 @@ export function PersonHoursView({
           minutes={data.minutes}
           countId={`person-${data.person.userId}`}
           caption={t("caption", { count: data.records.length })}
+          t={tHistory}
           overlap={data.records.length > 0}
         />
         {data.records.length > 0 ? (
           <ShiftList
             records={data.records}
+            t={tHistory}
             onEdit={
               data.viewOnly
                 ? undefined

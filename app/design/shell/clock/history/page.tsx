@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { HistoryView } from "../../../../(app)/clock/history/history-view";
+import { baseWording } from "../../../../(app)/wording";
 import { demoRecords } from "../data";
 
 type Props = { searchParams: Promise<{ state?: string }> };
@@ -29,6 +30,7 @@ async function Demo({ searchParams }: Props) {
         history: "/design/shell/clock/history",
         team: "/design/shell/clock/team",
       }}
+      wording={baseWording}
     />
   );
 }
