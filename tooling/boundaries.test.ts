@@ -124,6 +124,27 @@ describe("the clock's browser files", () => {
       specifier.startsWith("@domain/"),
     );
 
+  /** `import("…")`, `typeof import("…")` included: loaded when needed, if ever. */
+  const DYNAMIC = /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
+
+  /** Modules a file names only in `import(…)`, apart from the rest. */
+  const split = (source: string) => ({
+    lazy: [...new Set([...source.matchAll(DYNAMIC)].map((m) => m[1] ?? ""))],
+    eager: source.replace(DYNAMIC, ""),
+  });
+
+  it("tells modules loaded on demand from the ones loaded with the page", () => {
+    const { lazy, eager } = split(
+      [
+        'import { a } from "@domain/a";',
+        'type B = typeof import("@domain/b");',
+        'const c = () => import("@domain/c");',
+      ].join("\n"),
+    );
+    expect(lazy).toEqual(["@domain/b", "@domain/c"]);
+    expect(importSpecifiers(eager)).toEqual(["@domain/a"]);
+  });
+
   it("tells value imports from type imports", () => {
     expect(
       domainValues(
@@ -167,14 +188,33 @@ describe("the clock's browser files", () => {
   const allowed: Record<string, string[]> = {
     "@domain/time-clock-format": [],
     "@domain/punch-code-format": [],
-    // PR B loads the QR reader on demand; it brings the decoder and nothing else.
+  };
+  /**
+   * Loaded only with `import()`, never with the page: the QR decoder, for a
+   * phone without a reader of its own. It brings the decoder and nothing else.
+   */
+  const onDemand: Record<string, string[]> = {
     "@domain/qr-decode": ["qr/decode.js"],
   };
 
+  /** The clock's browser files, and the packages/ui files only it uses. */
+  const clockFiles = [
+    "app/(app)/clock/clock-panel.tsx",
+    "app/(app)/clock/punch-code-sheet.tsx",
+    "app/(app)/clock/without-code-sheet.tsx",
+    "app/(app)/clock/scan-punch.tsx",
+    "packages/ui/use-qr-camera.ts",
+    "packages/ui/qr-camera.ts",
+    "packages/ui/scan-circle.tsx",
+  ];
+
   it("import no Zod", () => {
-    for (const [module, imports] of Object.entries(allowed)) {
+    for (const [module, imports] of Object.entries({
+      ...allowed,
+      ...onDemand,
+    })) {
       const file = `packages/domain/${module.slice("@domain/".length)}.ts`;
-      if (!existsSync(join(root, file))) continue;
+      expect(existsSync(join(root, file)), file).toBe(true);
       expect(importSpecifiers(read(file)), file).toEqual(imports);
     }
     /** Each file checked, with how many steps were followed from it. */
@@ -183,30 +223,66 @@ describe("the clock's browser files", () => {
       if ((checked.get(file) ?? -1) >= depth) return;
       checked.set(file, depth);
       const source = read(file);
+      const { lazy, eager } = split(source);
       expect(importSpecifiers(source), file).not.toContain("zod");
+      // With the page: only the allowed.
       expect(
-        domainValues(source).filter((module) => !(module in allowed)),
+        domainValues(eager).filter((module) => !(module in allowed)),
+        file,
+      ).toEqual([]);
+      // On demand: the allowed, or what is only ever loaded that way.
+      expect(
+        lazy.filter(
+          (module) =>
+            module.startsWith("@domain/") &&
+            !(module in allowed) &&
+            !(module in onDemand),
+        ),
+        file,
+      ).toEqual([]);
+      // Named in no statement, types included, so nothing brings it in with
+      // the page.
+      expect(
+        importSpecifiers(eager).filter((module) => module in onDemand),
         file,
       ).toEqual([]);
       if (depth === 0) return;
-      // One step into the files it takes values from beside it.
-      for (const specifier of valueImports(source)) {
-        if (!specifier.startsWith(".")) continue;
-        const base = join(dirname(file), specifier);
+      // One step into the files it takes values from: beside it, or in
+      // packages/ui.
+      for (const specifier of valueImports(eager)) {
+        let base: string;
+        if (specifier.startsWith(".")) base = join(dirname(file), specifier);
+        else if (specifier.startsWith("@ui/")) {
+          base = join("packages/ui", specifier.slice("@ui/".length));
+        } else continue;
         const next = [`${base}.ts`, `${base}.tsx`].find((path) =>
           existsSync(join(root, path)),
         );
         if (next) check(next.replaceAll("\\", "/"), depth - 1);
       }
     };
-    for (const file of [
-      "app/(app)/clock/clock-panel.tsx",
-      "app/(app)/clock/punch-code-sheet.tsx",
-      "app/(app)/clock/without-code-sheet.tsx",
-      "app/(app)/clock/scan-punch.tsx",
-    ].filter((path) => existsSync(join(root, path)))) {
+    for (const file of clockFiles) {
+      expect(existsSync(join(root, file)), file).toBe(true);
       check(file, 1);
     }
+    // The steps reach packages/ui through its alias.
+    expect([...checked.keys()]).toEqual(
+      expect.arrayContaining([
+        "packages/ui/button.tsx",
+        "packages/ui/list-row.tsx",
+      ]),
+    );
+  });
+
+  it("load the QR decoder only on demand", () => {
+    const file = "packages/ui/use-qr-camera.ts";
+    const source = read(file);
+    const { lazy, eager } = split(source);
+    expect(lazy).toContain("@domain/qr-decode");
+    expect(importSpecifiers(eager)).not.toContain("@domain/qr-decode");
+    expect(
+      [...source.matchAll(STATEMENT)].map(([, , , , specifier]) => specifier),
+    ).not.toContain("@domain/qr-decode");
   });
 });
 

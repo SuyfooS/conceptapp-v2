@@ -6,8 +6,8 @@ import type { ClockActionResult } from "../../../(app)/clock/clock-types";
 
 // Stand-ins for the demo's clock: they store nothing and move to the state the
 // real action would leave. With a code asked for (?code=on), "000000" stands
-// for wrong digits; any others pass, since the demo's code screen makes digits
-// that nothing keeps.
+// for wrong digits; any others pass, and so does any clock code the camera
+// reads, since the demo's code screen makes codes that nothing keeps.
 
 const CLOCK = "/design/shell/clock";
 

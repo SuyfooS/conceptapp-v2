@@ -1,8 +1,36 @@
 import { describe, expect, it } from "vitest";
-import { punchPayload } from "./punch-code-format";
+import { parsePunchScan, punchPayload } from "./punch-code-format";
 import { QR_QUIET_ZONE, qrMatrix, qrPath } from "./qr";
+import { decodeQrImage, type QrImage } from "./qr-decode";
 
 const CODE = "c0nceptApp-gallery-qr1";
+
+/**
+ * A matrix painted the way a screen shows it: black modules of `scale` pixels
+ * on white, `offset` pixels in from the top and the start, in a square picture
+ * with as much white again after it.
+ */
+function paint(
+  matrix: boolean[][],
+  scale: number,
+  offset = 0,
+): QrImage & { data: Uint8ClampedArray } {
+  const side = matrix.length * scale + 2 * offset;
+  const data = new Uint8ClampedArray(side * side * 4).fill(255);
+  matrix.forEach((row, y) => {
+    row.forEach((dark, x) => {
+      if (!dark) return;
+      for (let dy = 0; dy < scale; dy += 1) {
+        for (let dx = 0; dx < scale; dx += 1) {
+          const at =
+            ((offset + y * scale + dy) * side + offset + x * scale + dx) * 4;
+          data.fill(0, at, at + 3);
+        }
+      }
+    });
+  });
+  return { width: side, height: side, data };
+}
 
 describe("qrMatrix", () => {
   it("draws a quiet zone of four modules", () => {
@@ -28,6 +56,42 @@ describe("qrMatrix", () => {
     const a = qrPath(qrMatrix(punchPayload(CODE)));
     expect(qrPath(qrMatrix(punchPayload(CODE)))).toEqual(a);
     expect(qrPath(qrMatrix(punchPayload("x".repeat(22)))).d).not.toBe(a.d);
+  });
+});
+
+describe("decodeQrImage", () => {
+  it("reads back what it draws", () => {
+    const text = punchPayload(CODE);
+    const matrix = qrMatrix(text);
+    expect(decodeQrImage(paint(matrix, 4))).toBe(text);
+    // Smaller modules, off the corner: closer to what a camera crops.
+    const read = decodeQrImage(paint(matrix, 3, 7));
+    expect(read).toBe(text);
+    expect(parsePunchScan(read ?? "")).toBe(CODE);
+  });
+
+  it("reads a code whatever its 22 characters are", () => {
+    for (const code of [
+      "A".repeat(22),
+      "_-".repeat(11),
+      "z9Y8x7W6v5U4t3S2r1Q0pO",
+    ]) {
+      expect(decodeQrImage(paint(qrMatrix(punchPayload(code)), 4))).toBe(
+        punchPayload(code),
+      );
+    }
+  });
+
+  it("finds nothing in a blank picture", () => {
+    const side = 120;
+    const blank = new Uint8ClampedArray(side * side * 4).fill(255);
+    expect(decodeQrImage({ width: side, height: side, data: blank })).toBe(
+      null,
+    );
+    // Nor in a picture of half a code.
+    const half = paint(qrMatrix(punchPayload(CODE)), 4);
+    half.data.fill(255, half.data.length / 2);
+    expect(decodeQrImage(half)).toBe(null);
   });
 });
 

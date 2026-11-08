@@ -16,9 +16,10 @@ const SUCCESS_MS = 600;
 /**
  * Clocking in or out with the six digits under the code a manager is showing.
  * Wrong digits drain away for the ones shown now; after too many, typing waits
- * and "without a code" becomes the way on. The block is the panel's, so it
- * holds each time the sheet opens. The sheet stays mounted, closed, so it
- * opens inside the business's colour; what is inside starts afresh each time.
+ * and "without a code" becomes the way on, with scanning beside it (`onScan`),
+ * which a typing block doesn't stop. The block is the panel's, so it holds
+ * each time the sheet opens. The sheet stays mounted, closed, so it opens
+ * inside the business's colour; what is inside starts afresh each time.
  */
 export function PunchCodeSheet({
   open,
@@ -27,6 +28,7 @@ export function PunchCodeSheet({
   locked,
   punchWith,
   onWithoutCode,
+  onScan,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -38,6 +40,8 @@ export function PunchCodeSheet({
     proof: PunchProof,
   ) => Promise<ClockActionResult>;
   onWithoutCode: () => void;
+  /** Back to the camera, offered while typing is blocked. */
+  onScan?: () => void;
 }) {
   const t = useTranslations("app.clock");
   return (
@@ -54,6 +58,7 @@ export function PunchCodeSheet({
         punchWith={punchWith}
         onDone={() => onOpenChange(false)}
         onWithoutCode={onWithoutCode}
+        onScan={onScan}
       />
     </Sheet>
   );
@@ -65,6 +70,7 @@ function TypeDigits({
   punchWith,
   onDone,
   onWithoutCode,
+  onScan,
 }: {
   direction: "in" | "out";
   locked: boolean;
@@ -74,6 +80,7 @@ function TypeDigits({
   ) => Promise<ClockActionResult>;
   onDone: () => void;
   onWithoutCode: () => void;
+  onScan?: () => void;
 }) {
   const t = useTranslations("app.clock");
   const [status, setStatus] = useState<CodeSlotsStatus>("idle");
@@ -139,6 +146,12 @@ function TypeDigits({
       >
         {t("none.open")}
       </Button>
+      {/* The block says scanning still works: the way there. */}
+      {locked && onScan ? (
+        <Button variant="ghost" disabled={busy} onClick={onScan}>
+          {t("none.back")}
+        </Button>
+      ) : null}
     </div>
   );
 }
