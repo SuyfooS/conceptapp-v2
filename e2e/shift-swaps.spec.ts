@@ -59,7 +59,7 @@ test.afterEach(async () => {
 });
 
 // Noa signs in first and Yoav second: sign-in.spec.ts runs next and asks
-// for a code for Noa, which the auth server refuses within 5 seconds.
+// for a code for Noa, which the auth server refuses within its resend wait.
 test("a worker gives a shift away, a colleague takes it, the worker cancels", async ({
   page,
   browser,

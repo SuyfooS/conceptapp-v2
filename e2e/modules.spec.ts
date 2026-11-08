@@ -8,7 +8,8 @@ import { setDemoModule } from "./sms";
 // the clock, the modules that are built; a test that needs another switches it
 // on itself, as the ConceptApp team would from the console.
 // The worker here is not the one sign-in.spec.ts uses: the auth server
-// refuses a second code to the same number within 5 seconds.
+// refuses a second code to the same number within its resend wait
+// (`[auth.sms] max_frequency`).
 const OWNER = { local: "050-000-0001", e164: "+972500000001" };
 const WORKER = { local: "050-000-0004", e164: "+972500000004" };
 

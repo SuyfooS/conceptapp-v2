@@ -5,7 +5,7 @@ import { signIn } from "./session";
 
 // Seeded in supabase/seed.sql: two people on the ConceptApp team (in no
 // business) and the demo restaurant's shift manager. Numbers no other spec
-// signs in with, so the auth server's 5-second resend limit never trips.
+// signs in with, so the auth server's resend wait never trips.
 const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 const ONBOARDER = { local: "050-000-0006", e164: "+972500000006" };
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
