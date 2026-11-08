@@ -43,6 +43,7 @@ const AdminBusiness = z.object({
   created_at: z.string(),
   members: z.number().int().nonnegative(),
   open_invites: z.number().int().nonnegative(),
+  expired_invites: z.number().int().nonnegative().default(0),
 });
 
 export type AdminBusiness = {
@@ -54,10 +55,13 @@ export type AdminBusiness = {
   createdAt: string;
   members: number;
   openInvites: number;
+  /** Invites nobody claimed in time: the business may be stuck without them. */
+  expiredInvites: number;
 };
 
 /**
- * Every business, newest first, with active members and open invites.
+ * Every business, newest first, with active members, open invites and
+ * invites that expired.
  * `public.admin_businesses` refuses anyone off the team, so this throws for
  * them; callers check `getPlatformRole` first.
  */
@@ -77,6 +81,7 @@ export async function listBusinesses(): Promise<AdminBusiness[]> {
       createdAt: row.created_at,
       members: row.members,
       openInvites: row.open_invites,
+      expiredInvites: row.expired_invites,
     }));
 }
 
@@ -127,8 +132,9 @@ const BusinessSetupRow = z.object({
       name: z.string(),
       phone: z.string().nullable(),
       role: z.enum(ROLES),
-      status: z.enum(["member", "invited"]),
+      status: z.enum(["member", "invited", "expired"]),
       invite_id: z.uuid().nullable(),
+      expires_at: z.string().nullable().default(null),
     }),
   ),
 });
@@ -138,14 +144,20 @@ export type SetupPerson = {
   name: string;
   phone: string | null;
   role: Role;
-  status: "member" | "invited";
-  /** The open invite, for people still invited; null for members. */
+  /** A member, an invite still open, or one nobody claimed in time. */
+  status: "member" | "invited" | "expired";
+  /** The invite, open or expired; null for members. */
   inviteId: string | null;
+  /** When the invite runs out, or ran out; null for members. */
+  expiresAt: string | null;
 };
 
-export type BusinessSetup = Omit<AdminBusiness, "members" | "openInvites"> & {
+export type BusinessSetup = Omit<
+  AdminBusiness,
+  "members" | "openInvites" | "expiredInvites"
+> & {
   address: string | null;
-  /** Active members, then open invites; owners first. */
+  /** Active members, then open invites, then expired ones; owners first. */
   people: SetupPerson[];
 };
 
@@ -172,9 +184,10 @@ export async function getBusinessSetup(
     address: row.address,
     templateKey: row.template_key,
     createdAt: row.created_at,
-    people: row.people.map(({ invite_id, ...person }) => ({
+    people: row.people.map(({ invite_id, expires_at, ...person }) => ({
       ...person,
       inviteId: invite_id,
+      expiresAt: expires_at,
     })),
   };
 }

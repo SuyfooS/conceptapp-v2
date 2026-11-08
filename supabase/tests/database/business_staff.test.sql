@@ -92,7 +92,7 @@ select is(
 select pg_temp.sign_in('60000000-0000-4000-a000-00000000000a');
 select is(
   (select b - 'id' - 'created_at' || jsonb_build_object('people', (
-      select jsonb_agg(p - 'invite_id' order by n)
+      select jsonb_agg(p - 'invite_id' - 'expires_at' order by n)
       from jsonb_array_elements(b -> 'people') with ordinality as e(p, n)))
     from public.admin_business('bs-staff-cafe') as b),
   jsonb_build_object(

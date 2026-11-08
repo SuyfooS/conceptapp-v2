@@ -1,6 +1,10 @@
 "use server";
 
-import { inviteToTeam, issueTeamInviteLink } from "@db/invites";
+import {
+  activeElsewhere,
+  inviteToTeam,
+  issueTeamInviteLink,
+} from "@db/invites";
 import { inviteLink } from "@domain/invites";
 import {
   canSeeTeam,
@@ -14,6 +18,7 @@ import { currentMember } from "../member";
 
 export type TeamFailure =
   | "alreadyMember"
+  | "elsewhere"
   | "notAllowed"
   | "notOpen"
   | "failed"
@@ -31,7 +36,9 @@ export type InviteState =
   | { done: { name: string; phone: string; link: string } };
 
 export type ResendState =
-  | { link?: undefined; failure?: TeamFailure }
+  // A fresh link is for someone already invited here, never refused for
+  // being in another business.
+  | { link?: undefined; failure?: Exclude<TeamFailure, "elsewhere"> }
   | { link: string; failure?: undefined };
 
 /**
@@ -78,6 +85,13 @@ export async function inviteAction(
   if (!parsed.ok) return { errors: parsed.errors, values };
 
   try {
+    // The app opens a person’s oldest business, so someone already working
+    // in another one would never see this one.
+    if (
+      await activeElsewhere(parsed.value.phone, actor.membership.business.id)
+    ) {
+      return { failure: "elsewhere", values };
+    }
     const result = await inviteToTeam(
       actor.userId,
       actor.membership.business.id,
