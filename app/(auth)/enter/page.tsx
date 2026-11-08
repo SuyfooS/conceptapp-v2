@@ -17,7 +17,7 @@ export default function EnterPage() {
   if (!PASSIVE_SIGN_IN) notFound();
   return (
     <AuthScreen title={t("title")}>
-      <EnterForm enter={enterAs} reset={resetDemo} />
+      <EnterForm enter={enterAs} reset={resetDemo} signInHref="/sign-in" />
     </AuthScreen>
   );
 }

@@ -6,6 +6,8 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PersonAvatar } from "@ui/person-row";
 import { Spinner } from "@ui/spinner";
 import { StatusToast } from "@ui/status-toast";
+import { Smartphone } from "lucide-react";
+import Link from "next/link";
 import { unstable_rethrow } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
@@ -13,17 +15,22 @@ import { authFieldsClass } from "../auth-screen";
 import type { EnterResult, ResetResult } from "./actions";
 
 /**
- * One press on a person, and they are in. The people are grouped by their
- * demo business, and the door can put both businesses back the way they start.
+ * The door has two ways in (Orel, 8 November 2026): real sign-in with a phone
+ * number and an SMS code, for anyone invited to a business, and the demo, one
+ * press on a person. The demo's people are grouped by their business, and the
+ * door can put both businesses back the way they start.
  */
 export function EnterForm({
   enter,
   reset,
+  signInHref,
 }: {
   /** `enterAs`, or the design demo's stand-in. */
   enter: (person: string) => Promise<EnterResult>;
   /** `resetDemo`, or the design demo's stand-in. */
   reset: () => Promise<ResetResult>;
+  /** Where real sign-in is: `/sign-in`, or the design demo's. */
+  signInHref: string;
 }) {
   const t = useTranslations("auth.enter");
   const id = useId();
@@ -49,6 +56,15 @@ export function EnterForm({
 
   return (
     <div className="flex flex-col gap-6">
+      <div className="flex flex-col gap-3">
+        <p className="px-1 text-ink-2">{t("phoneIntro")}</p>
+        <Button asChild size="lg">
+          <Link href={signInHref}>
+            <Smartphone aria-hidden="true" />
+            {t("phone")}
+          </Link>
+        </Button>
+      </div>
       <p className="px-1 text-ink-2">{t("intro")}</p>
       {DEMO_BUSINESSES.map((business) => (
         <section
