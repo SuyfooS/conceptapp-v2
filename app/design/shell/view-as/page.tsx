@@ -22,6 +22,7 @@ export default function ShellViewAs() {
         viewerRole="manager"
         inviteHref="/design/shell/team/invite"
         resend={demoResendAction}
+        wording={baseWording}
       />
     </>
   );

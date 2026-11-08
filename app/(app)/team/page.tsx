@@ -1,14 +1,16 @@
 import { canSeeTeam } from "@domain/team";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { currentWording } from "../current-wording";
 import { currentMember } from "../member";
 import { currentTeam } from "../team";
+import { baseWording, translator } from "../wording";
 import { resendInviteAction } from "./actions";
 import { TeamView } from "./team-view";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.team");
+  // Page titles stay in the app's own words.
+  const t = translator(baseWording, "app.team");
   return { title: t("title") };
 }
 
@@ -26,6 +28,7 @@ export default async function TeamPage() {
       viewerRole={role}
       inviteHref="/team/invite"
       resend={resendInviteAction}
+      wording={await currentWording()}
     />
   );
 }
