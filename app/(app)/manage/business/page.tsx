@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { currentWording } from "../../current-wording";
+import { baseWording, translator } from "../../wording";
 import { saveBusinessDetailsAction } from "../actions";
 import { BusinessDetailsView } from "../business-details-view";
 import { closesOnShabbat, manageAccess } from "../manage";
 import { shabbatByCity } from "../shabbat-by-city";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.manage.business");
+  const t = translator(baseWording, "app.manage.business");
   return { title: t("title") };
 }
 
@@ -24,6 +25,7 @@ export default async function ManageBusinessPage() {
       showCity={closesOnShabbat(access.rows)}
       cities={shabbatByCity(new Date(), access.timeZone)}
       backHref="/manage"
+      wording={await currentWording()}
     />
   );
 }

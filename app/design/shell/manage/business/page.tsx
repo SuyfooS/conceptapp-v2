@@ -2,6 +2,7 @@ import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { BusinessDetailsView } from "../../../../(app)/manage/business-details-view";
 import { closesOnShabbat } from "../../../../(app)/manage/manage";
 import { shabbatByCity } from "../../../../(app)/manage/shabbat-by-city";
+import { baseWording } from "../../../../(app)/wording";
 import { demoBusinessDetails, demoModuleRows, demoNow } from "../../data";
 import { demoSaveBusinessDetails } from "../actions";
 
@@ -16,6 +17,7 @@ export default function ShellManageBusiness() {
       showCity={closesOnShabbat(demoModuleRows)}
       cities={shabbatByCity(demoNow, ISRAEL_TIME_ZONE)}
       backHref="/design/shell/manage"
+      wording={baseWording}
     />
   );
 }
