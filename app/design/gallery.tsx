@@ -26,6 +26,7 @@ import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
+import { Logo, LogoMark } from "@ui/logo";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { ProgressRing } from "@ui/progress-ring";
@@ -170,16 +171,7 @@ function GalleryBody({
         className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col gap-8 px-4 py-8"
       >
         <header className="flex flex-col gap-2">
-          <span
-            dir="ltr"
-            className="flex items-center gap-2 self-start font-bold text-md"
-          >
-            <span
-              aria-hidden="true"
-              className="size-4 rounded-[5px] bg-brand"
-            />
-            ConceptApp
-          </span>
+          <Logo label={t("brand")} className="self-start" />
           <h1 className="font-bold text-2xl">{t("title")}</h1>
           <p className="text-ink-2">{t("intro")}</p>
         </header>
@@ -258,6 +250,18 @@ function GalleryBody({
             </div>
           </div>
         </Card>
+
+        <Section title={t("logo")}>
+          <Card className="flex flex-col gap-5">
+            <Logo label={t("brand")} className="h-12 self-start" />
+            <div className="flex items-end gap-4">
+              <LogoMark className="h-12" />
+              <LogoMark className="h-8" />
+              <LogoMark className="h-5" />
+            </div>
+            <p className="text-ink-2 text-sm">{t("logoText")}</p>
+          </Card>
+        </Section>
 
         <Section title={t("colors")}>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">

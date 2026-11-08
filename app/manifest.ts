@@ -5,7 +5,8 @@ import { getTranslations } from "next-intl/server";
  * Install as an app (approved by Orel): what a phone needs to put ConceptApp
  * on the home screen and open it without the browser around it, straight to
  * Today. The colours are the page's, light, so the splash matches the first
- * screen; the icons are app/icon.svg's mark, drawn full bleed in public/.
+ * screen; the icons are ConceptApp's mark in white on purple, full bleed, made
+ * with the files in docs/brand.
  */
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const t = await getTranslations("metadata");
