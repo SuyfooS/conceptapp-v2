@@ -8,7 +8,11 @@ export default function EnterDemo() {
   const t = useTranslations("auth.enter");
   return (
     <AuthScreen title={t("title")}>
-      <EnterForm enter={demoEnter} reset={demoReset} />
+      <EnterForm
+        enter={demoEnter}
+        reset={demoReset}
+        signInHref="/design/screens/sign-in"
+      />
     </AuthScreen>
   );
 }

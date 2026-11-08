@@ -1,16 +1,17 @@
 import { z } from "zod";
 
 /**
- * Orel, 6 November 2026: real sign-in and its security wait for later. Until
- * then the door is passive: one press on a person of a demo business, with no
- * phone and no code.
+ * The demo door (Orel, 6 November 2026): one press on a person of a demo
+ * business, with no phone and no code. Since 8 November it stands beside real
+ * sign-in with a phone number and an SMS code, and stays easy to reach: both
+ * are on `/enter`.
  *
  * It reaches only these fictional people, who exist only where the demo data
  * was added (`supabase/hosted-demo.sql`, `supabase/seed.sql`). Row-level
  * security is unchanged, so they see their own business and nothing else. The
  * console is not on offer. Anyone with the address can come in and change the
- * demo businesses, and put them back with the door's reset, so set this to
- * false before real people use the project.
+ * demo businesses, and put them back with the door's reset, so real people
+ * never join a demo business. False closes the demo door.
  */
 export const PASSIVE_SIGN_IN = true;
 

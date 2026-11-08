@@ -91,6 +91,22 @@ test("the door offers a restaurant and a shop, each with its people", async ({
   });
 });
 
+// Two doors (Orel, 8 November 2026): real sign-in beside the demo, each
+// leading to the other.
+test("the door leads to real sign-in, and sign-in back to the demo", async ({
+  page,
+}) => {
+  await page.goto("/enter");
+  await page.getByRole("link", { name: e.phone }).click();
+  await expect(page).toHaveURL(/\/sign-in$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.auth.signIn.title }),
+  ).toBeVisible();
+  await page.getByRole("link", { name: he.auth.signIn.demo }).click();
+  await expect(page).toHaveURL(/\/enter$/);
+  await expect(person(page, "owner")).toBeVisible();
+});
+
 test("in the shop, this week is already published and no tab is empty", async ({
   page,
 }, testInfo) => {

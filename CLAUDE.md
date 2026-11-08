@@ -165,9 +165,12 @@ font files or SF Symbols; asking the device for its own font is fine.
 - Server-only writes (bookings, invite claims, punch codes, publishing) go
   through server code with the secret key (`SUPABASE_SECRET_KEY`); the browser
   uses the publishable key and talks to Supabase under RLS only.
-- Sign-in is passive for now (Orel, 6 November 2026): one press on a demo person at
-  `/enter`, reaching only those people, with RLS unchanged. `PASSIVE_SIGN_IN` in
-  `@domain/passive-sign-in` goes false before real people use the project.
+- Sign-in has two doors (Orel, 8 November 2026), both on `/enter`: real sign-in with
+  a phone number and an SMS code (Twilio Verify on the hosted project), and the demo,
+  one press on a demo person, kept easy to reach. The demo door reaches only the
+  demo people, with RLS unchanged, and anyone can come in and reset those businesses,
+  so real people never join a demo business. `PASSIVE_SIGN_IN` in
+  `@domain/passive-sign-in` closes the demo door.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.
 - Orel works on Windows PowerShell 5: when giving him commands, one per line,

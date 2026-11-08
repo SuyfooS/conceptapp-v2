@@ -279,6 +279,7 @@
       "verify": "Sign in",
       "resend": "Send a new code",
       "changePhone": "Different number",
+      "demo": "Try the demo, no phone needed",
       "errors": {
         "invalidPhone": "Enter an Israeli mobile number, e.g. 050-123-4567.",
         "unknownPhone": "This number isn't registered yet. A manager at your business can add it.",
@@ -325,7 +326,9 @@
     "enter": {
       "metaTitle": "Enter",
       "title": "Enter",
-      "intro": "Choose a business and who is coming in. For now there's no phone or code.",
+      "phoneIntro": "If you were invited to a business, sign in with your phone number and a code by SMS.",
+      "phone": "Sign in with a phone number",
+      "intro": "Or try the demo: choose a business and who comes in, with no phone and no code.",
       "warning": "This is a demo: anyone with the address can come in and change things. Don't enter real details here.",
       "failed": "That didn't work. Try again.",
       "businesses": {

@@ -3,6 +3,7 @@
 import { displayIsraeliMobile } from "@domain/phone";
 import { Button } from "@ui/button";
 import { FieldGroup, GroupedPhoneField } from "@ui/field-group";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useActionState } from "react";
 import type { SignInState } from "../actions";
@@ -13,9 +14,12 @@ const initial: SignInState = { step: "phone" };
 
 export function SignInForm({
   signIn,
+  demoHref,
 }: {
   /** `signIn`, or the design demo's stand-in. */
   signIn: (prev: SignInState, form: FormData) => Promise<SignInState>;
+  /** The demo door, while it is open: the way back to it from the phone step. */
+  demoHref?: string;
 }) {
   const t = useTranslations("auth.signIn");
   const [state, action, pending] = useActionState(signIn, initial);
@@ -44,6 +48,11 @@ export function SignInForm({
         >
           {t("send")}
         </Button>
+        {demoHref ? (
+          <Button asChild variant="ghost" className="self-center">
+            <Link href={demoHref}>{t("demo")}</Link>
+          </Button>
+        ) : null}
       </form>
     );
   }
