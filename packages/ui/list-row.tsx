@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import { cn } from "./cn";
 
 type Content = {
@@ -16,7 +16,11 @@ type Content = {
 export type ListRowProps = Content &
   (
     | { href: string; onClick?: never }
-    | { onClick: () => void; href?: never }
+    | {
+        /** Gets the click, whose `currentTarget` is the row, to focus later. */
+        onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+        href?: never;
+      }
     | { href?: never; onClick?: never }
   );
 

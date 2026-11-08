@@ -88,23 +88,30 @@ test("the team replaces a sentence from the console, and can undo it", async ({
       })
       .click();
     const field = page.getByLabel(w.sheet.field);
-    // A sentence missing what the app fills in is refused.
+    const saveButton = page.getByRole("button", { name: w.sheet.save });
+    // Nothing to save until the sentence changes.
+    await expect(saveButton).toBeDisabled();
+    // A sentence that breaks the app's braces is refused, back in the field.
     await field.fill("{oops");
-    await page.getByRole("button", { name: w.sheet.save }).click();
+    await saveButton.click();
     await expect(page.getByRole("dialog")).toContainText(
       w.errors.syntax.slice(0, 20),
     );
+    await expect(field).toBeFocused();
     await field.fill(mine);
-    await page.getByRole("button", { name: w.sheet.save }).click();
+    await saveButton.click();
     await expect(page.getByText(w.saved).first()).toBeVisible();
     await expect.poll(() => demoWording(key)).toBe(mine);
+    const undo = page.getByRole("button", { name: w.undo });
+    await expect(undo).toBeFocused();
     await page.screenshot({
       path: testInfo.outputPath("wording-editor.png"),
       fullPage: true,
     });
 
-    await page.getByRole("button", { name: w.undo }).click();
+    await undo.click();
     await expect.poll(() => demoWording(key)).toBeNull();
+    await expect(page.getByLabel(w.search)).toBeFocused();
   } finally {
     await setDemoWording(key, null, he.modules.scheduling.description);
   }

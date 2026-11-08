@@ -5,6 +5,7 @@ import {
   editableKeys,
   fittingWording,
   isEditableKey,
+  keptParts,
   layerWording,
   type MessageTree,
   mergeWording,
@@ -12,6 +13,7 @@ import {
   searchable,
   sentenceFits,
   shownSentence,
+  shownWording,
   WORDING_MAX,
   wordingEntries,
   wordingGroupOf,
@@ -91,6 +93,30 @@ describe("placeholders", () => {
     ).toBe(false);
     expect(sentenceFits("<ltr>{phone}</ltr>", "<ltr>{phone}")).toBe(false);
   });
+
+  it("doesn't count what an apostrophe quotes, which shows as written", () => {
+    expect(sentenceFits("{count} משמרות", "'{count}' משמרות")).toBe(false);
+    expect(
+      sentenceFits("<ltr>{phone}</ltr> לא בצוות", "מס'<ltr>{phone}</ltr> לא"),
+    ).toBe(false);
+    // A doubled apostrophe is one apostrophe, and quotes nothing.
+    expect(sentenceFits("{name}", "''{name}''")).toBe(true);
+    // An apostrophe before a letter is just an apostrophe.
+    expect(sentenceFits("{name} ברח' הרצל", "{name}, רח' הרצל")).toBe(true);
+  });
+
+  it("names what must stay, with an argument's kind", () => {
+    expect(keptParts("{count, plural, one {אחד} other {#}} ב{day}")).toEqual([
+      "{count, plural, …}",
+      "{day}",
+    ]);
+    expect(keptParts("<ltr>{phone}</ltr> ו-<ltr>{other}</ltr>")).toEqual([
+      "{other}",
+      "{phone}",
+      "<ltr>",
+    ]);
+    expect(keptParts("הצוות")).toEqual([]);
+  });
 });
 
 describe("layers", () => {
@@ -113,6 +139,20 @@ describe("layers", () => {
         "admin.nav.businesses": "חנויות",
       }),
     ).toEqual({ "app.nav.home": "הבית" });
+  });
+
+  it("checks each layer on its own, as the console shows it", () => {
+    const template = { "app.team.hint": "<ltr>{phone}</ltr> לא בחנות" };
+    // The business's sentence was written before the app's changed.
+    const business = { "app.team.hint": "{number} לא בצוות" };
+    expect(shownWording(tree, template, business)).toEqual(template);
+    const entry = wordingEntries(tree, template, business).find(
+      (e) => e.key === "app.team.hint",
+    );
+    expect(entry && shownSentence(entry)).toEqual({
+      sentence: "<ltr>{phone}</ltr> לא בחנות",
+      source: "template",
+    });
   });
 });
 
@@ -176,6 +216,9 @@ describe("checkSentence", () => {
       ok: false,
       problem: "placeholders",
     });
+    expect(
+      checkSentence(tree, "app.team.hint", "מס'<ltr>{phone}</ltr> לא בצוות"),
+    ).toEqual({ ok: false, problem: "apostrophe" });
   });
 });
 

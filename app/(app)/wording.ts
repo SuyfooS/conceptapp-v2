@@ -1,8 +1,8 @@
 import "server-only";
 import {
-  fittingWording,
   type MessageTree,
   mergeWording,
+  shownWording,
   type Wording,
 } from "@domain/wording";
 import {
@@ -29,9 +29,19 @@ export type AppWording = {
 /** The app's own words: for screens outside a business, titles and demos. */
 export const baseWording: AppWording = { messages: he, overrides: {} };
 
-/** A business's stored sentences, checked against the app's and merged in. */
-export function wordingFrom(stored: Wording): AppWording {
-  const overrides = fittingWording(he as MessageTree, stored);
+/**
+ * A business's stored sentences and its template's, each checked against
+ * the app's, layered and merged in.
+ */
+export function wordingFrom(stored: {
+  template: Wording;
+  business: Wording;
+}): AppWording {
+  const overrides = shownWording(
+    he as MessageTree,
+    stored.template,
+    stored.business,
+  );
   if (Object.keys(overrides).length === 0) return baseWording;
   return {
     messages: mergeWording(he as MessageTree, overrides) as typeof he,

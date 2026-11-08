@@ -64,31 +64,70 @@ export function baseSentence(tree: MessageTree, key: string): string | null {
 }
 
 /**
- * What a sentence needs from the code: its ICU arguments, each with its kind
- * ({count} or {count,plural}), and its rich-text tags, opening and closing,
- * as many times as they appear (dropping a closing tag breaks the sentence).
+ * The sentence without its ICU-quoted text, which shows exactly as written.
+ * As the parser reads it: `''` is one apostrophe, and an apostrophe before
+ * `{`, `}`, `<`, `>` or `#` opens a quote that runs to the next lone
+ * apostrophe, or to the end. (Outside a plural `'#` is no quote; treating it
+ * as one can only refuse an odd sentence, never pass a broken one.)
  */
-export function placeholdersOf(message: string): {
-  args: string[];
-  tags: string[];
-} {
-  const args = [...message.matchAll(/\{\s*(\w+)\s*(?:,\s*(\w+)\s*)?[,}]/g)].map(
+function unquoted(message: string): string {
+  return message.replace(/''|'[{}<>#](?:[^']|'')*(?:'|$)/g, (m) =>
+    m === "''" ? "'" : "",
+  );
+}
+
+function placeholdersIn(text: string): { args: string[]; tags: string[] } {
+  const args = [...text.matchAll(/\{\s*(\w+)\s*(?:,\s*(\w+)\s*)?[,}]/g)].map(
     (m) => (m[2] ? `{${m[1]},${m[2]}}` : `{${m[1]}}`),
   );
-  const tags = [...message.matchAll(/<(\/?)(\w+)>/g)].map(
+  const tags = [...text.matchAll(/<(\/?)(\w+)>/g)].map(
     (m) => `<${m[1]}${m[2]}>`,
   );
   return { args: [...new Set(args)].sort(), tags: tags.sort() };
 }
 
-/** Whether a replacement keeps every argument and tag of the app's sentence. */
-export function sentenceFits(base: string, candidate: string): boolean {
-  const a = placeholdersOf(base);
-  const b = placeholdersOf(candidate);
+/**
+ * What a sentence needs from the code: its ICU arguments, each with its kind
+ * ({count} or {count,plural}), and its rich-text tags, opening and closing,
+ * as many times as they appear (dropping a closing tag breaks the sentence).
+ * Quoted text doesn't count: it shows as written, so `'{count}'` keeps no
+ * count.
+ */
+export function placeholdersOf(message: string): {
+  args: string[];
+  tags: string[];
+} {
+  return placeholdersIn(unquoted(message));
+}
+
+function samePlaceholders(
+  a: { args: string[]; tags: string[] },
+  b: { args: string[]; tags: string[] },
+): boolean {
   return (
     a.args.join("|") === b.args.join("|") &&
     a.tags.join("|") === b.tags.join("|")
   );
+}
+
+/** Whether a replacement keeps every argument and tag of the app's sentence. */
+export function sentenceFits(base: string, candidate: string): boolean {
+  return samePlaceholders(placeholdersOf(base), placeholdersOf(candidate));
+}
+
+/**
+ * The parts a sentence must keep, as the console asks for them: an argument
+ * with its kind when it has one (`{count, plural, …}`), and each tag once.
+ */
+export function keptParts(base: string): string[] {
+  const { args, tags } = placeholdersOf(base);
+  return [
+    ...args.map((arg) => {
+      const [name, kind] = arg.slice(1, -1).split(",");
+      return kind ? `{${name}, ${kind}, …}` : `{${name}}`;
+    }),
+    ...new Set(tags.filter((tag) => !tag.startsWith("</"))),
+  ];
 }
 
 /** A business's sentences over its template's. */
@@ -108,6 +147,23 @@ export function fittingWording(tree: MessageTree, wording: Wording): Wording {
       const base = baseSentence(tree, key);
       return base !== null && sentenceFits(base, sentence);
     }),
+  );
+}
+
+/**
+ * The sentences a business shows: its template's and its own, each checked
+ * on its own before the business's go over the template's, so a stale
+ * sentence of the business's leaves its template's showing (as the console
+ * says, through `wordingEntries`), not the app's.
+ */
+export function shownWording(
+  tree: MessageTree,
+  template: Wording,
+  business: Wording,
+): Wording {
+  return layerWording(
+    fittingWording(tree, template),
+    fittingWording(tree, business),
   );
 }
 
@@ -147,7 +203,8 @@ export type SentenceProblem =
   | "notEditable"
   | "empty"
   | "tooLong"
-  | "placeholders";
+  | "placeholders"
+  | "apostrophe";
 
 /**
  * A replacement the team typed, checked against the app's sentence: tidied,
@@ -167,7 +224,13 @@ export function checkSentence(
   if (sentence === "") return { ok: false, problem: "empty" };
   if (sentence.length > WORDING_MAX) return { ok: false, problem: "tooLong" };
   if (!sentenceFits(base, sentence)) {
-    return { ok: false, problem: "placeholders" };
+    // An apostrophe typed for a geresh (מס') before a part hides it: say so,
+    // since the part is plainly there.
+    const hidden = samePlaceholders(
+      placeholdersOf(base),
+      placeholdersIn(sentence),
+    );
+    return { ok: false, problem: hidden ? "apostrophe" : "placeholders" };
   }
   return { ok: true, sentence, base };
 }

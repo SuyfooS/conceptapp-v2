@@ -13,7 +13,7 @@ import {
   setModuleSettings,
 } from "@db/module-settings";
 import { startViewing } from "@db/view-as";
-import { setBusinessWording } from "@db/wording";
+import { getTemplateSentence, setBusinessWording } from "@db/wording";
 import { checkBusinessDetailsChange } from "@domain/business-details";
 import { inviteLink } from "@domain/invites";
 import {
@@ -31,6 +31,7 @@ import {
   checkSentence,
   isEditableKey,
   type MessageTree,
+  sentenceFits,
 } from "@domain/wording";
 import { manifestFor, manifests } from "@modules/registry";
 import { refresh, revalidatePath } from "next/cache";
@@ -264,6 +265,14 @@ export async function saveBusinessWordingAction(
     text = checked.sentence;
   }
   try {
+    // The sentence the business would show without its own: saving that
+    // clears its own, so later changes to the template's still reach it.
+    if (text !== null) {
+      const template = await getTemplateSentence(businessId, key);
+      const below =
+        template !== null && sentenceFits(base, template) ? template : base;
+      if (text === below) text = null;
+    }
     const result = await setBusinessWording(
       staff.userId,
       businessId,
@@ -278,7 +287,7 @@ export async function saveBusinessWordingAction(
       };
     }
     refresh();
-    return { ok: true, previous: result.previous };
+    return { ok: true, sentence: text, previous: result.previous };
   } catch (error) {
     console.error("setBusinessWording failed", (error as Error).message);
     return { ok: false, problem: "failed" };

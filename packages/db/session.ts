@@ -2,7 +2,7 @@ import "server-only";
 import type { ModuleRow } from "@domain/modules";
 import type { BusinessPlace } from "@domain/shabbat";
 import type { ViewSession } from "@domain/view-as";
-import { layerWording, type Wording } from "@domain/wording";
+import type { Wording } from "@domain/wording";
 import type { Database } from "./database.types";
 import { createClient } from "./supabase/server";
 
@@ -21,11 +21,11 @@ export type MemberBusiness = {
   /** The template it was opened from, or null. */
   templateKey: string | null;
   /**
-   * The sentences its template and the business itself replace, the
-   * business's over the template's, as stored: the app checks them against
-   * its own messages before showing them (`fittingWording`).
+   * The sentences its template and the business itself replace, as stored,
+   * each layer apart: the app checks each against its own messages before
+   * the business's go over the template's (`shownWording`).
    */
-  wording: Wording;
+  wording: { template: Wording; business: Wording };
 };
 
 export type CurrentMember = {
@@ -83,13 +83,32 @@ function memberBusiness(
     })),
     templateKey: row.template_key,
     // RLS gives the person every business they may read; keep this one's.
-    wording: layerWording(
-      sentences(
+    wording: {
+      template: sentences(
         wording.template.filter((w) => w.template_key === row.template_key),
       ),
-      sentences(wording.business.filter((w) => w.business_id === row.id)),
-    ),
+      business: sentences(
+        wording.business.filter((w) => w.business_id === row.id),
+      ),
+    },
   };
+}
+
+/**
+ * A wording table the database doesn't have yet (PostgREST's PGRST205, or
+ * Postgres's 42P01): code that reads it can ship before its migration
+ * reaches a project, and the app then shows its own sentences instead of
+ * failing every page. Any other error still throws.
+ */
+function wordingRows<T>(result: {
+  data: T[] | null;
+  error: { code?: string } | null;
+}): T[] {
+  if (!result.error) return result.data ?? [];
+  if (result.error.code === "PGRST205" || result.error.code === "42P01") {
+    return [];
+  }
+  throw result.error;
 }
 
 /**
@@ -143,11 +162,9 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
   if (profile.error) throw profile.error;
   if (membership.error) throw membership.error;
   if (view.error) throw view.error;
-  if (businessWording.error) throw businessWording.error;
-  if (templateWording.error) throw templateWording.error;
   const wording: WordingRows = {
-    business: businessWording.data,
-    template: templateWording.data,
+    business: wordingRows(businessWording),
+    template: wordingRows(templateWording),
   };
 
   const person = {
