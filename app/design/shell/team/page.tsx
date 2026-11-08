@@ -1,5 +1,6 @@
 import { buildTeam } from "@domain/team";
 import { TeamView } from "../../../(app)/team/team-view";
+import { baseWording } from "../../../(app)/wording";
 import { teamInvites, teamMembers, teamToday } from "../data";
 import { demoResendAction } from "./actions";
 
@@ -13,6 +14,7 @@ export default function ShellTeam() {
       viewerRole="owner"
       inviteHref="/design/shell/team/invite"
       resend={demoResendAction}
+      wording={baseWording}
     />
   );
 }

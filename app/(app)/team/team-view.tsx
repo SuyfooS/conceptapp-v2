@@ -10,13 +10,13 @@ import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { UserPlus } from "lucide-react";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
 import type { ComponentProps } from "react";
+import { type AppWording, type Translator, translator } from "../wording";
 import { ResendLink } from "./resend-link";
 
 type Resend = ComponentProps<typeof ResendLink>["resend"];
 
-type T = Awaited<ReturnType<typeof getTranslations<"app">>>;
+type T = Translator<"app">;
 type Invite = Team["invites"][number];
 type ViewProps = { t: T; team: Team; viewerRole: Role; resend: Resend };
 
@@ -26,19 +26,22 @@ type ViewProps = { t: T; team: Team; viewerRole: Role; resend: Resend };
  * desktop: everyone in one table. Each invite the viewer may send gets a "new
  * link" button. Also rendered with mock data on /design/shell/team.
  */
-export async function TeamView({
+export function TeamView({
   team,
   viewerRole,
   inviteHref,
   resend,
+  wording,
 }: {
   team: Team;
   /** The signed-in owner or manager. */
   viewerRole: Role;
   inviteHref: string;
   resend: Resend;
+  /** The business's words; the app's own on the demo. */
+  wording: AppWording;
 }) {
-  const t = await getTranslations("app");
+  const t = translator(wording, "app");
   const view = { t, team, viewerRole, resend };
   return (
     <PageBody className={pageGlowClass}>
