@@ -1,12 +1,13 @@
 -- QR clock-in (20261108000200_qr_clock.sql): codes live a minute and carry
 -- digits to type; nobody uses a code they show; owners need none; a typed
--- code is counted first and five wrong ones block typing; without a code is
+-- code is counted first, each guess on its own, and five wrong ones block
+-- typing; without a code is
 -- allowed, marked, and confirmed by someone else; stations pair from a
 -- manager's phone, show codes with no one's account, stop and restart; the
 -- business chooses where codes come from; nobody reads a station's token.
 -- Every call passes the time so the test does not depend on today.
 begin;
-select plan(51);
+select plan(53);
 
 create function pg_temp.h(t text) returns text language sql as $$
   select encode(sha256(convert_to(t, 'utf8')), 'hex')
@@ -118,7 +119,7 @@ select throws_ok(
 );
 select is(
   public.note_punch_attempt('6a000000-0000-4000-a000-00000000000d', '6a000000-0000-4000-b000-000000000001',
-    '2026-11-10 08:00:50+00'),
+    pg_temp.h('m5s'), '2026-11-10 08:00:50+00'),
   false,
   'counting one typed code does not block'
 );
@@ -139,20 +140,29 @@ select is(
 );
 set local role service_role;
 
+-- A counted guess covers that guess only.
+select public.note_punch_attempt('6a000000-0000-4000-a000-00000000000f', '6a000000-0000-4000-b000-000000000001',
+  pg_temp.h('guess'), '2026-11-10 08:30+00');
+select throws_ok(
+  $$select public.clock_in('6a000000-0000-4000-a000-00000000000f', '6a000000-0000-4000-b000-000000000001',
+    null, '2026-11-10 08:30:05+00', pg_temp.h('m5s'))$$,
+  '42501', 'A typed code is counted first', 'a guess that was not counted is refused, though another was'
+);
+
 -- Five wrong typed codes in 30 minutes block typing; scanning still works.
 select public.issue_punch_code('6a000000-0000-4000-a000-00000000000b', '6a000000-0000-4000-b000-000000000001',
   pg_temp.h('m6'), '2026-11-10 09:00+00', pg_temp.h('m6s'));
 select public.note_punch_attempt('6a000000-0000-4000-a000-00000000000f', '6a000000-0000-4000-b000-000000000001',
-  '2026-11-10 09:00+00'::timestamptz + n * interval '1 second')
+  pg_temp.h('wrong' || n), '2026-11-10 09:00+00'::timestamptz + n * interval '1 second')
 from generate_series(1, 5) n;
 select is(
   public.note_punch_attempt('6a000000-0000-4000-a000-00000000000f', '6a000000-0000-4000-b000-000000000001',
-    '2026-11-10 09:00:06+00'),
+    pg_temp.h('wrong6'), '2026-11-10 09:00:06+00'),
   true,
   'the sixth typed code in half an hour is blocked'
 );
 select public.note_punch_attempt('6a000000-0000-4000-a000-00000000000f', '6a000000-0000-4000-b000-000000000001',
-  '2026-11-10 09:00:07+00');
+  pg_temp.h('m6s'), '2026-11-10 09:00:07+00');
 select is(
   (select count(*)::int from public.audit_log
    where action = 'clock.code.locked' and actor_id = '6a000000-0000-4000-a000-00000000000f'),
@@ -286,6 +296,16 @@ select is(
    from public.time_entries where id = (select id from ids where name = 'c2')),
   'scan true',
   'a worker scans the station, and the entry keeps which station'
+);
+-- The manager who paired it leaves by it: their own station vouches only
+-- for an owner, so the time is theirs, for an owner to confirm.
+select public.clock_out('6a000000-0000-4000-a000-00000000000b', '6a000000-0000-4000-b000-000000000001',
+  pg_temp.h('k1'), '2026-11-10 15:02:30+00');
+select is(
+  (select out_proof || ' ' || (out_station = (select id from ids where name = 'st1'))::text
+   from public.time_entries where id = (select id from ids where name = 'b1')),
+  'self true',
+  'a code from a station the person paired counts as their own word'
 );
 select is(
   public.punch_code_showing('6a000000-0000-4000-a000-00000000000b', '6a000000-0000-4000-b000-000000000001',

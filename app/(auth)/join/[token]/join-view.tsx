@@ -40,13 +40,13 @@ export async function JoinView({
   return (
     <main
       className={cn(
-        "flex min-h-dvh flex-col px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-8 md:items-center md:justify-center md:py-16",
+        "flex min-h-dvh flex-col px-4 pt-[calc(env(safe-area-inset-top)+1rem)] pb-8 md:items-center md:px-8 xl:justify-center xl:py-16",
         glowClass,
-        "md:bg-size-[100%_560px]",
+        "xl:bg-size-[100%_560px]",
       )}
       {...accentProps(accentTokens(invite.business.accent))}
     >
-      <div className="flex w-full flex-col md:max-w-[460px]">
+      <div className="flex w-full flex-col md:max-w-[560px] xl:max-w-[460px]">
         <Card tone="hero" padding="none" className="px-5 pt-5 pb-[84px]">
           <p className="font-medium text-base">{t("eyebrow")}</p>
           <h1 className="mt-10 text-balance font-bold text-2xl">

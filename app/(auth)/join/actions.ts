@@ -11,10 +11,10 @@ export type JoinState =
 
 /**
  * Joining from an invite link: send a code to the invited number (its
- * account is made first if it has none), check it, then claim the invite
- * on the server and open the app. The number always comes from the invite,
- * never from the form. A link that stopped working on the way goes back to
- * its page, which says why.
+ * account is made first if it has none, once the code may go), check it,
+ * then claim the invite on the server and open the app. The number always
+ * comes from the invite, never from the form. A link that stopped working on
+ * the way goes back to its page, which says why.
  */
 export async function join(
   token: string,
@@ -30,8 +30,9 @@ export async function join(
   if (intent === "send" || intent === "resend") {
     let error: SignInError | null;
     try {
-      await ensurePhoneAccount(invite.phone);
-      error = await sendCode(invite.phone);
+      error = await sendCode(invite.phone, () =>
+        ensurePhoneAccount(invite.phone),
+      );
     } catch (cause) {
       console.error("join: sending the code failed", (cause as Error).message);
       error = "failed";

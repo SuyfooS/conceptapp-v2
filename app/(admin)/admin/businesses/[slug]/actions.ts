@@ -45,7 +45,10 @@ import { formatsCleanly } from "./wording/formats";
 import type { WordingSaveResult } from "./wording/wording-types";
 
 export type InviteLinkState =
-  | { link?: undefined; failure?: "failed" | "noPermission" }
+  | {
+      link?: undefined;
+      failure?: "failed" | "noPermission" | "demo" | "hasOwner";
+    }
   | { link: string; failure?: undefined };
 
 /**
@@ -64,7 +67,9 @@ export async function inviteLinkAction(
     return { failure: "noPermission" };
   }
   try {
-    const { token, phone } = await issueInviteLink(staff.userId, inviteId);
+    const issued = await issueInviteLink(staff.userId, inviteId);
+    if (!issued.ok) return { failure: issued.error };
+    const { token, phone } = issued;
     const link = inviteLink(await requestOrigin(), token);
     if (process.env.NODE_ENV !== "production") {
       console.info(`[invite] not sent, link for ${phone}: ${link}`);
@@ -81,8 +86,8 @@ export async function inviteLinkAction(
 
 /**
  * Someone on the team adds a person to a business, in any role, from the
- * console: the result is a link for them to send on, as from the Team
- * screen. A number with an invite nobody claimed, open or expired, gets that
+ * console (an owner only while the business has none): the result is a link
+ * for them to send on, as from the Team screen. A number with an invite nobody claimed, open or expired, gets that
  * invite renewed. A number already working in another business is refused:
  * the app opens a person's oldest business, so they would never see this one.
  */

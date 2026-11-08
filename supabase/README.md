@@ -44,6 +44,17 @@ it deletes the business, with everything that belongs to it, and makes it again 
 its template with the same id. The shop's week is always published
 (`public.renew_demo_schedules`); the restaurant's is the visitor's to build.
 
+A demo business takes no invites and nobody joins one, since anyone at the door is its
+owner. Only a definition with `"invites": true` opens one: `seed.sql` does, so the browser
+tests can invite and join; `hosted-demo.sql` never does (`tooling/demo-invites.test.ts`).
+
+Sign-in codes are counted per number and per caller against `private.auth_limits`
+(`public.note_auth_attempt`; the server asks before every code it sends or checks). The
+team tunes the limits there, with SQL. `seed.sql` lifts them, because the browser tests
+sign the same people in many times from one machine. They hold the app's own way in only:
+the auth API is public, so a script calling it directly meets only Supabase's and Twilio's
+limits, and CAPTCHA once it is on (below).
+
 ### Real sign-in, later
 
 Orel put it off on 6 November. When it comes, turn `PASSIVE_SIGN_IN` off, and in the
@@ -56,6 +67,10 @@ dashboards, because `config.toml` is never pushed:
   people use the project.
 - Authentication: new signups off (`[auth] enable_signup = false`). Accounts come from
   invites, through the admin API.
+- Authentication, Rate Limits: SMS sent per hour, and token verifications per 5 minutes
+  per address, no looser than `private.auth_limits`; in Twilio Verify, its own limits per
+  number and Fraud Guard. CAPTCHA (Cloudflare Turnstile) only once the app sends its token,
+  or every sign-in stops.
 - URL configuration: the site URL is the deployed address, not `127.0.0.1`.
 - The first platform admin: add a user by phone, then in the SQL editor:
 

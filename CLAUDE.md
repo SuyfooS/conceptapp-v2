@@ -169,7 +169,9 @@ font files or SF Symbols; asking the device for its own font is fine.
   a phone number and an SMS code (Twilio Verify on the hosted project), and the demo,
   one press on a demo person, kept easy to reach. The demo door reaches only the
   demo people, with RLS unchanged, and anyone can come in and reset those businesses,
-  so real people never join a demo business. `PASSIVE_SIGN_IN` in
+  so real people never join a demo business: the database takes no invites for one
+  (only the local seed's, for the tests). Sign-in codes are counted per number and
+  per caller (`private.auth_limits`). `PASSIVE_SIGN_IN` in
   `@domain/passive-sign-in` closes the demo door.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.

@@ -5,8 +5,10 @@ import { demoInvite, inviteToDemo, removeDemoInvites } from "./db";
 import { signIn } from "./session";
 
 // The ConceptApp team sets up people from the console (Orel, 7 November
-// 2026): it renews an invite that ran out and adds a person in any role. The
-// seeded platform admin (supabase/seed.sql) does it for the demo restaurant.
+// 2026): it renews an invite that ran out and adds a person in any role, an
+// owner only to a business with none (Orel, 8 November 2026). The seeded
+// platform admin (supabase/seed.sql) does it for the demo restaurant, which
+// has an owner.
 // One number per screen size, since the local database keeps each one.
 const PLATFORM_ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 const EXPIRED = {
@@ -56,7 +58,7 @@ test("the console renews an invite that ran out", async ({
   await inviteToDemo({
     name: person.name,
     phone: person.e164,
-    role: "owner",
+    role: "manager",
     expiresInDays: -1,
   });
   await signIn(page, PLATFORM_ADMIN, /\/admin$/);
@@ -101,7 +103,7 @@ test("the console renews an invite that ran out", async ({
   await expect(field).toHaveValue(/\/join\/[A-Za-z0-9_-]{43}$/);
 });
 
-test("the console adds a person in any role, with a link to send", async ({
+test("the console adds a person, with a link to send, and no second owner", async ({
   page,
 }, testInfo) => {
   const person = ADDED[testInfo.project.name as Size];
@@ -121,8 +123,16 @@ test("the console adds a person in any role, with a link to send", async ({
 
   await page.getByLabel(ti.name).fill(person.name);
   await page.getByLabel(ti.phone).fill(person.local);
+  // The restaurant has its owner, who invites another one.
   await page
     .getByRole("radio", { name: new RegExp(he.app.team.roles.owner) })
+    .check();
+  await page.getByRole("button", { name: ti.submit }).click();
+  await expect(page.getByText(ti.errors.hasOwner)).toBeVisible();
+  expect(await demoInvite(person.e164)).toBeNull();
+
+  await page
+    .getByRole("radio", { name: new RegExp(he.app.team.roles.manager) })
     .check();
   await page.getByRole("button", { name: ti.submit }).click();
   await expect(
@@ -135,7 +145,7 @@ test("the console adds a person in any role, with a link to send", async ({
     fullPage: true,
   });
   expect(await demoInvite(person.e164)).toEqual({
-    role: "owner",
+    role: "manager",
     open: true,
     byTeam: true,
   });
