@@ -4,8 +4,9 @@ import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { ListGroup, ListRow } from "@ui/list-row";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
+import type { Translator } from "../wording";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -29,10 +30,16 @@ function useDayLabel() {
  */
 export function ShiftList({
   records,
+  t,
   onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  /**
+   * The words of app.clock.history: a server view builds them from the
+   * business's words, a client one with useTranslations.
+   */
+  t: Translator<"app.clock.history">;
   /** For a manager: pressing a shift offers to correct it. */
   onEdit?: (record: ShiftRecord) => void;
   className?: string;
@@ -41,16 +48,27 @@ export function ShiftList({
     <>
       <ShiftRows
         records={records}
+        t={t}
         onEdit={onEdit}
         className={cn("xl:hidden", className)}
       />
-      <ShiftTable records={records} onEdit={onEdit} className={className} />
+      <ShiftTable
+        records={records}
+        t={t}
+        onEdit={onEdit}
+        className={className}
+      />
     </>
   );
 }
 
-function StateBadge({ record }: { record: ShiftRecord }) {
-  const t = useTranslations("app.clock.history");
+function StateBadge({
+  record,
+  t,
+}: {
+  record: ShiftRecord;
+  t: Translator<"app.clock.history">;
+}) {
   return record.overdue ? (
     <Badge tone="danger">{t("needsFix")}</Badge>
   ) : (
@@ -60,14 +78,15 @@ function StateBadge({ record }: { record: ShiftRecord }) {
 
 function ShiftRows({
   records,
+  t,
   onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  t: Translator<"app.clock.history">;
   onEdit?: (record: ShiftRecord) => void;
   className?: string;
 }) {
-  const t = useTranslations("app.clock.history");
   const dayLabel = useDayLabel();
   return (
     <ListGroup className={className}>
@@ -87,7 +106,7 @@ function ShiftRows({
           ),
           trailing: (
             <span className="flex items-center gap-2">
-              {record.out ? null : <StateBadge record={record} />}
+              {record.out ? null : <StateBadge record={record} t={t} />}
               {record.out || record.overdue ? (
                 <span dir="ltr" className="font-semibold text-ink tabular-nums">
                   {formatHours(record.minutes)}
@@ -108,14 +127,15 @@ function ShiftRows({
 
 function ShiftTable({
   records,
+  t,
   onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  t: Translator<"app.clock.history">;
   onEdit?: (record: ShiftRecord) => void;
   className?: string;
 }) {
-  const t = useTranslations("app.clock.history");
   const dayLabel = useDayLabel();
   return (
     <div
@@ -171,7 +191,7 @@ function ShiftTable({
                 {record.out ? (
                   <span dir="ltr">{record.out}</span>
                 ) : (
-                  <StateBadge record={record} />
+                  <StateBadge record={record} t={t} />
                 )}
               </td>
               <td className={cn(td, "text-ink-2")}>

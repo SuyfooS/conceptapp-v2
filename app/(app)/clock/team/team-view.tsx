@@ -7,9 +7,10 @@ import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import { RefreshOnReturn } from "../../home/refresh-on-return";
+import { type AppWording, translator } from "../../wording";
 import { MonthHero } from "../month-hero";
 import type { TeamHoursData, TeamPaths } from "./team-types";
 
@@ -25,11 +26,14 @@ const td = "border-line border-t px-4 py-3";
 export function TeamHoursView({
   data,
   paths,
+  wording,
 }: {
   data: TeamHoursData;
   paths: TeamPaths;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.clock.team");
+  const t = translator(wording, "app.clock.team");
   const format = useFormatter();
   const personHref = (userId: string, month = data.month) =>
     `${paths.team}/${userId}?month=${month}`;
@@ -111,6 +115,7 @@ export function TeamHoursView({
             minutes={data.minutes}
             countId="team"
             caption={t("caption", { count: data.shifts })}
+            t={translator(wording, "app.clock.history")}
             overlap={data.people.length > 0}
           />
           {data.people.length > 0 ? (
