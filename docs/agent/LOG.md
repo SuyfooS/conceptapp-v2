@@ -3,6 +3,18 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-08 · chat · the console's people, the business's words, install as an app
+
+- Orel set the order after step 2 (7 November): the console, wording, lists, safe hours with a payroll report, roles; the small improvements in between. He chose for wording: a template's sentence reaches all its businesses at once, every sentence can be replaced, and only the team edits for now. All on issue #1.
+- #68, the console: "הוספת אדם" invites a number in any role (`admin_invite`), an invite that ran out shows as "ההזמנה פגה" with "חידוש ההזמנה", the list counts expired invites, and the checklist leads to what fixes it. A number already active in another business is refused here and on the Team screen, since the app opens a person's oldest business. Its review found that the expired-owner row opened the add form on worker, which could have turned the owner's invite into a worker's; the row now leads to the renew button, and a missing owner opens the form on owner.
+- #69, wording in the database: `template_wording` and `business_wording`, read under RLS by members and viewers, written only by the team (`set_business_wording`, `set_template_wording` for platform admins), logged as `wording.change`.
+- The rest of wording, on this branch: `@domain/wording` (which sentences, what a replacement must keep, layers, the merge), the member's business carrying its sentences at no extra round, a translator over the business's words passed down as a value, `WordingProvider` sending the browser only the replaced sentences, every server view moved over (four agents, one area each, in separate worktrees), and the console editor at /admin/businesses/[slug]/wording with search, a sheet beside the app's and the template's sentence, a server check that the sentence keeps its parts and formats, and undo. The guard test refuses a server view that asks next-intl itself.
+- #70, install as an app: a manifest opening on Today, home-screen icons from the app's mark, and the iPhone settings. No service worker.
+- Blocked from 8 November, 02:00: GitHub Actions starts no job ("recent account payments have failed or your spending limit needs to be increased"), so neither CI nor the Migrate workflow runs. #68 and #69 merged before that, but their migrations are not on conceptapp-dev yet. Orel was asked to check Billing and plans.
+- Checked locally: tsc and Biome clean, every unit test but the Windows-only one, the build, and the 321 design tests at 390, 820 and 1440 in light and dark. The database-backed e2e (console people, wording) waits for CI.
+- Known, left: editing a template's sentences has no screen yet; page titles keep the app's words; plural sentences are edited as they are, with braces; a client screen keeps old words until a reload after an edit.
+- Next: once CI runs, migrate, merge the wording PR, then lists (database first).
+
 ## 2026-11-07 · chat · step 2, templates for every kind of business
 
 - Two new templates: `retail` (a shop: cashier, sales, stock and shift lead; morning and evening Sunday to Thursday and a short Friday; closed on Shabbat, the manifest's default) and `general` (the schedule and the clock, with positions and shifts left to the business). `restaurant` and `cafe-bar` v2 stop switching on reservations, the public page and notifications, and every business already set up gets the same, so no tab leads to an empty screen. Their settings stay in the templates for when those modules are built.

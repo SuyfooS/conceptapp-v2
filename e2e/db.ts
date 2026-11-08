@@ -744,3 +744,16 @@ export async function setDemoWording(
     await sql.end();
   }
 }
+
+/** One of the demo restaurant's own sentences, or null when it has none. */
+export async function demoWording(key: string): Promise<string | null> {
+  const sql = postgres(DB_URL, { max: 1 });
+  try {
+    const rows = await sql<{ sentence: string }[]>`
+      select sentence from public.business_wording
+      where business_id = ${DEMO_RESTAURANT} and key = ${key}`;
+    return rows[0]?.sentence ?? null;
+  } finally {
+    await sql.end();
+  }
+}

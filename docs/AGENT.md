@@ -203,7 +203,8 @@ The full picture and the reasoning are in `docs/ROADMAP.md`. Skip ahead only whe
 
 The design rework is under way in day sessions with Orel, toward `docs/design/target-prototype.html`. A nightly run does not change tokens, `packages/ui` or the look of a screen unless Orel left that work. Items marked "database first" stop before their screens, so nothing is built twice.
 
-- **Exact fit, with Orel by day:** step 3 in the roadmap (wording per business and template, editing templates from the console). It comes first, so everything after is built on it. Steps 1 and 2, the settings engine and global templates, are done.
+- **Orel's order after step 2 (7 November 2026):** (1) the console sets up people (built); (2) wording per business and template (built; editing a template's sentences from the console waits for a real business); (3) lists, database first; (4) hours that are never deleted, and an hours report for payroll; (5) roles and permissions. The small improvements go in between: install as an app (built), fill and copy last week, share on WhatsApp.
+- **Wording.** Every server view under app/(app) takes the business's words as a value (`wording: AppWording`) and builds translators with `translator(wording, ns)` from app/(app)/wording.ts; its page passes `await currentWording()`, a /design page passes `baseWording`, and page titles stay on `baseWording`. Never call getTranslations or a server useTranslations there: tooling/wording-guard.test.ts refuses it, because the business's sentences would quietly not show. Client components keep useTranslations; WordingProvider gives them the business's sentences.
 - **Holes in what exists.** Each smallest first:
   - Editing the week that has already started, and not losing an unpublished draft when the week changes.
   - A business stuck with expired invites and no owner: the console can add a person and revive an invite.
