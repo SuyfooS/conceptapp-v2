@@ -28,7 +28,8 @@ select set_eq(
     'business_modules', 'invites', 'audit_log', 'platform_staff',
     'view_sessions', 'schedule_weeks', 'availability_submissions',
     'availability_ranges', 'schedule_shifts', 'shift_assignments',
-    'shift_swaps', 'time_entries', 'punch_codes', 'time_breaks'
+    'shift_swaps', 'time_entries', 'punch_codes', 'time_breaks',
+    'clock_stations'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

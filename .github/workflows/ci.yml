@@ -162,9 +162,12 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # After check and database pass: a red PR doesn't spend 20 minutes on e2e.
   e2e:
-    needs: gate
-    if: ${{ !cancelled() && needs.gate.outputs.tested != 'yes' }}
+    needs: [gate, check, database]
+    if: >-
+      ${{ !cancelled() && needs.gate.outputs.tested != 'yes'
+        && needs.check.result == 'success' && needs.database.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

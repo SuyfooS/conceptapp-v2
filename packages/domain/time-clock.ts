@@ -35,10 +35,13 @@ export {
  * setting, so changing the setting never rewrites hours already worked.
  */
 
-/** A punch code stays valid this long after the device shows it. */
-export const PUNCH_CODE_TTL_SECONDS = 120;
-/** The device shows a fresh code this often, well inside its lifetime. */
-export const PUNCH_CODE_REFRESH_SECONDS = 30;
+/**
+ * A punch code stays valid this long after the device shows it: the
+ * database's private.punch_code_ttl(), checked by punch-code-ttl.db.test.ts.
+ */
+export const PUNCH_CODE_TTL_SECONDS = 60;
+/** The device shows a fresh code this often, so one on screen has 40 s left. */
+export const PUNCH_CODE_REFRESH_SECONDS = 20;
 /** How long after leaving a person can take it back themselves. */
 export const UNDO_CLOCK_OUT_SECONDS = 120;
 

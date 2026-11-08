@@ -103,8 +103,8 @@ select throws_ok(
 select is(
   public.issue_punch_code('68000000-0000-4000-a000-00000000000b',
     '68000000-0000-4000-b000-000000000001', repeat('1', 64), '2026-11-10 06:00+00'),
-  '2026-11-10 06:02+00'::timestamptz,
-  'a manager issues a code that lasts two minutes'
+  '2026-11-10 06:01+00'::timestamptz,
+  'a manager issues a code that lasts a minute'
 );
 select lives_ok(
   $$select public.issue_punch_code('68000000-0000-4000-a000-00000000000d',
@@ -139,16 +139,16 @@ select throws_ok(
   '42501', null, 'an inactive worker cannot clock in'
 );
 insert into ids values ('c1', public.clock_in('68000000-0000-4000-a000-00000000000c',
-  '68000000-0000-4000-b000-000000000001', repeat('2', 64), '2026-11-10 06:02+00'));
+  '68000000-0000-4000-b000-000000000001', repeat('2', 64), '2026-11-10 06:01:30+00'));
 select is(
   (select clock_in || ' ' || coalesce(clock_out::text, 'open') || ' ' || source
    from public.time_entries where id = (select id from ids where name = 'c1')),
-  '2026-11-10 06:02:00+00 open punch',
+  '2026-11-10 06:01:30+00 open punch',
   'a worker clocks in with a valid code'
 );
 select throws_ok(
   $$select public.clock_in('68000000-0000-4000-a000-00000000000c',
-    '68000000-0000-4000-b000-000000000001', repeat('2', 64), '2026-11-10 06:02:30+00')$$,
+    '68000000-0000-4000-b000-000000000001', repeat('2', 64), '2026-11-10 06:01:45+00')$$,
   '23P01', null, 'a second clock-in without a clock-out is refused'
 );
 select lives_ok(
@@ -160,7 +160,7 @@ select lives_ok(
 -- Clocking out.
 select throws_ok(
   $$select public.clock_out('68000000-0000-4000-a000-00000000000b',
-    '68000000-0000-4000-b000-000000000001', repeat('2', 64), '2026-11-10 06:02+00')$$,
+    '68000000-0000-4000-b000-000000000001', repeat('2', 64), '2026-11-10 06:01:30+00')$$,
   '55000', null, 'someone not clocked in cannot clock out'
 );
 select throws_ok(
@@ -172,7 +172,7 @@ select public.issue_punch_code('68000000-0000-4000-a000-00000000000a',
   '68000000-0000-4000-b000-000000000001', repeat('3', 64), '2026-11-10 22:30+00');
 select is(
   public.clock_out('68000000-0000-4000-a000-00000000000c',
-    '68000000-0000-4000-b000-000000000001', repeat('3', 64), '2026-11-10 22:31+00'),
+    '68000000-0000-4000-b000-000000000001', repeat('3', 64), '2026-11-10 22:30:30+00'),
   (select id from ids where name = 'c1'),
   'a worker clocks out with the owner''s fresh code'
 );
@@ -183,7 +183,7 @@ select is(
 );
 select throws_ok(
   $$select public.clock_out('68000000-0000-4000-a000-00000000000c',
-    '68000000-0000-4000-b000-000000000001', repeat('3', 64), '2026-11-10 22:31+00')$$,
+    '68000000-0000-4000-b000-000000000001', repeat('3', 64), '2026-11-10 22:30:40+00')$$,
   '55000', null, 'clocking out twice is refused'
 );
 
@@ -285,7 +285,7 @@ select is(
   jsonb_build_object(
     'entry', (select id from ids where name = 'c1'),
     'person', '68000000-0000-4000-a000-00000000000c',
-    'from', jsonb_build_object('clock_in', '2026-11-10 06:02+00'::timestamptz, 'clock_out', '2026-11-10 22:31+00'::timestamptz),
+    'from', jsonb_build_object('clock_in', '2026-11-10 06:01:30+00'::timestamptz, 'clock_out', '2026-11-10 22:30:30+00'::timestamptz),
     'to', jsonb_build_object('clock_in', '2026-11-10 06:00+00'::timestamptz, 'clock_out', '2026-11-10 14:00+00'::timestamptz)),
   'a correction keeps the old and new times in the audit log'
 );

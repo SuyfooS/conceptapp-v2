@@ -268,6 +268,64 @@ export type Database = {
           },
         ];
       };
+      clock_stations: {
+        Row: {
+          business_id: string;
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          last_seen_at: string | null;
+          name: string;
+          stopped_at: string | null;
+          stopped_by: string | null;
+          token_hash: string;
+        };
+        Insert: {
+          business_id: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          last_seen_at?: string | null;
+          name: string;
+          stopped_at?: string | null;
+          stopped_by?: string | null;
+          token_hash: string;
+        };
+        Update: {
+          business_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          last_seen_at?: string | null;
+          name?: string;
+          stopped_at?: string | null;
+          stopped_by?: string | null;
+          token_hash?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "clock_stations_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "clock_stations_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "clock_stations_stopped_by_fkey";
+            columns: ["stopped_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       invites: {
         Row: {
           business_id: string;
@@ -443,6 +501,8 @@ export type Database = {
           created_at: string;
           expires_at: string;
           issued_by: string | null;
+          short_hash: string | null;
+          station_id: string | null;
         };
         Insert: {
           business_id: string;
@@ -450,6 +510,8 @@ export type Database = {
           created_at?: string;
           expires_at: string;
           issued_by?: string | null;
+          short_hash?: string | null;
+          station_id?: string | null;
         };
         Update: {
           business_id?: string;
@@ -457,6 +519,8 @@ export type Database = {
           created_at?: string;
           expires_at?: string;
           issued_by?: string | null;
+          short_hash?: string | null;
+          station_id?: string | null;
         };
         Relationships: [
           {
@@ -471,6 +535,13 @@ export type Database = {
             columns: ["issued_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "punch_codes_station_id_fkey";
+            columns: ["station_id"];
+            isOneToOne: false;
+            referencedRelation: "clock_stations";
             referencedColumns: ["id"];
           },
         ];
@@ -811,11 +882,17 @@ export type Database = {
           business_id: string;
           clock_in: string;
           clock_out: string | null;
+          confirmed_at: string | null;
+          confirmed_by: string | null;
           created_at: string;
           edited_at: string | null;
           edited_by: string | null;
           id: string;
+          in_proof: string | null;
+          in_station: string | null;
           note: string | null;
+          out_proof: string | null;
+          out_station: string | null;
           source: Database["public"]["Enums"]["time_entry_source"];
           user_id: string;
         };
@@ -823,11 +900,17 @@ export type Database = {
           business_id: string;
           clock_in: string;
           clock_out?: string | null;
+          confirmed_at?: string | null;
+          confirmed_by?: string | null;
           created_at?: string;
           edited_at?: string | null;
           edited_by?: string | null;
           id?: string;
+          in_proof?: string | null;
+          in_station?: string | null;
           note?: string | null;
+          out_proof?: string | null;
+          out_station?: string | null;
           source?: Database["public"]["Enums"]["time_entry_source"];
           user_id: string;
         };
@@ -835,11 +918,17 @@ export type Database = {
           business_id?: string;
           clock_in?: string;
           clock_out?: string | null;
+          confirmed_at?: string | null;
+          confirmed_by?: string | null;
           created_at?: string;
           edited_at?: string | null;
           edited_by?: string | null;
           id?: string;
+          in_proof?: string | null;
+          in_station?: string | null;
           note?: string | null;
+          out_proof?: string | null;
+          out_station?: string | null;
           source?: Database["public"]["Enums"]["time_entry_source"];
           user_id?: string;
         };
@@ -852,10 +941,31 @@ export type Database = {
             referencedColumns: ["id"];
           },
           {
+            foreignKeyName: "time_entries_confirmed_by_fkey";
+            columns: ["confirmed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
             foreignKeyName: "time_entries_edited_by_fkey";
             columns: ["edited_by"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_entries_in_station_fkey";
+            columns: ["in_station"];
+            isOneToOne: false;
+            referencedRelation: "clock_stations";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_entries_out_station_fkey";
+            columns: ["out_station"];
+            isOneToOne: false;
+            referencedRelation: "clock_stations";
             referencedColumns: ["id"];
           },
           {
@@ -959,6 +1069,17 @@ export type Database = {
         Args: { business: string; template: string };
         Returns: undefined;
       };
+      approve_station_pairing: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          name: string;
+          pairing_hash?: string;
+          short_hash?: string;
+        };
+        Returns: string;
+      };
       cancel_shift_swap: {
         Args: { actor: string; swap: string };
         Returns: undefined;
@@ -973,6 +1094,8 @@ export type Database = {
           at_time?: string;
           business: string;
           code_hash?: string;
+          short_hash?: string;
+          without_code?: boolean;
         };
         Returns: string;
       };
@@ -982,8 +1105,14 @@ export type Database = {
           at_time?: string;
           business: string;
           code_hash?: string;
+          short_hash?: string;
+          without_code?: boolean;
         };
         Returns: string;
+      };
+      confirm_time_entry: {
+        Args: { actor: string; at_time?: string; entry: string };
+        Returns: undefined;
       };
       correct_time_entry: {
         Args: {
@@ -1033,8 +1162,22 @@ export type Database = {
           at_time?: string;
           business: string;
           code_hash: string;
+          short_hash?: string;
         };
         Returns: string;
+      };
+      issue_station_code: {
+        Args: {
+          at_time?: string;
+          code_hash: string;
+          short_hash: string;
+          token_hash: string;
+        };
+        Returns: Json;
+      };
+      note_punch_attempt: {
+        Args: { actor: string; at_time?: string; business: string };
+        Returns: boolean;
       };
       open_schedule_week: {
         Args: { business: string; due_at: string; week_start: string };
@@ -1043,6 +1186,10 @@ export type Database = {
       publish_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
+      };
+      punch_code_showing: {
+        Args: { actor: string; at_time?: string; business: string };
+        Returns: boolean;
       };
       renew_demo_schedules: {
         Args: Record<PropertyKey, never>;
@@ -1074,6 +1221,15 @@ export type Database = {
           word_key: string;
         };
         Returns: string;
+      };
+      set_clock_station_stopped: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          station: string;
+          stopped: boolean;
+        };
+        Returns: undefined;
       };
       set_module_enabled: {
         Args: {
@@ -1107,6 +1263,15 @@ export type Database = {
         Args: { actor: string; at_time?: string; business: string };
         Returns: string;
       };
+      start_station_pairing: {
+        Args: {
+          at_time?: string;
+          pairing_hash: string;
+          short_hash: string;
+          token_hash: string;
+        };
+        Returns: string;
+      };
       start_view_session: {
         Args: {
           actor: string;
@@ -1115,6 +1280,7 @@ export type Database = {
         };
         Returns: string;
       };
+      station_by_token: { Args: { token_hash: string }; Returns: Json };
       submit_availability: {
         Args: { actor: string; note?: string; ranges: Json; week: string };
         Returns: string;
