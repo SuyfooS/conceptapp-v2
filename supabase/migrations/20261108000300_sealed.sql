@@ -540,8 +540,8 @@ security definer
 set search_path = ''
 as $$
 declare
-  scopes text[] := '{}';
-  keys text[] := '{}';
+  scopes text[] := '{}'::text[];
+  keys text[] := '{}'::text[];
   lim private.auth_limits%rowtype;
   freed timestamptz;
   wait integer := 0;
