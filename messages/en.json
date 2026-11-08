@@ -72,6 +72,9 @@
     "metaTitle": "Design system",
     "title": "Design system",
     "intro": "Every component in one place, in the business accent and in both directions. New components are checked here before use.",
+    "brand": "ConceptApp",
+    "logo": "Logo",
+    "logoText": "ConceptApp's logo, in its own colour: at sign-in, in the console and in marketing, never on a business's screens. The name takes the text colour, so it reads in light and dark.",
     "accent": "Business accent",
     "accents": {
       "burgundy": "Burgundy",

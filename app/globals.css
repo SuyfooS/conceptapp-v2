@@ -245,6 +245,9 @@
     rgb(from var(--accent-ink) calc(255 - r) calc(255 - g) calc(255 - b))
   );
   --color-brand: var(--brand);
+  /* The card behind the C in ConceptApp's logo: the brand, a step lighter.
+     Mixed in sRGB, as the files in docs/brand are (#ac3bfc). */
+  --color-brand-2: color-mix(in srgb, var(--brand), white 25%);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);

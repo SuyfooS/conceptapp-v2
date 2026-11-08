@@ -1,4 +1,5 @@
 import { cn } from "@ui/cn";
+import { Logo } from "@ui/logo";
 import { glowClass } from "@ui/page-glow";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -60,8 +61,8 @@ export function AuthPage({
 function Wordmark() {
   const t = useTranslations("auth");
   return (
-    <p className="px-1 font-bold text-base">
-      <span dir="ltr">{t("brand")}</span>
-    </p>
+    <div className="px-1">
+      <Logo label={t("brand")} />
+    </div>
   );
 }

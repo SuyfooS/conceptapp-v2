@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-08 · chat · the logo, CI minutes, and the way to the stores
+
+- Actions runs again: the free 2,000 minutes had run out (about 2,070 used from 1 to 8 November, 80% of it e2e, 32% reruns on main of trees already tested), and Orel bought GitHub Pro (3,000). The Migrate workflow applied #68's and #69's migrations (a dry run first showed exactly those two), #73 merged after its CI passed, and its push run on main was cancelled because main's tree was the one just tested.
+- A study of the minutes (four angles, two skeptics) found about 35–40% to save with no test dropped: skip the push run when the same tree passed a PR run that day, a 2 s SMS wait in local auth with a test that trips it, reusing each person's session per size once they signed in through the screen, starting Supabase during the build. Even then usage stays above 3,000 a month, so Orel was told a budget in Billing (about $10–25 a month) and branch protection on main are his calls. Not built yet.
+- A study of the stores (four researchers, a fact-check): one system, the store apps open the live site. Android as a Trusted Web Activity, the iPhone as a Capacitor shell that needs native parts to pass Apple's 4.2 (a native QR scanner, haptics, notifications later). Both stores want a privacy policy, account deletion in the app and a reviewer sign-in; Apple's company account wants a D-U-N-S number and our own domain. Orel is opening a company and will pick the domain.
+- Orel decided (8 November 2026) that clocking in and out is by QR. The database already has it (`issue_punch_code`, `requirePunchCode`); the screens are missing. On issue #1.
+- The new logo and app icon, chosen by Orel from ChatGPT's designs: the mark redrawn as vectors from measured shapes, the wordmark traced, `@ui/logo` (`Logo`, `LogoMark`) on the sign-in screens and in /design, every icon size from the same shapes, the brand files and their README in `docs/brand`. A review (three angles, a skeptic) confirmed three problems, all fixed: the store icons had an alpha channel, which App Store Connect refuses; `brand-2` was mixed in oklab, paler than the files; Google Play wants a 512 icon.
+- Next: the logo PR, then the minutes PR, then QR clock-in and what both stores require; the store apps once Orel has the company's accounts and domain.
+
 ## 2026-11-08 · chat · the console's people, the business's words, install as an app
 
 - Orel set the order after step 2 (7 November): the console, wording, lists, safe hours with a payroll report, roles; the small improvements in between. He chose for wording: a template's sentence reaches all its businesses at once, every sentence can be replaced, and only the team edits for now. All on issue #1.

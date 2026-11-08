@@ -90,7 +90,9 @@ Only `app/` imports app code (`@/…`).
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
   and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
-  PageSection, AccentPicker and AccentPreview.
+  PageSection, AccentPicker and AccentPreview, Logo and LogoMark.
+- ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
+  ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
   wrapper. `accentTokens` returns a pair for light and for dark, and darkens or lifts
   unreadable picks; text on light tints stays `text-ink`, never `text-accent`.
