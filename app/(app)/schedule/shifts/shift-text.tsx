@@ -1,6 +1,7 @@
 import { weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
+import { formArg } from "@domain/profile";
 import { type ScheduledShift, shiftsOf } from "@domain/schedule";
 import type { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -50,6 +51,15 @@ export const photoOf = (
   data: Pick<ShiftData, "people">,
   userId: string | null,
 ) => data.people.find((p) => p.userId === userId)?.photo ?? null;
+
+/**
+ * How the app writes about someone, for an ICU `select` ("x", the neutral
+ * words, until they choose).
+ */
+export const formOf = (
+  data: Pick<ShiftData, "people">,
+  userId: string | null,
+) => formArg(data.people.find((p) => p.userId === userId)?.addressForm);
 
 export const positionName = (
   data: Pick<ShiftData, "positions">,

@@ -370,6 +370,11 @@ export function ActivityView({
         );
       case "clock.code.locked":
         return plain(t("actions.clock.codeLocked"));
+      case "profile.bio_cleared":
+        // Never the line itself: the log keeps who and when only.
+        return plain(
+          t("actions.profile.bioCleared", { person: who(line.person) }),
+        );
       case "invite.create":
         return plain(
           line.name && line.role

@@ -5,7 +5,10 @@ import {
   inviteToTeam,
   issueTeamInviteLink,
 } from "@db/invites";
+import { clearProfileBio } from "@db/profile";
+import { isUuid } from "@domain/activity";
 import { inviteLink } from "@domain/invites";
+import { type ProfileSaveResult, seenBioOf } from "@domain/profile";
 import {
   canSeeTeam,
   parseTeamInvite,
@@ -115,6 +118,50 @@ export async function inviteAction(
     console.error("inviteToTeam failed", (error as Error).message);
     return { failure: "failed", values };
   }
+}
+
+/**
+ * An owner or manager deletes a colleague's line about themselves, when it is
+ * hurtful or out of place: `seenBio`, the line as the screen showed it, so a
+ * line rewritten since stays ("changed", and the screen reads it again). The
+ * database checks the roles (a manager doesn't clear an owner's) and logs it
+ * without the text. The screen holds the delete for a moment first, so it can
+ * be undone before it is sent.
+ */
+export async function clearBioAction(
+  personId: string,
+  seenBio: string,
+): Promise<ProfileSaveResult> {
+  const member = await currentMember();
+  const membership = member?.membership;
+  if (!member || !membership || !canSeeTeam(membership.role)) {
+    return { ok: false, failure: "noAccess" };
+  }
+  if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };
+  const seen = seenBioOf(seenBio);
+  if (!isUuid(personId) || seen === null) {
+    return { ok: false, failure: "invalid" };
+  }
+  try {
+    const result = await clearProfileBio(
+      member.userId,
+      membership.business.id,
+      personId,
+      seen,
+    );
+    if (!result.ok) {
+      if (result.failure === "changed") refresh();
+      return result;
+    }
+  } catch (error) {
+    console.error(
+      "clearProfileBio failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return { ok: false, failure: "failed" };
+  }
+  refresh();
+  return { ok: true };
 }
 
 /** A fresh link for an invite nobody claimed; the old link stops working. */

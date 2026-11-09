@@ -2,6 +2,7 @@
 
 import { randomBytes } from "node:crypto";
 import { inviteLink } from "@domain/invites";
+import type { ProfileSaveResult } from "@domain/profile";
 import { parseTeamInvite } from "@domain/team";
 import { requestOrigin } from "@/app/origin";
 import type { InviteState, ResendState } from "../../../(app)/team/actions";
@@ -38,4 +39,12 @@ export async function demoResendAction(
   _form: FormData,
 ): Promise<ResendState> {
   return { link: await demoLink() };
+}
+
+/** Deleting a line on a demo profile: nothing is stored, so it comes back on reload. */
+export async function demoClearBioAction(
+  _personId: string,
+  _seenBio: string,
+): Promise<ProfileSaveResult> {
+  return { ok: true };
 }

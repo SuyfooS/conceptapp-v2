@@ -9,6 +9,7 @@ import {
   takenDemoSwap,
 } from "./db";
 import { signIn } from "./session";
+import { heT } from "./t";
 
 // Seeded in supabase/seed.sql: the demo restaurant and two of its workers.
 const NOA = { name: "נועה כהן", local: "050-000-0003", e164: "+972500000003" };
@@ -102,8 +103,10 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
     .filter({ visible: true });
   await expect(offers.getByRole("listitem")).toHaveCount(1);
   await expect(offers).toContainText("מלצר/ית");
+  // Nobody chose a form of address: the neutral words (profile.spec.ts puts
+  // its people back).
   await expect(offers).toContainText(
-    sw.offers.from.replace("{name}", NOA.name),
+    heT("app.shifts.swap.offers.from", { name: NOA.name, form: "x" }),
   );
   await button(yoav, sw.buttons.take).click();
   const taking = yoav.getByRole("dialog");
@@ -133,7 +136,7 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
   // Noa sees who took it; until a manager decides she can still withdraw.
   await page.reload();
   await expect(
-    shown(page, sw.taken.replace("{name}", YOAV.name)),
+    shown(page, heT("app.shifts.swap.taken", { name: YOAV.name, form: "x" })),
   ).toBeVisible();
   await button(page, sw.buttons.cancel).click();
   await expect(button(page, sw.buttons.give)).toBeVisible();
