@@ -61,6 +61,7 @@ export default async function ManageActivityPage({
         business: "/manage/business",
         clockTeam: "/clock/team",
         departments: "/manage/departments",
+        access: access.grantsPay ? "/manage/access" : undefined,
       }}
       wording={await currentWording()}
     />

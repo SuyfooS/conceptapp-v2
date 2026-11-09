@@ -198,18 +198,20 @@ export async function getPushedLines(
 
 /**
  * One of the signed-in person's lines, under RLS, or null. With its params,
- * which say where a line about one thing (a list) leads.
+ * which say where a line about one thing (a list) leads, and when it was
+ * settled, which can change where it leads (`linkFor`).
  */
 export async function getNotification(id: string): Promise<{
   id: string;
   businessId: string;
   kind: string;
   params: unknown;
+  resolvedAt: string | null;
 } | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("notifications")
-    .select("id, business_id, kind, params")
+    .select("id, business_id, kind, params, resolved_at")
     .eq("id", id)
     .maybeSingle();
   if (error) {
@@ -222,6 +224,7 @@ export async function getNotification(id: string): Promise<{
         businessId: data.business_id,
         kind: data.kind,
         params: data.params,
+        resolvedAt: data.resolved_at,
       }
     : null;
 }

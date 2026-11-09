@@ -166,7 +166,7 @@ function today(
     photo: teamMembers.find((m) => m.userId === userId)?.photo ?? null,
     role,
     businessName: business.name,
-    widgets: moduleWidgets(manifests, modules, role),
+    widgets: moduleWidgets(manifests, modules, { role, perms: [] }),
     schedule,
     team: role === "worker" ? null : team(),
     // The bell leads to /design/shell/notifications, a manager's inbox, and

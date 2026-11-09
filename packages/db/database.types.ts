@@ -2152,6 +2152,10 @@ export type Database = {
         Args: { at_time?: string; caller: string; kind: string; phone: string };
         Returns: number;
       };
+      note_payroll_access: {
+        Args: { business: string; pay_month: string; view_kind: string };
+        Returns: undefined;
+      };
       note_punch_attempt: {
         Args: {
           actor: string;

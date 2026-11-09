@@ -17,6 +17,7 @@ export default function ShellManage() {
       team="/design/shell/team"
       shabbatCity={shabbatCityState(demoModuleRows, demoBusinessDetails)}
       departments={demoDepartments.map((d) => d.name)}
+      payAccess
       wording={baseWording}
     />
   );

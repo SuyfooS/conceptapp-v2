@@ -42,6 +42,8 @@ export type ActivityPaths = {
   clockTeam: string;
   /** The business's departments, where their lines lead. */
   departments: string;
+  /** Who sees pay, where its lines lead: the owner's alone. */
+  access?: string;
 };
 
 /**
@@ -623,6 +625,25 @@ export function ActivityView({
             was: line.was ?? "other",
           }),
         );
+      case "permission.grant":
+      case "permission.revoke": {
+        const perm = line.perm === "clock.payroll" ? "payroll" : "other";
+        const side = line.action === "permission.grant" ? "to" : "from";
+        const whom =
+          line.to.kind === "role"
+            ? t(`actions.permission.${side}.role`, {
+                role: line.to.role ?? "other",
+              })
+            : t(`actions.permission.${side}.person`, {
+                person: who(line.to.person),
+              });
+        return plain(
+          line.action === "permission.grant"
+            ? t("actions.permission.grant", { perm, to: whom })
+            : t("actions.permission.revoke", { perm, from: whom }),
+          paths.access,
+        );
+      }
       case "other":
         return plain(t("actions.other"));
       default: {

@@ -30,6 +30,8 @@ export type TeamHoursData = {
   showCode: boolean;
   /** Someone from ConceptApp is looking; nothing can be pressed. */
   viewOnly: boolean;
+  /** They hold pay access: the way to the hours for payroll. */
+  payroll: boolean;
   /** What this viewer may approve, oldest first. */
   toConfirm: EntryToConfirm[];
   atWork: {
@@ -108,4 +110,10 @@ export type TeamActions = {
 };
 
 /** Where this screen's links go; the demo keeps them inside the demo. */
-export type TeamPaths = { clock: string; team: string; code: string };
+export type TeamPaths = {
+  clock: string;
+  team: string;
+  code: string;
+  /** The hours for payroll, for those who hold pay access. */
+  pay: string;
+};

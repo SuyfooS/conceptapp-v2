@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { DEMO_PEOPLE, demoEmailOf } from "@domain/passive-sign-in";
 import { describe, expect, it } from "vitest";
 
 // A demo business lets its people set a photo (and, from H2, write about
@@ -12,6 +13,27 @@ const root = join(__dirname, "..");
 const read = (path: string) => readFileSync(join(root, path), "utf8");
 
 describe("demo businesses and profiles", () => {
+  it("has an account for every person at the door, locally and hosted", () => {
+    for (const file of ["supabase/seed.sql", "supabase/hosted-demo.sql"]) {
+      const sql = read(file);
+      for (const person of DEMO_PEOPLE) {
+        expect(sql, `${person} in ${file}`).toContain(
+          `'${demoEmailOf(person)}'`,
+        );
+      }
+    }
+  });
+
+  it("puts each accountant in no department: they are off the staff", () => {
+    for (const file of ["supabase/seed.sql", "supabase/hosted-demo.sql"]) {
+      const accountants = read(file)
+        .split(/\r?\n/)
+        .filter((line) => line.includes('"role": "accountant"'));
+      expect(accountants.length, file).toBeGreaterThan(0);
+      for (const line of accountants) expect(line).not.toMatch(/"departments"/);
+    }
+  });
+
   it("never opens a hosted demo business to profile changes", () => {
     expect(read("supabase/hosted-demo.sql")).not.toMatch(/"profiles"/);
   });

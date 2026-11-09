@@ -412,6 +412,35 @@ describe("buildInbox", () => {
     });
   });
 
+  it("reads pay access given, by whom, leading to the hours for payroll", () => {
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: MANAGER }), NOA),
+    ).toMatchObject({
+      group: null,
+      href: "/clock/pay",
+      line: { kind: "access.pay_granted" },
+    });
+    expect(needsAction("access.pay_granted")).toBe(false);
+  });
+
+  it("keeps pay access taken back in the inbox, where the hours are closed", () => {
+    expect(
+      lineOf(
+        row(
+          "access.pay_granted",
+          {},
+          { actorId: MANAGER, resolvedAt: "2026-11-10T09:00:00Z" },
+        ),
+        NOA,
+      ),
+    ).toMatchObject({ settled: true, href: "/notifications" });
+    expect(linkFor("access.pay_granted", {}, true)).toBe("/notifications");
+    expect(linkFor("access.pay_granted", {}, false)).toBe("/clock/pay");
+    // Settling leaves other kinds where they lead.
+    expect(linkFor("clock.confirm", {}, true)).toBe("/clock/team");
+    expect(linkFor("lists.sent", { list: LINE }, true)).toBe(`/lists/${LINE}`);
+  });
+
   it("reads the phone switch's test as a line of its own, in no group", () => {
     expect(lineOf(row("push.test", {}, { actorId: null }))).toMatchObject({
       group: null,

@@ -959,3 +959,75 @@ export async function archiveDemoDepartment(name: string): Promise<void> {
     where business_id = ${DEMO_RESTAURANT} and name = ${name}
       and archived_at is null`;
 }
+
+const DEMO_SHOP = "00000000-0000-4000-b000-000000000002";
+const SHOP_OWNER = "00000000-0000-4000-a000-000000000007";
+
+/**
+ * The month the demo shop's hours were seeded for (private.seed_demo_pay): the
+ * month before its last reset, in its own time zone. The pay screens open on
+ * last month only until the 10th, so every visit names this month instead. A
+ * spec that let the next reset through (`allowDemoReset`) leaves no reset time:
+ * the newest hours the reset wrote say it then.
+ */
+export async function seededPayMonth(): Promise<string> {
+  const [row] = await sql<{ month: string }[]>`
+    select to_char(
+      date_trunc('month', coalesce(d.reset_at,
+        (select max(e.created_at) from public.time_entries e
+         where e.business_id = d.business_id),
+        now()) at time zone b.timezone) - interval '1 month',
+      'YYYY-MM') as month
+    from private.demo_businesses d
+    join public.businesses b on b.id = d.business_id
+    where d.business_id = ${DEMO_SHOP}`;
+  if (!row) throw new Error("The demo shop is missing");
+  return row.month;
+}
+
+/**
+ * Whether everyone in a role at the demo shop sees pay, as its owner switches
+ * it, through the same database function the app uses. The shop starts with
+ * its managers on.
+ */
+export async function setShopPayRole(
+  role: "manager" | "worker",
+  granted: boolean,
+): Promise<void> {
+  await sql`select public.set_role_permission(${SHOP_OWNER}, ${DEMO_SHOP},
+    ${role}, 'clock.payroll', ${granted})`;
+}
+
+/** The roles the demo shop gives pay access to, in order. */
+export async function shopPayRoles(): Promise<string[]> {
+  const rows = await sql<{ role: string }[]>`
+    select role::text as role from public.role_permissions
+    where business_id = ${DEMO_SHOP} and perm = 'clock.payroll'
+    order by role`;
+  return rows.map((row) => row.role);
+}
+
+/** How many times the person's opening of the demo shop's pay screens was noted today. */
+export async function shopPayViewsToday(phone: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log a
+    join public.profiles p on p.id = a.actor_id
+    join public.businesses b on b.id = a.business_id
+    where a.business_id = ${DEMO_SHOP} and a.action = 'payroll.view'
+      and p.phone = ${phone}
+      and a.created_at >= date_trunc('day', now() at time zone b.timezone)
+        at time zone b.timezone`;
+  return row?.count ?? 0;
+}
+
+/** How many of the demo shop's log rows of `action` there are since `since`. */
+export async function shopActivityActions(
+  action: string,
+  since: Date,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log
+    where business_id = ${DEMO_SHOP} and action = ${action}
+      and created_at >= ${since}`;
+  return row?.count ?? 0;
+}

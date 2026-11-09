@@ -4,8 +4,9 @@
 -- specs.
 --   the restaurant  an owner, a shift manager and two workers (the same as
 --                   /design/shell). Its schedule is the visitor's to build.
---   the shop        an owner, a manager and four workers, with this week's
---                   schedule always published.
+--   the shop        an owner, a manager, four workers and an accountant, with
+--                   this week's schedule always published.
+--   both            last month's hours, for the pay screens.
 -- Fictional businesses and people. Phones are in the 050-000-00xx range and
 -- are never sent anything. This file runs on `supabase db reset` only; it
 -- never reaches a real project (supabase/hosted-demo.sql is the hosted twin).
@@ -51,6 +52,9 @@ values
    '{"provider":"phone","providers":["phone"]}', '{}', now(), now()),
   ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-000000000013',
    'authenticated', 'authenticated', '972500000013', now(),
+   '{"provider":"phone","providers":["phone"]}', '{}', now(), now()),
+  ('00000000-0000-0000-0000-000000000000', '00000000-0000-4000-a000-000000000014',
+   'authenticated', 'authenticated', '972500000014', now(),
    '{"provider":"phone","providers":["phone"]}', '{}', now(), now());
 
 -- The auth server reads these token columns as strings and fails on NULL,
@@ -74,6 +78,8 @@ update auth.users set email = 'shop-manager@demo.conceptapp.invalid', email_conf
 where id = '00000000-0000-4000-a000-000000000008';
 update auth.users set email = 'shop-worker@demo.conceptapp.invalid', email_confirmed_at = now()
 where id = '00000000-0000-4000-a000-000000000010';
+update auth.users set email = 'accountant@demo.conceptapp.invalid', email_confirmed_at = now()
+where id = '00000000-0000-4000-a000-000000000014';
 
 -- Profiles come from the auth trigger. The team's names are set here; the
 -- demo people's come with their business, below.
@@ -95,7 +101,10 @@ values
 -- departments they are in, by their template's keys (tooling/demo-departments.test.ts).
 -- The shop's managers hold pay access ("rolePermissions"), to show the owner's
 -- switch; the restaurant's start without it, as a real business does
--- (20261110000300_payroll_access.sql).
+-- (20261110000300_payroll_access.sql). The shop also has an accountant, Galit,
+-- in no department and on no shift. Each starts with last month's hours
+-- ("hours", 20261110000400_payroll_screens.sql): its staff's usual days, and
+-- the cases the pay screens show, each on the person it names.
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -103,6 +112,9 @@ values
     "slug": "demo-restaurant", "name": "מסעדת הדגמה", "accent": "#2563eb",
     "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
     "template": "restaurant", "renews": false, "invites": true, "profiles": true,
+    "hours": { "fridays": false, "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000004", "case": "night" }
+    ] },
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000001", "role": "owner", "name": "אורי הדגמה" },
       { "user_id": "00000000-0000-4000-a000-000000000002", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
@@ -117,13 +129,21 @@ values
     "address": "רחוב הדגמה 2, חיפה", "shabbat_city": "haifa",
     "template": "retail", "renews": true, "invites": true,
     "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
+    "hours": { "fridays": true, "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000010", "case": "friday_late" },
+      { "user_id": "00000000-0000-4000-a000-000000000010", "case": "corrected", "note": "שכחה לצאת" },
+      { "user_id": "00000000-0000-4000-a000-000000000011", "case": "saturday_night" },
+      { "user_id": "00000000-0000-4000-a000-000000000011", "case": "without_code" },
+      { "user_id": "00000000-0000-4000-a000-000000000013", "case": "evening" }
+    ] },
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000007", "role": "owner", "name": "מיכל הדגמה" },
       { "user_id": "00000000-0000-4000-a000-000000000008", "role": "manager", "name": "עומר הדגמה", "departments": ["floor"] },
       { "user_id": "00000000-0000-4000-a000-000000000010", "role": "worker", "name": "תמר אברהם", "departments": ["checkout"] },
       { "user_id": "00000000-0000-4000-a000-000000000011", "role": "worker", "name": "איתי מזרחי", "departments": ["floor"] },
       { "user_id": "00000000-0000-4000-a000-000000000012", "role": "worker", "name": "רוני שלום", "departments": ["stock"] },
-      { "user_id": "00000000-0000-4000-a000-000000000013", "role": "worker", "name": "ליה כץ", "departments": ["checkout", "floor"] }
+      { "user_id": "00000000-0000-4000-a000-000000000013", "role": "worker", "name": "ליה כץ", "departments": ["checkout", "floor"] },
+      { "user_id": "00000000-0000-4000-a000-000000000014", "role": "accountant", "name": "גלית הדגמה" }
     ]
   }
   $json$::jsonb);

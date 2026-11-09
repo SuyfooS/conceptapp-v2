@@ -1,0 +1,125 @@
+"use client";
+
+import { Card } from "@ui/card";
+import { DataTable } from "@ui/data-table";
+import { PersonAvatar } from "@ui/person-row";
+import { Sheet } from "@ui/sheet";
+import Link from "next/link";
+import { useTranslations } from "next-intl";
+import { useState } from "react";
+import {
+  CountCell,
+  PayDayList,
+  payMonthColumns,
+  personHref,
+  useHoursText,
+  useMonthName,
+} from "./pay-parts";
+import type { PayPaths, PayPerson } from "./pay-types";
+
+/**
+ * The month on a desktop: everyone in one table, and a person's days in a
+ * sheet over it, with the way to their own page.
+ */
+export function PayMonthTable({
+  people,
+  month,
+  paths,
+}: {
+  people: readonly PayPerson[];
+  month: string;
+  paths: PayPaths;
+}) {
+  const t = useTranslations("app.pay");
+  const hours = useHoursText();
+  const monthName = useMonthName();
+  // The sheet stays mounted, closed, so it opens already inside the
+  // business's colour.
+  const [open, setOpen] = useState(false);
+  const [chosen, setChosen] = useState<string | null>(null);
+  const person = people.find((row) => row.userId === chosen) ?? null;
+  const nameOf = (row: PayPerson) => row.name ?? t("noName");
+
+  return (
+    <>
+      <Card padding="none" className="overflow-hidden">
+        <DataTable
+          caption={t("title")}
+          columns={payMonthColumns(t)}
+          selected={open ? chosen : null}
+          onSelect={(key) => {
+            setChosen(key);
+            setOpen(true);
+          }}
+          rows={people.map((row) => ({
+            key: row.userId,
+            label: t("open", { name: nameOf(row) }),
+            cells: {
+              name: (
+                <span className="flex items-center gap-3">
+                  <PersonAvatar name={row.name} photo={row.photo} />
+                  <span className="flex flex-col">
+                    <span>{nameOf(row)}</span>
+                    {row.former ? (
+                      <span className="font-normal text-ink-2 text-sm">
+                        {t("former", { form: row.form })}
+                      </span>
+                    ) : null}
+                  </span>
+                </span>
+              ),
+              days: row.totals.days,
+              hours: (
+                <span className="font-semibold">
+                  {hours(row.totals.minutes)}
+                </span>
+              ),
+              shifts: row.totals.shifts,
+              breaks:
+                row.totals.unpaidBreakMinutes > 0
+                  ? t("minutes", { minutes: row.totals.unpaidBreakMinutes })
+                  : t("none"),
+              corrected: <CountCell value={row.totals.corrected} />,
+              waiting: <CountCell value={row.totals.waiting} warn />,
+              toCheck: (
+                <CountCell value={row.totals.waiting + row.totals.open} warn />
+              ),
+            },
+          }))}
+        />
+      </Card>
+      <Sheet
+        open={open}
+        onOpenChange={setOpen}
+        title={person ? nameOf(person) : t("title")}
+        subtitle={
+          person
+            ? `${monthName(month)} · ${t("person.caption", {
+                days: person.totals.days,
+                shifts: person.totals.shifts,
+              })}`
+            : undefined
+        }
+        closeLabel={t("sheet.close")}
+      >
+        {person ? (
+          <div className="flex flex-col gap-3">
+            {person.days.length > 0 ? (
+              <PayDayList days={person.days} t={t} className="bg-elevated" />
+            ) : (
+              <p className="px-1 text-ink-2">
+                {t("person.empty.title", { month: monthName(month) })}
+              </p>
+            )}
+            <Link
+              href={personHref(paths.pay, person.userId, month)}
+              className="inline-flex min-h-11 items-center self-start px-1 font-semibold text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              {t("sheet.page", { name: nameOf(person) })}
+            </Link>
+          </div>
+        ) : null}
+      </Sheet>
+    </>
+  );
+}

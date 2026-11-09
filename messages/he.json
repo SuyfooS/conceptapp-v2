@@ -215,6 +215,8 @@
     "p3": "שולחן 12",
     "p3s": "4 סועדים · 20:30",
     "p3b": "מאושר",
+    "rowCurrent": "השורה שמוצגת עכשיו",
+    "rowCurrentText": "פס בצבע העסק בתחילתה, וקוראי מסך אומרים שהיא הנוכחית",
     "rowDisabled": "שורה שלא זמינה כרגע",
     "rowDisabledText": "מעומעמת, ואי אפשר ללחוץ עליה עד שהיא חוזרת",
     "badges": "תגיות",
@@ -310,7 +312,15 @@
     "checklistFreezer": "מקפיא",
     "checklistNote": "מה חסר במטבח",
     "checklistPhoto": "צילום של המטבח אחרי הניקיון",
-    "checklistWho": "נועה"
+    "checklistWho": "נועה",
+    "dataTable": "טבלה",
+    "dataTableName": "שם",
+    "dataTableDays": "ימים",
+    "dataTableHours": "שעות",
+    "dataTableWaiting": "מחכות לאישור",
+    "dataTableOpen": "פתיחת השורה של {name}",
+    "dataTableChosen": "נבחרה השורה של {name}",
+    "dataTableHint": "לחיצה על שם בוחרת את השורה שלו."
   },
   "shell": {
     "metaTitle": "דמו פריסה",
@@ -461,6 +471,10 @@
         "shopWorker": {
           "name": "תמר אברהם",
           "role": "עובדת"
+        },
+        "accountant": {
+          "name": "גלית הדגמה",
+          "role": "מנהלת חשבונות"
         }
       },
       "reset": {
@@ -572,6 +586,23 @@
         "short": "{count, plural, one {חסר עובד אחד} other {חסרים #}}",
         "noShifts": "אין היום משמרות בסידור שפורסם. שאר השבוע נמצא ב„לכל השבוע”.",
         "notPublished": "הסידור של השבוע עוד לא פורסם. כשיפורסם, יופיע כאן מי עובד היום."
+      },
+      "accountant": {
+        "title": "שעות {month}",
+        "open": "פתיחת השעות",
+        "before": {
+          "title": "לפני השכר",
+          "nothing": "אין מה לבדוק לפני השכר. כל השעות של החודש סגורות ומאושרות.",
+          "noHours": "בחודש הזה אין שעות. כשהצוות יחתים כניסה, יופיע כאן מה לבדוק לפני השכר."
+        },
+        "earlier": {
+          "title": "החודשים הקודמים",
+          "row": "<ltr>{hours}</ltr> שעות"
+        },
+        "noClock": {
+          "title": "עוד אין שעות לשכר",
+          "body": "השעות לשכר יופיעו כאן כשהשעון יופעל לעסק."
+        }
       }
     },
     "moduleSoon": {
@@ -1329,6 +1360,109 @@
         "viewOnly": "במצב צפייה לא מוצג קוד."
       }
     },
+    "pay": {
+      "title": "שעות לשכר",
+      "subtitle": "השעות של כולם בחודש, לפי ימים, מדויקות לדקה",
+      "backTeam": "שעות הצוות",
+      "backClock": "שעון",
+      "month": {
+        "earlier": "החודש הקודם: {month}",
+        "later": "החודש הבא: {month}"
+      },
+      "hours": "<ltr>{hours}</ltr> שעות",
+      "caption": "{people, plural, =0 {אין עדיין שעות} one {אדם אחד} other {# אנשים}} · {toCheck, plural, =0 {אין מה לבדוק} one {משמרת אחת לבדיקה} other {# משמרות לבדיקה}}",
+      "row": "<ltr>{hours}</ltr> שעות · {days, plural, =0 {אין ימים} one {יום אחד} other {# ימים}}",
+      "corrected": "{count, plural, one {משמרת אחת תוקנה} other {# משמרות תוקנו}}",
+      "toCheck": "{count, plural, one {משמרת אחת לבדיקה} other {# משמרות לבדיקה}}",
+      "former": "{form, select, f {עזבה} m {עזב} other {עזב/ה}}",
+      "noName": "בלי שם",
+      "beforePayroll": {
+        "title": "לפני השכר",
+        "ownerOnly": "{count, plural, one {משמרת אחת מחכה לאישור של הבעלים} other {# משמרות מחכות לאישור של הבעלים}}",
+        "waiting": "{count, plural, one {משמרת אחת מחכה לאישור} other {# משמרות מחכות לאישור}}",
+        "open": "{count, plural, one {משמרת אחת עוד פתוחה} other {# משמרות עוד פתוחות}}",
+        "corrected": "{count, plural, one {משמרת אחת תוקנה} other {# משמרות תוקנו}}",
+        "rounding": "השעות כאן מדויקות לדקה, גם אם השעון מעגל",
+        "fix": "לאישור ולתיקון בשעות הצוות"
+      },
+      "columns": {
+        "name": "שם",
+        "days": "ימים",
+        "hours": "שעות",
+        "shifts": "משמרות",
+        "breaks": "הפסקות שלא שולמו",
+        "corrected": "תוקנו",
+        "waiting": "מחכות לאישור",
+        "toCheck": "לבדיקה"
+      },
+      "minutes": "{minutes} דק׳",
+      "none": "—",
+      "open": "פתיחת השעות של {name}",
+      "empty": {
+        "title": "אין שעות ב{month}",
+        "body": "ב{month} עוד אין שעות. כשהצוות יחתים כניסה, הן יופיעו כאן.",
+        "bodyPast": "ב{month} אין שעות. אפשר לעבור לחודש אחר בחיצים שליד שם החודש."
+      },
+      "clockRow": {
+        "title": "שעות לשכר",
+        "subtitle": "השעות של כולם בחודש, לפי ימים"
+      },
+      "person": {
+        "caption": "{days, plural, =0 {אין ימים} one {יום אחד} other {# ימים}} · {shifts, plural, =0 {אין משמרות} one {משמרת אחת} other {# משמרות}}",
+        "summary": "סיכום החודש",
+        "days": "ימי עבודה",
+        "shifts": "משמרות",
+        "breaks": "הפסקות שלא שולמו",
+        "corrected": "משמרות שתוקנו",
+        "waiting": "מחכות לאישור",
+        "open": "עוד פתוחות",
+        "daysTitle": "הימים",
+        "empty": {
+          "title": "אין משמרות ב{month}",
+          "body": "{form, select, f {כשתחתים כניסה} m {כשיחתים כניסה} other {כשיחתים/תחתים כניסה}}, המשמרות יופיעו כאן. אפשר לעבור לחודש אחר בחיצים שליד שם החודש."
+        }
+      },
+      "day": {
+        "times": "<ltr>{in}–{out}</ltr>",
+        "openTimes": "מ-<ltr>{in}</ltr>, עוד פתוחה",
+        "breaks": "{minutes} דק׳ הפסקה שלא שולמה",
+        "waiting": "מחכה לאישור",
+        "waitingOwner": "מחכה לאישור הבעלים",
+        "original": "לפני התיקון: <ltr>{in}–{out}</ltr>",
+        "originalOpen": "לפני התיקון: מ-<ltr>{in}</ltr>, בלי יציאה",
+        "source": {
+          "added": "הוספה ידנית",
+          "self": "רישום עצמי",
+          "none": "בלי קוד",
+          "manager": "תיקון ידני",
+          "punch": "שעון",
+          "off": "שעון",
+          "owner": "בעלים",
+          "typed": "הקלדת קוד",
+          "scan": "סריקה"
+        },
+        "aManager": "מנהל",
+        "added": "נרשם על ידי {name}: {note}",
+        "addedBy": "נרשם על ידי {name}",
+        "corrected": "תוקן על ידי {name}: {note}",
+        "correctedBy": "תוקן על ידי {name}",
+        "stillOpen": "עוד פתוחה"
+      },
+      "dayColumns": {
+        "date": "תאריך",
+        "weekday": "יום",
+        "in": "כניסה",
+        "out": "יציאה",
+        "breaks": "הפסקות שלא שולמו",
+        "net": "שעות",
+        "source": "איך נרשם",
+        "correction": "תיקון"
+      },
+      "sheet": {
+        "close": "סגירה",
+        "page": "לדף של {name}"
+      }
+    },
     "manage": {
       "title": "ניהול העסק",
       "subtitle": "כאן מתאימים את האפליקציה בדיוק לעסק שלך.",
@@ -1572,8 +1706,66 @@
             "leftOptional": "{count, plural, one {פריט אחד שלא חובה נשאר ריק} other {# פריטים שלא חובה נשארו ריקים}}",
             "cancel": "ביטול הרשימה {name}",
             "reopen": "{was, select, cancelled {החזרת הרשימה {name} אחרי שבוטלה} other {פתיחה מחדש של הרשימה {name}}}"
+          },
+          "permission": {
+            "grant": "{perm, select, payroll {מתן גישה לשעות ולשכר} other {מתן הרשאה}} {to}",
+            "revoke": "{perm, select, payroll {הסרת הגישה לשעות ולשכר} other {הסרת הרשאה}} {from}",
+            "to": {
+              "role": "{role, select, manager {למנהלים} worker {לעובדים} other {לתפקיד}}",
+              "person": "ל{person}"
+            },
+            "from": {
+              "role": "{role, select, manager {מהמנהלים} worker {מהעובדים} other {מתפקיד}}",
+              "person": "מ{person}"
+            }
           }
         }
+      },
+      "access": {
+        "title": "מי רואה שכר",
+        "subtitle": "מי רואה את השעות לשכר של כולם בעסק. בעלים ומנהלי חשבונות תמיד רואים.",
+        "row": "בעלים, מנהלי חשבונות ומי שקיבל גישה",
+        "back": "ניהול העסק",
+        "groups": {
+          "roles": "שעות ושכר",
+          "personal": "גישה אישית"
+        },
+        "roles": {
+          "owner": "בעלים",
+          "accountant": "מנהלי חשבונות",
+          "manager": "מנהלים",
+          "worker": "עובדים"
+        },
+        "always": "תמיד",
+        "count": "{count, plural, one {אדם אחד רואה} other {# אנשים רואים}} את השעות והשכר",
+        "overTen": "מעל 10 אנשים שרואים שכר, העסק עובר לרמת אבטחה בינונית",
+        "personal": {
+          "empty": "אף אחד לא קיבל גישה אישית. אפשר להוסיף אדם, למשל עובד שעושה גם את החשבונות.",
+          "none": "אף אחד לא קיבל גישה אישית.",
+          "roleCovers": "גם התפקיד נותן גישה",
+          "remove": "הסרה",
+          "removeLabel": "הסרת הגישה של {name}",
+          "add": "הוספת אדם",
+          "addLabel": "הוספת אדם שיראה את השעות והשכר",
+          "nobody": "כל הצוות כבר רואה את השעות והשכר.",
+          "choose": "בחירה"
+        },
+        "done": {
+          "roleOn": "{role, select, manager {המנהלים רואים} other {העובדים רואים}} עכשיו את השעות והשכר",
+          "roleOff": "{role, select, manager {המנהלים} other {העובדים}} כבר לא רואים את השעות והשכר",
+          "added": "{name} רואה עכשיו את השעות והשכר",
+          "removed": "{name} כבר לא רואה את השעות והשכר",
+          "removedRoleCovers": "הגישה האישית של {name} הוסרה. {role, select, manager {המנהלים} other {העובדים}} עדיין רואים את השעות והשכר",
+          "undone": "השינוי בוטל"
+        },
+        "failure": {
+          "noAccess": "רק הבעלים קובעים מי רואה שכר.",
+          "notInTeam": "האדם הזה כבר לא בצוות.",
+          "always": "בעלים ומנהלי חשבונות תמיד רואים את השעות והשכר.",
+          "viewOnly": "במצב צפייה אי אפשר לשנות מי רואה שכר.",
+          "failed": "השינוי לא נשמר. בדקו את החיבור ונסו שוב."
+        },
+        "noName": "בלי שם"
       },
       "ownerOnly": "לבעלים בלבד",
       "departments": {
@@ -1803,6 +1995,13 @@
           },
           "finished": {
             "title": "הרשימה {name} נסגרה"
+          }
+        },
+        "access": {
+          "pay_granted": {
+            "title": "קיבלת גישה לשעות ולשכר",
+            "settledTitle": "הגישה שלך לשעות ולשכר הוסרה",
+            "note": "השעות של כולם בעסק, בשעות לשכר"
           }
         },
         "other": {
@@ -2091,6 +2290,7 @@
     "time_clock": {
       "name": "שעון",
       "description": "כניסה למשמרת ויציאה ממנה",
+      "outsideNav": "שעות לשכר",
       "settings": {
         "roundToMinutes": {
           "label": "עיגול שעות",

@@ -215,6 +215,8 @@
     "p3": "Table 12",
     "p3s": "4 guests · 20:30",
     "p3b": "Confirmed",
+    "rowCurrent": "The row shown now",
+    "rowCurrentText": "A bar in the business's colour at its start, and screen readers say it is the current one",
     "rowDisabled": "A row that isn't available now",
     "rowDisabledText": "Dimmed, and it can't be pressed until it comes back",
     "badges": "Badges",
@@ -310,7 +312,15 @@
     "checklistFreezer": "Freezer",
     "checklistNote": "What's missing in the kitchen",
     "checklistPhoto": "A photo of the kitchen after cleaning",
-    "checklistWho": "Noa"
+    "checklistWho": "Noa",
+    "dataTable": "Table",
+    "dataTableName": "Name",
+    "dataTableDays": "Days",
+    "dataTableHours": "Hours",
+    "dataTableWaiting": "Waiting",
+    "dataTableOpen": "Open {name}'s row",
+    "dataTableChosen": "{name}'s row is chosen",
+    "dataTableHint": "A name chooses its row."
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -461,6 +471,10 @@
         "shopWorker": {
           "name": "Tamar Avraham",
           "role": "Worker"
+        },
+        "accountant": {
+          "name": "Galit Demo",
+          "role": "Accountant"
         }
       },
       "reset": {
@@ -572,6 +586,23 @@
         "short": "{count, plural, one {One person short} other {# people short}}",
         "noShifts": "No shifts today in the published schedule. The rest of the week is under “The whole week”.",
         "notPublished": "This week's schedule is not published yet. When it is, you will see here who works today."
+      },
+      "accountant": {
+        "title": "{month} hours",
+        "open": "Open the hours",
+        "before": {
+          "title": "Before payroll",
+          "nothing": "Nothing to check before payroll. Every shift of the month is closed and approved.",
+          "noHours": "There are no hours this month. Once the team clocks in, what to check before payroll shows here."
+        },
+        "earlier": {
+          "title": "The months before",
+          "row": "<ltr>{hours}</ltr> hours"
+        },
+        "noClock": {
+          "title": "No hours for payroll yet",
+          "body": "The hours for payroll show here once the clock is switched on for the business."
+        }
       }
     },
     "moduleSoon": {
@@ -1329,6 +1360,109 @@
         "viewOnly": "No code is shown in view-only mode."
       }
     },
+    "pay": {
+      "title": "Hours for payroll",
+      "subtitle": "Everyone's hours in the month, day by day, to the minute",
+      "backTeam": "Team hours",
+      "backClock": "Clock",
+      "month": {
+        "earlier": "Previous month: {month}",
+        "later": "Next month: {month}"
+      },
+      "hours": "<ltr>{hours}</ltr> hours",
+      "caption": "{people, plural, =0 {No hours yet} one {One person} other {# people}} · {toCheck, plural, =0 {nothing to check} one {one shift to check} other {# shifts to check}}",
+      "row": "<ltr>{hours}</ltr> hours · {days, plural, =0 {no days} one {one day} other {# days}}",
+      "corrected": "{count, plural, one {One shift corrected} other {# shifts corrected}}",
+      "toCheck": "{count, plural, one {One shift to check} other {# shifts to check}}",
+      "former": "{form, select, f {Has left} m {Has left} other {Has left}}",
+      "noName": "No name",
+      "beforePayroll": {
+        "title": "Before payroll",
+        "ownerOnly": "{count, plural, one {One shift waits for the owner's approval} other {# shifts wait for the owner's approval}}",
+        "waiting": "{count, plural, one {One shift waits for approval} other {# shifts wait for approval}}",
+        "open": "{count, plural, one {One shift is still open} other {# shifts are still open}}",
+        "corrected": "{count, plural, one {One shift was corrected} other {# shifts were corrected}}",
+        "rounding": "These hours are exact to the minute, even though the clock rounds",
+        "fix": "Approve and fix them in team hours"
+      },
+      "columns": {
+        "name": "Name",
+        "days": "Days",
+        "hours": "Hours",
+        "shifts": "Shifts",
+        "breaks": "Unpaid breaks",
+        "corrected": "Corrected",
+        "waiting": "Waiting",
+        "toCheck": "To check"
+      },
+      "minutes": "{minutes} min",
+      "none": "—",
+      "open": "Open {name}'s hours",
+      "empty": {
+        "title": "No hours in {month}",
+        "body": "There are no hours in {month} yet. Once the team clocks in, they show here.",
+        "bodyPast": "There are no hours in {month}. The arrows beside the month's name lead to other months."
+      },
+      "clockRow": {
+        "title": "Hours for payroll",
+        "subtitle": "Everyone's hours in the month, day by day"
+      },
+      "person": {
+        "caption": "{days, plural, =0 {No days} one {One day} other {# days}} · {shifts, plural, =0 {no shifts} one {one shift} other {# shifts}}",
+        "summary": "The month",
+        "days": "Days worked",
+        "shifts": "Shifts",
+        "breaks": "Unpaid breaks",
+        "corrected": "Shifts corrected",
+        "waiting": "Waiting for approval",
+        "open": "Still open",
+        "daysTitle": "The days",
+        "empty": {
+          "title": "No shifts in {month}",
+          "body": "{form, select, f {Once she clocks in} m {Once he clocks in} other {Once they clock in}}, the shifts show here. The arrows beside the month's name lead to other months."
+        }
+      },
+      "day": {
+        "times": "<ltr>{in}–{out}</ltr>",
+        "openTimes": "From <ltr>{in}</ltr>, still open",
+        "breaks": "{minutes} min unpaid break",
+        "waiting": "Waiting for approval",
+        "waitingOwner": "Waiting for the owner's approval",
+        "original": "Before the correction: <ltr>{in}–{out}</ltr>",
+        "originalOpen": "Before the correction: from <ltr>{in}</ltr>, no clock-out",
+        "source": {
+          "added": "Added by hand",
+          "self": "Set by themselves",
+          "none": "Without a code",
+          "manager": "Corrected by hand",
+          "punch": "Clock",
+          "off": "Clock",
+          "owner": "Owner",
+          "typed": "Typed code",
+          "scan": "Scan"
+        },
+        "aManager": "a manager",
+        "added": "Added by {name}: {note}",
+        "addedBy": "Added by {name}",
+        "corrected": "Corrected by {name}: {note}",
+        "correctedBy": "Corrected by {name}",
+        "stillOpen": "Still open"
+      },
+      "dayColumns": {
+        "date": "Date",
+        "weekday": "Day",
+        "in": "In",
+        "out": "Out",
+        "breaks": "Unpaid breaks",
+        "net": "Hours",
+        "source": "Recorded by",
+        "correction": "Correction"
+      },
+      "sheet": {
+        "close": "Close",
+        "page": "{name}'s page"
+      }
+    },
     "manage": {
       "title": "Running the business",
       "subtitle": "Here you fit the app exactly to your business.",
@@ -1572,8 +1706,66 @@
             "leftOptional": "{count, plural, one {One optional item left empty} other {# optional items left empty}}",
             "cancel": "Cancelled the list {name}",
             "reopen": "{was, select, cancelled {Brought back the list {name} after it was cancelled} other {Opened the list {name} again}}"
+          },
+          "permission": {
+            "grant": "{perm, select, payroll {Access to hours and pay given} other {Permission given}} {to}",
+            "revoke": "{perm, select, payroll {Access to hours and pay taken back} other {Permission taken back}} {from}",
+            "to": {
+              "role": "{role, select, manager {to managers} worker {to workers} other {to a role}}",
+              "person": "to {person}"
+            },
+            "from": {
+              "role": "{role, select, manager {from managers} worker {from workers} other {from a role}}",
+              "person": "from {person}"
+            }
           }
         }
+      },
+      "access": {
+        "title": "Who sees pay",
+        "subtitle": "Who sees everyone's hours for payroll in the business. Owners and accountants always do.",
+        "row": "Owners, accountants and whoever was given access",
+        "back": "Manage the business",
+        "groups": {
+          "roles": "Hours and pay",
+          "personal": "Personal access"
+        },
+        "roles": {
+          "owner": "Owners",
+          "accountant": "Accountants",
+          "manager": "Managers",
+          "worker": "Workers"
+        },
+        "always": "Always",
+        "count": "{count, plural, one {One person sees} other {# people see}} the hours and pay",
+        "overTen": "With more than 10 people seeing pay, the business moves to a medium security level",
+        "personal": {
+          "empty": "Nobody has personal access. You can add someone, such as a worker who also does the books.",
+          "none": "Nobody has personal access.",
+          "roleCovers": "Their role gives access too",
+          "remove": "Remove",
+          "removeLabel": "Remove {name}'s access",
+          "add": "Add someone",
+          "addLabel": "Add someone to see the hours and pay",
+          "nobody": "The whole team already sees the hours and pay.",
+          "choose": "Choose"
+        },
+        "done": {
+          "roleOn": "{role, select, manager {Managers see} other {Workers see}} the hours and pay now",
+          "roleOff": "{role, select, manager {Managers no longer see} other {Workers no longer see}} the hours and pay",
+          "added": "{name} sees the hours and pay now",
+          "removed": "{name} no longer sees the hours and pay",
+          "removedRoleCovers": "{name}'s personal access was removed. {role, select, manager {Managers still see} other {Workers still see}} the hours and pay",
+          "undone": "Undone"
+        },
+        "failure": {
+          "noAccess": "Only the owner decides who sees pay.",
+          "notInTeam": "This person is no longer on the team.",
+          "always": "Owners and accountants always see the hours and pay.",
+          "viewOnly": "While viewing, who sees pay can't be changed.",
+          "failed": "The change wasn't saved. Check the connection and try again."
+        },
+        "noName": "No name"
       },
       "ownerOnly": "Owners only",
       "departments": {
@@ -1803,6 +1995,13 @@
           },
           "finished": {
             "title": "{name} is finished"
+          }
+        },
+        "access": {
+          "pay_granted": {
+            "title": "You were given access to hours and pay",
+            "settledTitle": "Your access to hours and pay was removed",
+            "note": "Everyone's hours in the business, in hours for payroll"
           }
         },
         "other": {
@@ -2091,6 +2290,7 @@
     "time_clock": {
       "name": "Clock",
       "description": "Clock in and out of shifts",
+      "outsideNav": "Hours for payroll",
       "settings": {
         "roundToMinutes": {
           "label": "Rounding hours",
