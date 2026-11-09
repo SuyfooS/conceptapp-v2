@@ -3,7 +3,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(26);
+select plan(27);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -171,6 +171,14 @@ values ('6d000000-0000-4000-b000-000000000001', 'A visitor''s list', 'sent', 'ro
 set local role service_role;
 select public.reset_demo_business('6d000000-0000-4000-b000-000000000001');
 reset role;
+
+-- The links to departments are checked at commit, which a test never reaches:
+-- run them now, then put them back for the resets below.
+select lives_ok(
+  $$set constraints all immediate$$,
+  'the reset leaves nothing naming a department that went'
+);
+set constraints all deferred;
 
 select is(
   (select name from public.businesses where id = '6d000000-0000-4000-b000-000000000001'),
