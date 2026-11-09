@@ -424,6 +424,10 @@ body {
  * black at low opacity, so any accent works, light and dark. "glow" is
  * hero-surface; the drawn ones lie over cover-base.
  */
+/* The grounds are named only in a lookup table, which the class scanner
+   misses, so they are generated here by name. */
+@source inline("cover-base cover-stripes cover-bloom");
+
 @utility cover-base {
   background: linear-gradient(
     165deg,
