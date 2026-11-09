@@ -226,7 +226,7 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
 - **Notifications, in four parts, each its own PR.** N1, the inbox and what writes to it, is
   built: `/notifications` from a bell on Today, the unread count on Home (only what
   needs the person to act), and the database writing each line from the audit log
-  (`20261109000300_notifications.sql`: the schedule published or changed, the swap
+  (`20261109000450_notifications.sql`: the schedule published or changed, the swap
   chain, hours waiting for confirmation, someone joining), in the app only, demo
   businesses included. Next: N2, on the phone (Web Push with no payload, VAPID with
   `node:crypto`, a service worker with no fetch handler, never for a demo business,

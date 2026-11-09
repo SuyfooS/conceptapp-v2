@@ -5,7 +5,7 @@ import { atLeast, type ModuleKey, type Role } from "./modules";
 /**
  * Notifications in the app: what happened that a person should know, one line
  * per person per thing. The database writes them, from the audit log
- * (`private.notify_for` in supabase/migrations/20261109000300_notifications.sql);
+ * (`private.notify_for` in supabase/migrations/20261109000450_notifications.sql);
  * this file says what each kind is about, who it is for, where it leads, and
  * how its stored facts read back. A row's params are free JSON, so each kind is
  * read leniently: anything unexpected becomes a plain line, never an error.

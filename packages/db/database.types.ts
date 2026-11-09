@@ -447,7 +447,7 @@ export type Database = {
           dedupe_key: string | null;
           id: string;
           kind: string;
-          params: Json;
+          params: NonNullable<Json>;
           push_after: string | null;
           push_attempts: number;
           push_before: string | null;
@@ -466,7 +466,7 @@ export type Database = {
           dedupe_key?: string | null;
           id?: string;
           kind: string;
-          params?: Json;
+          params?: NonNullable<Json>;
           push_after?: string | null;
           push_attempts?: number;
           push_before?: string | null;
@@ -485,7 +485,7 @@ export type Database = {
           dedupe_key?: string | null;
           id?: string;
           kind?: string;
-          params?: Json;
+          params?: NonNullable<Json>;
           push_after?: string | null;
           push_attempts?: number;
           push_before?: string | null;
