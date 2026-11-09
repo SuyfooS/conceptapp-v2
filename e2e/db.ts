@@ -648,3 +648,20 @@ export async function demoWording(key: string): Promise<string | null> {
     where business_id = ${DEMO_RESTAURANT} and key = ${key}`;
   return rows[0]?.sentence ?? null;
 }
+
+/** A person's stored photo path, by phone number; null when they have none. */
+export async function demoPhotoPath(phone: string): Promise<string | null> {
+  const rows = await sql<{ path: string | null }[]>`
+    select avatar_path as path from public.profiles where phone = ${phone}`;
+  return rows[0]?.path ?? null;
+}
+
+/**
+ * The person's profile back to how the demo starts: no photo (H2 adds the
+ * line, the cover and the form of address). The file stays in Storage,
+ * unreferenced, as after the door's reset.
+ */
+export async function clearDemoProfile(phone: string): Promise<void> {
+  await sql`update public.profiles set avatar_path = null
+    where phone = ${phone}`;
+}

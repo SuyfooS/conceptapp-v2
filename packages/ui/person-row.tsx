@@ -1,26 +1,45 @@
 import { UserRound } from "lucide-react";
 import type { ComponentProps, ReactNode } from "react";
-import { Avatar } from "./avatar";
+import { AVATAR_PIXELS, Avatar, AvatarPhoto, type AvatarSize } from "./avatar";
 import { cn } from "./cn";
 
-/** A person's avatar, or a neutral face when nobody wrote a name down. */
+const FACE: Record<AvatarSize, string> = {
+  sm: "size-8 [&_svg]:size-4",
+  md: "size-10 [&_svg]:size-5",
+  xl: "size-24 [&_svg]:size-10",
+};
+
+/**
+ * A person's avatar, or a neutral face when nobody wrote a name down. A
+ * photo shows either way.
+ */
 export function PersonAvatar({
   name,
+  photo,
+  size = "md",
   className,
 }: {
   name: string | null;
+  photo?: string | null;
+  size?: AvatarSize;
   className?: string;
 }) {
-  if (name?.trim()) return <Avatar name={name} className={className} />;
+  if (name?.trim()) {
+    return (
+      <Avatar name={name} photo={photo} size={size} className={className} />
+    );
+  }
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5",
+        "relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-surface-2 text-ink-2",
+        FACE[size],
         className,
       )}
     >
       <UserRound />
+      {photo ? <AvatarPhoto photo={photo} sizes={AVATAR_PIXELS[size]} /> : null}
     </span>
   );
 }
@@ -41,6 +60,8 @@ export function PersonList({ className, ...props }: ComponentProps<"ul">) {
 export type PersonRowProps = {
   /** Whose avatar to show; null draws a neutral face. */
   name: string | null;
+  /** Their photo, over the initials or the face. */
+  photo?: string | null;
   title: ReactNode;
   subtitle?: ReactNode;
   /** A badge or value at the end of the row. */
@@ -53,6 +74,7 @@ export type PersonRowProps = {
 /** One person in a PersonList. */
 export function PersonRow({
   name,
+  photo,
   title,
   subtitle,
   trailing,
@@ -68,7 +90,7 @@ export function PersonRow({
       )}
     >
       <div className="flex items-center gap-3">
-        <PersonAvatar name={name} />
+        <PersonAvatar name={name} photo={photo} />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="font-medium text-ink">{title}</span>
           {subtitle ? (

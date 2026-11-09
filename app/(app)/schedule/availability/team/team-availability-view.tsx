@@ -136,7 +136,10 @@ function Hero({ t, data }: ViewProps) {
           <AvatarStack
             size="md"
             max={6}
-            names={team.missing.map((m) => personName(t, m.name))}
+            people={team.missing.map((m) => ({
+              name: personName(t, m.name),
+              photo: m.photo,
+            }))}
             className="hidden shrink-0 xl:flex"
           />
         ) : null}
@@ -235,7 +238,7 @@ function MissingList({ t, data }: ViewProps) {
         {missing.map((m) => (
           <li key={m.userId} className={rowLine}>
             <ListRow
-              leading={<Avatar name={personName(t, m.name)} />}
+              leading={<Avatar name={personName(t, m.name)} photo={m.photo} />}
               title={personName(t, m.name)}
               subtitle={roleAndPhone(t, m)}
               trailing={<CallLink t={t} person={m} />}
@@ -339,7 +342,7 @@ function SentList(view: ViewProps) {
                 className={cn(rowLine, "flex flex-col gap-2 px-4 py-3")}
               >
                 <div className="flex items-center gap-3">
-                  <Avatar name={personName(t, s.name)} />
+                  <Avatar name={personName(t, s.name)} photo={s.photo} />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="font-medium">{personName(t, s.name)}</span>
                     <span className="text-ink-2 text-sm">

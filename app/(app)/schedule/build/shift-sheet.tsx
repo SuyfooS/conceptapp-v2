@@ -39,7 +39,7 @@ export type ShiftDetails = Pick<
   "name" | "start" | "end" | "needed"
 >;
 
-type TeamPerson = Pick<TeamMember, "userId" | "name">;
+type TeamPerson = Pick<TeamMember, "userId" | "name" | "photo">;
 type Answer = { userId: string; ranges: AvailabilityRange[] };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -232,6 +232,7 @@ function ShiftPeople({
 
   const noName = t("app.team.noName");
   const nameOf = new Map(team.map((m) => [m.userId, m.name ?? noName]));
+  const photoOf = new Map(team.map((m) => [m.userId, m.photo]));
   const rangesOf = new Map(answers.map((a) => [a.userId, a.ranges]));
   const clashes = doubleBooked(weekStart, shifts);
   const candidates = shiftCandidates(weekStart, shifts, index, team, answers);
@@ -315,7 +316,9 @@ function ShiftPeople({
             return (
               <ListRow
                 key={user}
-                leading={<Avatar name={name} />}
+                leading={
+                  <Avatar name={name} photo={photoOf.get(user) ?? null} />
+                }
                 title={name}
                 subtitle={
                   positions.length > 0 || note ? (

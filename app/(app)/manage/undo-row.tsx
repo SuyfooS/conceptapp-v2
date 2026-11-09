@@ -7,9 +7,12 @@ import { useTranslations } from "next-intl";
 export function UndoRow({
   message,
   onUndo,
+  pending = false,
 }: {
   message: string;
   onUndo: () => void;
+  /** The way back is on its way: the button spins and waits. */
+  pending?: boolean;
 }) {
   const t = useTranslations("app.manage");
   return (
@@ -18,7 +21,12 @@ export function UndoRow({
       className="flex min-h-[3.25rem] items-center justify-between gap-3 rounded-card bg-surface-2 ps-4 pe-1.5"
     >
       <span className="min-w-0 text-base">{message}</span>
-      <Button variant="ghost" onClick={onUndo} className="shrink-0">
+      <Button
+        variant="ghost"
+        loading={pending}
+        onClick={onUndo}
+        className="shrink-0"
+      >
         {t("undo")}
       </Button>
     </div>

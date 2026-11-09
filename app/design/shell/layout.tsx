@@ -47,7 +47,11 @@ export default function ShellDemoLayout({
   ];
 
   return (
-    <AppShell businessName={business.name} user={user} nav={nav}>
+    <AppShell
+      businessName={business.name}
+      user={{ ...user, href: "/design/shell/me" }}
+      nav={nav}
+    >
       {children}
     </AppShell>
   );

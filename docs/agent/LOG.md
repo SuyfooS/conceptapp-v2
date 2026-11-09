@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-09 · chat · the profile, H1: `/me` and photos (#82)
+
+- On chat/profile-me from `c702064`, following the H1 plan with its critique applied. Migration `20261109000100_profile_photo_demo.sql`: `private.keeps_demo_profile` / `public.keeps_demo_profile` (server only) and a trigger that refuses a new photo (55000) to someone in a demo business that keeps its people; clearing stays allowed, so the reset still works. The local seed opens its restaurant (`"profiles": true`) for the browser tests and keeps the shop closed; `tooling/demo-profiles.test.ts` keeps `hosted-demo.sql` closed. pgTAP in `profile_photo_demo.test.sql`; `database.types.ts` gained `keeps_demo_profile`, written by hand in the generator's format.
+- `/me`: the cover in the business's colour (the screen's hero), the photo with its camera button, the name and "role · בצוות מאז", "עליי" with who sees it and the photo row, and sign-out, which moved here from Today. Phone one column; tablet and desktop an identity card that stays in view beside the rows. Reached from Today's avatar and the sidebar's foot (outside the main navigation). Photos show on Team, Today, the schedule screens and swap requests.
+- Photos are re-encoded in the browser (centred square, 512 px, WebP, JPEG where WebP can't be written, its APP1 block dropped), the server refuses any file still carrying EXIF, XMP or text chunks, and they are served by `GET /photos/<user>/<file>` under the viewer's session (`private, max-age=3600`), never through the image optimizer. Removing offers undo by keeping the bytes. Until the migration is applied on conceptapp-dev, photos say "עוד מעט" (fail closed); Orel runs "Migrate conceptapp-dev" with apply after merging.
+- New in @ui: photos in Avatar, PersonAvatar and AvatarStack (`people`, and an `xl` size), `AvatarPhotoPicker`, `photo-encode`, `VisibilityNote`, `ProfileCover` (the default cover; H2 adds the rest) with a `cover-grain` utility, all on `/design`; `/design/shell/me` with `?state=empty` and `?state=demo`. CI's e2e job now starts Storage.
+- Checked locally: Biome, tsc and the unit tests (all but the Windows-only Biome probe in `tooling/boundaries.test.ts`). Not run here: the build, `pnpm db:test` and `supabase db lint`, the e2e (`e2e/profile.spec.ts` new; enter, sign-in, modules and design specs changed), the screens at 390, 820 and 1440 px, and an iPhone by hand.
+- Next: H2 (about line, covers, form of address) on top of this.
+
 ## 2026-11-09 · chat · QR clock-in, parts A and B: the code on a manager's phone, typed digits, without a code, scanning in the circle
 ## 2026-11-09 · run 32 · each person's own hours in the clock demo (#71, finished)
 

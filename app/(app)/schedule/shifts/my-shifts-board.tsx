@@ -21,10 +21,11 @@ import {
   useShiftSheet,
 } from "./shift-sheet";
 import {
-  assigneeNames,
+  assigneePeople,
   dayLabel,
   ltr,
   nameOf,
+  photoOf,
   positionName,
   type ShiftData,
   shiftLabel,
@@ -156,7 +157,7 @@ export function MyShiftsBoard({
                       ) : null}
                     </div>
                     <AvatarStack
-                      names={assigneeNames(t, data, shift)}
+                      people={assigneePeople(t, data, shift)}
                       className="hidden self-center xl:flex"
                     />
                     <ChevronRight
@@ -202,7 +203,10 @@ export function MyShiftsBoard({
                   key={request.id}
                   className={cn(personRow, "items-start py-3.5")}
                 >
-                  <Avatar name={from} />
+                  <Avatar
+                    name={from}
+                    photo={photoOf(data, request.requestedBy)}
+                  />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="font-medium">
                       {state === "takenByYou"

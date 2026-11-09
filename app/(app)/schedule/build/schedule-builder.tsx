@@ -69,7 +69,7 @@ export type ScheduleBuilderProps = {
   shifts: ScheduledShift[];
   /** Where the regular shifts are set, for a week with none. */
   manageHref: string;
-  team: Pick<TeamMember, "userId" | "name">[];
+  team: Pick<TeamMember, "userId" | "name" | "photo">[];
   answers: { userId: string; ranges: AvailabilityRange[] }[];
   /** The business's positions (waiter, cook…); none hides the choice. */
   positions: Position[];
@@ -156,6 +156,7 @@ export function ScheduleBuilder({
   const nameOf = new Map(
     team.map((m) => [m.userId, m.name ?? t("app.team.noName")]),
   );
+  const photoOf = new Map(team.map((m) => [m.userId, m.photo]));
   const gaps = scheduleGaps(shifts);
   const clashes = doubleBooked(week.start, shifts);
   const weekday = (date: string) =>
@@ -345,9 +346,10 @@ export function ScheduleBuilder({
             date: dayMonth(date),
           })}
           shift={row.shift}
-          names={row.shift.assignees.map(
-            (a) => nameOf.get(a.user) ?? t("app.team.noName"),
-          )}
+          people={row.shift.assignees.map((a) => ({
+            name: nameOf.get(a.user) ?? t("app.team.noName"),
+            photo: photoOf.get(a.user) ?? null,
+          }))}
           clashing={row.shift.assignees
             .filter((a) => clashes.has(`${rows.indexOf(row)}:${a.user}`))
             .map((a) => nameOf.get(a.user) ?? t("app.team.noName"))}
