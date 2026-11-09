@@ -117,10 +117,14 @@ create table public.list_templates (
   updated_at timestamptz not null default now(),
   unique (business_id, key),
   unique (id, business_id),
+  -- A department is archived, never deleted, so these only refuse a stray
+  -- delete. Checked at commit: when a business goes (the demo reset), its
+  -- departments and the rows that name them go in one statement by different
+  -- paths, and a check after each step would see the rows still there.
   foreign key (recipient_department, business_id)
-    references public.departments (id, business_id),
+    references public.departments (id, business_id) deferrable initially deferred,
   foreign key (from_department, business_id)
-    references public.departments (id, business_id),
+    references public.departments (id, business_id) deferrable initially deferred,
   -- The recipient's shape, inline: a check that called into `private` would
   -- run as whoever inserts, and the server role has no use of that schema.
   -- Exactly the column of the kind is set, and none without a kind.
@@ -213,7 +217,7 @@ create table public.list_schedules (
   foreign key (business_id, recipient_user)
     references public.memberships (business_id, user_id) on delete cascade,
   foreign key (recipient_department, business_id)
-    references public.departments (id, business_id),
+    references public.departments (id, business_id) deferrable initially deferred,
   check ((anchor = 'day') = (shift_key is null)),
   check (anchor <> 'day' or opens_offset between 0 and 1439),
   check (anchor = 'day' or opens_offset between -720 and 720),
@@ -289,9 +293,9 @@ create table public.lists (
   foreign key (schedule_id, business_id)
     references public.list_schedules (id, business_id) on delete set null (schedule_id),
   foreign key (recipient_department, business_id)
-    references public.departments (id, business_id),
+    references public.departments (id, business_id) deferrable initially deferred,
   foreign key (from_department, business_id)
-    references public.departments (id, business_id),
+    references public.departments (id, business_id) deferrable initially deferred,
   check ((recipient_kind = 'department') = (recipient_department is not null)),
   check ((recipient_kind = 'role') = (recipient_role is not null)),
   check ((status = 'finished') = (finished_at is not null)),
@@ -405,9 +409,9 @@ create table public.list_passes (
   foreign key (list_id, business_id)
     references public.lists (id, business_id) on delete cascade,
   foreign key (from_department, business_id)
-    references public.departments (id, business_id),
+    references public.departments (id, business_id) deferrable initially deferred,
   foreign key (to_department, business_id)
-    references public.departments (id, business_id)
+    references public.departments (id, business_id) deferrable initially deferred
 );
 
 create index list_passes_list_idx on public.list_passes (list_id, business_id, passed_at);
