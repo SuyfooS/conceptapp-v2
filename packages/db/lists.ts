@@ -28,7 +28,7 @@ import {
   type TemplateRecipient,
   templateForSave,
 } from "@domain/lists";
-import { ROLES, type Role } from "@domain/modules";
+import { type Role, STAFF_ROLES, type StaffRole } from "@domain/modules";
 import { z } from "zod";
 import type { Database, Json } from "./database.types";
 import { isMissingFunction } from "./missing";
@@ -100,7 +100,9 @@ function oneOf<T extends string>(
   return words.find((word) => word === value) ?? fallback;
 }
 
-const roleOf = (value: string | null): Role => oneOf(ROLES, value, "worker");
+// A list goes to a staff role only (private.list_recipient refuses others).
+const roleOf = (value: string | null): StaffRole =>
+  oneOf(STAFF_ROLES, value, "worker");
 
 type ListRow = Pick<
   Database["public"]["Tables"]["lists"]["Row"],

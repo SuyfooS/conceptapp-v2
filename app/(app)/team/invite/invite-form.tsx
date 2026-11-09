@@ -27,7 +27,7 @@ type InviteFormProps = {
   roles: readonly Role[];
   /** Where "back" goes once the link is ready: the team, or the console's business. */
   back: { href: string; label: string };
-  /** The role picked to start with; the last of `roles` (worker) otherwise. */
+  /** The role picked to start with; a worker otherwise, when `roles` has one. */
   defaultRole?: Role;
   /** `inviteAction`, or the design demo's stand-in. */
   invite: (prev: InviteState, form: FormData) => Promise<InviteState>;
@@ -93,7 +93,11 @@ function InviteRound({
   }
 
   const errors = state.errors ?? {};
-  const defaultRole = values?.role || startRole || roles[roles.length - 1];
+  // A worker, never "the last role": an owner's list ends with an accountant.
+  const defaultRole =
+    values?.role ||
+    startRole ||
+    (roles.includes("worker") ? "worker" : roles[roles.length - 1]);
 
   return (
     <form

@@ -6,9 +6,12 @@ import { redirect } from "next/navigation";
 import { pushSoon } from "../../push/server";
 import { type SignInError, sendCode, verifyCode } from "../otp";
 
+/** Joining also fails for someone with shifts left who joins as an accountant. */
+export type JoinError = SignInError | "shiftsLeft";
+
 export type JoinState =
-  | { step: "invite"; error?: SignInError }
-  | { step: "code"; error?: SignInError; resent?: boolean };
+  | { step: "invite"; error?: JoinError }
+  | { step: "code"; error?: JoinError; resent?: boolean };
 
 /**
  * Joining from an invite link: send a code to the invited number (its
@@ -53,6 +56,10 @@ export async function join(
     const result = await verifyCode(invite.phone, code);
     if ("error" in result) return { step: "code", error: result.error };
     const claim = await claimInvite(token, result.userId);
+    // Shifts left to finish: said here, since the link itself still works.
+    if (!claim.ok && claim.error === "shiftsLeft") {
+      return { step: "code", error: "shiftsLeft" };
+    }
     if (!claim.ok) redirect(back);
     // The owners and managers hear who joined.
     pushSoon();

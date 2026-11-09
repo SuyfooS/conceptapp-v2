@@ -203,6 +203,8 @@ async function teamPersonRow(
 export type Colleague = {
   userId: string;
   name: string | null;
+  /** Their role: someone off the staff (an accountant) takes no shift or list. */
+  role: Role;
   /** An image src for their photo (`profilePhotoSrc`), or null. */
   photo: string | null;
   /** How the app writes about them (ICU `select`), or null until they choose. */
@@ -220,6 +222,7 @@ export async function getColleagues(businessId: string): Promise<Colleague[]> {
   return members.map((row) => ({
     userId: row.user_id,
     name: nameOf(row),
+    role: row.role,
     photo: profilePhotoSrc(row.profiles?.avatar_path),
     addressForm: addressFormOf(row.profiles?.address_form),
   }));

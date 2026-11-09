@@ -1,11 +1,12 @@
 -- The SQL helpers that the policies are built on.
 begin;
-select plan(12);
+select plan(15);
 
 insert into auth.users (id, aud, role, phone)
 values
   ('30000000-0000-4000-a000-00000000000a', 'authenticated', 'authenticated', '972500000301'),
-  ('30000000-0000-4000-a000-00000000000b', 'authenticated', 'authenticated', '972500000302');
+  ('30000000-0000-4000-a000-00000000000b', 'authenticated', 'authenticated', '972500000302'),
+  ('30000000-0000-4000-a000-00000000000c', 'authenticated', 'authenticated', '972500000303');
 
 insert into public.businesses (id, slug, name)
 values ('30000000-0000-4000-b000-00000000000a', 'helpers-a', 'Helpers A');
@@ -13,7 +14,8 @@ values ('30000000-0000-4000-b000-00000000000a', 'helpers-a', 'Helpers A');
 insert into public.memberships (business_id, user_id, role, perms)
 values
   ('30000000-0000-4000-b000-00000000000a', '30000000-0000-4000-a000-00000000000a', 'owner', '{}'),
-  ('30000000-0000-4000-b000-00000000000a', '30000000-0000-4000-a000-00000000000b', 'worker', '{schedule.publish}');
+  ('30000000-0000-4000-b000-00000000000a', '30000000-0000-4000-a000-00000000000b', 'worker', '{schedule.publish}'),
+  ('30000000-0000-4000-b000-00000000000a', '30000000-0000-4000-a000-00000000000c', 'accountant', '{}');
 
 insert into public.business_modules (business_id, module_key, enabled)
 values
@@ -33,6 +35,16 @@ select ok(private.has_role('30000000-0000-4000-b000-00000000000a', 'worker'), 'h
 select ok(not private.has_role('30000000-0000-4000-b000-00000000000a', 'manager'), 'has_role: worker is not a manager');
 select ok(private.has_perm('30000000-0000-4000-b000-00000000000a', 'schedule.publish'), 'has_perm: granted permission');
 select ok(not private.has_perm('30000000-0000-4000-b000-00000000000a', 'billing.manage'), 'has_perm: missing permission');
+
+-- has_perm asks private.holds_perm (20261110000300_payroll_access.sql): a
+-- role the business gives a permission to holds it.
+insert into public.role_permissions (business_id, role, perm)
+values ('30000000-0000-4000-b000-00000000000a', 'worker', 'clock.payroll');
+select ok(private.has_perm('30000000-0000-4000-b000-00000000000a', 'clock.payroll'), 'has_perm: a role the business gives it to');
+
+select set_config('request.jwt.claims', '{"sub":"30000000-0000-4000-a000-00000000000c","role":"authenticated"}', true);
+select ok(private.has_perm('30000000-0000-4000-b000-00000000000a', 'clock.payroll'), 'has_perm: an accountant holds pay access');
+select ok(not private.has_perm('30000000-0000-4000-b000-00000000000a', 'reservations.edit'), 'has_perm: and nothing a worker holds by rank');
 
 select set_config('request.jwt.claims', '{"sub":"30000000-0000-4000-a000-00000000000a","role":"authenticated"}', true);
 

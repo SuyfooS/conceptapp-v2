@@ -42,7 +42,8 @@ async function viewAs(page: Page, role: "owner" | "manager" | "worker") {
   await expect(
     page.getByRole("heading", { level: 2, name: a.title }),
   ).toBeVisible();
-  await page.getByRole("button", { name: a.as[role] }).click();
+  // Exact: "as a manager" is also the start of "as an accountant" in Hebrew.
+  await page.getByRole("button", { name: a.as[role], exact: true }).click();
   await expect(page).toHaveURL(/\/home$/);
   const banner = page.getByRole("complementary", { name: v.label });
   await expect(banner).toContainText(

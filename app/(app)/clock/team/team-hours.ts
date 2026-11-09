@@ -65,9 +65,12 @@ export async function currentTeamHours(
     now,
     settings.roundToMinutes,
   );
-  // Those who left are listed only for a month they have hours in.
+  // Those who left, and accountants (off the staff), are listed only for a
+  // month they have hours in: someone who worked here before becoming one.
   const rows = people
-    .filter((person) => person.active || hours.has(person.userId))
+    .filter(
+      (person) => (person.staff && person.active) || hours.has(person.userId),
+    )
     .map((person) => {
       const sum = hours.get(person.userId);
       return {
@@ -141,7 +144,8 @@ const personId = z.uuid();
 
 /**
  * One person's shifts in a month. Null when the person asking doesn't see the
- * team, or that person was never in the business.
+ * team, that person was never in the business, or they are off the staff (an
+ * accountant) and have no hours in the month.
  */
 export async function currentPersonHours(
   asked: string,
@@ -163,7 +167,7 @@ export async function currentPersonHours(
     getTimeEntries(businessId, from, to, id.data),
   ]);
   const person = people.find((row) => row.userId === id.data);
-  if (!person) return null;
+  if (!person || (!person.staff && entries.length === 0)) return null;
 
   const step = settings.roundToMinutes;
   // Who corrected each shift, for its line.

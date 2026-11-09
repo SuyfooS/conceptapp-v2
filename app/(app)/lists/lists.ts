@@ -19,7 +19,12 @@ import {
   REOPEN_MINUTES,
   undoDeadline,
 } from "@domain/lists";
-import { canOpenModule, holdsPermission, ROLES } from "@domain/modules";
+import {
+  canOpenModule,
+  holdsPermission,
+  isStaff,
+  STAFF_ROLES,
+} from "@domain/modules";
 import { canWrite } from "@domain/view-as";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
@@ -317,14 +322,17 @@ export async function currentSendForm(
     })),
     initial: offered.find((t) => t.id === asked)?.id ?? first.id,
     free: access.canSend,
-    people: colleagues.map((c) => ({
-      userId: c.userId,
-      name: c.name,
-      photo: c.photo,
-    })),
+    // A list goes to someone on the staff, never to an accountant.
+    people: colleagues
+      .filter((c) => isStaff(c.role))
+      .map((c) => ({
+        userId: c.userId,
+        name: c.name,
+        photo: c.photo,
+      })),
     departments: departments
       .filter((d) => d.archivedAt === null)
       .map((d) => ({ id: d.id, name: d.name })),
-    roles: ROLES,
+    roles: STAFF_ROLES,
   };
 }

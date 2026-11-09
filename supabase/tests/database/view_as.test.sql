@@ -2,7 +2,7 @@
 -- its roles while a session is open, writes nothing, and every start and
 -- end is in the audit log. Only the server may open or end a session.
 begin;
-select plan(34);
+select plan(38);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -208,6 +208,34 @@ select is_empty(
   $$select 1 from public.view_sessions
     where staff_id = '63000000-0000-4000-a000-00000000000b'$$,
   'the team reads only its own sessions'
+);
+reset role;
+
+-- Viewing as an accountant: the one view that reads pay
+-- (20261110000300_payroll_access.sql). The onboarder's view as a manager
+-- doesn't.
+select pg_temp.sign_in('63000000-0000-4000-a000-00000000000b');
+select ok(
+  not private.viewing_payroll('63000000-0000-4000-b000-000000000001'),
+  'a view as a manager reads no pay'
+);
+reset role;
+set local role service_role;
+select lives_ok(
+  $$select public.start_view_session('63000000-0000-4000-a000-00000000000b',
+    '63000000-0000-4000-b000-000000000001', 'accountant')$$,
+  'the onboarder views X as an accountant'
+);
+reset role;
+select pg_temp.sign_in('63000000-0000-4000-a000-00000000000b');
+select ok(
+  private.viewing_payroll('63000000-0000-4000-b000-000000000001')
+  and not private.viewing_payroll('63000000-0000-4000-b000-000000000002'),
+  'which reads pay, in X alone'
+);
+select is_empty(
+  $$select 1 from public.invites$$,
+  'and, like an accountant, no invites'
 );
 reset role;
 

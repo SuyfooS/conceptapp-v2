@@ -1,5 +1,6 @@
 import { getDepartments } from "@db/departments";
 import { getColleagues } from "@db/team";
+import { isStaff } from "@domain/modules";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
@@ -30,11 +31,14 @@ export default async function ManageDepartmentsPage() {
           ? []
           : departments.filter((d) => d.archivedAt === null)
       }
-      people={people.map((p) => ({
-        userId: p.userId,
-        name: p.name,
-        photo: p.photo,
-      }))}
+      // A department is people on the staff: never an accountant.
+      people={people
+        .filter((p) => isStaff(p.role))
+        .map((p) => ({
+          userId: p.userId,
+          name: p.name,
+          photo: p.photo,
+        }))}
       save={saveDepartmentsAction}
       saveMembers={saveDepartmentMembersAction}
       viewOnly={access.viewOnly}

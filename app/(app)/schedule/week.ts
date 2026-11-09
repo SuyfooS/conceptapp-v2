@@ -24,7 +24,7 @@ import {
   type ShabbatLimits,
   shabbatLimits,
 } from "@domain/availability-form";
-import { canOpenModule } from "@domain/modules";
+import { canOpenModule, isStaff } from "@domain/modules";
 import {
   draftWeek,
   type ScheduledShift,
@@ -160,9 +160,11 @@ export const currentTeamAvailability = cache(
       currentTeam(),
     ]);
     if (!context || !team) return null;
+    // An accountant is off the staff: they owe no availability.
+    const staff = team.members.filter((m) => isStaff(m.role));
     return {
       week: context.week,
-      team: teamAvailability(team.members, context.answers, context.week.dueAt),
+      team: teamAvailability(staff, context.answers, context.week.dueAt),
     };
   },
 );
@@ -209,7 +211,8 @@ export const currentScheduleBuild = cache(
             context.positions.map((p) => p.key),
           )
         : draftWeek(week.start, context.patterns),
-      team: team.members,
+      // Only people on the staff are put on a shift (never an accountant).
+      team: team.members.filter((m) => isStaff(m.role)),
       answers: context.answers.map(({ userId, ranges }) => ({
         userId,
         ranges,

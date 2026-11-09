@@ -6,7 +6,7 @@ import type {
   ListsTally,
   TemplateRecipient,
 } from "@domain/lists";
-import type { Role } from "@domain/modules";
+import type { StaffRole } from "@domain/modules";
 
 /** Who and what a list's ids point at, as the reader may see them. */
 export type ListLookups = {
@@ -133,7 +133,7 @@ export type SendFormData = {
   free: boolean;
   people: { userId: string; name: string | null; photo: string | null }[];
   departments: { id: string; name: string }[];
-  roles: readonly Role[];
+  roles: readonly StaffRole[];
 };
 
 /** A list to send, as the form sends it (`sendInput` checks it). */

@@ -49,6 +49,29 @@ describe("parseStaffList", () => {
     ]);
   });
 
+  it("reads an accountant's two words before a manager's one", () => {
+    const list = parseStaffList(
+      [
+        "גלית לוי מנהלת חשבונות 0506666666",
+        "אבי, מנהל חשבונות, 0507777777",
+        "הנהלת חשבונות - מירב 0508888888",
+        "רואה חשבון יוסי 0509999999",
+        'רואת חשבון: ד"ר נעמה 0521111111',
+        "Accountant Ben 0522222222",
+        "מנהלת ענבל 0523333333",
+      ].join("\n"),
+    );
+    expect(list.entries.map((e) => [e.name, e.role])).toEqual([
+      ["גלית לוי", "accountant"],
+      ["אבי", "accountant"],
+      ["מירב", "accountant"],
+      ["יוסי", "accountant"],
+      ['ד"ר נעמה', "accountant"],
+      ["Ben", "accountant"],
+      ["ענבל", "manager"],
+    ]);
+  });
+
   it("numbers lines as pasted and explains each problem", () => {
     const list = parseStaffList(
       [

@@ -392,7 +392,8 @@
       "roles": {
         "owner": "owner",
         "manager": "manager",
-        "worker": "worker"
+        "worker": "worker",
+        "accountant": "accountant"
       },
       "sendIntro": "We will text a code to the number ending in <ltr>{ending}</ltr>.",
       "send": "Send code",
@@ -401,6 +402,7 @@
       "codeLabel": "Code from the message",
       "verify": "Join the team",
       "resend": "Send a new code",
+      "shiftsLeft": "Before joining as the accountant, finish your shifts here: clock out of any open shift, and ask whoever builds the schedule to take you off your shifts, and any swap you took, from today on.",
       "gone": {
         "missing": {
           "title": "This link is not active",
@@ -480,7 +482,8 @@
     "roles": {
       "owner": "Owner",
       "manager": "Manager",
-      "worker": "Staff"
+      "worker": "Staff",
+      "accountant": "Bookkeeping"
     },
     "noBusiness": {
       "title": "Not part of a business yet",
@@ -588,7 +591,8 @@
       "roles": {
         "owner": "Owner",
         "manager": "Manager",
-        "worker": "Worker"
+        "worker": "Worker",
+        "accountant": "Accountant"
       },
       "state": {
         "member": "On the team",
@@ -641,7 +645,8 @@
         "roleHint": {
           "owner": "Everything in the business",
           "manager": "Schedule and team",
-          "worker": "Shifts and time clock"
+          "worker": "Shifts and time clock",
+          "accountant": "Everyone's hours and pay, no shifts"
         },
         "submit": "Create invite link",
         "ready": "{name}'s invite is ready",
@@ -2314,7 +2319,8 @@
     "memberRoles": {
       "owner": "Owner",
       "manager": "Manager",
-      "worker": "Worker"
+      "worker": "Worker",
+      "accountant": "Accountant"
     },
     "setup": {
       "opened": {
@@ -2390,7 +2396,8 @@
         "as": {
           "owner": "View as owner",
           "manager": "View as manager",
-          "worker": "View as worker"
+          "worker": "View as worker",
+          "accountant": "View as accountant"
         },
         "failed": "We could not open the view. Try again in a moment."
       },

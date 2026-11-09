@@ -96,12 +96,13 @@ export async function ensurePhoneAccount(phone: string): Promise<void> {
 
 export type ClaimResult =
   | { ok: true; businessId: string }
-  | { ok: false; error: "notOpen" | "otherNumber" };
+  | { ok: false; error: "notOpen" | "otherNumber" | "shiftsLeft" };
 
 /**
  * The signed-in person joins the invite's business with its role, in one
  * transaction (`public.claim_invite`). The database refuses a link that is
- * used, expired or replaced, and anyone but the invited number.
+ * used, expired or replaced, anyone but the invited number, and someone who
+ * comes back as an accountant with an open entry or shifts still ahead.
  */
 export async function claimInvite(
   token: string,
@@ -115,6 +116,7 @@ export async function claimInvite(
   if (error) {
     if (error.code === "P0002") return { ok: false, error: "notOpen" };
     if (error.code === "42501") return { ok: false, error: "otherNumber" };
+    if (error.code === "55000") return { ok: false, error: "shiftsLeft" };
     throw new Error(`Could not claim invite: ${error.message}`);
   }
   return { ok: true, businessId: z.uuid().parse(data) };

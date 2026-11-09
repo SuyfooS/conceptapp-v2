@@ -60,6 +60,16 @@ describe("module registry", () => {
     });
   });
 
+  it("starts every permission an owner gives with the owner alone", () => {
+    // public.permission_keys refuses default roles for one (payroll P2): an
+    // owner switches it on for managers, workers or a person.
+    const byOwner = manifests.flatMap((m) =>
+      m.permissions.filter((p) => p.byOwner),
+    );
+    expect(byOwner.map((p) => p.key)).toEqual(["clock.payroll"]);
+    for (const p of byOwner) expect(p.defaultRole).toBe("owner");
+  });
+
   it("only requires modules that exist", () => {
     for (const m of manifests) {
       for (const dep of m.requires) expect(MODULE_KEYS).toContain(dep);

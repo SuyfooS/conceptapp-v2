@@ -1180,6 +1180,27 @@ export type Database = {
           },
         ];
       };
+      permission_keys: {
+        Row: {
+          by_owner: boolean;
+          default_roles: Database["public"]["Enums"]["member_role"][];
+          key: string;
+          module_key: Database["public"]["Enums"]["module_key"];
+        };
+        Insert: {
+          by_owner?: boolean;
+          default_roles?: Database["public"]["Enums"]["member_role"][];
+          key: string;
+          module_key: Database["public"]["Enums"]["module_key"];
+        };
+        Update: {
+          by_owner?: boolean;
+          default_roles?: Database["public"]["Enums"]["member_role"][];
+          key?: string;
+          module_key?: Database["public"]["Enums"]["module_key"];
+        };
+        Relationships: [];
+      };
       platform_staff: {
         Row: {
           created_at: string;
@@ -1404,6 +1425,52 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
+          },
+        ];
+      };
+      role_permissions: {
+        Row: {
+          business_id: string;
+          granted_at: string;
+          granted_by: string | null;
+          perm: string;
+          role: Database["public"]["Enums"]["member_role"];
+        };
+        Insert: {
+          business_id: string;
+          granted_at?: string;
+          granted_by?: string | null;
+          perm: string;
+          role: Database["public"]["Enums"]["member_role"];
+        };
+        Update: {
+          business_id?: string;
+          granted_at?: string;
+          granted_by?: string | null;
+          perm?: string;
+          role?: Database["public"]["Enums"]["member_role"];
+        };
+        Relationships: [
+          {
+            foreignKeyName: "role_permissions_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "role_permissions_granted_by_fkey";
+            columns: ["granted_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "role_permissions_perm_fkey";
+            columns: ["perm"];
+            isOneToOne: false;
+            referencedRelation: "permission_keys";
+            referencedColumns: ["key"];
           },
         ];
       };
@@ -2080,6 +2147,7 @@ export type Database = {
         Args: { actor: string; business: string };
         Returns: number;
       };
+      my_permissions: { Args: { business: string }; Returns: string[] };
       note_auth_attempt: {
         Args: { at_time?: string; caller: string; kind: string; phone: string };
         Returns: number;
@@ -2219,6 +2287,16 @@ export type Database = {
         Args: { actor: string; at_time?: string; item: string; result: Json };
         Returns: Json;
       };
+      set_member_permission: {
+        Args: {
+          actor: string;
+          business: string;
+          granted: boolean;
+          perm_key: string;
+          person: string;
+        };
+        Returns: undefined;
+      };
       set_module_enabled: {
         Args: {
           actor: string;
@@ -2239,6 +2317,16 @@ export type Database = {
       };
       set_own_profile: {
         Args: { actor: string; patch: Json };
+        Returns: undefined;
+      };
+      set_role_permission: {
+        Args: {
+          actor: string;
+          business: string;
+          grant_role: Database["public"]["Enums"]["member_role"];
+          granted: boolean;
+          perm_key: string;
+        };
         Returns: undefined;
       };
       set_template_wording: {
@@ -2309,7 +2397,7 @@ export type Database = {
       };
     };
     Enums: {
-      member_role: "owner" | "manager" | "worker";
+      member_role: "owner" | "manager" | "worker" | "accountant";
       module_key:
         | "scheduling"
         | "time_clock"
@@ -2450,7 +2538,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      member_role: ["owner", "manager", "worker"],
+      member_role: ["owner", "manager", "worker", "accountant"],
       module_key: [
         "scheduling",
         "time_clock",

@@ -1,7 +1,7 @@
 "use client";
 
 import type { SendInput } from "@domain/lists";
-import type { Role } from "@domain/modules";
+import type { StaffRole } from "@domain/modules";
 import { Avatar } from "@ui/avatar";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -41,7 +41,7 @@ const KIND_ICONS: Record<string, typeof CircleCheck> = {
 function defaultsOf(template: SendTemplate | undefined): {
   kind: Kind;
   department: string | null;
-  role: Role | null;
+  role: StaffRole | null;
 } {
   const recipient = template?.recipient;
   if (recipient?.kind === "department") {
@@ -77,7 +77,7 @@ export function SendForm({
   const [kind, setKind] = useState<Kind>(start.kind);
   const [person, setPerson] = useState<string | null>(null);
   const [department, setDepartment] = useState<string | null>(start.department);
-  const [role, setRole] = useState<Role | null>(start.role);
+  const [role, setRole] = useState<StaffRole | null>(start.role);
   const [note, setNote] = useState("");
   const [failure, setFailure] = useState<ListFailure | null>(null);
   const [pending, startSend] = useTransition();

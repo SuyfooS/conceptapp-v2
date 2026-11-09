@@ -18,8 +18,12 @@ through helpers in the `private` schema (not exposed by the Data API):
 | Helper | True when the signed-in user… |
 | --- | --- |
 | `private.is_member(business)` | has an active membership in the business |
-| `private.has_role(business, min_role)` | has at least that role (owner > manager > worker) |
-| `private.has_perm(business, perm)` | holds the permission (owners hold all) |
+| `private.has_role(business, min_role)` | has at least that role (owner > manager > worker; an accountant ranks as a worker) |
+| `private.has_perm(business, perm)` | holds the permission, as `private.holds_perm` says (owners hold all) |
+| `private.is_staff_member(business)` | is an active member on the staff (any role but accountant) |
+| `private.is_viewing_staff(business)` | is on the ConceptApp team viewing the business as a staff role (read policies only) |
+| `private.viewing_payroll(business)` | is on the ConceptApp team viewing the business as an accountant: the one view that reads pay |
+| `private.reads_pay_of(person)` | holds `clock.payroll`, or views as an accountant, in a business that person is or was in |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only) |
 | `private.can_manage_lists(business, person)` | (that person) is an active owner or manager, or holds `lists.manage` |
@@ -41,7 +45,9 @@ The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
 `clock.confirm` from `confirm_time_entry`, `clock.code.locked`,
 `schedule.publish`, `swap.approve` and the rest). Owners and managers read their
-own business's rows, and so does the team while viewing it as a manager or owner.
+own business's rows, and so does the team while viewing it as a manager or owner,
+but for the pay rows (`wage.*`, `payroll.*`): only pay holders read those, and a
+pay holder who is no manager reads the clock's and the permissions' rows too.
 Publishing a week's schedule logs its first day, the number of shifts, whether it
 was the first time, and how many waiting swap requests the old shifts took with
 them (`activity_log.test.sql`), and, for notifications, whose shifts changed
@@ -122,6 +128,51 @@ open break writes none (`hours_kept.test.sql`). `@db/time-clock` reads each
 entry's `created_at` with its edit: a shift a manager added is edited as it is
 written, so an `edited_at` more than a second later means it was corrected
 since, and its line says so (`ShiftRecord.correction.kind`).
+
+Pay access (`20261110000200_accountant_role.sql` and
+`20261110000300_payroll_access.sql`, payroll P2). `accountant` is a fourth
+`member_role`, appended: a member at a worker's rank who is never on the staff
+(`private.is_staff_role`). A trigger on `time_entries`, `shift_assignments`,
+`availability_submissions`, `department_members` and `list_people`
+(`private.refuse_non_staff`), and one on `list_schedules` for its person, refuse
+an accountant (42501); `private.list_recipient` already takes no accountants as
+a role, `private.check_can_take` refuses them a swap (so they never take one,
+have one approved or are offered one), and `private.notify` sends them nothing
+about the schedule or lists. The schedule, swaps, availability, departments and
+list templates read through `private.is_staff_member` and
+`private.is_viewing_staff`, and `private.holds_list`, `private.sees_list` and
+`private.list_holders` count only the staff, so an accountant, and a view as
+one, reads none of them, while the roster and names stay open.
+Every permission a manifest declares is a row of `public.permission_keys`
+(`default_roles`: the staff roles other than the owner at or above its
+`defaultRole`; `by_owner`: an owner gives it; `modules/permissions.db.test.ts`
+keeps them the same). `clock.payroll` is the one an owner gives: everyone's
+hours, and later wages, details and estimates. Owners and accountants
+(`private.accountant_perms()`) always hold it; managers don't until the owner
+gives it to the role (Orel, 9 November 2026), a row of
+`public.role_permissions`; one person gets it in `memberships.perms`.
+`private.holds_perm(business, person, perm_key)` says who holds what (owner;
+accountant for theirs; on the staff, given it, in a role given it, or in a
+default role of one that isn't the owner's to give), `private.has_perm` asks it
+for the caller, and `public.my_permissions(business)` lists the caller's, sorted,
+for the screens (a view: its role's defaults, `clock.payroll` only as an
+accountant). `public.set_role_permission(actor, business, grant_role, perm_key,
+granted)` and `public.set_member_permission(actor, business, person, perm_key,
+granted)` change grants for an owner or the team (secret key), never for
+oneself, an owner or an accountant, each change logged as `permission.grant`
+or `permission.revoke` and a call that changes nothing logging nothing. Pay
+holders and a view as an accountant read every hour and break of the business,
+and the names of everyone who worked there (`private.reads_pay_of`). Only an
+owner invites an accountant or touches their invite (`team_invite`,
+`team_invite_link`; the console's `admin_invite` may), and someone who comes
+back as one must have no open entry, shift or taken swap from the business's
+today on (`claim_invite`, 55000), leaving their departments, permissions, place
+on open lists and any list's times for them (lists done keep them on their
+record). `getClockPeople` marks who is on the staff, so the team's hours list
+an accountant only for a month they worked in. The demo
+shop's managers hold pay access (`rolePermissions` in its definition, put back
+by `private.seed_demo_pay`). `payroll_access.test.sql`, `team_invites`,
+`view_as`, `helpers`, `create_business`, `demo_reset` and `rls_enabled` cover it.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

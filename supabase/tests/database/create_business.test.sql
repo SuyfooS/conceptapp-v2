@@ -1,7 +1,7 @@
 -- create_business: the wizard's one write. Server only, team members only,
 -- and all or nothing: a business is never left half set up.
 begin;
-select plan(15);
+select plan(16);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -77,6 +77,11 @@ select is(
    join public.businesses b on b.id = t.business_id where b.slug = 'cb-cafe-noa'),
   '4/4',
   'and the template''s departments and lists'
+);
+select is_empty(
+  $$select 1 from public.role_permissions rp
+    join public.businesses b on b.id = rp.business_id where b.slug = 'cb-cafe-noa'$$,
+  'its managers start without pay access, until the owner gives it'
 );
 select isnt(
   (select opening_hours from public.businesses where slug = 'cb-cafe-noa'),
