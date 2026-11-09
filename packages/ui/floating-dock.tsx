@@ -53,7 +53,9 @@ export type DockButtonProps = Omit<ButtonProps, "variant" | "size"> & {
 /**
  * A button in the dock. A quiet one keeps only its icon while the bar is shrunk
  * on a phone, to leave room for the main action; its name stays for screen
- * readers and comes back on sight when the bar does.
+ * readers and comes back on sight when the bar does. A main one never fades,
+ * since the page under the dock would show through its words: one that can't
+ * be pressed yet turns to glass, and one at work keeps its colour and spins.
  */
 export function DockButton({
   icon,
@@ -69,7 +71,9 @@ export function DockButton({
       className={cn(
         "px-4 transition-[min-height,background-color,opacity,transform] duration-300",
         tone === "main"
-          ? "flex-1 shadow-[0_14px_28px_-10px_color-mix(in_oklab,var(--accent)_70%,black),inset_0_0.5px_0_rgb(255_255_255/0.35)]"
+          ? props.disabled
+            ? "glass flex-1 bg-[var(--glass-strong)] text-ink-2 disabled:opacity-100"
+            : "flex-1 shadow-[0_14px_28px_-10px_color-mix(in_oklab,var(--accent)_70%,black),inset_0_0.5px_0_rgb(255_255_255/0.35)] disabled:opacity-100"
           : cn(
               "glass shrink-0 bg-[var(--glass-strong)] text-base",
               whenBarShrunk.quietButton,
