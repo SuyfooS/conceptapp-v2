@@ -128,14 +128,20 @@ export async function getInbox(
   };
 }
 
-/** One of the signed-in person's lines, under RLS, or null. */
-export async function getNotification(
-  id: string,
-): Promise<{ id: string; businessId: string; kind: string } | null> {
+/**
+ * One of the signed-in person's lines, under RLS, or null. With its params,
+ * which say where a line about one thing (a list) leads.
+ */
+export async function getNotification(id: string): Promise<{
+  id: string;
+  businessId: string;
+  kind: string;
+  params: unknown;
+} | null> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("notifications")
-    .select("id, business_id, kind")
+    .select("id, business_id, kind, params")
     .eq("id", id)
     .maybeSingle();
   if (error) {
@@ -143,7 +149,12 @@ export async function getNotification(
     throw error;
   }
   return data
-    ? { id: data.id, businessId: data.business_id, kind: data.kind }
+    ? {
+        id: data.id,
+        businessId: data.business_id,
+        kind: data.kind,
+        params: data.params,
+      }
     : null;
 }
 

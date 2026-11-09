@@ -50,7 +50,8 @@ begin
   on conflict (id) do nothing;
 
   -- How each one starts. Written again on every run, so a change here reaches
-  -- the next reset.
+  -- the next reset. Each person names the departments they are in, by their
+  -- template's keys, as supabase/seed.sql does.
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$
@@ -60,9 +61,9 @@ begin
       "template": "restaurant", "renews": false,
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000102", "role": "owner", "name": "אורי הדגמה" },
-        { "user_id": "10000000-0000-4000-a000-000000000103", "role": "manager", "name": "שירן הדגמה" },
-        { "user_id": "10000000-0000-4000-a000-000000000104", "role": "worker", "name": "נועה כהן" },
-        { "user_id": "10000000-0000-4000-a000-000000000105", "role": "worker", "name": "יואב לוי" }
+        { "user_id": "10000000-0000-4000-a000-000000000103", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
+        { "user_id": "10000000-0000-4000-a000-000000000104", "role": "worker", "name": "נועה כהן", "departments": ["kitchen"] },
+        { "user_id": "10000000-0000-4000-a000-000000000105", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] }
       ]
     }
     $json$::jsonb),
@@ -73,11 +74,11 @@ begin
       "template": "retail", "renews": true,
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000106", "role": "owner", "name": "מיכל הדגמה" },
-        { "user_id": "10000000-0000-4000-a000-000000000107", "role": "manager", "name": "עומר הדגמה" },
-        { "user_id": "10000000-0000-4000-a000-000000000108", "role": "worker", "name": "תמר אברהם" },
-        { "user_id": "10000000-0000-4000-a000-000000000109", "role": "worker", "name": "איתי מזרחי" },
-        { "user_id": "10000000-0000-4000-a000-000000000110", "role": "worker", "name": "רוני שלום" },
-        { "user_id": "10000000-0000-4000-a000-000000000111", "role": "worker", "name": "ליה כץ" }
+        { "user_id": "10000000-0000-4000-a000-000000000107", "role": "manager", "name": "עומר הדגמה", "departments": ["floor"] },
+        { "user_id": "10000000-0000-4000-a000-000000000108", "role": "worker", "name": "תמר אברהם", "departments": ["checkout"] },
+        { "user_id": "10000000-0000-4000-a000-000000000109", "role": "worker", "name": "איתי מזרחי", "departments": ["floor"] },
+        { "user_id": "10000000-0000-4000-a000-000000000110", "role": "worker", "name": "רוני שלום", "departments": ["stock"] },
+        { "user_id": "10000000-0000-4000-a000-000000000111", "role": "worker", "name": "ליה כץ", "departments": ["checkout", "floor"] }
       ]
     }
     $json$::jsonb)

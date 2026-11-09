@@ -27,7 +27,7 @@ export async function openNotificationAction(id: string): Promise<void> {
   }
   // The counts on the bell and the Home tab are read with the layout.
   refresh();
-  redirect(linkFor(line.kind));
+  redirect(linkFor(line.kind, line.params));
 }
 
 /** Mark every line the signed-in person has in their business read. */

@@ -1358,7 +1358,8 @@
         "time_clock": "How breaks count",
         "reservations": "Booking times and party size",
         "storefront": "The business's public page",
-        "notifications": "Reminders to the team"
+        "notifications": "Reminders to the team",
+        "lists": "When to remind, and when a list is late"
       },
       "team": {
         "title": "Team",
@@ -1643,6 +1644,10 @@
         "team": {
           "name": "The team",
           "hint": "Who joined the business"
+        },
+        "lists": {
+          "name": "Lists",
+          "hint": "Lists sent to you, and lists you sent being finished"
         }
       },
       "time": {
@@ -1708,6 +1713,15 @@
         "team": {
           "joined": {
             "title": "{name} is on the team now"
+          }
+        },
+        "lists": {
+          "sent": {
+            "title": "A new list for you: {name}",
+            "settledTitle": "{name} no longer waits for you"
+          },
+          "finished": {
+            "title": "{name} is finished"
           }
         },
         "other": {
@@ -1784,6 +1798,40 @@
     "notifications": {
       "name": "Notifications",
       "description": "Updates for the team about the schedule, swaps and hours"
+    },
+    "lists": {
+      "name": "Lists",
+      "description": "Opening, closing, cleaning and orders between departments",
+      "settings": {
+        "remindBeforeMinutes": {
+          "label": "Reminder before it's due",
+          "hint": "The people a list is for get a reminder this long before it's due.",
+          "options": {
+            "0": "No reminder",
+            "15": "15 minutes",
+            "30": "Half an hour",
+            "60": "An hour"
+          }
+        },
+        "lateAfterMinutes": {
+          "label": "When a list is late",
+          "hint": "A list not finished by its time counts as late this long after it.",
+          "options": {
+            "0": "Right at its time",
+            "15": "After 15 minutes",
+            "30": "After half an hour",
+            "60": "After an hour"
+          }
+        },
+        "tellManagersWhenLate": {
+          "label": "Tell managers when a list is late",
+          "hint": "Owners, managers and whoever manages lists hear when a list is late."
+        },
+        "tellWhenFinished": {
+          "label": "Tell when a list is finished",
+          "hint": "Whoever sent a list, and the department that asked for it, hear when it's finished."
+        }
+      }
     }
   },
   "admin": {

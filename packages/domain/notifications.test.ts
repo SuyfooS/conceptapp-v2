@@ -75,9 +75,22 @@ describe("the kinds", () => {
     expect(linkFor("team.joined")).toBe("/team");
   });
 
+  it("send a line about a list to that list, and only by a real id", () => {
+    expect(linkFor("lists.sent", { list: LINE })).toBe(`/lists/${LINE}`);
+    expect(linkFor("lists.finished", { list: LINE.toUpperCase() })).toBe(
+      `/lists/${LINE}`,
+    );
+    for (const params of [{ list: "../admin" }, { list: 7 }, null, "x"]) {
+      expect(linkFor("lists.sent", params), String(params)).toBe("/lists");
+    }
+    expect(linkFor("lists.sent")).toBe("/lists");
+    // Kinds that lead to one place ignore what their params say.
+    expect(linkFor("team.joined", { list: LINE })).toBe("/team");
+  });
+
   it("send an unknown kind to the inbox", () => {
-    expect(linkFor("lists.sent")).toBe("/notifications");
-    expect(notificationKindOf("lists.sent")).toBeNull();
+    expect(linkFor("chat.message", { list: LINE })).toBe("/notifications");
+    expect(notificationKindOf("chat.message")).toBeNull();
     expect(notificationKindOf("swap.taken")).toBe("swap.taken");
   });
 
@@ -352,6 +365,25 @@ describe("buildInbox", () => {
     });
   });
 
+  it("reads a list sent, and where it leads", () => {
+    expect(
+      lineOf(
+        row(
+          "lists.sent",
+          { list: LINE, name: "Opening", due: null, department: GONE },
+          { actorId: MANAGER },
+        ),
+      ),
+    ).toMatchObject({
+      group: "lists",
+      href: `/lists/${LINE}`,
+      line: { kind: "lists.sent", name: "Opening" },
+    });
+    expect(
+      lineOf(row("lists.finished", { list: LINE, name: "Bar order" }), MANAGER),
+    ).toMatchObject({ line: { kind: "lists.finished", name: "Bar order" } });
+  });
+
   it("reads someone joining", () => {
     expect(
       lineOf(row("team.joined", { person: NOA }, { actorId: NOA }), MANAGER),
@@ -367,13 +399,14 @@ describe("buildInbox", () => {
       ["schedule.published", { startsOn: "soon" }],
       ["swap.offered", { from: "someone" }],
       ["clock.confirm", { person: NOA, proof: "scan" }],
+      ["chat.message", { list: GONE }],
       ["lists.sent", { list: GONE }],
       ["team.joined", "not an object"],
     ] as const) {
       const entry = lineOf(row(kind, params));
       expect(entry?.line, kind).toEqual({ kind: "other" });
     }
-    expect(lineOf(row("lists.sent", {}))).toMatchObject({
+    expect(lineOf(row("chat.message", {}))).toMatchObject({
       group: null,
       href: "/notifications",
     });

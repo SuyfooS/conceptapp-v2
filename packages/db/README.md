@@ -22,6 +22,8 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.has_perm(business, perm)` | holds the permission (owners hold all) |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only) |
+| `private.can_manage_lists(business, person)` | (that person) is an active owner or manager, or holds `lists.manage` |
+| `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or manages lists |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
 audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
@@ -58,6 +60,20 @@ the team viewing included. `public.read_notifications(actor, business, ids)`
 marks lines read, with the secret key; `@db/notifications` reads the inbox
 and calls it (`notifications.test.sql`).
 
+Lists (`20261109000600_lists.sql`) work the same way. A business's departments
+are its own data, read by every member; `public.set_departments` and
+`public.set_department_members` save them for an owner, a manager or the team,
+archiving what is left out. List templates with their items and times, and
+the lists sent with their items, people and passes, are read under the
+policies above (the module off closes them) and written only by
+`save_list_template`, `archive_list_template`, `restore_list_template`,
+`send_list`, `set_list_item`, `finish_list`, `cancel_list` and `reopen_list`
+(secret key, for `actor`), each with its own `lists.*` audit row except an
+item's tick. Lists tell people through a trigger of their own,
+`private.notify_for_lists`. `public.my_open_lists(actor, business)` counts what
+a person holds, for the tab. `@db/departments` and `@db/lists` read and call
+them (`departments.test.sql`, `lists.test.sql`, `lists_notifications.test.sql`).
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 
@@ -67,15 +83,19 @@ A business starts from a template (`restaurant`, `cafe-bar`): rows in
 `templates`, written by migrations (a change is a new migration that updates
 the row and bumps `version`). The definition's shape is `templateDefinition`
 in `@domain/templates`: modules with `enabled` and their settings (positions
-and the weekly shift pattern are scheduling settings), plus the opening hours.
-A module the template doesn't name starts off, with its defaults, so a module
-built for one business touches no template.
+and the weekly shift pattern are scheduling settings), plus the opening hours,
+its `departments` and its `listTemplates` (pointing at its departments and
+shifts by key). A module the template doesn't name starts off, with its
+defaults, so a module built for one business touches no template.
 
 `public.apply_template(business, template)` copies one into a business
 that has none yet, in one transaction: a `business_modules` row per module,
-`opening_hours`, `template_key` and `template_version`. It refuses a
-business that is already set up, an unknown key, or a template that names a
-module nobody has, and changes nothing then. Only `service_role` may run it;
+`opening_hours`, its departments and lists (`private.copy_template_lists`),
+`template_key` and `template_version`. It refuses a business that is already
+set up, an unknown key, a template that names a module nobody has, or a list
+that names a department or shift the template doesn't have, and changes
+nothing then. It is security definer, since the server role has no use of the
+private schema. Only `service_role` may run it;
 from TypeScript, `applyTemplate(adminClient, id, key)` in `@db/templates`.
 
 Tested twice: pgTAP (`templates.test.sql`: grants, refusals, nothing

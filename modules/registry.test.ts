@@ -48,6 +48,18 @@ describe("module registry", () => {
     expect(new Set(keys).size).toBe(keys.length);
   });
 
+  it("gives lists the default roles their SQL helpers hold", () => {
+    // private.can_manage_lists and private.can_send_lists let managers (and
+    // owners) in without the permission; a change here changes them too.
+    const roles = Object.fromEntries(
+      manifestFor("lists").permissions.map((p) => [p.key, p.defaultRole]),
+    );
+    expect(roles).toEqual({
+      "lists.manage": "manager",
+      "lists.send": "manager",
+    });
+  });
+
   it("only requires modules that exist", () => {
     for (const m of manifests) {
       for (const dep of m.requires) expect(MODULE_KEYS).toContain(dep);

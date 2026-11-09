@@ -232,8 +232,9 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   `node:crypto`, a service worker with no fetch handler, never for a demo business,
   and the minute job through `pg_cron`); N3, each person's choices and quiet hours; N4,
   the reminders (availability due, still clocked in). A new kind of line is a case in
-  `private.notify_for` and `@domain/notifications`, with its words under
-  `app.notifications.kinds`.
+  `private.notify_for`, or in a module's own `private.notify_for_<module>` behind its own
+  trigger on the audit log (lists: `private.notify_for_lists`), and in
+  `@domain/notifications`, with its words under `app.notifications.kinds`.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

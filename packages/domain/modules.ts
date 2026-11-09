@@ -14,6 +14,7 @@ export const MODULE_KEYS = [
   "reservations",
   "storefront",
   "notifications",
+  "lists",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -41,6 +42,7 @@ export const MODULE_ICONS = [
   "utensils",
   "store",
   "bell",
+  "list",
 ] as const;
 
 export type ModuleIcon = (typeof MODULE_ICONS)[number];

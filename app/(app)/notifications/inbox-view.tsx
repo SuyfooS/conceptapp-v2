@@ -19,6 +19,7 @@ import {
   Bell,
   CalendarDays,
   ClipboardCheck,
+  ListChecks,
   Repeat,
   Users,
 } from "lucide-react";
@@ -43,6 +44,7 @@ const GROUP_ICONS: Record<NotificationGroup, ReactNode> = {
   swaps: <Repeat />,
   approvals: <ClipboardCheck />,
   team: <Users />,
+  lists: <ListChecks />,
 };
 
 /** A week is long enough to say "3 days ago"; older lines say their date. */
@@ -248,6 +250,21 @@ export function InboxView({
       case "team.joined":
         return {
           title: t("kinds.team.joined.title", { name: who(line.person) }),
+          shift: null,
+          notes: [],
+        };
+      case "lists.sent":
+        return {
+          // Finished, cancelled or missed: nothing waits on it now.
+          title: settled
+            ? t("kinds.lists.sent.settledTitle", { name: line.name })
+            : t("kinds.lists.sent.title", { name: line.name }),
+          shift: null,
+          notes: [],
+        };
+      case "lists.finished":
+        return {
+          title: t("kinds.lists.finished.title", { name: line.name }),
           shift: null,
           notes: [],
         };
