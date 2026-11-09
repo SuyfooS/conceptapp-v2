@@ -12,6 +12,7 @@ import { punchFailureOf } from "@domain/time-clock";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
 import { z } from "zod";
+import { pushSoon } from "../../push/server";
 import { currentMember } from "../member";
 import type { ClockActionResult } from "./clock-types";
 
@@ -32,6 +33,8 @@ async function asMember<T>(
   if (!member || !businessId) return { ok: false, failure: "noAccess" };
   if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };
   const result = await run(member.userId, businessId);
+  // Hours without a code wait for a manager, who hears it on the phone too.
+  if (result.ok) pushSoon();
   refresh();
   return result.ok
     ? done(result.value)

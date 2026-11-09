@@ -73,7 +73,8 @@ type Described = {
  * a phone; on a tablet, beside it a card saying what comes here; on a computer,
  * each section is a table with who, what, the shift and when, beside the same
  * card. The words are worked out once per line, so every shape says the same.
- * Also on the design demo.
+ * `push`, the switch for notifications on this phone, sits at the top on a
+ * phone and above the card from the tablet up. Also on the design demo.
  */
 export function InboxView({
   unread,
@@ -87,6 +88,7 @@ export function InboxView({
   readAll,
   paths,
   wording,
+  push,
 }: {
   unread: NotificationEntry[];
   earlier: NotificationEntry[];
@@ -108,6 +110,8 @@ export function InboxView({
   paths: InboxPaths;
   /** The business's words. */
   wording: AppWording;
+  /** The phone switch (`PushSwitch`), or nothing where push isn't set up. */
+  push?: ReactNode;
 }) {
   const t = translator(wording, "app.notifications");
   const tDays = translator(wording, "app.availability.weekdays");
@@ -267,6 +271,12 @@ export function InboxView({
           title: t("kinds.lists.finished.title", { name: line.name }),
           shift: null,
           notes: [],
+        };
+      case "push.test":
+        return {
+          title: t("kinds.push.test.title"),
+          shift: null,
+          notes: [t("kinds.push.test.note")],
         };
       case "other":
         return { title: t("kinds.other.title"), shift: null, notes: [] };
@@ -448,6 +458,11 @@ export function InboxView({
             <Link href={paths.home}>{t("inbox.empty.action")}</Link>
           </Button>
         </EmptyState>
+      ) : null}
+      {nothing && !olderPage ? (
+        push ? (
+          <div className="mx-auto w-full max-w-xl">{push}</div>
+        ) : null
       ) : nothing ? (
         <EmptyState
           headingLevel="h2"
@@ -460,7 +475,10 @@ export function InboxView({
           </Button>
         </EmptyState>
       ) : (
-        <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-8">
+        // No gap between the rows on a phone: the switch above the lines
+        // keeps its own distance, so a switch that is hidden, not ready yet
+        // or not offered leaves no space above them.
+        <div className="grid items-start md:grid-cols-[minmax(0,1fr)_17rem] md:gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-8">
           <div className="flex min-w-0 flex-col gap-8">
             {/* An older page has new lines only while unread ones run on. */}
             {olderPage && unread.length === 0 ? null : (
@@ -511,37 +529,51 @@ export function InboxView({
             ) : null}
           </div>
 
-          {groups.length > 0 ? (
-            <Card
-              tone="flat"
-              padding="lg"
-              className="hidden flex-col gap-4 md:flex"
+          {push || groups.length > 0 ? (
+            <div
+              className={cn(
+                "order-first flex min-w-0 flex-col gap-6 md:order-none",
+                // On a phone only the switch shows here, and only while it
+                // shows does it take its distance from the lines.
+                "max-md:[&>*]:mb-6",
+                // Without the switch, nothing of it shows on a phone.
+                push ? null : "hidden md:flex",
+              )}
             >
-              <div className="flex flex-col gap-1">
-                <CardTitle as="h2">{t("here.title")}</CardTitle>
-                <CardText className="text-sm">{t("here.body")}</CardText>
-              </div>
-              <ul className="flex flex-col gap-3">
-                {groups.map((group) => (
-                  <li key={group} className="flex items-start gap-3">
-                    <span
-                      aria-hidden="true"
-                      className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-[18px]"
-                    >
-                      {GROUP_ICONS[group]}
-                    </span>
-                    <span className="flex min-w-0 flex-col">
-                      <span className="font-medium">
-                        {t(`groups.${group}.name`)}
-                      </span>
-                      <span className="text-ink-2 text-sm">
-                        {t(`groups.${group}.hint`)}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+              {push}
+              {groups.length > 0 ? (
+                <Card
+                  tone="flat"
+                  padding="lg"
+                  className="hidden flex-col gap-4 md:flex"
+                >
+                  <div className="flex flex-col gap-1">
+                    <CardTitle as="h2">{t("here.title")}</CardTitle>
+                    <CardText className="text-sm">{t("here.body")}</CardText>
+                  </div>
+                  <ul className="flex flex-col gap-3">
+                    {groups.map((group) => (
+                      <li key={group} className="flex items-start gap-3">
+                        <span
+                          aria-hidden="true"
+                          className="grid size-9 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-[18px]"
+                        >
+                          {GROUP_ICONS[group]}
+                        </span>
+                        <span className="flex min-w-0 flex-col">
+                          <span className="font-medium">
+                            {t(`groups.${group}.name`)}
+                          </span>
+                          <span className="text-ink-2 text-sm">
+                            {t(`groups.${group}.hint`)}
+                          </span>
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ) : null}
+            </div>
           ) : null}
         </div>
       )}

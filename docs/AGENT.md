@@ -234,7 +234,14 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   the reminders (availability due, still clocked in). A new kind of line is a case in
   `private.notify_for`, or in a module's own `private.notify_for_<module>` behind its own
   trigger on the audit log (lists: `private.notify_for_lists`), and in
-  `@domain/notifications`, with its words under `app.notifications.kinds`.
+  `@domain/notifications`, with its words under `app.notifications.kinds` (the phone
+  reads the same words, through `app/push/words.ts`). N2 is built too
+  (`20261109000500_push.sql`): devices in `push_subscriptions`, one delivery per line
+  and device in `push_deliveries`, the minute job (off locally), `public/sw.js` with no
+  fetch handler, `/push/*` and `/cron/notifications`, the switch on `/notifications` and
+  `/me`. It reaches a phone once Orel sets the VAPID keys and the cron secret
+  (`README.md`, `supabase/README.md`), never for a demo business. A new producing action
+  calls `pushSoon()` from `app/push/server.ts` after it writes.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

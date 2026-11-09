@@ -1,4 +1,6 @@
 import { getInbox } from "@db/notifications";
+import { pushAllowed } from "@db/push/devices";
+import { pushConfig } from "@db/push/env";
 import { buildInbox, groupsFor, parseInboxCursor } from "@domain/notifications";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -8,6 +10,7 @@ import { currentModules } from "../modules";
 import { baseWording, translator } from "../wording";
 import { openNotificationAction, readAllNotificationsAction } from "./actions";
 import { InboxView } from "./inbox-view";
+import { PushSwitch } from "./push-switch";
 
 export async function generateMetadata(): Promise<Metadata> {
   // Page titles stay in the app's own words.
@@ -39,7 +42,11 @@ export default async function NotificationsPage({
     notFound();
   }
   const before = parseInboxCursor((await searchParams).before);
-  const page = await getInbox(membership.business.id, member.userId, before);
+  const push = pushConfig();
+  const [page, allowed] = await Promise.all([
+    getInbox(membership.business.id, member.userId, before),
+    push ? pushAllowed(member.userId) : null,
+  ]);
   return (
     <InboxView
       unread={buildInbox(page.unread, page.lookups, member.userId)}
@@ -53,6 +60,11 @@ export default async function NotificationsPage({
       readAll={readAllNotificationsAction}
       paths={{ self: "/notifications", home: "/home", base: "" }}
       wording={wording}
+      push={
+        push && allowed !== null ? (
+          <PushSwitch publicKey={push.publicKey} demo={!allowed} quietWhenOn />
+        ) : null
+      }
     />
   );
 }

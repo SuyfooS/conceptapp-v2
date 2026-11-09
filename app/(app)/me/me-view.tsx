@@ -1,5 +1,6 @@
 import type { Role } from "@domain/modules";
 import { getFormatter } from "next-intl/server";
+import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import {
   type AboutLock,
@@ -42,6 +43,7 @@ export async function MeView({
   wording,
   signOut,
   actions,
+  notifications,
   home = "/home",
 }: {
   data: MeData;
@@ -50,6 +52,8 @@ export async function MeView({
   /** `signOut`, or the design demo's stand-in. */
   signOut: () => Promise<void>;
   actions: MeActions;
+  /** The switch for notifications on this phone, where there is one. */
+  notifications?: ReactNode;
   home?: string;
 }) {
   const t = translator(wording, "app");
@@ -77,6 +81,7 @@ export async function MeView({
       home={home}
       actions={actions}
       signOut={signOut}
+      notifications={notifications}
     />
   );
 }

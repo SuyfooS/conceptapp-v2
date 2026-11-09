@@ -60,19 +60,34 @@ the team viewing included. `public.read_notifications(actor, business, ids)`
 marks lines read, with the secret key; `@db/notifications` reads the inbox
 and calls it (`notifications.test.sql`).
 
-Lists (`20261109000600_lists.sql`) work the same way. A business's departments
-are its own data, read by every member; `public.set_departments` and
-`public.set_department_members` save them for an owner, a manager or the team,
-archiving what is left out. List templates with their items and times, and
+Lines reach phones too (Web Push, `20261109000500_push.sql`), with no payload:
+the phone's service worker asks `/push/inbox` what to show. `private.push_plan`
+queues a line when its person has a device in `public.push_subscriptions` and
+it is from the business the app opens for them, never a demo
+(`private.push_business`). The server, with the secret key, saves (at most ten
+devices each, a new one forgetting the one seen longest ago) and forgets
+devices, claims what is due once per line and device (`claim_due_pushes`, rows
+in `public.push_deliveries`, which only the server touches) and says how each
+push went (`finish_pushes`: gone devices forgotten, refusals counted, retries
+in 1, 5 and 25 minutes, then counted too). The browser reads only a few plain columns of its own
+devices, never their endpoints or keys. `@db/push/*` signs VAPID with
+`node:crypto` and sends; pg_cron's minute job asks the app to send while
+something is due (`push.test.sql`).
+
+Lists (`20261109000600_lists.sql`) work the same way as the rest. A
+business's departments are its own data, read by every member;
+`public.set_departments` and `public.set_department_members` save them for an
+owner, a manager or the team, archiving what is left out. List templates with their items and times, and
 the lists sent with their items, people and passes, are read under the
 policies above (the module off closes them) and written only by
 `save_list_template`, `archive_list_template`, `restore_list_template`,
 `send_list`, `set_list_item`, `finish_list`, `cancel_list` and `reopen_list`
 (secret key, for `actor`), each with its own `lists.*` audit row except an
 item's tick. Lists tell people through a trigger of their own,
-`private.notify_for_lists`. `public.my_open_lists(actor, business)` counts what
-a person holds, for the tab. `@db/departments` and `@db/lists` read and call
-them (`departments.test.sql`, `lists.test.sql`, `lists_notifications.test.sql`).
+`private.notify_for_lists`, and their lines reach phones like any other.
+`public.my_open_lists(actor, business)` counts what a person holds, for the
+tab. `@db/departments` and `@db/lists` read and call them
+(`departments.test.sql`, `lists.test.sql`, `lists_notifications.test.sql`).
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

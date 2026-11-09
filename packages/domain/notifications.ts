@@ -24,7 +24,8 @@ export const NOTIFICATION_GROUPS = [
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
 
 type KindInfo = {
-  group: NotificationGroup;
+  /** Null for a line nobody switches off: the test from the phone switch. */
+  group: NotificationGroup | null;
   /** The module the line is about; switching it off hides the line. */
   module: ModuleKey | null;
   /** The lowest role the line is ever for. */
@@ -140,6 +141,14 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/lists",
     to: "list",
+  },
+  // "Send a test notification", from the phone switch: to the person alone.
+  "push.test": {
+    group: null,
+    module: null,
+    minRole: "worker",
+    needsAction: false,
+    href: "/notifications",
   },
 } as const satisfies Record<string, KindInfo>;
 
@@ -411,6 +420,7 @@ export type NotificationLine =
       /** The list's name, as it was sent. */
       name: string;
     }
+  | { kind: "push.test" }
   | { kind: "other" };
 
 /** One line of the inbox. Holds no ids but its own, so it can go anywhere. */
@@ -552,6 +562,8 @@ function lineOf(
       const params = read(schemas.list);
       return params ? { kind, name: params.name } : other;
     }
+    case "push.test":
+      return { kind };
     case null:
       return other;
     default: {

@@ -100,7 +100,21 @@ export async function getInbox(
   const { unread, earlier } = page;
   const older = page.older ? inboxCursor(page.older) : null;
 
-  const people = notificationRefs([...unread, ...earlier]);
+  return {
+    unread,
+    earlier,
+    older,
+    lookups: await lookupsFor(supabase, businessId, [...unread, ...earlier]),
+  };
+}
+
+/** The names the rows point at, read under the reader's own access. */
+async function lookupsFor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  businessId: string,
+  rows: readonly NotificationRow[],
+): Promise<NotificationLookups> {
+  const people = notificationRefs(rows);
   const members = people.length
     ? await supabase
         .from("memberships")
@@ -109,22 +123,76 @@ export async function getInbox(
         .in("user_id", people)
     : null;
   if (members?.error) throw members.error;
-
   return {
-    unread,
-    earlier,
-    older,
-    lookups: {
-      members: new Map(
-        (members?.data ?? []).map((row) => [
-          row.user_id,
-          {
-            active: row.active,
-            name: row.profiles?.full_name?.trim() || null,
-          },
-        ]),
-      ),
-    },
+    members: new Map(
+      (members?.data ?? []).map((row) => [
+        row.user_id,
+        {
+          active: row.active,
+          name: row.profiles?.full_name?.trim() || null,
+        },
+      ]),
+    ),
+  };
+}
+
+/** Lines a phone asks about at most: enough to count them for the summary. */
+export const PUSHED_LINES_READ = 50;
+
+/**
+ * What a phone shows (/push/inbox): the signed-in person's unread lines in the
+ * business that went to their phones after `since`, newest first, under RLS,
+ * so only lines still for them. When none is new (two pushes raced, and the
+ * first fetch showed both), the latest one pushed, which the phone shows again
+ * in place of itself. Never anything that wasn't pushed.
+ */
+export async function getPushedLines(
+  businessId: string,
+  userId: string,
+  since: string,
+  max: number,
+): Promise<{
+  lines: NotificationRow[];
+  /** Whether `lines` is the latest one shown again, not something new. */
+  again: boolean;
+  lookups: NotificationLookups;
+}> {
+  const supabase = await createClient();
+  const pushed = () =>
+    supabase
+      .from("notifications")
+      .select(COLUMNS)
+      .eq("business_id", businessId)
+      .eq("user_id", userId)
+      .is("read_at", null)
+      .in("push_state", ["sending", "sent"])
+      .not("pushed_at", "is", null);
+  const fresh = await pushed()
+    .gt("pushed_at", since)
+    .order("pushed_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(Math.min(Math.max(max, 1), PUSHED_LINES_READ));
+  if (fresh.error) {
+    if (isMissingTable(fresh.error)) {
+      return { lines: [], again: false, lookups: { members: new Map() } };
+    }
+    throw fresh.error;
+  }
+  let rows = (fresh.data ?? []).map(toRow);
+  let again = false;
+  if (rows.length === 0) {
+    const latest = await pushed()
+      .order("pushed_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(1);
+    if (latest.error) throw latest.error;
+    rows = (latest.data ?? []).map(toRow);
+    again = rows.length > 0;
+  }
+  return {
+    lines: rows,
+    again,
+    lookups: await lookupsFor(supabase, businessId, rows),
   };
 }
 

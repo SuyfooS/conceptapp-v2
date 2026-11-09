@@ -164,3 +164,10 @@ revoke all on all tables in schema dev from public, anon, authenticated;
 revoke execute on function dev.send_sms(jsonb) from public, anon, authenticated;
 grant usage on schema dev to supabase_auth_admin;
 grant execute on function dev.send_sms(jsonb) to supabase_auth_admin;
+
+-- The minute job and the daily one (20261109000500_push.sql) stay off here,
+-- or they would send and clean at real time under the tests, which call what
+-- the jobs run themselves, at times they choose. A hosted project keeps both.
+select cron.alter_job(j.jobid, active => false)
+from cron.job j
+where j.jobname in ('notifications', 'notifications-clean');
