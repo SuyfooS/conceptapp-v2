@@ -342,7 +342,7 @@ export const demoModuleRows: ModuleRow[] = [
   { key: "time_clock", enabled: true, settings: { unpaidBreaks: true } },
   { key: "reservations", enabled: false, settings: {} },
   { key: "storefront", enabled: false, settings: {} },
-  { key: "notifications", enabled: false, settings: {} },
+  { key: "notifications", enabled: true, settings: {} },
 ];
 
 // A shift a manager added by hand on the demo week's Sunday, overlapping both

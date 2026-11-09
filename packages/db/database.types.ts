@@ -438,6 +438,88 @@ export type Database = {
           },
         ];
       };
+      notifications: {
+        Row: {
+          actor_id: string | null;
+          audience_role: Database["public"]["Enums"]["member_role"];
+          business_id: string;
+          created_at: string;
+          dedupe_key: string | null;
+          id: string;
+          kind: string;
+          params: NonNullable<Json>;
+          push_after: string | null;
+          push_attempts: number;
+          push_before: string | null;
+          push_state: string;
+          pushed_at: string | null;
+          read_at: string | null;
+          resolved_at: string | null;
+          source_module: Database["public"]["Enums"]["module_key"] | null;
+          user_id: string;
+        };
+        Insert: {
+          actor_id?: string | null;
+          audience_role?: Database["public"]["Enums"]["member_role"];
+          business_id: string;
+          created_at?: string;
+          dedupe_key?: string | null;
+          id?: string;
+          kind: string;
+          params?: NonNullable<Json>;
+          push_after?: string | null;
+          push_attempts?: number;
+          push_before?: string | null;
+          push_state?: string;
+          pushed_at?: string | null;
+          read_at?: string | null;
+          resolved_at?: string | null;
+          source_module?: Database["public"]["Enums"]["module_key"] | null;
+          user_id: string;
+        };
+        Update: {
+          actor_id?: string | null;
+          audience_role?: Database["public"]["Enums"]["member_role"];
+          business_id?: string;
+          created_at?: string;
+          dedupe_key?: string | null;
+          id?: string;
+          kind?: string;
+          params?: NonNullable<Json>;
+          push_after?: string | null;
+          push_attempts?: number;
+          push_before?: string | null;
+          push_state?: string;
+          pushed_at?: string | null;
+          read_at?: string | null;
+          resolved_at?: string | null;
+          source_module?: Database["public"]["Enums"]["module_key"] | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notifications_actor_id_fkey";
+            columns: ["actor_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       platform_staff: {
         Row: {
           created_at: string;
@@ -1218,6 +1300,10 @@ export type Database = {
       punch_code_showing: {
         Args: { actor: string; at_time?: string; business: string };
         Returns: boolean;
+      };
+      read_notifications: {
+        Args: { actor: string; business: string; ids?: string[] };
+        Returns: number;
       };
       renew_demo_schedules: {
         Args: Record<PropertyKey, never>;

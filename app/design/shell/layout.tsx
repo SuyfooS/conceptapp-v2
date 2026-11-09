@@ -1,4 +1,5 @@
-import { AppShell, type NavItem } from "@ui/app-shell";
+import { needsAction } from "@domain/notifications";
+import type { NavItem } from "@ui/app-shell";
 import {
   CalendarDays,
   House,
@@ -10,6 +11,8 @@ import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { business, totalOpenSlots, user } from "./data";
+import { DemoShell } from "./demo-shell";
+import { demoUnread } from "./notifications/data";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("shell");
@@ -45,14 +48,18 @@ export default function ShellDemoLayout({
     { href: "/design/shell/team", label: t("team"), icon: <Users /> },
     { href: "/design/shell/more", label: t("more"), icon: <Menu /> },
   ];
+  // Home counts, by the app's own rule, the lines in Shiran's inbox that need
+  // her to act: hours to confirm, a swap to approve and a shift she could take.
+  const toAct = demoUnread.filter((row) => needsAction(row.kind)).length;
 
   return (
-    <AppShell
+    <DemoShell
       businessName={business.name}
       user={{ ...user, href: "/design/shell/me" }}
       nav={nav}
+      homeCount={toAct}
     >
       {children}
-    </AppShell>
+    </DemoShell>
   );
 }

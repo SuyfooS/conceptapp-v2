@@ -20,6 +20,11 @@ describe("proxy", () => {
     expect(source).toContain('"/manage/:path*"');
   });
 
+  it("guards the notifications, which have no tab", () => {
+    expect(source).toContain('"/notifications",');
+    expect(source).toContain('"/notifications/:path*"');
+  });
+
   it("guards the profile", () => {
     expect(source).toContain('"/me",');
     expect(source).toContain('"/me/:path*"');

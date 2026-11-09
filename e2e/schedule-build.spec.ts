@@ -23,6 +23,8 @@ const YOAV = { name: "יואב לוי", local: "050-000-0004", e164: "+972500000
 const WAITER = "מלצר/ית";
 
 const tb = he.app.build;
+/** Text to find as it is, inside a pattern. */
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 // Any form of an ICU plural message, with # as a number.
 const plural = (message: string) =>
   new RegExp(
@@ -322,7 +324,11 @@ test("a manager is warned before a tab takes unsaved work away", async ({
   page,
 }) => {
   const screen = buildScreen(page);
-  const home = page.getByRole("link", { name: he.app.nav.home, exact: true });
+  // Home, with its count of what needs the person when it has one. The label
+  // and the count are blocks, so the name reads "היום , 2 ...".
+  const home = page.getByRole("link", {
+    name: new RegExp(`^${literal(he.app.nav.home)}(\\s*,|$)`),
+  });
   const warning = page.getByRole("dialog", { name: tb.leave.title });
   const placeNoa = async () => {
     await screen.card("בוקר").click();

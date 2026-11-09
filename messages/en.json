@@ -302,7 +302,8 @@
     "qrCodeText": "Always dark on white, in dark mode too. The digits under it are for typing.",
     "scanCircle": "Scanning in the circle",
     "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening.",
-    "covers": "Eight covers, all drawn in the business's colour, so any colour works in light and dark. Below: choosing one, as on the profile."
+    "covers": "Eight covers, all drawn in the business's colour, so any colour works in light and dark. Below: choosing one, as on the profile.",
+    "notificationsNew": "{count, plural, one {one new} other {# new}}"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -1590,6 +1591,129 @@
         "failed": "The change wasn't saved. Try again.",
         "notYet": "This opens shortly. Try again later."
       }
+    },
+    "notifications": {
+      "title": "Notifications",
+      "subtitle": "What happened at work that concerns you",
+      "bell": "Notifications",
+      "bellCount": "{count, plural, one {one new} other {# new}}",
+      "back": "Today",
+      "inbox": {
+        "new": "New",
+        "earlier": "Earlier",
+        "caughtUp": "Nothing new. You have read everything.",
+        "markAll": "Mark all as read",
+        "older": "Earlier notifications",
+        "newest": "Back to new",
+        "unread": "Unread",
+        "empty": {
+          "title": "No notifications yet",
+          "body": "When something concerns you, like a published schedule, a shift you can take or hours waiting for approval, it shows up here.",
+          "action": "Back to today"
+        },
+        "noOlder": {
+          "title": "No earlier notifications",
+          "body": "Every earlier notification is already shown.",
+          "action": "Back to new"
+        }
+      },
+      "here": {
+        "title": "What comes here",
+        "body": "Each notification stays here after you read it."
+      },
+      "columns": {
+        "who": "Who",
+        "what": "What",
+        "shift": "Shift",
+        "when": "When"
+      },
+      "groups": {
+        "schedule": {
+          "name": "The schedule",
+          "hint": "A published schedule, and changes to your shifts"
+        },
+        "swaps": {
+          "name": "Shift swaps",
+          "hint": "Shifts you can take, and what happened to your requests"
+        },
+        "approvals": {
+          "name": "Approvals",
+          "hint": "Swaps and hours waiting for your approval"
+        },
+        "team": {
+          "name": "The team",
+          "hint": "Who joined the business"
+        }
+      },
+      "time": {
+        "now": "Now"
+      },
+      "who": {
+        "noName": "No name",
+        "former": "Someone no longer on the team",
+        "unknown": "Someone on the team"
+      },
+      "shift": "{name}, {day} {date}, <ltr>{start}–{end}</ltr>",
+      "kinds": {
+        "schedule": {
+          "published": {
+            "title": "The schedule for the week of {date} is out",
+            "body": "{count, plural, =0 {You have no shifts this week} one {You have one shift} other {You have # shifts}}"
+          },
+          "changed": {
+            "title": "Your shifts changed in the week of {date}",
+            "body": "{count, plural, =0 {You now have no shifts this week} one {You now have one shift} other {You now have # shifts}}"
+          }
+        },
+        "swap": {
+          "offered": {
+            "title": "A shift to give away: {name}",
+            "note": "You can take it in My shifts",
+            "settledNote": "The shift is no longer free to take"
+          },
+          "taken": {
+            "title": "Your shift was taken: {name}",
+            "note": "Waiting for a manager to approve"
+          },
+          "waiting": {
+            "title": "A swap is waiting for approval",
+            "settledTitle": "A swap is no longer waiting for approval",
+            "people": "{to} instead of {from}"
+          },
+          "cancelled": {
+            "title": "{name} withdrew the request",
+            "note": "The shift is not coming to you"
+          },
+          "approved": {
+            "title": "Swap approved: {to} instead of {from}",
+            "titleFrom": "Swap approved. Instead of you: {name}",
+            "titleTo": "Swap approved. The shift is yours now"
+          },
+          "declined": {
+            "title": "Swap not approved: {from}",
+            "titleFrom": "Swap not approved. The shift stays yours",
+            "titleTo": "Swap not approved. The shift stays with {name}"
+          },
+          "removed": {
+            "title": "The request was cancelled because the schedule changed"
+          }
+        },
+        "clock": {
+          "confirm": {
+            "title": "Hours to approve: {name}",
+            "settledTitle": "{name}'s hours are no longer waiting for your approval",
+            "body": "{what, select, in {In without a code} out {Out without a code} other {Recorded by themselves, for the owner to approve}}, {day} at <ltr>{time}</ltr>"
+          }
+        },
+        "team": {
+          "joined": {
+            "title": "{name} is on the team now"
+          }
+        },
+        "other": {
+          "title": "Something new"
+        }
+      }
     }
   },
   "modules": {
@@ -1659,7 +1783,7 @@
     },
     "notifications": {
       "name": "Notifications",
-      "description": "Shift reminders and team updates"
+      "description": "Updates for the team about the schedule, swaps and hours"
     }
   },
   "admin": {

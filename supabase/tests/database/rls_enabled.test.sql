@@ -29,7 +29,7 @@ select set_eq(
     'view_sessions', 'schedule_weeks', 'availability_submissions',
     'availability_ranges', 'schedule_shifts', 'shift_assignments',
     'shift_swaps', 'time_entries', 'punch_codes', 'time_breaks',
-    'clock_stations'
+    'clock_stations', 'notifications'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

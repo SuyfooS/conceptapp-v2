@@ -1,7 +1,7 @@
 -- Templates: apply_template turns an empty business into a complete one,
 -- refuses anything else without changing it, and is server-only.
 begin;
-select plan(28);
+select plan(29);
 
 insert into public.businesses (id, slug, name)
 values
@@ -21,16 +21,23 @@ select results_eq(
 select is(
   (select count(*)::integer
    from public.templates t, jsonb_each(t.definition -> 'modules') as entry
-   where entry.key in ('reservations', 'storefront', 'notifications')
+   where entry.key in ('reservations', 'storefront')
      and (entry.value ->> 'enabled')::boolean),
   0,
   'no template switches on a module that is not built yet'
 );
 select is(
   (select count(*)::integer from public.business_modules
-   where module_key in ('reservations', 'storefront', 'notifications') and enabled),
+   where module_key in ('reservations', 'storefront') and enabled),
   0,
   'and no business has one on'
+);
+-- Notifications have no tab, and every template has them on (20261109000450).
+select is(
+  (select array_agg(t.key order by t.key) from public.templates t
+   where (t.definition #>> '{modules,notifications,enabled}')::boolean),
+  array['cafe-bar', 'general', 'restaurant', 'retail'],
+  'every template switches notifications on'
 );
 
 -- Server only: no execute grant for browser roles, and a call fails.
@@ -84,8 +91,8 @@ select is(
 select is(
   (select array_agg(module_key order by module_key) from public.business_modules
    where business_id = '40000000-0000-4000-b000-00000000000b' and enabled),
-  array['scheduling', 'time_clock']::public.module_key[],
-  'cafe-bar starts with the schedule and the clock'
+  array['scheduling', 'time_clock', 'notifications']::public.module_key[],
+  'cafe-bar starts with the schedule, the clock and notifications'
 );
 select is(
   (select jsonb_array_length(settings -> 'shifts') from public.business_modules
@@ -96,7 +103,7 @@ select is(
 select is(
   (select template_key || '@' || template_version from public.businesses
    where id = '40000000-0000-4000-b000-00000000000a'),
-  'restaurant@2',
+  'restaurant@3',
   'the business records the template and its version'
 );
 select is(

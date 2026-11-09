@@ -352,6 +352,12 @@ function GalleryBody({
           <div className="flex gap-2">
             <IconButton label={t("add")} icon={<Plus />} variant="secondary" />
             <IconButton label={t("notifications")} icon={<Bell />} />
+            <IconButton
+              label={t("notifications")}
+              icon={<Bell />}
+              href="/design/shell/notifications"
+              badge={{ count: 3, label: t("notificationsNew", { count: 3 }) }}
+            />
             <IconButton label={t("back")} icon={<ArrowLeft />} directional />
           </div>
         </Section>

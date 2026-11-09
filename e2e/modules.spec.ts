@@ -31,7 +31,10 @@ async function navItems(page: Page): Promise<string[]> {
     .getByRole("navigation", { name: he.ui.appShell.mainNav })
     .filter({ visible: true });
   await expect(nav).toHaveCount(1);
-  return (await nav.getByRole("link").allInnerTexts()).map((s) => s.trim());
+  // The label alone: an item may also carry a count (unread notifications).
+  return (await nav.locator("[data-nav-label]").allInnerTexts()).map((s) =>
+    s.trim(),
+  );
 }
 
 const m = he.modules;
