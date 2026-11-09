@@ -55,19 +55,29 @@ export type ListScreenWords = {
 const typed = (reading: number | null, minus: boolean) =>
   reading === null ? "" : String(minus ? Math.abs(reading) : reading);
 
-/** The range as words: "0–5", "from 0", "up to 5". */
+/**
+ * A number as it is shown: below zero with a real minus sign, which a hyphen
+ * beside the range's dash ("-25–-18") is not.
+ */
+const shown = (n: number) => (n < 0 ? `−${Math.abs(n)}` : String(n));
+
+/**
+ * The range as words: "0–5", "from 0", "up to 5". Spaced around the dash once
+ * a minus sign is in it, so "−25 – −18" reads as two numbers.
+ */
 function rangeOf(item: Pick<ListItem, "min" | "max" | "unit">) {
   const unit = item.unit ? ` ${item.unit}` : "";
   if (item.min !== null && item.max !== null) {
+    const dash = item.min < 0 || item.max < 0 ? " – " : "–";
     return {
       kind: "between",
-      range: `${item.min}–${item.max}${unit}`,
+      range: `${shown(item.min)}${dash}${shown(item.max)}${unit}`,
     } as const;
   }
   if (item.min !== null)
-    return { kind: "atLeast", range: `${item.min}${unit}` } as const;
+    return { kind: "atLeast", range: `${shown(item.min)}${unit}` } as const;
   if (item.max !== null)
-    return { kind: "atMost", range: `${item.max}${unit}` } as const;
+    return { kind: "atMost", range: `${shown(item.max)}${unit}` } as const;
   return null;
 }
 
@@ -606,13 +616,13 @@ export function ListScreen({
                             ) : isOutOfRange(item) ? (
                               <Badge tone="warning">
                                 <span dir="ltr">
-                                  {item.reading}
+                                  {shown(item.reading)}
                                   {item.unit ? ` ${item.unit}` : ""}
                                 </span>
                               </Badge>
                             ) : (
                               <span dir="ltr">
-                                {item.reading}
+                                {shown(item.reading)}
                                 {item.unit ? ` ${item.unit}` : ""}
                               </span>
                             )}
