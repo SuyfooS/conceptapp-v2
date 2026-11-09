@@ -205,7 +205,9 @@ select is(
 );
 reset role;
 
--- A business's sentences go with it; its template's stay.
+-- A business's sentences go with it; its template's stay. Its log keeps it
+-- (20261110000100_hours_kept.sql), so the purge goes first.
+select private.purge_business_records('6f000000-0000-4000-b000-000000000002');
 delete from public.businesses where id = '6f000000-0000-4000-b000-000000000002';
 select results_eq(
   $$select (select count(*)::integer from public.business_wording

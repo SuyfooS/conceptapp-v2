@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { heT } from "./t";
 
 // The design system in both appearances, on the demos: no data, no sign-in.
 const PAGES = [
@@ -112,6 +113,29 @@ test("a person's hours in the demo match their row in the team list", async ({
       page.getByText(`שעות, ${shifts}`).filter({ visible: true }).first(),
     ).toBeVisible();
   }
+});
+
+// The activity demo draws the breaks a correction changed: one cut, one removed.
+test("the activity demo says which breaks a correction changed", async ({
+  page,
+}) => {
+  await page.goto("/design/shell/manage/activity");
+  // The headline up to its day, which the screen formats by the device.
+  const [headline = ""] = heT("app.manage.activity.actions.clock.breakFit", {
+    kind: "other",
+    count: 2,
+    person: "יואב לוי",
+    day: "\u0000",
+  }).split("\u0000");
+  await expect(
+    page.getByText(headline).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(he.app.manage.activity.actions.clock.breakRemoved)
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
 });
 
 // The lists demo sends and takes a sending back, keeps its five minutes to

@@ -31,6 +31,7 @@ const shift = (
   byManager: false,
   overdue: false,
   attendance: null,
+  correction: null,
   ...more,
 });
 
@@ -54,18 +55,46 @@ const demoPeople: {
         { in: "09:14", out: null, minutes: 166 },
         { attendance: { how: "none", pending: true } },
       ),
+      // Corrected, recorded by a manager and corrected since, and recorded
+      // by a manager: each with who and why.
       shift(
         2,
         "2026-11-05",
         { in: "16:00", out: "23:30", minutes: 420 },
-        { breakMinutes: 30 },
+        {
+          breakMinutes: 30,
+          correction: {
+            kind: "corrected",
+            by: "שירן הדגמה",
+            note: "נשאר לסגור את הבר",
+          },
+        },
       ),
-      shift(3, "2026-11-03", { in: "16:05", out: "23:10", minutes: 425 }),
+      shift(
+        3,
+        "2026-11-03",
+        { in: "16:05", out: "23:10", minutes: 425 },
+        {
+          byManager: true,
+          correction: {
+            kind: "corrected",
+            by: "שירן הדגמה",
+            note: "נשאר לעזור במטבח",
+          },
+        },
+      ),
       shift(
         4,
         "2026-11-01",
         { in: "16:00", out: "22:45", minutes: 405 },
-        { byManager: true },
+        {
+          byManager: true,
+          correction: {
+            kind: "added",
+            by: "שירן הדגמה",
+            note: "שכח להחתים כניסה",
+          },
+        },
       ),
     ],
   },
@@ -85,6 +114,7 @@ const demoPeople: {
         byManager: false,
         overdue: true,
         attendance: null,
+        correction: null,
       },
       ...demoRecords.filter((record) => record.date < "2026-11-04"),
     ],

@@ -1,6 +1,6 @@
 "use server";
 
-import { parseEntryTimes } from "@domain/time-clock";
+import { parseEntryTimes, parseReason } from "@domain/time-clock";
 import type {
   EntryActionResult,
   EntryValues,
@@ -12,7 +12,10 @@ function check(values: EntryValues, endRequired: boolean): EntryActionResult {
   const times = parseEntryTimes(values, "Asia/Jerusalem", new Date(), {
     endRequired,
   });
-  return times.ok ? { ok: true } : { ok: false, failure: times.problem };
+  if (!times.ok) return { ok: false, failure: times.problem };
+  return parseReason(values.reason) === null
+    ? { ok: false, failure: "reasonNeeded" }
+    : { ok: true };
 }
 
 export async function demoCorrectEntry(

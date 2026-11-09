@@ -21,7 +21,9 @@ import {
   monthRecords,
   openEntryOf,
   parseEntryTimes,
+  parseReason,
   punchFailureOf,
+  REASON_MAX,
   roundMinutes,
   type TimeEntry,
   teamMonth,
@@ -224,6 +226,10 @@ describe("confirming what was made without a code", () => {
           clockIn: IN,
           source: "punch",
           breaks: [],
+          note: null,
+          editedBy: null,
+          editedAt: null,
+          createdAt: null,
           ...made("none", "typed"),
         },
       ],
@@ -247,6 +253,7 @@ describe("what a punch can answer", () => {
       "ownHours",
       "ownerOnly",
       "nothingToConfirm",
+      "reasonNeeded",
     ] as const) {
       expect(punchFailureOf(refusal, "typed")).toBe("failed");
     }
@@ -628,6 +635,10 @@ describe("months", () => {
       inProof: null,
       outProof: null,
       confirmedAt: null,
+      note: null,
+      editedBy: null,
+      editedAt: null,
+      createdAt: null,
     });
     const records = monthRecords(
       [
@@ -646,6 +657,113 @@ describe("months", () => {
       minutes: 480,
       byManager: true,
     });
+  });
+
+  it("says who corrected a shift and why", () => {
+    const corrected = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000001",
+      userId: "u1",
+      clockIn: "2026-11-10T06:00:00Z",
+      clockOut: "2026-11-10T14:00:00Z",
+      source: "punch",
+      note: "Forgot to clock out",
+      editedBy: "m1",
+      editedAt: "2026-11-11T08:00:00+00:00",
+    });
+    const untouched = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000002",
+      userId: "u1",
+      clockIn: "2026-11-12T06:00:00Z",
+      clockOut: "2026-11-12T14:00:00Z",
+      source: "punch",
+    });
+    // A change from before reasons, by someone the reader can't see.
+    const older = timeEntry.parse({
+      ...untouched,
+      id: "68000000-0000-4000-a000-000000000003",
+      clockIn: "2026-11-13T06:00:00Z",
+      clockOut: "2026-11-13T14:00:00Z",
+      editedBy: "gone",
+      editedAt: "2026-11-14T08:00:00+00:00",
+    });
+    const names = new Map([["m1", "Shiran"]]);
+    const records = monthRecords(
+      [corrected, untouched, older],
+      "2026-11",
+      TZ,
+      now,
+      0,
+      (userId) => names.get(userId) ?? null,
+    );
+    expect(records.map((r) => r.correction)).toEqual([
+      { kind: "corrected", by: null, note: null },
+      null,
+      { kind: "corrected", by: "Shiran", note: "Forgot to clock out" },
+    ]);
+    // Without names, nobody is named.
+    expect(
+      monthRecords([corrected], "2026-11", TZ, now)[0]?.correction,
+    ).toEqual({ kind: "corrected", by: null, note: "Forgot to clock out" });
+  });
+
+  it("tells a shift a manager added from one corrected since", () => {
+    // add_time_entry writes the edit as it writes the entry.
+    const added = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000001",
+      userId: "u1",
+      clockIn: "2026-11-10T06:00:00Z",
+      clockOut: "2026-11-10T14:00:00Z",
+      source: "manager",
+      note: "Forgot to punch",
+      editedBy: "m1",
+      editedAt: "2026-11-11T08:00:00.123456+00:00",
+      createdAt: "2026-11-11T08:00:00.123456+00:00",
+    });
+    // Corrected by someone else the day after: the line follows the fix.
+    const correctedSince = timeEntry.parse({
+      ...added,
+      id: "68000000-0000-4000-a000-000000000002",
+      clockIn: "2026-11-12T06:00:00Z",
+      clockOut: "2026-11-12T13:00:00Z",
+      note: "Left at three",
+      editedBy: "m2",
+      editedAt: "2026-11-12T09:30:00+00:00",
+    });
+    // A time passed in (as the tests do) may come before the write itself.
+    const backdated = timeEntry.parse({
+      ...added,
+      id: "68000000-0000-4000-a000-000000000003",
+      clockIn: "2026-11-13T06:00:00Z",
+      clockOut: "2026-11-13T14:00:00Z",
+      editedAt: "2026-11-10T08:00:00+00:00",
+    });
+    // Without the time it was written, it reads as the add.
+    const unknown = timeEntry.parse({
+      ...added,
+      id: "68000000-0000-4000-a000-000000000004",
+      clockIn: "2026-11-14T06:00:00Z",
+      clockOut: "2026-11-14T14:00:00Z",
+      editedAt: "2026-11-15T08:00:00+00:00",
+      createdAt: null,
+    });
+    const names = new Map([
+      ["m1", "Shiran"],
+      ["m2", "Dana"],
+    ]);
+    const records = monthRecords(
+      [added, correctedSince, backdated, unknown],
+      "2026-11",
+      TZ,
+      now,
+      0,
+      (userId) => names.get(userId) ?? null,
+    );
+    expect(records.map((r) => [r.byManager, r.correction])).toEqual([
+      [true, { kind: "added", by: "Shiran", note: "Forgot to punch" }],
+      [true, { kind: "added", by: "Shiran", note: "Forgot to punch" }],
+      [true, { kind: "corrected", by: "Dana", note: "Left at three" }],
+      [true, { kind: "added", by: "Shiran", note: "Forgot to punch" }],
+    ]);
   });
 });
 
@@ -667,6 +785,10 @@ describe("the manager's view", () => {
     inProof: null,
     outProof: null,
     confirmedAt: null,
+    note: null,
+    editedBy: null,
+    editedAt: null,
+    createdAt: null,
   });
   const pause = {
     id: "68000000-0000-4000-a000-000000000009",
@@ -828,5 +950,22 @@ describe("clockFailureOf, for breaks", () => {
     expect(clockFailureOf("22023", "An entry that ended needs an end")).toBe(
       "needsEnd",
     );
+  });
+});
+
+describe("the reason for a correction", () => {
+  it("maps the database's refusal", () => {
+    // The words of 20261110000100_hours_kept.sql.
+    expect(clockFailureOf("22023", "A correction needs its reason")).toBe(
+      "reasonNeeded",
+    );
+  });
+
+  it("keeps a reason as the database does", () => {
+    expect(parseReason("  Forgot to clock out  ")).toBe("Forgot to clock out");
+    expect(parseReason("x".repeat(REASON_MAX))).toBe("x".repeat(REASON_MAX));
+    for (const missing of ["", "   ", "x".repeat(REASON_MAX + 1), null, 5]) {
+      expect(parseReason(missing), String(missing)).toBeNull();
+    }
   });
 });

@@ -41,7 +41,11 @@ which needs the three variables in `.env.example` in Vercel and nothing else.
 Each demo business starts the way `private.demo_businesses` describes it (written by
 `seed.sql` and `hosted-demo.sql`). `public.reset_demo_business` puts one back that way:
 it deletes the business, with everything that belongs to it, and makes it again from
-its template with the same id. The shop's week is always published
+its template with the same id. Hours, breaks and the log never go with a business
+(`20261110000100_hours_kept.sql`), so the reset locks the business, which lets a
+visitor's write already under way finish and holds new ones back, then deletes the demo's
+own through `private.purge_business_records`, which only the database's owner may run
+(the reset, and test clean-ups). The shop's week is always published
 (`public.renew_demo_schedules`); the restaurant's is the visitor's to build.
 
 A demo business takes no invites and nobody joins one, since anyone at the door is its

@@ -243,12 +243,15 @@ export const undoClockOut = (actorId: string, entryId: string) =>
     }),
   );
 
-/** A manager adds an entry someone forgot to punch. Returns its id. */
+/**
+ * A manager adds an entry someone forgot to punch, with why (`note`, which the
+ * database requires and logs). Returns its id.
+ */
 export const addTimeEntry = (
   actorId: string,
   businessId: string,
   personId: string,
-  times: { clockIn: string; clockOut: string; note?: string },
+  times: { clockIn: string; clockOut: string; note: string },
 ) =>
   call(() =>
     createAdminClient().rpc("add_time_entry", {
@@ -261,11 +264,14 @@ export const addTimeEntry = (
     }),
   );
 
-/** A manager changes an entry's times (a null end leaves it open). */
+/**
+ * A manager changes an entry's times (a null end leaves it open), with why
+ * (`note`, which the database requires, keeps on the entry and logs).
+ */
 export const correctTimeEntry = (
   actorId: string,
   entryId: string,
-  times: { clockIn: string; clockOut: string | null; note?: string },
+  times: { clockIn: string; clockOut: string | null; note: string },
 ) =>
   call(() =>
     createAdminClient().rpc("correct_time_entry", {
@@ -317,7 +323,7 @@ export async function getClockPeople(
 }
 
 const ENTRY_COLUMNS =
-  "id, user_id, clock_in, clock_out, source, in_proof, out_proof, confirmed_at, time_breaks (id, started_at, ended_at, unpaid)";
+  "id, user_id, clock_in, clock_out, source, in_proof, out_proof, confirmed_at, note, edited_by, edited_at, created_at, time_breaks (id, started_at, ended_at, unpaid)";
 
 type EntryRow = {
   id: string;
@@ -328,6 +334,10 @@ type EntryRow = {
   in_proof: string | null;
   out_proof: string | null;
   confirmed_at: string | null;
+  note: string | null;
+  edited_by: string | null;
+  edited_at: string | null;
+  created_at: string;
   time_breaks: {
     id: string;
     started_at: string;
@@ -346,6 +356,10 @@ function entryOf(row: EntryRow): TimeEntry {
     inProof: row.in_proof,
     outProof: row.out_proof,
     confirmedAt: row.confirmed_at,
+    note: row.note,
+    editedBy: row.edited_by,
+    editedAt: row.edited_at,
+    createdAt: row.created_at,
     breaks: row.time_breaks.map((pause) => ({
       id: pause.id,
       startedAt: pause.started_at,

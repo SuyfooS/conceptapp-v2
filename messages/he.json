@@ -1137,6 +1137,11 @@
         "withBreak": " · הפסקה {minutes} דק׳",
         "byManager": " · נרשם על ידי מנהל",
         "addedByManager": "נרשם על ידי מנהל",
+        "corrected": "תוקן על ידי {name}: {note}",
+        "correctedBy": "תוקן על ידי {name}",
+        "added": "נרשם על ידי {name}: {note}",
+        "addedBy": "נרשם על ידי {name}",
+        "aManager": "מנהל",
         "breakMinutes": "{minutes} דק׳",
         "noBreak": "בלי הפסקה",
         "columns": {
@@ -1223,6 +1228,8 @@
           "out": "יציאה",
           "openHint": "אם האדם עדיין במשמרת, משאירים את היציאה ריקה.",
           "nextDayHint": "יציאה לפני הכניסה נספרת ליום שאחרי.",
+          "reason": "למה מתקנים",
+          "reasonHint": "רואים את זה במשמרות של האדם וביומן הפעולות.",
           "saveEdit": "שמירת השעות",
           "saveAdd": "הוספת המשמרת",
           "close": "סגירה"
@@ -1237,7 +1244,8 @@
           "failed": "השעות לא נשמרו. בדקו את החיבור ונסו שוב.",
           "sameTime": "שעת היציאה זהה לשעת הכניסה. בדקו את השעות.",
           "ownHours": "את השעות שלך מאשר מנהל אחר או בעלי העסק.",
-          "ownerOnly": "שעות שמנהל רשם לעצמו מאשרים רק בעלי העסק."
+          "ownerOnly": "שעות שמנהל רשם לעצמו מאשרים רק בעלי העסק.",
+          "reasonNeeded": "צריך לכתוב למה מתקנים, כדי שיישאר ברישום."
         },
         "done": {
           "edit": "השעות נשמרו",
@@ -1484,7 +1492,12 @@
             "onDay": "{day}, <hours></hours>",
             "hours": "שעות",
             "confirm": "אישור השעות של {person}",
-            "codeLocked": "הקלדת קוד השעון נחסמה אחרי ניסיונות שגויים"
+            "codeLocked": "הקלדת קוד השעון נחסמה אחרי ניסיונות שגויים",
+            "reason": "הסיבה: {note}",
+            "breakFit": "{kind, select, removed {הסרת {count, plural, one {הפסקה} other {# הפסקות}}} ended {סגירת {count, plural, one {הפסקה פתוחה} other {# הפסקות פתוחות}}} cut {קיצור {count, plural, one {הפסקה} other {# הפסקות}}} other {שינוי {count, plural, one {הפסקה} other {# הפסקות}}}} בתיקון המשמרת של {person} ב{day}",
+            "breakOpen": "מ-<ltr>{in}</ltr>, בלי סוף",
+            "break": "הפסקה",
+            "breakRemoved": "הוסרה"
           },
           "invite": {
             "create": "הזמנה לצוות: {name}, {role}",

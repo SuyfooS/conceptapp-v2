@@ -1,11 +1,12 @@
-import type {
-  ActivityDay,
-  ActivityEntry,
-  ActivityPerson,
-  ActivityRecipient,
-  ActivityShift,
-  ClockTimes,
-  FieldChange,
+import {
+  type ActivityDay,
+  type ActivityEntry,
+  type ActivityPerson,
+  type ActivityRecipient,
+  type ActivityShift,
+  breakFitKind,
+  type ClockTimes,
+  type FieldChange,
 } from "@domain/activity";
 import { dateIn } from "@domain/availability";
 import { WEEKDAY_KEYS } from "@domain/availability-form";
@@ -191,6 +192,17 @@ export function ActivityView({
           out: clockTime(times.clockOut),
         })
       : t.rich("timesOpen", { ltr, in: clockTime(times.clockIn) });
+  /** A break's times; one still open says it hadn't ended, not "no clock-out". */
+  const breakHours = (times: ClockTimes) =>
+    times.clockOut
+      ? hours(times)
+      : t.rich("actions.clock.breakOpen", {
+          ltr,
+          in: clockTime(times.clockIn),
+        });
+  /** Why hours were added or corrected, as its own line under the change. */
+  const reasonNotes = (note: string | null): ReactNode[] =>
+    note ? [t("actions.clock.reason", { note })] : [];
 
   /** A module's setting as words, from what its manifest says the field is. */
   function settingChanges(module: string, changes: FieldChange[]): Change[] {
@@ -338,8 +350,8 @@ export function ActivityView({
           }),
         );
       case "clock.add":
-        return plain(
-          line.times.clockOut
+        return {
+          what: line.times.clockOut
             ? t.rich("actions.clock.add", {
                 ltr,
                 person: who(line.person),
@@ -353,7 +365,9 @@ export function ActivityView({
                 day: clockDay(line.times),
                 in: clockTime(line.times.clockIn),
               }),
-        );
+          notes: reasonNotes(line.note),
+          changes: [],
+        };
       case "clock.correct": {
         // When the fix moved the shift to another day, each side says its day.
         const moved = clockDay(line.from) !== clockDay(line.to);
@@ -374,7 +388,7 @@ export function ActivityView({
             person: who(line.person),
             day: clockDay(line.to),
           }),
-          notes: [],
+          notes: reasonNotes(line.note),
           changes: sameHours
             ? []
             : [
@@ -386,6 +400,32 @@ export function ActivityView({
               ],
         };
       }
+      case "clock.break_fit":
+        return {
+          what: t("actions.clock.breakFit", {
+            kind: breakFitKind(line.breaks),
+            count: line.breaks.length,
+            person: who(line.person),
+            // The corrected shift's day, as the correction beside it says it;
+            // a row from before the start was logged falls back to its first
+            // break's.
+            day: clockDay({
+              clockIn: line.clockIn ?? line.breaks[0].from.clockIn,
+              clockOut: null,
+            }),
+          }),
+          notes: [],
+          changes: line.breaks.map((pause, index) => ({
+            key: `break-${index}`,
+            label: t("actions.clock.break"),
+            values: {
+              from: breakHours(pause.from),
+              to: pause.to
+                ? breakHours(pause.to)
+                : t("actions.clock.breakRemoved"),
+            },
+          })),
+        };
       case "clock.confirm":
         return plain(
           t("actions.clock.confirm", { person: who(line.person) }),

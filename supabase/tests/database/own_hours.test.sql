@@ -47,7 +47,7 @@ set local role service_role;
 -- Adding hours.
 insert into ids values ('b1', public.add_time_entry('6b000000-0000-4000-a000-00000000000b',
   '6b000000-0000-4000-b000-000000000001', '6b000000-0000-4000-a000-00000000000b',
-  '2026-11-10 08:00+00', '2026-11-10 12:00+00', null, '2026-11-10 13:00+00'));
+  '2026-11-10 08:00+00', '2026-11-10 12:00+00', 'Forgot to punch', '2026-11-10 13:00+00'));
 select is(
   (select in_proof || ' ' || out_proof from public.time_entries where id = (select id from ids where name = 'b1')),
   'self self',
@@ -55,7 +55,7 @@ select is(
 );
 insert into ids values ('c1', public.add_time_entry('6b000000-0000-4000-a000-00000000000b',
   '6b000000-0000-4000-b000-000000000001', '6b000000-0000-4000-a000-00000000000c',
-  '2026-11-10 08:00+00', '2026-11-10 12:00+00', null, '2026-11-10 13:00+00'));
+  '2026-11-10 08:00+00', '2026-11-10 12:00+00', 'Forgot to punch', '2026-11-10 13:00+00'));
 select is(
   (select in_proof || ' ' || out_proof from public.time_entries where id = (select id from ids where name = 'c1')),
   'manager manager',
@@ -63,7 +63,7 @@ select is(
 );
 insert into ids values ('e1', public.add_time_entry('6b000000-0000-4000-a000-00000000000e',
   '6b000000-0000-4000-b000-000000000001', '6b000000-0000-4000-a000-00000000000e',
-  '2026-11-10 08:00+00', '2026-11-10 12:00+00', null, '2026-11-10 13:00+00'));
+  '2026-11-10 08:00+00', '2026-11-10 12:00+00', 'Forgot to punch', '2026-11-10 13:00+00'));
 select is(
   (select in_proof from public.time_entries where id = (select id from ids where name = 'e1')),
   'self',
@@ -71,7 +71,7 @@ select is(
 );
 insert into ids values ('a1', public.add_time_entry('6b000000-0000-4000-a000-00000000000a',
   '6b000000-0000-4000-b000-000000000001', '6b000000-0000-4000-a000-00000000000a',
-  '2026-11-10 08:00+00', '2026-11-10 12:00+00', null, '2026-11-10 13:00+00'));
+  '2026-11-10 08:00+00', '2026-11-10 12:00+00', 'Forgot to punch', '2026-11-10 13:00+00'));
 select is(
   (select in_proof from public.time_entries where id = (select id from ids where name = 'a1')),
   'manager',
@@ -79,7 +79,7 @@ select is(
 );
 insert into ids values ('e2', public.add_time_entry('6b000000-0000-4000-a000-00000000000e',
   '6b000000-0000-4000-b000-000000000001', '6b000000-0000-4000-a000-00000000000e',
-  '2026-11-11 08:00+00', null, null, '2026-11-11 09:00+00'));
+  '2026-11-11 08:00+00', null, 'Forgot to punch', '2026-11-11 09:00+00'));
 select is(
   (select in_proof || ' ' || coalesce(out_proof, '-') from public.time_entries
    where id = (select id from ids where name = 'e2')),
@@ -121,7 +121,7 @@ select public.issue_punch_code('6b000000-0000-4000-a000-00000000000b', '6b000000
 insert into ids values ('c2', public.clock_in('6b000000-0000-4000-a000-00000000000c',
   '6b000000-0000-4000-b000-000000000001', pg_temp.h('k1'), '2026-11-12 08:00:10+00'));
 select public.correct_time_entry('6b000000-0000-4000-a000-00000000000b',
-  (select id from ids where name = 'c2'), '2026-11-12 07:30+00', null, null, '2026-11-12 09:00+00');
+  (select id from ids where name = 'c2'), '2026-11-12 07:30+00', null, 'Came in early', '2026-11-12 09:00+00');
 select is(
   (select in_proof || ' ' || (in_station is null)::text from public.time_entries
    where id = (select id from ids where name = 'c2')),
@@ -147,7 +147,7 @@ select is(
   'a manager scans another manager''s code'
 );
 select public.correct_time_entry('6b000000-0000-4000-a000-00000000000b',
-  (select id from ids where name = 'b3'), '2026-11-12 07:00+00', null, null, '2026-11-12 09:00+00');
+  (select id from ids where name = 'b3'), '2026-11-12 07:00+00', null, 'Came in early', '2026-11-12 09:00+00');
 select is(
   (select in_proof || ' ' || (in_station is null)::text from public.time_entries
    where id = (select id from ids where name = 'b3')),
@@ -155,14 +155,14 @@ select is(
   'and moving their own arrival makes it their own word'
 );
 select public.correct_time_entry('6b000000-0000-4000-a000-00000000000d',
-  (select id from ids where name = 'b3'), '2026-11-12 07:10+00', null, null, '2026-11-12 09:10+00');
+  (select id from ids where name = 'b3'), '2026-11-12 07:10+00', null, 'Came in early', '2026-11-12 09:10+00');
 select is(
   (select in_proof from public.time_entries where id = (select id from ids where name = 'b3')),
   'self',
   'another manager moving it does not take the mark off'
 );
 select public.correct_time_entry('6b000000-0000-4000-a000-00000000000a',
-  (select id from ids where name = 'b3'), '2026-11-12 07:15+00', null, null, '2026-11-12 09:20+00');
+  (select id from ids where name = 'b3'), '2026-11-12 07:15+00', null, 'Came in early', '2026-11-12 09:20+00');
 select is(
   (select in_proof from public.time_entries where id = (select id from ids where name = 'b3')),
   'manager',
@@ -171,7 +171,7 @@ select is(
 
 -- A confirmed entry the person moves again needs confirming again.
 select public.correct_time_entry('6b000000-0000-4000-a000-00000000000b',
-  (select id from ids where name = 'b1'), '2026-11-10 08:30+00', '2026-11-10 12:00+00', null,
+  (select id from ids where name = 'b1'), '2026-11-10 08:30+00', '2026-11-10 12:00+00', 'Came in late',
   '2026-11-10 15:00+00');
 select is(
   (select in_proof || ' ' || out_proof || ' ' || (confirmed_at is null)::text

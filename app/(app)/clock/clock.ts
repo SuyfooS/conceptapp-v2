@@ -1,5 +1,9 @@
 import { getOwnPublishedShifts } from "@db/schedule";
-import { getEntriesToConfirm, getTimeEntries } from "@db/time-clock";
+import {
+  getClockPeople,
+  getEntriesToConfirm,
+  getTimeEntries,
+} from "@db/time-clock";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
 import { needsPunchCode } from "@domain/punch-code";
@@ -76,6 +80,20 @@ export const clockAccess = cache(async () => {
   };
 });
 
+/**
+ * The names of whoever corrected these entries, as the reader may see them,
+ * for each shift's "corrected by" line. Reads the team only when one was.
+ */
+async function correctorNames(
+  businessId: string,
+  entries: readonly TimeEntry[],
+): Promise<(userId: string) => string | null> {
+  if (!entries.some((entry) => entry.editedBy !== null)) return () => null;
+  const people = await getClockPeople(businessId);
+  return (userId) =>
+    people.find((person) => person.userId === userId)?.name ?? null;
+}
+
 /** The person's shift that is on or still to come today, by the schedule. */
 async function shiftToday(
   businessId: string,
@@ -129,6 +147,7 @@ export async function currentClock(): Promise<ClockData | null> {
   ]);
 
   const step = settings.roundToMinutes;
+  const nameOf = await correctorNames(businessId, entries);
   const open = openEntryOf(entries, userId);
   const undo = open ? null : undoableEntry(entries, now);
   // Still here after their shift, the next one ahead is not the one they are on.
@@ -143,8 +162,8 @@ export async function currentClock(): Promise<ClockData | null> {
     thisMonth: monthMinutes(entries, month, timeZone, now, step),
     lastMonth: monthMinutes(entries, lastMonth, timeZone, now, step),
     recent: [
-      ...monthRecords(entries, month, timeZone, now, step),
-      ...monthRecords(entries, lastMonth, timeZone, now, step),
+      ...monthRecords(entries, month, timeZone, now, step, nameOf),
+      ...monthRecords(entries, lastMonth, timeZone, now, step, nameOf),
     ].slice(0, RECENT_SHIFTS),
     undo:
       undo?.clockOut != null
@@ -195,11 +214,12 @@ export async function currentClockHistory(
   const { from, to } = monthRange(month, timeZone);
   const entries = await getTimeEntries(businessId, from, to, userId);
   const step = settings.roundToMinutes;
+  const nameOf = await correctorNames(businessId, entries);
   return {
     month,
     currentMonth,
     minutes: monthMinutes(entries, month, timeZone, now, step),
-    records: monthRecords(entries, month, timeZone, now, step),
+    records: monthRecords(entries, month, timeZone, now, step, nameOf),
   };
 }
 

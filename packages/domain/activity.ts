@@ -92,6 +92,29 @@ export type FieldChange<Key extends string = string> = {
 
 export type ClockTimes = { clockIn: string; clockOut: string | null };
 
+/** One break a correction changed: its times before, and after (null when removed). */
+export type BreakFit = { from: ClockTimes; to: ClockTimes | null };
+
+/**
+ * What a correction did to the breaks, for the log's headline: removed them,
+ * ended open ones, or cut them; "other" when the breaks went different ways.
+ */
+export type BreakFitKind = "removed" | "ended" | "cut" | "other";
+
+export function breakFitKind(breaks: readonly BreakFit[]): BreakFitKind {
+  const kinds = new Set(
+    breaks.map((pause): BreakFitKind => {
+      if (pause.to === null) return "removed";
+      if (pause.from.clockOut === null && pause.to.clockOut !== null) {
+        return "ended";
+      }
+      return "cut";
+    }),
+  );
+  const [only] = kinds;
+  return kinds.size === 1 && only ? only : "other";
+}
+
 /** Who a list went to, as the log says it. */
 export type ActivityRecipient =
   | { kind: "person"; person: ActivityPerson }
@@ -105,12 +128,33 @@ export type ActivityLine =
   | { action: "business.details"; changes: FieldChange<DetailKey>[] }
   | { action: "module.settings"; module: string; changes: FieldChange[] }
   | { action: "module.enabled"; module: string; enabled: boolean }
-  | { action: "clock.add"; person: ActivityPerson; times: ClockTimes }
+  | {
+      action: "clock.add";
+      person: ActivityPerson;
+      times: ClockTimes;
+      /** Why, as the manager wrote it; null on rows from before reasons. */
+      note: string | null;
+    }
   | {
       action: "clock.correct";
       person: ActivityPerson;
       from: ClockTimes;
       to: ClockTimes;
+      note: string | null;
+    }
+  | {
+      /**
+       * A correction cut the shift's breaks to fit its new times, or removed
+       * those left outside it (`to` null). Each break's times as a span.
+       */
+      action: "clock.break_fit";
+      person: ActivityPerson;
+      /**
+       * When the corrected shift starts, which names its day as the
+       * correction's own line does; null on rows from before it was logged.
+       */
+      clockIn: string | null;
+      breaks: [BreakFit, ...BreakFit[]];
     }
   /** A manager approved hours made without a code, or set by someone for themselves. */
   | { action: "clock.confirm"; person: ActivityPerson }
@@ -216,6 +260,7 @@ const instant = z
   .refine((value) => !Number.isNaN(Date.parse(value)), "not a time");
 const fields = z.record(z.string(), z.unknown());
 const times = z.object({ clock_in: instant, clock_out: instant.nullable() });
+const span = z.object({ start: instant, end: instant.nullable() });
 
 const schemas = {
   "business.create": z.object({ invites: z.int().min(0).optional() }),
@@ -232,8 +277,19 @@ const schemas = {
     person: id,
     clock_in: instant,
     clock_out: instant.nullable().optional(),
+    note: z.unknown().optional(),
   }),
-  "clock.correct": z.object({ person: id, from: times, to: times }),
+  "clock.correct": z.object({
+    person: id,
+    from: times,
+    to: times,
+    note: z.unknown().optional(),
+  }),
+  "clock.break_fit": z.object({
+    person: id,
+    clock_in: instant.optional(),
+    breaks: z.array(z.object({ from: span, to: span.nullable() })),
+  }),
   "clock.confirm": z.object({ person: id }),
   "clock.code.locked": z.object({ person: id.optional() }),
   invite: z.object({ invite: id, role: z.unknown().optional() }),
@@ -335,6 +391,15 @@ function clockTimes(value: z.infer<typeof times>): ClockTimes {
   return { clockIn: value.clock_in, clockOut: value.clock_out };
 }
 
+function spanTimes(value: z.infer<typeof span>): ClockTimes {
+  return { clockIn: value.start, clockOut: value.end };
+}
+
+/** A correction's reason, when the row has one worth showing. */
+function noteOf(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
   const other = { action: "other" } as const;
   const read = <S extends z.ZodType>(schema: S) => {
@@ -418,6 +483,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
           clockIn: details.clock_in,
           clockOut: details.clock_out ?? null,
         },
+        note: noteOf(details.note),
       };
     }
     case "clock.correct": {
@@ -428,6 +494,22 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         person: personOf(details.person, lookups),
         from: clockTimes(details.from),
         to: clockTimes(details.to),
+        note: noteOf(details.note),
+      };
+    }
+    case "clock.break_fit": {
+      const details = read(schemas["clock.break_fit"]);
+      const [first, ...rest] = details?.breaks ?? [];
+      if (!details || !first) return other;
+      const breakOf = (pause: typeof first): BreakFit => ({
+        from: spanTimes(pause.from),
+        to: pause.to ? spanTimes(pause.to) : null,
+      });
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        clockIn: details.clock_in ?? null,
+        breaks: [breakOf(first), ...rest.map(breakOf)],
       };
     }
     case "clock.confirm": {

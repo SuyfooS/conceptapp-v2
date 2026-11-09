@@ -3,7 +3,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(29);
+select plan(31);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -193,10 +193,33 @@ delete from public.department_members
 where business_id = '6d000000-0000-4000-b000-000000000001';
 insert into public.lists (business_id, name, origin, recipient_kind, recipient_role, opens_at)
 values ('6d000000-0000-4000-b000-000000000001', 'A visitor''s list', 'sent', 'role', 'worker', now());
+-- Hours, a break and the log's rows, which nothing but the reset's purge
+-- deletes (20261110000100_hours_kept.sql).
+insert into public.time_entries (id, business_id, user_id, clock_in, clock_out)
+values ('6d000000-0000-4000-e000-000000000001', '6d000000-0000-4000-b000-000000000001',
+  '6d000000-0000-4000-a000-00000000000d', now() - interval '3 hours', now() - interval '1 hour');
+insert into public.time_breaks (entry_id, business_id, user_id, started_at, ended_at, unpaid)
+values ('6d000000-0000-4000-e000-000000000001', '6d000000-0000-4000-b000-000000000001',
+  '6d000000-0000-4000-a000-00000000000d', now() - interval '2 hours',
+  now() - interval '110 minutes', true);
+insert into public.audit_log (business_id, actor_id, action, details)
+values ('6d000000-0000-4000-b000-000000000001', '6d000000-0000-4000-a000-00000000000b',
+  'business.details', '{"from": {}, "to": {"name": "Changed"}}');
 
 set local role service_role;
-select public.reset_demo_business('6d000000-0000-4000-b000-000000000001');
+select lives_ok(
+  $$select public.reset_demo_business('6d000000-0000-4000-b000-000000000001')$$,
+  'the reset goes through with hours, breaks and log rows in the business'
+);
 reset role;
+select is(
+  (select count(*)::integer from public.time_entries
+   where business_id = '6d000000-0000-4000-b000-000000000001')
+  + (select count(*)::integer from public.time_breaks
+     where business_id = '6d000000-0000-4000-b000-000000000001'),
+  0,
+  'and leaves none of the hours or breaks from before'
+);
 
 -- The links to departments are checked at commit, which a test never reaches:
 -- run them now, then put them back for the resets below.
