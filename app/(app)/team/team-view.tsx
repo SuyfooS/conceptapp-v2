@@ -111,6 +111,7 @@ function Members({ t, team }: ViewProps) {
           <PersonRow
             key={m.userId}
             name={m.name}
+            photo={m.photo}
             title={name(t, m.name)}
             subtitle={
               <>
@@ -169,11 +170,19 @@ function Invites(view: ViewProps) {
 const th = "px-5 pt-4 pb-2.5 text-start font-medium text-ink-2 text-sm";
 const td = "px-5 py-3 border-line border-t";
 
-function NameCell({ person, label }: { person: string | null; label: string }) {
+function NameCell({
+  person,
+  photo,
+  label,
+}: {
+  person: string | null;
+  photo?: string | null;
+  label: string;
+}) {
   return (
     <th scope="row" className={cn(td, "text-start font-medium")}>
       <span className="flex items-center gap-3">
-        <PersonAvatar name={person} />
+        <PersonAvatar name={person} photo={photo} />
         {label}
       </span>
     </th>
@@ -221,7 +230,11 @@ function Everyone(view: ViewProps) {
             ))}
             {team.members.map((m) => (
               <tr key={m.userId}>
-                <NameCell person={m.name} label={name(t, m.name)} />
+                <NameCell
+                  person={m.name}
+                  photo={m.photo}
+                  label={name(t, m.name)}
+                />
                 <td className={cn(td, "text-ink-2")}>{phone(m.phone)}</td>
                 <td className={td}>{t(`team.roles.${m.role}`)}</td>
                 <td className={cn(td, "text-ink-2")}>

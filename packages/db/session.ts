@@ -33,10 +33,14 @@ export type CurrentMember = {
   userId: string;
   name: string | null;
   phone: string | null;
+  /** The stored photo's path (`profiles.avatar_path`), or null. */
+  photoPath: string | null;
   /** The business the person works in, or null before anyone added them. */
   membership: {
     role: MemberRole;
     business: MemberBusiness;
+    /** When they joined it (ISO); null while viewing as a role. */
+    since: string | null;
   } | null;
   /**
    * Set while someone on the ConceptApp team views a business as a role:
@@ -132,7 +136,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     await Promise.all([
       supabase
         .from("profiles")
-        .select("full_name")
+        .select("full_name, avatar_path")
         .eq("id", userId)
         .maybeSingle(),
       // Numbers are not read from the table, the person's own included.
@@ -140,7 +144,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       supabase
         .from("memberships")
         .select(
-          "role, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
+          "role, created_at, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
         )
         .eq("user_id", userId)
         .eq("active", true)
@@ -186,6 +190,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     userId,
     name: profile.data?.full_name ?? null,
     phone: ownPhone,
+    photoPath: profile.data?.avatar_path ?? null,
   };
   const viewed = view.data?.businesses;
   if (view.data && viewed) {
@@ -194,6 +199,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       membership: {
         role: view.data.role,
         business: memberBusiness(viewed, wording),
+        since: null,
       },
       viewing: { role: view.data.role, businessSlug: viewed.slug },
     };
@@ -207,6 +213,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
         ? {
             role: membership.data.role,
             business: memberBusiness(business, wording),
+            since: membership.data.created_at,
           }
         : null,
     viewing: null,

@@ -16,7 +16,7 @@ import type { ReactNode } from "react";
 import type { SwapAction } from "./shift-sheet";
 import {
   type AppT,
-  assigneeNames,
+  assigneePeople,
   firstNames,
   ltr,
   nameOf,
@@ -119,7 +119,8 @@ export function ShiftCard({
 }: ShiftCardProps) {
   const t = useTranslations("app");
   const label = shiftLabel(t, shift);
-  const names = assigneeNames(t, data, shift);
+  const people = assigneePeople(t, data, shift);
+  const names = people.map((p) => p.name);
   const { id } = shift;
   const mine = shift.assignees.find((a) => a.user === data.userId);
   const role = mine ? positionName(data, mine.position) : null;
@@ -165,7 +166,7 @@ export function ShiftCard({
       <div className="flex min-h-10 items-center gap-2.5">
         {names.length > 0 ? (
           <>
-            <AvatarStack names={names} />
+            <AvatarStack people={people} />
             <span className="min-w-0 flex-1 text-base text-ink-2">
               {firstNames(names)}
             </span>

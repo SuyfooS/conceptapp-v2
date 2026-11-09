@@ -9,9 +9,21 @@ import type { BusinessDetails } from "@domain/business-details";
 import type { ModuleRow } from "@domain/modules";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { TeamInvite, TeamMember } from "@domain/team";
+import { portraits } from "../portraits";
 
 export const business = { name: "מסעדת הדגמה" };
-export const user = { name: "שירן", role: "מנהלת משמרת" };
+export const user = {
+  name: "שירן",
+  role: "מנהלת משמרת",
+  photo: portraits.shiran,
+};
+
+/** Some of the demo's people have a photo; the rest show their initials. */
+const photos: Record<string, string> = {
+  shiran: portraits.shiran,
+  yoav: portraits.yoav,
+  maya: portraits.maya,
+};
 
 export type Staff = { id: string; name: string; role: string };
 
@@ -133,13 +145,21 @@ export const teamMembers: TeamMember[] = [
     name: "שירן אלון",
     phone: "+972501234567",
     role: "manager",
+    photo: photos.shiran ?? null,
   },
-  { userId: "uri", name: "אורי בן דוד", phone: "+972521234567", role: "owner" },
+  {
+    userId: "uri",
+    name: "אורי בן דוד",
+    phone: "+972521234567",
+    role: "owner",
+    photo: null,
+  },
   ...staff.slice(0, 6).map((s, i) => ({
     userId: s.id,
     name: s.name,
     phone: `+97254123456${i}`,
     role: "worker" as const,
+    photo: photos[s.id] ?? null,
   })),
 ];
 

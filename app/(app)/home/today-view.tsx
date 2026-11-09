@@ -24,13 +24,14 @@ import {
   todayTiles,
 } from "@domain/today";
 import { Ambient } from "@ui/ambient";
-import { Avatar, AvatarStack } from "@ui/avatar";
+import { Avatar, type AvatarPerson, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
+import { PersonAvatar } from "@ui/person-row";
 import { Tile, type TileProps } from "@ui/tile";
 import {
   CalendarCheck,
@@ -70,6 +71,8 @@ export type TodayData = {
   timeZone: string;
   /** The person's full name, if they have one yet. */
   name: string | null;
+  /** Their photo (`profilePhotoSrc`), or null for initials. */
+  photo: string | null;
   role: Role;
   businessName: string;
   /** From `moduleWidgets`: what the enabled modules bring for this role. */
@@ -106,6 +109,13 @@ const allShifts = ({ thisWeek, nextWeek }: PublishedSchedule) => [
 ];
 const nameIn = (t: T, published: PublishedSchedule, userId: string) =>
   published.people.find((p) => p.userId === userId)?.name ?? t("shifts.noName");
+const photoIn = (published: PublishedSchedule, userId: string | null) =>
+  published.people.find((p) => p.userId === userId)?.photo ?? null;
+/** Someone as an avatar shows them: their name and their photo. */
+const personIn = (t: T, published: PublishedSchedule, userId: string) => ({
+  name: nameIn(t, published, userId),
+  photo: photoIn(published, userId),
+});
 
 /**
  * Today: what is next for the person and what needs them. Each enabled module
@@ -117,19 +127,18 @@ const nameIn = (t: T, published: PublishedSchedule, userId: string) =>
  * One layout that changes shape. Phone: one thing under the other, tiles in a
  * row that scrolls. Tablet: the hero beside the tiles, each list across the
  * width in two columns. Desktop: the same with the lists under the tiles, and
- * today's shifts side by side. `base` prefixes links for the demo, which also
- * renders this with mock data on /design/shell.
+ * today's shifts side by side. The avatar by the greeting leads to the
+ * person's profile, where signing out is. `base` prefixes links for the
+ * demo, which also renders this with mock data on /design/shell.
  */
 export async function TodayView({
   data,
   wording,
-  signOut,
   base = "",
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
-  signOut: () => Promise<void>;
   base?: string;
 }) {
   const t = translator(wording, "app");
@@ -218,7 +227,14 @@ export async function TodayView({
       <RefreshOnReturn />
       <PageBody>
         <div className="flex items-center gap-3">
-          {data.name ? <Avatar name={data.name} /> : null}
+          <Link
+            href={path("/me")}
+            aria-label={t("me.open")}
+            title={t("me.open")}
+            className="pressable shrink-0 rounded-full p-0.5 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <PersonAvatar name={data.name} photo={data.photo} />
+          </Link>
           <div className="min-w-0 flex-1">
             <PageHeader
               eyebrow={t("home.eyebrow", {
@@ -266,12 +282,6 @@ export async function TodayView({
             {rest()}
           </>
         )}
-
-        <form action={signOut} className="flex justify-center xl:justify-start">
-          <Button type="submit" variant="ghost" className="text-ink-2">
-            {t("home.signOut")}
-          </Button>
-        </form>
       </PageBody>
     </div>
   );
@@ -347,7 +357,7 @@ function NextShift({
   const running = shiftPhase(shift, clock) === "now";
   const others = shift.assignees
     .filter((a) => a.user !== published.userId)
-    .map((a) => nameIn(t, published, a.user));
+    .map((a) => personIn(t, published, a.user));
   const position = shift.assignees.find(
     (a) => a.user === published.userId,
   )?.position;
@@ -369,7 +379,13 @@ function NextShift({
           count: shift.assignees.length,
           needed: shift.needed,
         }),
-    others.length > 0 ? withPeople(t, format, others) : null,
+    others.length > 0
+      ? withPeople(
+          t,
+          format,
+          others.map((o) => o.name),
+        )
+      : null,
   ].filter(Boolean);
   const swap = mine
     ? myRequestFor(published.swaps, shift.id, published.userId)
@@ -416,7 +432,7 @@ function NextShift({
           {others.length > 0 ? (
             // The ring around each avatar takes the hero's colour, not the page's.
             <span className="shrink-0 [--surface:var(--accent)]">
-              <AvatarStack names={others} />
+              <AvatarStack people={others} />
             </span>
           ) : null}
         </div>
@@ -425,8 +441,8 @@ function NextShift({
         <RequestCard
           t={t}
           href={path("/schedule/swaps")}
-          from={nameIn(t, published, request.swap.requestedBy)}
-          to={nameIn(t, published, request.swap.takenBy)}
+          from={personIn(t, published, request.swap.requestedBy)}
+          to={personIn(t, published, request.swap.takenBy)}
           shift={request.shift}
         />
       ) : null}
@@ -526,8 +542,8 @@ function RequestCard({
 }: {
   t: T;
   href: string;
-  from: string;
-  to: string;
+  from: AvatarPerson;
+  to: AvatarPerson;
   shift: Pick<ScheduledShift, "name" | "day">;
 }) {
   return (
@@ -536,12 +552,12 @@ function RequestCard({
         href={href}
         className="pressable flex min-h-[72px] items-center gap-3 rounded-card p-3.5 focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
       >
-        <AvatarStack names={[to, from]} size="md" />
+        <AvatarStack people={[to, from]} size="md" />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="font-semibold text-base">
             {t("home.swap.title", {
-              to: firstNameOf(to),
-              from: firstNameOf(from),
+              to: firstNameOf(to.name),
+              from: firstNameOf(from.name),
             })}
           </span>
           <span className="text-ink-2 text-sm">
@@ -802,7 +818,12 @@ function WhoWorksToday({ t, path, clock, schedule }: ViewProps) {
                       return (
                         <ListRow
                           key={a.user}
-                          leading={<Avatar name={name} />}
+                          leading={
+                            <Avatar
+                              name={name}
+                              photo={photoIn(published, a.user)}
+                            />
+                          }
                           title={name}
                           subtitle={
                             published.positions.find(

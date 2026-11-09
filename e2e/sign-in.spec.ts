@@ -75,8 +75,12 @@ test("a worker signs in with a phone code and lands on the home screen", async (
   await page.goto("/");
   await expect(page).toHaveURL(/\/home$/);
 
-  // Signing out closes the session.
-  await page.getByRole("button", { name: he.app.home.signOut }).click();
+  // Signing out, from the profile, closes the session.
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: he.app.me.open, exact: true })
+    .click();
+  await page.getByRole("button", { name: he.app.signOut }).click();
   await expect(page).toHaveURL(/\/enter$/);
   await page.goto("/home");
   await expect(page).toHaveURL(/\/enter$/);

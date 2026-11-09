@@ -89,14 +89,16 @@ values
 -- people and everything else from its template, the way every real business
 -- starts. The door's reset puts it back the same way. Unlike the hosted ones
 -- (supabase/hosted-demo.sql), these take invites ("invites": true), so the
--- browser tests can invite people and join them.
+-- browser tests can invite people and join them. The restaurant also lets its
+-- people set a photo and, from H2, write about themselves ("profiles": true);
+-- the shop keeps them as they are, like the hosted ones.
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
   {
     "slug": "demo-restaurant", "name": "מסעדת הדגמה", "accent": "#2563eb",
     "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
-    "template": "restaurant", "renews": false, "invites": true,
+    "template": "restaurant", "renews": false, "invites": true, "profiles": true,
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000001", "role": "owner", "name": "אורי הדגמה" },
       { "user_id": "00000000-0000-4000-a000-000000000002", "role": "manager", "name": "שירן הדגמה" },

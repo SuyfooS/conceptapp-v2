@@ -2,6 +2,7 @@ import { accentTokens } from "@domain/color";
 import { moduleNav } from "@domain/modules";
 import { signInPath } from "@domain/passive-sign-in";
 import { displayIsraeliMobile } from "@domain/phone";
+import { profilePhotoSrc } from "@domain/profile-photos";
 import { manifests } from "@modules/registry";
 import { accentProps } from "@ui/accent";
 import { AppShell, type NavItem } from "@ui/app-shell";
@@ -76,7 +77,12 @@ async function Shell({ children }: { children: ReactNode }) {
       <WordingProvider overrides={wording.overrides}>
         <AppShell
           businessName={business.name}
-          user={{ name, role: t(`roles.${role}`) }}
+          user={{
+            name,
+            role: t(`roles.${role}`),
+            photo: profilePhotoSrc(member.photoPath),
+            href: "/me",
+          }}
           nav={nav}
         >
           {member.viewing ? (

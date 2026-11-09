@@ -1179,6 +1179,7 @@ export type Database = {
         };
         Returns: Json;
       };
+      keeps_demo_profile: { Args: { person: string }; Returns: boolean };
       note_auth_attempt: {
         Args: { at_time?: string; caller: string; kind: string; phone: string };
         Returns: number;

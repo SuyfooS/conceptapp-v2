@@ -1,7 +1,7 @@
 import { moduleWidgets } from "@domain/modules";
+import { profilePhotoSrc } from "@domain/profile-photos";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
-import { signOut } from "../../(auth)/actions";
 import { currentClockLine } from "../clock/clock";
 import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
@@ -56,11 +56,11 @@ export default async function HomePage() {
   return (
     <TodayView
       wording={wording}
-      signOut={signOut}
       data={{
         now: new Date().toISOString(),
         timeZone: published?.timeZone ?? membership.business.place.timeZone,
         name: member.name,
+        photo: profilePhotoSrc(member.photoPath),
         role: membership.role,
         businessName: membership.business.name,
         widgets: moduleWidgets(manifests, enabled, membership.role),
