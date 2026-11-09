@@ -58,6 +58,10 @@ export default function ShellDemoLayout({
       user={user}
       nav={nav}
       homeCount={toAct}
+    <AppShell
+      businessName={business.name}
+      user={{ ...user, href: "/design/shell/me" }}
+      nav={nav}
     >
       {children}
     </DemoShell>

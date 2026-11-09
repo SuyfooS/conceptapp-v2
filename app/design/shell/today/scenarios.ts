@@ -162,6 +162,7 @@ function today(
     now,
     timeZone: demoWeek.timeZone,
     name: teamMembers.find((m) => m.userId === userId)?.name ?? null,
+    photo: teamMembers.find((m) => m.userId === userId)?.photo ?? null,
     role,
     businessName: business.name,
     widgets: moduleWidgets(manifests, modules, role),

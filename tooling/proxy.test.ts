@@ -25,6 +25,16 @@ describe("proxy", () => {
     expect(source).toContain('"/notifications/:path*"');
   });
 
+  it("guards the profile", () => {
+    expect(source).toContain('"/me",');
+    expect(source).toContain('"/me/:path*"');
+  });
+
+  it("guards the photos", () => {
+    expect(source).toContain('"/photos",');
+    expect(source).toContain('"/photos/:path*"');
+  });
+
   it("guards every module screen", () => {
     for (const m of manifests) {
       if (!m.nav) continue;

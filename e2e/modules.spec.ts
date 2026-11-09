@@ -124,12 +124,17 @@ test("switching scheduling off takes its part of Today with it", async ({
   await expect(hero).toHaveCount(0);
   await expect(scheduling).toHaveCount(0);
   await expect(page.getByText(h.who.title)).toHaveCount(0);
-  // The rest of Today is still there, and so is the way out.
+  // The rest of Today is still there, and so is the way to the profile,
+  // where signing out is.
   await expect(
     page.getByRole("main").locator('a[href="/clock"]'),
   ).toBeVisible();
   await expect(page.getByRole("main").locator('a[href="/team"]')).toBeVisible();
-  await expect(page.getByRole("button", { name: h.signOut })).toBeVisible();
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: he.app.me.open, exact: true }),
+  ).toBeVisible();
 
   await setDemoModule("scheduling", true);
   await page.goto("/home");

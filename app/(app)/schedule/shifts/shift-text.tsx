@@ -46,17 +46,26 @@ export const nameOf = (
   userId: string | null,
 ) => data.people.find((p) => p.userId === userId)?.name ?? t("shifts.noName");
 
+export const photoOf = (
+  data: Pick<ShiftData, "people">,
+  userId: string | null,
+) => data.people.find((p) => p.userId === userId)?.photo ?? null;
+
 export const positionName = (
   data: Pick<ShiftData, "positions">,
   key: string | null | undefined,
 ) => data.positions.find((p) => p.key === key)?.name ?? null;
 
-/** Everyone on a shift by name, in the shift's order. */
-export const assigneeNames = (
+/** Everyone on a shift as their avatars show them, in the shift's order. */
+export const assigneePeople = (
   t: AppT,
   data: Pick<ShiftData, "people">,
   shift: Pick<ScheduledShift, "assignees">,
-) => shift.assignees.map((a) => nameOf(t, data, a.user));
+) =>
+  shift.assignees.map((a) => ({
+    name: nameOf(t, data, a.user),
+    photo: photoOf(data, a.user),
+  }));
 
 export const firstNames = (names: readonly string[]) =>
   names.map(firstNameOf).join(", ");

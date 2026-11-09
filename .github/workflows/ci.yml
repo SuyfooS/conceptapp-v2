@@ -184,11 +184,13 @@ jobs:
 
       # The stack starts in the background while Chromium installs; `wait`
       # fails the step if it did not start, and the log is printed either way.
-      - name: Start local Supabase (database, auth, API) and install Chromium
+      # Storage runs for the profile photos (e2e/profile.spec.ts); its image
+      # transformations (imgproxy) are not used.
+      - name: Start local Supabase (database, auth, API, storage) and install Chromium
         run: |
           log="$RUNNER_TEMP/supabase-start.log"
           pnpm exec supabase start \
-            -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
+            -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
             > "$log" 2>&1 &
           supabase=$!
           trap 'echo "::group::supabase start"; cat "$log"; echo "::endgroup::"' EXIT

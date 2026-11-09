@@ -17,6 +17,7 @@ const member = (name: string | null, role: TeamMember["role"]): TeamMember => ({
   name,
   phone: null,
   role,
+  photo: null,
 });
 
 const invite = (

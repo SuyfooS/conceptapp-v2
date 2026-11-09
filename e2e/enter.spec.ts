@@ -54,8 +54,13 @@ test("signed-out visitors choose who they are and come in", async ({
   await page.goto("/enter");
   await expect(page).toHaveURL(/\/home$/);
 
-  // Leaving comes back to the door, to come in as someone else.
-  await page.getByRole("button", { name: he.app.home.signOut }).click();
+  // Leaving, from the profile, comes back to the door, to come in as someone
+  // else.
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: he.app.me.open, exact: true })
+    .click();
+  await page.getByRole("button", { name: he.app.signOut }).click();
   await expect(page).toHaveURL(/\/enter$/);
   await person(page, "manager").click();
   await expect(page).toHaveURL(/\/home$/);

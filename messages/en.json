@@ -5,7 +5,8 @@
   "ui": {
     "appShell": {
       "mainNav": "Main navigation",
-      "needsAction": ", {count} need action"
+      "needsAction": ", {count} need action",
+      "profile": "My profile"
     },
     "codeSlots": {
       "count": "{filled} of {total} digits",
@@ -26,6 +27,32 @@
       "current": "The current colour",
       "kept": "The previous colour",
       "adjusted": "The colour was darkened a little so text on it stays readable."
+    },
+    "photoPicker": {
+      "add": "Add a photo",
+      "change": "Change photo",
+      "title": "Profile photo",
+      "subtitle": "Everyone you work with sees it",
+      "close": "Close",
+      "choose": "Choose a photo",
+      "chooseOther": "Choose another",
+      "save": "Save the photo",
+      "remove": "Remove the photo",
+      "note": "The photo is cropped to a circle from the centre. What the phone keeps inside the file, such as where it was taken, is not kept.",
+      "preparing": "Preparing the photo…",
+      "saved": "Photo saved",
+      "failures": {
+        "unreadable": "This file can't be opened. Try another photo.",
+        "tooBig": "The photo is too large. Try another one.",
+        "type": "Only a photo can be saved: JPEG, PNG or WebP.",
+        "metadata": "The photo wasn't saved. Choose it again.",
+        "pixels": "The photo wasn't saved. Choose it again.",
+        "demo": "In the demo businesses, photos stay as they are.",
+        "viewOnly": "Nothing can be changed while viewing.",
+        "notYet": "Adding a photo opens shortly. Try again later.",
+        "failed": "The photo wasn't saved. Try again.",
+        "removeFailed": "The photo wasn't removed. Try again."
+      }
     }
   },
   "days": {
@@ -140,7 +167,6 @@
     "wide": "Sign in",
     "add": "Add",
     "notifications": "Notifications",
-    "notificationsNew": "{count, plural, one {one new} other {# new}}",
     "back": "Back",
     "fields": "Fields",
     "name": "Full name",
@@ -199,6 +225,13 @@
     "choices": "One choice out of several",
     "choiceHint": "A short word about this option",
     "personRow": "People in a list",
+    "photos": "Profile photos",
+    "photosText": "A photo in place of the initials, in the same circle. Without one, or when it doesn't load, the initials stay.",
+    "photoPicker": "Choosing a photo",
+    "photoPickerOpen": "Open the picker",
+    "visibility": "Who sees it",
+    "visibilityPrivate": "Only you and the owners see this",
+    "cover": "Profile cover",
     "emptyState": "A screen with no content",
     "emptyTitle": "Nothing here yet",
     "emptyBody": "Every empty screen says what to do next.",
@@ -256,7 +289,8 @@
     "qrCode": "QR code",
     "qrCodeText": "Always dark on white, in dark mode too. The digits under it are for typing.",
     "scanCircle": "Scanning in the circle",
-    "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening."
+    "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening.",
+    "notificationsNew": "{count, plural, one {one new} other {# new}}"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -440,7 +474,6 @@
         "title": "Nothing here yet",
         "body": "No modules are on for this business yet. The ConceptApp team turns them on when setting up the business, and they appear here and in the menu."
       },
-      "signOut": "Sign out",
       "modulesTitle": "In your business",
       "manageTitle": "Running the business",
       "hero": {
@@ -1452,6 +1485,25 @@
         }
       },
       "ownerOnly": "Owners only"
+    },
+    "me": {
+      "metaTitle": "My profile",
+      "open": "My profile",
+      "since": "{role} · on the team since {date}",
+      "about": {
+        "title": "About me",
+        "visible": "Everyone you work with sees this"
+      },
+      "photo": {
+        "row": "Photo",
+        "rowHint": "On the team, in the schedule and in requests",
+        "demo": "In the demo businesses, photos stay as they are",
+        "viewOnly": "Nothing can be changed while viewing",
+        "notYet": "Adding a photo opens shortly",
+        "removed": "Photo removed",
+        "undoFailed": "The photo didn't come back. Try again.",
+        "gone": "The photo can't be brought back. You can choose a new one."
+      }
     },
     "notifications": {
       "title": "Notifications",

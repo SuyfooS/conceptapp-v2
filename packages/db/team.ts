@@ -1,4 +1,5 @@
 import "server-only";
+import { profilePhotoSrc } from "@domain/profile-photos";
 import type { TeamInvite, TeamMember } from "@domain/team";
 import { isMissingFunction } from "./missing";
 import { createClient } from "./supabase/server";
@@ -17,7 +18,7 @@ export async function getTeam(
   const [members, phones, invites] = await Promise.all([
     supabase
       .from("memberships")
-      .select("user_id, role, profiles (full_name)")
+      .select("user_id, role, profiles (full_name, avatar_path)")
       .eq("business_id", businessId)
       .eq("active", true),
     supabase.rpc("team_phones", { business: businessId }),
@@ -41,6 +42,7 @@ export async function getTeam(
       name: row.profiles?.full_name?.trim() || null,
       phone: phoneOf.get(row.user_id) ?? null,
       role: row.role,
+      photo: profilePhotoSrc(row.profiles?.avatar_path),
     })),
     invites: invites.data.map((row) => ({
       id: row.id,
@@ -69,22 +71,28 @@ async function phonesFromProfiles(
   return data.map((row) => [row.user_id, row.profiles?.phone ?? null]);
 }
 
-export type Colleague = { userId: string; name: string | null };
+export type Colleague = {
+  userId: string;
+  name: string | null;
+  /** An image src for their photo (`profilePhotoSrc`), or null. */
+  photo: string | null;
+};
 
 /**
- * The names of a business's active members, as anyone in it may read them
- * (RLS): for the published schedule, which every member reads.
+ * The names and photos of a business's active members, as anyone in it may
+ * read them (RLS): for the published schedule, which every member reads.
  */
 export async function getColleagues(businessId: string): Promise<Colleague[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("memberships")
-    .select("user_id, profiles (full_name)")
+    .select("user_id, profiles (full_name, avatar_path)")
     .eq("business_id", businessId)
     .eq("active", true);
   if (error) throw error;
   return data.map((row) => ({
     userId: row.user_id,
     name: row.profiles?.full_name?.trim() || null,
+    photo: profilePhotoSrc(row.profiles?.avatar_path),
   }));
 }

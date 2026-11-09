@@ -1,0 +1,23 @@
+"use server";
+
+import type { PhotoSaveResult } from "@domain/profile-photos";
+
+// Stand-ins for the profile's photo actions on the design demo, where nobody
+// is signed in: nothing is stored. A saved photo stays on the screen until
+// the page is left.
+
+export async function demoSetPhotoAction(
+  form: FormData,
+): Promise<PhotoSaveResult> {
+  const photo = form.get("photo");
+  if (!(photo instanceof Blob)) return { ok: false, failure: "empty" };
+  const bytes = Buffer.from(await photo.arrayBuffer());
+  return {
+    ok: true,
+    photo: `data:${photo.type};base64,${bytes.toString("base64")}`,
+  };
+}
+
+export async function demoRemovePhotoAction(): Promise<PhotoSaveResult> {
+  return { ok: true, photo: null };
+}

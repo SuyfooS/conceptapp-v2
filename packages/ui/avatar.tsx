@@ -1,15 +1,67 @@
 import { avatarHue, initialsOf } from "@domain/people";
+import Image from "next/image";
 import type { ComponentProps, CSSProperties } from "react";
 import { cn } from "./cn";
 
-export type AvatarProps = Omit<ComponentProps<"span">, "children"> & {
-  name: string;
-  size?: "sm" | "md";
+export type AvatarSize = "sm" | "md" | "xl";
+
+const SIZES: Record<AvatarSize, string> = {
+  sm: "size-8 text-[11px]",
+  md: "size-10 text-sm",
+  xl: "size-24 text-2xl",
 };
 
-/** A person's initials on a soft gradient, the same colour on every screen. */
+/** How wide the photo is drawn, for the browser's choice of source. */
+export const AVATAR_PIXELS: Record<AvatarSize, string> = {
+  sm: "32px",
+  md: "40px",
+  xl: "96px",
+};
+
+export type AvatarProps = Omit<ComponentProps<"span">, "children"> & {
+  name: string;
+  /** A photo to show over the initials; they stay underneath if it fails. */
+  photo?: string | null;
+  /** 32, 40 or 96 px. */
+  size?: AvatarSize;
+};
+
+/**
+ * A photo over a decorative circle, as the app shows a stored one: never
+ * through the image optimizer, which would keep a private photo under one
+ * address for everyone and doesn't pass the viewer's cookies on.
+ */
+export function AvatarPhoto({
+  photo,
+  sizes,
+  className,
+}: {
+  photo: string;
+  /** How wide it is drawn, such as "40px". */
+  sizes: string;
+  className?: string;
+}) {
+  return (
+    <Image
+      src={photo}
+      alt=""
+      fill
+      unoptimized
+      draggable={false}
+      sizes={sizes}
+      className={cn("rounded-full object-cover", className)}
+    />
+  );
+}
+
+/**
+ * A person's photo, or their initials on a soft gradient, the same colour on
+ * every screen. The initials stay under the photo, so they show while it
+ * loads and if it can't.
+ */
 export function Avatar({
   name,
+  photo,
   size = "md",
   className,
   ...props
@@ -19,8 +71,8 @@ export function Avatar({
     <span
       aria-hidden="true"
       className={cn(
-        "grid shrink-0 place-items-center rounded-full font-bold text-white",
-        size === "md" ? "size-10 text-sm" : "size-8 text-[11px]",
+        "relative grid shrink-0 select-none place-items-center overflow-hidden rounded-full font-bold text-white",
+        SIZES[size],
         className,
       )}
       style={
@@ -31,29 +83,34 @@ export function Avatar({
       {...props}
     >
       {initialsOf(name)}
+      {photo ? <AvatarPhoto photo={photo} sizes={AVATAR_PIXELS[size]} /> : null}
     </span>
   );
 }
 
+/** One face in an AvatarStack: a name, and a photo when there is one. */
+export type AvatarPerson = { name: string; photo?: string | null };
+
 /** Overlapping avatars, for "who works this shift" at a glance. */
 export function AvatarStack({
-  names,
+  people,
   size = "sm",
   max = 4,
   className,
 }: {
-  names: string[];
+  people: readonly AvatarPerson[];
   size?: "sm" | "md";
   max?: number;
   className?: string;
 }) {
   return (
     <span className={cn("flex", className)}>
-      {names.slice(0, max).map((name, i) => (
+      {people.slice(0, max).map((person, i) => (
         <Avatar
           // Names repeat rarely, and the order never changes within a render.
-          key={`${name}-${i.toString()}`}
-          name={name}
+          key={`${person.name}-${i.toString()}`}
+          name={person.name}
+          photo={person.photo}
           size={size}
           className={cn(
             "shadow-[0_0_0_2px_var(--surface)]",

@@ -6,6 +6,7 @@ import { accentProps } from "@ui/accent";
 import { AccentPicker, AccentPreview } from "@ui/accent-picker";
 import { Ambient } from "@ui/ambient";
 import { Avatar, AvatarStack } from "@ui/avatar";
+import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
@@ -31,6 +32,7 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { Logo, LogoMark } from "@ui/logo";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
+import { ProfileCover } from "@ui/profile-cover";
 import { ProgressRing } from "@ui/progress-ring";
 import { PunchCircle } from "@ui/punch-circle";
 import { QrCode } from "@ui/qr-code";
@@ -43,6 +45,7 @@ import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
+import { VisibilityNote } from "@ui/visibility-note";
 import { WeekStrip } from "@ui/week-strip";
 import {
   ArrowLeft,
@@ -63,6 +66,7 @@ import { type ReactNode, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
+import { portraits } from "./portraits";
 
 const ACCENTS = [
   { hex: "#8b2635", key: "burgundy" },
@@ -74,6 +78,8 @@ const ACCENTS = [
 ] as const;
 
 const MESSAGES = { he: heMessages, en: enMessages } as const;
+/** The picker's stand-in save: a moment's wait, and nothing stored. */
+const pause = () => new Promise((resolve) => setTimeout(resolve, 600));
 /** A fixed clock code, so the gallery's QR is the same on every visit. */
 const GALLERY_QR = punchPayload("c0nceptApp-gallery-qr1");
 const GALLERY_DIGITS = "482915";
@@ -142,6 +148,8 @@ function GalleryBody({
   const tWeek = useTranslations("app.shifts.week");
   const tCode = useTranslations("app.clock.code");
   const tClock = useTranslations("app.clock");
+  const tMe = useTranslations("app.me");
+  const tNav = useTranslations("app.nav");
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
@@ -158,6 +166,10 @@ function GalleryBody({
   const [dock, setDock] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
   const [picked, setPicked] = useState("#4f46e5");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [galleryPhoto, setGalleryPhoto] = useState<string | null>(
+    portraits.maya,
+  );
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -531,7 +543,13 @@ function GalleryBody({
           <div className="flex items-center gap-4">
             <Avatar name={t("person1")} />
             <Avatar name={t("person2")} />
-            <AvatarStack names={[t("person1"), t("person2"), t("person3")]} />
+            <AvatarStack
+              people={[
+                { name: t("person1") },
+                { name: t("person2") },
+                { name: t("person3") },
+              ]}
+            />
           </div>
         </Section>
 
@@ -550,6 +568,72 @@ function GalleryBody({
               below={<Button variant="secondary">{t("emptyAction")}</Button>}
             />
           </PersonList>
+        </Section>
+
+        <Section title={t("photos")}>
+          <p className="text-ink-2">{t("photosText")}</p>
+          <div className="flex flex-wrap items-center gap-4">
+            <Avatar name={t("person1")} photo={portraits.maya} size="xl" />
+            <Avatar name={t("person2")} size="xl" />
+            <Avatar name={t("person1")} photo={portraits.shiran} />
+            <Avatar name={t("person2")} />
+            <Avatar name={t("person3")} photo={portraits.yoav} size="sm" />
+            <PersonAvatar name={null} photo={portraits.yoav} />
+            <AvatarStack
+              people={[
+                { name: t("person1"), photo: portraits.maya },
+                { name: t("person2") },
+                { name: t("person3"), photo: portraits.yoav },
+              ]}
+            />
+          </div>
+          <PersonList>
+            <PersonRow
+              name={t("person1")}
+              photo={portraits.shiran}
+              title={t("person1")}
+              subtitle={t("sheetRole")}
+            />
+          </PersonList>
+        </Section>
+
+        <Section title={t("photoPicker")}>
+          <div className="flex items-center gap-4">
+            <Avatar name={t("person1")} photo={galleryPhoto} size="xl" />
+            <Button variant="secondary" onClick={() => setPickerOpen(true)}>
+              {t("photoPickerOpen")}
+            </Button>
+          </div>
+          <AvatarPhotoPicker
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            name={t("person1")}
+            photo={galleryPhoto}
+            onSave={async (blob) => {
+              await pause();
+              const photo = URL.createObjectURL(blob);
+              setGalleryPhoto(photo);
+              return { ok: true, photo };
+            }}
+            onRemove={async () => {
+              await pause();
+              setGalleryPhoto(null);
+              return { ok: true, photo: null };
+            }}
+          />
+        </Section>
+
+        <Section title={t("visibility")}>
+          <VisibilityNote>{tMe("about.visible")}</VisibilityNote>
+          <VisibilityNote icon="lock">{t("visibilityPrivate")}</VisibilityNote>
+        </Section>
+
+        <Section title={t("cover")}>
+          <ProfileCover className="h-36 rounded-card">
+            <span className="absolute start-3 top-3 flex min-h-11 items-center rounded-full bg-accent-press ps-4 pe-4 font-semibold text-accent-ink text-base">
+              {tNav("home")}
+            </span>
+          </ProfileCover>
         </Section>
 
         <Section title={t("fieldGroup")}>
