@@ -31,6 +31,7 @@ const PAGES = [
   "/design/shell/clock/team/noa",
   "/design/shell/clock/team/yoav",
   "/design/shell/team",
+  "/design/shell/team/noa",
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",

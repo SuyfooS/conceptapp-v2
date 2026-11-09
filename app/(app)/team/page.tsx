@@ -27,6 +27,7 @@ export default async function TeamPage() {
       team={team}
       viewerRole={role}
       inviteHref="/team/invite"
+      peopleHref="/team"
       resend={resendInviteAction}
       wording={await currentWording()}
     />

@@ -32,7 +32,7 @@ select is(
   0,
   'and no business has one on'
 );
--- Notifications have no tab, and every template has them on (20261109000300).
+-- Notifications have no tab, and every template has them on (20261109000450).
 select is(
   (select array_agg(t.key order by t.key) from public.templates t
    where (t.definition #>> '{modules,notifications,enabled}')::boolean),

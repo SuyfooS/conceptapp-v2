@@ -101,9 +101,11 @@ select throws_ok(
   null,
   'a worker cannot join business B'
 );
-select lives_ok(
+select throws_ok(
   $$update public.profiles set full_name = 'Noa' where id = '20000000-0000-4000-a000-00000000000c'$$,
-  'a worker can rename themself'
+  '42501',
+  null,
+  'a worker renames themself only through the server (set_own_profile)'
 );
 select throws_ok(
   $$update public.profiles set phone = '+972500000999' where id = '20000000-0000-4000-a000-00000000000c'$$,

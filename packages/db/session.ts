@@ -5,11 +5,17 @@ import {
   type UnreadCounts,
   unreadCounts,
 } from "@domain/notifications";
+import {
+  type AddressForm,
+  addressFormOf,
+  type CoverPreset,
+  coverOf,
+} from "@domain/profile";
 import type { BusinessPlace } from "@domain/shabbat";
 import type { ViewSession } from "@domain/view-as";
 import type { Wording } from "@domain/wording";
 import type { Database } from "./database.types";
-import { isMissingFunction } from "./missing";
+import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createClient } from "./supabase/server";
 
@@ -41,6 +47,13 @@ export type CurrentMember = {
   phone: string | null;
   /** The stored photo's path (`profiles.avatar_path`), or null. */
   photoPath: string | null;
+  /**
+   * What their colleagues read about them besides the photo: the line about
+   * themselves, the cover, how the app addresses them. `ready` is false
+   * before 20261109000400_profile_about.sql reaches the project, when none of
+   * them can be stored yet.
+   */
+  profile: OwnProfile;
   /** The business the person works in, or null before anyone added them. */
   membership: {
     role: MemberRole;
@@ -59,6 +72,13 @@ export type CurrentMember = {
    * viewing as someone.
    */
   unread: UnreadCounts;
+};
+
+export type OwnProfile = {
+  bio: string | null;
+  cover: CoverPreset;
+  addressForm: AddressForm | null;
+  ready: boolean;
 };
 
 type WordingRows = {
@@ -159,7 +179,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     await Promise.all([
       supabase
         .from("profiles")
-        .select("full_name, avatar_path")
+        .select("full_name, avatar_path, bio, cover, address_form")
         .eq("id", userId)
         .maybeSingle(),
       // Numbers are not read from the table, the person's own included.
@@ -189,7 +209,14 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       supabase.from("business_wording").select("business_id, key, sentence"),
       supabase.from("template_wording").select("template_key, key, sentence"),
     ]);
-  if (profile.error) throw profile.error;
+  if (profile.error && !isMissingColumn(profile.error)) throw profile.error;
+  // Before the profile's H2 migration reaches a project, the name and the
+  // photo are read as before, and nothing else about the person can be kept.
+  const own = profile.error
+    ? await olderProfile(supabase, userId)
+    : profile.data
+      ? { ...profile.data, ready: true }
+      : null;
   // Before its migration reaches a project there is no own_phone yet, and
   // the number is still read from the table, as before.
   if (phone.error && !isMissingFunction(phone.error)) throw phone.error;
@@ -214,9 +241,15 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
 
   const person = {
     userId,
-    name: profile.data?.full_name ?? null,
+    name: own?.full_name ?? null,
     phone: ownPhone,
-    photoPath: profile.data?.avatar_path ?? null,
+    photoPath: own?.avatar_path ?? null,
+    profile: {
+      bio: own?.bio ?? null,
+      cover: coverOf(own?.cover),
+      addressForm: addressFormOf(own?.address_form),
+      ready: own?.ready ?? true,
+    },
   };
   const viewed = view.data?.businesses;
   if (view.data && viewed) {
@@ -246,4 +279,29 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     viewing: null,
     unread: business ? unreadCounts(unreadRows, business.id) : NO_UNREAD,
   };
+}
+
+type ProfileRow = {
+  full_name: string | null;
+  avatar_path: string | null;
+  bio: string | null;
+  cover: string | null;
+  address_form: string | null;
+  ready: boolean;
+};
+
+/** The profile as it was read before its H2 columns existed. */
+async function olderProfile(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+): Promise<ProfileRow | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("full_name, avatar_path")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw error;
+  return data
+    ? { ...data, bio: null, cover: null, address_form: null, ready: false }
+    : null;
 }

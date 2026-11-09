@@ -211,6 +211,26 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads a cleared line about someone, which never holds its text", () => {
+    expect(lineOf(row("profile.bio_cleared", { person: NOA }, YOAV))).toEqual({
+      action: "profile.bio_cleared",
+      person: { kind: "member", name: "Noa" },
+    });
+    expect(lineOf(row("profile.bio_cleared", { person: LEFT }))).toEqual({
+      action: "profile.bio_cleared",
+      person: { kind: "former" },
+    });
+    expect(lineOf(row("profile.bio_cleared", { person: GONE }))).toEqual({
+      action: "profile.bio_cleared",
+      person: { kind: "unknown" },
+    });
+    for (const details of [{}, { person: 5 }, "x", null]) {
+      expect(lineOf(row("profile.bio_cleared", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
   it("reads a typing block", () => {
     expect(lineOf(row("clock.code.locked", { person: NOA }))).toEqual({
       action: "clock.code.locked",

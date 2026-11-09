@@ -419,6 +419,64 @@ body {
   color: var(--accent-ink);
 }
 
+/*
+ * Profile covers (@ui/profile-cover): the business's colour with white or
+ * black at low opacity, so any accent works, light and dark. "glow" is
+ * hero-surface; the drawn ones lie over cover-base.
+ */
+/* The grounds are named only in a lookup table, which the class scanner
+   misses, so they are generated here by name. */
+@source inline("cover-base cover-stripes cover-bloom");
+
+@utility cover-base {
+  background: linear-gradient(
+    165deg,
+    color-mix(in oklab, var(--accent) 74%, white) 0%,
+    var(--accent) 50%,
+    color-mix(in oklab, var(--accent) 64%, black) 100%
+  );
+  color: var(--accent-ink);
+}
+
+@utility cover-stripes {
+  background:
+    repeating-linear-gradient(
+      118deg,
+      color-mix(in srgb, white 11%, transparent) 0 18px,
+      transparent 18px 46px
+    ),
+    linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--accent) 74%, white) 0%,
+      var(--accent) 50%,
+      color-mix(in oklab, var(--accent) 64%, black) 100%
+    );
+  color: var(--accent-ink);
+}
+
+/* Three soft clouds, one in the person's own hue (--cover-person) when given. */
+@utility cover-bloom {
+  background:
+    radial-gradient(
+      55% 95% at 16% 12%,
+      color-mix(in oklab, var(--accent) 42%, white) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      50% 85% at 84% 22%,
+      color-mix(in oklab, var(--cover-person, var(--accent)) 85%, transparent)
+        0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      70% 100% at 55% 118%,
+      color-mix(in oklab, var(--accent) 55%, black) 0%,
+      transparent 72%
+    ),
+    var(--accent);
+  color: var(--accent-ink);
+}
+
 /* A profile cover's grain: a little noise over the colour, so it reads as a surface. */
 @utility cover-grain {
   opacity: 0.1;

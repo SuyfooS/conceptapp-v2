@@ -10,7 +10,11 @@ import { currentMember } from "../member";
 import { currentModules } from "../modules";
 import { PushSwitch } from "../notifications/push-switch";
 import { baseWording, translator } from "../wording";
-import { removeMyPhotoAction, setMyPhotoAction } from "./actions";
+import {
+  removeMyPhotoAction,
+  saveMyProfileAction,
+  setMyPhotoAction,
+} from "./actions";
 import { MeView, type PhotoLock } from "./me-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -30,6 +34,8 @@ export default async function MePage() {
   // The layout has already sent these people elsewhere.
   if (!member || !membership) return null;
 
+  // While viewing as a role nothing changes; otherwise the database says
+  // whether the person is in a demo business that keeps its people.
   let locked: PhotoLock | null = "viewOnly";
   // Notifications on this phone: not while viewing as someone, and not
   // without the VAPID settings or with the module off.
@@ -44,12 +50,17 @@ export default async function MePage() {
     locked = allowed === "yes" ? null : allowed;
     canPush = pushes;
   }
+  const { profile } = member;
 
   return (
     <MeView
       wording={wording}
       signOut={signOut}
-      actions={{ setPhoto: setMyPhotoAction, removePhoto: removeMyPhotoAction }}
+      actions={{
+        setPhoto: setMyPhotoAction,
+        removePhoto: removeMyPhotoAction,
+        saveProfile: saveMyProfileAction,
+      }}
       notifications={
         push && canPush !== null ? (
           <PushSwitch publicKey={push.publicKey} demo={!canPush} />
@@ -61,9 +72,19 @@ export default async function MePage() {
           (member.phone ? displayIsraeliMobile(member.phone) : ""),
         photo: profilePhotoSrc(member.photoPath),
         role: membership.role,
+        businessName: membership.business.name,
         timeZone: membership.business.place.timeZone,
         since: membership.since,
         locked,
+        about: {
+          bio: profile.bio,
+          cover: profile.cover,
+          addressForm: profile.addressForm,
+          // Before the H2 migration reaches the project nothing here can be
+          // kept yet; the photo has its own answer.
+          locked: member.viewing ? "viewOnly" : profile.ready ? null : "notYet",
+          demo: locked === "demo",
+        },
       }}
     />
   );

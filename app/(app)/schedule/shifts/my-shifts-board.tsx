@@ -23,6 +23,7 @@ import {
 import {
   assigneePeople,
   dayLabel,
+  formOf,
   ltr,
   nameOf,
   photoOf,
@@ -142,6 +143,7 @@ export function MyShiftsBoard({
                             {request.status === "taken"
                               ? t("shifts.swap.taken", {
                                   name: nameOf(t, data, request.takenBy),
+                                  form: formOf(data, request.takenBy),
                                 })
                               : t("shifts.swap.open")}
                           </p>
@@ -211,7 +213,10 @@ export function MyShiftsBoard({
                     <span className="font-medium">
                       {state === "takenByYou"
                         ? t("shifts.swap.offers.takenByYou")
-                        : t("shifts.swap.offers.from", { name: from })}
+                        : t("shifts.swap.offers.from", {
+                            name: from,
+                            form: formOf(data, request.requestedBy),
+                          })}
                     </span>
                     <span className="text-ink-2 text-sm">
                       {dayLabel(t, shift.day)}
