@@ -690,6 +690,8 @@ export async function decideDemoSwap(approve: boolean): Promise<void> {
     select public.decide_shift_swap(${manager}, w.id, ${approve})
     from public.shift_swaps w
     where w.business_id = ${DEMO_RESTAURANT} and w.status = 'taken'`;
+}
+
 /** A person's stored photo path, by phone number; null when they have none. */
 export async function demoPhotoPath(phone: string): Promise<string | null> {
   const rows = await sql<{ path: string | null }[]>`

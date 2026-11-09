@@ -55,13 +55,9 @@ export default function ShellDemoLayout({
   return (
     <DemoShell
       businessName={business.name}
-      user={user}
-      nav={nav}
-      homeCount={toAct}
-    <AppShell
-      businessName={business.name}
       user={{ ...user, href: "/design/shell/me" }}
       nav={nav}
+      homeCount={toAct}
     >
       {children}
     </DemoShell>
