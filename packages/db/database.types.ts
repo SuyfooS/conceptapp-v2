@@ -326,6 +326,83 @@ export type Database = {
           },
         ];
       };
+      department_members: {
+        Row: {
+          added_at: string;
+          business_id: string;
+          department_id: string;
+          user_id: string;
+        };
+        Insert: {
+          added_at?: string;
+          business_id: string;
+          department_id: string;
+          user_id: string;
+        };
+        Update: {
+          added_at?: string;
+          business_id?: string;
+          department_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "department_members_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "department_members_department_id_business_id_fkey";
+            columns: ["department_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      departments: {
+        Row: {
+          archived_at: string | null;
+          business_id: string;
+          created_at: string;
+          id: string;
+          key: string;
+          name: string;
+          position: number;
+          updated_at: string;
+        };
+        Insert: {
+          archived_at?: string | null;
+          business_id: string;
+          created_at?: string;
+          id?: string;
+          key: string;
+          name: string;
+          position?: number;
+          updated_at?: string;
+        };
+        Update: {
+          archived_at?: string | null;
+          business_id?: string;
+          created_at?: string;
+          id?: string;
+          key?: string;
+          name?: string;
+          position?: number;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "departments_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       invites: {
         Row: {
           business_id: string;
@@ -387,6 +464,589 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
+          },
+        ];
+      };
+      list_items: {
+        Row: {
+          answer: string | null;
+          business_id: string;
+          checked: boolean | null;
+          comment: string | null;
+          done: boolean;
+          done_at: string | null;
+          done_by: string | null;
+          given: number | null;
+          hint: string | null;
+          id: string;
+          kind: string;
+          label: string;
+          list_id: string;
+          max_value: number | null;
+          min_value: number | null;
+          photo_path: string | null;
+          position: number;
+          reading: number | null;
+          requested: number | null;
+          required: boolean;
+          template_item_id: string | null;
+          unit: string | null;
+        };
+        Insert: {
+          answer?: string | null;
+          business_id: string;
+          checked?: boolean | null;
+          comment?: string | null;
+          done?: boolean;
+          done_at?: string | null;
+          done_by?: string | null;
+          given?: number | null;
+          hint?: string | null;
+          id?: string;
+          kind: string;
+          label: string;
+          list_id: string;
+          max_value?: number | null;
+          min_value?: number | null;
+          photo_path?: string | null;
+          position: number;
+          reading?: number | null;
+          requested?: number | null;
+          required?: boolean;
+          template_item_id?: string | null;
+          unit?: string | null;
+        };
+        Update: {
+          answer?: string | null;
+          business_id?: string;
+          checked?: boolean | null;
+          comment?: string | null;
+          done?: boolean;
+          done_at?: string | null;
+          done_by?: string | null;
+          given?: number | null;
+          hint?: string | null;
+          id?: string;
+          kind?: string;
+          label?: string;
+          list_id?: string;
+          max_value?: number | null;
+          min_value?: number | null;
+          photo_path?: string | null;
+          position?: number;
+          reading?: number | null;
+          requested?: number | null;
+          required?: boolean;
+          template_item_id?: string | null;
+          unit?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_items_done_by_fkey";
+            columns: ["done_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "list_items_list_id_business_id_fkey";
+            columns: ["list_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "lists";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "list_items_template_item_id_business_id_fkey";
+            columns: ["template_item_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "list_template_items";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      list_passes: {
+        Row: {
+          business_id: string;
+          from_department: string | null;
+          id: string;
+          list_id: string;
+          note: string | null;
+          passed_at: string;
+          passed_by: string | null;
+          to_department: string;
+        };
+        Insert: {
+          business_id: string;
+          from_department?: string | null;
+          id?: string;
+          list_id: string;
+          note?: string | null;
+          passed_at?: string;
+          passed_by?: string | null;
+          to_department: string;
+        };
+        Update: {
+          business_id?: string;
+          from_department?: string | null;
+          id?: string;
+          list_id?: string;
+          note?: string | null;
+          passed_at?: string;
+          passed_by?: string | null;
+          to_department?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_passes_from_department_business_id_fkey";
+            columns: ["from_department", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "list_passes_list_id_business_id_fkey";
+            columns: ["list_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "lists";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "list_passes_passed_by_fkey";
+            columns: ["passed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "list_passes_to_department_business_id_fkey";
+            columns: ["to_department", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      list_people: {
+        Row: {
+          business_id: string;
+          list_id: string;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          list_id: string;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          list_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_people_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "list_people_list_id_business_id_fkey";
+            columns: ["list_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "lists";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      list_schedules: {
+        Row: {
+          active: boolean;
+          anchor: string;
+          business_id: string;
+          created_at: string;
+          days: number[];
+          due_offset: number;
+          id: string;
+          opens_offset: number;
+          position: number;
+          recipient_department: string | null;
+          recipient_kind: string;
+          recipient_role: Database["public"]["Enums"]["member_role"] | null;
+          recipient_shift: string | null;
+          recipient_user: string | null;
+          shift_key: string | null;
+          starts_on: string;
+          template_id: string;
+          updated_at: string;
+        };
+        Insert: {
+          active?: boolean;
+          anchor?: string;
+          business_id: string;
+          created_at?: string;
+          days: number[];
+          due_offset: number;
+          id?: string;
+          opens_offset: number;
+          position?: number;
+          recipient_department?: string | null;
+          recipient_kind: string;
+          recipient_role?: Database["public"]["Enums"]["member_role"] | null;
+          recipient_shift?: string | null;
+          recipient_user?: string | null;
+          shift_key?: string | null;
+          starts_on: string;
+          template_id: string;
+          updated_at?: string;
+        };
+        Update: {
+          active?: boolean;
+          anchor?: string;
+          business_id?: string;
+          created_at?: string;
+          days?: number[];
+          due_offset?: number;
+          id?: string;
+          opens_offset?: number;
+          position?: number;
+          recipient_department?: string | null;
+          recipient_kind?: string;
+          recipient_role?: Database["public"]["Enums"]["member_role"] | null;
+          recipient_shift?: string | null;
+          recipient_user?: string | null;
+          shift_key?: string | null;
+          starts_on?: string;
+          template_id?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_schedules_business_id_recipient_user_fkey";
+            columns: ["business_id", "recipient_user"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "list_schedules_recipient_department_business_id_fkey";
+            columns: ["recipient_department", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "list_schedules_template_id_business_id_fkey";
+            columns: ["template_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "list_templates";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      list_template_items: {
+        Row: {
+          business_id: string;
+          default_quantity: number | null;
+          hint: string | null;
+          id: string;
+          kind: string;
+          label: string;
+          max_value: number | null;
+          min_value: number | null;
+          position: number;
+          required: boolean;
+          template_id: string;
+          unit: string | null;
+        };
+        Insert: {
+          business_id: string;
+          default_quantity?: number | null;
+          hint?: string | null;
+          id?: string;
+          kind: string;
+          label: string;
+          max_value?: number | null;
+          min_value?: number | null;
+          position: number;
+          required?: boolean;
+          template_id: string;
+          unit?: string | null;
+        };
+        Update: {
+          business_id?: string;
+          default_quantity?: number | null;
+          hint?: string | null;
+          id?: string;
+          kind?: string;
+          label?: string;
+          max_value?: number | null;
+          min_value?: number | null;
+          position?: number;
+          required?: boolean;
+          template_id?: string;
+          unit?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_template_items_template_id_business_id_fkey";
+            columns: ["template_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "list_templates";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      list_templates: {
+        Row: {
+          archived_at: string | null;
+          asks_quantities: boolean;
+          business_id: string;
+          created_at: string;
+          created_by: string | null;
+          from_department: string | null;
+          id: string;
+          key: string | null;
+          name: string;
+          note: string | null;
+          position: number;
+          recipient_department: string | null;
+          recipient_kind: string | null;
+          recipient_role: Database["public"]["Enums"]["member_role"] | null;
+          recipient_shift: string | null;
+          updated_at: string;
+          updated_by: string | null;
+          version: number;
+        };
+        Insert: {
+          archived_at?: string | null;
+          asks_quantities?: boolean;
+          business_id: string;
+          created_at?: string;
+          created_by?: string | null;
+          from_department?: string | null;
+          id?: string;
+          key?: string | null;
+          name: string;
+          note?: string | null;
+          position?: number;
+          recipient_department?: string | null;
+          recipient_kind?: string | null;
+          recipient_role?: Database["public"]["Enums"]["member_role"] | null;
+          recipient_shift?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+          version?: number;
+        };
+        Update: {
+          archived_at?: string | null;
+          asks_quantities?: boolean;
+          business_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          from_department?: string | null;
+          id?: string;
+          key?: string | null;
+          name?: string;
+          note?: string | null;
+          position?: number;
+          recipient_department?: string | null;
+          recipient_kind?: string | null;
+          recipient_role?: Database["public"]["Enums"]["member_role"] | null;
+          recipient_shift?: string | null;
+          updated_at?: string;
+          updated_by?: string | null;
+          version?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_templates_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "list_templates_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "list_templates_from_department_business_id_fkey";
+            columns: ["from_department", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "list_templates_recipient_department_business_id_fkey";
+            columns: ["recipient_department", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "list_templates_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      lists: {
+        Row: {
+          asks_quantities: boolean;
+          business_id: string;
+          closed_at: string | null;
+          closed_by: string | null;
+          created_at: string;
+          due_at: string | null;
+          finished_at: string | null;
+          finished_by: string | null;
+          from_department: string | null;
+          id: string;
+          late_at: string | null;
+          name: string;
+          note: string | null;
+          occurs_on: string | null;
+          opens_at: string;
+          origin: string;
+          recipient_department: string | null;
+          recipient_kind: string;
+          recipient_role: Database["public"]["Enums"]["member_role"] | null;
+          reminded_at: string | null;
+          schedule_id: string | null;
+          sent_by: string | null;
+          shift: Json | null;
+          shift_id: string | null;
+          status: string;
+          template_id: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          asks_quantities?: boolean;
+          business_id: string;
+          closed_at?: string | null;
+          closed_by?: string | null;
+          created_at?: string;
+          due_at?: string | null;
+          finished_at?: string | null;
+          finished_by?: string | null;
+          from_department?: string | null;
+          id?: string;
+          late_at?: string | null;
+          name: string;
+          note?: string | null;
+          occurs_on?: string | null;
+          opens_at: string;
+          origin: string;
+          recipient_department?: string | null;
+          recipient_kind: string;
+          recipient_role?: Database["public"]["Enums"]["member_role"] | null;
+          reminded_at?: string | null;
+          schedule_id?: string | null;
+          sent_by?: string | null;
+          shift?: Json | null;
+          shift_id?: string | null;
+          status?: string;
+          template_id?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          asks_quantities?: boolean;
+          business_id?: string;
+          closed_at?: string | null;
+          closed_by?: string | null;
+          created_at?: string;
+          due_at?: string | null;
+          finished_at?: string | null;
+          finished_by?: string | null;
+          from_department?: string | null;
+          id?: string;
+          late_at?: string | null;
+          name?: string;
+          note?: string | null;
+          occurs_on?: string | null;
+          opens_at?: string;
+          origin?: string;
+          recipient_department?: string | null;
+          recipient_kind?: string;
+          recipient_role?: Database["public"]["Enums"]["member_role"] | null;
+          reminded_at?: string | null;
+          schedule_id?: string | null;
+          sent_by?: string | null;
+          shift?: Json | null;
+          shift_id?: string | null;
+          status?: string;
+          template_id?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "lists_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lists_closed_by_fkey";
+            columns: ["closed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lists_finished_by_fkey";
+            columns: ["finished_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lists_from_department_business_id_fkey";
+            columns: ["from_department", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "lists_recipient_department_business_id_fkey";
+            columns: ["recipient_department", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "lists_schedule_id_business_id_fkey";
+            columns: ["schedule_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "list_schedules";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "lists_sent_by_fkey";
+            columns: ["sent_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lists_shift_id_fkey";
+            columns: ["shift_id"];
+            isOneToOne: false;
+            referencedRelation: "schedule_shifts";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "lists_template_id_business_id_fkey";
+            columns: ["template_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "list_templates";
+            referencedColumns: ["id", "business_id"];
           },
         ];
       };
@@ -1281,6 +1941,14 @@ export type Database = {
         };
         Returns: string;
       };
+      archive_list_template: {
+        Args: { actor: string; template: string };
+        Returns: undefined;
+      };
+      cancel_list: {
+        Args: { actor: string; at_time?: string; list: string };
+        Returns: undefined;
+      };
       cancel_shift_swap: {
         Args: { actor: string; swap: string };
         Returns: undefined;
@@ -1367,6 +2035,10 @@ export type Database = {
         Returns: string;
       };
       end_view_session: { Args: { actor: string }; Returns: string };
+      finish_list: {
+        Args: { actor: string; at_time?: string; list: string };
+        Returns: undefined;
+      };
       finish_pushes: {
         Args: { at_time?: string; outcomes: Json };
         Returns: undefined;
@@ -1400,6 +2072,10 @@ export type Database = {
         Returns: Json;
       };
       keeps_demo_profile: { Args: { person: string }; Returns: boolean };
+      my_open_lists: {
+        Args: { actor: string; business: string };
+        Returns: number;
+      };
       note_auth_attempt: {
         Args: { at_time?: string; caller: string; kind: string; phone: string };
         Returns: number;
@@ -1450,6 +2126,10 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      reopen_list: {
+        Args: { actor: string; at_time?: string; list: string };
+        Returns: undefined;
+      };
       request_shift_swap: {
         Args: { actor: string; at_time?: string; note?: string; shift: string };
         Returns: string;
@@ -1458,6 +2138,19 @@ export type Database = {
       reset_demo_businesses: {
         Args: Record<PropertyKey, never>;
         Returns: number;
+      };
+      restore_list_template: {
+        Args: { actor: string; template: string };
+        Returns: undefined;
+      };
+      save_list_template: {
+        Args: {
+          actor: string;
+          business: string;
+          seen_version?: number;
+          template: Json;
+        };
+        Returns: Json;
       };
       save_push_subscription: {
         Args: {
@@ -1473,6 +2166,10 @@ export type Database = {
       save_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
+      };
+      send_list: {
+        Args: { actor: string; at_time?: string; business: string; list: Json };
+        Returns: string;
       };
       send_test_push: {
         Args: { actor: string; at_time?: string };
@@ -1500,6 +2197,23 @@ export type Database = {
           stopped: boolean;
         };
         Returns: undefined;
+      };
+      set_department_members: {
+        Args: {
+          actor: string;
+          business: string;
+          department: string;
+          members: string[];
+        };
+        Returns: undefined;
+      };
+      set_departments: {
+        Args: { actor: string; business: string; departments: Json };
+        Returns: undefined;
+      };
+      set_list_item: {
+        Args: { actor: string; at_time?: string; item: string; result: Json };
+        Returns: Json;
       };
       set_module_enabled: {
         Args: {
@@ -1597,7 +2311,8 @@ export type Database = {
         | "time_clock"
         | "reservations"
         | "storefront"
-        | "notifications";
+        | "notifications"
+        | "lists";
       platform_role: "platform_admin" | "onboarder";
       swap_status: "open" | "taken" | "approved" | "declined" | "cancelled";
       time_entry_source: "punch" | "manager";
@@ -1738,6 +2453,7 @@ export const Constants = {
         "reservations",
         "storefront",
         "notifications",
+        "lists",
       ],
       platform_role: ["platform_admin", "onboarder"],
       swap_status: ["open", "taken", "approved", "declined", "cancelled"],

@@ -3,6 +3,7 @@ import {
   Bell,
   CalendarDays,
   Clock,
+  ListChecks,
   Store,
   UtensilsCrossed,
 } from "lucide-react";
@@ -15,4 +16,5 @@ export const moduleIcons: Record<ModuleIcon, ReactNode> = {
   utensils: <UtensilsCrossed />,
   store: <Store />,
   bell: <Bell />,
+  list: <ListChecks />,
 };

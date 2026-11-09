@@ -146,6 +146,17 @@ export function pushWords(
       return {
         title: t("kinds.team.joined.title", { name: who(line.person) }),
       };
+    case "lists.sent":
+      return {
+        // Finished, cancelled or missed: nothing waits on it now.
+        title: settled
+          ? t("kinds.lists.sent.settledTitle", { name: line.name })
+          : t("kinds.lists.sent.title", { name: line.name }),
+      };
+    case "lists.finished":
+      return {
+        title: t("kinds.lists.finished.title", { name: line.name }),
+      };
     case "push.test":
       return {
         title: t("kinds.push.test.title"),

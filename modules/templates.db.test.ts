@@ -46,6 +46,60 @@ async function businessAsTemplate(
     }[]
   >`select template_key, template_version, opening_hours from public.businesses
     where id = ${businessId}`;
+  // Its live departments and lists, in the template's own shape: departments
+  // and shifts by key, times as "HH:MM" for the day and minutes for a shift.
+  const [departments] = await tx<{ value: unknown }[]>`
+    select coalesce(
+      jsonb_agg(jsonb_build_object('key', d.key, 'name', d.name) order by d.position),
+      '[]'::jsonb
+    ) as value
+    from public.departments d
+    where d.business_id = ${businessId} and d.archived_at is null`;
+  const [listTemplates] = await tx<{ value: unknown }[]>`
+    select coalesce(jsonb_agg(jsonb_strip_nulls(jsonb_build_object(
+      'key', t.key,
+      'name', t.name,
+      'note', t.note,
+      'recipient', case t.recipient_kind
+        when 'department' then jsonb_build_object('kind', 'department', 'department', rd.key)
+        when 'shift' then jsonb_build_object('kind', 'shift', 'shift', t.recipient_shift)
+        when 'role' then jsonb_build_object('kind', 'role', 'role', t.recipient_role)
+      end,
+      'fromDepartment', fd.key,
+      'asksQuantities', t.asks_quantities,
+      'items', (
+        select jsonb_agg(jsonb_build_object(
+          'kind', i.kind, 'label', i.label, 'hint', i.hint, 'required', i.required,
+          'unit', i.unit, 'min', i.min_value, 'max', i.max_value,
+          'defaultQuantity', i.default_quantity
+        ) order by i.position)
+        from public.list_template_items i where i.template_id = t.id
+      ),
+      'schedules', coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'days', to_jsonb(s.days),
+          'anchor', s.anchor,
+          'shift', s.shift_key,
+          'opens', case when s.anchor = 'day'
+            then to_jsonb(lpad((s.opens_offset / 60)::text, 2, '0') || ':'
+              || lpad((s.opens_offset % 60)::text, 2, '0'))
+            else to_jsonb(s.opens_offset) end,
+          'dueAfterMinutes', s.due_offset - s.opens_offset,
+          'recipient', case s.recipient_kind
+            when 'department' then jsonb_build_object('kind', 'department', 'department', sd.key)
+            when 'shift' then jsonb_build_object('kind', 'shift', 'shift', s.recipient_shift)
+            when 'role' then jsonb_build_object('kind', 'role', 'role', s.recipient_role)
+          end
+        ) order by s.position)
+        from public.list_schedules s
+        left join public.departments sd on sd.id = s.recipient_department
+        where s.template_id = t.id
+      ), '[]'::jsonb)
+    )) order by t.position), '[]'::jsonb) as value
+    from public.list_templates t
+    left join public.departments rd on rd.id = t.recipient_department
+    left join public.departments fd on fd.id = t.from_department
+    where t.business_id = ${businessId} and t.archived_at is null`;
   return {
     business,
     definition: {
@@ -56,6 +110,8 @@ async function businessAsTemplate(
         ]),
       ),
       openingHours: business?.opening_hours,
+      departments: departments?.value,
+      listTemplates: listTemplates?.value,
     },
   };
 }

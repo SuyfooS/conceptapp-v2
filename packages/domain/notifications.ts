@@ -5,7 +5,8 @@ import { atLeast, type ModuleKey, type Role } from "./modules";
 /**
  * Notifications in the app: what happened that a person should know, one line
  * per person per thing. The database writes them, from the audit log
- * (`private.notify_for` in supabase/migrations/20261109000450_notifications.sql);
+ * (`private.notify_for` in supabase/migrations/20261109000450_notifications.sql,
+ * and a module's own, like `private.notify_for_lists`);
  * this file says what each kind is about, who it is for, where it leads, and
  * how its stored facts read back. A row's params are free JSON, so each kind is
  * read leniently: anything unexpected becomes a plain line, never an error.
@@ -17,6 +18,7 @@ export const NOTIFICATION_GROUPS = [
   "swaps",
   "approvals",
   "team",
+  "lists",
 ] as const;
 
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
@@ -36,6 +38,11 @@ type KindInfo = {
   needsAction: boolean;
   /** Where opening it leads, inside the app. */
   href: `/${string}`;
+  /**
+   * Leads to the thing itself when the line names it: "list" opens
+   * `/lists/<params.list>`, and `href` is where it leads otherwise.
+   */
+  to?: "list";
 };
 
 export const NOTIFICATION_KINDS = {
@@ -117,6 +124,24 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/team",
   },
+  // The Lists tab counts the open lists a person holds, so a list's lines
+  // don't ask for action on Home as well.
+  "lists.sent": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: false,
+    href: "/lists",
+    to: "list",
+  },
+  "lists.finished": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: false,
+    href: "/lists",
+    to: "list",
+  },
   // "Send a test notification", from the phone switch: to the person alone.
   "push.test": {
     group: null,
@@ -143,11 +168,20 @@ export const INBOX_PATH = "/notifications";
 
 /**
  * Where opening a line leads: always a path inside the app, chosen from the
- * line's kind, so a stored row can never send anyone elsewhere.
+ * line's kind, so a stored row can never send anyone elsewhere. A kind about
+ * one thing leads to it when its params name it by a real id.
  */
-export function linkFor(kind: string): `/${string}` {
+export function linkFor(kind: string, params?: unknown): `/${string}` {
   const known = notificationKindOf(kind);
-  return known ? NOTIFICATION_KINDS[known].href : INBOX_PATH;
+  if (!known) return INBOX_PATH;
+  const info: KindInfo = NOTIFICATION_KINDS[known];
+  if (info.to === "list") {
+    const list = z.object({ list: z.string() }).safeParse(params);
+    if (list.success && isUuid(list.data.list)) {
+      return `/lists/${list.data.list.toLowerCase()}`;
+    }
+  }
+  return info.href;
 }
 
 /**
@@ -381,6 +415,11 @@ export type NotificationLine =
       at: string;
     }
   | { kind: "team.joined"; person: NotificationPerson }
+  | {
+      kind: "lists.sent" | "lists.finished";
+      /** The list's name, as it was sent. */
+      name: string;
+    }
   | { kind: "push.test" }
   | { kind: "other" };
 
@@ -426,6 +465,7 @@ const schemas = {
     at: instant,
   }),
   person: z.object({ person: uuid }),
+  list: z.object({ list: uuid, name: z.string().min(1) }),
 };
 
 function personOf(
@@ -517,6 +557,11 @@ function lineOf(
         ? { kind, person: personOf(params.person, lookups) }
         : other;
     }
+    case "lists.sent":
+    case "lists.finished": {
+      const params = read(schemas.list);
+      return params ? { kind, name: params.name } : other;
+    }
     case "push.test":
       return { kind };
     case null:
@@ -562,8 +607,8 @@ export function buildInbox(
       read: row.readAt !== null,
       settled: row.resolvedAt !== null,
       actor: personOf(row.actorId, lookups),
-      group: kind ? (NOTIFICATION_KINDS[kind] as KindInfo).group : null,
-      href: linkFor(row.kind),
+      group: kind ? NOTIFICATION_KINDS[kind].group : null,
+      href: linkFor(row.kind, row.params),
       line: lineOf(row, lookups, readerId),
     };
   });

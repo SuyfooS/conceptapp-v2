@@ -49,6 +49,6 @@ export async function GET(
   if (ownOpening && canWrite(member.viewing)) {
     await readNotifications(member.userId, line.businessId, [line.id]);
   }
-  const target = linkFor(line.kind);
+  const target = linkFor(line.kind, line.params);
   return go(isAppPath(target) ? target : INBOX_PATH);
 }

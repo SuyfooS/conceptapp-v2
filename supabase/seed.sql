@@ -91,7 +91,8 @@ values
 -- (supabase/hosted-demo.sql), these take invites ("invites": true), so the
 -- browser tests can invite people and join them. The restaurant also lets its
 -- people set a photo and, from H2, write about themselves ("profiles": true);
--- the shop keeps them as they are, like the hosted ones.
+-- the shop keeps them as they are, like the hosted ones. Each person names the
+-- departments they are in, by their template's keys (tooling/demo-departments.test.ts).
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -101,9 +102,9 @@ values
     "template": "restaurant", "renews": false, "invites": true, "profiles": true,
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000001", "role": "owner", "name": "אורי הדגמה" },
-      { "user_id": "00000000-0000-4000-a000-000000000002", "role": "manager", "name": "שירן הדגמה" },
-      { "user_id": "00000000-0000-4000-a000-000000000003", "role": "worker", "name": "נועה כהן" },
-      { "user_id": "00000000-0000-4000-a000-000000000004", "role": "worker", "name": "יואב לוי" }
+      { "user_id": "00000000-0000-4000-a000-000000000002", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
+      { "user_id": "00000000-0000-4000-a000-000000000003", "role": "worker", "name": "נועה כהן", "departments": ["kitchen"] },
+      { "user_id": "00000000-0000-4000-a000-000000000004", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] }
     ]
   }
   $json$::jsonb),
@@ -114,11 +115,11 @@ values
     "template": "retail", "renews": true, "invites": true,
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000007", "role": "owner", "name": "מיכל הדגמה" },
-      { "user_id": "00000000-0000-4000-a000-000000000008", "role": "manager", "name": "עומר הדגמה" },
-      { "user_id": "00000000-0000-4000-a000-000000000010", "role": "worker", "name": "תמר אברהם" },
-      { "user_id": "00000000-0000-4000-a000-000000000011", "role": "worker", "name": "איתי מזרחי" },
-      { "user_id": "00000000-0000-4000-a000-000000000012", "role": "worker", "name": "רוני שלום" },
-      { "user_id": "00000000-0000-4000-a000-000000000013", "role": "worker", "name": "ליה כץ" }
+      { "user_id": "00000000-0000-4000-a000-000000000008", "role": "manager", "name": "עומר הדגמה", "departments": ["floor"] },
+      { "user_id": "00000000-0000-4000-a000-000000000010", "role": "worker", "name": "תמר אברהם", "departments": ["checkout"] },
+      { "user_id": "00000000-0000-4000-a000-000000000011", "role": "worker", "name": "איתי מזרחי", "departments": ["floor"] },
+      { "user_id": "00000000-0000-4000-a000-000000000012", "role": "worker", "name": "רוני שלום", "departments": ["stock"] },
+      { "user_id": "00000000-0000-4000-a000-000000000013", "role": "worker", "name": "ליה כץ", "departments": ["checkout", "floor"] }
     ]
   }
   $json$::jsonb);
