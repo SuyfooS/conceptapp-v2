@@ -131,8 +131,13 @@ test("the console adds a person, with a link to send, and no second owner", asyn
   await expect(page.getByText(ti.errors.hasOwner)).toBeVisible();
   expect(await demoInvite(person.e164)).toBeNull();
 
+  // With its hint: "מנהל/ת" is also the start of the accountant's name.
   await page
-    .getByRole("radio", { name: new RegExp(he.app.team.roles.manager) })
+    .getByRole("radio", {
+      name: new RegExp(
+        `${he.app.team.roles.manager}.*${he.app.team.invite.roleHint.manager}`,
+      ),
+    })
     .check();
   await page.getByRole("button", { name: ti.submit }).click();
   await expect(

@@ -36,14 +36,19 @@ export type TeamInvite = {
 export type InviteState = "open" | "expired";
 
 export type Team = {
-  /** Owners first, then managers, then workers; by name within a role. */
+  /** Owners, then managers, workers and accountants; by name within a role. */
   members: TeamMember[];
   /** Open invites first, then expired ones; by role and name within each. */
   invites: (TeamInvite & { state: InviteState })[];
   counts: { members: number; open: number; expired: number };
 };
 
-const ROLE_ORDER: Record<Role, number> = { owner: 0, manager: 1, worker: 2 };
+const ROLE_ORDER: Record<Role, number> = {
+  owner: 0,
+  manager: 1,
+  worker: 2,
+  accountant: 3,
+};
 
 const byRoleThenName = (
   a: { role: Role; name: string | null },
@@ -84,18 +89,25 @@ export function buildTeam(
 }
 
 /**
- * The roles an owner or manager may give someone they invite: their own
- * and below. A manager invites managers and workers; only an owner invites
- * an owner. The database checks the same rule.
+ * The roles only an owner gives: another owner, and an accountant, who sees
+ * everyone's hours and pay (Orel, 8 November 2026). The ConceptApp team gives
+ * them from the console too.
+ */
+const OWNER_ONLY_ROLES: readonly Role[] = ["owner", "accountant"];
+
+/**
+ * The roles an owner or manager may give someone they invite. A manager
+ * invites managers and workers; an owner also invites an owner or an
+ * accountant. The database checks the same rule (team_invite).
  */
 export function invitableRoles(role: Role): Role[] {
   if (!canSeeTeam(role)) return [];
-  return ROLES.filter((r) => atLeast(role, r));
+  return ROLES.filter((r) => role === "owner" || !OWNER_ONLY_ROLES.includes(r));
 }
 
 /** May someone in `role` send a link for an invite with `inviteRole`? */
 export function canResendInvite(role: Role, inviteRole: Role): boolean {
-  return canSeeTeam(role) && atLeast(role, inviteRole);
+  return invitableRoles(role).includes(inviteRole);
 }
 
 /** Same limit as `profiles.full_name` in the database. */

@@ -1,8 +1,10 @@
 -- Inviting from the Team screen: owners and managers invite by phone and
 -- send fresh links, never above their own role and never in another
--- business. Only the server may call either function.
+-- business. Only an owner invites an owner or an accountant, or touches their
+-- invites (20261110000300_payroll_access.sql). Only the server may call either
+-- function.
 begin;
-select plan(24);
+select plan(29);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -27,7 +29,8 @@ values
   ('62000000-0000-4000-b000-000000000002', '62000000-0000-4000-a000-00000000000d', 'manager', true),
   ('62000000-0000-4000-b000-000000000001', '62000000-0000-4000-a000-00000000000e', 'manager', false);
 
--- An owner invite still open, an expired worker invite, a claimed one.
+-- An owner invite still open, an expired worker invite, a claimed one, and an
+-- accountant's invite still open.
 insert into public.invites (id, business_id, phone, role, full_name, token_hash, expires_at, claimed_at)
 values
   ('62000000-0000-4000-c000-000000000001', '62000000-0000-4000-b000-000000000001',
@@ -35,7 +38,9 @@ values
   ('62000000-0000-4000-c000-000000000002', '62000000-0000-4000-b000-000000000001',
    '+972500000672', 'worker', 'Late', repeat('2', 64), now() - interval '1 day', null),
   ('62000000-0000-4000-c000-000000000003', '62000000-0000-4000-b000-000000000001',
-   '+972500000673', 'worker', 'Done', repeat('3', 64), now() + interval '3 days', now());
+   '+972500000673', 'worker', 'Done', repeat('3', 64), now() + interval '3 days', now()),
+  ('62000000-0000-4000-c000-000000000004', '62000000-0000-4000-b000-000000000001',
+   '+972500000674', 'accountant', 'Books', repeat('4', 64), now() + interval '3 days', null);
 
 create function pg_temp.sign_in(uid uuid) returns void language sql as $$
   select set_config('request.jwt.claims', json_build_object('sub', uid, 'role', 'authenticated')::text, true);
@@ -101,6 +106,17 @@ select throws_ok(
     '62000000-0000-4000-b000-000000000001', '+972500000671', 'Partner', 'worker', repeat('a', 64))$$,
   '42501', null, 'a manager cannot change an owner''s invite'
 );
+select throws_ok(
+  $$select public.team_invite('62000000-0000-4000-a000-00000000000b',
+    '62000000-0000-4000-b000-000000000001', '+972500000683', 'Books', 'accountant', repeat('a', 64))$$,
+  '42501', 'Only an owner invites an accountant',
+  'a manager cannot invite an accountant, though an accountant ranks as a worker'
+);
+select throws_ok(
+  $$select public.team_invite('62000000-0000-4000-a000-00000000000b',
+    '62000000-0000-4000-b000-000000000001', '+972500000674', 'Books', 'worker', repeat('a', 64))$$,
+  '42501', null, 'nor change an accountant''s invite'
+);
 
 -- A manager invites a worker.
 create temporary table new_invite on commit drop as
@@ -151,6 +167,12 @@ select ok(
     repeat('c', 64)) is not null,
   'an owner may invite another owner'
 );
+select ok(
+  public.team_invite('62000000-0000-4000-a000-00000000000a',
+    '62000000-0000-4000-b000-000000000001', '+972500000684', 'Books', 'accountant',
+    repeat('f', 64)) is not null,
+  'and an accountant'
+);
 
 -- A fresh link for an invite nobody claimed.
 select is(
@@ -177,6 +199,16 @@ select throws_ok(
   $$select public.team_invite_link('62000000-0000-4000-a000-00000000000b',
     '62000000-0000-4000-c000-000000000001', repeat('e', 64))$$,
   '42501', null, 'a manager cannot send an owner''s invite'
+);
+select throws_ok(
+  $$select public.team_invite_link('62000000-0000-4000-a000-00000000000b',
+    '62000000-0000-4000-c000-000000000004', repeat('e', 64))$$,
+  '42501', null, 'nor an accountant''s'
+);
+select is(
+  public.team_invite_link('62000000-0000-4000-a000-00000000000a',
+    '62000000-0000-4000-c000-000000000004', repeat('9', 64)),
+  '+972500000674', 'an owner sends a new link for an accountant''s invite'
 );
 select throws_ok(
   $$select public.team_invite_link('62000000-0000-4000-a000-00000000000a',

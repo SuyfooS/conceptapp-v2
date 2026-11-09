@@ -93,6 +93,9 @@ values
 -- people set a photo and, from H2, write about themselves ("profiles": true);
 -- the shop keeps them as they are, like the hosted ones. Each person names the
 -- departments they are in, by their template's keys (tooling/demo-departments.test.ts).
+-- The shop's managers hold pay access ("rolePermissions"), to show the owner's
+-- switch; the restaurant's start without it, as a real business does
+-- (20261110000300_payroll_access.sql).
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -113,6 +116,7 @@ values
     "slug": "demo-shop", "name": "חנות הדגמה", "accent": "#7c3aed",
     "address": "רחוב הדגמה 2, חיפה", "shabbat_city": "haifa",
     "template": "retail", "renews": true, "invites": true,
+    "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000007", "role": "owner", "name": "מיכל הדגמה" },
       { "user_id": "00000000-0000-4000-a000-000000000008", "role": "manager", "name": "עומר הדגמה", "departments": ["floor"] },

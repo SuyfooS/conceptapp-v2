@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { minutesOf, rangeMinutes, timeOfDay } from "./hours";
-import type { Role } from "./modules";
+import { isStaff, type Role } from "./modules";
 import { calendarDate } from "./shabbat";
 
 /**
@@ -175,7 +175,8 @@ export type AvailabilitySubmission = z.infer<
 /**
  * Who has not submitted availability for a week: active workers and
  * managers without a submission, in the order given. Owners are left out;
- * they plan the schedule rather than fill a shift by default.
+ * they plan the schedule rather than fill a shift by default. Accountants
+ * are off the staff and owe none.
  */
 export function missingAvailability<T extends { userId: string; role: Role }>(
   members: readonly T[],
@@ -183,7 +184,10 @@ export function missingAvailability<T extends { userId: string; role: Role }>(
 ): T[] {
   const submitted = new Set(submittedUserIds);
   return members.filter(
-    (member) => member.role !== "owner" && !submitted.has(member.userId),
+    (member) =>
+      member.role !== "owner" &&
+      isStaff(member.role) &&
+      !submitted.has(member.userId),
   );
 }
 

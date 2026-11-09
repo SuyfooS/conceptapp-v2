@@ -1,18 +1,22 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
+  ACCOUNTANT_PERMISSIONS,
   atLeast,
   canOpenModule,
   defineManifest,
   enabledModules,
   fitsTabBar,
   holdsPermission,
+  isStaff,
   MAX_MODULE_NAV,
   type ModuleManifest,
   type ModuleRow,
   moduleNav,
   moduleWidgets,
+  ROLES,
   readModuleSettings,
+  STAFF_ROLES,
   validateModuleSettings,
 } from "./modules";
 
@@ -37,6 +41,17 @@ const clock = defineManifest({
   nav: { href: "/clock", icon: "clock", minRole: "worker", order: 20 },
   homeWidget: { minRole: "worker" },
   permissions: [],
+  settings: z.object({}),
+});
+const reservations = defineManifest({
+  key: "reservations",
+  requires: [],
+  nav: null,
+  homeWidget: null,
+  permissions: [
+    { key: "reservations.edit", defaultRole: "worker" },
+    { key: "clock.payroll", defaultRole: "owner", byOwner: true },
+  ],
   settings: z.object({}),
 });
 const notifications = defineManifest({
@@ -66,6 +81,18 @@ describe("atLeast", () => {
     expect(atLeast("manager", "manager")).toBe(true);
     expect(atLeast("worker", "manager")).toBe(false);
     expect(atLeast("manager", "owner")).toBe(false);
+  });
+
+  it("ranks an accountant as a worker", () => {
+    expect(atLeast("accountant", "worker")).toBe(true);
+    expect(atLeast("accountant", "manager")).toBe(false);
+  });
+});
+
+describe("isStaff", () => {
+  it("puts everyone on the staff but an accountant", () => {
+    expect(ROLES.filter(isStaff)).toEqual([...STAFF_ROLES]);
+    expect(isStaff("accountant")).toBe(false);
   });
 });
 
@@ -138,6 +165,10 @@ describe("moduleNav", () => {
     ]);
   });
 
+  it("gives an accountant no tab yet: they are off the staff", () => {
+    expect(moduleNav(all, on, "accountant")).toEqual([]);
+  });
+
   it(`never returns more than ${MAX_MODULE_NAV} items`, () => {
     const many = Array.from({ length: 6 }, (_, i) => ({
       ...schedule,
@@ -207,6 +238,7 @@ describe("moduleWidgets", () => {
       "scheduling",
     ]);
     expect(moduleWidgets(all, [], "owner")).toEqual([]);
+    expect(moduleWidgets(all, on, "accountant")).toEqual([]);
   });
 });
 
@@ -218,6 +250,7 @@ describe("canOpenModule", () => {
     expect(canOpenModule(notifications, ["notifications"], "owner")).toBe(
       false,
     );
+    expect(canOpenModule(schedule, ["scheduling"], "accountant")).toBe(false);
   });
 });
 
@@ -243,6 +276,52 @@ describe("holdsPermission", () => {
     expect(holdsPermission(clock, "manager", [], "clock.edit")).toBe(false);
     expect(
       holdsPermission(clock, "manager", ["clock.edit"], "clock.edit"),
+    ).toBe(true);
+  });
+
+  it("gives an accountant what accountants hold and nothing by rank", () => {
+    // At a worker's rank, but off the staff: no worker-default permission.
+    expect(
+      holdsPermission(reservations, "worker", [], "reservations.edit"),
+    ).toBe(true);
+    expect(
+      holdsPermission(reservations, "accountant", [], "reservations.edit"),
+    ).toBe(false);
+    expect(
+      holdsPermission(
+        reservations,
+        "accountant",
+        ["reservations.edit"],
+        "reservations.edit",
+      ),
+    ).toBe(false);
+    for (const key of ACCOUNTANT_PERMISSIONS) {
+      expect(holdsPermission(reservations, "accountant", [], key)).toBe(true);
+    }
+  });
+
+  it("gives a permission an owner switches only to owners and those given it", () => {
+    expect(holdsPermission(reservations, "owner", [], "clock.payroll")).toBe(
+      true,
+    );
+    expect(holdsPermission(reservations, "manager", [], "clock.payroll")).toBe(
+      false,
+    );
+    expect(
+      holdsPermission(
+        reservations,
+        "manager",
+        ["clock.payroll"],
+        "clock.payroll",
+      ),
+    ).toBe(true);
+    expect(
+      holdsPermission(
+        reservations,
+        "worker",
+        ["clock.payroll"],
+        "clock.payroll",
+      ),
     ).toBe(true);
   });
 });

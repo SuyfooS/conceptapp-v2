@@ -344,7 +344,10 @@ test("the team viewing as a manager reads the lists and changes nothing", async 
   await signIn(page, ADMIN, /\/admin$/);
   await page.goto("/admin/businesses/demo-restaurant");
   await page
-    .getByRole("button", { name: he.admin.setup.viewAs.as.manager })
+    .getByRole("button", {
+      name: he.admin.setup.viewAs.as.manager,
+      exact: true,
+    })
     .click();
   await expect(page).toHaveURL(/\/home$/);
 

@@ -11,7 +11,7 @@ import {
   listProgress,
   listsTally,
 } from "@domain/lists";
-import { ROLES } from "@domain/modules";
+import { STAFF_ROLES } from "@domain/modules";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import type {
   ListLookups,
@@ -408,7 +408,7 @@ export const demoSendForm: SendFormData = {
     photo: m.photo,
   })),
   departments: demoDepartments.map((d) => ({ id: d.id, name: d.name })),
-  roles: ROLES,
+  roles: STAFF_ROLES,
 };
 
 /** The people the department editor can put in a department. */

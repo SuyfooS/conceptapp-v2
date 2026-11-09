@@ -1,5 +1,6 @@
 import "server-only";
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
+import { isStaff } from "@domain/modules";
 import { type PunchProof, padShortCode } from "@domain/punch-code-format";
 import {
   type ClockFailure,
@@ -300,11 +301,14 @@ export type ClockPerson = {
   userId: string;
   name: string | null;
   active: boolean;
+  /** On the staff now: an accountant isn't, and punches no new hours. */
+  staff: boolean;
 };
 
 /**
  * Everyone who is or was in the business, for the hours of the month: someone
- * who has left still has hours to pay.
+ * who has left still has hours to pay, and so does someone who worked here and
+ * came back as an accountant. Each caller decides who to list by `staff`.
  */
 export async function getClockPeople(
   businessId: string,
@@ -312,13 +316,14 @@ export async function getClockPeople(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("memberships")
-    .select("user_id, active, profiles (full_name)")
+    .select("user_id, role, active, profiles (full_name)")
     .eq("business_id", businessId);
   if (error) throw error;
   return data.map((row) => ({
     userId: row.user_id,
     name: row.profiles?.full_name?.trim() || null,
     active: row.active,
+    staff: isStaff(row.role),
   }));
 }
 

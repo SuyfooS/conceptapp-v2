@@ -20,7 +20,12 @@ export function JoinForm({
   const t = useTranslations("auth.join");
   const errors = useTranslations("auth.signIn.errors");
   const [state, action, pending] = useActionState(join, initial);
-  const error = state.error ? errors(state.error) : undefined;
+  const error =
+    state.error === "shiftsLeft"
+      ? t("shiftsLeft")
+      : state.error
+        ? errors(state.error)
+        : undefined;
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
   if (state.step === "invite") {

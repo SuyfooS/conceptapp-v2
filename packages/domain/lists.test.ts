@@ -363,6 +363,27 @@ describe("sending", () => {
     }
   });
 
+  it("goes to a role on the staff, never to the accountants", () => {
+    const send = (role: string) =>
+      sendInput.safeParse({ template: LIST, recipient: { kind: "role", role } })
+        .success;
+    expect(send("worker")).toBe(true);
+    expect(send("manager")).toBe(true);
+    expect(send("accountant")).toBe(false);
+    const times = {
+      days: [1],
+      opens: "08:30",
+      dueAfterMinutes: 45,
+      recipient: { kind: "role", role: "accountant" },
+    };
+    expect(scheduleInput.safeParse(times).success).toBe(false);
+    const template = (role: string) =>
+      listTemplateSeed.safeParse(seed({ recipient: { kind: "role", role } }))
+        .success;
+    expect(template("worker")).toBe(true);
+    expect(template("accountant")).toBe(false);
+  });
+
   it("names a shift by its id, and a due time with its offset", () => {
     expect(
       sendInput.safeParse({

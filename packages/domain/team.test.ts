@@ -38,16 +38,18 @@ describe("canSeeTeam", () => {
     expect(canSeeTeam("owner")).toBe(true);
     expect(canSeeTeam("manager")).toBe(true);
     expect(canSeeTeam("worker")).toBe(false);
+    expect(canSeeTeam("accountant")).toBe(false);
   });
 });
 
 describe("buildTeam", () => {
-  it("puts owners first, then managers, then workers, unnamed last", () => {
+  it("puts owners first, then managers, workers and accountants, unnamed last", () => {
     const team = buildTeam(
       [
         member("Zoe", "worker"),
         member(null, "worker"),
         member("Avi", "worker"),
+        member("Gal", "accountant"),
         member("Dana", "manager"),
         member("Uri", "owner"),
       ],
@@ -60,8 +62,9 @@ describe("buildTeam", () => {
       "Avi",
       "Zoe",
       null,
+      "Gal",
     ]);
-    expect(team.counts).toEqual({ members: 5, open: 0, expired: 0 });
+    expect(team.counts).toEqual({ members: 6, open: 0, expired: 0 });
   });
 
   it("marks invites past their date as expired and lists them after open ones", () => {
@@ -100,9 +103,19 @@ describe("buildTeam", () => {
 
 describe("invitableRoles", () => {
   it("lets owners give any role and managers their own and below", () => {
-    expect(invitableRoles("owner")).toEqual(["owner", "manager", "worker"]);
+    expect(invitableRoles("owner")).toEqual([
+      "owner",
+      "manager",
+      "worker",
+      "accountant",
+    ]);
     expect(invitableRoles("manager")).toEqual(["manager", "worker"]);
     expect(invitableRoles("worker")).toEqual([]);
+  });
+
+  it("keeps the accountant to owners, though an accountant ranks as a worker", () => {
+    expect(invitableRoles("manager")).not.toContain("accountant");
+    expect(invitableRoles("accountant")).toEqual([]);
   });
 });
 
@@ -113,6 +126,9 @@ describe("canResendInvite", () => {
     expect(canResendInvite("manager", "manager")).toBe(true);
     expect(canResendInvite("manager", "owner")).toBe(false);
     expect(canResendInvite("worker", "worker")).toBe(false);
+    expect(canResendInvite("owner", "accountant")).toBe(true);
+    expect(canResendInvite("manager", "accountant")).toBe(false);
+    expect(canResendInvite("accountant", "worker")).toBe(false);
   });
 });
 
@@ -169,6 +185,13 @@ describe("parseTeamInvite", () => {
     expect(parseTeamInvite({ ...base, role: "worker" }, "worker")).toEqual({
       ok: false,
       errors: { role: "notAllowed" },
+    });
+    expect(parseTeamInvite({ ...base, role: "accountant" }, "manager")).toEqual(
+      { ok: false, errors: { role: "notAllowed" } },
+    );
+    expect(parseTeamInvite({ ...base, role: "accountant" }, "owner")).toEqual({
+      ok: true,
+      value: { name: "גל", phone: "+972501234567", role: "accountant" },
     });
   });
 });

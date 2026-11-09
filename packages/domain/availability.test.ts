@@ -217,12 +217,14 @@ describe("availabilitySubmission", () => {
 });
 
 describe("missingAvailability", () => {
-  it("lists workers and managers who have not submitted, not owners", () => {
+  it("lists workers and managers who have not submitted, not owners or accountants", () => {
     const members = [
       { userId: "a", role: "owner" as const },
       { userId: "b", role: "manager" as const },
       { userId: "c", role: "worker" as const },
       { userId: "d", role: "worker" as const },
+      // Off the staff: an accountant owes no availability.
+      { userId: "e", role: "accountant" as const },
     ];
     expect(missingAvailability(members, ["c"])).toEqual([
       { userId: "b", role: "manager" },

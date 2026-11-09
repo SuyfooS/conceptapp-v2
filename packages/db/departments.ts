@@ -134,11 +134,13 @@ export async function getDepartmentsForTeam(
       .from("department_members")
       .select("department_id, user_id")
       .eq("business_id", businessId),
+    // People on the staff only: an accountant is in no department.
     admin
       .from("memberships")
       .select("user_id, profiles (full_name, avatar_path)")
       .eq("business_id", businessId)
-      .eq("active", true),
+      .eq("active", true)
+      .neq("role", "accountant"),
   ]);
   for (const { error } of [departments, members]) {
     if (error) {

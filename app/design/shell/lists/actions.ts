@@ -2,7 +2,7 @@
 
 import type { DepartmentInput } from "@domain/departments";
 import { anyItemResult, type ListProgress } from "@domain/lists";
-import { ROLES } from "@domain/modules";
+import { STAFF_ROLES } from "@domain/modules";
 import { z } from "zod";
 import type {
   ListActionResult,
@@ -45,7 +45,7 @@ const demoSend = z.object({
   recipient: z.discriminatedUnion("kind", [
     z.object({ kind: z.literal("person"), user: z.string().min(1) }),
     z.object({ kind: z.literal("department"), department: z.string().min(1) }),
-    z.object({ kind: z.literal("role"), role: z.enum(ROLES) }),
+    z.object({ kind: z.literal("role"), role: z.enum(STAFF_ROLES) }),
   ]),
   note: z.string().trim().min(1).max(300).optional(),
 });

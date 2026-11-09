@@ -6,7 +6,10 @@ import { ROLES, type Role } from "./modules";
  * most) and the audit log; these are the rules the app needs around it.
  */
 
-/** Roles the team can view a business as: every business role. */
+/**
+ * Roles the team can view a business as: every business role. A view as an
+ * accountant is the one that reads pay (`private.viewing_payroll`).
+ */
 export const VIEW_AS_ROLES: readonly Role[] = ROLES;
 
 /** The role in a submitted form, or null for anything else. */

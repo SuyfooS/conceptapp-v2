@@ -1,9 +1,10 @@
 -- Demo businesses: the reset puts one back the way it starts (details,
--- template, people and their departments, nothing else left), a demo business
+-- template, people and their departments, the role grants it names, nothing
+-- else left), a demo business
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(31);
+select plan(33);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -20,6 +21,7 @@ values ('6d000000-0000-4000-b000-000000000001', $json$
     "slug": "demo-reset-x", "name": "Demo shop X", "accent": "#7c3aed",
     "address": "Demo street 2", "shabbat_city": "haifa",
     "template": "retail", "renews": true,
+    "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
     "people": [
       { "user_id": "6d000000-0000-4000-a000-00000000000a", "role": "owner", "name": "Owner A" },
       { "user_id": "6d000000-0000-4000-a000-00000000000b", "role": "manager", "name": "Manager B", "departments": ["floor"] },
@@ -101,6 +103,12 @@ select results_eq(
     ('6d000000-0000-4000-a000-00000000000c'::uuid, 'checkout'::text),
     ('6d000000-0000-4000-a000-00000000000c'::uuid, 'stock'::text)$$,
   'and their departments, each once, skipping a key the template doesn''t have and someone with no account'
+);
+select results_eq(
+  $$select role::text, perm, granted_by from public.role_permissions
+    where business_id = '6d000000-0000-4000-b000-000000000001'$$,
+  $$values ('manager'::text, 'clock.payroll'::text, null::uuid)$$,
+  'and the pay access its definition gives its managers (20261110000300_payroll_access.sql)'
 );
 
 -- The example lists (20261109000700_lists_on.sql): the manager sends the
@@ -191,6 +199,10 @@ insert into public.departments (business_id, key, name)
 values ('6d000000-0000-4000-b000-000000000001', 'visitors', 'Visitors');
 delete from public.department_members
 where business_id = '6d000000-0000-4000-b000-000000000001';
+select public.set_role_permission('6d000000-0000-4000-a000-00000000000a',
+  '6d000000-0000-4000-b000-000000000001', 'manager', 'clock.payroll', false);
+select public.set_role_permission('6d000000-0000-4000-a000-00000000000a',
+  '6d000000-0000-4000-b000-000000000001', 'worker', 'clock.payroll', true);
 insert into public.lists (business_id, name, origin, recipient_kind, recipient_role, opens_at)
 values ('6d000000-0000-4000-b000-000000000001', 'A visitor''s list', 'sent', 'role', 'worker', now());
 -- Hours, a break and the log's rows, which nothing but the reset's purge
@@ -257,6 +269,12 @@ select is(
    where id = '6d000000-0000-4000-a000-00000000000a'),
   'Owner A/he',
   'with their names and language'
+);
+select results_eq(
+  $$select role::text, perm from public.role_permissions
+    where business_id = '6d000000-0000-4000-b000-000000000001'$$,
+  $$values ('manager'::text, 'clock.payroll'::text)$$,
+  'and the pay access the visitor switched, as it starts'
 );
 select is(
   (select string_agg(action, ',' order by id) from public.audit_log

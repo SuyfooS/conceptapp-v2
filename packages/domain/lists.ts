@@ -2,7 +2,7 @@ import { z } from "zod";
 import { isUuid } from "./activity";
 import { departmentKey } from "./departments";
 import { dayOfWeek, minutesOf, timeOfDay } from "./hours";
-import { ROLES, type Role } from "./modules";
+import { type Role, STAFF_ROLES } from "./modules";
 
 /**
  * Lists (Orel, 8 and 9 November 2026, issue #1): checklists sent to a person,
@@ -138,7 +138,8 @@ export type ListItemInput = z.input<typeof listItemInput>;
 
 const roleRecipient = z.strictObject({
   kind: z.literal("role"),
-  role: z.enum(ROLES),
+  // A list goes to someone on the staff, never to accountants.
+  role: z.enum(STAFF_ROLES),
 });
 
 /** A template's default recipient in a global template: by keys. */

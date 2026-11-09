@@ -51,7 +51,8 @@ begin
 
   -- How each one starts. Written again on every run, so a change here reaches
   -- the next reset. Each person names the departments they are in, by their
-  -- template's keys, as supabase/seed.sql does.
+  -- template's keys, as supabase/seed.sql does. The shop's managers hold pay
+  -- access, as there.
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$
@@ -72,6 +73,7 @@ begin
       "slug": "demo-shop", "name": "חנות הדגמה", "accent": "#7c3aed",
       "address": "רחוב הדגמה 2, חיפה", "shabbat_city": "haifa",
       "template": "retail", "renews": true,
+      "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000106", "role": "owner", "name": "מיכל הדגמה" },
         { "user_id": "10000000-0000-4000-a000-000000000107", "role": "manager", "name": "עומר הדגמה", "departments": ["floor"] },

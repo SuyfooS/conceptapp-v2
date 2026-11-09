@@ -622,7 +622,10 @@ test("only the business's managers get codes", async ({ page }) => {
   await signIn(page, ADMIN, /\/admin$/);
   await page.goto("/admin/businesses/demo-restaurant");
   await page
-    .getByRole("button", { name: he.admin.setup.viewAs.as.manager })
+    .getByRole("button", {
+      name: he.admin.setup.viewAs.as.manager,
+      exact: true,
+    })
     .click();
   await expect(page).toHaveURL(/\/home$/);
   await page.goto("/clock/code");

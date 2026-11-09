@@ -24,16 +24,43 @@ export function moduleKeyOf(value: unknown): ModuleKey | null {
   return MODULE_KEYS.find((key) => key === value) ?? null;
 }
 
-export const ROLES = ["owner", "manager", "worker"] as const;
+/**
+ * Same values and order as the `member_role` enum in the database. An
+ * accountant does the books from outside the staff (payroll P2): they read
+ * what any member reads, at a worker's rank, and always hold `clock.payroll`.
+ */
+export const ROLES = ["owner", "manager", "worker", "accountant"] as const;
 
 export type Role = (typeof ROLES)[number];
 
-const RANK: Record<Role, number> = { owner: 3, manager: 2, worker: 1 };
+const RANK: Record<Role, number> = {
+  owner: 3,
+  manager: 2,
+  worker: 1,
+  accountant: 1,
+};
 
-/** The role is `min` or above (owner > manager > worker). */
+/** The role is `min` or above (owner > manager > worker, accountant). */
 export function atLeast(role: Role, min: Role): boolean {
   return RANK[role] >= RANK[min];
 }
+
+/**
+ * On the staff: scheduled, punching, owing availability. Everyone but an
+ * accountant (`private.is_staff_role` in the database says the same).
+ */
+export function isStaff(role: Role): boolean {
+  return role !== "accountant";
+}
+
+/** The roles on the staff, in order: those a shift, a list or a department takes. */
+export const STAFF_ROLES = [
+  "owner",
+  "manager",
+  "worker",
+] as const satisfies readonly Role[];
+
+export type StaffRole = (typeof STAFF_ROLES)[number];
 
 /** Icon names; the app maps each to a drawn icon. */
 export const MODULE_ICONS = [
@@ -79,8 +106,18 @@ export type ModuleManifest<
    * row linking to `nav.href`.
    */
   homeWidget: { minRole: Role } | null;
-  /** Permissions the module checks, with the lowest role that holds each by default. */
-  permissions: readonly { key: `${string}.${string}`; defaultRole: Role }[];
+  /**
+   * Permissions the module checks, with the lowest role that holds each by
+   * default. With `byOwner`, an owner gives it to a role or a person (the
+   * database's `role_permissions` and `memberships.perms`), and nobody holds it
+   * by role alone but owners, and accountants for what they always hold
+   * (`clock.payroll`): such a permission's `defaultRole` is "owner".
+   */
+  permissions: readonly {
+    key: `${string}.${string}`;
+    defaultRole: Role;
+    byOwner?: true;
+  }[];
   /** Every field has a default, so `settings.parse({})` gives a full set. */
   settings: Settings;
 };
@@ -133,6 +170,15 @@ export type ModuleNavEntry = {
   icon: ModuleIcon;
 };
 
+/**
+ * Whether `role` reaches a nav item or home card for `minRole`. Someone off
+ * the staff (an accountant) reaches none yet: their own screens come with the
+ * payroll screens (P3).
+ */
+function reaches(role: Role, minRole: Role): boolean {
+  return isStaff(role) && atLeast(role, minRole);
+}
+
 /** Navigation items for `role`, from the enabled modules, in order. */
 export function moduleNav(
   manifests: readonly ModuleManifest[],
@@ -142,7 +188,7 @@ export function moduleNav(
   return manifests
     .filter((m) => enabled.includes(m.key))
     .flatMap((m) =>
-      m.nav && atLeast(role, m.nav.minRole)
+      m.nav && reaches(role, m.nav.minRole)
         ? [
             {
               key: m.key,
@@ -181,7 +227,7 @@ export function moduleWidgets(
 ): ModuleNavEntry[] {
   const visible = new Set(
     manifests
-      .filter((m) => m.homeWidget && atLeast(role, m.homeWidget.minRole))
+      .filter((m) => m.homeWidget && reaches(role, m.homeWidget.minRole))
       .map((m) => m.key),
   );
   return moduleNav(manifests, enabled, role).filter((entry) =>
@@ -201,16 +247,25 @@ export function canOpenModule(
   return (
     enabled.includes(manifest.key) &&
     manifest.nav !== null &&
-    atLeast(role, manifest.nav.minRole)
+    reaches(role, manifest.nav.minRole)
   );
 }
 
 /**
+ * What an accountant always holds, and nothing else (`private.accountant_perms`
+ * in the database; `modules/permissions.db.test.ts` keeps the two the same).
+ */
+export const ACCOUNTANT_PERMISSIONS: readonly string[] = ["clock.payroll"];
+
+/**
  * Whether someone holds one of a module's permissions: owners hold them all,
- * a role at or above the permission's `defaultRole` holds it, and so does
- * anyone given its key (`memberships.perms`). A key the manifest doesn't
- * declare is held by owners alone. The database's helpers say the same
- * (`private.can_manage_lists` and its kind).
+ * an accountant what accountants always hold, and someone on the staff a
+ * permission given to them (`perms`) or one whose `defaultRole` they reach,
+ * unless an owner gives it (`byOwner`). A key the manifest doesn't declare is
+ * held by owners and those given it. The database's helpers say the same
+ * (`private.holds_perm`, `private.can_manage_lists` and their kind). Without
+ * the staff check an accountant, at a worker's rank, would hold every
+ * permission whose default is "worker".
  */
 export function holdsPermission(
   manifest: ModuleManifest,
@@ -218,9 +273,15 @@ export function holdsPermission(
   perms: readonly string[],
   key: string,
 ): boolean {
-  if (role === "owner" || perms.includes(key)) return true;
+  if (role === "owner") return true;
+  if (!isStaff(role)) return ACCOUNTANT_PERMISSIONS.includes(key);
+  if (perms.includes(key)) return true;
   const permission = manifest.permissions.find((p) => p.key === key);
-  return permission !== undefined && atLeast(role, permission.defaultRole);
+  return (
+    permission !== undefined &&
+    !permission.byOwner &&
+    atLeast(role, permission.defaultRole)
+  );
 }
 
 /**
