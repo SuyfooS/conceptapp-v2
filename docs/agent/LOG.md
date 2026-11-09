@@ -4,6 +4,17 @@ Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
 ## 2026-11-09 · chat · QR clock-in, parts A and B: the code on a manager's phone, typed digits, without a code, scanning in the circle
+## 2026-11-09 · run 32 · each person's own hours in the clock demo (#71, finished)
+
+- Guessed: no open `orel` or `question` issue. The newest `🤖 **משיחה:**` note (8 November) queues notifications, lists and chat only after QR and the profile, and QR part B is Orel's own open #84, so nothing of it was started. The finishing touch is run 31's own pull request #71, left open when CI did not start on 8 November.
+- Rebased #71 onto `df06d9d`: the demo people keep their own shifts, now with QR part A's fields (Yoav's open shift clocked in without a code and waiting, Shiran's with the digits), and `demoTeamPaths.code`. Mock data under `app/design/shell/clock/team` only; no screen, token or component changed.
+- Checked: `pnpm check` (594 unit tests), `pnpm build`, and the design specs for the clock team pages at 390/820/1440 in light and dark (21 passed: axe clean, no horizontal scroll, each person's own shift count).
+- Restore point: the tag `before-night/2026-11-09` was cut off again; the branch `backup/before-night-2026-11-09` at `df06d9d` holds it.
+- Closed #72 (urgent): CI runs again since Orel moved to GitHub Pro on 8 November.
+- Left alone: Orel's open pull requests #57 and #84 (no shared files). Still seen, not fixed: the worker's clock demo totals 86:30 for the signed-in demo person, who has 19:32 in the team list.
+- Next: by day, QR part B (#84), then stations and pairing, then the profile (#82).
+
+## 2026-11-09 · chat · QR clock-in, part A: the code on a manager's phone, typed digits, without a code
 
 - On chat/qr-v1, after `qr` 0.7.2 (`825b6ae`), following the plan for #78 with its critique applied. No new migration: it runs on `20261108000200_qr_clock.sql` and `20261108000300_sealed.sql`, and merges only once the hosted project has the sealed one (the four-argument `note_punch_attempt`, owner-only code settings).
 - The owner asks for it: `requirePunchCode` is drawn now, at a new setting level `owner` (owners and the team; managers don't see it, and the database refuses it from them), with a "לבעלים בלבד" badge. `codeDisplay` stays hidden until stations exist, so codes come only from an owner's or manager's phone.
