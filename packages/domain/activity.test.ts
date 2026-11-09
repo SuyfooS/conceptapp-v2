@@ -17,6 +17,8 @@ const INVITE = "66666666-6666-4666-8666-666666666666";
 const SHIFT = "77777777-7777-4777-8777-777777777777";
 const SWAP = "88888888-8888-4888-8888-888888888888";
 const GONE = "99999999-9999-4999-8999-999999999999";
+const KITCHEN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const LIST = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
 const lookups: ActivityLookups = {
   members: new Map([
@@ -33,6 +35,7 @@ const lookups: ActivityLookups = {
     ],
   ]),
   swaps: new Map([[SWAP, { shiftId: SHIFT, requestedBy: NOA, takenBy: YOAV }]]),
+  departments: new Map([[KITCHEN, "Kitchen"]]),
 };
 
 let nextId = 1000;
@@ -336,6 +339,155 @@ describe("buildActivity: each action", () => {
     });
   });
 
+  it("reads the departments added, removed, renamed or put in order", () => {
+    const kitchen = { key: "kitchen", name: "Kitchen" };
+    const bar = { key: "bar", name: "Bar" };
+    expect(
+      lineOf(
+        row("departments.change", {
+          from: [kitchen, bar],
+          to: [
+            { key: "kitchen", name: "Cold kitchen" },
+            { key: "d-1", name: "Storeroom" },
+          ],
+        }),
+      ),
+    ).toEqual({
+      action: "departments.change",
+      added: ["Storeroom"],
+      removed: ["Bar"],
+      renamed: [{ from: "Kitchen", to: "Cold kitchen" }],
+      reordered: false,
+    });
+    expect(
+      lineOf(
+        row("departments.change", { from: [kitchen, bar], to: [bar, kitchen] }),
+      ),
+    ).toEqual({
+      action: "departments.change",
+      added: [],
+      removed: [],
+      renamed: [],
+      reordered: true,
+    });
+  });
+
+  it("reads who joined or left a department", () => {
+    expect(
+      lineOf(
+        row("departments.members", {
+          department: KITCHEN,
+          added: [YOAV],
+          removed: [LEFT],
+        }),
+      ),
+    ).toEqual({
+      action: "departments.members",
+      department: "Kitchen",
+      added: [{ kind: "member", name: "Yoav" }],
+      removed: [{ kind: "former" }],
+    });
+    expect(
+      lineOf(row("departments.members", { department: GONE, added: [NOA] })),
+    ).toEqual({
+      action: "departments.members",
+      department: null,
+      added: [{ kind: "member", name: "Noa" }],
+      removed: [],
+    });
+  });
+
+  it("reads lists sent, finished, cancelled and opened again", () => {
+    expect(
+      lineOf(
+        row("lists.send", {
+          list: LIST,
+          name: "Opening",
+          recipient: { kind: "department", id: KITCHEN },
+        }),
+      ),
+    ).toEqual({
+      action: "lists.send",
+      name: "Opening",
+      to: { kind: "department", name: "Kitchen" },
+    });
+    expect(
+      lineOf(
+        row("lists.send", {
+          list: LIST,
+          name: "Opening",
+          recipient: { kind: "person", id: YOAV },
+        }),
+      ),
+    ).toEqual({
+      action: "lists.send",
+      name: "Opening",
+      to: { kind: "person", person: { kind: "member", name: "Yoav" } },
+    });
+    expect(
+      lineOf(
+        row("lists.send", {
+          name: "Closing",
+          recipient: { kind: "role", role: "worker" },
+        }),
+      ),
+    ).toEqual({
+      action: "lists.send",
+      name: "Closing",
+      to: { kind: "role", role: "worker" },
+    });
+    expect(
+      lineOf(
+        row("lists.finish", {
+          list: LIST,
+          name: "Opening",
+          late: true,
+          left_optional: 1,
+        }),
+      ),
+    ).toEqual({
+      action: "lists.finish",
+      name: "Opening",
+      late: true,
+      leftOptional: 1,
+    });
+    expect(
+      lineOf(row("lists.cancel", { list: LIST, name: "Opening" })),
+    ).toEqual({ action: "lists.cancel", name: "Opening" });
+    expect(
+      lineOf(
+        row("lists.reopen", { list: LIST, name: "Opening", was: "finished" }),
+      ),
+    ).toEqual({ action: "lists.reopen", name: "Opening", was: "finished" });
+    expect(
+      lineOf(row("lists.reopen", { list: LIST, name: "Opening", was: "open" })),
+    ).toEqual({ action: "lists.reopen", name: "Opening", was: null });
+  });
+
+  it("reads a template saved, removed and brought back", () => {
+    expect(
+      lineOf(
+        row("lists.template.save", {
+          template: LIST,
+          name: "Weekly cleaning",
+          created: true,
+          items: 3,
+          schedules: 0,
+        }),
+      ),
+    ).toEqual({
+      action: "lists.template.save",
+      name: "Weekly cleaning",
+      created: true,
+    });
+    expect(
+      lineOf(row("lists.template.archive", { template: LIST, name: "Old" })),
+    ).toEqual({ action: "lists.template.archive", name: "Old" });
+    expect(
+      lineOf(row("lists.template.restore", { template: LIST, name: "Old" })),
+    ).toEqual({ action: "lists.template.restore", name: "Old" });
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),
@@ -343,6 +495,8 @@ describe("buildActivity: each action", () => {
       row("schedule.publish", { shifts: -1 }),
       row("business.details", "not an object"),
       row("module.enabled", null),
+      row("lists.send", { name: "Opening", recipient: { kind: "team" } }),
+      row("departments.members", { added: [NOA] }),
     ]) {
       expect(lineOf(r)).toEqual({ action: "other" });
     }
@@ -581,6 +735,30 @@ describe("buildActivity: a run of edits reads as one", () => {
     ).toEqual(["name", "accent", "shabbatCity"]);
   });
 
+  it("folds saves of the same list template, keeping that it was new", () => {
+    const save = (minute: number, created: boolean, name = "Cleaning") =>
+      row(
+        "lists.template.save",
+        { template: LIST, name, created },
+        NOA,
+        `2026-11-04T10:${String(minute).padStart(2, "0")}:00+00:00`,
+      );
+    expect(
+      buildActivity([save(5, false), save(2, false), save(0, true)], lookups),
+    ).toEqual([
+      expect.objectContaining({
+        line: {
+          action: "lists.template.save",
+          name: "Cleaning",
+          created: true,
+        },
+      }),
+    ]);
+    expect(
+      buildActivity([save(5, false, "Opening"), save(0, true)], lookups),
+    ).toHaveLength(2);
+  });
+
   it("never folds what nobody is known to have done", () => {
     expect(
       buildActivity(
@@ -599,12 +777,26 @@ describe("activityRefs", () => {
         row("invite.send", { invite: INVITE.toUpperCase() }, STAFF),
         row("clock.correct", { person: "'; drop table --", entry: 5 }, null),
         row("business.details", "not an object", LEFT),
+        row("departments.members", {
+          department: KITCHEN.toUpperCase(),
+          added: [GONE, "nobody"],
+          removed: [YOAV],
+        }),
+        row("lists.send", {
+          name: "Opening",
+          recipient: { kind: "person", id: NAMELESS },
+        }),
+        row("lists.send", {
+          name: "Opening",
+          recipient: { kind: "department", id: KITCHEN },
+        }),
       ]),
     ).toEqual({
-      people: [NOA, YOAV, STAFF, LEFT],
+      people: [NOA, YOAV, STAFF, LEFT, GONE, NAMELESS],
       invites: [INVITE],
       shifts: [SHIFT],
       swaps: [SWAP],
+      departments: [KITCHEN],
     });
   });
 });

@@ -21,6 +21,8 @@ export const ALLOWED: Record<string, string> = {
     "mock rows for the clock demo; stands in for database data, not UI copy",
   "app/design/shell/data.ts":
     "mock rows for the layout demo; stands in for database data, not UI copy",
+  "app/design/shell/lists/data.ts":
+    "mock rows for the lists demo; stands in for database data, not UI copy",
   "app/design/console/data.ts":
     "mock rows for the console demo; stands in for database data, not UI copy",
   "app/global-error-copy.ts":

@@ -60,7 +60,7 @@ reset role;
 select results_eq(
   $$select name, address, accent, template_key, template_version
     from public.businesses where slug = 'cb-cafe-noa'$$,
-  $$values ('Cafe Noa'::text, null::text, '#0f766e'::text, 'cafe-bar'::text, 4)$$,
+  $$values ('Cafe Noa'::text, null::text, '#0f766e'::text, 'cafe-bar'::text, 5)$$,
   'the business is stored tidied, with the template applied'
 );
 select is(

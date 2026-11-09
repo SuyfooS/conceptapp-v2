@@ -1,13 +1,16 @@
 "use server";
 
 import { setBusinessDetails } from "@db/business-details";
+import { setDepartmentMembers, setDepartments } from "@db/departments";
 import { setModuleSettings, type Written } from "@db/module-settings";
 import { checkBusinessDetailsChange } from "@domain/business-details";
+import { departments as departmentsSchema } from "@domain/departments";
 import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
 import { checkSettingsChange } from "@domain/settings-form";
 import { manifestFor } from "@modules/registry";
 import { refresh } from "next/cache";
-import { manageAccess, modulesToManage } from "./manage";
+import { z } from "zod";
+import { listsOn, manageAccess, modulesToManage } from "./manage";
 import type { SettingsResult } from "./settings-types";
 
 /**
@@ -62,6 +65,52 @@ export async function saveBusinessDetailsAction(
     access.userId,
     access.businessId,
     checked.patch,
+  );
+  refresh();
+  return settingsResult(result);
+}
+
+/**
+ * An owner or manager saves the business's departments, in order: a name
+ * typed over, one added, one removed or brought back. Only while lists are on.
+ */
+export async function saveDepartmentsAction(
+  departments: unknown,
+): Promise<SettingsResult> {
+  const access = await manageAccess();
+  if (!access || !listsOn(access.rows)) {
+    return { ok: false, failure: "noAccess" };
+  }
+  if (access.viewOnly) return { ok: false, failure: "viewOnly" };
+  const parsed = departmentsSchema.safeParse(departments);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const result = await setDepartments(
+    access.userId,
+    access.businessId,
+    parsed.data,
+  );
+  refresh();
+  return settingsResult(result);
+}
+
+/** An owner or manager puts people in a department, or takes them out. */
+export async function saveDepartmentMembersAction(
+  department: unknown,
+  members: unknown,
+): Promise<SettingsResult> {
+  const access = await manageAccess();
+  if (!access || !listsOn(access.rows)) {
+    return { ok: false, failure: "noAccess" };
+  }
+  if (access.viewOnly) return { ok: false, failure: "viewOnly" };
+  const id = z.uuid().safeParse(department);
+  const people = z.array(z.uuid()).max(500).safeParse(members);
+  if (!id.success || !people.success) return { ok: false, failure: "invalid" };
+  const result = await setDepartmentMembers(
+    access.userId,
+    access.businessId,
+    id.data,
+    people.data,
   );
   refresh();
   return settingsResult(result);

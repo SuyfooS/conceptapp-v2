@@ -6,6 +6,7 @@ import {
   defineManifest,
   enabledModules,
   fitsTabBar,
+  holdsPermission,
   MAX_MODULE_NAV,
   type ModuleManifest,
   type ModuleRow,
@@ -217,6 +218,32 @@ describe("canOpenModule", () => {
     expect(canOpenModule(notifications, ["notifications"], "owner")).toBe(
       false,
     );
+  });
+});
+
+describe("holdsPermission", () => {
+  it("gives a permission to its default role and above, and to whoever has its key", () => {
+    expect(holdsPermission(schedule, "manager", [], "schedule.edit")).toBe(
+      true,
+    );
+    expect(holdsPermission(schedule, "owner", [], "schedule.edit")).toBe(true);
+    expect(holdsPermission(schedule, "worker", [], "schedule.edit")).toBe(
+      false,
+    );
+    expect(
+      holdsPermission(schedule, "worker", ["schedule.edit"], "schedule.edit"),
+    ).toBe(true);
+    expect(
+      holdsPermission(schedule, "worker", ["other.key"], "schedule.edit"),
+    ).toBe(false);
+  });
+
+  it("keeps a key the manifest doesn't declare to owners and those given it", () => {
+    expect(holdsPermission(clock, "owner", [], "clock.edit")).toBe(true);
+    expect(holdsPermission(clock, "manager", [], "clock.edit")).toBe(false);
+    expect(
+      holdsPermission(clock, "manager", ["clock.edit"], "clock.edit"),
+    ).toBe(true);
   });
 });
 

@@ -10,7 +10,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
 import { baseWording, translator } from "../../wording";
-import { manageAccess, modulesToManage, settingDefaults } from "../manage";
+import {
+  listsOn,
+  manageAccess,
+  modulesToManage,
+  settingDefaults,
+} from "../manage";
 import { ActivityView } from "./activity-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -49,11 +54,13 @@ export default async function ManageActivityPage({
       earlier={before !== null}
       manageable={modulesToManage(access.rows, access.level)}
       clockOn={enabledModules(manifests, access.rows).includes("time_clock")}
+      listsOn={listsOn(access.rows)}
       paths={{
         manage: "/manage",
         self: "/manage/activity",
         business: "/manage/business",
         clockTeam: "/clock/team",
+        departments: "/manage/departments",
       }}
       wording={await currentWording()}
     />

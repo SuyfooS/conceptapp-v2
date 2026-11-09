@@ -2,6 +2,7 @@ import type {
   ActivityDay,
   ActivityEntry,
   ActivityPerson,
+  ActivityRecipient,
   ActivityShift,
   ClockTimes,
   FieldChange,
@@ -38,6 +39,8 @@ export type ActivityPaths = {
   self: string;
   business: string;
   clockTeam: string;
+  /** The business's departments, where their lines lead. */
+  departments: string;
 };
 
 /**
@@ -106,6 +109,7 @@ export function ActivityView({
   earlier,
   manageable,
   clockOn,
+  listsOn,
   paths,
   wording,
 }: {
@@ -119,6 +123,8 @@ export function ActivityView({
   manageable: readonly ModuleKey[];
   /** The time clock is on, so its punches, left out here, exist somewhere. */
   clockOn: boolean;
+  /** Lists are on, so the departments have their screen to link to. */
+  listsOn: boolean;
   paths: ActivityPaths;
   /** The business's words. */
   wording: AppWording;
@@ -150,6 +156,23 @@ export function ActivityView({
       ? (person.name ?? t("who.noName"))
       : t(`who.${person.kind}`);
   const roleName = (role: Role) => tRoles(role);
+  const names = (list: readonly string[]) =>
+    format.list(list, { type: "conjunction" });
+  /** Who a list went to: "to the kitchen", "to Noa", "to the workers". */
+  const sentTo = (to: ActivityRecipient) => {
+    switch (to.kind) {
+      case "person":
+        return t("actions.lists.to.person", { person: who(to.person) });
+      case "department":
+        return to.name
+          ? t("actions.lists.to.department", { name: to.name })
+          : t("actions.lists.to.departmentUnknown");
+      case "shift":
+        return t("actions.lists.to.shift");
+      case "role":
+        return t("actions.lists.to.role", { role: to.role ?? "other" });
+    }
+  };
   const moduleWords = (key: string, part: string) => `${key}.${part}` as never;
   const moduleName = (key: string) =>
     tm.has(moduleWords(key, "name"))
@@ -468,6 +491,98 @@ export function ActivityView({
           ],
           changes: [],
         };
+      case "departments.change":
+        return {
+          what: t("actions.departments.change"),
+          notes: [
+            ...(line.added.length > 0
+              ? [
+                  t("actions.departments.added", {
+                    count: line.added.length,
+                    names: names(line.added),
+                  }),
+                ]
+              : []),
+            ...(line.removed.length > 0
+              ? [
+                  t("actions.departments.removed", {
+                    count: line.removed.length,
+                    names: names(line.removed),
+                  }),
+                ]
+              : []),
+            ...line.renamed.map((rename) =>
+              t("actions.departments.renamed", rename),
+            ),
+            ...(line.reordered ? [t("actions.departments.reordered")] : []),
+          ],
+          changes: [],
+          href: listsOn ? paths.departments : undefined,
+        };
+      case "departments.members":
+        return {
+          what: line.department
+            ? t("actions.departments.members", { department: line.department })
+            : t("actions.departments.membersPlain"),
+          notes: [
+            ...(line.added.length > 0
+              ? [
+                  t("actions.departments.joined", {
+                    count: line.added.length,
+                    names: names(line.added.map(who)),
+                  }),
+                ]
+              : []),
+            ...(line.removed.length > 0
+              ? [
+                  t("actions.departments.left", {
+                    count: line.removed.length,
+                    names: names(line.removed.map(who)),
+                  }),
+                ]
+              : []),
+          ],
+          changes: [],
+          href: listsOn ? paths.departments : undefined,
+        };
+      case "lists.template.save":
+        return plain(
+          line.created
+            ? t("actions.lists.templateCreate", { name: line.name })
+            : t("actions.lists.templateSave", { name: line.name }),
+        );
+      case "lists.template.archive":
+        return plain(t("actions.lists.templateArchive", { name: line.name }));
+      case "lists.template.restore":
+        return plain(t("actions.lists.templateRestore", { name: line.name }));
+      case "lists.send":
+        return plain(
+          t("actions.lists.send", { name: line.name, to: sentTo(line.to) }),
+        );
+      case "lists.finish":
+        return {
+          what: line.late
+            ? t("actions.lists.finishLate", { name: line.name })
+            : t("actions.lists.finish", { name: line.name }),
+          notes:
+            line.leftOptional > 0
+              ? [
+                  t("actions.lists.leftOptional", {
+                    count: line.leftOptional,
+                  }),
+                ]
+              : [],
+          changes: [],
+        };
+      case "lists.cancel":
+        return plain(t("actions.lists.cancel", { name: line.name }));
+      case "lists.reopen":
+        return plain(
+          t("actions.lists.reopen", {
+            name: line.name,
+            was: line.was ?? "other",
+          }),
+        );
       case "other":
         return plain(t("actions.other"));
       default: {

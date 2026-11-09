@@ -1953,6 +1953,10 @@ export type Database = {
         Args: { actor: string; swap: string };
         Returns: undefined;
       };
+      cancel_unstarted_list: {
+        Args: { actor: string; at_time?: string; list: string };
+        Returns: undefined;
+      };
       claim_due_pushes: {
         Args: { at_time?: string; max_rows?: number };
         Returns: {

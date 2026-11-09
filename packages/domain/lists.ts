@@ -509,6 +509,28 @@ export type ItemResult = {
   comment?: string;
 } | null;
 
+/**
+ * A result as a screen sends it, whatever the item's kind: each field in its
+ * own bounds. The database holds it to the item's kind (`set_list_item`).
+ */
+export const anyItemResult = z
+  .strictObject({
+    checked: z.literal(true).optional(),
+    given: count.optional(),
+    reading: bound.optional(),
+    answer: itemAnswer.optional(),
+    comment: itemComment.optional(),
+  })
+  .nullable();
+
+/** A typed reading ("4.5", "-18", "4,5"), or null when it isn't a number. */
+export function parseReading(text: string): number | null {
+  const clean = text.trim().replace(",", ".").replace("−", "-");
+  if (!/^-?\d+(\.\d+)?$/.test(clean)) return null;
+  const value = Number(clean);
+  return bound.safeParse(value).success ? value : null;
+}
+
 /** How far a list is: what `public.set_list_item` returns too. */
 export type ListProgress = {
   done: number;
@@ -580,6 +602,90 @@ export function listState(
   if (at >= due + settings.lateAfterMinutes * minute) return "late";
   if (at >= due - settings.remindBeforeMinutes * minute) return "dueSoon";
   return "open";
+}
+
+const URGENCY: Record<ListState, number> = {
+  late: 0,
+  dueSoon: 1,
+  open: 2,
+  finished: 3,
+  missed: 3,
+  cancelled: 3,
+};
+
+/**
+ * The order "now" shows lists in: late first, then due soon, then by due time
+ * (none last), then by when they opened. Stable for equal lists.
+ */
+export function byUrgency<
+  L extends { status: ListStatus; dueAt: string | null; opensAt: string },
+>(
+  lists: readonly L[],
+  now: Date,
+  settings: { remindBeforeMinutes: number; lateAfterMinutes: number },
+): L[] {
+  const due = (list: L) =>
+    list.dueAt === null ? Number.POSITIVE_INFINITY : Date.parse(list.dueAt);
+  return [...lists].sort(
+    (a, b) =>
+      URGENCY[listState(a, now, settings)] -
+        URGENCY[listState(b, now, settings)] ||
+      due(a) - due(b) ||
+      Date.parse(a.opensAt) - Date.parse(b.opensAt),
+  );
+}
+
+/** A business's lists of a day at a glance, for its managers. */
+export type ListsTally = {
+  total: number;
+  open: number;
+  finished: number;
+  late: number;
+};
+
+export function listsTally(
+  lists: readonly { status: ListStatus; dueAt: string | null }[],
+  now: Date,
+  settings: { remindBeforeMinutes: number; lateAfterMinutes: number },
+): ListsTally {
+  let open = 0;
+  let finished = 0;
+  let late = 0;
+  for (const list of lists) {
+    if (list.status === "open") open += 1;
+    if (list.status === "finished") finished += 1;
+    if (listState(list, now, settings) === "late") late += 1;
+  }
+  return { total: lists.length, open, finished, late };
+}
+
+/**
+ * Until when whoever finished or cancelled a list may open it again by
+ * themselves (the undo, `REOPEN_MINUTES`), or null when it isn't theirs to
+ * undo or the time has passed. List managers reopen any time.
+ */
+export function undoDeadline(
+  list: {
+    status: ListStatus;
+    finishedAt: string | null;
+    finishedBy: string | null;
+    closedAt: string | null;
+    closedBy: string | null;
+  },
+  userId: string,
+  now: Date,
+): string | null {
+  const [at, by] =
+    list.status === "finished"
+      ? [list.finishedAt, list.finishedBy]
+      : list.status === "cancelled"
+        ? [list.closedAt, list.closedBy]
+        : [null, null];
+  if (at === null || by !== userId) return null;
+  const until = Date.parse(at) + REOPEN_MINUTES * 60_000;
+  return Number.isNaN(until) || until <= now.getTime()
+    ? null
+    : new Date(until).toISOString();
 }
 
 /** A list's screen. */

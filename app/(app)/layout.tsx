@@ -1,6 +1,7 @@
+import { countMyOpenLists } from "@db/lists";
 import { pushConfig } from "@db/push/env";
 import { accentTokens } from "@domain/color";
-import { moduleNav } from "@domain/modules";
+import { enabledModules, moduleNav } from "@domain/modules";
 import { signInPath } from "@domain/passive-sign-in";
 import { displayIsraeliMobile } from "@domain/phone";
 import { profilePhotoSrc } from "@domain/profile-photos";
@@ -55,9 +56,18 @@ async function Shell({ children }: { children: ReactNode }) {
   }
 
   const { business, role } = member.membership;
-  const [enabled, wording] = await Promise.all([
+  const [enabled, wording, openLists] = await Promise.all([
     currentModules(),
     currentWording(),
+    // The Lists tab carries the open lists the person holds; none while
+    // viewing as someone, who holds none.
+    enabledModules(manifests, business.modules).includes("lists") &&
+    !member.viewing
+      ? countMyOpenLists(member.userId, business.id).catch((error: Error) => {
+          console.error("counting open lists failed", error.message);
+          return 0;
+        })
+      : 0,
   ]);
   // The business's words: its tab names and role names may be its own.
   const t = translator(wording, "app");
@@ -81,6 +91,7 @@ async function Shell({ children }: { children: ReactNode }) {
       href: entry.href,
       label: tm(`${entry.key}.name`),
       icon: moduleIcons[entry.icon],
+      count: entry.key === "lists" && openLists > 0 ? openLists : undefined,
     })),
   ];
   const name =

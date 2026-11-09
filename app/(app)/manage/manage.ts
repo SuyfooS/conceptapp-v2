@@ -80,6 +80,14 @@ export function closesOnShabbat(rows: readonly ModuleRow[]): boolean {
   return settings.closedOnShabbat;
 }
 
+/**
+ * Whether lists are on, which is when the business's departments matter:
+ * lists are what reads them today.
+ */
+export function listsOn(rows: readonly ModuleRow[]): boolean {
+  return enabledModules(manifests, rows).includes("lists");
+}
+
 /** Each module's settings as a business that never set them has them. */
 export function settingDefaults(): SettingDefaults {
   return new Map(

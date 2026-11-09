@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 import { currentClockLine } from "../clock/clock";
 import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
+import { currentListsHome } from "../lists/lists";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
 import {
@@ -37,6 +38,7 @@ export default async function HomePage() {
     teamAvailability,
     build,
     clockLine,
+    lists,
     wording,
   ] = await Promise.all([
     currentMember(),
@@ -47,6 +49,7 @@ export default async function HomePage() {
     currentTeamAvailability(),
     currentScheduleBuild(),
     currentClockLine(),
+    currentListsHome(),
     currentWording(),
   ]);
   const membership = member?.membership;
@@ -75,6 +78,7 @@ export default async function HomePage() {
           enabled.includes("notifications") && !member.viewing
             ? { unread: member.unread.all }
             : null,
+        lists,
       }}
     />
   );

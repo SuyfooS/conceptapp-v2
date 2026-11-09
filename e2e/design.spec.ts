@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
+import he from "../messages/he.json" with { type: "json" };
 
 // The design system in both appearances, on the demos: no data, no sign-in.
 const PAGES = [
@@ -41,6 +42,17 @@ const PAGES = [
   "/design/shell/manage/activity/empty",
   "/design/shell/manage/scheduling",
   "/design/shell/manage/time_clock",
+  "/design/shell/manage/lists",
+  "/design/shell/manage/departments",
+  "/design/shell/lists",
+  "/design/shell/lists?sent=list-floor-opening",
+  "/design/shell/lists/worker",
+  "/design/shell/lists/empty",
+  "/design/shell/lists/empty?as=business",
+  "/design/shell/lists/list-kitchen-opening",
+  "/design/shell/lists/list-kitchen-opening?state=finished",
+  "/design/shell/lists/list-bar-order",
+  "/design/shell/lists/send",
   "/design/shell/notifications",
   "/design/shell/notifications/empty",
   "/design/console/businesses/demo-restaurant/settings",
@@ -100,4 +112,46 @@ test("a person's hours in the demo match their row in the team list", async ({
       page.getByText(`שעות, ${shifts}`).filter({ visible: true }).first(),
     ).toBeVisible();
   }
+});
+
+// The lists demo sends and takes a sending back, keeps its five minutes to
+// take a finish back after it hydrates, and reads a freezer below zero.
+test("the lists demo sends, takes back, and keeps a finished list as it was", async ({
+  page,
+}) => {
+  const l = he.app.lists;
+  await page.goto("/design/shell/lists/send");
+  await page
+    .getByRole("button", {
+      name: l.send.submit.department.replace("{name}", "מטבח"),
+    })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/lists\?sent=list-floor-opening$/,
+  );
+  await page
+    .getByRole("status")
+    .filter({ hasText: l.send.sent.replace("{to}", "לאולם") })
+    .getByRole("button", { name: he.app.manage.undo })
+    .click();
+  await expect(page).toHaveURL(/\/design\/shell\/lists$/);
+  await expect(
+    page.getByRole("status").filter({ hasText: l.send.cancelled }),
+  ).toBeVisible();
+
+  await page.goto("/design/shell/lists/list-kitchen-opening?state=finished");
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: l.list.finished })
+      .getByRole("button", { name: he.app.manage.undo }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: l.list.reopen })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByLabel(l.list.readingOf.replace("{label}", "מקפיא")),
+  ).toHaveValue("-19");
 });
