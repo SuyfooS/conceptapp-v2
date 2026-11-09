@@ -12,6 +12,7 @@ import {
   openPushBusiness,
   PUSH_PEOPLE,
   pushDevices,
+  pushFetchedAt,
 } from "./db";
 import { MockPushService } from "./mock-push";
 import { secondPage, signIn } from "./session";
@@ -84,6 +85,13 @@ async function fakePushManager(page: Page) {
         return true;
       },
     });
+    // Headless Chromium keeps notifications denied whatever the context
+    // grants, so the page is told what a phone that allowed them would say.
+    Object.defineProperty(Notification, "permission", {
+      configurable: true,
+      get: () => "granted",
+    });
+    Notification.requestPermission = async () => "granted";
     const proto = PushManager.prototype as unknown as {
       subscribe: (options: { applicationServerKey: BufferSource }) => unknown;
       getSubscription: () => unknown;
@@ -206,6 +214,7 @@ async function phoneNotifications(
   page.context().on("request", (request) => {
     if (request.url().endsWith("/push/inbox")) inboxAsked.push(request.url());
   });
+  const fetchedBefore = await pushFetchedAt(PUSH_PEOPLE.owner.id);
   await cdp.send("ServiceWorker.enable");
   await cdp.send("ServiceWorker.deliverPushMessage", {
     origin: baseURL,
@@ -222,9 +231,14 @@ async function phoneNotifications(
       }));
     });
   await expect
-    .poll(async () => (await shown()).length > 0 || inboxAsked.length > 0, {
-      timeout: 15_000,
-    })
+    .poll(
+      async () =>
+        (await shown()).length > 0 ||
+        inboxAsked.length > 0 ||
+        // The device's question reached the app, seen from the database.
+        (await pushFetchedAt(PUSH_PEOPLE.owner.id)) !== fetchedBefore,
+      { timeout: 15_000 },
+    )
     .toBe(true);
   const notices = await shown();
   if (notices.length > 0) {

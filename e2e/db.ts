@@ -804,6 +804,14 @@ export async function pushDevices(
     where user_id = ${userId} order by created_at`;
 }
 
+/** When the person's newest device last asked /push/inbox what to show. */
+export async function pushFetchedAt(userId: string): Promise<string | null> {
+  const [row] = await sql<{ at: string | null }[]>`
+    select max(last_fetched_at)::text as at from public.push_subscriptions
+    where user_id = ${userId}`;
+  return row?.at ?? null;
+}
+
 /**
  * A line for the push business's owner, written as the producers write them:
  * queued for their phone when they have a device.
