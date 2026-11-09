@@ -2,6 +2,7 @@ import { activityByDay, buildActivity } from "@domain/activity";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { ActivityView } from "../../../../(app)/manage/activity/activity-view";
 import {
+  listsOn,
   modulesToManage,
   settingDefaults,
 } from "../../../../(app)/manage/manage";
@@ -28,6 +29,7 @@ export default function ShellManageActivity() {
       earlier={false}
       manageable={modulesToManage(demoModuleRows)}
       clockOn
+      listsOn={listsOn(demoModuleRows)}
       paths={demoActivityPaths}
       wording={baseWording}
     />

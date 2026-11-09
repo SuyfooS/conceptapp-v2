@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  anyItemResult,
+  byUrgency,
   fromOffsets,
   holdsList,
   isOutOfRange,
@@ -8,14 +10,17 @@ import {
   listItemSeed,
   listProgress,
   listState,
+  listsTally,
   listTemplateInput,
   listTemplateProblem,
   listTemplateSeed,
   listTemplateSeeds,
+  parseReading,
   scheduleInput,
   sendInput,
   templateForSave,
   toOffsets,
+  undoDeadline,
 } from "./lists";
 
 const KITCHEN = "11111111-1111-4111-8111-111111111111";
@@ -540,5 +545,119 @@ describe("listHref and holdsList", () => {
     expect(
       holdsList({ kind: "role", role: "manager" }, { ...noa, role: "owner" }),
     ).toBe(false);
+  });
+});
+
+describe("byUrgency and listsTally", () => {
+  const settings = { remindBeforeMinutes: 30, lateAfterMinutes: 15 };
+  const now = new Date("2026-11-10T08:00:00.000Z");
+  const list = (
+    id: string,
+    status: "open" | "finished" | "missed" | "cancelled",
+    dueAt: string | null,
+    opensAt = "2026-11-10T06:00:00.000Z",
+  ) => ({ id, status, dueAt, opensAt });
+  const lists = [
+    list("no-due", "open", null),
+    list("later", "open", "2026-11-10T11:00:00.000Z"),
+    list("soon", "open", "2026-11-10T08:20:00.000Z"),
+    list("late", "open", "2026-11-10T07:30:00.000Z"),
+    list("done", "finished", "2026-11-10T07:00:00.000Z"),
+    list("no-due-earlier", "open", null, "2026-11-10T05:00:00.000Z"),
+  ];
+
+  it("puts late first, then due soon, then by due time, none last", () => {
+    expect(byUrgency(lists, now, settings).map((l) => l.id)).toEqual([
+      "late",
+      "soon",
+      "later",
+      "no-due-earlier",
+      "no-due",
+      "done",
+    ]);
+  });
+
+  it("counts a day's lists for the managers", () => {
+    expect(listsTally(lists, now, settings)).toEqual({
+      total: 6,
+      open: 5,
+      finished: 1,
+      late: 1,
+    });
+    expect(listsTally([], now, settings)).toEqual({
+      total: 0,
+      open: 0,
+      finished: 0,
+      late: 0,
+    });
+  });
+});
+
+describe("undoDeadline", () => {
+  const finished = {
+    status: "finished" as const,
+    finishedAt: "2026-11-10T08:00:00.000Z",
+    finishedBy: NOA,
+    closedAt: null,
+    closedBy: null,
+  };
+
+  it("gives whoever finished a list five minutes to take it back", () => {
+    expect(
+      undoDeadline(finished, NOA, new Date("2026-11-10T08:03:00.000Z")),
+    ).toBe("2026-11-10T08:05:00.000Z");
+    expect(
+      undoDeadline(finished, NOA, new Date("2026-11-10T08:05:00.000Z")),
+    ).toBeNull();
+    expect(
+      undoDeadline(finished, KITCHEN, new Date("2026-11-10T08:01:00.000Z")),
+    ).toBeNull();
+  });
+
+  it("reads a cancel the same way, and nothing for an open list", () => {
+    expect(
+      undoDeadline(
+        {
+          status: "cancelled",
+          finishedAt: null,
+          finishedBy: null,
+          closedAt: "2026-11-10T08:00:00.000Z",
+          closedBy: NOA,
+        },
+        NOA,
+        new Date("2026-11-10T08:01:00.000Z"),
+      ),
+    ).toBe("2026-11-10T08:05:00.000Z");
+    expect(
+      undoDeadline(
+        { ...finished, status: "open" },
+        NOA,
+        new Date("2026-11-10T08:01:00.000Z"),
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("anyItemResult and parseReading", () => {
+  it("takes each field in its bounds, or null to clear", () => {
+    expect(anyItemResult.parse({ checked: true, comment: " ok " })).toEqual({
+      checked: true,
+      comment: "ok",
+    });
+    expect(anyItemResult.parse(null)).toBeNull();
+    expect(anyItemResult.safeParse({ checked: false }).success).toBe(false);
+    expect(anyItemResult.safeParse({ reading: 100001 }).success).toBe(false);
+    expect(anyItemResult.safeParse({ other: 1 }).success).toBe(false);
+  });
+
+  it("reads a typed number, a comma or a minus sign in it", () => {
+    expect(parseReading("4.5")).toBe(4.5);
+    expect(parseReading(" 4,5 ")).toBe(4.5);
+    expect(parseReading("-18")).toBe(-18);
+    expect(parseReading("−18")).toBe(-18);
+    expect(parseReading("")).toBeNull();
+    expect(parseReading("abc")).toBeNull();
+    expect(parseReading("1e3")).toBeNull();
+    expect(parseReading("200000")).toBeNull();
   });
 });

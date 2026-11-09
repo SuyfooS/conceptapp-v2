@@ -1,7 +1,10 @@
 import { getBusinessSetup } from "@db/admin";
 import { getBusinessDetailsForTeam } from "@db/business-details";
+import { getDepartmentsForTeam } from "@db/departments";
 import { getBusinessModulesForTeam } from "@db/module-settings";
+import { enabledModules } from "@domain/modules";
 import { platformCan } from "@domain/platform";
+import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -10,6 +13,8 @@ import { currentPlatformRole } from "../../../../staff";
 import {
   saveBusinessSettingsAction,
   saveTeamBusinessDetailsAction,
+  saveTeamDepartmentMembersAction,
+  saveTeamDepartmentsAction,
   setBusinessModuleAction,
 } from "../actions";
 import { BusinessSettingsView } from "./business-settings-view";
@@ -33,6 +38,10 @@ export default async function BusinessSettingsPage({
     getBusinessDetailsForTeam(business.id),
   ]);
   if (!own) notFound();
+  // Departments while lists are on, as on the business's own /manage.
+  const departments = enabledModules(manifests, rows).includes("lists")
+    ? await getDepartmentsForTeam(business.id)
+    : null;
   return (
     <BusinessSettingsView
       name={business.name}
@@ -43,6 +52,19 @@ export default async function BusinessSettingsPage({
       modules={teamModuleSettings(rows)}
       save={saveBusinessSettingsAction.bind(null, business.id)}
       setEnabled={setBusinessModuleAction.bind(null, business.id)}
+      departments={
+        departments && departments !== "notYet"
+          ? {
+              list: departments.departments,
+              people: departments.people,
+              save: saveTeamDepartmentsAction.bind(null, business.id),
+              saveMembers: saveTeamDepartmentMembersAction.bind(
+                null,
+                business.id,
+              ),
+            }
+          : null
+      }
     />
   );
 }

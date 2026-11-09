@@ -323,7 +323,14 @@
     "scanCircle": "סריקה בעיגול",
     "scanCircleText": "לחיצה על העיגול הופכת אותו למצלמה באותו מקום, והשורה מתחתיו אומרת מה קורה.",
     "covers": "שמונה רקעים, כולם מצוירים בצבע של העסק, כך שכל צבע עובד בבהיר ובכהה. מתחת: הבחירה, כמו בפרופיל.",
-    "notificationsNew": "{count, plural, one {אחת חדשה} other {# חדשות}}"
+    "notificationsNew": "{count, plural, one {אחת חדשה} other {# חדשות}}",
+    "checklist": "פריט ברשימה",
+    "checklistCheck": "ניקוי משטחי עבודה",
+    "checklistNumber": "מקרר ראשי",
+    "checklistFreezer": "מקפיא",
+    "checklistNote": "מה חסר במטבח",
+    "checklistPhoto": "צילום של המטבח אחרי הניקיון",
+    "checklistWho": "נועה"
   },
   "shell": {
     "metaTitle": "דמו פריסה",
@@ -332,7 +339,8 @@
       "schedule": "סידור",
       "reservations": "הזמנות",
       "team": "צוות",
-      "more": "עוד"
+      "more": "עוד",
+      "lists": "רשימות"
     },
     "placeholderText": "בדמו הזה הוא רק מראה שהניווט עובד בכל גודל מסך.",
     "schedule": {
@@ -1536,10 +1544,65 @@
           },
           "profile": {
             "bioCleared": "מחיקת המשפט בפרופיל של {person}"
+          },
+          "departments": {
+            "change": "שינוי במחלקות",
+            "added": "{count, plural, one {נוספה מחלקה: {names}} other {נוספו מחלקות: {names}}}",
+            "removed": "{count, plural, one {הוסרה מחלקה: {names}} other {הוסרו מחלקות: {names}}}",
+            "renamed": "{from} נקראת עכשיו {to}",
+            "reordered": "סדר המחלקות השתנה",
+            "members": "שינוי באנשים של {department}",
+            "membersPlain": "שינוי באנשים של מחלקה",
+            "joined": "{count, plural, one {במחלקה עכשיו: {names}} other {במחלקה עכשיו: {names}}}",
+            "left": "{count, plural, one {כבר לא במחלקה: {names}} other {כבר לא במחלקה: {names}}}"
+          },
+          "lists": {
+            "templateCreate": "יצירת רשימה: {name}",
+            "templateSave": "שינוי ברשימה {name}",
+            "templateArchive": "הסרת הרשימה {name}",
+            "templateRestore": "החזרת הרשימה {name}",
+            "send": "שליחת הרשימה {name} {to}",
+            "to": {
+              "person": "ל{person}",
+              "department": "ל{name}",
+              "departmentUnknown": "למחלקה",
+              "shift": "לאנשי משמרת",
+              "role": "{role, select, owner {לבעלים} manager {למנהלים} other {לעובדים}}"
+            },
+            "finish": "סיום הרשימה {name}",
+            "finishLate": "סיום הרשימה {name}, באיחור",
+            "leftOptional": "{count, plural, one {פריט אחד שלא חובה נשאר ריק} other {# פריטים שלא חובה נשארו ריקים}}",
+            "cancel": "ביטול הרשימה {name}",
+            "reopen": "{was, select, cancelled {החזרת הרשימה {name} אחרי שבוטלה} other {פתיחה מחדש של הרשימה {name}}}"
           }
         }
       },
-      "ownerOnly": "לבעלים בלבד"
+      "ownerOnly": "לבעלים בלבד",
+      "departments": {
+        "title": "מחלקות",
+        "subtitle": "הקבוצות בעסק שאפשר לשלוח אליהן רשימה, כמו מטבח או קופה. אדם יכול להיות בכמה מחלקות.",
+        "listTitle": "המחלקות",
+        "rowEmpty": "עוד אין מחלקות",
+        "empty": "עוד אין מחלקות. מחלקה היא קבוצה של אנשים שאפשר לשלוח אליה רשימה, כמו מטבח או קופה. מוסיפים את הראשונה בשורה שלמטה.",
+        "emptyViewOnly": "עוד אין מחלקות.",
+        "nameOf": "שם המחלקה {name}",
+        "newName": "מחלקה חדשה",
+        "add": "הוספת מחלקה",
+        "remove": "הסרת {name}",
+        "removed": "המחלקה {name} הוסרה",
+        "taken": "כבר יש מחלקה בשם {name}.",
+        "people": "{count, plural, =0 {אין אנשים} one {אדם אחד} other {# אנשים}}",
+        "peopleOf": "מי ב{name}",
+        "peopleIn": "{count, plural, =0 {אין אנשים} one {אדם אחד} other {# אנשים}} ב{name}",
+        "inDepartment": "{name} ב{department}",
+        "noPeople": "עוד אין אנשים בעסק.",
+        "noName": "בלי שם",
+        "saving": "רגע, המחלקה נשמרת.",
+        "up": "הזזה למעלה",
+        "down": "הזזה למטה",
+        "close": "סגירה",
+        "hint": "רשימה שנשלחת למחלקה מגיעה לכל מי שבה, וכל אחד מהם יכול למלא אותה."
+      }
     },
     "me": {
       "metaTitle": "הפרופיל שלי",
@@ -1794,6 +1857,201 @@
             "title": "יש עדכון חדש ב-ConceptApp",
             "body": "פותחים את האפליקציה כדי לראות"
           }
+        }
+      }
+    },
+    "lists": {
+      "title": "רשימות",
+      "subtitle": "מה צריך לעשות עכשיו, ומה כבר נעשה היום",
+      "noName": "בלי שם",
+      "now": "עכשיו",
+      "closedToday": "{count, plural, =0 {נסגרו היום} one {רשימה אחת נסגרה היום} other {# רשימות נסגרו היום}}",
+      "noneOpen": "אין רשימות פתוחות בשבילך כרגע.",
+      "noneOpenBusiness": "אין רשימות פתוחות בעסק כרגע.",
+      "noneClosed": "עוד לא נסגרה היום אף רשימה.",
+      "sendOne": "שליחת {name}",
+      "empty": {
+        "title": "אין רשימות בשבילך כרגע",
+        "body": "כשמנהל ישלח רשימה, היא תופיע כאן ותגיע אליך התראה.",
+        "sender": "אפשר לשלוח רשימה לאדם, למחלקה או לתפקיד, והיא תגיע אליהם עם התראה.",
+        "businessTitle": "עוד לא נשלחו רשימות היום בעסק",
+        "businessBody": "בצפייה אפשר רק לקרוא. רשימות שיישלחו היום יופיעו כאן."
+      },
+      "viewOnly": {
+        "title": "בצפייה בתור עובד אין רשימות",
+        "body": "רשימות שייכות לאנשים שהן נשלחו אליהם. בצפייה בתור מנהל רואים את כל הרשימות של העסק."
+      },
+      "team": {
+        "title": "היום בעסק",
+        "none": "עוד לא נשלחו רשימות היום",
+        "counts": "{open, plural, =0 {אין פתוחות} one {אחת פתוחה} other {# פתוחות}} · {finished, plural, =0 {אף אחת לא נסגרה} one {אחת נסגרה} other {# נסגרו}}",
+        "late": "{count, plural, one {אחת באיחור} other {# באיחור}}"
+      },
+      "today": {
+        "title": "הרשימות שלך",
+        "business": "רשימות בעסק",
+        "all": "כל הרשימות",
+        "none": "אין רשימות בשבילך כרגע.",
+        "more": "{count, plural, one {ועוד רשימה אחת בלשונית רשימות} other {ועוד # רשימות בלשונית רשימות}}"
+      },
+      "columns": {
+        "list": "רשימה",
+        "for": "בשביל מי",
+        "from": "מי ביקש",
+        "opened": "נפתחה",
+        "due": "עד מתי",
+        "progress": "כמה נעשה",
+        "status": "מצב"
+      },
+      "card": {
+        "for": {
+          "you": "בשבילך",
+          "person": "ל{name}",
+          "people": "{count, plural, one {לאדם אחד} other {ל-# אנשים}}",
+          "shift": "{count, plural, one {לאדם אחד במשמרת} other {ל-# אנשים במשמרת}}",
+          "department": "ל{name}",
+          "role": "{role, select, owner {לבעלים} manager {למנהלים} other {לעובדים}}"
+        },
+        "to": {
+          "you": "לך",
+          "person": "ל{name}",
+          "people": "{count, plural, one {לאדם אחד} other {ל-# אנשים}}",
+          "shift": "{count, plural, one {לאדם אחד במשמרת} other {ל-# אנשים במשמרת}}",
+          "department": "ל{name}",
+          "role": "{role, select, owner {לבעלים} manager {למנהלים} other {לעובדים}}"
+        },
+        "aDepartment": "מחלקה",
+        "from": "ביקשו ב{name}",
+        "due": "עד <ltr>{time}</ltr>",
+        "dueOn": "עד <ltr>{date}, {time}</ltr>",
+        "late": "באיחור",
+        "lateDue": "באיחור · עד <ltr>{time}</ltr>",
+        "lateDueOn": "באיחור · עד <ltr>{date}, {time}</ltr>",
+        "open": "פתוחה",
+        "progress": "{done} מתוך {total}",
+        "finishedBy": "נסגרה ב-<ltr>{time}</ltr> על ידי {name}",
+        "finished": "נסגרה",
+        "missed": "לא נעשתה",
+        "cancelled": "בוטלה"
+      },
+      "list": {
+        "items": "מה יש ברשימה",
+        "progressLabel": "כמה כבר נעשה",
+        "note": "הערה",
+        "finish": "סיום הרשימה",
+        "leftRequired": "{count, plural, one {נשאר פריט חובה אחד} other {נשארו # פריטים חובה}}",
+        "readyToFinish": "הכול מוכן לסיום",
+        "finished": "הרשימה נסגרה",
+        "cancelled": "הרשימה בוטלה",
+        "reopen": "פתיחה מחדש",
+        "optional": "לא חובה",
+        "doneBy": "{name} · <ltr>{time}</ltr>",
+        "requested": "{count, plural, one {התבקש אחד} other {התבקשו #}}",
+        "readingOf": "קריאה: {label}",
+        "minus": "מינוס",
+        "range": {
+          "between": "בין <ltr>{range}</ltr>",
+          "atLeast": "לפחות <ltr>{range}</ltr>",
+          "atMost": "עד <ltr>{range}</ltr>"
+        },
+        "outOfRange": "מחוץ לטווח <ltr>{range}</ltr>",
+        "answerPlaceholder": "כותבים כאן",
+        "photoLater": "צילום יגיע בגרסה הבאה של האפליקציה",
+        "comment": {
+          "add": "הוספת הערה",
+          "edit": "שינוי ההערה",
+          "title": "הערה לפריט",
+          "label": "ההערה",
+          "save": "שמירת ההערה",
+          "close": "סגירה"
+        },
+        "readOnly": {
+          "missed": "הרשימה לא נעשתה בזמן.",
+          "cancelled": "הרשימה בוטלה.",
+          "elsewhere": "הרשימה נשלחה {to}, והיא מתעדכנת כאן.",
+          "viewOnly": "בצפייה אפשר רק לקרוא את הרשימה."
+        },
+        "details": {
+          "title": "פרטים",
+          "for": "בשביל מי",
+          "from": "מי ביקש",
+          "sent": "נשלחה",
+          "opened": "נפתחה",
+          "due": "עד מתי",
+          "sentBy": "על ידי {name}, ב-<ltr>{time}</ltr>",
+          "openedAt": "לפי הזמנים של הרשימה, ב-<ltr>{time}</ltr>"
+        },
+        "timeline": {
+          "title": "מה קרה ברשימה",
+          "sent": "נשלחה על ידי {name} {to}, ב-<ltr>{time}</ltr>",
+          "opened": "נפתחה לפי הזמנים שלה, ב-<ltr>{time}</ltr>",
+          "passed": "עברה ל{to} על ידי {name}, ב-<ltr>{time}</ltr>",
+          "finished": "נסגרה על ידי {name}, ב-<ltr>{time}</ltr>",
+          "cancelled": "בוטלה על ידי {name}, ב-<ltr>{time}</ltr>",
+          "missed": "לא נעשתה בזמן"
+        },
+        "readings": {
+          "title": "קריאות",
+          "item": "פריט",
+          "reading": "קריאה",
+          "range": "טווח",
+          "who": "מי",
+          "when": "מתי"
+        },
+        "failed": {
+          "noAccess": "הרשימה הזאת כבר לא בשבילך.",
+          "viewOnly": "בצפייה אי אפשר לשנות.",
+          "invalid": "זה לא נשמר: הערך לא מתאים.",
+          "changed": "הרשימה השתנתה במסך אחר. רעננו ונסו שוב.",
+          "finished": "הרשימה כבר נסגרה.",
+          "left": "יש עוד פריטים חובה לפני הסיום.",
+          "notYet": "הרשימות עוד לא מוכנות כאן. נסו שוב בעוד כמה דקות.",
+          "failed": "זה לא נשמר. בדקו את החיבור ונסו שוב."
+        }
+      },
+      "send": {
+        "action": "שליחת רשימה",
+        "title": "שליחת רשימה",
+        "subtitle": "בוחרים רשימה ולמי לשלוח אותה. היא מגיעה מיד, עם התראה.",
+        "back": "רשימות",
+        "which": "איזו רשימה",
+        "items": "{count, plural, one {פריט אחד} other {# פריטים}}",
+        "to": "למי",
+        "kinds": {
+          "person": "אדם",
+          "department": "מחלקה",
+          "role": "תפקיד"
+        },
+        "roles": {
+          "owner": "הבעלים",
+          "manager": "המנהלים",
+          "worker": "העובדים"
+        },
+        "fixedTo": "ההזמנה נשלחת ל{name}.",
+        "noDepartments": "לעסק עוד אין מחלקות. מוסיפים אותן בניהול, במחלקות.",
+        "noName": "בלי שם",
+        "note": "הערה",
+        "noteHint": "לא חובה. מופיעה בראש הרשימה.",
+        "choose": "בוחרים למי לשלוח",
+        "submit": {
+          "person": "שליחה ל{name}",
+          "department": "שליחה ל{name}",
+          "role": "{role, select, owner {שליחה לבעלים} manager {שליחה למנהלים} other {שליחה לעובדים}}"
+        },
+        "preview": "כך היא תגיע",
+        "sent": "הרשימה נשלחה {to}",
+        "cancelled": "השליחה בוטלה",
+        "cancelFailed": "לא הצלחנו לבטל את השליחה. נסו שוב.",
+        "started": "כבר התחילו למלא את הרשימה, אז השליחה נשארת.",
+        "failed": {
+          "noAccess": "את הרשימה הזאת אי אפשר לשלוח לשם.",
+          "viewOnly": "בצפייה אי אפשר לשלוח.",
+          "invalid": "אי אפשר לשלוח לשם. בחרו מישהו אחר ונסו שוב.",
+          "changed": "הרשימה השתנתה במסך אחר. רעננו ונסו שוב.",
+          "finished": "הרשימה הזאת הוסרה. בחרו רשימה אחרת.",
+          "left": "יש עוד מה למלא לפני השליחה.",
+          "notYet": "הרשימות עוד לא מוכנות כאן. נסו שוב בעוד כמה דקות.",
+          "failed": "הרשימה לא נשלחה. בדקו את החיבור ונסו שוב."
         }
       }
     }
@@ -2268,13 +2526,13 @@
         "title": "ניהול העסק",
         "body": "השם, הצבע והכתובת של העסק, התפקידים והמשמרות, והגדרות שמתאימות את האפליקציה בדיוק לעסק שלך. יומן פעולות מראה מי שינה מה, ומתי."
       },
+      "lists": {
+        "title": "רשימות",
+        "body": "מנהל שולח רשימה לאדם, למחלקה או לתפקיד, ומחלקה שולחת הזמנה עם כמויות. כל אחד רואה מה פתוח בשבילו, מסמן מהטלפון ומסיים."
+      },
       "soon": {
         "title": "בדרך לאפליקציה",
         "badge": "בקרוב",
-        "lists": {
-          "title": "רשימות",
-          "body": "מחלקה שולחת רשימה עם כמויות, והמחלקה שמקבלת מסמנת ומסיימת."
-        },
         "roles": {
           "title": "הרשאות לכל תפקיד",
           "body": "לכל תפקיד: מה הוא עורך, מה הוא רק רואה ומה מוסתר ממנו."
@@ -2370,6 +2628,17 @@
         "person3": "דנה אברהם",
         "action3": "דנה הוסיפה משמרת ערב",
         "when3": "אתמול"
+      },
+      "lists": {
+        "label": "רשימה באפליקציה, עם נתונים לדוגמה: סגירה בערב, שני פריטים סומנו ואחד עוד פתוח",
+        "title": "סגירה בערב",
+        "progress": "<ltr>2</ltr> מתוך <ltr>3</ltr>",
+        "optional": "לא חובה",
+        "item1": "ספירת הקופה",
+        "done1": "נועה · <ltr>21:42</ltr>",
+        "item2": "נעילת המחסן",
+        "done2": "איתי · <ltr>21:50</ltr>",
+        "item3": "כיבוי האורות והמזגן"
       }
     }
   },

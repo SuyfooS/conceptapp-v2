@@ -2,6 +2,7 @@ import { Ambient } from "@ui/ambient";
 import { Avatar, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Card } from "@ui/card";
+import { ChecklistItem } from "@ui/checklist-item";
 import { cn } from "@ui/cn";
 import { CoverageBar } from "@ui/coverage-bar";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -173,6 +174,43 @@ export async function ManageDemo() {
           />
         ))}
       </ListGroup>
+    </div>
+  );
+}
+
+const LIST_ITEMS = [
+  { n: "1", done: true },
+  { n: "2", done: true },
+  { n: "3", done: false },
+] as const;
+
+export async function ListsDemo() {
+  const t = await getTranslations("landing.demo.lists");
+  return (
+    <div
+      role="img"
+      aria-label={t("label")}
+      inert
+      className="flex flex-col gap-2 rounded-[28px] bg-bg p-2"
+    >
+      <div className="flex items-baseline justify-between gap-3 px-3 pt-2">
+        <p className="font-bold text-lg">{t("title")}</p>
+        <p className="text-base text-ink-2">{t.rich("progress", { ltr })}</p>
+      </div>
+      <Card padding="none" className="rounded-[22px]">
+        {LIST_ITEMS.map(({ n, done }) => (
+          <ChecklistItem
+            key={n}
+            kind="check"
+            readOnly
+            required
+            optionalLabel={t("optional")}
+            label={t(`item${n}`)}
+            done={done}
+            doneLine={done ? t.rich(`done${n}`, { ltr }) : undefined}
+          />
+        ))}
+      </Card>
     </div>
   );
 }

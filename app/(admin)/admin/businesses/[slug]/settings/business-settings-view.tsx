@@ -5,6 +5,13 @@ import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { useTranslations } from "next-intl";
 import { BusinessDetailsForm } from "@/app/(app)/manage/business-details-form";
+import {
+  type DepartmentPeople,
+  DepartmentsEditor,
+  type EditedDepartment,
+  type SaveDepartmentMembers,
+  type SaveDepartments,
+} from "@/app/(app)/manage/departments-editor";
 import { SettingsForm } from "@/app/(app)/manage/settings-form";
 import type {
   SaveSettings,
@@ -29,6 +36,7 @@ export function BusinessSettingsView({
   modules,
   save,
   setEnabled,
+  departments,
 }: {
   name: string;
   backHref: string;
@@ -44,9 +52,20 @@ export function BusinessSettingsView({
     module: ModuleKey,
     enabled: boolean,
   ) => Promise<ModuleSwitchResult>;
+  /**
+   * The business's departments, edited as its people edit them, while lists
+   * are on; null otherwise.
+   */
+  departments: {
+    list: EditedDepartment[];
+    people: DepartmentPeople;
+    save: SaveDepartments;
+    saveMembers: SaveDepartmentMembers;
+  } | null;
 }) {
   const t = useTranslations("admin.settings");
   const tm = useTranslations("modules");
+  const td = useTranslations("app.manage.departments");
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
@@ -64,6 +83,21 @@ export function BusinessSettingsView({
           nested
         />
       </PageSection>
+      {departments ? (
+        <section className="flex min-w-0 flex-col gap-3">
+          <div className="flex flex-col gap-0.5 px-1">
+            <h2 className="font-bold text-lg">{td("title")}</h2>
+            <p className="text-base text-ink-2">{td("subtitle")}</p>
+          </div>
+          <DepartmentsEditor
+            departments={departments.list}
+            people={departments.people}
+            disabled={false}
+            save={departments.save}
+            saveMembers={departments.saveMembers}
+          />
+        </section>
+      ) : null}
       {modules.map((module) => (
         <PageSection
           key={module.key}

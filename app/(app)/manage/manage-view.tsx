@@ -4,7 +4,14 @@ import { Badge } from "@ui/badge";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { Building2, History, SlidersHorizontal, Users } from "lucide-react";
+import {
+  Building2,
+  History,
+  Network,
+  SlidersHorizontal,
+  Users,
+} from "lucide-react";
+import { useFormatter } from "next-intl";
 import { moduleIcons } from "../module-icons";
 import { type AppWording, translator } from "../wording";
 
@@ -20,6 +27,7 @@ export function ManageView({
   home,
   team,
   shabbatCity,
+  departments,
   wording,
 }: {
   modules: ModuleKey[];
@@ -28,11 +36,14 @@ export function ManageView({
   team: string;
   /** Whether the details ask for a Shabbat city, and whether it's missing. */
   shabbatCity: "missing" | "chosen" | "notAsked";
+  /** The business's live departments' names, or null while lists are off. */
+  departments: readonly string[] | null;
   /** The business's words. */
   wording: AppWording;
 }) {
   const t = translator(wording, "app.manage");
   const tm = translator(wording, "modules");
+  const format = useFormatter();
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
@@ -58,6 +69,18 @@ export function ManageView({
             ) : undefined
           }
         />
+        {departments ? (
+          <ListRow
+            href={`${base}/manage/departments`}
+            leading={<Network />}
+            title={t("departments.title")}
+            subtitle={
+              departments.length > 0
+                ? format.list(departments, { type: "conjunction" })
+                : t("departments.rowEmpty")
+            }
+          />
+        ) : null}
         {modules.map((key) => {
           const nav = manifestFor(key).nav;
           return (

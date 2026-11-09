@@ -228,18 +228,13 @@ async function summaries(
 /** A window of time, as ISO instants: from, and up to but not including, to. */
 export type Window = { from: string; to: string };
 
-/**
- * The lists a person holds now (their people, their departments, their role):
- * every open one, and those that opened in the window and are closed. Not
- * every list they may read: a list manager reads them all.
- */
-export async function getMyLists(
+/** Every open list the person may read, and those closed that opened in the window. */
+async function openAndClosed(
+  supabase: Supabase,
   businessId: string,
-  person: { userId: string; role: Role },
   window: Window,
-): Promise<ListSummary[] | "notYet"> {
-  const supabase = await createClient();
-  const [open, closed, departments] = await Promise.all([
+) {
+  return Promise.all([
     supabase
       .from("lists")
       .select(LIST_COLUMNS)
@@ -255,6 +250,22 @@ export async function getMyLists(
       .gte("opens_at", window.from)
       .lt("opens_at", window.to)
       .order("opens_at", { ascending: false }),
+  ]);
+}
+
+/**
+ * The lists a person holds now (their people, their departments, their role):
+ * every open one, and those that opened in the window and are closed. Not
+ * every list they may read: a list manager reads them all.
+ */
+export async function getMyLists(
+  businessId: string,
+  person: { userId: string; role: Role },
+  window: Window,
+): Promise<ListSummary[] | "notYet"> {
+  const supabase = await createClient();
+  const [[open, closed], departments] = await Promise.all([
+    openAndClosed(supabase, businessId, window),
     supabase
       .from("department_members")
       .select("department_id")
@@ -277,6 +288,26 @@ export async function getMyLists(
     departments: (departments.data ?? []).map((row) => row.department_id),
   };
   return all.filter((list) => holdsList(list.holder, mine));
+}
+
+/**
+ * Every open list of the business and those closed that opened in the window,
+ * whoever holds them: what list managers and a view session read on Lists and
+ * Today. Under RLS, so anyone else gets only what they may read.
+ */
+export async function getBusinessLists(
+  businessId: string,
+  window: Window,
+): Promise<ListSummary[] | "notYet"> {
+  const supabase = await createClient();
+  const [open, closed] = await openAndClosed(supabase, businessId, window);
+  for (const { error } of [open, closed]) {
+    if (error) {
+      if (isMissingTable(error)) return "notYet";
+      throw error;
+    }
+  }
+  return summaries(supabase, [...(open.data ?? []), ...(closed.data ?? [])]);
 }
 
 /**
@@ -710,7 +741,11 @@ export async function setListItem(
     : refused("failed");
 }
 
-type ListChange = "finish_list" | "cancel_list" | "reopen_list";
+type ListChange =
+  | "finish_list"
+  | "cancel_list"
+  | "cancel_unstarted_list"
+  | "reopen_list";
 
 async function changeList(
   change: ListChange,
@@ -742,6 +777,20 @@ export function cancelList(
   at?: Date,
 ): Promise<ListWrite<null>> {
   return changeList("cancel_list", actorId, listId, at);
+}
+
+/**
+ * Takes back a list just sent: cancels it as `cancelList` does, only while
+ * nobody has started it ("finished" once someone has: an item done or
+ * commented). Checked under the list's lock, so a tick and the undo never
+ * cross (`public.cancel_unstarted_list`).
+ */
+export function cancelUnstartedList(
+  actorId: string,
+  listId: string,
+  at?: Date,
+): Promise<ListWrite<null>> {
+  return changeList("cancel_unstarted_list", actorId, listId, at);
 }
 
 /**

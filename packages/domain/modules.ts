@@ -206,6 +206,24 @@ export function canOpenModule(
 }
 
 /**
+ * Whether someone holds one of a module's permissions: owners hold them all,
+ * a role at or above the permission's `defaultRole` holds it, and so does
+ * anyone given its key (`memberships.perms`). A key the manifest doesn't
+ * declare is held by owners alone. The database's helpers say the same
+ * (`private.can_manage_lists` and its kind).
+ */
+export function holdsPermission(
+  manifest: ModuleManifest,
+  role: Role,
+  perms: readonly string[],
+  key: string,
+): boolean {
+  if (role === "owner" || perms.includes(key)) return true;
+  const permission = manifest.permissions.find((p) => p.key === key);
+  return permission !== undefined && atLeast(role, permission.defaultRole);
+}
+
+/**
  * Settings as stored, read leniently: fields that are missing or no longer
  * valid fall back to their defaults one by one, so a stale row never takes a
  * screen down. Writes use `validateModuleSettings` instead.

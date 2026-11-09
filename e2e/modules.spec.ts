@@ -4,8 +4,8 @@ import he from "../messages/he.json" with { type: "json" };
 import { signIn } from "./session";
 import { setDemoModule } from "./sms";
 
-// Seeded in supabase/seed.sql. The demo restaurant starts with the schedule and
-// the clock, the modules that are built; a test that needs another switches it
+// Seeded in supabase/seed.sql. The demo restaurant starts with the schedule,
+// the clock and lists, the modules that are built; a test that needs another switches it
 // on itself, as the ConceptApp team would from the console.
 // The worker here is not the one sign-in.spec.ts uses: the auth server
 // refuses a second code to the same number within its resend wait
@@ -54,6 +54,7 @@ test("the owner's navigation follows the business's modules", async ({
     he.app.nav.home,
     m.scheduling.name,
     m.time_clock.name,
+    m.lists.name,
   ]);
   const rows = page
     .getByRole("main")
@@ -68,6 +69,7 @@ test("the owner's navigation follows the business's modules", async ({
     he.app.nav.home,
     m.scheduling.name,
     m.time_clock.name,
+    m.lists.name,
     m.reservations.name,
   ]);
   // A module with nothing of its own to say yet keeps one row on Today.
@@ -102,6 +104,7 @@ test("the owner's navigation follows the business's modules", async ({
     he.app.nav.home,
     m.scheduling.name,
     m.time_clock.name,
+    m.lists.name,
   ]);
   await expect(rows).toHaveCount(1);
   await expect(rows.filter({ hasText: m.reservations.name })).toHaveCount(0);
@@ -120,7 +123,11 @@ test("switching scheduling off takes its part of Today with it", async ({
 
   await setDemoModule("scheduling", false);
   await page.goto("/home");
-  expect(await navItems(page)).toEqual([he.app.nav.home, m.time_clock.name]);
+  expect(await navItems(page)).toEqual([
+    he.app.nav.home,
+    m.time_clock.name,
+    m.lists.name,
+  ]);
   await expect(hero).toHaveCount(0);
   await expect(scheduling).toHaveCount(0);
   await expect(page.getByText(h.who.title)).toHaveCount(0);
@@ -148,6 +155,7 @@ test("a worker does not see manager-only modules", async ({ page }) => {
     he.app.nav.home,
     m.scheduling.name,
     m.time_clock.name,
+    m.lists.name,
   ]);
   await expectUnavailable(page, "/storefront");
 });

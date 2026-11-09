@@ -2,6 +2,7 @@
 
 import { getPlatformStaff } from "@db/admin";
 import { setBusinessDetails } from "@db/business-details";
+import { setDepartmentMembers, setDepartments } from "@db/departments";
 import {
   activeElsewhere,
   inviteFromConsole,
@@ -15,6 +16,7 @@ import {
 import { startViewing } from "@db/view-as";
 import { getTemplateSentence, setBusinessWording } from "@db/wording";
 import { checkBusinessDetailsChange } from "@domain/business-details";
+import { departments as departmentsSchema } from "@domain/departments";
 import { inviteLink } from "@domain/invites";
 import {
   enabledModules,
@@ -36,6 +38,7 @@ import {
 import { manifestFor, manifests } from "@modules/registry";
 import { refresh, revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
+import { z } from "zod";
 import type { SettingsResult } from "@/app/(app)/manage/settings-types";
 import type { InviteState } from "@/app/(app)/team/actions";
 import { requestOrigin } from "@/app/origin";
@@ -205,6 +208,57 @@ export async function saveTeamBusinessDetailsAction(
     failure:
       result.code === "22023" || result.code === "23514" ? "invalid" : "failed",
   };
+}
+
+/**
+ * Someone on the team saves a business's departments, as they set it up. The
+ * database checks they are on the team (`private.can_edit_settings`).
+ */
+export async function saveTeamDepartmentsAction(
+  businessId: string,
+  departments: unknown,
+): Promise<SettingsResult> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const parsed = departmentsSchema.safeParse(departments);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const result = await setDepartments(staff.userId, businessId, parsed.data);
+  refresh();
+  return teamResult(result);
+}
+
+/** Someone on the team puts a business's people in a department. */
+export async function saveTeamDepartmentMembersAction(
+  businessId: string,
+  department: unknown,
+  members: unknown,
+): Promise<SettingsResult> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const id = z.uuid().safeParse(department);
+  const people = z.array(z.uuid()).max(500).safeParse(members);
+  if (!id.success || !people.success) return { ok: false, failure: "invalid" };
+  const result = await setDepartmentMembers(
+    staff.userId,
+    businessId,
+    id.data,
+    people.data,
+  );
+  refresh();
+  return teamResult(result);
+}
+
+function teamResult(result: { ok: true } | { ok: false; code?: string }) {
+  if (result.ok) return { ok: true } as const;
+  return {
+    ok: false,
+    failure:
+      result.code === "22023" || result.code === "23514" ? "invalid" : "failed",
+  } as const;
 }
 
 /**

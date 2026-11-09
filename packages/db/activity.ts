@@ -6,6 +6,7 @@ import {
   activityRefs,
   ROUTINE_ACTIONS,
 } from "@domain/activity";
+import { isMissingTable } from "./notifications";
 import { createClient } from "./supabase/server";
 
 export type ActivityPage = {
@@ -78,7 +79,7 @@ export async function getBusinessActivity(
     shifts.add(swap.shift_id);
   }
 
-  const [members, shiftRows] = await Promise.all([
+  const [members, shiftRows, departments] = await Promise.all([
     people.size
       ? supabase
           .from("memberships")
@@ -93,9 +94,21 @@ export async function getBusinessActivity(
           .eq("business_id", businessId)
           .in("id", [...shifts])
       : null,
+    // Removed ones too: an old line keeps the name it had.
+    refs.departments.length
+      ? supabase
+          .from("departments")
+          .select("id, name")
+          .eq("business_id", businessId)
+          .in("id", refs.departments)
+      : null,
   ]);
   if (members?.error) throw members.error;
   if (shiftRows?.error) throw shiftRows.error;
+  // Before the lists migration reaches a project there are no departments.
+  if (departments?.error && !isMissingTable(departments.error)) {
+    throw departments.error;
+  }
 
   return {
     rows,
@@ -126,6 +139,9 @@ export async function getBusinessActivity(
             end: row.ends_at.slice(0, 5),
           },
         ]),
+      ),
+      departments: new Map(
+        (departments?.data ?? []).map((row) => [row.id, row.name]),
       ),
       swaps: new Map(
         (swaps?.data ?? []).map((row) => [

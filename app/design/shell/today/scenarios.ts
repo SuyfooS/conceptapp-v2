@@ -18,6 +18,7 @@ import {
   teamMembers,
   teamToday,
 } from "../data";
+import { demoListsHome, demoWorkerLists } from "../lists/data";
 import { demoUnread } from "../notifications/data";
 import { demoWeek } from "../schedule/availability/week";
 import { demoPublished, demoRequest } from "../schedule/shifts/published";
@@ -28,7 +29,7 @@ const NOW = "2026-11-03T06:12:00.000Z";
 const NEXT_WEEK = addDays(demoWeek.start, 7);
 
 /** The modules in the demo's navigation. */
-const DEMO_MODULES: ModuleKey[] = ["scheduling", "reservations"];
+const DEMO_MODULES: ModuleKey[] = ["scheduling", "lists"];
 
 // This morning's shift, added to the demo's published week.
 const THIS_MORNING: ShiftAssignee[] = [
@@ -172,6 +173,8 @@ function today(
     // counts what it shows. A worker's lines would be other ones, so the
     // demo's workers have no bell.
     bell: role === "worker" ? null : { unread: demoUnread.length },
+    // Shiran's lists for the managers, Noa's for the workers.
+    lists: role === "worker" ? demoWorkerLists() : demoListsHome(),
   };
 }
 

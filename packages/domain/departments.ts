@@ -68,3 +68,21 @@ export type Department = {
   archivedAt: string | null;
   members: string[];
 };
+
+/**
+ * The ids of the departments a person is in. `live` leaves the removed ones
+ * out: what they may send from and to. Without it removed ones count too, as
+ * in `private.holds_list`: a list a removed department already holds stays
+ * with its people, so it is never left with nobody to fill it.
+ */
+export function departmentsOf(
+  all: readonly Pick<Department, "id" | "archivedAt" | "members">[],
+  userId: string,
+  { live }: { live: boolean },
+): string[] {
+  return all
+    .filter(
+      (d) => d.members.includes(userId) && (!live || d.archivedAt === null),
+    )
+    .map((d) => d.id);
+}

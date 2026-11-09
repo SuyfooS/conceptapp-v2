@@ -14,10 +14,16 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import { CONTACT_EMAIL, mailHref } from "./contact";
-import { ClockDemo, ManageDemo, ScheduleDemo, TodayDemo } from "./demo-screens";
+import {
+  ClockDemo,
+  ListsDemo,
+  ManageDemo,
+  ScheduleDemo,
+  TodayDemo,
+} from "./demo-screens";
 
 const QUESTIONS = ["closing", "swap", "atWork", "hours", "forgot"] as const;
-const SOON = ["lists", "roles"] as const;
+const SOON = ["roles"] as const;
 const WORDS = [
   "restaurant",
   "carpentry",
@@ -149,8 +155,18 @@ export default async function LandingPage() {
               <ManageDemo />
             </DeckCard>
             <DeckCard index={3} className="flex flex-col gap-5 xl:col-span-7">
+              <FeatureText
+                title={t("features.lists.title")}
+                body={t("features.lists.body")}
+              />
+              <ListsDemo />
+            </DeckCard>
+            <DeckCard
+              index={4}
+              className="flex flex-col gap-5 md:col-span-2 xl:col-span-12"
+            >
               <h3 className="font-bold text-2xl">{t("features.soon.title")}</h3>
-              <ul className="grid gap-5 xl:grid-cols-2 xl:gap-8">
+              <ul className="grid gap-5">
                 {SOON.map((key) => (
                   <li key={key} className="flex flex-col items-start gap-1.5">
                     <div className="flex flex-wrap items-center gap-2">

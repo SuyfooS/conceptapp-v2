@@ -1,12 +1,6 @@
 import { needsAction } from "@domain/notifications";
 import type { NavItem } from "@ui/app-shell";
-import {
-  CalendarDays,
-  House,
-  Menu,
-  Users,
-  UtensilsCrossed,
-} from "lucide-react";
+import { CalendarDays, House, ListChecks, Menu, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
@@ -41,9 +35,9 @@ export default function ShellDemoLayout({
       count: totalOpenSlots,
     },
     {
-      href: "/design/shell/reservations",
-      label: t("reservations"),
-      icon: <UtensilsCrossed />,
+      href: "/design/shell/lists",
+      label: t("lists"),
+      icon: <ListChecks />,
     },
     { href: "/design/shell/team", label: t("team"), icon: <Users /> },
     { href: "/design/shell/more", label: t("more"), icon: <Menu /> },

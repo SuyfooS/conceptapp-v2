@@ -14,6 +14,8 @@ const TONES = {
     track: "stroke-qr-ink/10",
     fill: "stroke-[var(--accent-light,var(--accent))]",
   },
+  /** On the hero, which is the accent: the accent's readable ink on a faint track. */
+  hero: { track: "stroke-accent-ink/25", fill: "stroke-accent-ink" },
 } as const;
 
 /**
@@ -28,7 +30,7 @@ export function ProgressRing({
 }: {
   value: number;
   max: number;
-  /** What it sits on: the app's surfaces, or the QR's white paper. */
+  /** What it sits on: the app's surfaces, the QR's white paper, or the hero. */
   tone?: keyof typeof TONES;
   className?: string;
 }) {

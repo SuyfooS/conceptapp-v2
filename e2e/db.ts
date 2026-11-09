@@ -873,3 +873,64 @@ export async function resetDemoShop(): Promise<void> {
   await sql`select public.reset_demo_business(
     '00000000-0000-4000-b000-000000000002')`;
 }
+
+/**
+ * The demo restaurant's lists as its reset leaves them: every list gone with
+ * its lines, and the two example lists sent again by the manager (the
+ * kitchen's opening list to Noa with two checks done, the floor's to the
+ * floor), through the same function the reset ends with.
+ */
+export async function resetDemoLists(): Promise<void> {
+  await sql`delete from public.lists where business_id = ${DEMO_RESTAURANT}`;
+  await sql`delete from public.notifications
+    where business_id = ${DEMO_RESTAURANT} and kind like 'lists.%'`;
+  await sql`select private.seed_demo_lists(${DEMO_RESTAURANT})`;
+}
+
+export type DemoList = {
+  id: string;
+  name: string;
+  status: string;
+  done: number;
+  total: number;
+};
+
+/** The demo restaurant's lists by name, newest first. */
+export async function demoLists(name: string): Promise<DemoList[]> {
+  return await sql<DemoList[]>`
+    select l.id, l.name, l.status,
+      (select count(*)::int from public.list_items i where i.list_id = l.id and i.done) as done,
+      (select count(*)::int from public.list_items i where i.list_id = l.id) as total
+    from public.lists l
+    where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+    order by l.created_at desc`;
+}
+
+/** Who is in a demo restaurant department, by its name: their phones. */
+export async function demoDepartmentPhones(name: string): Promise<string[]> {
+  const rows = await sql<{ phone: string }[]>`
+    select '+' || ltrim(p.phone, '+') as phone
+    from public.department_members dm
+    join public.departments d on d.id = dm.department_id
+    join public.profiles p on p.id = dm.user_id
+    where d.business_id = ${DEMO_RESTAURANT} and d.name = ${name}
+      and d.archived_at is null
+    order by p.phone`;
+  return rows.map((row) => row.phone);
+}
+
+/** The demo restaurant's live departments, in order. */
+export async function demoDepartmentNames(): Promise<string[]> {
+  const rows = await sql<{ name: string }[]>`
+    select name from public.departments
+    where business_id = ${DEMO_RESTAURANT} and archived_at is null
+    order by position, key`;
+  return rows.map((row) => row.name);
+}
+
+/** Removes a department a test added (archived, as the screen removes them). */
+export async function archiveDemoDepartment(name: string): Promise<void> {
+  await sql`update public.departments set archived_at = now()
+    where business_id = ${DEMO_RESTAURANT} and name = ${name}
+      and archived_at is null`;
+}

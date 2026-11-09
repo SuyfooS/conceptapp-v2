@@ -4,6 +4,14 @@ import { BusinessSettingsView } from "../../../../../(admin)/admin/businesses/[s
 import { teamModuleSettings } from "../../../../../(admin)/admin/businesses/[slug]/settings/module-settings";
 import { shabbatByCity } from "../../../../../(app)/manage/shabbat-by-city";
 import { demoModuleRows, demoNow } from "../../../../shell/data";
+import {
+  demoSaveDepartmentMembers,
+  demoSaveDepartments,
+} from "../../../../shell/lists/actions";
+import {
+  demoDepartmentPeople,
+  demoDepartments,
+} from "../../../../shell/lists/data";
 import { demoSaveBusinessDetails } from "../../../../shell/manage/actions";
 import {
   demoSaveBusinessSettings,
@@ -39,6 +47,12 @@ export default async function ConsoleSettingsDemo({
       modules={teamModuleSettings(demoModuleRows)}
       save={demoSaveBusinessSettings}
       setEnabled={demoSetBusinessModule}
+      departments={{
+        list: demoDepartments,
+        people: demoDepartmentPeople,
+        save: demoSaveDepartments,
+        saveMembers: demoSaveDepartmentMembers,
+      }}
     />
   );
 }
