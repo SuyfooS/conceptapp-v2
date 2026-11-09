@@ -18,6 +18,7 @@ import {
   type AppT,
   assigneePeople,
   firstNames,
+  formOf,
   ltr,
   nameOf,
   positionName,
@@ -189,6 +190,7 @@ export function ShiftCard({
                 {request.status === "taken"
                   ? t("shifts.swap.taken", {
                       name: nameOf(t, data, request.takenBy),
+                      form: formOf(data, request.takenBy),
                     })
                   : t("shifts.swap.open")}
               </p>
@@ -218,6 +220,7 @@ export function ShiftCard({
               ? t("shifts.swap.offers.takenByYou")
               : t("shifts.swap.offers.from", {
                   name: nameOf(t, data, offer.swap.requestedBy),
+                  form: formOf(data, offer.swap.requestedBy),
                 })}
           </p>
           {offer.state === "busy" ? (
@@ -332,6 +335,7 @@ export function MyShiftHero({
               {request.status === "taken"
                 ? t("shifts.swap.taken", {
                     name: nameOf(t, data, request.takenBy),
+                    form: formOf(data, request.takenBy),
                   })
                 : t("shifts.swap.open")}
             </p>

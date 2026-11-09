@@ -13,6 +13,7 @@ export default function ShellTeam() {
       team={buildTeam(teamMembers, teamInvites, teamToday)}
       viewerRole="owner"
       inviteHref="/design/shell/team/invite"
+      peopleHref="/design/shell/team"
       resend={demoResendAction}
       wording={baseWording}
     />

@@ -1,28 +1,65 @@
 "use client";
 
+import { avatarHue, firstNameOf } from "@domain/people";
+import {
+  type AddressForm,
+  type CoverPreset,
+  normalizeBio,
+  type ProfileChange,
+  type ProfileSaveResult,
+} from "@domain/profile";
 import type { PhotoSaveResult } from "@domain/profile-photos";
 import { Avatar } from "@ui/avatar";
 import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Button } from "@ui/button";
 import { IconButton } from "@ui/icon-button";
-import { ListGroup, ListRow } from "@ui/list-row";
+import { ListGroup, ListRow, type ListRowProps } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { ProfileCover } from "@ui/profile-cover";
 import { StatusToast } from "@ui/status-toast";
 import { VisibilityNote } from "@ui/visibility-note";
-import { Camera, ChevronRight, ImageIcon, LogOut } from "lucide-react";
-import Link from "next/link";
+import {
+  Camera,
+  ImageIcon,
+  LogOut,
+  Palette,
+  PenLine,
+  Speech,
+} from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { UndoRow } from "../manage/undo-row";
+import {
+  BioSheet,
+  CoverSheet,
+  FormSheet,
+  failureKey,
+  settle,
+  WhyDetails,
+} from "./about-sheets";
+import { ProfileFrame, profileAvatarRing } from "./profile-frame";
 
 /** Why the person can't change their photo here, if they can't. */
 export type PhotoLock = "demo" | "viewOnly" | "notYet";
+
+/** Why none of the rows about the person can change here, if they can't. */
+export type AboutLock = "viewOnly" | "notYet";
+
+/** What the person's colleagues read about them besides the photo. */
+export type MeAbout = {
+  bio: string | null;
+  cover: CoverPreset;
+  addressForm: AddressForm | null;
+  locked: AboutLock | null;
+  /** In a demo business that keeps its people: a cover and a form, no line. */
+  demo: boolean;
+};
 
 /** The server actions the profile calls, or the demo's stand-ins. */
 export type MeActions = {
   setPhoto: (form: FormData) => Promise<PhotoSaveResult>;
   removePhoto: () => Promise<PhotoSaveResult>;
+  saveProfile: (change: ProfileChange) => Promise<ProfileSaveResult>;
 };
 
 const EXTENSIONS: Record<string, string> = {
@@ -37,22 +74,52 @@ function photoForm(photo: Blob): FormData {
   return form;
 }
 
+/**
+ * What the server sends, which an answer may change on the spot until the
+ * server sends something new.
+ */
+function useServerValue<T>(server: T): [T, (next: T) => void] {
+  const [shown, setShown] = useState(server);
+  const [seen, setSeen] = useState(server);
+  if (!Object.is(server, seen)) {
+    setSeen(server);
+    setShown(server);
+  }
+  return [shown, setShown];
+}
+
+/** A row of "עליי": it opens its sheet, or says why it can't. */
+function AboutRow({
+  onOpen,
+  ...row
+}: Pick<ListRowProps, "title" | "subtitle" | "leading" | "trailing"> & {
+  onOpen: (() => void) | null;
+}) {
+  return onOpen ? <ListRow {...row} onClick={onOpen} /> : <ListRow {...row} />;
+}
+
 type Toast = { message: string; stamp: string };
+type Open = "photo" | "bio" | "cover" | "form" | null;
+/** What was just removed, kept to bring back until the next change. */
+type Undo =
+  | { kind: "photo"; bytes: Blob; failed: boolean }
+  | { kind: "bio"; text: string; failed: boolean };
 
 /**
  * The profile screen as it changes: the cover, the photo with its camera
- * button, the name, the rows about the person and the way out. One render
- * that changes shape, so the photo sheet exists once. Phone: the cover runs
- * to the edges, the photo overlaps it, everything under it. Tablet and
- * desktop: an identity card that stays in view on the start side, the rows
- * on the end side. After a removal it keeps the photo's bytes and offers them
- * back until the next change, or until the person leaves.
+ * button, the name, the line about the person, the rows about them and the
+ * way out. One render that changes shape, so each sheet exists once (the
+ * shape is ProfileFrame's). After a removal, of the photo or the line, it
+ * keeps what was removed and offers it back until the next change, or until
+ * the person leaves.
  */
 export function ProfileEditor({
   name,
   photo,
   subtitle,
   locked,
+  about,
+  businessName,
   home,
   actions,
   signOut,
@@ -62,6 +129,9 @@ export function ProfileEditor({
   /** "עובד/ת · בצוות מאז נובמבר 2026". */
   subtitle: string;
   locked: PhotoLock | null;
+  about: MeAbout;
+  /** Whose colour the covers are drawn in. */
+  businessName: string;
   /** Where "back" leads: Today, or the demo's. */
   home: string;
   actions: MeActions;
@@ -69,178 +139,300 @@ export function ProfileEditor({
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
-  const [open, setOpen] = useState(false);
-  // What the screen shows now: the server's photo, until an answer says
-  // otherwise, and again whenever the server sends a new one.
-  const [shown, setShown] = useState(photo);
-  const [seen, setSeen] = useState(photo);
-  if (photo !== seen) {
-    setSeen(photo);
-    setShown(photo);
-  }
-  const [kept, setKept] = useState<Blob | null>(null);
-  // The last undo didn't reach the server: the bytes are still here to retry.
-  const [undoFailed, setUndoFailed] = useState(false);
-  const [toast, setToast] = useState<Toast | null>(null);
+  const tc = useTranslations("ui.profileCover");
+  const [open, setOpen] = useState<Open>(null);
+  const [shown, setShown] = useServerValue(photo);
+  const [bio, setBio] = useServerValue(about.bio);
+  const [cover, setCover] = useServerValue(about.cover);
+  const [form, setForm] = useServerValue(about.addressForm);
+  // The cover picked in its sheet, shown on the page before it is saved.
+  const [coverDraft, setCoverDraft] = useState<CoverPreset | null>(null);
+  const [undo, setUndo] = useState<Undo | null>(null);
   const [undoing, setUndoing] = useState(false);
+  const [toast, setToast] = useState<Toast | null>(null);
+  const hue = avatarHue(name);
 
   const say = (message: string) =>
     setToast({ message, stamp: Date.now().toString() });
+  const sheet = (which: Exclude<Open, null>) => (next: boolean) => {
+    setOpen(next ? which : null);
+    if (which === "cover") setCoverDraft(next ? cover : null);
+  };
 
-  function keep(bytes: Blob | null) {
-    setKept(bytes);
-    setUndoFailed(false);
-  }
-
-  async function save(blob: Blob): Promise<PhotoSaveResult> {
+  // The photo ------------------------------------------------------------
+  async function savePhoto(blob: Blob): Promise<PhotoSaveResult> {
     const result = await actions.setPhoto(photoForm(blob));
     if (result.ok) {
       setShown(result.photo);
-      keep(null);
+      setUndo(null);
       say(tp("saved"));
     }
     return result;
   }
 
-  async function remove(bytes: Blob): Promise<PhotoSaveResult> {
+  async function removePhoto(bytes: Blob): Promise<PhotoSaveResult> {
     const result = await actions.removePhoto();
     if (result.ok) {
       setShown(null);
-      keep(bytes);
+      setUndo({ kind: "photo", bytes, failed: false });
     }
     return result;
   }
 
-  async function undo() {
-    if (!kept || undoing) return;
+  // The line, the cover and the form of address --------------------------
+  const save = (change: ProfileChange) => settle(actions.saveProfile(change));
+
+  async function saveBio(text: string): Promise<ProfileSaveResult> {
+    const result = await save({ bio: text });
+    if (result.ok) {
+      setBio(normalizeBio(text) || null);
+      setUndo(null);
+      say(t("me.bio.saved"));
+    }
+    return result;
+  }
+
+  async function removeBio(): Promise<ProfileSaveResult> {
+    const old = bio;
+    const result = await save({ bio: null });
+    if (result.ok) {
+      setBio(null);
+      setUndo(old ? { kind: "bio", text: old, failed: false } : null);
+    }
+    return result;
+  }
+
+  async function saveCover(preset: CoverPreset): Promise<ProfileSaveResult> {
+    const result = await save({ cover: preset });
+    if (result.ok) {
+      setCover(preset);
+      say(t("me.cover.saved"));
+    }
+    return result;
+  }
+
+  async function saveForm(next: AddressForm): Promise<ProfileSaveResult> {
+    const result = await save({ addressForm: next });
+    if (result.ok) {
+      setForm(next);
+      say(t("me.form.saved"));
+    }
+    return result;
+  }
+
+  async function bringBack() {
+    if (!undo || undoing) return;
     setUndoing(true);
-    const result = await actions
-      .setPhoto(photoForm(kept))
-      .catch(() => ({ ok: false, failure: "failed" }) as const);
+    if (undo.kind === "photo") {
+      const result = await actions
+        .setPhoto(photoForm(undo.bytes))
+        .catch(() => ({ ok: false, failure: "failed" }) as const);
+      setUndoing(false);
+      if (result.ok) {
+        setShown(result.photo);
+        setUndo(null);
+        say(tp("saved"));
+      } else if (result.failure === "failed") {
+        // It didn't get there: the row stays, saying so, and "ביטול" tries again.
+        setUndo({ ...undo, failed: true });
+      } else {
+        // Refused for good: nothing left to try, so the row goes and says why.
+        setUndo(null);
+        say(t("me.photo.gone"));
+      }
+      return;
+    }
+    const result = await save({ bio: undo.text });
     setUndoing(false);
     if (result.ok) {
-      setShown(result.photo);
-      keep(null);
-      say(tp("saved"));
+      setBio(undo.text);
+      setUndo(null);
+      say(t("me.bio.saved"));
     } else if (result.failure === "failed") {
-      // It didn't get there: the row stays, saying so, and "ביטול" tries again.
-      setUndoFailed(true);
+      setUndo({ ...undo, failed: true });
     } else {
-      // Refused for good: nothing left to try, so the row goes and says why.
-      keep(null);
-      say(t("me.photo.gone"));
+      setUndo(null);
+      say(t(`me.failures.${failureKey(result.failure)}`));
     }
   }
 
-  const lockedLine = locked ? t(`me.photo.${locked}`) : null;
+  const undoMessage = !undo
+    ? null
+    : undo.kind === "photo"
+      ? t(undo.failed ? "me.photo.undoFailed" : "me.photo.removed")
+      : t(undo.failed ? "me.bio.undoFailed" : "me.bio.removed");
+
+  // What can change here ------------------------------------------------
+  const photoLine = locked ? t(`me.photo.${locked}`) : null;
   const cameraLabel = shown ? tp("change") : tp("add");
+  const aboutLine = about.locked ? t(`me.${about.locked}`) : null;
+  const canWriteBio = !about.locked && !about.demo;
+  const canChoose = !about.locked;
+  const shownCover = coverDraft ?? cover;
+  const coverName = tc(`presets.${cover}`);
 
   return (
     <PageBody className="max-w-5xl">
-      <div className="grid gap-6 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:items-start md:gap-8 xl:grid-cols-[minmax(0,4fr)_minmax(0,6fr)]">
-        {/* Who: the cover, the photo over it, the name and the line. */}
-        <section
-          aria-label={name}
-          className="min-w-0 md:sticky md:top-8 md:overflow-hidden md:rounded-card md:bg-surface md:pb-5 md:shadow-card"
-        >
-          <ProfileCover className="-mx-4 -mt-[calc(env(safe-area-inset-top)+1.25rem)] h-[calc(env(safe-area-inset-top)+150px)] rounded-b-sheet md:mx-0 md:mt-0 md:h-[140px] md:rounded-none xl:h-40">
-            <Link
-              href={home}
-              className="pressable absolute start-3 top-[calc(env(safe-area-inset-top)+0.75rem)] flex min-h-11 items-center gap-0.5 rounded-full bg-accent-press ps-2 pe-4 font-semibold text-accent-ink text-base focus-visible:outline-2 focus-visible:outline-accent-ink md:top-3"
-            >
-              <ChevronRight
-                aria-hidden="true"
-                className="size-5 ltr:-scale-x-100"
+      <ProfileFrame
+        label={name}
+        cover={shownCover}
+        hue={hue}
+        back={{ href: home, label: t("nav.home") }}
+        avatar={
+          <>
+            <Avatar
+              name={name}
+              photo={shown}
+              size="xl"
+              className={profileAvatarRing}
+            />
+            {locked ? null : (
+              <IconButton
+                label={cameraLabel}
+                aria-haspopup="dialog"
+                onClick={() => setOpen("photo")}
+                className="absolute -end-2.5 -bottom-1.5 hover:bg-transparent active:bg-transparent"
+                icon={
+                  <span className="grid size-[34px] place-items-center rounded-full bg-surface text-ink shadow-[0_0_0_3px_var(--bg),var(--card-shadow)] md:shadow-[0_0_0_3px_var(--surface),var(--card-shadow)]">
+                    <Camera aria-hidden="true" />
+                  </span>
+                }
               />
-              {t("nav.home")}
-            </Link>
-          </ProfileCover>
-          <div className="relative -mt-12 ps-1 md:px-5">
-            <div className="relative size-24">
-              <Avatar
-                name={name}
-                photo={shown}
-                size="xl"
-                className="shadow-[0_0_0_4px_var(--bg),var(--float-shadow)] md:shadow-[0_0_0_4px_var(--surface),var(--float-shadow)]"
-              />
-              {locked ? null : (
-                <IconButton
-                  label={cameraLabel}
-                  aria-haspopup="dialog"
-                  onClick={() => setOpen(true)}
-                  className="absolute -end-2.5 -bottom-1.5 hover:bg-transparent active:bg-transparent"
-                  icon={
-                    <span className="grid size-[34px] place-items-center rounded-full bg-surface text-ink shadow-[0_0_0_3px_var(--bg),var(--card-shadow)] md:shadow-[0_0_0_3px_var(--surface),var(--card-shadow)]">
-                      <Camera aria-hidden="true" />
-                    </span>
-                  }
+            )}
+          </>
+        }
+        identity={
+          <>
+            <PageHeader title={name} subtitle={subtitle} />
+            {bio ? (
+              <p className="-mt-1 text-pretty text-md">{bio}</p>
+            ) : canWriteBio ? (
+              <button
+                type="button"
+                aria-haspopup="dialog"
+                onClick={() => setOpen("bio")}
+                className="pressable -mt-2 flex min-h-11 items-center self-start rounded-full text-start text-ink-2 text-md focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                {t("me.bio.empty")}
+              </button>
+            ) : null}
+            {undo && undoMessage ? (
+              <div className="mt-1">
+                <UndoRow
+                  message={undoMessage}
+                  onUndo={bringBack}
+                  pending={undoing}
                 />
-              )}
-            </div>
-            <div className="mt-3">
-              <PageHeader title={name} subtitle={subtitle} />
-            </div>
+              </div>
+            ) : null}
+          </>
+        }
+      >
+        <PageSection title={t("me.about.title")}>
+          <div className="-mt-1 flex flex-col gap-1 px-1">
+            <VisibilityNote>{t("me.about.visible")}</VisibilityNote>
+            <WhyDetails summary={t("me.about.why")}>
+              {t("me.about.notice")}
+            </WhyDetails>
           </div>
-          {kept ? (
-            <div className="mt-4 md:px-5">
-              <UndoRow
-                message={t(
-                  undoFailed ? "me.photo.undoFailed" : "me.photo.removed",
-                )}
-                onUndo={undo}
-                pending={undoing}
-              />
-            </div>
-          ) : null}
-        </section>
-
-        <div className="flex min-w-0 flex-col gap-6">
-          <PageSection title={t("me.about.title")}>
-            <VisibilityNote className="-mt-1 px-1">
-              {t("me.about.visible")}
-            </VisibilityNote>
-            <ListGroup>
-              {locked ? (
-                <ListRow
-                  leading={<ImageIcon />}
-                  title={t("me.photo.row")}
-                  subtitle={lockedLine}
-                  trailing={<Avatar name={name} photo={shown} size="sm" />}
+          <ListGroup>
+            <AboutRow
+              leading={<ImageIcon />}
+              title={t("me.photo.row")}
+              subtitle={photoLine ?? t("me.photo.rowHint")}
+              trailing={<Avatar name={name} photo={shown} size="sm" />}
+              onOpen={locked ? null : () => setOpen("photo")}
+            />
+            <AboutRow
+              leading={<PenLine />}
+              title={t("me.bio.row")}
+              subtitle={
+                aboutLine ??
+                (about.demo ? t("me.bio.demo") : t("me.bio.rowHint"))
+              }
+              onOpen={canWriteBio ? () => setOpen("bio") : null}
+            />
+            <AboutRow
+              leading={<Palette />}
+              title={t("me.cover.row")}
+              subtitle={
+                aboutLine ??
+                t("me.cover.rowHint", {
+                  cover: coverName,
+                  business: businessName,
+                })
+              }
+              trailing={
+                <ProfileCover
+                  preset={cover}
+                  hue={hue}
+                  className="h-[30px] w-12 rounded-control"
                 />
-              ) : (
-                <ListRow
-                  leading={<ImageIcon />}
-                  title={t("me.photo.row")}
-                  subtitle={t("me.photo.rowHint")}
-                  trailing={<Avatar name={name} photo={shown} size="sm" />}
-                  onClick={() => setOpen(true)}
-                />
-              )}
-            </ListGroup>
-          </PageSection>
+              }
+              onOpen={canChoose ? () => sheet("cover")(true) : null}
+            />
+            <AboutRow
+              leading={<Speech />}
+              title={t("me.form.row")}
+              subtitle={aboutLine ?? t("me.form.rowHint")}
+              trailing={
+                <span className="text-base text-ink-2">
+                  {/* The stored form, not formArg: "not chosen" is an answer here. */}
+                  {t("me.form.value", { form: form ?? "none" })}
+                </span>
+              }
+              onOpen={canChoose ? () => setOpen("form") : null}
+            />
+          </ListGroup>
+        </PageSection>
 
-          <form
-            action={signOut}
-            className="flex justify-center md:justify-start"
-          >
-            <Button type="submit" variant="ghost" className="text-ink-2">
-              <LogOut aria-hidden="true" className="rtl:-scale-x-100" />
-              {t("signOut")}
-            </Button>
-          </form>
-        </div>
-      </div>
+        <form action={signOut} className="flex justify-center md:justify-start">
+          <Button type="submit" variant="ghost" className="text-ink-2">
+            <LogOut aria-hidden="true" className="rtl:-scale-x-100" />
+            {t("signOut")}
+          </Button>
+        </form>
+      </ProfileFrame>
 
       {locked ? null : (
         <AvatarPhotoPicker
-          open={open}
-          onOpenChange={setOpen}
+          open={open === "photo"}
+          onOpenChange={sheet("photo")}
           name={name}
           photo={shown}
-          onSave={save}
-          onRemove={remove}
+          onSave={savePhoto}
+          onRemove={removePhoto}
         />
       )}
+      {canWriteBio ? (
+        <BioSheet
+          open={open === "bio"}
+          onOpenChange={sheet("bio")}
+          bio={bio}
+          onSave={saveBio}
+          onRemove={removeBio}
+        />
+      ) : null}
+      {canChoose ? (
+        <>
+          <CoverSheet
+            open={open === "cover"}
+            onOpenChange={sheet("cover")}
+            business={businessName}
+            hue={hue}
+            draft={coverDraft}
+            onDraft={setCoverDraft}
+            onSave={saveCover}
+          />
+          <FormSheet
+            open={open === "form"}
+            onOpenChange={sheet("form")}
+            form={form}
+            firstName={firstNameOf(name)}
+            onSave={saveForm}
+          />
+        </>
+      ) : null}
       <StatusToast message={toast?.message ?? null} stamp={toast?.stamp} />
     </PageBody>
   );

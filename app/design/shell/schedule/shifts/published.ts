@@ -153,10 +153,11 @@ export function demoPublished(
       shabbat: limitsOf(NEXT_WEEK),
     },
     overnight: [],
-    people: teamMembers.map(({ userId, name, photo }) => ({
+    people: teamMembers.map(({ userId, name, photo, addressForm }) => ({
       userId,
       name,
       photo,
+      addressForm,
     })),
     positions: demoPositions,
     swaps,

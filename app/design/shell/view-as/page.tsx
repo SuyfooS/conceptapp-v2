@@ -21,6 +21,7 @@ export default function ShellViewAs() {
         team={buildTeam(teamMembers, teamInvites, teamToday)}
         viewerRole="manager"
         inviteHref="/design/shell/team/invite"
+        peopleHref="/design/shell/team"
         resend={demoResendAction}
         wording={baseWording}
       />

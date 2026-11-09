@@ -2,6 +2,7 @@ import { instantIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import type { ModuleNavEntry, Role } from "@domain/modules";
 import { firstNameOf } from "@domain/people";
+import { formArg } from "@domain/profile";
 import {
   type ScheduledShift,
   scheduleGaps,
@@ -115,6 +116,9 @@ const nameIn = (t: T, published: PublishedSchedule, userId: string) =>
   published.people.find((p) => p.userId === userId)?.name ?? t("shifts.noName");
 const photoIn = (published: PublishedSchedule, userId: string | null) =>
   published.people.find((p) => p.userId === userId)?.photo ?? null;
+/** How the app writes about them, for an ICU `select`. */
+const formIn = (published: PublishedSchedule, userId: string | null) =>
+  formArg(published.people.find((p) => p.userId === userId)?.addressForm);
 /** Someone as an avatar shows them: their name and their photo. */
 const personIn = (t: T, published: PublishedSchedule, userId: string) => ({
   name: nameIn(t, published, userId),
@@ -439,6 +443,7 @@ function NextShift({
             {swap.status === "taken"
               ? t("shifts.swap.taken", {
                   name: nameIn(t, published, swap.takenBy ?? ""),
+                  form: formIn(published, swap.takenBy),
                 })
               : t("shifts.swap.open")}
           </p>

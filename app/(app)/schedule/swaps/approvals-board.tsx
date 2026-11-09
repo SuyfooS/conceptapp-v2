@@ -12,6 +12,7 @@ import { useState } from "react";
 import {
   type AppT,
   dayLabel,
+  formOf,
   nameOf,
   photoOf,
   positionName,
@@ -37,7 +38,9 @@ const position = (t: AppT, names: Names, row: Row) =>
 const subject = (t: AppT, names: Names, row: Row) =>
   t("swaps.subject", {
     from: nameOf(t, names, row.swap.requestedBy),
+    fromForm: formOf(names, row.swap.requestedBy),
     to: nameOf(t, names, row.swap.takenBy),
+    toForm: formOf(names, row.swap.takenBy),
     shift: shiftLabel(t, row.shift),
   });
 
@@ -79,7 +82,11 @@ export function ApprovalsBoard({
               text:
                 decision === "approve"
                   ? t("swaps.settled.approved", { from, to, shift })
-                  : t("swaps.settled.declined", { from, shift }),
+                  : t("swaps.settled.declined", {
+                      from,
+                      fromForm: formOf(names, row.swap.requestedBy),
+                      shift,
+                    }),
             },
             ...list,
           ],
@@ -148,7 +155,10 @@ type RowView = {
   onDecided: (row: Row, decision: Decision) => void;
 };
 
-/** Who gives it away and who takes it, the arrow pointing the way it moves. */
+/**
+ * Who gives it away and who takes it, the arrow pointing the way it moves,
+ * each written about as they chose ("מוסרת", "לוקח").
+ */
 function Handover({
   t,
   names,
@@ -167,14 +177,18 @@ function Handover({
     <div className="flex items-center gap-1 rounded-[20px] bg-surface-2/60 px-2 py-3">
       {person(
         from,
-        t("swaps.columns.from"),
+        t("swaps.handover.from", { form: formOf(names, row.swap.requestedBy) }),
         photoOf(names, row.swap.requestedBy),
       )}
       <ArrowLeft
         aria-hidden="true"
         className="size-5 shrink-0 text-ink-2 ltr:-scale-x-100"
       />
-      {person(to, t("swaps.columns.to"), photoOf(names, row.swap.takenBy))}
+      {person(
+        to,
+        t("swaps.handover.to", { form: formOf(names, row.swap.takenBy) }),
+        photoOf(names, row.swap.takenBy),
+      )}
     </div>
   );
 }

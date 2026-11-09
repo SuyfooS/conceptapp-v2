@@ -10,6 +10,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useState } from "react";
 import type { SwapState } from "./actions";
 import {
+  formOf,
   nameOf,
   photoOf,
   positionName,
@@ -208,7 +209,10 @@ function SheetBody({
           }
         >
           {request.status === "taken"
-            ? t("shifts.swap.taken", { name: nameOf(t, data, request.takenBy) })
+            ? t("shifts.swap.taken", {
+                name: nameOf(t, data, request.takenBy),
+                form: formOf(data, request.takenBy),
+              })
             : t("shifts.swap.open")}
         </Consequence>
       ) : null}
@@ -228,7 +232,10 @@ function SheetBody({
               key={offer.swap.id}
               note={t("shifts.swap.offers.busy")}
             >
-              {t("shifts.swap.offers.from", { name: from })}
+              {t("shifts.swap.offers.from", {
+                name: from,
+                form: formOf(data, offer.swap.requestedBy),
+              })}
             </Consequence>
           );
         }
