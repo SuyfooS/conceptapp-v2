@@ -1,10 +1,12 @@
 "use server";
 
+import { type ProfileWritten, setOwnProfile } from "@db/profile";
 import {
   type PhotoResult,
   removeProfilePhoto,
   setProfilePhoto,
 } from "@db/profile-photos";
+import { checkProfileChange, type ProfileSaveResult } from "@domain/profile";
 import { type PhotoSaveResult, profilePhotoSrc } from "@domain/profile-photos";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
@@ -58,4 +60,31 @@ export async function removeMyPhotoAction(): Promise<PhotoSaveResult> {
   const who = await self();
   if ("failure" in who) return { ok: false, failure: who.failure };
   return await answer(() => removeProfilePhoto(who.userId));
+}
+
+/**
+ * The signed-in person changes their line, their cover or how the app
+ * addresses them. The change is checked here and again by the database,
+ * which also keeps demo people from writing a line. Never logged.
+ */
+export async function saveMyProfileAction(
+  change: unknown,
+): Promise<ProfileSaveResult> {
+  const who = await self();
+  if ("failure" in who) return { ok: false, failure: who.failure };
+  const checked = checkProfileChange(change);
+  if (!checked.ok) return { ok: false, failure: checked.problem };
+  let result: ProfileWritten;
+  try {
+    result = await setOwnProfile(who.userId, checked.patch);
+  } catch (error) {
+    console.error(
+      "profile change failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return { ok: false, failure: "failed" };
+  }
+  if (!result.ok) return result;
+  refresh();
+  return { ok: true };
 }

@@ -36,6 +36,7 @@ import {
   assigneePeople,
   dayLabel,
   firstNames,
+  formOf,
   ltr,
   nameOf,
   positionName,
@@ -574,6 +575,7 @@ function WeekShift({
           {request.status === "taken"
             ? tb("givingTaken", {
                 name: firstNameOf(nameOf(t, data, request.takenBy)),
+                form: formOf(data, request.takenBy),
               })
             : tb("givingOpen")}
         </span>

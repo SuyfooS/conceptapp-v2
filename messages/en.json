@@ -53,6 +53,18 @@
         "failed": "The photo wasn't saved. Try again.",
         "removeFailed": "The photo wasn't removed. Try again."
       }
+    },
+    "profileCover": {
+      "presets": {
+        "glow": "Glow",
+        "waves": "Waves",
+        "arcs": "Arcs",
+        "dots": "Dots",
+        "stripes": "Stripes",
+        "horizon": "Horizon",
+        "mosaic": "Mosaic",
+        "bloom": "Cloud"
+      }
     }
   },
   "days": {
@@ -289,7 +301,8 @@
     "qrCode": "QR code",
     "qrCodeText": "Always dark on white, in dark mode too. The digits under it are for typing.",
     "scanCircle": "Scanning in the circle",
-    "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening."
+    "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening.",
+    "covers": "Eight covers, all drawn in the business's colour, so any colour works in light and dark. Below: choosing one, as on the profile."
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -649,6 +662,20 @@
           "demo": "This is a demo business, so nobody is invited to it.",
           "hasOwner": "The business already has an owner. Another owner is invited by the owner, from the Team screen."
         }
+      },
+      "person": {
+        "call": "Call {name}",
+        "clearBio": "Delete the line",
+        "clearBioHint": "{form, select, other {Only if the line is hurtful or out of place. {name} can write a new one.}}",
+        "bioCleared": "{name}'s line was deleted",
+        "noBio": "{form, select, other {{name} hasn't written a line yet}}",
+        "failures": {
+          "noAccess": "You can't delete this line.",
+          "viewOnly": "Nothing can be changed while viewing.",
+          "changed": "The line changed in the meantime, so it wasn't deleted. The new line shows now.",
+          "notYet": "Deleting a line opens shortly. Try again later.",
+          "failed": "The line wasn't deleted. Try again."
+        }
       }
     },
     "availability": {
@@ -907,7 +934,7 @@
         "canTake": "You can take it",
         "tookIt": "You took it, waiting for approval",
         "givingOpen": "You asked to give it away",
-        "givingTaken": "{name} is taking it",
+        "givingTaken": "{form, select, other {{name} is taking it}}",
         "manage": "Managing the schedule",
         "own": "Your shifts and availability",
         "teamSent": "{sent} of {total} sent"
@@ -967,12 +994,12 @@
           "failed": "Something went wrong. Please try again."
         },
         "open": "You asked to give this shift away. Waiting for someone on the team to take it.",
-        "taken": "{name} is taking the shift. Waiting for the manager to approve.",
+        "taken": "{form, select, other {{name} is taking the shift}}. Waiting for the manager to approve.",
         "offers": {
           "title": "Shifts you can take",
           "count": "{count, plural, one {One shift} other {# shifts}}",
           "empty": "Nobody on the team is giving away a shift right now. When someone does, it shows here.",
-          "from": "{name} is giving the shift away",
+          "from": "{form, select, other {{name} is giving the shift away}}",
           "busy": "You have another shift at the same time.",
           "takenByYou": "You took the shift. Waiting for the manager to approve."
         }
@@ -988,10 +1015,10 @@
       "count": "{count, plural, one {One request} other {# requests}}",
       "empty": "No requests are waiting for approval. When a worker takes a shift a colleague gives away, the request shows up here.",
       "people": "Giving away: {from} · Taking: {to}",
-      "subject": "{shift}: {from} gives it away, {to} takes it",
+      "subject": "{shift}: {fromForm, select, other {{from} gives it away}}, {toForm, select, other {{to} takes it}}",
       "settled": {
         "approved": "Approved: {to} instead of {from}. {shift}.",
-        "declined": "Declined. {from} stays on the shift. {shift}."
+        "declined": "Declined. {fromForm, select, other {{from} stays}} on the shift. {shift}."
       },
       "noPosition": "No position",
       "columns": {
@@ -1017,6 +1044,10 @@
       },
       "entry": {
         "subtitle": "{count, plural, =0 {No requests waiting for you} one {One request is waiting for your decision} other {# requests are waiting for your decision}}"
+      },
+      "handover": {
+        "from": "{form, select, other {Giving away}}",
+        "to": "{form, select, other {Taking it}}"
       }
     },
     "clock": {
@@ -1480,6 +1511,9 @@
           "wording": {
             "change": "Changed a sentence in the app: “{to}”",
             "clear": "Brought back the app's sentence instead of “{from}”"
+          },
+          "profile": {
+            "bioCleared": "Deleted the line on {person}'s profile"
           }
         }
       },
@@ -1491,7 +1525,9 @@
       "since": "{role} · on the team since {date}",
       "about": {
         "title": "About me",
-        "visible": "Everyone you work with sees this"
+        "visible": "Everyone you work with sees this",
+        "why": "What's kept and why",
+        "notice": "Your photo, your line and your cover are optional, and everyone you work with sees them. How you chose to be addressed shows too, in how the app writes about you. ConceptApp keeps them to show you to your team and uses them for nothing else. You can change or delete them here at any time, and ask ConceptApp to correct anything."
       },
       "photo": {
         "row": "Photo",
@@ -1502,6 +1538,57 @@
         "removed": "Photo removed",
         "undoFailed": "The photo didn't come back. Try again.",
         "gone": "The photo can't be brought back. You can choose a new one."
+      },
+      "bio": {
+        "row": "A few words about you",
+        "rowHint": "Shows under your name, up to 160 characters",
+        "empty": "A few words about you. Your team sees this",
+        "demo": "There's no personal line in the demo businesses",
+        "label": "Your line",
+        "placeholder": "For example: on the till in the morning, at the bar at night",
+        "count": "{count, plural, one {1 character} other {# characters}} of 160",
+        "tooLong": "Up to 160 characters. Try a little shorter.",
+        "save": "Save the line",
+        "remove": "Delete the line",
+        "removed": "Line deleted",
+        "saved": "Line saved",
+        "undoFailed": "The line didn't come back. Try again."
+      },
+      "cover": {
+        "row": "Cover",
+        "rowHint": "{cover}, in {business}'s colour",
+        "sheetTitle": "Profile cover",
+        "sheetSubtitle": "In {business}'s colour",
+        "note": "Everyone you work with sees the cover. When the business changes its colour, the cover changes with it.",
+        "save": "Save the cover",
+        "saved": "Cover saved"
+      },
+      "form": {
+        "row": "How to address you",
+        "rowHint": "How the app writes about you to the team",
+        "value": "{form, select, f {Feminine forms} m {Masculine forms} x {No gendered forms} other {Not chosen yet}}",
+        "sheetTitle": "How should the app address you?",
+        "lead": "This is how the app writes about you to the team: in the schedule and in shift swap requests.",
+        "f": "Feminine forms",
+        "fHint": "In Hebrew: “{name} לוקחת את המשמרת” · “{name} מוסרת את המשמרת”",
+        "m": "Masculine forms",
+        "mHint": "In Hebrew: “{name} לוקח את המשמרת” · “{name} מוסר את המשמרת”",
+        "x": "No gendered forms",
+        "xHint": "In Hebrew: “{name} לוקח/ת את המשמרת” · “בקשה של {name} למסור את המשמרת”",
+        "note": "Your team sees this in how the app writes about you. You can change it at any time.",
+        "why": "Why we ask",
+        "whyText": "So the app writes about you in correct Hebrew. It's optional, has nothing to do with your ID card, and never goes to payroll.",
+        "save": "Save the choice",
+        "saved": "Saved. From now on this is how the app writes about you to the team."
+      },
+      "notYet": "This opens shortly",
+      "viewOnly": "Nothing can be changed while viewing",
+      "failures": {
+        "demo": "In the demo businesses you can pick a cover and how to be addressed, but not write a line or change a name.",
+        "invalid": "That wasn't saved. Check it and try again.",
+        "viewOnly": "Nothing can be changed while viewing.",
+        "failed": "The change wasn't saved. Try again.",
+        "notYet": "This opens shortly. Try again later."
       }
     }
   },

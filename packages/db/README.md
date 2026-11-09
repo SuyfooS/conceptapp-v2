@@ -27,8 +27,13 @@ Writes to businesses' structure (memberships, modules, invites, templates,
 audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
 business's own details: `public.set_business_details(actor, business, patch)`
 saves its name, colour, address and Shabbat city for an owner, a manager or the
-team, and logs what changed. From the browser: everyone edits their own name and
-language, and reads follow the policies.
+team, and logs what changed. So does a profile (`20261109000400_profile_about.sql`):
+`public.set_own_profile(actor, patch)` changes the signed-in person's own name,
+language, line about themselves, cover and form of address, and
+`public.clear_profile_bio(actor, business, person, seen)` lets an owner or
+manager delete a hurtful line, the one they read (`seen`; a line rewritten
+since stays, with 40001), logged as `profile.bio_cleared` without the text.
+From the browser, reads follow the policies and nothing writes a profile.
 
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,

@@ -1,6 +1,8 @@
 "use client";
 
 import { accentTokens } from "@domain/color";
+import { avatarHue } from "@domain/people";
+import { COVER_PRESETS, type CoverPreset } from "@domain/profile";
 import { punchPayload, spokenDigits } from "@domain/punch-code-format";
 import { accentProps } from "@ui/accent";
 import { AccentPicker, AccentPreview } from "@ui/accent-picker";
@@ -16,6 +18,7 @@ import { cn } from "@ui/cn";
 import { CodeDisplay } from "@ui/code-display";
 import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { useCountUp } from "@ui/count-up";
+import { CoverChoices } from "@ui/cover-choices";
 import { CoverageBar } from "@ui/coverage-bar";
 import { EmptyState } from "@ui/empty-state";
 import {
@@ -150,6 +153,7 @@ function GalleryBody({
   const tClock = useTranslations("app.clock");
   const tMe = useTranslations("app.me");
   const tNav = useTranslations("app.nav");
+  const tCover = useTranslations("ui.profileCover");
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
@@ -170,6 +174,7 @@ function GalleryBody({
   const [galleryPhoto, setGalleryPhoto] = useState<string | null>(
     portraits.maya,
   );
+  const [galleryCover, setGalleryCover] = useState<CoverPreset>("waves");
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -623,11 +628,36 @@ function GalleryBody({
         </Section>
 
         <Section title={t("cover")}>
-          <ProfileCover className="h-36 rounded-card">
+          <p className="text-ink-2">{t("covers")}</p>
+          <ProfileCover
+            preset={galleryCover}
+            hue={avatarHue(t("person1"))}
+            className="h-36 rounded-card"
+          >
             <span className="absolute start-3 top-3 flex min-h-11 items-center rounded-full bg-accent-press ps-4 pe-4 font-semibold text-accent-ink text-base">
               {tNav("home")}
             </span>
           </ProfileCover>
+          <div className="grid grid-cols-2 gap-3">
+            {COVER_PRESETS.map((preset) => (
+              <figure key={preset} className="m-0 flex flex-col gap-1.5">
+                <ProfileCover
+                  preset={preset}
+                  hue={avatarHue(t("person1"))}
+                  className="aspect-[2.55] rounded-control"
+                />
+                <figcaption className="text-center text-ink-2 text-sm">
+                  {tCover(`presets.${preset}`)}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <CoverChoices
+            legend={t("cover")}
+            value={galleryCover}
+            onChange={setGalleryCover}
+            hue={avatarHue(t("person1"))}
+          />
         </Section>
 
         <Section title={t("fieldGroup")}>

@@ -137,6 +137,8 @@ export type ActivityLine =
       to: string | null;
       from: string | null;
     }
+  /** An owner or manager cleared someone's line about themselves; never its text. */
+  | { action: "profile.bio_cleared"; person: ActivityPerson }
   | { action: "other" };
 
 /** One line of the log. Holds no ids, so it can go anywhere. */
@@ -197,6 +199,7 @@ const schemas = {
     first: z.boolean(),
     swaps_removed: z.int().min(0),
   }),
+  "profile.bio_cleared": z.object({ person: id }),
   "wording.change": z.object({
     key: z.string(),
     from: z.string().nullable().optional(),
@@ -345,6 +348,12 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     }
     case "clock.confirm": {
       const details = read(schemas["clock.confirm"]);
+      return details
+        ? { action: row.action, person: personOf(details.person, lookups) }
+        : other;
+    }
+    case "profile.bio_cleared": {
+      const details = read(schemas["profile.bio_cleared"]);
       return details
         ? { action: row.action, person: personOf(details.person, lookups) }
         : other;

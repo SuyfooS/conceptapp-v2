@@ -18,18 +18,27 @@ type Resend = ComponentProps<typeof ResendLink>["resend"];
 
 type T = Translator<"app">;
 type Invite = Team["invites"][number];
-type ViewProps = { t: T; team: Team; viewerRole: Role; resend: Resend };
+type ViewProps = {
+  t: T;
+  team: Team;
+  viewerRole: Role;
+  resend: Resend;
+  /** A member's own page, under this path. */
+  peopleHref: string;
+};
 
 /**
  * The Team screen's body: who is in, and who has not joined yet. Phone: what
  * needs action first, then everyone; tablet: the two lists side by side;
  * desktop: everyone in one table. Each invite the viewer may send gets a "new
- * link" button. Also rendered with mock data on /design/shell/team.
+ * link" button; each member leads to their profile (`peopleHref`/id). Also
+ * rendered with mock data on /design/shell/team.
  */
 export function TeamView({
   team,
   viewerRole,
   inviteHref,
+  peopleHref,
   resend,
   wording,
 }: {
@@ -37,12 +46,14 @@ export function TeamView({
   /** The signed-in owner or manager. */
   viewerRole: Role;
   inviteHref: string;
+  /** Where each member's profile lives: `/team`, or the demo's. */
+  peopleHref: string;
   resend: Resend;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
 }) {
   const t = translator(wording, "app");
-  const view = { t, team, viewerRole, resend };
+  const view = { t, team, viewerRole, resend, peopleHref };
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
@@ -103,7 +114,7 @@ function resendButton({ t, viewerRole, resend }: ViewProps, invite: Invite) {
   ) : null;
 }
 
-function Members({ t, team }: ViewProps) {
+function Members({ t, team, peopleHref }: ViewProps) {
   return (
     <PageSection title={t("team.members.title")}>
       <PersonList aria-label={t("team.members.title")}>
@@ -112,6 +123,7 @@ function Members({ t, team }: ViewProps) {
             key={m.userId}
             name={m.name}
             photo={m.photo}
+            href={`${peopleHref}/${m.userId}`}
             title={name(t, m.name)}
             subtitle={
               <>
@@ -174,23 +186,38 @@ function NameCell({
   person,
   photo,
   label,
+  href,
 }: {
   person: string | null;
   photo?: string | null;
   label: string;
+  /** A member's profile; invites have none. */
+  href?: string;
 }) {
+  const content = (
+    <>
+      <PersonAvatar name={person} photo={photo} />
+      {label}
+    </>
+  );
   return (
     <th scope="row" className={cn(td, "text-start font-medium")}>
-      <span className="flex items-center gap-3">
-        <PersonAvatar name={person} photo={photo} />
-        {label}
-      </span>
+      {href ? (
+        <Link
+          href={href}
+          className="-mx-2 flex min-h-11 items-center gap-3 rounded-control px-2 underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          {content}
+        </Link>
+      ) : (
+        <span className="flex items-center gap-3">{content}</span>
+      )}
     </th>
   );
 }
 
 function Everyone(view: ViewProps) {
-  const { t, team } = view;
+  const { t, team, peopleHref } = view;
   const { expired } = team.counts;
   return (
     <PageSection title={t("team.everyone")}>
@@ -234,6 +261,7 @@ function Everyone(view: ViewProps) {
                   person={m.name}
                   photo={m.photo}
                   label={name(t, m.name)}
+                  href={`${peopleHref}/${m.userId}`}
                 />
                 <td className={cn(td, "text-ink-2")}>{phone(m.phone)}</td>
                 <td className={td}>{t(`team.roles.${m.role}`)}</td>

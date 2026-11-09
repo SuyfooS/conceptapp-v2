@@ -466,7 +466,10 @@ export type Database = {
       };
       profiles: {
         Row: {
+          address_form: string | null;
           avatar_path: string | null;
+          bio: string | null;
+          cover: string | null;
           created_at: string;
           full_name: string | null;
           id: string;
@@ -475,7 +478,10 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          address_form?: string | null;
           avatar_path?: string | null;
+          bio?: string | null;
+          cover?: string | null;
           created_at?: string;
           full_name?: string | null;
           id: string;
@@ -484,7 +490,10 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          address_form?: string | null;
           avatar_path?: string | null;
+          bio?: string | null;
+          cover?: string | null;
           created_at?: string;
           full_name?: string | null;
           id?: string;
@@ -1088,6 +1097,10 @@ export type Database = {
         Args: { claimant: string; token_hash: string };
         Returns: string;
       };
+      clear_profile_bio: {
+        Args: { actor: string; business: string; person: string; seen: string };
+        Returns: undefined;
+      };
       clock_in: {
         Args: {
           actor: string;
@@ -1262,6 +1275,10 @@ export type Database = {
           module: Database["public"]["Enums"]["module_key"];
           patch: Json;
         };
+        Returns: undefined;
+      };
+      set_own_profile: {
+        Args: { actor: string; patch: Json };
         Returns: undefined;
       };
       set_template_wording: {

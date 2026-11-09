@@ -657,11 +657,53 @@ export async function demoPhotoPath(phone: string): Promise<string | null> {
 }
 
 /**
- * The person's profile back to how the demo starts: no photo (H2 adds the
- * line, the cover and the form of address). The file stays in Storage,
+ * The person's profile back to how the demo starts: no photo, no line, the
+ * default cover, no form of address. The file stays in Storage,
  * unreferenced, as after the door's reset.
  */
 export async function clearDemoProfile(phone: string): Promise<void> {
-  await sql`update public.profiles set avatar_path = null
+  await sql`update public.profiles
+    set avatar_path = null, bio = null, cover = null, address_form = null
     where phone = ${phone}`;
+}
+
+/** A demo person's line about themselves, written straight to the local database. */
+export async function setDemoBio(
+  phone: string,
+  bio: string | null,
+): Promise<void> {
+  await sql`update public.profiles set bio = ${bio} where phone = ${phone}`;
+}
+
+/** How the app addresses a demo person, written straight to the local database. */
+export async function setDemoAddressForm(
+  phone: string,
+  form: "f" | "m" | "x" | null,
+): Promise<void> {
+  await sql`update public.profiles set address_form = ${form}
+    where phone = ${phone}`;
+}
+
+/** The line, the cover and the form of address a demo person has now. */
+export async function demoProfile(phone: string): Promise<{
+  bio: string | null;
+  cover: string | null;
+  addressForm: string | null;
+}> {
+  const [row] = await sql<
+    { bio: string | null; cover: string | null; addressForm: string | null }[]
+  >`
+    select bio, cover, address_form as "addressForm" from public.profiles
+    where phone = ${phone}`;
+  return row ?? { bio: null, cover: null, addressForm: null };
+}
+
+/**
+ * The demo shop back to how it starts, as the door's reset does it: its
+ * people, their profiles and this week's published schedule.
+ */
+export async function resetDemoShop(): Promise<void> {
+  await allowDemoReset();
+  await sql`select public.reset_demo_business(
+    '00000000-0000-4000-b000-000000000002')`;
 }
