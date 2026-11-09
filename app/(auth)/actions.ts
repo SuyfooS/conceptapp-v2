@@ -5,6 +5,7 @@ import { normalizeOtpCode } from "@domain/otp";
 import { signInPath } from "@domain/passive-sign-in";
 import { normalizeIsraeliMobile } from "@domain/phone";
 import { redirect } from "next/navigation";
+import { forgetThisDevice } from "../push/server";
 import { type SignInError, sendCode, verifyCode } from "./otp";
 
 export type SignInState =
@@ -62,7 +63,12 @@ export async function signIn(
   return { step: "phone", error: "failed" };
 }
 
+/**
+ * Sign out, forgetting this browser's device first, so a shared phone stops
+ * getting the last person's notifications.
+ */
 export async function signOut() {
+  await forgetThisDevice();
   const supabase = await createClient();
   await supabase.auth.signOut();
   redirect(signInPath);

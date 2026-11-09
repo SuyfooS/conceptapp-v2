@@ -3,6 +3,7 @@
 import { claimInvite, ensurePhoneAccount, findInvite } from "@db/invites";
 import { normalizeOtpCode } from "@domain/otp";
 import { redirect } from "next/navigation";
+import { pushSoon } from "../../push/server";
 import { type SignInError, sendCode, verifyCode } from "../otp";
 
 export type JoinState =
@@ -53,6 +54,8 @@ export async function join(
     if ("error" in result) return { step: "code", error: result.error };
     const claim = await claimInvite(token, result.userId);
     if (!claim.ok) redirect(back);
+    // The owners and managers hear who joined.
+    pushSoon();
     // Straight on: the page would now say the link was used, so nothing here
     // can stay on screen to show a check first.
     redirect("/home");

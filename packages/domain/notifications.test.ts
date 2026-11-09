@@ -379,6 +379,18 @@ describe("buildInbox", () => {
     });
   });
 
+  it("reads the phone switch's test as a line of its own, in no group", () => {
+    expect(lineOf(row("push.test", {}, { actorId: null }))).toMatchObject({
+      group: null,
+      href: "/notifications",
+      actor: { kind: "unknown" },
+      line: { kind: "push.test" },
+    });
+    expect(needsAction("push.test")).toBe(false);
+    // Nobody switches it off: it is in none of the groups a person sees.
+    expect(groupsFor("worker", [])).toEqual([]);
+  });
+
   it("knows a line whose request was handled", () => {
     expect(
       lineOf(

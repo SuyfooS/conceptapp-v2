@@ -25,6 +25,38 @@ Open http://localhost:3000.
 Environment variables are listed in `.env.example`. Copy it to `.env.local`
 when Supabase is connected (phase 0, chunk 3).
 
+### Notifications on the phone
+
+Notifications always reach the app. They reach phones too (Web Push, free, no payload)
+once these are set; without them the app says nothing about phones and shows no error.
+
+| Variable | What | Where |
+| --- | --- | --- |
+| `VAPID_PUBLIC_KEY` | The key browsers subscribe with (public) | Vercel, `.env.local` |
+| `VAPID_PRIVATE_KEY` | Its private half: a secret | Vercel (Sensitive), `.env.local` |
+| `VAPID_SUBJECT` | A `mailto:` address push services may write to | Vercel, `.env.local` |
+| `CRON_SECRET` | What the database's minute job sends to `/cron/notifications`: a secret of its own, 32+ characters | Vercel (Sensitive), Supabase Vault as `cron_secret` |
+| `PUSH_TEST_ORIGIN` | The browser tests' mock push service, never on Vercel | CI only |
+
+Locally, `node tooling/vapid-keys.mjs` prints a fresh pair for `.env.local`. CI makes its
+own pair and secret on every run; nothing is committed.
+
+For production, once, on Orel's computer (PowerShell, one command per line, in the repo
+after `git pull`):
+
+```
+node tooling/vapid-keys.mjs
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+The first prints `VAPID_PUBLIC_KEY=…` and `VAPID_PRIVATE_KEY=…`, the second the cron secret.
+Keep them out of chats and files. In Vercel, Settings, Environment Variables, for
+Production only (previews stay in the app only): add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`
+(Sensitive), `VAPID_SUBJECT` (`mailto:` and an address you read) and `CRON_SECRET`
+(Sensitive), then redeploy. A new pair later stops every phone's notifications until the
+app is opened there again, so make it once. The database half (Vault) is in
+`supabase/README.md`.
+
 ## Scripts
 
 | Script | What it does |

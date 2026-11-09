@@ -13,7 +13,7 @@ import { VisibilityNote } from "@ui/visibility-note";
 import { Camera, ChevronRight, ImageIcon, LogOut } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { UndoRow } from "../manage/undo-row";
 
 /** Why the person can't change their photo here, if they can't. */
@@ -56,6 +56,7 @@ export function ProfileEditor({
   home,
   actions,
   signOut,
+  notifications,
 }: {
   name: string;
   photo: string | null;
@@ -66,6 +67,8 @@ export function ProfileEditor({
   home: string;
   actions: MeActions;
   signOut: () => Promise<void>;
+  /** The switch for notifications on this phone, where there is one. */
+  notifications?: ReactNode;
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
@@ -218,6 +221,8 @@ export function ProfileEditor({
               )}
             </ListGroup>
           </PageSection>
+
+          {notifications}
 
           <form
             action={signOut}

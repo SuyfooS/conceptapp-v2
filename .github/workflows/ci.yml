@@ -202,6 +202,10 @@ jobs:
       # The local stack's URL and keys are fixed development values, not
       # real secrets; read them from the CLI rather than hard-coding. The
       # secret key (server-only writes) is masked in the log all the same.
+      # Notifications on the phone get a VAPID pair and a cron secret made
+      # fresh for this run (tooling/vapid-keys.mjs), never committed and never
+      # production's, and the loopback mock push service of e2e/push.spec.ts.
+      # The check job's build has none of them: the app in-app only.
       - name: Point the app at local Supabase
         run: |
           eval "$(pnpm exec supabase status -o env)"
@@ -209,6 +213,14 @@ jobs:
           echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
           echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY" >> "$GITHUB_ENV"
           echo "SUPABASE_SECRET_KEY=$SECRET_KEY" >> "$GITHUB_ENV"
+          vapid=$(node tooling/vapid-keys.mjs --env)
+          echo "::add-mask::$(printf '%s\n' "$vapid" | sed -n 's/^VAPID_PRIVATE_KEY=//p')"
+          printf '%s\n' "$vapid" >> "$GITHUB_ENV"
+          echo "VAPID_SUBJECT=mailto:dev@conceptapp.invalid" >> "$GITHUB_ENV"
+          cron_secret=$(openssl rand -hex 32)
+          echo "::add-mask::$cron_secret"
+          echo "CRON_SECRET=$cron_secret" >> "$GITHUB_ENV"
+          echo "PUSH_TEST_ORIGIN=http://127.0.0.1:3199" >> "$GITHUB_ENV"
 
       - name: Build
         run: pnpm build

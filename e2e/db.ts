@@ -708,3 +708,118 @@ export async function clearDemoProfile(phone: string): Promise<void> {
   await sql`update public.profiles set avatar_path = null
     where phone = ${phone}`;
 }
+
+/**
+ * A real business for the notifications that reach a phone, which demo
+ * businesses never get: an owner and a worker of their own (their numbers
+ * are in no other spec), with the worker on a published shift next Sunday.
+ * Made afresh each run, through the database functions the app uses.
+ */
+export const PUSH_BUSINESS = "00000000-0000-4000-b000-0000000000e2";
+export const PUSH_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000961",
+    name: "אורית התראות",
+    local: "050-000-0961",
+    e164: "+972500000961",
+  },
+  worker: {
+    id: "00000000-0000-4000-a000-000000000962",
+    name: "גיל התראות",
+    local: "050-000-0962",
+    e164: "+972500000962",
+  },
+} as const;
+
+export async function openPushBusiness(): Promise<void> {
+  const people = Object.values(PUSH_PEOPLE);
+  await sql`delete from public.businesses where id = ${PUSH_BUSINESS}`;
+  for (const person of people) {
+    await sql`
+      insert into auth.users (
+        instance_id, id, aud, role, phone, phone_confirmed_at,
+        raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+        confirmation_token, recovery_token, email_change,
+        email_change_token_new, email_change_token_current, phone_change,
+        phone_change_token, reauthentication_token
+      )
+      values (
+        '00000000-0000-0000-0000-000000000000', ${person.id}, 'authenticated',
+        'authenticated', ${person.e164.slice(1)}, now(),
+        '{"provider":"phone","providers":["phone"]}', '{}', now(), now(),
+        '', '', '', '', '', '', '', ''
+      )
+      on conflict (id) do nothing`;
+    await sql`update public.profiles set full_name = ${person.name}
+      where id = ${person.id}`;
+  }
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(people.map((p) => p.id))}`;
+  await sql`insert into public.businesses (id, slug, name)
+    values (${PUSH_BUSINESS}, 'push-e2e', 'עסק להתראות')`;
+  await sql`select public.apply_template(${PUSH_BUSINESS}, 'retail')`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${PUSH_BUSINESS}, ${PUSH_PEOPLE.owner.id}, 'owner'),
+      (${PUSH_BUSINESS}, ${PUSH_PEOPLE.worker.id}, 'worker')`;
+
+  const [week] = await sql<{ id: string; starts_on: string }[]>`
+    with business as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${PUSH_BUSINESS}
+    ),
+    next_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        + 7 as starts_on
+      from business
+    )
+    select public.open_schedule_week(${PUSH_BUSINESS}, starts_on,
+        now() + interval '1 day')::text as id,
+      starts_on::text as starts_on
+    from next_week`;
+  if (!week) throw new Error("Could not open next week");
+  await sql`select public.publish_week_schedule(${PUSH_PEOPLE.owner.id}, ${week.id},
+    ${sql.json([
+      {
+        day: week.starts_on,
+        name: "בוקר",
+        start: "09:00",
+        end: "16:00",
+        needed: 1,
+        assignees: [{ user: PUSH_PEOPLE.worker.id, position: null }],
+      },
+    ])})`;
+}
+
+/** The person's saved devices: where each sends, and its kind. */
+export async function pushDevices(
+  userId: string,
+): Promise<{ endpoint: string; label: string | null }[]> {
+  return await sql<{ endpoint: string; label: string | null }[]>`
+    select endpoint, label from public.push_subscriptions
+    where user_id = ${userId} order by created_at`;
+}
+
+/**
+ * A line for the push business's owner, written as the producers write them:
+ * queued for their phone when they have a device.
+ */
+export async function notifyPushOwner(): Promise<void> {
+  await sql`select private.notify(
+    ${PUSH_BUSINESS}::uuid, array[${PUSH_PEOPLE.owner.id}::uuid], 'team.joined',
+    ${sql.json({ person: PUSH_PEOPLE.worker.id })}::jsonb,
+    actor => ${PUSH_PEOPLE.worker.id}::uuid,
+    audience => 'manager',
+    dedupe => ${`team.joined:e2e:${Date.now()}`}
+  )`;
+}
+
+/** Forget the business and its people's devices, when the spec is done. */
+export async function closePushBusiness(): Promise<void> {
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(Object.values(PUSH_PEOPLE).map((p) => p.id))}`;
+  await sql`delete from public.businesses where id = ${PUSH_BUSINESS}`;
+}

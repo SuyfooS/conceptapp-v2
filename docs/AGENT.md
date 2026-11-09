@@ -233,7 +233,13 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   and the minute job through `pg_cron`); N3, each person's choices and quiet hours; N4,
   the reminders (availability due, still clocked in). A new kind of line is a case in
   `private.notify_for` and `@domain/notifications`, with its words under
-  `app.notifications.kinds`.
+  `app.notifications.kinds`. N2 is built too (`20261109000500_push.sql`): devices in
+  `push_subscriptions`, one delivery per line and device in `push_deliveries`, the minute
+  job (off locally), `public/sw.js` with no fetch handler, `/push/*` and
+  `/cron/notifications`, the switch on `/notifications` and `/me`. It reaches a phone
+  once Orel sets the VAPID keys and the cron secret (`README.md`, `supabase/README.md`),
+  never for a demo business. A new producing action calls `pushSoon()` from
+  `app/push/server.ts` after it writes.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

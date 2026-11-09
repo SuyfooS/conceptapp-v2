@@ -1,3 +1,4 @@
+import { pushConfig } from "@db/push/env";
 import { accentTokens } from "@domain/color";
 import { moduleNav } from "@domain/modules";
 import { signInPath } from "@domain/passive-sign-in";
@@ -18,6 +19,7 @@ import { currentMember } from "./member";
 import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
 import { NoBusinessScreen } from "./no-business";
+import { PushRegistration } from "./notifications/push-registration";
 import { ViewAsBanner } from "./view-as-banner";
 import { baseWording, translator } from "./wording";
 import { WordingProvider } from "./wording-provider";
@@ -83,6 +85,10 @@ async function Shell({ children }: { children: ReactNode }) {
   ];
   const name =
     member.name ?? (member.phone ? displayIsraeliMobile(member.phone) : "");
+  // Notifications on the phone, where this browser has them on already: none
+  // while viewing as someone, and none without the VAPID settings.
+  const push =
+    enabled.includes("notifications") && !member.viewing ? pushConfig() : null;
 
   return (
     <div {...accentProps(accentTokens(business.accent))}>
@@ -105,6 +111,7 @@ async function Shell({ children }: { children: ReactNode }) {
             />
           ) : null}
           {children}
+          {push ? <PushRegistration publicKey={push.publicKey} /> : null}
         </AppShell>
       </WordingProvider>
     </div>

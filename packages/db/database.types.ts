@@ -628,6 +628,116 @@ export type Database = {
           },
         ];
       };
+      push_deliveries: {
+        Row: {
+          attempts: number;
+          claimed_at: string | null;
+          created_at: string;
+          device_id: string;
+          id: string;
+          next_at: string;
+          notification_id: string;
+          sent_at: string | null;
+          state: string;
+        };
+        Insert: {
+          attempts?: number;
+          claimed_at?: string | null;
+          created_at?: string;
+          device_id: string;
+          id?: string;
+          next_at: string;
+          notification_id: string;
+          sent_at?: string | null;
+          state?: string;
+        };
+        Update: {
+          attempts?: number;
+          claimed_at?: string | null;
+          created_at?: string;
+          device_id?: string;
+          id?: string;
+          next_at?: string;
+          notification_id?: string;
+          sent_at?: string | null;
+          state?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "push_deliveries_device_id_fkey";
+            columns: ["device_id"];
+            isOneToOne: false;
+            referencedRelation: "push_subscriptions";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "push_deliveries_notification_id_fkey";
+            columns: ["notification_id"];
+            isOneToOne: false;
+            referencedRelation: "notifications";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      push_subscriptions: {
+        Row: {
+          auth_secret: string;
+          created_at: string;
+          endpoint: string;
+          endpoint_hash: string;
+          failing_since: string | null;
+          failures: number;
+          id: string;
+          label: string | null;
+          last_fetched_at: string | null;
+          last_seen_at: string;
+          last_success_at: string | null;
+          p256dh: string;
+          signed_out: number;
+          user_id: string;
+        };
+        Insert: {
+          auth_secret: string;
+          created_at?: string;
+          endpoint: string;
+          endpoint_hash: string;
+          failing_since?: string | null;
+          failures?: number;
+          id?: string;
+          label?: string | null;
+          last_fetched_at?: string | null;
+          last_seen_at?: string;
+          last_success_at?: string | null;
+          p256dh: string;
+          signed_out?: number;
+          user_id: string;
+        };
+        Update: {
+          auth_secret?: string;
+          created_at?: string;
+          endpoint?: string;
+          endpoint_hash?: string;
+          failing_since?: string | null;
+          failures?: number;
+          id?: string;
+          label?: string | null;
+          last_fetched_at?: string | null;
+          last_seen_at?: string;
+          last_success_at?: string | null;
+          p256dh?: string;
+          signed_out?: number;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       schedule_shifts: {
         Row: {
           business_id: string;
@@ -1166,6 +1276,17 @@ export type Database = {
         Args: { actor: string; swap: string };
         Returns: undefined;
       };
+      claim_due_pushes: {
+        Args: { at_time?: string; max_rows?: number };
+        Returns: {
+          delivery: string;
+          device: string;
+          notification: string;
+          push_endpoint: string;
+          valid_until: string;
+          what: string;
+        }[];
+      };
       claim_invite: {
         Args: { claimant: string; token_hash: string };
         Returns: string;
@@ -1233,6 +1354,10 @@ export type Database = {
         Returns: string;
       };
       end_view_session: { Args: { actor: string }; Returns: string };
+      finish_pushes: {
+        Args: { at_time?: string; outcomes: Json };
+        Returns: undefined;
+      };
       forget_auth_attempt: {
         Args: { at_time: string; caller: string; kind: string; phone: string };
         Returns: undefined;
@@ -1275,6 +1400,17 @@ export type Database = {
         };
         Returns: boolean;
       };
+      note_push_fetch: {
+        Args: { actor: string; at_time?: string; push_endpoint?: string };
+        Returns: {
+          business: string;
+          since: string;
+        }[];
+      };
+      note_push_signed_out: {
+        Args: { push_endpoint: string };
+        Returns: undefined;
+      };
       open_schedule_week: {
         Args: { business: string; due_at: string; week_start: string };
         Returns: string;
@@ -1288,9 +1424,14 @@ export type Database = {
         Args: { actor: string; at_time?: string; business: string };
         Returns: boolean;
       };
+      push_allowed: { Args: { person: string }; Returns: boolean };
       read_notifications: {
         Args: { actor: string; business: string; ids?: string[] };
         Returns: number;
+      };
+      remove_push_subscription: {
+        Args: { actor: string; device?: string; push_endpoint?: string };
+        Returns: boolean;
       };
       renew_demo_schedules: {
         Args: Record<PropertyKey, never>;
@@ -1305,9 +1446,24 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      save_push_subscription: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          device_label?: string;
+          key_auth: string;
+          key_p256dh: string;
+          push_endpoint: string;
+        };
+        Returns: string;
+      };
       save_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
+      };
+      send_test_push: {
+        Args: { actor: string; at_time?: string };
+        Returns: boolean;
       };
       set_business_details: {
         Args: { actor: string; business: string; patch: Json };
