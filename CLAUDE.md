@@ -89,7 +89,7 @@ Only `app/` imports app code (`@/…`).
   English, any accent). Add a new component to the gallery in the same change.
   Built so far: Button, IconButton, TextField, PhoneField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
-  and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
+  and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle and ScanCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
   PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay.
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where

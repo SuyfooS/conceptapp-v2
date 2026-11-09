@@ -469,6 +469,14 @@ body {
   }
 }
 
+/* A ring drawing itself once round (a circle with pathLength 100), as when
+   the camera has read the clock's code. */
+@keyframes ring-sweep {
+  from {
+    stroke-dashoffset: 100;
+  }
+}
+
 /* Motion only on state changes, and none at all when the user asks for less. */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -15,16 +15,27 @@ import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { PunchCircle } from "@ui/punch-circle";
 import { StatusToast } from "@ui/status-toast";
-import { Coffee, Fingerprint, Keyboard, LogOut } from "lucide-react";
+import { preloadQrReader } from "@ui/use-qr-camera";
+import { Coffee, Fingerprint, LogOut, ScanQrCode } from "lucide-react";
 import { unstable_rethrow } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useState, useTransition } from "react";
+import {
+  type Ref,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import type { ClockActionResult, ClockActions, ClockData } from "./clock-types";
 import { PunchCodeSheet } from "./punch-code-sheet";
+import { ScanPunch } from "./scan-punch";
 import { WithoutCodeSheet } from "./without-code-sheet";
 
 type Kind = "in" | "out" | "break" | "back" | "undo";
 type Direction = "in" | "out";
+/** What started a scan: the circle, or "End shift" during a break. */
+type ScanFrom = "circle" | "endShift";
 type Failure = Exclude<ClockActionResult, { ok: true }>["failure"];
 
 /** The time now, ticking each second while `running`. */
@@ -43,8 +54,9 @@ function useNow(initial: string, running: boolean): number {
  * The circle and what goes with it: pressing it records the moment, the ring
  * and the time run while the person is at work, and leaving can be taken back
  * for a short while. When the business asks for a code, pressing to come or
- * go opens a sheet for the digits a manager is showing, with the way to go
- * ahead without one. Breaks never need a code.
+ * go turns the circle into a camera for the code a manager is showing, with
+ * typing its digits and going ahead without one under it. Breaks never need a
+ * code.
  */
 export function ClockPanel({
   data,
@@ -67,9 +79,25 @@ export function ClockPanel({
   // Both sheets stay mounted, closed, so they open inside the business's colour.
   const [sheet, setSheet] = useState<"code" | "none" | null>(null);
   const [direction, setDirection] = useState<Direction>("in");
+  /** The circle is the camera, for coming or going. */
+  const [scanning, setScanning] = useState<Direction | null>(null);
+  /** Where the focus goes back to once the camera gives the circle back. */
+  const [scanFrom, setScanFrom] = useState<ScanFrom>("circle");
   const [noneBusy, startNone] = useTransition();
   const [noneFailure, setNoneFailure] = useState<Failure | null>(null);
   const now = useNow(data.now, open !== null || sheet === "none");
+
+  // Leaving the screen ends a scan. Next keeps a page it leaves (hidden, in
+  // React's Activity) and runs its effects again when it comes back: without
+  // this, coming back through the tab bar would open the camera with nobody
+  // pressing. Back on the screen, the circle shows.
+  useLayoutEffect(() => () => setScanning(null), []);
+
+  // The decoder downloads when the clock opens, not at the press (and not at
+  // all on a phone that reads QR codes itself).
+  useEffect(() => {
+    if (needsCode) preloadQrReader();
+  }, [needsCode]);
 
   // Too many wrong digits block typing in the database for a while. The block
   // lives here, not in the sheet, so opening the sheet again doesn't offer the
@@ -111,7 +139,7 @@ export function ClockPanel({
     });
   }
 
-  /** A punch from one of the sheets, which shows what went wrong itself. */
+  /** A punch with a code, from the camera or a sheet, which says what went wrong itself. */
   async function punchWith(
     to: Direction,
     proof: PunchProof,
@@ -145,8 +173,8 @@ export function ClockPanel({
     }
   }
 
-  /** Coming or going: with the digits when a code is asked for, else one press. */
-  function punch(to: Direction) {
+  /** Coming or going: scanning the code when one is asked for, else one press. */
+  function punch(to: Direction, from: ScanFrom = "circle") {
     if (!needsCode) {
       run(to, () =>
         to === "in"
@@ -157,8 +185,42 @@ export function ClockPanel({
     }
     setFailure(null);
     setDirection(to);
-    setSheet("code");
+    setScanFrom(from);
+    setScanning(to);
   }
+
+  /** From the camera to one of the sheets, the same way in or out: it turns off. */
+  function scanToSheet(next: "code" | "none") {
+    setScanning(null);
+    if (next === "none") setNoneFailure(null);
+    setSheet(next);
+  }
+
+  /** From a sheet back to the camera, the same way in or out. */
+  function sheetToScan() {
+    setSheet(null);
+    setScanning(direction);
+  }
+
+  /** The camera gives the circle back, and the focus goes back where it started. */
+  function endScan() {
+    setScanning(null);
+    setRefocus(true);
+  }
+  const circleRef = useRef<HTMLButtonElement>(null);
+  const endShiftRef = useRef<HTMLButtonElement>(null);
+  const [refocus, setRefocus] = useState(false);
+  const paused = pause !== null;
+  useEffect(() => {
+    if (!refocus || scanning) return;
+    // "End shift" while the break goes on; the circle otherwise, as after
+    // clocking out from a break, when "End shift" is gone.
+    (scanFrom === "endShift" && paused
+      ? endShiftRef
+      : circleRef
+    ).current?.focus();
+    setRefocus(false);
+  }, [refocus, scanning, scanFrom, paused]);
 
   function goWithoutCode() {
     setNoneFailure(null);
@@ -189,22 +251,40 @@ export function ClockPanel({
   return (
     <div className="flex flex-col items-center gap-5">
       <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
-      <Circle
-        data={data}
-        open={open}
-        pause={pause}
-        now={now}
-        running={running}
-        pending={pending}
-        onPunch={punch}
-        onBack={() => run("back", actions.endBreak)}
-      />
+      {scanning ? (
+        <ScanPunch
+          key={scanning}
+          direction={scanning}
+          timeZone={data.timeZone}
+          punchWith={punchWith}
+          onDone={endScan}
+          onFailure={(refusal) => {
+            endScan();
+            setFailure(refusal);
+          }}
+          onCancel={endScan}
+          onType={() => scanToSheet("code")}
+          onWithoutCode={() => scanToSheet("none")}
+        />
+      ) : (
+        <Circle
+          circleRef={circleRef}
+          data={data}
+          open={open}
+          pause={pause}
+          now={now}
+          running={running}
+          pending={pending}
+          onPunch={punch}
+          onBack={() => run("back", actions.endBreak)}
+        />
+      )}
 
-      {needsCode && !open ? (
-        <p className="text-center text-ink-2 text-sm">{t("line.idleCode")}</p>
+      {needsCode && !open && !scanning ? (
+        <p className="text-center text-ink-2 text-sm">{t("line.idleScan")}</p>
       ) : null}
 
-      {open && !pause ? (
+      {open && !pause && !scanning ? (
         <Button
           variant="secondary"
           size="lg"
@@ -216,20 +296,21 @@ export function ClockPanel({
           {t("startBreak")}
         </Button>
       ) : null}
-      {pause ? (
+      {pause && !scanning ? (
         <Button
+          ref={endShiftRef}
           variant="secondary"
           size="lg"
           loading={running === "out"}
           disabled={pending || data.viewOnly}
-          onClick={() => punch("out")}
+          onClick={() => punch("out", "endShift")}
         >
           <LogOut aria-hidden="true" className="rtl:-scale-x-100" />
           {t("endShift")}
         </Button>
       ) : null}
 
-      {open ? (
+      {open && !scanning ? (
         <p className="text-center text-ink-2 text-sm">
           {t(data.unpaidBreaks ? "breakRule.unpaid" : "breakRule.paid")}
           {needsCode ? <span className="block">{t("breakNote")}</span> : null}
@@ -245,7 +326,7 @@ export function ClockPanel({
         <p className="text-center text-ink-2 text-sm">{t("viewOnly")}</p>
       ) : null}
 
-      {undoLeft ? (
+      {undoLeft && !scanning ? (
         <Card
           tone="accent"
           className="flex w-full items-center justify-between gap-3"
@@ -283,6 +364,8 @@ export function ClockPanel({
               setNoneFailure(null);
               setSheet("none");
             }}
+            // While typing is blocked, scanning is still the way in.
+            onScan={sheetToScan}
           />
           <WithoutCodeSheet
             open={sheet === "none"}
@@ -296,8 +379,8 @@ export function ClockPanel({
             pending={noneBusy}
             failure={noneFailure}
             onConfirm={goWithoutCode}
-            // While typing is blocked, the code holds nothing to go back to.
-            onBack={locked ? undefined : () => setSheet("code")}
+            // Scanning, which a typing block doesn't stop.
+            onBack={sheetToScan}
           />
         </>
       ) : null}
@@ -306,6 +389,7 @@ export function ClockPanel({
 }
 
 function Circle({
+  circleRef,
   data,
   open,
   pause,
@@ -315,6 +399,8 @@ function Circle({
   onPunch,
   onBack,
 }: {
+  /** The circle's button, for the focus to come back to after scanning. */
+  circleRef: Ref<HTMLButtonElement>;
   data: ClockData;
   open: TimeEntry | null;
   pause: TimeBreak | null;
@@ -331,15 +417,16 @@ function Circle({
   if (!open) {
     return (
       <PunchCircle
+        ref={circleRef}
         tone="off"
         figure={
           needsCode ? (
-            <Keyboard aria-hidden="true" />
+            <ScanQrCode aria-hidden="true" />
           ) : (
             <Fingerprint aria-hidden="true" />
           )
         }
-        label={t(needsCode ? "circle.codeIn" : "circle.in")}
+        label={t(needsCode ? "circle.scanIn" : "circle.in")}
         loading={running === "in"}
         disabled={disabled}
         onClick={() => onPunch("in")}
@@ -350,6 +437,7 @@ function Circle({
   if (pause) {
     return (
       <PunchCircle
+        ref={circleRef}
         tone="paused"
         progress={data.shift ? share(data.shift, now) : null}
         figure={
@@ -367,12 +455,13 @@ function Circle({
 
   return (
     <PunchCircle
+      ref={circleRef}
       tone="live"
       progress={data.shift ? share(data.shift, now) : null}
       figure={
         <span dir="ltr">{formatElapsed(entryMs(open, new Date(now)))}</span>
       }
-      label={t(needsCode ? "circle.codeOut" : "circle.out")}
+      label={t(needsCode ? "circle.scanOut" : "circle.out")}
       loading={running === "out"}
       disabled={disabled}
       onClick={() => onPunch("out")}
