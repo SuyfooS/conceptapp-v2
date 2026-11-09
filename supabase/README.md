@@ -55,6 +55,26 @@ sign the same people in many times from one machine. They hold the app's own way
 the auth API is public, so a script calling it directly meets only Supabase's and Twilio's
 limits, and CAPTCHA once it is on (below).
 
+### Notifications on the phone
+
+`20261109000500_push.sql` schedules two jobs with pg_cron: `notifications` every minute,
+which asks the app to send pushes only while something is due, and `notifications-clean`
+once a day. The minute job calls the app through pg_net with two secrets from Vault, and
+without them calls nothing (what is due then goes out with the next action in the app).
+`seed.sql` switches both jobs off locally and in CI; the tests call what they run.
+
+Once the migration has gone through the Migrate workflow and `CRON_SECRET` is in Vercel
+(`README.md`), add the two secrets in the dashboard, Project Settings, Vault (not the SQL
+editor, which keeps what was typed):
+
+- `app_url`: the app's exact address, with no path and no redirect on the way, for
+  example `https://www.conceptapp.co.il` once that is where the app is opened. pg_net
+  does not carry a POST through a redirect.
+- `cron_secret`: the same value as `CRON_SECRET` in Vercel.
+
+A nightly run never writes these, never calls `/cron/notifications` on a hosted project
+and never sends a test notification (`docs/AGENT.md`).
+
 ### Real sign-in, later
 
 Orel put it off on 6 November. When it comes, turn `PASSIVE_SIGN_IN` off, and in the

@@ -11,6 +11,7 @@ import { parseEntryTimes } from "@domain/time-clock";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
 import { z } from "zod";
+import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
 import type {
   EntryActionResult,
@@ -60,6 +61,8 @@ async function asManager(
   if (!times.ok) return { ok: false, failure: times.problem };
 
   const result = await run(member.userId, membership.business.id, times);
+  // Hours someone set for themselves wait for an owner, who hears it.
+  if (result.ok) pushSoon();
   refresh();
   return result.ok ? { ok: true } : { ok: false, failure: failureOf(result) };
 }
@@ -98,6 +101,8 @@ export async function confirmEntryAction(
   if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };
 
   const result = await confirmTimeEntry(member.userId, entry.data);
+  // What waited is settled: nothing of it goes to a phone any more.
+  if (result.ok) pushSoon();
   refresh();
   if (result.ok) return { ok: true };
   switch (result.failure) {

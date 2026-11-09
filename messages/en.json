@@ -1712,6 +1712,54 @@
         },
         "other": {
           "title": "Something new"
+        },
+        "push": {
+          "test": {
+            "title": "Test notification",
+            "note": "This is how notifications arrive"
+          }
+        }
+      },
+      "push": {
+        "title": "{device, select, phone {On this phone} other {On this device}}",
+        "row": "{device, select, phone {Notifications on the phone} other {Notifications on the device}}",
+        "on": "{device, select, phone {On. Every new notification reaches the phone too, even with the app closed.} other {On. Every new notification reaches the device too, even with the app closed.}}",
+        "off": "Off. Notifications show only here, in the app.",
+        "denied": "{device, select, phone {Notifications are blocked in the phone's settings. You can allow them there, under the app's or the browser's notifications.} other {Notifications are blocked in the browser's settings. You can allow them there, in the site's permissions.}}",
+        "failed": "Notifications weren't turned on. You can try again.",
+        "failedOff": "Notifications weren't turned off. You can try again.",
+        "iosHint": {
+          "title": "Notifications on iPhone",
+          "body": "On an iPhone, notifications reach the app on the home screen. Add it once, from Safari:",
+          "share": "The share button at the bottom of the screen",
+          "add": "Add to Home Screen",
+          "open": "Open it from the home screen, sign in again with the code and turn notifications on here"
+        },
+        "iosVersion": "Notifications on iPhone need iOS 16.4 or later. You can update in Settings, General, Software Update.",
+        "demo": "In a demo business, notifications show only here, in the app. In a real business they reach the phone too.",
+        "test": {
+          "action": "Send a test notification",
+          "hint": "To see how a notification arrives",
+          "sending": "Sending…",
+          "sent": "Sent. It will arrive in a moment.",
+          "tooSoon": "You can send another in half a minute.",
+          "failed": "It wasn't sent. You can try again."
+        },
+        "notice": {
+          "plain": {
+            "title": "There's something new",
+            "body": "Open ConceptApp to see it"
+          },
+          "signedOut": {
+            "title": "Sign in again to get notifications",
+            "body": "Notifications carry on once you're signed in"
+          },
+          "summary": "{count, plural, one {One new update} other {# new updates}}",
+          "summaryBody": "They're all waiting in the app's notifications",
+          "fallback": {
+            "title": "There's something new in ConceptApp",
+            "body": "Open the app to see it"
+          }
         }
       }
     }

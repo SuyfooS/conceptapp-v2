@@ -27,7 +27,7 @@ import {
   Speech,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { UndoRow } from "../manage/undo-row";
 import {
   BioSheet,
@@ -123,6 +123,7 @@ export function ProfileEditor({
   home,
   actions,
   signOut,
+  notifications,
 }: {
   name: string;
   photo: string | null;
@@ -136,6 +137,8 @@ export function ProfileEditor({
   home: string;
   actions: MeActions;
   signOut: () => Promise<void>;
+  /** The switch for notifications on this phone, where there is one. */
+  notifications?: ReactNode;
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
@@ -385,6 +388,8 @@ export function ProfileEditor({
             />
           </ListGroup>
         </PageSection>
+
+        {notifications}
 
         <form action={signOut} className="flex justify-center md:justify-start">
           <Button type="submit" variant="ghost" className="text-ink-2">

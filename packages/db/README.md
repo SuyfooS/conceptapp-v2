@@ -58,6 +58,20 @@ the team viewing included. `public.read_notifications(actor, business, ids)`
 marks lines read, with the secret key; `@db/notifications` reads the inbox
 and calls it (`notifications.test.sql`).
 
+Lines reach phones too (Web Push, `20261109000500_push.sql`), with no payload:
+the phone's service worker asks `/push/inbox` what to show. `private.push_plan`
+queues a line when its person has a device in `public.push_subscriptions` and
+it is from the business the app opens for them, never a demo
+(`private.push_business`). The server, with the secret key, saves (at most ten
+devices each, a new one forgetting the one seen longest ago) and forgets
+devices, claims what is due once per line and device (`claim_due_pushes`, rows
+in `public.push_deliveries`, which only the server touches) and says how each
+push went (`finish_pushes`: gone devices forgotten, refusals counted, retries
+in 1, 5 and 25 minutes, then counted too). The browser reads only a few plain columns of its own
+devices, never their endpoints or keys. `@db/push/*` signs VAPID with
+`node:crypto` and sends; pg_cron's minute job asks the app to send while
+something is due (`push.test.sql`).
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

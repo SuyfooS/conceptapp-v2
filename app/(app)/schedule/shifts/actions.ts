@@ -4,6 +4,7 @@ import { cancelShiftSwap, requestShiftSwap, takeShiftSwap } from "@db/swaps";
 import type { SwapFailure } from "@domain/swaps";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
+import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
 import { currentPublishedSchedule } from "../week";
 
@@ -41,6 +42,8 @@ export async function swapAction(
         : takeShiftSwap;
   const result = await run(member.userId, id);
   if (!result.ok) return { failure: result.failure };
+  // Who could take it, who asked, who approves: on their phones too.
+  pushSoon();
   // The screen re-reads the requests.
   refresh();
   return {};

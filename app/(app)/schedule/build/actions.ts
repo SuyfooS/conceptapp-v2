@@ -5,6 +5,7 @@ import { publishWeekSchedule, saveWeekSchedule } from "@db/schedule";
 import { weekSchedule } from "@domain/schedule";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
+import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
 import { currentScheduleBuild } from "../week";
 
@@ -77,6 +78,8 @@ export async function saveScheduleAction(
     console.error(`${intent} schedule failed`, (error as Error).message);
     return { failure: "failed" };
   }
+  // The team hears about a published week, on their phones too.
+  if (intent === "publish") pushSoon();
   // The screen re-reads what was saved and when.
   refresh();
   return {
