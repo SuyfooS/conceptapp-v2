@@ -303,7 +303,14 @@
     "scanCircle": "Scanning in the circle",
     "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening.",
     "covers": "Eight covers, all drawn in the business's colour, so any colour works in light and dark. Below: choosing one, as on the profile.",
-    "notificationsNew": "{count, plural, one {one new} other {# new}}"
+    "notificationsNew": "{count, plural, one {one new} other {# new}}",
+    "checklist": "List item",
+    "checklistCheck": "Clean the work surfaces",
+    "checklistNumber": "Main fridge",
+    "checklistFreezer": "Freezer",
+    "checklistNote": "What's missing in the kitchen",
+    "checklistPhoto": "A photo of the kitchen after cleaning",
+    "checklistWho": "Noa"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -312,7 +319,8 @@
       "schedule": "Schedule",
       "reservations": "Bookings",
       "team": "Team",
-      "more": "More"
+      "more": "More",
+      "lists": "Lists"
     },
     "placeholderText": "In this demo it only shows that navigation works at every screen size.",
     "schedule": {
@@ -1516,10 +1524,65 @@
           },
           "profile": {
             "bioCleared": "Deleted the line on {person}'s profile"
+          },
+          "departments": {
+            "change": "Changed the departments",
+            "added": "{count, plural, one {Added a department: {names}} other {Added departments: {names}}}",
+            "removed": "{count, plural, one {Removed a department: {names}} other {Removed departments: {names}}}",
+            "renamed": "{from} is now called {to}",
+            "reordered": "The departments' order changed",
+            "members": "Changed who's in {department}",
+            "membersPlain": "Changed who's in a department",
+            "joined": "{count, plural, one {Now in it: {names}} other {Now in it: {names}}}",
+            "left": "{count, plural, one {No longer in it: {names}} other {No longer in it: {names}}}"
+          },
+          "lists": {
+            "templateCreate": "Created a list: {name}",
+            "templateSave": "Changed the list {name}",
+            "templateArchive": "Removed the list {name}",
+            "templateRestore": "Brought back the list {name}",
+            "send": "Sent the list {name} {to}",
+            "to": {
+              "person": "to {person}",
+              "department": "to {name}",
+              "departmentUnknown": "to a department",
+              "shift": "to a shift's people",
+              "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}"
+            },
+            "finish": "Finished the list {name}",
+            "finishLate": "Finished the list {name}, late",
+            "leftOptional": "{count, plural, one {One optional item left empty} other {# optional items left empty}}",
+            "cancel": "Cancelled the list {name}",
+            "reopen": "{was, select, cancelled {Brought back the list {name} after it was cancelled} other {Opened the list {name} again}}"
           }
         }
       },
-      "ownerOnly": "Owners only"
+      "ownerOnly": "Owners only",
+      "departments": {
+        "title": "Departments",
+        "subtitle": "The groups in the business a list can go to, such as the kitchen or the checkout. A person can be in several.",
+        "listTitle": "The departments",
+        "rowEmpty": "No departments yet",
+        "empty": "No departments yet. A department is a group of people a list can go to, such as the kitchen or the checkout. Add the first one in the row below.",
+        "emptyViewOnly": "No departments yet.",
+        "nameOf": "Name of the department {name}",
+        "newName": "New department",
+        "add": "Add a department",
+        "remove": "Remove {name}",
+        "removed": "{name} was removed",
+        "taken": "There's already a department called {name}.",
+        "people": "{count, plural, =0 {No people} one {One person} other {# people}}",
+        "peopleOf": "Who's in {name}",
+        "peopleIn": "{count, plural, =0 {No people} one {One person} other {# people}} in {name}",
+        "inDepartment": "{name} in {department}",
+        "noPeople": "Nobody is in the business yet.",
+        "noName": "No name",
+        "saving": "One moment, the department is saving.",
+        "up": "Move up",
+        "down": "Move down",
+        "close": "Close",
+        "hint": "A list sent to a department reaches everyone in it, and any of them can fill it."
+      }
     },
     "me": {
       "metaTitle": "My profile",
@@ -1774,6 +1837,201 @@
             "title": "There's something new in ConceptApp",
             "body": "Open the app to see it"
           }
+        }
+      }
+    },
+    "lists": {
+      "title": "Lists",
+      "subtitle": "What needs doing now, and what's done today",
+      "noName": "No name",
+      "now": "Now",
+      "closedToday": "{count, plural, =0 {Closed today} one {One list closed today} other {# lists closed today}}",
+      "noneOpen": "Nothing is open for you right now.",
+      "noneOpenBusiness": "No list is open in the business right now.",
+      "noneClosed": "No list has closed today yet.",
+      "sendOne": "Send {name}",
+      "empty": {
+        "title": "Nothing for you right now",
+        "body": "When a manager sends you a list, it shows up here and you get a notification.",
+        "sender": "You can send a list to a person, a department or a role, and it reaches them with a notification.",
+        "businessTitle": "No lists sent in the business today",
+        "businessBody": "While viewing, lists can only be read. Lists sent today show up here."
+      },
+      "viewOnly": {
+        "title": "Viewing as a worker shows no lists",
+        "body": "Lists belong to the people they were sent to. Viewing as a manager shows all of the business's lists."
+      },
+      "team": {
+        "title": "Today in the business",
+        "none": "No lists sent today yet",
+        "counts": "{open, plural, =0 {none open} one {one open} other {# open}} · {finished, plural, =0 {none finished} one {one finished} other {# finished}}",
+        "late": "{count, plural, one {one late} other {# late}}"
+      },
+      "today": {
+        "title": "Your lists",
+        "business": "Lists in the business",
+        "all": "All lists",
+        "none": "Nothing for you right now.",
+        "more": "{count, plural, one {And one more in Lists} other {And # more in Lists}}"
+      },
+      "columns": {
+        "list": "List",
+        "for": "For",
+        "from": "Asked for by",
+        "opened": "Opened",
+        "due": "Due",
+        "progress": "Done",
+        "status": "Status"
+      },
+      "card": {
+        "for": {
+          "you": "For you",
+          "person": "For {name}",
+          "people": "{count, plural, one {For one person} other {For # people}}",
+          "shift": "{count, plural, one {For one person on the shift} other {For # people on the shift}}",
+          "department": "For {name}",
+          "role": "{role, select, owner {For the owners} manager {For the managers} other {For the workers}}"
+        },
+        "to": {
+          "you": "to you",
+          "person": "to {name}",
+          "people": "{count, plural, one {to one person} other {to # people}}",
+          "shift": "{count, plural, one {to one person on the shift} other {to # people on the shift}}",
+          "department": "to {name}",
+          "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}"
+        },
+        "aDepartment": "a department",
+        "from": "Asked for by {name}",
+        "due": "By <ltr>{time}</ltr>",
+        "dueOn": "By <ltr>{date}, {time}</ltr>",
+        "late": "Late",
+        "lateDue": "Late · due <ltr>{time}</ltr>",
+        "lateDueOn": "Late · due <ltr>{date}, {time}</ltr>",
+        "open": "Open",
+        "progress": "{done} of {total}",
+        "finishedBy": "Finished at <ltr>{time}</ltr> by {name}",
+        "finished": "Finished",
+        "missed": "Not done",
+        "cancelled": "Cancelled"
+      },
+      "list": {
+        "items": "What's on the list",
+        "progressLabel": "How far it is",
+        "note": "Note",
+        "finish": "Finish the list",
+        "leftRequired": "{count, plural, one {One required item left} other {# required items left}}",
+        "readyToFinish": "Ready to finish",
+        "finished": "The list is finished",
+        "cancelled": "The list was cancelled",
+        "reopen": "Open it again",
+        "optional": "Optional",
+        "doneBy": "{name} · <ltr>{time}</ltr>",
+        "requested": "{count, plural, one {One asked for} other {# asked for}}",
+        "readingOf": "Reading: {label}",
+        "minus": "Minus",
+        "range": {
+          "between": "Between <ltr>{range}</ltr>",
+          "atLeast": "At least <ltr>{range}</ltr>",
+          "atMost": "At most <ltr>{range}</ltr>"
+        },
+        "outOfRange": "Outside <ltr>{range}</ltr>",
+        "answerPlaceholder": "Write here",
+        "photoLater": "Photos come in the app's next version",
+        "comment": {
+          "add": "Add a comment",
+          "edit": "Change the comment",
+          "title": "A comment on the item",
+          "label": "The comment",
+          "save": "Save the comment",
+          "close": "Close"
+        },
+        "readOnly": {
+          "missed": "The list wasn't done in time.",
+          "cancelled": "The list was cancelled.",
+          "elsewhere": "Sent {to}. It updates here.",
+          "viewOnly": "While viewing, the list can only be read."
+        },
+        "details": {
+          "title": "Details",
+          "for": "For",
+          "from": "Asked for by",
+          "sent": "Sent",
+          "opened": "Opened",
+          "due": "Due",
+          "sentBy": "By {name}, at <ltr>{time}</ltr>",
+          "openedAt": "On the list's own times, at <ltr>{time}</ltr>"
+        },
+        "timeline": {
+          "title": "What happened to the list",
+          "sent": "Sent by {name} {to}, at <ltr>{time}</ltr>",
+          "opened": "Opened on its own times, at <ltr>{time}</ltr>",
+          "passed": "Passed to {to} by {name}, at <ltr>{time}</ltr>",
+          "finished": "Finished by {name}, at <ltr>{time}</ltr>",
+          "cancelled": "Cancelled by {name}, at <ltr>{time}</ltr>",
+          "missed": "Not done in time"
+        },
+        "readings": {
+          "title": "Readings",
+          "item": "Item",
+          "reading": "Reading",
+          "range": "Range",
+          "who": "Who",
+          "when": "When"
+        },
+        "failed": {
+          "noAccess": "This list isn't yours any more.",
+          "viewOnly": "Nothing changes while viewing.",
+          "invalid": "Not saved: that value doesn't fit.",
+          "changed": "The list changed on another screen. Refresh and try again.",
+          "finished": "The list is already closed.",
+          "left": "Some required items are still left.",
+          "notYet": "Lists aren't ready here yet. Try again in a few minutes.",
+          "failed": "Not saved. Check the connection and try again."
+        }
+      },
+      "send": {
+        "action": "Send a list",
+        "title": "Send a list",
+        "subtitle": "Pick a list and who it goes to. It arrives at once, with a notification.",
+        "back": "Lists",
+        "which": "Which list",
+        "items": "{count, plural, one {One item} other {# items}}",
+        "to": "Who to",
+        "kinds": {
+          "person": "Person",
+          "department": "Department",
+          "role": "Role"
+        },
+        "roles": {
+          "owner": "The owners",
+          "manager": "The managers",
+          "worker": "The workers"
+        },
+        "fixedTo": "The order goes to {name}.",
+        "noDepartments": "The business has no departments yet. Add them under Manage, Departments.",
+        "noName": "No name",
+        "note": "Note",
+        "noteHint": "Optional. It shows at the top of the list.",
+        "choose": "Choose who it goes to",
+        "submit": {
+          "person": "Send to {name}",
+          "department": "Send to {name}",
+          "role": "{role, select, owner {Send to the owners} manager {Send to the managers} other {Send to the workers}}"
+        },
+        "preview": "How it arrives",
+        "sent": "List sent {to}",
+        "cancelled": "Sending cancelled",
+        "cancelFailed": "Couldn't cancel the sending. Try again.",
+        "started": "Someone already started the list, so it stays sent.",
+        "failed": {
+          "noAccess": "This list can't be sent there.",
+          "viewOnly": "Nothing is sent while viewing.",
+          "invalid": "It can't go there. Choose someone else and try again.",
+          "changed": "The list changed on another screen. Refresh and try again.",
+          "finished": "This list was removed. Choose another one.",
+          "left": "Something is still missing before sending.",
+          "notYet": "Lists aren't ready here yet. Try again in a few minutes.",
+          "failed": "The list wasn't sent. Check the connection and try again."
         }
       }
     }

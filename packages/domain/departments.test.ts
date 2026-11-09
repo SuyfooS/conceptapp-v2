@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   departmentKey,
   departments,
+  departmentsOf,
   MAX_DEPARTMENTS,
   newDepartmentKey,
 } from "./departments";
+import { holdsList } from "./lists";
 
 describe("departments", () => {
   it("takes a business's departments in order, names trimmed", () => {
@@ -60,5 +62,34 @@ describe("departments", () => {
     expect(made).toMatch(/^d-[0-9a-f]{8}$/);
     expect(departmentKey.safeParse(made).success).toBe(true);
     expect(newDepartmentKey()).not.toBe(made);
+  });
+
+  it("says which departments a person is in, removed ones only when asked", () => {
+    const all = [
+      { id: "kitchen", archivedAt: null, members: ["noa", "itay"] },
+      { id: "bar", archivedAt: null, members: ["yoav"] },
+      {
+        id: "old-floor",
+        archivedAt: "2026-11-09T08:00:00.000Z",
+        members: ["noa"],
+      },
+    ];
+    expect(departmentsOf(all, "noa", { live: true })).toEqual(["kitchen"]);
+    expect(departmentsOf(all, "noa", { live: false })).toEqual([
+      "kitchen",
+      "old-floor",
+    ]);
+    expect(departmentsOf(all, "dana", { live: false })).toEqual([]);
+    // A list the removed floor already holds stays Noa's to fill.
+    expect(
+      holdsList(
+        { kind: "department", department: "old-floor" },
+        {
+          userId: "noa",
+          role: "worker",
+          departments: departmentsOf(all, "noa", { live: false }),
+        },
+      ),
+    ).toBe(true);
   });
 });

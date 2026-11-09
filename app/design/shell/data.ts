@@ -343,6 +343,7 @@ export const demoModuleRows: ModuleRow[] = [
   { key: "reservations", enabled: false, settings: {} },
   { key: "storefront", enabled: false, settings: {} },
   { key: "notifications", enabled: true, settings: {} },
+  { key: "lists", enabled: true, settings: {} },
 ];
 
 // A shift a manager added by hand on the demo week's Sunday, overlapping both
@@ -384,6 +385,7 @@ export const demoActivityLookups: ActivityLookups = {
       { shiftId: "shift-thu-evening", requestedBy: "noa", takenBy: "yoav" },
     ],
   ]),
+  departments: new Map([["dep-kitchen", "מטבח"]]),
 };
 
 const demoRow = (
@@ -395,6 +397,22 @@ const demoRow = (
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
 export const demoActivityRows: ActivityRow[] = [
+  demoRow(123, "2026-11-04T12:40:00+02:00", "noa", "lists.finish", {
+    list: "list-kitchen-opening",
+    name: "פתיחת מטבח",
+    late: false,
+    left_optional: 1,
+  }),
+  demoRow(122, "2026-11-04T12:05:00+02:00", "shiran", "lists.send", {
+    list: "list-kitchen-opening",
+    name: "פתיחת מטבח",
+    recipient: { kind: "department", id: "dep-kitchen" },
+  }),
+  demoRow(121, "2026-11-04T11:55:00+02:00", "shiran", "departments.members", {
+    department: "dep-kitchen",
+    added: ["yoav"],
+    removed: [],
+  }),
   demoRow(120, "2026-11-04T11:40:00+02:00", "shiran", "business.details", {
     from: { address: "רחוב הדגמה 1, תל אביב" },
     to: { address: "רחוב הרצל 12, תל אביב" },

@@ -17,6 +17,9 @@ export const ROUTINE_ACTIONS = [
   "clock.break_start",
   "clock.break_end",
   "clock.undo_out",
+  // A scheduled list opening and its reminder: the lists themselves show them.
+  "lists.open",
+  "lists.due",
 ] as const;
 
 /** Rows a page of the log reads. */
@@ -64,6 +67,8 @@ export type ActivityLookups = {
     string,
     { shiftId: string; requestedBy: string; takenBy: string | null }
   >;
+  /** The business's departments, removed ones too, by id: their names. */
+  departments: ReadonlyMap<string, string>;
 };
 
 export const DETAIL_KEYS = [
@@ -86,6 +91,14 @@ export type FieldChange<Key extends string = string> = {
 };
 
 export type ClockTimes = { clockIn: string; clockOut: string | null };
+
+/** Who a list went to, as the log says it. */
+export type ActivityRecipient =
+  | { kind: "person"; person: ActivityPerson }
+  /** The name is null when the department is not known (any more). */
+  | { kind: "department"; name: string | null }
+  | { kind: "shift" }
+  | { kind: "role"; role: Role | null };
 
 export type ActivityLine =
   | { action: "business.create"; invites: number }
@@ -139,6 +152,46 @@ export type ActivityLine =
     }
   /** An owner or manager cleared someone's line about themselves; never its text. */
   | { action: "profile.bio_cleared"; person: ActivityPerson }
+  | {
+      /** The business's departments: what was added, removed or renamed. */
+      action: "departments.change";
+      added: string[];
+      removed: string[];
+      renamed: { from: string; to: string }[];
+      /** Only their order changed. */
+      reordered: boolean;
+    }
+  | {
+      action: "departments.members";
+      /** Null when the department is not known (any more). */
+      department: string | null;
+      added: ActivityPerson[];
+      removed: ActivityPerson[];
+    }
+  | {
+      action: "lists.template.save";
+      name: string;
+      /** It was new: the first save of a run of saves. */
+      created: boolean;
+    }
+  | {
+      action: "lists.template.archive" | "lists.template.restore";
+      name: string;
+    }
+  | { action: "lists.send"; name: string; to: ActivityRecipient }
+  | {
+      action: "lists.finish";
+      name: string;
+      late: boolean;
+      /** Optional items left empty. */
+      leftOptional: number;
+    }
+  | { action: "lists.cancel"; name: string }
+  | {
+      action: "lists.reopen";
+      name: string;
+      was: "finished" | "cancelled" | null;
+    }
   | { action: "other" };
 
 /** One line of the log. Holds no ids, so it can go anywhere. */
@@ -204,6 +257,37 @@ const schemas = {
     key: z.string(),
     from: z.string().nullable().optional(),
     to: z.string().nullable().optional(),
+  }),
+  "departments.change": z.object({
+    from: z.array(z.object({ key: z.string(), name: z.string() })),
+    to: z.array(z.object({ key: z.string(), name: z.string() })),
+  }),
+  "departments.members": z.object({
+    department: id,
+    added: z.array(id).default([]),
+    removed: z.array(id).default([]),
+  }),
+  "lists.template.save": z.object({
+    name: z.string(),
+    created: z.boolean().default(false),
+  }),
+  "lists.named": z.object({ name: z.string() }),
+  "lists.send": z.object({
+    name: z.string(),
+    recipient: z.object({
+      kind: z.string(),
+      id: id.optional(),
+      role: z.unknown().optional(),
+    }),
+  }),
+  "lists.finish": z.object({
+    name: z.string(),
+    late: z.boolean().default(false),
+    left_optional: z.int().min(0).default(0),
+  }),
+  "lists.reopen": z.object({
+    name: z.string(),
+    was: z.string().optional(),
   }),
 };
 
@@ -414,6 +498,99 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         to: details.to ? personOf(details.to, lookups) : null,
       };
     }
+    case "departments.change": {
+      const details = read(schemas["departments.change"]);
+      if (!details) return other;
+      const before = new Map(details.from.map((d) => [d.key, d.name]));
+      const after = new Map(details.to.map((d) => [d.key, d.name]));
+      const renamed = details.to.flatMap((d) => {
+        const was = before.get(d.key);
+        return was !== undefined && was !== d.name
+          ? [{ from: was, to: d.name }]
+          : [];
+      });
+      const added = details.to
+        .filter((d) => !before.has(d.key))
+        .map((d) => d.name);
+      const removed = details.from
+        .filter((d) => !after.has(d.key))
+        .map((d) => d.name);
+      const kept = (list: { key: string }[], other: Map<string, string>) =>
+        list.filter((d) => other.has(d.key)).map((d) => d.key);
+      return {
+        action: row.action,
+        added,
+        removed,
+        renamed,
+        reordered:
+          added.length + removed.length + renamed.length === 0 &&
+          !same(kept(details.from, after), kept(details.to, before)),
+      };
+    }
+    case "departments.members": {
+      const details = read(schemas["departments.members"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        department:
+          lookups.departments.get(details.department.toLowerCase()) ?? null,
+        added: details.added.map((person) => personOf(person, lookups)),
+        removed: details.removed.map((person) => personOf(person, lookups)),
+      };
+    }
+    case "lists.template.save": {
+      const details = read(schemas["lists.template.save"]);
+      return details
+        ? { action: row.action, name: details.name, created: details.created }
+        : other;
+    }
+    case "lists.template.archive":
+    case "lists.template.restore":
+    case "lists.cancel": {
+      const details = read(schemas["lists.named"]);
+      return details ? { action: row.action, name: details.name } : other;
+    }
+    case "lists.send": {
+      const details = read(schemas["lists.send"]);
+      if (!details) return other;
+      const { kind, id: to, role } = details.recipient;
+      const recipient: ActivityRecipient | null =
+        kind === "person"
+          ? { kind, person: personOf(to, lookups) }
+          : kind === "department"
+            ? {
+                kind,
+                name: (to && lookups.departments.get(to.toLowerCase())) ?? null,
+              }
+            : kind === "shift"
+              ? { kind }
+              : kind === "role"
+                ? { kind, role: roleOf(role) }
+                : null;
+      return recipient
+        ? { action: row.action, name: details.name, to: recipient }
+        : other;
+    }
+    case "lists.finish": {
+      const details = read(schemas["lists.finish"]);
+      return details
+        ? {
+            action: row.action,
+            name: details.name,
+            late: details.late,
+            leftOptional: details.left_optional,
+          }
+        : other;
+    }
+    case "lists.reopen": {
+      const details = read(schemas["lists.reopen"]);
+      if (!details) return other;
+      const was =
+        details.was === "finished" || details.was === "cancelled"
+          ? details.was
+          : null;
+      return { action: row.action, name: details.name, was };
+    }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);
       return details
@@ -437,8 +614,12 @@ export function activityRefs(rows: readonly ActivityRow[]) {
   const invites = new Set<string>();
   const shifts = new Set<string>();
   const swaps = new Set<string>();
+  const departments = new Set<string>();
   const add = (set: Set<string>, value: unknown) => {
     if (isUuid(value)) set.add(value.toLowerCase());
+  };
+  const addAll = (set: Set<string>, value: unknown) => {
+    if (Array.isArray(value)) for (const one of value) add(set, one);
   };
   for (const row of rows) {
     add(people, row.actorId);
@@ -451,12 +632,26 @@ export function activityRefs(rows: readonly ActivityRow[]) {
     add(invites, invite);
     add(shifts, shift);
     add(swaps, swap);
+    if (row.action === "departments.members") {
+      add(departments, details.data.department);
+      addAll(people, details.data.added);
+      addAll(people, details.data.removed);
+    }
+    if (row.action === "lists.send") {
+      const recipient = fields.safeParse(details.data.recipient);
+      if (recipient.success) {
+        const { kind, id: target } = recipient.data;
+        if (kind === "person") add(people, target);
+        if (kind === "department") add(departments, target);
+      }
+    }
   }
   return {
     people: [...people],
     invites: [...invites],
     shifts: [...shifts],
     swaps: [...swaps],
+    departments: [...departments],
   };
 }
 
@@ -477,6 +672,9 @@ function foldsInto(newer: Parsed, older: Parsed): boolean {
   const a = newer.line;
   const b = older.line;
   if (a.action === "business.details") return b.action === "business.details";
+  if (a.action === "lists.template.save") {
+    return b.action === "lists.template.save" && a.name === b.name;
+  }
   return (
     a.action === "module.settings" &&
     b.action === "module.settings" &&
@@ -515,6 +713,12 @@ function fold(newer: Parsed, older: Parsed): Parsed {
   }
   if (a.action === "module.settings" && b.action === "module.settings") {
     return { ...newer, line: { ...a, changes: merged(a.changes, b.changes) } };
+  }
+  if (
+    a.action === "lists.template.save" &&
+    b.action === "lists.template.save"
+  ) {
+    return { ...newer, line: { ...a, created: a.created || b.created } };
   }
   return newer;
 }

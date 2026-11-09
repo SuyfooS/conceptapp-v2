@@ -128,6 +128,7 @@ test("in the shop, this week is already published and no tab is empty", async ({
     he.app.nav.home,
     he.modules.scheduling.name,
     he.modules.time_clock.name,
+    he.modules.lists.name,
   ]);
   const week = await demoShopWeek();
   expect(week.published).toBe(true);
@@ -161,6 +162,14 @@ test("in the shop, this week is already published and no tab is empty", async ({
 
   await page.goto("/clock");
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(notFound).toHaveCount(0);
+  await expectAccessible(page);
+
+  // Lists open on a real screen too, with the shop's example lists.
+  await page.goto("/lists");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.lists.title }),
+  ).toBeVisible();
   await expect(notFound).toHaveCount(0);
   await expectAccessible(page);
 });

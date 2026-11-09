@@ -3,7 +3,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(26);
+select plan(28);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -101,6 +101,32 @@ select results_eq(
     ('6d000000-0000-4000-a000-00000000000c'::uuid, 'checkout'::text),
     ('6d000000-0000-4000-a000-00000000000c'::uuid, 'stock'::text)$$,
   'and their departments, each once, skipping a key the template doesn''t have and someone with no account'
+);
+
+-- The example lists (20261109000700_lists_on.sql): the manager sends the
+-- template's opening list to a worker it is for, with two checks done by them,
+-- and the next list to its own department, untouched.
+select results_eq(
+  $$select l.name, l.status, l.recipient_kind, l.sent_by,
+      (select string_agg(p.user_id::text, ',') from public.list_people p where p.list_id = l.id),
+      (select count(*)::integer from public.list_items i
+       where i.list_id = l.id and i.done and i.done_by = '6d000000-0000-4000-a000-00000000000c')
+    from public.lists l
+    where l.business_id = '6d000000-0000-4000-b000-000000000001'
+    order by l.recipient_kind desc$$,
+  $$values
+    ('פתיחת החנות'::text, 'open'::text, 'person'::text,
+     '6d000000-0000-4000-a000-00000000000b'::uuid, '6d000000-0000-4000-a000-00000000000c'::text, 2),
+    ('סגירת החנות'::text, 'open'::text, 'department'::text,
+     '6d000000-0000-4000-a000-00000000000b'::uuid, null::text, 0)$$,
+  'the demo starts with two example lists, one of them begun'
+);
+select is(
+  (select d.key from public.lists l
+   join public.departments d on d.id = l.recipient_department
+   where l.business_id = '6d000000-0000-4000-b000-000000000001' and l.recipient_kind = 'department'),
+  'checkout',
+  'the second one with its own department'
 );
 
 -- It renews: this week is published from the shop's own shifts.
@@ -202,10 +228,10 @@ select is(
   'with their names and language'
 );
 select is(
-  (select string_agg(action, ',') from public.audit_log
+  (select string_agg(action, ',' order by id) from public.audit_log
    where business_id = '6d000000-0000-4000-b000-000000000001'),
-  'schedule.publish',
-  'and starts its log again, with this week published'
+  'schedule.publish,lists.send,lists.send',
+  'and starts its log again, with this week published and the example lists sent'
 );
 select is(
   (select string_agg(key, ',' order by position) from public.departments
@@ -214,14 +240,14 @@ select is(
    where business_id = '6d000000-0000-4000-b000-000000000001')
   || '/' || (select count(*)::integer from public.department_members
    where business_id = '6d000000-0000-4000-b000-000000000001'),
-  'checkout,floor,stock/0/3',
-  'the visitors'' departments and lists go, and the demo people are back in theirs'
+  'checkout,floor,stock/2/3',
+  'the visitors'' departments and lists go, the demo people are back in theirs, and the example lists are back'
 );
 select is(
   (select enabled from public.business_modules
    where business_id = '6d000000-0000-4000-b000-000000000001' and module_key = 'lists'),
-  false,
-  'with lists still off, as their template has them'
+  true,
+  'with lists on, as their template has them'
 );
 
 select throws_ok(

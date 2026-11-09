@@ -12,6 +12,7 @@ import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
+import { ChecklistItem } from "@ui/checklist-item";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
@@ -154,6 +155,12 @@ function GalleryBody({
   const tMe = useTranslations("app.me");
   const tNav = useTranslations("app.nav");
   const tCover = useTranslations("ui.profileCover");
+  const tList = useTranslations("app.lists.list");
+  const [ticked, setTicked] = useState(false);
+  const [fridge, setFridge] = useState("7");
+  const [freezer, setFreezer] = useState("18");
+  const [below, setBelow] = useState(true);
+  const [missing, setMissing] = useState("");
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
@@ -729,6 +736,138 @@ function GalleryBody({
               </Button>
             </FloatingAction>
           </div>
+        </Section>
+
+        <Section title={t("checklist")}>
+          <ListGroup>
+            <ChecklistItem
+              kind="check"
+              label={t("checklistCheck")}
+              required
+              optionalLabel={tList("optional")}
+              done={ticked}
+              doneLine={tList.rich("doneBy", {
+                name: t("checklistWho"),
+                time: "07:42",
+                ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+              })}
+              check={{ checked: ticked, onToggle: () => setTicked(!ticked) }}
+              commentAction={{ label: tList("comment.add"), onClick: () => {} }}
+            />
+            <ChecklistItem
+              kind="number"
+              label={t("checklistNumber")}
+              required
+              optionalLabel={tList("optional")}
+              done={fridge.trim() !== ""}
+              number={{
+                value: fridge,
+                onValueChange: setFridge,
+                onCommit: () => {},
+                fieldLabel: tList("readingOf", { label: t("checklistNumber") }),
+                unit: "°C",
+                range: tList.rich("range.between", {
+                  range: "0–5 °C",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+                outOfRange:
+                  Number(fridge) > 5 || Number(fridge) < 0
+                    ? tList.rich("outOfRange", {
+                        range: "0–5 °C",
+                        ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                      })
+                    : null,
+              }}
+            />
+            <ChecklistItem
+              kind="number"
+              label={t("checklistFreezer")}
+              required
+              optionalLabel={tList("optional")}
+              done={false}
+              number={{
+                value: freezer,
+                onValueChange: setFreezer,
+                onCommit: () => {},
+                fieldLabel: tList("readingOf", {
+                  label: t("checklistFreezer"),
+                }),
+                unit: "°C",
+                range: tList.rich("range.between", {
+                  range: "-25–-18 °C",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+                minus: {
+                  label: tList("minus"),
+                  on: below,
+                  onToggle: () => setBelow(!below),
+                },
+              }}
+            />
+            <ChecklistItem
+              kind="note"
+              label={t("checklistNote")}
+              required={false}
+              optionalLabel={tList("optional")}
+              done={missing.trim() !== ""}
+              note={{
+                value: missing,
+                onValueChange: setMissing,
+                onCommit: () => {},
+                fieldLabel: t("checklistNote"),
+                placeholder: tList("answerPlaceholder"),
+              }}
+            />
+            <ChecklistItem
+              kind="photo"
+              label={t("checklistPhoto")}
+              required={false}
+              optionalLabel={tList("optional")}
+              done={false}
+              photo={{ text: tList("photoLater") }}
+            />
+            <ChecklistItem
+              kind="check"
+              label={t("checklistCheck")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              comment={t("checklistNote")}
+              doneLine={tList.rich("doneBy", {
+                name: t("checklistWho"),
+                time: "07:42",
+                ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+              })}
+            />
+            {/* Read-only below zero: no minus toggle, the value has its sign. */}
+            <ChecklistItem
+              kind="number"
+              label={t("checklistFreezer")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              doneLine={tList.rich("doneBy", {
+                name: t("checklistWho"),
+                time: "07:44",
+                ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+              })}
+              number={{
+                value: "-19",
+                onValueChange: () => {},
+                onCommit: () => {},
+                fieldLabel: tList("readingOf", {
+                  label: t("checklistFreezer"),
+                }),
+                unit: "°C",
+                range: tList.rich("range.between", {
+                  range: "-25–-18 °C",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+              }}
+            />
+          </ListGroup>
         </Section>
 
         <Section title={t("punchCircle")}>

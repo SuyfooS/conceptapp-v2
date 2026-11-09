@@ -5,6 +5,7 @@ import {
 import { ManageView } from "../../../(app)/manage/manage-view";
 import { baseWording } from "../../../(app)/wording";
 import { demoBusinessDetails, demoModuleRows } from "../data";
+import { demoDepartments } from "../lists/data";
 
 // The real management page, with the demo's modules.
 export default function ShellManage() {
@@ -15,6 +16,7 @@ export default function ShellManage() {
       home="/design/shell"
       team="/design/shell/team"
       shabbatCity={shabbatCityState(demoModuleRows, demoBusinessDetails)}
+      departments={demoDepartments.map((d) => d.name)}
       wording={baseWording}
     />
   );

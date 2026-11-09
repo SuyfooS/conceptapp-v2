@@ -4,6 +4,7 @@ import {
   type DepartmentInput,
   departments as departmentsSchema,
 } from "@domain/departments";
+import { profilePhotoSrc } from "@domain/profile-photos";
 import { isMissingFunction } from "./missing";
 import { type Written, written } from "./module-settings";
 import { isMissingTable } from "./notifications";
@@ -101,4 +102,70 @@ export async function setDepartmentMembers(
   });
   if (isMissingFunction(error)) return { ok: false, code: "notYet" };
   return written(error);
+}
+
+/** Someone the department editor can put in a department. */
+export type DepartmentPerson = {
+  userId: string;
+  name: string | null;
+  photo: string | null;
+};
+
+/**
+ * A business's departments and its active people, for the console: the team
+ * isn't a member, so RLS has nothing to show it. Callers check that the
+ * person is on the team first.
+ */
+export async function getDepartmentsForTeam(
+  businessId: string,
+): Promise<
+  { departments: Department[]; people: DepartmentPerson[] } | "notYet"
+> {
+  const admin = createAdminClient();
+  const [departments, members, people] = await Promise.all([
+    admin
+      .from("departments")
+      .select("id, key, name, position, archived_at")
+      .eq("business_id", businessId)
+      .is("archived_at", null)
+      .order("position")
+      .order("key"),
+    admin
+      .from("department_members")
+      .select("department_id, user_id")
+      .eq("business_id", businessId),
+    admin
+      .from("memberships")
+      .select("user_id, profiles (full_name, avatar_path)")
+      .eq("business_id", businessId)
+      .eq("active", true),
+  ]);
+  for (const { error } of [departments, members]) {
+    if (error) {
+      if (isMissingTable(error)) return "notYet";
+      throw error;
+    }
+  }
+  if (people.error) throw people.error;
+  const inDepartment = new Map<string, string[]>();
+  for (const row of members.data ?? []) {
+    inDepartment.set(row.department_id, [
+      ...(inDepartment.get(row.department_id) ?? []),
+      row.user_id,
+    ]);
+  }
+  return {
+    departments: (departments.data ?? []).map((row) => ({
+      id: row.id,
+      key: row.key,
+      name: row.name,
+      archivedAt: row.archived_at,
+      members: (inDepartment.get(row.id) ?? []).sort(),
+    })),
+    people: people.data.map((row) => ({
+      userId: row.user_id,
+      name: row.profiles?.full_name?.trim() || null,
+      photo: profilePhotoSrc(row.profiles?.avatar_path),
+    })),
+  };
 }

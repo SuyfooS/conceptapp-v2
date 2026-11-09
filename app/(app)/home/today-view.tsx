@@ -49,6 +49,8 @@ import {
 import Link from "next/link";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { ListsHomeData } from "../lists/list-types";
+import { TodayLists } from "../lists/today-lists";
 import { moduleIcons } from "../module-icons";
 import type {
   AvailabilityWeek,
@@ -91,6 +93,8 @@ export type TodayData = {
   team: Team | null;
   /** The bell and how many lines are unread; null when there is none. */
   bell?: { unread: number } | null;
+  /** What lists bring to Today; null when they are off or out of reach. */
+  lists?: ListsHomeData | null;
 };
 
 type T = Translator<"app">;
@@ -158,8 +162,24 @@ export async function TodayView({
   const schedule = data.widgets.some((w) => w.key === "scheduling")
     ? data.schedule
     : null;
-  const quiet = data.widgets.filter((w) => w.key !== "scheduling");
+  const lists =
+    data.widgets.some((w) => w.key === "lists") && data.lists
+      ? data.lists
+      : null;
+  // Modules with a part of their own aren't quiet rows.
+  const quiet = data.widgets.filter(
+    (w) => w.key !== "scheduling" && !(w.key === "lists" && lists),
+  );
   const view = schedule ? { t, path, clock, role: data.role, schedule } : null;
+  const listsPart = (className?: string) =>
+    lists ? (
+      <TodayLists
+        data={lists}
+        wording={wording}
+        path={path}
+        className={className}
+      />
+    ) : null;
 
   /** The quiet lists at the end: modules with no part of their own yet, the team. */
   const rest = (className?: string) =>
@@ -286,11 +306,21 @@ export async function TodayView({
               <NextShift {...view} format={format} />
             </div>
             <Needs {...view} now={data.now} />
+            {listsPart(
+              "md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2",
+            )}
             <WhoWorksToday {...view} />
-            {rest("md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2")}
+            {rest(
+              lists
+                ? "md:col-span-2"
+                : "md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2",
+            )}
           </div>
         ) : data.widgets.length > 0 ? (
-          rest()
+          <div className="flex flex-col gap-6 md:gap-8">
+            {listsPart("md:max-w-2xl")}
+            {rest()}
+          </div>
         ) : (
           <>
             <Card

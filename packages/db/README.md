@@ -88,6 +88,15 @@ item's tick. Lists tell people through a trigger of their own,
 `public.my_open_lists(actor, business)` counts what a person holds, for the
 tab. `@db/departments` and `@db/lists` read and call them
 (`departments.test.sql`, `lists.test.sql`, `lists_notifications.test.sql`).
+`20261109000700_lists_on.sql` switches the module on in every template and
+business (where its tab fits), gives businesses opened before lists their
+template's departments and lists (`private.backfill_lists`), adds
+`public.cancel_unstarted_list`, the undo right after sending (`cancel_list`
+only while nobody has started the list), and fills `private.seed_demo_lists`:
+the demo reset ends with two example lists sent by the demo's manager
+(`lists_on.test.sql`).
+`@db/departments` `getDepartmentsForTeam` reads them for the console with the
+secret key, since the team is no member.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

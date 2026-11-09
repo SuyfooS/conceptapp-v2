@@ -6,4 +6,5 @@ export const demoActivityPaths: ActivityPaths = {
   self: "/design/shell/manage/activity",
   business: "/design/shell/manage/business",
   clockTeam: "/design/shell/clock/team",
+  departments: "/design/shell/manage/departments",
 };

@@ -57,6 +57,11 @@ export type CurrentMember = {
   /** The business the person works in, or null before anyone added them. */
   membership: {
     role: MemberRole;
+    /**
+     * Permissions given to them beyond their role (`memberships.perms`, such
+     * as `lists.send`); none while viewing as a role, which reads as the role.
+     */
+    perms: string[];
     business: MemberBusiness;
     /** When they joined it (ISO); null while viewing as a role. */
     since: string | null;
@@ -187,7 +192,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       supabase
         .from("memberships")
         .select(
-          "role, created_at, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
+          "role, perms, created_at, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
         )
         .eq("user_id", userId)
         .eq("active", true)
@@ -257,6 +262,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       ...person,
       membership: {
         role: view.data.role,
+        perms: [],
         business: memberBusiness(viewed, wording),
         since: null,
       },
@@ -272,6 +278,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       membership.data && business
         ? {
             role: membership.data.role,
+            perms: membership.data.perms,
             business: memberBusiness(business, wording),
             since: membership.data.created_at,
           }

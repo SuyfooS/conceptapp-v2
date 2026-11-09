@@ -93,8 +93,8 @@ select is(
 select is(
   (select array_agg(module_key order by module_key) from public.business_modules
    where business_id = '40000000-0000-4000-b000-00000000000b' and enabled),
-  array['scheduling', 'time_clock', 'notifications']::public.module_key[],
-  'cafe-bar starts with the schedule, the clock and notifications'
+  array['scheduling', 'time_clock', 'notifications', 'lists']::public.module_key[],
+  'cafe-bar starts with the schedule, the clock, notifications and lists'
 );
 select is(
   (select jsonb_array_length(settings -> 'shifts') from public.business_modules
@@ -105,23 +105,25 @@ select is(
 select is(
   (select template_key || '@' || template_version from public.businesses
    where id = '40000000-0000-4000-b000-00000000000a'),
-  'restaurant@4',
+  'restaurant@5',
   'the business records the template and its version'
 );
 
--- Departments and lists (20261109000600_lists.sql), with the module off until
--- they have screens.
+-- Departments and lists (20261109000600_lists.sql), on since their screens
+-- came (20261109000700_lists_on.sql).
 select is(
   (select count(*)::integer from public.templates t
    where t.key in ('retail', 'restaurant', 'cafe-bar', 'general')
-     and (t.definition #>> '{modules,lists,enabled}')::boolean is distinct from false),
+     and (t.definition #>> '{modules,lists,enabled}')::boolean is distinct from true),
   0,
-  'every template names lists, and leaves them off'
+  'every template switches lists on'
 );
 select is(
-  (select count(*)::integer from public.business_modules where module_key = 'lists' and enabled),
+  (select count(*)::integer from public.business_modules bm
+   join public.businesses b on b.id = bm.business_id
+   where bm.module_key = 'lists' and not bm.enabled and b.template_key is not null),
   0,
-  'and no business has them on'
+  'and every business opened from one has them on'
 );
 select is(
   (select string_agg(key || ':' || name, ',' order by position) from public.departments
