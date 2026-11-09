@@ -450,7 +450,7 @@ select is(
 set local role service_role;
 insert into ids values ('e2', public.add_time_entry('71000000-0000-4000-a000-000000000002',
   '71000000-0000-4000-b000-000000000001', '71000000-0000-4000-a000-000000000002',
-  '2026-11-09 06:00+00', '2026-11-09 14:00+00', null, '2026-11-10 16:00+00'));
+  '2026-11-09 06:00+00', '2026-11-09 14:00+00', 'Forgot to punch', '2026-11-10 16:00+00'));
 reset role;
 select is(
   (select coalesce(array_agg(n.user_id::text || '/' || (n.params ->> 'proof') || '/' || n.audience_role::text), '{}')
@@ -470,7 +470,7 @@ update public.notifications n set read_at = now()
 where n.dedupe_key = 'clock.confirm:' || pg_temp.id('e3');
 set local role service_role;
 select public.correct_time_entry('71000000-0000-4000-a000-000000000002', pg_temp.id('e3'),
-  '2026-11-11 06:00+00', '2026-11-11 13:30+00', null, '2026-11-11 15:00+00');
+  '2026-11-11 06:00+00', '2026-11-11 13:30+00', 'Left early', '2026-11-11 15:00+00');
 reset role;
 select is(
   pg_temp.unread('clock.confirm:' || pg_temp.id('e3')),
@@ -480,7 +480,7 @@ select is(
 
 set local role service_role;
 select public.correct_time_entry('71000000-0000-4000-a000-000000000001', pg_temp.id('e3'),
-  '2026-11-11 06:10+00', '2026-11-11 13:30+00', null, '2026-11-11 15:30+00');
+  '2026-11-11 06:10+00', '2026-11-11 13:30+00', 'Came in late', '2026-11-11 15:30+00');
 reset role;
 select is(
   pg_temp.unread('clock.confirm:' || pg_temp.id('e3')),
@@ -523,7 +523,7 @@ select public.confirm_time_entry('71000000-0000-4000-a000-000000000002', pg_temp
 select public.clock_out('71000000-0000-4000-a000-000000000004',
   '71000000-0000-4000-b000-000000000001', null, '2026-11-14 14:00+00', null, true);
 select public.correct_time_entry('71000000-0000-4000-a000-000000000002', pg_temp.id('e6'),
-  '2026-11-14 06:10+00', '2026-11-14 14:00+00', null, '2026-11-14 15:00+00');
+  '2026-11-14 06:10+00', '2026-11-14 14:00+00', 'Came in late', '2026-11-14 15:00+00');
 reset role;
 select is(
   (select (n.params ->> 'direction') || '/' || ((n.params ->> 'at')::timestamptz = '2026-11-14 14:00+00')::text
@@ -570,7 +570,7 @@ select is(
 );
 set local role service_role;
 select public.correct_time_entry('71000000-0000-4000-a000-000000000002', pg_temp.id('e8'),
-  '2026-11-15 06:15+00', null, null, '2026-11-15 07:00+00');
+  '2026-11-15 06:15+00', null, 'Came in late', '2026-11-15 07:00+00');
 reset role;
 select is(
   (select string_agg(

@@ -4,9 +4,11 @@ import {
   type ActivityRow,
   activityByDay,
   activityRefs,
+  breakFitKind,
   buildActivity,
   parseActivityCursor,
 } from "./activity";
+import { dateIn } from "./availability";
 
 const NOA = "11111111-1111-4111-8111-111111111111";
 const YOAV = "22222222-2222-4222-8222-222222222222";
@@ -173,6 +175,7 @@ describe("buildActivity: each action", () => {
         clockIn: "2026-11-03T06:00:00+00:00",
         clockOut: "2026-11-03T14:00:00+00:00",
       },
+      note: null,
     });
     expect(
       lineOf(
@@ -194,7 +197,181 @@ describe("buildActivity: each action", () => {
         clockIn: "2026-11-03T14:00:00+00:00",
         clockOut: "2026-11-03T21:30:00+00:00",
       },
+      note: null,
     });
+  });
+
+  it("reads why hours were added or corrected", () => {
+    const times = {
+      from: { clock_in: "2026-11-03T14:00:00+00:00", clock_out: null },
+      to: {
+        clock_in: "2026-11-03T14:00:00+00:00",
+        clock_out: "2026-11-03T21:30:00+00:00",
+      },
+    };
+    expect(
+      lineOf(
+        row("clock.correct", {
+          entry: GONE,
+          person: NOA,
+          ...times,
+          note: " Forgot to clock out ",
+        }),
+      ),
+    ).toMatchObject({ action: "clock.correct", note: "Forgot to clock out" });
+    expect(
+      lineOf(
+        row("clock.add", {
+          entry: GONE,
+          person: NOA,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: "2026-11-03T14:00:00+00:00",
+          note: "Forgot to punch",
+        }),
+      ),
+    ).toMatchObject({ action: "clock.add", note: "Forgot to punch" });
+    // A reason that isn't text is left out, never the line.
+    for (const note of [5, "  ", null]) {
+      expect(
+        lineOf(
+          row("clock.correct", { entry: GONE, person: NOA, ...times, note }),
+        ),
+      ).toMatchObject({ action: "clock.correct", note: null });
+    }
+  });
+
+  it("reads the breaks a correction cut or removed", () => {
+    expect(
+      lineOf(
+        row(
+          "clock.break_fit",
+          {
+            entry: GONE,
+            person: NOA,
+            breaks: [
+              {
+                break: GONE,
+                from: {
+                  start: "2026-11-05T12:00:00+00:00",
+                  end: "2026-11-05T12:45:00+00:00",
+                },
+                to: {
+                  start: "2026-11-05T12:00:00+00:00",
+                  end: "2026-11-05T12:30:00+00:00",
+                },
+              },
+              {
+                break: GONE,
+                from: { start: "2026-11-05T13:30:00+00:00", end: null },
+                to: null,
+              },
+            ],
+          },
+          YOAV,
+        ),
+      ),
+    ).toEqual({
+      action: "clock.break_fit",
+      person: { kind: "member", name: "Noa" },
+      // A row from before the shift's start was logged.
+      clockIn: null,
+      breaks: [
+        {
+          from: {
+            clockIn: "2026-11-05T12:00:00+00:00",
+            clockOut: "2026-11-05T12:45:00+00:00",
+          },
+          to: {
+            clockIn: "2026-11-05T12:00:00+00:00",
+            clockOut: "2026-11-05T12:30:00+00:00",
+          },
+        },
+        {
+          from: { clockIn: "2026-11-05T13:30:00+00:00", clockOut: null },
+          to: null,
+        },
+      ],
+    });
+    for (const details of [
+      { entry: GONE, person: NOA, breaks: [] },
+      { entry: GONE, person: NOA },
+      { person: NOA, breaks: [{ from: { start: "x", end: null }, to: null }] },
+    ]) {
+      expect(lineOf(row("clock.break_fit", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("names a night shift's break fit by the day the shift starts", () => {
+    // In at 22:00 on 3 November (Israel), the break cut after midnight.
+    const line = lineOf(
+      row("clock.break_fit", {
+        entry: GONE,
+        person: NOA,
+        clock_in: "2026-11-03T20:00:00+00:00",
+        breaks: [
+          {
+            break: GONE,
+            from: {
+              start: "2026-11-03T23:30:00+00:00",
+              end: "2026-11-04T00:15:00+00:00",
+            },
+            to: {
+              start: "2026-11-03T23:30:00+00:00",
+              end: "2026-11-04T00:00:00+00:00",
+            },
+          },
+        ],
+      }),
+    );
+    expect(line).toMatchObject({
+      action: "clock.break_fit",
+      clockIn: "2026-11-03T20:00:00+00:00",
+    });
+    if (line?.action !== "clock.break_fit" || line.clockIn === null) {
+      throw new Error("expected a break fit with the shift's start");
+    }
+    expect(dateIn(new Date(line.clockIn), "Asia/Jerusalem")).toBe("2026-11-03");
+    expect(
+      dateIn(new Date(line.breaks[0].from.clockIn), "Asia/Jerusalem"),
+    ).toBe("2026-11-04");
+    // A start that isn't a time is no line at all.
+    expect(
+      lineOf(
+        row("clock.break_fit", {
+          entry: GONE,
+          person: NOA,
+          clock_in: "x",
+          breaks: [
+            {
+              from: { start: "2026-11-03T23:30:00+00:00", end: null },
+              to: null,
+            },
+          ],
+        }),
+      ),
+    ).toEqual({ action: "other" });
+  });
+
+  it("says what a correction did to the breaks", () => {
+    const at = (time: string) => `2026-11-05T${time}:00+00:00`;
+    const closed = { clockIn: at("12:00"), clockOut: at("12:45") };
+    const open = { clockIn: at("12:00"), clockOut: null };
+    const cut = { from: closed, to: { ...closed, clockOut: at("12:30") } };
+    const removed = { from: closed, to: null };
+    const ended = { from: open, to: { ...open, clockOut: at("12:30") } };
+    // An open break whose start moved stays open: it was cut, not ended.
+    const startMoved = { from: open, to: { ...open, clockIn: at("12:10") } };
+    expect(breakFitKind([cut])).toBe("cut");
+    expect(breakFitKind([cut, startMoved])).toBe("cut");
+    expect(breakFitKind([removed, removed])).toBe("removed");
+    expect(breakFitKind([ended])).toBe("ended");
+    // An open break that went is removed, as any other.
+    expect(breakFitKind([{ from: open, to: null }])).toBe("removed");
+    expect(breakFitKind([cut, removed])).toBe("other");
+    expect(breakFitKind([ended, cut])).toBe("other");
+    expect(breakFitKind([])).toBe("other");
   });
 
   it("reads an approval of someone's hours", () => {

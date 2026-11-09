@@ -397,6 +397,47 @@ const demoRow = (
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
 export const demoActivityRows: ActivityRow[] = [
+  // One correction, two rows: its own and, written first, the breaks it cut
+  // (one shortened, one removed), as correct_time_entry logs them.
+  demoRow(125, "2026-11-04T12:50:00+02:00", "shiran", "clock.correct", {
+    entry: "entry-yoav",
+    person: "yoav",
+    from: {
+      clock_in: "2026-11-03T16:00:00+02:00",
+      clock_out: "2026-11-03T23:45:00+02:00",
+    },
+    to: {
+      clock_in: "2026-11-03T16:00:00+02:00",
+      clock_out: "2026-11-03T22:45:00+02:00",
+    },
+    note: "יצא ב-22:45 והחתים מהבית",
+  }),
+  demoRow(124, "2026-11-04T12:50:00+02:00", "shiran", "clock.break_fit", {
+    entry: "entry-yoav",
+    person: "yoav",
+    clock_in: "2026-11-03T16:00:00+02:00",
+    breaks: [
+      {
+        break: "break-yoav-1",
+        from: {
+          start: "2026-11-03T22:30:00+02:00",
+          end: "2026-11-03T22:50:00+02:00",
+        },
+        to: {
+          start: "2026-11-03T22:30:00+02:00",
+          end: "2026-11-03T22:45:00+02:00",
+        },
+      },
+      {
+        break: "break-yoav-2",
+        from: {
+          start: "2026-11-03T23:00:00+02:00",
+          end: "2026-11-03T23:40:00+02:00",
+        },
+        to: null,
+      },
+    ],
+  }),
   demoRow(123, "2026-11-04T12:40:00+02:00", "noa", "lists.finish", {
     list: "list-kitchen-opening",
     name: "פתיחת מטבח",
@@ -443,6 +484,7 @@ export const demoActivityRows: ActivityRow[] = [
       clock_in: "2026-11-03T16:00:00+02:00",
       clock_out: "2026-11-03T23:30:00+02:00",
     },
+    note: "שכחה לצאת",
   }),
   demoRow(114, "2026-11-04T09:03:00+02:00", "shiran", "module.settings", {
     module: "scheduling",

@@ -110,6 +110,29 @@ export function proofInline(
   }
 }
 
+/**
+ * Who added or last corrected a shift, and why, as its second line: "תוקן על
+ * ידי שירן: שכחה לצאת". Null for a shift nobody changed. A shift a manager
+ * added says it was recorded, until someone corrects it; a name the reader
+ * can't see is "a manager", and a change from before reasons has none.
+ */
+export function correctionLine(
+  record: ShiftRecord,
+  t: Translator<"app.clock.history">,
+): string | null {
+  const fix = record.correction;
+  if (!fix) return null;
+  const name = fix.by ?? t("aManager");
+  if (fix.kind === "added") {
+    return fix.note
+      ? t("added", { name, note: fix.note })
+      : t("addedBy", { name });
+  }
+  return fix.note
+    ? t("corrected", { name, note: fix.note })
+    : t("correctedBy", { name });
+}
+
 function StateBadge({
   record,
   t,
@@ -141,6 +164,9 @@ function ShiftRows({
       {records.map((record) => {
         const pending = record.attendance?.pending === true;
         const proof = proofInline(record.attendance, t, pending);
+        const fixed = correctionLine(record, t);
+        // A shift a manager added names who recorded it on its own line.
+        const added = record.correction?.kind === "added";
         const row = {
           title: dayLabel(record.date),
           subtitle: (
@@ -151,8 +177,9 @@ function ShiftRows({
               {record.breakMinutes > 0
                 ? t("withBreak", { minutes: record.breakMinutes })
                 : null}
-              {record.byManager ? t("byManager") : null}
+              {record.byManager && !added ? t("byManager") : null}
               {proof ? t("withProof", { proof }) : null}
+              {fixed ? <span className="block">{fixed}</span> : null}
             </>
           ),
           trailing: (
@@ -227,6 +254,7 @@ function ShiftTable({
         <tbody>
           {records.map((record) => {
             const proof = proofLabel(record.attendance, t);
+            const fixed = correctionLine(record, t);
             return (
               <tr key={record.id}>
                 <th
@@ -234,9 +262,15 @@ function ShiftTable({
                   className={cn(td, "text-start font-medium text-ink")}
                 >
                   {dayLabel(record.date)}
-                  {record.byManager ? (
+                  {/* A shift a manager added says so once: by name when known. */}
+                  {record.byManager && record.correction?.kind !== "added" ? (
                     <span className="block font-normal text-ink-2 text-sm">
                       {t("addedByManager")}
+                    </span>
+                  ) : null}
+                  {fixed ? (
+                    <span className="block font-normal text-ink-2 text-sm">
+                      {fixed}
                     </span>
                   ) : null}
                   {proof ? (

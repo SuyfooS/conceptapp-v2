@@ -75,6 +75,8 @@ export type PersonHoursData = {
 export type EntryFailure =
   | EntryProblem
   | "times"
+  /** Why the hours change is missing: the database keeps one for each. */
+  | "reasonNeeded"
   /** Someone else approves a person's own hours. */
   | "ownHours"
   /** Hours someone set for themselves wait for an owner. */
@@ -87,8 +89,13 @@ export type EntryActionResult =
   | { ok: true }
   | { ok: false; failure: EntryFailure };
 
-/** What was typed for a shift, as the form holds it. */
-export type EntryValues = { date: string; in: string; out: string };
+/** What was typed for a shift, as the form holds it, with why it changes. */
+export type EntryValues = {
+  date: string;
+  in: string;
+  out: string;
+  reason: string;
+};
 
 export type EntryActions = {
   correct: (entryId: string, values: EntryValues) => Promise<EntryActionResult>;

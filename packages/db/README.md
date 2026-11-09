@@ -98,6 +98,31 @@ the demo reset ends with two example lists sent by the demo's manager
 `@db/departments` `getDepartmentsForTeam` reads them for the console with the
 secret key, since the team is no member.
 
+Hours stay (`20261110000100_hours_kept.sql`, payroll P1). `time_entries`,
+`time_breaks` and `audit_log` refer to their business, person and entry with
+`on delete restrict`, so deleting a person, their account or a business with
+hours fails (23503): people leave by being made inactive. A trigger on each
+refuses every delete (42501), the database's owner's included, but two, each
+named for the transaction by a setting the Data API can't set:
+`private.purge_business_records(business)` (`ca.records_purge`; breaks, then
+entries, then the log; the reset locks the business and runs it first, so a
+visitor's write under way finishes before it and none lands after; test
+clean-ups run it as postgres, and nobody else may) and the trim of an entry's
+own breaks (`ca.fit_breaks`). The log never changes but for its actor going to
+null when their account goes, and only its owner updates, deletes or truncates
+it; nobody else truncates hours or breaks either.
+`private.seed_demo_pay(business)` is a stub the reset ends with; later payroll
+parts replace it and the purge, never the reset. `add_time_entry` and
+`correct_time_entry` refuse a missing reason (22023, "A correction needs its
+reason") and log it as `note`; the entry keeps the newest. A correction that
+cuts or removes breaks writes one `clock.break_fit` row by the corrector, each
+break `from` and `to` (null when removed) and the entry's corrected `clock_in`,
+which names the shift's day as `clock.correct` does; a clock-out that ends an
+open break writes none (`hours_kept.test.sql`). `@db/time-clock` reads each
+entry's `created_at` with its edit: a shift a manager added is edited as it is
+written, so an `edited_at` more than a second later means it was corrected
+since, and its line says so (`ShiftRecord.correction.kind`).
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

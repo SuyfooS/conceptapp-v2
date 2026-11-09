@@ -7,7 +7,7 @@ import {
   correctTimeEntry,
 } from "@db/time-clock";
 import { canSeeTeam } from "@domain/team";
-import { parseEntryTimes } from "@domain/time-clock";
+import { parseEntryTimes, parseReason } from "@domain/time-clock";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
 import { z } from "zod";
@@ -29,6 +29,8 @@ function failureOf(
       return "times";
     case "needsEnd":
       return "needsEnd";
+    case "reasonNeeded":
+      return "reasonNeeded";
     case "noAccess":
       return "noAccess";
     default:
@@ -37,8 +39,9 @@ function failureOf(
 }
 
 /**
- * A manager's change to someone's hours. The database checks the actor again
- * and keeps the earlier times in the audit log.
+ * A manager's change to someone's hours, with why. The database checks the
+ * actor again, refuses it without a reason, and keeps the earlier times and
+ * the reason in the audit log.
  */
 async function asManager(
   values: EntryValues,
@@ -46,7 +49,7 @@ async function asManager(
   run: (
     actorId: string,
     businessId: string,
-    times: { clockIn: string; clockOut: string | null },
+    times: { clockIn: string; clockOut: string | null; note: string },
   ) => Promise<ClockResult<unknown>>,
 ): Promise<EntryActionResult> {
   const member = await currentMember();
@@ -59,8 +62,15 @@ async function asManager(
   const { timeZone } = membership.business.place;
   const times = parseEntryTimes(values, timeZone, new Date(), { endRequired });
   if (!times.ok) return { ok: false, failure: times.problem };
+  // After the times, so the form says what's wrong with them first.
+  const note = parseReason(values.reason);
+  if (note === null) return { ok: false, failure: "reasonNeeded" };
 
-  const result = await run(member.userId, membership.business.id, times);
+  const result = await run(member.userId, membership.business.id, {
+    clockIn: times.clockIn,
+    clockOut: times.clockOut,
+    note,
+  });
   // Hours someone set for themselves wait for an owner, who hears it.
   if (result.ok) pushSoon();
   refresh();
@@ -129,6 +139,7 @@ export async function addEntryAction(
       clockIn: times.clockIn,
       // Required above, so parseEntryTimes never leaves it out here.
       clockOut: times.clockOut ?? "",
+      note: times.note,
     }),
   );
 }

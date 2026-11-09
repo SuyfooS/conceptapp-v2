@@ -125,12 +125,25 @@ export async function clearAvailability(phone: string): Promise<void> {
       and p.phone = ${phone}`;
 }
 
-/** A person starts with nothing on the clock. */
+/**
+ * A person starts with nothing on the clock. Hours are kept
+ * (20261110000100_hours_kept.sql): only a purge that names the business may
+ * delete them, for this transaction, and an entry's breaks go first. Never the
+ * whole purge, which would take every person's hours and the restaurant's log
+ * from under the specs running beside this one.
+ */
 export async function clearTimeEntries(phone: string): Promise<void> {
-  await sql`delete from public.time_entries e
-    using public.profiles p
-    where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
-      and p.phone = ${phone}`;
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.time_breaks b
+      using public.profiles p
+      where b.business_id = ${DEMO_RESTAURANT} and b.user_id = p.id
+        and p.phone = ${phone}`;
+    await tx`delete from public.time_entries e
+      using public.profiles p
+      where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
+        and p.phone = ${phone}`;
+  });
 }
 
 /** A shift already worked: on the 1st of this month, or the 10th of an earlier one. */
@@ -732,9 +745,21 @@ export const PUSH_PEOPLE = {
   },
 } as const;
 
+/**
+ * The push business goes with its records: its log is kept
+ * (20261110000100_hours_kept.sql), so the purge, which only the database's
+ * owner may run, clears it first, in the same transaction.
+ */
+async function deletePushBusiness(): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select private.purge_business_records(${PUSH_BUSINESS}::uuid)`;
+    await tx`delete from public.businesses where id = ${PUSH_BUSINESS}`;
+  });
+}
+
 export async function openPushBusiness(): Promise<void> {
   const people = Object.values(PUSH_PEOPLE);
-  await sql`delete from public.businesses where id = ${PUSH_BUSINESS}`;
+  await deletePushBusiness();
   for (const person of people) {
     await sql`
       insert into auth.users (
@@ -830,7 +855,7 @@ export async function notifyPushOwner(): Promise<void> {
 export async function closePushBusiness(): Promise<void> {
   await sql`delete from public.push_subscriptions
     where user_id in ${sql(Object.values(PUSH_PEOPLE).map((p) => p.id))}`;
-  await sql`delete from public.businesses where id = ${PUSH_BUSINESS}`;
+  await deletePushBusiness();
 }
 
 /** A demo person's line about themselves, written straight to the local database. */

@@ -1,6 +1,6 @@
 "use client";
 
-import type { ShiftRecord } from "@domain/time-clock";
+import { parseReason, REASON_MAX, type ShiftRecord } from "@domain/time-clock";
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
@@ -9,9 +9,10 @@ import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
+import { TextField } from "@ui/text-field";
 import { History, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { RefreshOnReturn } from "../../home/refresh-on-return";
 import { MonthHero } from "../month-hero";
 import { ShiftList } from "../shift-list";
@@ -177,25 +178,38 @@ function EntryForm({
 }) {
   const t = useTranslations("app.clock.team");
   const id = useId();
+  const reasonField = useRef<HTMLInputElement>(null);
+  // The reason starts empty each time: it says why this change is made.
   const [values, setValues] = useState<EntryValues>({
     date: record?.date ?? date,
     in: record?.in ?? "",
     out: record?.out ?? "",
+    reason: "",
   });
   const [failure, setFailure] = useState<EntryFailure | null>(null);
   // Only a shift still running may be left with no end, while it's within limits.
   const canStayOpen = record?.out === null && !record.overdue;
 
+  /** A missing reason is said under its field, which takes the focus. */
+  function fail(next: EntryFailure) {
+    setFailure(next);
+    if (next === "reasonNeeded") reasonField.current?.focus();
+  }
+
   function submit() {
     if (!canStayOpen && record && values.out === "") {
-      setFailure("needsEnd");
+      fail("needsEnd");
+      return;
+    }
+    if (parseReason(values.reason) === null) {
+      fail("reasonNeeded");
       return;
     }
     setFailure(null);
-    save(values, setFailure);
+    save(values, fail);
   }
 
-  const field = (key: keyof EntryValues, type: "date" | "time") => (
+  const field = (key: "date" | "in" | "out", type: "date" | "time") => (
     <FieldRow label={t(`sheet.${key}`)} htmlFor={`${id}-${key}`}>
       <input
         id={`${id}-${key}`}
@@ -221,7 +235,23 @@ function EntryForm({
       <p className="px-1 text-ink-2 text-sm">
         {canStayOpen ? t("sheet.openHint") : t("sheet.nextDayHint")}
       </p>
-      {failure ? (
+      <TextField
+        ref={reasonField}
+        label={t("sheet.reason")}
+        hint={t("sheet.reasonHint")}
+        error={
+          failure === "reasonNeeded" ? t("failure.reasonNeeded") : undefined
+        }
+        value={values.reason}
+        maxLength={REASON_MAX}
+        required
+        autoComplete="off"
+        onChange={(event) => {
+          setValues({ ...values, reason: event.target.value });
+          if (failure === "reasonNeeded") setFailure(null);
+        }}
+      />
+      {failure && failure !== "reasonNeeded" ? (
         <p role="alert" className="px-1 font-medium text-danger">
           {t(`failure.${failure}`)}
         </p>

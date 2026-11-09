@@ -85,6 +85,18 @@ export const timeEntry = z
     outProof: z.enum(ENTRY_PROOFS).nullable().default(null),
     /** When a manager last confirmed what was made without a code. */
     confirmedAt: z.iso.datetime({ offset: true }).nullable().default(null),
+    /**
+     * Why a manager added or last corrected it (20261110000100_hours_kept.sql
+     * requires one), and who did and when. Null for an entry nobody changed.
+     */
+    note: z.string().nullable().default(null),
+    editedBy: z.string().nullable().default(null),
+    editedAt: z.iso.datetime({ offset: true }).nullable().default(null),
+    /**
+     * When it was written. A shift a manager adds is edited as it is written,
+     * so an `editedAt` later than this means it was corrected since.
+     */
+    createdAt: z.iso.datetime({ offset: true }).nullable().default(null),
   })
   .refine(
     (e) =>
@@ -378,15 +390,58 @@ export type ShiftRecord = {
   overdue: boolean;
   /** How it was recorded, when the business asks for a code or it waits. */
   attendance: Attendance | null;
+  /**
+   * Who added or last corrected it, and why. `kind` says which: "added" for a
+   * shift a manager wrote down and nobody changed since, "corrected" otherwise.
+   * `by` is their name, null when it isn't known to the reader; `note` is null
+   * for a change from before reasons were asked for. Null when nobody changed it.
+   */
+  correction: ShiftCorrection | null;
 };
 
-/** One person's entries of a month as the history shows them, newest first. */
+export type ShiftCorrection = {
+  kind: "added" | "corrected";
+  by: string | null;
+  note: string | null;
+};
+
+/**
+ * Whether a shift a manager added was corrected after it was written: its
+ * last edit more than a second after it was written (add_time_entry writes
+ * both at once). Unknown times count as the add itself.
+ */
+function editedSinceWritten(entry: TimeEntry): boolean {
+  if (entry.editedAt === null || entry.createdAt === null) return false;
+  return Date.parse(entry.editedAt) - Date.parse(entry.createdAt) > 1000;
+}
+
+/** Who added or last corrected an entry, and why; null when nobody did. */
+function correctionOf(
+  entry: TimeEntry,
+  nameOf: (userId: string) => string | null,
+): ShiftCorrection | null {
+  if (entry.editedBy === null) return null;
+  return {
+    kind:
+      entry.source === "manager" && !editedSinceWritten(entry)
+        ? "added"
+        : "corrected",
+    by: nameOf(entry.editedBy),
+    note: entry.note,
+  };
+}
+
+/**
+ * One person's entries of a month as the history shows them, newest first.
+ * `nameOf` names whoever corrected an entry.
+ */
 export function monthRecords(
   entries: readonly TimeEntry[],
   month: string,
   timeZone: string,
   now: Date,
   step: 0 | 5 | 15 = 0,
+  nameOf: (userId: string) => string | null = () => null,
 ): ShiftRecord[] {
   return entries
     .filter((entry) => monthOf(entryDate(entry, timeZone)) === month)
@@ -404,6 +459,7 @@ export function monthRecords(
       byManager: entry.source === "manager",
       overdue: entryOverdue(entry, now),
       attendance: attendanceOf(entry),
+      correction: correctionOf(entry, nameOf),
     }));
 }
 
@@ -483,6 +539,19 @@ export function parseEntryTimes(
   };
 }
 
+/** The longest reason the database keeps for a correction (time_entries.note). */
+export const REASON_MAX = 200;
+
+/**
+ * Why a manager adds or corrects a shift, as the database keeps it: trimmed,
+ * at least one character and at most `REASON_MAX`. Null otherwise.
+ */
+export function parseReason(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const reason = input.trim();
+  return reason.length > 0 && reason.length <= REASON_MAX ? reason : null;
+}
+
 /**
  * The entry the person can still take back: the one they left last, within
  * `UNDO_CLOCK_OUT_SECONDS`, when they punched it themselves.
@@ -523,6 +592,8 @@ export type ClockFailure =
   | "needsEnd"
   | "tooLong"
   | "times"
+  /** Adding or correcting: the reason is missing. */
+  | "reasonNeeded"
   /** Confirming: someone else confirms a person's own hours. */
   | "ownHours"
   /** Confirming: a time someone set for themselves waits for an owner. */
@@ -538,7 +609,10 @@ export type ClockFailure =
  * press sent without a code to a business that now asks for one.
  */
 export type PunchFailure =
-  | Exclude<ClockFailure, "ownHours" | "ownerOnly" | "nothingToConfirm">
+  | Exclude<
+      ClockFailure,
+      "ownHours" | "ownerOnly" | "nothingToConfirm" | "reasonNeeded"
+    >
   | "codeNeeded";
 
 /**
@@ -553,6 +627,7 @@ export function punchFailureOf(
     case "ownHours":
     case "ownerOnly":
     case "nothingToConfirm":
+    case "reasonNeeded":
       return "failed";
     case "code":
       // The owner switched codes on after the page loaded: no digits were
@@ -581,6 +656,7 @@ export function clockFailureOf(
       if (/needs confirming/i.test(message)) return "nothingToConfirm";
       return /too late/i.test(message) ? "tooLate" : "notIn";
     case "22023":
+      if (/reason/i.test(message)) return "reasonNeeded";
       return /needs an end/i.test(message) ? "needsEnd" : "times";
     case "42501":
       if (/stations only/i.test(message)) return "stationsOnly";

@@ -1137,6 +1137,11 @@
         "withBreak": " · {minutes} min break",
         "byManager": " · recorded by a manager",
         "addedByManager": "Recorded by a manager",
+        "corrected": "Corrected by {name}: {note}",
+        "correctedBy": "Corrected by {name}",
+        "added": "Recorded by {name}: {note}",
+        "addedBy": "Recorded by {name}",
+        "aManager": "a manager",
         "breakMinutes": "{minutes} min",
         "noBreak": "No break",
         "columns": {
@@ -1223,6 +1228,8 @@
           "out": "Out",
           "openHint": "If the person is still on shift, leave the end empty.",
           "nextDayHint": "An end before the start counts as the next day.",
+          "reason": "Why the change",
+          "reasonHint": "It shows on the person's shifts and in the activity log.",
           "saveEdit": "Save the hours",
           "saveAdd": "Add the shift",
           "close": "Close"
@@ -1237,7 +1244,8 @@
           "failed": "The hours weren't saved. Check your connection and try again.",
           "sameTime": "The end is the same as the start. Check the times.",
           "ownHours": "Another manager or the owner approves your own hours.",
-          "ownerOnly": "Only the owner approves hours a manager recorded for themselves."
+          "ownerOnly": "Only the owner approves hours a manager recorded for themselves.",
+          "reasonNeeded": "Write why you're changing it, so the record keeps it."
         },
         "done": {
           "edit": "Hours saved",
@@ -1484,7 +1492,12 @@
             "onDay": "{day}, <hours></hours>",
             "hours": "Hours",
             "confirm": "Approved {person}'s hours",
-            "codeLocked": "Typing the clock code was blocked after wrong tries"
+            "codeLocked": "Typing the clock code was blocked after wrong tries",
+            "reason": "Reason: {note}",
+            "breakFit": "{kind, select, removed {Removed {count, plural, one {a break} other {# breaks}}} ended {Ended {count, plural, one {an open break} other {# open breaks}}} cut {Shortened {count, plural, one {a break} other {# breaks}}} other {Changed {count, plural, one {a break} other {# breaks}}}} when fixing {person}'s shift on {day}",
+            "breakOpen": "from <ltr>{in}</ltr>, not ended",
+            "break": "Break",
+            "breakRemoved": "Removed"
           },
           "invite": {
             "create": "Invited to the team: {name}, {role}",

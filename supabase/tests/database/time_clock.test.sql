@@ -215,31 +215,31 @@ select throws_ok(
 select throws_ok(
   $$select public.add_time_entry('68000000-0000-4000-a000-00000000000c',
     '68000000-0000-4000-b000-000000000001', '68000000-0000-4000-a000-00000000000c',
-    '2026-11-09 06:00+00', '2026-11-09 14:00+00', null, '2026-11-13 08:00+00')$$,
+    '2026-11-09 06:00+00', '2026-11-09 14:00+00', 'Forgot to punch', '2026-11-13 08:00+00')$$,
   '42501', null, 'a worker cannot add an entry'
 );
 select throws_ok(
   $$select public.add_time_entry('68000000-0000-4000-a000-00000000000b',
     '68000000-0000-4000-b000-000000000001', '68000000-0000-4000-a000-00000000000e',
-    '2026-11-09 06:00+00', '2026-11-09 14:00+00', null, '2026-11-13 08:00+00')$$,
+    '2026-11-09 06:00+00', '2026-11-09 14:00+00', 'Forgot to punch', '2026-11-13 08:00+00')$$,
   '42501', null, 'a manager cannot add an entry for someone outside the business'
 );
 select throws_ok(
   $$select public.add_time_entry('68000000-0000-4000-a000-00000000000b',
     '68000000-0000-4000-b000-000000000001', '68000000-0000-4000-a000-00000000000c',
-    '2026-11-09 14:00+00', '2026-11-09 06:00+00', null, '2026-11-13 08:00+00')$$,
+    '2026-11-09 14:00+00', '2026-11-09 06:00+00', 'Forgot to punch', '2026-11-13 08:00+00')$$,
   '22023', null, 'an entry must end after it starts'
 );
 select throws_ok(
   $$select public.add_time_entry('68000000-0000-4000-a000-00000000000b',
     '68000000-0000-4000-b000-000000000001', '68000000-0000-4000-a000-00000000000c',
-    '2026-11-13 06:00+00', '2026-11-13 14:00+00', null, '2026-11-13 08:00+00')$$,
+    '2026-11-13 06:00+00', '2026-11-13 14:00+00', 'Forgot to punch', '2026-11-13 08:00+00')$$,
   '22023', null, 'an entry cannot end in the future'
 );
 select throws_ok(
   $$select public.add_time_entry('68000000-0000-4000-a000-00000000000b',
     '68000000-0000-4000-b000-000000000001', '68000000-0000-4000-a000-00000000000c',
-    '2026-11-10 12:00+00', '2026-11-10 23:00+00', null, '2026-11-13 08:00+00')$$,
+    '2026-11-10 12:00+00', '2026-11-10 23:00+00', 'Forgot to punch', '2026-11-13 08:00+00')$$,
   '23P01', null, 'an entry cannot overlap another of the same person'
 );
 insert into ids values ('c3', public.add_time_entry('68000000-0000-4000-a000-00000000000b',
@@ -254,17 +254,17 @@ select is(
 select throws_ok(
   $$select public.correct_time_entry('68000000-0000-4000-a000-00000000000c',
     (select id from ids where name = 'c1'), '2026-11-10 06:00+00', '2026-11-10 14:00+00',
-    null, '2026-11-13 08:00+00')$$,
+    'Wrong times', '2026-11-13 08:00+00')$$,
   '42501', null, 'a worker cannot correct their own entry'
 );
 select throws_ok(
   $$select public.correct_time_entry('68000000-0000-4000-a000-00000000000b',
-    gen_random_uuid(), '2026-11-10 06:00+00', '2026-11-10 14:00+00', null, '2026-11-13 08:00+00')$$,
+    gen_random_uuid(), '2026-11-10 06:00+00', '2026-11-10 14:00+00', 'Wrong times', '2026-11-13 08:00+00')$$,
   'P0002', null, 'an unknown entry cannot be corrected'
 );
 select throws_ok(
   $$select public.correct_time_entry('68000000-0000-4000-a000-00000000000b',
-    (select id from ids where name = 'd1'), '2026-11-12 06:00+00', null, null, '2026-11-13 08:00+00')$$,
+    (select id from ids where name = 'd1'), '2026-11-12 06:00+00', null, 'Still open', '2026-11-13 08:00+00')$$,
   '22023', null, 'a correction cannot leave an entry open for more than 24 hours'
 );
 select lives_ok(
@@ -276,7 +276,7 @@ select lives_ok(
 select lives_ok(
   $$select public.correct_time_entry('68000000-0000-4000-a000-00000000000d',
     (select id from ids where name = 'c1'), '2026-11-10 06:00+00', '2026-11-10 14:00+00',
-    null, '2026-11-13 08:00+00')$$,
+    'Wrong times', '2026-11-13 08:00+00')$$,
   'a worker holding clock.edit corrects a colleague''s entry'
 );
 select is(
@@ -287,8 +287,9 @@ select is(
     'person', '68000000-0000-4000-a000-00000000000c',
     'from', jsonb_build_object('clock_in', '2026-11-10 06:01:30+00'::timestamptz, 'clock_out', '2026-11-10 22:30:30+00'::timestamptz),
     'to', jsonb_build_object('clock_in', '2026-11-10 06:00+00'::timestamptz, 'clock_out', '2026-11-10 14:00+00'::timestamptz),
-    'proof', jsonb_build_object('in', 'manager', 'out', 'manager')),
-  'a correction keeps the old and new times in the audit log, and what they now rest on'
+    'proof', jsonb_build_object('in', 'manager', 'out', 'manager'),
+    'note', 'Wrong times'),
+  'a correction keeps the old and new times in the audit log, what they now rest on, and why'
 );
 select results_eq(
   $$select action, count(*)::int from public.audit_log

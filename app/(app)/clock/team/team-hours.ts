@@ -166,12 +166,15 @@ export async function currentPersonHours(
   if (!person) return null;
 
   const step = settings.roundToMinutes;
+  // Who corrected each shift, for its line.
+  const nameOf = (userId: string) =>
+    people.find((row) => row.userId === userId)?.name ?? null;
   return {
     person: { userId: person.userId, name: person.name },
     month,
     currentMonth,
     minutes: monthMinutes(entries, month, timeZone, now, step),
-    records: monthRecords(entries, month, timeZone, now, step),
+    records: monthRecords(entries, month, timeZone, now, step, nameOf),
     today,
     viewOnly,
   };

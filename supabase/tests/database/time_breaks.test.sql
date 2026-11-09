@@ -211,7 +211,7 @@ select is(
 -- A correction keeps breaks inside the entry.
 select public.correct_time_entry('69000000-0000-4000-a000-00000000000b',
   (select id from ids where name = 'c1'),
-  '2026-11-10 06:00+00', '2026-11-10 13:30+00', null, '2026-11-10 20:00+00');
+  '2026-11-10 06:00+00', '2026-11-10 13:30+00', 'Left at 13:30', '2026-11-10 20:00+00');
 select is(
   (select ended_at from public.time_breaks where id = (select id from ids where name = 'b2')),
   '2026-11-10 13:30+00'::timestamptz,
@@ -219,7 +219,7 @@ select is(
 );
 select public.correct_time_entry('69000000-0000-4000-a000-00000000000b',
   (select id from ids where name = 'c1'),
-  '2026-11-10 06:00+00', '2026-11-10 12:00+00', null, '2026-11-10 20:01+00');
+  '2026-11-10 06:00+00', '2026-11-10 12:00+00', 'Left at noon', '2026-11-10 20:01+00');
 select is(
   (select count(*)::int from public.time_breaks where id = (select id from ids where name = 'b2')),
   0,
@@ -234,7 +234,7 @@ select throws_ok(
 -- A correction can't reopen a shift that ended.
 select throws_ok(
   format($$select public.correct_time_entry('69000000-0000-4000-a000-00000000000b', %L,
-    '2026-11-10 06:00+00', null, null, '2026-11-10 20:02+00')$$,
+    '2026-11-10 06:00+00', null, 'Still here', '2026-11-10 20:02+00')$$,
     (select id from ids where name = 'c1')),
   '22023', 'An entry that ended needs an end', 'a correction cannot reopen a shift that ended'
 );
@@ -244,7 +244,7 @@ select throws_ok(
 insert into ids
 select 'c2', public.add_time_entry('69000000-0000-4000-a000-00000000000b',
   '69000000-0000-4000-b000-000000000001', '69000000-0000-4000-a000-00000000000d',
-  '2026-11-12 06:00+00', '2026-11-12 14:00+00', null, '2026-11-12 20:00+00');
+  '2026-11-12 06:00+00', '2026-11-12 14:00+00', 'Forgot to punch', '2026-11-12 20:00+00');
 insert into public.time_breaks (entry_id, business_id, user_id, started_at, ended_at, unpaid)
 values
   ((select id from ids where name = 'c2'), '69000000-0000-4000-b000-000000000001',
@@ -253,7 +253,7 @@ values
     '69000000-0000-4000-a000-00000000000d', '2026-11-12 10:40+00', '2026-11-12 11:00+00', true);
 select lives_ok(
   format($$select public.correct_time_entry('69000000-0000-4000-a000-00000000000b', %L,
-    '2026-11-12 06:30+00', '2026-11-12 14:30+00', null, '2026-11-12 20:01+00')$$,
+    '2026-11-12 06:30+00', '2026-11-12 14:30+00', 'Came in late', '2026-11-12 20:01+00')$$,
     (select id from ids where name = 'c2')),
   'a shift moves by half an hour'
 );
@@ -266,11 +266,16 @@ select results_eq(
 );
 select lives_ok(
   format($$select public.correct_time_entry('69000000-0000-4000-a000-00000000000b', %L,
-    '2026-11-11 06:30+00', '2026-11-11 14:30+00', null, '2026-11-12 20:02+00')$$,
+    '2026-11-11 06:30+00', '2026-11-11 14:30+00', 'The day before', '2026-11-12 20:02+00')$$,
     (select id from ids where name = 'c2')),
   'a shift moves to another date, with its breaks kept'
 );
+-- Hours are kept (20261110000100_hours_kept.sql): only a purge that names the
+-- business deletes them, breaks first, since an entry with breaks can't go.
+select set_config('ca.records_purge', '69000000-0000-4000-b000-000000000001', true);
+delete from public.time_breaks where entry_id = (select id from ids where name = 'c2');
 delete from public.time_entries where id = (select id from ids where name = 'c2');
+select set_config('ca.records_purge', '', true);
 
 -- Everything goes to the audit log.
 select is(
