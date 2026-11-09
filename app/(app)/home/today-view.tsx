@@ -29,10 +29,12 @@ import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
+import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { Tile, type TileProps } from "@ui/tile";
 import {
+  Bell,
   CalendarCheck,
   CalendarClock,
   CalendarDays,
@@ -83,6 +85,8 @@ export type TodayData = {
   schedule: TodaySchedule | null;
   /** Owners and managers only. */
   team: Team | null;
+  /** The bell and how many lines are unread; null when there is none. */
+  bell?: { unread: number } | null;
 };
 
 type T = Translator<"app">;
@@ -240,6 +244,20 @@ export async function TodayView({
               }
             />
           </div>
+          {data.bell ? (
+            <IconButton
+              href={path("/notifications")}
+              label={t("notifications.bell")}
+              badge={{
+                count: data.bell.unread,
+                label: t("notifications.bellCount", {
+                  count: data.bell.unread,
+                }),
+              }}
+              icon={<Bell />}
+              variant="ghost"
+            />
+          ) : null}
         </div>
 
         {view ? (

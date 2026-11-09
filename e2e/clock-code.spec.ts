@@ -76,6 +76,9 @@ async function toTyping(page: Page, to: "in" | "out") {
   });
 }
 
+/** Text to find as it is, inside a pattern. */
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /** Goes to another screen through the tab bar, as a thumb would. */
 async function throughTabBar(page: Page, name: string) {
   // At the top of the page the bar is full size, each tab one tap away.
@@ -84,7 +87,9 @@ async function throughTabBar(page: Page, name: string) {
   await page
     .getByRole("navigation", { name: he.ui.appShell.mainNav })
     .filter({ visible: true })
-    .getByRole("link", { name, exact: true })
+    // The name, and Home's count of what needs the person when it has one.
+    // The label and the count are blocks, so the name reads "היום , 2 ...".
+    .getByRole("link", { name: new RegExp(`^${literal(name)}(\\s*,|$)`) })
     .click();
 }
 

@@ -83,7 +83,9 @@ select is(
   'publishing still returns the number of shifts'
 );
 select results_eq(
-  $$select actor_id, details from public.audit_log
+  -- Whose shifts changed and the requests removed are for notifications
+  -- (notifications.test.sql).
+  $$select actor_id, details - 'changed' - 'removed_swaps' from public.audit_log
     where business_id = '6c000000-0000-4000-b000-000000000001' and action = 'schedule.publish'$$,
   $$values ('6c000000-0000-4000-a000-00000000000b'::uuid, jsonb_build_object(
     'week', (select id from ids where name = 'x'),

@@ -20,7 +20,10 @@ export type NavItem = {
   icon: ReactNode;
   /** Match only this exact path (use for the home item). */
   exact?: boolean;
-  /** Small count shown on the item, e.g. pending requests. */
+  /**
+   * Small count shown on the item, read out as needing action: pending
+   * requests, or the notifications that ask the person to act.
+   */
   count?: number;
 };
 
@@ -271,6 +274,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
                     {item.icon}
                   </span>
                   <span
+                    data-nav-label
                     className={cn(
                       "text-[11px] leading-[14px]",
                       active ? "font-bold" : "font-medium",
@@ -352,7 +356,9 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
                 >
                   {item.icon}
                 </span>
-                <span className="flex-1">{item.label}</span>
+                <span data-nav-label className="flex-1">
+                  {item.label}
+                </span>
                 <Count value={item.count} />
               </Link>
             );

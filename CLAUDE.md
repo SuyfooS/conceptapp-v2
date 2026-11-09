@@ -19,8 +19,10 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
    (Orel, 7 November 2026). Don't write anything new that assumes a restaurant:
    restaurants and cafés are only the first templates. The pilot's scope, by Orel's
    decision of 6 November 2026: scheduling, time clock, lists, a management page, and
-   roles with different permissions. Reservations, storefront and notifications wait
-   until after it. Nothing from the deferred list gets built before its trigger.
+   roles with different permissions. Reservations and storefront wait until after it.
+   Notifications are back in (Orel, 8 and 9 November 2026, issue #1): in the app, then
+   on the phone through Web Push, then each person's choices and reminders, before
+   lists and chat. Nothing from the deferred list gets built before its trigger.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.
@@ -87,7 +89,7 @@ Only `app/` imports app code (`@/…`).
   transparency or more contrast.
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
-  Built so far: Button, IconButton, TextField, PhoneField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
+  Built so far: Button, IconButton (also as a link, with a count), TextField, PhoneField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
   and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle and ScanCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/

@@ -35,6 +35,10 @@ it knows is this repo and its GitHub issues.
   through the manual workflow (`supabase/README.md`).
 - Kept as they are: the whole team sees the whole published schedule, a schedule can be
   published with gaps, and every swap needs a manager's approval.
+- Notifications are back in scope (Orel, 8 and 9 November 2026, issue #1), after the QR
+  screens and the profile: in the app and on the phone through free Web Push, no SMS.
+  Each person chooses what reaches their phone and can set quiet hours. The order is
+  notifications, then lists, then chat, and lists and chat will both notify.
 
 ## Talking to Orel
 
@@ -178,7 +182,10 @@ if a reverted migration reached one, open an `urgent` issue.
 - Read, print, log or commit secrets. Orel puts keys into Vercel, Supabase and
   GitHub settings himself; code reads them from the environment.
 - Send SMS, push or email to real people or real phone numbers. Development
-  uses Supabase test numbers and a logging SMS hook.
+  uses Supabase test numbers and a logging SMS hook. The app sending the
+  notifications people turned on is the product, but a nightly run never sends a
+  test notification, never calls `/cron/notifications` on the hosted project, and
+  never writes Vault secrets.
 - Contact the pilot restaurant or anyone else outside this repo.
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.
@@ -216,7 +223,18 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
 - **Management page.** Module settings, module switches, the business's own details and the activity log are built (`/manage`, `/manage/business`, `/manage/activity` and the console). Week start is a team-level setting, since changing it hides published weeks. Opening hours wait: nothing reads them yet. A new server write that changes a business also writes its own row to `audit_log`, and the activity log needs to read it: a case in `@domain/activity`, its words under `app.manage.activity.actions`, and a case in `describe()` in `app/(app)/manage/activity/activity-view.tsx`, which typecheck asks for once the line exists. Until then it shows as "something else".
 - **Approved improvements, built by day on the new screens:** install as an app; fill the week automatically and copy from last week; a moment when a schedule is published; a share on WhatsApp button for the manager after publishing; profile photos; a live shift card after clocking in.
 - **3b · Migrations on `conceptapp-dev`.** By hand only, through the workflow Orel starts (#8). Not for a nightly run.
-- **Not in the pilot, do not start:** reservations, storefront, the public page, notifications.
+- **Notifications, in four parts, each its own PR.** N1, the inbox and what writes to it, is
+  built: `/notifications` from a bell on Today, the unread count on Home (only what
+  needs the person to act), and the database writing each line from the audit log
+  (`20261109000300_notifications.sql`: the schedule published or changed, the swap
+  chain, hours waiting for confirmation, someone joining), in the app only, demo
+  businesses included. Next: N2, on the phone (Web Push with no payload, VAPID with
+  `node:crypto`, a service worker with no fetch handler, never for a demo business,
+  and the minute job through `pg_cron`); N3, each person's choices and quiet hours; N4,
+  the reminders (availability due, still clocked in). A new kind of line is a case in
+  `private.notify_for` and `@domain/notifications`, with its words under
+  `app.notifications.kinds`.
+- **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live
 

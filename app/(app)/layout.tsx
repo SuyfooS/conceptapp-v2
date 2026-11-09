@@ -59,9 +59,21 @@ async function Shell({ children }: { children: ReactNode }) {
   // The business's words: its tab names and role names may be its own.
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
+  // Home carries the notifications that need the person to act (the bell on
+  // Today counts them all); none while viewing as someone.
+  const toAct =
+    enabled.includes("notifications") && !member.viewing
+      ? member.unread.action
+      : 0;
   // Home, then one item per enabled module the role reaches.
   const nav: NavItem[] = [
-    { href: "/home", label: t("nav.home"), icon: <House />, exact: true },
+    {
+      href: "/home",
+      label: t("nav.home"),
+      icon: <House />,
+      exact: true,
+      count: toAct > 0 ? toAct : undefined,
+    },
     ...moduleNav(manifests, enabled, role).map((entry) => ({
       href: entry.href,
       label: tm(`${entry.key}.name`),

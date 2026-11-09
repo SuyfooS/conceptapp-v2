@@ -648,3 +648,46 @@ export async function demoWording(key: string): Promise<string | null> {
     where business_id = ${DEMO_RESTAURANT} and key = ${key}`;
   return rows[0]?.sentence ?? null;
 }
+
+/** Remove the person's notifications at the demo restaurant: an empty inbox. */
+export async function clearNotifications(phone: string): Promise<void> {
+  await sql`delete from public.notifications n using public.profiles p
+    where n.business_id = ${DEMO_RESTAURANT} and n.user_id = p.id
+      and p.phone = ${phone}`;
+}
+
+/**
+ * The person gives away their shift of next week's Sunday (`pattern`) at the
+ * demo restaurant, through the database function the app uses.
+ */
+export async function requestDemoSwap(
+  pattern: string,
+  phone: string,
+): Promise<void> {
+  await sql`
+    with shift as (
+      select s.id from public.schedule_shifts s
+      where s.business_id = ${DEMO_RESTAURANT} and s.pattern_key = ${pattern}
+      order by s.day desc limit 1
+    )
+    select public.request_shift_swap(p.id, shift.id)
+    from public.profiles p, shift where p.phone = ${phone}`;
+}
+
+/** The person takes the demo restaurant's open request. */
+export async function takeDemoSwap(phone: string): Promise<void> {
+  await sql`
+    select public.take_shift_swap(p.id, w.id)
+    from public.profiles p, public.shift_swaps w
+    where p.phone = ${phone} and w.business_id = ${DEMO_RESTAURANT}
+      and w.status = 'open'`;
+}
+
+/** The demo restaurant's manager approves or declines its taken request. */
+export async function decideDemoSwap(approve: boolean): Promise<void> {
+  const manager = "00000000-0000-4000-a000-000000000002";
+  await sql`
+    select public.decide_shift_swap(${manager}, w.id, ${approve})
+    from public.shift_swaps w
+    where w.business_id = ${DEMO_RESTAURANT} and w.status = 'taken'`;
+}

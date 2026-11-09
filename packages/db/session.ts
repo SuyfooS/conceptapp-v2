@@ -1,10 +1,16 @@
 import "server-only";
 import type { ModuleRow } from "@domain/modules";
+import {
+  NO_UNREAD,
+  type UnreadCounts,
+  unreadCounts,
+} from "@domain/notifications";
 import type { BusinessPlace } from "@domain/shabbat";
 import type { ViewSession } from "@domain/view-as";
 import type { Wording } from "@domain/wording";
 import type { Database } from "./database.types";
 import { isMissingFunction } from "./missing";
+import { isMissingTable } from "./notifications";
 import { createClient } from "./supabase/server";
 
 export type MemberRole = Database["public"]["Enums"]["member_role"];
@@ -43,6 +49,12 @@ export type CurrentMember = {
    * `membership` is then that business and role, for reading only.
    */
   viewing: ViewSession | null;
+  /**
+   * The person's own unread lines in `membership`'s business: all of them for
+   * the bell, and those that need them to act for the Home tab. None while
+   * viewing as someone.
+   */
+  unread: UnreadCounts;
 };
 
 type WordingRows = {
@@ -128,6 +140,17 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
   const userId = auth?.claims.sub;
   if (!userId) return null;
 
+  // Alongside the round below: the business is only known once it is back, so
+  // the person's unread lines in every business they read come with it, and
+  // are counted for the chosen one. RLS keeps only lines still for them.
+  const unreadLines = Promise.resolve(
+    supabase
+      .from("notifications")
+      .select("business_id, kind")
+      .eq("user_id", userId)
+      .is("read_at", null)
+      .limit(200),
+  );
   const [profile, phone, membership, view, businessWording, templateWording] =
     await Promise.all([
       supabase
@@ -177,6 +200,9 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     : (phone.data ?? null);
   if (membership.error) throw membership.error;
   if (view.error) throw view.error;
+  const unread = await unreadLines;
+  if (unread.error && !isMissingTable(unread.error)) throw unread.error;
+  const unreadRows = unread.data ?? [];
   const wording: WordingRows = {
     business: wordingRows(businessWording),
     template: wordingRows(templateWording),
@@ -196,6 +222,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
         business: memberBusiness(viewed, wording),
       },
       viewing: { role: view.data.role, businessSlug: viewed.slug },
+      unread: NO_UNREAD,
     };
   }
 
@@ -210,5 +237,6 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
           }
         : null,
     viewing: null,
+    unread: business ? unreadCounts(unreadRows, business.id) : NO_UNREAD,
   };
 }

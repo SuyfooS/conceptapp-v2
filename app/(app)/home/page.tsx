@@ -70,6 +70,11 @@ export default async function HomePage() {
             ? { published, availability, teamAvailability, build }
             : null,
         team,
+        // The bell, while notifications are on and the person is themselves.
+        bell:
+          enabled.includes("notifications") && !member.viewing
+            ? { unread: member.unread.all }
+            : null,
       }}
     />
   );

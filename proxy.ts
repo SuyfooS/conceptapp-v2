@@ -4,9 +4,9 @@ import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * Screens for signed-in people: home, each module's screens (the `nav`
- * hrefs in `modules/<key>/manifest.ts`) and the admin console
- * (tooling/proxy.test.ts keeps both lists in step). Everything else is
- * public.
+ * hrefs in `modules/<key>/manifest.ts`), the notifications, which have no
+ * tab, and the admin console (tooling/proxy.test.ts keeps both lists in
+ * step). Everything else is public.
  */
 const HOME = "/home";
 export const PRIVATE = [
@@ -17,6 +17,7 @@ export const PRIVATE = [
   "/storefront",
   "/team",
   "/manage",
+  "/notifications",
   "/admin",
 ];
 const DOORS = ["/sign-in", "/enter"];
@@ -58,6 +59,7 @@ export const config = {
     "/storefront/:path*",
     "/team/:path*",
     "/manage/:path*",
+    "/notifications/:path*",
     "/admin/:path*",
     "/sign-in",
     "/enter",

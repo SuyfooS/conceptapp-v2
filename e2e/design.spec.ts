@@ -37,6 +37,8 @@ const PAGES = [
   "/design/shell/manage/activity/empty",
   "/design/shell/manage/scheduling",
   "/design/shell/manage/time_clock",
+  "/design/shell/notifications",
+  "/design/shell/notifications/empty",
   "/design/console/businesses/demo-restaurant/settings",
 ];
 

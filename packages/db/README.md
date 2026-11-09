@@ -37,7 +37,21 @@ each for its own action (`business.details`, `module.settings`, `clock.correct`,
 own business's rows, and so does the team while viewing it as a manager or owner.
 Publishing a week's schedule logs its first day, the number of shifts, whether it
 was the first time, and how many waiting swap requests the old shifts took with
-them (`activity_log.test.sql`).
+them (`activity_log.test.sql`), and, for notifications, whose shifts changed
+and the requests it removed.
+
+Notifications are written from the audit log: a trigger
+(`private.notify_from_log`, which never blocks the write it follows) reads
+each row and writes `public.notifications` through `private.notify`, one line
+per person per thing (`dedupe_key`), replaced and unread again when the same
+thing happens again. Once what a line asks for is handled (a request decided,
+hours confirmed), `private.resolve_notifications` settles its lines for
+everyone: read, with `resolved_at`. People read their own lines while they
+are active members at the line's `audience_role` and its modules are on;
+nobody else reads them,
+the team viewing included. `public.read_notifications(actor, business, ids)`
+marks lines read, with the secret key; `@db/notifications` reads the inbox
+and calls it (`notifications.test.sql`).
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
