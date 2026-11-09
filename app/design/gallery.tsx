@@ -34,6 +34,7 @@ import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { ProgressRing } from "@ui/progress-ring";
 import { PunchCircle } from "@ui/punch-circle";
 import { QrCode } from "@ui/qr-code";
+import { ScanCircle } from "@ui/scan-circle";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { SkeletonBones } from "@ui/skeleton";
@@ -47,10 +48,12 @@ import {
   ArrowLeft,
   Bell,
   CalendarDays,
+  Check,
   Fingerprint,
   ListChecks,
   Plus,
   Save,
+  ScanQrCode,
   Send,
   Users,
 } from "lucide-react";
@@ -138,6 +141,7 @@ function GalleryBody({
   const tDays = useTranslations("days");
   const tWeek = useTranslations("app.shifts.week");
   const tCode = useTranslations("app.clock.code");
+  const tClock = useTranslations("app.clock");
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
@@ -163,6 +167,18 @@ function GalleryBody({
   const tokens = accentTokens(requested);
   const accent = ACCENTS.find((a) => a.hex === requested);
   const accentName = accent ? t(`accents.${accent.key}`) : requested;
+
+  // What the camera would see: a code held up, a little turned.
+  const scanStill = (
+    <div className="grid size-full place-items-center bg-surface-3">
+      <QrCode
+        value={GALLERY_QR}
+        label={tCode("qrLabel")}
+        className="w-[46%] -rotate-6"
+      />
+    </div>
+  );
+  const scanCancel = { label: tClock("scan.cancel"), onClick: () => {} };
 
   return (
     <div
@@ -408,6 +424,12 @@ function GalleryBody({
               subtitle={t("p3s")}
               trailing={<Badge tone="accent">{t("p3b")}</Badge>}
             />
+            <ListRow
+              onClick={() => {}}
+              disabled
+              title={t("rowDisabled")}
+              subtitle={t("rowDisabledText")}
+            />
           </ListGroup>
         </Section>
 
@@ -641,6 +663,53 @@ function GalleryBody({
             </div>
           </Card>
           <p className="text-ink-2 text-sm">{t("qrCodeText")}</p>
+        </Section>
+
+        <Section title={t("scanCircle")}>
+          <div className="grid gap-6 md:grid-cols-2">
+            <PunchCircle
+              tone="off"
+              figure={<ScanQrCode aria-hidden="true" />}
+              label={tClock("circle.scanIn")}
+            />
+            <ScanCircle
+              state="starting"
+              still={scanStill}
+              status={tClock("scan.starting")}
+              cancel={scanCancel}
+            />
+            <ScanCircle
+              state="aiming"
+              still={scanStill}
+              status={tClock("scan.aim")}
+              cancel={scanCancel}
+            />
+            <ScanCircle
+              state="reading"
+              still={scanStill}
+              status={tClock("scan.sending")}
+              cancel={{ ...scanCancel, disabled: true }}
+            />
+            <ScanCircle
+              state="read"
+              still={scanStill}
+              figure={
+                <>
+                  <Check aria-hidden="true" />
+                  <span dir="ltr">08:04</span>
+                </>
+              }
+              status={tClock("scan.readIn")}
+              cancel={{ ...scanCancel, disabled: true }}
+            />
+            <ScanCircle
+              state="problem"
+              still={scanStill}
+              status={tClock("scan.denied")}
+              cancel={scanCancel}
+            />
+          </div>
+          <p className="text-ink-2 text-sm">{t("scanCircleText")}</p>
         </Section>
 
         <Section title={t("skeleton")}>

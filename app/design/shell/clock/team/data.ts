@@ -1,3 +1,4 @@
+import type { ShiftRecord } from "@domain/time-clock";
 import type {
   PersonHoursData,
   TeamHoursData,
@@ -7,6 +8,9 @@ import { demoRecords } from "../data";
 const NOA = "noa";
 const YOAV = "yoav";
 const SHIRAN = "shiran";
+const MONTH = "2026-11";
+const TODAY = "2026-11-06";
+const OVERDUE_ENTRY = "68000000-0000-4000-a000-000000000021";
 
 export const demoTeamPaths = {
   clock: "/design/shell/clock",
@@ -14,11 +18,111 @@ export const demoTeamPaths = {
   code: "/design/shell/clock/code",
 };
 
+const shift = (
+  id: number,
+  date: string,
+  times: { in: string; out: string | null; minutes: number },
+  more: Partial<ShiftRecord> = {},
+): ShiftRecord => ({
+  id: `68000000-0000-4000-a000-0000000001${String(id).padStart(2, "0")}`,
+  date,
+  ...times,
+  breakMinutes: 0,
+  byManager: false,
+  overdue: false,
+  attendance: null,
+  ...more,
+});
+
+/**
+ * Each person's shifts this month, newest first. The team list and its totals
+ * are summed from these, so a person's page and their row always agree.
+ */
+const demoPeople: {
+  userId: string;
+  name: string;
+  records: ShiftRecord[];
+}[] = [
+  {
+    userId: YOAV,
+    name: "יואב לוי",
+    records: [
+      // At work now, on a break, clocked in without a code: it waits.
+      shift(
+        1,
+        TODAY,
+        { in: "09:14", out: null, minutes: 166 },
+        { attendance: { how: "none", pending: true } },
+      ),
+      shift(
+        2,
+        "2026-11-05",
+        { in: "16:00", out: "23:30", minutes: 420 },
+        { breakMinutes: 30 },
+      ),
+      shift(3, "2026-11-03", { in: "16:05", out: "23:10", minutes: 425 }),
+      shift(
+        4,
+        "2026-11-01",
+        { in: "16:00", out: "22:45", minutes: 405 },
+        { byManager: true },
+      ),
+    ],
+  },
+  {
+    userId: NOA,
+    name: "נועה כהן",
+    records: [
+      ...demoRecords.filter((record) => record.date === "2026-11-05"),
+      // Left open since the evening of the 4th: only a manager can close it.
+      {
+        id: OVERDUE_ENTRY,
+        date: "2026-11-04",
+        in: "16:00",
+        out: null,
+        minutes: 24 * 60,
+        breakMinutes: 0,
+        byManager: false,
+        overdue: true,
+        attendance: null,
+      },
+      ...demoRecords.filter((record) => record.date < "2026-11-04"),
+    ],
+  },
+  {
+    userId: SHIRAN,
+    name: "שירן הדגמה",
+    records: [
+      // At work now, with the code's digits.
+      shift(
+        5,
+        TODAY,
+        { in: "08:02", out: null, minutes: 238 },
+        { attendance: { how: "typed", pending: false } },
+      ),
+      shift(6, "2026-11-04", { in: "08:00", out: "16:02", minutes: 482 }),
+      shift(7, "2026-11-02", { in: "07:58", out: "15:30", minutes: 452 }),
+    ],
+  },
+];
+
+const sum = (records: ShiftRecord[], key: "minutes" | "breakMinutes") =>
+  records.reduce((total, record) => total + record[key], 0);
+
+const people = demoPeople.map((person) => ({
+  userId: person.userId,
+  name: person.name,
+  former: false,
+  minutes: sum(person.records, "minutes"),
+  shifts: person.records.length,
+  breakMinutes: sum(person.records, "breakMinutes"),
+}));
+
 export const demoTeamHours: TeamHoursData = {
-  month: "2026-11",
-  currentMonth: "2026-11",
-  minutes: 212 * 60 + 12,
-  shifts: 27,
+  month: MONTH,
+  currentMonth: MONTH,
+  minutes: people.reduce((total, person) => total + person.minutes, 0),
+  shifts: people.reduce((total, person) => total + person.shifts, 0),
   required: true,
   showCode: true,
   viewOnly: false,
@@ -46,7 +150,7 @@ export const demoTeamHours: TeamHoursData = {
       name: "שירן הדגמה",
       since: "08:02",
       onBreak: false,
-      month: "2026-11",
+      month: MONTH,
       attendance: { how: "typed", pending: false },
     },
     {
@@ -54,66 +158,33 @@ export const demoTeamHours: TeamHoursData = {
       name: "יואב לוי",
       since: "09:14",
       onBreak: true,
-      month: "2026-11",
+      month: MONTH,
       attendance: { how: "none", pending: true },
     },
   ],
   overdue: [
     {
-      entryId: "68000000-0000-4000-a000-000000000021",
+      entryId: OVERDUE_ENTRY,
       userId: NOA,
       name: "נועה כהן",
       date: "2026-11-04",
       in: "16:00",
     },
   ],
-  people: [
-    {
-      userId: YOAV,
-      name: "יואב לוי",
-      former: false,
-      minutes: 64 * 60 + 40,
-      shifts: 8,
-      breakMinutes: 120,
-    },
-    {
-      userId: NOA,
-      name: "נועה כהן",
-      former: false,
-      minutes: 86 * 60 + 30,
-      shifts: 11,
-      breakMinutes: 180,
-    },
-    {
-      userId: SHIRAN,
-      name: "שירן הדגמה",
-      former: false,
-      minutes: 61 * 60 + 2,
-      shifts: 8,
-      breakMinutes: 0,
-    },
-  ],
+  people,
 };
 
-export const demoPersonHours: PersonHoursData = {
-  person: { userId: NOA, name: "נועה כהן" },
-  month: "2026-11",
-  currentMonth: "2026-11",
-  minutes: demoRecords.reduce((sum, record) => sum + record.minutes, 0),
-  records: [
-    {
-      id: "68000000-0000-4000-a000-000000000021",
-      date: "2026-11-04",
-      in: "16:00",
-      out: null,
-      minutes: 24 * 60,
-      breakMinutes: 0,
-      byManager: false,
-      overdue: true,
-      attendance: null,
-    },
-    ...demoRecords.filter((record) => record.date !== "2026-11-04"),
-  ],
-  today: "2026-11-06",
-  viewOnly: false,
-};
+/** One person's month, from the same shifts as their row in the team list. */
+export function demoPersonHours(userId: string): PersonHoursData | null {
+  const person = demoPeople.find((row) => row.userId === userId);
+  if (!person) return null;
+  return {
+    person: { userId: person.userId, name: person.name },
+    month: MONTH,
+    currentMonth: MONTH,
+    minutes: sum(person.records, "minutes"),
+    records: person.records,
+    today: TODAY,
+    viewOnly: false,
+  };
+}

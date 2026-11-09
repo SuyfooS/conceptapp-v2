@@ -176,6 +176,8 @@
     "p3": "Table 12",
     "p3s": "4 guests · 20:30",
     "p3b": "Confirmed",
+    "rowDisabled": "A row that isn't available now",
+    "rowDisabledText": "Dimmed, and it can't be pressed until it comes back",
     "badges": "Badges",
     "layout": "Layout and numbers",
     "layoutLink": "Demo: the same app on phone, tablet and desktop",
@@ -251,7 +253,9 @@
     "accentPickerCaption": "How the colour will look in the app",
     "accentPickerButton": "Sample button",
     "qrCode": "QR code",
-    "qrCodeText": "Always dark on white, in dark mode too. The digits under it are for typing."
+    "qrCodeText": "Always dark on white, in dark mode too. The digits under it are for typing.",
+    "scanCircle": "Scanning in the circle",
+    "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening."
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -992,8 +996,8 @@
         "in": "Clock in",
         "out": "Clock out",
         "back": "Back to work",
-        "codeIn": "Clock in with a code",
-        "codeOut": "Clock out with a code"
+        "scanIn": "Scan to clock in",
+        "scanOut": "Scan to clock out"
       },
       "startBreak": "Start a break",
       "endShift": "Clock out",
@@ -1008,7 +1012,7 @@
         "workingSince": "You came in at <ltr>{time}</ltr>",
         "workingUntil": "You came in at <ltr>{time}</ltr>, the shift ends at <ltr>{end}</ltr>",
         "breakSince": "You went on a break at <ltr>{time}</ltr>",
-        "idleCode": "Press the circle, then type the digits a manager is showing"
+        "idleScan": "Pressing the circle opens the camera. Point it at the code a manager is showing."
       },
       "hours": {
         "thisMonth": "This month",
@@ -1041,10 +1045,11 @@
         "viewOnly": "In view mode you can't clock in or out.",
         "failed": "That didn't go through. Check your connection and try again.",
         "needsEnd": "An end time is needed too.",
-        "codeLocked": "Too many tries with wrong digits, so typing is blocked for a while. You can go ahead without a code.",
+        "codeLocked": "Too many tries with wrong digits, so typing is blocked for a while. You can scan the code, or go ahead without one.",
         "ownCode": "A code shown on your own phone doesn't count for you. Use a code another manager is showing, or go ahead without one.",
         "stationsOnly": "This business shows the code only on its station.",
-        "codeNeeded": "This business now needs a code to clock in or out. Press the circle again."
+        "codeNeeded": "This business now needs a code to clock in or out. Press the circle again.",
+        "codeScan": "The code didn't work; it may have changed. Scan the code shown now."
       },
       "history": {
         "title": "Shift history",
@@ -1185,7 +1190,10 @@
         "titleIn": "Clock in with the digits",
         "titleOut": "Clock out with the digits",
         "subtitle": "The digits under the code a manager is showing",
-        "label": "The clock code's six digits"
+        "label": "The clock code's six digits",
+        "card": "No camera? Type the digits",
+        "cardHint": "The six digits under the code",
+        "open": "Type the digits"
       },
       "none": {
         "open": "Can't? Go ahead without a code",
@@ -1194,12 +1202,26 @@
         "body": "The time is saved now, as it is. A manager will see it was without a code and approve it.",
         "confirmIn": "Clock in without a code",
         "confirmOut": "Clock out without a code",
-        "back": "Back to the code"
+        "back": "Back to scanning"
+      },
+      "scan": {
+        "starting": "Opening the camera",
+        "allow": "When the phone asks about the camera, allow it.",
+        "aim": "Point at the code, from about 30 cm",
+        "sending": "Got it. Recording the time",
+        "readIn": "Got it. Clocked in",
+        "readOut": "Got it. Clocked out",
+        "notOurs": "That isn't the clock's code. Point at the code a manager is showing.",
+        "denied": "There's no access to the camera. Type the digits under the code, or allow the camera in the browser's settings and press “Try again”.",
+        "deniedApp": "There's no access to the camera. Type the digits under the code, or close the app, open it again and allow the camera.",
+        "unavailable": "The camera didn't open. Type the digits under the code.",
+        "retry": "Try again",
+        "cancel": "Stop scanning"
       },
       "code": {
         "title": "Clock code",
-        "how": "Open ConceptApp, press the circle on the Clock screen and type the digits.",
-        "digitsLabel": "The digits to type",
+        "how": "Open ConceptApp, press the circle on the Clock screen, and point the camera here.",
+        "digitsLabel": "No camera? Type the digits",
         "digitsSpoken": "The digits: {digits}",
         "qrLabel": "QR code to clock in and out",
         "next": "{seconds, plural, one {New code in 1 second} other {New code in # seconds}}",
@@ -1484,7 +1506,7 @@
         },
         "requirePunchCode": {
           "label": "Clock in and out with a code",
-          "hint": "To clock in and out, people type the digits a manager shows on their phone. Anyone who can't goes ahead without a code, and a manager approves it. Each shift keeps how it was recorded. Owners need no code."
+          "hint": "To clock in and out, people scan a code a manager shows on their phone, or type the digits under it. Anyone who can't goes ahead without a code, and a manager approves it. Each shift keeps how it was recorded. Owners need no code."
         }
       }
     },

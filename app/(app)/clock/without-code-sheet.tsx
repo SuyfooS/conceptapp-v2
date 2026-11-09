@@ -33,7 +33,7 @@ export function WithoutCodeSheet({
   pending: boolean;
   failure: Failure | null;
   onConfirm: () => void;
-  /** Back to the digits; left out while typing them is blocked. */
+  /** Back to scanning the code. */
   onBack?: () => void;
 }) {
   const t = useTranslations("app.clock");

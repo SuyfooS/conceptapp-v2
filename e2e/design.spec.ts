@@ -29,6 +29,7 @@ const PAGES = [
   "/design/shell/clock/history?state=empty",
   "/design/shell/clock/team",
   "/design/shell/clock/team/noa",
+  "/design/shell/clock/team/yoav",
   "/design/shell/team",
   "/design/shell/manage",
   "/design/shell/manage/business",
@@ -79,3 +80,18 @@ for (const colorScheme of ["light", "dark"] as const) {
     });
   });
 }
+
+// Each person's page in the clock demo shows their own shifts, not Noa's.
+test("a person's hours in the demo match their row in the team list", async ({
+  page,
+}) => {
+  for (const [person, shifts] of [
+    ["yoav", "4 משמרות"],
+    ["shiran", "3 משמרות"],
+  ] as const) {
+    await page.goto(`/design/shell/clock/team/${person}`);
+    await expect(
+      page.getByText(`שעות, ${shifts}`).filter({ visible: true }).first(),
+    ).toBeVisible();
+  }
+});
