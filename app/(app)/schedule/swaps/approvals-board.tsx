@@ -12,7 +12,9 @@ import { useState } from "react";
 import {
   type AppT,
   dayLabel,
+  formOf,
   nameOf,
+  photoOf,
   positionName,
   type ShiftData,
   shiftLabel,
@@ -36,7 +38,9 @@ const position = (t: AppT, names: Names, row: Row) =>
 const subject = (t: AppT, names: Names, row: Row) =>
   t("swaps.subject", {
     from: nameOf(t, names, row.swap.requestedBy),
+    fromForm: formOf(names, row.swap.requestedBy),
     to: nameOf(t, names, row.swap.takenBy),
+    toForm: formOf(names, row.swap.takenBy),
     shift: shiftLabel(t, row.shift),
   });
 
@@ -78,7 +82,11 @@ export function ApprovalsBoard({
               text:
                 decision === "approve"
                   ? t("swaps.settled.approved", { from, to, shift })
-                  : t("swaps.settled.declined", { from, shift }),
+                  : t("swaps.settled.declined", {
+                      from,
+                      fromForm: formOf(names, row.swap.requestedBy),
+                      shift,
+                    }),
             },
             ...list,
           ],
@@ -147,7 +155,10 @@ type RowView = {
   onDecided: (row: Row, decision: Decision) => void;
 };
 
-/** Who gives it away and who takes it, the arrow pointing the way it moves. */
+/**
+ * Who gives it away and who takes it, the arrow pointing the way it moves,
+ * each written about as they chose ("מוסרת", "לוקח").
+ */
 function Handover({
   t,
   names,
@@ -155,21 +166,29 @@ function Handover({
 }: Pick<RowView, "t" | "names"> & { row: Row }) {
   const from = nameOf(t, names, row.swap.requestedBy);
   const to = nameOf(t, names, row.swap.takenBy);
-  const person = (name: string, role: string) => (
+  const person = (name: string, role: string, photo: string | null) => (
     <span className="flex min-w-0 flex-1 flex-col items-center gap-1 text-center">
-      <Avatar name={name} />
+      <Avatar name={name} photo={photo} />
       <span className="font-semibold text-base">{name}</span>
       <span className="text-ink-2 text-sm">{role}</span>
     </span>
   );
   return (
     <div className="flex items-center gap-1 rounded-[20px] bg-surface-2/60 px-2 py-3">
-      {person(from, t("swaps.columns.from"))}
+      {person(
+        from,
+        t("swaps.handover.from", { form: formOf(names, row.swap.requestedBy) }),
+        photoOf(names, row.swap.requestedBy),
+      )}
       <ArrowLeft
         aria-hidden="true"
         className="size-5 shrink-0 text-ink-2 ltr:-scale-x-100"
       />
-      {person(to, t("swaps.columns.to"))}
+      {person(
+        to,
+        t("swaps.handover.to", { form: formOf(names, row.swap.takenBy) }),
+        photoOf(names, row.swap.takenBy),
+      )}
     </div>
   );
 }
@@ -229,9 +248,9 @@ function RequestTable({
   title,
 }: RowView & { rows: Row[]; title: string }) {
   const columns = ["day", "shift", "position", "from", "to"] as const;
-  const person = (name: string) => (
+  const person = (name: string, photo: string | null) => (
     <span className="flex items-center gap-2.5">
-      <Avatar name={name} size="sm" />
+      <Avatar name={name} photo={photo} size="sm" />
       <span className="min-w-0 font-medium">{name}</span>
     </span>
   );
@@ -267,10 +286,16 @@ function RequestTable({
                 </td>
                 <td className={td}>{position(t, names, row)}</td>
                 <td className={td}>
-                  {person(nameOf(t, names, row.swap.requestedBy))}
+                  {person(
+                    nameOf(t, names, row.swap.requestedBy),
+                    photoOf(names, row.swap.requestedBy),
+                  )}
                 </td>
                 <td className={td}>
-                  {person(nameOf(t, names, row.swap.takenBy))}
+                  {person(
+                    nameOf(t, names, row.swap.takenBy),
+                    photoOf(names, row.swap.takenBy),
+                  )}
                 </td>
                 <td className={td}>
                   <div className="flex items-start justify-end gap-2">

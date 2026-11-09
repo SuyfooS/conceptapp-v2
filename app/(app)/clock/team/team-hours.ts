@@ -2,7 +2,9 @@ import { getClockPeople, getTimeEntries } from "@db/time-clock";
 import { timeIn } from "@domain/shabbat";
 import { canSeeTeam } from "@domain/team";
 import {
+  attendanceOf,
   atWorkNow,
+  confirmRowOf,
   entryDate,
   entryOverdue,
   monthMinutes,
@@ -15,7 +17,7 @@ import { clockAt } from "@domain/today";
 import { cache } from "react";
 import { z } from "zod";
 import { currentModuleSettings } from "../../modules";
-import { clockAccess } from "../clock";
+import { clockAccess, currentEntriesToConfirm } from "../clock";
 import type { PersonHoursData, TeamHoursData } from "./team-types";
 
 /** The clock's reader, when they are also someone who sees the team. */
@@ -40,17 +42,18 @@ export async function currentTeamHours(
 ): Promise<TeamHoursData | null> {
   const access = await teamAccess();
   if (!access) return null;
-  const { businessId, timeZone } = access;
+  const { businessId, timeZone, viewOnly } = access;
 
   const now = new Date();
   const currentMonth = monthOf(clockAt(now, timeZone).date);
   const month = monthFrom(asked, currentMonth);
   const { from, to } = monthRange(month, timeZone);
-  const [settings, people, entries, openNow] = await Promise.all([
+  const [settings, people, entries, openNow, waiting] = await Promise.all([
     currentModuleSettings("time_clock"),
     getClockPeople(businessId),
     getTimeEntries(businessId, from, to),
     getTimeEntries(businessId, now, now),
+    currentEntriesToConfirm(),
   ]);
 
   const nameOf = (userId: string) =>
@@ -83,22 +86,44 @@ export async function currentTeamHours(
         (a.name ?? "").localeCompare(b.name ?? "", "he"),
     );
 
+  // Someone who forgot to leave days ago needs fixing; they aren't at work.
+  const current = openNow.filter((entry) => !entryOverdue(entry, now));
   return {
     month,
     currentMonth,
     minutes: rows.reduce((sum, row) => sum + row.minutes, 0),
     shifts: rows.reduce((sum, row) => sum + row.shifts, 0),
-    // Someone who forgot to leave days ago needs fixing; they aren't at work.
-    atWork: atWorkNow(
-      openNow.filter((entry) => !entryOverdue(entry, now)),
-      now,
-    ).map((person) => ({
-      userId: person.userId,
-      name: nameOf(person.userId),
-      since: timeIn(new Date(person.since), timeZone),
-      onBreak: person.onBreak,
-      month: monthOf(entryDate({ clockIn: person.since }, timeZone)),
+    required: settings.requirePunchCode,
+    showCode: settings.requirePunchCode && settings.codeDisplay !== "station",
+    viewOnly,
+    toConfirm: waiting.map(({ entry, toConfirm }) => ({
+      entryId: entry.id,
+      userId: entry.userId,
+      name: nameOf(entry.userId),
+      date: entryDate(entry, timeZone),
+      ...confirmRowOf(
+        {
+          in: timeIn(new Date(entry.clockIn), timeZone),
+          out: entry.clockOut
+            ? timeIn(new Date(entry.clockOut), timeZone)
+            : null,
+        },
+        toConfirm,
+      ),
     })),
+    atWork: atWorkNow(current, now).map((person) => {
+      const entry = current.find(
+        (open) => open.userId === person.userId && open.clockOut === null,
+      );
+      return {
+        userId: person.userId,
+        name: nameOf(person.userId),
+        since: timeIn(new Date(person.since), timeZone),
+        onBreak: person.onBreak,
+        month: monthOf(entryDate({ clockIn: person.since }, timeZone)),
+        attendance: entry ? attendanceOf(entry) : null,
+      };
+    }),
     overdue: openNow
       .filter((entry) => entryOverdue(entry, now))
       .map((entry) => ({

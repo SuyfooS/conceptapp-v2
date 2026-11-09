@@ -1,7 +1,14 @@
 "use server";
 
-import { inviteToTeam, issueTeamInviteLink } from "@db/invites";
+import {
+  activeElsewhere,
+  inviteToTeam,
+  issueTeamInviteLink,
+} from "@db/invites";
+import { clearProfileBio } from "@db/profile";
+import { isUuid } from "@domain/activity";
 import { inviteLink } from "@domain/invites";
+import { type ProfileSaveResult, seenBioOf } from "@domain/profile";
 import {
   canSeeTeam,
   parseTeamInvite,
@@ -14,8 +21,11 @@ import { currentMember } from "../member";
 
 export type TeamFailure =
   | "alreadyMember"
+  | "elsewhere"
   | "notAllowed"
   | "notOpen"
+  | "demo"
+  | "hasOwner"
   | "failed"
   | "noPermission"
   | "viewOnly";
@@ -31,7 +41,12 @@ export type InviteState =
   | { done: { name: string; phone: string; link: string } };
 
 export type ResendState =
-  | { link?: undefined; failure?: TeamFailure }
+  // A fresh link is for someone already invited here, never refused for
+  // being in another business; only the console is refused an owner's.
+  | {
+      link?: undefined;
+      failure?: Exclude<TeamFailure, "elsewhere" | "hasOwner">;
+    }
   | { link: string; failure?: undefined };
 
 /**
@@ -78,6 +93,13 @@ export async function inviteAction(
   if (!parsed.ok) return { errors: parsed.errors, values };
 
   try {
+    // The app opens a person’s oldest business, so someone already working
+    // in another one would never see this one.
+    if (
+      await activeElsewhere(parsed.value.phone, actor.membership.business.id)
+    ) {
+      return { failure: "elsewhere", values };
+    }
     const result = await inviteToTeam(
       actor.userId,
       actor.membership.business.id,
@@ -98,6 +120,50 @@ export async function inviteAction(
   }
 }
 
+/**
+ * An owner or manager deletes a colleague's line about themselves, when it is
+ * hurtful or out of place: `seenBio`, the line as the screen showed it, so a
+ * line rewritten since stays ("changed", and the screen reads it again). The
+ * database checks the roles (a manager doesn't clear an owner's) and logs it
+ * without the text. The screen holds the delete for a moment first, so it can
+ * be undone before it is sent.
+ */
+export async function clearBioAction(
+  personId: string,
+  seenBio: string,
+): Promise<ProfileSaveResult> {
+  const member = await currentMember();
+  const membership = member?.membership;
+  if (!member || !membership || !canSeeTeam(membership.role)) {
+    return { ok: false, failure: "noAccess" };
+  }
+  if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };
+  const seen = seenBioOf(seenBio);
+  if (!isUuid(personId) || seen === null) {
+    return { ok: false, failure: "invalid" };
+  }
+  try {
+    const result = await clearProfileBio(
+      member.userId,
+      membership.business.id,
+      personId,
+      seen,
+    );
+    if (!result.ok) {
+      if (result.failure === "changed") refresh();
+      return result;
+    }
+  } catch (error) {
+    console.error(
+      "clearProfileBio failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return { ok: false, failure: "failed" };
+  }
+  refresh();
+  return { ok: true };
+}
+
 /** A fresh link for an invite nobody claimed; the old link stops working. */
 export async function resendInviteAction(
   inviteId: string,
@@ -108,7 +174,11 @@ export async function resendInviteAction(
   if ("failure" in actor) return { failure: actor.failure };
   try {
     const result = await issueTeamInviteLink(actor.userId, inviteId);
-    if (!result.ok) return { failure: result.error };
+    if (!result.ok) {
+      return {
+        failure: result.error === "hasOwner" ? "notAllowed" : result.error,
+      };
+    }
     const link = await linkFor(result.token, result.phone);
     // The invite is open again: the screen re-reads its list and counts.
     refresh();

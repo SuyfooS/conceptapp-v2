@@ -21,10 +21,12 @@ import {
   useShiftSheet,
 } from "./shift-sheet";
 import {
-  assigneeNames,
+  assigneePeople,
   dayLabel,
+  formOf,
   ltr,
   nameOf,
+  photoOf,
   positionName,
   type ShiftData,
   shiftLabel,
@@ -141,6 +143,7 @@ export function MyShiftsBoard({
                             {request.status === "taken"
                               ? t("shifts.swap.taken", {
                                   name: nameOf(t, data, request.takenBy),
+                                  form: formOf(data, request.takenBy),
                                 })
                               : t("shifts.swap.open")}
                           </p>
@@ -156,7 +159,7 @@ export function MyShiftsBoard({
                       ) : null}
                     </div>
                     <AvatarStack
-                      names={assigneeNames(t, data, shift)}
+                      people={assigneePeople(t, data, shift)}
                       className="hidden self-center xl:flex"
                     />
                     <ChevronRight
@@ -202,12 +205,18 @@ export function MyShiftsBoard({
                   key={request.id}
                   className={cn(personRow, "items-start py-3.5")}
                 >
-                  <Avatar name={from} />
+                  <Avatar
+                    name={from}
+                    photo={photoOf(data, request.requestedBy)}
+                  />
                   <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="font-medium">
                       {state === "takenByYou"
                         ? t("shifts.swap.offers.takenByYou")
-                        : t("shifts.swap.offers.from", { name: from })}
+                        : t("shifts.swap.offers.from", {
+                            name: from,
+                            form: formOf(data, request.requestedBy),
+                          })}
                     </span>
                     <span className="text-ink-2 text-sm">
                       {dayLabel(t, shift.day)}

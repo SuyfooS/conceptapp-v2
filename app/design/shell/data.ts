@@ -7,11 +7,34 @@ import type { ActivityLookups, ActivityRow } from "@domain/activity";
 import type { AvailabilityAnswer } from "@domain/availability";
 import type { BusinessDetails } from "@domain/business-details";
 import type { ModuleRow } from "@domain/modules";
+import type { AddressForm, CoverPreset } from "@domain/profile";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { TeamInvite, TeamMember } from "@domain/team";
+import { portraits } from "../portraits";
 
 export const business = { name: "מסעדת הדגמה" };
-export const user = { name: "שירן", role: "מנהלת משמרת" };
+export const user = {
+  name: "שירן",
+  role: "מנהלת משמרת",
+  photo: portraits.shiran,
+};
+
+/** Some of the demo's people have a photo; the rest show their initials. */
+const photos: Record<string, string> = {
+  shiran: portraits.shiran,
+  yoav: portraits.yoav,
+  maya: portraits.maya,
+};
+
+/** How each demo person chose to be addressed; the rest haven't yet. */
+const forms: Record<string, AddressForm> = {
+  shiran: "f",
+  noa: "f",
+  yoav: "m",
+  maya: "f",
+  itay: "m",
+  omer: "x",
+};
 
 export type Staff = { id: string; name: string; role: string };
 
@@ -133,15 +156,51 @@ export const teamMembers: TeamMember[] = [
     name: "שירן אלון",
     phone: "+972501234567",
     role: "manager",
+    photo: photos.shiran ?? null,
+    addressForm: forms.shiran ?? null,
   },
-  { userId: "uri", name: "אורי בן דוד", phone: "+972521234567", role: "owner" },
+  {
+    userId: "uri",
+    name: "אורי בן דוד",
+    phone: "+972521234567",
+    role: "owner",
+    photo: null,
+    addressForm: null,
+  },
   ...staff.slice(0, 6).map((s, i) => ({
     userId: s.id,
     name: s.name,
     phone: `+97254123456${i}`,
     role: "worker" as const,
+    photo: photos[s.id] ?? null,
+    addressForm: forms[s.id] ?? null,
   })),
 ];
+
+/**
+ * What a few of the demo's people wrote about themselves and the covers they
+ * picked, for their profiles (/design/shell/me, /design/shell/team/[person]).
+ */
+export const teamProfiles: Record<
+  string,
+  { bio: string | null; cover: CoverPreset; since: string }
+> = {
+  shiran: {
+    bio: "אחראית משמרת בערב. אם משהו לא ברור בסידור, אפשר לשאול אותי.",
+    cover: "dots",
+    since: "2026-03-02T08:00:00.000Z",
+  },
+  noa: {
+    bio: "בבוקר בקופה, בערב בבר. אפשר לשאול אותי על כל עוגה בוויטרינה.",
+    cover: "waves",
+    since: "2026-04-12T08:00:00.000Z",
+  },
+  yoav: {
+    bio: "ערבי חמישי ושישי בבר. את קוקטייל הבית המצאתי בעצמי.",
+    cover: "arcs",
+    since: "2026-10-04T08:00:00.000Z",
+  },
+};
 
 export const teamInvites: TeamInvite[] = [
   {
@@ -283,7 +342,7 @@ export const demoModuleRows: ModuleRow[] = [
   { key: "time_clock", enabled: true, settings: { unpaidBreaks: true } },
   { key: "reservations", enabled: false, settings: {} },
   { key: "storefront", enabled: false, settings: {} },
-  { key: "notifications", enabled: false, settings: {} },
+  { key: "notifications", enabled: true, settings: {} },
 ];
 
 // A shift a manager added by hand on the demo week's Sunday, overlapping both

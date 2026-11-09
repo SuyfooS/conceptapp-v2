@@ -129,6 +129,30 @@ describe("buildActivity: each action", () => {
     });
   });
 
+  it("reads a sentence replaced for the business, and one brought back", () => {
+    expect(
+      lineOf(
+        row("wording.change", {
+          key: "app.team.title",
+          from: null,
+          to: "הצוות של החנות",
+        }),
+      ),
+    ).toEqual({ action: "wording.change", from: null, to: "הצוות של החנות" });
+    expect(
+      lineOf(
+        row("wording.change", {
+          key: "app.team.title",
+          from: "הצוות של החנות",
+          to: null,
+        }),
+      ),
+    ).toEqual({ action: "wording.change", from: "הצוות של החנות", to: null });
+    expect(lineOf(row("wording.change", { from: "x" }))).toEqual({
+      action: "other",
+    });
+  });
+
   it("reads hours added and corrected, with whose they are", () => {
     expect(
       lineOf(
@@ -168,6 +192,57 @@ describe("buildActivity: each action", () => {
         clockOut: "2026-11-03T21:30:00+00:00",
       },
     });
+  });
+
+  it("reads an approval of someone's hours", () => {
+    expect(
+      lineOf(row("clock.confirm", { entry: GONE, person: NOA }, YOAV)),
+    ).toEqual({
+      action: "clock.confirm",
+      person: { kind: "member", name: "Noa" },
+    });
+    expect(lineOf(row("clock.confirm", { entry: GONE, person: LEFT }))).toEqual(
+      { action: "clock.confirm", person: { kind: "former" } },
+    );
+    for (const details of [{ entry: GONE }, { person: 5 }, "x", null]) {
+      expect(lineOf(row("clock.confirm", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("reads a cleared line about someone, which never holds its text", () => {
+    expect(lineOf(row("profile.bio_cleared", { person: NOA }, YOAV))).toEqual({
+      action: "profile.bio_cleared",
+      person: { kind: "member", name: "Noa" },
+    });
+    expect(lineOf(row("profile.bio_cleared", { person: LEFT }))).toEqual({
+      action: "profile.bio_cleared",
+      person: { kind: "former" },
+    });
+    expect(lineOf(row("profile.bio_cleared", { person: GONE }))).toEqual({
+      action: "profile.bio_cleared",
+      person: { kind: "unknown" },
+    });
+    for (const details of [{}, { person: 5 }, "x", null]) {
+      expect(lineOf(row("profile.bio_cleared", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("reads a typing block", () => {
+    expect(lineOf(row("clock.code.locked", { person: NOA }))).toEqual({
+      action: "clock.code.locked",
+    });
+    expect(lineOf(row("clock.code.locked", {}))).toEqual({
+      action: "clock.code.locked",
+    });
+    for (const details of [{ person: 5 }, "x", null]) {
+      expect(lineOf(row("clock.code.locked", details))).toEqual({
+        action: "other",
+      });
+    }
   });
 
   it("reads invites with the invited name, the row's role first", () => {

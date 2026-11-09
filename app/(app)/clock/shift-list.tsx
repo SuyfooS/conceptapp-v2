@@ -1,11 +1,12 @@
-import type { ShiftRecord } from "@domain/time-clock";
+import type { Attendance, ShiftRecord } from "@domain/time-clock";
 import { formatHours } from "@domain/time-clock-format";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { ListGroup, ListRow } from "@ui/list-row";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
+import type { Translator } from "../wording";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
@@ -29,10 +30,16 @@ function useDayLabel() {
  */
 export function ShiftList({
   records,
+  t,
   onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  /**
+   * The words of app.clock.history: a server view builds them from the
+   * business's words, a client one with useTranslations.
+   */
+  t: Translator<"app.clock.history">;
   /** For a manager: pressing a shift offers to correct it. */
   onEdit?: (record: ShiftRecord) => void;
   className?: string;
@@ -41,16 +48,75 @@ export function ShiftList({
     <>
       <ShiftRows
         records={records}
+        t={t}
         onEdit={onEdit}
         className={cn("xl:hidden", className)}
       />
-      <ShiftTable records={records} onEdit={onEdit} className={className} />
+      <ShiftTable
+        records={records}
+        t={t}
+        onEdit={onEdit}
+        className={className}
+      />
     </>
   );
 }
 
-function StateBadge({ record }: { record: ShiftRecord }) {
-  const t = useTranslations("app.clock.history");
+/** How a shift was recorded, as a label: null when there is nothing to say. */
+function proofLabel(
+  attendance: Attendance | null,
+  t: Translator<"app.clock.history">,
+): string | null {
+  if (!attendance) return null;
+  switch (attendance.how) {
+    case "scan":
+      return t("proof.scan");
+    case "typed":
+      return t("proof.typed");
+    case "none":
+      return t(
+        attendance.pending ? "proof.nonePending" : "proof.noneConfirmed",
+      );
+    case "self":
+      return t(
+        attendance.pending ? "proof.selfPending" : "proof.selfConfirmed",
+      );
+  }
+}
+
+/**
+ * The same, to follow " · " inside a line. With `badged`, a "waiting for
+ * approval" badge beside it already says it waits, so the words say only how
+ * it was made.
+ */
+export function proofInline(
+  attendance: Attendance | null,
+  t: Translator<"app.clock.history">,
+  badged = false,
+): string | null {
+  if (!attendance) return null;
+  const { how, pending } = attendance;
+  switch (how) {
+    case "scan":
+      return t("proofInline.scan");
+    case "typed":
+      return t("proofInline.typed");
+    case "none":
+      if (!pending) return t("proofInline.noneConfirmed");
+      return t(badged ? "proofInline.none" : "proofInline.nonePending");
+    case "self":
+      if (!pending) return t("proofInline.selfConfirmed");
+      return t(badged ? "proofInline.self" : "proofInline.selfPending");
+  }
+}
+
+function StateBadge({
+  record,
+  t,
+}: {
+  record: ShiftRecord;
+  t: Translator<"app.clock.history">;
+}) {
   return record.overdue ? (
     <Badge tone="danger">{t("needsFix")}</Badge>
   ) : (
@@ -60,18 +126,21 @@ function StateBadge({ record }: { record: ShiftRecord }) {
 
 function ShiftRows({
   records,
+  t,
   onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  t: Translator<"app.clock.history">;
   onEdit?: (record: ShiftRecord) => void;
   className?: string;
 }) {
-  const t = useTranslations("app.clock.history");
   const dayLabel = useDayLabel();
   return (
     <ListGroup className={className}>
       {records.map((record) => {
+        const pending = record.attendance?.pending === true;
+        const proof = proofInline(record.attendance, t, pending);
         const row = {
           title: dayLabel(record.date),
           subtitle: (
@@ -83,11 +152,15 @@ function ShiftRows({
                 ? t("withBreak", { minutes: record.breakMinutes })
                 : null}
               {record.byManager ? t("byManager") : null}
+              {proof ? t("withProof", { proof }) : null}
             </>
           ),
           trailing: (
             <span className="flex items-center gap-2">
-              {record.out ? null : <StateBadge record={record} />}
+              {pending ? (
+                <Badge tone="warning">{t("proof.pendingShort")}</Badge>
+              ) : null}
+              {record.out ? null : <StateBadge record={record} t={t} />}
               {record.out || record.overdue ? (
                 <span dir="ltr" className="font-semibold text-ink tabular-nums">
                   {formatHours(record.minutes)}
@@ -108,14 +181,15 @@ function ShiftRows({
 
 function ShiftTable({
   records,
+  t,
   onEdit,
   className,
 }: {
   records: ShiftRecord[];
+  t: Translator<"app.clock.history">;
   onEdit?: (record: ShiftRecord) => void;
   className?: string;
 }) {
-  const t = useTranslations("app.clock.history");
   const dayLabel = useDayLabel();
   return (
     <div
@@ -151,54 +225,62 @@ function ShiftTable({
           </tr>
         </thead>
         <tbody>
-          {records.map((record) => (
-            <tr key={record.id}>
-              <th
-                scope="row"
-                className={cn(td, "text-start font-medium text-ink")}
-              >
-                {dayLabel(record.date)}
-                {record.byManager ? (
-                  <span className="block font-normal text-ink-2 text-sm">
-                    {t("addedByManager")}
-                  </span>
-                ) : null}
-              </th>
-              <td className={cn(td, "tabular-nums")}>
-                <span dir="ltr">{record.in}</span>
-              </td>
-              <td className={cn(td, "tabular-nums")}>
-                {record.out ? (
-                  <span dir="ltr">{record.out}</span>
-                ) : (
-                  <StateBadge record={record} />
-                )}
-              </td>
-              <td className={cn(td, "text-ink-2")}>
-                {record.breakMinutes > 0
-                  ? t("breakMinutes", { minutes: record.breakMinutes })
-                  : t("noBreak")}
-              </td>
-              <td className={cn(td, "font-semibold tabular-nums")}>
-                {record.out || record.overdue ? (
-                  <span dir="ltr">{formatHours(record.minutes)}</span>
-                ) : (
-                  t("running")
-                )}
-              </td>
-              {onEdit ? (
-                <td className={cn(td, "text-end")}>
-                  <Button
-                    variant="ghost"
-                    aria-label={t("fixShift", { day: dayLabel(record.date) })}
-                    onClick={() => onEdit(record)}
-                  >
-                    {t("fix")}
-                  </Button>
+          {records.map((record) => {
+            const proof = proofLabel(record.attendance, t);
+            return (
+              <tr key={record.id}>
+                <th
+                  scope="row"
+                  className={cn(td, "text-start font-medium text-ink")}
+                >
+                  {dayLabel(record.date)}
+                  {record.byManager ? (
+                    <span className="block font-normal text-ink-2 text-sm">
+                      {t("addedByManager")}
+                    </span>
+                  ) : null}
+                  {proof ? (
+                    <span className="block font-normal text-ink-2 text-sm">
+                      {proof}
+                    </span>
+                  ) : null}
+                </th>
+                <td className={cn(td, "tabular-nums")}>
+                  <span dir="ltr">{record.in}</span>
                 </td>
-              ) : null}
-            </tr>
-          ))}
+                <td className={cn(td, "tabular-nums")}>
+                  {record.out ? (
+                    <span dir="ltr">{record.out}</span>
+                  ) : (
+                    <StateBadge record={record} t={t} />
+                  )}
+                </td>
+                <td className={cn(td, "text-ink-2")}>
+                  {record.breakMinutes > 0
+                    ? t("breakMinutes", { minutes: record.breakMinutes })
+                    : t("noBreak")}
+                </td>
+                <td className={cn(td, "font-semibold tabular-nums")}>
+                  {record.out || record.overdue ? (
+                    <span dir="ltr">{formatHours(record.minutes)}</span>
+                  ) : (
+                    t("running")
+                  )}
+                </td>
+                {onEdit ? (
+                  <td className={cn(td, "text-end")}>
+                    <Button
+                      variant="ghost"
+                      aria-label={t("fixShift", { day: dayLabel(record.date) })}
+                      onClick={() => onEdit(record)}
+                    >
+                      {t("fix")}
+                    </Button>
+                  </td>
+                ) : null}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { baseWording, translator } from "../../../wording";
 import { clockPaths } from "../../clock";
 import { addEntryAction, correctEntryAction } from "../actions";
 import { PersonHoursView } from "../person-view";
 import { currentPersonHours } from "../team-hours";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.clock.team");
+  // Page titles stay in the app's own words.
+  const t = translator(baseWording, "app.clock.team");
   return { title: t("title") };
 }
 

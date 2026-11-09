@@ -19,8 +19,10 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
    (Orel, 7 November 2026). Don't write anything new that assumes a restaurant:
    restaurants and cafés are only the first templates. The pilot's scope, by Orel's
    decision of 6 November 2026: scheduling, time clock, lists, a management page, and
-   roles with different permissions. Reservations, storefront and notifications wait
-   until after it. Nothing from the deferred list gets built before its trigger.
+   roles with different permissions. Reservations and storefront wait until after it.
+   Notifications are back in (Orel, 8 and 9 November 2026, issue #1): in the app, then
+   on the phone through Web Push, then each person's choices and reminders, before
+   lists and chat. Nothing from the deferred list gets built before its trigger.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.
@@ -34,7 +36,8 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
    a branch, a copy or a rebuild. A new setting is one field in the module's manifest, with
    `.meta()` for who edits it, and its words under `modules.<key>.settings` in the
    messages: `/manage` and the console then draw it (`@domain/settings-form`). A field
-   only the team should touch takes `level: "team"`.
+   only the team should touch takes `level: "team"`, and one only an owner and the team
+   should touch (the punch code) takes `level: "owner"`.
 
 ## Layout
 
@@ -87,12 +90,14 @@ Only `app/` imports app code (`@/…`).
   transparency or more contrast.
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
-  Built so far: Button, IconButton, TextField, PhoneField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
+  Built so far: Button, IconButton (also as a link, with a count), TextField, PhoneField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
   ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, PersonList, Badge, Avatar
-  and AvatarStack, Tile, CoverageBar, ProgressRing, PunchCircle, Sheet, FloatingAction, FloatingDock,
+  and AvatarStack (with photos), AvatarPhotoPicker, VisibilityNote, ProfileCover (eight presets) and CoverChoices, Tile, CoverageBar, ProgressRing, PunchCircle and ScanCircle, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
-  PageSection, AccentPicker and AccentPreview. For the landing page: FocusText, WordCycle,
-  SettlingCards, DeckCard, PhoneFrame.
+  PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay.
+  For the landing page: FocusText, WordCycle, SettlingCards, DeckCard, PhoneFrame.
+- ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
+  ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
   wrapper. `accentTokens` returns a pair for light and for dark, and darkens or lifts
   unreadable picks; text on light tints stays `text-ink`, never `text-accent`.
@@ -138,7 +143,9 @@ Only `app/` imports app code (`@/…`).
 - Show status before it is asked for: counts and badges for what needs
   action ("2 משמרות חסרות עובד").
 - Every empty screen says what to do next. Destructive actions offer undo
-  rather than "are you sure".
+  rather than "are you sure". The one exception (Orel, 7 November 2026): what
+  nothing can bring back, like the demo reset at `/enter`, asks once and says
+  what goes.
 - Acceptance test for a screen: the least technical person on the pilot's
   staff completes the task without help.
 
@@ -165,9 +172,14 @@ font files or SF Symbols; asking the device for its own font is fine.
 - Server-only writes (bookings, invite claims, punch codes, publishing) go
   through server code with the secret key (`SUPABASE_SECRET_KEY`); the browser
   uses the publishable key and talks to Supabase under RLS only.
-- Sign-in is passive for now (Orel, 6 November 2026): one press on a demo person at
-  `/enter`, reaching only those people, with RLS unchanged. `PASSIVE_SIGN_IN` in
-  `@domain/passive-sign-in` goes false before real people use the project.
+- Sign-in has two doors (Orel, 8 November 2026), both on `/enter`: real sign-in with
+  a phone number and an SMS code (Twilio Verify on the hosted project), and the demo,
+  one press on a demo person, kept easy to reach. The demo door reaches only the
+  demo people, with RLS unchanged, and anyone can come in and reset those businesses,
+  so real people never join a demo business: the database takes no invites for one
+  (only the local seed's, for the tests). Sign-in codes are counted per number and
+  per caller (`private.auth_limits`). `PASSIVE_SIGN_IN` in
+  `@domain/passive-sign-in` closes the demo door.
 - Run `pnpm check` (Biome + typecheck) before handing work back; `pnpm build`
   for anything touching routing or config.
 - Orel works on Windows PowerShell 5: when giving him commands, one per line,

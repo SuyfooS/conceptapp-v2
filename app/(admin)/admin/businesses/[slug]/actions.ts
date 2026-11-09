@@ -2,27 +2,53 @@
 
 import { getPlatformStaff } from "@db/admin";
 import { setBusinessDetails } from "@db/business-details";
-import { issueInviteLink } from "@db/invites";
+import {
+  activeElsewhere,
+  inviteFromConsole,
+  issueInviteLink,
+} from "@db/invites";
 import {
   getBusinessModulesForTeam,
   setModuleEnabled,
   setModuleSettings,
 } from "@db/module-settings";
 import { startViewing } from "@db/view-as";
+import { getTemplateSentence, setBusinessWording } from "@db/wording";
 import { checkBusinessDetailsChange } from "@domain/business-details";
 import { inviteLink } from "@domain/invites";
-import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
+import {
+  enabledModules,
+  fitsTabBar,
+  type ModuleManifest,
+  moduleKeyOf,
+} from "@domain/modules";
 import { platformCan } from "@domain/platform";
 import { checkSettingsChange } from "@domain/settings-form";
+import { parseTeamInvite } from "@domain/team";
 import { parseViewAsRole } from "@domain/view-as";
-import { manifestFor } from "@modules/registry";
-import { refresh } from "next/cache";
+import {
+  baseSentence,
+  checkSentence,
+  isEditableKey,
+  type MessageTree,
+  sentenceFits,
+} from "@domain/wording";
+import { manifestFor, manifests } from "@modules/registry";
+import { refresh, revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import type { SettingsResult } from "@/app/(app)/manage/settings-types";
+import type { InviteState } from "@/app/(app)/team/actions";
 import { requestOrigin } from "@/app/origin";
+import he from "@/messages/he.json";
+import type { ModuleSwitchResult } from "./settings/module-switch";
+import { formatsCleanly } from "./wording/formats";
+import type { WordingSaveResult } from "./wording/wording-types";
 
 export type InviteLinkState =
-  | { link?: undefined; failure?: "failed" | "noPermission" }
+  | {
+      link?: undefined;
+      failure?: "failed" | "noPermission" | "demo" | "hasOwner";
+    }
   | { link: string; failure?: undefined };
 
 /**
@@ -41,15 +67,69 @@ export async function inviteLinkAction(
     return { failure: "noPermission" };
   }
   try {
-    const { token, phone } = await issueInviteLink(staff.userId, inviteId);
+    const issued = await issueInviteLink(staff.userId, inviteId);
+    if (!issued.ok) return { failure: issued.error };
+    const { token, phone } = issued;
     const link = inviteLink(await requestOrigin(), token);
     if (process.env.NODE_ENV !== "production") {
       console.info(`[invite] not sent, link for ${phone}: ${link}`);
     }
+    // A renewed invite is open again: the page reads it afresh (rows are
+    // keyed by invite, so the new link stays on screen).
+    refresh();
     return { link };
   } catch (error) {
     console.error("issueInviteLink failed", (error as Error).message);
     return { failure: "failed" };
+  }
+}
+
+/**
+ * Someone on the team adds a person to a business, in any role, from the
+ * console (an owner only while the business has none): the result is a link
+ * for them to send on, as from the Team screen. A number with an invite nobody claimed, open or expired, gets that
+ * invite renewed. A number already working in another business is refused:
+ * the app opens a person's oldest business, so they would never see this one.
+ */
+export async function addPersonAction(
+  business: { id: string; slug: string },
+  _prev: InviteState,
+  form: FormData,
+): Promise<InviteState> {
+  const values = {
+    name: String(form.get("name") ?? ""),
+    phone: String(form.get("phone") ?? ""),
+    role: String(form.get("role") ?? ""),
+  };
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "staff.invite")) {
+    return { failure: "noPermission", values };
+  }
+  // The team may give any role, as an owner may.
+  const parsed = parseTeamInvite(values, "owner");
+  if (!parsed.ok) return { errors: parsed.errors, values };
+
+  try {
+    if (await activeElsewhere(parsed.value.phone, business.id)) {
+      return { failure: "elsewhere", values };
+    }
+    const result = await inviteFromConsole(
+      staff.userId,
+      business.id,
+      parsed.value,
+    );
+    if (!result.ok) return { failure: result.error, values };
+    const link = inviteLink(await requestOrigin(), result.token);
+    if (process.env.NODE_ENV !== "production") {
+      console.info(`[invite] not sent, link for ${result.phone}: ${link}`);
+    }
+    revalidatePath(`/admin/businesses/${business.slug}`);
+    return {
+      done: { name: parsed.value.name, phone: parsed.value.phone, link },
+    };
+  } catch (error) {
+    console.error("inviteFromConsole failed", (error as Error).message);
+    return { failure: "failed", values };
   }
 }
 
@@ -127,12 +207,15 @@ export async function saveTeamBusinessDetailsAction(
   };
 }
 
-/** Someone on the team switches a module on or off for one business. */
+/**
+ * Someone on the team switches a module on or off for one business. Switching
+ * one on is refused when its tab would not fit next to the business's others.
+ */
 export async function setBusinessModuleAction(
   businessId: string,
   module: string,
   enabled: boolean,
-): Promise<SettingsResult> {
+): Promise<ModuleSwitchResult> {
   const staff = await getPlatformStaff();
   const key = moduleKeyOf(module);
   if (
@@ -143,7 +226,75 @@ export async function setBusinessModuleAction(
   ) {
     return { ok: false, failure: "noAccess" };
   }
+  if (enabled) {
+    const rows = await getBusinessModulesForTeam(businessId);
+    const after = [
+      ...rows.filter((row) => row.key !== key),
+      { key, enabled: true, settings: {} },
+    ];
+    if (!fitsTabBar(manifests, enabledModules(manifests, after))) {
+      return { ok: false, failure: "noRoom" };
+    }
+  }
   const result = await setModuleEnabled(staff.userId, businessId, key, enabled);
   refresh();
   return result.ok ? { ok: true } : { ok: false, failure: "failed" };
+}
+
+/**
+ * Someone on the team replaces one of the business's sentences, or clears it
+ * with null so its template's or the app's shows again. Checked against the
+ * app's sentence (what it must keep) and formatted once (that it reads),
+ * then written and logged. Returns what it replaced, for an undo.
+ */
+export async function saveBusinessWordingAction(
+  businessId: string,
+  key: string,
+  sentence: string | null,
+): Promise<WordingSaveResult> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, problem: "noAccess" };
+  }
+  const base = baseSentence(he as MessageTree, key);
+  if (base === null || !isEditableKey(key)) {
+    return { ok: false, problem: "notEditable" };
+  }
+  let text: string | null = null;
+  if (sentence !== null) {
+    const checked = checkSentence(he as MessageTree, key, sentence);
+    if (!checked.ok) return { ok: false, problem: checked.problem };
+    if (!formatsCleanly(checked.sentence)) {
+      return { ok: false, problem: "syntax" };
+    }
+    text = checked.sentence;
+  }
+  try {
+    // The sentence the business would show without its own: saving that
+    // clears its own, so later changes to the template's still reach it.
+    if (text !== null) {
+      const template = await getTemplateSentence(businessId, key);
+      const below =
+        template !== null && sentenceFits(base, template) ? template : base;
+      if (text === below) text = null;
+    }
+    const result = await setBusinessWording(
+      staff.userId,
+      businessId,
+      key,
+      text,
+      text === null ? null : base,
+    );
+    if (!result.ok) {
+      return {
+        ok: false,
+        problem: result.error === "notAllowed" ? "noAccess" : "failed",
+      };
+    }
+    refresh();
+    return { ok: true, sentence: text, previous: result.previous };
+  } catch (error) {
+    console.error("setBusinessWording failed", (error as Error).message);
+    return { ok: false, problem: "failed" };
+  }
 }

@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { currentWording } from "../../current-wording";
+import { baseWording, translator } from "../../wording";
 import { currentPublishedSchedule } from "../week";
 import { swapAction } from "./actions";
 import { MyShiftsView } from "./my-shifts-view";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.shifts");
+  const t = translator(baseWording, "app.shifts");
   return { title: t("title") };
 }
 
@@ -15,5 +16,11 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function MyShiftsPage() {
   const data = await currentPublishedSchedule();
   if (!data) notFound();
-  return <MyShiftsView data={data} swap={swapAction} />;
+  return (
+    <MyShiftsView
+      data={data}
+      swap={swapAction}
+      wording={await currentWording()}
+    />
+  );
 }

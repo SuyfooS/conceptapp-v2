@@ -5,6 +5,7 @@ import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { DeckCard } from "@ui/card-deck";
 import { FocusText } from "@ui/focus-text";
+import { Logo } from "@ui/logo";
 import { PhoneFrame } from "@ui/phone-frame";
 import { SettlingCards } from "@ui/settling-cards";
 import { WordCycle } from "@ui/word-cycle";
@@ -44,8 +45,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * The marketing page, for owners of any business with a team. Static and
  * without JavaScript of its own: its motion follows the scroll, in CSS. Signed-in
  * people never see it, the proxy sends them on to the app. It lists what the
- * pilot has; reservations, the storefront and notifications stay off it until
- * they are built. Sets ConceptApp's own colour in the accent's place.
+ * pilot has; reservations and the storefront stay off it until they are built,
+ * and notifications until Orel says how to show them. Sets ConceptApp's own
+ * colour in the accent's place, and carries ConceptApp's logo.
  */
 export default async function LandingPage() {
   const t = await getTranslations("landing");
@@ -58,7 +60,7 @@ export default async function LandingPage() {
           aria-label={t("nav.label")}
           className="glass pointer-events-auto mx-auto flex max-w-6xl items-center justify-between gap-2 rounded-full py-1 ps-4 pe-1"
         >
-          <Wordmark />
+          <Logo label={t("brand")} />
           <div className="relative flex items-center gap-1">
             <Button asChild variant="ghost">
               <Link href={signInPath} prefetch={false}>
@@ -238,7 +240,7 @@ export default async function LandingPage() {
 
       <footer className="mx-auto mt-12 flex max-w-6xl flex-col gap-3 px-4 pb-[calc(env(safe-area-inset-bottom)+2rem)] md:flex-row md:items-center md:justify-between md:px-8">
         <div className="flex flex-col items-start gap-1">
-          <Wordmark />
+          <Logo label={t("brand")} />
           <p className="text-ink-2 text-sm">{t("footer.sample")}</p>
         </div>
         <Link
@@ -250,15 +252,6 @@ export default async function LandingPage() {
         </Link>
       </footer>
     </div>
-  );
-}
-
-function Wordmark() {
-  return (
-    <span dir="ltr" className="relative flex items-center gap-2 font-bold">
-      <span aria-hidden="true" className="size-4 rounded-[5px] bg-brand" />
-      ConceptApp
-    </span>
   );
 }
 

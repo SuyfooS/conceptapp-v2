@@ -7,6 +7,7 @@ import { fieldsFor } from "@domain/settings-form";
 import { manifestFor } from "@modules/registry";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { currentWording } from "../../current-wording";
 import { moduleMetadata } from "../../module-screen";
 import { saveModuleSettingsAction } from "../actions";
 import { manageAccess, modulesToManage } from "../manage";
@@ -24,16 +25,24 @@ export async function generateMetadata({
 export default async function ManageModulePage({
   params,
 }: PageProps<"/manage/[module]">) {
-  const [access, { module }] = await Promise.all([manageAccess(), params]);
+  const [access, { module }, wording] = await Promise.all([
+    manageAccess(),
+    params,
+    currentWording(),
+  ]);
   const key = moduleKeyOf(module);
-  if (!access || !key || !modulesToManage(access.rows).includes(key)) {
+  if (
+    !access ||
+    !key ||
+    !modulesToManage(access.rows, access.level).includes(key)
+  ) {
     notFound();
   }
   const manifest: ModuleManifest = manifestFor(key);
   return (
     <ModuleSettingsView
       module={key}
-      fields={fieldsFor(manifest.settings, "business")}
+      fields={fieldsFor(manifest.settings, access.level)}
       values={
         readModuleSettings(
           manifest,
@@ -43,6 +52,7 @@ export default async function ManageModulePage({
       save={saveModuleSettingsAction.bind(null, key)}
       viewOnly={access.viewOnly}
       backHref="/manage"
+      wording={wording}
     />
   );
 }

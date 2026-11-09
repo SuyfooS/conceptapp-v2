@@ -72,6 +72,10 @@
   --scrim: rgb(16 18 26 / 0.26);
   --bezel: #16171a; /* the edge of a phone drawn on the landing page */
   --thumb: #ffffff;
+
+  /* a QR code: dark on white in every appearance, as cameras read it best */
+  --qr-ink: #111214;
+  --qr-paper: #ffffff;
 }
 
 :root {
@@ -120,6 +124,9 @@
     --scrim: rgb(0 0 0 / 0.5);
     --bezel: #000000;
     --thumb: #ffffff;
+
+    --qr-ink: #111214;
+    --qr-paper: #ffffff;
   }
 }
 
@@ -161,6 +168,9 @@
   --scrim: rgb(0 0 0 / 0.5);
   --bezel: #000000;
   --thumb: #ffffff;
+
+  --qr-ink: #111214;
+  --qr-paper: #ffffff;
 }
 
 /* A business accent: the pair for the current appearance. */
@@ -248,10 +258,15 @@
     rgb(from var(--accent-ink) calc(255 - r) calc(255 - g) calc(255 - b))
   );
   --color-brand: var(--brand);
+  /* The card behind the C in ConceptApp's logo: the brand, a step lighter.
+     Mixed in sRGB, as the files in docs/brand are (#ac3bfc). */
+  --color-brand-2: color-mix(in srgb, var(--brand), white 25%);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-danger: var(--danger);
   --color-danger-ink: var(--danger-ink);
+  --color-qr-ink: var(--qr-ink);
+  --color-qr-paper: var(--qr-paper);
   --color-success-soft: color-mix(
     in srgb,
     var(--success) var(--tint-amount),
@@ -433,6 +448,64 @@ body {
   color: var(--accent-ink);
 }
 
+/*
+ * Profile covers (@ui/profile-cover): the business's colour with white or
+ * black at low opacity, so any accent works, light and dark. "glow" is
+ * hero-surface; the drawn ones lie over cover-base.
+ */
+/* The grounds are named only in a lookup table, which the class scanner
+   misses, so they are generated here by name. */
+@source inline("cover-base cover-stripes cover-bloom");
+
+@utility cover-base {
+  background: linear-gradient(
+    165deg,
+    color-mix(in oklab, var(--accent) 74%, white) 0%,
+    var(--accent) 50%,
+    color-mix(in oklab, var(--accent) 64%, black) 100%
+  );
+  color: var(--accent-ink);
+}
+
+@utility cover-stripes {
+  background:
+    repeating-linear-gradient(
+      118deg,
+      color-mix(in srgb, white 11%, transparent) 0 18px,
+      transparent 18px 46px
+    ),
+    linear-gradient(
+      165deg,
+      color-mix(in oklab, var(--accent) 74%, white) 0%,
+      var(--accent) 50%,
+      color-mix(in oklab, var(--accent) 64%, black) 100%
+    );
+  color: var(--accent-ink);
+}
+
+/* Three soft clouds, one in the person's own hue (--cover-person) when given. */
+@utility cover-bloom {
+  background:
+    radial-gradient(
+      55% 95% at 16% 12%,
+      color-mix(in oklab, var(--accent) 42%, white) 0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      50% 85% at 84% 22%,
+      color-mix(in oklab, var(--cover-person, var(--accent)) 85%, transparent)
+        0%,
+      transparent 70%
+    ),
+    radial-gradient(
+      70% 100% at 55% 118%,
+      color-mix(in oklab, var(--accent) 55%, black) 0%,
+      transparent 72%
+    ),
+    var(--accent);
+  color: var(--accent-ink);
+}
+
 /* A fine grain over a coloured surface, so its gradient reads as a material. */
 @utility grain {
   isolation: isolate;
@@ -448,6 +521,13 @@ body {
     mix-blend-mode: overlay;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
+}
+
+/* A profile cover's grain: a little noise over the colour, so it reads as a surface. */
+@utility cover-grain {
+  opacity: 0.1;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* Press feedback: a small spring, on anything people tap. */
@@ -497,6 +577,14 @@ body {
 @keyframes fade-out {
   to {
     opacity: 0;
+  }
+}
+
+/* A ring drawing itself once round (a circle with pathLength 100), as when
+   the camera has read the clock's code. */
+@keyframes ring-sweep {
+  from {
+    stroke-dashoffset: 100;
   }
 }
 

@@ -9,7 +9,7 @@ export default function SignInDemo() {
   const t = useTranslations("auth.signIn");
   return (
     <AuthScreen title={t("title")}>
-      <SignInForm signIn={demoSignIn} />
+      <SignInForm signIn={demoSignIn} demoHref="/design/screens/enter" />
     </AuthScreen>
   );
 }

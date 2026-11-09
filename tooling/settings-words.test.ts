@@ -1,3 +1,4 @@
+import { BANKS } from "@domain/banks";
 import { describeSettings } from "@domain/settings-form";
 import { SHABBAT_CITIES } from "@domain/shabbat";
 import { describe, expect, it } from "vitest";
@@ -39,5 +40,20 @@ describe("the cities for Shabbat times", () => {
       expect(names[city], city).toBeTruthy();
     }
     expect(Object.keys(names).sort()).toEqual([...SHABBAT_CITIES].sort());
+  });
+});
+
+// A worker's bank is a code in the code's dated list; its name is in the
+// messages, so a bank added to the list needs its words.
+describe("the banks for wages", () => {
+  it("each have a name", () => {
+    const names = he.banks as Record<string, string>;
+    for (const bank of BANKS) {
+      expect(names[String(bank.code)], String(bank.code)).toBeTruthy();
+    }
+    // And no name for a bank that isn't in the list, as for the cities.
+    expect(Object.keys(names).sort()).toEqual(
+      BANKS.map((bank) => String(bank.code)).sort(),
+    );
   });
 });

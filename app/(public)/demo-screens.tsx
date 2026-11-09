@@ -142,7 +142,9 @@ export async function ScheduleDemo() {
         </div>
         <CoverageBar filled={2} total={3} />
         <div className="flex items-center gap-2">
-          <AvatarStack names={[t("person1"), t("person2")]} />
+          <AvatarStack
+            people={[{ name: t("person1") }, { name: t("person2") }]}
+          />
           <span className="min-w-0 text-base text-ink-2">{t("names")}</span>
         </div>
       </Card>

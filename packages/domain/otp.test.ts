@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeOtpCode } from "./otp";
+import { normalizeOtpCode, refusalReason } from "./otp";
 
 describe("normalizeOtpCode", () => {
   it.each([
@@ -16,4 +16,17 @@ describe("normalizeOtpCode", () => {
       expect(normalizeOtpCode(input)).toBeNull();
     },
   );
+});
+
+describe("refusalReason", () => {
+  it.each([
+    ["signup_disabled", "unknownPhone"],
+    ["otp_disabled", "unknownPhone"],
+    ["over_sms_send_rate_limit", "rateLimit"],
+    ["over_request_rate_limit", "rateLimit"],
+    ["unexpected_failure", null],
+    [undefined, null],
+  ] as const)("reads %j as %j", (code, expected) => {
+    expect(refusalReason(code)).toBe(expected);
+  });
 });

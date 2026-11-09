@@ -1,5 +1,5 @@
 import { PageSkeleton } from "@ui/skeleton";
-import { useTranslations } from "next-intl";
+import { baseWording, translator } from "./wording";
 
 /**
  * Shows the moment a tab is pressed, instead of the old screen standing still
@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
  * their own section.
  */
 export default function Loading() {
-  const t = useTranslations("app");
+  // Before anyone is read: the app's own words.
+  const t = translator(baseWording, "app");
   return <PageSkeleton label={t("loading")} />;
 }

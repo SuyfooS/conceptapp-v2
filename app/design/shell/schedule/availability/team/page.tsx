@@ -2,6 +2,7 @@ import { teamAvailability } from "@domain/availability";
 import { buildTeam } from "@domain/team";
 import { Suspense } from "react";
 import { TeamAvailabilityView } from "../../../../../(app)/schedule/availability/team/team-availability-view";
+import { baseWording } from "../../../../../(app)/wording";
 import {
   teamAnswers,
   teamInvites,
@@ -44,6 +45,7 @@ async function Demo({ searchParams }: Props) {
         ),
       }}
       backHref="/design/shell/schedule"
+      wording={baseWording}
     />
   );
 }

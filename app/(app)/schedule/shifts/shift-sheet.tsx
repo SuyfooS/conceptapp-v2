@@ -10,7 +10,9 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useCallback, useState } from "react";
 import type { SwapState } from "./actions";
 import {
+  formOf,
   nameOf,
+  photoOf,
   positionName,
   type ShiftData,
   shiftLabel,
@@ -154,7 +156,7 @@ function SheetBody({
               const role = positionName(data, a.position);
               return (
                 <li key={a.user} className={personRow}>
-                  <Avatar name={name} />
+                  <Avatar name={name} photo={photoOf(data, a.user)} />
                   <span className="flex min-w-0 flex-1 flex-col">
                     <span className="font-medium">{name}</span>
                     {role ? (
@@ -207,7 +209,10 @@ function SheetBody({
           }
         >
           {request.status === "taken"
-            ? t("shifts.swap.taken", { name: nameOf(t, data, request.takenBy) })
+            ? t("shifts.swap.taken", {
+                name: nameOf(t, data, request.takenBy),
+                form: formOf(data, request.takenBy),
+              })
             : t("shifts.swap.open")}
         </Consequence>
       ) : null}
@@ -227,7 +232,10 @@ function SheetBody({
               key={offer.swap.id}
               note={t("shifts.swap.offers.busy")}
             >
-              {t("shifts.swap.offers.from", { name: from })}
+              {t("shifts.swap.offers.from", {
+                name: from,
+                form: formOf(data, offer.swap.requestedBy),
+              })}
             </Consequence>
           );
         }

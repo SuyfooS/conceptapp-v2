@@ -39,6 +39,16 @@ export default async function BusinessSetupPage({
           ? `/admin/businesses/${business.slug}/settings`
           : null
       }
+      wordingHref={
+        platformCan(role, "businesses.edit")
+          ? `/admin/businesses/${business.slug}/wording`
+          : null
+      }
+      addHref={
+        platformCan(role, "staff.invite")
+          ? `/admin/businesses/${business.slug}/people/new`
+          : null
+      }
       viewAs={
         platformCan(role, "businesses.view_as")
           ? viewAsAction.bind(null, { id: business.id, slug: business.slug })

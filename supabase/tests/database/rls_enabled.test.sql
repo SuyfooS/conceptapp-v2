@@ -24,10 +24,15 @@ select set_eq(
   $$,
   array[
     'templates', 'businesses', 'profiles', 'memberships',
+    'template_wording', 'business_wording',
     'business_modules', 'invites', 'audit_log', 'platform_staff',
     'view_sessions', 'schedule_weeks', 'availability_submissions',
     'availability_ranges', 'schedule_shifts', 'shift_assignments',
-    'shift_swaps', 'time_entries', 'punch_codes', 'time_breaks'
+    'shift_swaps', 'time_entries', 'punch_codes', 'time_breaks',
+    'clock_stations', 'notifications', 'push_subscriptions', 'push_deliveries',
+    'departments', 'department_members', 'list_templates',
+    'list_template_items', 'list_schedules', 'lists', 'list_people',
+    'list_items', 'list_passes'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

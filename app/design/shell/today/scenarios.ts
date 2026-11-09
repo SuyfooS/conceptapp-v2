@@ -18,6 +18,7 @@ import {
   teamMembers,
   teamToday,
 } from "../data";
+import { demoUnread } from "../notifications/data";
 import { demoWeek } from "../schedule/availability/week";
 import { demoPublished, demoRequest } from "../schedule/shifts/published";
 
@@ -161,11 +162,16 @@ function today(
     now,
     timeZone: demoWeek.timeZone,
     name: teamMembers.find((m) => m.userId === userId)?.name ?? null,
+    photo: teamMembers.find((m) => m.userId === userId)?.photo ?? null,
     role,
     businessName: business.name,
     widgets: moduleWidgets(manifests, modules, role),
     schedule,
     team: role === "worker" ? null : team(),
+    // The bell leads to /design/shell/notifications, a manager's inbox, and
+    // counts what it shows. A worker's lines would be other ones, so the
+    // demo's workers have no bell.
+    bell: role === "worker" ? null : { unread: demoUnread.length },
   };
 }
 

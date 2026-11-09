@@ -1,6 +1,6 @@
 import { dayMonth } from "@domain/availability-form";
 import { PageBody, PageHeader } from "@ui/page";
-import { getTranslations } from "next-intl/server";
+import { type AppWording, translator } from "../../wording";
 import type { ScheduleBuildWeek } from "../week";
 import type { ScheduleState } from "./actions";
 import { ScheduleBuilder } from "./schedule-builder";
@@ -9,11 +9,12 @@ import { ScheduleBuilder } from "./schedule-builder";
  * The page around the builder. Also rendered with mock data on
  * /design/shell/schedule/build.
  */
-export async function ScheduleBuildView({
+export function ScheduleBuildView({
   data,
   save,
   backHref = "/schedule",
   manageHref = "/manage/scheduling",
+  wording,
 }: {
   data: ScheduleBuildWeek;
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
@@ -21,11 +22,11 @@ export async function ScheduleBuildView({
   backHref?: string;
   /** Where the regular shifts are set. */
   manageHref?: string;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const [t, tm] = await Promise.all([
-    getTranslations("app.build"),
-    getTranslations("modules.scheduling"),
-  ]);
+  const t = translator(wording, "app.build");
+  const tm = translator(wording, "modules.scheduling");
   const { week } = data;
   return (
     <PageBody>

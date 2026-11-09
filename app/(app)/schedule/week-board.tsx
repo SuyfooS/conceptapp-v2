@@ -33,9 +33,10 @@ import {
 } from "./shifts/shift-sheet";
 import {
   type AppT,
-  assigneeNames,
+  assigneePeople,
   dayLabel,
   firstNames,
+  formOf,
   ltr,
   nameOf,
   positionName,
@@ -526,7 +527,8 @@ function WeekShift({
   const t = useTranslations("app");
   const tb = useTranslations("app.shifts.board");
   const label = shiftLabel(t, shift);
-  const names = assigneeNames(t, data, shift);
+  const people = assigneePeople(t, data, shift);
+  const names = people.map((p) => p.name);
   const own = shift.assignees.find((a) => a.user === data.userId);
   const mine = own !== undefined;
   const role = positionName(data, own?.position);
@@ -558,7 +560,7 @@ function WeekShift({
       <span className="text-ink-2 text-sm">{timeRange(t, shift)}</span>
       {names.length > 0 ? (
         <>
-          <AvatarStack names={names} className="mt-0.5" />
+          <AvatarStack people={people} className="mt-0.5" />
           <span className="text-ink-2 text-sm">{firstNames(names)}</span>
         </>
       ) : (
@@ -573,6 +575,7 @@ function WeekShift({
           {request.status === "taken"
             ? tb("givingTaken", {
                 name: firstNameOf(nameOf(t, data, request.takenBy)),
+                form: formOf(data, request.takenBy),
               })
             : tb("givingOpen")}
         </span>

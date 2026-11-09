@@ -5,6 +5,7 @@ import {
   canOpenModule,
   defineManifest,
   enabledModules,
+  fitsTabBar,
   MAX_MODULE_NAV,
   type ModuleManifest,
   type ModuleRow,
@@ -144,6 +145,57 @@ describe("moduleNav", () => {
     expect(moduleNav(many, ["scheduling"], "owner")).toHaveLength(
       MAX_MODULE_NAV,
     );
+  });
+});
+
+describe("fitsTabBar", () => {
+  // Five modules, each with a tab: more than the bar holds if all are on.
+  const tab = (key: ModuleRow["key"], i: number) =>
+    ({
+      ...storefront,
+      key,
+      nav: { ...storefront.nav, href: `/t${i}` as const, order: i },
+    }) as ModuleManifest;
+  const five = (
+    [
+      "scheduling",
+      "time_clock",
+      "reservations",
+      "storefront",
+      "notifications",
+    ] as const
+  ).map(tab);
+
+  it("counts only what is on, not every module there is", () => {
+    expect(fitsTabBar(five, ["scheduling", "time_clock"])).toBe(true);
+    expect(
+      fitsTabBar(five, [
+        "scheduling",
+        "time_clock",
+        "reservations",
+        "storefront",
+      ]),
+    ).toBe(true);
+  });
+
+  it("refuses more tabs than the bar holds", () => {
+    expect(
+      fitsTabBar(
+        five,
+        five.map((m) => m.key),
+      ),
+    ).toBe(false);
+  });
+
+  it("does not count modules without a tab", () => {
+    expect(
+      fitsTabBar(all, [
+        "scheduling",
+        "time_clock",
+        "storefront",
+        "notifications",
+      ]),
+    ).toBe(true);
   });
 });
 

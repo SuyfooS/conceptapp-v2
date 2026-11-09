@@ -133,9 +133,24 @@ type ShapeProps = {
   href: (slug: string) => string;
 };
 
-function InvitesBadge({ t, count }: { t: Labels["t"]; count: number }) {
-  return count > 0 ? (
-    <Badge tone="warning">{t("invitesCount", { count })}</Badge>
+/**
+ * What needs the team: invites that ran out first, since nobody can join
+ * through them, then invites still open.
+ */
+function InvitesBadge({
+  t,
+  open,
+  expired,
+}: {
+  t: Labels["t"];
+  open: number;
+  expired: number;
+}) {
+  if (expired > 0) {
+    return <Badge tone="danger">{t("expiredCount", { count: expired })}</Badge>;
+  }
+  return open > 0 ? (
+    <Badge tone="warning">{t("invitesCount", { count: open })}</Badge>
   ) : null;
 }
 
@@ -156,7 +171,13 @@ function BusinessList({ businesses, labels, href }: ShapeProps) {
               {t("membersCount", { count: b.members })}
             </>
           }
-          trailing={<InvitesBadge t={t} count={b.openInvites} />}
+          trailing={
+            <InvitesBadge
+              t={t}
+              open={b.openInvites}
+              expired={b.expiredInvites}
+            />
+          }
         />
       ))}
     </ListGroup>
@@ -180,7 +201,11 @@ function BusinessCards({ businesses, labels, href }: ShapeProps) {
                 accent={b.accent}
                 className="size-12 rounded-control text-lg"
               />
-              <InvitesBadge t={t} count={b.openInvites} />
+              <InvitesBadge
+                t={t}
+                open={b.openInvites}
+                expired={b.expiredInvites}
+              />
             </span>
             <span className="flex flex-col">
               <span className="font-bold text-lg">{b.name}</span>
@@ -252,11 +277,18 @@ function BusinessTable({ businesses, labels, href }: ShapeProps) {
               <td className={td}>{template(b.templateKey)}</td>
               <td className={td}>{b.members}</td>
               <td className={td}>
-                {b.openInvites > 0 ? (
-                  <Badge tone="warning">{b.openInvites}</Badge>
-                ) : (
-                  <span className="text-ink-2">{b.openInvites}</span>
-                )}
+                <span className="flex flex-wrap items-center gap-2">
+                  {b.openInvites > 0 ? (
+                    <Badge tone="warning">{b.openInvites}</Badge>
+                  ) : (
+                    <span className="text-ink-2">{b.openInvites}</span>
+                  )}
+                  {b.expiredInvites > 0 ? (
+                    <Badge tone="danger">
+                      {t("expiredCount", { count: b.expiredInvites })}
+                    </Badge>
+                  ) : null}
+                </span>
               </td>
               <td className={cn(td, "text-ink-2")}>{created(b.createdAt)}</td>
               <td className={td}>

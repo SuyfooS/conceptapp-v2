@@ -12,7 +12,7 @@ import type {
 } from "@/app/(app)/manage/settings-types";
 import type { CityShabbat } from "@/app/(app)/manage/shabbat-by-city";
 import type { TeamModuleSettings } from "./module-settings";
-import { ModuleSwitch } from "./module-switch";
+import { ModuleSwitch, type ModuleSwitchResult } from "./module-switch";
 
 /**
  * A business's settings as the ConceptApp team sees them: its own details, then
@@ -40,7 +40,10 @@ export function BusinessSettingsView({
     module: ModuleKey,
     change: Record<string, unknown>,
   ) => Promise<SettingsResult>;
-  setEnabled: (module: ModuleKey, enabled: boolean) => Promise<SettingsResult>;
+  setEnabled: (
+    module: ModuleKey,
+    enabled: boolean,
+  ) => Promise<ModuleSwitchResult>;
 }) {
   const t = useTranslations("admin.settings");
   const tm = useTranslations("modules");

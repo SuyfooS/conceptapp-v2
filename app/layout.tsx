@@ -14,6 +14,14 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description: t("description"),
     applicationName: "ConceptApp",
+    // On iPhone, "Add to Home Screen" opens it as an app (app/manifest.ts
+    // covers the rest).
+    appleWebApp: {
+      capable: true,
+      title: "ConceptApp",
+      statusBarStyle: "default",
+    },
+    icons: { apple: "/apple-touch-icon.png" },
   };
 }
 

@@ -14,6 +14,7 @@ export const MODULE_KEYS = [
   "reservations",
   "storefront",
   "notifications",
+  "lists",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -41,11 +42,17 @@ export const MODULE_ICONS = [
   "utensils",
   "store",
   "bell",
+  "list",
 ] as const;
 
 export type ModuleIcon = (typeof MODULE_ICONS)[number];
 
-/** The home tab plus at most this many module tabs fit the phone tab bar. */
+/**
+ * The home tab plus at most this many module tabs fit the phone tab bar. The
+ * limit is on what a business has on, not on every module there is: a
+ * template that switches on more is refused (`validateTemplate`), and so is
+ * switching one on that wouldn't fit (`fitsTabBar`).
+ */
 export const MAX_MODULE_NAV = 4;
 
 export type ModuleManifest<
@@ -57,7 +64,7 @@ export type ModuleManifest<
   requires: readonly ModuleKey[];
   /**
    * The module's place in the navigation. Labels come from messages
-   * (`modules.<key>.nav`), so the manifest holds no copy.
+   * (`modules.<key>.name`), so the manifest holds no copy.
    */
   nav: {
     href: `/${string}`;
@@ -149,6 +156,21 @@ export function moduleNav(
     .sort((a, b) => a.order - b.order)
     .slice(0, MAX_MODULE_NAV)
     .map(({ key, href, icon }) => ({ key, href, icon }));
+}
+
+/**
+ * Whether these modules' tabs fit the tab bar for the role that sees them all
+ * (an owner). `moduleNav` still cuts at the limit, so a business that got past
+ * this check loses its last tab rather than its layout.
+ */
+export function fitsTabBar(
+  manifests: readonly ModuleManifest[],
+  enabled: readonly ModuleKey[],
+): boolean {
+  const tabs = manifests.filter(
+    (m) => enabled.includes(m.key) && m.nav !== null,
+  );
+  return tabs.length <= MAX_MODULE_NAV;
 }
 
 /** What the Today screen shows for `role`, from the enabled modules, in nav order. */

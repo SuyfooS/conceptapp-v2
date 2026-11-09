@@ -1,10 +1,14 @@
 "use client";
 
 import { accentTokens } from "@domain/color";
+import { avatarHue } from "@domain/people";
+import { COVER_PRESETS, type CoverPreset } from "@domain/profile";
+import { punchPayload, spokenDigits } from "@domain/punch-code-format";
 import { accentProps } from "@ui/accent";
 import { AccentPicker, AccentPreview } from "@ui/accent-picker";
 import { Ambient } from "@ui/ambient";
 import { Avatar, AvatarStack } from "@ui/avatar";
+import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
@@ -12,8 +16,10 @@ import { DeckCard } from "@ui/card-deck";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
+import { CodeDisplay } from "@ui/code-display";
 import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { useCountUp } from "@ui/count-up";
+import { CoverChoices } from "@ui/cover-choices";
 import { CoverageBar } from "@ui/coverage-bar";
 import { EmptyState } from "@ui/empty-state";
 import {
@@ -28,11 +34,15 @@ import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { FocusText } from "@ui/focus-text";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
+import { Logo, LogoMark } from "@ui/logo";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
 import { PhoneFrame } from "@ui/phone-frame";
+import { ProfileCover } from "@ui/profile-cover";
 import { ProgressRing } from "@ui/progress-ring";
 import { PunchCircle } from "@ui/punch-circle";
+import { QrCode } from "@ui/qr-code";
+import { ScanCircle } from "@ui/scan-circle";
 import { Segmented } from "@ui/segmented";
 import { SettlingCards } from "@ui/settling-cards";
 import { Sheet } from "@ui/sheet";
@@ -42,16 +52,19 @@ import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
+import { VisibilityNote } from "@ui/visibility-note";
 import { WeekStrip } from "@ui/week-strip";
 import { WordCycle } from "@ui/word-cycle";
 import {
   ArrowLeft,
   Bell,
   CalendarDays,
+  Check,
   Fingerprint,
   ListChecks,
   Plus,
   Save,
+  ScanQrCode,
   Send,
   Users,
 } from "lucide-react";
@@ -61,6 +74,7 @@ import { type ReactNode, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
+import { portraits } from "./portraits";
 
 const ACCENTS = [
   { hex: "#8b2635", key: "burgundy" },
@@ -72,6 +86,11 @@ const ACCENTS = [
 ] as const;
 
 const MESSAGES = { he: heMessages, en: enMessages } as const;
+/** The picker's stand-in save: a moment's wait, and nothing stored. */
+const pause = () => new Promise((resolve) => setTimeout(resolve, 600));
+/** A fixed clock code, so the gallery's QR is the same on every visit. */
+const GALLERY_QR = punchPayload("c0nceptApp-gallery-qr1");
+const GALLERY_DIGITS = "482915";
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 const APPEARANCES = ["system", "light", "dark"] as const;
@@ -137,6 +156,11 @@ function GalleryBody({
   const t = useTranslations("design");
   const tDays = useTranslations("days");
   const tWeek = useTranslations("app.shifts.week");
+  const tCode = useTranslations("app.clock.code");
+  const tClock = useTranslations("app.clock");
+  const tMe = useTranslations("app.me");
+  const tNav = useTranslations("app.nav");
+  const tCover = useTranslations("ui.profileCover");
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
@@ -153,6 +177,11 @@ function GalleryBody({
   const [dock, setDock] = useState(false);
   const [switchOn, setSwitchOn] = useState(true);
   const [picked, setPicked] = useState("#4f46e5");
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [galleryPhoto, setGalleryPhoto] = useState<string | null>(
+    portraits.maya,
+  );
+  const [galleryCover, setGalleryCover] = useState<CoverPreset>("waves");
 
   const switchLang = (next: Locale) => {
     onLangChange(next);
@@ -162,6 +191,18 @@ function GalleryBody({
   const tokens = accentTokens(requested);
   const accent = ACCENTS.find((a) => a.hex === requested);
   const accentName = accent ? t(`accents.${accent.key}`) : requested;
+
+  // What the camera would see: a code held up, a little turned.
+  const scanStill = (
+    <div className="grid size-full place-items-center bg-surface-3">
+      <QrCode
+        value={GALLERY_QR}
+        label={tCode("qrLabel")}
+        className="w-[46%] -rotate-6"
+      />
+    </div>
+  );
+  const scanCancel = { label: tClock("scan.cancel"), onClick: () => {} };
 
   return (
     <div
@@ -177,16 +218,7 @@ function GalleryBody({
         className="mx-auto flex min-h-dvh w-full max-w-[560px] flex-col gap-8 px-4 py-8"
       >
         <header className="flex flex-col gap-2">
-          <span
-            dir="ltr"
-            className="flex items-center gap-2 self-start font-bold text-md"
-          >
-            <span
-              aria-hidden="true"
-              className="size-4 rounded-[5px] bg-brand"
-            />
-            ConceptApp
-          </span>
+          <Logo label={t("brand")} className="self-start" />
           <h1 className="font-bold text-2xl">{t("title")}</h1>
           <p className="text-ink-2">{t("intro")}</p>
         </header>
@@ -266,6 +298,18 @@ function GalleryBody({
           </div>
         </Card>
 
+        <Section title={t("logo")}>
+          <Card className="flex flex-col gap-5">
+            <Logo label={t("brand")} className="h-12 self-start" />
+            <div className="flex items-end gap-4">
+              <LogoMark className="h-12" />
+              <LogoMark className="h-8" />
+              <LogoMark className="h-5" />
+            </div>
+            <p className="text-ink-2 text-sm">{t("logoText")}</p>
+          </Card>
+        </Section>
+
         <Section title={t("colors")}>
           <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
             {SWATCHES.map((s) => (
@@ -315,6 +359,12 @@ function GalleryBody({
           <div className="flex gap-2">
             <IconButton label={t("add")} icon={<Plus />} variant="secondary" />
             <IconButton label={t("notifications")} icon={<Bell />} />
+            <IconButton
+              label={t("notifications")}
+              icon={<Bell />}
+              href="/design/shell/notifications"
+              badge={{ count: 3, label: t("notificationsNew", { count: 3 }) }}
+            />
             <IconButton label={t("back")} icon={<ArrowLeft />} directional />
           </div>
         </Section>
@@ -403,6 +453,12 @@ function GalleryBody({
               title={t("p3")}
               subtitle={t("p3s")}
               trailing={<Badge tone="accent">{t("p3b")}</Badge>}
+            />
+            <ListRow
+              onClick={() => {}}
+              disabled
+              title={t("rowDisabled")}
+              subtitle={t("rowDisabledText")}
             />
           </ListGroup>
         </Section>
@@ -499,7 +555,13 @@ function GalleryBody({
           <div className="flex items-center gap-4">
             <Avatar name={t("person1")} />
             <Avatar name={t("person2")} />
-            <AvatarStack names={[t("person1"), t("person2"), t("person3")]} />
+            <AvatarStack
+              people={[
+                { name: t("person1") },
+                { name: t("person2") },
+                { name: t("person3") },
+              ]}
+            />
           </div>
         </Section>
 
@@ -518,6 +580,97 @@ function GalleryBody({
               below={<Button variant="secondary">{t("emptyAction")}</Button>}
             />
           </PersonList>
+        </Section>
+
+        <Section title={t("photos")}>
+          <p className="text-ink-2">{t("photosText")}</p>
+          <div className="flex flex-wrap items-center gap-4">
+            <Avatar name={t("person1")} photo={portraits.maya} size="xl" />
+            <Avatar name={t("person2")} size="xl" />
+            <Avatar name={t("person1")} photo={portraits.shiran} />
+            <Avatar name={t("person2")} />
+            <Avatar name={t("person3")} photo={portraits.yoav} size="sm" />
+            <PersonAvatar name={null} photo={portraits.yoav} />
+            <AvatarStack
+              people={[
+                { name: t("person1"), photo: portraits.maya },
+                { name: t("person2") },
+                { name: t("person3"), photo: portraits.yoav },
+              ]}
+            />
+          </div>
+          <PersonList>
+            <PersonRow
+              name={t("person1")}
+              photo={portraits.shiran}
+              title={t("person1")}
+              subtitle={t("sheetRole")}
+            />
+          </PersonList>
+        </Section>
+
+        <Section title={t("photoPicker")}>
+          <div className="flex items-center gap-4">
+            <Avatar name={t("person1")} photo={galleryPhoto} size="xl" />
+            <Button variant="secondary" onClick={() => setPickerOpen(true)}>
+              {t("photoPickerOpen")}
+            </Button>
+          </div>
+          <AvatarPhotoPicker
+            open={pickerOpen}
+            onOpenChange={setPickerOpen}
+            name={t("person1")}
+            photo={galleryPhoto}
+            onSave={async (blob) => {
+              await pause();
+              const photo = URL.createObjectURL(blob);
+              setGalleryPhoto(photo);
+              return { ok: true, photo };
+            }}
+            onRemove={async () => {
+              await pause();
+              setGalleryPhoto(null);
+              return { ok: true, photo: null };
+            }}
+          />
+        </Section>
+
+        <Section title={t("visibility")}>
+          <VisibilityNote>{tMe("about.visible")}</VisibilityNote>
+          <VisibilityNote icon="lock">{t("visibilityPrivate")}</VisibilityNote>
+        </Section>
+
+        <Section title={t("cover")}>
+          <p className="text-ink-2">{t("covers")}</p>
+          <ProfileCover
+            preset={galleryCover}
+            hue={avatarHue(t("person1"))}
+            className="h-36 rounded-card"
+          >
+            <span className="absolute start-3 top-3 flex min-h-11 items-center rounded-full bg-accent-press ps-4 pe-4 font-semibold text-accent-ink text-base">
+              {tNav("home")}
+            </span>
+          </ProfileCover>
+          <div className="grid grid-cols-2 gap-3">
+            {COVER_PRESETS.map((preset) => (
+              <figure key={preset} className="m-0 flex flex-col gap-1.5">
+                <ProfileCover
+                  preset={preset}
+                  hue={avatarHue(t("person1"))}
+                  className="aspect-[2.55] rounded-control"
+                />
+                <figcaption className="text-center text-ink-2 text-sm">
+                  {tCover(`presets.${preset}`)}
+                </figcaption>
+              </figure>
+            ))}
+          </div>
+          <CoverChoices
+            legend={t("cover")}
+            value={galleryCover}
+            onChange={setGalleryCover}
+            hue={avatarHue(t("person1"))}
+          />
         </Section>
 
         <Section title={t("fieldGroup")}>
@@ -605,6 +758,85 @@ function GalleryBody({
               label={t("punchBack")}
             />
           </div>
+        </Section>
+
+        <Section title={t("qrCode")}>
+          <Card className="flex flex-col items-center gap-4 bg-qr-paper text-qr-ink sm:flex-row sm:justify-center sm:gap-8">
+            <QrCode
+              value={GALLERY_QR}
+              label={tCode("qrLabel")}
+              className="w-44 shrink-0"
+            />
+            <div className="flex flex-col items-center gap-1">
+              <span className="font-medium text-qr-ink/70 text-sm">
+                {tCode("digitsLabel")}
+              </span>
+              <CodeDisplay
+                digits={GALLERY_DIGITS}
+                spoken={tCode("digitsSpoken", {
+                  digits: spokenDigits(GALLERY_DIGITS),
+                })}
+              />
+              <span className="flex min-h-7 items-center gap-2 text-qr-ink/70 text-sm">
+                {/* The ring on the paper keeps its light colours in dark mode. */}
+                <ProgressRing
+                  value={12}
+                  max={20}
+                  tone="paper"
+                  className="size-6"
+                />
+                {tCode("next", { seconds: 12 })}
+              </span>
+            </div>
+          </Card>
+          <p className="text-ink-2 text-sm">{t("qrCodeText")}</p>
+        </Section>
+
+        <Section title={t("scanCircle")}>
+          <div className="grid gap-6 md:grid-cols-2">
+            <PunchCircle
+              tone="off"
+              figure={<ScanQrCode aria-hidden="true" />}
+              label={tClock("circle.scanIn")}
+            />
+            <ScanCircle
+              state="starting"
+              still={scanStill}
+              status={tClock("scan.starting")}
+              cancel={scanCancel}
+            />
+            <ScanCircle
+              state="aiming"
+              still={scanStill}
+              status={tClock("scan.aim")}
+              cancel={scanCancel}
+            />
+            <ScanCircle
+              state="reading"
+              still={scanStill}
+              status={tClock("scan.sending")}
+              cancel={{ ...scanCancel, disabled: true }}
+            />
+            <ScanCircle
+              state="read"
+              still={scanStill}
+              figure={
+                <>
+                  <Check aria-hidden="true" />
+                  <span dir="ltr">08:04</span>
+                </>
+              }
+              status={tClock("scan.readIn")}
+              cancel={{ ...scanCancel, disabled: true }}
+            />
+            <ScanCircle
+              state="problem"
+              still={scanStill}
+              status={tClock("scan.denied")}
+              cancel={scanCancel}
+            />
+          </div>
+          <p className="text-ink-2 text-sm">{t("scanCircleText")}</p>
         </Section>
 
         <Section title={t("skeleton")}>

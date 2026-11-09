@@ -7,7 +7,7 @@ import {
   stillNeeded,
 } from "@domain/schedule";
 import type { Position } from "@domain/staffing";
-import { AvatarStack } from "@ui/avatar";
+import { type AvatarPerson, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
@@ -37,7 +37,7 @@ export function ShiftCard({
   id,
   label,
   shift,
-  names,
+  people,
   clashing,
   positions,
   density,
@@ -46,8 +46,8 @@ export function ShiftCard({
   id: number;
   label: string;
   shift: ScheduledShift;
-  /** Who is on the shift, as their names read everywhere. */
-  names: string[];
+  /** Who is on the shift, as their names read everywhere, with their photos. */
+  people: AvatarPerson[];
   /** Those of them who are on another shift at the same time. */
   clashing: string[];
   positions: Position[];
@@ -55,6 +55,7 @@ export function ShiftCard({
   onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const t = useTranslations("app.build");
+  const names = people.map((p) => p.name);
   const missing = stillNeeded(shift);
   const full = density === "full";
   const column = density === "column";
@@ -115,7 +116,7 @@ export function ShiftCard({
       >
         {names.length > 0 || missing > 0 ? (
           <span className="flex shrink-0">
-            <AvatarStack names={names} max={column ? 3 : 4} />
+            <AvatarStack people={people} max={column ? 3 : 4} />
             {missing > 0 ? (
               <span
                 aria-hidden="true"

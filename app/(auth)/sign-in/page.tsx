@@ -1,3 +1,4 @@
+import { PASSIVE_SIGN_IN } from "@domain/passive-sign-in";
 import type { Metadata } from "next";
 import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
@@ -14,7 +15,10 @@ export default function SignInPage() {
   const t = useTranslations("auth.signIn");
   return (
     <AuthScreen title={t("title")}>
-      <SignInForm signIn={signIn} />
+      <SignInForm
+        signIn={signIn}
+        demoHref={PASSIVE_SIGN_IN ? "/enter" : undefined}
+      />
     </AuthScreen>
   );
 }

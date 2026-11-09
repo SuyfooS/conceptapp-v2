@@ -20,7 +20,7 @@ import { FieldGroup, GroupedField, GroupedTextArea } from "@ui/field-group";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { PersonList, PersonRow } from "@ui/person-row";
 import { ltrInputClass } from "@ui/text-field";
-import { Coffee, UtensilsCrossed } from "lucide-react";
+import { Briefcase, Coffee, ShoppingBag, UtensilsCrossed } from "lucide-react";
 import { useTranslations } from "next-intl";
 import {
   type FormEvent,
@@ -37,12 +37,15 @@ const STEP_KEYS = ["template", "details", "accent", "staff"] as const;
 const LAST_STEP = NEW_BUSINESS_STEPS.length - 1;
 
 const TEMPLATE_ICONS: Record<TemplateKey, ReactNode> = {
+  retail: <ShoppingBag />,
   restaurant: <UtensilsCrossed />,
   "cafe-bar": <Coffee />,
+  general: <Briefcase />,
 };
 
 type Values = {
-  template: TemplateKey;
+  /** Empty until one is picked: no kind of business is assumed. */
+  template: TemplateKey | "";
   name: string;
   slug: string;
   address: string;
@@ -72,7 +75,7 @@ export function NewBusinessForm({
   const [step, setStep] = useState(0);
   const [errors, setErrors] = useState<NewBusinessErrors>({});
   const [values, setValues] = useState<Values>({
-    template: "restaurant",
+    template: "",
     name: "",
     slug: "",
     address: "",
@@ -391,7 +394,7 @@ function Summary({ values, staff }: { values: Values; staff: StaffList }) {
   const rows: { label: string; value: ReactNode }[] = [
     {
       label: t("summary.template"),
-      value: t(`templates.${values.template}.name`),
+      value: values.template ? t(`templates.${values.template}.name`) : empty,
     },
     { label: t("summary.name"), value: name || empty },
     {

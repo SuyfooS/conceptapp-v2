@@ -99,6 +99,10 @@ export type ActivityLine =
       from: ClockTimes;
       to: ClockTimes;
     }
+  /** A manager approved hours made without a code, or set by someone for themselves. */
+  | { action: "clock.confirm"; person: ActivityPerson }
+  /** Typing the clock's code was blocked after too many wrong tries; the actor is who typed. */
+  | { action: "clock.code.locked" }
   | {
       action: "invite.create" | "invite.send";
       name: string | null;
@@ -127,6 +131,14 @@ export type ActivityLine =
       first: boolean;
       swapsRemoved: number;
     }
+  | {
+      /** One of the app's sentences, replaced for the business or cleared. */
+      action: "wording.change";
+      to: string | null;
+      from: string | null;
+    }
+  /** An owner or manager cleared someone's line about themselves; never its text. */
+  | { action: "profile.bio_cleared"; person: ActivityPerson }
   | { action: "other" };
 
 /** One line of the log. Holds no ids, so it can go anywhere. */
@@ -169,6 +181,8 @@ const schemas = {
     clock_out: instant.nullable().optional(),
   }),
   "clock.correct": z.object({ person: id, from: times, to: times }),
+  "clock.confirm": z.object({ person: id }),
+  "clock.code.locked": z.object({ person: id.optional() }),
   invite: z.object({ invite: id, role: z.unknown().optional() }),
   role: z.object({ role: z.unknown().optional() }),
   "swap.request": z.object({ swap: id, shift: id }),
@@ -184,6 +198,12 @@ const schemas = {
     shifts: z.int().min(0),
     first: z.boolean(),
     swaps_removed: z.int().min(0),
+  }),
+  "profile.bio_cleared": z.object({ person: id }),
+  "wording.change": z.object({
+    key: z.string(),
+    from: z.string().nullable().optional(),
+    to: z.string().nullable().optional(),
   }),
 };
 
@@ -284,6 +304,16 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         ],
       };
     }
+    case "wording.change": {
+      const details = read(schemas["wording.change"]);
+      return details
+        ? {
+            action: row.action,
+            to: details.to ?? null,
+            from: details.from ?? null,
+          }
+        : other;
+    }
     case "module.enabled": {
       const details = read(schemas["module.enabled"]);
       return details
@@ -316,6 +346,22 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         to: clockTimes(details.to),
       };
     }
+    case "clock.confirm": {
+      const details = read(schemas["clock.confirm"]);
+      return details
+        ? { action: row.action, person: personOf(details.person, lookups) }
+        : other;
+    }
+    case "profile.bio_cleared": {
+      const details = read(schemas["profile.bio_cleared"]);
+      return details
+        ? { action: row.action, person: personOf(details.person, lookups) }
+        : other;
+    }
+    case "clock.code.locked":
+      return read(schemas["clock.code.locked"])
+        ? { action: row.action }
+        : other;
     case "invite.create":
     case "invite.send": {
       const details = read(schemas.invite);

@@ -1,20 +1,25 @@
 import { getOwnPublishedShifts } from "@db/schedule";
-import { getTimeEntries } from "@db/time-clock";
+import { getEntriesToConfirm, getTimeEntries } from "@db/time-clock";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
+import { needsPunchCode } from "@domain/punch-code";
 import { timeIn } from "@domain/shabbat";
 import { canSeeTeam } from "@domain/team";
 import {
   addMonths,
   atWorkNow,
+  canConfirm,
   clockStatus,
   entryMinutes,
   entryOverdue,
+  entryToConfirm,
   monthMinutes,
   monthOf,
   monthRange,
   monthRecords,
   openEntryOf,
+  type TimeEntry,
+  type ToConfirm,
   UNDO_CLOCK_OUT_SECONDS,
   undoableEntry,
 } from "@domain/time-clock";
@@ -24,13 +29,14 @@ import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
-import type { ClockData } from "./clock-types";
+import type { ClockData, ClockPaths } from "./clock-types";
 import type { HistoryData } from "./history/history-view";
 
-export const clockPaths = {
+export const clockPaths: ClockPaths = {
   clock: "/clock",
   history: "/clock/history",
   team: "/clock/team",
+  code: "/clock/code",
 };
 
 /** How many shifts the wider screens show beside the circle. */
@@ -58,6 +64,7 @@ export const clockAccess = cache(async () => {
   return {
     userId: member.userId,
     businessId: membership.business.id,
+    businessName: membership.business.name,
     role: membership.role,
     viewOnly: !canWrite(member.viewing),
     scheduling: canOpenModule(
@@ -151,6 +158,11 @@ export async function currentClock(): Promise<ClockData | null> {
           }
         : null,
     unpaidBreaks: settings.unpaidBreaks,
+    punch: {
+      required: settings.requirePunchCode,
+      needsCode: needsPunchCode(settings, role),
+      canShowCode: manager && settings.codeDisplay !== "station",
+    },
     team: manager
       ? {
           atWork: atWorkNow(
@@ -191,13 +203,39 @@ export async function currentClockHistory(
   };
 }
 
+/**
+ * The entries made without a code, or set by someone for themselves, that the
+ * signed-in person may confirm, since the start of last month, oldest first.
+ * Empty for anyone who doesn't see the team.
+ */
+export const currentEntriesToConfirm = cache(
+  async (): Promise<{ entry: TimeEntry; toConfirm: ToConfirm }[]> => {
+    const access = await clockAccess();
+    if (!access || !canSeeTeam(access.role)) return [];
+    const { businessId, timeZone, userId, role } = access;
+    const month = monthOf(clockAt(new Date(), timeZone).date);
+    const entries = await getEntriesToConfirm(
+      businessId,
+      monthRange(addMonths(month, -1), timeZone).from,
+    );
+    return entries.flatMap((entry) => {
+      const toConfirm = entryToConfirm(entry);
+      return toConfirm && canConfirm(toConfirm, entry.userId, { userId, role })
+        ? [{ entry, toConfirm }]
+        : [];
+    });
+  },
+);
+
 export type ClockLine =
   | { kind: "working" | "break"; at: string }
-  | { kind: "overdue"; count: number };
+  | { kind: "overdue"; count: number }
+  | { kind: "confirm"; count: number };
 
 /**
  * What the clock's row on Today says: shifts a manager has to fix first, then
- * where the person stands. Null when there is nothing to say.
+ * hours waiting for their approval, then where the person stands. Null when
+ * there is nothing to say.
  */
 export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
   const access = await clockAccess();
@@ -209,6 +247,8 @@ export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
     ? open.filter((entry) => entryOverdue(entry, now)).length
     : 0;
   if (overdue > 0) return { kind: "overdue", count: overdue };
+  const waiting = (await currentEntriesToConfirm()).length;
+  if (waiting > 0) return { kind: "confirm", count: waiting };
   const status = clockStatus(openEntryOf(open, access.userId));
   if (status.state === "off") return null;
   const since =

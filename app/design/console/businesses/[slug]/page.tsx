@@ -7,7 +7,8 @@ export const generateStaticParams = () =>
   Object.keys(setups).map((slug) => ({ slug }));
 
 // The real page for one business, with mock people. "cafe-noa" has just been
-// opened; "demo-restaurant" has everything done.
+// opened; "demo-restaurant" has everything done; "bar-hayam" is stuck on an
+// owner invite that ran out.
 export default async function ConsoleBusinessDemo({
   params,
 }: {
@@ -23,6 +24,8 @@ export default async function ConsoleBusinessDemo({
       created={setup.created}
       viewFailed={false}
       settingsHref={`/design/console/businesses/${slug}/settings`}
+      wordingHref={`/design/console/businesses/${slug}/wording`}
+      addHref={`/design/console/businesses/${slug}/people/new`}
       viewAs={demoViewAs}
       issue={demoIssueLink}
     />

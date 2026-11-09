@@ -1,7 +1,15 @@
 import { z } from "zod";
+import { type DepartmentSeed, departmentSeeds } from "./departments";
 import { openingHours } from "./hours";
 import {
+  type ListTemplateSeed,
+  listTemplateProblem,
+  listTemplateSeeds,
+} from "./lists";
+import {
   enabledModules,
+  fitsTabBar,
+  MAX_MODULE_NAV,
   MODULE_KEYS,
   type ModuleKey,
   type ModuleManifest,
@@ -10,14 +18,21 @@ import {
 
 /**
  * A template is how a business starts: which modules are on, their
- * settings (positions and shifts are scheduling settings), and the opening
- * hours. Templates are rows in the `templates` table, written by
+ * settings (positions and shifts are scheduling settings), the opening hours,
+ * its departments and its lists (opening, closing, orders between
+ * departments). Templates are rows in the `templates` table, written by
  * migrations; `public.apply_template` copies one into an empty business in
  * a single transaction. This file is the contract both sides are tested
  * against.
  */
 
-export const TEMPLATE_KEYS = ["restaurant", "cafe-bar"] as const;
+/** In the order the wizard offers them: kinds first, the general one last. */
+export const TEMPLATE_KEYS = [
+  "retail",
+  "restaurant",
+  "cafe-bar",
+  "general",
+] as const;
 
 export type TemplateKey = (typeof TEMPLATE_KEYS)[number];
 
@@ -29,6 +44,10 @@ const moduleEntry = z.strictObject({
 export const templateDefinition = z.strictObject({
   modules: z.partialRecord(z.enum(MODULE_KEYS), moduleEntry),
   openingHours,
+  /** The business's own groups of people; none for a kind it can't know. */
+  departments: departmentSeeds.default([]),
+  /** The lists it starts with, pointing at its departments by key. */
+  listTemplates: listTemplateSeeds.default([]),
 });
 
 export type TemplateDefinition = z.infer<typeof templateDefinition>;
@@ -36,14 +55,18 @@ export type TemplateDefinition = z.infer<typeof templateDefinition>;
 export type ValidTemplate = {
   modules: Record<ModuleKey, { enabled: boolean; settings: unknown }>;
   openingHours: z.infer<typeof openingHours>;
+  departments: DepartmentSeed[];
+  listTemplates: ListTemplateSeed[];
 };
 
 /**
  * Checks a template (or a business it produced) against the manifests: every
- * module's settings valid with no unknown fields, and every switched-on
- * module's requirements switched on too. A module it doesn't name starts off,
- * with its defaults, so a module built for one business touches no template.
- * Throws with a readable message on the first problem.
+ * module's settings valid with no unknown fields, every switched-on module's
+ * requirements switched on too, no more tabs than the tab bar holds, and lists
+ * that point only at the template's own departments and shifts. A module it
+ * doesn't name starts off, with its defaults, so a module built for one
+ * business touches no template. Throws with a readable message on the first
+ * problem.
  */
 export function validateTemplate(
   manifests: readonly ModuleManifest[],
@@ -85,6 +108,32 @@ export function validateTemplate(
       `Modules switched on without what they require: ${blocked.join(", ")}`,
     );
   }
+  if (!fitsTabBar(manifests, on)) {
+    throw new Error(
+      `More tabs than the tab bar holds (${MAX_MODULE_NAV}): ${on.join(", ")}`,
+    );
+  }
 
-  return { modules: result, openingHours: parsed.data.openingHours };
+  const { departments, listTemplates } = parsed.data;
+  const problem = listTemplateProblem(
+    listTemplates,
+    departments.map((d) => d.key),
+    shiftKeysOf(result.scheduling?.settings),
+  );
+  if (problem) throw new Error(`Invalid template: ${problem}`);
+
+  return {
+    modules: result,
+    openingHours: parsed.data.openingHours,
+    departments,
+    listTemplates,
+  };
+}
+
+/** The keys of a scheduling settings' shift pattern, whatever it holds. */
+function shiftKeysOf(settings: unknown): string[] {
+  const parsed = z
+    .object({ shifts: z.array(z.object({ key: z.string() })) })
+    .safeParse(settings);
+  return parsed.success ? parsed.data.shifts.map((shift) => shift.key) : [];
 }

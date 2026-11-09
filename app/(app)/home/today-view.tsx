@@ -2,6 +2,7 @@ import { instantIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import type { ModuleNavEntry, Role } from "@domain/modules";
 import { firstNameOf } from "@domain/people";
+import { formArg } from "@domain/profile";
 import {
   type ScheduledShift,
   scheduleGaps,
@@ -24,15 +25,18 @@ import {
   todayTiles,
 } from "@domain/today";
 import { Ambient } from "@ui/ambient";
-import { Avatar, AvatarStack } from "@ui/avatar";
+import { Avatar, type AvatarPerson, AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
+import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
+import { PersonAvatar } from "@ui/person-row";
 import { Tile, type TileProps } from "@ui/tile";
 import {
+  Bell,
   CalendarCheck,
   CalendarClock,
   CalendarDays,
@@ -43,7 +47,7 @@ import {
   Users,
 } from "lucide-react";
 import Link from "next/link";
-import { getFormatter, getTranslations } from "next-intl/server";
+import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { moduleIcons } from "../module-icons";
 import type {
@@ -52,6 +56,7 @@ import type {
   ScheduleBuildWeek,
   TeamAvailabilityWeek,
 } from "../schedule/week";
+import { type AppWording, type Translator, translator } from "../wording";
 import { RefreshOnReturn } from "./refresh-on-return";
 
 /** What the schedule module brings to Today; null when it is off. */
@@ -69,6 +74,8 @@ export type TodayData = {
   timeZone: string;
   /** The person's full name, if they have one yet. */
   name: string | null;
+  /** Their photo (`profilePhotoSrc`), or null for initials. */
+  photo: string | null;
   role: Role;
   businessName: string;
   /** From `moduleWidgets`: what the enabled modules bring for this role. */
@@ -77,13 +84,16 @@ export type TodayData = {
   clockLine?:
     | { kind: "working" | "break"; at: string }
     | { kind: "overdue"; count: number }
+    | { kind: "confirm"; count: number }
     | null;
   schedule: TodaySchedule | null;
   /** Owners and managers only. */
   team: Team | null;
+  /** The bell and how many lines are unread; null when there is none. */
+  bell?: { unread: number } | null;
 };
 
-type T = Awaited<ReturnType<typeof getTranslations<"app">>>;
+type T = Translator<"app">;
 type Format = Awaited<ReturnType<typeof getFormatter>>;
 /** A route in the app, or in the demo when it runs under /design/shell. */
 type Path = (to: string) => string;
@@ -104,6 +114,16 @@ const allShifts = ({ thisWeek, nextWeek }: PublishedSchedule) => [
 ];
 const nameIn = (t: T, published: PublishedSchedule, userId: string) =>
   published.people.find((p) => p.userId === userId)?.name ?? t("shifts.noName");
+const photoIn = (published: PublishedSchedule, userId: string | null) =>
+  published.people.find((p) => p.userId === userId)?.photo ?? null;
+/** How the app writes about them, for an ICU `select`. */
+const formIn = (published: PublishedSchedule, userId: string | null) =>
+  formArg(published.people.find((p) => p.userId === userId)?.addressForm);
+/** Someone as an avatar shows them: their name and their photo. */
+const personIn = (t: T, published: PublishedSchedule, userId: string) => ({
+  name: nameIn(t, published, userId),
+  photo: photoIn(published, userId),
+});
 
 /**
  * Today: what is next for the person and what needs them. Each enabled module
@@ -115,23 +135,23 @@ const nameIn = (t: T, published: PublishedSchedule, userId: string) =>
  * One layout that changes shape. Phone: one thing under the other, tiles in a
  * row that scrolls. Tablet: the hero beside the tiles, each list across the
  * width in two columns. Desktop: the same with the lists under the tiles, and
- * today's shifts side by side. `base` prefixes links for the demo, which also
- * renders this with mock data on /design/shell.
+ * today's shifts side by side. The avatar by the greeting leads to the
+ * person's profile, where signing out is. `base` prefixes links for the
+ * demo, which also renders this with mock data on /design/shell.
  */
 export async function TodayView({
   data,
-  signOut,
+  wording,
   base = "",
 }: {
   data: TodayData;
-  signOut: () => Promise<void>;
+  /** The business's words; the app's own on the demo. */
+  wording: AppWording;
   base?: string;
 }) {
-  const [t, tm, format] = await Promise.all([
-    getTranslations("app"),
-    getTranslations("modules"),
-    getFormatter(),
-  ]);
+  const t = translator(wording, "app");
+  const tm = translator(wording, "modules");
+  const format = await getFormatter();
   const clock = clockAt(new Date(data.now), data.timeZone);
   const path: Path = (to) => `${base}${to}`;
   const part = dayPart(clock.time);
@@ -151,7 +171,13 @@ export async function TodayView({
               {quiet.map((widget) => (
                 <ListRow
                   key={widget.key}
-                  href={path(widget.href)}
+                  href={
+                    // Hours waiting for approval are approved on the team's hours.
+                    widget.key === "time_clock" &&
+                    data.clockLine?.kind === "confirm"
+                      ? path("/clock/team")
+                      : path(widget.href)
+                  }
                   leading={moduleIcons[widget.icon]}
                   title={tm(`${widget.key}.name`)}
                   subtitle={
@@ -160,10 +186,14 @@ export async function TodayView({
                         ? t("clock.team.overdue.title", {
                             count: data.clockLine.count,
                           })
-                        : t.rich(`clock.todayLine.${data.clockLine.kind}`, {
-                            time: data.clockLine.at,
-                            ltr,
-                          })
+                        : data.clockLine.kind === "confirm"
+                          ? t("clock.team.confirm.title", {
+                              count: data.clockLine.count,
+                            })
+                          : t.rich(`clock.todayLine.${data.clockLine.kind}`, {
+                              time: data.clockLine.at,
+                              ltr,
+                            })
                       : tm(`${widget.key}.description`)
                   }
                 />
@@ -205,7 +235,14 @@ export async function TodayView({
       <RefreshOnReturn />
       <PageBody>
         <div className="flex items-center gap-3">
-          {data.name ? <Avatar name={data.name} /> : null}
+          <Link
+            href={path("/me")}
+            aria-label={t("me.open")}
+            title={t("me.open")}
+            className="pressable shrink-0 rounded-full p-0.5 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            <PersonAvatar name={data.name} photo={data.photo} />
+          </Link>
           <div className="min-w-0 flex-1">
             <PageHeader
               eyebrow={t("home.eyebrow", {
@@ -227,6 +264,20 @@ export async function TodayView({
               }
             />
           </div>
+          {data.bell ? (
+            <IconButton
+              href={path("/notifications")}
+              label={t("notifications.bell")}
+              badge={{
+                count: data.bell.unread,
+                label: t("notifications.bellCount", {
+                  count: data.bell.unread,
+                }),
+              }}
+              icon={<Bell />}
+              variant="ghost"
+            />
+          ) : null}
         </div>
 
         {view ? (
@@ -253,12 +304,6 @@ export async function TodayView({
             {rest()}
           </>
         )}
-
-        <form action={signOut} className="flex justify-center xl:justify-start">
-          <Button type="submit" variant="ghost" className="text-ink-2">
-            {t("home.signOut")}
-          </Button>
-        </form>
       </PageBody>
     </div>
   );
@@ -334,7 +379,7 @@ function NextShift({
   const running = shiftPhase(shift, clock) === "now";
   const others = shift.assignees
     .filter((a) => a.user !== published.userId)
-    .map((a) => nameIn(t, published, a.user));
+    .map((a) => personIn(t, published, a.user));
   const position = shift.assignees.find(
     (a) => a.user === published.userId,
   )?.position;
@@ -356,7 +401,13 @@ function NextShift({
           count: shift.assignees.length,
           needed: shift.needed,
         }),
-    others.length > 0 ? withPeople(t, format, others) : null,
+    others.length > 0
+      ? withPeople(
+          t,
+          format,
+          others.map((o) => o.name),
+        )
+      : null,
   ].filter(Boolean);
   const swap = mine
     ? myRequestFor(published.swaps, shift.id, published.userId)
@@ -392,6 +443,7 @@ function NextShift({
             {swap.status === "taken"
               ? t("shifts.swap.taken", {
                   name: nameIn(t, published, swap.takenBy ?? ""),
+                  form: formIn(published, swap.takenBy),
                 })
               : t("shifts.swap.open")}
           </p>
@@ -403,7 +455,7 @@ function NextShift({
           {others.length > 0 ? (
             // The ring around each avatar takes the hero's colour, not the page's.
             <span className="shrink-0 [--surface:var(--accent)]">
-              <AvatarStack names={others} />
+              <AvatarStack people={others} />
             </span>
           ) : null}
         </div>
@@ -412,8 +464,8 @@ function NextShift({
         <RequestCard
           t={t}
           href={path("/schedule/swaps")}
-          from={nameIn(t, published, request.swap.requestedBy)}
-          to={nameIn(t, published, request.swap.takenBy)}
+          from={personIn(t, published, request.swap.requestedBy)}
+          to={personIn(t, published, request.swap.takenBy)}
           shift={request.shift}
         />
       ) : null}
@@ -513,8 +565,8 @@ function RequestCard({
 }: {
   t: T;
   href: string;
-  from: string;
-  to: string;
+  from: AvatarPerson;
+  to: AvatarPerson;
   shift: Pick<ScheduledShift, "name" | "day">;
 }) {
   return (
@@ -523,12 +575,12 @@ function RequestCard({
         href={href}
         className="pressable flex min-h-[72px] items-center gap-3 rounded-card p-3.5 focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2"
       >
-        <AvatarStack names={[to, from]} size="md" />
+        <AvatarStack people={[to, from]} size="md" />
         <span className="flex min-w-0 flex-1 flex-col">
           <span className="font-semibold text-base">
             {t("home.swap.title", {
-              to: firstNameOf(to),
-              from: firstNameOf(from),
+              to: firstNameOf(to.name),
+              from: firstNameOf(from.name),
             })}
           </span>
           <span className="text-ink-2 text-sm">
@@ -789,7 +841,12 @@ function WhoWorksToday({ t, path, clock, schedule }: ViewProps) {
                       return (
                         <ListRow
                           key={a.user}
-                          leading={<Avatar name={name} />}
+                          leading={
+                            <Avatar
+                              name={name}
+                              photo={photoIn(published, a.user)}
+                            />
+                          }
                           title={name}
                           subtitle={
                             published.positions.find(

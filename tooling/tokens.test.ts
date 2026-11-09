@@ -124,6 +124,16 @@ describe("design tokens", () => {
     });
   });
 
+  it("keep a QR code dark on white, in dark mode too", () => {
+    for (const tokens of [light, darkMedia, darkClass]) {
+      expect(hex(tokens, "qr-paper")).toBe("#ffffff");
+      expect(hex(tokens, "qr-ink")).toBe(hex(light, "qr-ink"));
+    }
+    expect(
+      contrastRatio(hex(light, "qr-ink"), hex(light, "qr-paper")),
+    ).toBeGreaterThanOrEqual(15);
+  });
+
   it("keep ink readable on every preset's soft tint", () => {
     for (const preset of ACCENT_PRESETS) {
       const t = accentTokens(preset.hex);

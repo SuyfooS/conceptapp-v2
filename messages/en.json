@@ -1,11 +1,12 @@
 {
   "metadata": {
-    "description": "Staff scheduling and a time clock for businesses with a team, on everyone's phone."
+    "description": "Staff scheduling and a time clock for small businesses."
   },
   "ui": {
     "appShell": {
       "mainNav": "Main navigation",
-      "needsAction": ", {count} need action"
+      "needsAction": ", {count} need action",
+      "profile": "My profile"
     },
     "codeSlots": {
       "count": "{filled} of {total} digits",
@@ -26,6 +27,44 @@
       "current": "The current colour",
       "kept": "The previous colour",
       "adjusted": "The colour was darkened a little so text on it stays readable."
+    },
+    "photoPicker": {
+      "add": "Add a photo",
+      "change": "Change photo",
+      "title": "Profile photo",
+      "subtitle": "Everyone you work with sees it",
+      "close": "Close",
+      "choose": "Choose a photo",
+      "chooseOther": "Choose another",
+      "save": "Save the photo",
+      "remove": "Remove the photo",
+      "note": "The photo is cropped to a circle from the centre. What the phone keeps inside the file, such as where it was taken, is not kept.",
+      "preparing": "Preparing the photo…",
+      "saved": "Photo saved",
+      "failures": {
+        "unreadable": "This file can't be opened. Try another photo.",
+        "tooBig": "The photo is too large. Try another one.",
+        "type": "Only a photo can be saved: JPEG, PNG or WebP.",
+        "metadata": "The photo wasn't saved. Choose it again.",
+        "pixels": "The photo wasn't saved. Choose it again.",
+        "demo": "In the demo businesses, photos stay as they are.",
+        "viewOnly": "Nothing can be changed while viewing.",
+        "notYet": "Adding a photo opens shortly. Try again later.",
+        "failed": "The photo wasn't saved. Try again.",
+        "removeFailed": "The photo wasn't removed. Try again."
+      }
+    },
+    "profileCover": {
+      "presets": {
+        "glow": "Glow",
+        "waves": "Waves",
+        "arcs": "Arcs",
+        "dots": "Dots",
+        "stripes": "Stripes",
+        "horizon": "Horizon",
+        "mosaic": "Mosaic",
+        "bloom": "Cloud"
+      }
     }
   },
   "days": {
@@ -68,10 +107,44 @@
     "beerSheva": "Beersheba",
     "eilat": "Eilat"
   },
+  "banks": {
+    "1": "Isracard",
+    "3": "Esh Bank",
+    "4": "Bank Yahav",
+    "6": "Max It Finance",
+    "9": "Israel Post Finance",
+    "10": "Bank Leumi",
+    "11": "Discount Bank",
+    "12": "Bank Hapoalim",
+    "13": "Union Bank",
+    "14": "Bank Otsar Ha-Hayal",
+    "15": "Ofek Credit Union",
+    "17": "Mercantile Bank",
+    "18": "One Zero",
+    "20": "Mizrahi Tefahot",
+    "21": "Nima Shefa Israel",
+    "22": "Citibank",
+    "23": "HSBC",
+    "26": "U-Bank",
+    "31": "First International Bank",
+    "34": "Arab Israel Bank",
+    "35": "GROW",
+    "39": "State Bank of India",
+    "46": "Bank Massad",
+    "52": "Bank PAGI",
+    "54": "Bank of Jerusalem",
+    "58": "Re-Weave",
+    "69": "GMT",
+    "79": "Monox",
+    "94": "Phoenix Gamma"
+  },
   "design": {
     "metaTitle": "Design system",
     "title": "Design system",
     "intro": "Every component in one place, in the business accent and in both directions. New components are checked here before use.",
+    "brand": "ConceptApp",
+    "logo": "Logo",
+    "logoText": "ConceptApp's logo, in its own colour: at sign-in, in the console and in marketing, never on a business's screens. The name takes the text colour, so it reads in light and dark.",
     "accent": "Business accent",
     "accents": {
       "burgundy": "Burgundy",
@@ -142,6 +215,8 @@
     "p3": "Table 12",
     "p3s": "4 guests · 20:30",
     "p3b": "Confirmed",
+    "rowDisabled": "A row that isn't available now",
+    "rowDisabledText": "Dimmed, and it can't be pressed until it comes back",
     "badges": "Badges",
     "layout": "Layout and numbers",
     "layoutLink": "Demo: the same app on phone, tablet and desktop",
@@ -162,6 +237,13 @@
     "choices": "One choice out of several",
     "choiceHint": "A short word about this option",
     "personRow": "People in a list",
+    "photos": "Profile photos",
+    "photosText": "A photo in place of the initials, in the same circle. Without one, or when it doesn't load, the initials stay.",
+    "photoPicker": "Choosing a photo",
+    "photoPickerOpen": "Open the picker",
+    "visibility": "Who sees it",
+    "visibilityPrivate": "Only you and the owners see this",
+    "cover": "Profile cover",
     "emptyState": "A screen with no content",
     "emptyTitle": "Nothing here yet",
     "emptyBody": "Every empty screen says what to do next.",
@@ -235,7 +317,13 @@
     "switchHint": "What changes at once, with no save button",
     "accentPickerTitle": "Choosing a colour",
     "accentPickerCaption": "How the colour will look in the app",
-    "accentPickerButton": "Sample button"
+    "accentPickerButton": "Sample button",
+    "qrCode": "QR code",
+    "qrCodeText": "Always dark on white, in dark mode too. The digits under it are for typing.",
+    "scanCircle": "Scanning in the circle",
+    "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening.",
+    "covers": "Eight covers, all drawn in the business's colour, so any colour works in light and dark. Below: choosing one, as on the profile.",
+    "notificationsNew": "{count, plural, one {one new} other {# new}}"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -296,10 +384,12 @@
       "verify": "Sign in",
       "resend": "Send a new code",
       "changePhone": "Different number",
+      "demo": "Try the demo, no phone needed",
       "errors": {
         "invalidPhone": "Enter an Israeli mobile number, e.g. 050-123-4567.",
         "unknownPhone": "This number isn't registered yet. A manager at your business can add it.",
         "rateLimit": "You can ask for a new code in a few seconds.",
+        "tooMany": "There were too many tries. You can try again in a few minutes.",
         "invalidCode": "The code is 6 digits.",
         "wrongCode": "The code is wrong or has expired. You can ask for a new one.",
         "failed": "Something went wrong. Try again in a moment."
@@ -342,9 +432,21 @@
     "enter": {
       "metaTitle": "Enter",
       "title": "Enter",
-      "intro": "Choose who is coming in. For now there's no phone or code.",
+      "phoneIntro": "If you were invited to a business, sign in with your phone number and a code by SMS.",
+      "phone": "Sign in with a phone number",
+      "intro": "Or try the demo: choose a business and who comes in, with no phone and no code.",
       "warning": "This is a demo: anyone with the address can come in and change things. Don't enter real details here.",
       "failed": "That didn't work. Try again.",
+      "businesses": {
+        "restaurant": {
+          "name": "Demo restaurant",
+          "body": "Next week's schedule is yours to build and publish."
+        },
+        "shop": {
+          "name": "Demo shop",
+          "body": "This week's schedule is already published."
+        }
+      },
       "people": {
         "owner": {
           "name": "Ori Demo",
@@ -357,7 +459,27 @@
         "worker": {
           "name": "Noa Cohen",
           "role": "Worker"
+        },
+        "shopOwner": {
+          "name": "Michal Demo",
+          "role": "Owner"
+        },
+        "shopManager": {
+          "name": "Omer Demo",
+          "role": "Shop manager"
+        },
+        "shopWorker": {
+          "name": "Tamar Avraham",
+          "role": "Worker"
         }
+      },
+      "reset": {
+        "open": "Put the demo back to the start",
+        "body": "Both businesses go back to how they started: the name, the colour, the settings and the people. Everything changed in them is deleted, schedules and hours too.",
+        "confirm": "Reset the demo",
+        "cancel": "Cancel",
+        "done": "The demo is back to the start",
+        "failed": "The reset didn't work. Try again."
       }
     }
   },
@@ -385,7 +507,6 @@
         "title": "Nothing here yet",
         "body": "No modules are on for this business yet. The ConceptApp team turns them on when setting up the business, and they appear here and in the menu."
       },
-      "signOut": "Sign out",
       "modulesTitle": "In your business",
       "manageTitle": "Running the business",
       "hero": {
@@ -517,7 +638,8 @@
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create a link. Try again in a moment.",
           "noPermission": "Only owners and managers can invite to the team.",
-          "viewOnly": "This is view only, so no link was made."
+          "viewOnly": "This is view only, so no link was made.",
+          "demo": "This is a demo business, so nobody is invited to it."
         }
       },
       "invite": {
@@ -530,7 +652,7 @@
         "role": "Role",
         "roleHint": {
           "owner": "Everything in the business",
-          "manager": "Schedule, team and reservations",
+          "manager": "Schedule and team",
           "worker": "Shifts and time clock"
         },
         "submit": "Create invite link",
@@ -556,7 +678,24 @@
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create the invite. Try again in a moment.",
           "noPermission": "Only owners and managers can invite to the team.",
-          "viewOnly": "This is view only, so the invite was not saved."
+          "viewOnly": "This is view only, so the invite was not saved.",
+          "elsewhere": "This number is already active in another business. For now a person can be in one business only.",
+          "demo": "This is a demo business, so nobody is invited to it.",
+          "hasOwner": "The business already has an owner. Another owner is invited by the owner, from the Team screen."
+        }
+      },
+      "person": {
+        "call": "Call {name}",
+        "clearBio": "Delete the line",
+        "clearBioHint": "{form, select, other {Only if the line is hurtful or out of place. {name} can write a new one.}}",
+        "bioCleared": "{name}'s line was deleted",
+        "noBio": "{form, select, other {{name} hasn't written a line yet}}",
+        "failures": {
+          "noAccess": "You can't delete this line.",
+          "viewOnly": "Nothing can be changed while viewing.",
+          "changed": "The line changed in the meantime, so it wasn't deleted. The new line shows now.",
+          "notYet": "Deleting a line opens shortly. Try again later.",
+          "failed": "The line wasn't deleted. Try again."
         }
       }
     },
@@ -816,7 +955,7 @@
         "canTake": "You can take it",
         "tookIt": "You took it, waiting for approval",
         "givingOpen": "You asked to give it away",
-        "givingTaken": "{name} is taking it",
+        "givingTaken": "{form, select, other {{name} is taking it}}",
         "manage": "Managing the schedule",
         "own": "Your shifts and availability",
         "teamSent": "{sent} of {total} sent"
@@ -876,12 +1015,12 @@
           "failed": "Something went wrong. Please try again."
         },
         "open": "You asked to give this shift away. Waiting for someone on the team to take it.",
-        "taken": "{name} is taking the shift. Waiting for the manager to approve.",
+        "taken": "{form, select, other {{name} is taking the shift}}. Waiting for the manager to approve.",
         "offers": {
           "title": "Shifts you can take",
           "count": "{count, plural, one {One shift} other {# shifts}}",
           "empty": "Nobody on the team is giving away a shift right now. When someone does, it shows here.",
-          "from": "{name} is giving the shift away",
+          "from": "{form, select, other {{name} is giving the shift away}}",
           "busy": "You have another shift at the same time.",
           "takenByYou": "You took the shift. Waiting for the manager to approve."
         }
@@ -897,10 +1036,10 @@
       "count": "{count, plural, one {One request} other {# requests}}",
       "empty": "No requests are waiting for approval. When a worker takes a shift a colleague gives away, the request shows up here.",
       "people": "Giving away: {from} · Taking: {to}",
-      "subject": "{shift}: {from} gives it away, {to} takes it",
+      "subject": "{shift}: {fromForm, select, other {{from} gives it away}}, {toForm, select, other {{to} takes it}}",
       "settled": {
         "approved": "Approved: {to} instead of {from}. {shift}.",
-        "declined": "Declined. {from} stays on the shift. {shift}."
+        "declined": "Declined. {fromForm, select, other {{from} stays}} on the shift. {shift}."
       },
       "noPosition": "No position",
       "columns": {
@@ -926,6 +1065,10 @@
       },
       "entry": {
         "subtitle": "{count, plural, =0 {No requests waiting for you} one {One request is waiting for your decision} other {# requests are waiting for your decision}}"
+      },
+      "handover": {
+        "from": "{form, select, other {Giving away}}",
+        "to": "{form, select, other {Taking it}}"
       }
     },
     "clock": {
@@ -937,7 +1080,9 @@
       "circle": {
         "in": "Clock in",
         "out": "Clock out",
-        "back": "Back to work"
+        "back": "Back to work",
+        "scanIn": "Scan to clock in",
+        "scanOut": "Scan to clock out"
       },
       "startBreak": "Start a break",
       "endShift": "Clock out",
@@ -951,7 +1096,8 @@
         "idle": "Pressing the circle records when you started",
         "workingSince": "You came in at <ltr>{time}</ltr>",
         "workingUntil": "You came in at <ltr>{time}</ltr>, the shift ends at <ltr>{end}</ltr>",
-        "breakSince": "You went on a break at <ltr>{time}</ltr>"
+        "breakSince": "You went on a break at <ltr>{time}</ltr>",
+        "idleScan": "Pressing the circle opens the camera. Point it at the code a manager is showing."
       },
       "hours": {
         "thisMonth": "This month",
@@ -967,10 +1113,12 @@
         "out": "Clocked out",
         "break": "On a break",
         "back": "Back to work",
-        "undo": "Clock out undone, the shift goes on"
+        "undo": "Clock out undone, the shift goes on",
+        "inNone": "Clocked in without a code. A manager will approve it.",
+        "outNone": "Clocked out without a code. A manager will approve it."
       },
       "failure": {
-        "code": "This business needs a code from the manager. Ask them to record it.",
+        "code": "Those digits are wrong, or the code has changed. Type the digits shown now.",
         "alreadyIn": "You are already clocked in.",
         "notIn": "You are not clocked in.",
         "alreadyOnBreak": "You are already on a break.",
@@ -981,7 +1129,12 @@
         "noAccess": "You don't have access to this business's clock.",
         "viewOnly": "In view mode you can't clock in or out.",
         "failed": "That didn't go through. Check your connection and try again.",
-        "needsEnd": "An end time is needed too."
+        "needsEnd": "An end time is needed too.",
+        "codeLocked": "Too many tries with wrong digits, so typing is blocked for a while. You can scan the code, or go ahead without one.",
+        "ownCode": "A code shown on your own phone doesn't count for you. Use a code another manager is showing, or go ahead without one.",
+        "stationsOnly": "This business shows the code only on its station.",
+        "codeNeeded": "This business now needs a code to clock in or out. Press the circle again.",
+        "codeScan": "The code didn't work; it may have changed. Scan the code shown now."
       },
       "history": {
         "title": "Shift history",
@@ -1013,7 +1166,27 @@
         },
         "needsFix": "Needs fixing",
         "fix": "Fix",
-        "fixShift": "Fix the shift of {day}"
+        "fixShift": "Fix the shift of {day}",
+        "withProof": " · {proof}",
+        "proof": {
+          "scan": "Scanned",
+          "typed": "Typed",
+          "nonePending": "No code, waiting for approval",
+          "noneConfirmed": "No code, approved",
+          "selfPending": "Own entry, waiting for the owner",
+          "selfConfirmed": "Own entry, approved",
+          "pendingShort": "Waiting for approval"
+        },
+        "proofInline": {
+          "scan": "scanned",
+          "typed": "typed",
+          "none": "no code",
+          "self": "own entry",
+          "nonePending": "no code, waiting for approval",
+          "noneConfirmed": "no code, approved",
+          "selfPending": "own entry, waiting for the owner",
+          "selfConfirmed": "own entry, approved"
+        }
       },
       "todayLine": {
         "working": "On shift since <ltr>{time}</ltr>",
@@ -1074,12 +1247,85 @@
           "noAccess": "You don't have permission to change hours in this business.",
           "viewOnly": "In view mode you can't change hours.",
           "failed": "The hours weren't saved. Check your connection and try again.",
-          "sameTime": "The end is the same as the start. Check the times."
+          "sameTime": "The end is the same as the start. Check the times.",
+          "ownHours": "Another manager or the owner approves your own hours.",
+          "ownerOnly": "Only the owner approves hours a manager recorded for themselves."
         },
         "done": {
           "edit": "Hours saved",
           "add": "Shift added"
+        },
+        "confirm": {
+          "title": "{count, plural, one {One entry is waiting for approval} other {# entries are waiting for approval}}",
+          "body": "Recorded without a code, or by a manager for themselves. Approve, or open to fix.",
+          "row": "{what, select, in {In without a code} out {Out without a code} both {In and out without a code} other {Own entry}} on {day}, <ltr>{time}</ltr>",
+          "approve": "Approve",
+          "fix": "Fix",
+          "approveLabel": "Approve {name}'s hours",
+          "fixLabel": "Fix {name}'s hours",
+          "done": "Hours approved"
         }
+      },
+      "breakNote": "A break needs no code. Leaving the shift needs a code again.",
+      "showCode": {
+        "title": "Show the clock code",
+        "hint": "For the team, as they clock in and out"
+      },
+      "type": {
+        "titleIn": "Clock in with the digits",
+        "titleOut": "Clock out with the digits",
+        "subtitle": "The digits under the code a manager is showing",
+        "label": "The clock code's six digits",
+        "card": "No camera? Type the digits",
+        "cardHint": "The six digits under the code",
+        "open": "Type the digits"
+      },
+      "none": {
+        "open": "Can't? Go ahead without a code",
+        "titleIn": "Clock in without a code",
+        "titleOut": "Clock out without a code",
+        "body": "The time is saved now, as it is. A manager will see it was without a code and approve it.",
+        "confirmIn": "Clock in without a code",
+        "confirmOut": "Clock out without a code",
+        "back": "Back to scanning"
+      },
+      "scan": {
+        "starting": "Opening the camera",
+        "allow": "When the phone asks about the camera, allow it.",
+        "aim": "Point at the code, from about 30 cm",
+        "sending": "Got it. Recording the time",
+        "readIn": "Got it. Clocked in",
+        "readOut": "Got it. Clocked out",
+        "notOurs": "That isn't the clock's code. Point at the code a manager is showing.",
+        "denied": "There's no access to the camera. Type the digits under the code, or allow the camera in the browser's settings and press “Try again”.",
+        "deniedApp": "There's no access to the camera. Type the digits under the code, or close the app, open it again and allow the camera.",
+        "unavailable": "The camera didn't open. Type the digits under the code.",
+        "retry": "Try again",
+        "cancel": "Stop scanning"
+      },
+      "code": {
+        "title": "Clock code",
+        "how": "Open ConceptApp, press the circle on the Clock screen, and point the camera here.",
+        "digitsLabel": "No camera? Type the digits",
+        "digitsSpoken": "The digits: {digits}",
+        "qrLabel": "QR code to clock in and out",
+        "next": "{seconds, plural, one {New code in 1 second} other {New code in # seconds}}",
+        "loading": "Getting a code",
+        "offline": "No internet connection, so no code. Meanwhile people go ahead without a code, and you can approve it later in Team hours.",
+        "retry": "Try again",
+        "failed": "We couldn't get a code. Trying again in a moment.",
+        "reconnecting": "No connection right now. The code shown still works.",
+        "settingOffOwner": "For now nobody needs this code. To ask for it, switch on “Clock in and out with a code” in the clock's settings.",
+        "openSettings": "Open the clock's settings",
+        "settingOffManager": "For now nobody needs this code. The owner can ask for it in the clock's settings.",
+        "notCounted": "A code shown here doesn't count for you: clock yourself in with another manager's code, or without one.",
+        "stationsOnly": "This business shows the code only on its station, not on a phone.",
+        "signedOut": "Sign in again to show the code.",
+        "signIn": "Sign in",
+        "awakeOff": "The screen may turn off. To keep the code showing, lengthen the screen timeout in the phone's settings.",
+        "fullScreen": "Full screen",
+        "exitFullScreen": "Exit full screen",
+        "viewOnly": "No code is shown in view-only mode."
       }
     },
     "manage": {
@@ -1132,7 +1378,8 @@
         "time_clock": "How breaks count",
         "reservations": "Booking times and party size",
         "storefront": "The business's public page",
-        "notifications": "Reminders to the team"
+        "notifications": "Reminders to the team",
+        "lists": "When to remind, and when a list is late"
       },
       "team": {
         "title": "Team",
@@ -1247,7 +1494,9 @@
             "addOpen": "Added a shift to {person}'s hours: {day}, from <ltr>{in}</ltr>",
             "correct": "Fixed {person}'s shift on {day}",
             "onDay": "{day}, <hours></hours>",
-            "hours": "Hours"
+            "hours": "Hours",
+            "confirm": "Approved {person}'s hours",
+            "codeLocked": "Typing the clock code was blocked after wrong tries"
           },
           "invite": {
             "create": "Invited to the team: {name}, {role}",
@@ -1280,7 +1529,271 @@
             "shifts": "{count, plural, =0 {No shifts} one {One shift} other {# shifts}}",
             "swapsRemoved": "{count, plural, one {One swap request was removed} other {# swap requests were removed}}"
           },
-          "other": "Something else in the app"
+          "other": "Something else in the app",
+          "wording": {
+            "change": "Changed a sentence in the app: “{to}”",
+            "clear": "Brought back the app's sentence instead of “{from}”"
+          },
+          "profile": {
+            "bioCleared": "Deleted the line on {person}'s profile"
+          }
+        }
+      },
+      "ownerOnly": "Owners only"
+    },
+    "me": {
+      "metaTitle": "My profile",
+      "open": "My profile",
+      "since": "{role} · on the team since {date}",
+      "about": {
+        "title": "About me",
+        "visible": "Everyone you work with sees this",
+        "why": "What's kept and why",
+        "notice": "Your photo, your line and your cover are optional, and everyone you work with sees them. How you chose to be addressed shows too, in how the app writes about you. ConceptApp keeps them to show you to your team and uses them for nothing else. You can change or delete them here at any time, and ask ConceptApp to correct anything."
+      },
+      "photo": {
+        "row": "Photo",
+        "rowHint": "On the team, in the schedule and in requests",
+        "demo": "In the demo businesses, photos stay as they are",
+        "viewOnly": "Nothing can be changed while viewing",
+        "notYet": "Adding a photo opens shortly",
+        "removed": "Photo removed",
+        "undoFailed": "The photo didn't come back. Try again.",
+        "gone": "The photo can't be brought back. You can choose a new one."
+      },
+      "bio": {
+        "row": "A few words about you",
+        "rowHint": "Shows under your name, up to 160 characters",
+        "empty": "A few words about you. Your team sees this",
+        "demo": "There's no personal line in the demo businesses",
+        "label": "Your line",
+        "placeholder": "For example: on the till in the morning, at the bar at night",
+        "count": "{count, plural, one {1 character} other {# characters}} of 160",
+        "tooLong": "Up to 160 characters. Try a little shorter.",
+        "save": "Save the line",
+        "remove": "Delete the line",
+        "removed": "Line deleted",
+        "saved": "Line saved",
+        "undoFailed": "The line didn't come back. Try again."
+      },
+      "cover": {
+        "row": "Cover",
+        "rowHint": "{cover}, in {business}'s colour",
+        "sheetTitle": "Profile cover",
+        "sheetSubtitle": "In {business}'s colour",
+        "note": "Everyone you work with sees the cover. When the business changes its colour, the cover changes with it.",
+        "save": "Save the cover",
+        "saved": "Cover saved"
+      },
+      "form": {
+        "row": "How to address you",
+        "rowHint": "How the app writes about you to the team",
+        "value": "{form, select, f {Feminine forms} m {Masculine forms} x {No gendered forms} other {Not chosen yet}}",
+        "sheetTitle": "How should the app address you?",
+        "lead": "This is how the app writes about you to the team: in the schedule and in shift swap requests.",
+        "f": "Feminine forms",
+        "fHint": "In Hebrew: “{name} לוקחת את המשמרת” · “{name} מוסרת את המשמרת”",
+        "m": "Masculine forms",
+        "mHint": "In Hebrew: “{name} לוקח את המשמרת” · “{name} מוסר את המשמרת”",
+        "x": "No gendered forms",
+        "xHint": "In Hebrew: “{name} לוקח/ת את המשמרת” · “בקשה של {name} למסור את המשמרת”",
+        "note": "Your team sees this in how the app writes about you. You can change it at any time.",
+        "why": "Why we ask",
+        "whyText": "So the app writes about you in correct Hebrew. It's optional, has nothing to do with your ID card, and never goes to payroll.",
+        "save": "Save the choice",
+        "saved": "Saved. From now on this is how the app writes about you to the team."
+      },
+      "notYet": "This opens shortly",
+      "viewOnly": "Nothing can be changed while viewing",
+      "failures": {
+        "demo": "In the demo businesses you can pick a cover and how to be addressed, but not write a line or change a name.",
+        "invalid": "That wasn't saved. Check it and try again.",
+        "viewOnly": "Nothing can be changed while viewing.",
+        "failed": "The change wasn't saved. Try again.",
+        "notYet": "This opens shortly. Try again later."
+      }
+    },
+    "notifications": {
+      "title": "Notifications",
+      "subtitle": "What happened at work that concerns you",
+      "bell": "Notifications",
+      "bellCount": "{count, plural, one {one new} other {# new}}",
+      "back": "Today",
+      "inbox": {
+        "new": "New",
+        "earlier": "Earlier",
+        "caughtUp": "Nothing new. You have read everything.",
+        "markAll": "Mark all as read",
+        "older": "Earlier notifications",
+        "newest": "Back to new",
+        "unread": "Unread",
+        "empty": {
+          "title": "No notifications yet",
+          "body": "When something concerns you, like a published schedule, a shift you can take or hours waiting for approval, it shows up here.",
+          "action": "Back to today"
+        },
+        "noOlder": {
+          "title": "No earlier notifications",
+          "body": "Every earlier notification is already shown.",
+          "action": "Back to new"
+        }
+      },
+      "here": {
+        "title": "What comes here",
+        "body": "Each notification stays here after you read it."
+      },
+      "columns": {
+        "who": "Who",
+        "what": "What",
+        "shift": "Shift",
+        "when": "When"
+      },
+      "groups": {
+        "schedule": {
+          "name": "The schedule",
+          "hint": "A published schedule, and changes to your shifts"
+        },
+        "swaps": {
+          "name": "Shift swaps",
+          "hint": "Shifts you can take, and what happened to your requests"
+        },
+        "approvals": {
+          "name": "Approvals",
+          "hint": "Swaps and hours waiting for your approval"
+        },
+        "team": {
+          "name": "The team",
+          "hint": "Who joined the business"
+        },
+        "lists": {
+          "name": "Lists",
+          "hint": "Lists sent to you, and lists you sent being finished"
+        }
+      },
+      "time": {
+        "now": "Now"
+      },
+      "who": {
+        "noName": "No name",
+        "former": "Someone no longer on the team",
+        "unknown": "Someone on the team"
+      },
+      "shift": "{name}, {day} {date}, <ltr>{start}–{end}</ltr>",
+      "kinds": {
+        "schedule": {
+          "published": {
+            "title": "The schedule for the week of {date} is out",
+            "body": "{count, plural, =0 {You have no shifts this week} one {You have one shift} other {You have # shifts}}"
+          },
+          "changed": {
+            "title": "Your shifts changed in the week of {date}",
+            "body": "{count, plural, =0 {You now have no shifts this week} one {You now have one shift} other {You now have # shifts}}"
+          }
+        },
+        "swap": {
+          "offered": {
+            "title": "A shift to give away: {name}",
+            "note": "You can take it in My shifts",
+            "settledNote": "The shift is no longer free to take"
+          },
+          "taken": {
+            "title": "Your shift was taken: {name}",
+            "note": "Waiting for a manager to approve"
+          },
+          "waiting": {
+            "title": "A swap is waiting for approval",
+            "settledTitle": "A swap is no longer waiting for approval",
+            "people": "{to} instead of {from}"
+          },
+          "cancelled": {
+            "title": "{name} withdrew the request",
+            "note": "The shift is not coming to you"
+          },
+          "approved": {
+            "title": "Swap approved: {to} instead of {from}",
+            "titleFrom": "Swap approved. Instead of you: {name}",
+            "titleTo": "Swap approved. The shift is yours now"
+          },
+          "declined": {
+            "title": "Swap not approved: {from}",
+            "titleFrom": "Swap not approved. The shift stays yours",
+            "titleTo": "Swap not approved. The shift stays with {name}"
+          },
+          "removed": {
+            "title": "The request was cancelled because the schedule changed"
+          }
+        },
+        "clock": {
+          "confirm": {
+            "title": "Hours to approve: {name}",
+            "settledTitle": "{name}'s hours are no longer waiting for your approval",
+            "body": "{what, select, in {In without a code} out {Out without a code} other {Recorded by themselves, for the owner to approve}}, {day} at <ltr>{time}</ltr>"
+          }
+        },
+        "team": {
+          "joined": {
+            "title": "{name} is on the team now"
+          }
+        },
+        "lists": {
+          "sent": {
+            "title": "A new list for you: {name}",
+            "settledTitle": "{name} no longer waits for you"
+          },
+          "finished": {
+            "title": "{name} is finished"
+          }
+        },
+        "other": {
+          "title": "Something new"
+        },
+        "push": {
+          "test": {
+            "title": "Test notification",
+            "note": "This is how notifications arrive"
+          }
+        }
+      },
+      "push": {
+        "title": "{device, select, phone {On this phone} other {On this device}}",
+        "row": "{device, select, phone {Notifications on the phone} other {Notifications on the device}}",
+        "on": "{device, select, phone {On. Every new notification reaches the phone too, even with the app closed.} other {On. Every new notification reaches the device too, even with the app closed.}}",
+        "off": "Off. Notifications show only here, in the app.",
+        "denied": "{device, select, phone {Notifications are blocked in the phone's settings. You can allow them there, under the app's or the browser's notifications.} other {Notifications are blocked in the browser's settings. You can allow them there, in the site's permissions.}}",
+        "failed": "Notifications weren't turned on. You can try again.",
+        "failedOff": "Notifications weren't turned off. You can try again.",
+        "iosHint": {
+          "title": "Notifications on iPhone",
+          "body": "On an iPhone, notifications reach the app on the home screen. Add it once, from Safari:",
+          "share": "The share button at the bottom of the screen",
+          "add": "Add to Home Screen",
+          "open": "Open it from the home screen, sign in again with the code and turn notifications on here"
+        },
+        "iosVersion": "Notifications on iPhone need iOS 16.4 or later. You can update in Settings, General, Software Update.",
+        "demo": "In a demo business, notifications show only here, in the app. In a real business they reach the phone too.",
+        "test": {
+          "action": "Send a test notification",
+          "hint": "To see how a notification arrives",
+          "sending": "Sending…",
+          "sent": "Sent. It will arrive in a moment.",
+          "tooSoon": "You can send another in half a minute.",
+          "failed": "It wasn't sent. You can try again."
+        },
+        "notice": {
+          "plain": {
+            "title": "There's something new",
+            "body": "Open ConceptApp to see it"
+          },
+          "signedOut": {
+            "title": "Sign in again to get notifications",
+            "body": "Notifications carry on once you're signed in"
+          },
+          "summary": "{count, plural, one {One new update} other {# new updates}}",
+          "summaryBody": "They're all waiting in the app's notifications",
+          "fallback": {
+            "title": "There's something new in ConceptApp",
+            "body": "Open the app to see it"
+          }
         }
       }
     }
@@ -1335,6 +1848,10 @@
         "unpaidBreaks": {
           "label": "Breaks come off the hours",
           "hint": "Break time isn't counted in the hours worked. Applies to breaks from now on; what's already recorded stays as it was."
+        },
+        "requirePunchCode": {
+          "label": "Clock in and out with a code",
+          "hint": "To clock in and out, people scan a code a manager shows on their phone, or type the digits under it. Anyone who can't goes ahead without a code, and a manager approves it. Each shift keeps how it was recorded. Owners need no code."
         }
       }
     },
@@ -1348,7 +1865,41 @@
     },
     "notifications": {
       "name": "Notifications",
-      "description": "Shift reminders and team updates"
+      "description": "Updates for the team about the schedule, swaps and hours"
+    },
+    "lists": {
+      "name": "Lists",
+      "description": "Opening, closing, cleaning and orders between departments",
+      "settings": {
+        "remindBeforeMinutes": {
+          "label": "Reminder before it's due",
+          "hint": "The people a list is for get a reminder this long before it's due.",
+          "options": {
+            "0": "No reminder",
+            "15": "15 minutes",
+            "30": "Half an hour",
+            "60": "An hour"
+          }
+        },
+        "lateAfterMinutes": {
+          "label": "When a list is late",
+          "hint": "A list not finished by its time counts as late this long after it.",
+          "options": {
+            "0": "Right at its time",
+            "15": "After 15 minutes",
+            "30": "After half an hour",
+            "60": "After an hour"
+          }
+        },
+        "tellManagersWhenLate": {
+          "label": "Tell managers when a list is late",
+          "hint": "Owners, managers and whoever manages lists hear when a list is late."
+        },
+        "tellWhenFinished": {
+          "label": "Tell when a list is finished",
+          "hint": "Whoever sent a list, and the department that asked for it, hear when it's finished."
+        }
+      }
     }
   },
   "admin": {
@@ -1383,15 +1934,18 @@
       "membersCount": "{count, plural, =0 {No team} one {One person on the team} other {# on the team}}",
       "invitesCount": "{count, plural, =0 {No open invites} one {One open invite} other {# open invites}}",
       "templates": {
+        "retail": "Shop",
         "restaurant": "Restaurant",
         "cafe-bar": "Café and bar",
+        "general": "Another kind",
         "none": "No template"
       },
       "empty": {
         "title": "No businesses yet",
         "body": "Every business starts from a template. Open one with “Open a new business” and it will appear here."
       },
-      "new": "Open a new business"
+      "new": "Open a new business",
+      "expiredCount": "{count, plural, one {One invite expired} other {# invites expired}}"
     },
     "newBusiness": {
       "metaTitle": "New business",
@@ -1404,24 +1958,32 @@
         "staff": "Staff"
       },
       "templates": {
+        "retail": {
+          "name": "Shop",
+          "body": "Scheduling and time clock, with a shop's positions and shifts."
+        },
         "restaurant": {
           "name": "Restaurant",
-          "body": "Scheduling, time clock, table reservations and a business page."
+          "body": "Scheduling and time clock, with a restaurant's positions and shifts."
         },
         "cafe-bar": {
           "name": "Café and bar",
-          "body": "Scheduling, time clock and a business page, without table reservations."
+          "body": "Scheduling and time clock, with a café and bar's positions and shifts."
+        },
+        "general": {
+          "name": "Another kind",
+          "body": "Scheduling and time clock. The business sets its own positions and shifts."
         }
       },
       "fields": {
         "name": {
           "label": "Business name",
-          "placeholder": "Café Noa",
-          "hint": "As the staff and guests know it."
+          "placeholder": "Noa's Studio",
+          "hint": "As the staff and customers know it."
         },
         "slug": {
           "label": "Page address",
-          "placeholder": "cafe-noa",
+          "placeholder": "studio-noa",
           "hint": "Latin letters, digits and hyphens."
         },
         "address": {
@@ -1519,12 +2081,13 @@
         "items": {
           "opened": {
             "title": "Open the business from the template",
-            "done": "The settings, positions and shifts of “{template}”."
+            "done": "The settings of “{template}”."
           },
           "owner": {
             "title": "Invite the owners",
             "done": "{count, plural, one {One person} other {# people}} with the owner role.",
-            "todo": "No owner yet. Without one, nobody runs the business."
+            "todo": "No owner yet. Without one, nobody runs the business.",
+            "expired": "The owner's invite ran out before they joined. Renew it in the people list and send the new link."
           },
           "staff": {
             "title": "Invite the staff",
@@ -1550,7 +2113,9 @@
         "noName": "No name",
         "member": "On the team",
         "invited": "Invited",
-        "invite": "Invite"
+        "invite": "Invite",
+        "add": "Add a person",
+        "expired": "Invite expired"
       },
       "invite": {
         "create": "Create invite link",
@@ -1561,8 +2126,12 @@
         "copied": "Link copied",
         "errors": {
           "failed": "Could not create a link. Try again in a moment.",
-          "noPermission": "You may not invite people."
-        }
+          "noPermission": "You may not invite people.",
+          "demo": "This is a demo business, so nobody is invited to it.",
+          "hasOwner": "The business already has an owner, so this invite no longer works. Another owner is invited by the owner."
+        },
+        "renew": "Renew the invite",
+        "renewFor": "Renew {name}'s invite"
       },
       "viewAs": {
         "title": "View the app",
@@ -1584,11 +2153,70 @@
       "subtitle": "Everything {name} can change themselves, and advanced settings only the team sees. Every change saves right away.",
       "details": "Business details",
       "on": "{module} is on for this business",
-      "switchFailed": "Not saved"
+      "switchFailed": "Not saved",
+      "noRoom": "No room in the tab bar for another tab"
+    },
+    "addPerson": {
+      "title": "Add a person to the business",
+      "subtitle": "A name, a mobile and a role at {name}, and you get a link to send in a message.",
+      "back": "Back to {name}"
+    },
+    "wording": {
+      "title": "The business's sentences",
+      "subtitle": "Any sentence the business sees in the app can be replaced with another whole sentence. A sentence of the business wins over one of its template.",
+      "search": "Search a sentence",
+      "searchHint": "Slashes don't matter: type “worker”.",
+      "changed": "Changed for this business",
+      "groups": {
+        "common": "Names, roles and tabs",
+        "home": "Today",
+        "schedule": "Schedule",
+        "clock": "Clock",
+        "team": "Team",
+        "manage": "Management",
+        "other": "More"
+      },
+      "count": "{count, plural, one {One sentence} other {# sentences}}",
+      "showAll": "Show every sentence",
+      "showLess": "Hide the sentences",
+      "results": "{count, plural, =0 {No sentence found} one {One sentence found} other {# sentences found}}",
+      "more": "And {count} more. Narrow the search.",
+      "source": {
+        "app": "The app's",
+        "template": "From the template",
+        "business": "The business's"
+      },
+      "sheet": {
+        "title": "Edit a sentence",
+        "close": "Close",
+        "app": "The app's sentence",
+        "template": "The template's sentence",
+        "field": "The business's sentence",
+        "keep": "Must stay in the sentence: {list}",
+        "save": "Save the sentence",
+        "toTemplate": "Back to the template's sentence",
+        "toApp": "Back to the app's sentence"
+      },
+      "errors": {
+        "notEditable": "This sentence can't be replaced.",
+        "empty": "Write a sentence.",
+        "tooLong": "The sentence is too long, up to 400 characters.",
+        "placeholders": "The sentence must keep every part the app fills in: {list}.",
+        "apostrophe": "A ' before a brace or a tag hides what follows it. Write the Hebrew geresh, ׳, instead.",
+        "syntax": "Something is wrong with the sentence's braces. Copy them exactly from the app's sentence.",
+        "failed": "Not saved. Try again in a moment.",
+        "noAccess": "You may not change sentences."
+      },
+      "saved": "The sentence is saved",
+      "restored": "The previous sentence is back",
+      "undo": "Undo",
+      "row": "The business's sentences",
+      "rowSubtitle": "Replace the app's sentences for this business"
     }
   },
   "landing": {
     "metaTitle": "ConceptApp: Your business. In order.",
+    "brand": "ConceptApp",
     "nav": {
       "label": "Main navigation",
       "signIn": "Sign in"

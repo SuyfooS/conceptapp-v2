@@ -63,7 +63,7 @@ test.beforeAll(async () => {
 test.afterEach(async () => {
   await setDemoModuleSettings("scheduling", scheduling);
   await setDemoModuleSettings("time_clock", timeClock);
-  await setDemoModule("reservations", true);
+  await setDemoModule("time_clock", true);
   await setDemoBusinessDetails(details);
 });
 
@@ -387,8 +387,8 @@ test("the team sees every setting and switches modules", async ({
   // The advanced settings, which managers don't see.
   await expect(page.getByText(s.weekStartsOn.label)).toBeVisible();
   await expect(page.getByText(clock.roundToMinutes.label)).toBeVisible();
-  // QR stays out of every screen, by Orel's decision.
-  await expect(page.getByText(/QR/)).toHaveCount(0);
+  // Whether a code is asked for, which managers don't see either.
+  await expect(page.getByText(clock.requirePunchCode.label)).toBeVisible();
 
   // An advanced setting saves like any other.
   await page
@@ -402,9 +402,9 @@ test("the team sees every setting and switches modules", async ({
     .toBe(15);
 
   // Switching a module off takes it from the business's people.
-  const name = team.on.replace("{module}", he.modules.reservations.name);
+  const name = team.on.replace("{module}", he.modules.time_clock.name);
   await page.getByRole("switch", { name }).click();
-  await expect.poll(() => demoModuleEnabled("reservations")).toBe(false);
+  await expect.poll(() => demoModuleEnabled("time_clock")).toBe(false);
   await page.reload();
   await expect(page.getByRole("switch", { name })).toHaveAttribute(
     "aria-checked",
@@ -412,7 +412,7 @@ test("the team sees every setting and switches modules", async ({
   );
   await page.context().clearCookies();
   await signIn(page, MANAGER);
-  await page.goto("/reservations");
+  await page.goto("/clock");
   await expect(
     page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
   ).toBeVisible();

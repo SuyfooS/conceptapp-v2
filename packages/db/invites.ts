@@ -16,25 +16,35 @@ export function hashInviteToken(token: string): string {
 }
 
 /**
- * Issue a fresh link for an open invite: the old link stops working and
- * the invite gets another 14 days (`public.issue_invite_link`). Returns the
- * token to put in the link and the number to send it to. Runs with the
- * secret key: callers check the person may invite staff first, and the
- * database checks again that `actorId` is on the team. Throws when the
- * invite is not open.
+ * Issue a fresh link for an invite nobody claimed, open or expired: the old
+ * link stops working and the invite gets another 14 days
+ * (`public.issue_invite_link`). Returns the token to put in the link and the
+ * number to send it to. Runs with the secret key: callers check the person
+ * may invite staff first, and the database checks again that `actorId` is on
+ * the team. Refused in a demo business, and for an owner invite nobody may
+ * claim any more; throws when the invite was claimed or is unknown.
  */
 export async function issueInviteLink(
   actorId: string,
   inviteId: string,
-): Promise<{ token: string; phone: string }> {
+): Promise<
+  | { ok: true; token: string; phone: string }
+  | { ok: false; error: "demo" | "hasOwner" }
+> {
   const token = newInviteToken();
   const { data, error } = await createAdminClient().rpc("issue_invite_link", {
     actor: actorId,
     invite: inviteId,
     new_token_hash: hashInviteToken(token),
   });
-  if (error) throw new Error(`Could not issue invite link: ${error.message}`);
-  return { token, phone: z.string().parse(data) };
+  if (error) {
+    const known = teamInviteError(error.code);
+    if (known === "demo" || known === "hasOwner") {
+      return { ok: false, error: known };
+    }
+    throw new Error(`Could not issue invite link: ${error.message}`);
+  }
+  return { ok: true, token, phone: z.string().parse(data) };
 }
 
 const InviteRow = z.object({
@@ -112,13 +122,21 @@ export async function claimInvite(
 
 export type TeamInviteResult =
   | { ok: true; token: string; phone: string }
-  | { ok: false; error: "alreadyMember" | "notAllowed" | "notOpen" };
+  | {
+      ok: false;
+      error: "alreadyMember" | "notAllowed" | "notOpen" | "demo" | "hasOwner";
+    };
 
-/** The database's refusals, as the Team screen explains them. */
+/**
+ * The database's refusals, as the screens explain them: a demo business takes
+ * no invites, and the console makes no second owner.
+ */
 function teamInviteError(code: string | undefined) {
   if (code === "23505") return "alreadyMember" as const;
   if (code === "42501") return "notAllowed" as const;
   if (code === "P0002") return "notOpen" as const;
+  if (code === "55000") return "demo" as const;
+  if (code === "23P01") return "hasOwner" as const;
   return null;
 }
 
@@ -172,4 +190,54 @@ export async function issueTeamInviteLink(
     throw new Error(`Could not issue invite link: ${error.message}`);
   }
   return { ok: true, token, phone: z.string().parse(data) };
+}
+
+/**
+ * Someone on the ConceptApp team invites a number to a business from the
+ * console, in any role (`public.admin_invite`): a new invite, or a fresh
+ * name, role and link for the invite the number already has, open or
+ * expired. Returns the token for the link. Runs with the secret key: callers
+ * check the person may invite staff first, and the database checks again
+ * that `actorId` is on the team.
+ */
+export async function inviteFromConsole(
+  actorId: string,
+  businessId: string,
+  invite: { name: string; phone: string; role: Role },
+): Promise<TeamInviteResult> {
+  const token = newInviteToken();
+  const { error } = await createAdminClient().rpc("admin_invite", {
+    actor: actorId,
+    business: businessId,
+    invite_name: invite.name,
+    invite_phone: invite.phone,
+    invite_role: invite.role,
+    new_token_hash: hashInviteToken(token),
+  });
+  if (error) {
+    const known = teamInviteError(error.code);
+    if (known) return { ok: false, error: known };
+    throw new Error(`Could not invite: ${error.message}`);
+  }
+  return { ok: true, token, phone: invite.phone };
+}
+
+/**
+ * Whether the number is already active in another business. Such a person
+ * would never see a second one: the app opens the oldest membership, and
+ * there is no switching between businesses yet.
+ */
+export async function activeElsewhere(
+  phone: string,
+  businessId: string,
+): Promise<boolean> {
+  const { data, error } = await createAdminClient()
+    .from("memberships")
+    .select("business_id, profiles!inner(phone)")
+    .eq("active", true)
+    .eq("profiles.phone", phone)
+    .neq("business_id", businessId)
+    .limit(1);
+  if (error) throw error;
+  return data.length > 0;
 }

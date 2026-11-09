@@ -24,6 +24,7 @@ const manifests: ModuleManifest[] = [
   manifest("reservations"),
   manifest("storefront"),
   manifest("notifications"),
+  manifest("lists"),
 ];
 
 const template = (overrides: Record<string, unknown> = {}) => ({
@@ -77,6 +78,111 @@ describe("validateTemplate", () => {
     const input = template();
     input.modules.scheduling = { enabled: false, settings: {} };
     expect(() => validateTemplate(manifests, input)).toThrow(/time_clock/);
+  });
+
+  it("refuses more tabs than the tab bar holds", () => {
+    // Every fixture module gets a tab; the bar holds MAX_MODULE_NAV of them.
+    const tabbed = manifests.map((m, i) => ({
+      ...m,
+      nav: {
+        href: `/m${i}` as const,
+        icon: "calendar" as const,
+        minRole: "worker" as const,
+        order: i,
+      },
+    }));
+    expect(() => validateTemplate(tabbed, template())).toThrow(/tab bar/);
+
+    const fewer = template();
+    fewer.modules.notifications = { enabled: false, settings: {} };
+    fewer.modules.lists = { enabled: false, settings: {} };
+    expect(() => validateTemplate(tabbed, fewer)).not.toThrow();
+  });
+
+  it("starts a business with no departments or lists when it names none", () => {
+    const valid = validateTemplate(manifests, template());
+    expect(valid.departments).toEqual([]);
+    expect(valid.listTemplates).toEqual([]);
+  });
+
+  it("keeps its departments and lists, a schedule going where its list goes", () => {
+    const valid = validateTemplate(
+      manifests,
+      template({
+        departments: [
+          { key: "kitchen", name: "Kitchen" },
+          { key: "bar", name: "Bar" },
+        ],
+        listTemplates: [
+          {
+            key: "kitchen-opening",
+            name: "Kitchen opening",
+            recipient: { kind: "department", department: "kitchen" },
+            items: [{ kind: "check", label: "Clean" }],
+            schedules: [{ days: [0], opens: "08:30", dueAfterMinutes: 45 }],
+          },
+        ],
+      }),
+    );
+    expect(valid.departments.map((d) => d.key)).toEqual(["kitchen", "bar"]);
+    expect(valid.listTemplates[0]?.schedules[0]?.recipient).toEqual({
+      kind: "department",
+      department: "kitchen",
+    });
+  });
+
+  it("refuses lists that point at what the template doesn't have", () => {
+    const list = (recipient: unknown, extra: Record<string, unknown> = {}) =>
+      template({
+        departments: [{ key: "kitchen", name: "Kitchen" }],
+        listTemplates: [
+          {
+            key: "list",
+            name: "List",
+            recipient,
+            items: [{ kind: "check", label: "A" }],
+            ...extra,
+          },
+        ],
+      });
+    expect(() =>
+      validateTemplate(
+        manifests,
+        list({ kind: "department", department: "bar" }),
+      ),
+    ).toThrow(/unknown department: bar/);
+    // These fixtures' scheduling settings have no shift pattern.
+    expect(() =>
+      validateTemplate(manifests, list({ kind: "shift", shift: "evening" })),
+    ).toThrow(/unknown shift: evening/);
+    expect(() =>
+      validateTemplate(
+        manifests,
+        list({ kind: "role", role: "worker" }, { fromDepartment: "kitchen" }),
+      ),
+    ).toThrow(/order/);
+    expect(() =>
+      validateTemplate(
+        manifests,
+        list(
+          { kind: "role", role: "worker" },
+          {
+            items: [{ kind: "photo", label: "Picture" }],
+          },
+        ),
+      ),
+    ).toThrow(/Photo/);
+    expect(() =>
+      validateTemplate(
+        manifests,
+        template({
+          departments: [
+            { key: "kitchen", name: "Kitchen" },
+            { key: "kitchen", name: "Second" },
+          ],
+        }),
+      ),
+    ).toThrow();
   });
 
   it("refuses unknown modules, unknown fields and bad hours", () => {

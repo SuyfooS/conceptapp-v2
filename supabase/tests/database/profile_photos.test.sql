@@ -1,10 +1,10 @@
--- Profile photos: a private bucket for JPEG, PNG or WebP up to 2MB. A
--- person uploads, replaces and removes only their own photo; they and the
--- active members of their businesses read it; other businesses, former
--- members and anonymous visitors read nothing. `avatar_path` is written by
+-- Profile photos: a private bucket for JPEG, PNG or WebP up to 2MB. Only the
+-- server uploads, replaces and removes photos; a person and the active
+-- members of their businesses read theirs; other businesses, former members
+-- and anonymous visitors read nothing. `avatar_path` is written by
 -- the server only and must point into the person's own folder.
 begin;
-select plan(20);
+select plan(14);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -39,41 +39,13 @@ select is(
   'the avatars bucket is private, 2MB, JPEG, PNG or WebP'
 );
 
--- Uploading.
+-- Uploading: the server checks a photo and stores it (@db/profile-photos);
+-- the browser writes nothing, not even into its own folder.
 select pg_temp.sign_in('69000000-0000-4000-a000-00000000000b');
-select lives_ok(
+select throws_ok(
   $$insert into storage.objects (bucket_id, name)
     values ('avatars', '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg')$$,
-  'a person uploads a photo to their own folder'
-);
-select throws_ok(
-  $$insert into storage.objects (bucket_id, name)
-    values ('avatars', '69000000-0000-4000-a000-00000000000a/abcdefgh.jpg')$$,
-  '42501', null, 'a person cannot upload into a colleague''s folder'
-);
-select throws_ok(
-  $$insert into storage.objects (bucket_id, name)
-    values ('avatars', 'abcdefgh.jpg')$$,
-  '42501', null, 'a photo outside any folder is refused'
-);
-select throws_ok(
-  $$insert into storage.objects (bucket_id, name)
-    values ('avatars', 'not-a-user/abcdefgh.jpg')$$,
-  '42501', null, 'a folder that is not a user id is refused'
-);
-reset role;
-select pg_temp.sign_in('69000000-0000-4000-a000-00000000000c');
-select lives_ok(
-  $$insert into storage.objects (bucket_id, name)
-    values ('avatars', '69000000-0000-4000-a000-00000000000c/abcdefgh.png')$$,
-  'a worker of Y uploads their own photo'
-);
-reset role;
-select pg_temp.sign_in('69000000-0000-4000-a000-00000000000d');
-select lives_ok(
-  $$insert into storage.objects (bucket_id, name)
-    values ('avatars', '69000000-0000-4000-a000-00000000000d/abcdefgh.webp')$$,
-  'a former member still keeps their own photo'
+  '42501', null, 'a person cannot upload a photo from the browser, even to their own folder'
 );
 reset role;
 set local role anon;
@@ -82,6 +54,23 @@ select throws_ok(
     values ('avatars', '69000000-0000-4000-a000-00000000000b/zzzzzzzz.jpg')$$,
   '42501', null, 'an anonymous visitor cannot upload'
 );
+reset role;
+select is(
+  (select count(*)::int from pg_policies
+   where schemaname = 'storage' and tablename = 'objects'
+     and policyname in ('people upload their own photo', 'people replace their own photo',
+       'people remove their own photo')),
+  0,
+  'Storage has no policy that lets the browser write photos'
+);
+
+-- The server stores three photos: b and c are members, d used to be.
+set local role service_role;
+insert into storage.objects (bucket_id, name)
+values
+  ('avatars', '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg'),
+  ('avatars', '69000000-0000-4000-a000-00000000000c/abcdefgh.png'),
+  ('avatars', '69000000-0000-4000-a000-00000000000d/abcdefgh.webp');
 reset role;
 
 -- Reading.
@@ -114,39 +103,24 @@ select is(
 );
 reset role;
 
--- Replacing and removing.
-select pg_temp.sign_in('69000000-0000-4000-a000-00000000000a');
+-- Replacing and removing: from the server only.
+select pg_temp.sign_in('69000000-0000-4000-a000-00000000000b');
 update storage.objects set metadata = '{"x": 1}'
 where name = '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg';
 reset role;
 select is(
   (select metadata from storage.objects where name = '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg'),
   null,
-  'a colleague cannot replace someone''s photo'
+  'a person cannot replace a photo from the browser, even their own'
 );
-select pg_temp.sign_in('69000000-0000-4000-a000-00000000000b');
-select lives_ok(
-  $$update storage.objects set metadata = '{"x": 1}'
-    where name = '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg'$$,
-  'a person replaces their own photo'
-);
-reset role;
 set local storage.allow_delete_query = 'true';
-select pg_temp.sign_in('69000000-0000-4000-a000-00000000000a');
+select pg_temp.sign_in('69000000-0000-4000-a000-00000000000b');
 delete from storage.objects where name = '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg';
 reset role;
 select is(
   (select count(*)::int from storage.objects where name = '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg'),
   1,
-  'a colleague cannot remove someone''s photo'
-);
-select pg_temp.sign_in('69000000-0000-4000-a000-00000000000b');
-delete from storage.objects where name = '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg';
-reset role;
-select is(
-  (select count(*)::int from storage.objects where name = '69000000-0000-4000-a000-00000000000b/abcdefgh.jpg'),
-  0,
-  'a person removes their own photo'
+  'a person cannot remove a photo from the browser, even their own'
 );
 
 -- The profile's pointer.

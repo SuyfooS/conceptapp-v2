@@ -1,6 +1,6 @@
 import { ChevronRight } from "lucide-react";
 import Link from "next/link";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps, MouseEvent, ReactNode } from "react";
 import { cn } from "./cn";
 
 type Content = {
@@ -15,9 +15,15 @@ type Content = {
 
 export type ListRowProps = Content &
   (
-    | { href: string; onClick?: never }
-    | { onClick: () => void; href?: never }
-    | { href?: never; onClick?: never }
+    | { href: string; onClick?: never; disabled?: never }
+    | {
+        /** Gets the click, whose `currentTarget` is the row, to focus later. */
+        onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+        /** Dimmed, and it takes no press, for as long as it can't help. */
+        disabled?: boolean;
+        href?: never;
+      }
+    | { href?: never; onClick?: never; disabled?: never }
   );
 
 const base =
@@ -33,6 +39,7 @@ export function ListRow({
   trailing,
   href,
   onClick,
+  disabled = false,
   className,
 }: ListRowProps) {
   const interactive = href !== undefined || onClick !== undefined;
@@ -78,7 +85,13 @@ export function ListRow({
       <button
         type="button"
         onClick={onClick}
-        className={cn(base, inset, interactiveClass, className)}
+        disabled={disabled}
+        className={cn(
+          base,
+          inset,
+          disabled ? "opacity-50" : interactiveClass,
+          className,
+        )}
       >
         {content}
       </button>

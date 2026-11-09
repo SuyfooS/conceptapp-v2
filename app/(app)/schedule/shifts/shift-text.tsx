@@ -1,6 +1,7 @@
 import { weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
+import { formArg } from "@domain/profile";
 import { type ScheduledShift, shiftsOf } from "@domain/schedule";
 import type { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -46,17 +47,35 @@ export const nameOf = (
   userId: string | null,
 ) => data.people.find((p) => p.userId === userId)?.name ?? t("shifts.noName");
 
+export const photoOf = (
+  data: Pick<ShiftData, "people">,
+  userId: string | null,
+) => data.people.find((p) => p.userId === userId)?.photo ?? null;
+
+/**
+ * How the app writes about someone, for an ICU `select` ("x", the neutral
+ * words, until they choose).
+ */
+export const formOf = (
+  data: Pick<ShiftData, "people">,
+  userId: string | null,
+) => formArg(data.people.find((p) => p.userId === userId)?.addressForm);
+
 export const positionName = (
   data: Pick<ShiftData, "positions">,
   key: string | null | undefined,
 ) => data.positions.find((p) => p.key === key)?.name ?? null;
 
-/** Everyone on a shift by name, in the shift's order. */
-export const assigneeNames = (
+/** Everyone on a shift as their avatars show them, in the shift's order. */
+export const assigneePeople = (
   t: AppT,
   data: Pick<ShiftData, "people">,
   shift: Pick<ScheduledShift, "assignees">,
-) => shift.assignees.map((a) => nameOf(t, data, a.user));
+) =>
+  shift.assignees.map((a) => ({
+    name: nameOf(t, data, a.user),
+    photo: photoOf(data, a.user),
+  }));
 
 export const firstNames = (names: readonly string[]) =>
   names.map(firstNameOf).join(", ");

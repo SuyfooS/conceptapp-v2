@@ -5,6 +5,7 @@ import type { SwapFailure } from "@domain/swaps";
 import { canSeeTeam } from "@domain/team";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
+import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
 
 export type DecideState = { failure?: SwapFailure };
@@ -34,6 +35,8 @@ export async function decideSwapAction(
     decision === "approve",
   );
   if (!result.ok) return { failure: result.failure };
+  // Both people hear the decision, on their phones too.
+  pushSoon();
   // The screen re-reads the requests and the schedule.
   refresh();
   return {};

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { ModuleManifest } from "./modules";
+import type { ModuleManifest, Role } from "./modules";
 import { readModuleSettings } from "./modules";
 
 /**
@@ -12,10 +12,20 @@ import { readModuleSettings } from "./modules";
  */
 
 /**
- * Who edits a field. business: owners, managers and the ConceptApp team. team:
- * only the team, for what could break a business if changed lightly.
+ * Who edits a field. business: owners, managers and the ConceptApp team. owner:
+ * owners and the team (the database enforces it where it matters:
+ * set_module_settings for the punch code). team: only the team, for what could
+ * break a business if changed lightly.
  */
-export type SettingLevel = "business" | "team";
+export type SettingLevel = "business" | "owner" | "team";
+
+/** Each level sees its own fields and those of the levels below it. */
+const RANK: Record<SettingLevel, number> = { business: 0, owner: 1, team: 2 };
+
+/** The level a member of the business edits at: owners their own, everyone else the business's. */
+export function settingLevelOf(role: Role): Exclude<SettingLevel, "team"> {
+  return role === "owner" ? "owner" : "business";
+}
 
 export type SettingEditor = "positions" | "shifts" | "weekday" | "time";
 
@@ -115,10 +125,9 @@ export function fieldsFor(
   settings: z.ZodType,
   level: SettingLevel,
 ): SettingField[] {
-  const fields = describeSettings(settings);
-  return level === "team"
-    ? fields
-    : fields.filter((field) => field.level === "business");
+  return describeSettings(settings).filter(
+    (field) => RANK[field.level] <= RANK[level],
+  );
 }
 
 export type SettingsChange =

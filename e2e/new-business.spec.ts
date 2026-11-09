@@ -57,6 +57,13 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
   await expect(
     page.getByRole("heading", { level: 2, name: w.steps.template }),
   ).toBeVisible();
+  // No kind of business is assumed: going on without one asks for it.
+  await expect(page.getByRole("radio", { checked: true })).toHaveCount(0);
+  await next(page);
+  await expect(page.getByText(w.errors.template.required)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 2, name: w.steps.template }),
+  ).toBeVisible();
   await page
     .getByRole("radio", { name: new RegExp(w.templates["cafe-bar"].name) })
     .check();
@@ -160,7 +167,7 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
     name,
     accent: "#0f766e",
     templateKey: "cafe-bar",
-    modules: 5,
+    modules: 6,
     audited: 1,
   });
   expect(await invitesBySlug(slug)).toEqual([]);
@@ -243,7 +250,7 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   expect(await businessBySlug(slug)).toMatchObject({
     name,
     templateKey: "restaurant",
-    modules: 5,
+    modules: 6,
     audited: 1,
   });
   expect(await invitesBySlug(slug)).toEqual([

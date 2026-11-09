@@ -5,12 +5,17 @@ import { NEW_BUSINESS_FIELDS, parseNewBusiness } from "@domain/business";
 import { inviteLink } from "@domain/invites";
 import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
 import { checkSettingsChange } from "@domain/settings-form";
+import { checkSentence, type MessageTree, sentenceFits } from "@domain/wording";
 import { manifestFor } from "@modules/registry";
 import { redirect } from "next/navigation";
 import { requestOrigin } from "@/app/origin";
+import he from "@/messages/he.json";
 import type { InviteLinkState } from "../../(admin)/admin/businesses/[slug]/actions";
+import { formatsCleanly } from "../../(admin)/admin/businesses/[slug]/wording/formats";
+import type { WordingSaveResult } from "../../(admin)/admin/businesses/[slug]/wording/wording-types";
 import type { NewBusinessState } from "../../(admin)/admin/new/actions";
 import type { SettingsResult } from "../../(app)/manage/settings-types";
+import { demoWording } from "./data";
 
 // Stand-ins for the console's actions on the design demo: the same checks, a
 // link that leads nowhere, and nothing stored.
@@ -63,4 +68,35 @@ export async function demoCreateBusiness(
     return { errors: { slug: "taken" } };
   }
   redirect("/design/console/businesses/cafe-noa");
+}
+
+/**
+ * The wording editor's stand-in save: the same checks, and nothing stored.
+ * The sentence is shown as saved until the page is opened again.
+ */
+export async function demoSaveWording(
+  key: string,
+  sentence: string | null,
+): Promise<WordingSaveResult> {
+  // What the demo business starts with: right for the first change to a
+  // sentence, which is what the demo shows.
+  const previous =
+    (demoWording.business as Record<string, string>)[key] ?? null;
+  if (sentence === null) return { ok: true, sentence: null, previous };
+  const checked = checkSentence(he as MessageTree, key, sentence);
+  if (!checked.ok) return { ok: false, problem: checked.problem };
+  if (!formatsCleanly(checked.sentence)) {
+    return { ok: false, problem: "syntax" };
+  }
+  const template =
+    (demoWording.template as Record<string, string>)[key] ?? null;
+  const below =
+    template !== null && sentenceFits(checked.base, template)
+      ? template
+      : checked.base;
+  return {
+    ok: true,
+    sentence: checked.sentence === below ? null : checked.sentence,
+    previous,
+  };
 }

@@ -1,9 +1,10 @@
 import { moduleWidgets } from "@domain/modules";
+import { profilePhotoSrc } from "@domain/profile-photos";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
-import { getTranslations } from "next-intl/server";
-import { signOut } from "../../(auth)/actions";
 import { currentClockLine } from "../clock/clock";
+import { currentWording } from "../current-wording";
+import { renewDemoWeek } from "../demo";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
 import {
@@ -13,10 +14,12 @@ import {
   currentTeamAvailability,
 } from "../schedule/week";
 import { currentTeam } from "../team";
+import { baseWording, translator } from "../wording";
 import { TodayView } from "./today-view";
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app.home");
+  // Page titles stay in the app's own words.
+  const t = translator(baseWording, "app.home");
   return { title: t("metaTitle") };
 }
 
@@ -24,6 +27,7 @@ export async function generateMetadata(): Promise<Metadata> {
 // modules. Each read below is null when its module is off or the person's
 // role does not reach it.
 export default async function HomePage() {
+  await renewDemoWeek();
   const [
     member,
     enabled,
@@ -33,6 +37,7 @@ export default async function HomePage() {
     teamAvailability,
     build,
     clockLine,
+    wording,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -42,6 +47,7 @@ export default async function HomePage() {
     currentTeamAvailability(),
     currentScheduleBuild(),
     currentClockLine(),
+    currentWording(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -49,11 +55,12 @@ export default async function HomePage() {
 
   return (
     <TodayView
-      signOut={signOut}
+      wording={wording}
       data={{
         now: new Date().toISOString(),
         timeZone: published?.timeZone ?? membership.business.place.timeZone,
         name: member.name,
+        photo: profilePhotoSrc(member.photoPath),
         role: membership.role,
         businessName: membership.business.name,
         widgets: moduleWidgets(manifests, enabled, membership.role),
@@ -63,6 +70,11 @@ export default async function HomePage() {
             ? { published, availability, teamAvailability, build }
             : null,
         team,
+        // The bell, while notifications are on and the person is themselves.
+        bell:
+          enabled.includes("notifications") && !member.viewing
+            ? { unread: member.unread.all }
+            : null,
       }}
     />
   );

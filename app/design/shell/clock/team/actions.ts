@@ -22,6 +22,13 @@ export async function demoCorrectEntry(
   return check(values, false);
 }
 
+/** Approving stores nothing either: the demo's rows stay for the next visit. */
+export async function demoConfirmEntry(
+  _entryId: string,
+): Promise<EntryActionResult> {
+  return { ok: true };
+}
+
 export async function demoAddEntry(
   _personId: string,
   values: EntryValues,

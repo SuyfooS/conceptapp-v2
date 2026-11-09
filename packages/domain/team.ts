@@ -1,5 +1,6 @@
 import { atLeast, ROLES, type Role } from "./modules";
 import { normalizeIsraeliMobile } from "./phone";
+import type { AddressForm } from "./profile";
 
 /**
  * The Team screen's rules, free of React and the database: who may open
@@ -17,6 +18,10 @@ export type TeamMember = {
   name: string | null;
   phone: string | null;
   role: Role;
+  /** Their photo as an image src the screens can show, or null for initials. */
+  photo: string | null;
+  /** How the app writes about them, or null until they choose. */
+  addressForm: AddressForm | null;
 };
 
 export type TeamInvite = {

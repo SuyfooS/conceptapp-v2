@@ -1,7 +1,7 @@
 -- create_business: the wizard's one write. Server only, team members only,
 -- and all or nothing: a business is never left half set up.
 begin;
-select plan(14);
+select plan(15);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -60,7 +60,7 @@ reset role;
 select results_eq(
   $$select name, address, accent, template_key, template_version
     from public.businesses where slug = 'cb-cafe-noa'$$,
-  $$values ('Cafe Noa'::text, null::text, '#0f766e'::text, 'cafe-bar'::text, 1)$$,
+  $$values ('Cafe Noa'::text, null::text, '#0f766e'::text, 'cafe-bar'::text, 4)$$,
   'the business is stored tidied, with the template applied'
 );
 select is(
@@ -69,6 +69,14 @@ select is(
    where b.slug = 'cb-cafe-noa'),
   cardinality(enum_range(null::public.module_key)),
   'every module gets a row'
+);
+select is(
+  (select count(*)::integer from public.departments d
+   join public.businesses b on b.id = d.business_id where b.slug = 'cb-cafe-noa')
+  || '/' || (select count(*)::integer from public.list_templates t
+   join public.businesses b on b.id = t.business_id where b.slug = 'cb-cafe-noa'),
+  '4/4',
+  'and the template''s departments and lists'
 );
 select isnt(
   (select opening_hours from public.businesses where slug = 'cb-cafe-noa'),

@@ -4,17 +4,72 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A full run on main whenever wanted: the gate acts on pushes only.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  check:
+  # Push to main only. A squash merge of an up-to-date branch lands exactly the
+  # tree its pull request run tested. If that tree passed check, database and
+  # e2e in one pull_request run created today (Asia/Jerusalem), link that run
+  # and skip the three here. Anything else, an error included: everything runs.
+  gate:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      tested: ${{ steps.find.outputs.tested }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - id: find
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_ID: ${{ github.repository_id }}
+        run: |
+          if ! url=$(bash .github/scripts/tested-tree.sh "$GITHUB_SHA" 2> reasons.txt); then
+            { echo "The tree check failed, so everything runs:"; cat reasons.txt; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          cat reasons.txt >> "$GITHUB_STEP_SUMMARY"
+          if [[ "$url" == https://* ]]; then
+            echo "tested=yes" >> "$GITHUB_OUTPUT"
+            echo "This exact tree passed check, database and e2e today in $url, so they do not run again here. For a full run on main anyway: Actions, CI, Run workflow." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No pull_request run passed every job on this tree today: everything runs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  check:
+    needs: gate
+    if: ${{ !cancelled() && needs.gate.outputs.tested != 'yes' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read # the gate's dry run below
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      # The gate's script on every pull request, against the tip of main it is
+      # based on. It only prints; the push to main is where it decides.
+      - name: Tree gate, dry run on main's tip
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO_ID: ${{ github.repository_id }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          url=$(bash .github/scripts/tested-tree.sh "$BASE_SHA")
+          echo "Main at $BASE_SHA: ${url:-no passing pull_request run today, so a push of it would run everything}" | tee -a "$GITHUB_STEP_SUMMARY"
 
       - uses: pnpm/action-setup@v4
 
@@ -37,7 +92,28 @@ jobs:
       - name: Build
         run: pnpm build
 
+      # Evidence for the push to main (read by .github/scripts/tested-tree.sh):
+      # this job passed on exactly this tree, the test merge commit checked out above.
+      - name: Record the tree this job passed on
+        id: passed
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
+        continue-on-error: true
+        with:
+          name: passed-${{ github.job }}-${{ steps.passed.outputs.tree }}
+          path: ${{ runner.temp }}/passed.txt
+          retention-days: 1
+          if-no-files-found: error
+
   database:
+    needs: gate
+    if: ${{ !cancelled() && needs.gate.outputs.tested != 'yes' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -69,9 +145,31 @@ jobs:
           pnpm db:types
           git diff --exit-code packages/db/database.types.ts
 
+      - name: Record the tree this job passed on
+        id: passed
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
+        continue-on-error: true
+        with:
+          name: passed-${{ github.job }}-${{ steps.passed.outputs.tree }}
+          path: ${{ runner.temp }}/passed.txt
+          retention-days: 1
+          if-no-files-found: error
+
+  # After check and database pass: a red PR doesn't spend 20 minutes on e2e.
   e2e:
+    needs: [gate, check, database]
+    if: >-
+      ${{ !cancelled() && needs.gate.outputs.tested != 'yes'
+        && needs.check.result == 'success' && needs.database.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -84,14 +182,30 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Start local Supabase (database, auth, API)
-        run: >-
-          pnpm exec supabase start
-          -x realtime,storage-api,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+      # The stack starts in the background while Chromium installs; `wait`
+      # fails the step if it did not start, and the log is printed either way.
+      # Storage runs for the profile photos (e2e/profile.spec.ts); its image
+      # transformations (imgproxy) are not used.
+      - name: Start local Supabase (database, auth, API, storage) and install Chromium
+        run: |
+          log="$RUNNER_TEMP/supabase-start.log"
+          pnpm exec supabase start \
+            -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
+            > "$log" 2>&1 &
+          supabase=$!
+          trap 'echo "::group::supabase start"; cat "$log"; echo "::endgroup::"' EXIT
+          pnpm exec playwright install --with-deps chromium
+          echo "Chromium ready at $(date -u +%T)"
+          wait "$supabase"
+          echo "Supabase ready at $(date -u +%T)"
 
       # The local stack's URL and keys are fixed development values, not
       # real secrets; read them from the CLI rather than hard-coding. The
       # secret key (server-only writes) is masked in the log all the same.
+      # Notifications on the phone get a VAPID pair and a cron secret made
+      # fresh for this run (tooling/vapid-keys.mjs), never committed and never
+      # production's, and the loopback mock push service of e2e/push.spec.ts.
+      # The check job's build has none of them: the app in-app only.
       - name: Point the app at local Supabase
         run: |
           eval "$(pnpm exec supabase status -o env)"
@@ -99,9 +213,14 @@ jobs:
           echo "NEXT_PUBLIC_SUPABASE_URL=$API_URL" >> "$GITHUB_ENV"
           echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$PUBLISHABLE_KEY" >> "$GITHUB_ENV"
           echo "SUPABASE_SECRET_KEY=$SECRET_KEY" >> "$GITHUB_ENV"
-
-      - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+          vapid=$(node tooling/vapid-keys.mjs --env)
+          echo "::add-mask::$(printf '%s\n' "$vapid" | sed -n 's/^VAPID_PRIVATE_KEY=//p')"
+          printf '%s\n' "$vapid" >> "$GITHUB_ENV"
+          echo "VAPID_SUBJECT=mailto:dev@conceptapp.invalid" >> "$GITHUB_ENV"
+          cron_secret=$(openssl rand -hex 32)
+          echo "::add-mask::$cron_secret"
+          echo "CRON_SECRET=$cron_secret" >> "$GITHUB_ENV"
+          echo "PUSH_TEST_ORIGIN=http://127.0.0.1:3199" >> "$GITHUB_ENV"
 
       - name: Build
         run: pnpm build
@@ -114,4 +233,23 @@ jobs:
         with:
           name: playwright-results
           path: test-results/
-          retention-days: 7
+          # 3 days, not 7: at ~14 MB a run, 7 days kept ~1.3 GB against the
+          # plan's 1 GB, and a refused upload would also stop the record below.
+          retention-days: 3
+
+      - name: Record the tree this job passed on
+        id: passed
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          tree=$(git rev-parse 'HEAD^{tree}')
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
+        continue-on-error: true
+        with:
+          name: passed-${{ github.job }}-${{ steps.passed.outputs.tree }}
+          path: ${{ runner.temp }}/passed.txt
+          retention-days: 1
+          if-no-files-found: error

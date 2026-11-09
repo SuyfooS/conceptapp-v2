@@ -2,8 +2,9 @@ import { addMonths } from "@domain/time-clock-format";
 import { Card } from "@ui/card";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
+import type { Translator } from "../wording";
 import { HoursCount } from "./hours-count";
 
 /**
@@ -17,6 +18,7 @@ export function MonthHero({
   minutes,
   caption,
   countId,
+  t,
   overlap = false,
 }: {
   /** `YYYY-MM`. */
@@ -28,9 +30,13 @@ export function MonthHero({
   caption: ReactNode;
   /** Names the total, so it counts from the last month shown of the same list. */
   countId: string;
+  /**
+   * The words of app.clock.history: a server view builds them from the
+   * business's words, a client one with useTranslations.
+   */
+  t: Translator<"app.clock.history">;
   overlap?: boolean;
 }) {
-  const t = useTranslations("app.clock.history");
   const format = useFormatter();
   const monthName = (value: string) =>
     format.dateTime(new Date(`${value}-15T12:00:00Z`), {

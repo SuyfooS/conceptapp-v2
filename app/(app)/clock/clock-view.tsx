@@ -4,9 +4,9 @@ import { Card } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { RefreshOnReturn } from "../home/refresh-on-return";
+import { type AppWording, translator } from "../wording";
 import { ClockPanel } from "./clock-panel";
 import type { ClockActions, ClockData, ClockPaths } from "./clock-types";
 import { HoursCount } from "./hours-count";
@@ -23,12 +23,15 @@ export function ClockView({
   data,
   actions,
   paths,
+  wording,
 }: {
   data: ClockData;
   actions: ClockActions;
   paths: ClockPaths;
+  /** The business's words. */
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.clock");
+  const t = translator(wording, "app.clock");
   const status = clockStatus(data.open);
 
   return (
@@ -36,7 +39,7 @@ export function ClockView({
       <RefreshOnReturn />
       <PageHeader
         title={t(`title.${status.state}`)}
-        subtitle={<Line data={data} />}
+        subtitle={headerLine(data, wording)}
       />
 
       <div className="flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8 xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
@@ -51,11 +54,13 @@ export function ClockView({
                 label={t("hours.thisMonth")}
                 minutes={data.thisMonth}
                 id="this-month"
+                wording={wording}
               />
               <Hours
                 label={t("hours.lastMonth")}
                 minutes={data.lastMonth}
                 id="last-month"
+                wording={wording}
               />
             </dl>
             <ListRow
@@ -67,12 +72,22 @@ export function ClockView({
 
           {data.recent.length > 0 ? (
             <PageSection title={t("recent")} className="hidden md:flex">
-              <ShiftList records={data.recent} />
+              <ShiftList
+                records={data.recent}
+                t={translator(wording, "app.clock.history")}
+              />
             </PageSection>
           ) : null}
 
           {data.team ? (
             <ListGroup>
+              {data.punch.required && data.punch.canShowCode ? (
+                <ListRow
+                  href={paths.code}
+                  title={t("showCode.title")}
+                  subtitle={t("showCode.hint")}
+                />
+              ) : null}
               <ListRow
                 href={paths.team}
                 title={t("team.title")}
@@ -90,8 +105,13 @@ export function ClockView({
   );
 }
 
-function Line({ data }: { data: ClockData }) {
-  const t = useTranslations("app.clock.line");
+/**
+ * The line under the title: the shift or the time at work. Nothing when a code
+ * is asked for and there is no shift to name: the line under the circle says
+ * what pressing it does then.
+ */
+function headerLine(data: ClockData, wording: AppWording): ReactNode {
+  const t = translator(wording, "app.clock.line");
   const { open, shift, scheduling, timeZone } = data;
   const at = (instant: string) => timeIn(new Date(instant), timeZone);
   if (open) {
@@ -107,19 +127,22 @@ function Line({ data }: { data: ClockData }) {
   if (shift) {
     return t.rich("shift", { start: shift.start, end: shift.end, ltr });
   }
-  return t(scheduling ? "noShift" : "idle");
+  if (scheduling) return t("noShift");
+  return data.punch.needsCode ? null : t("idle");
 }
 
 function Hours({
   label,
   minutes,
   id,
+  wording,
 }: {
   label: string;
   minutes: number;
   id: string;
+  wording: AppWording;
 }) {
-  const t = useTranslations("app.clock.hours");
+  const t = translator(wording, "app.clock.hours");
   return (
     <div className="flex flex-col gap-0.5 p-4 not-first:border-line not-first:border-s">
       <dt className="text-ink-2 text-sm">{label}</dt>

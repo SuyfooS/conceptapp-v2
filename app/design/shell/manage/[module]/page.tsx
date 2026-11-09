@@ -8,6 +8,7 @@ import { manifestFor } from "@modules/registry";
 import { notFound } from "next/navigation";
 import { modulesToManage } from "../../../../(app)/manage/manage";
 import { ModuleSettingsView } from "../../../../(app)/manage/module-settings-view";
+import { baseWording } from "../../../../(app)/wording";
 import { demoModuleRows } from "../../data";
 import { demoSaveSettings } from "../actions";
 
@@ -27,7 +28,7 @@ export default async function ShellManageModule({
   return (
     <ModuleSettingsView
       module={key}
-      fields={fieldsFor(manifest.settings, "business")}
+      fields={fieldsFor(manifest.settings, "owner")}
       values={
         readModuleSettings(
           manifest,
@@ -37,6 +38,7 @@ export default async function ShellManageModule({
       save={demoSaveSettings.bind(null, key)}
       viewOnly={false}
       backHref="/design/shell/manage"
+      wording={baseWording}
     />
   );
 }

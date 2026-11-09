@@ -1,5 +1,6 @@
 "use client";
 
+import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -20,13 +21,20 @@ export type NavItem = {
   icon: ReactNode;
   /** Match only this exact path (use for the home item). */
   exact?: boolean;
-  /** Small count shown on the item, e.g. pending requests. */
+  /**
+   * Small count shown on the item, read out as needing action: pending
+   * requests, or the notifications that ask the person to act.
+   */
   count?: number;
 };
 
 export type AppShellProps = {
   businessName: string;
-  user: { name: string; role: string };
+  /**
+   * Who is signed in, at the foot of the sidebar. With `href`, the block
+   * leads to their profile; phones and tablets reach it from Today.
+   */
+  user: { name: string; role: string; photo?: string | null; href?: string };
   /** At most five items: the tab bar has room for five. */
   nav: NavItem[];
   children: ReactNode;
@@ -271,6 +279,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
                     {item.icon}
                   </span>
                   <span
+                    data-nav-label
                     className={cn(
                       "text-[11px] leading-[14px]",
                       active ? "font-bold" : "font-medium",
@@ -290,6 +299,19 @@ function TabBar({ nav }: { nav: NavItem[] }) {
           })}
         </ul>
       </nav>
+    </>
+  );
+}
+
+/** The signed-in person: photo or initials, name and role. */
+function UserBlock({ user }: { user: AppShellProps["user"] }) {
+  return (
+    <>
+      <Avatar name={user.name} photo={user.photo} />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span className="font-medium">{user.name}</span>
+        <span className="text-ink-2 text-sm">{user.role}</span>
+      </span>
     </>
   );
 }
@@ -352,19 +374,39 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
                 >
                   {item.icon}
                 </span>
-                <span className="flex-1">{item.label}</span>
+                <span data-nav-label className="flex-1">
+                  {item.label}
+                </span>
                 <Count value={item.count} />
               </Link>
             );
           })}
         </nav>
-        <div className="flex items-center gap-3 px-5 py-4">
-          <Avatar name={user.name} />
-          <span className="flex min-w-0 flex-col">
-            <span className="font-medium">{user.name}</span>
-            <span className="text-ink-2 text-sm">{user.role}</span>
-          </span>
-        </div>
+        {user.href ? (
+          // Outside the navigation: the profile is not one of its items.
+          <div className="px-3 pt-1 pb-3">
+            <Link
+              href={user.href}
+              aria-current={pathname === user.href ? "page" : undefined}
+              className={cn(
+                "flex min-h-11 items-center gap-3 rounded-control px-2 py-2 transition-colors duration-150",
+                "focus-visible:outline-2 focus-visible:outline-accent focus-visible:-outline-offset-2",
+                pathname === user.href ? "bg-surface-2" : "hover:bg-surface-2",
+              )}
+            >
+              <UserBlock user={user} />
+              <span className="sr-only">{t("profile")}</span>
+              <ChevronRight
+                aria-hidden="true"
+                className="size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
+              />
+            </Link>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 px-5 py-4">
+            <UserBlock user={user} />
+          </div>
+        )}
       </aside>
 
       <div className="pb-[calc(env(safe-area-inset-bottom)+6.5rem)] xl:ps-[17.5rem] xl:pb-0">

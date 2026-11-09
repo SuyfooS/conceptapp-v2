@@ -20,18 +20,25 @@ it knows is this repo and its GitHub issues.
   a revert, not a customer.
 - Everything goes through GitHub (`SuyfooS/conceptapp-v2`). Orel's computer may
   be off; never depend on it.
-- The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Don't write anything new that assumes a restaurant: roles, shifts, departments and defaults are data from a template or a setting. Restaurants and cafés are only the first templates.
-- Everything is dynamic (Orel, 7 November 2026): what differs between businesses can be changed without touching code, and every new setting can be edited from a screen. A little new code for one business is fine, as a module in the same system switched on for it. Owners, managers and the ConceptApp team can all edit a business's settings, and the team also has advanced ones. Nothing gets rebuilt. The order of this work is in `docs/ROADMAP.md`, and its first steps wait for a day session with Orel: a nightly run does not start them on a guess.
+- The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Don't write anything new that assumes a restaurant: roles, shifts, departments and defaults are data from a template or a setting. The templates are a shop (`retail`), a restaurant, a café and bar, and `general` for any other kind, which fills in its own positions and shifts. A template switches on only what is built, and no more modules with a tab than the tab bar holds (`fitsTabBar`).
+- Everything is dynamic (Orel, 7 November 2026): what differs between businesses can be changed without touching code, and every new setting can be edited from a screen. A little new code for one business is fine, as a module in the same system switched on for it. Owners, managers and the ConceptApp team can all edit a business's settings, the team also has advanced ones, and a few (the punch code) are for owners and the team only. Nothing gets rebuilt. The order of this work is in `docs/ROADMAP.md`, and its first steps wait for a day session with Orel: a nightly run does not start them on a guess.
 - The pilot needs scheduling, time clock, lists, a management page, and roles with
   different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
   old app, that is an assumption until Orel confirms it.
 - No business has agreed to the pilot yet (Orel, 6 November). Work continues without
-  it, and the demo shifts stay the `restaurant` template's defaults.
+  it. There are two demo businesses, a restaurant and a shop, each starting from its
+  template's defaults. The shop's week is always published; the restaurant's is the
+  visitor's to build. How each starts is in `private.demo_businesses`, and the door's
+  reset puts both back (`public.reset_demo_business`).
 - Real sign-in and its security wait (Orel, 6 November). Until then, the passive door
   at `/enter`, reaching only the demo people. Migrations reach the hosted project only
   through the manual workflow (`supabase/README.md`).
 - Kept as they are: the whole team sees the whole published schedule, a schedule can be
   published with gaps, and every swap needs a manager's approval.
+- Notifications are back in scope (Orel, 8 and 9 November 2026, issue #1), after the QR
+  screens and the profile: in the app and on the phone through free Web Push, no SMS.
+  Each person chooses what reaches their phone and can set quiet hours. The order is
+  notifications, then lists, then chat, and lists and chat will both notify.
 - The landing page at `/` promises what its copy says and nothing else. It has no prices,
   customers or numbers, and shows lists and permissions per role as "בקרוב". When
   one of those is built, remove its mark in the same change. Don't add a claim, price or
@@ -179,7 +186,10 @@ if a reverted migration reached one, open an `urgent` issue.
 - Read, print, log or commit secrets. Orel puts keys into Vercel, Supabase and
   GitHub settings himself; code reads them from the environment.
 - Send SMS, push or email to real people or real phone numbers. Development
-  uses Supabase test numbers and a logging SMS hook.
+  uses Supabase test numbers and a logging SMS hook. The app sending the
+  notifications people turned on is the product, but a nightly run never sends a
+  test notification, never calls `/cron/notifications` on the hosted project, and
+  never writes Vault secrets.
 - Contact the pilot restaurant or anyone else outside this repo.
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.
@@ -204,19 +214,39 @@ The full picture and the reasoning are in `docs/ROADMAP.md`. Skip ahead only whe
 
 The design rework is under way in day sessions with Orel, toward `docs/design/target-prototype.html`. A nightly run does not change tokens, `packages/ui` or the look of a screen unless Orel left that work. Items marked "database first" stop before their screens, so nothing is built twice.
 
-- **Global templates and exact fit, with Orel by day:** steps 2 and 3 in the roadmap. These come first, so everything after is built on them. Step 1, the settings engine, is done.
+- **Orel's order after step 2 (7 November 2026):** (1) the console sets up people (built); (2) wording per business and template (built; editing a template's sentences from the console waits for a real business); (3) lists, database first; (4) hours that are never deleted, and an hours report for payroll; (5) roles and permissions. The small improvements go in between: install as an app (built), fill and copy last week, share on WhatsApp.
+- **Wording.** Every server view under app/(app) takes the business's words as a value (`wording: AppWording`) and builds translators with `translator(wording, ns)` from app/(app)/wording.ts; its page passes `await currentWording()`, a /design page passes `baseWording`, and page titles stay on `baseWording`. Never call getTranslations or a server useTranslations there: tooling/wording-guard.test.ts refuses it, because the business's sentences would quietly not show. Client components keep useTranslations; WordingProvider gives them the business's sentences.
 - **Holes in what exists.** Each smallest first:
   - Editing the week that has already started, and not losing an unpublished draft when the week changes.
   - A business stuck with expired invites and no owner: the console can add a person and revive an invite.
   - A warning before republishing deletes swap requests.
   - Remove a person, change a role, cancel an invite (database first).
 - **Roles and permissions, database first.** For each role and module: edit, view or none, enforced by RLS and covered by pgTAP, plus roles a business names itself. Today's owner, manager and worker keep working. See "מה הפיילוט חייב" in the roadmap.
-- **Time clock, what's left.** The worker's and manager's screens are built. Still missing: deleting a shift entered by mistake and editing a break's times, both database first. No QR punch code: Orel decided on 6 November 2026 that clocking in from the phone is enough. Build no screens for it.
+- **Time clock, what's left.** The worker's and manager's screens are built. Still missing: deleting a shift entered by mistake and editing a break's times, both database first. Clocking in and out by QR (Orel, 8 November 2026, replacing his 6 November decision): the design and his choices are in issue #78, the database is `20261108000200_qr_clock.sql` and `20261108000300_sealed.sql`. The code on a manager's phone, typing its digits, clocking in without a code and approving it are built, and so is scanning it with the camera inside the circle; checking that on real phones (Android, iPhone, a home-screen app) is next, then stations and pairing, each in its own PR.
 - **Lists, database first.** A new module: templates with items and recipients, sending with a count per item, receiving, checking off, finishing, and permission to manage or send. Lists move between departments inside the business, and departments are the business's own data, from its template, like positions. Branches wait until after the pilot.
 - **Management page.** Module settings, module switches, the business's own details and the activity log are built (`/manage`, `/manage/business`, `/manage/activity` and the console). Week start is a team-level setting, since changing it hides published weeks. Opening hours wait: nothing reads them yet. A new server write that changes a business also writes its own row to `audit_log`, and the activity log needs to read it: a case in `@domain/activity`, its words under `app.manage.activity.actions`, and a case in `describe()` in `app/(app)/manage/activity/activity-view.tsx`, which typecheck asks for once the line exists. Until then it shows as "something else".
 - **Approved improvements, built by day on the new screens:** install as an app; fill the week automatically and copy from last week; a moment when a schedule is published; a share on WhatsApp button for the manager after publishing; profile photos; a live shift card after clocking in.
 - **3b · Migrations on `conceptapp-dev`.** By hand only, through the workflow Orel starts (#8). Not for a nightly run.
-- **Not in the pilot, do not start:** reservations, storefront, the public page, notifications.
+- **Notifications, in four parts, each its own PR.** N1, the inbox and what writes to it, is
+  built: `/notifications` from a bell on Today, the unread count on Home (only what
+  needs the person to act), and the database writing each line from the audit log
+  (`20261109000450_notifications.sql`: the schedule published or changed, the swap
+  chain, hours waiting for confirmation, someone joining), in the app only, demo
+  businesses included. Next: N2, on the phone (Web Push with no payload, VAPID with
+  `node:crypto`, a service worker with no fetch handler, never for a demo business,
+  and the minute job through `pg_cron`); N3, each person's choices and quiet hours; N4,
+  the reminders (availability due, still clocked in). A new kind of line is a case in
+  `private.notify_for`, or in a module's own `private.notify_for_<module>` behind its own
+  trigger on the audit log (lists: `private.notify_for_lists`), and in
+  `@domain/notifications`, with its words under `app.notifications.kinds` (the phone
+  reads the same words, through `app/push/words.ts`). N2 is built too
+  (`20261109000500_push.sql`): devices in `push_subscriptions`, one delivery per line
+  and device in `push_deliveries`, the minute job (off locally), `public/sw.js` with no
+  fetch handler, `/push/*` and `/cron/notifications`, the switch on `/notifications` and
+  `/me`. It reaches a phone once Orel sets the VAPID keys and the cron secret
+  (`README.md`, `supabase/README.md`), never for a demo business. A new producing action
+  calls `pushSoon()` from `app/push/server.ts` after it writes.
+- **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live
 

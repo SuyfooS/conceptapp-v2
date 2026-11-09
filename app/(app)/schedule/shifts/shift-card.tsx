@@ -16,8 +16,9 @@ import type { ReactNode } from "react";
 import type { SwapAction } from "./shift-sheet";
 import {
   type AppT,
-  assigneeNames,
+  assigneePeople,
   firstNames,
+  formOf,
   ltr,
   nameOf,
   positionName,
@@ -119,7 +120,8 @@ export function ShiftCard({
 }: ShiftCardProps) {
   const t = useTranslations("app");
   const label = shiftLabel(t, shift);
-  const names = assigneeNames(t, data, shift);
+  const people = assigneePeople(t, data, shift);
+  const names = people.map((p) => p.name);
   const { id } = shift;
   const mine = shift.assignees.find((a) => a.user === data.userId);
   const role = mine ? positionName(data, mine.position) : null;
@@ -165,7 +167,7 @@ export function ShiftCard({
       <div className="flex min-h-10 items-center gap-2.5">
         {names.length > 0 ? (
           <>
-            <AvatarStack names={names} />
+            <AvatarStack people={people} />
             <span className="min-w-0 flex-1 text-base text-ink-2">
               {firstNames(names)}
             </span>
@@ -188,6 +190,7 @@ export function ShiftCard({
                 {request.status === "taken"
                   ? t("shifts.swap.taken", {
                       name: nameOf(t, data, request.takenBy),
+                      form: formOf(data, request.takenBy),
                     })
                   : t("shifts.swap.open")}
               </p>
@@ -217,6 +220,7 @@ export function ShiftCard({
               ? t("shifts.swap.offers.takenByYou")
               : t("shifts.swap.offers.from", {
                   name: nameOf(t, data, offer.swap.requestedBy),
+                  form: formOf(data, offer.swap.requestedBy),
                 })}
           </p>
           {offer.state === "busy" ? (
@@ -331,6 +335,7 @@ export function MyShiftHero({
               {request.status === "taken"
                 ? t("shifts.swap.taken", {
                     name: nameOf(t, data, request.takenBy),
+                    form: formOf(data, request.takenBy),
                   })
                 : t("shifts.swap.open")}
             </p>

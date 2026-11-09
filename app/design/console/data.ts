@@ -18,6 +18,7 @@ export const businesses: AdminBusiness[] = [
     createdAt: "2026-11-02T09:00:00+02:00",
     members: 0,
     openInvites: 0,
+    expiredInvites: 0,
   },
   {
     id: "2",
@@ -28,6 +29,7 @@ export const businesses: AdminBusiness[] = [
     createdAt: opened,
     members: 8,
     openInvites: 2,
+    expiredInvites: 0,
   },
   {
     id: "3",
@@ -38,6 +40,7 @@ export const businesses: AdminBusiness[] = [
     createdAt: "2026-09-13T09:00:00+03:00",
     members: 14,
     openInvites: 1,
+    expiredInvites: 1,
   },
   {
     id: "4",
@@ -48,6 +51,7 @@ export const businesses: AdminBusiness[] = [
     createdAt: "2026-08-23T09:00:00+03:00",
     members: 6,
     openInvites: 0,
+    expiredInvites: 0,
   },
 ];
 
@@ -86,6 +90,7 @@ export const setups: Record<
           role: "owner",
           status: "member",
           inviteId: null,
+          expiresAt: null,
         },
         {
           name: "שירן אלון",
@@ -93,6 +98,7 @@ export const setups: Record<
           role: "manager",
           status: "member",
           inviteId: null,
+          expiresAt: null,
         },
         {
           name: "נועה כהן",
@@ -100,6 +106,7 @@ export const setups: Record<
           role: "worker",
           status: "member",
           inviteId: null,
+          expiresAt: null,
         },
         {
           name: "דנה אברהם",
@@ -107,6 +114,7 @@ export const setups: Record<
           role: "worker",
           status: "invited",
           inviteId: "invite-1",
+          expiresAt: "2026-11-14T09:00:00+02:00",
         },
         {
           name: "",
@@ -114,6 +122,7 @@ export const setups: Record<
           role: "worker",
           status: "invited",
           inviteId: "invite-2",
+          expiresAt: "2026-11-14T09:00:00+02:00",
         },
       ],
     },
@@ -135,6 +144,15 @@ export const setups: Record<
           role: "worker",
           status: "invited",
           inviteId: "invite-3",
+          expiresAt: "2026-11-12T09:00:00+02:00",
+        },
+        {
+          name: "רונית שמש",
+          phone: "+972521234568",
+          role: "owner",
+          status: "expired",
+          inviteId: "invite-4",
+          expiresAt: "2026-09-27T09:00:00+03:00",
         },
       ],
     },
@@ -156,8 +174,18 @@ export const setups: Record<
           role: "owner",
           status: "member",
           inviteId: null,
+          expiresAt: null,
         },
       ],
     },
+  },
+};
+
+/** Sentences the demo restaurant's template and the business replace. */
+export const demoWording = {
+  template: { "modules.scheduling.name": "משמרות" },
+  business: {
+    "app.nav.home": "הבית",
+    "app.team.title": "הצוות של המסעדה",
   },
 };
