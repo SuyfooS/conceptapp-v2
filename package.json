@@ -46,7 +46,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
-    "postgres": "^3.4.9",
+    "postgres": "^4.1.0",
     "supabase": "2.118.0",
     "tailwindcss": "^4",
     "typescript": "^5",
