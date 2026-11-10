@@ -747,6 +747,27 @@ export function ActivityView({
           changes: [],
           href: paths.pay ? `${paths.pay}?month=${line.month}` : undefined,
         };
+      case "payroll.close":
+      case "payroll.reopen": {
+        // A month closed for payroll, or reopened with its reason (P9).
+        const month = format.dateTime(new Date(`${line.month}-15T12:00:00Z`), {
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        });
+        return {
+          what:
+            line.action === "payroll.close"
+              ? t("actions.payroll.close", { month })
+              : t("actions.payroll.reopen", { month }),
+          notes:
+            line.action === "payroll.reopen" && line.reason
+              ? [t("actions.payroll.reopenReason", { reason: line.reason })]
+              : [],
+          changes: [],
+          href: paths.pay ? `${paths.pay}?month=${line.month}` : undefined,
+        };
+      }
       case "other":
         return plain(t("actions.other"));
       default: {

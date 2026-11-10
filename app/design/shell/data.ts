@@ -410,6 +410,20 @@ const demoRow = (
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
 export const demoActivityRows: ActivityRow[] = [
+  // Closing a month for payroll (payroll P9): October closed, reopened with
+  // its reason, and closed again.
+  demoRow(133, "2026-11-04T14:20:00+02:00", "shiran", "payroll.close", {
+    month: "2026-10",
+    engine: "2026-11",
+  }),
+  demoRow(132, "2026-11-04T14:10:00+02:00", "shiran", "payroll.reopen", {
+    month: "2026-10",
+    reason: "חסרה משמרת של יואב",
+  }),
+  demoRow(131, "2026-11-04T14:00:00+02:00", "shiran", "payroll.close", {
+    month: "2026-10",
+    engine: "2026-11",
+  }),
   // The file for payroll (payroll P8): October's, with what it listed.
   demoRow(130, "2026-11-04T13:50:00+02:00", "shiran", "payroll.export", {
     month: "2026-10",

@@ -1,3 +1,4 @@
+import { addMonths } from "@domain/time-clock";
 import { Badge } from "@ui/badge";
 import { EmptyState } from "@ui/empty-state";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -6,7 +7,9 @@ import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
 import { ReceiptText } from "lucide-react";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { type AppWording, translator } from "../../wording";
+import { MonthCloseAction } from "./close-month";
 import { ExportButton } from "./export-button";
 import { NoteView } from "./note-view";
 import {
@@ -24,10 +27,12 @@ import {
 } from "./pay-parts";
 import { PayMonthTable } from "./pay-table";
 import type {
+  CloseMonth,
   NotePayView,
   PayMonthData,
   PayPaths,
   PayPerson,
+  ReopenMonth,
 } from "./pay-types";
 import {
   type ClockT,
@@ -49,18 +54,27 @@ import {
  * month's file for payroll (P8) is the screen's main action, on every shape,
  * with what it holds and when the last one went out, warned when the hours or
  * wages changed since. `?show=noWage` lists only those whose shifts have no
- * wage, `?show=noNumber` those with no payroll number.
+ * wage, `?show=noNumber` those with no payroll number. A month that has
+ * ended closes (P9): the owner or an accountant closes it beside the file,
+ * the header then says when and by whom, and they may reopen it with a
+ * reason; what changed since goes into the next month's file, which says so,
+ * and which is there to download even when that month has no hours.
  */
 export function PayMonthView({
   data,
   paths,
   note,
+  close,
+  reopen,
   wording,
 }: {
   data: PayMonthData;
   paths: PayPaths;
   /** Notes the view once it is on screen; the demo notes nothing. */
   note: NotePayView;
+  /** Closes the month, and reopens it; the demo's store nothing. */
+  close: CloseMonth;
+  reopen: ReopenMonth;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -70,7 +84,12 @@ export function PayMonthView({
   const shortDate = useShortDate();
   const shekels = useShekels();
   const monthHref = (month: string) => `${paths.pay}?month=${month}`;
+  // The demo's file path may carry a query of its own (`demoPayPathsFor`).
+  const fileHref = `${paths.file}${paths.file.includes("?") ? "&" : "?"}month=${data.month}`;
   const empty = data.counts.withHours === 0;
+  // A month with no hours has no file, unless the month before's differences
+  // go into it (payroll P9): then its file is still the main action.
+  const fileless = empty && !data.differences;
   // Shifts and remarks each on their own: "nothing to check" only with neither.
   const caption = payCaption(t, {
     people: data.counts.withHours,
@@ -96,6 +115,33 @@ export function PayMonthView({
   ) : null;
   const selected =
     data.people.find((person) => person.userId === data.selected) ?? null;
+  const ltrSpan = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+  // Closing the month (payroll P9): the owner's and an accountant's second
+  // action, beside the file; once closed, the header says when and by whom.
+  const { closing } = data;
+  const closedLine = closing.closed
+    ? closing.closed.by
+      ? t.rich("close.closedBy", {
+          ltr: ltrSpan,
+          date: shortDate(closing.closed.date),
+          name: closing.closed.by,
+        })
+      : t.rich("close.closedOn", {
+          ltr: ltrSpan,
+          date: shortDate(closing.closed.date),
+        })
+    : null;
+  // An empty month that never closed has nothing to close.
+  const closeAction =
+    !closing.can || !closing.ended || (empty && !closing.closed) ? null : (
+      <MonthCloseAction
+        month={data.month}
+        monthName={monthName(data.month)}
+        closed={closing.closed !== null}
+        close={close}
+        reopen={reopen}
+      />
+    );
   const hero = (overlap: boolean) => (
     <PayHero
       month={data.month}
@@ -173,24 +219,66 @@ export function PayMonthView({
               : undefined
         }
         title={t("title")}
-        subtitle={t("subtitle")}
+        subtitle={
+          closedLine ? (
+            <>
+              <span className="block">{t("subtitle")}</span>
+              <span className="block font-medium text-ink">{closedLine}</span>
+            </>
+          ) : (
+            t("subtitle")
+          )
+        }
         // The screen's main action (payroll P8): the month's file, once it
-        // has hours.
+        // has hours or the month before's differences; beside it, closing or
+        // reopening the month (P9).
         actions={
-          empty ? undefined : (
-            <ExportButton
-              href={`${paths.file}?month=${data.month}`}
-              label={t("file.download")}
-              done={t("file.downloading")}
-            />
+          fileless ? (
+            (closeAction ?? undefined)
+          ) : (
+            <>
+              <ExportButton
+                href={fileHref}
+                label={t("file.download")}
+                done={t("file.downloading")}
+              />
+              {closeAction}
+            </>
           )
         }
       />
 
-      {empty ? null : (
+      {fileless ? null : (
         <div className="flex flex-col gap-1 px-1 text-ink-2">
           {/* What the file holds, and what it never does. */}
           <p>{t("file.what")}</p>
+          {/* The month before changed since it closed: this file says so. */}
+          {data.differences ? (
+            <p>
+              {t("diff.inFile", {
+                month: monthName(data.differences.month),
+                count: data.differences.days,
+              })}
+            </p>
+          ) : null}
+          {/* Closing it, and what happens to a correction after. */}
+          {closeAction && !closing.closed ? <p>{t("close.hint")}</p> : null}
+          {closing.closed && closing.changed > 0 ? (
+            <p className="font-medium text-warning">
+              {t("diff.changed", {
+                count: closing.changed,
+                next: monthName(addMonths(data.month, 1)),
+              })}
+              {/* The month after closed already: its file may lack them. */}
+              {closing.nextClosed ? (
+                <span className="block">
+                  {t("diff.nextClosed", {
+                    next: monthName(addMonths(data.month, 1)),
+                  })}
+                </span>
+              ) : null}
+            </p>
+          ) : null}
           {data.lastFile ? (
             <p
               className={
@@ -206,7 +294,9 @@ export function PayMonthView({
             </p>
           ) : null}
           {/* Every amount on the screen sits under one line; without amounts, why. */}
-          <p>{data.amounts ? t("estimate.under") : t("estimate.off")}</p>
+          {empty ? null : (
+            <p>{data.amounts ? t("estimate.under") : t("estimate.off")}</p>
+          )}
         </div>
       )}
 

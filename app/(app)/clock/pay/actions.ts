@@ -2,13 +2,21 @@
 
 import { notePayrollAccess, type PayViewKind } from "@db/payroll";
 import { setEmploymentPeriod, setPayrollDetails } from "@db/payroll-details";
+import {
+  closePayrollMonth,
+  getClosedMonths,
+  reopenPayrollMonth,
+} from "@db/payroll-months";
 import { setHourlyWage } from "@db/wages";
+import { closesMonths, monthEnded } from "@domain/payroll-close";
 import {
   type DetailsForm,
   type PeriodForm,
   parseDetailsForm,
   parsePeriodForm,
 } from "@domain/payroll-details";
+import { closedSnapshot } from "@domain/payroll-diff";
+import { parseReason } from "@domain/time-clock";
 import { canWrite } from "@domain/view-as";
 import { parseWageForm, type WageForm } from "@domain/wages";
 import { refresh } from "next/cache";
@@ -16,7 +24,9 @@ import { z } from "zod";
 import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
 import { payAccess } from "./pay-access";
+import { currentPayrollReads } from "./pay-month";
 import type {
+  CloseActionResult,
   DetailsActionResult,
   PeriodActionResult,
   WageActionResult,
@@ -54,6 +64,98 @@ export async function notePayViewAction(
   }
 }
 
+const monthOf = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
+
+/**
+ * Who may close or reopen a month, from the page: an owner or an accountant
+ * who isn't viewing as someone else, in the business the screen was drawn
+ * for. The action is bound on the page to that business (payroll P3b): the
+ * business the app opens is one cookie for the whole browser, so a press in
+ * a tab left open may arrive after a switch, and is refused then. The
+ * database checks the actor again.
+ */
+async function monthCloser(business: string) {
+  const member = await currentMember();
+  if (!member?.membership) return { ok: false, failure: "noAccess" } as const;
+  if (!canWrite(member.viewing)) {
+    return { ok: false, failure: "viewOnly" } as const;
+  }
+  const access = await payAccess();
+  if (!access) return { ok: false, failure: "noAccess" } as const;
+  if (access.businessId !== business) {
+    return { ok: false, failure: "businessChanged" } as const;
+  }
+  if (!closesMonths(access.role)) {
+    return { ok: false, failure: "noAccess" } as const;
+  }
+  return { ok: true, access } as const;
+}
+
+/**
+ * Close a month for payroll (payroll P9): what the hours engine gives for it
+ * now, with the settings, the business's place and the people's details it
+ * used, is kept with it, so later corrections show as differences in the
+ * next month's file. Only a month that has ended. No confirmation: reopening
+ * undoes it.
+ */
+export async function closeMonthAction(
+  business: string,
+  month: string,
+): Promise<CloseActionResult> {
+  const asked = monthOf.safeParse(month);
+  if (!z.uuid().safeParse(business).success || !asked.success) {
+    return { ok: false, failure: "failed" };
+  }
+  const closer = await monthCloser(business);
+  if (!closer.ok) return closer;
+  const { access } = closer;
+  if (!monthEnded(asked.data, access.currentMonth)) {
+    return { ok: false, failure: "notEnded" };
+  }
+  const reads = await currentPayrollReads(asked.data);
+  if (!reads) return { ok: false, failure: "noAccess" };
+  const result = await closePayrollMonth(
+    access.userId,
+    access.businessId,
+    asked.data,
+    closedSnapshot(
+      reads.result,
+      reads.settings,
+      reads.place,
+      reads.payrollPeople,
+    ),
+  );
+  if (!result.ok) return result;
+  refresh();
+  return { ok: true };
+}
+
+/** Reopen a closed month for payroll, saying why (payroll P9). */
+export async function reopenMonthAction(
+  business: string,
+  month: string,
+  reason: string,
+): Promise<CloseActionResult> {
+  const asked = monthOf.safeParse(month);
+  if (!z.uuid().safeParse(business).success || !asked.success) {
+    return { ok: false, failure: "failed" };
+  }
+  const why = parseReason(reason);
+  if (why === null) return { ok: false, failure: "reasonNeeded" };
+  const closer = await monthCloser(business);
+  if (!closer.ok) return closer;
+  const { access } = closer;
+  const result = await reopenPayrollMonth(
+    access.userId,
+    access.businessId,
+    asked.data,
+    why,
+  );
+  if (!result.ok) return result;
+  refresh();
+  return { ok: true };
+}
+
 const wageForm = z.object({
   amount: z.string().max(40),
   from: z.string().max(20),
@@ -82,7 +184,14 @@ export async function setWageAction(
   if (!access) return { ok: false, failure: "noAccess" };
   if (person.data === access.userId) return { ok: false, failure: "ownWage" };
 
-  const parsed = parseWageForm(form.data, access.today);
+  // A day of a closed month is said under its field (payroll P9); the
+  // database refuses it too.
+  const parsed = parseWageForm(
+    form.data,
+    access.today,
+    null,
+    await getClosedMonths(access.businessId),
+  );
   if (!parsed.ok) {
     return { ok: false, failure: "invalid", errors: parsed.errors };
   }

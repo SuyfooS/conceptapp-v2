@@ -381,6 +381,46 @@ businesses, by their definitions, so each reset keeps her. Covered by
 `several_businesses.test.sql`, with `push.test.sql`, `availability.test.sql`
 and `hours_kept.test.sql` moved to one staff place per login.
 
+Closing a month (`20261110001000_payroll_months.sql`, payroll P9).
+`public.payroll_months` (`business_id`, `month` its first day, `closed_by`,
+`closed_at`, `reopened_by`, `reopened_at`, `reopen_reason`, `snapshot`,
+`engine_version`; primary key on the business and month): read by pay holders
+and a view as an accountant, written only by the two functions below, kept
+like the other payroll records (`private.refuse_payroll_record_delete`), and
+purged by the demo reset (`private.purge_business_records` now deletes the
+months before the log). `snapshot` is what the hours engine gave when the
+month closed, without amounts, with the pay rules, the business's place (its
+Shabbat city and time zone) and each person's details, periods and wages it
+was worked out by (`closedSnapshot`, `readSnapshot` and `closedReads` in
+`@domain/payroll-diff`). `public.close_payroll_month(actor, business,
+for_month, closed_snapshot, with_engine, at_time)` and
+`public.reopen_payroll_month(actor, business, for_month, why, at_time)`, with
+the secret key for `actor`: an active owner or accountant only
+(`private.closes_payroll`; 42501 for a manager or another pay holder), a month
+that has ended by the business's clock (22023), not closed already (23505; a
+reopened month closes again, its reopening cleared), and a reason to reopen
+(22023 without; P0002 for a month that isn't closed); each logs
+`payroll.close` `{month, engine}` or `payroll.reopen` `{month, reason}`.
+`private.month_closed(business, on_day)` is what the rest asks:
+`set_hourly_wage` refuses a wage from a day of a closed month (55000, "The
+month is closed"); `add_time_entry` and `correct_time_entry` still take a
+shift of one (hours are facts) and their log rows gain `closed_month`
+(`YYYY-MM`: the new day's month when it is closed, else the old day's), and
+`closed_from_month` too (the old day's) for a shift moved from one closed
+month into another. `private.notify_for_payroll` then tells each such month's
+closer and the accountants (`pay.after_close`, one line per month, dedupe
+`pay.after_close:<month>`), and `payroll.close` settles the month's reminder;
+its trigger takes `payroll.close` and only the clock rows that carry
+`closed_month` or `closed_from_month`. `private.payroll_tick(at_time)`, the daily job `payroll` at
+06:00 UTC (off in `seed.sql`, as the notifications' jobs are): on a business's
+2nd, for one with the time clock on, not a demo, and last month holding hours
+and not closed, its pay holders get `pay.month_due` with how many shifts wait
+and are open (dedupe `payroll.month:<month>`, never told twice). `@db/payroll-months`
+reads a month (`getPayrollMonthRecord`) and the closed ones (`getClosedMonths`)
+under the person's session, and closes and reopens (`closePayrollMonth`,
+`reopenPayrollMonth`, refusals by `closeFailureOf` in `@domain/payroll-close`).
+Covered by `payroll_months.test.sql`, with `rls_enabled.test.sql`.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

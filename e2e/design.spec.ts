@@ -44,7 +44,13 @@ const PAGES = [
   "/design/shell/clock/pay?person=yoav&estimate=off",
   "/design/shell/clock/pay?file=sent",
   "/design/shell/clock/pay?file=changed",
+  "/design/shell/clock/pay?close=closed",
+  "/design/shell/clock/pay?close=changed",
+  "/design/shell/clock/pay?close=manager",
+  "/design/shell/clock/pay?close=before",
+  "/design/shell/clock/pay?close=empty",
   "/design/shell/clock/pay/noa",
+  "/design/shell/clock/pay/noa?close=closed",
   "/design/shell/clock/pay/noa?estimate=off",
   "/design/shell/clock/pay/shiran",
   "/design/shell/clock/pay/yoav",
@@ -571,4 +577,170 @@ test("the pay demo's file: its action, what it holds, and the workbook", async (
   // Noa's payroll number stays text, and her correction keeps its reason.
   expect(strings).toContain("102");
   expect(strings).toContain("שכחה לצאת");
+});
+
+// Closing a month on the demo (payroll P9): the owner closes October beside
+// its file, with no "are you sure"; once closed, the header says when and by
+// whom, a day changed since says where it goes, and reopening asks why. A
+// manager reads it closed, with nothing to press; the month after a closed
+// and changed one has its differences in its file, even with no hours of its
+// own; a wage can't start in a closed month, and the sheet says from when.
+test("the pay demo closes a month, says so, and reopens it with a reason", async ({
+  page,
+}, testInfo) => {
+  const c = he.app.pay.close;
+  const r = he.app.pay.reopen;
+  const flat = (key: Parameters<typeof heT.markup>[0], values = {}) =>
+    heT.markup(key, { ltr: (chunks: string) => chunks, ...values });
+
+  // Ended and not closed: the file first, closing beside it, and what then.
+  await page.goto("/design/shell/clock/pay");
+  await expect(
+    page.getByRole("link", { name: he.app.pay.file.download }),
+  ).toBeVisible();
+  const close = page.getByRole("button", { name: c.action });
+  await expect(close).toBeVisible();
+  await expect(page.getByText(c.hint).filter({ visible: true })).toBeVisible();
+  await close.click();
+  await expect(
+    page.getByRole("status").filter({
+      hasText: heT("app.pay.close.done", { month: "אוקטובר 2026" }),
+    }),
+  ).toBeVisible();
+
+  // Closed by Galit: the header says so, and closing gives way to reopening.
+  await page.goto("/design/shell/clock/pay?close=closed");
+  await expect(
+    page
+      .getByText(
+        flat("app.pay.close.closedBy", { date: "3.11", name: "גלית הדגמה" }),
+      )
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: c.action })).toHaveCount(0);
+  await expect(page.getByText(c.hint)).toHaveCount(0);
+  await page.getByRole("button", { name: r.action }).click();
+  const sheet = page.getByRole("dialog", {
+    name: heT("app.pay.reopen.title", { month: "אוקטובר 2026" }),
+  });
+  await expect(sheet).toBeVisible();
+  // The sheet hides the page from screen readers, heading and all: axe alone.
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  expect(violations.map((v) => v.id)).toEqual([]);
+  // A reason is needed, said under its field.
+  await sheet.getByRole("button", { name: r.save }).click();
+  await expect(sheet.getByText(r.reasonNeeded)).toBeVisible();
+  await sheet.getByLabel(r.reason).fill("חסרה משמרת של יואב");
+  await sheet.getByRole("button", { name: r.save }).click();
+  await expect(sheet).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({
+      hasText: heT("app.pay.reopen.done", { month: "אוקטובר 2026" }),
+    }),
+  ).toBeVisible();
+
+  // A day changed since it closed: it goes into November's file.
+  await page.goto("/design/shell/clock/pay?close=changed");
+  await expect(
+    page
+      .getByText(heT("app.pay.diff.changed", { count: 1, next: "נובמבר 2026" }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+
+  // A manager with pay access reads it closed, and presses nothing.
+  await page.goto("/design/shell/clock/pay?close=manager");
+  await expect(
+    page
+      .getByText(
+        flat("app.pay.close.closedBy", { date: "3.11", name: "גלית הדגמה" }),
+      )
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: r.action })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: c.action })).toHaveCount(0);
+
+  // September closed and changed: October's file says it holds them, and
+  // the demo's file does.
+  const inFile = heT("app.pay.diff.inFile", {
+    month: "ספטמבר 2026",
+    count: 2,
+  });
+  const sheetsOf = async (href: string) => {
+    const response = await page.request.get(href);
+    expect(response.ok()).toBe(true);
+    return readWorkbook(unzip(await response.body())).sheets.map(
+      (one) => one.name,
+    );
+  };
+  const names = he.app.pay.file.sheets;
+  const withDifferences = [
+    names.summary,
+    names.daily,
+    names.check,
+    names.differences,
+    names.about,
+  ];
+  await page.goto("/design/shell/clock/pay?close=before");
+  await expect(page.getByText(inFile).filter({ visible: true })).toBeVisible();
+  const before = page.getByRole("link", { name: he.app.pay.file.download });
+  await expect(before).toHaveAttribute(
+    "href",
+    "/design/shell/clock/pay/export?close=before&month=2026-10",
+  );
+  if (testInfo.project.name === "desktop") {
+    expect(
+      await sheetsOf(
+        "/design/shell/clock/pay/export?close=before&month=2026-10",
+      ),
+    ).toEqual(withDifferences);
+    expect(
+      await sheetsOf("/design/shell/clock/pay/export?month=2026-10"),
+    ).not.toContain(names.differences);
+  }
+
+  // An October with no hours of its own still has its file, for them.
+  await page.goto("/design/shell/clock/pay?close=empty");
+  await expect(
+    page
+      .getByText(heT("app.pay.empty.title", { month: "אוקטובר 2026" }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(page.getByText(inFile).filter({ visible: true })).toBeVisible();
+  const empty = page.getByRole("link", { name: he.app.pay.file.download });
+  await expect(empty).toBeVisible();
+  await expect(empty).toHaveAttribute(
+    "href",
+    "/design/shell/clock/pay/export?close=empty&month=2026-10",
+  );
+  await expect(page.getByRole("button", { name: c.action })).toHaveCount(0);
+  if (testInfo.project.name === "desktop") {
+    expect(
+      await sheetsOf(
+        "/design/shell/clock/pay/export?close=empty&month=2026-10",
+      ),
+    ).toEqual(withDifferences);
+  }
+
+  // A wage can't start in the closed month, in words, and the sheet says
+  // from when it may.
+  await page.goto("/design/shell/clock/pay/noa?close=closed");
+  await page
+    .getByRole("button", { name: he.app.pay.wage.change })
+    .filter({ visible: true })
+    .click();
+  const wage = page.getByRole("dialog");
+  await expect(
+    wage.getByText(
+      flat("app.pay.wage.sheet.fromHintClosed", {
+        month: "אוקטובר 2026",
+        date: "1.11.2026",
+      }),
+    ),
+  ).toBeVisible();
+  await wage.getByLabel(he.app.pay.wage.sheet.amount).fill("40");
+  await wage.getByLabel(he.app.pay.wage.sheet.from).fill("2026-10-15");
+  await wage.getByRole("button", { name: /^שמירת השכר/ }).click();
+  await expect(
+    wage.getByText(he.app.pay.wage.errors.from.closed),
+  ).toBeVisible();
 });

@@ -3,6 +3,7 @@ import { instantIn } from "./availability";
 import { payrollHistory } from "./holiday-pay";
 import {
   BUCKETS,
+  NO_BUCKETS,
   type PayrollInput,
   type PayrollPerson,
   type PayrollSettings,
@@ -16,6 +17,7 @@ import {
   type Cell,
   changedSinceExport,
   cleanFileName,
+  type ExportDifferences,
   type ExportMeta,
   type ExportPerson,
   type ExportWords,
@@ -124,6 +126,7 @@ const WORDS: ExportWords = {
     summary: "Summary",
     daily: "Daily",
     check: "Check",
+    differences: "Differences",
     about: "About",
   },
   columns: {
@@ -174,9 +177,21 @@ const WORDS: ExportWords = {
       rule: "rule",
       unchanged: "unchanged",
     },
+    differences: {
+      name: "name",
+      number: "number",
+      month: "month",
+      date: "date",
+      weekday: "weekday",
+      before: "before",
+      now: "now",
+      difference: "difference",
+      reason: "reason",
+    },
     about: { topic: "topic", details: "details" },
   },
   rate: (bucket, rest) => `${bucket}:${rest}`,
+  differenceRate: (bucket, rest) => `diff:${bucket}:${rest}`,
   weekday: (day) => `day${day}`,
   source: (source) => `source:${source}`,
   status: (status) => `status:${status}`,
@@ -217,6 +232,9 @@ const WORDS: ExportWords = {
       daysNotWorked: "line:daysNotWorked",
       nothingElse: "line:nothingElse",
     },
+    closed: (month, date, changed) =>
+      `closed:${month}:${date}:${changed ? "changed" : "same"}`,
+    closedEngine: "closedEngine",
   },
 };
 
@@ -764,6 +782,139 @@ describe("exportSheets", () => {
     );
     // And never on the sheet about the file.
     expect(JSON.stringify(file.sheets[3])).not.toContain("workWeekUnset");
+  });
+});
+
+describe("the sheet of differences (payroll P9)", () => {
+  const SEPTEMBER: ExportDifferences = {
+    month: "2026-09",
+    closedAt: "2026-10-03T10:00",
+    engineChanged: false,
+    rows: [
+      {
+        userId: YOAV,
+        name: "Yoav",
+        payrollNumber: "007",
+        restDay: 6,
+        day: {
+          date: "2026-09-21",
+          before: 480,
+          now: 450,
+          buckets: { ...NO_BUCKETS, regular: -30 },
+          entryIds: [],
+        },
+        reasons: ["Left early"],
+      },
+      {
+        userId: NOA,
+        name: "Noa",
+        payrollNumber: "102",
+        restDay: 6,
+        day: {
+          date: "2026-09-14",
+          before: 540,
+          now: 570,
+          buckets: { ...NO_BUCKETS, ot125: 30 },
+          entryIds: [],
+        },
+        reasons: ["=1+1 hours more", "Stayed to close"],
+      },
+    ],
+  };
+  const file = exportSheets(MONTH, LISTED, META, WORDS, SEPTEMBER);
+  const of = (key: Sheet["key"]) => file.sheets.find((one) => one.key === key);
+
+  it("comes before the sheet about the file, only when the month before changed since it closed", () => {
+    expect(file.sheets.map((one) => one.key)).toEqual([
+      "summary",
+      "daily",
+      "check",
+      "differences",
+      "about",
+    ]);
+    const unchanged = exportSheets(MONTH, LISTED, META, WORDS, {
+      ...SEPTEMBER,
+      rows: [],
+    });
+    expect(unchanged.sheets.map((one) => one.key)).not.toContain("differences");
+    // The rest of the file is the same, but for the line about the month before.
+    expect(unchanged.sheets.slice(0, 3)).toEqual(FILE.sheets.slice(0, 3));
+    expect(file.people).toBe(FILE.people);
+    expect(file.shifts).toBe(FILE.shifts);
+  });
+
+  it("lists each day that changed, by name, with its month, hours then and now and each rate's difference", () => {
+    const sheet = of("differences");
+    expect(sheet?.columns.map((column) => column.header)).toEqual([
+      "name",
+      "number",
+      "month",
+      "date",
+      "weekday",
+      "before",
+      "now",
+      "difference",
+      ...BUCKETS.map((bucket) => `diff:${bucket}:saturday`),
+      "reason",
+    ]);
+    expect(sheet?.columns[1]?.id).toBe(true);
+    const rows = rowsOf(sheet);
+    expect(rows.map((row) => row.name)).toEqual([text("Noa"), text("Yoav")]);
+    expect(rows[0]).toMatchObject({
+      number: text("102"),
+      month: text("month:2026-09"),
+      date: { t: "d", v: "2026-09-14" },
+      weekday: text("day1"),
+      before: exact(540),
+      now: exact(570),
+      difference: exact(30),
+      "diff:regular:saturday": null,
+      "diff:ot125:saturday": exact(30),
+      // A reason that would be a formula is escaped.
+      reason: text("'=1+1 hours more; Stayed to close"),
+    });
+    expect(rows[1]).toMatchObject({
+      difference: { t: "n", v: -0.5 },
+      "diff:regular:saturday": { t: "n", v: -0.5 },
+      "diff:ot125:saturday": null,
+    });
+  });
+
+  it("says on the sheet about the file when the month before closed, and whether it changed", () => {
+    const lines = (sheet: Sheet | undefined) =>
+      (sheet?.rows ?? []).map((row) => row[1]);
+    expect(lines(of("about"))).toContainEqual(
+      text("closed:2026-09:2026-10-03:changed"),
+    );
+    expect(lines(of("about"))).not.toContainEqual(text("closedEngine"));
+    const engine = exportSheets(MONTH, LISTED, META, WORDS, {
+      ...SEPTEMBER,
+      engineChanged: true,
+    });
+    expect(
+      lines(engine.sheets.find((one) => one.key === "about")),
+    ).toContainEqual(text("closedEngine"));
+    const same = exportSheets(MONTH, LISTED, META, WORDS, {
+      ...SEPTEMBER,
+      rows: [],
+    });
+    expect(
+      lines(same.sheets.find((one) => one.key === "about")),
+    ).toContainEqual(text("closed:2026-09:2026-10-03:same"));
+    // Without a closed month before, nothing is said.
+    expect(
+      lines(sheet("about")).some(
+        (cell) => cell?.t === "s" && cell.v.startsWith("closed:"),
+      ),
+    ).toBe(false);
+  });
+
+  it("holds no amount: only hours", () => {
+    for (const row of of("differences")?.rows ?? []) {
+      for (const cell of row) {
+        if (cell?.t === "n") expect(Number.isInteger(cell.v * 60)).toBe(true);
+      }
+    }
   });
 });
 

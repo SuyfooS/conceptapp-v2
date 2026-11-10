@@ -2,6 +2,7 @@ import "server-only";
 import type { PayrollMonth } from "@domain/payroll";
 import {
   attachmentHeader,
+  type ExportDifferences,
   type ExportMeta,
   type ExportPerson,
   exportFileName,
@@ -25,20 +26,30 @@ export type PayrollFile = {
 
 /**
  * The month's file (payroll P8): the four sheets in the business's words,
- * written as XLSX. The month's amounts are never read (`exportSheets`), so
- * it is the same with the estimate on or off. Shared by the app and the demo.
+ * written as XLSX, and a fifth with the month before's differences when it
+ * was closed and changed since (payroll P9). The month's amounts are never
+ * read (`exportSheets`), so it is the same with the estimate on or off.
+ * Shared by the app and the demo.
  */
 export function payrollFileOf(args: {
   month: PayrollMonth;
   people: readonly ExportPerson[];
   meta: ExportMeta;
+  /** The month before, closed for payroll, and what changed in it since. */
+  differences?: ExportDifferences | null;
   slug: string;
   wording: AppWording;
   /** When it was made, for the ZIP's own times. */
   now: Date;
 }): PayrollFile {
-  const { month, people, meta, slug, wording, now } = args;
-  const built = exportSheets(month, people, meta, exportWords(wording));
+  const { month, people, meta, differences = null, slug, wording, now } = args;
+  const built = exportSheets(
+    month,
+    people,
+    meta,
+    exportWords(wording),
+    differences,
+  );
   return {
     bytes: xlsxFile(built.sheets, now),
     fileName: exportFileName(slug, meta.month),

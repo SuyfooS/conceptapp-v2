@@ -9,6 +9,7 @@ import {
   ABOUT_LINES,
   CHECK_COLUMNS,
   DAILY_COLUMNS,
+  DIFF_COLUMNS,
   EXPORT_SHEETS,
   SUMMARY_COLUMNS,
 } from "@domain/payroll-export";
@@ -203,6 +204,10 @@ describe("payroll's words", () => {
         DAILY_COLUMNS.filter((key) => key !== "rates").sort(),
       );
       expect(keys(columns.check)).toEqual([...CHECK_COLUMNS].sort());
+      // The sheet of differences of a month closed before (payroll P9).
+      expect(keys(columns.differences)).toEqual(
+        DIFF_COLUMNS.filter((key) => key !== "rates").sort(),
+      );
       expect(keys(columns.about)).toEqual([...ABOUT_COLUMNS].sort());
       expect(keys((file.about as Tree).lines)).toEqual([...ABOUT_LINES].sort());
       expect(keys(file.source)).toEqual(Object.keys(PAY_SOURCES).sort());
@@ -231,6 +236,11 @@ describe("payroll's words", () => {
         ["about.madeByTeam", about.madeByTeam, ["name"]],
         ["about.madeByTeamNoName", about.madeByTeamNoName, []],
         ["name", file.name, ["business", "month"]],
+        // The month before, closed for payroll (payroll P9).
+        ["differenceRate", file.differenceRate, ["rate"]],
+        ["about.closed", about.closed, ["month", "date"]],
+        ["about.closedUnchanged", about.closedUnchanged, ["month", "date"]],
+        ["about.closedEngine", about.closedEngine, []],
       ];
       for (const [key, message, values] of passed) {
         expect(typeof message, key).toBe("string");

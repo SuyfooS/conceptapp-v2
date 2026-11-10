@@ -1369,6 +1369,64 @@ export type Database = {
           },
         ];
       };
+      payroll_months: {
+        Row: {
+          business_id: string;
+          closed_at: string;
+          closed_by: string | null;
+          engine_version: string;
+          month: string;
+          reopen_reason: string | null;
+          reopened_at: string | null;
+          reopened_by: string | null;
+          snapshot: NonNullable<Json>;
+        };
+        Insert: {
+          business_id: string;
+          closed_at: string;
+          closed_by?: string | null;
+          engine_version: string;
+          month: string;
+          reopen_reason?: string | null;
+          reopened_at?: string | null;
+          reopened_by?: string | null;
+          snapshot: NonNullable<Json>;
+        };
+        Update: {
+          business_id?: string;
+          closed_at?: string;
+          closed_by?: string | null;
+          engine_version?: string;
+          month?: string;
+          reopen_reason?: string | null;
+          reopened_at?: string | null;
+          reopened_by?: string | null;
+          snapshot?: NonNullable<Json>;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "payroll_months_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payroll_months_closed_by_fkey";
+            columns: ["closed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "payroll_months_reopened_by_fkey";
+            columns: ["reopened_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       permission_keys: {
         Row: {
           by_owner: boolean;
@@ -2254,6 +2312,17 @@ export type Database = {
         };
         Returns: string;
       };
+      close_payroll_month: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          closed_snapshot: Json;
+          for_month: string;
+          with_engine: string;
+        };
+        Returns: undefined;
+      };
       confirm_time_entry: {
         Args: { actor: string; at_time?: string; entry: string };
         Returns: undefined;
@@ -2403,6 +2472,16 @@ export type Database = {
       };
       reopen_list: {
         Args: { actor: string; at_time?: string; list: string };
+        Returns: undefined;
+      };
+      reopen_payroll_month: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          for_month: string;
+          why: string;
+        };
         Returns: undefined;
       };
       request_shift_swap: {

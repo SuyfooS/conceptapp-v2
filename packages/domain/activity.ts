@@ -296,6 +296,19 @@ export type ActivityLine =
       people: number | null;
       shifts: number | null;
     }
+  | {
+      /** The owner or an accountant closed a month for payroll (payroll P9). */
+      action: "payroll.close";
+      /** `YYYY-MM`. */
+      month: string;
+    }
+  | {
+      /** The owner or an accountant reopened a closed month, saying why (payroll P9). */
+      action: "payroll.reopen";
+      /** `YYYY-MM`. */
+      month: string;
+      reason: string | null;
+    }
   | { action: "other" };
 
 /** The fields of someone's details for payroll, as the log names them, in order. */
@@ -458,6 +471,10 @@ const schemas = {
     month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
     people: z.int().min(0).optional(),
     shifts: z.int().min(0).optional(),
+  }),
+  "payroll.month": z.object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    reason: z.unknown().optional(),
   }),
 };
 
@@ -847,6 +864,20 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             month: details.month,
             people: details.people ?? null,
             shifts: details.shifts ?? null,
+          }
+        : other;
+    }
+    case "payroll.close": {
+      const details = read(schemas["payroll.month"]);
+      return details ? { action: row.action, month: details.month } : other;
+    }
+    case "payroll.reopen": {
+      const details = read(schemas["payroll.month"]);
+      return details
+        ? {
+            action: row.action,
+            month: details.month,
+            reason: noteOf(details.reason),
           }
         : other;
     }

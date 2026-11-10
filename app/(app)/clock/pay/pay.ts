@@ -5,6 +5,7 @@ import {
   type PayPerson as PayPersonRow,
 } from "@db/payroll";
 import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
+import { getClosedMonths, getPayrollMonthRecord } from "@db/payroll-months";
 import { getTimeEntries } from "@db/time-clock";
 import { getWages, wagesByPerson } from "@db/wages";
 import { dateIn } from "@domain/availability";
@@ -28,6 +29,7 @@ import {
 } from "@domain/pay-rates";
 import type { PersonPayroll } from "@domain/payroll";
 import { payMonthFrom } from "@domain/payroll-access";
+import { closesMonths, monthEnded } from "@domain/payroll-close";
 import {
   currentPeriod,
   DEFAULT_DETAILS,
@@ -35,6 +37,7 @@ import {
   type PayrollDetails,
   wageFloorOf,
 } from "@domain/payroll-details";
+import { changedDays } from "@domain/payroll-diff";
 import { changedSinceExport, entriesOfMonth } from "@domain/payroll-export";
 import { formArg } from "@domain/profile";
 import { timeIn } from "@domain/shabbat";
@@ -47,6 +50,7 @@ import {
 } from "@domain/time-clock";
 import {
   firstOfMonth,
+  firstOpenDay,
   type MonthWage,
   monthWage,
   type WageRow,
@@ -58,9 +62,15 @@ import { youthLabel } from "@domain/youth";
 import { z } from "zod";
 import { currentModuleSettings } from "../../modules";
 import { type PayAccess, payAccess } from "./pay-access";
-import { currentPayrollMonth, currentPayrollPerson } from "./pay-month";
+import {
+  type ClosedMonthState,
+  currentClosedMonth,
+  currentPayrollMonth,
+  currentPayrollPerson,
+} from "./pay-month";
 import type {
   BeforePayroll,
+  MonthClosing,
   MonthEstimate,
   PayFilter,
   PayMonthData,
@@ -242,14 +252,23 @@ export async function currentPayMonth(
     access.defaultMonth,
   );
   const now = new Date();
-  const [{ settings, people, entries, wages, details }, payroll, lastExport] =
-    await Promise.all([
-      monthOfHours(access, month),
-      // The same month by the hours engine (payroll P7).
-      currentPayrollMonth(month),
-      // When its last file for payroll went out (P8).
-      getLastPayrollExport(access.businessId, month),
-    ]);
+  const [
+    { settings, people, entries, wages, details },
+    payroll,
+    lastExport,
+    closedState,
+    before,
+  ] = await Promise.all([
+    monthOfHours(access, month),
+    // The same month by the hours engine (payroll P7).
+    currentPayrollMonth(month),
+    // When its last file for payroll went out (P8).
+    getLastPayrollExport(access.businessId, month),
+    // Whether it was closed, and what changed since (P9).
+    currentClosedMonth(month),
+    // The month before, whose differences this month's file holds.
+    currentClosedMonth(addMonths(month, -1)),
+  ]);
   const totals = payTotals(entries, month, access.timeZone, now);
   const nameOf = nameIn(people);
   const originals = await originalsOf(access.businessId, entries);
@@ -317,6 +336,17 @@ export async function currentPayMonth(
         : everyone;
   const all = addTotals(totals.values());
   const asked = personId.safeParse(askedPerson);
+  // A closed month that changed since: the month after, whose file takes the
+  // differences, may be closed already, its file gone out without them.
+  const after = addMonths(month, 1);
+  const afterClosed =
+    closedState?.closed &&
+    changedDays(closedState.differences) > 0 &&
+    after <= access.currentMonth
+      ? await getPayrollMonthRecord(access.businessId, after).then(
+          (record) => record !== null && record.reopenedAt === null,
+        )
+      : false;
   return {
     month,
     currentMonth: access.currentMonth,
@@ -360,6 +390,44 @@ export async function currentPayMonth(
           ),
         }
       : null,
+    closing: monthClosing(access, month, closedState, nameOf, afterClosed),
+    differences:
+      before?.closed && changedDays(before.differences) > 0
+        ? {
+            month: addMonths(month, -1),
+            days: changedDays(before.differences),
+          }
+        : null,
+  };
+}
+
+/**
+ * Where a month stands for payroll (payroll P9): whether it has ended, and
+ * when it closed and by whom while it stays closed, with how many days
+ * changed since and whether the month after is closed too; and whether the
+ * reader closes months.
+ */
+function monthClosing(
+  access: PayAccess,
+  month: string,
+  state: ClosedMonthState | null,
+  nameOf: (userId: string) => string | null,
+  afterClosed: boolean,
+): MonthClosing {
+  const closedAt = state?.closed ? new Date(state.record.closedAt) : null;
+  return {
+    ended: monthEnded(month, access.currentMonth),
+    closed:
+      state && closedAt
+        ? {
+            date: dateIn(closedAt, access.timeZone),
+            time: timeIn(closedAt, access.timeZone),
+            by: state.record.closedBy ? nameOf(state.record.closedBy) : null,
+          }
+        : null,
+    can: closesMonths(access.role) && !access.viewOnly,
+    changed: state?.closed ? changedDays(state.differences) : 0,
+    nextClosed: afterClosed,
   };
 }
 
@@ -405,12 +473,17 @@ export async function currentPayPerson(
     access.defaultMonth,
   );
   const now = new Date();
-  const [{ settings, people, entries, wages, details, periods }, payroll] =
-    await Promise.all([
-      monthOfHours(access, month, id.data),
-      // Their month by the hours engine (payroll P7).
-      currentPayrollPerson(month, id.data),
-    ]);
+  const [
+    { settings, people, entries, wages, details, periods },
+    payroll,
+    closed,
+  ] = await Promise.all([
+    monthOfHours(access, month, id.data),
+    // Their month by the hours engine (payroll P7).
+    currentPayrollPerson(month, id.data),
+    // The months closed for payroll, which no wage may start in (P9).
+    getClosedMonths(access.businessId),
+  ]);
   const person = people.find((row) => row.userId === id.data);
   if (!person || (!isStaff(person.role) && entries.length === 0)) return null;
   const totals =
@@ -444,6 +517,7 @@ export async function currentPayPerson(
       ? personWage(wages.get(person.userId) ?? [], can, access, nameOf, {
           youthUntil: own.youthUntil,
           startsOn: wageFloorOf(ownPeriods),
+          closed,
         })
       : null,
     details: isStaff(person.role)
@@ -506,16 +580,24 @@ function wageCan(
 
 /**
  * The person page's wage, from their rows, by the business's today, with
- * their age for the minimum and the start no wage may come before.
+ * their age for the minimum, the start no wage may come before, and the
+ * months closed for payroll, which no wage may start in (payroll P9).
  */
 function personWage(
   rows: readonly WageRow[],
   can: WageCan,
   { today, timeZone }: { today: string; timeZone: string },
   nameOf: (userId: string) => string | null,
-  person: { youthUntil: string | null; startsOn: string | null },
+  person: {
+    youthUntil: string | null;
+    startsOn: string | null;
+    closed: readonly string[];
+  },
 ): PersonWage {
-  const { earliest, latest } = wageFromBounds(today);
+  const bounds = wageFromBounds(today);
+  const latest = bounds.latest;
+  // A wage starts after the closed months at the earliest.
+  const earliest = firstOpenDay(bounds.earliest, person.closed);
   const initial = firstOfMonth(today);
   return {
     ...wageNow(rows, today),
@@ -539,6 +621,10 @@ function personWage(
     },
     youthUntil: person.youthUntil,
     startsOn: person.startsOn,
+    // Only those a wage could otherwise start in.
+    closed: person.closed.filter(
+      (month) => month >= bounds.earliest.slice(0, 7) && month <= latest,
+    ),
   };
 }
 
