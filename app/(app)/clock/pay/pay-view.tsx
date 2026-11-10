@@ -14,8 +14,10 @@ import {
   PayDayList,
   PayHero,
   PersonLine,
+  payCaption,
   personHref,
   useMonthName,
+  useShekels,
   WageSpans,
 } from "./pay-parts";
 import { PayMonthTable } from "./pay-table";
@@ -25,15 +27,24 @@ import type {
   PayPaths,
   PayPerson,
 } from "./pay-types";
+import {
+  type ClockT,
+  dayRatesExtra,
+  FlagText,
+  HolidayPayRemark,
+  RatesList,
+} from "./rates-parts";
 
 /**
  * Hours for payroll: everyone's month, to the minute, with what to look at
  * before paying. Phone: the month's hero with the people rising over it, each
  * opening their month. Tablet: the list at the start and the chosen person's
- * days at the end. Desktop: one table, a person's days in a sheet. Each
+ * month at the end. Desktop: one table, a person's days in a sheet. Each
  * person's hourly wage for the month beside their hours (P4), a minor marked
- * and the payroll number on a desktop (P5); amounts come with P7, the file
- * with P8, which becomes the screen's main action.
+ * and the payroll number on a desktop (P5), and from the hours engine (P7)
+ * each person's hours by rate, what to check in words, and while the business
+ * shows amounts (`payEstimate`) each estimate before tax and the month's. The
+ * file comes with P8, and becomes the screen's main action.
  * `?show=noWage` lists only those whose shifts have no wage, `?show=noNumber`
  * those with no payroll number.
  */
@@ -51,13 +62,34 @@ export function PayMonthView({
   wording: AppWording;
 }) {
   const t = translator(wording, "app.pay");
+  const tc: ClockT = translator(wording, "modules.time_clock");
   const monthName = useMonthName();
+  const shekels = useShekels();
   const monthHref = (month: string) => `${paths.pay}?month=${month}`;
   const empty = data.counts.withHours === 0;
-  const caption = t("caption", {
+  // Shifts and remarks each on their own: "nothing to check" only with neither.
+  const caption = payCaption(t, {
     people: data.counts.withHours,
-    toCheck: data.counts.toCheck,
+    shifts: data.counts.toCheck,
+    remarks: data.remarks.total,
   });
+  const estimate = data.estimate ? (
+    <>
+      {t.rich("estimate.total", {
+        ltr: (chunks) => (
+          <span dir="ltr" className="font-semibold tabular-nums">
+            {chunks}
+          </span>
+        ),
+        amount: shekels(data.estimate.agorot),
+      })}
+      {data.estimate.missing > 0 ? (
+        <span className="block text-sm">
+          {t("estimate.missing", { count: data.estimate.missing })}
+        </span>
+      ) : null}
+    </>
+  ) : null;
   const selected =
     data.people.find((person) => person.userId === data.selected) ?? null;
   const hero = (overlap: boolean) => (
@@ -67,24 +99,60 @@ export function PayMonthView({
       hrefFor={monthHref}
       minutes={data.minutes}
       caption={caption}
+      estimate={estimate}
       t={t}
       overlap={overlap}
     />
   );
-  const name = (person: PayPerson) => person.name ?? t("noName");
+  const name = (person: { name: string | null }) => person.name ?? t("noName");
   const row = (person: PayPerson, href: string, current = false) => (
     <ListRow
       key={person.userId}
       href={href}
       leading={<PersonAvatar name={person.name} photo={person.photo} />}
       title={name(person)}
-      subtitle={<PersonLine person={person} t={t} />}
+      subtitle={<PersonLine person={person} t={t} amounts={data.amounts} />}
       // A minor: the row's one badge.
       trailing={person.minor ? <Badge>{t("minor")}</Badge> : undefined}
       // The person shown beside the list.
       current={current}
     />
   );
+  // What the engine asks to check, each in words with whose it is, for the
+  // accent card (payroll P7).
+  const remarks = [
+    // One line per person and kind of remark, and one for their pay for days
+    // not worked: the lines and the rest add up to the hero's count.
+    ...data.remarks.lines.map((line) => ({
+      key: `${line.userId}:${"flag" in line ? line.flag.code : "holidayPay"}`,
+      line: (
+        <>
+          <span className="font-semibold">{name(line)}</span>
+          {": "}
+          {"flag" in line ? (
+            <FlagText flag={line.flag} tc={tc} />
+          ) : (
+            <HolidayPayRemark line={line.holidayPay} t={t} tc={tc} />
+          )}
+          {line.more > 0
+            ? ` · ${t("remarks.more", { count: line.more })}`
+            : null}
+        </>
+      ),
+    })),
+    ...(data.remarks.rest > 0
+      ? [
+          {
+            key: "rest",
+            line: (
+              <span className="text-ink-2">
+                {t("remarks.rest", { count: data.remarks.rest })}
+              </span>
+            ),
+          },
+        ]
+      : []),
+  ];
 
   return (
     <PageBody className={pageGlowClass}>
@@ -104,6 +172,13 @@ export function PayMonthView({
         subtitle={t("subtitle")}
       />
 
+      {/* Every amount on the screen sits under one line; without amounts, why. */}
+      {empty ? null : (
+        <p className="px-1 text-ink-2">
+          {data.amounts ? t("estimate.under") : t("estimate.off")}
+        </p>
+      )}
+
       <BeforePayrollCard
         before={data.before}
         t={t}
@@ -118,6 +193,7 @@ export function PayMonthView({
             ? null
             : `${monthHref(data.month)}&show=noNumber`
         }
+        remarks={remarks}
       />
 
       {data.filter ? (
@@ -159,7 +235,7 @@ export function PayMonthView({
             </ListGroup>
           </div>
 
-          {/* Tablet: the list, and the chosen person's days beside it. */}
+          {/* Tablet: the list, and the chosen person's month beside it. */}
           <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:items-start md:gap-6 xl:hidden">
             <div className="flex min-w-0 flex-col">
               {hero(true)}
@@ -203,8 +279,26 @@ export function PayMonthView({
                     </span>
                   ) : null}
                 </p>
+                {/* The person column shows the rates (payroll P7). */}
+                {selected.rates ? (
+                  <RatesList
+                    rates={selected.rates}
+                    amounts={data.amounts}
+                    form={selected.form}
+                    t={t}
+                    tc={tc}
+                  />
+                ) : null}
                 {selected.days.length > 0 ? (
-                  <PayDayList days={selected.days} t={t} />
+                  <PayDayList
+                    days={selected.days}
+                    t={t}
+                    extra={
+                      selected.rates
+                        ? dayRatesExtra(selected.rates, selected.days, t, tc)
+                        : undefined
+                    }
+                  />
                 ) : (
                   <p className="px-1 text-ink-2">
                     {t("person.empty.body", { form: selected.form })}
@@ -221,6 +315,8 @@ export function PayMonthView({
               people={data.people}
               month={data.month}
               paths={paths}
+              amounts={data.amounts}
+              restName={data.restName}
             />
           </div>
         </>

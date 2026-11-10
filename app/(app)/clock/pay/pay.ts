@@ -18,10 +18,15 @@ import {
   toCheck,
 } from "@domain/pay-month";
 import {
-  canSeePay,
-  defaultPayMonth,
-  payMonthFrom,
-} from "@domain/payroll-access";
+  monthEstimate,
+  personRates,
+  remarkLines,
+  restNameOfAll,
+  toCheckOf,
+  weeksWorkedOut,
+} from "@domain/pay-rates";
+import type { PersonPayroll } from "@domain/payroll";
+import { payMonthFrom } from "@domain/payroll-access";
 import {
   currentPeriod,
   DEFAULT_DETAILS,
@@ -30,7 +35,6 @@ import {
   wageFloorOf,
 } from "@domain/payroll-details";
 import { formArg } from "@domain/profile";
-import { canSeeTeam } from "@domain/team";
 import {
   addMonths,
   entryDate,
@@ -38,8 +42,6 @@ import {
   monthRange,
   type TimeEntry,
 } from "@domain/time-clock";
-import { clockAt } from "@domain/today";
-import { canWrite } from "@domain/view-as";
 import {
   firstOfMonth,
   type MonthWage,
@@ -50,12 +52,13 @@ import {
   wageNow,
 } from "@domain/wages";
 import { youthLabel } from "@domain/youth";
-import { cache } from "react";
 import { z } from "zod";
-import { currentMember } from "../../member";
-import { currentModuleSettings, currentModules } from "../../modules";
+import { currentModuleSettings } from "../../modules";
+import { type PayAccess, payAccess } from "./pay-access";
+import { currentPayrollMonth, currentPayrollPerson } from "./pay-month";
 import type {
   BeforePayroll,
+  MonthEstimate,
   PayFilter,
   PayMonthData,
   PayPerson,
@@ -65,57 +68,32 @@ import type {
   WageCan,
 } from "./pay-types";
 
-/**
- * The signed-in person and their business, when the clock is on and they hold
- * pay access (`clock.payroll`, from `public.my_permissions`: owners and
- * accountants always, a view only as an accountant). Null otherwise: the pay
- * screens then don't exist for them.
- */
-export const payAccess = cache(async () => {
-  const [member, enabled] = await Promise.all([
-    currentMember(),
-    currentModules(),
-  ]);
-  const membership = member?.membership;
-  if (
-    !member ||
-    !membership ||
-    !enabled.includes("time_clock") ||
-    !canSeePay(membership)
-  ) {
-    return null;
-  }
-  const timeZone = membership.business.place.timeZone;
-  const today = clockAt(new Date(), timeZone).date;
-  const staff = isStaff(membership.role);
-  return {
-    userId: member.userId,
-    businessId: membership.business.id,
-    role: membership.role,
-    timeZone,
-    today,
-    /** Someone from ConceptApp viewing: they read pay, and change nothing. */
-    viewOnly: !canWrite(member.viewing),
-    currentMonth: monthOf(today),
-    defaultMonth: defaultPayMonth(today),
-    /** Managers and owners fix and confirm hours on the team's hours. */
-    fixes: canSeeTeam(membership.role),
-    /**
-     * They type a birth date (payroll P5): an owner or the accountant, the
-     * circle that will hold the hiring file. Never in a view.
-     */
-    birth:
-      canWrite(member.viewing) &&
-      (membership.role === "owner" || membership.role === "accountant"),
-    back: !staff
-      ? null
-      : canSeeTeam(membership.role)
-        ? ("team" as const)
-        : ("clock" as const),
-  };
-});
+/** How many of the month's remarks its accent card names in words. */
+const REMARK_LINES = 5;
 
-type PayAccess = NonNullable<Awaited<ReturnType<typeof payAccess>>>;
+/**
+ * The engine's people of a month with whether each is left out of its
+ * estimate for want of a wage: someone on the staff, not an owner (whose wage
+ * only another owner sets, and who is often paid otherwise: payroll P4), with
+ * worked days and no wage for some of them.
+ */
+function estimateRows(
+  people: readonly PersonPayroll[],
+  roleOf: (userId: string) => PayPersonRow["role"] | null,
+): { estimateAgorot: number | null; missing: boolean }[] {
+  return people.map((person) => {
+    const role = roleOf(person.userId);
+    return {
+      estimateAgorot: person.estimateAgorot,
+      missing:
+        person.estimateAgorot === null &&
+        role !== null &&
+        isStaff(role) &&
+        role !== "owner" &&
+        person.flags.some((flag) => flag.code === "noWage"),
+    };
+  });
+}
 
 /** Who to list for a month: the staff now, and anyone with hours in it. */
 function listed(
@@ -261,13 +239,17 @@ export async function currentPayMonth(
     access.defaultMonth,
   );
   const now = new Date();
-  const { settings, people, entries, wages, details } = await monthOfHours(
-    access,
-    month,
-  );
+  const [{ settings, people, entries, wages, details }, payroll] =
+    await Promise.all([
+      monthOfHours(access, month),
+      // The same month by the hours engine (payroll P7).
+      currentPayrollMonth(month),
+    ]);
   const totals = payTotals(entries, month, access.timeZone, now);
   const nameOf = nameIn(people);
   const originals = await originalsOf(access.businessId, entries);
+  const engineOf = (userId: string) =>
+    payroll?.people.find((one) => one.userId === userId) ?? null;
 
   const listedPeople = listed(people, totals);
   const everyone: PayPerson[] = listedPeople.map((person) => {
@@ -280,6 +262,7 @@ export async function currentPayMonth(
       originals,
     );
     const own = detailsFor(details, person.userId);
+    const engine = engineOf(person.userId);
     return {
       userId: person.userId,
       name: person.name,
@@ -303,7 +286,14 @@ export async function currentPayMonth(
       minor:
         isStaff(person.role) &&
         youthLabel(own.youthUntil, access.today) !== null,
+      rates: engine ? personRates(engine, own.restDay) : null,
     };
+  });
+  const roleOf = (userId: string) =>
+    people.find((person) => person.userId === userId)?.role ?? null;
+  const counted = everyone.flatMap((row) => {
+    const engine = engineOf(row.userId);
+    return engine ? [engine] : [];
   });
   const noWage = everyone.filter((row) => row.wage?.missing).length;
   const noNumber = everyone.filter((row) => row.noNumber).length;
@@ -339,6 +329,44 @@ export async function currentPayMonth(
       (rows[0]?.userId ?? null),
     back: access.back,
     fixes: access.fixes,
+    amounts: settings.payEstimate,
+    // Nothing to estimate in a month with no hours.
+    estimate:
+      settings.payEstimate && payroll && all.minutes > 0
+        ? monthEstimate(estimateRows(counted, roleOf))
+        : null,
+    remarks: {
+      // The lines follow the list: a filtered list names only its people.
+      ...namedRemarks(rows),
+      total: counted.reduce((sum, one) => sum + toCheckOf(one), 0),
+    },
+    restName: restNameOfAll(
+      everyone.flatMap((row) => (row.rates ? [row.rates.restDay] : [])),
+    ),
+  };
+}
+
+/**
+ * The month's accent card: the first remarks and lines of pay for days not
+ * worked in words, each with whose it is.
+ */
+function namedRemarks(
+  people: readonly PayPerson[],
+): Omit<PayMonthData["remarks"], "total"> {
+  const { lines, rest } = remarkLines(
+    people.map((row) => ({
+      userId: row.userId,
+      remarks: row.rates?.remarks ?? [],
+      holidayPay: row.rates?.holidayPay ?? [],
+    })),
+    REMARK_LINES,
+  );
+  return {
+    lines: lines.map((line) => ({
+      ...line,
+      name: people.find((row) => row.userId === line.userId)?.name ?? null,
+    })),
+    rest,
   };
 }
 
@@ -360,11 +388,12 @@ export async function currentPayPerson(
     access.defaultMonth,
   );
   const now = new Date();
-  const { people, entries, wages, details, periods } = await monthOfHours(
-    access,
-    month,
-    id.data,
-  );
+  const [{ settings, people, entries, wages, details, periods }, payroll] =
+    await Promise.all([
+      monthOfHours(access, month, id.data),
+      // Their month by the hours engine (payroll P7).
+      currentPayrollPerson(month, id.data),
+    ]);
   const person = people.find((row) => row.userId === id.data);
   if (!person || (!isStaff(person.role) && entries.length === 0)) return null;
   const totals =
@@ -404,6 +433,13 @@ export async function currentPayPerson(
       ? personDetails(own, ownPeriods, can, access)
       : null,
     fixes: access.fixes,
+    rates: payroll ? personRates(payroll.person, own.restDay) : null,
+    amounts: settings.payEstimate,
+    weeks: payroll ? weeksWorkedOut(payroll.notes, person.userId) : [],
+    stale:
+      payroll?.notes.some((note) => note.code === "minimumWageTableStale") ??
+      false,
+    setsWeek: access.role === "owner" && !access.viewOnly,
   };
 }
 
@@ -501,6 +537,13 @@ export type PayHomeData = {
   before: BeforePayroll;
   /** The three months before it, newest first, each with its hours. */
   earlier: { month: string; minutes: number }[];
+  /**
+   * The month's estimate before tax (payroll P7), from the same loader as the
+   * pay screens; null while the business shows no amounts (`payEstimate`).
+   */
+  estimate: MonthEstimate | null;
+  /** The hours engine's things to check in the month: remarks, and lines of pay for days not worked. */
+  remarks: number;
 };
 
 /** How many months before the one to pay a desktop Home lists. */
@@ -517,17 +560,22 @@ export async function currentPayHome(): Promise<PayHomeData | null> {
   const month = access.defaultMonth;
   const first = addMonths(month, -EARLIER_MONTHS);
   const now = new Date();
-  const [settings, entries, people, wages, details] = await Promise.all([
-    currentModuleSettings("time_clock"),
-    getTimeEntries(
-      access.businessId,
-      monthRange(first, access.timeZone).from,
-      monthRange(month, access.timeZone).to,
-    ),
-    getPayPeople(access.businessId),
-    getWages(access.businessId).then(wagesByPerson),
-    getPayrollDetails(access.businessId),
-  ]);
+  const [settings, entries, people, wages, details, payroll] =
+    await Promise.all([
+      currentModuleSettings("time_clock"),
+      getTimeEntries(
+        access.businessId,
+        monthRange(first, access.timeZone).from,
+        monthRange(month, access.timeZone).to,
+      ),
+      getPayPeople(access.businessId),
+      getWages(access.businessId).then(wagesByPerson),
+      getPayrollDetails(access.businessId),
+      // The month by the hours engine, as /clock/pay reads it (payroll P7).
+      currentPayrollMonth(month),
+    ]);
+  const roleOf = (userId: string) =>
+    people.find((person) => person.userId === userId)?.role ?? null;
   const totalsOf = (which: string) =>
     payTotals(entries, which, access.timeZone, now);
   const current = totalsOf(month);
@@ -556,5 +604,10 @@ export async function currentPayHome(): Promise<PayHomeData | null> {
         minutes: addTotals(totalsOf(earlier).values()).minutes,
       };
     }),
+    estimate:
+      settings.payEstimate && payroll && all.minutes > 0
+        ? monthEstimate(estimateRows(payroll.people, roleOf))
+        : null,
+    remarks: payroll?.people.reduce((sum, one) => sum + toCheckOf(one), 0) ?? 0,
   };
 }

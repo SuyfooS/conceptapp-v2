@@ -15,7 +15,7 @@ import { refresh } from "next/cache";
 import { z } from "zod";
 import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
-import { payAccess } from "./pay";
+import { payAccess } from "./pay-access";
 import type {
   DetailsActionResult,
   PeriodActionResult,

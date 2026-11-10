@@ -14,6 +14,12 @@ export type SheetProps = {
   closeLabel: string;
   /** The main action at the end of the header, usually "done". */
   action?: { label: string; onClick: () => void };
+  /**
+   * Set for a sheet that only reads, with nothing inside to press: its body,
+   * named by this, takes the keyboard, so it still scrolls by keys on a small
+   * screen (axe scrollable-region-focusable).
+   */
+  readingLabel?: string;
   children: ReactNode;
 };
 
@@ -29,6 +35,7 @@ export function Sheet({
   subtitle,
   closeLabel,
   action,
+  readingLabel,
   children,
 }: SheetProps) {
   const anchor = useRef<HTMLSpanElement>(null);
@@ -102,9 +109,20 @@ export function Sheet({
                 <span aria-hidden="true" className="size-11 shrink-0" />
               )}
             </div>
-            <div className="relative min-h-0 overflow-y-auto rounded-b-sheet px-2 pb-3">
-              {children}
-            </div>
+            {readingLabel ? (
+              <section
+                aria-label={readingLabel}
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroller with nothing to focus inside must take the keyboard itself to scroll by keys (axe scrollable-region-focusable)
+                tabIndex={0}
+                className="relative min-h-0 overflow-y-auto rounded-b-sheet px-2 pb-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
+              >
+                {children}
+              </section>
+            ) : (
+              <div className="relative min-h-0 overflow-y-auto rounded-b-sheet px-2 pb-3">
+                {children}
+              </div>
+            )}
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>

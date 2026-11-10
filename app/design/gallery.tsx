@@ -1290,6 +1290,84 @@ function GalleryTable() {
             })
           : t("dataTableHint")}
       </p>
+      <GalleryReadTable />
+    </div>
+  );
+}
+
+/**
+ * A table that only reads, wide enough to scroll sideways on a phone: with
+ * no row to choose, the keyboard reaches its scroller (Tab, then the arrows).
+ */
+function GalleryReadTable() {
+  const t = useTranslations("design");
+  const days = [
+    {
+      key: "d1",
+      date: "1.10",
+      in: "09:00",
+      out: "17:30",
+      regular: "8.00",
+      ot125: "0.50",
+      ot150: "0.00",
+      note: t("dataTableNote1"),
+    },
+    {
+      key: "d2",
+      date: "2.10",
+      in: "22:00",
+      out: "06:30",
+      regular: "7.00",
+      ot125: "1.50",
+      ot150: "0.00",
+      note: t("dataTableNote2"),
+    },
+    {
+      key: "d3",
+      date: "6.10",
+      in: "08:00",
+      out: "18:00",
+      regular: "7.00",
+      ot125: "2.00",
+      ot150: "1.00",
+      note: t("dataTableNote3"),
+    },
+  ];
+  const number = (key: string, label: string) => ({
+    key,
+    label,
+    align: "end" as const,
+    numeric: true,
+  });
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      <Card padding="none" className="overflow-hidden">
+        <DataTable
+          caption={t("dataTableRead")}
+          columns={[
+            { key: "date", label: t("dataTableDate"), numeric: true },
+            { key: "in", label: t("dataTableIn"), numeric: true },
+            { key: "out", label: t("dataTableOut"), numeric: true },
+            number("regular", t("dataTableRegular")),
+            number("ot125", t("dataTableOt125")),
+            number("ot150", t("dataTableOt150")),
+            { key: "note", label: t("dataTableNote") },
+          ]}
+          rows={days.map((day) => ({
+            key: day.key,
+            cells: {
+              date: day.date,
+              in: day.in,
+              out: day.out,
+              regular: day.regular,
+              ot125: day.ot125,
+              ot150: day.ot150,
+              note: day.note,
+            },
+          }))}
+        />
+      </Card>
+      <p className="px-1 text-ink-2 text-sm">{t("dataTableReadHint")}</p>
     </div>
   );
 }

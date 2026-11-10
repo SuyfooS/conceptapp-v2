@@ -7,9 +7,11 @@ import {
   restoreShopPayrollDetails,
   restoreShopPeriods,
   seededPayMonth,
+  setShopClockSettings,
   setShopPayRole,
   shopActivityActions,
   shopActivityDetails,
+  shopClockSettings,
   shopFirstOfMonth,
   shopPayRoles,
   shopPayrollDetails,
@@ -20,12 +22,13 @@ import {
 import { signIn } from "./session";
 import { heT } from "./t";
 
-// Hours for payroll (payroll P3), hourly wages (P4) and details for payroll
-// (P5), in the demo shop as supabase/seed.sql starts it: last month's hours
-// for its staff, their wages from the first of last month and their details
-// (private.seed_demo_pay), its accountant Galit, and its managers holding pay
-// access. Every visit names the seeded month: the screens open on last month
-// only until the 10th.
+// Hours for payroll (payroll P3), hourly wages (P4), details for payroll (P5)
+// and the hours engine on screen (P7), in the demo shop as supabase/seed.sql
+// starts it: last month's hours for its staff, their wages from the first of
+// last month and their details (private.seed_demo_pay), its accountant Galit,
+// its managers holding pay access, and its amounts on (`payEstimate`, as in
+// every demo business). Every visit names the seeded month: the screens open
+// on last month only until the 10th.
 const e = he.auth.enter;
 const p = he.app.pay;
 const a = he.app.manage.access;
@@ -72,7 +75,7 @@ const fullDay = (day: string) => {
 
 const notFound = (page: Page) =>
   page.getByRole("heading", { level: 1, name: he.app.notFound.title });
-const shown = (page: Page, text: string) =>
+const shown = (page: Page, text: string | RegExp) =>
   page.getByText(text).filter({ visible: true }).first();
 
 /** In through the door, as one of the demo's people. */
@@ -698,5 +701,259 @@ test("a start a holder sets makes the period theirs, and no wage starts before i
     expect(await shopActivityActions("wage.set", since)).toBe(0);
   } finally {
     await restoreShopPeriods(RONI.id, before);
+  }
+});
+
+// Payroll P7: the hours engine on screen.
+
+/** The last day of a month (`YYYY-MM`) on a weekday (0 is Sunday), as the screens write it: "27.10". */
+function lastWeekdayOf(month: string, weekday: number): string {
+  const [year = 0, index = 1] = month.split("-").map(Number);
+  const day = new Date(Date.UTC(year, index, 0));
+  while (day.getUTCDay() !== weekday) day.setUTCDate(day.getUTCDate() - 1);
+  return `${day.getUTCDate()}.${index}`;
+}
+
+const escaped = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A sentence with one value left open, as a pattern for whatever hours or
+ * amount stand in its place: the demo's times move with the seeded month.
+ */
+function sentenceWith(
+  key: Parameters<typeof heT.markup>[0],
+  values: Record<string, string>,
+  open: string,
+  shape = "[\\d,]+\\.\\d{2}",
+): RegExp {
+  const text = plain(key, { ...values, [open]: "\u0001" });
+  return new RegExp(escaped(text).replace("\u0001", shape));
+}
+
+/** The month's or a person's estimate before tax, whatever its amount. */
+const ESTIMATE = sentenceWith(
+  "app.pay.estimate.total",
+  {},
+  "amount",
+  "[\\d,]+\\.\\d{2} ₪",
+);
+/** The heading of a worker's own month in shekels, whichever month. */
+const OWN_TITLE = new RegExp(
+  `^${escaped(he.app.clock.ownPay.title.split("{")[0] ?? "")}`,
+);
+const YOAV_ID = "00000000-0000-4000-a000-000000000004";
+
+test("the accountant reads the month by rate, its estimate before tax and what to check in words", async ({
+  page,
+}, testInfo) => {
+  const month = await seededPayMonth();
+  // Home shows the month payroll is done for now, which from the 11th is
+  // this month, with no hours yet: its twin with the estimate is in
+  // design.spec.ts. The seeded month is named here.
+  await enterAs(page, "accountant");
+  await page.goto(`/clock/pay?month=${month}`);
+  // Every amount sits under one line, and the month's sum is in the hero.
+  await expect(shown(page, p.estimate.under)).toBeVisible();
+  await expect(shown(page, ESTIMATE)).toBeVisible();
+  // Liya (17, at school) worked past 20:00 on the month's last Tuesday: in
+  // words, in the card before payroll.
+  const night = plain("modules.time_clock.payroll.flags.minorNight", {
+    hours: "2.50",
+    from: "20:00",
+    to: "08:00",
+    date: lastWeekdayOf(month, 2),
+  });
+  await expect(shown(page, night)).toBeVisible();
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("pay-month-rates.png"),
+    fullPage: true,
+  });
+
+  // The desktop table has a column for every rate, the rest ones named for
+  // any rest day (Roni rests on Friday), and the estimate.
+  if (testInfo.project.name === "desktop") {
+    for (const name of [
+      heT("app.pay.rateColumns.regular"),
+      heT("app.pay.rateColumns.ot125"),
+      heT("app.pay.rateColumns.ot150"),
+      heT("app.pay.rateColumns.rest150", { rest: "other" }),
+      heT("app.pay.rateColumns.rest175", { rest: "other" }),
+      heT("app.pay.rateColumns.rest200", { rest: "other" }),
+      p.columns.estimate,
+    ]) {
+      await expect(
+        page.getByRole("columnheader", { name, exact: true }),
+      ).toBeVisible();
+    }
+  }
+
+  // Tamar's late Friday runs past the day's 7 hours into Shabbat: 175%.
+  await page.goto(`/clock/pay/${TAMAR.id}?month=${month}`);
+  await expect(
+    shown(
+      page,
+      sentenceWith("app.pay.rates.rest175", { rest: "saturday" }, "hours"),
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByText(p.estimate.label, { exact: true }).filter({ visible: true }),
+  ).toHaveCount(1);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("pay-person-rates.png"),
+    fullPage: true,
+  });
+
+  // Itai's Saturday night is rest at 150%.
+  await page.goto(`/clock/pay/${ITAI.id}?month=${month}`);
+  await expect(
+    shown(
+      page,
+      sentenceWith("app.pay.rates.rest150", { rest: "saturday" }, "hours"),
+    ),
+  ).toBeVisible();
+
+  // Liya's page says it too, and how it is all worked out, in plain words.
+  await page.goto(`/clock/pay/${LIYA.id}?month=${month}`);
+  await expect(shown(page, night)).toBeVisible();
+  await page
+    .getByRole("button", { name: p.method.open })
+    .filter({ visible: true })
+    .click();
+  const sheet = page.getByRole("dialog", { name: p.method.title });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText(p.method.readings)).toBeVisible();
+  // The sheet hides the page from screen readers, heading and all: axe alone.
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  expect(violations.map((v) => v.id)).toEqual([]);
+});
+
+test("a night past its 7 hours is overtime at 125%, and without a wage there is no estimate", async ({
+  page,
+}, testInfo) => {
+  // The restaurant's Yoav: one night 22:00–06:30 in the month, and no wage
+  // (supabase/seed.sql). The restaurant's week isn't set, so each Thursday
+  // is the five-day week's short day too, and its 8 paid hours add 24 minutes
+  // at 125%: the month's 125% is more than the night's, and moves with the
+  // seeded month, so its hours are a pattern.
+  const month = await seededPayMonth("restaurant");
+  await enterAs(page, "owner");
+  await page.goto(`/clock/pay/${YOAV_ID}?month=${month}`);
+  await expect(
+    shown(page, sentenceWith("app.pay.rates.ot125", {}, "hours")),
+  ).toBeVisible();
+  await expect(shown(page, p.estimate.none)).toBeVisible();
+  if (testInfo.project.name === "desktop") {
+    // The days table: every rate, and the kind of day.
+    await expect(
+      page.getByRole("columnheader", {
+        name: heT("app.pay.rateColumns.ot125"),
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("cell", { name: p.tags.night, exact: true }),
+    ).toBeVisible();
+  } else {
+    // Under the shifts: a split at 125% (the night's, or a Thursday's), and
+    // the night's kind.
+    const part = sentenceWith(
+      "app.pay.day.part",
+      { rate: heT("app.pay.rateColumns.ot125") },
+      "hours",
+    );
+    await expect(
+      shown(page, new RegExp(`${escaped(p.day.ofWhich)} ${part.source}`)),
+    ).toBeVisible();
+    await expect(shown(page, p.tags.night)).toBeVisible();
+  }
+  await expectCleanPage(page);
+});
+
+test("a worker sees an estimate of their own month and nobody else's, and none while the business shows none", async ({
+  page,
+}) => {
+  const month = await seededPayMonth();
+  const settings = await shopClockSettings();
+  const ownCard = page
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: OWN_TITLE }) })
+    .filter({ visible: true });
+  try {
+    await enterAs(page, "shopWorker");
+    // This month, on the clock: the card, with or without hours yet.
+    await page.goto("/clock");
+    await expect(ownCard).toHaveCount(1);
+    await expectCleanPage(page);
+
+    // The seeded month, on her history: before tax, with her late Friday.
+    await page.goto(`/clock/history?month=${month}`);
+    await expect(
+      ownCard.getByText(he.app.clock.ownPay.label, { exact: true }),
+    ).toBeVisible();
+    await expect(
+      ownCard.getByText(
+        sentenceWith("app.pay.rates.rest175", { rest: "saturday" }, "hours"),
+      ),
+    ).toBeVisible();
+    const amount = (
+      await ownCard
+        .getByText(/^[\d,]+\.\d{2} ₪$/)
+        .first()
+        .innerText()
+    ).trim();
+    // How it is worked out, without what waits for an accountant.
+    await ownCard.getByRole("button", { name: p.method.open }).click();
+    const sheet = page.getByRole("dialog", { name: p.method.title });
+    await expect(sheet.getByText(p.method.excluded)).toBeVisible();
+    await expect(sheet.getByText(p.method.readings)).toHaveCount(0);
+    await sheet.getByRole("button", { name: p.method.close }).click();
+    await expect(sheet).toBeHidden();
+    await expectCleanPage(page);
+
+    // Another worker sees theirs, and nothing of hers.
+    await page.context().clearCookies();
+    await signIn(page, ITAI);
+    await page.goto(`/clock/history?month=${month}`);
+    await expect(ownCard).toHaveCount(1);
+    await expect(page.getByRole("main")).not.toContainText(amount);
+
+    // The owner hides the workers' estimates: none on the clock.
+    await setShopClockSettings({ workersSeeEstimate: false });
+    await page.reload();
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.clock.history.title }),
+    ).toBeVisible();
+    await expect(ownCard).toHaveCount(0);
+
+    // The team turns the business's amounts off: none for anyone, and the
+    // pay holders keep the hours by rate.
+    await setShopClockSettings({
+      workersSeeEstimate: true,
+      payEstimate: false,
+    });
+    await page.reload();
+    await expect(ownCard).toHaveCount(0);
+    await page.context().clearCookies();
+    await enterAs(page, "accountant");
+    await page.goto(`/clock/pay?month=${month}`);
+    await expect(shown(page, p.estimate.off)).toBeVisible();
+    await expect(page.getByText(ESTIMATE)).toHaveCount(0);
+    await expectCleanPage(page);
+    await page.goto(`/clock/pay/${TAMAR.id}?month=${month}`);
+    await expect(
+      shown(
+        page,
+        sentenceWith("app.pay.rates.rest175", { rest: "saturday" }, "hours"),
+      ),
+    ).toBeVisible();
+    await expect(shown(page, p.estimate.offShort)).toBeVisible();
+    await expect(page.getByText(p.estimate.label, { exact: true })).toHaveCount(
+      0,
+    );
+    await expectCleanPage(page);
+  } finally {
+    await setShopClockSettings(settings, true);
   }
 });

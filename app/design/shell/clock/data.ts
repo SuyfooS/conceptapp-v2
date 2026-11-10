@@ -7,6 +7,19 @@ const ENTRY = "68000000-0000-4000-a000-000000000001";
 const TIME_ZONE = "Asia/Jerusalem";
 
 export const demoRecords: ShiftRecord[] = [
+  // A Friday past candle lighting: rest hours, and overtime in them.
+  {
+    id: "68000000-0000-4000-a000-000000000015",
+    date: "2026-11-06",
+    in: "12:00",
+    out: "20:30",
+    minutes: 510,
+    breakMinutes: 0,
+    byManager: false,
+    overdue: false,
+    attendance: null,
+    correction: null,
+  },
   {
     id: "68000000-0000-4000-a000-000000000011",
     date: "2026-11-05",
@@ -96,6 +109,20 @@ export function demoClock(
       : state === "break"
         ? { ...entry, breaks: [pause] }
         : null;
+  // The month's hours as the clock counts them: the shifts below, and the one
+  // running up to now, its unpaid break off. The estimate on the same screen
+  // runs the engine over the same shifts, and counts the running one once it
+  // ends.
+  const running = open
+    ? Math.floor(
+        (now.getTime() -
+          Date.parse(entry.clockIn) -
+          (state === "break"
+            ? now.getTime() - Date.parse(pause.startedAt)
+            : 0)) /
+          60_000,
+      )
+    : 0;
   return {
     now: now.toISOString(),
     timeZone: TIME_ZONE,
@@ -107,7 +134,8 @@ export function demoClock(
       to: at(-4),
     },
     scheduling: true,
-    thisMonth: 86 * 60 + 30,
+    thisMonth:
+      demoRecords.reduce((sum, record) => sum + record.minutes, 0) + running,
     lastMonth: 142 * 60 + 15,
     recent: demoRecords,
     undo:

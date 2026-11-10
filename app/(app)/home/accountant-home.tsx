@@ -16,13 +16,19 @@ import {
   Hash,
   PencilLine,
   ReceiptText,
+  TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import type { PayHomeData } from "../clock/pay/pay";
-import { useHoursText, useMonthName } from "../clock/pay/pay-parts";
+import {
+  payCaption,
+  useHoursText,
+  useMonthName,
+  useShekels,
+} from "../clock/pay/pay-parts";
 import { type AppWording, translator } from "../wording";
 import { RefreshOnReturn } from "./refresh-on-return";
 
@@ -47,6 +53,9 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * the months before. Nothing to punch, no schedule. Phone: one under the
  * other. Tablet: the hero beside the card. Desktop: a third column with the
  * months before. With the clock off, a card says the hours come once it is on.
+ * From the same loader as the pay screens (payroll P7), the hero adds the
+ * month's estimate before tax while the business shows amounts, and the card
+ * how many things the hours engine asks to check.
  * `base` keeps the links inside the demo on /design/shell.
  */
 export async function AccountantHome({
@@ -159,6 +168,7 @@ function PayMonthCard({
   const t = translator(wording, "app.home.accountant");
   const tPay = translator(wording, "app.pay");
   const hours = useHoursText();
+  const shekels = useShekels();
   const format = useMonthOnly();
   const label = t("title", { month: format(pay.month) });
   return (
@@ -174,9 +184,32 @@ function PayMonthCard({
               </span>
             ),
           })}
+          {/* As on /clock/pay: shifts and the engine's remarks each on their own. */}
           <span className="block text-base">
-            {tPay("caption", { people: pay.people, toCheck: pay.toCheck })}
+            {payCaption(tPay, {
+              people: pay.people,
+              shifts: pay.toCheck,
+              remarks: pay.remarks,
+            })}
           </span>
+          {/* The month's estimate, while the business shows amounts. */}
+          {pay.estimate ? (
+            <span className="mt-1 block text-base">
+              {tPay.rich("estimate.total", {
+                ltr: (chunks) => (
+                  <span dir="ltr" className="font-semibold tabular-nums">
+                    {chunks}
+                  </span>
+                ),
+                amount: shekels(pay.estimate.agorot),
+              })}
+              {pay.estimate.missing > 0 ? (
+                <span className="block text-sm">
+                  {tPay("estimate.missing", { count: pay.estimate.missing })}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
         </p>
         <Button
           asChild
@@ -265,6 +298,15 @@ function BeforeCard({
           icon: <Hash />,
           text: tPay("noNumber", { count: pay.before.noNumber }),
           href: `${href}&show=noNumber`,
+        }
+      : null,
+    // What the hours engine asks to check, in words on the month (P7).
+    pay.remarks > 0
+      ? {
+          key: "remarks",
+          icon: <TriangleAlert />,
+          text: t("remarks", { count: pay.remarks }),
+          href,
         }
       : null,
   ].filter((row) => row !== null);

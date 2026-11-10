@@ -1,3 +1,4 @@
+import { hasEstimate } from "@domain/pay-rates";
 import type { ShiftRecord } from "@domain/time-clock";
 import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
@@ -6,8 +7,9 @@ import { pageGlowClass } from "@ui/page-glow";
 import { History } from "lucide-react";
 import Link from "next/link";
 import { type AppWording, translator } from "../../wording";
-import type { ClockPaths } from "../clock-types";
+import type { ClockPaths, OwnPay } from "../clock-types";
 import { MonthHero } from "../month-hero";
+import { OwnPayCard } from "../own-pay-card";
 import { ShiftList } from "../shift-list";
 
 export type HistoryData = {
@@ -19,13 +21,22 @@ export type HistoryData = {
   records: ShiftRecord[];
 };
 
-/** The person's shifts of one month: its total, and each shift with its hours. */
+/**
+ * The person's shifts of one month: its total, and each shift with its hours,
+ * then the month's estimate of their own pay (payroll P7) when the business
+ * shows one, as a flat card: the month is the screen's hero. A month with
+ * nothing to estimate and no shift still open shows only its empty state, so
+ * it never says twice that there is nothing.
+ */
 export function HistoryView({
   data,
+  ownPay = null,
   paths,
   wording,
 }: {
   data: HistoryData;
+  /** Their own month in shekels (`currentOwnPay`); null when it isn't shown. */
+  ownPay?: OwnPay | null;
   paths: ClockPaths;
   /** The business's words. */
   wording: AppWording;
@@ -70,6 +81,12 @@ export function HistoryView({
             </Button>
           </EmptyState>
         )}
+
+        {ownPay && (hasEstimate(ownPay) || ownPay.open > 0) ? (
+          <div className="mt-6">
+            <OwnPayCard pay={ownPay} wording={wording} />
+          </div>
+        ) : null}
       </div>
     </PageBody>
   );

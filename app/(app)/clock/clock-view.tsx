@@ -14,8 +14,10 @@ import type {
   ClockData,
   ClockPaths,
   OwnDetails,
+  OwnPay,
 } from "./clock-types";
 import { HoursCount } from "./hours-count";
+import { OwnPayCard } from "./own-pay-card";
 import { useFullDate, useMonthYear, useShekels } from "./pay/pay-parts";
 import { ShiftList } from "./shift-list";
 
@@ -24,15 +26,20 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 /**
  * The clock: one large circle to start and end work, the month's hours under
  * it, and the way to the history. Tablet and desktop add the latest shifts
- * beside it.
+ * beside it. Under the person's own wage, their month's estimate before tax
+ * (payroll P7) when the business shows one, in a flat card: the circle is the
+ * screen's hero.
  */
 export function ClockView({
   data,
+  ownPay = null,
   actions,
   paths,
   wording,
 }: {
   data: ClockData;
+  /** Their own month in shekels (`currentOwnPay`); null when it isn't shown. */
+  ownPay?: OwnPay | null;
   actions: ClockActions;
   paths: ClockPaths;
   /** The business's words. */
@@ -97,6 +104,8 @@ export function ClockView({
               ) : null}
             </ListGroup>
           ) : null}
+
+          {ownPay ? <OwnPayCard pay={ownPay} wording={wording} /> : null}
 
           {data.team || data.payroll ? (
             <ListGroup>
