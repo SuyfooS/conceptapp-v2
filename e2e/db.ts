@@ -1591,3 +1591,20 @@ export async function demoListLines(
       and n.params ->> 'name' = ${name}`;
   return row?.count ?? 0;
 }
+
+/**
+ * The demo restaurant's lines of a kind about a list by name, and how many
+ * people they went to: other specs may give the restaurant another manager
+ * while this one runs, so a spec checks one line each, not a fixed count.
+ */
+export async function demoListLineSpread(
+  kind: string,
+  name: string,
+): Promise<{ lines: number; people: number }> {
+  const [row] = await sql<{ lines: number; people: number }[]>`
+    select count(*)::int as lines, count(distinct n.user_id)::int as people
+    from public.notifications n
+    where n.business_id = ${DEMO_RESTAURANT} and n.kind = ${kind}
+      and n.params ->> 'name' = ${name}`;
+  return row ?? { lines: 0, people: 0 };
+}
