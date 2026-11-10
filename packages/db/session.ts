@@ -58,8 +58,13 @@ export type CurrentMember = {
   membership: {
     role: MemberRole;
     /**
-     * Permissions given to them beyond their role (`memberships.perms`, such
-     * as `lists.send`); none while viewing as a role, which reads as the role.
+     * Every permission they hold in the business, as the database says
+     * (`public.my_permissions`): their role's, those given to their role, and
+     * those given to them (`clock.payroll` always for an owner or an
+     * accountant). While viewing as a role, what that role holds by default,
+     * and `clock.payroll` only as an accountant. Before
+     * 20261110000300_payroll_access.sql reaches a project, `memberships.perms`
+     * alone, as before (none while viewing).
      */
     perms: string[];
     business: MemberBusiness;
@@ -262,7 +267,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       ...person,
       membership: {
         role: view.data.role,
-        perms: [],
+        perms: await permissionsIn(supabase, viewed.id, []),
         business: memberBusiness(viewed, wording),
         since: null,
       },
@@ -278,7 +283,11 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       membership.data && business
         ? {
             role: membership.data.role,
-            perms: membership.data.perms,
+            perms: await permissionsIn(
+              supabase,
+              business.id,
+              membership.data.perms,
+            ),
             business: memberBusiness(business, wording),
             since: membership.data.created_at,
           }
@@ -286,6 +295,23 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
     viewing: null,
     unread: business ? unreadCounts(unreadRows, business.id) : NO_UNREAD,
   };
+}
+
+/**
+ * What the person holds in the business, from `public.my_permissions`; the
+ * permissions given to them alone (`given`) while the function is missing.
+ */
+async function permissionsIn(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  businessId: string,
+  given: string[],
+): Promise<string[]> {
+  const { data, error } = await supabase.rpc("my_permissions", {
+    business: businessId,
+  });
+  if (!error) return data ?? [];
+  if (isMissingFunction(error)) return given;
+  throw error;
 }
 
 type ProfileRow = {

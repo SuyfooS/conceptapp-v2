@@ -32,6 +32,7 @@ export function ClockView({
   wording: AppWording;
 }) {
   const t = translator(wording, "app.clock");
+  const tPay = translator(wording, "app.pay");
   const status = clockStatus(data.open);
 
   return (
@@ -79,7 +80,7 @@ export function ClockView({
             </PageSection>
           ) : null}
 
-          {data.team ? (
+          {data.team || data.payroll ? (
             <ListGroup>
               {data.punch.required && data.punch.canShowCode ? (
                 <ListRow
@@ -88,15 +89,24 @@ export function ClockView({
                   subtitle={t("showCode.hint")}
                 />
               ) : null}
-              <ListRow
-                href={paths.team}
-                title={t("team.title")}
-                subtitle={
-                  data.team.overdue > 0
-                    ? t("team.overdue.title", { count: data.team.overdue })
-                    : t("team.atWork.count", { count: data.team.atWork })
-                }
-              />
+              {data.team ? (
+                <ListRow
+                  href={paths.team}
+                  title={t("team.title")}
+                  subtitle={
+                    data.team.overdue > 0
+                      ? t("team.overdue.title", { count: data.team.overdue })
+                      : t("team.atWork.count", { count: data.team.atWork })
+                  }
+                />
+              ) : null}
+              {data.payroll ? (
+                <ListRow
+                  href={paths.pay}
+                  title={tPay("clockRow.title")}
+                  subtitle={tPay("clockRow.subtitle")}
+                />
+              ) : null}
             </ListGroup>
           ) : null}
         </div>

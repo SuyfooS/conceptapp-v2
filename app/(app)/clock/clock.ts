@@ -6,6 +6,7 @@ import {
 } from "@db/time-clock";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
+import { canSeePay } from "@domain/payroll-access";
 import { needsPunchCode } from "@domain/punch-code";
 import { timeIn } from "@domain/shabbat";
 import { canSeeTeam } from "@domain/team";
@@ -41,6 +42,7 @@ export const clockPaths: ClockPaths = {
   history: "/clock/history",
   team: "/clock/team",
   code: "/clock/code",
+  pay: "/clock/pay",
 };
 
 /** How many shifts the wider screens show beside the circle. */
@@ -61,7 +63,7 @@ export const clockAccess = cache(async () => {
   if (
     !member ||
     !membership ||
-    !canOpenModule(manifestFor("time_clock"), enabled, membership.role)
+    !canOpenModule(manifestFor("time_clock"), enabled, membership)
   ) {
     return null;
   }
@@ -71,11 +73,8 @@ export const clockAccess = cache(async () => {
     businessName: membership.business.name,
     role: membership.role,
     viewOnly: !canWrite(member.viewing),
-    scheduling: canOpenModule(
-      manifestFor("scheduling"),
-      enabled,
-      membership.role,
-    ),
+    scheduling: canOpenModule(manifestFor("scheduling"), enabled, membership),
+    perms: membership.perms,
     timeZone: membership.business.place.timeZone,
   };
 });
@@ -191,6 +190,7 @@ export async function currentClock(): Promise<ClockData | null> {
           overdue: openNow.filter((entry) => entryOverdue(entry, now)).length,
         }
       : null,
+    payroll: canSeePay({ role, perms: access.perms }),
     viewOnly,
   };
 }

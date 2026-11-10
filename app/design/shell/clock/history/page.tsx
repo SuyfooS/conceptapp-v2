@@ -30,6 +30,7 @@ async function Demo({ searchParams }: Props) {
         history: "/design/shell/clock/history",
         team: "/design/shell/clock/team",
         code: "/design/shell/clock/code",
+        pay: "/design/shell/clock/pay",
       }}
       wording={baseWording}
     />

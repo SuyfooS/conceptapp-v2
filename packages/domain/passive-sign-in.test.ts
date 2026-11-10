@@ -20,6 +20,9 @@ describe("demoEmailOf", () => {
     expect(demoEmailOf("manager")).toBe("manager@demo.conceptapp.invalid");
     expect(demoEmailOf("worker")).toBe("worker@demo.conceptapp.invalid");
     expect(demoEmailOf("shopOwner")).toBe("shop-owner@demo.conceptapp.invalid");
+    expect(demoEmailOf("accountant")).toBe(
+      "accountant@demo.conceptapp.invalid",
+    );
   });
 
   it("refuses anyone else a client asks for", () => {
@@ -47,6 +50,8 @@ describe("demo businesses", () => {
   it("finds each person's business", () => {
     expect(demoBusinessOf("manager").slug).toBe("demo-restaurant");
     expect(demoBusinessOf("shopWorker").slug).toBe("demo-shop");
+    // In the shop alone, until a login may be in several businesses (P3b).
+    expect(demoBusinessOf("accountant").slug).toBe("demo-shop");
   });
 
   it("renews only the shop's schedule", () => {

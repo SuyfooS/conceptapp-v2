@@ -21,6 +21,7 @@ import { CodeSlots, type CodeSlotsStatus } from "@ui/code-slots";
 import { useCountUp } from "@ui/count-up";
 import { CoverChoices } from "@ui/cover-choices";
 import { CoverageBar } from "@ui/coverage-bar";
+import { DataTable } from "@ui/data-table";
 import { EmptyState } from "@ui/empty-state";
 import {
   FieldGroup,
@@ -456,11 +457,21 @@ function GalleryBody({
             />
             <ListRow
               onClick={() => {}}
+              current
+              title={t("rowCurrent")}
+              subtitle={t("rowCurrentText")}
+            />
+            <ListRow
+              onClick={() => {}}
               disabled
               title={t("rowDisabled")}
               subtitle={t("rowDisabledText")}
             />
           </ListGroup>
+        </Section>
+
+        <Section title={t("dataTable")}>
+          <GalleryTable />
         </Section>
 
         <Section title={t("layout")}>
@@ -1190,6 +1201,66 @@ function GalleryBody({
           </div>
         </Section>
       </main>
+    </div>
+  );
+}
+
+/** A table one chooses rows of, in a flat card: numbers read left to right. */
+function GalleryTable() {
+  const t = useTranslations("design");
+  const [chosen, setChosen] = useState<string | null>(null);
+  const people = [
+    { key: "p1", name: t("person1"), days: 21, hours: "168.50", waiting: 0 },
+    { key: "p2", name: t("person2"), days: 18, hours: "142.25", waiting: 2 },
+    { key: "p3", name: t("person3"), days: 9, hours: "61.00", waiting: 0 },
+  ];
+  return (
+    <div className="flex flex-col gap-2">
+      <Card padding="none" className="overflow-hidden">
+        <DataTable
+          caption={t("dataTable")}
+          columns={[
+            { key: "name", label: t("dataTableName") },
+            {
+              key: "days",
+              label: t("dataTableDays"),
+              align: "end",
+              numeric: true,
+            },
+            {
+              key: "hours",
+              label: t("dataTableHours"),
+              align: "end",
+              numeric: true,
+            },
+            {
+              key: "waiting",
+              label: t("dataTableWaiting"),
+              align: "end",
+              numeric: true,
+            },
+          ]}
+          rows={people.map((person) => ({
+            key: person.key,
+            label: t("dataTableOpen", { name: person.name }),
+            cells: {
+              name: person.name,
+              days: person.days,
+              hours: person.hours,
+              waiting: person.waiting,
+            },
+          }))}
+          selected={chosen}
+          onSelect={setChosen}
+        />
+      </Card>
+      <p className="px-1 text-ink-2 text-sm">
+        {chosen
+          ? t("dataTableChosen", {
+              name: people.find((person) => person.key === chosen)?.name ?? "",
+            })
+          : t("dataTableHint")}
+      </p>
     </div>
   );
 }

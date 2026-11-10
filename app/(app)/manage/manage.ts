@@ -7,6 +7,7 @@ import {
   type ModuleRow,
   readModuleSettings,
 } from "@domain/modules";
+import { canGrantPay } from "@domain/payroll-access";
 import {
   fieldsFor,
   type SettingLevel,
@@ -42,6 +43,8 @@ export async function manageAccess() {
     rows: business.modules,
     viewOnly: !canWrite(member.viewing),
     level: settingLevelOf(membership.role),
+    /** Who sees pay is the owner's to decide (payroll P3). */
+    grantsPay: canGrantPay(membership.role),
   };
 }
 

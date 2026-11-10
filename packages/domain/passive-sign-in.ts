@@ -25,6 +25,9 @@ export const DEMO_PEOPLE = [
   "shopOwner",
   "shopManager",
   "shopWorker",
+  // The shop's accountant (payroll P3), in the shop alone until a login may
+  // be in several businesses (P3b).
+  "accountant",
 ] as const;
 
 export type DemoPerson = (typeof DEMO_PEOPLE)[number];
@@ -46,7 +49,7 @@ export const DEMO_BUSINESSES = [
   {
     key: "shop",
     slug: "demo-shop",
-    people: ["shopOwner", "shopManager", "shopWorker"],
+    people: ["shopOwner", "shopManager", "shopWorker", "accountant"],
     renews: true,
   },
 ] as const satisfies readonly {
@@ -68,6 +71,7 @@ const ACCOUNTS: Record<DemoPerson, string> = {
   shopOwner: "shop-owner",
   shopManager: "shop-manager",
   shopWorker: "shop-worker",
+  accountant: "accountant",
 };
 
 /** A person on offer, or null for anything else a client sends. */

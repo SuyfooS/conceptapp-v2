@@ -19,8 +19,12 @@ const SCANNED = ["app", "packages/ui", "modules"];
 export const ALLOWED: Record<string, string> = {
   "app/design/shell/clock/team/data.ts":
     "mock rows for the clock demo; stands in for database data, not UI copy",
+  "app/design/shell/clock/pay/data.ts":
+    "mock rows for the pay screens' demo; stands in for database data, not UI copy",
   "app/design/shell/data.ts":
     "mock rows for the layout demo; stands in for database data, not UI copy",
+  "app/design/shell/manage/access/data.ts":
+    "mock rows for the demo of who sees pay; stands in for database data, not UI copy",
   "app/design/shell/lists/data.ts":
     "mock rows for the lists demo; stands in for database data, not UI copy",
   "app/design/console/data.ts":

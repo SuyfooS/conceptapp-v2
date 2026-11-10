@@ -272,6 +272,15 @@ export function InboxView({
           shift: null,
           notes: [],
         };
+      case "access.pay_granted":
+        return {
+          // Taken back since: it says so, and leads nowhere new.
+          title: settled
+            ? t("kinds.access.pay_granted.settledTitle")
+            : t("kinds.access.pay_granted.title"),
+          shift: null,
+          notes: settled ? [] : [t("kinds.access.pay_granted.note")],
+        };
       case "push.test":
         return {
           title: t("kinds.push.test.title"),

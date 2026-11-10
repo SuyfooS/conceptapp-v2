@@ -29,6 +29,7 @@ export default async function ManagePage() {
       home="/home"
       team="/team"
       shabbatCity={shabbatCityState(access.rows, access.details)}
+      payAccess={access.grantsPay}
       departments={
         departments === null
           ? null

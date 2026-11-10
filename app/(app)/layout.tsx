@@ -55,7 +55,7 @@ async function Shell({ children }: { children: ReactNode }) {
     return <NoBusinessScreen signOut={signOut} />;
   }
 
-  const { business, role } = member.membership;
+  const { business, role, perms } = member.membership;
   const [enabled, wording, openLists] = await Promise.all([
     currentModules(),
     currentWording(),
@@ -78,7 +78,8 @@ async function Shell({ children }: { children: ReactNode }) {
     enabled.includes("notifications") && !member.viewing
       ? member.unread.action
       : 0;
-  // Home, then one item per enabled module the role reaches.
+  // Home, then one item per enabled module the role reaches; someone off the
+  // staff (an accountant) gets the modules' own tabs for them instead.
   const nav: NavItem[] = [
     {
       href: "/home",
@@ -87,9 +88,11 @@ async function Shell({ children }: { children: ReactNode }) {
       exact: true,
       count: toAct > 0 ? toAct : undefined,
     },
-    ...moduleNav(manifests, enabled, role).map((entry) => ({
+    ...moduleNav(manifests, enabled, { role, perms }).map((entry) => ({
       href: entry.href,
-      label: tm(`${entry.key}.name`),
+      label: entry.outside
+        ? tm(`${entry.key}.outsideNav` as never)
+        : tm(`${entry.key}.name`),
       icon: moduleIcons[entry.icon],
       count: entry.key === "lists" && openLists > 0 ? openLists : undefined,
     })),

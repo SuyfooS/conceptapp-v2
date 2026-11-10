@@ -36,7 +36,10 @@ async function expectCleanPage(page: Page) {
 }
 
 /** From the console's page for the demo restaurant, view it as `role`. */
-async function viewAs(page: Page, role: "owner" | "manager" | "worker") {
+async function viewAs(
+  page: Page,
+  role: "owner" | "manager" | "worker" | "accountant",
+) {
   await signIn(page, ADMIN, /\/admin$/);
   await page.goto("/admin/businesses/demo-restaurant");
   await expect(
@@ -173,5 +176,48 @@ test("viewing as a manager shows the team but saves nothing", async ({
       .filter({ visible: true })
       .first(),
   ).toBeVisible();
+  await expectCleanPage(page);
+});
+
+// The one view that reads pay (payroll P3): as an accountant, the business
+// shows Home and the hours for payroll, and nothing of the staff's.
+test("viewing as an accountant shows the hours for payroll and nothing else", async ({
+  page,
+}) => {
+  await viewAs(page, "accountant");
+  const items = nav(page).locator("[data-nav-label]");
+  await expect(items).toHaveText([he.app.nav.home, m.time_clock.outsideNav]);
+  await expect(
+    page.getByRole("link", { name: he.app.home.accountant.open }),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  await nav(page).getByRole("link", { name: m.time_clock.outsideNav }).click();
+  await expect(page).toHaveURL(/\/clock\/pay/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.pay.title }),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  for (const path of ["/schedule", "/clock", "/team", "/manage/access"]) {
+    await page.goto(path);
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
+      path,
+    ).toBeVisible();
+  }
+});
+
+test("viewing as the owner reads no pay", async ({ page }) => {
+  await viewAs(page, "owner");
+  await page.goto("/clock/pay");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
+  ).toBeVisible();
+  // Who sees pay can be read, not changed.
+  await page.goto("/manage/access");
+  await expect(
+    page.getByRole("switch", { name: he.app.manage.access.roles.manager }),
+  ).toBeDisabled();
   await expectCleanPage(page);
 });

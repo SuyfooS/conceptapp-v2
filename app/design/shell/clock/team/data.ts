@@ -16,6 +16,7 @@ export const demoTeamPaths = {
   clock: "/design/shell/clock",
   team: "/design/shell/clock/team",
   code: "/design/shell/clock/code",
+  pay: "/design/shell/clock/pay",
 };
 
 const shift = (
@@ -156,6 +157,7 @@ export const demoTeamHours: TeamHoursData = {
   required: true,
   showCode: true,
   viewOnly: false,
+  payroll: true,
   toConfirm: [
     {
       entryId: "68000000-0000-4000-a000-000000000031",

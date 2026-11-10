@@ -61,11 +61,7 @@ export const listsAccess = cache(async () => {
   ]);
   const membership = member?.membership;
   const manifest = manifestFor("lists");
-  if (
-    !member ||
-    !membership ||
-    !canOpenModule(manifest, enabled, membership.role)
-  ) {
+  if (!member || !membership || !canOpenModule(manifest, enabled, membership)) {
     return null;
   }
   const { role, perms, business } = membership;

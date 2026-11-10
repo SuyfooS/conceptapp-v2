@@ -36,8 +36,11 @@ export async function ModuleScreen({
     currentMember(),
     currentModules(),
   ]);
-  const role = member?.membership?.role;
-  if (!role || !canOpenModule(manifestFor(moduleKey), enabled, role)) {
+  const membership = member?.membership;
+  if (
+    !membership ||
+    !canOpenModule(manifestFor(moduleKey), enabled, membership)
+  ) {
     notFound();
   }
   return (

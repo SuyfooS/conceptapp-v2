@@ -10,6 +10,12 @@ type Content = {
   leading?: ReactNode;
   /** Badge, time or value at the end of the row. */
   trailing?: ReactNode;
+  /**
+   * The row whose content is shown now, beside the list: a bar in the
+   * business's colour at its start, and on a link or button `aria-current`,
+   * so screen readers say so too.
+   */
+  current?: boolean;
   className?: string;
 };
 
@@ -30,6 +36,9 @@ const base =
   "relative flex min-h-16 w-full items-center gap-3 px-4 py-2.5 text-start not-first:before:absolute not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
 const interactiveClass =
   "transition-colors duration-150 ease-calm hover:bg-surface-2 active:bg-surface-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent";
+// The current row's bar, which keeps every colour of the row readable.
+const currentClass =
+  "after:absolute after:inset-y-2 after:start-0 after:w-1 after:rounded-full after:bg-accent after:content-['']";
 
 /** One row of a list. A link or button when it leads somewhere, plain otherwise. */
 export function ListRow({
@@ -40,13 +49,18 @@ export function ListRow({
   href,
   onClick,
   disabled = false,
+  current = false,
   className,
 }: ListRowProps) {
   const interactive = href !== undefined || onClick !== undefined;
-  // The separator starts at the text, as in a grouped list.
-  const inset = leading
-    ? "not-first:before:start-[68px]"
-    : "not-first:before:start-4";
+  // The separator starts at the text, as in a grouped list; the current row
+  // has its bar.
+  const row = cn(
+    base,
+    leading ? "not-first:before:start-[68px]" : "not-first:before:start-4",
+    current && currentClass,
+  );
+  const ariaCurrent = current ? "true" : undefined;
   const content = (
     <>
       {leading ? (
@@ -74,7 +88,8 @@ export function ListRow({
     return (
       <Link
         href={href}
-        className={cn(base, inset, interactiveClass, className)}
+        aria-current={ariaCurrent}
+        className={cn(row, interactiveClass, className)}
       >
         {content}
       </Link>
@@ -86,9 +101,9 @@ export function ListRow({
         type="button"
         onClick={onClick}
         disabled={disabled}
+        aria-current={ariaCurrent}
         className={cn(
-          base,
-          inset,
+          row,
           disabled ? "opacity-50" : interactiveClass,
           className,
         )}
@@ -97,7 +112,7 @@ export function ListRow({
       </button>
     );
   }
-  return <div className={cn(base, inset, className)}>{content}</div>;
+  return <div className={cn(row, className)}>{content}</div>;
 }
 
 /** A grouped list: one soft card, with hairlines between its rows. */

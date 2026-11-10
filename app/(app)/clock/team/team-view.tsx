@@ -7,6 +7,7 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
+import { ReceiptText } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
@@ -55,6 +56,7 @@ export function TeamHoursView({
   wording: AppWording;
 }) {
   const t = translator(wording, "app.clock.team");
+  const tPay = translator(wording, "app.pay");
   const tClock = translator(wording, "app.clock");
   const tHistory = translator(wording, "app.clock.history");
   const format = useFormatter();
@@ -251,6 +253,16 @@ export function TeamHoursView({
               <p className="text-ink-2">{t("noPeople")}</p>
             </Card>
           )}
+          {data.payroll ? (
+            <ListGroup className="mt-6">
+              <ListRow
+                href={`${paths.pay}?month=${data.month}`}
+                leading={<ReceiptText />}
+                title={tPay("clockRow.title")}
+                subtitle={tPay("clockRow.subtitle")}
+              />
+            </ListGroup>
+          ) : null}
         </div>
       </div>
     </PageBody>
