@@ -411,3 +411,11 @@ export type TemplateActions = {
 };
 
 export type RestoreTemplate = (templateId: string) => Promise<ListActionResult>;
+
+/**
+ * The key of "every department" among the department filter's choices. Here,
+ * not in the filter's own file: that one is a client module, and a server
+ * component importing a value from it gets a reference, not the string, so
+ * the "all" choice had no address and did nothing.
+ */
+export const ALL_DEPARTMENTS = "all";

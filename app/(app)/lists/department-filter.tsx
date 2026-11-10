@@ -5,9 +5,6 @@ import { cn } from "@ui/cn";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-/** The key of "every department" among the filter's choices. */
-export const ALL_DEPARTMENTS = "all";
-
 /**
  * Lists' department filter, for someone in more than one department: a quiet
  * menu, "כל המחלקות / מטבח / בר", rather than a row of pills. Choosing one

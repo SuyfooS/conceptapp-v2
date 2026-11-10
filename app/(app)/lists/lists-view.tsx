@@ -15,9 +15,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { type AppWording, type Translator, translator } from "../wording";
-import { ALL_DEPARTMENTS, DepartmentFilter } from "./department-filter";
+import { DepartmentFilter } from "./department-filter";
 import { ListCard, type ListShown, ListTable } from "./list-card";
-import type { ListActionResult, ListsHomeData } from "./list-types";
+import {
+  ALL_DEPARTMENTS,
+  type ListActionResult,
+  type ListsHomeData,
+} from "./list-types";
 import { sentWords } from "./list-words";
 import { PassedNotice } from "./passed-notice";
 import { SentNotice } from "./sent-notice";
