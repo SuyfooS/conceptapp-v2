@@ -53,6 +53,20 @@ export function formatShekels(agorot: number, locale: "he" | "en"): string {
   return locale === "he" ? `${sign}${amount} ₪` : `${sign}₪${amount}`;
 }
 
+/**
+ * What `minutes` at an hourly wage and a rate (100 for 100%) come to, in whole
+ * agorot: `Math.round(minutes × agorot × percent / 6000)`, so 347 minutes at
+ * 38.00 ₪ and 100% are 21,977 agorot. Payroll rounds once per rate and per
+ * wage, then adds the results (payroll plan §3, §14 accountant 10).
+ */
+export function minutesAgorot(
+  minutes: number,
+  hourlyAgorot: number,
+  percent: number,
+): number {
+  return Math.round((minutes * hourlyAgorot * percent) / 6000);
+}
+
 /** The locale a screen speaks, as `formatShekels` takes it. */
 export function moneyLocale(locale: string): "he" | "en" {
   return locale === "en" ? "en" : "he";

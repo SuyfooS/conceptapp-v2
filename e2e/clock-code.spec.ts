@@ -134,7 +134,8 @@ test("an owner asks for a code to clock in, and a manager doesn't see the switch
   await page.goto("/manage/time_clock");
   const ask = page.getByRole("switch", { name: new RegExp(label) });
   await expect(ask).toHaveAttribute("aria-checked", "false");
-  await expect(page.getByText(he.app.manage.ownerOnly)).toBeVisible();
+  // The pay rules (payroll P6) are the owner's too, each with the same mark.
+  await expect(page.getByText(he.app.manage.ownerOnly).first()).toBeVisible();
   await expectCleanPage(page);
   await ask.click();
   await expect(

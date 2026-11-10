@@ -13,6 +13,7 @@ import {
   timeEntry,
 } from "@domain/time-clock";
 import type { Database } from "./database.types";
+import { allPages } from "./pages";
 import { punchKey } from "./punch-key";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -379,7 +380,8 @@ function entryOf(row: EntryRow): TimeEntry {
  * signed-in person may read them (RLS: their own; managers, owners and
  * `clock.edit` the business's), oldest first. Open entries that started earlier
  * are included, so "at work now" sees a night shift from yesterday. With
- * `userId`, that person's only.
+ * `userId`, that person's only. Read page by page (`allPages`): payroll reads
+ * a whole business over four months, past PostgREST's 1000 rows.
  */
 export async function getTimeEntries(
   businessId: string,
@@ -388,16 +390,18 @@ export async function getTimeEntries(
   userId?: string,
 ): Promise<TimeEntry[]> {
   const supabase = await createClient();
-  const query = supabase
-    .from("time_entries")
-    .select(ENTRY_COLUMNS)
-    .eq("business_id", businessId)
-    .lt("clock_in", to.toISOString())
-    .or(`clock_in.gte.${from.toISOString()},clock_out.is.null`)
-    .order("clock_in");
-  const { data, error } = await (userId ? query.eq("user_id", userId) : query);
-  if (error) throw error;
-  return data.map(entryOf);
+  const rows = await allPages((first, last) => {
+    let query = supabase
+      .from("time_entries")
+      .select(ENTRY_COLUMNS)
+      .eq("business_id", businessId)
+      .lt("clock_in", to.toISOString())
+      .or(`clock_in.gte.${from.toISOString()},clock_out.is.null`);
+    if (userId) query = query.eq("user_id", userId);
+    // `id` breaks ties, so no row falls between two pages.
+    return query.order("clock_in").order("id").range(first, last);
+  });
+  return rows.map(entryOf);
 }
 
 /**

@@ -29,12 +29,18 @@ export type WageRow = {
   note: string | null;
 };
 
-const newer = (a: WageRow, b: WageRow) =>
+/** What the rule for the wage on a day reads of a row (the payroll engine passes no more). */
+type Dated = Pick<WageRow, "from" | "setAt">;
+
+const newer = (a: Dated, b: Dated) =>
   a.from === b.from ? a.setAt > b.setAt : a.from > b.from;
 
 /** The wage in effect on a date: the latest `from` on or before it, then the latest set. */
-export function wageOn(rows: readonly WageRow[], date: string): WageRow | null {
-  let found: WageRow | null = null;
+export function wageOn<Row extends Dated>(
+  rows: readonly Row[],
+  date: string,
+): Row | null {
+  let found: Row | null = null;
   for (const row of rows) {
     if (row.from <= date && (found === null || newer(row, found))) {
       found = row;
