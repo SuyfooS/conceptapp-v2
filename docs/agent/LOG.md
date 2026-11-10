@@ -3,6 +3,19 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-07 · chat · the landing page
+
+- Orel asked for a landing page and decided in chat: it speaks to owners of any business the app can make more efficient (restaurants, carpentry shops, kitchens, hotels, clothing and electronics stores), and the product opens to them too, not only restaurants and cafés. `CLAUDE.md` principle 1 follows. Templates for other kinds of business are separate work he hasn't scheduled. Until they exist, a carpentry shop or hotel opens on the restaurant template.
+- His other answers: the slogan "העסק שלך. מסודר." (my wording, his pick), the page at `/` with signed-in people sent on to `/home`, the whole pilot shown with lists, the management page and roles marked "בקרוב", and a main action that emails him, at the address he chose to show publicly. No prices, customers or numbers. The copy beyond the slogan is mine, for him to read.
+- `app/(public)/page.tsx`: hero with a phone showing Today, five everyday questions that settle into a list with their answers as you scroll, the features as a deck on phones and a grid from tablet up, a word that changes on scroll, how to start, and contact. Sample data only, and the footer says so.
+- He also asked for design elements from reactbits.dev, slightly changed to avoid copyright. Its licence (MIT + Commons Clause) allows use in a site if its notice is kept, and a small change would not make the code ours, so I wrote the ideas from scratch in CSS: no React Bits code, no new library, no JavaScript of the page's own. Ideas taken from: Blur Text, Grainient and Noise, Scroll Stack, Fade Content, Rotating Text, and Magic Bento's layout. The settling pile is ours. Scroll timelines need Chrome or Safari 26; elsewhere, and under reduced motion, the page is a plain list.
+- While this waited to merge, main built the management page (settings, business details, the activity log), so the landing page shows "ניהול העסק" as ready, with a sample of the log. Lists and permissions per role keep "בקרוב".
+- On 9 November main had also built templates for every kind of business, the logo, QR clock-in, the profile and notifications. The page now carries ConceptApp's logo, and nothing else on it changed: lists and permissions per role are still unbuilt. Notifications are not on the page; Orel decides whether they go there.
+- Then main built the lists' screens (#91) and switched lists on everywhere, so the page shows them as ready, with a sample list drawn by `ChecklistItem`. Only permissions per role keep "בקרוב".
+- New in `packages/ui`, on `/design`: FocusText, WordCycle, SettlingCards, DeckCard, PhoneFrame. New tokens: `text-3xl`, `text-4xl`, `--bezel`.
+- The conversation note on `יומן הסוכן` was blocked by the session's permissions, so this entry is the record.
+- Proof: `pnpm check`, `pnpm build`; axe clean at 390, 820 and 1440 in light and dark, no horizontal scroll, contrast of the hero's text measured on its real pixels. Playwright `landing.spec.ts` runs in CI only. Not tested on a real iPhone or Android.
+
 ## 2026-11-09 · chat · the profile, H1: `/me` and photos (#82)
 
 - On chat/profile-me from `c702064`, following the H1 plan with its critique applied. Migration `20261109000100_profile_photo_demo.sql`: `private.keeps_demo_profile` / `public.keeps_demo_profile` (server only) and a trigger that refuses a new photo (55000) to someone in a demo business that keeps its people; clearing stays allowed, so the reset still works. The local seed opens its restaurant (`"profiles": true`) for the browser tests and keeps the shop closed; `tooling/demo-profiles.test.ts` keeps `hosted-demo.sql` closed. pgTAP in `profile_photo_demo.test.sql`; `database.types.ts` gained `keeps_demo_profile`, written by hand in the generator's format.

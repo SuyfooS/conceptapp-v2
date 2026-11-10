@@ -39,6 +39,10 @@ it knows is this repo and its GitHub issues.
   screens and the profile: in the app and on the phone through free Web Push, no SMS.
   Each person chooses what reaches their phone and can set quiet hours. The order is
   notifications, then lists, then chat, and lists and chat will both notify.
+- The landing page at `/` promises what its copy says and nothing else. It has no prices,
+  customers or numbers, and shows permissions per role as "בקרוב". When
+  they are built, remove its mark in the same change. Don't add a claim, price or
+  customer without asking Orel.
 
 ## Talking to Orel
 

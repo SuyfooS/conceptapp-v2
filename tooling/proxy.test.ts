@@ -47,4 +47,9 @@ describe("proxy", () => {
     expect(source).toContain(`"/admin",`);
     expect(source).toContain(`"/admin/:path*"`);
   });
+
+  it("sends signed-in people past the landing page", () => {
+    expect(source).toContain(`const DOORS = ["/",`);
+    expect(source).toMatch(/matcher: \[\s*"\/",/);
+  });
 });

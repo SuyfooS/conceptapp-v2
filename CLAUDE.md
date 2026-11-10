@@ -78,7 +78,8 @@ Only `app/` imports app code (`@/…`).
   Every token has light and dark values and follows the device, with no switch in the
   app. `bg-brand` is ConceptApp's own colour: admin console and marketing only.
 - Type scale: `text-sm` 13 · `text-base` 15 · `text-md` 17 (body) · `text-lg` 20 ·
-  `text-xl` 24 · `text-2xl` 34 (large titles). The device's font on Apple devices,
+  `text-xl` 24 · `text-2xl` 34 (large titles). `text-3xl` and `text-4xl` grow with the
+  screen and are for the landing page only. The device's font on Apple devices,
   Heebo everywhere else. Weights 400/500/600/700. Real content wraps; no `truncate`.
 - Cards have no borders: `flat` (soft shadow, the default), `float` (lifted over what
   is under it), `accent` (`bg-accent-soft`) and `hero` (the business's colour, with
@@ -94,6 +95,7 @@ Only `app/` imports app code (`@/…`).
   and AvatarStack (with photos), AvatarPhotoPicker, VisibilityNote, ProfileCover (eight presets) and CoverChoices, Tile, CoverageBar, ProgressRing, PunchCircle and ScanCircle, ChecklistItem, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
   PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay.
+  For the landing page: FocusText, WordCycle, SettlingCards, DeckCard, PhoneFrame.
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a
@@ -102,7 +104,9 @@ Only `app/` imports app code (`@/…`).
 - Phone numbers are stored as E.164 (`normalizeIsraeliMobile` in
   `@domain/phone`); `PhoneField` submits that form through a hidden input.
 - Touch targets at least 44px. Motion on state changes only: 150–200ms, or the spring
-  (`ease-spring`, `pressable`) for what moves. Reduced motion turns it off.
+  (`ease-spring`, `pressable`) for what moves. Reduced motion turns it off. The landing
+  page is the one exception: its motion follows the scroll, in CSS with no JavaScript,
+  plus one entrance for the slogan (the rules at the end of `globals.css`).
 - All user-facing copy in Hebrew; plain words, no exclamation marks.
 - Copy lives in `messages/he.json` with its English twin in `messages/en.json`
   (same keys, same `{placeholders}`), read with next-intl's `useTranslations`

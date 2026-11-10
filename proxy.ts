@@ -23,7 +23,8 @@ export const PRIVATE = [
   "/photos",
   "/admin",
 ];
-const DOORS = ["/sign-in", "/enter"];
+/** Where signed-in people have no business: they go on to the app. `/` is the landing page. */
+const DOORS = ["/", "/sign-in", "/enter"];
 
 function isPrivate(pathname: string) {
   return PRIVATE.some((p) => pathname === p || pathname.startsWith(`${p}/`));
@@ -55,6 +56,7 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
+    "/",
     "/home/:path*",
     "/schedule/:path*",
     "/clock/:path*",

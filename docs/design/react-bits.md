@@ -34,7 +34,18 @@ Orel keeps [React Bits](https://reactbits.dev/get-started/index) as a source of 
 
 ## For the landing page, not the app
 
-Soft Aurora, Grainient, Silk, Light Rays and similar backgrounds; Blur Text, Split Text, Shiny Text and Scroll Reveal for headlines; Tilted Card and Logo Loop. Most of the backgrounds are WebGL, which is too heavy for a working screen on a phone but fine for one marketing page.
+Taken for `/`, written from scratch in CSS with no JavaScript of the page's own. The motion follows the scroll: the landing page is the one exception to "motion on state changes only".
+
+| React Bits | On the landing page | Where |
+|---|---|---|
+| Grainient, Noise | the hero's gradient in ConceptApp's colour, with grain | `brand-surface`, `grain` |
+| Blur Text | the slogan's words come into focus one after another | `FocusText` |
+| Fade Content, Scroll Reveal | sections rise into place as they scroll in | `reveal` |
+| Scroll Stack | the features as a deck on phones | `DeckCard` |
+| Rotating Text | "מתאים ל…" changes word as you scroll, and rests on "לעסק שלך" | `WordCycle` |
+| Magic Bento, its layout only | the features as a grid on desktop | the page |
+
+The pile of questions that settles into a list (`SettlingCards`) is ours. Still open for it: Soft Aurora, Silk, Light Rays, Split Text, Shiny Text, Tilted Card and Logo Loop. Logo Loop waits for real customers who agree to be shown. Most of those backgrounds are WebGL, which is too heavy for a working screen on a phone but could suit one marketing page.
 
 ## Left out, and why
 

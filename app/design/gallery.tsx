@@ -12,6 +12,7 @@ import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
+import { DeckCard } from "@ui/card-deck";
 import { ChecklistItem } from "@ui/checklist-item";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
@@ -32,17 +33,20 @@ import {
 import { FieldRow, rowInputClass, rowPillInputClass } from "@ui/field-row";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
+import { FocusText } from "@ui/focus-text";
 import { IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { Logo, LogoMark } from "@ui/logo";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { PhoneField, type PhoneValue } from "@ui/phone-field";
+import { PhoneFrame } from "@ui/phone-frame";
 import { ProfileCover } from "@ui/profile-cover";
 import { ProgressRing } from "@ui/progress-ring";
 import { PunchCircle } from "@ui/punch-circle";
 import { QrCode } from "@ui/qr-code";
 import { ScanCircle } from "@ui/scan-circle";
 import { Segmented } from "@ui/segmented";
+import { SettlingCards } from "@ui/settling-cards";
 import { Sheet } from "@ui/sheet";
 import { SkeletonBones } from "@ui/skeleton";
 import { StatusToast } from "@ui/status-toast";
@@ -52,6 +56,7 @@ import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
 import { Tile } from "@ui/tile";
 import { VisibilityNote } from "@ui/visibility-note";
 import { WeekStrip } from "@ui/week-strip";
+import { WordCycle } from "@ui/word-cycle";
 import {
   ArrowLeft,
   Bell,
@@ -112,6 +117,8 @@ const SWATCHES = [
 ] as const;
 
 const SCALE = [
+  { cls: "text-4xl font-bold", label: "4xl · 56–108" },
+  { cls: "text-3xl font-bold", label: "3xl · 34–52" },
   { cls: "text-2xl font-bold", label: "2xl · 34" },
   { cls: "text-xl font-bold", label: "xl · 24" },
   { cls: "text-lg font-medium", label: "lg · 20" },
@@ -1199,6 +1206,55 @@ function GalleryBody({
             <Badge tone="warning">{t("warning")}</Badge>
             <Badge tone="danger">{t("dangerB")}</Badge>
           </div>
+        </Section>
+
+        <Section title={t("grainFocus")}>
+          <Card tone="hero" padding="lg" className="grain relative">
+            <p className="font-bold text-3xl">
+              <FocusText text={t("motionTitle")} />
+            </p>
+          </Card>
+        </Section>
+
+        <Section title={t("wordCycle")}>
+          <p className="font-bold text-3xl">
+            <span className="block text-ink-2">{t("cycleLead")}</span>
+            <WordCycle words={[t("cycle1"), t("cycle2"), t("cycle3")]} />
+          </p>
+        </Section>
+
+        <Section title={t("phoneFrame")}>
+          <PhoneFrame
+            label={t("phoneLabel")}
+            className="mx-auto w-full max-w-[240px]"
+          >
+            <p className="px-4 py-16 text-center font-semibold">
+              {t("phoneText")}
+            </p>
+          </PhoneFrame>
+        </Section>
+
+        <Section title={t("deck")}>
+          <div className="flex flex-col gap-4">
+            <DeckCard index={0} className="flex flex-col gap-1.5">
+              <h3 className="font-bold text-2xl">{t("deckCard1")}</h3>
+              <p className="min-h-40 text-ink-2">{t("deckBody")}</p>
+            </DeckCard>
+            <DeckCard index={1} className="flex flex-col gap-1.5">
+              <h3 className="font-bold text-2xl">{t("deckCard2")}</h3>
+              <p className="min-h-40 text-ink-2">{t("deckBody")}</p>
+            </DeckCard>
+          </div>
+        </Section>
+
+        <Section title={t("settling")}>
+          <SettlingCards
+            head={<p className="font-bold text-xl">{t("settleTitle")}</p>}
+            items={[
+              { key: "q1", question: t("settleQ1"), answer: t("settleA1") },
+              { key: "q2", question: t("settleQ2"), answer: t("settleA2") },
+            ]}
+          />
         </Section>
       </main>
     </div>
