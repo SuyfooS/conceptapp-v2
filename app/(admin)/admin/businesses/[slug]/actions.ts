@@ -9,6 +9,12 @@ import {
   issueInviteLink,
 } from "@db/invites";
 import {
+  archiveListTemplate,
+  getListTemplateForTeam,
+  restoreListTemplate,
+  saveListTemplate,
+} from "@db/lists";
+import {
   getBusinessModulesForTeam,
   setModuleEnabled,
   setModuleSettings,
@@ -18,6 +24,7 @@ import { getTemplateSentence, setBusinessWording } from "@db/wording";
 import { checkBusinessDetailsChange } from "@domain/business-details";
 import { departments as departmentsSchema } from "@domain/departments";
 import { inviteLink } from "@domain/invites";
+import { listTemplateInput, type SavedTemplate } from "@domain/lists";
 import {
   enabledModules,
   fitsTabBar,
@@ -39,6 +46,7 @@ import { manifestFor, manifests } from "@modules/registry";
 import { refresh, revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
+import type { ListActionResult } from "@/app/(app)/lists/list-types";
 import type { SettingsResult } from "@/app/(app)/manage/settings-types";
 import type { InviteState } from "@/app/(app)/team/actions";
 import { requestOrigin } from "@/app/origin";
@@ -253,6 +261,71 @@ export async function saveTeamDepartmentMembersAction(
   );
   refresh();
   return teamResult(result);
+}
+
+/**
+ * Someone on the team saves a business's list template, as they set it up,
+ * with the version the editor last had (`public.save_list_template`, which
+ * lets the team write: `private.can_edit_settings`). The editor keeps what
+ * it shows, so nothing is read again here.
+ */
+export async function saveTeamListTemplateAction(
+  businessId: string,
+  input: unknown,
+  seenVersion: unknown,
+): Promise<ListActionResult<SavedTemplate>> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const template = listTemplateInput.safeParse(input);
+  const version = z.int().min(1).nullable().safeParse(seenVersion);
+  if (!template.success || !version.success) {
+    return { ok: false, failure: "invalid" };
+  }
+  return saveListTemplate(
+    staff.userId,
+    businessId,
+    template.data,
+    version.data ?? undefined,
+  );
+}
+
+/**
+ * Removes one of the business's templates, or brings it back (the undo), as
+ * the team sets its lists up. Only a template of that business.
+ */
+async function teamTemplateChange(
+  businessId: string,
+  templateId: unknown,
+  change: typeof archiveListTemplate,
+): Promise<ListActionResult> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const id = z.uuid().safeParse(templateId);
+  if (!id.success) return { ok: false, failure: "invalid" };
+  const template = await getListTemplateForTeam(businessId, id.data);
+  if (template === "notYet") return { ok: false, failure: "notYet" };
+  if (!template) return { ok: false, failure: "noAccess" };
+  const result = await change(staff.userId, id.data);
+  refresh();
+  return result;
+}
+
+export async function archiveTeamListTemplateAction(
+  businessId: string,
+  templateId: unknown,
+): Promise<ListActionResult> {
+  return teamTemplateChange(businessId, templateId, archiveListTemplate);
+}
+
+export async function restoreTeamListTemplateAction(
+  businessId: string,
+  templateId: unknown,
+): Promise<ListActionResult> {
+  return teamTemplateChange(businessId, templateId, restoreListTemplate);
 }
 
 function teamResult(result: { ok: true } | { ok: false; code?: string }) {

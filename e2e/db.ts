@@ -1077,6 +1077,83 @@ export async function demoDepartmentNames(): Promise<string[]> {
   return rows.map((row) => row.name);
 }
 
+export type DemoTemplate = {
+  id: string;
+  name: string;
+  note: string | null;
+  version: number;
+  archived: boolean;
+  recipient: string | null;
+  items: {
+    kind: string;
+    label: string;
+    required: boolean;
+    min: number | null;
+    max: number | null;
+  }[];
+};
+
+/** The demo restaurant's list templates by name, removed ones too (L3). */
+export async function demoTemplates(name: string): Promise<DemoTemplate[]> {
+  return await sql<DemoTemplate[]>`
+    select t.id, t.name, t.note, t.version, t.archived_at is not null as archived,
+      t.recipient_kind as recipient,
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+            'kind', i.kind, 'label', i.label, 'required', i.required,
+            'min', i.min_value, 'max', i.max_value)
+          order by i.position)
+        from public.list_template_items i where i.template_id = t.id
+      ), '[]'::jsonb) as items
+    from public.list_templates t
+    where t.business_id = ${DEMO_RESTAURANT} and t.name = ${name}
+    order by t.created_at desc`;
+}
+
+/**
+ * Someone else saves a demo template meanwhile: its version moves on, as
+ * another screen's save would move it, so the next save from a screen that
+ * read it before is refused (40001).
+ */
+export async function bumpDemoTemplate(id: string): Promise<void> {
+  await sql`update public.list_templates
+    set version = version + 1, note = 'נשמר במסך אחר'
+    where id = ${id} and business_id = ${DEMO_RESTAURANT}`;
+}
+
+/** Removes for good the demo templates a test made, and the lists sent from them. */
+export async function removeDemoTemplates(names: string[]): Promise<void> {
+  await sql`delete from public.lists
+    where business_id = ${DEMO_RESTAURANT} and name in ${sql(names)}`;
+  await sql`delete from public.list_templates
+    where business_id = ${DEMO_RESTAURANT} and name in ${sql(names)}`;
+}
+
+export type SentDemoList = {
+  name: string;
+  status: string;
+  recipient: string;
+  due: boolean;
+  people: number;
+  items: { kind: string; label: string }[];
+};
+
+/** How the demo restaurant's lists of this name were sent, newest first. */
+export async function sentDemoLists(name: string): Promise<SentDemoList[]> {
+  return await sql<SentDemoList[]>`
+    select l.name, l.status, l.recipient_kind as recipient,
+      l.due_at is not null as due,
+      (select count(*)::int from public.list_people p where p.list_id = l.id) as people,
+      coalesce((
+        select jsonb_agg(jsonb_build_object('kind', i.kind, 'label', i.label)
+          order by i.position)
+        from public.list_items i where i.list_id = l.id
+      ), '[]'::jsonb) as items
+    from public.lists l
+    where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+    order by l.created_at desc`;
+}
+
 /** Removes a department a test added (archived, as the screen removes them). */
 export async function archiveDemoDepartment(name: string): Promise<void> {
   await sql`update public.departments set archived_at = now()

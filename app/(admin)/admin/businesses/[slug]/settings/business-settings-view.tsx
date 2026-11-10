@@ -1,8 +1,10 @@
 import type { BusinessDetails } from "@domain/business-details";
 import type { ModuleKey } from "@domain/modules";
 import type { ShabbatCity } from "@domain/shabbat";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
+import { ClipboardList } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { BusinessDetailsForm } from "@/app/(app)/manage/business-details-form";
 import {
@@ -37,6 +39,7 @@ export function BusinessSettingsView({
   save,
   setEnabled,
   departments,
+  listsHref = null,
 }: {
   name: string;
   backHref: string;
@@ -62,10 +65,16 @@ export function BusinessSettingsView({
     save: SaveDepartments;
     saveMembers: SaveDepartmentMembers;
   } | null;
+  /**
+   * The business's list templates, edited as its list managers edit them,
+   * while lists are on; null otherwise.
+   */
+  listsHref?: string | null;
 }) {
   const t = useTranslations("admin.settings");
   const tm = useTranslations("modules");
   const td = useTranslations("app.manage.departments");
+  const tl = useTranslations("app.lists.templates");
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
@@ -97,6 +106,18 @@ export function BusinessSettingsView({
             saveMembers={departments.saveMembers}
           />
         </section>
+      ) : null}
+      {listsHref ? (
+        <PageSection title={t("lists.title")}>
+          <ListGroup className="md:max-w-2xl">
+            <ListRow
+              href={listsHref}
+              leading={<ClipboardList />}
+              title={tl("title")}
+              subtitle={t("lists.row")}
+            />
+          </ListGroup>
+        </PageSection>
       ) : null}
       {modules.map((module) => (
         <PageSection

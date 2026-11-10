@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
   anyItemResult,
+  boundOf,
   byUrgency,
+  type DraftItem,
+  draftItemsOf,
+  dueAtOf,
+  dueTimeFor,
   fromOffsets,
   holdsList,
   isOutOfRange,
   itemResult,
+  itemsForSave,
+  type ListTemplate,
   listHref,
   listItemSeed,
   listProgress,
@@ -15,12 +22,27 @@ import {
   listTemplateProblem,
   listTemplateSeed,
   listTemplateSeeds,
+  moved,
+  numberRange,
   parseReading,
+  readBound,
+  recipientGone,
+  type SendShift,
   scheduleInput,
+  sendDefaults,
   sendInput,
+  signed,
+  suggestedDue,
+  templateDraftProblem,
   templateForSave,
+  templateInputOf,
+  templateStuck,
+  templatesByDepartment,
   toOffsets,
+  typedBound,
+  typedItems,
   undoDeadline,
+  upcomingShifts,
 } from "./lists";
 
 const KITCHEN = "11111111-1111-4111-8111-111111111111";
@@ -680,5 +702,507 @@ describe("anyItemResult and parseReading", () => {
     expect(parseReading("abc")).toBeNull();
     expect(parseReading("1e3")).toBeNull();
     expect(parseReading("200000")).toBeNull();
+  });
+});
+
+describe("a number item's range", () => {
+  it("reads with a real minus sign, spaced once one is in it", () => {
+    expect(signed(-18)).toBe("−18");
+    expect(signed(4.5)).toBe("4.5");
+    expect(numberRange({ min: 0, max: 5, unit: "°C" })).toEqual({
+      kind: "between",
+      range: "0–5 °C",
+    });
+    expect(numberRange({ min: -25, max: -18, unit: "°C" })).toEqual({
+      kind: "between",
+      range: "−25 – −18 °C",
+    });
+    expect(numberRange({ min: 0, max: null, unit: null })).toEqual({
+      kind: "atLeast",
+      range: "0",
+    });
+    expect(numberRange({ min: null, max: 9, unit: "₪" })).toEqual({
+      kind: "atMost",
+      range: "9 ₪",
+    });
+    expect(numberRange({ min: null, max: null, unit: "°C" })).toBeNull();
+  });
+
+  it("keeps a bound's minus, from the toggle or typed with its digits", () => {
+    expect(boundOf(-18)).toEqual({ text: "18", minus: true });
+    expect(boundOf(5)).toEqual({ text: "5", minus: false });
+    expect(boundOf(null)).toEqual({ text: "", minus: false });
+    expect(readBound({ text: "18", minus: true })).toBe(-18);
+    expect(readBound({ text: "4.5", minus: false })).toBe(4.5);
+    // Typed with the toggle off: kept, never dropped.
+    expect(readBound({ text: "-5", minus: false })).toBe(-5);
+    expect(readBound({ text: "−18", minus: false })).toBe(-18);
+    expect(readBound({ text: "-18", minus: true })).toBe(-18);
+    expect(readBound({ text: " ", minus: true })).toBeNull();
+    expect(readBound({ text: "abc", minus: false })).toBe("number");
+    // A minus typed before the digits turns the toggle on.
+    expect(typedBound(false, "-18")).toEqual({ text: "18", minus: true });
+    expect(typedBound(false, "−5")).toEqual({ text: "5", minus: true });
+    expect(typedBound(false, "-")).toEqual({ text: "", minus: true });
+    expect(typedBound(true, "18")).toEqual({ text: "18", minus: true });
+    expect(typedBound(false, "4,5")).toEqual({ text: "4,5", minus: false });
+    expect(readBound(typedBound(false, "-18"))).toBe(-18);
+  });
+});
+
+const TEMPLATE = "66666666-6666-4666-8666-666666666666";
+const SCHEDULE = "77777777-7777-4777-8777-777777777777";
+const ITEM_2 = "88888888-8888-4888-8888-888888888888";
+
+const template: ListTemplate = {
+  id: TEMPLATE,
+  key: "kitchen-opening",
+  name: "Kitchen opening",
+  note: null,
+  recipient: { kind: "department", department: KITCHEN },
+  fromDepartment: null,
+  asksQuantities: false,
+  version: 3,
+  archivedAt: null,
+  items: [
+    {
+      id: ITEM,
+      kind: "number",
+      label: "Fridge",
+      hint: null,
+      required: true,
+      unit: "°C",
+      min: 0,
+      max: 5,
+      defaultQuantity: null,
+    },
+    {
+      id: ITEM_2,
+      kind: "check",
+      label: "Surfaces",
+      hint: "With the blue cloth",
+      required: false,
+      unit: null,
+      min: null,
+      max: null,
+      defaultQuantity: null,
+    },
+  ],
+  schedules: [
+    {
+      id: SCHEDULE,
+      days: [0, 1, 2, 3, 4],
+      anchor: "day",
+      shift: null,
+      opensOffset: 510,
+      dueOffset: 555,
+      recipient: { kind: "department", department: KITCHEN },
+      active: true,
+      startsOn: "2026-11-09",
+    },
+  ],
+};
+
+describe("the template editor's save", () => {
+  it("saves a template as it was read, its times untouched", () => {
+    const drafts = draftItemsOf(template.items);
+    expect(drafts.map((d) => d.key)).toEqual([ITEM, ITEM_2]);
+    const input = templateInputOf(template, {
+      name: " Kitchen opening ",
+      note: "  ",
+      recipient: template.recipient,
+      items: itemsForSave(drafts, new Set([ITEM, ITEM_2])),
+    });
+    const saved = templateForSave(input);
+    expect(saved).toMatchObject({
+      id: TEMPLATE,
+      name: "Kitchen opening",
+      recipient: { kind: "department", department: KITCHEN },
+      fromDepartment: null,
+      asksQuantities: false,
+    });
+    expect(saved.note).toBeUndefined();
+    expect(saved.items).toEqual([
+      {
+        id: ITEM,
+        kind: "number",
+        label: "Fridge",
+        required: true,
+        unit: "°C",
+        min: 0,
+        max: 5,
+      },
+      {
+        id: ITEM_2,
+        kind: "check",
+        label: "Surfaces",
+        hint: "With the blue cloth",
+        required: false,
+      },
+    ]);
+    expect(saved.schedules).toEqual([
+      {
+        id: SCHEDULE,
+        days: [0, 1, 2, 3, 4],
+        anchor: "day",
+        recipient: { kind: "department", department: KITCHEN },
+        active: true,
+        opensOffset: 510,
+        dueOffset: 555,
+      },
+    ]);
+  });
+
+  it("adds again an item the database no longer has, and keeps a new one's id out", () => {
+    const drafts: DraftItem[] = [
+      ...draftItemsOf(template.items),
+      {
+        key: "i-1",
+        id: null,
+        kind: "note",
+        label: "What is missing",
+        hint: null,
+        required: false,
+        unit: null,
+        min: null,
+        max: null,
+        defaultQuantity: null,
+      },
+    ];
+    const items = itemsForSave(drafts, new Set([ITEM]));
+    expect(items.map((item) => item.id)).toEqual([ITEM, undefined, undefined]);
+    expect(typedItems(drafts).every((item) => item.id === undefined)).toBe(
+      true,
+    );
+    expect(
+      sendInput.safeParse({
+        name: "Typed",
+        items: typedItems(drafts),
+        recipient: { kind: "role", role: "worker" },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("is a new template without an id", () => {
+    const input = templateInputOf(
+      { ...template, id: null, schedules: [] },
+      {
+        name: "Weekly cleaning",
+        note: "Before Shabbat",
+        recipient: null,
+        items: typedItems(draftItemsOf(template.items)),
+      },
+    );
+    expect(listTemplateInput.parse(input)).toMatchObject({
+      name: "Weekly cleaning",
+      note: "Before Shabbat",
+      recipient: null,
+    });
+    expect(input.id).toBeUndefined();
+  });
+
+  it("says what keeps a draft from saving", () => {
+    const items = draftItemsOf(template.items);
+    const draft = {
+      name: "Kitchen opening",
+      note: "",
+      recipient: template.recipient,
+      items,
+    };
+    expect(templateDraftProblem(draft, null)).toBeNull();
+    expect(templateDraftProblem({ ...draft, name: "  " }, null)).toBe("name");
+    expect(templateDraftProblem({ ...draft, items: [] }, null)).toBe("items");
+    expect(
+      templateDraftProblem(
+        { ...draft, items: [{ ...items[0], key: "x", min: 9 } as DraftItem] },
+        null,
+      ),
+    ).toBe("item");
+    // An order goes from its department to another one.
+    expect(templateDraftProblem(draft, KITCHEN)).toBe("recipient");
+    expect(templateDraftProblem({ ...draft, recipient: null }, BAR)).toBe(
+      "recipient",
+    );
+    expect(templateDraftProblem(draft, BAR)).toBeNull();
+    // Whatever its ids: the demo's aren't the database's.
+    expect(
+      templateDraftProblem(
+        {
+          ...draft,
+          recipient: { kind: "department", department: "dep-kitchen" },
+          items: items.map((item) => ({ ...item, id: "ti-1" })),
+        },
+        null,
+      ),
+    ).toBeNull();
+  });
+
+  it("moves an item one place, and nowhere past the ends", () => {
+    expect(moved(["a", "b", "c"], 2, -1)).toEqual(["a", "c", "b"]);
+    expect(moved(["a", "b", "c"], 0, 1)).toEqual(["b", "a", "c"]);
+    expect(moved(["a", "b", "c"], 0, -1)).toEqual(["a", "b", "c"]);
+    expect(moved(["a", "b", "c"], 2, 1)).toEqual(["a", "b", "c"]);
+  });
+
+  it("knows a recipient that is gone", () => {
+    const department = { kind: "department", department: KITCHEN } as const;
+    expect(recipientGone(department, [KITCHEN], [])).toBe(false);
+    expect(recipientGone(department, [BAR], [])).toBe(true);
+    expect(recipientGone({ kind: "shift", shift: "evening" }, [], [])).toBe(
+      true,
+    );
+    expect(
+      recipientGone({ kind: "shift", shift: "evening" }, [], ["evening"]),
+    ).toBe(false);
+    expect(recipientGone({ kind: "role", role: "worker" }, [], [])).toBe(false);
+    expect(recipientGone(null, [], [])).toBe(false);
+  });
+
+  it("knows a template no save can pass: an order or a time pointing at something gone", () => {
+    const [schedule] = template.schedules;
+    if (!schedule) throw new Error("The template has a time");
+    expect(templateStuck(template, [KITCHEN, BAR], [])).toBeNull();
+    // An order whose asking department was removed.
+    expect(
+      templateStuck({ ...template, fromDepartment: BAR }, [KITCHEN], []),
+    ).toBe("order");
+    expect(
+      templateStuck({ ...template, fromDepartment: BAR }, [KITCHEN, BAR], []),
+    ).toBeNull();
+    // A time that goes to a removed department, or to a shift gone.
+    expect(templateStuck(template, [BAR], [])).toBe("schedule");
+    const toShift = {
+      ...template,
+      schedules: [
+        {
+          ...schedule,
+          recipient: { kind: "shift", shift: "evening" } as const,
+        },
+      ],
+    };
+    expect(templateStuck(toShift, [], ["evening"])).toBeNull();
+    expect(templateStuck(toShift, [], ["morning"])).toBe("schedule");
+    // A time that follows a shift gone.
+    const followsShift = {
+      ...template,
+      schedules: [
+        {
+          ...schedule,
+          anchor: "shift_start" as const,
+          shift: "morning",
+          recipient: { kind: "role", role: "worker" } as const,
+        },
+      ],
+    };
+    expect(templateStuck(followsShift, [], ["morning"])).toBeNull();
+    expect(templateStuck(followsShift, [], [])).toBe("schedule");
+    // A person is the database's to check.
+    expect(
+      templateStuck(
+        {
+          ...template,
+          schedules: [
+            { ...schedule, recipient: { kind: "person", user: NOA } as const },
+          ],
+        },
+        [],
+        [],
+      ),
+    ).toBeNull();
+  });
+});
+
+describe("templates by department", () => {
+  it("follows the departments' order, then the rest", () => {
+    const of = (name: string, recipient: ListTemplate["recipient"]) => ({
+      name,
+      recipient,
+    });
+    const groups = templatesByDepartment(
+      [
+        of("bar closing", { kind: "department", department: BAR }),
+        of("anyone", null),
+        of("kitchen opening", { kind: "department", department: KITCHEN }),
+        of("workers", { kind: "role", role: "worker" }),
+        of("removed", {
+          kind: "department",
+          department: "99999999-9999-4999-8999-999999999999",
+        }),
+        of("bar order", { kind: "department", department: BAR }),
+      ],
+      [{ id: KITCHEN }, { id: BAR }, { id: "empty" }],
+    );
+    expect(
+      groups.map((g) => [g.department, g.templates.map((t) => t.name)]),
+    ).toEqual([
+      [KITCHEN, ["kitchen opening"]],
+      [BAR, ["bar closing", "bar order"]],
+      [null, ["anyone", "workers", "removed"]],
+    ]);
+    expect(templatesByDepartment([], [{ id: KITCHEN }])).toEqual([]);
+  });
+});
+
+describe("a due time when sending", () => {
+  const zone = "Asia/Jerusalem";
+  // Tuesday 10 November 2026, 08:12 in Israel (winter, UTC+2).
+  const now = new Date("2026-11-10T06:12:00.000Z");
+
+  it("is today or tomorrow in the business's zone, and never gone by", () => {
+    expect(dueAtOf("today", "09:30", now, zone)).toEqual({
+      ok: true,
+      dueAt: "2026-11-10T07:30:00.000Z",
+    });
+    expect(dueAtOf("tomorrow", "07:00", now, zone)).toEqual({
+      ok: true,
+      dueAt: "2026-11-11T05:00:00.000Z",
+    });
+    expect(dueAtOf("today", "08:12", now, zone)).toEqual({
+      ok: false,
+      problem: "past",
+    });
+    expect(dueAtOf("today", "7:00", now, zone)).toEqual({
+      ok: false,
+      problem: "time",
+    });
+    expect(dueAtOf("tomorrow", "23:59", now, zone)).toEqual({
+      ok: true,
+      dueAt: "2026-11-11T21:59:00.000Z",
+    });
+  });
+
+  it("starts an hour ahead, on the half hour, tomorrow after midnight", () => {
+    expect(suggestedDue(now, zone)).toEqual({ day: "today", time: "09:30" });
+    expect(suggestedDue(new Date("2026-11-10T07:00:00.000Z"), zone)).toEqual({
+      day: "today",
+      time: "10:00",
+    });
+    expect(suggestedDue(new Date("2026-11-10T21:40:00.000Z"), zone)).toEqual({
+      day: "tomorrow",
+      time: "01:00",
+    });
+  });
+
+  it("starts today late in the evening at a time still to come", () => {
+    // 08:12: the suggestion, either day.
+    expect(dueTimeFor("today", now, zone)).toBe("09:30");
+    expect(dueTimeFor("tomorrow", now, zone)).toBe("09:30");
+    // 23:10: an hour ahead is tomorrow; today is the next half hour.
+    const late = new Date("2026-11-10T21:10:00.000Z");
+    expect(dueTimeFor("tomorrow", late, zone)).toBe("00:30");
+    expect(dueTimeFor("today", late, zone)).toBe("23:30");
+    expect(
+      dueAtOf("today", dueTimeFor("today", late, zone), late, zone).ok,
+    ).toBe(true);
+    // 23:40, in the last half hour: a minute before midnight.
+    const later = new Date("2026-11-10T21:40:00.000Z");
+    expect(dueTimeFor("today", later, zone)).toBe("23:59");
+    expect(
+      dueAtOf("today", dueTimeFor("today", later, zone), later, zone).ok,
+    ).toBe(true);
+    // 23:00 on the dot: the half hour after it.
+    expect(
+      dueTimeFor("today", new Date("2026-11-10T21:00:00.000Z"), zone),
+    ).toBe("23:30");
+  });
+});
+
+describe("where a template is sent from the send screen", () => {
+  const shifts: SendShift[] = [
+    {
+      id: "s-1",
+      day: "2026-11-10",
+      name: "Evening",
+      start: "16:00",
+      end: "23:00",
+      pattern: "evening",
+      people: [],
+    },
+    {
+      id: "s-2",
+      day: "2026-11-11",
+      name: "Evening",
+      start: "16:00",
+      end: "23:00",
+      pattern: "evening",
+      people: [NOA],
+    },
+  ];
+
+  it("starts at its own recipient, and at nobody once its department is gone", () => {
+    const kitchen = { kind: "department", department: KITCHEN } as const;
+    expect(sendDefaults(kitchen, shifts, [KITCHEN, BAR])).toEqual({
+      kind: "department",
+      department: KITCHEN,
+      shift: null,
+      role: null,
+      gone: false,
+    });
+    expect(sendDefaults(kitchen, shifts, [BAR])).toEqual({
+      kind: "department",
+      department: null,
+      shift: null,
+      role: null,
+      gone: true,
+    });
+    expect(
+      sendDefaults({ kind: "role", role: "manager" }, shifts, []),
+    ).toMatchObject({ kind: "role", role: "manager", gone: false });
+    // The next of its shift with people on it.
+    expect(
+      sendDefaults({ kind: "shift", shift: "evening" }, shifts, []),
+    ).toMatchObject({ kind: "shift", shift: "s-2" });
+    expect(
+      sendDefaults({ kind: "shift", shift: "evening" }, null, []),
+    ).toMatchObject({ kind: "person", shift: null });
+    expect(sendDefaults(null, shifts, [KITCHEN])).toMatchObject({
+      kind: "person",
+      gone: false,
+    });
+    expect(sendDefaults(undefined, shifts, [KITCHEN]).kind).toBe("person");
+  });
+});
+
+describe("the shifts a list can go to", () => {
+  const zone = "Asia/Jerusalem";
+  const now = new Date("2026-11-10T14:30:00.000Z"); // 16:30 in Israel
+  const shift = (day: string, name: string, start: string, end: string) => ({
+    day,
+    name,
+    start,
+    end,
+  });
+
+  it("are from today to a week ahead, and not over yet", () => {
+    const shown = upcomingShifts(
+      [
+        shift("2026-11-18", "Evening", "16:00", "23:30"),
+        shift("2026-11-10", "Morning", "09:00", "16:00"),
+        shift("2026-11-11", "Morning", "09:00", "16:00"),
+        shift("2026-11-10", "Evening", "16:00", "23:30"),
+        shift("2026-11-09", "Night", "22:00", "06:00"),
+        shift("2026-11-17", "Evening", "16:00", "23:30"),
+      ],
+      now,
+      zone,
+    );
+    expect(shown.map((s) => `${s.day} ${s.name}`)).toEqual([
+      "2026-11-10 Evening",
+      "2026-11-11 Morning",
+      "2026-11-17 Evening",
+    ]);
+  });
+
+  it("keeps a shift that ends after midnight until its day is over", () => {
+    const night = shift("2026-11-10", "Night", "22:00", "02:00");
+    // 23:30 in Israel: it has started, and goes on.
+    expect(
+      upcomingShifts([night], new Date("2026-11-10T21:30:00.000Z"), zone),
+    ).toEqual([night]);
+    // 01:00 the next day: still on, but `send_list` takes shifts from
+    // today on, so it is gone here too.
+    expect(
+      upcomingShifts([night], new Date("2026-11-10T23:00:00.000Z"), zone),
+    ).toEqual([]);
   });
 });

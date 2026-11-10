@@ -2,10 +2,13 @@ import { getDepartments } from "@db/departments";
 import {
   getBusinessLists,
   getList,
+  getListTemplate,
   getListTemplates,
   getMyLists,
+  getSentLists,
   type Window,
 } from "@db/lists";
+import { getPublishedShifts } from "@db/schedule";
 import { getColleagues } from "@db/team";
 import { isUuid } from "@domain/activity";
 import { addDays, dateIn, instantIn } from "@domain/availability";
@@ -17,7 +20,10 @@ import {
   type ListTemplate,
   listsTally,
   REOPEN_MINUTES,
+  type SendShift,
+  SHIFT_DAYS_AHEAD,
   undoDeadline,
+  upcomingShifts,
 } from "@domain/lists";
 import {
   canOpenModule,
@@ -30,22 +36,37 @@ import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
-import type {
-  ListLookups,
-  ListReadOnly,
-  ListScreenData,
-  ListsHomeData,
-  ListsView,
-  SendFormData,
-  SendWay,
+import {
+  type ListLookups,
+  type ListReadOnly,
+  type ListScreenData,
+  type ListsHomeData,
+  type ListsView,
+  NEW_LIST,
+  type SendFormData,
+  type SendWay,
+  type TemplateEditorData,
+  type TemplatePaths,
+  type TemplatesScreenData,
 } from "./list-types";
+import { templateEditor, templatesScreen } from "./templates/templates-data";
 
 export const listsPaths = {
   lists: "/lists",
   send: "/lists/send",
   list: (id: string) => `/lists/${id}`,
   home: "/home",
+  templates: "/lists/templates",
 };
+
+/** The template screens' links inside the app; `back` is named in words. */
+export function templatePaths(backLabel: string): TemplatePaths {
+  return {
+    list: listsPaths.templates,
+    back: { href: listsPaths.lists, label: backLabel },
+    send: listsPaths.send,
+  };
+}
 
 /**
  * The signed-in person and what they may do with lists, when lists are on for
@@ -160,7 +181,9 @@ export async function currentListsHome(
       currentModuleSettings("lists"),
       currentDepartments(businessId),
       lookupsFor(businessId),
-      access.viewOnly ? [] : currentTemplates(businessId),
+      // What to send, and for list managers (a view session's too) how
+      // many templates there are.
+      access.viewOnly && !access.canManage ? [] : currentTemplates(businessId),
       access.view === "mine"
         ? getMyLists(businessId, { userId, role: access.role }, window)
         : [],
@@ -176,8 +199,9 @@ export async function currentListsHome(
     access.view === "mine" ? (own === "notYet" ? [] : own) : everyone;
   const mine = departmentsOf(departments, userId, { live: true });
   const offered = sendable(templates, access, mine);
+  // Whoever sends lists may type one now, with no template at all.
   const send: SendWay | null =
-    offered.length === 0
+    offered.length === 0 && !access.canSend
       ? null
       : offered.length === 1 && !access.canSend && offered[0]
         ? {
@@ -229,6 +253,9 @@ export async function currentListsHome(
       Date.parse(taken.opensAt) > now.getTime() - REOPEN_MINUTES * 60_000
         ? taken
         : null,
+    templates: access.canManage
+      ? templates.filter((t) => t.archivedAt === null).length
+      : null,
   };
 }
 
@@ -286,15 +313,41 @@ export async function currentList(
 }
 
 /**
- * The send screen: the templates the person may send, and who to. Null when
- * they may send nothing, or are only viewing.
+ * The published shifts a list can go to now, with their active people; null
+ * while scheduling is off, when there are none to read.
+ */
+async function sendShifts(
+  businessId: string,
+  now: Date,
+  timeZone: string,
+  active: ReadonlySet<string>,
+): Promise<SendShift[] | null> {
+  if (!(await currentModules()).includes("scheduling")) return null;
+  const today = dateIn(now, timeZone);
+  const shifts = await getPublishedShifts(
+    businessId,
+    today,
+    addDays(today, SHIFT_DAYS_AHEAD),
+  );
+  return upcomingShifts(shifts, now, timeZone).map((shift) => ({
+    ...shift,
+    // As `send_list` counts them: the shift's people still in the business.
+    people: shift.people.filter((id) => active.has(id)),
+  }));
+}
+
+/**
+ * The send screen: the templates the person may send, a list typed now for
+ * whoever sends lists, and who to. Null when they may send nothing, or are
+ * only viewing.
  */
 export async function currentSendForm(
   asked?: string,
 ): Promise<SendFormData | null> {
   const access = await listsAccess();
   if (!access || access.viewOnly) return null;
-  const { businessId, userId } = access;
+  const { businessId, userId, timeZone } = access;
+  const now = new Date();
   const [templates, departments, colleagues] = await Promise.all([
     currentTemplates(businessId),
     currentDepartments(businessId),
@@ -306,29 +359,138 @@ export async function currentSendForm(
     departmentsOf(departments, userId, { live: true }),
   );
   const first = offered[0];
-  if (!first) return null;
+  if (!first && !access.canSend) return null;
+  // A list goes to someone on the staff, never to an accountant.
+  const staff = colleagues.filter((c) => isStaff(c.role));
+  const shifts = access.canSend
+    ? await sendShifts(
+        businessId,
+        now,
+        timeZone,
+        new Set(staff.map((c) => c.userId)),
+      )
+    : null;
+  const initial =
+    asked === NEW_LIST && access.canSend
+      ? NEW_LIST
+      : (offered.find((t) => t.id === asked)?.id ?? first?.id ?? NEW_LIST);
   return {
+    now: now.toISOString(),
+    timeZone,
     templates: offered.map((t) => ({
       id: t.id,
       name: t.name,
       note: t.note,
-      items: t.items.map((item) => ({ kind: item.kind, label: item.label })),
+      items: t.items.map((item) => ({
+        kind: item.kind,
+        label: item.label,
+        required: item.required,
+        unit: item.unit,
+        min: item.min,
+        max: item.max,
+      })),
       recipient: t.recipient,
       fromDepartment: t.fromDepartment,
     })),
-    initial: offered.find((t) => t.id === asked)?.id ?? first.id,
+    initial,
     free: access.canSend,
-    // A list goes to someone on the staff, never to an accountant.
-    people: colleagues
-      .filter((c) => isStaff(c.role))
-      .map((c) => ({
-        userId: c.userId,
-        name: c.name,
-        photo: c.photo,
-      })),
+    people: staff.map((c) => ({
+      userId: c.userId,
+      name: c.name,
+      photo: c.photo,
+    })),
     departments: departments
       .filter((d) => d.archivedAt === null)
       .map((d) => ({ id: d.id, name: d.name })),
     roles: STAFF_ROLES,
+    shifts,
   };
+}
+
+/**
+ * The lists the person sent today, newest first, with the words to show
+ * them: "sent today" beside the send screen on a computer.
+ */
+export async function currentSentToday(): Promise<{
+  lists: ListSummary[];
+  lookups: ListLookups;
+  userId: string;
+  timeZone: string;
+  now: string;
+} | null> {
+  const access = await listsAccess();
+  if (!access || access.viewOnly) return null;
+  const now = new Date();
+  const [sent, lookups] = await Promise.all([
+    getSentLists(
+      access.businessId,
+      access.userId,
+      todayIn(now, access.timeZone),
+    ),
+    lookupsFor(access.businessId),
+  ]);
+  return {
+    lists: sent === "notYet" ? [] : sent,
+    lookups,
+    userId: access.userId,
+    timeZone: access.timeZone,
+    now: now.toISOString(),
+  };
+}
+
+/** The scheduling settings' shifts, which a template may go to. */
+async function shiftPatterns() {
+  return (await currentModuleSettings("scheduling")).shifts;
+}
+
+/**
+ * The business's templates on their own screen, for whoever manages lists
+ * (a view session as a manager only reads). Null for anyone else.
+ */
+export async function currentTemplatesScreen(
+  removed?: string,
+): Promise<TemplatesScreenData | null> {
+  const access = await listsAccess();
+  if (!access?.canManage) return null;
+  const [templates, departments, shifts] = await Promise.all([
+    currentTemplates(access.businessId),
+    currentDepartments(access.businessId),
+    shiftPatterns(),
+  ]);
+  return templatesScreen({
+    templates,
+    departments,
+    shifts,
+    removed,
+    readOnly: access.viewOnly,
+  });
+}
+
+/**
+ * One template in its editor, or a new one (`templateId` null), for whoever
+ * manages lists. Null when they don't, or it isn't theirs to read.
+ */
+export async function currentTemplateEditor(
+  templateId: string | null,
+  changed: boolean,
+): Promise<TemplateEditorData | null> {
+  const access = await listsAccess();
+  if (!access?.canManage) return null;
+  if (templateId !== null && !isUuid(templateId)) return null;
+  if (templateId === null && access.viewOnly) return null;
+  const [template, departments, shifts] = await Promise.all([
+    templateId === null ? null : getListTemplate(access.businessId, templateId),
+    currentDepartments(access.businessId),
+    shiftPatterns(),
+  ]);
+  if (template === "notYet" || (templateId !== null && template === null)) {
+    return null;
+  }
+  return templateEditor({
+    template,
+    departments,
+    shifts,
+    readOnly: access.viewOnly,
+    changed,
+  });
 }

@@ -2853,7 +2853,8 @@
           "finished": "The list is already closed.",
           "left": "Some required items are still left.",
           "notYet": "Lists aren't ready here yet. Try again in a few minutes.",
-          "failed": "Not saved. Check the connection and try again."
+          "failed": "Not saved. Check the connection and try again.",
+          "businessChanged": "You switched business meanwhile, so the change wasn't saved. Load the screen again."
         }
       },
       "send": {
@@ -2867,7 +2868,8 @@
         "kinds": {
           "person": "Person",
           "department": "Department",
-          "role": "Role"
+          "role": "Role",
+          "shift": "Shift"
         },
         "roles": {
           "owner": "The owners",
@@ -2875,6 +2877,8 @@
           "worker": "The workers"
         },
         "fixedTo": "The order goes to {name}.",
+        "orderGone": "The department this order goes to was removed, so it can't be sent until another one is chosen for it in the business's lists.",
+        "gone": "The department this list usually goes to was removed. Choose who it goes to this time.",
         "noDepartments": "The business has no departments yet. Add them under Manage, Departments.",
         "noName": "No name",
         "note": "Note",
@@ -2883,7 +2887,8 @@
         "submit": {
           "person": "Send to {name}",
           "department": "Send to {name}",
-          "role": "{role, select, owner {Send to the owners} manager {Send to the managers} other {Send to the workers}}"
+          "role": "{role, select, owner {Send to the owners} manager {Send to the managers} other {Send to the workers}}",
+          "shift": "Send to the {name} shift"
         },
         "preview": "How it arrives",
         "sent": "List sent {to}",
@@ -2898,7 +2903,177 @@
           "finished": "This list was removed. Choose another one.",
           "left": "Something is still missing before sending.",
           "notYet": "Lists aren't ready here yet. Try again in a few minutes.",
-          "failed": "The list wasn't sent. Check the connection and try again."
+          "failed": "The list wasn't sent. Check the connection and try again.",
+          "businessChanged": "You switched business meanwhile, so the list wasn't sent. Load the screen again."
+        },
+        "newList": "New list",
+        "newListHint": "Write what's in it now",
+        "typed": "The new list",
+        "typedName": "The list's name",
+        "typedItems": "What's in the list",
+        "typedMissing": "A new list needs a name and at least one item.",
+        "today": "Today",
+        "tomorrow": "Tomorrow",
+        "shiftHint": "{day} · <ltr>{start}–{end}</ltr> · {count, plural, =0 {Nobody on the shift} one {One person} other {# people}}",
+        "noShifts": "No published shifts from today to a week ahead. Once a schedule is published, a list can go to the people on a shift.",
+        "when": "By when",
+        "dueDays": {
+          "none": "No time",
+          "today": "Today",
+          "tomorrow": "Tomorrow"
+        },
+        "noDueHint": "The list stays open until it's finished.",
+        "dueTime": "Time",
+        "dueHint": "It should be finished by then.",
+        "duePast": "That time has passed. Choose a later one, or tomorrow.",
+        "sentToday": "What you sent today",
+        "sentNone": "You haven't sent any lists today.",
+        "columns": {
+          "list": "List",
+          "to": "Who to",
+          "at": "When",
+          "progress": "How far"
+        }
+      },
+      "templatesRow": {
+        "title": "The business's lists",
+        "subtitle": "{count, plural, =0 {No lists yet. Make them here} one {One list · make and change} other {# lists · make and change}}"
+      },
+      "items": {
+        "add": "Add an item",
+        "empty": "No items yet. Add the first one below.",
+        "emptyReadOnly": "The list has no items.",
+        "kinds": {
+          "check": "Check",
+          "number": "Number",
+          "note": "Note",
+          "photo": "Photo"
+        },
+        "kindLabel": "Kind of item",
+        "kindHints": {
+          "check": "Checked once it's done.",
+          "number": "A number is written, such as a temperature or a count.",
+          "note": "A few words are written."
+        },
+        "unitOnly": "In <ltr>{unit}</ltr>",
+        "up": "Move {label} up",
+        "down": "Move {label} down",
+        "movedTo": "{label} is now {place} of {count}",
+        "newTitle": "New item",
+        "label": "The item's name",
+        "hint": "Short hint",
+        "hintHint": "Optional. It shows under the item's name.",
+        "required": "Required",
+        "requiredHint": "The list can't be finished while a required item is empty.",
+        "unit": "Unit",
+        "unitHint": "Optional, such as °C or ₪.",
+        "min": "Lowest",
+        "max": "Highest",
+        "rangeHint": "Optional. A reading outside the range is flagged on the list.",
+        "minus": "Minus",
+        "minusOf": "Minus: {field}",
+        "create": "Add the item",
+        "save": "Save the item",
+        "remove": "Remove the item",
+        "removed": "{label} removed",
+        "close": "Close",
+        "full": "The list has {count} items, which is the most it can have.",
+        "problem": {
+          "label": "Write the item's name.",
+          "number": "That isn't a number. Use digits only, and a point for a fraction.",
+          "range": "The lowest number is above the highest."
+        }
+      },
+      "templates": {
+        "title": "The business's lists",
+        "subtitle": "What's in each list, and who it goes to. Every change saves at once.",
+        "viewOnly": "While viewing, the lists can only be read.",
+        "create": "Make a list",
+        "empty": {
+          "title": "No lists yet",
+          "body": "Make an opening, closing or cleaning list, then send it from Lists."
+        },
+        "emptyViewOnly": {
+          "title": "The business has no lists yet",
+          "body": "While viewing, nothing changes. Lists the business makes show here."
+        },
+        "items": "{count, plural, one {One item} other {# items}}",
+        "to": {
+          "department": "To {name}",
+          "aDepartment": "To a removed department",
+          "shift": "To the {name} shift",
+          "aShift": "To a shift that no longer exists",
+          "role": "{role, select, owner {To the owners} manager {To the managers} other {To the workers}}",
+          "none": "Chosen each time it's sent"
+        },
+        "from": "Asked for by {name}",
+        "aDepartment": "a removed department",
+        "order": "Order",
+        "all": "All lists",
+        "others": "To a role, a shift, or chosen each time",
+        "columns": {
+          "list": "List",
+          "to": "Who to",
+          "from": "Asked for by",
+          "items": "Items"
+        },
+        "removedTitle": "{count, plural, one {One list removed} other {# lists removed}}",
+        "restore": "Bring back",
+        "restoreOf": "Bring back: {name}",
+        "removed": "{name} removed",
+        "restored": "{name} is back",
+        "failed": {
+          "noAccess": "You can't change the business's lists.",
+          "viewOnly": "Nothing changes while viewing.",
+          "invalid": "Not saved: something in the list doesn't fit. Check its items and who it goes to, and try again.",
+          "changed": "The list changed on another screen. This is the latest.",
+          "finished": "This list was removed on another screen. It can be brought back from the business's lists.",
+          "left": "Not saved. Try again.",
+          "notYet": "Lists aren't ready here yet. Try again in a few minutes.",
+          "businessChanged": "You switched business meanwhile, so the change wasn't saved. Load the screen again.",
+          "failed": "The change wasn't saved. Check the connection and try again.",
+          "createUnknown": "The list may have been saved, but the answer didn't arrive. So it isn't made twice, changes here no longer save. Check it in the business's lists."
+        },
+        "editor": {
+          "newTitle": "New list",
+          "subtitle": "Saves itself with every change.",
+          "newSubtitle": "Saves itself once it has a name and an item.",
+          "viewOnly": "While viewing, the list can only be read.",
+          "stuckSubtitle": "For now, the list can only be read.",
+          "stuck": {
+            "order": "This order belongs to a department that was removed, so changes to it can't be saved. The department can be brought back under Manage, Departments, or the order removed.",
+            "schedule": "This list goes out on its own at set times to a department or a shift that no longer exists, so changes to it can't be saved. It can be brought back under Manage, or the list removed."
+          },
+          "toLists": "To the business's lists",
+          "removedNote": "This list was removed. It can be brought back from the business's lists.",
+          "about": "Name and note",
+          "name": "The list's name",
+          "nameMissing": "The list needs a name. Until it has one, changes aren't saved.",
+          "note": "Note at the top of the list",
+          "noteHint": "Optional. Whoever gets the list sees it before the items.",
+          "items": "What's in the list",
+          "itemsMissing": "The list needs at least one item. Until it has one, changes aren't saved.",
+          "recipient": "Who it goes to",
+          "recipientHint": "The send screen starts here, and someone else can be chosen there.",
+          "noneHint": "Who it goes to is chosen each time it's sent.",
+          "recipientKinds": {
+            "none": "Each time",
+            "department": "Department",
+            "shift": "Shift",
+            "role": "Role"
+          },
+          "department": "Department",
+          "shift": "Shift",
+          "role": "Role",
+          "choose": "Choose",
+          "noDepartments": "The business has no departments yet. Add them under Manage, Departments.",
+          "gone": "{kind, select, department {The department the list went to was removed.} other {The shift the list went to no longer exists.}} Choose who it goes to now.",
+          "order": "An order of {name}: its people send it, and it goes to the department chosen here.",
+          "preview": "How it arrives",
+          "sendNow": "Send the list now",
+          "archive": "Remove the list",
+          "archiveHint": "Once removed, it can be brought back.",
+          "changed": "The list changed on another screen. This is the latest."
         }
       }
     }
@@ -3361,7 +3536,11 @@
       "details": "Business details",
       "on": "{module} is on for this business",
       "switchFailed": "Not saved",
-      "noRoom": "No room in the tab bar for another tab"
+      "noRoom": "No room in the tab bar for another tab",
+      "lists": {
+        "title": "Lists",
+        "row": "What's in each of the business's lists, and who it goes to"
+      }
     },
     "addPerson": {
       "title": "Add a person to the business",

@@ -8,19 +8,27 @@ import {
   type ListDetail,
   type ListItem,
   type ListSummary,
+  type ListTemplate,
   listProgress,
   listsTally,
+  type SendShift,
+  type TemplateItem,
 } from "@domain/lists";
 import { STAFF_ROLES } from "@domain/modules";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
-import type {
-  ListLookups,
-  ListScreenData,
-  ListsHomeData,
-  ListsTiming,
-  SendFormData,
+import {
+  type ListLookups,
+  type ListScreenData,
+  type ListsHomeData,
+  type ListsTiming,
+  NEW_LIST,
+  type SendFormData,
 } from "../../../(app)/lists/list-types";
-import { teamMembers } from "../data";
+import {
+  templateEditor,
+  templatesScreen,
+} from "../../../(app)/lists/templates/templates-data";
+import { demoShiftPatterns, teamMembers } from "../data";
 
 /** Tuesday 3 November 2026, 08:12 in Tel Aviv, as the rest of the demo. */
 export const demoListsNow = "2026-11-03T06:12:00.000Z";
@@ -288,6 +296,9 @@ function homeFor(
         ? { href: "/lists/send", only: "הזמנה מהבר למחסן" }
         : null,
     sent: sentList ? summaryOf(sentList) : null,
+    templates: manager
+      ? demoTemplates.filter((t) => t.archivedAt === null).length
+      : null,
   };
 }
 
@@ -357,58 +368,335 @@ export function demoListScreen(
   };
 }
 
-/** The send screen as Shiran has it: the restaurant's templates. */
-export const demoSendForm: SendFormData = {
-  templates: [
-    {
-      id: "t-kitchen-opening",
-      name: "פתיחת מטבח",
-      note: null,
-      items: demoLists[0]?.items ?? [],
-      recipient: { kind: "department", department: "dep-kitchen" },
-      fromDepartment: null,
-    },
-    {
-      id: "t-floor-opening",
-      name: "פתיחת אולם",
-      note: null,
-      items: demoLists[1]?.items ?? [],
-      recipient: { kind: "department", department: "dep-floor" },
-      fromDepartment: null,
-    },
-    {
-      id: "t-kitchen-closing",
-      name: "סגירת מטבח",
-      note: null,
-      items: [
-        { kind: "number", label: "מקרר ראשי" },
-        { kind: "number", label: "מקפיא" },
-        { kind: "check", label: "כיסוי ואחסון מזון" },
-        { kind: "check", label: "ניקוי כיריים וגריל" },
-        { kind: "check", label: "פינוי פחים" },
-        { kind: "check", label: "סגירת גז" },
-      ],
-      recipient: { kind: "department", department: "dep-kitchen" },
-      fromDepartment: null,
-    },
-    {
-      id: "t-bar-order",
-      name: "הזמנה מהבר למחסן",
-      note: null,
-      items: demoLists[3]?.items ?? [],
-      recipient: { kind: "department", department: "dep-storeroom" },
-      fromDepartment: "dep-bar",
-    },
-  ],
-  initial: "t-kitchen-opening",
-  free: true,
-  people: teamMembers.map((m) => ({
-    userId: m.userId,
-    name: m.name,
-    photo: m.photo,
-  })),
-  departments: demoDepartments.map((d) => ({ id: d.id, name: d.name })),
-  roles: STAFF_ROLES,
+const templateItem = (
+  id: string,
+  fields: Partial<TemplateItem> & Pick<TemplateItem, "kind" | "label">,
+): TemplateItem => ({
+  id,
+  hint: null,
+  required: true,
+  unit: null,
+  min: null,
+  max: null,
+  defaultQuantity: null,
+  ...fields,
+});
+
+const fridge = (id: string) =>
+  templateItem(id, {
+    kind: "number",
+    label: "מקרר ראשי",
+    unit: "°C",
+    min: 0,
+    max: 5,
+  });
+const freezer = (id: string) =>
+  templateItem(id, {
+    kind: "number",
+    label: "מקפיא",
+    unit: "°C",
+    min: -25,
+    max: -18,
+  });
+
+const template = (
+  fields: Pick<ListTemplate, "id" | "name" | "recipient" | "items"> &
+    Partial<ListTemplate>,
+): ListTemplate => ({
+  key: null,
+  note: null,
+  fromDepartment: null,
+  asksQuantities: false,
+  version: 1,
+  archivedAt: null,
+  schedules: [],
+  ...fields,
+});
+
+/** The demo restaurant's list templates, as its template made them. */
+export const demoTemplates: ListTemplate[] = [
+  template({
+    id: "t-kitchen-opening",
+    key: "kitchen-opening",
+    name: "פתיחת מטבח",
+    recipient: { kind: "department", department: "dep-kitchen" },
+    items: [
+      fridge("ti-ko-fridge"),
+      freezer("ti-ko-freezer"),
+      templateItem("ti-ko-dates", {
+        kind: "check",
+        label: "בדיקת תאריכים ותוויות",
+      }),
+      templateItem("ti-ko-preps", {
+        kind: "check",
+        label: "הכנות לפי רשימת ההכנות",
+      }),
+      templateItem("ti-ko-surfaces", {
+        kind: "check",
+        label: "ניקוי משטחי עבודה",
+      }),
+      templateItem("ti-ko-missing", {
+        kind: "note",
+        label: "מה חסר במטבח",
+        required: false,
+      }),
+    ],
+  }),
+  template({
+    id: "t-floor-opening",
+    key: "floor-opening",
+    name: "פתיחת אולם",
+    recipient: { kind: "department", department: "dep-floor" },
+    items: [
+      templateItem("ti-fo-tables", {
+        kind: "check",
+        label: "סידור שולחנות וכיסאות",
+      }),
+      templateItem("ti-fo-toilets", { kind: "check", label: "ניקוי שירותים" }),
+      templateItem("ti-fo-napkins", {
+        kind: "check",
+        label: "מילוי מפיות ותבלינים",
+      }),
+      templateItem("ti-fo-menus", { kind: "check", label: "תפריטים נקיים" }),
+    ],
+  }),
+  template({
+    id: "t-kitchen-closing",
+    key: "kitchen-closing",
+    name: "סגירת מטבח",
+    recipient: { kind: "department", department: "dep-kitchen" },
+    items: [
+      fridge("ti-kc-fridge"),
+      freezer("ti-kc-freezer"),
+      templateItem("ti-kc-cover", {
+        kind: "check",
+        label: "כיסוי ואחסון מזון",
+      }),
+      templateItem("ti-kc-grill", {
+        kind: "check",
+        label: "ניקוי כיריים וגריל",
+      }),
+      templateItem("ti-kc-bins", { kind: "check", label: "פינוי פחים" }),
+      templateItem("ti-kc-gas", { kind: "check", label: "סגירת גז" }),
+    ],
+  }),
+  template({
+    id: "t-bar-closing",
+    key: "bar-closing",
+    name: "סגירת בר",
+    recipient: { kind: "department", department: "dep-bar" },
+    items: [
+      templateItem("ti-bc-taps", {
+        kind: "check",
+        label: "ניקוי ברזים ומקררים",
+      }),
+      templateItem("ti-bc-bottles", {
+        kind: "number",
+        label: "ספירת בקבוקים פתוחים",
+        unit: "יח׳",
+      }),
+      templateItem("ti-bc-till", { kind: "check", label: "סגירת קופה" }),
+    ],
+  }),
+  template({
+    id: "t-bar-order",
+    key: "bar-order",
+    name: "הזמנה מהבר למחסן",
+    recipient: { kind: "department", department: "dep-storeroom" },
+    fromDepartment: "dep-bar",
+    asksQuantities: true,
+    items: [
+      templateItem("ti-bo-white", {
+        kind: "check",
+        label: "יין לבן",
+        hint: "בקבוקים",
+        defaultQuantity: 6,
+      }),
+      templateItem("ti-bo-ice", {
+        kind: "check",
+        label: "קרח",
+        hint: "שקיות",
+        defaultQuantity: 2,
+      }),
+      templateItem("ti-bo-lemons", {
+        kind: "check",
+        label: "לימונים",
+        defaultQuantity: 20,
+      }),
+    ],
+  }),
+  template({
+    id: "t-weekly-cleaning",
+    key: "weekly-cleaning",
+    name: "ניקיון שבועי",
+    recipient: { kind: "department", department: "dep-kitchen" },
+    note: "בסוף הניקיון מכבים את המנדף.",
+    items: [
+      templateItem("ti-wc-fridge", { kind: "check", label: "ניקוי מקרר ראשי" }),
+      templateItem("ti-wc-hood", { kind: "check", label: "ניקוי מנדף" }),
+      templateItem("ti-wc-store", { kind: "check", label: "סידור מחסן יבש" }),
+    ],
+  }),
+  template({
+    id: "t-cash-check",
+    name: "בדיקת קופה לפני המשמרת",
+    recipient: { kind: "role", role: "manager" },
+    items: [
+      templateItem("ti-cc-cash", {
+        kind: "number",
+        label: "מזומן בקופה",
+        unit: "₪",
+      }),
+      templateItem("ti-cc-change", { kind: "check", label: "יש מספיק עודף" }),
+    ],
+  }),
+  template({
+    id: "t-stock-count",
+    name: "ספירת מלאי חודשית",
+    recipient: null,
+    archivedAt: "2026-11-02T15:00:00.000Z",
+    items: [
+      templateItem("ti-sc-wine", { kind: "number", label: "בקבוקי יין" }),
+      templateItem("ti-sc-oil", { kind: "number", label: "שמן זית" }),
+    ],
+  }),
+];
+
+/** The restaurant's shift pattern, as its scheduling settings have it. */
+const demoListShifts = demoShiftPatterns;
+
+/**
+ * The screen of templates as Shiran has it; `removed` just in its editor.
+ * `readOnly` is the team viewing the restaurant as a manager.
+ */
+export const demoTemplatesScreen = (removed?: string, readOnly = false) =>
+  templatesScreen({
+    templates: demoTemplates,
+    departments: demoDepartments.map((d) => ({ ...d, archivedAt: null })),
+    shifts: demoListShifts,
+    removed,
+    readOnly,
+  });
+
+/** A business whose own lists are all gone, for the empty screen. */
+export const demoEmptyTemplatesScreen = (readOnly = false) =>
+  templatesScreen({
+    templates: [],
+    departments: [],
+    shifts: demoListShifts,
+    removed: undefined,
+    readOnly,
+  });
+
+/**
+ * One template in its editor, or a new one (`id` "new"). `readOnly` is a
+ * view session, which opens no new one; a removed template is only read too.
+ * `removedDepartment` is one removed since, which the template may still
+ * name (the bar, for its order: an editor that can't save it).
+ */
+export function demoTemplateEditor(
+  id: string,
+  changed: boolean,
+  readOnly = false,
+  removedDepartment?: string,
+) {
+  if (id === "new" && readOnly) return null;
+  const found = id === "new" ? null : demoTemplates.find((t) => t.id === id);
+  if (found === undefined) return null;
+  return templateEditor({
+    template: found,
+    departments: demoDepartments.map((d) => ({
+      ...d,
+      archivedAt:
+        d.id === removedDepartment ? "2026-11-02T15:00:00.000Z" : null,
+    })),
+    shifts: demoListShifts,
+    readOnly,
+    changed,
+  });
+}
+
+/**
+ * The demo's published shifts from this Tuesday on, with their people: the
+ * evening has Noa, Yoav, Maya and Omer; Thursday's morning has nobody yet.
+ */
+const demoSendShifts: SendShift[] = [
+  {
+    id: "s-tue-evening",
+    day: "2026-11-03",
+    name: "ערב",
+    start: "16:00",
+    end: "23:30",
+    pattern: "evening",
+    people: ["noa", "yoav", "maya", "omer"],
+  },
+  {
+    id: "s-wed-morning",
+    day: "2026-11-04",
+    name: "בוקר",
+    start: "09:00",
+    end: "16:00",
+    pattern: "morning",
+    people: ["shiran", "itay", "shira"],
+  },
+  {
+    id: "s-thu-morning",
+    day: "2026-11-05",
+    name: "בוקר",
+    start: "09:00",
+    end: "16:00",
+    pattern: "morning",
+    people: [],
+  },
+];
+
+/**
+ * The send screen as Shiran has it: the restaurant's templates, a list typed
+ * now, and the week's shifts. `initial` is a template's id, or "new".
+ * `kitchenGone` is the restaurant after its kitchen was removed, which the
+ * kitchen's templates still name.
+ */
+export const demoSendForm = (
+  initial?: string,
+  kitchenGone = false,
+): SendFormData => {
+  const live = demoTemplates.filter((t) => t.archivedAt === null);
+  return {
+    now: demoListsNow,
+    timeZone: ISRAEL_TIME_ZONE,
+    templates: live.map((t) => ({
+      id: t.id,
+      name: t.name,
+      note: t.note,
+      items: t.items,
+      recipient: t.recipient,
+      fromDepartment: t.fromDepartment,
+    })),
+    initial:
+      initial === NEW_LIST || live.some((t) => t.id === initial)
+        ? (initial ?? "t-kitchen-opening")
+        : "t-kitchen-opening",
+    free: true,
+    people: teamMembers.map((m) => ({
+      userId: m.userId,
+      name: m.name,
+      photo: m.photo,
+    })),
+    departments: demoDepartments
+      .filter((d) => !kitchenGone || d.id !== "dep-kitchen")
+      .map((d) => ({ id: d.id, name: d.name })),
+    roles: STAFF_ROLES,
+    shifts: demoSendShifts,
+  };
+};
+
+/** What Shiran sent this morning, for the send screen on a computer. */
+export const demoSentToday = {
+  lists: demoLists.filter((l) => l.sentBy === "shiran").map(summaryOf),
+  lookups: demoListLookups,
+  userId: "shiran",
+  timeZone: ISRAEL_TIME_ZONE,
+  now: demoListsNow,
 };
 
 /** The people the department editor can put in a department. */

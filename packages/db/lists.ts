@@ -20,6 +20,7 @@ import {
   listProgress,
   listProgressSchema,
   type Reading,
+  type SavedTemplate,
   SCHEDULE_ANCHORS,
   type ScheduleRecipient,
   type SendInput,
@@ -29,6 +30,7 @@ import {
   templateForSave,
 } from "@domain/lists";
 import { type Role, STAFF_ROLES, type StaffRole } from "@domain/modules";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "./database.types";
 import { isMissingFunction } from "./missing";
@@ -64,7 +66,16 @@ export type ListFailure =
 
 export type ListWrite<T> =
   | { ok: true; value: T }
-  | { ok: false; failure: ListFailure };
+  | {
+      ok: false;
+      failure: ListFailure;
+      /**
+       * A template the database did save before what came after failed: its
+       * id, so an editor that was making it takes it and never makes it
+       * twice (`saveListTemplate`).
+       */
+      saved?: string;
+    };
 
 function failureOf(error: { code?: string; message: string }): ListFailure {
   if (isMissingFunction(error)) return "notYet";
@@ -459,9 +470,12 @@ function templateRecipientOf(row: {
   }
 }
 
-/** Templates with their items and (for list managers) their schedules. */
+/**
+ * Templates with their items and (for list managers, and the team through
+ * the secret key) their schedules.
+ */
 async function templatesFrom(
-  supabase: Supabase,
+  supabase: SupabaseClient<Database>,
   rows: readonly TemplateRow[],
 ): Promise<ListTemplate[] | "notYet"> {
   const ids = rows.map((row) => row.id);
@@ -563,14 +577,19 @@ export async function getListTemplates(
   return templatesFrom(supabase, data ?? []);
 }
 
-/** One template, if the person may read it. */
+/**
+ * One template of the business, if the person may read it. Someone in
+ * several businesses reads it only in the one they are in now.
+ */
 export async function getListTemplate(
+  businessId: string,
   templateId: string,
 ): Promise<ListTemplate | null | "notYet"> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("list_templates")
     .select(TEMPLATE_COLUMNS)
+    .eq("business_id", businessId)
     .eq("id", templateId)
     .maybeSingle();
   if (error) {
@@ -580,6 +599,75 @@ export async function getListTemplate(
   if (!data) return null;
   const templates = await templatesFrom(supabase, [data]);
   return templates === "notYet" ? templates : (templates[0] ?? null);
+}
+
+/**
+ * A business's list templates for the console, removed ones too, with their
+ * times: the team sets a business's lists up but isn't a member, so RLS has
+ * nothing to show it. Callers check that the person is on the team first.
+ */
+export async function getListTemplatesForTeam(
+  businessId: string,
+): Promise<ListTemplate[] | "notYet"> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("list_templates")
+    .select(TEMPLATE_COLUMNS)
+    .eq("business_id", businessId)
+    .order("position")
+    .order("name");
+  if (error) {
+    if (isMissingTable(error)) return "notYet";
+    throw error;
+  }
+  return templatesFrom(admin, data ?? []);
+}
+
+/** One template of the business for the console, or null when it isn't one. */
+export async function getListTemplateForTeam(
+  businessId: string,
+  templateId: string,
+): Promise<ListTemplate | null | "notYet"> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("list_templates")
+    .select(TEMPLATE_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("id", templateId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingTable(error)) return "notYet";
+    throw error;
+  }
+  if (!data) return null;
+  const templates = await templatesFrom(admin, [data]);
+  return templates === "notYet" ? templates : (templates[0] ?? null);
+}
+
+/**
+ * The lists the person sent that opened in the window, newest first: "sent
+ * today" on the send screen. Under RLS, which lets a sender read their own.
+ */
+export async function getSentLists(
+  businessId: string,
+  userId: string,
+  window: Window,
+): Promise<ListSummary[] | "notYet"> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lists")
+    .select(LIST_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("sent_by", userId)
+    .gte("opens_at", window.from)
+    .lt("opens_at", window.to)
+    .order("opens_at", { ascending: false })
+    .limit(50);
+  if (error) {
+    if (isMissingTable(error)) return "notYet";
+    throw error;
+  }
+  return summaries(supabase, data ?? []);
 }
 
 /**
@@ -649,21 +737,27 @@ const savedSchema = z.object({ id: z.string(), version: z.int() });
 /**
  * Creates or saves a template with its items and times
  * (`public.save_list_template`). `seenVersion` is the version the editor read:
- * a save behind it is refused ("changed").
+ * a save behind it is refused ("changed"). The function gives back the id and
+ * the version; the items' ids, which the editor needs for its next save, are
+ * read after it, and a save that something else followed at once reads as
+ * "changed", since the editor's next save would be refused anyway. Once the
+ * function has saved, a failure after it carries the template's id
+ * (`saved`), so a new one is never made again by the next save.
  */
 export async function saveListTemplate(
   actorId: string,
   businessId: string,
   input: ListTemplateInput,
   seenVersion?: number,
-): Promise<ListWrite<{ id: string; version: number }>> {
+): Promise<ListWrite<SavedTemplate>> {
   let template: ReturnType<typeof templateForSave>;
   try {
     template = templateForSave(input);
   } catch {
     return refused("invalid");
   }
-  const { data, error } = await createAdminClient().rpc("save_list_template", {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("save_list_template", {
     actor: actorId,
     business: businessId,
     template: template as Json,
@@ -671,7 +765,35 @@ export async function saveListTemplate(
   });
   if (error) return refused(failureOf(error));
   const saved = savedSchema.safeParse(data);
-  return saved.success ? { ok: true, value: saved.data } : refused("failed");
+  if (!saved.success) return refused("failed");
+  const [now, items] = await Promise.all([
+    admin
+      .from("list_templates")
+      .select("version")
+      .eq("id", saved.data.id)
+      .eq("business_id", businessId)
+      .maybeSingle(),
+    admin
+      .from("list_template_items")
+      .select("id")
+      .eq("template_id", saved.data.id)
+      .eq("business_id", businessId)
+      .order("position"),
+  ]);
+  if (now.error || items.error) {
+    console.error(
+      "reading a saved template failed",
+      (now.error ?? items.error)?.message,
+    );
+    return { ...refused("failed"), saved: saved.data.id };
+  }
+  if (now.data?.version !== saved.data.version) {
+    return { ...refused("changed"), saved: saved.data.id };
+  }
+  return {
+    ok: true,
+    value: { ...saved.data, items: (items.data ?? []).map((row) => row.id) },
+  };
 }
 
 /** Removes a template from the screens (`public.archive_list_template`). */

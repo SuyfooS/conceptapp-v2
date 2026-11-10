@@ -91,6 +91,50 @@ export async function getOwnPublishedShifts(
 }
 
 /**
+ * The business's published shifts from `from` to `to` (calendar days, both
+ * included), with the people on each by id: the shifts a list can be sent to
+ * (`public.send_list` takes a published shift from today to a week ahead).
+ * Under RLS: a draft week is left out by its own publish date, so a manager,
+ * who also reads drafts, gets the same shifts as anyone.
+ */
+export async function getPublishedShifts(
+  businessId: string,
+  from: string,
+  to: string,
+): Promise<
+  {
+    id: string;
+    day: string;
+    name: string;
+    start: string;
+    end: string;
+    pattern: string | null;
+    people: string[];
+  }[]
+> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("schedule_shifts")
+    .select(
+      "id, day, name, starts_at, ends_at, pattern_key, shift_assignments (user_id), schedule_weeks!inner (schedule_published_at)",
+    )
+    .eq("business_id", businessId)
+    .gte("day", from)
+    .lte("day", to)
+    .not("schedule_weeks.schedule_published_at", "is", null);
+  if (error) throw error;
+  return data.map((row) => ({
+    id: row.id,
+    day: row.day,
+    name: row.name,
+    start: toMinute(row.starts_at),
+    end: toMinute(row.ends_at),
+    pattern: row.pattern_key,
+    people: row.shift_assignments.map((a) => a.user_id).sort(),
+  }));
+}
+
+/**
  * A week's shifts with the people on each, as the signed-in person may
  * read them (RLS: managers and owners; everyone in the business once the
  * week is published). Day by day, earliest

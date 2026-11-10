@@ -3,9 +3,10 @@ import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { EmptyState } from "@ui/empty-state";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { ChevronDown, ListChecks, Send } from "lucide-react";
+import { ChevronDown, ClipboardList, ListChecks, Send } from "lucide-react";
 import Link from "next/link";
 import { type AppWording, type Translator, translator } from "../wording";
 import { ListCard, type ListShown, ListTable } from "./list-card";
@@ -122,7 +123,25 @@ export function ListsView({
         listsHref={paths.lists}
       />
 
-      {data.team ? <TeamToday t={t} team={data.team} /> : null}
+      {data.team || data.templates !== null ? (
+        // For those who manage lists: the business's day, and the way to
+        // its templates, side by side from a tablet up.
+        <div className="grid items-start gap-3 md:grid-cols-2 md:gap-4">
+          {data.team ? <TeamToday t={t} team={data.team} /> : null}
+          {data.templates !== null ? (
+            <ListGroup>
+              <ListRow
+                href={`${paths.base}/lists/templates`}
+                leading={<ClipboardList />}
+                title={t("templatesRow.title")}
+                subtitle={t("templatesRow.subtitle", {
+                  count: data.templates,
+                })}
+              />
+            </ListGroup>
+          ) : null}
+        </div>
+      ) : null}
 
       {data.view === "viewOnly" ? (
         <EmptyState
