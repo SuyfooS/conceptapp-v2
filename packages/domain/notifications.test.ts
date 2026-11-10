@@ -391,6 +391,41 @@ describe("buildInbox", () => {
     ).toMatchObject({ line: { kind: "lists.finished", name: "Bar order" } });
   });
 
+  it("reads a list passed to the reader's department, with its name and whether a note came", () => {
+    expect(
+      lineOf(
+        row(
+          "lists.passed",
+          {
+            list: LINE,
+            name: "Bar order",
+            department: GONE,
+            fromDepartment: GONE,
+            departmentName: "Bar",
+            hasNote: true,
+          },
+          { actorId: MANAGER },
+        ),
+      ),
+    ).toMatchObject({
+      group: "lists",
+      href: `/lists/${LINE}`,
+      line: {
+        kind: "lists.passed",
+        name: "Bar order",
+        department: "Bar",
+        hasNote: true,
+      },
+    });
+    // A line that lost the department's name still reads, with no note.
+    expect(
+      lineOf(row("lists.passed", { list: LINE, name: "Bar order" })),
+    ).toMatchObject({
+      line: { kind: "lists.passed", department: null, hasNote: false },
+    });
+    expect(needsAction("lists.passed")).toBe(false);
+  });
+
   it("reads a list due soon or late, with its due time if it kept it", () => {
     const due = "2026-11-16T07:15:00.000Z";
     for (const kind of ["lists.due", "lists.late", "lists.late_team"]) {

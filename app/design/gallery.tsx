@@ -172,6 +172,8 @@ function GalleryBody({
   const tPay = useTranslations("app.pay");
   const tRoles = useTranslations("app.roles");
   const [ticked, setTicked] = useState(false);
+  const [ordered, setOrdered] = useState(true);
+  const [givenCount, setGivenCount] = useState("20");
   const [fridge, setFridge] = useState("7");
   const [freezer, setFreezer] = useState("18");
   const [below, setBelow] = useState(true);
@@ -862,6 +864,57 @@ function GalleryBody({
               })}
               check={{ checked: ticked, onToggle: () => setTicked(!ticked) }}
               commentAction={{ label: tList("comment.add"), onClick: () => {} }}
+            />
+            {/* An order's check: ticked, how many were given, and how many short. */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistOrder")}
+              hint={tList("requested", { count: 24 })}
+              required
+              optionalLabel={tList("optional")}
+              done={ordered}
+              check={{
+                checked: ordered,
+                onToggle: () => {
+                  setOrdered(!ordered);
+                  setGivenCount("24");
+                },
+              }}
+              quantity={{
+                label: tList("givenLabel"),
+                value: givenCount,
+                onValueChange: setGivenCount,
+                onCommit: () => {},
+                fieldLabel: tList("givenOf", { label: t("checklistOrder") }),
+                decreaseLabel: tList("fewer", { label: t("checklistOrder") }),
+                increaseLabel: tList("more", { label: t("checklistOrder") }),
+                max: 9999,
+                short:
+                  Number(givenCount) < 24
+                    ? tList("short", { count: 24 - Number(givenCount) })
+                    : null,
+              }}
+            />
+            {/* The same, only read: the count in words. */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistOrder")}
+              hint={tList("requested", { count: 24 })}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              quantity={{
+                label: tList("givenLabel"),
+                value: "20",
+                onValueChange: () => {},
+                onCommit: () => {},
+                fieldLabel: tList("givenOf", { label: t("checklistOrder") }),
+                decreaseLabel: tList("fewer", { label: t("checklistOrder") }),
+                increaseLabel: tList("more", { label: t("checklistOrder") }),
+                max: 9999,
+                text: tList("given", { given: 20, requested: 24 }),
+              }}
             />
             <ChecklistItem
               kind="number"

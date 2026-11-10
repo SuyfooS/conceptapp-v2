@@ -1025,9 +1025,11 @@ export async function resetDemoShop(): Promise<void> {
 
 /**
  * The demo restaurant's lists as its reset leaves them: every list gone with
- * its lines, and the two example lists sent again by the manager (the
- * kitchen's opening list to Noa with two checks done, the floor's to the
- * floor), through the same function the reset ends with.
+ * its lines, and the example lists sent again (the kitchen's opening list to
+ * Noa with two checks done, the floor's to the floor, both by the manager,
+ * and from L5 the bar's order to the storeroom, sent by Shiran of the bar
+ * with its first item given by Yoav), through the same function the reset
+ * ends with.
  */
 export async function resetDemoLists(): Promise<void> {
   await sql`delete from public.lists where business_id = ${DEMO_RESTAURANT}`;
@@ -1590,4 +1592,97 @@ export async function demoListLines(
     where n.business_id = ${DEMO_RESTAURANT} and n.kind = ${kind}
       and n.params ->> 'name' = ${name}`;
   return row?.count ?? 0;
+}
+
+/*
+ * Between departments (L5), in the demo shop: its floor asks the stock for
+ * what it needs (the template's order, "הזמנה מהמחסן"), the stock gives and
+ * passes it back. The restaurant's lists stay as the other specs left them.
+ */
+
+/**
+ * The demo shop's lists as its reset leaves them: every list gone with its
+ * lines, and the example lists sent again, the floor's order among them,
+ * waiting at the stock with its first item given.
+ */
+export async function resetShopLists(): Promise<void> {
+  await sql`delete from public.lists where business_id = ${DEMO_SHOP}`;
+  await sql`delete from public.notifications
+    where business_id = ${DEMO_SHOP} and kind like 'lists.%'`;
+  await sql`select private.seed_demo_lists(${DEMO_SHOP})`;
+}
+
+/** None of the demo shop's lists or their lines, for a test that sends its own. */
+export async function clearShopLists(): Promise<void> {
+  await sql`delete from public.lists where business_id = ${DEMO_SHOP}`;
+  await sql`delete from public.notifications
+    where business_id = ${DEMO_SHOP} and kind like 'lists.%'`;
+}
+
+/**
+ * The demo shop's live template `name`, sent by Omer, its manager, to every
+ * worker by their role: someone who holds it by that alone no longer reads it
+ * once they pass it on. Its id.
+ */
+export async function sendShopListToWorkers(name: string): Promise<string> {
+  const [row] = await sql<{ id: string | null }[]>`
+    select public.send_list(${SHOP_MANAGER}::uuid, ${DEMO_SHOP}::uuid,
+      jsonb_build_object(
+        'template', t.id,
+        'recipient', jsonb_build_object('kind', 'role', 'role', 'worker')
+      )) as id
+    from public.list_templates t
+    where t.business_id = ${DEMO_SHOP} and t.name = ${name}
+      and t.archived_at is null
+    limit 1`;
+  if (!row?.id) throw new Error(`The demo shop has no template ${name}`);
+  return row.id;
+}
+
+export type ShopList = {
+  status: string;
+  /** The department holding it, by name; null when a person, a shift or a role does. */
+  holder: string | null;
+  items: {
+    label: string;
+    requested: number | null;
+    given: number | null;
+    comment: string | null;
+  }[];
+  passes: { from: string | null; to: string; note: string | null }[];
+};
+
+/** One of the demo shop's lists, with its items in order and its passes. */
+export async function shopList(id: string): Promise<ShopList | null> {
+  const [row] = await sql<ShopList[]>`
+    select l.status,
+      (select d.name from public.departments d where d.id = l.recipient_department) as holder,
+      coalesce((
+        select jsonb_agg(jsonb_build_object('label', i.label, 'requested', i.requested,
+            'given', i.given, 'comment', i.comment) order by i.position)
+        from public.list_items i where i.list_id = l.id
+      ), '[]'::jsonb) as items,
+      coalesce((
+        select jsonb_agg(jsonb_build_object(
+            'from', (select d.name from public.departments d where d.id = p.from_department),
+            'to', (select d.name from public.departments d where d.id = p.to_department),
+            'note', p.note) order by p.passed_at)
+        from public.list_passes p where p.list_id = l.id
+      ), '[]'::jsonb) as passes
+    from public.lists l
+    where l.business_id = ${DEMO_SHOP} and l.id = ${id}`;
+  return row ?? null;
+}
+
+/** Who in the demo shop has a line of `kind` about this list: their ids, in order. */
+export async function shopListLines(
+  kind: string,
+  listId: string,
+): Promise<string[]> {
+  const rows = await sql<{ user_id: string }[]>`
+    select n.user_id from public.notifications n
+    where n.business_id = ${DEMO_SHOP} and n.kind = ${kind}
+      and n.params ->> 'list' = ${listId}
+    order by n.user_id`;
+  return rows.map((row) => row.user_id);
 }

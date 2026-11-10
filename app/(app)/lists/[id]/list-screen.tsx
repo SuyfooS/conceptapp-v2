@@ -5,7 +5,10 @@ import {
   isOutOfRange,
   type ListItem,
   listProgress,
+  MAX_PASS_NOTE,
+  MAX_QUANTITY,
   numberRange,
+  parseQuantity,
   parseReading,
   signed,
 } from "@domain/lists";
@@ -14,6 +17,7 @@ import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChecklistItem } from "@ui/checklist-item";
+import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { ListGroup } from "@ui/list-row";
@@ -23,7 +27,14 @@ import { ProgressRing } from "@ui/progress-ring";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { TextArea } from "@ui/text-field";
-import { AlarmClock, CheckCheck, ChevronDown, RotateCcw } from "lucide-react";
+import {
+  AlarmClock,
+  ArrowLeftRight,
+  Building2,
+  CheckCheck,
+  ChevronDown,
+  RotateCcw,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import {
@@ -34,6 +45,7 @@ import {
   useTransition,
 } from "react";
 import { UndoRow } from "../../manage/undo-row";
+import { TYPING_MS } from "../../manage/use-draft";
 import type {
   ListActionResult,
   ListActions,
@@ -50,12 +62,22 @@ export type ListScreenWords = {
   /** Why it is only read here, or null when it is being filled. */
   readOnly: ReactNode;
   details: { key: string; label: string; value: ReactNode }[];
-  timeline: { key: string; text: ReactNode }[];
+  /** What happened, in order; a pass carries the note that came with it. */
+  timeline: { key: string; text: ReactNode; note?: string | null }[];
 };
+
+/** What an item's result changes, as the screen keeps it. */
+type ItemChange = Partial<
+  Pick<ListItem, "checked" | "given" | "reading" | "answer" | "comment">
+>;
 
 /** A number as it is typed back into its field. */
 const typed = (reading: number | null, minus: boolean) =>
   reading === null ? "" : String(minus ? Math.abs(reading) : reading);
+
+/** An order's count as its stepper shows it. */
+const countText = (count: number | null) =>
+  count === null ? "" : String(count);
 
 /** The range as words: "0–5", "from 0", "up to 5" (`numberRange`). */
 const rangeOf = numberRange;
@@ -69,11 +91,14 @@ const needsMinus = (item: ListItem) =>
  * A list being filled. A tick saves at once and shows at once, and goes back
  * with a word if it didn't save; ticking again is the undo. A number saves on
  * leaving its field or on Enter, a note on leaving it, a comment from its
- * sheet. "Finish the list" waits for the required items; once it's finished,
- * whoever finished it can take it back for five minutes. Phone: the list and
- * the dock, the timeline folded at the end. Tablet: the items beside the
- * details and the timeline. Desktop: the same, the main action in the header,
- * and the readings as a table.
+ * sheet. On an order a tick gives what was asked for, and a stepper under it
+ * says how many were given (L5). "Finish the list" waits for the required
+ * items; once it's finished, whoever finished it can take it back for five
+ * minutes. Whoever holds it, or manages lists, passes it to another
+ * department from a sheet, with a note. Phone: the list and the dock, the
+ * timeline folded at the end. Tablet: the items beside the details and the
+ * timeline. Desktop: the same, the main action in the header, and the
+ * readings as a table.
  */
 export function ListScreen({
   data,
@@ -124,6 +149,45 @@ export function ListScreen({
   const [finishing, startFinish] = useTransition();
   const [undoShown, setUndoShown] = useState(data.undoUntil !== null);
   const latest = useRef<Record<string, number>>({});
+  // An order's counts given, as typed, and the save each waits for after the
+  // last tap of its stepper.
+  const [givenDrafts, setGivenDrafts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      list.items.map((item) => [item.id, countText(item.given)]),
+    ),
+  );
+  const givenTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Passing it on: the sheet, the department chosen, its note, and the word
+  // that it went.
+  const [passOpen, setPassOpen] = useState(false);
+  const [passTo, setPassTo] = useState<string | null>(null);
+  const [passNote, setPassNote] = useState("");
+  const [passFailure, setPassFailure] = useState<ListFailure | null>(null);
+  const [passed, setPassed] = useState<{ name: string; stamp: number } | null>(
+    null,
+  );
+  const [passing, startPass] = useTransition();
+
+  // The newest items and counts typed, for a count saved after its timer.
+  const itemsNow = useRef(items);
+  const givenNow = useRef(givenDrafts);
+  useEffect(() => {
+    itemsNow.current = items;
+  }, [items]);
+  useEffect(() => {
+    givenNow.current = givenDrafts;
+  }, [givenDrafts]);
+
+  // Leaving with a count still waiting saves it on the way out.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only on leaving, with the newest counts (read from refs)
+  useEffect(
+    () => () => {
+      for (const itemId of Object.keys(givenTimers.current)) {
+        commitGiven(itemId);
+      }
+    },
+    [],
+  );
 
   // The undo goes away by itself when its five minutes are up, counted from
   // the server's clock (`now`): a phone whose clock is off, or the demo's
@@ -145,15 +209,15 @@ export function ListScreen({
   }
 
   /** What an item's result is with this change, for `set_list_item`. */
-  function resultOf(
-    item: ListItem,
-    change: Partial<
-      Pick<ListItem, "checked" | "reading" | "answer" | "comment">
-    >,
-  ): ItemResult {
+  function resultOf(item: ListItem, change: ItemChange): ItemResult {
     const next = { ...item, ...change };
     const result: NonNullable<ItemResult> = {};
-    if (item.kind === "check" && next.checked) result.checked = true;
+    if (item.kind === "check" && next.checked) {
+      // An order's count says it was ticked; a tick alone gives what was
+      // asked for.
+      if (list.asksQuantities && next.given !== null) result.given = next.given;
+      else result.checked = true;
+    }
     if (item.kind === "number" && next.reading !== null) {
       result.reading = next.reading;
     }
@@ -163,15 +227,20 @@ export function ListScreen({
   }
 
   /** Shows the change at once, saves it, and puts it back if it didn't save. */
-  async function save(
-    item: ListItem,
-    change: Partial<
-      Pick<ListItem, "checked" | "reading" | "answer" | "comment">
-    >,
-  ): Promise<boolean> {
+  async function save(item: ListItem, change: ItemChange): Promise<boolean> {
     const before = item;
-    const result = resultOf(item, change);
-    const next: ListItem = { ...item, ...change };
+    // On an order, a tick gives what was asked for, and taking it back
+    // gives none, as the database has it.
+    const counted: ItemChange =
+      item.kind === "check" && list.asksQuantities && "checked" in change
+        ? {
+            given: change.checked
+              ? (change.given ?? item.given ?? item.requested)
+              : null,
+          }
+        : {};
+    const result = resultOf(item, { ...change, ...counted });
+    const next: ListItem = { ...item, ...change, ...counted };
     const done =
       item.kind === "check"
         ? next.checked
@@ -190,6 +259,13 @@ export function ListScreen({
     const mine = (latest.current[item.id] ?? 0) + 1;
     latest.current[item.id] = mine;
     setItems((current) => current.map((i) => (i.id === item.id ? shown : i)));
+    const ordered = item.kind === "check" && list.asksQuantities;
+    if (ordered) {
+      setGivenDrafts((current) => ({
+        ...current,
+        [item.id]: countText(next.given),
+      }));
+    }
     let saved: ListActionResult<unknown>;
     try {
       saved = await actions.setItem(item.id, result);
@@ -209,9 +285,49 @@ export function ListScreen({
             ? typed(before.reading, minus[item.id] ?? false)
             : (before.answer ?? ""),
       }));
+      if (ordered) {
+        setGivenDrafts((current) => ({
+          ...current,
+          [item.id]: countText(before.given),
+        }));
+      }
     }
     fail(saved.failure);
     return false;
+  }
+
+  /**
+   * An order's count given, as it is typed or stepped: saved shortly after
+   * the last change, or on leaving the field (`commitGiven`).
+   */
+  function changeGiven(item: ListItem, value: string) {
+    setGivenDrafts((current) => ({ ...current, [item.id]: value }));
+    const waiting = givenTimers.current[item.id];
+    if (waiting) clearTimeout(waiting);
+    givenTimers.current[item.id] = setTimeout(
+      () => commitGiven(item.id),
+      TYPING_MS,
+    );
+  }
+
+  function commitGiven(itemId: string) {
+    const waiting = givenTimers.current[itemId];
+    if (waiting) clearTimeout(waiting);
+    delete givenTimers.current[itemId];
+    const item = itemsNow.current.find((i) => i.id === itemId);
+    if (!item) return;
+    const text = givenNow.current[itemId] ?? "";
+    const given = parseQuantity(text);
+    if (given === null) {
+      // Not a count: back to what it was, and said.
+      setGivenDrafts((drafts) => ({
+        ...drafts,
+        [itemId]: countText(item.given),
+      }));
+      if (text.trim() !== "") fail("invalid");
+      return;
+    }
+    if (given !== item.given) void save(item, { given });
   }
 
   function commitNumber(item: ListItem) {
@@ -286,6 +402,43 @@ export function ListScreen({
     });
   }
 
+  const passTarget = data.pass?.targets.find((d) => d.id === passTo) ?? null;
+
+  function openPass() {
+    setPassTo(null);
+    setPassNote("");
+    setPassFailure(null);
+    setPassOpen(true);
+  }
+
+  function pass() {
+    const target = passTarget;
+    if (!target || !data.pass) return;
+    const stays = data.pass.stays;
+    startPass(async () => {
+      let result: ListActionResult;
+      try {
+        result = await actions.pass(list.id, target.id, passNote.trim());
+      } catch {
+        result = { ok: false, failure: "failed" };
+      }
+      if (!result.ok) {
+        setPassFailure(result.failure);
+        return;
+      }
+      setPassOpen(false);
+      // Still theirs to read: the screen shows where it went, and says so.
+      // Otherwise, back to their lists, which say so (`?passed=`): this
+      // screen, and its word, leave.
+      if (stays) {
+        setPassed({ name: target.name, stamp: Date.now() });
+        router.refresh();
+      } else {
+        router.push(`${backHref}?passed=${target.id}`);
+      }
+    });
+  }
+
   const doneLine = (item: ListItem) =>
     item.doneAt
       ? t.rich("list.doneBy", {
@@ -333,17 +486,55 @@ export function ListScreen({
             aria-hidden="true"
             className="mt-2 size-2 shrink-0 rounded-full bg-accent"
           />
-          <span className="min-w-0">{entry.text}</span>
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span>{entry.text}</span>
+            {entry.note ? (
+              <span className="whitespace-pre-line text-ink-2 text-sm">
+                {entry.note}
+              </span>
+            ) : null}
+          </span>
         </li>
       ))}
     </ol>
   );
+
+  /** An order's check: how many were given, beside what was asked for. */
+  const quantityOf = (item: ListItem) => {
+    if (!list.asksQuantities || item.kind !== "check") return null;
+    const given = item.given;
+    const short =
+      given !== null && item.requested !== null && given < item.requested
+        ? tl("short", { count: item.requested - given })
+        : null;
+    return {
+      label: tl("givenLabel"),
+      value: givenDrafts[item.id] ?? "",
+      onValueChange: (value: string) => changeGiven(item, value),
+      onCommit: () => commitGiven(item.id),
+      fieldLabel: tl("givenOf", { label: item.label }),
+      decreaseLabel: tl("fewer", { label: item.label }),
+      increaseLabel: tl("more", { label: item.label }),
+      max: MAX_QUANTITY,
+      short,
+      text:
+        given === null
+          ? null
+          : item.requested !== null
+            ? tl("given", { given, requested: item.requested })
+            : tl("givenOnly", { count: given }),
+    };
+  };
 
   return (
     <PageBody className={pageGlowClass}>
       <StatusToast
         message={failure ? tl(`failed.${failure.reason}`) : null}
         stamp={failure ? String(failure.stamp) : undefined}
+      />
+      <StatusToast
+        message={passed ? tl("pass.passed", { name: passed.name }) : null}
+        stamp={passed ? String(passed.stamp) : undefined}
       />
       <PageHeader
         back={{ href: backHref, label: t("title") }}
@@ -477,6 +668,7 @@ export function ListScreen({
                           }
                         : undefined
                     }
+                    quantity={quantityOf(item)}
                     number={
                       item.kind === "number"
                         ? {
@@ -535,6 +727,22 @@ export function ListScreen({
               })}
             </ListGroup>
           </PageSection>
+
+          {/* Second to finishing it: passing it to another department (L5). */}
+          {data.pass ? (
+            <div className="flex flex-col items-start gap-1">
+              <Button
+                variant="secondary"
+                size="lg"
+                className="w-full md:w-auto"
+                disabled={finishing || passing}
+                onClick={openPass}
+              >
+                <ArrowLeftRight aria-hidden="true" />
+                {tl("pass.action")}
+              </Button>
+            </div>
+          ) : null}
 
           {/* Desktop: the readings at a glance, out of range flagged. */}
           {numbers.length > 0 ? (
@@ -720,6 +928,66 @@ export function ListScreen({
           />
         </div>
       </Sheet>
+
+      {data.pass ? (
+        <Sheet
+          open={passOpen}
+          onOpenChange={setPassOpen}
+          title={tl("pass.title")}
+          subtitle={list.name}
+          closeLabel={tl("pass.close")}
+        >
+          <div className="flex flex-col gap-4 px-2 pt-1 pb-2">
+            <ChoiceList legend={tl("pass.to")}>
+              {data.pass.targets.map((target) => (
+                <ChoiceRow
+                  key={target.id}
+                  name="pass-to"
+                  value={target.id}
+                  checked={passTo === target.id}
+                  // Nobody there to take it: said, and not taken.
+                  disabled={target.people === 0}
+                  onChange={() => {
+                    setPassTo(target.id);
+                    setPassFailure(null);
+                  }}
+                  title={target.name}
+                  hint={tl("pass.people", { count: target.people })}
+                  leading={<Building2 />}
+                  className={cn(target.people === 0 && "cursor-default")}
+                />
+              ))}
+            </ChoiceList>
+            <TextArea
+              label={tl("pass.note")}
+              hint={tl("pass.noteHint")}
+              value={passNote}
+              maxLength={MAX_PASS_NOTE}
+              rows={3}
+              onChange={(event) => {
+                setPassNote(event.target.value);
+                setPassFailure(null);
+              }}
+            />
+            {passFailure ? (
+              <p role="alert" className="px-2 font-medium text-danger">
+                {tl(`failed.${passFailure}`)}
+              </p>
+            ) : null}
+            <Button
+              size="lg"
+              loading={passing}
+              disabled={passTarget === null}
+              onClick={pass}
+            >
+              <ArrowLeftRight aria-hidden="true" />
+              {passTarget
+                ? tl("pass.submit", { name: passTarget.name })
+                : tl("pass.choose")}
+            </Button>
+          </div>
+        </Sheet>
+      ) : null}
     </PageBody>
   );
 }

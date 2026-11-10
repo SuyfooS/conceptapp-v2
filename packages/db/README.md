@@ -100,8 +100,8 @@ business (where its tab fits), gives businesses opened before lists their
 template's departments and lists (`private.backfill_lists`), adds
 `public.cancel_unstarted_list`, the undo right after sending (`cancel_list`
 only while nobody has started the list), and fills `private.seed_demo_lists`:
-the demo reset ends with two example lists sent by the demo's manager
-(`lists_on.test.sql`).
+the demo reset ends with two example lists sent by the demo's manager, and
+from L5 an order (`lists_on.test.sql`).
 `@db/departments` `getDepartmentsForTeam` reads them for the console with the
 secret key, since the team is no member.
 Templates and the full send (L3) need no migration. `saveListTemplate` calls
@@ -153,6 +153,30 @@ reminder and of a late list, and its managers of a late list and of a reading
 out of range, with the reading.
 `getListReadings(lists)` reads the number items of some lists with their
 readings, under RLS, for the manager's day (`lists_schedule.test.sql`).
+
+Lists between departments (L5, `20261110001400_lists_pass.sql`):
+`public.pass_list(actor, list, department, pass_note, at_time)` (secret key)
+passes an open list to another live department of its business, for whoever
+holds it or manages lists (42501 otherwise, P0002 for a list that isn't
+theirs to know, 22023 for the department holding it already, a removed one,
+another business's or a note over 200, 55000 once it is closed). It writes a
+`list_passes` row (from where, to where, who, when, the note), makes the list
+the department's, and logs `lists.pass` with whether a note came, never the
+note. Whoever held it as a person or a shift keeps reading it through
+`list_people`, and a department through its pass row (`private.sees_list`);
+someone who held it only by their role no longer reads it unless they sent
+it, manage lists, or are in the department that asked. None of them fills it
+any more. `private.notify_for_lists`
+tells the new department's people (`lists.passed`, with the department's
+name) and settles the list's lines for everyone who no longer holds it.
+Orders' counts were there from L1: `send_list` takes `quantities` by the
+template's item, and `set_list_item` takes `given`. `private.seed_demo_lists`
+also sends the template's first order, by someone of the department that
+asks, its first item given where it goes, in a block of its own that runs
+whatever became of the examples before it. `@db/lists` `passList` calls it,
+and `getMyLists` returns, beside what the person holds, the open orders their
+departments asked for that wait elsewhere (`lists_pass.test.sql`,
+`demo_reset.test.sql`).
 
 Hours stay (`20261110000100_hours_kept.sql`, payroll P1). `time_entries`,
 `time_breaks` and `audit_log` refer to their business, person and entry with

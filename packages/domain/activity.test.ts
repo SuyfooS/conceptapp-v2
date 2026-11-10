@@ -642,6 +642,47 @@ describe("buildActivity: each action", () => {
     ).toEqual({ action: "lists.reopen", name: "Opening", was: null });
   });
 
+  it("reads a list passed from one department to another, never its note (L5)", () => {
+    expect(
+      lineOf(
+        row("lists.pass", {
+          list: LIST,
+          name: "Bar order",
+          from_department: GONE,
+          to_department: KITCHEN.toUpperCase(),
+          has_note: true,
+        }),
+      ),
+    ).toEqual({
+      action: "lists.pass",
+      name: "Bar order",
+      from: null,
+      to: "Kitchen",
+      note: true,
+    });
+    // From a person or a role: no department it was with.
+    expect(
+      lineOf(
+        row("lists.pass", {
+          list: LIST,
+          name: "Opening",
+          from_department: null,
+          to_department: KITCHEN,
+          has_note: false,
+        }),
+      ),
+    ).toEqual({
+      action: "lists.pass",
+      name: "Opening",
+      from: null,
+      to: "Kitchen",
+      note: false,
+    });
+    expect(lineOf(row("lists.pass", { name: "Opening" }))).toEqual({
+      action: "other",
+    });
+  });
+
   it("reads a list's times: late, not done, and a reading out of range", () => {
     expect(
       lineOf(row("lists.late", { list: LIST, name: "Opening", due_at: "x" })),
@@ -1214,13 +1255,19 @@ describe("activityRefs", () => {
           name: "Opening",
           recipient: { kind: "department", id: KITCHEN },
         }),
+        row("lists.pass", {
+          name: "Bar order",
+          from_department: GONE,
+          to_department: KITCHEN,
+          has_note: false,
+        }),
       ]),
     ).toEqual({
       people: [NOA, YOAV, STAFF, LEFT, GONE, NAMELESS],
       invites: [INVITE],
       shifts: [SHIFT],
       swaps: [SWAP],
-      departments: [KITCHEN],
+      departments: [KITCHEN, GONE],
     });
   });
 });

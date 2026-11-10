@@ -48,7 +48,10 @@ export function ListView({
         : data.readOnly === "cancelled"
           ? t("list.readOnly.cancelled")
           : data.readOnly === "elsewhere"
-            ? t("list.readOnly.elsewhere", { to: holderTo })
+            ? // Passed on since it was sent: where it is now.
+              list.passes.length > 0
+              ? t("list.readOnly.passedElsewhere", { to: holderTo })
+              : t("list.readOnly.elsewhere", { to: holderTo })
             : data.readOnly === "viewOnly"
               ? t("list.readOnly.viewOnly")
               : null;
@@ -85,28 +88,59 @@ export function ListView({
       : []),
   ];
 
-  const timeline: { key: string; text: ReactNode }[] = [
+  // Where it was sent: who holds it now, until it is passed on. Then the
+  // department its first pass came from, or no one named when it came from
+  // a person, a shift or a role, whose people the list no longer keeps.
+  const [firstPass] = list.passes;
+  const sentTo = !firstPass
+    ? holderTo
+    : firstPass.fromDepartment
+      ? t("card.to.department", {
+          name:
+            lookups.departments[firstPass.fromDepartment] ??
+            t("card.aDepartment"),
+        })
+      : null;
+  const timeline: { key: string; text: ReactNode; note?: string | null }[] = [
     {
       key: "sent",
       text:
         list.origin === "scheduled"
           ? t.rich("list.timeline.opened", { time: at(list.opensAt), ltr })
-          : t.rich("list.timeline.sent", {
-              name: personName(t, lookups, list.sentBy),
-              to: holderTo,
-              time: at(list.opensAt),
-              ltr,
-            }),
+          : sentTo === null
+            ? t.rich("list.timeline.sentBy", {
+                name: personName(t, lookups, list.sentBy),
+                time: at(list.opensAt),
+                ltr,
+              })
+            : t.rich("list.timeline.sent", {
+                name: personName(t, lookups, list.sentBy),
+                to: sentTo,
+                time: at(list.opensAt),
+                ltr,
+              }),
     },
-    ...list.passes.map((pass) => ({
-      key: pass.id,
-      text: t.rich("list.timeline.passed", {
-        to: lookups.departments[pass.toDepartment] ?? t("card.aDepartment"),
+    // Each pass from where to where, and the note that came with it (L5).
+    ...list.passes.map((pass) => {
+      const to =
+        lookups.departments[pass.toDepartment] ?? t("card.aDepartment");
+      const from = pass.fromDepartment
+        ? lookups.departments[pass.fromDepartment]
+        : undefined;
+      const values = {
+        to,
         name: personName(t, lookups, pass.passedBy),
         time: at(pass.passedAt),
         ltr,
-      }),
-    })),
+      };
+      return {
+        key: pass.id,
+        text: from
+          ? t.rich("list.timeline.passedFrom", { ...values, from })
+          : t.rich("list.timeline.passed", values),
+        note: pass.note ? t("list.timeline.note", { note: pass.note }) : null,
+      };
+    }),
     ...(list.status === "finished" && list.finishedAt
       ? [
           {
@@ -139,6 +173,7 @@ export function ListView({
   return (
     <ListScreen
       // A list that finished, opened again or closed starts the screen anew.
+      // One passed on keeps it, with the word that it went.
       key={`${list.id}:${list.status}:${list.finishedAt ?? ""}`}
       data={data}
       actions={actions}

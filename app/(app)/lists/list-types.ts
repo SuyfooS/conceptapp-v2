@@ -12,6 +12,7 @@ import type {
   ListsTally,
   ListTemplate,
   ListTemplateInput,
+  PassTarget,
   SavedTemplate,
   ScheduleAnchor,
   SendShift,
@@ -61,16 +62,39 @@ export type ListsHomeData = {
   open: ListSummary[];
   /** Closed lists that opened today, newest first. */
   closed: ListSummary[];
+  /**
+   * Open orders one of the person's departments asked for, held by another
+   * (L5), most urgent first: they follow them from here.
+   */
+  asked: ListSummary[];
+  /**
+   * The department filter, for someone in more than one department (L5): their
+   * live departments in order, the one chosen (null for all) and where each
+   * choice leads. Null for everyone else.
+   */
+  filter: DepartmentFilterData | null;
   /** The business's day, for those who manage lists. */
   team: ListsTally | null;
   send: SendWay | null;
   /** A list this person just sent, while it can still be taken back. */
   sent: ListSummary | null;
   /**
+   * The live department a list was just passed to (L5), by name, from the
+   * address the list's screen came back with; null otherwise.
+   */
+  passed: string | null;
+  /**
    * How many live templates the business has, for those who manage lists:
    * the way to change and make them. Null for everyone else.
    */
   templates: number | null;
+};
+
+/** The department filter on Lists. */
+export type DepartmentFilterData = {
+  departments: { id: string; name: string }[];
+  /** The department chosen, or null for all of them. */
+  chosen: string | null;
 };
 
 /** Why a list is only read here. */
@@ -80,6 +104,18 @@ export type ListReadOnly =
   | "cancelled"
   | "elsewhere"
   | "viewOnly";
+
+/** Passing a list on from its screen (L5), when the person may. */
+export type ListPassData = {
+  /** Every live department but the one holding it, with its people now. */
+  targets: PassTarget[];
+  /**
+   * Whether the person still reads the list once it is passed (a list
+   * manager, its sender, its people, a department it passed through): their
+   * screen then stays, and otherwise goes back to Lists.
+   */
+  stays: boolean;
+};
 
 /** One list on its own screen. */
 export type ListScreenData = {
@@ -104,6 +140,8 @@ export type ListScreenData = {
    * or null. Counted against `now`, the server's clock.
    */
   undoUntil: string | null;
+  /** Passing it to another department, or null when it isn't theirs to pass. */
+  pass: ListPassData | null;
 };
 
 export type ListFailure =
@@ -141,6 +179,12 @@ export type ListActions = {
   ) => Promise<ListActionResult<ListProgress>>;
   finish: (listId: string) => Promise<ListActionResult>;
   reopen: (listId: string) => Promise<ListActionResult>;
+  /** Passes it to another department, with a note (blank for none). */
+  pass: (
+    listId: string,
+    department: string,
+    note: string,
+  ) => Promise<ListActionResult>;
 };
 
 /** An item as a preview of a list shows it. */
@@ -151,6 +195,8 @@ export type PreviewItem = {
   unit: string | null;
   min: number | null;
   max: number | null;
+  /** An order's check: how many it will ask for, when it asks (L5). */
+  requested?: number | null;
 };
 
 /** A template as the send screen offers it. */
@@ -158,10 +204,16 @@ export type SendTemplate = {
   id: string;
   name: string;
   note: string | null;
-  items: PreviewItem[];
+  /** Its items, with their ids, which its counts go by. */
+  items: (PreviewItem & { id: string })[];
   recipient: TemplateRecipient | null;
   /** An order: the department that asks, which sends it to its recipient. */
   fromDepartment: string | null;
+  /**
+   * It asks for counts (L5): its check items, each with its usual count,
+   * which the send screen starts from. Empty when it doesn't.
+   */
+  quantities: { id: string; label: string; usual: number | null }[];
 };
 
 /** Where the send screen starts: a template, or a list typed now. */

@@ -4,6 +4,7 @@ import { Check, ImageOff, MessageSquareText } from "lucide-react";
 import { type ReactNode, useId } from "react";
 import { Badge } from "./badge";
 import { cn } from "./cn";
+import { Stepper } from "./stepper";
 import { fieldInputClass, ltrInputClass } from "./text-field";
 
 export type ChecklistItemKind = "check" | "number" | "note" | "photo";
@@ -27,6 +28,28 @@ export type ChecklistItemProps = {
   readOnly?: boolean;
   /** A check: the whole row ticks it, and ticking again takes it back. */
   check?: { checked: boolean; onToggle: () => void };
+  /**
+   * An order's check: how many were given. Ticking gives what was asked for
+   * (the hint says how many); once ticked, a stepper under the row changes
+   * it, saved on leaving the field or shortly after the last tap. Read-only,
+   * `text` says it instead ("ניתנו 20 מתוך 24").
+   */
+  quantity?: {
+    /** "ניתנו", beside the stepper. */
+    label: string;
+    value: string;
+    onValueChange: (value: string) => void;
+    onCommit: () => void;
+    /** Names the count for screen readers, with the item in it. */
+    fieldLabel: string;
+    decreaseLabel: string;
+    increaseLabel: string;
+    max: number;
+    /** Said beside it while fewer were given than asked ("חסרים 4"). */
+    short?: ReactNode;
+    /** What was given, in words, for a list only read. */
+    text?: ReactNode;
+  } | null;
   /** A number: typed left to right, saved on leaving the field or on Enter. */
   number?: {
     value: string;
@@ -64,9 +87,10 @@ const rowClass =
  * One item of a list being filled: a check, a number with its unit and range,
  * a note, or a photo. A tick is a 44px circle that fills, on a row that is
  * itself the button. A reading outside its range is said in words, in the
- * warning colour. Who did it and when sits under it. Read-only lists show the
- * same without the controls. A checkbox is named by its label alone; the
- * rest of the row describes it.
+ * warning colour. Who did it and when sits under it. On an order, a ticked
+ * check has its count under it, a stepper that says how many were given.
+ * Read-only lists show the same without the controls. A checkbox is named by
+ * its label alone; the rest of the row describes it.
  */
 export function ChecklistItem({
   kind,
@@ -80,11 +104,13 @@ export function ChecklistItem({
   commentAction,
   readOnly = false,
   check,
+  quantity,
   number,
   note,
   photo,
 }: ChecklistItemProps) {
   const fieldId = useId();
+  const shortId = useId();
   const labelId = useId();
   const optionalId = useId();
   const hintId = useId();
@@ -172,8 +198,45 @@ export function ChecklistItem({
         {below}
       </span>
     );
-    return (
-      <div className={cn(rowClass, "flex-row items-center gap-3")}>
+    // An order's count, under the row once it's ticked: a stepper while it
+    // is filled, its words while it is only read. In line with the label,
+    // past the circle.
+    const counted =
+      quantity && checked ? (
+        readOnly || !check ? (
+          quantity.text ? (
+            <span className="ps-14 text-ink-2 text-sm">{quantity.text}</span>
+          ) : null
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ps-14">
+            <span aria-hidden="true" className="font-medium text-base text-ink">
+              {quantity.label}
+            </span>
+            <Stepper
+              value={quantity.value}
+              onValueChange={quantity.onValueChange}
+              onBlur={quantity.onCommit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              min={0}
+              max={quantity.max}
+              wide
+              label={quantity.fieldLabel}
+              decreaseLabel={quantity.decreaseLabel}
+              increaseLabel={quantity.increaseLabel}
+              describedBy={quantity.short ? shortId : undefined}
+            />
+            {quantity.short ? (
+              <span id={shortId} className="text-ink-2 text-sm">
+                {quantity.short}
+              </span>
+            ) : null}
+          </div>
+        )
+      ) : null;
+    const row = (
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         {readOnly || !check ? (
           <span className="flex min-w-0 flex-1 items-center gap-3">
             {circle}
@@ -205,6 +268,14 @@ export function ChecklistItem({
         )}
         {commentButton}
       </div>
+    );
+    return counted ? (
+      <div className={rowClass}>
+        {row}
+        {counted}
+      </div>
+    ) : (
+      <div className={cn(rowClass, "flex-row items-center gap-3")}>{row}</div>
     );
   }
 

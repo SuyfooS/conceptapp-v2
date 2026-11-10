@@ -16,6 +16,8 @@ import {
   type ListTemplate,
   listProgress,
   listsTally,
+  ofDepartment,
+  passTargets,
   type SendShift,
   type TemplateItem,
 } from "@domain/lists";
@@ -225,6 +227,10 @@ export const demoLists: ListDetail[] = [
         label: "יין לבן",
         hint: "בקבוקים",
         requested: 6,
+        given: 4,
+        checked: true,
+        comment: "נשארו רק 4 במחסן",
+        ...done("yoav", "2026-11-03T06:02:00.000Z"),
       }),
       item("order-ice", {
         kind: "check",
@@ -419,21 +425,42 @@ const holdersOf = (userId: string, departments: string[]) => (l: ListDetail) =>
       ? l.holder.people.includes(userId)
       : false;
 
-/** Lists as one person of the demo reads it: their own, and the business's day. */
+/**
+ * Lists as one person of the demo reads it: their own, the orders their
+ * departments asked for that wait elsewhere, and the business's day;
+ * `department` the filter's choice, for someone in more than one; `passed`
+ * a department a list was just passed to, as after passing one on.
+ */
 function homeFor(
   userId: string,
   manager: boolean,
   sent: string | undefined,
+  department?: string,
+  passed?: string,
 ): ListsHomeData {
-  const departments = demoDepartments
-    .filter((d) => d.members.includes(userId))
-    .map((d) => d.id);
+  const theirs = demoDepartments.filter((d) => d.members.includes(userId));
+  const departments = theirs.map((d) => d.id);
   // Today's lists, and last night's closing, still open and late.
   const current = [
     ...demoLists,
     ...demoEarlierLists.filter((l) => l.status === "open"),
   ];
-  const mine = current.filter(holdersOf(userId, departments)).map(summaryOf);
+  const holds = holdersOf(userId, departments);
+  const chosen = departments.includes(department ?? "")
+    ? (department ?? null)
+    : null;
+  const kept = (l: ListSummary) => chosen === null || ofDepartment(l, chosen);
+  const mine = current.filter(holds).map(summaryOf).filter(kept);
+  const asked = current
+    .filter(
+      (l) =>
+        l.status === "open" &&
+        l.fromDepartment !== null &&
+        departments.includes(l.fromDepartment) &&
+        !holds(l),
+    )
+    .map(summaryOf)
+    .filter(kept);
   const sentList = demoLists.find((l) => l.id === sent);
   return {
     now: demoListsNow,
@@ -448,6 +475,14 @@ function homeFor(
       timing,
     ),
     closed: mine.filter((l) => l.status !== "open"),
+    asked: byUrgency(asked, now, timing),
+    filter:
+      theirs.length > 1
+        ? {
+            departments: theirs.map((d) => ({ id: d.id, name: d.name })),
+            chosen,
+          }
+        : null,
     team: manager ? listsTally(current, now, timing) : null,
     send: manager
       ? { href: "/lists/send", only: null }
@@ -455,14 +490,23 @@ function homeFor(
         ? { href: "/lists/send", only: "הזמנה מהבר למחסן" }
         : null,
     sent: sentList ? summaryOf(sentList) : null,
+    passed: demoDepartments.find((d) => d.id === passed)?.name ?? null,
     templates: manager
       ? demoTemplates.filter((t) => t.archivedAt === null).length
       : null,
   };
 }
 
-/** Shiran, a shift manager, on the floor and at the bar. */
-export const demoListsHome = (sent?: string) => homeFor("shiran", true, sent);
+/**
+ * Shiran, a shift manager, on the floor and at the bar: the bar's order waits
+ * at the storeroom, `department` is the filter's choice and `passed` a
+ * department a list was just passed to.
+ */
+export const demoListsHome = (
+  sent?: string,
+  department?: string,
+  passed?: string,
+) => homeFor("shiran", true, sent, department, passed);
 /** Noa, a worker in the kitchen. */
 export const demoWorkerLists = () => homeFor("noa", false, undefined);
 /** A worker with nothing sent to them yet. */
@@ -470,6 +514,7 @@ export const demoEmptyLists = (): ListsHomeData => ({
   ...homeFor("dana", false, undefined),
   open: [],
   closed: [],
+  asked: [],
 });
 /** The team viewing the business as a manager, on a day nothing was sent. */
 export const demoEmptyBusinessLists = (): ListsHomeData => ({
@@ -477,6 +522,8 @@ export const demoEmptyBusinessLists = (): ListsHomeData => ({
   view: "business",
   open: [],
   closed: [],
+  asked: [],
+  filter: null,
   team: { total: 0, open: 0, finished: 0, late: 0 },
   send: null,
 });
@@ -541,13 +588,51 @@ export function demoListsToday(
   });
 }
 
-/** One list on its screen, as Shiran reads it; `finished` just now by her. */
+/**
+ * The bar's order once the storeroom gave what it had and passed it back to
+ * the bar with a note (L5): the bar holds it, to finish.
+ */
+function passedBack(order: ListDetail): ListDetail {
+  const passedAt = "2026-11-03T06:08:00.000Z";
+  const given = (i: ListItem): ListItem =>
+    i.done
+      ? i
+      : {
+          ...i,
+          checked: true,
+          given: i.requested,
+          ...done("yoav", "2026-11-03T06:07:00.000Z"),
+        };
+  return {
+    ...order,
+    holder: { kind: "department", department: "dep-bar" },
+    items: order.items.map(given),
+    passes: [
+      {
+        id: "pass-bar-order",
+        fromDepartment: "dep-storeroom",
+        toDepartment: "dep-bar",
+        passedBy: "yoav",
+        passedAt,
+        note: "יין לבן יגיע מחר בבוקר. השאר כאן.",
+      },
+    ],
+  };
+}
+
+/**
+ * One list on its screen, as Shiran reads it; `finished` just now by her,
+ * `passed` the bar's order passed back from the storeroom.
+ */
 export function demoListScreen(
   id: string,
   finished: boolean,
+  passed = false,
 ): ListScreenData | null {
-  const found = [...demoLists, ...demoEarlierLists].find((l) => l.id === id);
-  if (!found) return null;
+  const listed = [...demoLists, ...demoEarlierLists].find((l) => l.id === id);
+  if (!listed) return null;
+  const found =
+    passed && listed.fromDepartment !== null ? passedBack(listed) : listed;
   const finishedAt = new Date(now.getTime() - 60_000).toISOString();
   const shown: ListDetail = finished
     ? {
@@ -584,6 +669,18 @@ export function demoListScreen(
     undoUntil: finished
       ? new Date(Date.parse(finishedAt) + 5 * 60_000).toISOString()
       : null,
+    // She manages lists: any open one passes to another department.
+    pass:
+      shown.status === "open"
+        ? {
+            targets: passTargets(
+              demoDepartments.map((d) => ({ ...d, archivedAt: null })),
+              shown.holder,
+              new Set(teamMembers.map((m) => m.userId)),
+            ),
+            stays: true,
+          }
+        : null,
   };
 }
 
@@ -999,6 +1096,15 @@ export const demoSendForm = (
       items: t.items,
       recipient: t.recipient,
       fromDepartment: t.fromDepartment,
+      quantities: t.asksQuantities
+        ? t.items
+            .filter((i) => i.kind === "check")
+            .map((i) => ({
+              id: i.id,
+              label: i.label,
+              usual: i.defaultQuantity,
+            }))
+        : [],
     })),
     initial:
       initial === NEW_LIST || live.some((t) => t.id === initial)

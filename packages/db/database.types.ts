@@ -2460,6 +2460,16 @@ export type Database = {
         Returns: string;
       };
       own_phone: { Args: Record<PropertyKey, never>; Returns: string };
+      pass_list: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          department: string;
+          list: string;
+          pass_note?: string;
+        };
+        Returns: undefined;
+      };
       publish_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;

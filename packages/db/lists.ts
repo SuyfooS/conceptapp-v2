@@ -20,6 +20,8 @@ import {
   type ListTemplateInput,
   listProgress,
   listProgressSchema,
+  type PassInput,
+  passInput,
   type Reading,
   type SavedTemplate,
   SCHEDULE_ANCHORS,
@@ -270,13 +272,15 @@ async function openAndClosed(
 /**
  * The lists a person holds now (their people, their departments, their role):
  * every open one, and those that opened in the window and are closed. Not
- * every list they may read: a list manager reads them all.
+ * every list they may read: a list manager reads them all. `asked` is the
+ * open orders one of their departments asked for that another holds (L5),
+ * which they follow from Lists.
  */
 export async function getMyLists(
   businessId: string,
   person: { userId: string; role: Role },
   window: Window,
-): Promise<ListSummary[] | "notYet"> {
+): Promise<{ held: ListSummary[]; asked: ListSummary[] } | "notYet"> {
   const supabase = await createClient();
   const [[open, closed], departments] = await Promise.all([
     openAndClosed(supabase, businessId, window),
@@ -301,7 +305,15 @@ export async function getMyLists(
     ...person,
     departments: (departments.data ?? []).map((row) => row.department_id),
   };
-  return all.filter((list) => holdsList(list.holder, mine));
+  const held = all.filter((list) => holdsList(list.holder, mine));
+  const asked = all.filter(
+    (list) =>
+      list.status === "open" &&
+      list.fromDepartment !== null &&
+      mine.departments.includes(list.fromDepartment) &&
+      !holdsList(list.holder, mine),
+  );
+  return { held, asked };
 }
 
 /**
@@ -1073,4 +1085,27 @@ export function reopenList(
   at?: Date,
 ): Promise<ListWrite<null>> {
   return changeList("reopen_list", actorId, listId, at);
+}
+
+/**
+ * Passes an open list to another department of its business, with a note if
+ * there is one (`public.pass_list`): whoever holds it, or a list manager.
+ * "invalid" for the department holding it already, a removed one, or a note
+ * too long; "finished" once it is closed.
+ */
+export async function passList(
+  actorId: string,
+  input: PassInput,
+  at?: Date,
+): Promise<ListWrite<null>> {
+  const pass = passInput.safeParse(input);
+  if (!pass.success) return refused("invalid");
+  const { error } = await createAdminClient().rpc("pass_list", {
+    actor: actorId,
+    list: pass.data.list,
+    department: pass.data.department,
+    ...(pass.data.note ? { pass_note: pass.data.note } : {}),
+    ...atTime(at),
+  });
+  return error ? refused(failureOf(error)) : { ok: true, value: null };
 }
