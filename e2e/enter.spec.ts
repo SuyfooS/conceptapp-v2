@@ -7,6 +7,7 @@ import {
   demoShopWeek,
   setDemoBusinessDetails,
 } from "./db";
+import { secondPage } from "./session";
 
 // The passive door (Orel, 6 November 2026): one press on a person of a demo
 // business, seeded with these emails in supabase/seed.sql.
@@ -68,6 +69,37 @@ test("signed-out visitors choose who they are and come in", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: he.app.team.title }),
   ).toBeVisible();
+});
+
+// Signing out ends this device's session only (#80): a shared tablet left
+// behind doesn't sign the person out of their own phone.
+test("signing out on one device leaves the other signed in", async ({
+  page,
+  browser,
+}, testInfo) => {
+  await page.goto("/enter");
+  await person(page, "worker").click();
+  await expect(page).toHaveURL(/\/home$/);
+  const other = await secondPage(browser, testInfo);
+  try {
+    await other.goto("/enter");
+    await person(other, "worker").click();
+    await expect(other).toHaveURL(/\/home$/);
+
+    await page.goto("/me");
+    await page.getByRole("button", { name: he.app.signOut }).click();
+    await expect(page).toHaveURL(/\/enter$/);
+    await page.goto("/home");
+    await expect(page).toHaveURL(/\/enter$/);
+
+    await other.goto("/me");
+    await expect(other).toHaveURL(/\/me$/);
+    await expect(
+      other.getByRole("button", { name: he.app.signOut }),
+    ).toBeVisible();
+  } finally {
+    await other.context().close();
+  }
 });
 
 test("the console is not on offer", async ({ page }) => {

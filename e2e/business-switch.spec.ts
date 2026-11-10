@@ -12,7 +12,8 @@ import {
   SWITCH_PERSON,
   seededPayMonth,
 } from "./db";
-import { signIn } from "./session";
+import { secondPage, signIn } from "./session";
+import { latestCode } from "./sms";
 import { heT } from "./t";
 
 // One login in several businesses (payroll P3b; Orel, 8 November 2026): one
@@ -26,6 +27,7 @@ import { heT } from "./t";
 const e = he.auth.enter;
 const b = he.ui.businesses;
 const ti = he.app.team.invite;
+const j = he.auth.join;
 const SHOP = e.businesses.shop.name;
 const RESTAURANT = e.businesses.restaurant.name;
 const DEMO_RESTAURANT = "00000000-0000-4000-b000-000000000001";
@@ -178,8 +180,12 @@ test("a forged choice opens the person's own business", async ({
   await expect(page.getByText(RESTAURANT)).toHaveCount(0);
 });
 
-test("a worker on another business's staff is still not invited to its staff", async ({
+// The Team screen answers the same for every number (#80): an owner never
+// learns that Roni works in the shop. Only Roni hears it, at /join, and only
+// the console tells an inviter (console-people.spec.ts).
+test("a worker on another business's staff gets a link like anyone, and only he hears why it can't be used", async ({
   page,
+  browser,
 }, testInfo) => {
   await removeDemoInvites([RONI.e164]);
   try {
@@ -188,15 +194,42 @@ test("a worker on another business's staff is still not invited to its staff", a
     await page.getByLabel(ti.name).fill(RONI.name);
     await page.getByLabel(ti.phone).fill(RONI.local);
     await page.getByRole("button", { name: ti.submit }).click();
-    await expect(page.getByText(ti.errors.elsewhere)).toBeVisible();
-    expect(await invitesBySlug("demo-restaurant")).not.toContainEqual(
-      expect.objectContaining({ phone: RONI.e164 }),
-    );
+    await expect(
+      page.getByRole("heading", {
+        name: ti.ready.replace("{name}", RONI.name),
+      }),
+    ).toBeVisible();
+    await expect(page.getByText(ti.errors.elsewhere)).toHaveCount(0);
+    expect(await invitesBySlug("demo-restaurant")).toContainEqual({
+      name: RONI.name,
+      phone: RONI.e164,
+      role: "worker",
+    });
     await expectCleanPage(page);
 
-    // As the accountant she may keep this one's books: once, on the widest
-    // screen, since it writes an invite.
+    // The rest once, on the widest screen: it sends Roni a code.
     if (testInfo.project.name !== "desktop") return;
+    const link = await page
+      .getByLabel(he.app.team.link.linkFor.replace("{name}", RONI.name))
+      .inputValue();
+    const theirs = await secondPage(browser, testInfo);
+    try {
+      await theirs.goto(link);
+      const since = new Date(Date.now() - 1000);
+      await theirs.getByRole("button", { name: j.send }).click();
+      await theirs
+        .getByLabel(j.codeLabel)
+        .fill(await latestCode(RONI.e164, since));
+      await expect(theirs.getByText(j.elsewhere)).toBeVisible();
+    } finally {
+      await theirs.context().close();
+    }
+
+    // As the accountant he may keep this one's books: the same number again
+    // renews his invite with the new role.
+    await page.getByRole("button", { name: ti.another }).click();
+    await page.getByLabel(ti.name).fill(RONI.name);
+    await page.getByLabel(ti.phone).fill(RONI.local);
     await page
       .getByRole("radio", { name: new RegExp(he.app.team.roles.accountant) })
       .check();

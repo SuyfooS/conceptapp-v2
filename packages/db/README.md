@@ -409,11 +409,16 @@ a race the index catches into the same; `@db/invites` reads it as `elsewhere`,
 and `activeElsewhere(phone, business, role)` says it before a link goes out
 (false for an accountant's invite, and when every other place is an
 accountant's). `admin_invite`, `team_invite` and `create_business` write
-invites only, so the index never meets them, and the app asks before each:
-`activeElsewhere` on the Team screen and the console's business page, and
-`onAnotherStaff(entries)` (the staff list's numbers in a staff role already
-on a staff, in one read) in the console's new-business wizard, which sends
-the list back with them named before anything is written. The phone:
+invites only, so the index never meets them. The console asks before its
+two: `activeElsewhere` on the business page, and `onAnotherStaff(entries)`
+(the staff list's numbers in a staff role already on a staff, in one read)
+in the new-business wizard, which sends the list back with them named before
+anything is written. The Team screen doesn't ask (#80): an owner or manager
+gets the same link for any number and never learns where else it works;
+/join tells the person themselves. It asks `invitesOpen(business)` instead
+(`public.closed_to_invites`, `20261110001200_invites_open.sql`; true before
+the migration reaches a project), and offers no invite in a demo business
+closed to them. The phone:
 `private.push_business_ok(person, business)` (active member, not a demo,
 notifications on) decides `push_plan` and what `claim_due_pushes` still
 sends; `private.push_business(person)` is now the first such business they
@@ -523,6 +528,10 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   Actions, acting as the signed-in person under RLS (publishable key).
 - `@db/supabase/proxy`: `refreshSession()` for the root `proxy.ts`, which
   refreshes the session cookies on every app request.
+- `@db/supabase/cookies`: how both set the session cookies (#80): httpOnly,
+  since there is no Supabase client in the browser; Secure over https (not
+  on the browser tests' http://127.0.0.1); sameSite lax. Signing out ends
+  this device's session only (`scope: "local"`).
 - `@db/session`: `getCurrentMember()`, the signed-in person and their
   business: the one the `ca_business` cookie names when it is one of their
   active memberships, else their place on a staff, else the first they

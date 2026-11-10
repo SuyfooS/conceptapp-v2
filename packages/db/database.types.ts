@@ -2329,6 +2329,7 @@ export type Database = {
         };
         Returns: undefined;
       };
+      closed_to_invites: { Args: { business: string }; Returns: boolean };
       confirm_time_entry: {
         Args: { actor: string; at_time?: string; entry: string };
         Returns: undefined;

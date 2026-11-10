@@ -25,14 +25,18 @@ type ViewProps = {
   resend: Resend;
   /** A member's own page, under this path. */
   peopleHref: string;
+  /** Whether the business takes invites: a demo one doesn't (#80). */
+  invites: boolean;
 };
 
 /**
  * The Team screen's body: who is in, and who has not joined yet. Phone: what
  * needs action first, then everyone; tablet: the two lists side by side;
  * desktop: everyone in one table. Each invite the viewer may send gets a "new
- * link" button; each member leads to their profile (`peopleHref`/id). Also
- * rendered with mock data on /design/shell/team.
+ * link" button; each member leads to their profile (`peopleHref`/id). A
+ * business closed to invites (a demo one, #80) gets no `inviteHref`: no
+ * invite, no new links, and a line saying why. Also rendered with mock data
+ * on /design/shell/team.
  */
 export function TeamView({
   team,
@@ -45,7 +49,8 @@ export function TeamView({
   team: Team;
   /** The signed-in owner or manager. */
   viewerRole: Role;
-  inviteHref: string;
+  /** The invite form, or nothing when the business takes no invites. */
+  inviteHref?: string;
   /** Where each member's profile lives: `/team`, or the demo's. */
   peopleHref: string;
   resend: Resend;
@@ -53,7 +58,8 @@ export function TeamView({
   wording: AppWording;
 }) {
   const t = translator(wording, "app");
-  const view = { t, team, viewerRole, resend, peopleHref };
+  const invites = inviteHref !== undefined;
+  const view = { t, team, viewerRole, resend, peopleHref, invites };
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
@@ -63,12 +69,14 @@ export function TeamView({
           open: team.counts.open,
         })}
         actions={
-          <Button asChild size="lg">
-            <Link href={inviteHref}>
-              <UserPlus aria-hidden="true" />
-              {t("team.inviteAction")}
-            </Link>
-          </Button>
+          inviteHref ? (
+            <Button asChild size="lg">
+              <Link href={inviteHref}>
+                <UserPlus aria-hidden="true" />
+                {t("team.inviteAction")}
+              </Link>
+            </Button>
+          ) : undefined
         }
       />
       <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:hidden">
@@ -104,8 +112,11 @@ function InviteBadge({ t, state }: { t: T; state: Invite["state"] }) {
 }
 
 /** The "new link" button, when the viewer may send this invite. */
-function resendButton({ t, viewerRole, resend }: ViewProps, invite: Invite) {
-  return canResendInvite(viewerRole, invite.role) ? (
+function resendButton(
+  { t, viewerRole, resend, invites }: ViewProps,
+  invite: Invite,
+) {
+  return invites && canResendInvite(viewerRole, invite.role) ? (
     <ResendLink
       inviteId={invite.id}
       name={name(t, invite.name)}
@@ -139,14 +150,26 @@ function Members({ t, team, peopleHref }: ViewProps) {
   );
 }
 
-function Invites(view: ViewProps) {
-  const { t, team } = view;
+/**
+ * The line under the invites: why there are none in a business closed to
+ * them, else how many expired, which a new link opens again.
+ */
+function invitesNote({ t, team, invites }: ViewProps): string | null {
+  if (!invites) return t("team.invites.closed");
   const { expired } = team.counts;
+  return expired > 0 ? t("team.invites.expiredHint", { count: expired }) : null;
+}
+
+function Invites(view: ViewProps) {
+  const { t, team, invites } = view;
+  const note = invitesNote(view);
   return (
     <PageSection title={t("team.invites.title")}>
       {team.invites.length === 0 ? (
         <Card tone="flat" padding="lg">
-          <CardText>{t("team.invites.empty")}</CardText>
+          <CardText>
+            {invites ? t("team.invites.empty") : t("team.invites.closed")}
+          </CardText>
         </Card>
       ) : (
         <>
@@ -168,11 +191,7 @@ function Invites(view: ViewProps) {
               />
             ))}
           </PersonList>
-          {expired > 0 ? (
-            <p className="px-1 text-ink-2 text-sm">
-              {t("team.invites.expiredHint", { count: expired })}
-            </p>
-          ) : null}
+          {note ? <p className="px-1 text-ink-2 text-sm">{note}</p> : null}
         </>
       )}
     </PageSection>
@@ -217,8 +236,8 @@ function NameCell({
 }
 
 function Everyone(view: ViewProps) {
-  const { t, team, peopleHref } = view;
-  const { expired } = team.counts;
+  const { t, team, peopleHref, invites } = view;
+  const note = invitesNote(view);
   return (
     <PageSection title={t("team.everyone")}>
       <div className="overflow-hidden rounded-card bg-surface shadow-card">
@@ -238,9 +257,11 @@ function Everyone(view: ViewProps) {
               <th scope="col" className={th}>
                 {t("team.columns.status")}
               </th>
-              <th scope="col" className={th}>
-                {t("team.columns.link")}
-              </th>
+              {invites ? (
+                <th scope="col" className={th}>
+                  {t("team.columns.link")}
+                </th>
+              ) : null}
             </tr>
           </thead>
           <tbody>
@@ -252,7 +273,9 @@ function Everyone(view: ViewProps) {
                 <td className={td}>
                   <InviteBadge t={t} state={i.state} />
                 </td>
-                <td className={cn(td, "w-96")}>{resendButton(view, i)}</td>
+                {invites ? (
+                  <td className={cn(td, "w-96")}>{resendButton(view, i)}</td>
+                ) : null}
               </tr>
             ))}
             {team.members.map((m) => (
@@ -268,18 +291,16 @@ function Everyone(view: ViewProps) {
                 <td className={cn(td, "text-ink-2")}>
                   {t("team.state.member")}
                 </td>
-                <td className={td} />
+                {invites ? <td className={td} /> : null}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {team.invites.length === 0 ? (
+      {invites && team.invites.length === 0 ? (
         <p className="px-1 text-ink-2 text-sm">{t("team.invites.empty")}</p>
-      ) : expired > 0 ? (
-        <p className="px-1 text-ink-2 text-sm">
-          {t("team.invites.expiredHint", { count: expired })}
-        </p>
+      ) : note ? (
+        <p className="px-1 text-ink-2 text-sm">{note}</p>
       ) : null}
     </PageSection>
   );

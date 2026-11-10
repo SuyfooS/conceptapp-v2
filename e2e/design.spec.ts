@@ -63,6 +63,7 @@ const PAGES = [
   "/design/shell/today/accountant?state=off",
   "/design/shell/today/businesses",
   "/design/shell/team",
+  "/design/shell/team?state=demo",
   "/design/shell/team/noa",
   "/design/shell/team/maya",
   "/design/shell/me",
@@ -158,6 +159,35 @@ for (const colorScheme of ["light", "dark"] as const) {
     });
   });
 }
+
+// A demo business takes no invites (#80): its Team screen offers none and
+// says why, at every size; a real one keeps its invite and new links.
+test("the team demo offers no invite in a demo business", async ({ page }) => {
+  const tt = he.app.team;
+  const main = page.getByRole("main");
+  await page.goto("/design/shell/team");
+  await expect(
+    main.getByRole("link", { name: tt.inviteAction }).filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    main
+      .getByRole("button", { name: new RegExp(`^${tt.link.new}`) })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(main.getByText(tt.invites.closed)).toHaveCount(0);
+
+  await page.goto("/design/shell/team?state=demo");
+  await expect(
+    main.getByText(tt.invites.closed).filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(main.getByRole("link", { name: tt.inviteAction })).toHaveCount(
+    0,
+  );
+  await expect(
+    main.getByRole("button", { name: new RegExp(`^${tt.link.new}`) }),
+  ).toHaveCount(0);
+});
 
 // Each person's page in the clock demo shows their own shifts, not Noa's.
 test("a person's hours in the demo match their row in the team list", async ({
