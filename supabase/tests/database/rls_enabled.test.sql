@@ -32,7 +32,8 @@ select set_eq(
     'clock_stations', 'notifications', 'push_subscriptions', 'push_deliveries',
     'departments', 'department_members', 'list_templates',
     'list_template_items', 'list_schedules', 'lists', 'list_people',
-    'list_items', 'list_passes', 'permission_keys', 'role_permissions'
+    'list_items', 'list_passes', 'permission_keys', 'role_permissions',
+    'minimum_wages', 'member_wages'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

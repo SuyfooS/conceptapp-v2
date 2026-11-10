@@ -397,6 +397,26 @@ const demoRow = (
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
 export const demoActivityRows: ActivityRow[] = [
+  // Hourly wages (payroll P4): a raise, with what it was and its note, and a
+  // wage under the minimum of its day, which was saved all the same.
+  demoRow(127, "2026-11-04T13:20:00+02:00", "shiran", "wage.set", {
+    person: "dana",
+    wage: "wage-dana",
+    from_agorot: null,
+    to_agorot: 3000,
+    effective_from: "2026-11-01",
+    minimum_agorot: 3540,
+    note: null,
+  }),
+  demoRow(126, "2026-11-04T13:10:00+02:00", "shiran", "wage.set", {
+    person: "yoav",
+    wage: "wage-yoav",
+    from_agorot: 3600,
+    to_agorot: 3800,
+    effective_from: "2026-11-01",
+    minimum_agorot: 3540,
+    note: "העלאה אחרי חצי שנה",
+  }),
   // One correction, two rows: its own and, written first, the breaks it cut
   // (one shortened, one removed), as correct_time_entry logs them.
   demoRow(125, "2026-11-04T12:50:00+02:00", "shiran", "clock.correct", {

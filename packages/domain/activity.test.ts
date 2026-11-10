@@ -694,6 +694,57 @@ describe("buildActivity: each action", () => {
     });
   });
 
+  it("reads a wage set from a day, with what it was and the minimum then", () => {
+    expect(
+      lineOf(
+        row("wage.set", {
+          person: YOAV,
+          wage: SHIFT,
+          from_agorot: 3600,
+          to_agorot: 3800,
+          effective_from: "2026-11-01",
+          minimum_agorot: 3540,
+          note: " A raise ",
+        }),
+      ),
+    ).toEqual({
+      action: "wage.set",
+      person: { kind: "member", name: "Yoav" },
+      agorot: 3800,
+      previous: 3600,
+      from: "2026-11-01",
+      minimum: 3540,
+      note: "A raise",
+    });
+    expect(
+      lineOf(
+        row("wage.set", {
+          person: LEFT,
+          from_agorot: null,
+          to_agorot: 3000,
+          effective_from: "2026-10-01",
+          note: null,
+        }),
+      ),
+    ).toEqual({
+      action: "wage.set",
+      person: { kind: "former" },
+      agorot: 3000,
+      previous: null,
+      from: "2026-10-01",
+      minimum: null,
+      note: null,
+    });
+    for (const details of [
+      { person: YOAV, to_agorot: 0, effective_from: "2026-11-01" },
+      { person: YOAV, to_agorot: 38.5, effective_from: "2026-11-01" },
+      { person: YOAV, to_agorot: 3800, effective_from: "1.11.2026" },
+      { to_agorot: 3800, effective_from: "2026-11-01" },
+    ]) {
+      expect(lineOf(row("wage.set", details))).toEqual({ action: "other" });
+    }
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),

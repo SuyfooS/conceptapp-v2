@@ -97,10 +97,20 @@ export const demoUnread: NotificationRow[] = [
 ];
 
 /**
- * Already read: hours someone else confirmed, a swap decided, the week
+ * Already read: hours someone else confirmed, her own wage set from the
+ * first of the month (its day, never the amount), a swap decided, the week
  * published, someone joining.
  */
 export const demoEarlier: NotificationRow[] = [
+  {
+    id: "a0000000-0000-4000-8000-000000000011",
+    kind: "pay.wage_set",
+    params: { since: "2026-11-01" },
+    actorId: PEOPLE.uri,
+    createdAt: "2026-11-02T07:30:00.000Z",
+    readAt: "2026-11-02T08:00:00.000Z",
+    resolvedAt: null,
+  },
   {
     id: line(0),
     kind: "clock.confirm",

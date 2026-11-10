@@ -6,7 +6,8 @@
 --                   /design/shell). Its schedule is the visitor's to build.
 --   the shop        an owner, a manager, four workers and an accountant, with
 --                   this week's schedule always published.
---   both            last month's hours, for the pay screens.
+--   both            last month's hours and everyone's hourly wage, for the
+--                   pay screens.
 -- Fictional businesses and people. Phones are in the 050-000-00xx range and
 -- are never sent anything. This file runs on `supabase db reset` only; it
 -- never reaches a real project (supabase/hosted-demo.sql is the hosted twin).
@@ -104,7 +105,11 @@ values
 -- (20261110000300_payroll_access.sql). The shop also has an accountant, Galit,
 -- in no department and on no shift. Each starts with last month's hours
 -- ("hours", 20261110000400_payroll_screens.sql): its staff's usual days, and
--- the cases the pay screens show, each on the person it names.
+-- the cases the pay screens show, each on the person it names. And with its
+-- wages from the first of last month ("wages",
+-- 20261110000500_hourly_wages.sql): 45.00 for managers and 38.00 for
+-- workers; the shop's Roni gets a raise from 36.00 on the 15th, and the
+-- restaurant's Yoav has no wage, for the screens that say so.
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -114,6 +119,9 @@ values
     "template": "restaurant", "renews": false, "invites": true, "profiles": true,
     "hours": { "fridays": false, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000004", "case": "night" }
+    ] },
+    "wages": { "manager": 4500, "worker": 3800, "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000004", "case": "none" }
     ] },
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000001", "role": "owner", "name": "אורי הדגמה" },
@@ -135,6 +143,9 @@ values
       { "user_id": "00000000-0000-4000-a000-000000000011", "case": "saturday_night" },
       { "user_id": "00000000-0000-4000-a000-000000000011", "case": "without_code" },
       { "user_id": "00000000-0000-4000-a000-000000000013", "case": "evening" }
+    ] },
+    "wages": { "manager": 4500, "worker": 3800, "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000012", "case": "raise", "agorot": 3600 }
     ] },
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000007", "role": "owner", "name": "מיכל הדגמה" },

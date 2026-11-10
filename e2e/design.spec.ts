@@ -34,7 +34,9 @@ const PAGES = [
   "/design/shell/clock/team/yoav",
   "/design/shell/clock/pay",
   "/design/shell/clock/pay?person=yoav",
+  "/design/shell/clock/pay?show=noWage",
   "/design/shell/clock/pay/noa",
+  "/design/shell/clock/pay/yoav",
   "/design/shell/clock/pay/maya",
   "/design/shell/today/accountant",
   "/design/shell/today/accountant?state=empty",
@@ -186,4 +188,39 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
   await expect(
     page.getByLabel(l.list.readingOf.replace("{label}", "מקפיא")),
   ).toHaveValue("-19");
+});
+
+// The pay demo's wage (payroll P4): under the minimum warns in words and
+// still saves, and the sheet's button says from when.
+test("the pay demo sets a wage, and warns under the minimum", async ({
+  page,
+}) => {
+  await page.goto("/design/shell/clock/pay/noa");
+  await page
+    .getByRole("button", { name: he.app.pay.wage.change })
+    .filter({ visible: true })
+    .click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel(he.app.pay.wage.sheet.amount).fill("30");
+  const warning = heT.markup("app.pay.wage.warning", {
+    ltr: (chunks: string) => chunks,
+    band: "adult",
+    from: "1.4.2026",
+    minimum: "35.40 ₪",
+  });
+  await expect(sheet.getByText(warning)).toBeVisible();
+  // The sheet hides the page from screen readers, heading and all: axe alone.
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  expect(violations.map((v) => v.id)).toEqual([]);
+  await sheet
+    .getByRole("button", {
+      name: heT("app.pay.wage.sheet.save", { date: "1.11" }),
+    })
+    .click();
+  await expect(sheet).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({
+      hasText: heT("app.pay.wage.done", { date: "1.11.2026" }),
+    }),
+  ).toBeVisible();
 });

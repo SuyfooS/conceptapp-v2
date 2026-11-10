@@ -7,6 +7,7 @@ import type {
   NotificationShift,
 } from "@domain/notifications";
 import { timeIn } from "@domain/shabbat";
+import { dayMonthYear } from "@domain/wages";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
@@ -280,6 +281,20 @@ export function InboxView({
             : t("kinds.access.pay_granted.title"),
           shift: null,
           notes: settled ? [] : [t("kinds.access.pay_granted.note")],
+        };
+      case "pay.wage_set":
+        return {
+          // The day it takes effect, never the amount: the clock shows that.
+          title: t("kinds.pay.wage_set.title"),
+          shift: null,
+          notes: [
+            line.since
+              ? t.rich("kinds.pay.wage_set.note", {
+                  ltr,
+                  since: dayMonthYear(line.since),
+                })
+              : t("kinds.pay.wage_set.noteUndated"),
+          ],
         };
       case "push.test":
         return {

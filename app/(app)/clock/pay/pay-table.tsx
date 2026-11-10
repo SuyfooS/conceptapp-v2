@@ -9,13 +9,41 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 import {
   CountCell,
+  MissingWage,
   PayDayList,
+  type PayT,
   payMonthColumns,
   personHref,
   useHoursText,
   useMonthName,
+  WageSpans,
 } from "./pay-parts";
 import type { PayPaths, PayPerson } from "./pay-types";
+
+/**
+ * The month's wages in the table: each stretch, then what is missing, in the
+ * warning colour. With neither, a dash: the list on a phone and a tablet says
+ * nothing there either.
+ */
+function WageCell({ row, t }: { row: PayPerson; t: PayT }) {
+  if (!row.wage || (row.wage.spans.length === 0 && !row.wage.missing)) {
+    return <span className="text-ink-2">{t("none")}</span>;
+  }
+  return (
+    <span className="flex flex-col">
+      {row.wage.spans.length > 0 ? (
+        <span>
+          <WageSpans wage={row.wage} t={t} />
+        </span>
+      ) : null}
+      {row.wage.missing ? (
+        <span className="font-semibold text-warning">
+          <MissingWage wage={row.wage} t={t} />
+        </span>
+      ) : null}
+    </span>
+  );
+}
 
 /**
  * The month on a desktop: everyone in one table, and a person's days in a
@@ -74,6 +102,7 @@ export function PayMonthTable({
                   {hours(row.totals.minutes)}
                 </span>
               ),
+              wage: <WageCell row={row} t={t} />,
               shifts: row.totals.shifts,
               breaks:
                 row.totals.unpaidBreakMinutes > 0
@@ -104,6 +133,11 @@ export function PayMonthTable({
       >
         {person ? (
           <div className="flex flex-col gap-3">
+            {person.wage ? (
+              <p className="px-1 text-ink-2">
+                <WageCell row={person} t={t} />
+              </p>
+            ) : null}
             {person.days.length > 0 ? (
               <PayDayList days={person.days} t={t} className="bg-elevated" />
             ) : (

@@ -441,6 +441,26 @@ describe("buildInbox", () => {
     expect(linkFor("lists.sent", { list: LINE }, true)).toBe(`/lists/${LINE}`);
   });
 
+  it("reads a wage set for the reader, with its day and never an amount", () => {
+    expect(
+      lineOf(
+        row("pay.wage_set", { since: "2026-11-01" }, { actorId: MANAGER }),
+      ),
+    ).toMatchObject({
+      group: null,
+      href: "/clock",
+      line: { kind: "pay.wage_set", since: "2026-11-01" },
+    });
+    // A line that lost its day still says the wage changed.
+    expect(
+      lineOf(row("pay.wage_set", { since: "1.11" }, { actorId: MANAGER })),
+    ).toMatchObject({ line: { kind: "pay.wage_set", since: null } });
+    expect(needsAction("pay.wage_set")).toBe(false);
+    expect(linkFor("pay.wage_set", { since: "2026-11-01" }, true)).toBe(
+      "/clock",
+    );
+  });
+
   it("reads the phone switch's test as a line of its own, in no group", () => {
     expect(lineOf(row("push.test", {}, { actorId: null }))).toMatchObject({
       group: null,

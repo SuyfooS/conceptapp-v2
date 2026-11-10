@@ -5,25 +5,43 @@ import { pageGlowClass } from "@ui/page-glow";
 import { History } from "lucide-react";
 import { type AppWording, translator } from "../../wording";
 import { NoteView } from "./note-view";
-import { PayDayList, PayDayTable, PayHero, useMonthName } from "./pay-parts";
-import type { NotePayView, PayPaths, PayPersonData } from "./pay-types";
+import {
+  MissingWage,
+  PayDayList,
+  PayDayTable,
+  PayHero,
+  useMonthName,
+  WageSpans,
+} from "./pay-parts";
+import type {
+  NotePayView,
+  PayPaths,
+  PayPersonData,
+  SetWage,
+} from "./pay-types";
+import { WageCard } from "./wage-card";
 
 /**
- * One person's month for payroll: their hours, days and shifts, and each shift
- * with how it was recorded, who corrected it and why, and its times before.
- * Phone: the hero, then the days. Tablet: the hero and the month's summary at
- * the start, the days at the end. Desktop: the hero and summary above, the
- * days as a table.
+ * One person's month for payroll: their hours, days and shifts, each shift
+ * with how it was recorded, who corrected it and why, and its times before;
+ * and their hourly wage, with its history and the way to set a new one from a
+ * day (payroll P4). Phone: the hero, the wage and the month's wage, then the
+ * days. Tablet: the hero, the wage and the month's summary (the month's wage
+ * at its top) at the start, the days at the end. Desktop: the hero, the wage
+ * and the summary side by side, the days as a table.
  */
 export function PersonPayView({
   data,
   paths,
   note,
+  setWage,
   wording,
 }: {
   data: PayPersonData;
   paths: PayPaths;
   note: NotePayView;
+  /** Sets the person's hourly wage; the demo's stores nothing. */
+  setWage: SetWage;
   wording: AppWording;
 }) {
   const t = translator(wording, "app.pay");
@@ -43,8 +61,40 @@ export function PersonPayView({
       t={t}
     />
   );
+  const wage = data.wage ? (
+    <WageCard
+      personId={data.person.userId}
+      name={name}
+      wage={data.wage}
+      setWage={setWage}
+    />
+  ) : null;
+  // The month's wage, and whose shifts it leaves without one: in every shape,
+  // on its own on the phone and at the top of the summary from tablet up.
+  const monthWage = data.monthWage ? (
+    <ListRow
+      title={t("person.wage", { month: monthName(data.month) })}
+      subtitle={
+        <>
+          {data.monthWage.spans.length > 0 ? (
+            <span className="block">
+              <WageSpans wage={data.monthWage} t={t} />
+            </span>
+          ) : null}
+          {data.monthWage.missing ? (
+            <span className="block font-medium text-warning">
+              <MissingWage wage={data.monthWage} t={t} />
+            </span>
+          ) : data.monthWage.spans.length === 0 ? (
+            <span className="block">{t("wage.notSet")}</span>
+          ) : null}
+        </>
+      }
+    />
+  ) : null;
   const summary = (
     <ListGroup>
+      {monthWage}
       <ListRow
         title={t("person.days")}
         trailing={<Count value={totals.days} />}
@@ -102,29 +152,32 @@ export function PersonPayView({
         }
       />
 
-      {/* Phone: the month, then its days. */}
-      <div className="flex flex-col gap-4 md:hidden">
+      {/* Phone: the month, the wage and the month's wage, then the days. */}
+      <div className="flex flex-col gap-6 md:hidden">
         {hero}
+        {wage}
+        {monthWage ? <ListGroup>{monthWage}</ListGroup> : null}
         {data.days.length > 0 ? <PayDayList days={data.days} t={t} /> : empty}
       </div>
 
-      {/* Tablet: the month and its summary, the days beside them. */}
+      {/* Tablet: the month, the wage and the summary, the days beside them. */}
       <div className="hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:items-start md:gap-6 xl:hidden">
-        <div className="flex min-w-0 flex-col gap-4">
+        <div className="flex min-w-0 flex-col gap-6">
           {hero}
-          <PageSection title={t("person.summary")} level={2}>
-            {summary}
-          </PageSection>
+          {wage}
+          <PageSection title={t("person.summary")}>{summary}</PageSection>
         </div>
         <PageSection title={t("person.daysTitle")}>
           {data.days.length > 0 ? <PayDayList days={data.days} t={t} /> : empty}
         </PageSection>
       </div>
 
-      {/* Desktop: the summary above, every column of the days below. */}
+      {/* Desktop: the month, the wage and the summary side by side, every
+          column of the days below. */}
       <div className="hidden flex-col gap-6 xl:flex">
-        <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-8">
+        <div className="grid grid-cols-[minmax(0,4fr)_minmax(0,3fr)_minmax(0,3fr)] items-start gap-8">
           {hero}
+          {wage ?? <div />}
           <PageSection title={t("person.summary")}>{summary}</PageSection>
         </div>
         <PageSection title={t("person.daysTitle")}>

@@ -250,6 +250,23 @@ export type ActivityLine =
       name: string;
       was: "finished" | "cancelled" | null;
     }
+  | {
+      /** A pay holder set someone's hourly wage from a day (payroll P4). */
+      action: "wage.set";
+      person: ActivityPerson;
+      /** The wage, in agorot. */
+      agorot: number;
+      /** What it was on that day before, in agorot; null when it had none. */
+      previous: number | null;
+      /** The day it takes effect, YYYY-MM-DD. */
+      from: string;
+      /**
+       * The adult minimum of that day when it was set, in agorot; null when
+       * the table had none, or on a row from before the log kept it.
+       */
+      minimum: number | null;
+      note: string | null;
+    }
   | { action: "other" };
 
 /** One line of the log. Holds no ids, so it can go anywhere. */
@@ -363,6 +380,14 @@ const schemas = {
     perm: z.string(),
     role: z.unknown().optional(),
     person: id.optional(),
+  }),
+  "wage.set": z.object({
+    person: id,
+    to_agorot: z.int().min(1),
+    from_agorot: z.int().min(1).nullable().optional(),
+    effective_from: z.iso.date(),
+    minimum_agorot: z.int().min(1).nullable().optional(),
+    note: z.unknown().optional(),
   }),
 };
 
@@ -710,6 +735,19 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             perm: details.perm,
             to: { kind: "role", role: roleOf(details.role) },
           };
+    }
+    case "wage.set": {
+      const details = read(schemas["wage.set"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        agorot: details.to_agorot,
+        previous: details.from_agorot ?? null,
+        from: details.effective_from,
+        minimum: details.minimum_agorot ?? null,
+        note: noteOf(details.note),
+      };
     }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);

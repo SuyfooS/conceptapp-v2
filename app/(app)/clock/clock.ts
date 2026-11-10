@@ -4,6 +4,7 @@ import {
   getEntriesToConfirm,
   getTimeEntries,
 } from "@db/time-clock";
+import { getWages } from "@db/wages";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
 import { canSeePay } from "@domain/payroll-access";
@@ -30,6 +31,7 @@ import {
 } from "@domain/time-clock";
 import { clockAt, nextShift } from "@domain/today";
 import { canWrite } from "@domain/view-as";
+import { wageNow } from "@domain/wages";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
@@ -134,7 +136,7 @@ export async function currentClock(): Promise<ClockData | null> {
   const month = monthOf(clockAt(now, timeZone).date);
   const lastMonth = addMonths(month, -1);
   const manager = canSeeTeam(role);
-  const [entries, today, openNow] = await Promise.all([
+  const [entries, today, openNow, wages] = await Promise.all([
     getTimeEntries(
       businessId,
       monthRange(lastMonth, timeZone).from,
@@ -143,7 +145,10 @@ export async function currentClock(): Promise<ClockData | null> {
     ),
     scheduling ? shiftToday(businessId, userId, timeZone, now) : null,
     manager ? getTimeEntries(businessId, now, now) : [],
+    // Their own wages only, under their own session.
+    getWages(businessId, userId),
   ]);
+  const ownWage = wageNow(wages, clockAt(now, timeZone).date);
 
   const step = settings.roundToMinutes;
   const nameOf = await correctorNames(businessId, entries);
@@ -191,6 +196,7 @@ export async function currentClock(): Promise<ClockData | null> {
         }
       : null,
     payroll: canSeePay({ role, perms: access.perms }),
+    ownWage: ownWage.current || ownWage.next ? ownWage : null,
     viewOnly,
   };
 }

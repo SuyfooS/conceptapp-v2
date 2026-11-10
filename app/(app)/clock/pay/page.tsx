@@ -17,10 +17,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function PayPage({
   searchParams,
 }: {
-  searchParams: Promise<{ month?: string; person?: string }>;
+  searchParams: Promise<{ month?: string; person?: string; show?: string }>;
 }) {
-  const { month, person } = await searchParams;
-  const data = await currentPayMonth(month, person);
+  const { month, person, show } = await searchParams;
+  const data = await currentPayMonth(month, person, show);
   if (!data) notFound();
   return (
     <PayMonthView

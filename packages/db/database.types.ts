@@ -1050,6 +1050,54 @@ export type Database = {
           },
         ];
       };
+      member_wages: {
+        Row: {
+          business_id: string;
+          effective_from: string;
+          hourly_agorot: number;
+          id: string;
+          note: string | null;
+          set_at: string;
+          set_by: string | null;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          effective_from: string;
+          hourly_agorot: number;
+          id?: string;
+          note?: string | null;
+          set_at?: string;
+          set_by?: string | null;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          effective_from?: string;
+          hourly_agorot?: number;
+          id?: string;
+          note?: string | null;
+          set_at?: string;
+          set_by?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "member_wages_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "member_wages_set_by_fkey";
+            columns: ["set_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       memberships: {
         Row: {
           active: boolean;
@@ -1097,6 +1145,45 @@ export type Database = {
             referencedColumns: ["id"];
           },
         ];
+      };
+      minimum_wages: {
+        Row: {
+          age16_hourly_agorot: number;
+          age17_hourly_agorot: number;
+          apprentice_hourly_agorot: number;
+          effective_from: string;
+          hourly_agorot: number;
+          monthly_agorot: number;
+          source: string;
+          statute_hourly_agorot: number;
+          under16_hourly_agorot: number;
+          youth_published: boolean;
+        };
+        Insert: {
+          age16_hourly_agorot: number;
+          age17_hourly_agorot: number;
+          apprentice_hourly_agorot: number;
+          effective_from: string;
+          hourly_agorot: number;
+          monthly_agorot: number;
+          source: string;
+          statute_hourly_agorot: number;
+          under16_hourly_agorot: number;
+          youth_published: boolean;
+        };
+        Update: {
+          age16_hourly_agorot?: number;
+          age17_hourly_agorot?: number;
+          apprentice_hourly_agorot?: number;
+          effective_from?: string;
+          hourly_agorot?: number;
+          monthly_agorot?: number;
+          source?: string;
+          statute_hourly_agorot?: number;
+          under16_hourly_agorot?: number;
+          youth_published?: boolean;
+        };
+        Relationships: [];
       };
       notifications: {
         Row: {
@@ -2286,6 +2373,18 @@ export type Database = {
       set_departments: {
         Args: { actor: string; business: string; departments: Json };
         Returns: undefined;
+      };
+      set_hourly_wage: {
+        Args: {
+          actor: string;
+          agorot: number;
+          at_time?: string;
+          business: string;
+          from_day: string;
+          person: string;
+          wage_note?: string;
+        };
+        Returns: string;
       };
       set_list_item: {
         Args: { actor: string; at_time?: string; item: string; result: Json };

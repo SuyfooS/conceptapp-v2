@@ -4,6 +4,8 @@ import {
   type PayPerson as PayPersonRow,
 } from "@db/payroll";
 import { getTimeEntries } from "@db/time-clock";
+import { getWages, wagesByPerson } from "@db/wages";
+import { dateIn } from "@domain/availability";
 import { isStaff } from "@domain/modules";
 import {
   addTotals,
@@ -23,20 +25,34 @@ import { formArg } from "@domain/profile";
 import { canSeeTeam } from "@domain/team";
 import {
   addMonths,
+  entryDate,
   monthOf,
   monthRange,
   type TimeEntry,
 } from "@domain/time-clock";
 import { clockAt } from "@domain/today";
+import { canWrite } from "@domain/view-as";
+import {
+  firstOfMonth,
+  type MonthWage,
+  monthWage,
+  type WageRow,
+  wageFromBounds,
+  wageHistory,
+  wageNow,
+} from "@domain/wages";
 import { cache } from "react";
 import { z } from "zod";
 import { currentMember } from "../../member";
 import { currentModuleSettings, currentModules } from "../../modules";
 import type {
   BeforePayroll,
+  PayFilter,
   PayMonthData,
   PayPerson,
   PayPersonData,
+  PersonWage,
+  WageCan,
 } from "./pay-types";
 
 /**
@@ -67,6 +83,9 @@ export const payAccess = cache(async () => {
     businessId: membership.business.id,
     role: membership.role,
     timeZone,
+    today,
+    /** Someone from ConceptApp viewing: they read pay, and change nothing. */
+    viewOnly: !canWrite(member.viewing),
     currentMonth: monthOf(today),
     defaultMonth: defaultPayMonth(today),
     /** Managers and owners fix and confirm hours on the team's hours. */
@@ -112,38 +131,71 @@ async function originalsOf(businessId: string, entries: readonly TimeEntry[]) {
   return originalTimes(await getCorrections(businessId, corrected));
 }
 
-/** A month's entries, with the clock's settings and everyone who was here. */
+/**
+ * A month's entries, with the clock's settings, everyone who was here and
+ * their wages (one person's, when `userId` is given).
+ */
 async function monthOfHours(access: PayAccess, month: string, userId?: string) {
   const { from, to } = monthRange(month, access.timeZone);
-  const [settings, people, entries] = await Promise.all([
+  const [settings, people, entries, wages] = await Promise.all([
     currentModuleSettings("time_clock"),
     getPayPeople(access.businessId),
     getTimeEntries(access.businessId, from, to, userId),
+    getWages(access.businessId, userId),
   ]);
-  return { settings, people, entries };
+  return { settings, people, entries, wages: wagesByPerson(wages) };
 }
 
-function beforePayroll(totals: PayTotals, rounding: boolean): BeforePayroll {
+/**
+ * Someone's wages in a month, from the days of their shifts; null off the
+ * staff. An owner's shifts are never missing a wage: only another owner sets
+ * one, the only owner's nobody does, and an owner is often paid otherwise. So
+ * no owner is counted, listed by `?show=noWage` or warned about.
+ */
+function wageOfMonth(
+  person: PayPersonRow,
+  wages: ReadonlyMap<string, WageRow[]>,
+  month: string,
+  days: readonly string[],
+): MonthWage | null {
+  if (!isStaff(person.role)) return null;
+  const wage = monthWage(wages.get(person.userId) ?? [], month, days);
+  return person.role === "owner" ? { ...wage, missing: null } : wage;
+}
+
+function beforePayroll(
+  totals: PayTotals,
+  noWage: number,
+  rounding: boolean,
+): BeforePayroll {
   return {
     ownerOnly: totals.ownerOnly,
     waiting: totals.waiting - totals.ownerOnly,
     open: totals.open,
     corrected: totals.corrected,
+    noWage,
     rounding,
   };
 }
 
 const personId = z.uuid();
 
+/** `?show=` of the month's list: only those whose shifts have no wage. */
+export function payFilterFrom(asked: unknown): PayFilter {
+  return asked === "noWage" ? "noWage" : null;
+}
+
 /**
  * Everyone's hours in a month, for payroll. Null when the person may not open
  * the pay screens. `?month=` is clamped to a real month up to now, and opens
  * on last month until the 10th; `?person=` chooses whose month a tablet shows
- * beside the list.
+ * beside the list, and `?show=noWage` lists only those whose shifts have no
+ * hourly wage.
  */
 export async function currentPayMonth(
   askedMonth: string | undefined,
   askedPerson: string | undefined,
+  askedShow?: string,
 ): Promise<PayMonthData | null> {
   const access = await payAccess();
   if (!access) return null;
@@ -153,27 +205,46 @@ export async function currentPayMonth(
     access.defaultMonth,
   );
   const now = new Date();
-  const { settings, people, entries } = await monthOfHours(access, month);
+  const { settings, people, entries, wages } = await monthOfHours(
+    access,
+    month,
+  );
   const totals = payTotals(entries, month, access.timeZone, now);
   const nameOf = nameIn(people);
   const originals = await originalsOf(access.businessId, entries);
 
-  const rows: PayPerson[] = listed(people, totals).map((person) => ({
-    userId: person.userId,
-    name: person.name,
-    photo: person.photo,
-    form: formArg(person.addressForm),
-    former: !person.active,
-    totals: totals.get(person.userId) ?? NO_PAY_TOTALS,
-    days: payDays(
+  const everyone: PayPerson[] = listed(people, totals).map((person) => {
+    const days = payDays(
       entries.filter((entry) => entry.userId === person.userId),
       month,
       access.timeZone,
       now,
       nameOf,
       originals,
-    ),
-  }));
+    );
+    return {
+      userId: person.userId,
+      name: person.name,
+      photo: person.photo,
+      form: formArg(person.addressForm),
+      former: !person.active,
+      totals: totals.get(person.userId) ?? NO_PAY_TOTALS,
+      days,
+      wage: wageOfMonth(
+        person,
+        wages,
+        month,
+        days.map((day) => day.date),
+      ),
+    };
+  });
+  const noWage = everyone.filter((row) => row.wage?.missing).length;
+  // With nobody left to show, the filter goes: an old link shows everyone.
+  const filter = noWage > 0 ? payFilterFrom(askedShow) : null;
+  const rows =
+    filter === "noWage"
+      ? everyone.filter((row) => row.wage?.missing)
+      : everyone;
   const all = addTotals(totals.values());
   const asked = personId.safeParse(askedPerson);
   return {
@@ -181,7 +252,12 @@ export async function currentPayMonth(
     currentMonth: access.currentMonth,
     minutes: all.minutes,
     people: rows,
-    before: beforePayroll(all, settings.roundToMinutes !== 0),
+    counts: {
+      withHours: everyone.filter((row) => row.totals.shifts > 0).length,
+      toCheck: toCheck(all),
+    },
+    before: beforePayroll(all, noWage, settings.roundToMinutes !== 0),
+    filter,
     selected:
       (asked.success &&
         rows.find((row) => row.userId === asked.data)?.userId) ||
@@ -209,13 +285,15 @@ export async function currentPayPerson(
     access.defaultMonth,
   );
   const now = new Date();
-  const { people, entries } = await monthOfHours(access, month, id.data);
+  const { people, entries, wages } = await monthOfHours(access, month, id.data);
   const person = people.find((row) => row.userId === id.data);
   if (!person || (!isStaff(person.role) && entries.length === 0)) return null;
   const totals =
     payTotals(entries, month, access.timeZone, now).get(person.userId) ??
     NO_PAY_TOTALS;
   const originals = await originalsOf(access.businessId, entries);
+  const nameOf = nameIn(people);
+  const days = payDays(entries, month, access.timeZone, now, nameOf, originals);
   return {
     person: {
       userId: person.userId,
@@ -227,15 +305,70 @@ export async function currentPayPerson(
     month,
     currentMonth: access.currentMonth,
     totals,
-    days: payDays(
-      entries,
+    days,
+    monthWage: wageOfMonth(
+      person,
+      wages,
       month,
-      access.timeZone,
-      now,
-      nameIn(people),
-      originals,
+      days.map((day) => day.date),
     ),
+    wage: isStaff(person.role)
+      ? personWage(
+          wages.get(person.userId) ?? [],
+          wageCan(access, person, people),
+          access,
+          nameOf,
+        )
+      : null,
     fixes: access.fixes,
+  };
+}
+
+/**
+ * What the reader may do with the person's wage: nothing in a view, and never
+ * their own or, but for an owner, an owner's. The database says the same
+ * (`public.set_hourly_wage`). An owner's own is set only by another owner, so
+ * the only owner's is set by nobody here.
+ */
+function wageCan(
+  access: PayAccess,
+  person: PayPersonRow,
+  people: readonly PayPersonRow[],
+): WageCan {
+  if (access.viewOnly) return "viewOnly";
+  if (person.userId === access.userId) {
+    if (person.role !== "owner") return "own";
+    return people.some(
+      (other) =>
+        other.role === "owner" &&
+        other.active &&
+        other.userId !== person.userId,
+    )
+      ? "ownOwner"
+      : "soleOwner";
+  }
+  if (person.role === "owner" && access.role !== "owner") return "ownerOnly";
+  return "set";
+}
+
+/** The person page's wage, from their rows, by the business's today. */
+function personWage(
+  rows: readonly WageRow[],
+  can: WageCan,
+  { today, timeZone }: { today: string; timeZone: string },
+  nameOf: (userId: string) => string | null,
+): PersonWage {
+  const { earliest, latest } = wageFromBounds(today);
+  return {
+    ...wageNow(rows, today),
+    history: wageHistory(rows).map((row) => ({
+      ...row,
+      setByName: row.setBy ? nameOf(row.setBy) : null,
+      setOn: dateIn(new Date(row.setAt), timeZone),
+    })),
+    can,
+    today,
+    from: { initial: firstOfMonth(today), earliest, latest },
   };
 }
 
@@ -267,24 +400,34 @@ export async function currentPayHome(): Promise<PayHomeData | null> {
   const month = access.defaultMonth;
   const first = addMonths(month, -EARLIER_MONTHS);
   const now = new Date();
-  const [settings, entries] = await Promise.all([
+  const [settings, entries, people, wages] = await Promise.all([
     currentModuleSettings("time_clock"),
     getTimeEntries(
       access.businessId,
       monthRange(first, access.timeZone).from,
       monthRange(month, access.timeZone).to,
     ),
+    getPayPeople(access.businessId),
+    getWages(access.businessId).then(wagesByPerson),
   ]);
   const totalsOf = (which: string) =>
     payTotals(entries, which, access.timeZone, now);
   const current = totalsOf(month);
   const all = addTotals(current.values());
+  // Those on the staff whose shifts of the month have no wage to pay them by.
+  const noWage = people.filter((person) => {
+    const days = entries
+      .filter((entry) => entry.userId === person.userId)
+      .map((entry) => entryDate(entry, access.timeZone))
+      .filter((date) => monthOf(date) === month);
+    return wageOfMonth(person, wages, month, days)?.missing;
+  }).length;
   return {
     month,
     minutes: all.minutes,
     people: current.size,
     toCheck: toCheck(all),
-    before: beforePayroll(all, settings.roundToMinutes !== 0),
+    before: beforePayroll(all, noWage, settings.roundToMinutes !== 0),
     earlier: Array.from({ length: EARLIER_MONTHS }, (_, index) => {
       const earlier = addMonths(month, -(index + 1));
       return {

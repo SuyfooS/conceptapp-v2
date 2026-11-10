@@ -199,6 +199,18 @@ test("viewing as an accountant shows the hours for payroll and nothing else", as
   ).toBeVisible();
   await expectCleanPage(page);
 
+  // Noa's wage reads, and nothing changes it from a view (payroll P4).
+  await page.goto("/clock/pay/00000000-0000-4000-a000-000000000003");
+  await expect(
+    page.getByText("38.00 ₪").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(he.app.pay.wage.viewOnly).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: he.app.pay.wage.change }),
+  ).toHaveCount(0);
+
   for (const path of ["/schedule", "/clock", "/team", "/manage/access"]) {
     await page.goto(path);
     await expect(
