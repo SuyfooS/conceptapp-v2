@@ -65,7 +65,10 @@ limits, and CAPTCHA once it is on (below).
 which asks the app to send pushes only while something is due, and `notifications-clean`
 once a day. The minute job calls the app through pg_net with two secrets from Vault, and
 without them calls nothing (what is due then goes out with the next action in the app).
-`seed.sql` switches both jobs off locally and in CI; the tests call what they run.
+`20261110001000_payroll_months.sql` adds a third, `payroll`, daily at 06:00 UTC: on each
+business's 2nd it reminds pay holders to close last month (never in a demo business), in
+the app and, like any line, on the phone. It needs no secret. `seed.sql` switches all three
+off locally and in CI; the tests call what they run.
 
 Once the migration has gone through the Migrate workflow and `CRON_SECRET` is in Vercel
 (`README.md`), add the two secrets in the dashboard, Project Settings, Vault (not the SQL

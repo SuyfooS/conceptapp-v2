@@ -1,9 +1,14 @@
 import { getPayPeople } from "@db/payroll";
 import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
+import {
+  getPayrollMonthRecord,
+  type PayrollMonthRecord,
+} from "@db/payroll-months";
 import { getTimeEntries } from "@db/time-clock";
 import { getWages, wagesByPerson } from "@db/wages";
 import { historyMonths, payrollHistory } from "@domain/holiday-pay";
 import {
+  PAYROLL_ENGINE_VERSION,
   type PayrollInput,
   type PayrollMonth,
   type PayrollPerson,
@@ -18,6 +23,12 @@ import {
 } from "@domain/payroll";
 import { payMonthFrom } from "@domain/payroll-access";
 import { payrollCalendar } from "@domain/payroll-calendar";
+import {
+  closedReads,
+  monthDifferences,
+  type PersonDiff,
+  readSnapshot,
+} from "@domain/payroll-diff";
 import { type BusinessPlace, shabbatPlaceOf } from "@domain/shabbat";
 import { entryDate, monthOf, type TimeEntry } from "@domain/time-clock";
 import { cache } from "react";
@@ -116,20 +127,21 @@ export const currentPayrollReads = cache(async (month: string) => {
     (entry) => monthOf(entryDate(entry, access.timeZone)) === month,
   );
   const now = new Date();
+  const payrollPeople = payrollPeopleOf(people, inMonth).map((userId) =>
+    payrollPersonOf(
+      userId,
+      details.get(userId),
+      periods.get(userId) ?? [],
+      wages.get(userId) ?? [],
+    ),
+  );
   const result = payrollMonth(
     payrollInputOf({
       month,
       place,
       settings,
       entries,
-      people: payrollPeopleOf(people, inMonth).map((userId) =>
-        payrollPersonOf(
-          userId,
-          details.get(userId),
-          periods.get(userId) ?? [],
-          wages.get(userId) ?? [],
-        ),
-      ),
+      people: payrollPeople,
       now,
     }),
   );
@@ -145,10 +157,72 @@ export const currentPayrollReads = cache(async (month: string) => {
     details,
     /** Each person's wages, as the engine read them. */
     wages,
+    /** The people as the engine read them: what a closed month keeps (payroll P9). */
+    payrollPeople,
     now,
     result,
   };
 });
+
+/** A month closed for payroll, as the pay screens and the next month's file read it (payroll P9). */
+export type ClosedMonthState = {
+  record: PayrollMonthRecord;
+  /** Closed and not reopened since. */
+  closed: boolean;
+  /**
+   * What changed in it since it closed, per person and day: the month worked
+   * out again from its shifts now, with the settings, the business's place
+   * and the people's details it closed with, against what it kept. Empty for
+   * one reopened since.
+   */
+  differences: PersonDiff[];
+  /** The hours engine is another version than the one it closed with. */
+  engineChanged: boolean;
+};
+
+/**
+ * A month (`YYYY-MM`, already checked) as it was closed for payroll, and what
+ * changed in it since (payroll P9); null when it never was, or the person may
+ * not open the pay screens. Under their own session, once per request.
+ */
+export const currentClosedMonth = cache(
+  async (month: string): Promise<ClosedMonthState | null> => {
+    const access = await payAccess();
+    if (!access) return null;
+    const record = await getPayrollMonthRecord(access.businessId, month);
+    if (!record) return null;
+    if (record.reopenedAt !== null) {
+      return { record, closed: false, differences: [], engineChanged: false };
+    }
+    const snapshot = readSnapshot(record.snapshot);
+    const reads = snapshot ? await currentPayrollReads(month) : null;
+    if (!snapshot || !reads) {
+      return {
+        record,
+        closed: true,
+        differences: [],
+        engineChanged: record.engineVersion !== PAYROLL_ENGINE_VERSION,
+      };
+    }
+    const again = payrollMonth(
+      payrollInputOf({
+        month,
+        ...closedReads(snapshot, {
+          place: reads.place,
+          people: reads.payrollPeople,
+        }),
+        entries: reads.entries,
+        now: reads.now,
+      }),
+    );
+    return {
+      record,
+      closed: true,
+      differences: monthDifferences(snapshot.month, again),
+      engineChanged: snapshot.month.engineVersion !== again.engineVersion,
+    };
+  },
+);
 
 /**
  * One person's month by the hours engine, for their pay page: their entries,

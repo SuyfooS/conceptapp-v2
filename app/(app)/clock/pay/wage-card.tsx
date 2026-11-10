@@ -23,7 +23,13 @@ import { ltrInputClass, TextField } from "@ui/text-field";
 import { PencilLine } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useRef, useState, useTransition } from "react";
-import { type PayT, useFullDate, useShekels, useShortDate } from "./pay-parts";
+import {
+  type PayT,
+  useFullDate,
+  useMonthName,
+  useShekels,
+  useShortDate,
+} from "./pay-parts";
 import type { PersonWage, SetWage, WageActionResult } from "./pay-types";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -273,6 +279,24 @@ function WageSheetForm({
   const t = useTranslations("app.pay");
   const shortDate = useShortDate();
   const fullDate = useFullDate();
+  const monthName = useMonthName();
+  // The first day a wage may start: after the closed months, and not before
+  // the start a holder set.
+  const earliest =
+    wage.startsOn && wage.startsOn > wage.from.earliest
+      ? wage.startsOn
+      : wage.from.earliest;
+  // With last month closed for payroll (P9), the field starts after it: the
+  // hint names the month and the real first day, instead of "from the start
+  // of last month".
+  const closedMonth = wage.closed[0];
+  const fromHint = closedMonth
+    ? t.rich("wage.sheet.fromHintClosed", {
+        ltr,
+        month: monthName(closedMonth),
+        date: fullDate(earliest),
+      })
+    : t("wage.sheet.fromHint");
   // From the April after the table's newest row, a new minimum may be out
   // that the warning doesn't know yet: the sheet says so.
   const staleFrom = minimumWageTableStale(wage.today.slice(0, 7))
@@ -291,8 +315,9 @@ function WageSheetForm({
   const [errors, setErrors] = useState<WageFormErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
   // While typing: under the minimum warns, and never stops the save; before
-  // the start a holder set, it can't start.
-  const read = parseWageForm(values, wage.today, wage.startsOn);
+  // the start a holder set, or in a month closed for payroll (payroll P9),
+  // it can't start.
+  const read = parseWageForm(values, wage.today, wage.startsOn, wage.closed);
 
   /** What is wrong is said under its field, and the first one takes the focus. */
   function fail(next: WageFormErrors) {
@@ -362,13 +387,9 @@ function WageSheetForm({
         ref={fields.from}
         type="date"
         label={t("wage.sheet.from")}
-        hint={t("wage.sheet.fromHint")}
+        hint={fromHint}
         value={values.from}
-        min={
-          wage.startsOn && wage.startsOn > wage.from.earliest
-            ? wage.startsOn
-            : wage.from.earliest
-        }
+        min={earliest}
         max={wage.from.latest}
         onChange={(event) => change("from", event.target.value)}
         dir="ltr"

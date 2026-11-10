@@ -29,6 +29,7 @@ import {
 import { decimalHours } from "./payroll-access";
 import type { HolidayKey } from "./payroll-calendar";
 import type { HoursLaw, RestDay } from "./payroll-details";
+import type { DayDiff } from "./payroll-diff";
 import type {
   PayrollFlag,
   PayrollFlagCode,
@@ -42,6 +43,7 @@ import { lastDayOf } from "./wages";
 
 /*
  * The file for payroll (payroll P8, plan §11): a month's hours as four sheets
+ * (five when the month before it was closed and changed since: payroll P9)
  * of a generic Hebrew workbook, for whoever runs the payroll to import or
  * type from. Pure: the words come in (`ExportWords`, from the messages), and
  * the app's server code writes the sheets as XLSX.
@@ -75,7 +77,17 @@ export type Cell =
  */
 export type Column = { header: string; width: number; id?: true };
 
-export const EXPORT_SHEETS = ["summary", "daily", "check", "about"] as const;
+/**
+ * The sheets, in order. "differences" is there only when the month before
+ * the file's was closed for payroll and changed since (payroll P9).
+ */
+export const EXPORT_SHEETS = [
+  "summary",
+  "daily",
+  "check",
+  "differences",
+  "about",
+] as const;
 export type SheetKey = (typeof EXPORT_SHEETS)[number];
 
 /** One sheet, right to left, its first row the headers. */
@@ -146,6 +158,21 @@ export const CHECK_COLUMNS = [
 ] as const;
 export type CheckColumn = (typeof CHECK_COLUMNS)[number];
 
+/** The sheet of differences: a row per day that changed since its month closed. */
+export const DIFF_COLUMNS = [
+  "name",
+  "number",
+  "month",
+  "date",
+  "weekday",
+  "before",
+  "now",
+  "difference",
+  "rates",
+  "reason",
+] as const;
+export type DiffColumn = Exclude<(typeof DIFF_COLUMNS)[number], "rates">;
+
 export const ABOUT_COLUMNS = ["topic", "details"] as const;
 export type AboutColumn = (typeof ABOUT_COLUMNS)[number];
 
@@ -190,8 +217,11 @@ export type ExportWords = {
     summary: Record<SummaryColumn, string>;
     daily: Record<DailyColumn, string>;
     check: Record<CheckColumn, string>;
+    differences: Record<DiffColumn, string>;
     about: Record<AboutColumn, string>;
   };
+  /** A rate's header on the sheet of differences. */
+  differenceRate: (bucket: Bucket, rest: RestName) => string;
   /** A rate's header, named by the rest day everyone listed shares. */
   rate: (bucket: Bucket, rest: RestName) => string;
   /** A weekday, Sunday 0 to Saturday 6. */
@@ -238,7 +268,37 @@ export type ExportWords = {
     /** Each setting the month was worked out by: its name, and its value in words. */
     settings: (settings: ExportSettings) => { label: string; value: string }[];
     lines: Record<AboutLine, string>;
+    /**
+     * The month before was closed (`month`, `YYYY-MM`) on `date`
+     * (`YYYY-MM-DD`), and whether it changed since: its differences are on
+     * their own sheet.
+     */
+    closed: (month: string, date: string, changed: boolean) => string;
+    /** The hours engine changed since that month closed. */
+    closedEngine: string;
   };
+};
+
+/** One day that changed since its month closed, as the file lists it (payroll P9). */
+export type ExportDifference = {
+  userId: string;
+  name: string | null;
+  payrollNumber: string | null;
+  restDay: RestDay;
+  day: DayDiff;
+  /** Why it changed: the reasons given for its shifts since the month closed. */
+  reasons: string[];
+};
+
+/** The month before the file's, closed for payroll, and what changed in it since. */
+export type ExportDifferences = {
+  /** `YYYY-MM`. */
+  month: string;
+  /** When it closed, on the business's clock: `YYYY-MM-DDTHH:MM`. */
+  closedAt: string;
+  /** The hours engine is another version than the one it closed with. */
+  engineChanged: boolean;
+  rows: ExportDifference[];
 };
 
 /** Someone listed in the file. */
@@ -359,6 +419,8 @@ const exactHours = (minutes: number): Cell => ({
   t: "n",
   v: Math.max(0, minutes) / 60,
 });
+/** A difference in minutes as decimal hours, exactly, below zero when fewer. */
+const signedHours = (minutes: number): Cell => ({ t: "n", v: minutes / 60 });
 const whole = (value: number): Cell => ({ t: "n", v: value, whole: true });
 const day = (date: string): Cell => ({ t: "d", v: date });
 const time = (value: string | null): Cell =>
@@ -390,6 +452,10 @@ const WIDTHS: Record<string, number> = {
   unchanged: 16,
   topic: 28,
   details: 90,
+  month: 16,
+  before: 12,
+  now: 12,
+  difference: 12,
 };
 const widthOf = (key: string) => WIDTHS[key] ?? 11;
 
@@ -540,15 +606,20 @@ function dayOf(
  *   then how it was recorded, and who corrected it, when and why;
  * - "check": a row per thing to check, in words, with the rule it is about,
  *   and that the hours weren't changed;
+ * - "differences" (payroll P9), only when the month before was closed and
+ *   changed since (`differences`): a row per day that changed, with the month
+ *   it belongs to, its hours then and now, the difference in all and at each
+ *   rate, and why, never an amount;
  * - "about": the business, the month, who made the file and when, the
- *   settings, the engine and the minimum wage table, and what the file holds
- *   and doesn't.
+ *   settings, the engine and the minimum wage table, the month before when it
+ *   was closed, and what the file holds and doesn't.
  */
 export function exportSheets(
   month: PayrollMonth,
   people: readonly ExportPerson[],
   meta: ExportMeta,
   words: ExportWords,
+  differences: ExportDifferences | null = null,
 ): PayrollExport {
   const engineOf = (userId: string) =>
     month.people.find((one) => one.userId === userId);
@@ -665,6 +736,35 @@ export function exportSheets(
     }
   }
 
+  // The month before, closed and changed since: a row per day that changed,
+  // by name and then day, its hours exact and each rate's difference only
+  // where there is one.
+  const changed = differences
+    ? [...differences.rows].sort(
+        (a, b) =>
+          (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
+          (a.name ?? "").localeCompare(b.name ?? "", "he") ||
+          (a.day.date < b.day.date ? -1 : a.day.date > b.day.date ? 1 : 0),
+      )
+    : [];
+  const differenceRest = restNameOfAll(changed.map((row) => row.restDay));
+  const differenceRows: Cell[][] = changed.map((row) => [
+    text(row.name ?? words.noName),
+    textOrNull(row.payrollNumber),
+    text(words.about.monthName(differences?.month ?? month.month)),
+    day(row.day.date),
+    text(words.weekday(weekdayOf(row.day.date))),
+    exactHours(row.day.before),
+    exactHours(row.day.now),
+    signedHours(row.day.now - row.day.before),
+    ...BUCKETS.map((bucket) =>
+      row.day.buckets[bucket] === 0
+        ? null
+        : signedHours(row.day.buckets[bucket]),
+    ),
+    textOrNull(row.reasons.join("; ")),
+  ]);
+
   const about: Cell[][] = [
     [text(words.about.business), text(meta.business)],
     [text(words.about.month), text(words.about.monthName(meta.month))],
@@ -692,6 +792,25 @@ export function exportSheets(
         ? []
         : [[text(words.about.note), text(words.note(note))]],
     ),
+    // The month before, when it was closed: whether it changed since, and
+    // whether the engine did.
+    ...(differences
+      ? [
+          [
+            text(words.about.note),
+            text(
+              words.about.closed(
+                differences.month,
+                differences.closedAt.slice(0, 10),
+                differenceRows.length > 0,
+              ),
+            ),
+          ],
+          ...(differences.engineChanged && differenceRows.length > 0
+            ? [[text(words.about.note), text(words.about.closedEngine)]]
+            : []),
+        ]
+      : []),
     ...ABOUT_LINES.map((line) => [
       text(words.about.note),
       text(words.about.lines[line]),
@@ -723,6 +842,17 @@ export function exportSheets(
         CHECK_COLUMNS.map((key) => columnOf(key, words.columns.check[key])),
         check,
       ),
+      ...(differenceRows.length > 0
+        ? [
+            sheet(
+              "differences",
+              columnsOf(DIFF_COLUMNS, words.columns.differences, (bucket) =>
+                words.differenceRate(bucket, differenceRest),
+              ),
+              differenceRows,
+            ),
+          ]
+        : []),
       sheet(
         "about",
         ABOUT_COLUMNS.map((key) => columnOf(key, words.columns.about[key])),
