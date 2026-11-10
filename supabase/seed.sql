@@ -7,7 +7,8 @@
 --   the shop        an owner, a manager, four workers and an accountant, with
 --                   this week's schedule always published.
 --   both            last month's hours, everyone's hourly wage and their
---                   details for payroll, for the pay screens.
+--                   details for payroll, for the pay screens, with the pay
+--                   estimate on.
 -- Fictional businesses and people. Phones are in the 050-000-00xx range and
 -- are never sent anything. This file runs on `supabase db reset` only; it
 -- never reaches a real project (supabase/hosted-demo.sql is the hosted twin).
@@ -114,6 +115,9 @@ values
 -- payroll numbers from 101 and periods from 1 March 2026; in the shop, Liya is
 -- a minor (17 through last month) with no number yet, Roni rests on Friday,
 -- and Itai started on the 10th of three months ago, as the owner set it.
+-- Both show the pay estimate ("settings", over the template's;
+-- 20261110000700_pay_rules.sql), which a real business has only once an
+-- accountant confirms.
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -121,6 +125,7 @@ values
     "slug": "demo-restaurant", "name": "מסעדת הדגמה", "accent": "#2563eb",
     "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
     "template": "restaurant", "renews": false, "invites": true, "profiles": true,
+    "settings": { "time_clock": { "payEstimate": true } },
     "hours": { "fridays": false, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000004", "case": "night" }
     ] },
@@ -141,6 +146,7 @@ values
     "slug": "demo-shop", "name": "חנות הדגמה", "accent": "#7c3aed",
     "address": "רחוב הדגמה 2, חיפה", "shabbat_city": "haifa",
     "template": "retail", "renews": true, "invites": true,
+    "settings": { "time_clock": { "payEstimate": true } },
     "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
     "hours": { "fridays": true, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000010", "case": "friday_late" },

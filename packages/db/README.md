@@ -311,6 +311,28 @@ session and `team_youth`, and writes both with the secret key (refusals read by
 `payroll_details.test.sql`, `demo_reset`, `hours_kept`, `wages`, `lists` and
 `rls_enabled`.
 
+The pay rules (`20261110000700_pay_rules.sql`, payroll P6). No new table: the
+hours engine is pure code (`@domain/payroll`), and its rules are time clock
+settings. `public.set_module_settings` (sealed's, replaced) keeps the punch
+code for an owner or the team, adds the pay rules (`workWeek`, `shortDay`,
+`restStart`, `restStartTime`, `workersSeeEstimate`: 42501 'Only an owner or the
+team changes the pay rules') and the pay estimate for the team alone
+(`payEstimate`: 42501 'Only the team switches the pay estimate'), and checks
+each for its type (22023 'Not a pay rule setting': a week of `unset`, `five` or
+`six`, a short day 0 to 4, a start at `candleLighting` or `fixed`, a time as
+`HH:MM`, yes or no for the two switches). `private.seed_demo_pay` (P5's) first
+lays a definition's `settings` (`{"time_clock": {"payEstimate": true}}`, by
+module key, a key that is no module skipped) over what the template gave, so
+both demo businesses show the estimate and a real one starts without it; the
+hosted definitions are patched by id and their settings set at once, with no
+reset. The pay screens read the engine's month with `currentPayrollMonth` and
+`currentOwnPay` (app code), through the reads above, and drop every amount
+while `payEstimate` is off. Covered by `pay_rules.test.sql`. `getTimeEntries`
+reads page by page (`allPages` in `pages.ts`, ordered by `clock_in` then
+`id`): PostgREST returns at most `max_rows` (1000, here and on hosted
+Supabase) without an error, and payroll reads a whole business's entries over
+four months.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

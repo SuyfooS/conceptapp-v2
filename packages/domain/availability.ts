@@ -39,15 +39,27 @@ export function weekDates(start: string): string[] {
   return Array.from({ length: 7 }, (_, i) => addDays(start, i));
 }
 
+/**
+ * One date formatter per time zone, made once: making one costs far more
+ * than using it, and payroll asks for thousands of entries' dates. A
+ * formatter holds no state, so sharing it keeps `dateIn` pure.
+ */
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+
 /** Today's date in a time zone. */
 export function dateIn(instant: Date, timeZone: string): string {
-  // en-CA formats as YYYY-MM-DD.
-  return new Intl.DateTimeFormat("en-CA", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    timeZone,
-  }).format(instant);
+  let format = dateFormats.get(timeZone);
+  if (!format) {
+    // en-CA formats as YYYY-MM-DD.
+    format = new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      timeZone,
+    });
+    dateFormats.set(timeZone, format);
+  }
+  return format.format(instant);
 }
 
 /** The week people submit availability for: the one after this week. */

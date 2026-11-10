@@ -2572,7 +2572,105 @@
         "requirePunchCode": {
           "label": "Clock in and out with a code",
           "hint": "To clock in and out, people scan a code a manager shows on their phone, or type the digits under it. Anyone who can't goes ahead without a code, and a manager approves it. Each shift keeps how it was recorded. Owners need no code."
+        },
+        "workWeek": {
+          "label": "Work week",
+          "hint": "As the notice of employment terms says. Until it's set, each week is worked out as a 5-day week, a 6-day week and by the shorter hours of each day, and whichever pays more counts.",
+          "options": {
+            "unset": "Not set yet",
+            "five": "5 days",
+            "six": "6 days"
+          }
+        },
+        "shortDay": {
+          "label": "Short day of a 5-day week",
+          "hint": "In a 5-day week one day is an hour shorter. In a 6-day week this doesn't matter.",
+          "options": {
+            "0": "Sunday",
+            "1": "Monday",
+            "2": "Tuesday",
+            "3": "Wednesday",
+            "4": "Thursday"
+          }
+        },
+        "restStart": {
+          "label": "Start of the weekly rest",
+          "hint": "The 36 hours of rest start at candle lighting for the city in the business's details, unless the notice of employment terms names another time on Friday.",
+          "options": {
+            "candleLighting": "At candle lighting",
+            "fixed": "At a fixed time on Friday"
+          }
+        },
+        "restStartTime": {
+          "label": "The time on Friday",
+          "hint": "Applies only when the rest starts at a fixed time."
+        },
+        "workersSeeEstimate": {
+          "label": "Workers see an estimate of their pay",
+          "hint": "On the clock, a pre-tax estimate of the month's pay from the hours recorded. Only while the pay estimate is on for the business."
+        },
+        "payEstimate": {
+          "label": "Pay estimate in shekels",
+          "hint": "Amounts from the hours, for pay holders and workers. Switched on once an accountant has checked the calculation rules for the business. Hours, rates and the file work without it."
         }
+      },
+      "payroll": {
+        "flags": {
+          "openEntry": "A shift on <ltr>{date}</ltr> is still open, and wasn't counted",
+          "longEntry": "A shift of <ltr>{hours}</ltr> hours on <ltr>{date}</ltr>. Worth checking the clock-out was recorded on time",
+          "edited": "A shift on <ltr>{date}</ltr> was corrected by hand",
+          "unconfirmed": "A shift on <ltr>{date}</ltr> is still waiting for approval",
+          "shortUnpaidBreak": "A <ltr>{minutes}</ltr>-minute break on <ltr>{date}</ltr> came off the hours. A break under 30 minutes counts as working time",
+          "noWage": "No hourly wage for the days from <ltr>{from}</ltr>",
+          "noPayrollNumber": "No payroll number",
+          "dayOver12": "<ltr>{hours}</ltr> hours on <ltr>{date}</ltr>. The most allowed is 12",
+          "weekOvertimeOver16": "<ltr>{hours}</ltr> overtime hours in the week of <ltr>{weekOf}</ltr>. The most allowed is 16",
+          "nightWeekOver58": "<ltr>{hours}</ltr> hours in the week of <ltr>{weekOf}</ltr>, with a night shift. The most allowed is 58",
+          "restBetweenUnder8": "Only <ltr>{hours}</ltr> hours of rest before <ltr>{date}</ltr>. At least 8 are needed",
+          "weeklyRestUnder36": "The week of <ltr>{weekOf}</ltr> had no 36 hours of rest in a row. The longest: <ltr>{hours}</ltr>",
+          "breakMissing": "{days, plural, one {On one day} other {On # days}} of 6 hours or more, no 45-minute break was recorded, with 30 minutes in a row",
+          "eveBreakUnder30": "On the eve of a rest day, <ltr>{date}</ltr>, a <ltr>{minutes}</ltr>-minute break was recorded. At least 30 are needed",
+          "breakOver3h": "A break of <ltr>{hours}</ltr> hours on <ltr>{date}</ltr>. A break over 3 hours splits the working day",
+          "belowMinimumWage": "The hourly wage, <ltr>{amount}</ltr>, is {band, select, adult {below the minimum wage} under16 {below the minimum wage for minors under 16} other {below the minimum wage at {band}}}, <ltr>{minimum}</ltr>, from <ltr>{from}</ltr> to <ltr>{to}</ltr>",
+          "oneOffRestDay": "<ltr>{hours}</ltr> hours on {day}. The law sets no rate for it, and some places pay 200%",
+          "holidayWorked": "{paidAt, select, regular {<ltr>{hours}</ltr> hours on {holiday}, counted as regular. If working the holiday was required, holiday pay may be owed too} other {<ltr>{hours}</ltr> hours on {holiday}, at 150%. If working the holiday was required, holiday pay is owed too: 250% in all}}",
+          "holidayNight": "A shift after {holiday} started less than 36 hours after the last work before the holiday, so all of it counted as holiday work",
+          "restDayHolidays": "The rest day is Friday or Sunday, and the hours on {holiday} were counted as holiday work. Worth checking which holidays apply here",
+          "doubleShift": "Two shifts on <ltr>{date}</ltr>, <ltr>{hours}</ltr> hours apart, were counted as one working day. Worth checking with the accountant",
+          "hoursLawTrust": "The Hours of Work and Rest Law doesn't apply (management or personal trust), so all hours are regular",
+          "hoursLawUnsupervised": "The Hours of Work and Rest Law doesn't apply (hours that can't be supervised), so all hours are regular. The payslip has to say so",
+          "hoursLawRestDay": "<ltr>{hours}</ltr> hours of rest-day work on <ltr>{date}</ltr> were counted as regular. Pay for rest-day work depends on the contract",
+          "restWeekOvertime": "To check: <ltr>{hours}</ltr> rest-day hours on <ltr>{date}</ltr>, past 42 hours in the week, were paid at 175% or 200%. An accountant needs to confirm this",
+          "minorUnderAge": "On <ltr>{date}</ltr> they weren't 15 yet. Nobody under 15 may be employed, and from 14 only light work in the holidays",
+          "minorDayOver": "<ltr>{hours}</ltr> hours on <ltr>{date}</ltr>. Minors may work up to <ltr>{limit}</ltr>",
+          "minorEveOver7": "<ltr>{hours}</ltr> hours on the eve of a rest day, <ltr>{date}</ltr>. Minors may work up to 7",
+          "minorWeekOver40": "<ltr>{hours}</ltr> hours in the week of <ltr>{weekOf}</ltr>. Minors may work up to 40",
+          "minorOvertime": "Overtime on <ltr>{date}</ltr>. Not allowed for minors, and still paid as overtime",
+          "minorRestDay": "Work on the weekly rest or a holiday on <ltr>{date}</ltr>. Not allowed for minors",
+          "minorNight": "<ltr>{hours}</ltr> hours between <ltr>{from}</ltr> and <ltr>{to}</ltr> on <ltr>{date}</ltr>. Minors may not work then, except under the school holidays permit until <ltr>01:00</ltr>",
+          "minorBreak": "On <ltr>{date}</ltr> a <ltr>{minutes}</ltr>-minute break was recorded. Minors need 45 minutes, 30 in a row, and 30 on the eve of a rest day",
+          "minorAfter23": "Work after <ltr>23:00</ltr> on <ltr>{date}</ltr>. The employer has to see them home"
+        },
+        "notes": {
+          "minimumWageTableStale": "April's minimum wage isn't in the app yet",
+          "paidAbsencesMissing": "Vacation, sick days and reserve duty aren't recorded in the app, and they count toward the week's 42 hours",
+          "roundingIgnored": "The clock rounds each shift to <ltr>{step}</ltr> minutes, and pay is worked out from the exact minutes",
+          "workWeekUnset": "The business's week isn't set, so the week of <ltr>{weekOf}</ltr> was worked out {used, select, five {as a 5-day week} six {as a 6-day week} other {by the shorter hours of each day}}, since that pays more. The week can be set in the clock's settings"
+        }
+      },
+      "holidays": {
+        "rosh_hashana_1": "Rosh Hashana, first day",
+        "rosh_hashana_2": "Rosh Hashana, second day",
+        "yom_kippur": "Yom Kippur",
+        "sukkot": "Sukkot",
+        "shmini_atzeret": "Shmini Atzeret",
+        "pesach_1": "Passover",
+        "pesach_7": "Seventh day of Passover",
+        "shavuot": "Shavuot",
+        "independence_day": "Independence Day"
+      },
+      "oneOffRestDays": {
+        "knesset_2026": "Knesset election day"
       }
     },
     "reservations": {
