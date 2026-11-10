@@ -19,7 +19,11 @@ values
   ('81000000-0000-4000-a000-000000000002', 'authenticated', 'authenticated', '972500002802'),
   ('81000000-0000-4000-a000-000000000003', 'authenticated', 'authenticated', '972500002803'),
   ('81000000-0000-4000-a000-000000000004', 'authenticated', 'authenticated', '972500002804'),
-  ('81000000-0000-4000-a000-000000000005', 'authenticated', 'authenticated', '972500002805');
+  ('81000000-0000-4000-a000-000000000005', 'authenticated', 'authenticated', '972500002805'),
+  -- The owners of O, F and Z: one place on a staff per login (20261110000900).
+  ('81000000-0000-4000-a000-000000000006', 'authenticated', 'authenticated', '972500002811'),
+  ('81000000-0000-4000-a000-000000000007', 'authenticated', 'authenticated', '972500002812'),
+  ('81000000-0000-4000-a000-000000000008', 'authenticated', 'authenticated', '972500002813');
 
 -- S: closed on Shabbat (its schedule on, the default), in Tel Aviv. O: open on
 -- Shabbat, in Jerusalem. F: a lists setting it can't read, so it fails. Z:
@@ -40,9 +44,9 @@ values
   ('81000000-0000-4000-b000-000000000001', '81000000-0000-4000-a000-000000000003', 'worker', true),
   ('81000000-0000-4000-b000-000000000001', '81000000-0000-4000-a000-000000000004', 'worker', true),
   ('81000000-0000-4000-b000-000000000001', '81000000-0000-4000-a000-000000000005', 'worker', false),
-  ('81000000-0000-4000-b000-000000000002', '81000000-0000-4000-a000-000000000001', 'owner', true),
-  ('81000000-0000-4000-b000-000000000003', '81000000-0000-4000-a000-000000000001', 'owner', true),
-  ('81000000-0000-4000-b000-000000000004', '81000000-0000-4000-a000-000000000001', 'owner', true);
+  ('81000000-0000-4000-b000-000000000002', '81000000-0000-4000-a000-000000000006', 'owner', true),
+  ('81000000-0000-4000-b000-000000000003', '81000000-0000-4000-a000-000000000007', 'owner', true),
+  ('81000000-0000-4000-b000-000000000004', '81000000-0000-4000-a000-000000000008', 'owner', true);
 
 insert into public.business_modules (business_id, module_key, enabled, settings)
 values
@@ -695,7 +699,7 @@ create function pg_temp.ago_day() returns integer language sql as $$
 $$;
 create function pg_temp.save_o(template text, sched text, days jsonb, opens integer, goes_to text)
 returns jsonb language sql as $$
-  select public.save_list_template('81000000-0000-4000-a000-000000000001',
+  select public.save_list_template('81000000-0000-4000-a000-000000000006',
     '81000000-0000-4000-b000-000000000002',
     jsonb_build_object('id', '81000000-0000-4000-c000-0000000000' || template,
       'name', 'Changed ' || template,
@@ -737,7 +741,7 @@ from (
 select pg_temp.save_o('10', '20', '[0, 1, 2, 3, 4, 5, 6]', pg_temp.ago(), 'owner');
 select pg_temp.save_o('11', '21', '[0, 1, 2, 3, 4, 5, 6]', pg_temp.ago(), 'owner');
 select pg_temp.save_o('12', '22', '[0, 1, 2, 3, 4, 5, 6]', pg_temp.ago(), 'owner');
-select public.restore_list_template('81000000-0000-4000-a000-000000000001',
+select public.restore_list_template('81000000-0000-4000-a000-000000000006',
   '81000000-0000-4000-c000-000000000013');
 select pg_temp.save_o('14', '24', '[0, 1, 2, 3, 4, 5, 6]', pg_temp.ago(), 'manager');
 
