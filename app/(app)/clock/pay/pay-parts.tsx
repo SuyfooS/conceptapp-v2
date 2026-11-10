@@ -399,7 +399,7 @@ function PersonFlags({
       {flags.map((flag, index) => (
         <Fragment key={flag.key}>
           {index > 0 ? " · " : null}
-          {flag.text}
+          <span>{flag.text}</span>
         </Fragment>
       ))}
     </span>
