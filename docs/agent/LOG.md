@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-10 · run 33 · the lists' limits, held to the database's (guessed)
+
+- Guessed: Orel left no work, and the newest merges (#91–#95) are covered by open PR #96 where they meet its files. Tests only, in `packages/domain/lists.test.ts`: an item's label, hint and unit, a list's name and note, and the 60 typed items a sent list takes, each at the database's limit and one past it, plus an editor item's id. Planting a looser limit in `@domain/lists` turns them red.
+- Found, not fixed: the inbox shows "לפני שעה (1)", "לפני יומיים (2)": Hebrew ICU data adds the count to `format.relativeTime` (`app/(app)/notifications/inbox-view.tsx:142`). The fix is our own ICU plural under `app.notifications.time`; left for after #96, which changes that file and the messages.
+- Restore point: branch `backup/before-night-2026-11-10` at `0c352fb` (the tag push was cut off).
+- Next: the relative-time fix, then P4 onward with Orel by day.
+- Defaults applied: none.
+
 ## 2026-11-09 · chat · the profile, H1: `/me` and photos (#82)
 
 - On chat/profile-me from `c702064`, following the H1 plan with its critique applied. Migration `20261109000100_profile_photo_demo.sql`: `private.keeps_demo_profile` / `public.keeps_demo_profile` (server only) and a trigger that refuses a new photo (55000) to someone in a demo business that keeps its people; clearing stays allowed, so the reset still works. The local seed opens its restaurant (`"profiles": true`) for the browser tests and keeps the shop closed; `tooling/demo-profiles.test.ts` keeps `hosted-demo.sql` closed. pgTAP in `profile_photo_demo.test.sql`; `database.types.ts` gained `keeps_demo_profile`, written by hand in the generator's format.
