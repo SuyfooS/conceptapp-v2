@@ -4,6 +4,7 @@ import { BUSINESS_COOKIE } from "@domain/businesses";
 import { INBOX_PATH, isAppPath, linkFor } from "@domain/notifications";
 import { canWrite } from "@domain/view-as";
 import { NextResponse } from "next/server";
+import { requestOrigin } from "@/app/origin";
 import { businessCookieOptions } from "../../../business-cookie";
 import { currentMember } from "../../../member";
 
@@ -38,8 +39,12 @@ export async function GET(
       headers: { "Cache-Control": "no-store" },
     });
   }
+  // The origin the person opened the app on, not request.url, which names
+  // the host the server listens on (localhost under next start): a redirect
+  // there would leave the session cookie, set for the real host, behind.
+  const origin = await requestOrigin();
   const go = (path: string) =>
-    NextResponse.redirect(new URL(path, request.url), {
+    NextResponse.redirect(new URL(path, origin), {
       status: 303,
       headers: { "Cache-Control": "no-store" },
     });
