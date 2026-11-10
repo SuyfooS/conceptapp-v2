@@ -113,6 +113,7 @@ export function templateEditor({
   readOnly,
   changed,
   times,
+  photosClosed,
 }: {
   template: ListTemplate | null;
   departments: readonly Department[];
@@ -120,6 +121,8 @@ export function templateEditor({
   readOnly: boolean;
   changed: boolean;
   times: EditorTimes;
+  /** The business takes no photos (a demo one): a photo item stays optional. */
+  photosClosed: boolean;
 }): TemplateEditorData {
   return {
     template,
@@ -130,5 +133,6 @@ export function templateEditor({
     readOnly: readOnly || template?.archivedAt != null,
     changed,
     times,
+    photosClosed,
   };
 }

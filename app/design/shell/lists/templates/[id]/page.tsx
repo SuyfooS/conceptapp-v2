@@ -20,7 +20,9 @@ type Props = {
 // was removed, so the bar's order can't be saved and says why;
 // `?state=shiftGone` the restaurant after its evening shift left the
 // settings, so the bar's closing, which follows it, holds the saves and says
-// so on top. The removed one (t-stock-count) is only read.
+// so on top; `?state=demo` a demo business, which takes no photos, so the
+// weekly cleaning's photo item stays optional and its sheet says why. The
+// removed one (t-stock-count) is only read.
 export default function ShellTemplate({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -40,6 +42,7 @@ async function Demo({ params, searchParams }: Props) {
     as === "viewing",
     state === "barGone" ? "dep-bar" : undefined,
     state === "shiftGone" ? "evening" : undefined,
+    state === "demo",
   );
   if (!data) notFound();
   return (

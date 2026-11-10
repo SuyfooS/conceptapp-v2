@@ -750,6 +750,7 @@ export function TemplateEditor({
             onChange={(items) => change({ items }, "now")}
             missing={locked ? undefined : te("itemsMissing")}
             quantities={shown.asksQuantities}
+            photosClosed={data.photosClosed}
           />
 
           <PageSection title={te("recipient")}>

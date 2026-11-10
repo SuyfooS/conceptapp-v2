@@ -1,3 +1,4 @@
+import { listPhotosAllowed } from "@db/list-photos";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
@@ -21,9 +22,11 @@ export default async function TeamNewListTemplatePage({
   const { slug } = await params;
   const setup = await teamListsSetup(slug);
   if (!setup) notFound();
-  const [paths, times] = await Promise.all([
+  const [paths, times, photos] = await Promise.all([
     teamTemplatePaths(slug),
     setup.times("", null),
+    // A demo business takes no photos: its photo items stay optional.
+    listPhotosAllowed(setup.business.id).catch((): "notYet" => "notYet"),
   ]);
   return (
     <TemplateEditor
@@ -34,6 +37,7 @@ export default async function TeamNewListTemplatePage({
         readOnly: false,
         changed: false,
         times,
+        photosClosed: photos === "demo",
       })}
       actions={{
         save: saveTeamListTemplateAction.bind(null, setup.business.id),

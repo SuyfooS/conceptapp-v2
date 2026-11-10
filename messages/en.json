@@ -2860,7 +2860,41 @@
         },
         "outOfRange": "Outside <ltr>{range}</ltr>",
         "answerPlaceholder": "Write here",
-        "photoLater": "Photos come in the app's next version",
+        "photoStillSaving": "One moment, the photo is still saving",
+        "photo": {
+          "take": "Add a photo",
+          "replace": "Replace the photo",
+          "takeHint": "Take one, or choose one you already have.",
+          "remove": "Remove the photo",
+          "retry": "Try again",
+          "preparing": "Preparing the photo…",
+          "saving": "Saving the photo…",
+          "removing": "Removing the photo…",
+          "saved": "The photo is saved",
+          "removed": "The photo was removed",
+          "undoFailed": "The photo didn't come back. You can try again.",
+          "alt": "Photo: {label}",
+          "none": "No photo was added",
+          "demo": "The demo business takes no photos",
+          "notYet": "Photos can be added soon",
+          "removedAfter": "The photo is no longer kept: photos are kept for a limited time",
+          "failures": {
+            "demo": "The demo business takes no photos.",
+            "empty": "The photo wasn't saved. Choose it again.",
+            "tooBig": "The photo is too large. Take it again or choose another.",
+            "type": "Only a photo can be added: JPEG, PNG or WebP.",
+            "metadata": "The photo wasn't saved. Choose it again.",
+            "pixels": "The photo wasn't saved. Choose it again.",
+            "unreadable": "This file can't be opened. Take the photo again or choose another.",
+            "offline": "There is no connection, so the photo isn't saved yet. It stays here until you try again.",
+            "removeOffline": "There is no connection, so the photo wasn't removed. Try again once there is one.",
+            "removeFailed": "The photo wasn't removed. Try again.",
+            "removeFinished": "The list is already closed, so the photo wasn't removed.",
+            "failed": "The photo isn't saved yet. It stays here: check the connection and try again.",
+            "notYet": "Photos can be added soon. Try again later.",
+            "finished": "The list is already closed, so the photo wasn't saved."
+          }
+        },
         "comment": {
           "add": "Add a comment",
           "edit": "Change the comment",
@@ -3032,7 +3066,8 @@
         "kindHints": {
           "check": "Checked once it's done.",
           "number": "A number is written, such as a temperature or a count.",
-          "note": "A few words are written."
+          "note": "A few words are written.",
+          "photo": "Add a photo, such as of the place after cleaning."
         },
         "unitOnly": "In <ltr>{unit}</ltr>",
         "up": "Move {label} up",
@@ -3044,6 +3079,7 @@
         "hintHint": "Optional. It shows under the item's name.",
         "required": "Required",
         "requiredHint": "The list can't be finished while a required item is empty.",
+        "photoOptional": "The demo business takes no photos, so a photo item is optional there: the list can be finished without a photo.",
         "unit": "Unit",
         "unitHint": "Optional, such as °C or ₪.",
         "min": "Lowest",
@@ -3509,6 +3545,16 @@
         "tellWhenFinished": {
           "label": "Tell when a list is finished",
           "hint": "Whoever sent a list, and the department that asked for it, hear when it's finished."
+        },
+        "photoDays": {
+          "label": "How long photos are kept",
+          "hint": "Photos on lists are deleted this long after the day they were taken. The item stays done.",
+          "options": {
+            "30": "A month",
+            "90": "Three months",
+            "180": "Half a year",
+            "365": "A year"
+          }
         }
       }
     }

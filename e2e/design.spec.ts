@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { cameraPhoto } from "./photo";
 import { heT } from "./t";
 import { readWorkbook, unzip } from "./unzip";
 
@@ -91,6 +92,10 @@ const PAGES = [
   "/design/shell/lists/list-bar-order",
   "/design/shell/lists/list-bar-order?state=passed",
   "/design/shell/lists/list-kitchen-closing-mon",
+  "/design/shell/lists/list-weekly-cleaning",
+  "/design/shell/lists/list-weekly-cleaning?state=photo",
+  "/design/shell/lists/list-weekly-cleaning?state=demo",
+  "/design/shell/lists/list-weekly-cleaning?state=gone",
   "/design/shell/lists/today",
   "/design/shell/lists/today?day=2026-11-01",
   "/design/shell/lists/today?state=empty",
@@ -114,6 +119,7 @@ const PAGES = [
   "/design/shell/lists/templates/t-bar-closing",
   "/design/shell/lists/templates/t-bar-closing?state=shiftGone",
   "/design/shell/lists/templates/t-weekly-cleaning",
+  "/design/shell/lists/templates/t-weekly-cleaning?state=demo",
   "/design/shell/lists/templates/t-stock-count",
   "/design/shell/lists/templates/new",
   "/design/shell/notifications",
@@ -598,6 +604,111 @@ test("the order demo gives counts, passes the list on, and filters by department
       .getByRole("link", { name: /^פתיחת אולם/ })
       .filter({ visible: true }),
   ).toHaveCount(0);
+});
+
+// Photos on a list (L6), on the weekly cleaning's demo: a photo taken from the
+// phone's chooser shows at once and says it was saved; removing it offers an
+// undo that brings it back; a demo business says it takes none, with no way
+// to take one; one past the days the business keeps photos says so; and the
+// finished list shows the photo with who took it.
+test("the photo demo takes a photo, removes it and brings it back", async ({
+  page,
+}) => {
+  const l = he.app.lists.list;
+  const main = page.getByRole("main");
+  const label = "צילום של המטבח אחרי הניקיון";
+  const photo = main.getByRole("img", {
+    name: l.photo.alt.replace("{label}", label),
+  });
+
+  await page.goto("/design/shell/lists/list-weekly-cleaning");
+  await expect(photo).toBeVisible();
+  await expect(
+    main.getByRole("button", { name: new RegExp(`^${l.photo.take}`) }),
+  ).toHaveCount(0);
+
+  await page.goto("/design/shell/lists/list-weekly-cleaning?state=photo");
+  await expect(photo).toHaveCount(0);
+  const take = main.getByRole("button", { name: `${l.photo.take}: ${label}` });
+  await expect(take).toBeVisible();
+  await expect(main.getByText(l.photo.takeHint)).toBeVisible();
+  const chooser = page.waitForEvent("filechooser");
+  await take.click();
+  await (await chooser).setFiles({
+    name: "photo.jpg",
+    mimeType: "image/jpeg",
+    buffer: await cameraPhoto(page),
+  });
+  await expect(
+    page.getByRole("status").filter({ hasText: l.photo.saved }),
+  ).toBeVisible();
+  await expect(photo).toBeVisible();
+  await expect(
+    main.getByRole("button", { name: `${l.photo.replace}: ${label}` }),
+  ).toBeVisible();
+  const taken = await new AxeBuilder({ page }).analyze();
+  expect(taken.violations.map((v) => v.id)).toEqual([]);
+
+  await main
+    .getByRole("button", { name: `${l.photo.remove}: ${label}` })
+    .click();
+  const undo = page.getByRole("status").filter({ hasText: l.photo.removed });
+  await expect(undo).toBeVisible();
+  await expect(photo).toHaveCount(0);
+  await undo.getByRole("button", { name: he.app.manage.undo }).click();
+  await expect(photo).toBeVisible();
+  await expect(undo).toHaveCount(0);
+
+  await page.goto("/design/shell/lists/list-weekly-cleaning?state=demo");
+  await expect(main.getByText(l.photo.demo, { exact: true })).toBeVisible();
+  await expect(
+    main.getByRole("button", { name: new RegExp(`^${l.photo.take}`) }),
+  ).toHaveCount(0);
+
+  await page.goto("/design/shell/lists/list-weekly-cleaning?state=gone");
+  await expect(
+    main.getByText(heT("app.lists.list.photo.removedAfter")),
+  ).toBeVisible();
+  await expect(photo).toHaveCount(0);
+});
+
+// In a demo business, which takes no photos (L6), the template editor keeps a
+// photo item optional, so its list can still be finished: "חובה" is off and
+// still, and the sheet says why, for an item already there and a new one.
+test("the template demo keeps a photo item optional in a demo business", async ({
+  page,
+}) => {
+  const l = he.app.lists;
+  const label = "צילום של המטבח אחרי הניקיון";
+  await page.goto("/design/shell/lists/templates/t-weekly-cleaning?state=demo");
+  await page.getByRole("button", { name: new RegExp(`^${label}`) }).click();
+  const sheet = page.getByRole("dialog", { name: label });
+  const required = sheet.getByRole("switch", {
+    name: l.items.required,
+    exact: true,
+  });
+  await expect(required).toBeDisabled();
+  await expect(required).toHaveAttribute("aria-checked", "false");
+  await expect(sheet.getByText(l.items.photoOptional)).toBeVisible();
+  const open = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .analyze();
+  expect(open.violations.map((v) => v.id)).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  await page.getByRole("button", { name: l.items.add, exact: true }).click();
+  const added = page.getByRole("dialog", { name: l.items.newTitle });
+  await expect(
+    added.getByRole("switch", { name: l.items.required, exact: true }),
+  ).toBeEnabled();
+  await added
+    .getByRole("button", { name: l.items.kinds.photo, exact: true })
+    .click();
+  await expect(
+    added.getByRole("switch", { name: l.items.required, exact: true }),
+  ).toBeDisabled();
+  await expect(added.getByText(l.items.photoOptional)).toBeVisible();
 });
 
 // The pay demo's wage (payroll P4): under the minimum warns in words and

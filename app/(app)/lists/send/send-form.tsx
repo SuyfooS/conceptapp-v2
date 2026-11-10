@@ -355,6 +355,7 @@ export function SendForm({
                   setOwnItems(items);
                   setFailure(null);
                 }}
+                photosClosed={data.photosClosed}
               />
             </section>
           ) : null}

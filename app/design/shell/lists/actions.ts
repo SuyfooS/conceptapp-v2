@@ -13,9 +13,11 @@ import { STAFF_ROLES } from "@domain/modules";
 import { z } from "zod";
 import type {
   ListActionResult,
+  ListPhotoResult,
   SendResult,
 } from "../../../(app)/lists/list-types";
 import type { SettingsResult } from "../../../(app)/manage/settings-types";
+import { listPhotos } from "../../list-photos";
 
 // Stand-ins for the lists actions on the design demo: the same checks as the
 // app where its mock ids allow, and nothing stored. What changes stays on
@@ -54,6 +56,37 @@ export async function demoPassList(
 ): Promise<ListActionResult> {
   return department.startsWith("dep-") && passNote.safeParse(note).success
     ? { ok: true, value: null }
+    : { ok: false, failure: "invalid" };
+}
+
+/**
+ * A photo taken on the demo (L6): a photo item of the mock data and a picture
+ * in the form, nothing stored. It shows as the demo's illustration of a clean
+ * kitchen, as if stored, and the undo of a removal sends that illustration
+ * back, so any picture is taken here.
+ */
+export async function demoSetListPhoto(
+  itemId: string,
+  form: FormData,
+): Promise<ListPhotoResult> {
+  const photo = form.get("photo");
+  if (!(photo instanceof Blob) || photo.size === 0) {
+    return { ok: false, failure: "empty" };
+  }
+  if (!photo.type.startsWith("image/")) {
+    return { ok: false, failure: "type" };
+  }
+  return itemId.length > 0
+    ? { ok: true, value: { photo: listPhotos.kitchen } }
+    : { ok: false, failure: "invalid" };
+}
+
+/** A photo removed on the demo: nothing stored, so nothing to remove. */
+export async function demoRemoveListPhoto(
+  itemId: string,
+): Promise<ListPhotoResult> {
+  return itemId.length > 0
+    ? { ok: true, value: { photo: null } }
     : { ok: false, failure: "invalid" };
 }
 

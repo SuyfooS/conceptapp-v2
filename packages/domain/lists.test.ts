@@ -105,10 +105,27 @@ describe("an item", () => {
     ).toBe(true);
   });
 
-  it("is not a photo yet", () => {
-    const result = listItemSeed.safeParse({ kind: "photo", label: "Picture" });
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.message).toBe("Photo items come later");
+  it("may be a photo (L6), with nothing of a number's or an order's", () => {
+    expect(
+      listItemSeed.safeParse({ kind: "photo", label: "Picture" }).success,
+    ).toBe(true);
+    expect(
+      listItemSeed.safeParse({
+        kind: "photo",
+        label: "Picture",
+        required: false,
+        hint: "From the door",
+      }).success,
+    ).toBe(true);
+    for (const bad of [
+      { kind: "photo", label: "Picture", unit: "°C" },
+      { kind: "photo", label: "Picture", min: 0 },
+      { kind: "photo", label: "Picture", defaultQuantity: 1 },
+    ]) {
+      expect(listItemSeed.safeParse(bad).success, JSON.stringify(bad)).toBe(
+        false,
+      );
+    }
   });
 });
 

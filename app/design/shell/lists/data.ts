@@ -43,6 +43,7 @@ import {
   listsTodayData,
   overviewWeek,
 } from "../../../(app)/lists/today/today-data";
+import { listPhotos } from "../../list-photos";
 import { demoShiftPatterns, teamMembers } from "../data";
 
 /** Tuesday 3 November 2026, 08:12 in Tel Aviv, as the rest of the demo. */
@@ -84,6 +85,8 @@ const item = (
   checked: false,
   reading: null,
   answer: null,
+  photo: null,
+  photoRemoved: false,
   comment: null,
   done: false,
   doneBy: null,
@@ -264,6 +267,15 @@ export const demoLists: ListDetail[] = [
         label: "ניקוי מנדף",
         checked: true,
         ...done("noa", "2026-11-03T05:15:00.000Z"),
+      }),
+      // A photo of the kitchen after cleaning (L6), an illustration.
+      item("weekly-photo", {
+        kind: "photo",
+        templateItemId: "ti-wc-photo",
+        label: "צילום של המטבח אחרי הניקיון",
+        required: false,
+        photo: listPhotos.kitchen,
+        ...done("noa", "2026-11-03T05:18:00.000Z"),
       }),
     ],
   }),
@@ -621,18 +633,61 @@ function passedBack(order: ListDetail): ListDetail {
 }
 
 /**
+ * A list's photo states on the demo (L6): `photo` the list as just opened,
+ * nothing done, its photo still to take; `demo` the same in a demo business,
+ * which takes no photos; `gone` the list as it was, its photo no longer kept.
+ */
+export type DemoPhotoState = "photo" | "demo" | "gone";
+
+function withPhotoState(list: ListDetail, state: DemoPhotoState): ListDetail {
+  if (state === "gone") {
+    return {
+      ...list,
+      items: list.items.map((i) =>
+        i.kind === "photo" && i.photo !== null
+          ? { ...i, photo: null, photoRemoved: true }
+          : i,
+      ),
+    };
+  }
+  return {
+    ...list,
+    status: "open",
+    finishedAt: null,
+    finishedBy: null,
+    items: list.items.map((i) => ({
+      ...i,
+      checked: false,
+      given: null,
+      reading: null,
+      answer: null,
+      photo: null,
+      done: false,
+      doneBy: null,
+      doneAt: null,
+    })),
+  };
+}
+
+/**
  * One list on its screen, as Shiran reads it; `finished` just now by her,
- * `passed` the bar's order passed back from the storeroom.
+ * `passed` the bar's order passed back from the storeroom, `photos` one of
+ * its photo states (`DemoPhotoState`).
  */
 export function demoListScreen(
   id: string,
   finished: boolean,
   passed = false,
+  photos: DemoPhotoState | null = null,
 ): ListScreenData | null {
   const listed = [...demoLists, ...demoEarlierLists].find((l) => l.id === id);
   if (!listed) return null;
-  const found =
+  const read =
     passed && listed.fromDepartment !== null ? passedBack(listed) : listed;
+  const found =
+    photos && read.items.some((i) => i.kind === "photo")
+      ? withPhotoState(read, photos)
+      : read;
   const finishedAt = new Date(now.getTime() - 60_000).toISOString();
   const shown: ListDetail = finished
     ? {
@@ -681,6 +736,9 @@ export function demoListScreen(
             stays: true,
           }
         : null,
+    // Shown as a business that takes photos; `demo` as a demo business,
+    // which takes none (as the hosted ones).
+    photos: { taking: photos === "demo" ? "demo" : "yes" },
   };
 }
 
@@ -919,6 +977,11 @@ export const demoTemplates: ListTemplate[] = [
       templateItem("ti-wc-fridge", { kind: "check", label: "ניקוי מקרר ראשי" }),
       templateItem("ti-wc-hood", { kind: "check", label: "ניקוי מנדף" }),
       templateItem("ti-wc-store", { kind: "check", label: "סידור מחסן יבש" }),
+      templateItem("ti-wc-photo", {
+        kind: "photo",
+        label: "צילום של המטבח אחרי הניקיון",
+        required: false,
+      }),
     ],
   }),
   template({
@@ -979,6 +1042,8 @@ export const demoEmptyTemplatesScreen = (readOnly = false) =>
  * name (the bar, for its order: an editor that can't save it), and
  * `removedShift` a shift the settings no longer have (the evening, which the
  * bar's closing follows: a time that holds the editor's saves).
+ * `photosClosed` is a demo business, which takes no photos: a photo item
+ * stays optional there.
  */
 export function demoTemplateEditor(
   id: string,
@@ -986,6 +1051,7 @@ export function demoTemplateEditor(
   readOnly = false,
   removedDepartment?: string,
   removedShift?: string,
+  photosClosed = false,
 ) {
   if (id === "new" && readOnly) return null;
   const found = id === "new" ? null : demoTemplates.find((t) => t.id === id);
@@ -1001,6 +1067,8 @@ export function demoTemplateEditor(
     readOnly,
     changed,
     times: demoEditorTimes(found, removedShift),
+    // A business that takes photos unless asked, as the list's screen is.
+    photosClosed,
   });
 }
 
@@ -1121,6 +1189,7 @@ export const demoSendForm = (
       .map((d) => ({ id: d.id, name: d.name })),
     roles: STAFF_ROLES,
     shifts: demoSendShifts,
+    photosClosed: false,
   };
 };
 

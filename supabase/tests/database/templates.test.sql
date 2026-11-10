@@ -2,7 +2,7 @@
 -- its departments and lists, refuses anything else without changing it, and is
 -- server-only.
 begin;
-select plan(39);
+select plan(40);
 
 insert into public.businesses (id, slug, name)
 values
@@ -105,7 +105,7 @@ select is(
 select is(
   (select template_key || '@' || template_version from public.businesses
    where id = '40000000-0000-4000-b000-00000000000a'),
-  'restaurant@5',
+  'restaurant@6',
   'the business records the template and its version'
 );
 
@@ -138,8 +138,16 @@ select is(
    where business_id = '40000000-0000-4000-b000-00000000000a')
   || '/' || (select count(*)::integer from public.list_schedules
    where business_id = '40000000-0000-4000-b000-00000000000a'),
-  '6/28/7',
+  '6/29/7',
   'and its lists, with their items and times'
+);
+select is(
+  (select i.kind || ':' || i.required::text from public.list_template_items i
+   join public.list_templates t on t.id = i.template_id
+   where t.business_id = '40000000-0000-4000-b000-00000000000a' and t.key = 'weekly-cleaning'
+   order by i.position desc limit 1),
+  'photo:false',
+  'its weekly cleaning ends with a photo of the kitchen, which may stay empty (20261110001500_list_photos.sql)'
 );
 select is(
   (select t.asks_quantities and fd.key = 'bar' and rd.key = 'storeroom'

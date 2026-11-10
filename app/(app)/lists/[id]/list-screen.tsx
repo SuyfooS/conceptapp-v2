@@ -23,6 +23,7 @@ import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { ListGroup } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
+import { encodeListPhoto, PhotoReadError } from "@ui/photo-encode";
 import { ProgressRing } from "@ui/progress-ring";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
@@ -34,6 +35,7 @@ import {
   CheckCheck,
   ChevronDown,
   RotateCcw,
+  RotateCw,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -50,10 +52,72 @@ import type {
   ListActionResult,
   ListActions,
   ListFailure,
+  ListPhotoFailure,
+  ListPhotoResult,
   ListScreenData,
 } from "../list-types";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/**
+ * What a photo item says went wrong: the server's answer, or the phone's;
+ * a removal that didn't happen has its own words.
+ */
+type PhotoProblem =
+  | ListPhotoFailure
+  | "unreadable"
+  | "offline"
+  | "removeOffline"
+  | "removeFailed"
+  | "removeFinished";
+/** The problems a photo item says in its own words; the rest are a list's. */
+const PHOTO_WORDS = [
+  "demo",
+  "empty",
+  "tooBig",
+  "type",
+  "metadata",
+  "pixels",
+  "unreadable",
+  "offline",
+  "removeOffline",
+  "removeFailed",
+  "removeFinished",
+  "failed",
+  "notYet",
+  "finished",
+] as const;
+type PhotoWord = (typeof PHOTO_WORDS)[number];
+const isPhotoWord = (problem: PhotoProblem): problem is PhotoWord =>
+  (PHOTO_WORDS as readonly string[]).includes(problem);
+
+/** A photo as the server takes it: a form with the file, named by its type. */
+function photoForm(photo: Blob): FormData {
+  const form = new FormData();
+  form.set(
+    "photo",
+    photo,
+    photo.type === "image/jpeg" ? "photo.jpg" : "photo.webp",
+  );
+  return form;
+}
+
+/** Whether the phone says it has no connection now. */
+const offline = () =>
+  typeof navigator !== "undefined" && navigator.onLine === false;
+
+/** Why a removal didn't happen, in a removal's own words. */
+const removeProblem = (failure: ListPhotoFailure | "offline"): PhotoProblem =>
+  failure === "offline"
+    ? "removeOffline"
+    : failure === "finished"
+      ? "removeFinished"
+      : failure === "failed"
+        ? "removeFailed"
+        : failure;
+
+/** A photo prepared but not saved: no connection, or no answer. */
+type PhotoWaiting = { bytes: Blob; failure: "offline" | "failed" };
 
 /** The words the server worked out for this list. */
 export type ListScreenWords = {
@@ -95,7 +159,13 @@ const needsMinus = (item: ListItem) =>
  * says how many were given (L5). "Finish the list" waits for the required
  * items; once it's finished, whoever finished it can take it back for five
  * minutes. Whoever holds it, or manages lists, passes it to another
- * department from a sheet, with a note. Phone: the list and the dock, the
+ * department from a sheet, with a note. A photo item (L6) takes a photo with
+ * the phone's camera or from its photos, re-encoded here, shown at once while
+ * it saves, said in words when it can't be (too big, not a photo, a demo
+ * business), kept with a way to try again when it didn't get there (no
+ * connection, no answer), replaced, or removed with an undo that puts the
+ * same photo back; the list waits to be finished while a photo is on its
+ * way. Phone: the list and the dock, the
  * timeline folded at the end. Tablet: the items beside the details and the
  * timeline. Desktop: the same, the main action in the header, and the
  * readings as a table.
@@ -167,6 +237,40 @@ export function ListScreen({
     null,
   );
   const [passing, startPass] = useTransition();
+  // Photo items (L6): what each is doing now (preparing the photo, saving it,
+  // removing it), its photo while it saves, why the last one didn't go, the
+  // photo that didn't get there, kept to try again, the removed photo's
+  // bytes for its undo, and the word that one was saved.
+  const [photoBusy, setPhotoBusy] = useState<
+    Record<string, "preparing" | "saving" | "removing">
+  >({});
+  const [photoPreview, setPhotoPreview] = useState<Record<string, string>>({});
+  const [photoProblem, setPhotoProblem] = useState<
+    Record<string, PhotoProblem>
+  >({});
+  const [photoWaiting, setPhotoWaiting] = useState<
+    Record<string, PhotoWaiting>
+  >({});
+  const [photoUndo, setPhotoUndo] = useState<{
+    itemId: string;
+    bytes: Blob;
+    failed: boolean;
+  } | null>(null);
+  const [photoUndoing, setPhotoUndoing] = useState(false);
+  const [photoSaved, setPhotoSaved] = useState<number | null>(null);
+  // Counts each item's picks: one that finishes after a newer one changes nothing.
+  const photoPicks = useRef<Record<string, number>>({});
+  // The same previews, for their addresses to go as soon as they are done.
+  const previews = useRef<Record<string, string>>({});
+  // A photo shown while it saved lives as long as the screen, at most.
+  useEffect(
+    () => () => {
+      for (const url of Object.values(previews.current)) {
+        URL.revokeObjectURL(url);
+      }
+    },
+    [],
+  );
 
   // The newest items and counts typed, for a count saved after its timer.
   const itemsNow = useRef(items);
@@ -249,13 +353,17 @@ export function ListScreen({
           : item.kind === "note"
             ? next.answer !== null
             : item.done;
-    // The database writes who saved it last, and when, as here.
-    const shown: ListItem = {
-      ...next,
-      done,
-      doneBy: done ? userId : null,
-      doneAt: done ? new Date().toISOString() : null,
-    };
+    // The database writes who saved it last, and when, as here; a photo's
+    // comment leaves who took it (`set_list_item`).
+    const shown: ListItem =
+      item.kind === "photo"
+        ? next
+        : {
+            ...next,
+            done,
+            doneBy: done ? userId : null,
+            doneAt: done ? new Date().toISOString() : null,
+          };
     const mine = (latest.current[item.id] ?? 0) + 1;
     latest.current[item.id] = mine;
     setItems((current) => current.map((i) => (i.id === item.id ? shown : i)));
@@ -378,7 +486,281 @@ export function ListScreen({
     if (comment !== item.comment) await save(item, { comment });
   }
 
+  // Photos ----------------------------------------------------------------
+
+  function busyWith(
+    itemId: string,
+    doing: "preparing" | "saving" | "removing" | null,
+  ) {
+    setPhotoBusy((current) => {
+      const { [itemId]: _, ...rest } = current;
+      return doing ? { ...rest, [itemId]: doing } : rest;
+    });
+  }
+
+  function problemFor(itemId: string, problem: PhotoProblem | null) {
+    setPhotoProblem((current) => {
+      const { [itemId]: _, ...rest } = current;
+      return problem ? { ...rest, [itemId]: problem } : rest;
+    });
+  }
+
+  /** Shows a photo being saved in place of the item's, or stops; the old one's address goes. */
+  function previewFor(itemId: string, url: string | null) {
+    const { [itemId]: old, ...rest } = previews.current;
+    if (old && old !== url) URL.revokeObjectURL(old);
+    const next = url ? { ...rest, [itemId]: url } : rest;
+    previews.current = next;
+    setPhotoPreview(next);
+  }
+
+  /** The item as it is now that its photo changed: done by this person, or not. */
+  function photoChanged(itemId: string, photo: string | null) {
+    const at = new Date().toISOString();
+    setItems((current) =>
+      current.map((i) =>
+        i.id === itemId
+          ? {
+              ...i,
+              photo,
+              photoRemoved: false,
+              done: photo !== null,
+              doneBy: photo !== null ? userId : null,
+              doneAt: photo !== null ? at : null,
+            }
+          : i,
+      ),
+    );
+  }
+
+  /** What a photo write answers, or "offline"/"failed" when it didn't arrive. */
+  async function photoAnswer(
+    run: () => Promise<ListPhotoResult>,
+  ): Promise<ListPhotoResult | { ok: false; failure: "offline" }> {
+    if (offline()) return { ok: false, failure: "offline" };
+    try {
+      return await run();
+    } catch {
+      return { ok: false, failure: offline() ? "offline" : "failed" };
+    }
+  }
+
+  /** A new attempt for the item's photo; one that ends after a newer one changes nothing. */
+  function nextPick(itemId: string): () => boolean {
+    const mine = (photoPicks.current[itemId] ?? 0) + 1;
+    photoPicks.current[itemId] = mine;
+    return () => photoPicks.current[itemId] === mine;
+  }
+
+  /** The photo kept to try again goes (saved, replaced, or refused for good). */
+  function waitingFor(itemId: string, waiting: PhotoWaiting | null) {
+    setPhotoWaiting((current) => {
+      const { [itemId]: _, ...rest } = current;
+      return waiting ? { ...rest, [itemId]: waiting } : rest;
+    });
+  }
+
+  /**
+   * A photo taken or chosen: re-encoded here first (`encodeListPhoto`), so
+   * what leaves the phone is about 0.3 MB with nothing from the camera inside,
+   * shown at once while it saves, and said when it can't be.
+   */
+  async function pickPhoto(item: ListItem, file: File) {
+    const current = nextPick(item.id);
+    problemFor(item.id, null);
+    // A new photo takes the place of one that didn't get there.
+    waitingFor(item.id, null);
+    previewFor(item.id, null);
+    if (photoUndo?.itemId === item.id) setPhotoUndo(null);
+    busyWith(item.id, "preparing");
+    let blob: Blob;
+    try {
+      blob = await encodeListPhoto(file);
+    } catch (error) {
+      if (!current()) return;
+      busyWith(item.id, null);
+      problemFor(
+        item.id,
+        error instanceof PhotoReadError ? error.problem : "unreadable",
+      );
+      return;
+    }
+    if (!current()) return;
+    previewFor(item.id, URL.createObjectURL(blob));
+    await uploadPhoto(item.id, blob, current);
+  }
+
+  /**
+   * Saves a prepared photo, shown while it saves. One that didn't get there
+   * (no connection, or no answer) stays on the screen with its bytes, and the
+   * way to try again with them, rather than asking for it again; one refused
+   * for good goes, and says why.
+   */
+  async function uploadPhoto(
+    itemId: string,
+    blob: Blob,
+    current: () => boolean,
+  ) {
+    busyWith(itemId, "saving");
+    const result = await photoAnswer(() =>
+      actions.setPhoto(itemId, photoForm(blob)),
+    );
+    if (!current()) return;
+    busyWith(itemId, null);
+    if (!result.ok) {
+      const { failure } = result;
+      if (failure === "offline" || failure === "failed") {
+        waitingFor(itemId, { bytes: blob, failure });
+        return;
+      }
+      previewFor(itemId, null);
+      problemFor(itemId, failure);
+      // Closed meanwhile, or no longer theirs: show where it really stands.
+      if (failure === "finished" || failure === "noAccess") router.refresh();
+      return;
+    }
+    previewFor(itemId, null);
+    photoChanged(itemId, result.value.photo);
+    setPhotoSaved(Date.now());
+  }
+
+  /** The photo that didn't get there, sent again as it was. */
+  function retryPhoto(itemId: string) {
+    const waiting = photoWaiting[itemId];
+    if (!waiting) return;
+    const current = nextPick(itemId);
+    waitingFor(itemId, null);
+    problemFor(itemId, null);
+    void uploadPhoto(itemId, waiting.bytes, current);
+  }
+
+  /**
+   * Removing a photo reads its bytes first, from the address the screen
+   * shows: without them there would be nothing to bring back, so nothing is
+   * removed. The undo then sets them again.
+   */
+  async function removePhoto(item: ListItem) {
+    const shown = item.photo;
+    if (!shown) return;
+    problemFor(item.id, null);
+    busyWith(item.id, "removing");
+    let kept: Blob;
+    try {
+      const response = await fetch(shown);
+      if (!response.ok) throw new Error(String(response.status));
+      kept = await response.blob();
+    } catch {
+      busyWith(item.id, null);
+      problemFor(item.id, offline() ? "removeOffline" : "removeFailed");
+      return;
+    }
+    const result = await photoAnswer(() => actions.removePhoto(item.id));
+    busyWith(item.id, null);
+    if (!result.ok) {
+      problemFor(item.id, removeProblem(result.failure));
+      if (result.failure === "finished" || result.failure === "noAccess") {
+        router.refresh();
+      }
+      return;
+    }
+    photoChanged(item.id, null);
+    setPhotoUndo({ itemId: item.id, bytes: kept, failed: false });
+  }
+
+  async function bringPhotoBack() {
+    const undo = photoUndo;
+    if (!undo || photoUndoing) return;
+    setPhotoUndoing(true);
+    const result = await photoAnswer(() =>
+      actions.setPhoto(undo.itemId, photoForm(undo.bytes)),
+    );
+    setPhotoUndoing(false);
+    if (result.ok) {
+      setPhotoUndo(null);
+      photoChanged(undo.itemId, result.value.photo);
+      setPhotoSaved(Date.now());
+    } else if (result.failure === "failed" || result.failure === "offline") {
+      // It didn't get there: the row stays, saying so, and "ביטול" tries again.
+      setPhotoUndo({ ...undo, failed: true });
+    } else {
+      // Refused for good (closed meanwhile, a demo): the row goes and says why.
+      setPhotoUndo(null);
+      problemFor(undo.itemId, result.failure);
+    }
+  }
+
+  const photoWords = (problem: PhotoProblem): string =>
+    isPhotoWord(problem)
+      ? tl(`photo.failures.${problem}`)
+      : tl(`failed.${problem}`);
+
+  /** A photo item's part, as this person may fill it or only read it. */
+  const photoOf = (item: ListItem) => {
+    const busy = photoBusy[item.id];
+    const problem = photoProblem[item.id];
+    const waiting = busy ? undefined : photoWaiting[item.id];
+    const taking = data.photos.taking;
+    return {
+      src: photoPreview[item.id] ?? item.photo,
+      alt: tl("photo.alt", { label: item.label }),
+      empty: item.photoRemoved
+        ? tl("photo.removedAfter")
+        : fill
+          ? null
+          : tl("photo.none"),
+      busy: busy ? tl(`photo.${busy}`) : null,
+      problem: problem ? photoWords(problem) : null,
+      locked: fill && taking !== "yes" ? tl(`photo.${taking}`) : null,
+      take: fill
+        ? {
+            label: tl("photo.take"),
+            replaceLabel: tl("photo.replace"),
+            hint: tl("photo.takeHint"),
+            onPick: (file: File) => void pickPhoto(item, file),
+          }
+        : null,
+      // A photo that didn't get there isn't stored: it is tried again, or
+      // replaced, rather than removed.
+      remove:
+        fill && !waiting
+          ? {
+              label: tl("photo.remove"),
+              onRemove: () => void removePhoto(item),
+            }
+          : null,
+      after: waiting ? (
+        <div className="flex min-h-[3.25rem] items-center justify-between gap-3 rounded-card bg-surface-2 ps-4 pe-1.5">
+          <p role="alert" className="min-w-0 py-2 text-base">
+            {tl(`photo.failures.${waiting.failure}`)}
+          </p>
+          <Button
+            variant="ghost"
+            aria-label={`${tl("photo.retry")}: ${item.label}`}
+            onClick={() => retryPhoto(item.id)}
+            className="shrink-0"
+          >
+            <RotateCw aria-hidden="true" />
+            {tl("photo.retry")}
+          </Button>
+        </div>
+      ) : photoUndo?.itemId === item.id ? (
+        <UndoRow
+          message={
+            photoUndo.failed ? tl("photo.undoFailed") : tl("photo.removed")
+          }
+          onUndo={() => void bringPhotoBack()}
+          pending={photoUndoing}
+        />
+      ) : null,
+    };
+  };
+
+  // A photo on its way (prepared, saved, removed or brought back): the list
+  // waits for it to be finished, so the photo isn't lost.
+  const photosBusy = Object.keys(photoBusy).length > 0 || photoUndoing;
+
   function finish() {
+    if (photosBusy) return;
     startFinish(async () => {
       let result: ListActionResult;
       try {
@@ -462,7 +844,7 @@ export function ListScreen({
     <Button
       size="lg"
       loading={finishing}
-      disabled={progress.requiredLeft > 0}
+      disabled={progress.requiredLeft > 0 || photosBusy}
       onClick={finish}
       className={className}
     >
@@ -474,7 +856,9 @@ export function ListScreen({
   const leftWords =
     progress.requiredLeft > 0
       ? tl("leftRequired", { count: progress.requiredLeft })
-      : tl("readyToFinish");
+      : photosBusy
+        ? tl("photoStillSaving")
+        : tl("readyToFinish");
 
   const numbers = items.filter((item) => item.kind === "number");
 
@@ -535,6 +919,10 @@ export function ListScreen({
       <StatusToast
         message={passed ? tl("pass.passed", { name: passed.name }) : null}
         stamp={passed ? String(passed.stamp) : undefined}
+      />
+      <StatusToast
+        message={photoSaved ? tl("photo.saved") : null}
+        stamp={photoSaved ? String(photoSaved) : undefined}
       />
       <PageHeader
         back={{ href: backHref, label: t("title") }}
@@ -717,11 +1105,7 @@ export function ListScreen({
                           }
                         : undefined
                     }
-                    photo={
-                      item.kind === "photo"
-                        ? { text: tl("photoLater") }
-                        : undefined
-                    }
+                    photo={item.kind === "photo" ? photoOf(item) : undefined}
                   />
                 );
               })}
@@ -735,7 +1119,9 @@ export function ListScreen({
                 variant="secondary"
                 size="lg"
                 className="w-full md:w-auto"
-                disabled={finishing || passing}
+                // Not while a photo is on its way: once passed, the list
+                // may no longer be theirs to save it on.
+                disabled={finishing || passing || photosBusy}
                 onClick={openPass}
               >
                 <ArrowLeftRight aria-hidden="true" />
@@ -896,7 +1282,7 @@ export function ListScreen({
             <DockButton
               icon={<CheckCheck />}
               loading={finishing}
-              disabled={progress.requiredLeft > 0}
+              disabled={progress.requiredLeft > 0 || photosBusy}
               onClick={finish}
             >
               {tl("finish")}

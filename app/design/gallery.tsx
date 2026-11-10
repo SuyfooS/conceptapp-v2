@@ -82,6 +82,7 @@ import { type ReactNode, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
+import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
 const ACCENTS = [
@@ -178,6 +179,7 @@ function GalleryBody({
   const [freezer, setFreezer] = useState("18");
   const [below, setBelow] = useState(true);
   const [missing, setMissing] = useState("");
+  const [listPhoto, setListPhoto] = useState<string | null>(null);
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
@@ -980,13 +982,68 @@ function GalleryBody({
                 placeholder: tList("answerPlaceholder"),
               }}
             />
+            {/* A photo (L6): taken or chosen here, shown at once, nothing stored. */}
+            <ChecklistItem
+              kind="photo"
+              label={t("checklistPhoto")}
+              required={false}
+              optionalLabel={tList("optional")}
+              done={listPhoto !== null}
+              photo={{
+                src: listPhoto,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+                take: {
+                  label: tList("photo.take"),
+                  replaceLabel: tList("photo.replace"),
+                  hint: tList("photo.takeHint"),
+                  onPick: (file) => {
+                    if (!file.type.startsWith("image/")) return;
+                    setListPhoto((old) => {
+                      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
+                      return URL.createObjectURL(file);
+                    });
+                  },
+                },
+                remove: {
+                  label: tList("photo.remove"),
+                  onRemove: () =>
+                    setListPhoto((old) => {
+                      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
+                      return null;
+                    }),
+                },
+              }}
+            />
+            {/* Taken, only read: who took it and when. */}
+            <ChecklistItem
+              kind="photo"
+              label={t("checklistPhoto")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              doneLine={tList.rich("doneBy", {
+                name: t("checklistWho"),
+                time: "16:52",
+                ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+              })}
+              photo={{
+                src: listPhotos.kitchen,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+              }}
+            />
+            {/* In a demo business: said, with no way to take one. */}
             <ChecklistItem
               kind="photo"
               label={t("checklistPhoto")}
               required={false}
               optionalLabel={tList("optional")}
               done={false}
-              photo={{ text: tList("photoLater") }}
+              photo={{
+                src: null,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+                locked: tList("photo.demo"),
+              }}
             />
             <ChecklistItem
               kind="check"

@@ -142,7 +142,32 @@ export type ListScreenData = {
   undoUntil: string | null;
   /** Passing it to another department, or null when it isn't theirs to pass. */
   pass: ListPassData | null;
+  /** Photo items (L6): whether this business takes photos. */
+  photos: ListPhotosData;
 };
+
+/**
+ * Photos on a list's screen: taken here, or not in a demo business, or not
+ * yet where the migration hasn't reached the project.
+ */
+export type ListPhotosData = {
+  taking: "yes" | "demo" | "notYet";
+};
+
+/** Why a photo didn't save or go: a list's reasons, the file's, and a demo's. */
+export type ListPhotoFailure =
+  | ListFailure
+  | "demo"
+  | "empty"
+  | "tooBig"
+  | "type"
+  | "metadata"
+  | "pixels";
+
+/** A photo saved or removed: where it shows now (null once removed). */
+export type ListPhotoResult =
+  | { ok: true; value: { photo: string | null } }
+  | { ok: false; failure: ListPhotoFailure };
 
 export type ListFailure =
   | "noAccess"
@@ -185,6 +210,13 @@ export type ListActions = {
     department: string,
     note: string,
   ) => Promise<ListActionResult>;
+  /**
+   * Sets a photo item's photo (L6), as the browser re-encoded it: the form
+   * carries it as `photo`. The undo of a removal sets the kept bytes again.
+   */
+  setPhoto: (itemId: string, form: FormData) => Promise<ListPhotoResult>;
+  /** Removes a photo item's photo; the item is no longer done. */
+  removePhoto: (itemId: string) => Promise<ListPhotoResult>;
 };
 
 /** An item as a preview of a list shows it. */
@@ -239,6 +271,11 @@ export type SendFormData = {
    * first; null while scheduling is off.
    */
   shifts: SendShift[] | null;
+  /**
+   * The business takes no photos (a demo one, `list_photos_closed`): a
+   * photo item of a list typed now is never required, so it can be finished.
+   */
+  photosClosed: boolean;
 };
 
 /** A list to send, as the form sends it (`sendInput` checks it). */
@@ -332,6 +369,11 @@ export type TemplateEditorData = {
   /** Back after a save was refused: what shows is the latest, and says so. */
   changed: boolean;
   times: EditorTimes;
+  /**
+   * The business takes no photos (a demo one, `list_photos_closed`): a
+   * photo item is never required, so its lists can be finished.
+   */
+  photosClosed: boolean;
 };
 
 /** A number item's reading, on the manager's day. */
@@ -411,3 +453,11 @@ export type TemplateActions = {
 };
 
 export type RestoreTemplate = (templateId: string) => Promise<ListActionResult>;
+
+/**
+ * The key of "every department" among the department filter's choices. Here,
+ * not in the filter's own file: that one is a client module, and a server
+ * component importing a value from it gets a reference, not the string, so
+ * the "all" choice had no address and did nothing.
+ */
+export const ALL_DEPARTMENTS = "all";

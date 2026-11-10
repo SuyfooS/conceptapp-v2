@@ -1,4 +1,5 @@
 import { getDepartments } from "@db/departments";
+import { listPhotosAllowed } from "@db/list-photos";
 import {
   getBusinessLists,
   getList,
@@ -318,13 +319,17 @@ export async function currentList(
   const access = await listsAccess();
   if (!access || !isUuid(listId)) return null;
   const { businessId, userId, timeZone } = access;
-  const [list, settings, departments, lookups, colleagues] = await Promise.all([
-    getList(listId),
-    currentModuleSettings("lists"),
-    currentDepartments(businessId),
-    lookupsFor(businessId),
-    currentColleagues(businessId),
-  ]);
+  const [list, settings, departments, lookups, colleagues, photos] =
+    await Promise.all([
+      getList(listId),
+      currentModuleSettings("lists"),
+      currentDepartments(businessId),
+      lookupsFor(businessId),
+      currentColleagues(businessId),
+      // Asked beside the rest, so a list with a photo item waits for nothing;
+      // if it can't be asked, photos wait ("notYet") and the list still opens.
+      listPhotosAllowed(businessId).catch((): "notYet" => "notYet"),
+    ]);
   if (!list || list === "notYet") return null;
   const now = new Date();
   // Removed departments count: what they already hold stays with their
@@ -389,7 +394,20 @@ export async function currentList(
     readOnly,
     undoUntil,
     pass: targets.length > 0 ? { targets, stays } : null,
+    photos: { taking: photos },
   };
+}
+
+/**
+ * Whether the business takes no photos (a demo one): its editors then keep a
+ * photo item optional. Asked beside the rest; if it can't be asked, the
+ * editor still opens, with a photo item's switch as usual.
+ */
+function photosClosedIn(businessId: string): Promise<boolean> {
+  return listPhotosAllowed(businessId).then(
+    (allowed) => allowed === "demo",
+    () => false,
+  );
 }
 
 /**
@@ -428,10 +446,11 @@ export async function currentSendForm(
   if (!access || access.viewOnly) return null;
   const { businessId, userId, timeZone } = access;
   const now = new Date();
-  const [templates, departments, colleagues] = await Promise.all([
+  const [templates, departments, colleagues, photosClosed] = await Promise.all([
     currentTemplates(businessId),
     currentDepartments(businessId),
     currentColleagues(businessId),
+    photosClosedIn(businessId),
   ]);
   const offered = sendable(
     templates,
@@ -494,6 +513,7 @@ export async function currentSendForm(
       .map((d) => ({ id: d.id, name: d.name })),
     roles: STAFF_ROLES,
     shifts,
+    photosClosed,
   };
 }
 
@@ -613,12 +633,16 @@ export async function currentTemplateEditor(
   if (templateId !== null && !isUuid(templateId)) return null;
   if (templateId === null && access.viewOnly) return null;
   const now = new Date();
-  const [template, departments, shifts, times] = await Promise.all([
-    templateId === null ? null : getListTemplate(access.businessId, templateId),
-    currentDepartments(access.businessId),
-    shiftPatterns(),
-    templateTimes(access, templateId, now),
-  ]);
+  const [template, departments, shifts, times, photosClosed] =
+    await Promise.all([
+      templateId === null
+        ? null
+        : getListTemplate(access.businessId, templateId),
+      currentDepartments(access.businessId),
+      shiftPatterns(),
+      templateTimes(access, templateId, now),
+      photosClosedIn(access.businessId),
+    ]);
   if (template === "notYet" || (templateId !== null && template === null)) {
     return null;
   }
@@ -629,6 +653,7 @@ export async function currentTemplateEditor(
     readOnly: access.viewOnly,
     changed,
     times,
+    photosClosed,
   });
 }
 
