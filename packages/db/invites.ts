@@ -3,6 +3,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { INVITE_STATUSES, isInviteToken } from "@domain/invites";
 import { isStaff, ROLES, type Role } from "@domain/modules";
 import { z } from "zod";
+import { isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 
 /** A new link token: 32 random bytes, base64url (see @domain/invites). */
@@ -135,6 +136,24 @@ export type TeamInviteResult =
     };
 
 /**
+ * Whether the business takes invites (`public.closed_to_invites`): false for
+ * a demo business its definition doesn't open (every hosted one), so the
+ * Team screen offers no invite and no new link there (#80). The database
+ * refuses them anyway (55000, `demo`). Before the migration reaches a
+ * project, true, as the screen was.
+ */
+export async function invitesOpen(businessId: string): Promise<boolean> {
+  const { data, error } = await createAdminClient().rpc("closed_to_invites", {
+    business: businessId,
+  });
+  if (error) {
+    if (isMissingFunction(error)) return true;
+    throw error;
+  }
+  return !data;
+}
+
+/**
  * The database's refusals, as the screens explain them: a demo business takes
  * no invites, and the console makes no second owner.
  */
@@ -235,7 +254,9 @@ export async function inviteFromConsole(
  * any number as an accountant. False for an accountant's invite, and false
  * when every other business has them as its accountant. The database refuses
  * the claim anyway (`memberships_one_staff_idx`); this says it before the
- * link goes out.
+ * link goes out, in the console only. The Team screen never asks (#80): an
+ * owner or manager doesn't learn where else a number works, and /join tells
+ * the person themselves.
  */
 export async function activeElsewhere(
   phone: string,

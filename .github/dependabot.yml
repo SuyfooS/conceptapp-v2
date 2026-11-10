@@ -1,0 +1,31 @@
+# Updates for the packages and the workflows' actions (#80), once a week. The
+# minor and patch updates of the packages come together in one pull request;
+# a major one comes on its own, to read before merging. Each pull request runs
+# CI like any other and is merged by hand. Alerts and security updates as
+# soon as there is one are switched on in the repository's settings
+# (Code security), not here.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "06:00"
+      timezone: Asia/Jerusalem
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+    open-pull-requests-limit: 5
+
+  # The actions are pinned to a commit with its version beside it
+  # (.github/workflows): Dependabot moves both together.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: sunday
+      time: "06:00"
+      timezone: Asia/Jerusalem

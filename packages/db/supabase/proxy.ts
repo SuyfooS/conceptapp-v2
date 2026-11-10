@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
 import type { Database } from "../database.types";
 import { hasPublicEnv, publicEnv } from "../env";
+import { authCookieOptions } from "./cookies";
 
 /**
  * Refresh the Supabase session on every request and report who is signed
@@ -17,6 +18,14 @@ export async function refreshSession(request: NextRequest) {
   const { url, publishableKey } = publicEnv();
 
   const supabase = createServerClient<Database>(url, publishableKey, {
+    // httpOnly, Secure over https, sameSite lax (./cookies). Next.js may add
+    // its own x-forwarded-proto only after the proxy has run, so with nothing
+    // in front (`next start` on a laptop) the request's own URL says.
+    cookieOptions: authCookieOptions(
+      request.headers.get("x-forwarded-host") ?? request.headers.get("host"),
+      request.headers.get("x-forwarded-proto") ??
+        request.nextUrl.protocol.replace(/:$/, ""),
+    ),
     cookies: {
       getAll: () => request.cookies.getAll(),
       setAll(toSet, headers) {

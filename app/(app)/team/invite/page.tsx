@@ -1,3 +1,4 @@
+import { invitesOpen } from "@db/invites";
 import { invitableRoles } from "@domain/team";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -13,12 +14,14 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-// Invite someone to the business by phone, for owners and managers.
+// Invite someone to the business by phone, for owners and managers. Not
+// found in a business closed to invites (a demo one, #80), as the Team
+// screen offers none there.
 export default async function TeamInvitePage() {
-  const member = await currentMember();
-  const role = member?.membership?.role;
-  const roles = role ? invitableRoles(role) : [];
-  if (roles.length === 0) notFound();
+  const membership = (await currentMember())?.membership;
+  const roles = membership ? invitableRoles(membership.role) : [];
+  if (!membership || roles.length === 0) notFound();
+  if (!(await invitesOpen(membership.business.id))) notFound();
   return (
     <TeamInviteView
       roles={roles}
