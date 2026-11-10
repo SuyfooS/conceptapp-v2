@@ -34,7 +34,7 @@ select set_eq(
     'list_template_items', 'list_schedules', 'lists', 'list_people',
     'list_items', 'list_passes', 'permission_keys', 'role_permissions',
     'minimum_wages', 'member_wages', 'member_payroll_details',
-    'employment_periods'
+    'employment_periods', 'payroll_months'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

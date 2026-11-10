@@ -7,6 +7,7 @@ import type {
   NotificationShift,
 } from "@domain/notifications";
 import { timeIn } from "@domain/shabbat";
+import { addMonths } from "@domain/time-clock-format";
 import { dayMonthYear } from "@domain/wages";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
@@ -121,6 +122,13 @@ export function InboxView({
 
   const weekday = (date: string) =>
     tDays(WEEKDAY_KEYS[weekdayOf(date)] ?? "sun");
+  /** A month in words, `2026-10` as "אוקטובר 2026". */
+  const monthName = (month: string) =>
+    format.dateTime(new Date(`${month}-15T12:00:00Z`), {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
   const who = (person: NotificationPerson) =>
     person.kind === "member"
       ? (person.name ?? t("who.noName"))
@@ -296,6 +304,51 @@ export function InboxView({
               : t("kinds.pay.wage_set.noteUndated"),
           ],
         };
+      case "pay.after_close":
+        return {
+          // Its difference goes into the file of the month after the closed
+          // one, named: read on the day of the correction, "next month"
+          // would read as the month after today. Nothing to do.
+          title: line.month
+            ? t("kinds.pay.after_close.title", { month: monthName(line.month) })
+            : t("kinds.pay.after_close.titleUndated"),
+          shift: null,
+          notes: [
+            line.month
+              ? t("kinds.pay.after_close.note", {
+                  next: monthName(addMonths(line.month, 1)),
+                })
+              : t("kinds.pay.after_close.noteUndated"),
+          ],
+        };
+      case "pay.month_due": {
+        // Counts only; once the month is closed, it says so.
+        const month = line.month ? monthName(line.month) : null;
+        if (settled) {
+          return {
+            title: month
+              ? t("kinds.pay.month_due.settledTitle", { month })
+              : t("kinds.pay.month_due.settledTitleUndated"),
+            shift: null,
+            notes: [],
+          };
+        }
+        const counts = [
+          ...(line.waiting > 0
+            ? [t("kinds.pay.month_due.waiting", { count: line.waiting })]
+            : []),
+          ...(line.open > 0
+            ? [t("kinds.pay.month_due.open", { count: line.open })]
+            : []),
+        ];
+        return {
+          title: month
+            ? t("kinds.pay.month_due.title", { month })
+            : t("kinds.pay.month_due.titleUndated"),
+          shift: null,
+          notes: counts.length > 0 ? counts : [t("kinds.pay.month_due.ready")],
+        };
+      }
       case "push.test":
         return {
           title: t("kinds.push.test.title"),

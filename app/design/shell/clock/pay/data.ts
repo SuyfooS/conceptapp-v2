@@ -24,6 +24,8 @@ import {
   weeksWorkedOut,
 } from "@domain/pay-rates";
 import {
+  type Buckets,
+  NO_BUCKETS,
   type PayrollMonth,
   type PayrollSettings,
   payrollMonth,
@@ -41,6 +43,8 @@ import {
   wageFloorOf,
 } from "@domain/payroll-details";
 import {
+  type ExportDifference,
+  type ExportDifferences,
   type ExportMeta,
   type ExportPerson,
   exportShiftsOf,
@@ -53,6 +57,7 @@ import {
 } from "@domain/time-clock";
 import {
   firstOfMonth,
+  firstOpenDay,
   monthWage,
   type WageRow,
   wageFromBounds,
@@ -63,6 +68,7 @@ import { youthLabel } from "@domain/youth";
 import type { OwnPay } from "../../../../(app)/clock/clock-types";
 import type { PayHomeData } from "../../../../(app)/clock/pay/pay";
 import type {
+  MonthClosing,
   PayMonthData,
   PayPaths,
   PayPerson,
@@ -75,6 +81,8 @@ import { business } from "../../data";
 
 const MONTH = "2026-10";
 const CURRENT = "2026-11";
+/** The month before, closed for payroll in some of the demo's states (payroll P9). */
+const SEPTEMBER = "2026-09";
 /** The demo's today: wages are shown as they stand on it. */
 const TODAY = "2026-11-10";
 /** And its now, for the hours engine: a fixed moment, so the demo never changes. */
@@ -98,6 +106,17 @@ export const demoPayPaths: PayPaths = {
   // The demo's own file, from these rows, logged nowhere.
   file: "/design/shell/clock/pay/export",
 };
+
+/**
+ * The demo's paths for where October stands (`close`, `demoClosing`): with
+ * September's differences in October's file ("before", "empty"), the file
+ * link says so, so the workbook downloaded matches the screen.
+ */
+export function demoPayPathsFor(close: string | undefined): PayPaths {
+  return close === "before" || close === "empty"
+    ? { ...demoPayPaths, file: `${demoPayPaths.file}?close=${close}` }
+    : demoPayPaths;
+}
 
 let next = 0;
 const id = () => {
@@ -268,10 +287,15 @@ const person = (
   ...more,
 });
 
-/** The person page's wage, as it stands on the demo's today. */
-function personWage(userId: string): PersonWage {
+/**
+ * The person page's wage, as it stands on the demo's today; `closed` the
+ * months closed for payroll, which no wage may start in (payroll P9).
+ */
+function personWage(userId: string, closed: string[] = []): PersonWage {
   const rows = wages[userId] ?? [];
-  const { earliest, latest } = wageFromBounds(TODAY);
+  const bounds = wageFromBounds(TODAY);
+  const earliest = firstOpenDay(bounds.earliest, closed);
+  const { latest } = bounds;
   return {
     ...wageNow(rows, TODAY),
     history: wageHistory(rows).map((row) => ({
@@ -284,6 +308,7 @@ function personWage(userId: string): PersonWage {
     from: { initial: firstOfMonth(TODAY), earliest, latest },
     youthUntil: detailsOfDemo(userId).youthUntil,
     startsOn: wageFloorOf(periods[userId] ?? []),
+    closed,
   };
 }
 
@@ -533,19 +558,81 @@ function demoRemarks(
 }
 
 /**
+ * Closing October (payroll P9), by `close`: none, a month that has ended and
+ * isn't closed, which the demo's owner may close; "closed" closed by Galit on
+ * 3 November; "changed" the same with a day corrected since; "manager" closed,
+ * as a manager with pay access reads it, who neither closes nor reopens;
+ * "before" not closed, with September closed and changed since, whose
+ * differences October's file holds; "empty" the same, with no hours of its
+ * own in October, whose file is still there for September's differences.
+ */
+function demoClosing(close: string | undefined): MonthClosing {
+  const closed =
+    close === "closed" || close === "changed" || close === "manager"
+      ? { date: "2026-11-03", time: "10:00", by: demoAccountantName }
+      : null;
+  return {
+    ended: true,
+    closed,
+    can: close !== "manager",
+    changed: close === "changed" ? 1 : 0,
+    // November, the month after, is the demo's current one: never closed.
+    nextClosed: false,
+  };
+}
+
+/**
  * Everyone's October, with Noa beside the list on a tablet unless asked;
  * `show` "noWage" lists only those whose shifts have no wage, "noNumber"
  * those with no payroll number; `estimate` "off" leaves out every amount;
  * `file` "sent" is a month whose file went out on 3 November, "changed" one
- * whose hours changed since.
+ * whose hours changed since; `close` where the month stands for payroll
+ * (`demoClosing`).
  */
 export function demoPayMonth(
   person?: string,
   show?: string,
   estimate?: string,
   file?: string,
+  close?: string,
 ): PayMonthData {
   const amounts = amountsFrom(estimate);
+  // September closed and changed since: October's file holds its days.
+  const differences =
+    close === "before" || close === "empty"
+      ? { month: SEPTEMBER, days: demoPayDifferences().rows.length }
+      : null;
+  if (close === "empty") {
+    // No hours of its own: nothing to estimate, check or close, and still
+    // a file, for September's differences.
+    return {
+      month: MONTH,
+      currentMonth: CURRENT,
+      minutes: 0,
+      people: [],
+      counts: { withHours: 0, toCheck: 0 },
+      before: {
+        ownerOnly: 0,
+        waiting: 0,
+        open: 0,
+        corrected: 0,
+        noWage: 0,
+        noNumber: 0,
+        rounding: false,
+      },
+      filter: null,
+      selected: null,
+      back: "team",
+      fixes: true,
+      amounts,
+      estimate: null,
+      remarks: { lines: [], rest: 0, total: 0 },
+      restName: restNameOfAll([]),
+      lastFile: null,
+      closing: demoClosing(close),
+      differences,
+    };
+  }
   const engine = engineOf(amounts);
   const everyone = peopleWithRates(amounts);
   const filter =
@@ -595,6 +682,62 @@ export function demoPayMonth(
       file === "sent" || file === "changed"
         ? { date: "2026-11-03", time: "10:00", changed: file === "changed" }
         : null,
+    closing: demoClosing(close),
+    differences,
+  };
+}
+
+/**
+ * September, closed for payroll on 3 October and changed since (payroll P9):
+ * the days October's file lists as differences with `?close=before` or
+ * `empty`, as the screen counts them. Noa stayed half an hour more on a
+ * 9-hour Monday (30 minutes more at 125%), and Yoav's forgotten Wednesday was
+ * added. Minutes only, never an amount.
+ */
+export function demoPayDifferences(): ExportDifferences {
+  const row = (
+    userId: string,
+    date: string,
+    minutes: { before: number; now: number },
+    change: Partial<Buckets>,
+    reason: string,
+  ): ExportDifference => {
+    const own = detailsOfDemo(userId);
+    return {
+      userId,
+      name: people.find((one) => one.userId === userId)?.name ?? null,
+      payrollNumber: own.payrollNumber,
+      restDay: own.restDay,
+      day: {
+        date,
+        before: minutes.before,
+        now: minutes.now,
+        buckets: { ...NO_BUCKETS, ...change },
+        entryIds: [],
+      },
+      reasons: [reason],
+    };
+  };
+  return {
+    month: SEPTEMBER,
+    closedAt: "2026-10-03T10:00",
+    engineChanged: false,
+    rows: [
+      row(
+        "noa",
+        "2026-09-14",
+        { before: 540, now: 570 },
+        { ot125: 30 },
+        "נשארה לסגור",
+      ),
+      row(
+        "yoav",
+        "2026-09-16",
+        { before: 0, now: 240 },
+        { regular: 240 },
+        "שכח להחתים כניסה",
+      ),
+    ],
   };
 }
 
@@ -678,10 +821,15 @@ export function demoPayExport(): {
   };
 }
 
-/** One person's October, from the same days as their row; `estimate` "off" leaves out every amount. */
+/**
+ * One person's October, from the same days as their row; `estimate` "off"
+ * leaves out every amount, `close` "closed" is October closed for payroll,
+ * which a new wage can't start in (payroll P9).
+ */
 export function demoPayPerson(
   userId: string,
   estimate?: string,
+  close?: string,
 ): PayPersonData | null {
   const amounts = amountsFrom(estimate);
   const row = peopleWithRates(amounts).find((one) => one.userId === userId);
@@ -703,7 +851,7 @@ export function demoPayPerson(
     totals,
     days,
     monthWage: monthWageOf,
-    wage: personWage(userId),
+    wage: personWage(userId, close === "closed" ? [MONTH] : []),
     details: personDetails(userId),
     fixes: true,
     rates,

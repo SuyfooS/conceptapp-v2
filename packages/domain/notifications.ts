@@ -40,9 +40,10 @@ type KindInfo = {
   href: `/${string}`;
   /**
    * Leads to the thing itself when the line names it: "list" opens
-   * `/lists/<params.list>`, and `href` is where it leads otherwise.
+   * `/lists/<params.list>`, "payMonth" the hours for payroll of
+   * `params.month`, and `href` is where it leads otherwise.
    */
-  to?: "list";
+  to?: "list" | "payMonth";
   /**
    * Where a settled line leads instead, when settling it closes `href` to its
    * reader (access taken back): the inbox, which leads nowhere new.
@@ -169,6 +170,27 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/clock",
   },
+  // A shift of a month closed for payroll was corrected or added (payroll
+  // P9): to the month's closer and the accountants, one line per month. Its
+  // difference goes into the next month's file; nothing to do here.
+  "pay.after_close": {
+    group: null,
+    module: "time_clock",
+    minRole: "worker",
+    needsAction: false,
+    href: "/clock/pay",
+    to: "payMonth",
+  },
+  // On the 2nd, last month's hours wait to be closed (payroll P9): to its pay
+  // holders, with how many shifts wait or are open. Closing it settles it.
+  "pay.month_due": {
+    group: null,
+    module: "time_clock",
+    minRole: "worker",
+    needsAction: true,
+    href: "/clock/pay",
+    to: "payMonth",
+  },
   // "Send a test notification", from the phone switch: to the person alone.
   "push.test": {
     group: null,
@@ -213,6 +235,10 @@ export function linkFor(
     if (list.success && isUuid(list.data.list)) {
       return `/lists/${list.data.list.toLowerCase()}`;
     }
+  }
+  if (info.to === "payMonth") {
+    const month = schemas.month.safeParse(params);
+    if (month.success) return `${info.href}?month=${month.data.month}`;
   }
   return info.href;
 }
@@ -461,6 +487,21 @@ export type NotificationLine =
       /** The day it takes effect, YYYY-MM-DD; null when the line lost it. */
       since: string | null;
     }
+  | {
+      /** A shift of a closed month was corrected or added; the actor did it. */
+      kind: "pay.after_close";
+      /** The closed month, YYYY-MM; null when the line lost it. */
+      month: string | null;
+    }
+  | {
+      /** Last month's hours wait to be closed. */
+      kind: "pay.month_due";
+      /** That month, YYYY-MM; null when the line lost it. */
+      month: string | null;
+      /** Its shifts waiting for a confirmation, and still open. */
+      waiting: number;
+      open: number;
+    }
   | { kind: "push.test" }
   | { kind: "other" };
 
@@ -508,6 +549,11 @@ const schemas = {
   person: z.object({ person: uuid }),
   list: z.object({ list: uuid, name: z.string().min(1) }),
   since: z.object({ since: z.iso.date() }),
+  month: z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) }),
+  counts: z.object({
+    waiting: z.int().min(0).catch(0),
+    open: z.int().min(0).catch(0),
+  }),
 };
 
 function personOf(
@@ -607,6 +653,18 @@ function lineOf(
     case "pay.wage_set":
       // The line still says the wage changed without its day.
       return { kind, since: read(schemas.since)?.since ?? null };
+    case "pay.after_close":
+      // And a closed month changed without its name.
+      return { kind, month: read(schemas.month)?.month ?? null };
+    case "pay.month_due": {
+      const counts = read(schemas.counts);
+      return {
+        kind,
+        month: read(schemas.month)?.month ?? null,
+        waiting: counts?.waiting ?? 0,
+        open: counts?.open ?? 0,
+      };
+    }
     case "access.pay_granted":
     case "push.test":
       return { kind };

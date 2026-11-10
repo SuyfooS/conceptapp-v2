@@ -7,6 +7,7 @@ import {
   demoSetDetails,
   demoSetPeriod,
   demoSetWage,
+  demoSetWageClosed,
 } from "../actions";
 import { demoPayPaths, demoPayPeople, demoPayPerson } from "../data";
 
@@ -15,7 +16,7 @@ export const generateStaticParams = () =>
 
 type Props = {
   params: Promise<{ person: string }>;
-  searchParams: Promise<{ estimate?: string }>;
+  searchParams: Promise<{ estimate?: string; close?: string }>;
 };
 
 // One person's month for payroll with mock data, the same as their row, with
@@ -25,7 +26,8 @@ type Props = {
 // Noa's start was copied from joining, for checking. From the hours engine
 // (payroll P7): each one's month by rate, Yoav's election day paid and his
 // night in his Friday rest, Maya's short breaks; ?estimate=off is a business
-// whose amounts the team hasn't turned on.
+// whose amounts the team hasn't turned on; ?close=closed is October closed
+// for payroll, which a new wage can't start in (payroll P9).
 export default function ShellClockPayPerson({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -35,15 +37,18 @@ export default function ShellClockPayPerson({ params, searchParams }: Props) {
 }
 
 async function Demo({ params, searchParams }: Props) {
-  const [{ person }, { estimate }] = await Promise.all([params, searchParams]);
-  const data = demoPayPerson(person, estimate);
+  const [{ person }, { estimate, close }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
+  const data = demoPayPerson(person, estimate, close);
   if (!data) notFound();
   return (
     <PersonPayView
       data={data}
       paths={demoPayPaths}
       note={demoNotePayView}
-      setWage={demoSetWage}
+      setWage={close === "closed" ? demoSetWageClosed : demoSetWage}
       setDetails={demoSetDetails}
       setPeriod={demoSetPeriod}
       wording={baseWording}

@@ -836,6 +836,34 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads a month closed for payroll, and reopened with its reason (payroll P9)", () => {
+    expect(
+      lineOf(row("payroll.close", { month: "2026-10", engine: "2026-11" })),
+    ).toEqual({ action: "payroll.close", month: "2026-10" });
+    expect(
+      lineOf(
+        row("payroll.reopen", {
+          month: "2026-10",
+          reason: " A shift was missing ",
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.reopen",
+      month: "2026-10",
+      reason: "A shift was missing",
+    });
+    expect(lineOf(row("payroll.reopen", { month: "2026-10" }))).toEqual({
+      action: "payroll.reopen",
+      month: "2026-10",
+      reason: null,
+    });
+    for (const action of ["payroll.close", "payroll.reopen"]) {
+      expect(lineOf(row(action, { month: "10/2026" }))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),

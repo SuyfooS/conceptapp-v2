@@ -97,7 +97,12 @@ describe("the kinds", () => {
   it("count as needing action only what asks the reader to act", () => {
     expect(
       NOTIFICATION_KIND_KEYS.filter((kind) => needsAction(kind)).sort(),
-    ).toEqual(["clock.confirm", "swap.offered", "swap.waiting"]);
+    ).toEqual([
+      "clock.confirm",
+      "pay.month_due",
+      "swap.offered",
+      "swap.waiting",
+    ]);
     expect(needsAction("something.else")).toBe(false);
   });
 
@@ -459,6 +464,53 @@ describe("buildInbox", () => {
     expect(linkFor("pay.wage_set", { since: "2026-11-01" }, true)).toBe(
       "/clock",
     );
+  });
+
+  it("reads a closed month corrected since, leading to that month's hours (payroll P9)", () => {
+    expect(
+      lineOf(
+        row("pay.after_close", { month: "2026-10" }, { actorId: MANAGER }),
+      ),
+    ).toMatchObject({
+      group: null,
+      href: "/clock/pay?month=2026-10",
+      line: { kind: "pay.after_close", month: "2026-10" },
+    });
+    // Without its month, to the hours for payroll as they open.
+    expect(lineOf(row("pay.after_close", { month: "10/2026" }))).toMatchObject({
+      href: "/clock/pay",
+      line: { kind: "pay.after_close", month: null },
+    });
+    expect(needsAction("pay.after_close")).toBe(false);
+  });
+
+  it("reads last month waiting to be closed, with its counts only", () => {
+    expect(
+      lineOf(
+        row(
+          "pay.month_due",
+          { month: "2026-10", waiting: 2, open: 1 },
+          { actorId: null },
+        ),
+      ),
+    ).toMatchObject({
+      group: null,
+      href: "/clock/pay?month=2026-10",
+      actor: { kind: "unknown" },
+      line: { kind: "pay.month_due", month: "2026-10", waiting: 2, open: 1 },
+    });
+    // Counts it can't read are none.
+    expect(
+      lineOf(row("pay.month_due", { month: "2026-10", waiting: "two" })),
+    ).toMatchObject({
+      line: { kind: "pay.month_due", month: "2026-10", waiting: 0, open: 0 },
+    });
+    // Closing the month settles it, and it still leads to that month.
+    expect(linkFor("pay.month_due", { month: "2026-10" }, true)).toBe(
+      "/clock/pay?month=2026-10",
+    );
+    // Nobody switches either off: they are in none of the groups.
+    expect(groupsFor("accountant", ["time_clock"])).toEqual([]);
   });
 
   it("reads the phone switch's test as a line of its own, in no group", () => {

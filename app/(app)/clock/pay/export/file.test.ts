@@ -17,13 +17,47 @@ const { demoPayExport } = await import("@/app/design/shell/clock/pay/data");
 /** What a cell would hold if the words had failed: a key's path, an ICU argument, an `<ltr>` tag. */
 const NOT_WORDS = /^(app|modules|cities)\.|[{}]|<\/?ltr>/;
 
+/** September closed for payroll, with two of Yoav's days changed since (payroll P9). */
+const SEPTEMBER = {
+  month: "2026-09",
+  closedAt: "2026-10-03T10:00",
+  engineChanged: true,
+  rows: [
+    {
+      userId: "yoav",
+      name: "יואב לוי",
+      payrollNumber: "103",
+      restDay: 5 as const,
+      day: {
+        date: "2026-09-21",
+        before: 480,
+        now: 510,
+        buckets: {
+          regular: 0,
+          ot125: 30,
+          ot150: 0,
+          rest150: 0,
+          rest175: 0,
+          rest200: 0,
+        },
+        entryIds: [],
+      },
+      reasons: ["שכח לצאת"],
+    },
+  ],
+};
+
 /** The file, read back, with what next-intl said while it was built. */
-function built(more: Partial<ReturnType<typeof demoPayExport>["meta"]> = {}) {
+function built(
+  more: Partial<ReturnType<typeof demoPayExport>["meta"]> = {},
+  differences: typeof SEPTEMBER | null = null,
+) {
   const errors = vi.spyOn(console, "error").mockImplementation(() => {});
   const demo = demoPayExport();
   const file = payrollFileOf({
     ...demo,
     meta: { ...demo.meta, ...more },
+    differences,
     wording: baseWording,
   });
   const said = errors.mock.calls.map((call) => call.map(String).join(" "));
@@ -78,6 +112,31 @@ describe("the month's file, in the app's words", () => {
     expect(team.some((text) => text.endsWith(madeBy))).toBe(true);
     const noName = built({ viewing: true, madeBy: null }).strings;
     expect(noName).toContain(he.app.pay.file.about.madeByTeamNoName);
+  });
+
+  it("adds the month before's differences in the app's words, before the sheet about the file (payroll P9)", () => {
+    for (const differences of [SEPTEMBER, { ...SEPTEMBER, rows: [] }]) {
+      const { said, strings } = built({}, differences);
+      expect(said).toEqual([]);
+      expect(strings.filter((text) => NOT_WORDS.test(text))).toEqual([]);
+    }
+    const { sheets, strings } = built({}, SEPTEMBER);
+    const names = he.app.pay.file.sheets;
+    expect(sheets.map((sheet) => sheet.name)).toEqual([
+      names.summary,
+      names.daily,
+      names.check,
+      names.differences,
+      names.about,
+    ]);
+    expect(strings).toContain("ספטמבר 2026");
+    expect(strings).toContain("שכח לצאת");
+    expect(sheets[3]?.xml).toContain('rightToLeft="1"');
+    // Unchanged since it closed: no sheet, and a line saying so.
+    const same = built({}, { ...SEPTEMBER, rows: [] });
+    expect(same.sheets.map((sheet) => sheet.name)).not.toContain(
+      names.differences,
+    );
   });
 
   it("holds no estimate, not even inside a sentence, with the estimate on", () => {

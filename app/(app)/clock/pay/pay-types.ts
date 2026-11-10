@@ -1,5 +1,6 @@
 import type { PayDay, PayTotals } from "@domain/pay-month";
 import type { PersonRates, RemarkLine, RestName } from "@domain/pay-rates";
+import type { CloseFailure } from "@domain/payroll-close";
 import type {
   DetailsFailure,
   DetailsForm,
@@ -132,7 +133,49 @@ export type PayMonthData = {
    * none did.
    */
   lastFile: { date: string; time: string; changed: boolean } | null;
+  /** Closing the month for payroll (payroll P9). */
+  closing: MonthClosing;
+  /**
+   * The month before was closed for payroll and changed since: this month's
+   * file lists its days as differences (payroll P9). Null otherwise.
+   */
+  differences: { month: string; days: number } | null;
 };
+
+/** Where a month stands for payroll: open, or closed, by whom and when (payroll P9). */
+export type MonthClosing = {
+  /** It has ended by the business's own clock: only then may it close. */
+  ended: boolean;
+  /**
+   * Closed and not reopened since: on which day and at what time on the
+   * business's clock, and by whom (null without a name); null while open.
+   */
+  closed: { date: string; time: string; by: string | null } | null;
+  /** The reader closes and reopens months: an owner or an accountant, not in a view. */
+  can: boolean;
+  /** Days that changed since it closed: they go into the next month's file. */
+  changed: number;
+  /**
+   * Some days changed, and the month after, whose file takes them, is closed
+   * too: its file may have gone out without them, so it is worth downloading
+   * again.
+   */
+  nextClosed: boolean;
+};
+
+/** What closing or reopening a month answers. */
+export type CloseActionResult =
+  | { ok: true }
+  | { ok: false; failure: CloseFailure };
+
+/** Closes a month (`YYYY-MM`) for payroll. The demo's stands in and stores nothing. */
+export type CloseMonth = (month: string) => Promise<CloseActionResult>;
+
+/** Reopens a closed month, saying why. The demo's stands in and stores nothing. */
+export type ReopenMonth = (
+  month: string,
+  reason: string,
+) => Promise<CloseActionResult>;
 
 /** What the reader may do with this person's wage. */
 export type WageCan =
@@ -169,6 +212,8 @@ export type PersonWage = WageNow & {
   youthUntil: string | null;
   /** No wage may start before this: the start a holder set (payroll P5). */
   startsOn: string | null;
+  /** Months closed for payroll (`YYYY-MM`): no wage may start in one (payroll P9). */
+  closed: string[];
 };
 
 /** The person page's details for payroll and their periods of work (payroll P5). */
@@ -227,7 +272,10 @@ export type PayPaths = {
   clock: string;
   /** The clock's settings, where an owner sets the work week. */
   settings: string;
-  /** The month's file for payroll, downloaded with `?month=` (payroll P8). */
+  /**
+   * The month's file for payroll, downloaded with `?month=` (payroll P8); the
+   * demo's may carry a query of its own, which the month is added to.
+   */
   file: string;
 };
 

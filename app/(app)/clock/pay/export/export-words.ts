@@ -10,6 +10,8 @@ import {
   CHECK_COLUMNS,
   DAILY_COLUMNS,
   type DailyColumn,
+  DIFF_COLUMNS,
+  type DiffColumn,
   EXPORT_SHEETS,
   type ExportSettings,
   type ExportWords,
@@ -121,9 +123,15 @@ export function exportWords(wording: AppWording): ExportWords {
         (key) => tf(`columns.daily.${key}`),
       ),
       check: wordsOf(CHECK_COLUMNS, (key) => tf(`columns.check.${key}`)),
+      differences: wordsOf(
+        DIFF_COLUMNS.filter((key): key is DiffColumn => key !== "rates"),
+        (key) => tf(`columns.differences.${key}`),
+      ),
       about: wordsOf(ABOUT_COLUMNS, (key) => tf(`columns.about.${key}`)),
     },
     rate: (bucket, rest) => t(`rateColumns.${bucket}`, { rest }),
+    differenceRate: (bucket, rest) =>
+      tf("differenceRate", { rate: t(`rateColumns.${bucket}`, { rest }) }),
     weekday: (day) =>
       tf(`weekdays.${String(day) as "0" | "1" | "2" | "3" | "4" | "5" | "6"}`),
     source: (source) => tf(`source.${source}`),
@@ -191,6 +199,12 @@ export function exportWords(wording: AppWording): ExportWords {
           : tf("about.madeByTeam", { name }),
       settings,
       lines: wordsOf(ABOUT_LINES, (line) => tf(`about.lines.${line}`)),
+      closed: (month, date, changed) =>
+        tf(changed ? "about.closed" : "about.closedUnchanged", {
+          month: fileMonth(month),
+          date: fileDate(date),
+        }),
+      closedEngine: tf("about.closedEngine"),
     },
   };
 }

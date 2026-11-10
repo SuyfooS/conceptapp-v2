@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   dayMonthYear,
   firstOfMonth,
+  firstOpenDay,
   isDay,
   lastDayOf,
   monthWage,
@@ -231,6 +232,25 @@ describe("parseWageForm", () => {
     ).toBe(true);
   });
 
+  it("refuses a day of a closed month (payroll P9), and only then", () => {
+    expect(
+      parseWageForm(
+        { amount: "38", from: "2026-10-15", note: "" },
+        today,
+        null,
+        ["2026-10"],
+      ),
+    ).toEqual({ ok: false, errors: { from: "closed" } });
+    expect(
+      parseWageForm(
+        { amount: "38", from: "2026-11-01", note: "" },
+        today,
+        null,
+        ["2026-10"],
+      ).ok,
+    ).toBe(true);
+  });
+
   it("says what is wrong with each field at once", () => {
     expect(
       parseWageForm({ amount: "38.505", from: "2026-09-30", note: "" }, today),
@@ -247,6 +267,15 @@ describe("parseWageForm", () => {
       ok: false,
       errors: { amount: "tooHigh", from: "invalid", note: "tooLong" },
     });
+  });
+
+  it("starts a wage at the earliest after the closed months", () => {
+    expect(firstOpenDay("2026-10-01", [])).toBe("2026-10-01");
+    expect(firstOpenDay("2026-10-01", ["2026-10"])).toBe("2026-11-01");
+    expect(firstOpenDay("2026-12-01", ["2026-12", "2027-01"])).toBe(
+      "2027-02-01",
+    );
+    expect(firstOpenDay("2026-10-01", ["2026-11"])).toBe("2026-10-01");
   });
 
   it("takes the bounds themselves", () => {
@@ -350,6 +379,8 @@ describe("wageFailureOf", () => {
     ).toBe("tooEarly");
     expect(wageFailureOf("22023", "At most a year ahead")).toBe("tooLate");
     expect(wageFailureOf("22023", "Before they started")).toBe("beforeStart");
+    expect(wageFailureOf("55000", "The month is closed")).toBe("monthClosed");
+    expect(wageFailureOf("55000", "Something else")).toBe("failed");
     expect(wageFailureOf("22023", "A wage is 0.01 to 1,000.00")).toBe(
       "invalid",
     );

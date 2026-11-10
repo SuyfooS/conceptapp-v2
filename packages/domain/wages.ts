@@ -204,6 +204,23 @@ export function wageFromBounds(today: string): {
   return { earliest, latest };
 }
 
+/**
+ * The first day on or after `from` (`YYYY-MM-DD`) outside every closed month
+ * (`YYYY-MM`, payroll P9): where a new wage may start at the earliest, since
+ * one in a closed month would change what was paid.
+ */
+export function firstOpenDay(from: string, closed: readonly string[]): string {
+  let day = from;
+  while (closed.includes(day.slice(0, 7))) {
+    const [year = 0, month = 1] = day.split("-").map(Number);
+    day =
+      month === 12
+        ? `${year + 1}-01-01`
+        : `${year}-${String(month + 1).padStart(2, "0")}-01`;
+  }
+  return day;
+}
+
 /** The first of the month a business's today (`YYYY-MM-DD`) is in: where a new wage starts unless said. */
 export function firstOfMonth(today: string): string {
   return `${today.slice(0, 7)}-01`;
@@ -213,7 +230,7 @@ export type WageForm = { amount: string; from: string; note: string };
 
 export type WageFormErrors = {
   amount?: "invalid" | "tooHigh" | "zero";
-  from?: "invalid" | "tooEarly" | "tooLate" | "beforeStart";
+  from?: "invalid" | "tooEarly" | "tooLate" | "beforeStart" | "closed";
   note?: "tooLong";
 };
 
@@ -231,14 +248,16 @@ export function isDay(value: unknown): value is string {
 
 /**
  * The wage form, read: the amount in shekels ("38", "38.50", "38,50"), the
- * day it starts, within `wageFromBounds(today)` and not before `startsOn`
- * (the start a holder set, payroll P5), and an optional note. Everything
- * wrong at once, by field.
+ * day it starts, within `wageFromBounds(today)`, not before `startsOn` (the
+ * start a holder set, payroll P5) and not in a closed month (`closed`,
+ * `YYYY-MM`, payroll P9), and an optional note. Everything wrong at once, by
+ * field.
  */
 export function parseWageForm(
   input: WageForm,
   today: string,
   startsOn: string | null = null,
+  closed: readonly string[] = [],
 ): ParsedWage {
   const errors: WageFormErrors = {};
   const agorot = parseShekels(input.amount, Number.MAX_SAFE_INTEGER);
@@ -252,6 +271,7 @@ export function parseWageForm(
   else if (from < earliest) errors.from = "tooEarly";
   else if (from > latest) errors.from = "tooLate";
   else if (startsOn !== null && from < startsOn) errors.from = "beforeStart";
+  else if (closed.includes(from.slice(0, 7))) errors.from = "closed";
 
   const note = input.note.trim();
   if ([...note].length > WAGE_NOTE_MAX) errors.note = "tooLong";
@@ -348,6 +368,8 @@ export type WageFailure =
   | "tooEarly"
   | "tooLate"
   | "beforeStart"
+  /** It would start in a month closed for payroll (payroll P9). */
+  | "monthClosed"
   | "invalid"
   | "failed";
 
@@ -370,6 +392,9 @@ export function wageFailureOf(
       // A holder said when they started (payroll P5): not before it.
       if (/before they started/i.test(message)) return "beforeStart";
       return "invalid";
+    case "55000":
+      // Into a month closed for payroll (payroll P9).
+      return /month is closed/i.test(message) ? "monthClosed" : "failed";
     default:
       return "failed";
   }

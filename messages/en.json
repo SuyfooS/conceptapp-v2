@@ -1593,7 +1593,8 @@
           "noteHint": "Shown in the history and in the activity log.",
           "save": "Save the wage from {date}",
           "close": "Close",
-          "saveNoDate": "Save the wage"
+          "saveNoDate": "Save the wage",
+          "fromHintClosed": "{month} is closed for payroll, so from <ltr>{date}</ltr> to a year ahead."
         },
         "errors": {
           "amount": {
@@ -1605,7 +1606,8 @@
             "invalid": "Choose a day.",
             "tooEarly": "From the start of last month, not before.",
             "tooLate": "Up to a year ahead, not more.",
-            "beforeStart": "The wage can't start before the day the work began."
+            "beforeStart": "The wage can't start before the day the work began.",
+            "closed": "This month is closed for payroll, so a wage can't start in it. Choose a day in a month that isn't closed."
           },
           "note": {
             "tooLong": "The note is at most 200 characters."
@@ -1622,7 +1624,8 @@
           "invalid": "The wage wasn't saved. Check the amount and the day.",
           "viewOnly": "In a view the wage can't be changed.",
           "failed": "The wage wasn't saved. Check the connection and try again.",
-          "beforeStart": "The wage can't start before the day the work began."
+          "beforeStart": "The wage can't start before the day the work began.",
+          "monthClosed": "The month was closed for payroll meanwhile, so the wage wasn't saved. Choose a day in a month that isn't closed, or reopen the month."
         },
         "history": {
           "title": "Wage history",
@@ -1843,6 +1846,39 @@
           "row": "The week of <ltr>{weekOf}</ltr>: {used, select, five {as a 5-day week} six {as a 6-day week} other {by the shorter hours of each day}}"
         }
       },
+      "close": {
+        "action": "Close the month",
+        "hint": "Once it is closed, corrections show as differences in the next month.",
+        "closedBy": "Closed on <ltr>{date}</ltr> by {name}",
+        "closedOn": "Closed on <ltr>{date}</ltr>",
+        "done": "{month} is closed. Corrections to it from now on go into the next month's file as differences.",
+        "failure": {
+          "noAccess": "Only the owner and the accountant close and reopen a month.",
+          "notEnded": "A month closes only once it has ended.",
+          "closed": "The month is closed already. Refresh the screen to see it.",
+          "notClosed": "The month was reopened already. Refresh the screen to see it.",
+          "reasonNeeded": "Write why the month opens again.",
+          "viewOnly": "While viewing, a month can't be closed or reopened.",
+          "businessChanged": "You switched to another business since this screen opened, so nothing changed.",
+          "failed": "That wasn't saved. Check the connection and try again."
+        }
+      },
+      "reopen": {
+        "action": "Reopen the month",
+        "title": "Reopen {month}",
+        "subtitle": "Once reopened, its hourly wages can change again too. The reason is kept in the activity log.",
+        "reason": "Why it opens again",
+        "reasonHint": "For example: a shift was missing. The reason shows in the activity log.",
+        "reasonNeeded": "Write a reason.",
+        "save": "Reopen the month",
+        "close": "Cancel",
+        "done": "{month} is open again. The reason is in the activity log."
+      },
+      "diff": {
+        "changed": "{count, plural, one {One day changed since it closed} other {# days changed since it closed}}. The differences go into the file for {next}.",
+        "inFile": "The file also has a sheet of differences for {month}: {count, plural, one {one day that changed} other {# days that changed}} since it closed.",
+        "nextClosed": "{next} is closed already, and its file may have gone out without these differences: download it again."
+      },
       "file": {
         "download": "Download the file for payroll",
         "what": "In the file: everyone's hours by rate, each shift and what to check. No pay estimate and no ID numbers.",
@@ -1854,6 +1890,7 @@
           "summary": "Month summary",
           "daily": "Day by day",
           "check": "To check",
+          "differences": "Differences",
           "about": "About the file"
         },
         "columns": {
@@ -1903,6 +1940,17 @@
             "what": "What happened",
             "rule": "The rule",
             "unchanged": "Hours"
+          },
+          "differences": {
+            "name": "Name",
+            "number": "Employee number",
+            "month": "Month it belongs to",
+            "date": "Date",
+            "weekday": "Day",
+            "before": "Hours when closed",
+            "now": "Hours now",
+            "difference": "Difference in hours",
+            "reason": "Why it changed"
           },
           "about": {
             "topic": "Topic",
@@ -2001,8 +2049,12 @@
             "open": "A shift still open isn't counted in the hours or the rates. It will be in a file downloaded after it closes.",
             "daysNotWorked": "A holiday or election day not worked shows with its date and the daily average, with no amount. The accountant checks whether it is owed.",
             "nothingElse": "The file holds no pay estimate, no amount worked out and no ID numbers. The hourly wage is there as it was set."
-          }
-        }
+          },
+          "closed": "{month} was closed for payroll on {date}. What changed in it since is on the sheet of differences, a day a row, in hours and without an amount.",
+          "closedUnchanged": "{month} was closed for payroll on {date}, and hasn't changed since.",
+          "closedEngine": "The hours engine's version changed since it closed, so some differences may come from it rather than from the hours."
+        },
+        "differenceRate": "Difference, {rate}"
       }
     },
     "manage": {
@@ -2287,7 +2339,10 @@
               "last_paid_on": "the last payment"
             },
             "export": "Downloaded the file for payroll for {month}",
-            "exportCounts": "{people, plural, one {One person} other {# people}}, {shifts, plural, one {one shift} other {# shifts}}"
+            "exportCounts": "{people, plural, one {One person} other {# people}}, {shifts, plural, one {one shift} other {# shifts}}",
+            "close": "Closed {month} for payroll",
+            "reopen": "Reopened {month}",
+            "reopenReason": "The reason: {reason}"
           }
         }
       },
@@ -2589,6 +2644,21 @@
             "title": "Your hourly wage was updated",
             "note": "From <ltr>{since}</ltr>.",
             "noteUndated": "The new wage applies from the day it was set for."
+          },
+          "after_close": {
+            "title": "Hours of {month} were corrected after it closed",
+            "titleUndated": "Hours of a closed month were corrected after it closed",
+            "note": "The differences go into the file for {next}.",
+            "noteUndated": "The differences go into next month's file."
+          },
+          "month_due": {
+            "title": "The hours of {month} wait to be closed",
+            "titleUndated": "Last month's hours wait to be closed",
+            "settledTitle": "{month} is closed for payroll",
+            "settledTitleUndated": "The month is closed for payroll",
+            "waiting": "{count, plural, one {One shift waits for approval} other {# shifts wait for approval}}",
+            "open": "{count, plural, one {One shift is still open} other {# shifts are still open}}",
+            "ready": "Every shift is approved. The month can be closed."
           }
         }
       },

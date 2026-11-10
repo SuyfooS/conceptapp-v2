@@ -2,8 +2,8 @@ import { connection } from "next/server";
 import { Suspense } from "react";
 import { PayMonthView } from "../../../../(app)/clock/pay/pay-view";
 import { baseWording } from "../../../../(app)/wording";
-import { demoNotePayView } from "./actions";
-import { demoPayMonth, demoPayPaths } from "./data";
+import { demoCloseMonth, demoNotePayView, demoReopenMonth } from "./actions";
+import { demoPayMonth, demoPayPathsFor } from "./data";
 
 type Props = {
   searchParams: Promise<{
@@ -11,6 +11,7 @@ type Props = {
     show?: string;
     estimate?: string;
     file?: string;
+    close?: string;
   }>;
 };
 
@@ -23,6 +24,11 @@ type Props = {
 // ?estimate=off is a business whose amounts the team hasn't turned on;
 // ?file=sent a month whose file went out, ?file=changed one whose hours
 // changed since (payroll P8). The main action downloads the demo's own file.
+// ?close= is where October stands for payroll (payroll P9): none, ended and
+// not closed, for the owner to close; "closed" closed by Galit; "changed" a
+// day corrected since; "manager" closed, as a manager reads it; "before"
+// September closed and changed, which October's file holds (the demo's file
+// too); "empty" the same with no hours in October, its file still there.
 export default function ShellClockPay({ searchParams }: Props) {
   return (
     <Suspense>
@@ -33,12 +39,14 @@ export default function ShellClockPay({ searchParams }: Props) {
 
 async function Demo({ searchParams }: Props) {
   await connection();
-  const { person, show, estimate, file } = await searchParams;
+  const { person, show, estimate, file, close } = await searchParams;
   return (
     <PayMonthView
-      data={demoPayMonth(person, show, estimate, file)}
-      paths={demoPayPaths}
+      data={demoPayMonth(person, show, estimate, file, close)}
+      paths={demoPayPathsFor(close)}
       note={demoNotePayView}
+      close={demoCloseMonth}
+      reopen={demoReopenMonth}
       wording={baseWording}
     />
   );

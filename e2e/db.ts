@@ -1401,3 +1401,80 @@ export async function setShopClockSettings(
     set settings = settings || ${sql.json(settings as never)}::jsonb
     where business_id = ${DEMO_SHOP} and module_key = 'time_clock'`;
 }
+
+const SHOP_MANAGER = "00000000-0000-4000-a000-000000000008";
+
+/** A month (`YYYY-MM`) of the demo shop as payroll keeps it (payroll P9), or null when it was never closed. */
+export async function shopPayrollMonth(month: string): Promise<{
+  closedBy: string | null;
+  reopenedAt: string | null;
+  reopenReason: string | null;
+} | null> {
+  const [row] = await sql<
+    {
+      closedBy: string | null;
+      reopenedAt: string | null;
+      reopenReason: string | null;
+    }[]
+  >`
+    select closed_by::text as "closedBy", reopened_at::text as "reopenedAt",
+      reopen_reason as "reopenReason"
+    from public.payroll_months
+    where business_id = ${DEMO_SHOP} and month = ${`${month}-01`}::date`;
+  return row ?? null;
+}
+
+/**
+ * The demo shop's month open again, as its owner would reopen it, when a
+ * spec left it closed: the next spec sets wages in it.
+ */
+export async function reopenShopMonth(month: string): Promise<void> {
+  await sql`
+    select public.reopen_payroll_month(${SHOP_OWNER}, ${DEMO_SHOP},
+      ${`${month}-01`}::date, 'e2e clean-up')
+    where exists (
+      select 1 from public.payroll_months
+      where business_id = ${DEMO_SHOP} and month = ${`${month}-01`}::date
+        and reopened_at is null
+    )`;
+}
+
+/**
+ * The demo shop's manager corrects a shift of `month` that ended, half an
+ * hour later, through the database function the app uses: Roni's first one.
+ * Returns the log row's `closed_month`, null when it names none.
+ */
+export async function correctShopShift(month: string): Promise<string | null> {
+  const [entry] = await sql<{ id: string; clock_in: Date; clock_out: Date }[]>`
+    select e.id, e.clock_in, e.clock_out
+    from public.time_entries e
+    join public.businesses b on b.id = e.business_id
+    where e.business_id = ${DEMO_SHOP}
+      and e.user_id = '00000000-0000-4000-a000-000000000012'
+      and e.clock_out is not null
+      and to_char(e.clock_in at time zone b.timezone, 'YYYY-MM') = ${month}
+    order by e.clock_in
+    limit 1`;
+  if (!entry) throw new Error(`Roni has no shift in ${month}`);
+  await sql`
+    select public.correct_time_entry(${SHOP_MANAGER}, ${entry.id},
+      ${entry.clock_in}::timestamptz,
+      ${new Date(entry.clock_out.getTime() + 30 * 60_000)}::timestamptz,
+      'e2e: stayed to close')`;
+  const [row] = await sql<{ closed: string | null }[]>`
+    select details ->> 'closed_month' as closed from public.audit_log
+    where business_id = ${DEMO_SHOP} and action = 'clock.correct'
+      and details ->> 'entry' = ${entry.id}
+    order by id desc limit 1`;
+  return row?.closed ?? null;
+}
+
+/** How many of the demo shop's lines of `kind` the person has, unread or not. */
+export async function shopLines(phone: string, kind: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.notifications n
+    join public.profiles p on p.id = n.user_id
+    where n.business_id = ${DEMO_SHOP} and n.kind = ${kind}
+      and p.phone = ${phone}`;
+  return row?.count ?? 0;
+}
