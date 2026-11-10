@@ -81,9 +81,26 @@ const PAGES = [
   "/design/shell/lists/list-kitchen-opening?state=finished",
   "/design/shell/lists/list-bar-order",
   "/design/shell/lists/send",
+  "/design/shell/lists/send?template=new",
+  "/design/shell/lists/send?template=t-weekly-cleaning",
+  "/design/shell/lists/send?state=kitchenGone",
+  "/design/shell/lists/templates",
+  "/design/shell/lists/templates?removed=t-stock-count",
+  "/design/shell/lists/templates?state=empty",
+  "/design/shell/lists/templates?as=viewing",
+  "/design/shell/lists/templates?state=empty&as=viewing",
+  "/design/shell/lists/templates/t-kitchen-opening",
+  "/design/shell/lists/templates/t-kitchen-opening?changed=1",
+  "/design/shell/lists/templates/t-kitchen-opening?as=viewing",
+  "/design/shell/lists/templates/t-bar-order",
+  "/design/shell/lists/templates/t-bar-order?state=barGone",
+  "/design/shell/lists/templates/t-stock-count",
+  "/design/shell/lists/templates/new",
   "/design/shell/notifications",
   "/design/shell/notifications/empty",
   "/design/console/businesses/demo-restaurant/settings",
+  "/design/console/businesses/demo-restaurant/lists",
+  "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
 ];
 
 async function expectCleanPage(page: Page) {
@@ -280,6 +297,134 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
   await expect(
     page.getByLabel(l.list.readingOf.replace("{label}", "מקפיא")),
   ).toHaveValue("-19");
+});
+
+// The template editor's demo (lists L3): an item added from its sheet saves
+// itself and moves up, one already there opens in its own sheet, and an order
+// whose department was removed is only read; the console's twin has nothing
+// to send; a template whose department was removed sends to nobody until
+// someone is chosen; a list typed now goes out from the send screen.
+test("the template demo adds an item, moves it, and a typed list is sent", async ({
+  page,
+}) => {
+  const l = he.app.lists;
+  await page.goto("/design/shell/lists/templates/t-kitchen-opening");
+  await page.getByRole("button", { name: l.items.add, exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: l.items.newTitle });
+  await sheet
+    .getByRole("button", { name: l.items.kinds.number, exact: true })
+    .click();
+  await sheet.getByLabel(l.items.label, { exact: true }).fill("מקרר משקאות");
+  await sheet
+    .getByRole("button", {
+      name: l.items.minusOf.replace("{field}", l.items.min),
+    })
+    .click();
+  await sheet.getByLabel(l.items.min, { exact: true }).fill("1");
+  await sheet.getByLabel(l.items.max, { exact: true }).fill("4");
+  // The sheet hides the page from screen readers: axe on it alone.
+  const open = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .analyze();
+  expect(open.violations.map((v) => v.id)).toEqual([]);
+  await sheet
+    .getByRole("button", { name: l.items.create, exact: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: he.app.manage.saved }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("−1 – 4").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: l.items.up.replace("{label}", "מקרר משקאות"),
+    })
+    .click();
+  await expect(
+    page.getByRole("button", {
+      name: l.items.down.replace("{label}", "מקרר משקאות"),
+    }),
+  ).toBeEnabled();
+
+  // An item already there opens in its sheet, with the way to remove it.
+  await page.getByRole("button", { name: /^מקפיא/ }).click();
+  const existing = page.getByRole("dialog", { name: "מקפיא" });
+  await expect(
+    existing.getByRole("button", { name: l.items.remove, exact: true }),
+  ).toBeVisible();
+  await expect(existing.getByLabel(l.items.min, { exact: true })).toHaveValue(
+    "25",
+  );
+  const sheetOpen = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .analyze();
+  expect(sheetOpen.violations.map((v) => v.id)).toEqual([]);
+  await page.keyboard.press("Escape");
+  await expect(existing).toBeHidden();
+
+  // The bar's order after the bar was removed: only read, and says why.
+  await page.goto("/design/shell/lists/templates/t-bar-order?state=barGone");
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: l.templates.editor.stuck.order }),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel(l.templates.editor.name, { exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: l.templates.editor.archive }),
+  ).toBeVisible();
+
+  await page.goto(
+    "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: "פתיחת מטבח" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: l.templates.editor.sendNow }),
+  ).toHaveCount(0);
+
+  // The kitchen's opening list after the kitchen was removed: nobody is
+  // chosen for it, and the screen says why.
+  await page.goto("/design/shell/lists/send?state=kitchenGone");
+  await expect(
+    page.getByRole("status").filter({ hasText: l.send.gone }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("button", { name: l.send.choose, exact: true })
+      .filter({ visible: true })
+      .first(),
+  ).toBeDisabled();
+
+  await page.goto("/design/shell/lists/send?template=new");
+  await page.getByLabel(l.send.typedName, { exact: true }).fill("בדיקת בר");
+  await page.getByRole("button", { name: l.items.add, exact: true }).click();
+  await page
+    .getByRole("dialog", { name: l.items.newTitle })
+    .getByLabel(l.items.label, { exact: true })
+    .fill("מילוי קרח");
+  await page
+    .getByRole("dialog", { name: l.items.newTitle })
+    .getByRole("button", { name: l.items.create, exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: l.send.kinds.shift, exact: true })
+    .click();
+  await page.getByRole("radio", { name: /^ערב/ }).check();
+  await page
+    .getByRole("button", {
+      name: l.send.submit.shift.replace("{name}", "ערב"),
+    })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/lists\?sent=list-floor-opening$/,
+  );
 });
 
 // The pay demo's wage (payroll P4): under the minimum warns in words and

@@ -362,4 +362,35 @@ test("the team viewing as a manager reads the lists and changes nothing", async 
   await expect(finishButton(page)).toHaveCount(0);
   await expect(page.getByRole("checkbox")).toHaveCount(0);
   await expectCleanPage(page);
+
+  // The business's lists (L3), only read: nothing to make, and an editor
+  // whose fields are closed and which removes nothing.
+  await page.goto("/lists/templates");
+  await expect(page.getByText(l.templates.viewOnly).first()).toBeVisible();
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: l.templates.create, exact: true }),
+  ).toHaveCount(0);
+  await expectCleanPage(page);
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(`^${literal(OPENING)}`) })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/lists\/templates\/[0-9a-f-]{36}$/);
+  await expect(
+    page.getByText(l.templates.editor.viewOnly).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel(l.templates.editor.name, { exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: l.templates.editor.archive }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: l.items.add, exact: true }),
+  ).toHaveCount(0);
+  await expectCleanPage(page);
 });

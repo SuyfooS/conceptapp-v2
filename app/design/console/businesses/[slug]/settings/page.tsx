@@ -53,6 +53,7 @@ export default async function ConsoleSettingsDemo({
         save: demoSaveDepartments,
         saveMembers: demoSaveDepartmentMembers,
       }}
+      listsHref={`/design/console/businesses/${slug}/lists`}
     />
   );
 }

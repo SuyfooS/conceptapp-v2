@@ -1,141 +1,211 @@
 "use client";
 
-import type { SendInput } from "@domain/lists";
+import { addDays, dateIn, weekdayOf } from "@domain/availability";
+import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import {
+  type DraftItem,
+  type DueDay,
+  dueAtOf,
+  dueTimeFor,
+  listName,
+  type RecipientKind,
+  type SendInput,
+  sendDefaults,
+  suggestedDue,
+  typedItems,
+} from "@domain/lists";
 import type { StaffRole } from "@domain/modules";
 import { Avatar } from "@ui/avatar";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
+import { cn } from "@ui/cn";
+import { FieldGroup, GroupedField } from "@ui/field-group";
+import { FieldRow, rowPillInputClass } from "@ui/field-row";
 import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
-import { PageBody, PageHeader } from "@ui/page";
+import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Segmented } from "@ui/segmented";
-import { TextArea } from "@ui/text-field";
+import { ltrInputClass, TextArea } from "@ui/text-field";
 import {
   Building2,
-  CircleCheck,
-  Hash,
-  NotebookPen,
+  CalendarClock,
+  ListPlus,
   Send,
   UserRound,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
-import type {
-  ListFailure,
-  SendFormData,
-  SendResult,
-  SendTemplate,
+import { type ReactNode, useId, useState, useTransition } from "react";
+import { ListPreview } from "../list-preview";
+import {
+  type ListFailure,
+  NEW_LIST,
+  type SendFormData,
+  type SendResult,
 } from "../list-types";
+import { ItemsEditor } from "../templates/items-editor";
 
-type Kind = "person" | "department" | "role";
+type Kind = RecipientKind;
 
-const KIND_ICONS: Record<string, typeof CircleCheck> = {
-  check: CircleCheck,
-  number: Hash,
-  note: NotebookPen,
-};
-
-/** Where a template sends itself when nobody chooses. */
-function defaultsOf(template: SendTemplate | undefined): {
-  kind: Kind;
-  department: string | null;
-  role: StaffRole | null;
-} {
-  const recipient = template?.recipient;
-  if (recipient?.kind === "department") {
-    return { kind: "department", department: recipient.department, role: null };
-  }
-  if (recipient?.kind === "role") {
-    return { kind: "role", department: null, role: recipient.role };
-  }
-  return { kind: "person", department: null, role: null };
-}
+const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /**
- * Sending a list now: which list, to whom, and a note. Whoever sends lists
- * picks a person, a department or a role; a department's members send their
- * own order, which goes where the order goes. The main action names where it
- * goes ("send to the kitchen"). Phone: the form. Tablet and desktop: the form
- * beside the list as it will arrive. Also on /design/shell/lists/send.
+ * Sending a list now: which list (a template, or one typed now with its own
+ * items), to whom (a person, a department, the people of a published shift
+ * or a role), by when if at all, and a note. A template starts where it goes
+ * (`sendDefaults`), and says so when its department was removed. A
+ * department's members send their own order, which goes where the order
+ * goes, and can't once that department is gone. The main action names where
+ * it goes ("send to the kitchen"). Phone: the form, one part under the other.
+ * Tablet: the form beside the list as it will arrive. Desktop: the same, and
+ * what the person sent today (`sentToday`). Also on /design/shell/lists/send.
  */
 export function SendForm({
   data,
   send,
   paths,
+  sentToday,
 }: {
   data: SendFormData;
   send: (input: SendInput) => Promise<SendResult>;
   paths: { lists: string };
+  /** What the person sent today, drawn on the server; on a computer only. */
+  sentToday?: ReactNode;
 }) {
   const t = useTranslations("app.lists.send");
+  const tDays = useTranslations("days");
   const router = useRouter();
-  const [templateId, setTemplateId] = useState(data.initial);
-  const template = data.templates.find((x) => x.id === templateId);
-  const start = defaultsOf(template);
+  const id = useId();
+  const [source, setSource] = useState(data.initial);
+  const template = data.templates.find((x) => x.id === source);
+  const typed = source === NEW_LIST;
+  const liveDepartments = data.departments.map((d) => d.id);
+  const start = sendDefaults(template?.recipient, data.shifts, liveDepartments);
   const [kind, setKind] = useState<Kind>(start.kind);
   const [person, setPerson] = useState<string | null>(null);
   const [department, setDepartment] = useState<string | null>(start.department);
+  const [shift, setShift] = useState<string | null>(start.shift);
   const [role, setRole] = useState<StaffRole | null>(start.role);
+  const [ownName, setOwnName] = useState("");
+  const [ownItems, setOwnItems] = useState<DraftItem[]>([]);
+  const [dueDay, setDueDay] = useState<DueDay>("none");
+  const [dueTime, setDueTime] = useState(
+    () => suggestedDue(new Date(data.now), data.timeZone).time,
+  );
+  // Until the person sets a time, each day starts at its own (`dueTimeFor`).
+  const [timeSet, setTimeSet] = useState(false);
+  const [duePast, setDuePast] = useState(false);
   const [note, setNote] = useState("");
   const [failure, setFailure] = useState<ListFailure | null>(null);
   const [pending, startSend] = useTransition();
 
-  // An order goes where the order goes, for whoever may only send orders.
-  const fixed =
+  // The template's own department was removed: nothing chosen, and said.
+  const departmentGone = !typed && start.gone;
+
+  // An order goes where the order goes, for whoever may only send orders,
+  // and nowhere once that department is gone.
+  const orderTo =
     !data.free && template?.recipient?.kind === "department"
       ? template.recipient.department
       : null;
+  const fixed = orderTo !== null && !start.gone ? orderTo : null;
+  const orderGone = orderTo !== null && fixed === null;
 
-  function choose(id: string) {
-    setTemplateId(id);
+  function choose(next: string) {
+    setSource(next);
     setFailure(null);
-    const next = defaultsOf(data.templates.find((x) => x.id === id));
-    setKind(next.kind);
-    setDepartment(next.department);
-    setRole(next.role);
+    const defaults = sendDefaults(
+      data.templates.find((x) => x.id === next)?.recipient,
+      data.shifts,
+      liveDepartments,
+    );
+    setKind(defaults.kind);
+    setDepartment(defaults.department);
+    setShift(defaults.shift);
+    setRole(defaults.role);
   }
 
-  const departmentName = (id: string | null) =>
-    data.departments.find((d) => d.id === id)?.name ?? null;
-  const personName = (id: string | null) =>
-    data.people.find((p) => p.userId === id)?.name ?? t("noName");
+  /** Whether the due time chosen has gone by, by this device's clock now. */
+  function checkDue(day: DueDay, time: string) {
+    setDuePast(
+      day !== "none" &&
+        !dueAtOf(day, time, new Date(), data.timeZone).ok &&
+        time !== "",
+    );
+  }
+
+  const departmentName = (key: string | null) =>
+    data.departments.find((d) => d.id === key)?.name ?? null;
+  const personName = (key: string | null) =>
+    data.people.find((p) => p.userId === key)?.name ?? t("noName");
+  const shiftOf = (key: string | null) =>
+    data.shifts?.find((s) => s.id === key) ?? null;
+
+  const dayOf = (day: string) => {
+    const today = dateIn(new Date(data.now), data.timeZone);
+    if (day === today) return t("today");
+    if (day === addDays(today, 1)) return t("tomorrow");
+    return `${tDays(`${WEEKDAY_KEYS[weekdayOf(day)] ?? "sun"}.long`)} ${dayMonth(day)}`;
+  };
 
   const recipient: SendInput["recipient"] | null = fixed
     ? { kind: "department", department: fixed }
-    : kind === "person" && person
-      ? { kind: "person", user: person }
-      : kind === "department" && department
-        ? { kind: "department", department }
-        : kind === "role" && role
-          ? { kind: "role", role }
-          : null;
+    : orderGone
+      ? null
+      : kind === "person" && person
+        ? { kind: "person", user: person }
+        : kind === "department" && department
+          ? { kind: "department", department }
+          : kind === "shift" && shift
+            ? { kind: "shift", shift }
+            : kind === "role" && role
+              ? { kind: "role", role }
+              : null;
 
-  const submitLabel = !recipient
-    ? t("choose")
-    : recipient.kind === "person"
-      ? t("submit.person", { name: personName(recipient.user) })
-      : recipient.kind === "department"
-        ? t("submit.department", {
-            name: departmentName(recipient.department) ?? "",
-          })
-        : recipient.kind === "role"
-          ? t("submit.role", { role: recipient.role })
-          : t("choose");
+  const typedReady =
+    !typed || (listName.safeParse(ownName).success && ownItems.length > 0);
+
+  const submitLabel = orderGone
+    ? t("action")
+    : !recipient
+      ? t("choose")
+      : recipient.kind === "person"
+        ? t("submit.person", { name: personName(recipient.user) })
+        : recipient.kind === "department"
+          ? t("submit.department", {
+              name: departmentName(recipient.department) ?? "",
+            })
+          : recipient.kind === "shift"
+            ? t("submit.shift", { name: shiftOf(recipient.shift)?.name ?? "" })
+            : t("submit.role", { role: recipient.role });
 
   function submit() {
-    if (!template || !recipient) return;
+    if (!recipient || !typedReady || (!typed && !template)) return;
+    let dueAt: string | null = null;
+    if (dueDay !== "none") {
+      const due = dueAtOf(dueDay, dueTime, new Date(), data.timeZone);
+      if (!due.ok) {
+        setDuePast(true);
+        return;
+      }
+      dueAt = due.dueAt;
+    }
     setFailure(null);
     const text = note.trim();
+    const extra = {
+      recipient,
+      ...(dueAt ? { dueAt } : {}),
+      ...(text ? { note: text } : {}),
+    };
+    const input: SendInput =
+      typed || !template
+        ? { name: ownName.trim(), items: typedItems(ownItems), ...extra }
+        : { template: template.id, ...extra };
     startSend(async () => {
       let result: SendResult;
       try {
-        result = await send({
-          template: template.id,
-          recipient,
-          ...(text ? { note: text } : {}),
-        });
+        result = await send(input);
       } catch {
         result = { ok: false, failure: "failed" };
       }
@@ -146,6 +216,27 @@ export function SendForm({
       router.push(`${paths.lists}?sent=${result.value}`);
     });
   }
+
+  const kinds: Kind[] = [
+    "person",
+    "department",
+    ...(data.shifts !== null ? (["shift"] as const) : []),
+    "role",
+  ];
+
+  const preview = typed
+    ? {
+        name: ownName.trim() || t("newList"),
+        note: note.trim() || null,
+        items: ownItems,
+      }
+    : template
+      ? {
+          name: template.name,
+          note: [template.note, note.trim()].filter(Boolean).join("\n") || null,
+          items: template.items,
+        }
+      : null;
 
   return (
     <PageBody className={pageGlowClass}>
@@ -162,24 +253,74 @@ export function SendForm({
                 key={x.id}
                 name="template"
                 value={x.id}
-                checked={x.id === templateId}
+                checked={x.id === source}
                 onChange={() => choose(x.id)}
                 title={x.name}
                 hint={t("items", { count: x.items.length })}
               />
             ))}
+            {data.free ? (
+              <ChoiceRow
+                name="template"
+                value={NEW_LIST}
+                checked={typed}
+                onChange={() => choose(NEW_LIST)}
+                title={t("newList")}
+                hint={t("newListHint")}
+                leading={<ListPlus />}
+              />
+            ) : null}
           </ChoiceList>
 
-          {fixed ? (
+          {typed ? (
+            <section className="flex flex-col gap-6">
+              <PageSection title={t("typed")}>
+                <FieldGroup>
+                  <GroupedField
+                    label={t("typedName")}
+                    value={ownName}
+                    maxLength={60}
+                    onChange={(event) => {
+                      setOwnName(event.target.value);
+                      setFailure(null);
+                    }}
+                  />
+                </FieldGroup>
+              </PageSection>
+              <ItemsEditor
+                title={t("typedItems")}
+                items={ownItems}
+                readOnly={false}
+                onChange={(items) => {
+                  setOwnItems(items);
+                  setFailure(null);
+                }}
+              />
+            </section>
+          ) : null}
+
+          {fixed || orderGone ? (
             <section className="flex flex-col gap-3">
               <h2 className="px-1 font-bold text-lg">{t("to")}</h2>
-              <Card tone="flat" padding="lg">
-                {t("fixedTo", { name: departmentName(fixed) ?? "" })}
+              <Card
+                tone="flat"
+                padding="lg"
+                role={orderGone ? "status" : undefined}
+                className={orderGone ? "font-medium" : undefined}
+              >
+                {fixed
+                  ? t("fixedTo", { name: departmentName(fixed) ?? "" })
+                  : t("orderGone")}
               </Card>
             </section>
           ) : (
             <section className="flex flex-col gap-3">
               <h2 className="px-1 font-bold text-lg">{t("to")}</h2>
+              {departmentGone && !recipient ? (
+                <p role="status" className="px-1 font-medium">
+                  {t("gone")}
+                </p>
+              ) : null}
               <Segmented
                 label={t("to")}
                 value={kind}
@@ -187,9 +328,10 @@ export function SendForm({
                   setKind(next);
                   setFailure(null);
                 }}
-                options={(["person", "department", "role"] as const).map(
-                  (value) => ({ value, label: t(`kinds.${value}`) }),
-                )}
+                options={kinds.map((value) => ({
+                  value,
+                  label: t(`kinds.${value}`),
+                }))}
               />
               {kind === "person" ? (
                 <ChoiceList
@@ -235,6 +377,40 @@ export function SendForm({
                 ) : (
                   <p className="px-1 text-ink-2">{t("noDepartments")}</p>
                 )
+              ) : kind === "shift" ? (
+                data.shifts && data.shifts.length > 0 ? (
+                  <ChoiceList
+                    legend={t("kinds.shift")}
+                    legendClassName="sr-only"
+                  >
+                    {data.shifts.map((s) => (
+                      <ChoiceRow
+                        key={s.id}
+                        name="shift"
+                        value={s.id}
+                        checked={shift === s.id}
+                        disabled={s.people.length === 0}
+                        onChange={() => setShift(s.id)}
+                        title={s.name}
+                        hint={t.rich("shiftHint", {
+                          day: dayOf(s.day),
+                          start: s.start,
+                          end: s.end,
+                          count: s.people.length,
+                          ltr,
+                        })}
+                        leading={<CalendarClock />}
+                        // Its hint says nobody is on it; it reads as the
+                        // others do, and takes no press.
+                        className={cn(
+                          s.people.length === 0 && "cursor-default",
+                        )}
+                      />
+                    ))}
+                  </ChoiceList>
+                ) : (
+                  <p className="px-1 text-ink-2">{t("noShifts")}</p>
+                )
               ) : (
                 <ChoiceList legend={t("kinds.role")} legendClassName="sr-only">
                   {data.roles.map((r) => (
@@ -252,6 +428,61 @@ export function SendForm({
             </section>
           )}
 
+          <section className="flex flex-col gap-3">
+            <h2 className="px-1 font-bold text-lg">{t("when")}</h2>
+            <Segmented
+              label={t("when")}
+              value={dueDay}
+              onChange={(next) => {
+                const time =
+                  next === "none" || timeSet
+                    ? dueTime
+                    : dueTimeFor(next, new Date(), data.timeZone);
+                setDueDay(next);
+                setDueTime(time);
+                checkDue(next, time);
+              }}
+              options={(["none", "today", "tomorrow"] as const).map(
+                (value) => ({ value, label: t(`dueDays.${value}`) }),
+              )}
+            />
+            {dueDay === "none" ? (
+              <p className="px-1 text-ink-2 text-sm">{t("noDueHint")}</p>
+            ) : (
+              <FieldGroup>
+                <FieldRow
+                  label={t("dueTime")}
+                  htmlFor={`${id}-due`}
+                  hint={t("dueHint")}
+                >
+                  <input
+                    id={`${id}-due`}
+                    type="time"
+                    dir="ltr"
+                    value={dueTime}
+                    aria-invalid={duePast || undefined}
+                    aria-describedby={duePast ? `${id}-past` : undefined}
+                    className={cn(rowPillInputClass, ltrInputClass)}
+                    onChange={(event) => {
+                      setDueTime(event.target.value);
+                      setTimeSet(true);
+                      checkDue(dueDay, event.target.value);
+                    }}
+                  />
+                </FieldRow>
+              </FieldGroup>
+            )}
+            {duePast && dueDay !== "none" ? (
+              <p
+                id={`${id}-past`}
+                role="alert"
+                className="px-1 font-medium text-danger text-sm"
+              >
+                {t("duePast")}
+              </p>
+            ) : null}
+          </section>
+
           <TextArea
             label={t("note")}
             hint={t("noteHint")}
@@ -261,6 +492,9 @@ export function SendForm({
             onChange={(event) => setNote(event.target.value)}
           />
 
+          {typed && !typedReady ? (
+            <p className="px-1 text-ink-2">{t("typedMissing")}</p>
+          ) : null}
           {failure ? (
             <p role="alert" className="px-1 font-medium text-danger">
               {t(`failed.${failure}`)}
@@ -271,7 +505,7 @@ export function SendForm({
             <Button
               size="lg"
               loading={pending}
-              disabled={!recipient}
+              disabled={!recipient || !typedReady}
               onClick={submit}
               className={`w-full md:w-auto ${floatingButtonClass}`}
             >
@@ -281,46 +515,24 @@ export function SendForm({
           </FloatingAction>
         </div>
 
-        {template ? (
-          <aside
-            aria-label={t("preview")}
-            className="hidden min-w-0 flex-col gap-3 md:flex"
-          >
-            <h2 className="px-1 font-bold text-lg">{t("preview")}</h2>
-            <Card tone="flat" padding="lg" className="flex flex-col gap-4">
-              <div className="flex flex-col gap-0.5">
-                <span className="font-semibold text-md">{template.name}</span>
-                <span className="text-ink-2 text-sm">
-                  {t("items", { count: template.items.length })}
-                </span>
-              </div>
-              {template.note || note.trim() ? (
-                <p className="whitespace-pre-line text-base text-ink-2">
-                  {[template.note, note.trim()].filter(Boolean).join("\n")}
-                </p>
-              ) : null}
-              <ul className="flex flex-col gap-2.5">
-                {template.items.map((item, index) => {
-                  const Icon = KIND_ICONS[item.kind] ?? CircleCheck;
-                  return (
-                    <li
-                      // Items have no id here, and their order never changes.
-                      // biome-ignore lint/suspicious/noArrayIndexKey: see above
-                      key={index}
-                      className="flex items-center gap-2.5 text-base"
-                    >
-                      <Icon
-                        aria-hidden="true"
-                        className="size-5 shrink-0 text-ink-2"
-                      />
-                      <span className="min-w-0">{item.label}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </Card>
-          </aside>
-        ) : null}
+        <aside
+          aria-label={t("preview")}
+          className="hidden min-w-0 flex-col gap-8 md:flex"
+        >
+          {preview ? (
+            <div className="flex flex-col gap-3">
+              <h2 className="px-1 font-bold text-lg">{t("preview")}</h2>
+              <ListPreview
+                name={preview.name}
+                note={preview.note}
+                items={preview.items}
+              />
+            </div>
+          ) : null}
+          {sentToday ? (
+            <div className="hidden xl:flex xl:flex-col">{sentToday}</div>
+          ) : null}
+        </aside>
       </div>
     </PageBody>
   );

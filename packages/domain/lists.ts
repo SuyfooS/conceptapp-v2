@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { isUuid } from "./activity";
+import { addDays, dateIn, instantIn } from "./availability";
 import { departmentKey } from "./departments";
-import { dayOfWeek, minutesOf, timeOfDay } from "./hours";
-import { type Role, STAFF_ROLES } from "./modules";
+import { dayOfWeek, minutesOf, rangeMinutes, timeOfDay } from "./hours";
+import { type Role, STAFF_ROLES, type StaffRole } from "./modules";
+import { timeIn } from "./shabbat";
 
 /**
  * Lists (Orel, 8 and 9 November 2026, issue #1): checklists sent to a person,
@@ -839,3 +841,459 @@ export type Reading = {
   doneBy: string | null;
   outOfRange: boolean;
 };
+
+/*
+ * Editing templates and sending lists (L3): the shapes the template editor
+ * and the send screen keep while someone works on them, and the small sums
+ * they show.
+ */
+
+/**
+ * A number below zero with a real minus sign, which a hyphen beside a range's
+ * dash ("-25–-18") is not.
+ */
+export function signed(n: number): string {
+  return n < 0 ? `−${Math.abs(n)}` : String(n);
+}
+
+/** A number item's range in words: between, at least or at most. */
+export type NumberRange = {
+  kind: "between" | "atLeast" | "atMost";
+  /** "0–5 °C", "−25 – −18 °C" (spaced once a minus sign is in it), "0 ₪". */
+  range: string;
+};
+
+export function numberRange(item: {
+  min: number | null;
+  max: number | null;
+  unit: string | null;
+}): NumberRange | null {
+  const unit = item.unit ? ` ${item.unit}` : "";
+  if (item.min !== null && item.max !== null) {
+    const dash = item.min < 0 || item.max < 0 ? " – " : "–";
+    return {
+      kind: "between",
+      range: `${signed(item.min)}${dash}${signed(item.max)}${unit}`,
+    };
+  }
+  if (item.min !== null) {
+    return { kind: "atLeast", range: `${signed(item.min)}${unit}` };
+  }
+  if (item.max !== null) {
+    return { kind: "atMost", range: `${signed(item.max)}${unit}` };
+  }
+  return null;
+}
+
+/**
+ * An item as the editor keeps it: `key` is its own on this screen and never
+ * changes, `id` the database's once it is saved.
+ */
+export type DraftItem = {
+  key: string;
+  id: string | null;
+  kind: ListItemKind;
+  label: string;
+  hint: string | null;
+  required: boolean;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  defaultQuantity: number | null;
+};
+
+/**
+ * A range's bound as an item's sheet keeps it: its digits, and whether it is
+ * below zero, which has its own toggle since a phone's number pad may have no
+ * minus.
+ */
+export type TypedBound = { text: string; minus: boolean };
+
+export function boundOf(value: number | null): TypedBound {
+  return {
+    text: value === null ? "" : String(Math.abs(value)),
+    minus: value !== null && value < 0,
+  };
+}
+
+/**
+ * A bound as it is typed: a minus typed before the digits ("-18", "−18")
+ * turns the bound's own minus on and leaves the digits, so the field and the
+ * toggle always say the same.
+ */
+export function typedBound(minus: boolean, text: string): TypedBound {
+  const start = text.trimStart();
+  return /^[-−]/.test(start)
+    ? { text: start.slice(1), minus: true }
+    : { text, minus };
+}
+
+/**
+ * A bound's number, null when it is empty, or "number" when it isn't one. A
+ * minus typed with the digits counts as much as the toggle's: neither is ever
+ * dropped.
+ */
+export function readBound(bound: TypedBound): number | null | "number" {
+  if (bound.text.trim() === "") return null;
+  const value = parseReading(bound.text);
+  if (value === null) return "number";
+  return bound.minus ? -Math.abs(value) : value;
+}
+
+/** A key for an item added on a screen. */
+export function newItemKey(): string {
+  const [random = 0] = crypto.getRandomValues(new Uint32Array(1));
+  return `i-${random.toString(16).padStart(8, "0")}`;
+}
+
+/** A template's items as the editor starts with them. */
+export function draftItemsOf(items: readonly TemplateItem[]): DraftItem[] {
+  return items.map((item) => ({ ...item, key: item.id }));
+}
+
+/** An item in the shape the database takes, without what it doesn't have. */
+function itemFieldsOf(item: Omit<DraftItem, "key" | "id">) {
+  return {
+    kind: item.kind,
+    label: item.label,
+    ...(item.hint ? { hint: item.hint } : {}),
+    required: item.required,
+    ...(item.unit ? { unit: item.unit } : {}),
+    ...(item.min === null ? {} : { min: item.min }),
+    ...(item.max === null ? {} : { max: item.max }),
+    ...(item.defaultQuantity === null
+      ? {}
+      : { defaultQuantity: item.defaultQuantity }),
+  };
+}
+
+/**
+ * The items to save, in their order. An item keeps its id only while the
+ * database still has it (`known`, what the last save left): one removed and
+ * saved, then brought back by its undo, is added again rather than refused
+ * as not the template's.
+ */
+export function itemsForSave(
+  items: readonly DraftItem[],
+  known: ReadonlySet<string>,
+): ListItemInput[] {
+  return items.map((item) => ({
+    ...(item.id && known.has(item.id) ? { id: item.id } : {}),
+    ...itemFieldsOf(item),
+  }));
+}
+
+/**
+ * What keeps the editor's draft from saving, by the rules the database holds
+ * it to, whatever its ids: no name, no items or too many, an item that
+ * doesn't keep its kind's rules, or an order without another department to
+ * go to. Null when it can be saved.
+ */
+export function templateDraftProblem(
+  draft: {
+    name: string;
+    note: string;
+    recipient: TemplateRecipient | null;
+    items: readonly DraftItem[];
+  },
+  fromDepartment: string | null,
+): "name" | "note" | "items" | "item" | "recipient" | null {
+  if (!listName.safeParse(draft.name).success) return "name";
+  if (draft.note.trim() !== "" && !listNote.safeParse(draft.note).success) {
+    return "note";
+  }
+  if (draft.items.length === 0 || draft.items.length > MAX_LIST_ITEMS) {
+    return "items";
+  }
+  if (
+    draft.items.some(
+      (item) => !listItemSeed.safeParse(itemFieldsOf(item)).success,
+    )
+  ) {
+    return "item";
+  }
+  if (
+    fromDepartment !== null &&
+    (draft.recipient?.kind !== "department" ||
+      draft.recipient.department === fromDepartment)
+  ) {
+    return "recipient";
+  }
+  return null;
+}
+
+/** Typed items of a list sent now, which have no ids. */
+export function typedItems(items: readonly DraftItem[]): ListItemInput[] {
+  return items.map((item) => itemFieldsOf(item));
+}
+
+/** What a schedule saves as again, from how it was read. */
+function scheduleInputOf(schedule: ListSchedule): ScheduleInput {
+  return {
+    id: schedule.id,
+    days: schedule.days,
+    anchor: schedule.anchor,
+    ...(schedule.shift === null ? {} : { shift: schedule.shift }),
+    ...fromOffsets(schedule.anchor, schedule.opensOffset, schedule.dueOffset),
+    recipient: schedule.recipient,
+    active: schedule.active,
+  };
+}
+
+/**
+ * A template as the editor saves it, with these fields of its own. What the
+ * editor doesn't change (an order's department, its quantities, the times it
+ * is sent) goes back as it was read, so a save never loses them.
+ */
+export function templateInputOf(
+  template: Pick<
+    ListTemplate,
+    "fromDepartment" | "asksQuantities" | "schedules"
+  > & { id: string | null },
+  own: {
+    name: string;
+    note: string;
+    recipient: TemplateRecipient | null;
+    items: ListItemInput[];
+  },
+): ListTemplateInput {
+  const note = own.note.trim();
+  return {
+    ...(template.id ? { id: template.id } : {}),
+    name: own.name.trim(),
+    ...(note ? { note } : {}),
+    recipient: own.recipient,
+    fromDepartment: template.fromDepartment,
+    asksQuantities: template.asksQuantities,
+    items: own.items,
+    schedules: template.schedules.map(scheduleInputOf),
+  };
+}
+
+/** A template just saved: its id, its version now, and its items' ids in order. */
+export type SavedTemplate = { id: string; version: number; items: string[] };
+
+/** The list with the entry at `index` moved one place up or down. */
+export function moved<T>(list: readonly T[], index: number, by: -1 | 1): T[] {
+  const to = index + by;
+  if (index < 0 || index >= list.length || to < 0 || to >= list.length) {
+    return [...list];
+  }
+  const next = [...list];
+  const [entry] = next.splice(index, 1);
+  if (entry !== undefined) next.splice(to, 0, entry);
+  return next;
+}
+
+/**
+ * Whether a template's own recipient is gone: a department removed since, or
+ * a shift the scheduling settings no longer have. The database takes neither
+ * in a save, so the editor asks for another.
+ */
+export function recipientGone(
+  recipient: TemplateRecipient | null,
+  liveDepartments: readonly string[],
+  shiftKeys: readonly string[],
+): boolean {
+  if (recipient?.kind === "department") {
+    return !liveDepartments.includes(recipient.department);
+  }
+  if (recipient?.kind === "shift") return !shiftKeys.includes(recipient.shift);
+  return false;
+}
+
+/**
+ * Why a template can't be saved from its editor whatever is done there, or
+ * null: an order whose asking department was removed ("order"; L5 lets an
+ * order's department be changed), or one of its times (L4) that follows a
+ * shift, or goes to a department or a shift, that is gone ("schedule"). The
+ * database refuses every save of either (22023), so the editor only reads it
+ * and says why. A time sent to someone who has left is the database's to
+ * refuse: the editor doesn't read the people.
+ */
+export function templateStuck(
+  template: Pick<ListTemplate, "fromDepartment" | "schedules">,
+  liveDepartments: readonly string[],
+  shiftKeys: readonly string[],
+): "order" | "schedule" | null {
+  if (
+    template.fromDepartment !== null &&
+    !liveDepartments.includes(template.fromDepartment)
+  ) {
+    return "order";
+  }
+  const gone = template.schedules.some(
+    (schedule) =>
+      (schedule.shift !== null && !shiftKeys.includes(schedule.shift)) ||
+      (schedule.recipient.kind !== "person" &&
+        recipientGone(schedule.recipient, liveDepartments, shiftKeys)),
+  );
+  return gone ? "schedule" : null;
+}
+
+/**
+ * Templates by the department they go to, in the departments' order, then
+ * one group (`department: null`) for the rest: to a role or a shift, chosen
+ * each time, or to a department removed since.
+ */
+export function templatesByDepartment<
+  T extends { recipient: TemplateRecipient | null },
+>(
+  templates: readonly T[],
+  departments: readonly { id: string }[],
+): { department: string | null; templates: T[] }[] {
+  const departmentOf = (template: T): string | null => {
+    const recipient = template.recipient;
+    return recipient?.kind === "department" &&
+      departments.some((d) => d.id === recipient.department)
+      ? recipient.department
+      : null;
+  };
+  const groups = departments.flatMap((department) => {
+    const own = templates.filter((t) => departmentOf(t) === department.id);
+    return own.length > 0
+      ? [{ department: department.id, templates: own }]
+      : [];
+  });
+  const rest = templates.filter((t) => departmentOf(t) === null);
+  return rest.length > 0
+    ? [...groups, { department: null, templates: rest }]
+    : groups;
+}
+
+/** When a list sent now is due: no time, or a time today or tomorrow. */
+export const DUE_DAYS = ["none", "today", "tomorrow"] as const;
+export type DueDay = (typeof DUE_DAYS)[number];
+
+/**
+ * The due time of a list sent now, from a day and an "HH:MM" in the
+ * business's zone: "past" when it has already gone by (the database takes
+ * only a time after sending), "time" when it isn't a time.
+ */
+export function dueAtOf(
+  day: Exclude<DueDay, "none">,
+  time: string,
+  now: Date,
+  timeZone: string,
+): { ok: true; dueAt: string } | { ok: false; problem: "time" | "past" } {
+  if (!timeOfDay.safeParse(time).success) {
+    return { ok: false, problem: "time" };
+  }
+  const today = dateIn(now, timeZone);
+  const date = day === "today" ? today : addDays(today, 1);
+  const due = instantIn(date, time, timeZone);
+  if (due.getTime() <= now.getTime()) return { ok: false, problem: "past" };
+  return { ok: true, dueAt: due.toISOString() };
+}
+
+/** "HH:MM" of minutes after midnight. */
+const clockOf = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+/**
+ * The due time the send screen starts with: an hour from now, up to the next
+ * half hour, tomorrow when that is after midnight.
+ */
+export function suggestedDue(
+  now: Date,
+  timeZone: string,
+): { day: "today" | "tomorrow"; time: string } {
+  const later = Math.ceil((minutesOf(timeIn(now, timeZone)) + 60) / 30) * 30;
+  return {
+    day: later >= DAY_MINUTES ? "tomorrow" : "today",
+    time: clockOf(later % DAY_MINUTES),
+  };
+}
+
+/**
+ * The due time a day starts with on the send screen, until the person sets
+ * one: the suggestion (`suggestedDue`), except today once an hour ahead has
+ * passed midnight, when it is the next half hour still today, or 23:59 in the
+ * last half hour, so choosing today late in the evening never starts gone by.
+ */
+export function dueTimeFor(
+  day: Exclude<DueDay, "none">,
+  now: Date,
+  timeZone: string,
+): string {
+  const suggested = suggestedDue(now, timeZone);
+  if (day === "tomorrow" || suggested.day === "today") return suggested.time;
+  const next = Math.ceil((minutesOf(timeIn(now, timeZone)) + 1) / 30) * 30;
+  return next < DAY_MINUTES ? clockOf(next) : "23:59";
+}
+
+/**
+ * Where a template sends itself on the send screen when nobody chooses: its
+ * department while it is still there, its role, or the next of its shift
+ * that has people on it; nothing chosen for a department removed since
+ * (`gone`, which the screen says), and anyone else starts at a person.
+ */
+export function sendDefaults(
+  recipient: TemplateRecipient | null | undefined,
+  shifts: readonly SendShift[] | null,
+  liveDepartments: readonly string[],
+): {
+  kind: RecipientKind;
+  department: string | null;
+  shift: string | null;
+  role: StaffRole | null;
+  gone: boolean;
+} {
+  const none = { department: null, shift: null, role: null, gone: false };
+  if (recipient?.kind === "department") {
+    const live = liveDepartments.includes(recipient.department);
+    return {
+      ...none,
+      kind: "department",
+      department: live ? recipient.department : null,
+      gone: !live,
+    };
+  }
+  if (recipient?.kind === "role") {
+    return { ...none, kind: "role", role: recipient.role };
+  }
+  if (recipient?.kind === "shift" && shifts !== null) {
+    const next = shifts.find(
+      (s) => s.pattern === recipient.shift && s.people.length > 0,
+    );
+    return { ...none, kind: "shift", shift: next?.id ?? null };
+  }
+  return { ...none, kind: "person" };
+}
+
+/** A published shift a list can be sent to, with its people now. */
+export type SendShift = {
+  id: string;
+  day: string;
+  name: string;
+  start: string;
+  end: string;
+  /** The scheduling settings' shift it was made from, if any. */
+  pattern: string | null;
+  people: string[];
+};
+
+/**
+ * The shifts a list can go to now: from today to `SHIFT_DAYS_AHEAD` days
+ * ahead, and not over yet (one ending at or before its start ends the next
+ * day). Earliest first.
+ */
+export function upcomingShifts<
+  S extends { day: string; start: string; end: string; name: string },
+>(shifts: readonly S[], now: Date, timeZone: string): S[] {
+  const today = dateIn(now, timeZone);
+  const last = addDays(today, SHIFT_DAYS_AHEAD);
+  return shifts
+    .filter((shift) => {
+      if (shift.day < today || shift.day > last) return false;
+      const ends =
+        instantIn(shift.day, shift.start, timeZone).getTime() +
+        rangeMinutes(shift.start, shift.end) * 60_000;
+      return ends > now.getTime();
+    })
+    .sort((a, b) =>
+      `${a.day}${a.start}${a.name}`.localeCompare(
+        `${b.day}${b.start}${b.name}`,
+      ),
+    );
+}

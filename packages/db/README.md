@@ -104,6 +104,23 @@ the demo reset ends with two example lists sent by the demo's manager
 (`lists_on.test.sql`).
 `@db/departments` `getDepartmentsForTeam` reads them for the console with the
 secret key, since the team is no member.
+Templates and the full send (L3) need no migration. `saveListTemplate` calls
+`save_list_template` with the version the editor read (40001 when it moved)
+and then reads, with the secret key, the template's version and its items'
+ids in order, which the editor needs for its next save (a version that moved
+on in between reads as "changed"). Once the function has saved, a failure of
+that read carries the template's id (`saved` on the failure), so an editor
+that was making a new one opens it at its own address rather than making it
+twice. `getListTemplate(business, id)` reads one
+template only in the business the person is in now (someone in several reads
+the others' too, under RLS); `getListTemplatesForTeam` and
+`getListTemplateForTeam` read them, removed ones and their times too, for the
+console with the secret key. `getSentLists` reads what a person sent in a
+window (RLS lets a sender read their own), and `@db/schedule`
+`getPublishedShifts` the published shifts of some days with their people, the
+shifts `send_list` takes. The app binds the template and send writes to the
+business the screen was drawn for (payroll P3b), so a save from a tab left
+open never lands in another business.
 
 Hours stay (`20261110000100_hours_kept.sql`, payroll P1). `time_entries`,
 `time_breaks` and `audit_log` refer to their business, person and entry with

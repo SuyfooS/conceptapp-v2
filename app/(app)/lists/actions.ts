@@ -1,14 +1,23 @@
 "use server";
 
 import {
+  archiveListTemplate,
   cancelUnstartedList,
   finishList,
   type ListWrite,
   reopenList,
+  restoreListTemplate,
+  saveListTemplate,
   sendList,
   setListItem,
 } from "@db/lists";
-import { anyItemResult, type ListProgress, sendInput } from "@domain/lists";
+import {
+  anyItemResult,
+  type ListProgress,
+  listTemplateInput,
+  type SavedTemplate,
+  sendInput,
+} from "@domain/lists";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { pushSoon } from "../../push/server";
@@ -18,14 +27,22 @@ import { listsAccess } from "./lists";
 /**
  * A lists write as the signed-in person: never while viewing as someone, and
  * the database holds the rules of who may do what. `tells` says whether it may
- * have written a notification, which then goes to the phones.
+ * have written a notification, which then goes to the phones. `business` is
+ * the business the screen was drawn for, where the write names one (payroll
+ * P3b): the business the app opens is one cookie for the whole browser, so a
+ * save or a send from a tab left open may arrive after the person switched
+ * business, and is refused then ("businessChanged"), never written in the
+ * other one.
  */
 async function asMember<T>(
   run: (actorId: string, businessId: string) => Promise<ListWrite<T>>,
-  after: { refresh: boolean; tells: boolean },
+  after: { refresh: boolean; tells: boolean; business?: unknown },
 ): Promise<ListActionResult<T>> {
   const access = await listsAccess();
   if (!access) return { ok: false, failure: "noAccess" };
+  if ("business" in after && after.business !== access.businessId) {
+    return { ok: false, failure: "businessChanged" };
+  }
   if (access.viewOnly) return { ok: false, failure: "viewOnly" };
   const result = await run(access.userId, access.businessId);
   if (result.ok && after.tells) pushSoon();
@@ -34,6 +51,8 @@ async function asMember<T>(
 }
 
 const listId = z.uuid();
+const templateId = z.uuid();
+const seen = z.int().min(1).nullable();
 
 /**
  * Fills an item, or clears it with null (the undo). The screen keeps what it
@@ -87,14 +106,77 @@ export async function cancelListAction(id: unknown): Promise<ListActionResult> {
   });
 }
 
-/** Sends a list now, from a template, to a person, a department or a role. */
+/**
+ * Sends a list now, from a template or typed now, to a person, a department,
+ * the people of a shift or a role, by a time if it has one. Bound on the page
+ * to the business it was drawn for.
+ */
 export async function sendListAction(
+  business: string,
   input: unknown,
 ): Promise<ListActionResult<string>> {
   const list = sendInput.safeParse(input);
   if (!list.success) return { ok: false, failure: "invalid" };
-  return asMember((actor, business) => sendList(actor, business, list.data), {
+  return asMember((actor, id) => sendList(actor, id, list.data), {
     refresh: true,
     tells: true,
+    business,
+  });
+}
+
+/**
+ * Saves a template as its editor has it now (the editor saves itself on
+ * every change). `seenVersion` is the version it last read or saved, null
+ * for a new one: a save behind the stored version is refused ("changed").
+ * Nothing is read again here: the editor keeps what it shows, and takes back
+ * the version and its items' ids for the next save.
+ */
+export async function saveListTemplateAction(
+  business: string,
+  input: unknown,
+  seenVersion: unknown,
+): Promise<ListActionResult<SavedTemplate>> {
+  const template = listTemplateInput.safeParse(input);
+  const version = seen.safeParse(seenVersion);
+  if (!template.success || !version.success) {
+    return { ok: false, failure: "invalid" };
+  }
+  return asMember(
+    (actor, id) =>
+      saveListTemplate(
+        actor,
+        id,
+        template.data,
+        version.data === null ? undefined : version.data,
+      ),
+    { refresh: false, tells: false, business },
+  );
+}
+
+/** Removes a template from the screens; restoring it is the undo. */
+export async function archiveListTemplateAction(
+  business: string,
+  id: unknown,
+): Promise<ListActionResult> {
+  const template = templateId.safeParse(id);
+  if (!template.success) return { ok: false, failure: "invalid" };
+  return asMember((actor) => archiveListTemplate(actor, template.data), {
+    refresh: false,
+    tells: false,
+    business,
+  });
+}
+
+/** Brings a removed template back. */
+export async function restoreListTemplateAction(
+  business: string,
+  id: unknown,
+): Promise<ListActionResult> {
+  const template = templateId.safeParse(id);
+  if (!template.success) return { ok: false, failure: "invalid" };
+  return asMember((actor) => restoreListTemplate(actor, template.data), {
+    refresh: true,
+    tells: false,
+    business,
   });
 }
