@@ -725,6 +725,28 @@ export function ActivityView({
           href: paths.pay,
         };
       }
+      case "payroll.export":
+        // The month and how much it held: the file itself is kept nowhere.
+        return {
+          what: t("actions.payroll.export", {
+            month: format.dateTime(new Date(`${line.month}-15T12:00:00Z`), {
+              month: "long",
+              year: "numeric",
+              timeZone: "UTC",
+            }),
+          }),
+          notes:
+            line.people !== null && line.shifts !== null
+              ? [
+                  t("actions.payroll.exportCounts", {
+                    people: line.people,
+                    shifts: line.shifts,
+                  }),
+                ]
+              : [],
+          changes: [],
+          href: paths.pay ? `${paths.pay}?month=${line.month}` : undefined,
+        };
       case "other":
         return plain(t("actions.other"));
       default: {

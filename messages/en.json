@@ -1825,6 +1825,167 @@
           "title": "How each week was worked out",
           "row": "The week of <ltr>{weekOf}</ltr>: {used, select, five {as a 5-day week} six {as a 6-day week} other {by the shorter hours of each day}}"
         }
+      },
+      "file": {
+        "download": "Download the file for payroll",
+        "what": "In the file: everyone's hours by rate, each shift and what to check. No pay estimate and no ID numbers.",
+        "downloading": "The file is downloading. Send it to the accountant by email, not on WhatsApp.",
+        "last": "The last file for {month} was downloaded on <ltr>{date}</ltr> at <ltr>{time}</ltr>.",
+        "changed": "The hours or hourly wages of {month} changed since the last file, downloaded on <ltr>{date}</ltr> at <ltr>{time}</ltr>. Download a new one.",
+        "name": "Hours for payroll, {business}, {month}",
+        "sheets": {
+          "summary": "Month summary",
+          "daily": "Day by day",
+          "check": "To check",
+          "about": "About the file"
+        },
+        "columns": {
+          "summary": {
+            "name": "Name",
+            "number": "Payroll number",
+            "wage": "Hourly wage",
+            "from": "From",
+            "to": "To",
+            "days": "Workdays",
+            "hours": "Paid hours",
+            "nights": "Night shifts",
+            "unpaidBreaks": "Unpaid break hours",
+            "corrected": "Shifts corrected",
+            "open": "Shifts open, not counted",
+            "waiting": "Shifts waiting for a confirmation",
+            "hoursLaw": "Hours of Work and Rest Law",
+            "daysNotWorked": "Holiday or election day not worked",
+            "toCheck": "To check"
+          },
+          "daily": {
+            "name": "Name",
+            "number": "Payroll number",
+            "date": "Date",
+            "weekday": "Day",
+            "in": "In",
+            "out": "Out",
+            "originalIn": "In before the correction",
+            "originalOut": "Out before the correction",
+            "paidBreaks": "Paid break minutes",
+            "unpaidBreaks": "Unpaid break minutes",
+            "hours": "Net hours",
+            "night": "Night shift",
+            "eve": "Eve of a rest day or holiday",
+            "holidayOrRest": "Holiday or rest",
+            "oneOff": "Election day",
+            "source": "How it was recorded",
+            "status": "Status",
+            "correctedBy": "Corrected by",
+            "correctedAt": "Corrected at",
+            "reason": "Reason"
+          },
+          "check": {
+            "name": "Name",
+            "number": "Payroll number",
+            "date": "Date",
+            "what": "What happened",
+            "rule": "The rule",
+            "unchanged": "Hours"
+          },
+          "about": {
+            "topic": "Topic",
+            "details": "Details"
+          }
+        },
+        "weekdays": {
+          "0": "Sunday",
+          "1": "Monday",
+          "2": "Tuesday",
+          "3": "Wednesday",
+          "4": "Thursday",
+          "5": "Friday",
+          "6": "Saturday"
+        },
+        "source": {
+          "added": "Added by hand",
+          "self": "Set by themselves",
+          "none": "Without a code",
+          "manager": "Corrected by hand",
+          "punch": "Clock",
+          "off": "Clock, the business asks for no code",
+          "owner": "Owner, no code",
+          "typed": "Code typed",
+          "scan": "Code scanned"
+        },
+        "status": {
+          "open": "Open, not counted",
+          "waiting": "Waiting for a confirmation",
+          "waitingOwner": "Waiting for the owner's confirmation"
+        },
+        "hoursLaw": {
+          "applies": "Applies",
+          "trust": "Doesn't apply: management or personal trust, s.30(a)(5)",
+          "unsupervised": "Doesn't apply: hours that can't be supervised, s.30(a)(6)"
+        },
+        "yes": "Yes",
+        "no": "No",
+        "someone": "Unknown",
+        "dayNotWorked": "{name}, <ltr>{date}</ltr>: {average, select, none {no average} other {an average of <ltr>{average}</ltr> hours a day}}",
+        "dayNotWorkedCheck": "{kind, select, holiday {Holiday pay} other {Pay for a day of rest}}, {name}, <ltr>{date}</ltr>: {average, select, none {no hours in the months before, so no average} other {an average of <ltr>{average}</ltr> hours a day, with no amount}}.",
+        "dayNotWorkedRule": "{kind, select, holiday {Holiday pay for an hourly worker, by an extension order} other {Knesset election day is a paid day of rest, by the Knesset Elections Law}}",
+        "workWeekRule": "A 42-hour week, in 5 or 6 days, as the notice of terms of work says",
+        "unchanged": "The hours weren't changed",
+        "rules": {
+          "openEntry": "The record of hours: a shift with no way out isn't counted",
+          "longEntry": "The record of hours: a shift longer than 14 hours",
+          "edited": "The record of hours: corrected by hand",
+          "unconfirmed": "The record of hours: a time made without a code waits for a confirmation",
+          "shortUnpaidBreak": "Hours of Work and Rest Law, s.1 and s.20(c): a break under 30 minutes is working time",
+          "noWage": "Hourly wage: missing for some of the days",
+          "noPayrollNumber": "Details for payroll: the number in the payroll system",
+          "dayOver12": "The general overtime permit: up to 12 hours a day",
+          "weekOvertimeOver16": "The general overtime permit: up to 16 overtime hours a week",
+          "nightWeekOver58": "The general overtime permit: up to 58 hours in a week with a night shift",
+          "restBetweenUnder8": "The general overtime permit: at least 8 hours of rest between workdays",
+          "weeklyRestUnder36": "Hours of Work and Rest Law, s.7: 36 hours of rest in a row every week",
+          "breakMissing": "Hours of Work and Rest Law, s.20: on a day of 6 hours or more, a break of 45 minutes, 30 of them in a row",
+          "eveBreakUnder30": "Hours of Work and Rest Law, s.20: on the eve of a rest day, a break of 30 minutes",
+          "breakOver3h": "Hours of Work and Rest Law, s.20: a break of more than 3 hours",
+          "belowMinimumWage": "Minimum Wage Law, and for minors the Minimum Wage (Youth) regulations",
+          "oneOffRestDay": "Knesset election day: a day of rest, with no rate in the law for work on it",
+          "holidayWorked": "Work on a holiday: 150%, and holiday pay if the work was required",
+          "holidayNight": "Work on a holiday: a shift starting less than 36 hours after the last work before the holiday",
+          "restDayHolidays": "Law and Administration Ordinance, s.18A(b): someone whose rest day is Friday or Sunday",
+          "doubleShift": "A workday: two shifts on one date",
+          "hoursLawTrust": "Hours of Work and Rest Law, s.30(a)(5)",
+          "hoursLawUnsupervised": "Hours of Work and Rest Law, s.30(a)(6)",
+          "hoursLawRestDay": "Hours of Work and Rest Law, s.30(a): the whole law doesn't apply, s.17 included",
+          "restWeekOvertime": "Hours of Work and Rest Law, s.16 and s.17, as the Labour Court reads them. An accountant needs to confirm it",
+          "minorUnderAge": "Youth Labour Law, s.2: the age from which one may be employed",
+          "minorDayOver": "Youth Labour Law, s.20: working hours a day",
+          "minorEveOver7": "Youth Labour Law, s.20: 7 hours on the eve of a rest day",
+          "minorWeekOver40": "Youth Labour Law, s.20: 40 hours a week",
+          "minorOvertime": "Youth Labour Law: no overtime",
+          "minorRestDay": "Youth Labour Law: the weekly rest and holidays",
+          "minorNight": "Youth Labour Law: work at night",
+          "minorBreak": "Youth Labour Law: breaks",
+          "minorAfter23": "Youth Labour Law: the way home after 23:00"
+        },
+        "about": {
+          "business": "Business",
+          "month": "Month",
+          "madeAt": "Made at",
+          "madeBy": "By",
+          "madeByTeam": "{name}, of the ConceptApp team, viewing the business",
+          "madeByTeamNoName": "The ConceptApp team, viewing the business",
+          "engine": "Hours engine version",
+          "minimumWage": "Minimum wage table, from",
+          "city": "Shabbat and holiday times for",
+          "note": "Good to know",
+          "lines": {
+            "minutes": "The hours are exact to the minute, as the clock recorded them, with no rounding. They are written as decimals: 8.60 is 8 hours and 36 minutes. In the daily sheet they are kept unrounded and shown to two places, so a column adds up to the summary.",
+            "proposal": "The split by rate is a proposal by the law. The payroll system and the accountant decide.",
+            "firstShift": "On a day with more than one shift, the hours by rate are the whole day's, and so are its night shift, eve of a rest day or holiday, holiday or rest, and election day. All of them are on the row of its first shift.",
+            "open": "A shift still open isn't counted in the hours or the rates. It will be in a file downloaded after it closes.",
+            "daysNotWorked": "A holiday or election day not worked shows with its date and the daily average, with no amount. The accountant checks whether it is owed.",
+            "nothingElse": "The file holds no pay estimate, no amount worked out and no ID numbers. The hourly wage is there as it was set."
+          }
+        }
       }
     },
     "manage": {
@@ -2107,7 +2268,9 @@
               "started_on": "the first day",
               "ended_on": "the last day",
               "last_paid_on": "the last payment"
-            }
+            },
+            "export": "Downloaded the file for payroll for {month}",
+            "exportCounts": "{people, plural, one {One person} other {# people}}, {shifts, plural, one {one shift} other {# shifts}}"
           }
         }
       },

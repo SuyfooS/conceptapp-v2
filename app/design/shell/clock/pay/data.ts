@@ -7,6 +7,7 @@
 
 import { addDays, instantIn, weekdayOf } from "@domain/availability";
 import { payrollHistory } from "@domain/holiday-pay";
+import { minimumWageTableFrom } from "@domain/minimum-wage";
 import {
   addTotals,
   NO_PAY_TOTALS,
@@ -39,8 +40,17 @@ import {
   type PayrollDetails,
   wageFloorOf,
 } from "@domain/payroll-details";
+import {
+  type ExportMeta,
+  type ExportPerson,
+  exportShiftsOf,
+} from "@domain/payroll-export";
 import { shabbatPlaceOf } from "@domain/shabbat";
-import type { ShiftRecord, TimeEntry } from "@domain/time-clock";
+import {
+  entryDate,
+  type ShiftRecord,
+  type TimeEntry,
+} from "@domain/time-clock";
 import {
   firstOfMonth,
   monthWage,
@@ -85,6 +95,8 @@ export const demoPayPaths: PayPaths = {
   team: "/design/shell/clock/team",
   clock: "/design/shell/clock",
   settings: "/design/shell/manage/time_clock",
+  // The demo's own file, from these rows, logged nowhere.
+  file: "/design/shell/clock/pay/export",
 };
 
 let next = 0;
@@ -523,12 +535,15 @@ function demoRemarks(
 /**
  * Everyone's October, with Noa beside the list on a tablet unless asked;
  * `show` "noWage" lists only those whose shifts have no wage, "noNumber"
- * those with no payroll number; `estimate` "off" leaves out every amount.
+ * those with no payroll number; `estimate` "off" leaves out every amount;
+ * `file` "sent" is a month whose file went out on 3 November, "changed" one
+ * whose hours changed since.
  */
 export function demoPayMonth(
   person?: string,
   show?: string,
   estimate?: string,
+  file?: string,
 ): PayMonthData {
   const amounts = amountsFrom(estimate);
   const engine = engineOf(amounts);
@@ -576,6 +591,90 @@ export function demoPayMonth(
     restName: restNameOfAll(
       everyone.flatMap((row) => (row.rates ? [row.rates.restDay] : [])),
     ),
+    lastFile:
+      file === "sent" || file === "changed"
+        ? { date: "2026-11-03", time: "10:00", changed: file === "changed" }
+        : null,
+  };
+}
+
+/**
+ * October's file for payroll on the demo (payroll P8): the same month by the
+ * hours engine, its people with their October shifts as the clock recorded
+ * them, and what the file says about itself. Built by the app's own code
+ * (`payrollFileOf`) and logged nowhere.
+ */
+export function demoPayExport(): {
+  month: PayrollMonth;
+  people: ExportPerson[];
+  meta: ExportMeta;
+  slug: string;
+  now: Date;
+} {
+  const ids = new Set(people.map((row) => row.userId));
+  const october = entries.filter(
+    (entry) =>
+      ids.has(entry.userId) && entryDate(entry, TIME_ZONE).startsWith(MONTH),
+  );
+  // Each corrected shift's times before the correction.
+  const originals = new Map(
+    people.flatMap((row) =>
+      row.days.flatMap((day) =>
+        day.original
+          ? [
+              [
+                day.id,
+                {
+                  clockIn: at(day.date, day.original.in),
+                  clockOut:
+                    day.original.out === null
+                      ? null
+                      : at(day.date, day.original.out),
+                },
+              ] as const,
+            ]
+          : [],
+      ),
+    ),
+  );
+  const shifts = exportShiftsOf(
+    october,
+    MONTH,
+    TIME_ZONE,
+    NOW,
+    (userId) => setters[userId] ?? null,
+    originals,
+  );
+  return {
+    month: ENGINE,
+    people: people.map((row) => {
+      const own = detailsOfDemo(row.userId);
+      return {
+        userId: row.userId,
+        name: row.name,
+        form: row.form,
+        payrollNumber: own.payrollNumber,
+        hoursLaw: own.hoursLaw,
+        restDay: own.restDay,
+        wages: wages[row.userId] ?? [],
+        shifts: shifts.filter((shift) => shift.userId === row.userId),
+      };
+    }),
+    meta: {
+      business: business.name,
+      month: MONTH,
+      madeAt: "2026-11-10T12:00",
+      madeBy: "שירן הדגמה",
+      viewing: false,
+      settings: {
+        ...SETTINGS,
+        unpaidBreaks: true,
+        city: "telAviv",
+      },
+      minimumWageFrom: minimumWageTableFrom(),
+    },
+    slug: "demo-restaurant",
+    now: NOW,
   };
 }
 

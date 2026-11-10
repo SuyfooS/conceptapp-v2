@@ -1,5 +1,6 @@
 import {
   getCorrections,
+  getLastPayrollExport,
   getPayPeople,
   type PayPerson as PayPersonRow,
 } from "@db/payroll";
@@ -34,7 +35,9 @@ import {
   type PayrollDetails,
   wageFloorOf,
 } from "@domain/payroll-details";
+import { changedSinceExport, entriesOfMonth } from "@domain/payroll-export";
 import { formArg } from "@domain/profile";
+import { timeIn } from "@domain/shabbat";
 import {
   addMonths,
   entryDate,
@@ -239,11 +242,13 @@ export async function currentPayMonth(
     access.defaultMonth,
   );
   const now = new Date();
-  const [{ settings, people, entries, wages, details }, payroll] =
+  const [{ settings, people, entries, wages, details }, payroll, lastExport] =
     await Promise.all([
       monthOfHours(access, month),
       // The same month by the hours engine (payroll P7).
       currentPayrollMonth(month),
+      // When its last file for payroll went out (P8).
+      getLastPayrollExport(access.businessId, month),
     ]);
   const totals = payTotals(entries, month, access.timeZone, now);
   const nameOf = nameIn(people);
@@ -343,6 +348,18 @@ export async function currentPayMonth(
     restName: restNameOfAll(
       everyone.flatMap((row) => (row.rates ? [row.rates.restDay] : [])),
     ),
+    lastFile: lastExport
+      ? {
+          date: dateIn(new Date(lastExport.at), access.timeZone),
+          time: timeIn(new Date(lastExport.at), access.timeZone),
+          changed: changedSinceExport(
+            entriesOfMonth(entries, month, access.timeZone),
+            [...wages.values()].flat(),
+            month,
+            lastExport.at,
+          ),
+        }
+      : null,
   };
 }
 

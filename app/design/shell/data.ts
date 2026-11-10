@@ -410,6 +410,15 @@ const demoRow = (
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
 export const demoActivityRows: ActivityRow[] = [
+  // The file for payroll (payroll P8): October's, with what it listed.
+  demoRow(130, "2026-11-04T13:50:00+02:00", "shiran", "payroll.export", {
+    month: "2026-10",
+    format: "xlsx",
+    people: 4,
+    shifts: 76,
+    ids: false,
+    engine: "2026-11",
+  }),
   // Details for payroll (payroll P5): a number and a minor's age entered,
   // never their values, and a start copied from joining set right.
   demoRow(129, "2026-11-04T13:40:00+02:00", "shiran", "payroll.details", {

@@ -333,6 +333,20 @@ reads page by page (`allPages` in `pages.ts`, ordered by `clock_in` then
 Supabase) without an error, and payroll reads a whole business's entries over
 four months.
 
+The file for payroll (`20261110000800_payroll_export.sql`, payroll P8). No
+table: the app builds the month's XLSX from the reads above and keeps it
+nowhere. `public.note_payroll_export(business, pay_month, person_count,
+shift_count, engine_version)` (the person's own session, `authenticated` only)
+logs each file as `payroll.export` before it goes out: `{month, format:
+"xlsx", people, shifts, ids: false, engine}`, every file its own row. Only a
+`clock.payroll` holder or the team viewing as an accountant, with the time
+clock on, takes one (42501 otherwise); no month, a count under zero or none,
+or no engine version is 22023. A pay row, so only pay holders read it, and the
+activity log shows it. `@db/payroll` calls it (`notePayrollExport`, which
+throws when the row isn't written, so no file goes out without it) and reads
+when a month's newest file went out (`getLastPayrollExport`), for the screen's
+"changed since the last file". Covered by `payroll_export.test.sql`.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

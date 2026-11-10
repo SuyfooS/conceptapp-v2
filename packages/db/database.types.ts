@@ -2345,6 +2345,16 @@ export type Database = {
         Args: { business: string; pay_month: string; view_kind: string };
         Returns: undefined;
       };
+      note_payroll_export: {
+        Args: {
+          business: string;
+          engine_version: string;
+          pay_month: string;
+          person_count: number;
+          shift_count: number;
+        };
+        Returns: undefined;
+      };
       note_punch_attempt: {
         Args: {
           actor: string;

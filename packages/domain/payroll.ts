@@ -694,6 +694,30 @@ function daysBetween(from: string, to: string): string[] {
   return days;
 }
 
+/** A stretch of a month at one wage, null for days before any. */
+export type MonthWageSpan = { agorot: number | null; from: string; to: string };
+
+/**
+ * A month's stretches at one wage (`YYYY-MM`), from its first day to its
+ * last: the wage on each day (`wageOn`), null before any, and a new stretch
+ * at each change of amount. The engine's wage segments (`byWage`) are those
+ * holding a worked day; the file for payroll lists each one with something in
+ * it (payroll P8).
+ */
+export function monthWageSpans(
+  wages: PayrollPerson["wages"],
+  month: string,
+): MonthWageSpan[] {
+  const spans: MonthWageSpan[] = [];
+  for (const date of daysBetween(`${month}-01`, lastDayOf(month))) {
+    const agorot = wageOn(wages, date)?.agorot ?? null;
+    const last = spans.at(-1);
+    if (last && last.agorot === agorot) last.to = date;
+    else spans.push({ agorot, from: date, to: date });
+  }
+  return spans;
+}
+
 /** One person's month: the engine's work for them. */
 function personMonth(
   input: PayrollInput,
@@ -1188,13 +1212,7 @@ function personMonth(
   const worked = days.filter((day) => day.minutes > 0);
   const monthDays = daysBetween(`${month}-01`, lastDayOf(month));
   const wageFor = (date: string) => wageOn(person.wages, date)?.agorot ?? null;
-  const wageSpans: { agorot: number | null; from: string; to: string }[] = [];
-  for (const date of monthDays) {
-    const agorot = wageFor(date);
-    const last = wageSpans.at(-1);
-    if (last && last.agorot === agorot) last.to = date;
-    else wageSpans.push({ agorot, from: date, to: date });
-  }
+  const wageSpans = monthWageSpans(person.wages, month);
   const byWage: WageSegment[] = wageSpans.flatMap((span) => {
     const inSpan = worked.filter(
       (day) => day.date >= span.from && day.date <= span.to,

@@ -40,6 +40,14 @@ first, without what the screens already say in their own words), the values of
 each flag's words (`flagValues`, held to the words by
 `tooling/payroll-words.test.ts`), the month's card and estimate, and what a
 worker sees of their own month (`ownMonthOf`: their adult limits, and for a
-minor only that a rule was crossed).
+minor only that a rule was crossed). The file for payroll is
+`payroll-export.ts` (`exportSheets`): the month's four sheets, in words that
+come in, as cells (text escaped against formulas, totals to two decimals from
+summed minutes, each shift's and day's hours exact so a column adds up to its
+total, days, times), a summary row for each stretch at one wage with something
+in it (`monthWageSpans` in `payroll.ts`, the engine's own), and a day's rates
+and marks once, on its first counted shift. It never reads an estimate or an
+amount, so the file is the same with amounts on or off; the app writes the
+cells as XLSX.
 
 Import as `@domain/<file>`.
