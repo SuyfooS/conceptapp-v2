@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   ageDemoSchedules,
+  demoListLineSpread,
   demoListLines,
   demoModuleSettings,
   demoScheduleCount,
@@ -218,9 +219,14 @@ test("a time saved opens its list, which turns late, and the manager's day shows
       );
       await fridge.fill("7");
       await fridge.press("Enter");
+      // The list managers hear of it, once each: the owner and the shift
+      // manager at least (another spec may add one while this runs).
       await expect
-        .poll(() => demoListLines("lists.out_of_range", TIMED))
-        .toBe(2);
+        .poll(async () => {
+          const spread = await demoListLineSpread("lists.out_of_range", TIMED);
+          return spread.lines === spread.people && spread.people >= 2;
+        })
+        .toBe(true);
     } finally {
       await noa.context().close();
     }
