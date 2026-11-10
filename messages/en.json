@@ -677,7 +677,8 @@
         "title": "Invites",
         "open": "{count, plural, one {One invite waiting} other {# invites waiting}}",
         "empty": "No open invites. To add someone to the team, tap “Invite to the team”.",
-        "expiredHint": "{count, plural, one {One invite has expired} other {# invites have expired}}. “New link” opens it again for 14 days."
+        "expiredHint": "{count, plural, one {One invite has expired} other {# invites have expired}}. “New link” opens it again for 14 days.",
+        "closed": "This is a demo business, so nobody is invited to it. In a real business, you invite the team from here, with a link."
       },
       "inviteAction": "Invite to the team",
       "link": {

@@ -1,10 +1,6 @@
 "use server";
 
-import {
-  activeElsewhere,
-  inviteToTeam,
-  issueTeamInviteLink,
-} from "@db/invites";
+import { inviteToTeam, issueTeamInviteLink } from "@db/invites";
 import { clearProfileBio } from "@db/profile";
 import { isUuid } from "@domain/activity";
 import { inviteLink } from "@domain/invites";
@@ -21,6 +17,8 @@ import { currentMember } from "../member";
 
 export type TeamFailure =
   | "alreadyMember"
+  // The console's alone (its add-a-person form shares this state): the Team
+  // screen never says a number is on another business's staff.
   | "elsewhere"
   | "notAllowed"
   | "notOpen"
@@ -93,17 +91,10 @@ export async function inviteAction(
   if (!parsed.ok) return { errors: parsed.errors, values };
 
   try {
-    // One place on a staff per login (payroll P3b): someone on another
-    // business's staff may still be invited to keep this one's books.
-    if (
-      await activeElsewhere(
-        parsed.value.phone,
-        actor.membership.business.id,
-        parsed.value.role,
-      )
-    ) {
-      return { failure: "elsewhere", values };
-    }
+    // Every number gets the same answer here (#80): whether someone is on
+    // another business's staff is not this business's to learn. One place on
+    // a staff per login (payroll P3b) still holds, at /join, which tells the
+    // person themselves; only the console says it to the inviter.
     const result = await inviteToTeam(
       actor.userId,
       actor.membership.business.id,

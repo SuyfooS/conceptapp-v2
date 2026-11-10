@@ -19,20 +19,24 @@ concurrency:
   group: migrate-dev
   cancel-in-progress: false
 
+# Read the code and nothing more (#80). Every action is pinned to a commit,
+# with its version beside it for Dependabot.
+permissions:
+  contents: read
+
 jobs:
   migrate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    # The database's secrets reach only the step that connects (#80), never
+    # the install before it: from there on the steps read DB_URL, masked. The
+    # CLI is given the address, so it needs no access token.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -44,6 +48,8 @@ jobs:
       # region, so try each. Everything secret is masked in the logs.
       - name: Find the connection
         env:
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_REGION: eu-central-1
         run: |
           PASSWORD=$(node -p 'encodeURIComponent(process.env.SUPABASE_DB_PASSWORD)')
