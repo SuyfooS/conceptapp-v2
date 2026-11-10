@@ -11,6 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Read the code and nothing more (#80); a job that needs more says so. Every
+# action is pinned to a commit, with its version beside it for Dependabot.
+permissions:
+  contents: read
+
 jobs:
   # Push to main only. A squash merge of an up-to-date branch lands exactly the
   # tree its pull request run tested. If that tree passed check, database and
@@ -26,7 +31,7 @@ jobs:
     outputs:
       tested: ${{ steps.find.outputs.tested }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: .github/scripts
       - id: find
@@ -56,7 +61,7 @@ jobs:
       actions: read # the gate's dry run below
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # The gate's script on every pull request, against the tip of main it is
       # based on. It only prints; the push to main is where it decides.
@@ -71,9 +76,9 @@ jobs:
           url=$(bash .github/scripts/tested-tree.sh "$BASE_SHA")
           echo "Main at $BASE_SHA: ${url:-no passing pull_request run today, so a push of it would run everything}" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -102,7 +107,7 @@ jobs:
           tree=$(git rev-parse 'HEAD^{tree}')
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
           echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
         continue-on-error: true
         with:
@@ -117,11 +122,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -153,7 +158,7 @@ jobs:
           tree=$(git rev-parse 'HEAD^{tree}')
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
           echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
         continue-on-error: true
         with:
@@ -171,11 +176,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -228,7 +233,7 @@ jobs:
       - name: Playwright (phone, tablet, desktop)
         run: pnpm e2e
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: playwright-results
@@ -245,7 +250,7 @@ jobs:
           tree=$(git rev-parse 'HEAD^{tree}')
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
           echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
         continue-on-error: true
         with:

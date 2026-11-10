@@ -2,9 +2,11 @@
 -- takes none, unless its definition opens it (the local seed's, for the
 -- browser tests); the console makes an owner only of a business with none,
 -- and an owner invite no owner sent can't be claimed once the business has
--- one. Such an invite reads as expired on the join screen.
+-- one. Such an invite reads as expired on the join screen. The server asks
+-- which businesses are closed (20261110001200_invites_open.sql), so the Team
+-- screen offers no invite in one.
 begin;
-select plan(24);
+select plan(29);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -91,6 +93,23 @@ select lives_ok(
   $$select public.team_invite('6c000000-0000-4000-a000-00000000000c', '6c000000-0000-4000-b000-000000000003',
     '+972500000979', 'Worker', 'worker', repeat('9', 64))$$,
   'a real business invites as before'
+);
+
+-- What the Team screen asks first.
+select is(
+  public.closed_to_invites('6c000000-0000-4000-b000-000000000001'),
+  true,
+  'the server reads a demo business as closed to invites'
+);
+select is(
+  public.closed_to_invites('6c000000-0000-4000-b000-000000000002'),
+  false,
+  'one its definition opens as open'
+);
+select is(
+  public.closed_to_invites('6c000000-0000-4000-b000-000000000003'),
+  false,
+  'and a real business as open'
 );
 
 -- The owner role from the console.
@@ -184,6 +203,15 @@ select ok(
   not has_function_privilege('authenticated', 'private.invite_closed(uuid, public.member_role, uuid)', 'execute')
   and not has_function_privilege('anon', 'private.closed_to_invites(uuid)', 'execute'),
   'the private checks are the server functions'' own'
+);
+select ok(
+  not has_function_privilege('authenticated', 'public.closed_to_invites(uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.closed_to_invites(uuid)', 'execute'),
+  'browser roles cannot ask which businesses are closed to invites'
+);
+select ok(
+  has_function_privilege('service_role', 'public.closed_to_invites(uuid)', 'execute'),
+  'the server can'
 );
 
 select * from finish();

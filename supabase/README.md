@@ -51,6 +51,9 @@ own through `private.purge_business_records`, which only the database's owner ma
 A demo business takes no invites and nobody joins one, since anyone at the door is its
 owner. Only a definition with `"invites": true` opens one: `seed.sql` does, so the browser
 tests can invite and join; `hosted-demo.sql` never does (`tooling/demo-invites.test.ts`).
+The server asks the same question first (`public.closed_to_invites`, secret key only,
+`20261110001200_invites_open.sql`), so the Team screen offers no invite and no new link
+in a closed one and `/team/invite` is not found there (#80).
 
 Sign-in codes are counted per number and per caller against `private.auth_limits`
 (`public.note_auth_attempt`; the server asks before every code it sends or checks). The
