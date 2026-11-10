@@ -238,6 +238,19 @@ export type ActivityLine =
       leftOptional: number;
     }
   | { action: "lists.cancel"; name: string }
+  /** A list's times (lists L4): one late, or closed with nobody doing it. */
+  | { action: "lists.late" | "lists.missed"; name: string }
+  | {
+      /** A reading outside its item's range; the actor read it. */
+      action: "lists.out_of_range";
+      name: string;
+      label: string;
+      reading: number;
+      min: number | null;
+      max: number | null;
+      /** The item's unit; null when it has none, or the row is older than it. */
+      unit: string | null;
+    }
   | {
       /** An owner or the team gave a permission, or took it back. */
       action: "permission.grant" | "permission.revoke";
@@ -443,6 +456,14 @@ const schemas = {
   "lists.reopen": z.object({
     name: z.string(),
     was: z.string().optional(),
+  }),
+  "lists.out_of_range": z.object({
+    name: z.string(),
+    label: z.string(),
+    reading: z.number(),
+    min: z.number().nullable().default(null),
+    max: z.number().nullable().default(null),
+    unit: z.string().nullable().default(null),
   }),
   permission: z.object({
     perm: z.string(),
@@ -759,7 +780,9 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     }
     case "lists.template.archive":
     case "lists.template.restore":
-    case "lists.cancel": {
+    case "lists.cancel":
+    case "lists.late":
+    case "lists.missed": {
       const details = read(schemas["lists.named"]);
       return details ? { action: row.action, name: details.name } : other;
     }
@@ -794,6 +817,10 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             leftOptional: details.left_optional,
           }
         : other;
+    }
+    case "lists.out_of_range": {
+      const details = read(schemas["lists.out_of_range"]);
+      return details ? { action: row.action, ...details } : other;
     }
     case "lists.reopen": {
       const details = read(schemas["lists.reopen"]);

@@ -1,11 +1,16 @@
 "use client";
 
+import type { ScheduleOpenings } from "@domain/list-openings";
 import {
   type DraftItem,
+  type DraftSchedule,
   draftItemsOf,
+  draftSchedulesOf,
   itemsForSave,
   listName,
   recipientGone,
+  scheduleGone,
+  schedulesForSave,
   type TemplateRecipient,
   templateDraftProblem,
   templateInputOf,
@@ -21,7 +26,7 @@ import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Segmented } from "@ui/segmented";
 import { StatusToast } from "@ui/status-toast";
-import { Send, Trash2 } from "lucide-react";
+import { Send, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -35,6 +40,7 @@ import type {
   TemplatePaths,
 } from "../list-types";
 import { ItemsEditor } from "./items-editor";
+import { SchedulesEditor } from "./schedules-editor";
 
 const NAME_MAX = 60;
 const NOTE_MAX = 300;
@@ -45,7 +51,17 @@ type Draft = {
   note: string;
   recipient: TemplateRecipient | null;
   items: DraftItem[];
+  schedules: DraftSchedule[];
 };
+
+/** A time as it would be stored, without what only this screen or the database keeps. */
+const scheduleMark = ({
+  key: _key,
+  id: _id,
+  startsOn: _starts,
+  opensFrom: _from,
+  ...schedule
+}: DraftSchedule) => JSON.stringify(schedule);
 
 type RecipientKind = "none" | TemplateRecipient["kind"];
 
@@ -56,6 +72,7 @@ const signature = (draft: Draft) =>
     note: draft.note.trim(),
     recipient: draft.recipient,
     items: draft.items.map(({ key: _key, id: _id, ...item }) => item),
+    schedules: draft.schedules.map(scheduleMark),
   });
 
 type SaveOutcome = "saved" | "unchanged" | "invalid" | "failed";
@@ -74,10 +91,13 @@ type Failure = ListFailure | "createUnknown";
  * save behind someone else's is refused (40001) and the screen opens again
  * with the latest, saying so once. A new template is saved once it has a
  * name and an item. One the database would refuse whatever is done here
- * (`templateStuck`: an order whose department was removed, a time that goes
- * to something gone) is only read, says why, and can still be removed or
- * sent. Phone: the sections one under the other. Tablet and desktop: the
- * editor beside the list as it will arrive. The main action sends it now;
+ * (`templateStuck`: an order whose department was removed) is only read,
+ * says why, and can still be removed or sent; a time that points at
+ * something gone says so on its row, and on top that it holds the saves
+ * until it is changed or removed, with the way to it (L4). Its times say
+ * when each is sent next, as the database will open it. Phone: the sections
+ * one under the other. Tablet and desktop: the editor beside the list as it
+ * will arrive. The main action sends it now;
  * removing it has its undo on the screen of templates. Used on
  * /lists/templates/[id] and by the team in the console.
  */
@@ -103,9 +123,8 @@ export function TemplateEditor({
     ? recipientGone(template.recipient, liveDepartments, shiftKeys)
     : false;
   const stuck =
-    template && !readOnly
-      ? templateStuck(template, liveDepartments, shiftKeys)
-      : null;
+    template && !readOnly ? templateStuck(template, liveDepartments) : null;
+  const places = { departments: liveDepartments, shifts: shiftKeys };
   // Nothing here changes: a view session, a removed template, or a stuck one.
   const locked = readOnly || stuck !== null;
 
@@ -115,8 +134,13 @@ export function TemplateEditor({
     // One that is gone can't be saved again: the person chooses another.
     recipient: gone && !locked ? null : (template?.recipient ?? null),
     items: draftItemsOf(template?.items ?? []),
+    schedules: draftSchedulesOf(template?.schedules ?? []),
   };
   const [shown, setShown] = useState(initial);
+  // The saved times' next openings, while what is saved is what shows.
+  const [openings, setOpenings] = useState<ScheduleOpenings>(
+    data.times.openings,
+  );
   const [savedId, setSavedId] = useState(template?.id ?? null);
   const [touched, setTouched] = useState(false);
   const [saved, setSaved] = useState(0);
@@ -128,6 +152,9 @@ export function TemplateEditor({
   const [changedShown, setChangedShown] = useState(data.changed);
   const [sending, setSending] = useState(false);
   const [archiving, startArchive] = useTransition();
+  // Asks the times to open the first one that points at something gone.
+  const [fixGone, setFixGone] = useState(0);
+  const heldCard = useRef<HTMLDivElement>(null);
 
   // The newest draft, what the database has, and the save in flight: read by
   // the saves, which outlive the render that started them.
@@ -136,6 +163,7 @@ export function TemplateEditor({
     id: template?.id ?? null,
     version: template?.version ?? null,
     items: new Set(template?.items.map((item) => item.id) ?? []),
+    schedules: new Set(template?.schedules.map((s) => s.id) ?? []),
   });
   const lastSaved = useRef<string | null>(
     template
@@ -160,6 +188,10 @@ export function TemplateEditor({
         note: snapshot.note,
         recipient: snapshot.recipient,
         items: itemsForSave(snapshot.items, server.current.items),
+        schedules: schedulesForSave(
+          snapshot.schedules,
+          server.current.schedules,
+        ),
       },
     );
   }
@@ -183,7 +215,9 @@ export function TemplateEditor({
     const snapshot = draft.current;
     const mark = signature(snapshot);
     if (mark === lastSaved.current) return "unchanged";
-    if (templateDraftProblem(snapshot, order) !== null) return "invalid";
+    if (templateDraftProblem(snapshot, order, places) !== null) {
+      return "invalid";
+    }
     const input = inputOf(snapshot);
     let result: Awaited<ReturnType<TemplateActions["save"]>>;
     try {
@@ -210,7 +244,10 @@ export function TemplateEditor({
       return "failed";
     }
     const value = result.value;
-    if (value.items.length !== snapshot.items.length) {
+    if (
+      value.items.length !== snapshot.items.length ||
+      value.schedules.length !== snapshot.schedules.length
+    ) {
       if (server.current.id === null) {
         // Made, though not as sent: its own screen, never made again.
         stopped.current = true;
@@ -225,11 +262,22 @@ export function TemplateEditor({
       id: value.id,
       version: value.version,
       items: new Set(value.items),
+      schedules: new Set(value.schedules),
     };
     // The items it saved get their ids, wherever they are now.
     const ids = new Map(
       snapshot.items.map((item, at) => [item.key, value.items[at] ?? null]),
     );
+    // And so do its times. One new, or given other days or hours here,
+    // counts from this save, as the database has it, while it is still what
+    // was saved.
+    const scheduleIds = new Map(
+      snapshot.schedules.map((schedule, at) => [
+        schedule.key,
+        value.schedules[at] ?? null,
+      ]),
+    );
+    const savedAt = new Date().toISOString();
     draft.current = {
       ...draft.current,
       items: draft.current.items.map((item) =>
@@ -237,7 +285,36 @@ export function TemplateEditor({
           ? { ...item, id: ids.get(item.key) ?? item.id }
           : item,
       ),
+      schedules: draft.current.schedules.map((schedule) => {
+        const storedId = scheduleIds.get(schedule.key);
+        if (!storedId) return schedule;
+        const sent = snapshot.schedules.find((s) => s.key === schedule.key);
+        const asSent =
+          sent !== undefined && scheduleMark(sent) === scheduleMark(schedule);
+        return storedId === schedule.id &&
+          (schedule.opensFrom !== null || !asSent)
+          ? schedule
+          : {
+              ...schedule,
+              id: storedId,
+              opensFrom: schedule.opensFrom ?? (asSent ? savedAt : null),
+            };
+      }),
     };
+    // What was saved now is what shows, unless it changed meanwhile.
+    const unchanged = new Set(
+      draft.current.schedules
+        .filter((schedule) => {
+          const sent = snapshot.schedules.find((s) => s.key === schedule.key);
+          return sent && scheduleMark(sent) === scheduleMark(schedule);
+        })
+        .flatMap((schedule) => (schedule.id ? [schedule.id] : [])),
+    );
+    setOpenings(
+      Object.fromEntries(
+        Object.entries(value.openings).filter(([id]) => unchanged.has(id)),
+      ),
+    );
     lastSaved.current = mark;
     setShown(draft.current);
     setSavedId(value.id);
@@ -275,6 +352,24 @@ export function TemplateEditor({
   }
 
   function change(next: Partial<Draft>, when: "now" | "typing") {
+    if (next.schedules) {
+      // A time changed here no longer opens as the database last said.
+      const kept = new Set(
+        next.schedules
+          .filter((schedule) => {
+            const before = draft.current.schedules.find(
+              (s) => s.key === schedule.key,
+            );
+            return before && scheduleMark(before) === scheduleMark(schedule);
+          })
+          .flatMap((schedule) => (schedule.id ? [schedule.id] : [])),
+      );
+      setOpenings((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(([id]) => kept.has(id)),
+        ),
+      );
+    }
     draft.current = { ...draft.current, ...next };
     setShown(draft.current);
     if (stopped.current) return;
@@ -314,6 +409,11 @@ export function TemplateEditor({
     const id = server.current.id;
     if (outcome === "failed" || outcome === "invalid" || !id) {
       setTouched(true);
+      // A time that points at something gone holds it: the card on top says so.
+      if (outcome === "invalid" && heldCount(draft.current) > 0) {
+        heldCard.current?.scrollIntoView({ block: "center" });
+        heldCard.current?.focus({ preventScroll: true });
+      }
       return;
     }
     router.push(`${paths.send}?template=${id}`);
@@ -342,6 +442,16 @@ export function TemplateEditor({
       router.push(`${paths.list}?removed=${id}`);
     });
   }
+
+  /** How many of a draft's times point at something gone, which holds its saves. */
+  function heldCount(snapshot: Draft) {
+    return locked
+      ? 0
+      : snapshot.schedules.filter((schedule) =>
+          scheduleGone(schedule, liveDepartments, shiftKeys),
+        ).length;
+  }
+  const held = heldCount(shown);
 
   const nameMissing =
     !listName.safeParse(shown.name).success && (savedId !== null || touched);
@@ -492,6 +602,30 @@ export function TemplateEditor({
           {te("changed")}
         </Card>
       ) : null}
+      {held > 0 ? (
+        <Card
+          ref={heldCard}
+          tabIndex={-1}
+          tone="float"
+          padding="md"
+          role="status"
+          className="flex flex-col items-start gap-3 font-medium focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <span className="flex items-start gap-2">
+            <TriangleAlert
+              aria-hidden="true"
+              className="mt-0.5 size-5 shrink-0 text-warning"
+            />
+            {te("held", { count: held })}
+          </span>
+          <Button
+            variant="secondary"
+            onClick={() => setFixGone((count) => count + 1)}
+          >
+            {te("fixTime")}
+          </Button>
+        </Card>
+      ) : null}
       {failure && !(failure.reason === "changed" && changedShown) ? (
         <Card
           tone="float"
@@ -605,6 +739,22 @@ export function TemplateEditor({
               </>
             )}
           </PageSection>
+
+          <SchedulesEditor
+            schedules={shown.schedules}
+            readOnly={locked}
+            onChange={(schedules) => change({ schedules }, "now")}
+            times={data.times}
+            openings={openings}
+            recipient={shown.recipient}
+            fixGone={fixGone}
+            places={{
+              departments: data.departments,
+              departmentNames: data.departmentNames,
+              shifts: data.shifts,
+              roles: data.roles,
+            }}
+          />
 
           {readOnly || savedId === null ? null : (
             <div className="flex flex-col items-start gap-1">

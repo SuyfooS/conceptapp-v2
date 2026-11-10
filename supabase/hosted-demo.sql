@@ -58,7 +58,9 @@ begin
   -- switch between businesses (20261110000900_several_businesses.sql). Both
   -- start with last month's hours, the wages from the first of last month and
   -- the details for payroll, with the same cases as there, and both show the
-  -- pay estimate.
+  -- pay estimate. Both open today's scheduled lists when they are reset
+  -- ("scheduledLists": true, 20261110001300_list_schedules.sql), and the
+  -- minute job keeps them coming; the local seed's don't.
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$
@@ -67,6 +69,7 @@ begin
       "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
       "template": "restaurant", "renews": false,
       "settings": { "time_clock": { "payEstimate": true } },
+      "scheduledLists": true,
       "hours": { "fridays": false, "cases": [
         { "user_id": "10000000-0000-4000-a000-000000000105", "case": "night" }
       ] },
@@ -89,6 +92,7 @@ begin
       "address": "רחוב הדגמה 2, חיפה", "shabbat_city": "haifa",
       "template": "retail", "renews": true,
       "settings": { "time_clock": { "payEstimate": true } },
+      "scheduledLists": true,
       "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
       "hours": { "fridays": true, "cases": [
         { "user_id": "10000000-0000-4000-a000-000000000108", "case": "friday_late" },

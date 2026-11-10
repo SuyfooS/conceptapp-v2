@@ -13,7 +13,7 @@ import { ChevronDown, ClipboardList, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState, useTransition } from "react";
+import { type ReactNode, useState, useTransition } from "react";
 import { UndoRow } from "../../manage/undo-row";
 import type {
   ListActionResult,
@@ -23,6 +23,7 @@ import type {
   TemplateRow,
   TemplatesScreenData,
 } from "../list-types";
+import { useTimeWords } from "./schedule-words";
 
 const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
 const td = "border-line border-t px-4 py-3 align-middle";
@@ -30,8 +31,10 @@ const td = "border-line border-t px-4 py-3 align-middle";
 /**
  * The business's templates: what can be sent, and the way into each one's
  * editor. Grouped by the department each goes to, then the rest; an order
- * between departments says so. Phone: one group under the other. Tablet: the
- * groups in two columns. Desktop: one table, with who asks for each order.
+ * between departments says so, and so does when each goes by itself (its
+ * first time, and a badge for a time that points at something gone). Phone:
+ * one group under the other. Tablet: the groups in two columns. Desktop: one
+ * table, with when each goes and who asks for each order.
  * Removed ones wait folded at the end, each with its way back, and the one
  * just removed in its editor has its undo on top. Used on /lists/templates
  * and by the team in the console.
@@ -57,6 +60,9 @@ export function TemplatesView({
 
   const groups = templatesByDepartment(data.templates, data.departments);
   const editorOf = (id: string) => `${paths.list}/${id}`;
+  const { when } = useTimeWords(
+    Object.entries(data.shiftNames).map(([key, name]) => ({ key, name })),
+  );
 
   const recipientWords = (row: TemplateRow): string => {
     const recipient = row.recipient;
@@ -81,10 +87,34 @@ export function TemplatesView({
           name: data.departmentNames[row.fromDepartment] ?? t("aDepartment"),
         })
       : null;
-  const subtitleOf = (row: TemplateRow) =>
-    [t("items", { count: row.items }), recipientWords(row), fromWords(row)]
-      .filter(Boolean)
-      .join(" · ");
+  /** When it goes by itself: its first time and how many more, or paused. */
+  const timesWords = (row: TemplateRow): ReactNode =>
+    row.times.first ? (
+      <>
+        {when(row.times.first)}
+        {row.times.count > 1
+          ? ` ${t("moreTimes", { count: row.times.count - 1 })}`
+          : null}
+      </>
+    ) : row.times.count > 0 ? (
+      t("timesPaused", { count: row.times.count })
+    ) : null;
+  const goneBadge = (row: TemplateRow) =>
+    row.times.gone > 0 ? (
+      <Badge tone="warning">{t("timesGone", { count: row.times.gone })}</Badge>
+    ) : null;
+  const subtitleOf = (row: TemplateRow): ReactNode => {
+    const times = timesWords(row);
+    const from = fromWords(row);
+    return (
+      <>
+        {t("items", { count: row.items })}
+        {times ? <> · {times}</> : null}
+        {` · ${recipientWords(row)}`}
+        {from ? ` · ${from}` : null}
+      </>
+    );
+  };
   const groupTitle = (department: string | null) =>
     department === null
       ? groups.length === 1
@@ -133,8 +163,13 @@ export function TemplatesView({
           title={row.name}
           subtitle={subtitleOf(row)}
           trailing={
-            row.fromDepartment ? (
-              <Badge tone="neutral">{t("order")}</Badge>
+            row.fromDepartment || row.times.gone > 0 ? (
+              <span className="flex flex-col items-end gap-1">
+                {row.fromDepartment ? (
+                  <Badge tone="neutral">{t("order")}</Badge>
+                ) : null}
+                {goneBadge(row)}
+              </span>
             ) : undefined
           }
         />
@@ -205,6 +240,9 @@ export function TemplatesView({
                     {t("columns.list")}
                   </th>
                   <th scope="col" className={th}>
+                    {t("columns.when")}
+                  </th>
+                  <th scope="col" className={th}>
                     {t("columns.to")}
                   </th>
                   <th scope="col" className={th}>
@@ -229,6 +267,12 @@ export function TemplatesView({
                             <Badge tone="neutral">{t("order")}</Badge>
                           ) : null}
                         </Link>
+                      </td>
+                      <td className={cn(td, "text-ink-2")}>
+                        <span className="flex flex-wrap items-center gap-2">
+                          {timesWords(row) ?? "—"}
+                          {goneBadge(row)}
+                        </span>
                       </td>
                       <td className={cn(td, "text-ink-2")}>
                         {recipientWords(row)}

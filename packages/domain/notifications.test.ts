@@ -99,6 +99,8 @@ describe("the kinds", () => {
       NOTIFICATION_KIND_KEYS.filter((kind) => needsAction(kind)).sort(),
     ).toEqual([
       "clock.confirm",
+      "lists.late_team",
+      "lists.out_of_range",
       "pay.month_due",
       "swap.offered",
       "swap.waiting",
@@ -387,6 +389,83 @@ describe("buildInbox", () => {
     expect(
       lineOf(row("lists.finished", { list: LINE, name: "Bar order" }), MANAGER),
     ).toMatchObject({ line: { kind: "lists.finished", name: "Bar order" } });
+  });
+
+  it("reads a list due soon or late, with its due time if it kept it", () => {
+    const due = "2026-11-16T07:15:00.000Z";
+    for (const kind of ["lists.due", "lists.late", "lists.late_team"]) {
+      expect(
+        lineOf(row(kind, { list: LINE, name: "Opening", due })),
+        kind,
+      ).toMatchObject({
+        group: "lists",
+        href: `/lists/${LINE}`,
+        line: { kind, name: "Opening", due },
+      });
+      expect(
+        lineOf(row(kind, { list: LINE, name: "Opening", due: "soon" })),
+        kind,
+      ).toMatchObject({ line: { kind, due: null } });
+    }
+    // Late, for its managers, leads to the business's day when it lost the list.
+    expect(linkFor("lists.late_team")).toBe("/lists/today");
+  });
+
+  it("reads a reading outside its range, with the item's label", () => {
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LINE,
+          name: "Opening",
+          item: LINE,
+          label: "Fridge",
+        }),
+        MANAGER,
+      ),
+    ).toMatchObject({
+      href: `/lists/${LINE}`,
+      line: {
+        kind: "lists.out_of_range",
+        name: "Opening",
+        label: "Fridge",
+        reading: null,
+      },
+    });
+    expect(
+      lineOf(row("lists.out_of_range", { list: LINE, name: "Opening" })),
+    ).toMatchObject({ line: { label: null, reading: null } });
+    // With the reading, its range and its unit, as the database now sends.
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LINE,
+          name: "Opening",
+          item: LINE,
+          label: "Fridge",
+          reading: 7,
+          min: 0,
+          max: 5,
+          unit: "°C",
+        }),
+        MANAGER,
+      ),
+    ).toMatchObject({
+      line: { reading: { value: 7, min: 0, max: 5, unit: "°C" } },
+    });
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LINE,
+          name: "Opening",
+          reading: -17,
+          min: -25,
+          max: -18,
+          unit: null,
+        }),
+      ),
+    ).toMatchObject({
+      line: { reading: { value: -17, min: -25, max: -18, unit: null } },
+    });
   });
 
   it("reads someone joining", () => {

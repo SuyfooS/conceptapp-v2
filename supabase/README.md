@@ -70,8 +70,16 @@ once a day. The minute job calls the app through pg_net with two secrets from Va
 without them calls nothing (what is due then goes out with the next action in the app).
 `20261110001000_payroll_months.sql` adds a third, `payroll`, daily at 06:00 UTC: on each
 business's 2nd it reminds pay holders to close last month (never in a demo business), in
-the app and, like any line, on the phone. It needs no secret. `seed.sql` switches all three
-off locally and in CI; the tests call what they run.
+the app and, like any line, on the phone. It needs no secret.
+`20261110001300_list_schedules.sql` adds a fourth, `lists`, every minute: pure SQL
+(`private.lists_tick`), with no pg_net and no Vault secret. It opens the lists each
+template's times have opened by then (up to 12 hours late after an outage, never a flood;
+the times there already count from the migration, so its first minute catches up on
+nothing), reminds before they are due, marks late ones and closes as missed what nobody did
+(never a list opened again by hand), each once;
+its lines go to phones with the `notifications` job. `seed.sql` switches all four off locally
+and in CI, and only a demo definition that says `"scheduledLists": true` (the hosted ones)
+opens today's lists when it is reset; the tests call what the jobs run, at times they choose.
 
 Once the migration has gone through the Migrate workflow and `CRON_SECRET` is in Vercel
 (`README.md`), add the two secrets in the dashboard, Project Settings, Vault (not the SQL

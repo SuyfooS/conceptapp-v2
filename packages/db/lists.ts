@@ -1,4 +1,5 @@
 import "server-only";
+import type { ScheduleOpenings } from "@domain/list-openings";
 import {
   holdsList,
   type ItemResult,
@@ -491,7 +492,7 @@ async function templatesFrom(
     supabase
       .from("list_schedules")
       .select(
-        "id, template_id, days, anchor, shift_key, opens_offset, due_offset, recipient_kind, recipient_user, recipient_department, recipient_shift, recipient_role, active, starts_on",
+        "id, template_id, days, anchor, shift_key, opens_offset, due_offset, recipient_kind, recipient_user, recipient_department, recipient_shift, recipient_role, active, starts_on, opens_from",
       )
       .in("template_id", ids)
       .order("position"),
@@ -538,6 +539,7 @@ async function templatesFrom(
         recipient,
         active: row.active,
         startsOn: row.starts_on,
+        opensFrom: row.opens_from,
       },
     ]);
   }
@@ -621,6 +623,25 @@ export async function getListTemplatesForTeam(
     throw error;
   }
   return templatesFrom(admin, data ?? []);
+}
+
+/**
+ * Where a business is, for its times in the console: its zone and the city
+ * its Shabbat follows. The team isn't a member, so this reads with the
+ * secret key; callers check that the person is on the team first.
+ */
+export async function getBusinessPlaceForTeam(
+  businessId: string,
+): Promise<{ timeZone: string; shabbatCity: string | null } | null> {
+  const { data, error } = await createAdminClient()
+    .from("businesses")
+    .select("timezone, shabbat_city")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (error) throw error;
+  return data
+    ? { timeZone: data.timezone, shabbatCity: data.shabbat_city }
+    : null;
 }
 
 /** One template of the business for the console, or null when it isn't one. */
@@ -712,6 +733,62 @@ export async function getReadings(
   );
 }
 
+/** A number item of a list, with its reading if it has one. */
+export type ListReading = {
+  listId: string;
+  itemId: string;
+  templateItemId: string | null;
+  label: string;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  reading: number | null;
+  doneAt: string | null;
+  doneBy: string | null;
+  outOfRange: boolean;
+};
+
+/**
+ * The number items of these lists, in each list's order, with their readings:
+ * the manager's overview of a day and its week. Under RLS, which lets the
+ * reader see the items of the lists they read.
+ */
+export async function getListReadings(
+  listIds: readonly string[],
+): Promise<ListReading[] | "notYet"> {
+  if (listIds.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("list_items")
+    .select(
+      "id, list_id, template_item_id, label, unit, min_value, max_value, reading, done_at, done_by",
+    )
+    .in("list_id", [...listIds])
+    .eq("kind", "number")
+    .order("position");
+  if (error) {
+    if (isMissingTable(error)) return "notYet";
+    throw error;
+  }
+  return (data ?? []).map((row) => ({
+    listId: row.list_id,
+    itemId: row.id,
+    templateItemId: row.template_item_id,
+    label: row.label,
+    unit: row.unit,
+    min: row.min_value,
+    max: row.max_value,
+    reading: row.reading,
+    doneAt: row.done_at,
+    doneBy: row.done_by,
+    outOfRange: isOutOfRange({
+      reading: row.reading,
+      min: row.min_value,
+      max: row.max_value,
+    }),
+  }));
+}
+
 /**
  * The Lists tab's count: the open lists `actorId` holds (`public.my_open_lists`,
  * with the secret key, since under RLS a list manager would count every list).
@@ -733,6 +810,63 @@ export async function countMyOpenLists(
 }
 
 const savedSchema = z.object({ id: z.string(), version: z.int() });
+
+const openingsSchema = z.array(
+  z.object({
+    schedule: z.string(),
+    openings: z.array(
+      z.object({
+        occursOn: z.string(),
+        opensAt: z.string(),
+        dueAt: z.string(),
+      }),
+    ),
+  }),
+);
+
+/** Instants as the screens compare them: ISO, in UTC. */
+const iso = (stamp: string) => new Date(stamp).toISOString();
+
+/**
+ * The next three openings of each of a template's times, as the database's
+ * minute job will open them (`public.next_list_openings`, with the secret key
+ * for `actorId`, a list manager or the team). Empty when it can't say: the
+ * migration not on this project yet, or not theirs to read.
+ */
+export async function nextListOpenings(
+  actorId: string,
+  templateId: string,
+  at?: Date,
+): Promise<ScheduleOpenings> {
+  const { data, error } = await createAdminClient().rpc("next_list_openings", {
+    actor: actorId,
+    template: templateId,
+    ...atTime(at),
+  });
+  if (error) {
+    if (
+      !isMissingFunction(error) &&
+      error.code !== "P0002" &&
+      error.code !== "42501"
+    ) {
+      console.error("reading a template's next openings failed", error.message);
+    }
+    return {};
+  }
+  const parsed = openingsSchema.safeParse(data);
+  if (!parsed.success) return {};
+  return Object.fromEntries(
+    parsed.data.map((row) => [
+      row.schedule,
+      row.openings.map((opening) => ({
+        occursOn: opening.occursOn,
+        opensAt: iso(opening.opensAt),
+        dueAt: iso(opening.dueAt),
+        shiftId: null,
+      })),
+    ]),
+  );
+}
 
 /**
  * Creates or saves a template with its items and times
@@ -766,7 +900,7 @@ export async function saveListTemplate(
   if (error) return refused(failureOf(error));
   const saved = savedSchema.safeParse(data);
   if (!saved.success) return refused("failed");
-  const [now, items] = await Promise.all([
+  const [now, items, schedules, openings] = await Promise.all([
     admin
       .from("list_templates")
       .select("version")
@@ -779,11 +913,18 @@ export async function saveListTemplate(
       .eq("template_id", saved.data.id)
       .eq("business_id", businessId)
       .order("position"),
+    admin
+      .from("list_schedules")
+      .select("id")
+      .eq("template_id", saved.data.id)
+      .eq("business_id", businessId)
+      .order("position"),
+    nextListOpenings(actorId, saved.data.id),
   ]);
-  if (now.error || items.error) {
+  if (now.error || items.error || schedules.error) {
     console.error(
       "reading a saved template failed",
-      (now.error ?? items.error)?.message,
+      (now.error ?? items.error ?? schedules.error)?.message,
     );
     return { ...refused("failed"), saved: saved.data.id };
   }
@@ -792,7 +933,12 @@ export async function saveListTemplate(
   }
   return {
     ok: true,
-    value: { ...saved.data, items: (items.data ?? []).map((row) => row.id) },
+    value: {
+      ...saved.data,
+      items: (items.data ?? []).map((row) => row.id),
+      schedules: (schedules.data ?? []).map((row) => row.id),
+      openings,
+    },
   };
 }
 

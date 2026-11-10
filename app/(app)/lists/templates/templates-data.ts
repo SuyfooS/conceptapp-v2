@@ -1,8 +1,13 @@
 import type { Department } from "@domain/departments";
-import type { ListTemplate } from "@domain/lists";
+import {
+  type ListTemplate,
+  type SchedulePlaces,
+  scheduleGone,
+} from "@domain/lists";
 import { STAFF_ROLES } from "@domain/modules";
 import type { ShiftPattern } from "@domain/staffing";
 import type {
+  EditorTimes,
   TemplateEditorData,
   TemplateRow,
   TemplatesScreenData,
@@ -14,7 +19,16 @@ import type {
  * key), so both draw the same screen.
  */
 
-export function templateRow(template: ListTemplate): TemplateRow {
+/**
+ * A template's row: its items, who it goes to, and its times in short (the
+ * first that runs, how many more, and how many point at something gone, by
+ * the business's live departments and shift keys).
+ */
+export function templateRow(
+  template: ListTemplate,
+  places: SchedulePlaces,
+): TemplateRow {
+  const first = template.schedules.find((s) => s.active);
   return {
     id: template.id,
     name: template.name,
@@ -22,6 +36,33 @@ export function templateRow(template: ListTemplate): TemplateRow {
     fromDepartment: template.fromDepartment,
     items: template.items.length,
     archivedAt: template.archivedAt,
+    times: {
+      count: template.schedules.length,
+      first: first
+        ? {
+            days: first.days,
+            anchor: first.anchor,
+            shift: first.shift,
+            opensOffset: first.opensOffset,
+          }
+        : null,
+      gone: template.schedules.filter((s) =>
+        scheduleGone(s, places.departments, places.shifts),
+      ).length,
+    },
+  };
+}
+
+/** The business's live departments and shift keys, which a time may point at. */
+export function placesOf(
+  departments: readonly Department[],
+  shifts: readonly ShiftPattern[],
+): SchedulePlaces {
+  return {
+    departments: departments
+      .filter((d) => d.archivedAt === null)
+      .map((d) => d.id),
+    shifts: shifts.map((s) => s.key),
   };
 }
 
@@ -53,12 +94,14 @@ export function templatesScreen({
     .filter((t) => t.archivedAt !== null)
     .sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
   const just = readOnly ? undefined : gone.find((t) => t.id === removed);
+  const places = placesOf(departments, shifts);
+  const row = (template: ListTemplate) => templateRow(template, places);
   return {
-    templates: live.map(templateRow),
-    removed: readOnly ? [] : gone.map(templateRow),
+    templates: live.map(row),
+    removed: readOnly ? [] : gone.map(row),
     ...departmentsOf(departments),
     shiftNames: Object.fromEntries(shifts.map((s) => [s.key, s.name])),
-    justRemoved: just ? templateRow(just) : null,
+    justRemoved: just ? row(just) : null,
     readOnly,
   };
 }
@@ -69,12 +112,14 @@ export function templateEditor({
   shifts,
   readOnly,
   changed,
+  times,
 }: {
   template: ListTemplate | null;
   departments: readonly Department[];
   shifts: readonly ShiftPattern[];
   readOnly: boolean;
   changed: boolean;
+  times: EditorTimes;
 }): TemplateEditorData {
   return {
     template,
@@ -84,5 +129,6 @@ export function templateEditor({
     // A removed template is only read: the database saves none.
     readOnly: readOnly || template?.archivedAt != null,
     changed,
+    times,
   };
 }

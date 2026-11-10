@@ -4,7 +4,10 @@ import {
   boundOf,
   byUrgency,
   type DraftItem,
+  type DraftSchedule,
+  dayRuns,
   draftItemsOf,
+  draftSchedulesOf,
   dueAtOf,
   dueTimeFor,
   fromOffsets,
@@ -28,7 +31,10 @@ import {
   readBound,
   recipientGone,
   type SendShift,
+  scheduleGone,
   scheduleInput,
+  scheduleProblem,
+  schedulesForSave,
   sendDefaults,
   sendInput,
   signed,
@@ -799,6 +805,7 @@ const template: ListTemplate = {
       recipient: { kind: "department", department: KITCHEN },
       active: true,
       startsOn: "2026-11-09",
+      opensFrom: "2026-11-09T06:00:00.000Z",
     },
   ],
 };
@@ -958,57 +965,162 @@ describe("the template editor's save", () => {
     expect(recipientGone(null, [], [])).toBe(false);
   });
 
-  it("knows a template no save can pass: an order or a time pointing at something gone", () => {
+  it("knows a template no save can pass: an order whose department is gone", () => {
+    expect(templateStuck(template, [KITCHEN, BAR])).toBeNull();
+    expect(templateStuck({ ...template, fromDepartment: BAR }, [KITCHEN])).toBe(
+      "order",
+    );
+    expect(
+      templateStuck({ ...template, fromDepartment: BAR }, [KITCHEN, BAR]),
+    ).toBeNull();
+  });
+
+  it("knows a time pointing at something gone, which the editor changes now", () => {
     const [schedule] = template.schedules;
     if (!schedule) throw new Error("The template has a time");
-    expect(templateStuck(template, [KITCHEN, BAR], [])).toBeNull();
-    // An order whose asking department was removed.
-    expect(
-      templateStuck({ ...template, fromDepartment: BAR }, [KITCHEN], []),
-    ).toBe("order");
-    expect(
-      templateStuck({ ...template, fromDepartment: BAR }, [KITCHEN, BAR], []),
-    ).toBeNull();
+    expect(scheduleGone(schedule, [KITCHEN], [])).toBe(false);
     // A time that goes to a removed department, or to a shift gone.
-    expect(templateStuck(template, [BAR], [])).toBe("schedule");
+    expect(scheduleGone(schedule, [BAR], [])).toBe(true);
     const toShift = {
-      ...template,
-      schedules: [
-        {
-          ...schedule,
-          recipient: { kind: "shift", shift: "evening" } as const,
-        },
-      ],
+      ...schedule,
+      recipient: { kind: "shift", shift: "evening" } as const,
     };
-    expect(templateStuck(toShift, [], ["evening"])).toBeNull();
-    expect(templateStuck(toShift, [], ["morning"])).toBe("schedule");
+    expect(scheduleGone(toShift, [], ["evening"])).toBe(false);
+    expect(scheduleGone(toShift, [], ["morning"])).toBe(true);
     // A time that follows a shift gone.
     const followsShift = {
-      ...template,
-      schedules: [
-        {
-          ...schedule,
-          anchor: "shift_start" as const,
-          shift: "morning",
-          recipient: { kind: "role", role: "worker" } as const,
-        },
-      ],
+      ...schedule,
+      anchor: "shift_start" as const,
+      shift: "morning",
+      recipient: { kind: "role", role: "worker" } as const,
     };
-    expect(templateStuck(followsShift, [], ["morning"])).toBeNull();
-    expect(templateStuck(followsShift, [], [])).toBe("schedule");
+    expect(scheduleGone(followsShift, [], ["morning"])).toBe(false);
+    expect(scheduleGone(followsShift, [], [])).toBe(true);
     // A person is the database's to check.
     expect(
-      templateStuck(
-        {
-          ...template,
-          schedules: [
-            { ...schedule, recipient: { kind: "person", user: NOA } as const },
-          ],
-        },
+      scheduleGone(
+        { ...schedule, recipient: { kind: "person", user: NOA } as const },
         [],
         [],
       ),
+    ).toBe(false);
+  });
+});
+
+describe("a template's times in its editor", () => {
+  const [saved] = template.schedules;
+  if (!saved) throw new Error("The template has a time");
+  const added: DraftSchedule = {
+    key: "s-1",
+    id: null,
+    days: [5, 0],
+    anchor: "shift_start",
+    shift: "evening",
+    opensOffset: -30,
+    dueOffset: 60,
+    recipient: { kind: "shift", shift: "evening" },
+    active: true,
+    startsOn: null,
+    opensFrom: null,
+  };
+  const places = { departments: [KITCHEN], shifts: ["evening"] };
+
+  it("saves the times it has, in order, with ids only for those still saved", () => {
+    const drafts = [...draftSchedulesOf(template.schedules), added];
+    expect(drafts.map((d) => d.key)).toEqual([SCHEDULE, "s-1"]);
+    const schedules = schedulesForSave(drafts, new Set([SCHEDULE]));
+    expect(schedules).toEqual([
+      {
+        id: SCHEDULE,
+        days: [0, 1, 2, 3, 4],
+        anchor: "day",
+        opens: "08:30",
+        dueAfterMinutes: 45,
+        recipient: { kind: "department", department: KITCHEN },
+        active: true,
+      },
+      {
+        days: [0, 5],
+        anchor: "shift_start",
+        shift: "evening",
+        opens: -30,
+        dueAfterMinutes: 90,
+        recipient: { kind: "shift", shift: "evening" },
+        active: true,
+      },
+    ]);
+    // One removed and saved comes back as a new one.
+    expect(schedulesForSave(drafts, new Set())[0]?.id).toBeUndefined();
+    const input = templateInputOf(template, {
+      name: "Kitchen opening",
+      note: "",
+      recipient: template.recipient,
+      items: itemsForSave(
+        draftItemsOf(template.items),
+        new Set([ITEM, ITEM_2]),
+      ),
+      schedules,
+    });
+    expect(templateForSave(input).schedules[1]).toMatchObject({
+      anchor: "shift_start",
+      opensOffset: -30,
+      dueOffset: 60,
+    });
+  });
+
+  it("sums a time's days up as runs of days in a row", () => {
+    expect(dayRuns([4, 0, 1, 2, 3])).toEqual([[0, 4]]);
+    expect(dayRuns([0, 1, 2, 3, 4, 6])).toEqual([
+      [0, 4],
+      [6, 6],
+    ]);
+    expect(dayRuns([5, 5])).toEqual([[5, 5]]);
+    expect(dayRuns([])).toEqual([]);
+  });
+
+  it("says what keeps a time from saving", () => {
+    const [first] = draftSchedulesOf(template.schedules);
+    if (!first) throw new Error("A time");
+    expect(scheduleProblem(first, places)).toBeNull();
+    expect(scheduleProblem(added, places)).toBeNull();
+    expect(scheduleProblem({ ...first, days: [] }, places)).toBe("days");
+    expect(
+      scheduleProblem({ ...first, dueOffset: first.opensOffset }, places),
+    ).toBe("times");
+    expect(scheduleProblem({ ...added, opensOffset: -800 }, places)).toBe(
+      "times",
+    );
+    expect(scheduleProblem(added, { departments: [KITCHEN], shifts: [] })).toBe(
+      "gone",
+    );
+    // Without the business's places, only its own shape.
+    expect(scheduleProblem(added)).toBeNull();
+    const draft = {
+      name: "Kitchen opening",
+      note: "",
+      recipient: template.recipient,
+      items: draftItemsOf(template.items),
+    };
+    expect(
+      templateDraftProblem(
+        { ...draft, schedules: [first, added] },
+        null,
+        places,
+      ),
     ).toBeNull();
+    expect(
+      templateDraftProblem(
+        { ...draft, schedules: [{ ...first, days: [] }] },
+        null,
+        places,
+      ),
+    ).toBe("schedule");
+    expect(
+      templateDraftProblem({ ...draft, schedules: [added] }, null, {
+        departments: [KITCHEN],
+        shifts: [],
+      }),
+    ).toBe("schedule");
   });
 });
 

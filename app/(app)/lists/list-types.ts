@@ -1,4 +1,9 @@
 import type {
+  OpeningShift,
+  ScheduleOpenings,
+  ShabbatSpan,
+} from "@domain/list-openings";
+import type {
   ItemResult,
   ListDetail,
   ListItemKind,
@@ -8,6 +13,7 @@ import type {
   ListTemplate,
   ListTemplateInput,
   SavedTemplate,
+  ScheduleAnchor,
   SendShift,
   TemplateRecipient,
 } from "@domain/lists";
@@ -194,6 +200,20 @@ export type TemplateRow = {
   fromDepartment: string | null;
   items: number;
   archivedAt: string | null;
+  /** Its times, in short (L4). */
+  times: {
+    /** How many it has, paused ones too. */
+    count: number;
+    /** The first one that isn't paused, for its words; null when none runs. */
+    first: {
+      days: number[];
+      anchor: ScheduleAnchor;
+      shift: string | null;
+      opensOffset: number;
+    } | null;
+    /** How many point at a shift or a department that is gone, and open nothing. */
+    gone: number;
+  };
 };
 
 /** Where the screens of templates lead, inside the app, the console or the demo. */
@@ -224,6 +244,27 @@ export type TemplatesScreenData = {
   readOnly: boolean;
 };
 
+/**
+ * What a template's times are worked out with in its editor (L4): the
+ * moment and the business's zone, its Shabbat, the shifts a time may follow,
+ * the people one may go to, and the saved times' next openings as the
+ * database will open them.
+ */
+export type EditorTimes = {
+  /** ISO timestamp of the moment the screen is read. */
+  now: string;
+  timeZone: string;
+  closesOnShabbat: boolean;
+  /** The business's next Shabbatot; none when it is open on Shabbat. */
+  shabbat: ShabbatSpan[];
+  /** Published shifts of the coming week, for a time that follows a shift. */
+  shifts: OpeningShift[];
+  /** Who a time may go to by name; none where nobody is read (the console). */
+  people: { userId: string; name: string | null }[];
+  /** Each saved time's next openings, by its id. */
+  openings: ScheduleOpenings;
+};
+
 /** One template in its editor, or a new one. */
 export type TemplateEditorData = {
   /** Null for a new template, saved once it has a name and an item. */
@@ -238,7 +279,75 @@ export type TemplateEditorData = {
   readOnly: boolean;
   /** Back after a save was refused: what shows is the latest, and says so. */
   changed: boolean;
+  times: EditorTimes;
 };
+
+/** A number item's reading, on the manager's day. */
+export type DayReading = {
+  listId: string;
+  listName: string;
+  label: string;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  reading: number;
+  doneAt: string | null;
+  doneBy: string | null;
+  outOfRange: boolean;
+};
+
+/** One number item of a template across the week, a reading a day. */
+export type WeekReadings = {
+  /** The template's item, or the list's own item when it has none. */
+  key: string;
+  label: string;
+  listName: string;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  /** By day, "YYYY-MM-DD": the day's reading, or null when there was none. */
+  days: Record<string, { reading: number; outOfRange: boolean } | null>;
+};
+
+/** The manager's overview of a day (L4): today's lists, or a past day's. */
+export type ListsTodayData = {
+  now: string;
+  timeZone: string;
+  timing: ListsTiming;
+  lookups: ListLookups;
+  userId: string;
+  /** The day shown, "YYYY-MM-DD", and whether it is today. */
+  day: string;
+  today: boolean;
+  /** The days a person can pick, oldest first, today last. */
+  week: string[];
+  /** Late first; the rest by when they are due. */
+  late: ListSummary[];
+  open: ListSummary[];
+  /** Finished or cancelled. */
+  closed: ListSummary[];
+  missed: ListSummary[];
+  /** The readings of the day's number items, those outside their range first. */
+  readings: DayReading[];
+  /** The week's number items, a row each. */
+  weekReadings: WeekReadings[];
+  /**
+   * Each day of the week, "YYYY-MM-DD", that has something to look at: lists
+   * nobody did, lists still late, and readings outside their range.
+   */
+  weekFlags: Record<string, DayFlags>;
+  /**
+   * Live templates whose times, not paused, follow a shift or go to a place
+   * that is gone, and so open nothing: their ids and names.
+   */
+  stopped: { id: string; name: string }[];
+  send: SendWay | null;
+  /** Only reading: a view session. */
+  viewOnly: boolean;
+};
+
+/** What a day of the overview's week has to look at. */
+export type DayFlags = { missed: number; late: number; outOfRange: number };
 
 /** What the template screens ask the server to do. The console and demo pass their own. */
 export type TemplateActions = {

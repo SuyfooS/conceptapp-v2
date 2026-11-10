@@ -94,6 +94,10 @@ const demoTemplate = z.object({
     .array(z.object({ id: z.string().min(1).optional() }).loose())
     .min(1)
     .max(60),
+  schedules: z
+    .array(z.object({ id: z.string().min(1).optional() }).loose())
+    .max(7)
+    .default([]),
 });
 
 export async function demoSaveTemplate(
@@ -111,6 +115,11 @@ export async function demoSaveTemplate(
       items: template.data.items.map(
         (item, at) => item.id ?? `${id}-item-${at + 1}`,
       ),
+      schedules: template.data.schedules.map(
+        (schedule, at) => schedule.id ?? `${id}-time-${at + 1}`,
+      ),
+      // The editor works the next openings out itself while there are none.
+      openings: {},
     },
   };
 }

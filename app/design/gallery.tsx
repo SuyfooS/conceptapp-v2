@@ -1,5 +1,6 @@
 "use client";
 
+import { WEEKDAY_KEYS } from "@domain/availability-form";
 import { accentTokens } from "@domain/color";
 import { avatarHue } from "@domain/people";
 import { COVER_PRESETS, type CoverPreset } from "@domain/profile";
@@ -31,6 +32,7 @@ import { CoverChoices } from "@ui/cover-choices";
 import { CoverageBar } from "@ui/coverage-bar";
 import { DataTable } from "@ui/data-table";
 import { DateField } from "@ui/date-field";
+import { DayToggles } from "@ui/day-toggles";
 import { EmptyState } from "@ui/empty-state";
 import {
   FieldGroup,
@@ -166,6 +168,7 @@ function GalleryBody({
   const tNav = useTranslations("app.nav");
   const tCover = useTranslations("ui.profileCover");
   const tList = useTranslations("app.lists.list");
+  const tTimes = useTranslations("app.lists.schedules");
   const tPay = useTranslations("app.pay");
   const tRoles = useTranslations("app.roles");
   const [ticked, setTicked] = useState(false);
@@ -179,6 +182,7 @@ function GalleryBody({
   const [birth, setBirth] = useState<DateParts>(EMPTY_DATE);
   const typedBirth = parseTypedDate(birth);
   const [day, setDay] = useState("0");
+  const [galleryDays, setGalleryDays] = useState([0, 1, 2, 3, 4]);
   const [codeStatus, setCodeStatus] = useState<CodeSlotsStatus>("idle");
   const [codeRun, setCodeRun] = useState(0);
   const [total, setTotal] = useState(120);
@@ -805,6 +809,18 @@ function GalleryBody({
               leading={<Users />}
             />
           </ChoiceList>
+        </Section>
+
+        <Section title={t("dayToggles")}>
+          <DayToggles
+            legend={tTimes("sheet.days")}
+            value={galleryDays}
+            onChange={setGalleryDays}
+            days={WEEKDAY_KEYS.map((key) => ({
+              short: tDays(`${key}.short`),
+              long: tTimes(`dayNames.${key}`),
+            }))}
+          />
         </Section>
 
         <Section title={t("emptyState")}>

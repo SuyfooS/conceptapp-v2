@@ -180,6 +180,10 @@ export function ListTable({
                     ) : (
                       <span className="text-ink-2">{t("card.open")}</span>
                     )
+                  ) : list.status === "missed" ? (
+                    <Badge tone="warning">
+                      {closedWords(t, list, lookups, timeZone)}
+                    </Badge>
                   ) : (
                     <span className="text-ink-2">
                       {closedWords(t, list, lookups, timeZone)}

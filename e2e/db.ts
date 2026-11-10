@@ -1478,3 +1478,133 @@ export async function shopLines(phone: string, kind: string): Promise<number> {
       and p.phone = ${phone}`;
   return row?.count ?? 0;
 }
+
+/*
+ * Lists' times (L4). The minute job is off locally and in CI, and the local
+ * demo's reset opens no scheduled list (only a hosted definition says
+ * "scheduledLists": true), so a test opens them itself with `tickLists`, at
+ * the time it chooses.
+ */
+
+/**
+ * A template of a test's own at the demo restaurant, for its kitchen: a
+ * fridge reading from 0 to 5 °C and a check. Its id. `removeDemoTemplates`
+ * takes it away with its times and lists.
+ */
+export async function makeDemoTemplate(name: string): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`
+    insert into public.list_templates (
+      business_id, name, recipient_kind, recipient_department, position
+    )
+    select ${DEMO_RESTAURANT}, ${name}, 'department', d.id, 99
+    from public.departments d
+    where d.business_id = ${DEMO_RESTAURANT} and d.key = 'kitchen'
+    returning id`;
+  if (!row) throw new Error("The demo restaurant has no kitchen");
+  await sql`
+    insert into public.list_template_items (
+      template_id, business_id, position, kind, label, unit, min_value, max_value
+    )
+    values
+      (${row.id}, ${DEMO_RESTAURANT}, 0, 'number', 'מקרר', '°C', 0, 5),
+      (${row.id}, ${DEMO_RESTAURANT}, 1, 'check', 'ניקוי', null, null, null)`;
+  return row.id;
+}
+
+/** How many times a demo template has. */
+export async function demoScheduleCount(templateId: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.list_schedules
+    where template_id = ${templateId}`;
+  return row?.count ?? 0;
+}
+
+/**
+ * A template's times as old as a business's that had them all along (a day
+ * old, counting from yesterday), so a time already gone by today opens when
+ * ticked.
+ */
+export async function ageDemoSchedules(templateId: string): Promise<void> {
+  await sql`
+    update public.list_schedules
+    set created_at = created_at - interval '1 day',
+      opens_from = opens_from - interval '1 day',
+      starts_on = starts_on - 1
+    where template_id = ${templateId}`;
+}
+
+/**
+ * Pauses every other time of the demo restaurant, so a tick opens only the
+ * test's own lists whatever the hour. The ids it paused, for `resumeDemoSchedules`.
+ */
+export async function pauseOtherDemoSchedules(
+  templateId: string,
+): Promise<string[]> {
+  const rows = await sql<{ id: string }[]>`
+    update public.list_schedules set active = false
+    where business_id = ${DEMO_RESTAURANT} and template_id <> ${templateId}
+      and active
+    returning id`;
+  return rows.map((row) => row.id);
+}
+
+export async function resumeDemoSchedules(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  await sql`update public.list_schedules set active = true where id in ${sql(ids)}`;
+}
+
+/** What the minute job does, for the demo restaurant, now or at `at`. How many lists it opened. */
+export async function tickLists(at: Date = new Date()): Promise<number> {
+  const [row] = await sql<{ opened: number }[]>`
+    select private.lists_tick(${at}::timestamptz, ${DEMO_RESTAURANT}::uuid) as opened`;
+  return row?.opened ?? 0;
+}
+
+export type ScheduledDemoList = {
+  id: string;
+  status: string;
+  late: boolean;
+  reminded: boolean;
+};
+
+/** The lists a demo template's times opened, newest first. */
+export async function scheduledDemoLists(
+  templateId: string,
+): Promise<ScheduledDemoList[]> {
+  return await sql<ScheduledDemoList[]>`
+    select l.id, l.status, l.late_at is not null as late,
+      l.reminded_at is not null as reminded
+    from public.lists l
+    where l.business_id = ${DEMO_RESTAURANT} and l.template_id = ${templateId}
+      and l.origin = 'scheduled'
+    order by l.opens_at desc`;
+}
+
+/** How many of the demo restaurant's lines of `kind` name a list of this name. */
+export async function demoListLines(
+  kind: string,
+  name: string,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.notifications n
+    where n.business_id = ${DEMO_RESTAURANT} and n.kind = ${kind}
+      and n.params ->> 'name' = ${name}`;
+  return row?.count ?? 0;
+}
+
+/**
+ * The demo restaurant's lines of a kind about a list by name, and how many
+ * people they went to: other specs may give the restaurant another manager
+ * while this one runs, so a spec checks one line each, not a fixed count.
+ */
+export async function demoListLineSpread(
+  kind: string,
+  name: string,
+): Promise<{ lines: number; people: number }> {
+  const [row] = await sql<{ lines: number; people: number }[]>`
+    select count(*)::int as lines, count(distinct n.user_id)::int as people
+    from public.notifications n
+    where n.business_id = ${DEMO_RESTAURANT} and n.kind = ${kind}
+      and n.params ->> 'name' = ${name}`;
+  return row ?? { lines: 0, people: 0 };
+}

@@ -1,6 +1,7 @@
 import "server-only";
 import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import { numberRange, signed } from "@domain/lists";
 import type {
   NotificationEntry,
   NotificationPerson,
@@ -166,6 +167,54 @@ export function pushWords(
       return {
         title: t("kinds.lists.finished.title", { name: line.name }),
       };
+    case "lists.due":
+    case "lists.late":
+    case "lists.late_team": {
+      const key =
+        line.kind === "lists.due"
+          ? "due"
+          : line.kind === "lists.late"
+            ? "late"
+            : "late_team";
+      // Finished or missed: nothing waits on it now.
+      if (settled) {
+        return {
+          title: t(`kinds.lists.${key}.settledTitle`, { name: line.name }),
+        };
+      }
+      return {
+        title: t(`kinds.lists.${key}.title`, { name: line.name }),
+        ...body(
+          line.due
+            ? t.markup(`kinds.lists.${key}.note`, {
+                ltr: isolate,
+                time: timeIn(new Date(line.due), timeZone),
+              })
+            : null,
+        ),
+      };
+    }
+    case "lists.out_of_range": {
+      const range = line.reading ? numberRange(line.reading) : null;
+      return {
+        title: line.label
+          ? t("kinds.lists.out_of_range.title", {
+              name: line.name,
+              label: line.label,
+            })
+          : t("kinds.lists.out_of_range.titleNoLabel", { name: line.name }),
+        ...body(
+          line.reading && range
+            ? t.markup("kinds.lists.out_of_range.note", {
+                ltr: isolate,
+                reading: `${signed(line.reading.value)}${line.reading.unit ? ` ${line.reading.unit}` : ""}`,
+                kind: range.kind,
+                range: range.range,
+              })
+            : null,
+        ),
+      };
+    }
     case "access.pay_granted":
       return settled
         ? { title: t("kinds.access.pay_granted.settledTitle") }

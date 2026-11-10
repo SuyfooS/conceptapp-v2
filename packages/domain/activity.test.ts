@@ -7,6 +7,7 @@ import {
   breakFitKind,
   buildActivity,
   parseActivityCursor,
+  ROUTINE_ACTIONS,
 } from "./activity";
 import { dateIn } from "./availability";
 
@@ -639,6 +640,53 @@ describe("buildActivity: each action", () => {
     expect(
       lineOf(row("lists.reopen", { list: LIST, name: "Opening", was: "open" })),
     ).toEqual({ action: "lists.reopen", name: "Opening", was: null });
+  });
+
+  it("reads a list's times: late, not done, and a reading out of range", () => {
+    expect(
+      lineOf(row("lists.late", { list: LIST, name: "Opening", due_at: "x" })),
+    ).toEqual({ action: "lists.late", name: "Opening" });
+    expect(
+      lineOf(row("lists.missed", { list: LIST, name: "Opening" })),
+    ).toEqual({ action: "lists.missed", name: "Opening" });
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LIST,
+          item: LIST,
+          name: "Opening",
+          label: "Fridge",
+          reading: 7,
+          min: 0,
+          max: 5,
+          unit: "°C",
+        }),
+      ),
+    ).toEqual({
+      action: "lists.out_of_range",
+      name: "Opening",
+      label: "Fridge",
+      reading: 7,
+      min: 0,
+      max: 5,
+      unit: "°C",
+    });
+    // A bound the item didn't have, and a row from before it kept the unit.
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LIST,
+          name: "Opening",
+          label: "Fridge",
+          reading: 7,
+          min: null,
+        }),
+      ),
+    ).toMatchObject({ min: null, max: null, unit: null });
+    // The opening and the reminder are the lists' own news.
+    expect(ROUTINE_ACTIONS).toEqual(
+      expect.arrayContaining(["lists.open", "lists.due"]),
+    );
   });
 
   it("reads a template saved, removed and brought back", () => {

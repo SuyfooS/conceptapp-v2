@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { TemplateEditor } from "@/app/(app)/lists/templates/template-editor";
 import { templateEditor } from "@/app/(app)/lists/templates/templates-data";
+import { currentPlatformStaff } from "../../../../../staff";
 import {
   archiveTeamListTemplateAction,
   saveTeamListTemplateAction,
@@ -26,12 +27,14 @@ export default async function TeamListTemplatePage({
   if (!isUuid(id)) notFound();
   const setup = await teamListsSetup(slug);
   if (!setup) notFound();
-  const [template, paths] = await Promise.all([
+  const [template, paths, staff] = await Promise.all([
     getListTemplateForTeam(setup.business.id, id),
     teamTemplatePaths(slug),
+    currentPlatformStaff(),
   ]);
-  if (!template || template === "notYet") notFound();
+  if (!template || template === "notYet" || !staff) notFound();
   const stamp = typeof changed === "string" ? changed : "";
+  const times = await setup.times(staff.userId, template.id);
   return (
     <TemplateEditor
       key={`${id}:${template.version}:${stamp}`}
@@ -41,6 +44,7 @@ export default async function TeamListTemplatePage({
         shifts: setup.shifts,
         readOnly: false,
         changed: stamp !== "",
+        times,
       })}
       actions={{
         save: saveTeamListTemplateAction.bind(null, setup.business.id),

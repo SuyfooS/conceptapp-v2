@@ -8,6 +8,7 @@ import {
 } from "@domain/staffing";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
+import { DayToggles } from "@ui/day-toggles";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -210,15 +211,6 @@ function ShiftForm({
   const [needed, setNeeded] = useState(String(shift.needed));
   const [problem, setProblem] = useState<Problem | null>(null);
 
-  const toggle = (day: number) => {
-    setProblem(null);
-    setDays((current) =>
-      current.includes(day)
-        ? current.filter((other) => other !== day)
-        : [...current, day].sort((a, b) => a - b),
-    );
-  };
-
   function submit() {
     const parsed = shiftPattern.safeParse({
       key: shift.key,
@@ -309,30 +301,18 @@ function ShiftForm({
         </FieldRow>
       </FieldGroup>
 
-      <fieldset className="flex flex-col gap-2">
-        <legend className="px-2 pb-2 font-medium">{t("days")}</legend>
-        <div className="flex flex-wrap justify-between gap-1 px-1">
-          {WEEKDAY_KEYS.map((day, index) => {
-            const on = days.includes(index);
-            return (
-              <button
-                key={day}
-                type="button"
-                aria-pressed={on}
-                aria-label={tDays(`${day}.long`)}
-                onClick={() => toggle(index)}
-                className={cn(
-                  "pressable grid size-11 place-items-center rounded-full font-semibold",
-                  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-                  on ? "bg-accent text-accent-ink" : "bg-surface-2 text-ink-2",
-                )}
-              >
-                {tDays(`${day}.short`)}
-              </button>
-            );
-          })}
-        </div>
-      </fieldset>
+      <DayToggles
+        legend={t("days")}
+        value={days}
+        onChange={(next) => {
+          setProblem(null);
+          setDays(next);
+        }}
+        days={WEEKDAY_KEYS.map((day) => ({
+          short: tDays(`${day}.short`),
+          long: tDays(`${day}.long`),
+        }))}
+      />
 
       {problem && problem !== "name" ? (
         <p role="alert" className="px-2 font-medium text-danger">

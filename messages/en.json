@@ -350,7 +350,8 @@
     "dataTableNote3": "Eve of a holiday",
     "dateField": "Date of birth",
     "dateFieldHint": "Three fields of digits, never a wheel",
-    "dateFieldValid": "A real day"
+    "dateFieldValid": "A real day",
+    "dayToggles": "Days of the week"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -2300,7 +2301,15 @@
             "finishLate": "Finished the list {name}, late",
             "leftOptional": "{count, plural, one {One optional item left empty} other {# optional items left empty}}",
             "cancel": "Cancelled the list {name}",
-            "reopen": "{was, select, cancelled {Brought back the list {name} after it was cancelled} other {Opened the list {name} again}}"
+            "reopen": "{was, select, cancelled {Brought back the list {name} after it was cancelled} other {Opened the list {name} again}}",
+            "late": "{name} was late",
+            "missed": "{name} was not done",
+            "outOfRange": "A reading out of range in {name}: {label}, <ltr>{reading}</ltr>",
+            "range": {
+              "between": "The range: between <ltr>{range}</ltr>",
+              "atLeast": "The range: at least <ltr>{range}</ltr>",
+              "atMost": "The range: up to <ltr>{range}</ltr>"
+            }
           },
           "permission": {
             "grant": "{perm, select, payroll {Access to hours and pay given} other {Permission given}} {to}",
@@ -2547,7 +2556,7 @@
         },
         "lists": {
           "name": "Lists",
-          "hint": "Lists sent to you, and lists you sent being finished"
+          "hint": "Lists sent to you, reminders before they are due, late lists and readings out of range, and lists you sent that were finished"
         }
       },
       "time": {
@@ -2622,6 +2631,26 @@
           },
           "finished": {
             "title": "{name} is finished"
+          },
+          "due": {
+            "title": "A reminder: {name}",
+            "settledTitle": "{name} no longer waits for you",
+            "note": "It is due by <ltr>{time}</ltr>."
+          },
+          "late": {
+            "title": "{name} is late",
+            "settledTitle": "{name} no longer waits for you",
+            "note": "It was due by <ltr>{time}</ltr>."
+          },
+          "late_team": {
+            "title": "{name} is late",
+            "settledTitle": "{name} is no longer late",
+            "note": "It isn't closed yet. It was due by <ltr>{time}</ltr>."
+          },
+          "out_of_range": {
+            "title": "A reading out of range in {name}: {label}",
+            "titleNoLabel": "A reading out of range in {name}",
+            "note": "The reading: <ltr>{reading}</ltr>. {kind, select, between {The range: between <ltr>{range}</ltr>} atLeast {The range: at least <ltr>{range}</ltr>} other {The range: at most <ltr>{range}</ltr>}}."
           }
         },
         "access": {
@@ -2732,7 +2761,8 @@
         "title": "Today in the business",
         "none": "No lists sent today yet",
         "counts": "{open, plural, =0 {none open} one {one open} other {# open}} · {finished, plural, =0 {none finished} one {one finished} other {# finished}}",
-        "late": "{count, plural, one {one late} other {# late}}"
+        "late": "{count, plural, one {one late} other {# late}}",
+        "open": "All of today's lists"
       },
       "today": {
         "title": "Your lists",
@@ -2998,6 +3028,9 @@
           "body": "While viewing, nothing changes. Lists the business makes show here."
         },
         "items": "{count, plural, one {One item} other {# items}}",
+        "moreTimes": "{count, plural, one {and one more time} other {and # more times}}",
+        "timesPaused": "{count, plural, one {Its time is paused} other {Its times are paused}}",
+        "timesGone": "{count, plural, one {A time to fix} other {# times to fix}}",
         "to": {
           "department": "To {name}",
           "aDepartment": "To a removed department",
@@ -3013,6 +3046,7 @@
         "others": "To a role, a shift, or chosen each time",
         "columns": {
           "list": "List",
+          "when": "When",
           "to": "Who to",
           "from": "Asked for by",
           "items": "Items"
@@ -3041,8 +3075,7 @@
           "viewOnly": "While viewing, the list can only be read.",
           "stuckSubtitle": "For now, the list can only be read.",
           "stuck": {
-            "order": "This order belongs to a department that was removed, so changes to it can't be saved. The department can be brought back under Manage, Departments, or the order removed.",
-            "schedule": "This list goes out on its own at set times to a department or a shift that no longer exists, so changes to it can't be saved. It can be brought back under Manage, or the list removed."
+            "order": "This order belongs to a department that was removed, so changes to it can't be saved. The department can be brought back under Manage, Departments, or the order removed."
           },
           "toLists": "To the business's lists",
           "removedNote": "This list was removed. It can be brought back from the business's lists.",
@@ -3073,7 +3106,146 @@
           "sendNow": "Send the list now",
           "archive": "Remove the list",
           "archiveHint": "Once removed, it can be brought back.",
-          "changed": "The list changed on another screen. This is the latest."
+          "changed": "The list changed on another screen. This is the latest.",
+          "held": "{count, plural, one {One of the list's times follows a shift or a department that no longer exists. Until it is changed or removed, changes to the list aren't saved.} other {# of the list's times follow a shift or a department that no longer exists. Until they are changed or removed, changes to the list aren't saved.}}",
+          "fixTime": "Fix the time"
+        }
+      },
+      "overview": {
+        "title": "The business's lists",
+        "subtitle": "What was done today, what is late and what is still open.",
+        "subtitlePast": "What was sent on {day}, <ltr>{date}</ltr>, and what was done.",
+        "viewOnly": "While viewing you can only read the lists.",
+        "pick": "Pick a day",
+        "today": "Today",
+        "sections": {
+          "late": "{count, plural, one {One list late} other {# lists late}}",
+          "open": "{count, plural, =0 {No open lists} one {One list open} other {# lists open}}",
+          "closed": "{count, plural, =0 {No lists closed} one {One list closed} other {# lists closed}}",
+          "missed": "{count, plural, one {One list not done} other {# lists not done}}"
+        },
+        "stopped": {
+          "title": "{count, plural, one {One list isn't sent at its time} other {# lists aren't sent at their times}}",
+          "body": "The shift or department its time follows no longer exists. It can be fixed in the list's editor."
+        },
+        "empty": {
+          "title": "No lists today yet",
+          "body": "Lists that are sent, and lists that open by themselves at their times, show here. You can send a list now, or give a list its times in its editor.",
+          "viewOnlyBody": "Lists that are sent, and lists that open by themselves at their times, show here.",
+          "toTemplates": "To the business's lists and their times",
+          "pastTitle": "No lists were sent on this day",
+          "pastBody": "You can pick another day of the week."
+        },
+        "readings": {
+          "title": "Readings",
+          "outOfRange": "{count, plural, one {One reading out of range} other {# readings out of range}}",
+          "none": "The lists of this day have no readings yet.",
+          "of": "{label} · {list}",
+          "week": "Readings this week",
+          "weekCaption": "Each item's reading on each day of the week",
+          "noReading": "No reading",
+          "item": "Item"
+        },
+        "doneBy": "{name} · <ltr>{time}</ltr>"
+      },
+      "schedules": {
+        "title": "When it is sent",
+        "hint": "At these times the list is sent by itself, without anyone sending it.",
+        "empty": "No set times yet. Without times, the list is sent only when someone sends it.",
+        "emptyReadOnly": "It has no set times.",
+        "add": "Add a time",
+        "full": "{count, plural, other {The list already has # times, the most it can have.}}",
+        "everyDay": "Every day",
+        "dayRun": "{from}–{to}",
+        "at": "{days} · <ltr>{time}</ltr>",
+        "byShift": "{days} · {when}",
+        "start": "{minutes, plural, =0 {When the {shift} shift starts} one {A minute before the {shift} shift} other {# minutes before the {shift} shift}}",
+        "end": "{minutes, plural, =0 {When the {shift} shift ends} one {A minute before the {shift} shift ends} other {# minutes before the {shift} shift ends}}",
+        "startAfter": "{minutes, plural, one {A minute after the {shift} shift starts} other {# minutes after the {shift} shift starts}}",
+        "endAfter": "{minutes, plural, one {A minute after the {shift} shift ends} other {# minutes after the {shift} shift ends}}",
+        "shiftGone": "removed",
+        "dueAt": "by <ltr>{time}</ltr>",
+        "dueNextDay": "by <ltr>{time}</ltr> the next day",
+        "lasts": "{duration} to do it",
+        "duration": {
+          "minutes": "{count, plural, one {a minute} other {# minutes}}",
+          "hours": "{count, plural, one {an hour} other {# hours}}",
+          "mixed": "{hours, plural, one {an hour} other {# hours}} and {minutes, plural, one {a minute} other {# minutes}}"
+        },
+        "to": {
+          "person": "to {name}",
+          "aPerson": "to someone no longer on the team",
+          "department": "to {name}",
+          "aDepartment": "to a removed department",
+          "shift": "to the {name} shift's people",
+          "aShift": "to a shift that no longer exists",
+          "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}"
+        },
+        "next": {
+          "today": "Sent today at <ltr>{time}</ltr>",
+          "tomorrow": "Sent tomorrow at <ltr>{time}</ltr>",
+          "on": "Sent on {day}, <ltr>{date}</ltr>, at <ltr>{time}</ltr>",
+          "none": "It isn't sent at this time in the next three weeks.",
+          "waits": "Sent once a schedule with a {shift} shift is published.",
+          "paused": "Paused: not sent until it is switched on again.",
+          "goneShift": "The shift this time follows no longer exists. You can pick another or remove the time.",
+          "goneRecipient": "{kind, select, department {The department this time goes to was removed.} other {The shift this time goes to no longer exists.}} You can pick who it goes to or remove it."
+        },
+        "shabbat": "On Friday after candle lighting it isn't sent, and on Saturday a time before havdalah is sent at havdalah.",
+        "removed": "The time was removed",
+        "dayNames": {
+          "sun": "Sunday",
+          "mon": "Monday",
+          "tue": "Tuesday",
+          "wed": "Wednesday",
+          "thu": "Thursday",
+          "fri": "Friday",
+          "sat": "Saturday"
+        },
+        "sheet": {
+          "newTitle": "A new time",
+          "title": "Change the time",
+          "close": "Close",
+          "days": "On which days",
+          "everyDay": "Every day",
+          "anchor": "What it follows",
+          "anchors": {
+            "day": "A set time",
+            "shift": "A shift"
+          },
+          "at": "At",
+          "shift": "Shift",
+          "edge": "When in the shift",
+          "edges": {
+            "shift_start": "At its start",
+            "shift_end": "At its end"
+          },
+          "before": "How long before",
+          "beforeOption": "{minutes, plural, =0 {Right then} one {A minute before} other {# minutes before}}",
+          "lasts": "How long there is",
+          "recipient": "To whom",
+          "recipientKinds": {
+            "person": "A person",
+            "department": "A department",
+            "shift": "A shift",
+            "role": "A role"
+          },
+          "person": "Person",
+          "department": "Department",
+          "role": "Role",
+          "choose": "Choose",
+          "shiftPeople": "The people on the {name} shift that day. When nobody is on it, it goes to the managers.",
+          "active": "Sent at this time",
+          "activeHint": "When it's off, the time is kept and the list isn't sent at it.",
+          "create": "Add the time",
+          "save": "Save the time",
+          "remove": "Remove the time",
+          "problem": {
+            "days": "Pick at least one day.",
+            "times": "The time doesn't fit. Check the hour and how long there is.",
+            "gone": "Pick a shift, and who it goes to, from what the business has.",
+            "recipient": "Pick who it goes to."
+          }
         }
       }
     }

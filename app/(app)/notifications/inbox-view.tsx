@@ -1,5 +1,6 @@
 import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import { numberRange, signed } from "@domain/lists";
 import type {
   NotificationEntry,
   NotificationGroup,
@@ -281,6 +282,59 @@ export function InboxView({
           shift: null,
           notes: [],
         };
+      case "lists.due":
+      case "lists.late":
+      case "lists.late_team": {
+        const key =
+          line.kind === "lists.due"
+            ? "due"
+            : line.kind === "lists.late"
+              ? "late"
+              : "late_team";
+        // Finished or missed: nothing waits on it now.
+        return settled
+          ? {
+              title: t(`kinds.lists.${key}.settledTitle`, { name: line.name }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t(`kinds.lists.${key}.title`, { name: line.name }),
+              shift: null,
+              notes: line.due
+                ? [
+                    t.rich(`kinds.lists.${key}.note`, {
+                      ltr,
+                      time: timeIn(new Date(line.due), timeZone),
+                    }),
+                  ]
+                : [],
+            };
+      }
+      case "lists.out_of_range": {
+        // The reading and its range, with a real minus sign, when it kept them.
+        const range = line.reading ? numberRange(line.reading) : null;
+        return {
+          title: line.label
+            ? t("kinds.lists.out_of_range.title", {
+                name: line.name,
+                label: line.label,
+              })
+            : t("kinds.lists.out_of_range.titleNoLabel", { name: line.name }),
+          shift: null,
+          notes:
+            line.reading && range
+              ? [
+                  t.rich("kinds.lists.out_of_range.note", {
+                    ltr,
+                    reading: `${signed(line.reading.value)}${line.reading.unit ? ` ${line.reading.unit}` : ""}`,
+                    kind: range.kind,
+                    range: range.range,
+                  }),
+                ]
+              : [],
+        };
+      }
       case "access.pay_granted":
         return {
           // Taken back since: it says so, and leads nowhere new.

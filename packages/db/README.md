@@ -122,6 +122,38 @@ shifts `send_list` takes. The app binds the template and send writes to the
 business the screen was drawn for (payroll P3b), so a save from a tab left
 open never lands in another business.
 
+Lists' times (L4, `20261110001300_list_schedules.sql`) run in the database:
+`private.lists_tick`, every minute (the pg_cron job `lists`, pure SQL, no
+secret; off locally and in CI) and at the end of a demo reset, opens for each
+business with lists on, in its own block, what its templates' times have
+opened by then and are not more than 12 hours past their due time, once each
+(`unique (schedule_id, occurs_on)`), to the time's recipient or the managers
+when nobody is there to take it; closes as missed a scheduled list whose next
+one opened or that is 24 hours past its due time, never one opened again by
+hand (`lists.reopened_at`, which L4's `reopen_list` sets); and marks reminders
+and late lists once each, logging `lists.open`, `lists.missed`, `lists.due` and
+`lists.late` with no actor. When a time opens comes from one function,
+`private.list_occurrences(schedule, from, to)`: the business's own clock, or
+minutes around a published shift of its pattern, nothing before the time's
+`list_schedules.opens_from` (when it was saved, and again when L4's
+`save_list_template` gives it other days or hours or switches it back on, or
+`restore_list_template` brings its template back; every time there was when
+the migration ran counts from then), and Shabbat for a business closed on it,
+a time of the day and one around a shift alike (`private.closes_on_shabbat`,
+`private.shabbat_span` over `private.shabbat_times`, a row a Friday for each
+city, which `tooling/shabbat-table.test.ts` keeps equal to
+`@domain/shabbat-times`). `public.next_list_openings(actor, template)`
+(secret key, list managers and the team) gives the editor each saved time's
+next three openings from the same function, without a day that already has
+its list; `@db/lists` `nextListOpenings`
+reads it, and `saveListTemplate` returns it with the saved times' ids. `set_list_item`
+logs `lists.out_of_range` when a reading moves outside its range (with its
+range and unit), and `private.notify_for_lists` tells the list's people of a
+reminder and of a late list, and its managers of a late list and of a reading
+out of range, with the reading.
+`getListReadings(lists)` reads the number items of some lists with their
+readings, under RLS, for the manager's day (`lists_schedule.test.sql`).
+
 Hours stay (`20261110000100_hours_kept.sql`, payroll P1). `time_entries`,
 `time_breaks` and `audit_log` refer to their business, person and entry with
 `on delete restrict`, so deleting a person, their account or a business with
