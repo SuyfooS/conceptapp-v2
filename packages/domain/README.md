@@ -34,5 +34,12 @@ accountant or a lawyer must confirm (payroll plan §14) is one named field of
 `PAYROLL_READINGS` in `payroll-readings.ts`, which the engine reads where it
 decides, so a correction is one change; the plan's §13 vectors are
 `payroll.test.ts`, with tests of the other value of the readings they name.
+What the pay screens draw from it is `pay-rates.ts`: a person's month by rate,
+wage and day (`personRates`), what a pay holder checks (`remarksOf`, minors
+first, without what the screens already say in their own words), the values of
+each flag's words (`flagValues`, held to the words by
+`tooling/payroll-words.test.ts`), the month's card and estimate, and what a
+worker sees of their own month (`ownMonthOf`: their adult limits, and for a
+minor only that a rule was crossed).
 
 Import as `@domain/<file>`.

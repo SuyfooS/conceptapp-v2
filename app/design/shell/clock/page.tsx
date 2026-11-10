@@ -9,13 +9,20 @@ import {
   demoStartBreak,
   demoUndoClockOut,
 } from "./actions";
-import { demoClock } from "./data";
+import { demoClock, demoRecords } from "./data";
+import { demoOwnPay } from "./pay/data";
 
-type Props = { searchParams: Promise<{ state?: string; code?: string }> };
+type Props = {
+  searchParams: Promise<{ state?: string; code?: string; estimate?: string }>;
+};
 
 // The real clock screen with mock data and stand-in actions. ?state=working
 // and ?state=break show someone at work, and ?state=left just after leaving.
 // ?code=on: the business asks for the clock's code ("000000" is refused).
+// Noa's month in shekels is a flat card under her wage (payroll P7), the
+// circle staying the screen's hero; at work, it says the shift she is in
+// counts once it ends. ?estimate=off is a business whose amounts the team
+// hasn't turned on, or that hides them from workers: no card.
 export default function ShellClock({ searchParams }: Props) {
   return (
     <Suspense>
@@ -26,10 +33,16 @@ export default function ShellClock({ searchParams }: Props) {
 
 async function Demo({ searchParams }: Props) {
   await connection();
-  const { state, code } = await searchParams;
+  const { state, code, estimate } = await searchParams;
   return (
     <ClockView
       data={demoClock(state, new Date(), code === "on")}
+      ownPay={demoOwnPay(
+        demoRecords,
+        "2026-11",
+        estimate,
+        state === "working" || state === "break",
+      )}
       actions={{
         clockIn: demoClockIn,
         clockOut: demoClockOut,

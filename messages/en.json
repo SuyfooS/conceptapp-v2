@@ -321,6 +321,18 @@
     "dataTableOpen": "Open {name}'s row",
     "dataTableChosen": "{name}'s row is chosen",
     "dataTableHint": "A name chooses its row.",
+    "dataTableRead": "A table that only reads",
+    "dataTableReadHint": "A wide table with nothing to choose: the keyboard reaches it, and the arrows scroll it sideways.",
+    "dataTableDate": "Date",
+    "dataTableIn": "In",
+    "dataTableOut": "Out",
+    "dataTableRegular": "Regular 100%",
+    "dataTableOt125": "Overtime 125%",
+    "dataTableOt150": "Overtime 150%",
+    "dataTableNote": "Note",
+    "dataTableNote1": "Corrected by a manager: forgot to clock out",
+    "dataTableNote2": "Night shift",
+    "dataTableNote3": "Eve of a holiday",
     "dateField": "Date of birth",
     "dateFieldHint": "Three fields of digits, never a wheel",
     "dateFieldValid": "A real day"
@@ -605,7 +617,8 @@
         "noClock": {
           "title": "No hours for payroll yet",
           "body": "The hours for payroll show here once the clock is switched on for the business."
-        }
+        },
+        "remarks": "{count, plural, one {One thing to check in the hours} other {# things to check in the hours}}"
       }
     },
     "moduleSoon": {
@@ -1375,6 +1388,31 @@
         "restDay": "Rest day: {day}",
         "youth": "A minor until <ltr>{until}</ltr>",
         "since": "Work began: <ltr>{date}</ltr>"
+      },
+      "ownPay": {
+        "title": "Your pay in {month}",
+        "label": "Estimate before tax",
+        "basis": "From the hours the clock recorded and an hourly wage of <ltr>{amount}</ltr>.",
+        "basisChanged": "From the hours the clock recorded, and an hourly wage that changed in the month:",
+        "wageSpan": "From <ltr>{from}</ltr> to <ltr>{to}</ltr>: <ltr>{amount}</ltr>",
+        "excluded": "No tax, national insurance, pension, vacation, sick days or travel. The payslip decides.",
+        "openShift": "{count, plural, one {The shift still open counts here once it ends.} other {# shifts are still open, and they count here once they end.}}",
+        "missingWage": "Some days this month have no hourly wage yet, so there is no estimate here. You can ask {business}.",
+        "empty": "No hours this month yet. Once there are, an estimate before tax shows here.",
+        "holidayPay": "Holiday pay ({holiday}): <ltr>{amount}</ltr>, if you worked the day before and after",
+        "holidayPayNoAverage": "Holiday pay ({holiday}), if you worked the day before and after. There is no average from the months before to pay it by yet",
+        "oneOff": "{day}: <ltr>{amount}</ltr>, {form, select, f {if you were due to work that day} m {if you were due to work that day} other {if you were due to work that day}}",
+        "oneOffNoAverage": "{day}, {form, select, f {if you were due to work that day} m {if you were due to work that day} other {if you were due to work that day}}. There is no average from the months before to pay it by yet",
+        "limits": {
+          "dayOver12": "You worked more than 12 hours on <ltr>{date}</ltr>.",
+          "weekOvertimeOver16": "In the week of <ltr>{weekOf}</ltr> you worked more than 16 overtime hours.",
+          "nightWeekOver58": "In the week of <ltr>{weekOf}</ltr>, with a night shift, you worked more than 58 hours.",
+          "restBetweenUnder8": "Before <ltr>{date}</ltr> you had less than 8 hours of rest.",
+          "weeklyRestUnder36": "In the week of <ltr>{weekOf}</ltr> you didn't have 36 hours of rest in a row."
+        },
+        "minor": "This month has hours that don't fit the rules for young workers. It's worth talking to {business}.",
+        "holidayPayNoAmount": "Holiday pay ({holiday}), if you worked the day before and after",
+        "oneOffNoAmount": "{day}, {form, select, f {if you were due to work that day} m {if you were due to work that day} other {if you were due to work that day}}"
       }
     },
     "pay": {
@@ -1387,7 +1425,12 @@
         "later": "Next month: {month}"
       },
       "hours": "<ltr>{hours}</ltr> hours",
-      "caption": "{people, plural, =0 {No hours yet} one {One person} other {# people}} · {toCheck, plural, =0 {nothing to check} one {one shift to check} other {# shifts to check}}",
+      "captionParts": {
+        "people": "{count, plural, =0 {No hours yet} one {One person} other {# people}}",
+        "shifts": "{count, plural, one {one shift to check} other {# shifts to check}}",
+        "remarks": "{count, plural, one {one thing to check} other {# things to check}}",
+        "nothing": "nothing to check"
+      },
       "row": "<ltr>{hours}</ltr> hours · {days, plural, =0 {no days} one {one day} other {# days}}",
       "corrected": "{count, plural, one {One shift corrected} other {# shifts corrected}}",
       "toCheck": "{count, plural, one {One shift to check} other {# shifts to check}}",
@@ -1398,7 +1441,7 @@
         "title": "Before payroll",
         "ownerOnly": "{count, plural, one {One shift waits for the owner's approval} other {# shifts wait for the owner's approval}}",
         "waiting": "{count, plural, one {One shift waits for approval} other {# shifts wait for approval}}",
-        "open": "{count, plural, one {One shift is still open} other {# shifts are still open}}",
+        "open": "{count, plural, one {One shift is still open, and counts in the rates once it ends} other {# shifts are still open, and count in the rates once they end}}",
         "corrected": "{count, plural, one {One shift was corrected} other {# shifts were corrected}}",
         "rounding": "These hours are exact to the minute, even though the clock rounds",
         "fix": "Approve and fix them in team hours",
@@ -1415,9 +1458,12 @@
         "breaks": "Unpaid breaks",
         "corrected": "Corrected",
         "waiting": "Waiting",
-        "toCheck": "To check",
+        "toCheck": "Shifts to check",
+        "remarks": "Things to check",
         "wage": "Hourly wage",
-        "number": "Payroll no."
+        "number": "Payroll no.",
+        "nights": "Night shifts",
+        "estimate": "Estimate before tax"
       },
       "minutes": "{minutes} min",
       "none": "—",
@@ -1433,6 +1479,7 @@
       },
       "person": {
         "caption": "{days, plural, =0 {No days} one {One day} other {# days}} · {shifts, plural, =0 {no shifts} one {one shift} other {# shifts}}",
+        "nights": "{count, plural, one {one night shift} other {# night shifts}}",
         "summary": "The month",
         "days": "Days worked",
         "shifts": "Shifts",
@@ -1471,7 +1518,10 @@
         "addedBy": "Added by {name}",
         "corrected": "Corrected by {name}: {note}",
         "correctedBy": "Corrected by {name}",
-        "stillOpen": "Still open"
+        "stillOpen": "Still open",
+        "ofWhich": "of which",
+        "ofWhichDay": "The whole day <ltr>{hours}</ltr> hours, of which",
+        "part": "<ltr>{hours}</ltr> {rate}"
       },
       "dayColumns": {
         "date": "Date",
@@ -1481,7 +1531,9 @@
         "breaks": "Unpaid breaks",
         "net": "Hours",
         "source": "Recorded by",
-        "correction": "Correction"
+        "correction": "Correction",
+        "toCheck": "To check",
+        "kind": "Kind of day"
       },
       "sheet": {
         "close": "Close",
@@ -1691,6 +1743,87 @@
             },
             "overlap": "The period overlaps another one of {name}'s."
           }
+        }
+      },
+      "rates": {
+        "regular": "<ltr>{hours}</ltr> regular hours",
+        "ot125": "<ltr>{hours}</ltr> overtime hours at 125%",
+        "ot150": "<ltr>{hours}</ltr> overtime hours at 150%",
+        "rest150": "<ltr>{hours}</ltr> {rest, select, friday {hours on the Friday rest and holidays} sunday {hours on the Sunday rest and holidays} saturday {hours on Shabbat and holidays} other {hours on the rest day and holidays}} at 150%",
+        "rest175": "<ltr>{hours}</ltr> {rest, select, friday {overtime hours on the Friday rest and holidays} sunday {overtime hours on the Sunday rest and holidays} saturday {overtime hours on Shabbat and holidays} other {overtime hours on the rest day and holidays}} at 175%",
+        "rest200": "<ltr>{hours}</ltr> {rest, select, friday {overtime hours on the Friday rest and holidays} sunday {overtime hours on the Sunday rest and holidays} saturday {overtime hours on Shabbat and holidays} other {overtime hours on the rest day and holidays}} at 200%"
+      },
+      "rateColumns": {
+        "regular": "Regular 100%",
+        "ot125": "Overtime 125%",
+        "ot150": "Overtime 150%",
+        "rest150": "{rest, select, friday {Friday rest and holidays} sunday {Sunday rest and holidays} saturday {Shabbat and holidays} other {Rest day and holidays}} 150%",
+        "rest175": "{rest, select, friday {Friday rest and holidays} sunday {Sunday rest and holidays} saturday {Shabbat and holidays} other {Rest day and holidays}} 175%",
+        "rest200": "{rest, select, friday {Friday rest and holidays} sunday {Sunday rest and holidays} saturday {Shabbat and holidays} other {Rest day and holidays}} 200%"
+      },
+      "estimate": {
+        "label": "Estimate before tax",
+        "under": "Estimates before tax, from the hours. No deductions, vacation, sick days or travel.",
+        "off": "The pay estimate in shekels isn't on for this business yet. The hours by rate are here, and the amounts will show once an accountant confirms the rules.",
+        "offShort": "The amounts will show once the pay estimate is on for the business.",
+        "total": "Estimate before tax: <ltr>{amount}</ltr>",
+        "missing": "{count, plural, one {Leaves out one person with days that have no hourly wage} other {Leaves out # people with days that have no hourly wage}}",
+        "none": "No estimate: some of the days have no hourly wage.",
+        "row": "<ltr>{amount}</ltr> estimate"
+      },
+      "rateCard": {
+        "title": "By rate",
+        "segment": "<ltr>{amount}</ltr> an hour, from <ltr>{from}</ltr> to <ltr>{to}</ltr>",
+        "segmentNoWage": "No hourly wage, from <ltr>{from}</ltr> to <ltr>{to}</ltr>",
+        "empty": "No hours by rate this month."
+      },
+      "holidayPay": {
+        "holiday": "Holiday pay: {holiday}, <ltr>{date}</ltr>",
+        "oneOff": "Pay for {day}, <ltr>{date}</ltr>",
+        "average": "An average of <ltr>{hours}</ltr> hours a day",
+        "checks": {
+          "adjacentDays": "{form, select, f {Check that she worked the day before and after, or was away with consent} m {Check that he worked the day before and after, or was away with consent} other {Check for work the day before and after, or an absence with consent}}",
+          "averagePeriod": "The average of the 3 months before. Some use 12",
+          "wasScheduled": "{form, select, f {Check that she was due to work that day} m {Check that he was due to work that day} other {Check that it was due to be a workday}}",
+          "noHistory": "No hours in the months before, so no average to pay by",
+          "ownHolidays": "The rest day is Friday or Sunday. Check which holidays apply",
+          "fourteenDays": "Owed after 14 days with the employer",
+          "sectorExclusion": "Foreign workers in some sectors are not entitled to it"
+        }
+      },
+      "remarks": {
+        "title": "To check",
+        "none": "Nothing to check this month.",
+        "count": "{count, plural, one {One thing to check} other {# things to check}}",
+        "holidayPay": "Holiday pay for {holiday}, <ltr>{date}</ltr>, to check",
+        "oneOff": "Pay for {day}, <ltr>{date}</ltr>, to check",
+        "more": "{count, plural, one {and once more} other {and # more times}}",
+        "rest": "{count, plural, one {and one more, on the person's page} other {and # more, on each person's page}}"
+      },
+      "notes": {
+        "workWeekUnset": "The business's work week isn't set, so each week was worked out as a 5-day week, as a 6-day week and by the shorter hours of each day, and the one that pays most is used.",
+        "setWeek": "Set the work week in the clock's settings"
+      },
+      "tags": {
+        "night": "Night shift",
+        "eve": "{rest, select, saturday {Eve of Shabbat or a holiday} other {Eve of the rest day or a holiday}}",
+        "rest": "{rest, select, saturday {On Shabbat} friday {Rest day, Friday} sunday {Rest day, Sunday} other {Rest day}}"
+      },
+      "method": {
+        "open": "How it's worked out",
+        "title": "How it's worked out",
+        "close": "Close",
+        "hours": "Each shift counts by the hours the clock recorded, to the minute. An unpaid break comes off.",
+        "day": "On a workday the first hours are regular: up to <ltr>8</ltr> in a 6-day week, <ltr>8.6</ltr> in a 5-day week, and <ltr>7</ltr> on the eve of Shabbat or a holiday and on a night shift. The next two hours are overtime at 125%, and the rest at 150%.",
+        "week": "Past <ltr>42</ltr> hours a week, regular hours count as overtime too.",
+        "rest": "Hours in the weekly rest and on holidays are 150%, and overtime in them 175% and 200%.",
+        "holidayPay": "A holiday or election day not worked, when it was due to be a workday, is paid by the daily average of the 3 months before.",
+        "amounts": "The amount is the hours at each rate times the hourly wage, rounded to the agora.",
+        "excluded": "No tax, national insurance, pension, vacation, sick days or travel. The payslip decides.",
+        "readings": "Some rules are a reading of the law for an accountant to confirm, such as rest hours past 42 hours a week. They are marked to check.",
+        "weeks": {
+          "title": "How each week was worked out",
+          "row": "The week of <ltr>{weekOf}</ltr>: {used, select, five {as a 5-day week} six {as a 6-day week} other {by the shorter hours of each day}}"
         }
       }
     },

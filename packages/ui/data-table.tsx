@@ -48,7 +48,9 @@ const cellClass = "px-4 py-3 align-middle";
  * never does. The header scrolls with the page: a sideways scroller is its
  * scroll container, which never scrolls down, so a header there can't stick.
  * Rows are at least 44px tall. A table one chooses rows of gets a button
- * filling each first cell.
+ * filling each first cell. A table that only reads has nothing in it to
+ * focus, so its scroller takes the keyboard itself, named by the caption:
+ * a wide one still scrolls sideways by the arrow keys.
  */
 export function DataTable({
   columns,
@@ -70,82 +72,100 @@ export function DataTable({
       value
     );
 
+  const table = (
+    <table className="w-full border-collapse">
+      <caption className="sr-only">{caption}</caption>
+      <thead>
+        <tr>
+          {columns.map((column, index) => (
+            <th
+              key={column.key}
+              scope="col"
+              className={cn(
+                cellClass,
+                align(column),
+                "bg-surface font-medium text-ink-2 text-sm",
+                index === 0 && "sticky start-0 z-10",
+              )}
+            >
+              {column.label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => {
+          const current = selected === row.key;
+          return (
+            <tr
+              key={row.key}
+              className={cn(
+                "group border-line border-t",
+                onSelect &&
+                  "transition-colors duration-150 ease-calm hover:bg-surface-2",
+              )}
+            >
+              {first ? (
+                <th
+                  scope="row"
+                  className={cn(
+                    cellClass,
+                    align(first),
+                    "sticky start-0 h-11 bg-surface font-medium text-ink",
+                    onSelect && "group-hover:bg-surface-2",
+                    // The chosen row: a bar in the business's colour at its
+                    // start, which keeps every cell's colours readable.
+                    current &&
+                      "after:absolute after:inset-y-2 after:start-0 after:w-1 after:rounded-full after:bg-accent after:content-['']",
+                  )}
+                >
+                  {onSelect ? (
+                    <button
+                      type="button"
+                      aria-label={row.label}
+                      aria-current={current ? "true" : undefined}
+                      onClick={() => onSelect(row.key)}
+                      className="flex min-h-11 w-full items-center text-start focus-visible:outline-2 focus-visible:outline-accent"
+                    >
+                      {content(first, row.cells[first.key])}
+                    </button>
+                  ) : (
+                    content(first, row.cells[first.key])
+                  )}
+                </th>
+              ) : null}
+              {rest.map((column) => (
+                <td
+                  key={column.key}
+                  className={cn(cellClass, align(column), "text-ink")}
+                >
+                  {content(column, row.cells[column.key])}
+                </td>
+              ))}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+
+  // A table one chooses rows of is reached through its row buttons.
+  if (onSelect) {
+    return <div className={cn("overflow-x-auto", className)}>{table}</div>;
+  }
+  // One that only reads: its scroller, a region named by the caption, takes
+  // the keyboard, its ring inside the card's edge, along its rounded corners.
   return (
-    <div className={cn("overflow-x-auto", className)}>
-      <table className="w-full border-collapse">
-        <caption className="sr-only">{caption}</caption>
-        <thead>
-          <tr>
-            {columns.map((column, index) => (
-              <th
-                key={column.key}
-                scope="col"
-                className={cn(
-                  cellClass,
-                  align(column),
-                  "bg-surface font-medium text-ink-2 text-sm",
-                  index === 0 && "sticky start-0 z-10",
-                )}
-              >
-                {column.label}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const current = selected === row.key;
-            return (
-              <tr
-                key={row.key}
-                className={cn(
-                  "group border-line border-t",
-                  onSelect &&
-                    "transition-colors duration-150 ease-calm hover:bg-surface-2",
-                )}
-              >
-                {first ? (
-                  <th
-                    scope="row"
-                    className={cn(
-                      cellClass,
-                      align(first),
-                      "sticky start-0 h-11 bg-surface font-medium text-ink",
-                      onSelect && "group-hover:bg-surface-2",
-                      // The chosen row: a bar in the business's colour at its
-                      // start, which keeps every cell's colours readable.
-                      current &&
-                        "after:absolute after:inset-y-2 after:start-0 after:w-1 after:rounded-full after:bg-accent after:content-['']",
-                    )}
-                  >
-                    {onSelect ? (
-                      <button
-                        type="button"
-                        aria-label={row.label}
-                        aria-current={current ? "true" : undefined}
-                        onClick={() => onSelect(row.key)}
-                        className="flex min-h-11 w-full items-center text-start focus-visible:outline-2 focus-visible:outline-accent"
-                      >
-                        {content(first, row.cells[first.key])}
-                      </button>
-                    ) : (
-                      content(first, row.cells[first.key])
-                    )}
-                  </th>
-                ) : null}
-                {rest.map((column) => (
-                  <td
-                    key={column.key}
-                    className={cn(cellClass, align(column), "text-ink")}
-                  >
-                    {content(column, row.cells[column.key])}
-                  </td>
-                ))}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    <section
+      aria-label={caption}
+      // biome-ignore lint/a11y/noNoninteractiveTabindex: a scroller with nothing to focus inside must take the keyboard itself to scroll by keys (axe scrollable-region-focusable)
+      tabIndex={0}
+      className={cn(
+        "overflow-x-auto rounded-[inherit] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
+        className,
+      )}
+    >
+      {table}
+    </section>
   );
 }

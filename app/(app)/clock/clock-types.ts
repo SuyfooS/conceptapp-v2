@@ -1,4 +1,6 @@
+import type { OwnMonth } from "@domain/pay-rates";
 import type { RestDay } from "@domain/payroll-details";
+import type { AddressForm } from "@domain/profile";
 import type { PunchProof } from "@domain/punch-code-format";
 import type { PunchFailure, ShiftRecord, TimeEntry } from "@domain/time-clock";
 import type { WageNow } from "@domain/wages";
@@ -82,6 +84,23 @@ export type OwnDetails = {
   youthUntil: string | null;
   /** The start of their work, once a pay holder set it. */
   startedOn: string | null;
+};
+
+/**
+ * The person's own month by the hours engine (payroll P7), as their clock
+ * shows it: an estimate before tax with its rates and the pay for days not
+ * worked, and nobody else's. Only while the business shows estimates and lets
+ * workers see theirs, and they have a wage (`currentOwnPay`).
+ */
+export type OwnPay = OwnMonth & {
+  /** `YYYY-MM`. */
+  month: string;
+  /** Names the rest rates: Saturday, or the Friday or Sunday they asked for. */
+  restDay: RestDay;
+  /** The business, to ask about what is missing. */
+  business: string;
+  /** How the app addresses them, for an ICU `select`. */
+  form: AddressForm;
 };
 
 /** Where this screen's links go; the demo keeps them inside the demo. */

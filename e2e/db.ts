@@ -1186,3 +1186,33 @@ export async function shopActivityDetails(
     order by id`;
   return rows.map((row) => row.details);
 }
+
+/** The demo shop's time-clock settings as stored, to put back after a spec changes them. */
+export async function shopClockSettings(): Promise<Record<string, unknown>> {
+  const rows = await sql<{ settings: Record<string, unknown> }[]>`
+    select settings from public.business_modules
+    where business_id = ${DEMO_SHOP} and module_key = 'time_clock'`;
+  return rows[0]?.settings ?? {};
+}
+
+/**
+ * Lays settings over the demo shop's time clock, as the team and its owner
+ * switch them (payroll P7: `payEstimate`, `workersSeeEstimate`), or puts back
+ * what `shopClockSettings` read with `replace`.
+ */
+export async function setShopClockSettings(
+  settings: Record<string, unknown>,
+  replace = false,
+): Promise<void> {
+  if (replace) {
+    await sql`
+      update public.business_modules
+      set settings = ${sql.json(settings as never)}::jsonb
+      where business_id = ${DEMO_SHOP} and module_key = 'time_clock'`;
+    return;
+  }
+  await sql`
+    update public.business_modules
+    set settings = settings || ${sql.json(settings as never)}::jsonb
+    where business_id = ${DEMO_SHOP} and module_key = 'time_clock'`;
+}

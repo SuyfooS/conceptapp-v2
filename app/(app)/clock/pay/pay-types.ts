@@ -1,4 +1,5 @@
 import type { PayDay, PayTotals } from "@domain/pay-month";
+import type { PersonRates, RemarkLine, RestName } from "@domain/pay-rates";
 import type {
   DetailsFailure,
   DetailsForm,
@@ -19,9 +20,10 @@ import type {
 } from "@domain/wages";
 
 /**
- * The pay screens' data (payroll P3 to P5): hours, each person's hourly wage
- * and their details for payroll; no amounts worked out from them (P7 adds
- * those, behind the business's estimate setting). The same shapes feed the app and the demo on
+ * The pay screens' data (payroll P3 to P7): hours, each person's hourly wage
+ * and their details for payroll, and the hours engine's month by rate with
+ * what to check (P7), whose amounts show only while the business's estimate
+ * setting (`payEstimate`) is on. The same shapes feed the app and the demo on
  * /design/shell.
  */
 
@@ -48,7 +50,18 @@ export type PayPerson = {
   noNumber: boolean;
   /** A minor today (payroll P5): the list says so. */
   minor: boolean;
+  /**
+   * Their month by rate, from the hours engine (payroll P7), with the
+   * estimate while the business shows amounts; null when it couldn't run.
+   */
+  rates: PersonRates | null;
 };
+
+/** The month's estimate before tax, across everyone: the known ones added, and how many are left out for want of a wage. */
+export type MonthEstimate = { agorot: number; missing: number };
+
+/** One line of the month's accent card: someone's remark of one kind, or their pay for days not worked, in words. */
+export type PayRemarkLine = RemarkLine & { name: string | null };
 
 /** What waits before paying the month, for the screen's one accent card. */
 export type BeforePayroll = {
@@ -92,6 +105,27 @@ export type PayMonthData = {
   back: "team" | "clock" | null;
   /** They fix and confirm hours on the team's hours: a manager or an owner. */
   fixes: boolean;
+  /**
+   * The business shows amounts (`payEstimate`, the team's; Orel, 10 November
+   * 2026). While it is off, hours and rates show and no shekel worked out.
+   */
+  amounts: boolean;
+  /** The month's estimate, whatever the filter; null while amounts are off. */
+  estimate: MonthEstimate | null;
+  /** What to check in the month's hours, for the accent card (payroll P7). */
+  remarks: {
+    /**
+     * The first lines, minors first, each a person's remark of one kind, of
+     * the people listed (a filtered list names only its own).
+     */
+    lines: PayRemarkLine[];
+    /** How many things to check the lines left out. */
+    rest: number;
+    /** Everyone's things to check: remarks, and lines of pay for days not worked. */
+    total: number;
+  };
+  /** How the table names the rest rates: by the rest day everyone listed shares. */
+  restName: RestName;
 };
 
 /** What the reader may do with this person's wage. */
@@ -149,7 +183,13 @@ export type PersonDetails = {
 export type PayPersonData = {
   person: Omit<
     PayPerson,
-    "days" | "totals" | "wage" | "payrollNumber" | "noNumber" | "minor"
+    | "days"
+    | "totals"
+    | "wage"
+    | "payrollNumber"
+    | "noNumber"
+    | "minor"
+    | "rates"
   >;
   month: string;
   currentMonth: string;
@@ -162,6 +202,16 @@ export type PayPersonData = {
   /** Their details and periods; null for someone off the staff. */
   details: PersonDetails | null;
   fixes: boolean;
+  /** Their month by rate (payroll P7); null when the engine couldn't run. */
+  rates: PersonRates | null;
+  /** The business shows amounts (`payEstimate`). */
+  amounts: boolean;
+  /** How each of their weeks was worked out, while the business's week isn't set. */
+  weeks: { weekOf: string; used: "five" | "six" | "smaller" }[];
+  /** The minimum wage table is behind for the month. */
+  stale: boolean;
+  /** The reader sets the business's work week (an owner): the note leads there. */
+  setsWeek: boolean;
 };
 
 /** Where the pay screens' links go; the demo keeps them inside the demo. */
@@ -169,12 +219,15 @@ export type PayPaths = {
   pay: string;
   team: string;
   clock: string;
+  /** The clock's settings, where an owner sets the work week. */
+  settings: string;
 };
 
 export const payPaths: PayPaths = {
   pay: "/clock/pay",
   team: "/clock/team",
   clock: "/clock",
+  settings: "/manage/time_clock",
 };
 
 /** What a pay screen notes when it is on screen. The demo notes nothing. */
