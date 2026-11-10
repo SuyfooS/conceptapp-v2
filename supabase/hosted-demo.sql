@@ -54,9 +54,11 @@ begin
   -- How each one starts. Written again on every run, so a change here reaches
   -- the next reset. Each person names the departments they are in, by their
   -- template's keys, as supabase/seed.sql does. The shop's managers hold pay
-  -- access, as there, and the shop has its accountant. Both start with last
-  -- month's hours, the wages from the first of last month and the details for
-  -- payroll, with the same cases as there, and both show the pay estimate.
+  -- access, as there, and both have the same accountant, Galit, to show the
+  -- switch between businesses (20261110000900_several_businesses.sql). Both
+  -- start with last month's hours, the wages from the first of last month and
+  -- the details for payroll, with the same cases as there, and both show the
+  -- pay estimate.
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$
@@ -76,7 +78,8 @@ begin
         { "user_id": "10000000-0000-4000-a000-000000000102", "role": "owner", "name": "אורי הדגמה" },
         { "user_id": "10000000-0000-4000-a000-000000000103", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
         { "user_id": "10000000-0000-4000-a000-000000000104", "role": "worker", "name": "נועה כהן", "departments": ["kitchen"] },
-        { "user_id": "10000000-0000-4000-a000-000000000105", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] }
+        { "user_id": "10000000-0000-4000-a000-000000000105", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] },
+        { "user_id": "10000000-0000-4000-a000-000000000112", "role": "accountant", "name": "גלית הדגמה" }
       ]
     }
     $json$::jsonb),
@@ -120,8 +123,9 @@ begin
   -- business that is there starts again too when someone its definition names
   -- has an account but no place in it: the reset leaves out a person without
   -- an account, so a person added to a definition by a migration (the shop's
-  -- accountant, 20261110000400_payroll_screens.sql) joins only once their
-  -- account is made above. After that they have their place, and the business
+  -- accountant, 20261110000400_payroll_screens.sql, and the restaurant's,
+  -- 20261110000900_several_businesses.sql) joins only once their account is
+  -- made above. After that they have their place, and the business
   -- stays as visitors left it.
   perform public.reset_demo_business(d.business_id)
   from private.demo_businesses d

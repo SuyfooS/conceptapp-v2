@@ -2447,7 +2447,7 @@ export type Database = {
         Returns: string;
       };
       send_test_push: {
-        Args: { actor: string; at_time?: string };
+        Args: { actor: string; at_time?: string; business?: string };
         Returns: boolean;
       };
       set_business_details: {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEMO_BUSINESSES,
   DEMO_PEOPLE,
+  demoBusinessesOf,
   demoBusinessOf,
   demoEmailOf,
   renewsDemoWeek,
@@ -42,16 +43,40 @@ describe("demoEmailOf", () => {
 });
 
 describe("demo businesses", () => {
-  it("offers every person in exactly one business", () => {
-    const offered = DEMO_BUSINESSES.flatMap((b) => [...b.people]);
-    expect(offered.sort()).toEqual([...DEMO_PEOPLE].sort());
+  it("offers every staff person in exactly one business, the accountant in both", () => {
+    for (const person of DEMO_PEOPLE) {
+      const offeredIn = DEMO_BUSINESSES.filter((b) =>
+        (b.people as readonly string[]).includes(person),
+      ).map((b) => b.key);
+      expect(offeredIn.length, person).toBe(person === "accountant" ? 2 : 1);
+    }
+    expect(
+      DEMO_BUSINESSES.flatMap((b) => [...b.people])
+        .filter((person) => person !== "accountant")
+        .sort(),
+    ).toEqual(DEMO_PEOPLE.filter((person) => person !== "accountant").sort());
+    expect(demoBusinessesOf("accountant").map((b) => b.slug)).toEqual([
+      "demo-restaurant",
+      "demo-shop",
+    ]);
   });
 
   it("finds each person's business", () => {
     expect(demoBusinessOf("manager").slug).toBe("demo-restaurant");
     expect(demoBusinessOf("shopWorker").slug).toBe("demo-shop");
-    // In the shop alone, until a login may be in several businesses (P3b).
-    expect(demoBusinessOf("accountant").slug).toBe("demo-shop");
+    // The accountant comes in where the door offered her (payroll P3b).
+    expect(demoBusinessOf("accountant", "shop").slug).toBe("demo-shop");
+    expect(demoBusinessOf("accountant", "restaurant").slug).toBe(
+      "demo-restaurant",
+    );
+  });
+
+  it("never opens a business a person isn't in, whatever a client sends", () => {
+    expect(demoBusinessOf("shopWorker", "restaurant").slug).toBe("demo-shop");
+    expect(demoBusinessOf("worker", "shop").slug).toBe("demo-restaurant");
+    for (const key of ["", "cafe", null, undefined, {}]) {
+      expect(demoBusinessOf("accountant", key).slug).toBe("demo-restaurant");
+    }
   });
 
   it("renews only the shop's schedule", () => {

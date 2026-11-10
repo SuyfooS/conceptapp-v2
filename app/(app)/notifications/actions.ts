@@ -6,13 +6,16 @@ import { INBOX_PATH, linkFor } from "@domain/notifications";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
+import { rememberBusiness } from "../business-cookie";
 import { currentMember } from "../member";
 
 /**
  * Open one of the signed-in person's lines: mark it read and go where it
  * leads. Where comes from the line's kind as stored, never from the browser,
- * so it can only be a screen of the app. Nothing is marked while viewing as
- * someone; a line that isn't theirs (or is gone) leads back to the inbox.
+ * so it can only be a screen of the app. A line from another of their
+ * businesses opens that business (payroll P3b), as the phone's do. Nothing is
+ * marked or switched while viewing as someone; a line that isn't theirs (or
+ * is gone) leads back to the inbox.
  */
 export async function openNotificationAction(id: string): Promise<void> {
   const member = await currentMember();
@@ -24,6 +27,12 @@ export async function openNotificationAction(id: string): Promise<void> {
   }
   if (canWrite(member.viewing)) {
     await readNotifications(member.userId, line.businessId, [line.id]);
+    if (
+      line.businessId !== member.membership.business.id &&
+      member.businesses.some((own) => own.business.id === line.businessId)
+    ) {
+      await rememberBusiness(line.businessId);
+    }
   }
   // The counts on the bell and the Home tab are read with the layout.
   refresh();

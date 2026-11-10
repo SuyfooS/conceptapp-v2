@@ -93,10 +93,14 @@ export async function inviteAction(
   if (!parsed.ok) return { errors: parsed.errors, values };
 
   try {
-    // The app opens a person’s oldest business, so someone already working
-    // in another one would never see this one.
+    // One place on a staff per login (payroll P3b): someone on another
+    // business's staff may still be invited to keep this one's books.
     if (
-      await activeElsewhere(parsed.value.phone, actor.membership.business.id)
+      await activeElsewhere(
+        parsed.value.phone,
+        actor.membership.business.id,
+        parsed.value.role,
+      )
     ) {
       return { failure: "elsewhere", values };
     }
@@ -126,9 +130,12 @@ export async function inviteAction(
  * line rewritten since stays ("changed", and the screen reads it again). The
  * database checks the roles (a manager doesn't clear an owner's) and logs it
  * without the text. The screen holds the delete for a moment first, so it can
- * be undone before it is sent.
+ * be undone before it is sent. The page binds it to the business the screen
+ * was drawn for (payroll P3b): a delete that arrives after the person
+ * switched business is refused, never made in the other one.
  */
 export async function clearBioAction(
+  businessId: string,
   personId: string,
   seenBio: string,
 ): Promise<ProfileSaveResult> {
@@ -136,6 +143,9 @@ export async function clearBioAction(
   const membership = member?.membership;
   if (!member || !membership || !canSeeTeam(membership.role)) {
     return { ok: false, failure: "noAccess" };
+  }
+  if (membership.business.id !== businessId) {
+    return { ok: false, failure: "businessChanged" };
   }
   if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };
   const seen = seenBioOf(seenBio);

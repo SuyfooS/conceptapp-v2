@@ -44,6 +44,7 @@ export async function MeView({
   signOut,
   actions,
   notifications,
+  businesses,
   home = "/home",
 }: {
   data: MeData;
@@ -54,6 +55,8 @@ export async function MeView({
   actions: MeActions;
   /** The switch for notifications on this phone, where there is one. */
   notifications?: ReactNode;
+  /** The switch between businesses, for someone in more than one. */
+  businesses?: ReactNode;
   home?: string;
 }) {
   const t = translator(wording, "app");
@@ -82,6 +85,7 @@ export async function MeView({
       actions={actions}
       signOut={signOut}
       notifications={notifications}
+      businesses={businesses}
     />
   );
 }

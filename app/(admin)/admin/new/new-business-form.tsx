@@ -254,7 +254,18 @@ export function NewBusinessForm({
               name="staff"
               label={t("staff.label")}
               hint={t("staff.hint")}
-              error={errors.staff && t(`errors.staff.${errors.staff}`)}
+              error={
+                errors.staff === "elsewhere"
+                  ? // From the server: the numbers on another staff, named.
+                    t.rich("errors.staff.elsewhere", {
+                      count: state.elsewhere?.length ?? 0,
+                      numbers: (state.elsewhere ?? [])
+                        .map(displayIsraeliMobile)
+                        .join(", "),
+                      ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                    })
+                  : errors.staff && t(`errors.staff.${errors.staff}`)
+              }
               placeholder={t("staff.placeholder")}
               value={values.staff}
               onChange={(e) => {

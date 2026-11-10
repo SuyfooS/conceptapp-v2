@@ -34,6 +34,19 @@ describe("demo businesses and profiles", () => {
     }
   });
 
+  // One login in two businesses (payroll P3b): the door offers Galit in both,
+  // and each business's reset puts her back in it.
+  it("has one accountant in both demo businesses, locally and hosted", () => {
+    for (const file of ["supabase/seed.sql", "supabase/hosted-demo.sql"]) {
+      const accountants = read(file)
+        .split(/\r?\n/)
+        .filter((line) => line.includes('"role": "accountant"'));
+      expect(accountants, file).toHaveLength(2);
+      const ids = accountants.map((line) => /"user_id": "([^"]+)"/.exec(line));
+      expect(new Set(ids.map((id) => id?.[1])).size, file).toBe(1);
+    }
+  });
+
   it("never opens a hosted demo business to profile changes", () => {
     expect(read("supabase/hosted-demo.sql")).not.toMatch(/"profiles"/);
   });

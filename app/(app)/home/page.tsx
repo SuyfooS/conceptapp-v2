@@ -2,6 +2,7 @@ import { isStaff, moduleWidgets } from "@domain/modules";
 import { profilePhotoSrc } from "@domain/profile-photos";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
+import { currentBusinesses } from "../businesses";
 import { currentClockLine } from "../clock/clock";
 import { currentPayHome } from "../clock/pay/pay";
 import { currentWording } from "../current-wording";
@@ -48,6 +49,7 @@ export default async function HomePage() {
     clockLine,
     lists,
     wording,
+    businesses,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -59,6 +61,7 @@ export default async function HomePage() {
     currentClockLine(),
     currentListsHome(),
     currentWording(),
+    currentBusinesses(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -67,6 +70,7 @@ export default async function HomePage() {
   return (
     <TodayView
       wording={wording}
+      businesses={businesses}
       data={{
         now: new Date().toISOString(),
         timeZone: published?.timeZone ?? membership.business.place.timeZone,
@@ -98,17 +102,19 @@ export default async function HomePage() {
  * about modules, which other modules being on would make untrue.
  */
 async function OutsideStaffHome() {
-  const [member, enabled, pay, wording] = await Promise.all([
+  const [member, enabled, pay, wording, businesses] = await Promise.all([
     currentMember(),
     currentModules(),
     currentPayHome(),
     currentWording(),
+    currentBusinesses(),
   ]);
   const membership = member?.membership;
   if (!member || !membership) return null;
   return (
     <AccountantHome
       wording={wording}
+      businesses={businesses}
       data={{
         now: new Date().toISOString(),
         timeZone: membership.business.place.timeZone,

@@ -8,6 +8,17 @@
       "needsAction": ", {count} need action",
       "profile": "My profile"
     },
+    "businesses": {
+      "title": "My businesses",
+      "switch": "Switch business",
+      "now": "The business now: {name}",
+      "here": "You are here",
+      "unread": "{count, plural, one {One new notification} other {# new notifications}}",
+      "unreadElsewhere": "{businesses, plural, one {{count, plural, one {A new notification in another business} other {# new notifications in another business}}} other {{count} new notifications in other businesses}}",
+      "menu": "Switch business. The business now: {name}",
+      "menuUnread": "Switch business. The business now: {name}. {businesses, plural, one {{count, plural, one {A new notification in another business} other {# new notifications in another business}}} other {{count} new notifications in other businesses}}",
+      "close": "Close"
+    },
     "codeSlots": {
       "count": "{filled} of {total} digits",
       "accepted": "Code accepted"
@@ -313,6 +324,10 @@
     "checklistNote": "What's missing in the kitchen",
     "checklistPhoto": "A photo of the kitchen after cleaning",
     "checklistWho": "Noa",
+    "switcher": "Switching business",
+    "switcherText": "Only for someone in more than one business: a list on Home, a row on the profile that opens it, and a menu on the sidebar on a computer.",
+    "switcherShop": "The corner shop",
+    "switcherBakery": "Morning bakery",
     "dataTable": "Table",
     "dataTableName": "Name",
     "dataTableDays": "Days",
@@ -428,6 +443,7 @@
       "verify": "Join the team",
       "resend": "Send a new code",
       "shiftsLeft": "Before joining as the accountant, finish your shifts here: clock out of any open shift, and ask whoever builds the schedule to take you off your shifts, and any swap you took, from today on.",
+      "elsewhere": "You already have a place on another business's team, and a person can be on one team only. You can ask whoever invited you for an invite as the accountant: an accountant can be in several businesses.",
       "gone": {
         "missing": {
           "title": "This link is not active",
@@ -719,7 +735,7 @@
           "failed": "We could not create the invite. Try again in a moment.",
           "noPermission": "Only owners and managers can invite to the team.",
           "viewOnly": "This is view only, so the invite was not saved.",
-          "elsewhere": "This number is already active in another business. For now a person can be in one business only.",
+          "elsewhere": "This number is already on another business's team, and a person can be on one business's team only. As the accountant they can join several businesses.",
           "demo": "This is a demo business, so nobody is invited to it.",
           "hasOwner": "The business already has an owner. Another owner is invited by the owner, from the Team screen."
         }
@@ -735,6 +751,7 @@
           "viewOnly": "Nothing can be changed while viewing.",
           "changed": "The line changed in the meantime, so it wasn't deleted. The new line shows now.",
           "notYet": "Deleting a line opens shortly. Try again later.",
+          "businessChanged": "You moved to another business in the meantime, so the line wasn't deleted. Reload the screen.",
           "failed": "The line wasn't deleted. Try again."
         },
         "youth": "A minor until <ltr>{until}</ltr>",
@@ -2316,6 +2333,7 @@
           "notInTeam": "This person is no longer on the team.",
           "always": "Owners and accountants always see the hours and pay.",
           "viewOnly": "While viewing, who sees pay can't be changed.",
+          "businessChanged": "You moved to another business in the meantime, so the change wasn't saved. Reload the screen.",
           "failed": "The change wasn't saved. Check the connection and try again."
         },
         "noName": "No name"
@@ -2610,6 +2628,7 @@
           },
           "summary": "{count, plural, one {One new update} other {# new updates}}",
           "summaryBody": "They're all waiting in the app's notifications",
+          "summaryBodyBusinesses": "They're waiting in your businesses in the app",
           "fallback": {
             "title": "There's something new in ConceptApp",
             "body": "Open the app to see it"
@@ -3153,7 +3172,8 @@
         "noPermission": "You are not allowed to open businesses.",
         "staff": {
           "invalid": "Some lines need fixing.",
-          "tooMany": "Up to 60 people. The rest can be invited later."
+          "tooMany": "Up to 60 people. The rest can be invited later.",
+          "elsewhere": "{count, plural, one {The number <ltr>{numbers}</ltr> is already on another business's team, and a person can be on one team only. Take it off the list. Once the business is open, the person with that number can be invited as its accountant.} other {The numbers <ltr>{numbers}</ltr> are already on other businesses' teams, and a person can be on one team only. Take them off the list. Once the business is open, the people with those numbers can be invited as its accountants.}}"
         }
       },
       "staff": {

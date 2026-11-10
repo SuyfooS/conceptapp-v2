@@ -5,7 +5,9 @@ import { displayIsraeliMobile } from "@domain/phone";
 import { profilePhotoSrc } from "@domain/profile-photos";
 import type { Metadata } from "next";
 import { signOut } from "../../(auth)/actions";
+import { currentBusinesses } from "../businesses";
 import { currentWording } from "../current-wording";
+import { SwitchBusinessSection } from "../home/my-businesses";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
 import { PushSwitch } from "../notifications/push-switch";
@@ -25,10 +27,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // The signed-in person's own profile, for everyone in a business.
 export default async function MePage() {
-  const [member, wording, enabled] = await Promise.all([
+  const [member, wording, enabled, businesses] = await Promise.all([
     currentMember(),
     currentWording(),
     currentModules(),
+    currentBusinesses(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -65,6 +68,9 @@ export default async function MePage() {
         push && canPush !== null ? (
           <PushSwitch publicKey={push.publicKey} demo={!canPush} />
         ) : null
+      }
+      businesses={
+        <SwitchBusinessSection businesses={businesses} wording={wording} />
       }
       data={{
         name:

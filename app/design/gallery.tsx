@@ -11,6 +11,13 @@ import { Ambient } from "@ui/ambient";
 import { Avatar, AvatarStack } from "@ui/avatar";
 import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Badge } from "@ui/badge";
+import {
+  type BusinessChoice,
+  BusinessList,
+  BusinessMark,
+  BusinessMenu,
+  BusinessSwitchRow,
+} from "@ui/business-switcher";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChecklistItem } from "@ui/checklist-item";
@@ -160,6 +167,7 @@ function GalleryBody({
   const tCover = useTranslations("ui.profileCover");
   const tList = useTranslations("app.lists.list");
   const tPay = useTranslations("app.pay");
+  const tRoles = useTranslations("app.roles");
   const [ticked, setTicked] = useState(false);
   const [fridge, setFridge] = useState("7");
   const [freezer, setFreezer] = useState("18");
@@ -193,6 +201,30 @@ function GalleryBody({
     onLangChange(next);
     setPhone({ display: "", e164: null }); // the fields remount empty in the new language
     setBirth(EMPTY_DATE);
+  };
+
+  // One login in two businesses (payroll P3b), switched with a stand-in that
+  // only waits a moment.
+  const galleryBusinesses: BusinessChoice[] = [
+    {
+      id: "shop",
+      name: t("switcherShop"),
+      accent: ACCENTS[1].hex,
+      role: tRoles("owner"),
+      unread: 2,
+      current: true,
+    },
+    {
+      id: "bakery",
+      name: t("switcherBakery"),
+      accent: ACCENTS[2].hex,
+      role: tRoles("accountant"),
+      unread: 1,
+      current: false,
+    },
+  ];
+  const galleryChoose = async (_form: FormData) => {
+    await pause();
   };
 
   const tokens = accentTokens(requested);
@@ -497,6 +529,27 @@ function GalleryBody({
               subtitle={t("rowDisabledText")}
             />
           </ListGroup>
+        </Section>
+
+        <Section title={t("switcher")}>
+          <p className="text-ink-2 text-sm">{t("switcherText")}</p>
+          <BusinessList businesses={galleryBusinesses} action={galleryChoose} />
+          <BusinessSwitchRow
+            businesses={galleryBusinesses}
+            action={galleryChoose}
+          />
+          {/* As the sidebar draws it: the same mark, and the name as a menu
+              with what is unread in the other business under it. */}
+          <Card className="flex items-center gap-3">
+            <BusinessMark
+              name={galleryBusinesses[0]?.name ?? ""}
+              accent={galleryBusinesses[0]?.accent ?? ACCENTS[1].hex}
+            />
+            <BusinessMenu
+              businesses={galleryBusinesses}
+              action={galleryChoose}
+            />
+          </Card>
         </Section>
 
         <Section title={t("dataTable")}>

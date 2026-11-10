@@ -101,6 +101,11 @@ export type ProfileFailure =
   | "noAccess"
   /** A colleague's line was rewritten since it was read, so it stays. */
   | "changed"
+  /**
+   * The person switched business since the screen was drawn (payroll P3b),
+   * so a colleague's line there stays.
+   */
+  | "businessChanged"
   | "notYet"
   | "failed"
   | "viewOnly";

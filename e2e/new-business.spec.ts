@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { businessBySlug, invitesBySlug } from "./db";
 import { signIn } from "./session";
+import { heT } from "./t";
 
 // Seeded onboarder and platform admin (supabase/seed.sql). admin.spec signs
 // both numbers in long before this spec runs, so the SMS resend cooldown
@@ -213,6 +214,25 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   await page.getByRole("button", { name: w.actions.create }).click();
   await expect(page.getByText(w.errors.staff.invalid)).toBeVisible();
   await expect(page).toHaveURL(/\/admin\/new$/);
+
+  // One place on a staff per login (payroll P3b): the shop's Roni, on its
+  // staff (supabase/seed.sql), can't be on this one's too. The list comes
+  // back with the number named, and nothing opens.
+  await list.fill(
+    ["רונית בדיקה 050-000-0701 בעלים", "רוני 050-000-0012"].join("\n"),
+  );
+  await page.getByRole("button", { name: w.actions.create }).click();
+  await expect(
+    page.getByText(
+      heT.markup("admin.newBusiness.errors.staff.elsewhere", {
+        count: 1,
+        numbers: "050-000-0012",
+        ltr: (chunks) => chunks,
+      }),
+    ),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/admin\/new$/);
+  expect(await businessBySlug(slug)).toBeNull();
 
   await list.fill(
     [

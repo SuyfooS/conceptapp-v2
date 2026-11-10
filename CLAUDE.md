@@ -90,10 +90,11 @@ Only `app/` imports app code (`@/…`).
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
   Built so far: Button, IconButton (also as a link, with a count), TextField, PhoneField, DateField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
-  ChoiceList, ChoiceMenu, Segmented, Card, ListRow and ListGroup, DataTable, PersonList, Badge, Avatar
+  ChoiceList, ChoiceMenu (options with a mark and hint), Segmented, Card, ListRow (with submit and current) and ListGroup, DataTable, PersonList, Badge, Avatar
   and AvatarStack (with photos), AvatarPhotoPicker, VisibilityNote, ProfileCover (eight presets) and CoverChoices, Tile, CoverageBar, ProgressRing, PunchCircle and ScanCircle, ChecklistItem, Sheet, FloatingAction, FloatingDock,
   StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
-  PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay.
+  PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay,
+  BusinessList, BusinessSwitchRow, BusinessMenu and BusinessMark (business-switcher).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a

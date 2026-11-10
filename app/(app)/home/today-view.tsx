@@ -49,6 +49,7 @@ import {
 import Link from "next/link";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { Businesses } from "../businesses";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
 import { moduleIcons } from "../module-icons";
@@ -59,6 +60,7 @@ import type {
   TeamAvailabilityWeek,
 } from "../schedule/week";
 import { type AppWording, type Translator, translator } from "../wording";
+import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
 
 /** What the schedule module brings to Today; null when it is off. */
@@ -140,17 +142,22 @@ const personIn = (t: T, published: PublishedSchedule, userId: string) => ({
  * row that scrolls. Tablet: the hero beside the tiles, each list across the
  * width in two columns. Desktop: the same with the lists under the tiles, and
  * today's shifts side by side. The avatar by the greeting leads to the
- * person's profile, where signing out is. `base` prefixes links for the
- * demo, which also renders this with mock data on /design/shell.
+ * person's profile, where signing out is. Someone in more than one business
+ * (payroll P3b) has them listed last, on phones and tablets, to switch
+ * between. `base` prefixes links for the demo, which also renders this with
+ * mock data on /design/shell.
  */
 export async function TodayView({
   data,
   wording,
+  businesses,
   base = "",
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
+  /** The businesses to switch between, for someone in more than one. */
+  businesses?: Businesses | null;
   base?: string;
 }) {
   const t = translator(wording, "app");
@@ -334,6 +341,11 @@ export async function TodayView({
             {rest()}
           </>
         )}
+        <MyBusinesses
+          businesses={businesses}
+          wording={wording}
+          className="md:max-w-xl"
+        />
       </PageBody>
     </div>
   );

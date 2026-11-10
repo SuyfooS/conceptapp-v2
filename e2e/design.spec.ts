@@ -55,12 +55,14 @@ const PAGES = [
   "/design/shell/today/accountant?state=checked",
   "/design/shell/today/accountant?state=empty",
   "/design/shell/today/accountant?state=off",
+  "/design/shell/today/businesses",
   "/design/shell/team",
   "/design/shell/team/noa",
   "/design/shell/team/maya",
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
+  "/design/shell/me/businesses",
   "/design/shell/manage",
   "/design/shell/manage/business",
   "/design/shell/manage/activity",
@@ -138,6 +140,81 @@ test("a person's hours in the demo match their row in the team list", async ({
       page.getByText(`שעות, ${shifts}`).filter({ visible: true }).first(),
     ).toBeVisible();
   }
+});
+
+// The switcher's twins (payroll P3b): the demo's accountant keeps the books of
+// the restaurant, where she is, and of a shop with two unread lines. A desktop
+// switches from the sidebar's menu; phones and tablets from Home's list and
+// the profile's sheet, with the same words.
+test("the switcher's demo offers both businesses on every screen", async ({
+  page,
+}, testInfo) => {
+  const b = he.ui.businesses;
+  const shop = /חנות הדגמה/;
+  const unread = heT("ui.businesses.unread", { count: 2 });
+  await page.goto("/design/shell/today/businesses");
+  if (testInfo.project.name === "desktop") {
+    await expect(page.getByRole("heading", { name: b.title })).toBeHidden();
+    // The sidebar is the accountant's own, with no staff tab.
+    const sidebar = page.locator("aside");
+    await expect(
+      sidebar.getByRole("link", { name: /גלית הדגמה/ }),
+    ).toBeVisible();
+    await expect(
+      sidebar.getByRole("link", { name: he.shell.nav.team, exact: true }),
+    ).toHaveCount(0);
+    // The shop's two lines show under the name before anything is pressed,
+    // and the menu's name says them too.
+    const elsewhere = { count: 2, businesses: 1 };
+    await expect(
+      page
+        .getByText(heT("ui.businesses.unreadElsewhere", elsewhere))
+        .filter({ visible: true }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", {
+        name: heT("ui.businesses.menuUnread", {
+          name: "מסעדת הדגמה",
+          ...elsewhere,
+        }),
+      })
+      .click();
+    await expect(
+      page.getByRole("menuitemradio", { name: /מסעדת הדגמה/ }),
+    ).toHaveAttribute("aria-checked", "true");
+    await expect(page.getByRole("menuitemradio", { name: shop })).toContainText(
+      unread,
+    );
+    // While it is open, Radix hides the rest of the page from screen readers:
+    // the menu alone, then the whole page once it is closed.
+    const open = await new AxeBuilder({ page })
+      .include('[role="menu"]')
+      .analyze();
+    expect(open.violations.map((v) => v.id)).toEqual([]);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("menu")).toBeHidden();
+    const { violations } = await new AxeBuilder({ page }).analyze();
+    expect(violations.map((v) => v.id)).toEqual([]);
+    return;
+  }
+  await expect(
+    page.getByRole("heading", { level: 2, name: b.title }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: shop }).filter({ visible: true }),
+  ).toContainText(unread);
+  await expect(
+    page.getByText(b.here).filter({ visible: true }).first(),
+  ).toBeVisible();
+
+  await page.goto("/design/shell/me/businesses");
+  await page.getByRole("button", { name: new RegExp(b.switch) }).click();
+  const sheet = page.getByRole("dialog", { name: b.title });
+  await expect(sheet.getByText(b.here)).toBeVisible();
+  await expect(sheet.getByRole("button", { name: shop })).toBeVisible();
+  // The sheet hides the page from screen readers, heading and all: axe alone.
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  expect(violations.map((v) => v.id)).toEqual([]);
 });
 
 // The activity demo draws the breaks a correction changed: one cut, one removed.

@@ -91,8 +91,9 @@ export async function inviteLinkAction(
  * Someone on the team adds a person to a business, in any role, from the
  * console (an owner only while the business has none): the result is a link
  * for them to send on, as from the Team screen. A number with an invite nobody claimed, open or expired, gets that
- * invite renewed. A number already working in another business is refused:
- * the app opens a person's oldest business, so they would never see this one.
+ * invite renewed. A number on another business's staff is refused a place on
+ * this one's (one place on a staff per login, payroll P3b), and may still be
+ * added as its accountant.
  */
 export async function addPersonAction(
   business: { id: string; slug: string },
@@ -113,7 +114,9 @@ export async function addPersonAction(
   if (!parsed.ok) return { errors: parsed.errors, values };
 
   try {
-    if (await activeElsewhere(parsed.value.phone, business.id)) {
+    if (
+      await activeElsewhere(parsed.value.phone, business.id, parsed.value.role)
+    ) {
       return { failure: "elsewhere", values };
     }
     const result = await inviteFromConsole(

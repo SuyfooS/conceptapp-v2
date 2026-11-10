@@ -46,7 +46,8 @@ export default async function TeamPersonPage({
       canClear={
         canWrite(member.viewing) && mayClearBio(membership.role, data.role)
       }
-      clearBio={clearBioAction}
+      // For this business only: a delete held past a switch is refused.
+      clearBio={clearBioAction.bind(null, membership.business.id)}
       teamHref="/team"
       wording={wording}
     />

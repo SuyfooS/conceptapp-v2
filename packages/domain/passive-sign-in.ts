@@ -25,8 +25,8 @@ export const DEMO_PEOPLE = [
   "shopOwner",
   "shopManager",
   "shopWorker",
-  // The shop's accountant (payroll P3), in the shop alone until a login may
-  // be in several businesses (P3b).
+  // The demo's accountant, Galit (payroll P3): the shop's, and since one login
+  // may be in several businesses (P3b) the restaurant's too.
   "accountant",
 ] as const;
 
@@ -34,16 +34,18 @@ export type DemoPerson = (typeof DEMO_PEOPLE)[number];
 
 /**
  * The demo businesses at the door, in the order it shows them, each with the
- * people it offers. A business that `renews` always has this week's schedule
- * published, so there is something to see the moment one comes in; next week
- * is left for the visitor to collect availability, build and publish. The
- * restaurant doesn't renew: its schedule is the visitor's to build.
+ * people it offers. Everyone on a staff is in one of them; the accountant is
+ * in both, and comes in to whichever business the door offered her in. A
+ * business that `renews` always has this week's schedule published, so there
+ * is something to see the moment one comes in; next week is left for the
+ * visitor to collect availability, build and publish. The restaurant doesn't
+ * renew: its schedule is the visitor's to build.
  */
 export const DEMO_BUSINESSES = [
   {
     key: "restaurant",
     slug: "demo-restaurant",
-    people: ["owner", "manager", "worker"],
+    people: ["owner", "manager", "worker", "accountant"],
     renews: false,
   },
   {
@@ -93,11 +95,24 @@ export function renewsDemoWeek(slug: string | null | undefined): boolean {
   );
 }
 
-/** The demo business a person on offer belongs to. */
-export function demoBusinessOf(person: DemoPerson): DemoBusiness {
-  const business = DEMO_BUSINESSES.find((b) =>
+/** The demo businesses a person on offer is in: one, or both for the accountant. */
+export function demoBusinessesOf(person: DemoPerson): DemoBusiness[] {
+  return DEMO_BUSINESSES.filter((b) =>
     (b.people as readonly DemoPerson[]).includes(person),
   );
+}
+
+/**
+ * The demo business a person on offer comes in to: the one the door offered
+ * them in (`key`, as a client sends it) when they are in it, else the first
+ * they are in.
+ */
+export function demoBusinessOf(
+  person: DemoPerson,
+  key?: unknown,
+): DemoBusiness {
+  const theirs = demoBusinessesOf(person);
+  const business = theirs.find((b) => b.key === key) ?? theirs[0];
   if (!business) throw new Error(`No demo business for ${person}`);
   return business;
 }

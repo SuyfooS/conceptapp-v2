@@ -90,6 +90,17 @@ test("the door offers a restaurant and a shop, each with its people", async ({
     ).toBeVisible();
   }
   for (const key of Object.keys(e.people) as (keyof typeof e.people)[]) {
+    // Galit keeps the books of both (payroll P3b): offered in each.
+    if (key === "accountant") {
+      for (const business of Object.values(e.businesses)) {
+        await expect(
+          page
+            .getByRole("region", { name: business.name })
+            .getByRole("button", { name: new RegExp(e.people[key].name) }),
+        ).toBeVisible();
+      }
+      continue;
+    }
     await expect(person(page, key)).toBeVisible();
   }
   await expect(page.getByText(e.warning)).toHaveCount(1);

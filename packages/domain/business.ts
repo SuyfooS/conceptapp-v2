@@ -64,15 +64,21 @@ export const NEW_BUSINESS_FIELDS = [
 ] as const;
 export type NewBusinessField = (typeof NEW_BUSINESS_FIELDS)[number];
 
-/** What can be wrong with each field ("taken" comes from the database). */
+/**
+ * What can be wrong with each field ("taken" and "elsewhere" come from the
+ * database).
+ */
 export type NewBusinessErrors = {
   template?: "required" | "invalid";
   name?: "required" | "tooLong";
   slug?: "required" | "tooShort" | "tooLong" | "invalid" | "reserved" | "taken";
   address?: "tooLong";
   accent?: "required" | "invalid";
-  /** Details per line come from `parseStaffList`. */
-  staff?: "invalid" | "tooMany";
+  /**
+   * Details per line come from `parseStaffList`. "elsewhere": a number in a
+   * staff role is on another business's staff (payroll P3b).
+   */
+  staff?: "invalid" | "tooMany" | "elsewhere";
 };
 
 export type NewBusiness = {

@@ -15,6 +15,7 @@ import { redirect } from "next/navigation";
 import { type ReactNode, Suspense } from "react";
 import { currentPlatformRole } from "../(admin)/staff";
 import { signOut } from "../(auth)/actions";
+import { currentBusinesses } from "./businesses";
 import { currentWording } from "./current-wording";
 import { currentMember } from "./member";
 import { moduleIcons } from "./module-icons";
@@ -56,9 +57,11 @@ async function Shell({ children }: { children: ReactNode }) {
   }
 
   const { business, role, perms } = member.membership;
-  const [enabled, wording, openLists] = await Promise.all([
+  const [enabled, wording, businesses, openLists] = await Promise.all([
     currentModules(),
     currentWording(),
+    // Someone in more than one business switches from the sidebar too.
+    currentBusinesses(),
     // The Lists tab carries the open lists the person holds; none while
     // viewing as someone, who holds none.
     enabledModules(manifests, business.modules).includes("lists") &&
@@ -116,6 +119,7 @@ async function Shell({ children }: { children: ReactNode }) {
             href: "/me",
           }}
           nav={nav}
+          businesses={businesses}
         >
           {member.viewing ? (
             <ViewAsBanner
