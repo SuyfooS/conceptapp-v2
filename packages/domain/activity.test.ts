@@ -665,6 +665,35 @@ describe("buildActivity: each action", () => {
     ).toEqual({ action: "lists.template.restore", name: "Old" });
   });
 
+  it("reads pay access given and taken back, to a role or a person", () => {
+    expect(
+      lineOf(
+        row("permission.grant", { role: "manager", perm: "clock.payroll" }),
+      ),
+    ).toEqual({
+      action: "permission.grant",
+      perm: "clock.payroll",
+      to: { kind: "role", role: "manager" },
+    });
+    expect(
+      lineOf(row("permission.revoke", { person: YOAV, perm: "clock.payroll" })),
+    ).toEqual({
+      action: "permission.revoke",
+      perm: "clock.payroll",
+      to: { kind: "person", person: { kind: "member", name: "Yoav" } },
+    });
+    expect(
+      lineOf(row("permission.grant", { role: "boss", perm: "clock.payroll" })),
+    ).toEqual({
+      action: "permission.grant",
+      perm: "clock.payroll",
+      to: { kind: "role", role: null },
+    });
+    expect(lineOf(row("permission.grant", { perm: "clock.payroll" }))).toEqual({
+      action: "other",
+    });
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),

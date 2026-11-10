@@ -1,4 +1,5 @@
 import { getClockPeople, getTimeEntries } from "@db/time-clock";
+import { canSeePay } from "@domain/payroll-access";
 import { timeIn } from "@domain/shabbat";
 import { canSeeTeam } from "@domain/team";
 import {
@@ -99,6 +100,7 @@ export async function currentTeamHours(
     required: settings.requirePunchCode,
     showCode: settings.requirePunchCode && settings.codeDisplay !== "station",
     viewOnly,
+    payroll: canSeePay({ role: access.role, perms: access.perms }),
     toConfirm: waiting.map(({ entry, toConfirm }) => ({
       entryId: entry.id,
       userId: entry.userId,

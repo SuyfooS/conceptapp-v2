@@ -20,6 +20,8 @@ export const ROUTINE_ACTIONS = [
   // A scheduled list opening and its reminder: the lists themselves show them.
   "lists.open",
   "lists.due",
+  // Someone opened the pay screens: kept for the record, not news.
+  "payroll.view",
 ] as const;
 
 /** Rows a page of the log reads. */
@@ -114,6 +116,11 @@ export function breakFitKind(breaks: readonly BreakFit[]): BreakFitKind {
   const [only] = kinds;
   return kinds.size === 1 && only ? only : "other";
 }
+
+/** Who a permission was given to: everyone in a role, or one person. */
+export type ActivityGrantee =
+  | { kind: "role"; role: Role | null }
+  | { kind: "person"; person: ActivityPerson };
 
 /** Who a list went to, as the log says it. */
 export type ActivityRecipient =
@@ -232,6 +239,13 @@ export type ActivityLine =
     }
   | { action: "lists.cancel"; name: string }
   | {
+      /** An owner or the team gave a permission, or took it back. */
+      action: "permission.grant" | "permission.revoke";
+      /** The permission's key, such as `clock.payroll`. */
+      perm: string;
+      to: ActivityGrantee;
+    }
+  | {
       action: "lists.reopen";
       name: string;
       was: "finished" | "cancelled" | null;
@@ -344,6 +358,11 @@ const schemas = {
   "lists.reopen": z.object({
     name: z.string(),
     was: z.string().optional(),
+  }),
+  permission: z.object({
+    perm: z.string(),
+    role: z.unknown().optional(),
+    person: id.optional(),
   }),
 };
 
@@ -672,6 +691,25 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
           ? details.was
           : null;
       return { action: row.action, name: details.name, was };
+    }
+    case "permission.grant":
+    case "permission.revoke": {
+      const details = read(schemas.permission);
+      if (!details) return other;
+      if (details.person !== undefined) {
+        return {
+          action: row.action,
+          perm: details.perm,
+          to: { kind: "person", person: personOf(details.person, lookups) },
+        };
+      }
+      return details.role === undefined
+        ? other
+        : {
+            action: row.action,
+            perm: details.perm,
+            to: { kind: "role", role: roleOf(details.role) },
+          };
     }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);

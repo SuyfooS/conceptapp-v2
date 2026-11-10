@@ -70,6 +70,24 @@ describe("module registry", () => {
     for (const p of byOwner) expect(p.defaultRole).toBe("owner");
   });
 
+  it("opens a tab off the staff only by a permission its module declares, with its words", () => {
+    // An accountant's tab (payroll P3): its label is modules.<key>.outsideNav,
+    // and its own screen, not the module's, checks the permission.
+    const outside = manifests.flatMap((m) =>
+      m.nav?.outsideStaff ? [{ m, tab: m.nav.outsideStaff }] : [],
+    );
+    expect(outside.map(({ m }) => m.key)).toEqual(["time_clock"]);
+    for (const { m, tab } of outside) {
+      expect(m.permissions.map((p) => p.key)).toContain(tab.perm);
+      expect(tab.href).not.toBe(m.nav?.href);
+      expect(tab.href.startsWith(`${m.nav?.href}/`)).toBe(true);
+      for (const messages of [he, en]) {
+        const words = messages.modules[m.key] as Record<string, unknown>;
+        expect(typeof words.outsideNav).toBe("string");
+      }
+    }
+  });
+
   it("only requires modules that exist", () => {
     for (const m of manifests) {
       for (const dep of m.requires) expect(MODULE_KEYS).toContain(dep);

@@ -90,7 +90,7 @@ const availabilityContext = cache(
     if (
       !member ||
       !membership ||
-      !canOpenModule(manifestFor("scheduling"), enabled, membership.role)
+      !canOpenModule(manifestFor("scheduling"), enabled, membership)
     ) {
       return null;
     }
@@ -267,7 +267,7 @@ export const currentPublishedSchedule = cache(
     if (
       !member ||
       !membership ||
-      !canOpenModule(manifestFor("scheduling"), enabled, membership.role)
+      !canOpenModule(manifestFor("scheduling"), enabled, membership)
     ) {
       return null;
     }

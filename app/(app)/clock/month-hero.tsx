@@ -82,7 +82,7 @@ export function MonthHero({
   );
 }
 
-function MonthLink({
+export function MonthLink({
   href,
   label,
   icon,

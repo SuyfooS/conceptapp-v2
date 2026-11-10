@@ -15,8 +15,10 @@ import {
   moduleNav,
   moduleWidgets,
   ROLES,
+  type Role,
   readModuleSettings,
   STAFF_ROLES,
+  type Viewer,
   validateModuleSettings,
 } from "./modules";
 
@@ -38,7 +40,13 @@ const schedule = defineManifest({
 const clock = defineManifest({
   key: "time_clock",
   requires: ["scheduling"],
-  nav: { href: "/clock", icon: "clock", minRole: "worker", order: 20 },
+  nav: {
+    href: "/clock",
+    icon: "clock",
+    minRole: "worker",
+    order: 20,
+    outsideStaff: { perm: "clock.payroll", href: "/clock/pay" },
+  },
   homeWidget: { minRole: "worker" },
   permissions: [],
   settings: z.object({}),
@@ -74,6 +82,9 @@ const all: ModuleManifest[] = [schedule, clock, notifications, storefront];
 
 const rows = (...on: ModuleRow["key"][]): ModuleRow[] =>
   on.map((key) => ({ key, enabled: true, settings: {} }));
+
+/** Someone in a role, holding these permissions (`public.my_permissions`). */
+const as = (role: Role, perms: string[] = []): Viewer => ({ role, perms });
 
 describe("atLeast", () => {
   it("ranks owner over manager over worker", () => {
@@ -143,7 +154,7 @@ describe("moduleNav", () => {
   );
 
   it("lists enabled modules with a nav item, by order", () => {
-    expect(moduleNav(all, on, "owner").map((e) => e.href)).toEqual([
+    expect(moduleNav(all, on, as("owner")).map((e) => e.href)).toEqual([
       "/storefront",
       "/schedule",
       "/clock",
@@ -151,7 +162,7 @@ describe("moduleNav", () => {
   });
 
   it("hides items above the person's role", () => {
-    expect(moduleNav(all, on, "worker").map((e) => e.key)).toEqual([
+    expect(moduleNav(all, on, as("worker")).map((e) => e.key)).toEqual([
       "scheduling",
       "time_clock",
     ]);
@@ -159,14 +170,32 @@ describe("moduleNav", () => {
 
   it("drops a module that is switched off", () => {
     const fewer = enabledModules(all, rows("scheduling", "storefront"));
-    expect(moduleNav(all, fewer, "owner").map((e) => e.key)).toEqual([
+    expect(moduleNav(all, fewer, as("owner")).map((e) => e.key)).toEqual([
       "storefront",
       "scheduling",
     ]);
   });
 
-  it("gives an accountant no tab yet: they are off the staff", () => {
-    expect(moduleNav(all, on, "accountant")).toEqual([]);
+  it("gives an accountant only the tabs off the staff whose permission they hold", () => {
+    expect(moduleNav(all, on, as("accountant"))).toEqual([]);
+    expect(moduleNav(all, on, as("accountant", ["clock.payroll"]))).toEqual([
+      { key: "time_clock", href: "/clock/pay", icon: "clock", outside: true },
+    ]);
+    // Not while the module is off.
+    expect(
+      moduleNav(all, ["scheduling"], as("accountant", ["clock.payroll"])),
+    ).toEqual([]);
+  });
+
+  it("keeps the staff on the module's own tab, pay access or not", () => {
+    const tabs = moduleNav(all, on, as("manager", ["clock.payroll"]));
+    expect(tabs.find((e) => e.key === "time_clock")).toEqual({
+      key: "time_clock",
+      href: "/clock",
+      icon: "clock",
+      outside: false,
+    });
+    expect(tabs.some((e) => e.outside)).toBe(false);
   });
 
   it(`never returns more than ${MAX_MODULE_NAV} items`, () => {
@@ -174,7 +203,7 @@ describe("moduleNav", () => {
       ...schedule,
       nav: { ...schedule.nav, href: `/m${i}` as const, order: i },
     })) as ModuleManifest[];
-    expect(moduleNav(many, ["scheduling"], "owner")).toHaveLength(
+    expect(moduleNav(many, ["scheduling"], as("owner"))).toHaveLength(
       MAX_MODULE_NAV,
     );
   });
@@ -234,23 +263,42 @@ describe("fitsTabBar", () => {
 describe("moduleWidgets", () => {
   it("shows home cards only for modules that declare one", () => {
     const on = enabledModules(all, rows("scheduling", "storefront"));
-    expect(moduleWidgets(all, on, "owner").map((w) => w.key)).toEqual([
+    expect(moduleWidgets(all, on, as("owner")).map((w) => w.key)).toEqual([
       "scheduling",
     ]);
-    expect(moduleWidgets(all, [], "owner")).toEqual([]);
-    expect(moduleWidgets(all, on, "accountant")).toEqual([]);
+    expect(moduleWidgets(all, [], as("owner"))).toEqual([]);
+  });
+
+  it("gives someone off the staff none: their Home is their own", () => {
+    const on = enabledModules(all, rows("scheduling", "time_clock"));
+    expect(moduleWidgets(all, on, as("accountant"))).toEqual([]);
+    expect(moduleWidgets(all, on, as("accountant", ["clock.payroll"]))).toEqual(
+      [],
+    );
   });
 });
 
 describe("canOpenModule", () => {
   it("needs the module on and the role in reach", () => {
-    expect(canOpenModule(storefront, ["storefront"], "manager")).toBe(true);
-    expect(canOpenModule(storefront, ["storefront"], "worker")).toBe(false);
-    expect(canOpenModule(storefront, [], "owner")).toBe(false);
-    expect(canOpenModule(notifications, ["notifications"], "owner")).toBe(
+    expect(canOpenModule(storefront, ["storefront"], as("manager"))).toBe(true);
+    expect(canOpenModule(storefront, ["storefront"], as("worker"))).toBe(false);
+    expect(canOpenModule(storefront, [], as("owner"))).toBe(false);
+    expect(canOpenModule(notifications, ["notifications"], as("owner"))).toBe(
       false,
     );
-    expect(canOpenModule(schedule, ["scheduling"], "accountant")).toBe(false);
+    expect(canOpenModule(schedule, ["scheduling"], as("accountant"))).toBe(
+      false,
+    );
+  });
+
+  it("keeps a module's own screens closed to an accountant with its tab", () => {
+    expect(
+      canOpenModule(
+        clock,
+        ["scheduling", "time_clock"],
+        as("accountant", ["clock.payroll"]),
+      ),
+    ).toBe(false);
   });
 });
 

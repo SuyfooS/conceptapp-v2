@@ -157,6 +157,13 @@ export function pushWords(
       return {
         title: t("kinds.lists.finished.title", { name: line.name }),
       };
+    case "access.pay_granted":
+      return settled
+        ? { title: t("kinds.access.pay_granted.settledTitle") }
+        : {
+            title: t("kinds.access.pay_granted.title"),
+            ...body(t("kinds.access.pay_granted.note")),
+          };
     case "push.test":
       return {
         title: t("kinds.push.test.title"),

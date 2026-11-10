@@ -54,6 +54,8 @@ export type ClockData = {
   };
   /** For those who see the team: what its screen would show now. */
   team: { atWork: number; overdue: number } | null;
+  /** They hold pay access: the way to the hours for payroll. */
+  payroll: boolean;
   /** Someone from ConceptApp is looking; nothing can be pressed. */
   viewOnly: boolean;
 };
@@ -65,4 +67,6 @@ export type ClockPaths = {
   team: string;
   /** The clock's code, shown on a manager's phone. */
   code: string;
+  /** The hours for payroll, for those who hold pay access. */
+  pay: string;
 };

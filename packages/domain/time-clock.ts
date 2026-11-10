@@ -416,7 +416,7 @@ function editedSinceWritten(entry: TimeEntry): boolean {
 }
 
 /** Who added or last corrected an entry, and why; null when nobody did. */
-function correctionOf(
+export function correctionOf(
   entry: TimeEntry,
   nameOf: (userId: string) => string | null,
 ): ShiftCorrection | null {

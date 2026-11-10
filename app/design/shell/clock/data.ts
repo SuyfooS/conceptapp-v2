@@ -124,6 +124,7 @@ export function demoClock(
     unpaidBreaks: true,
     punch: { required: code, needsCode: code, canShowCode: true },
     team: { atWork: 2, overdue: state === "working" ? 0 : 1 },
+    payroll: true,
     viewOnly: false,
   };
 }

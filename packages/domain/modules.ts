@@ -100,6 +100,12 @@ export type ModuleManifest<
     minRole: Role;
     /** Position among module items; lower comes first. */
     order: number;
+    /**
+     * The tab someone off the staff (an accountant) gets, when they hold
+     * `perm`: it leads to `href`, labelled `modules.<key>.outsideNav`. The
+     * module's own screens stay closed to them (`canOpenModule`).
+     */
+    outsideStaff?: { perm: `${string}.${string}`; href: `/${string}` };
   } | null;
   /**
    * The module's part of the Today screen. Until it has one of its own, one
@@ -168,40 +174,74 @@ export type ModuleNavEntry = {
   key: ModuleKey;
   href: `/${string}`;
   icon: ModuleIcon;
+  /**
+   * The tab of someone off the staff (`outsideStaff`): labelled
+   * `modules.<key>.outsideNav` instead of the module's name.
+   */
+  outside: boolean;
 };
 
 /**
+ * Who is looking: their role, and the permissions they hold in the business
+ * (`public.my_permissions`, which is the database's own answer, view sessions
+ * included).
+ */
+export type Viewer = { role: Role; perms: readonly string[] };
+
+/**
  * Whether `role` reaches a nav item or home card for `minRole`. Someone off
- * the staff (an accountant) reaches none yet: their own screens come with the
- * payroll screens (P3).
+ * the staff (an accountant) reaches none of the staff's: they get a module's
+ * `outsideStaff` tab instead, when they hold its permission.
  */
 function reaches(role: Role, minRole: Role): boolean {
   return isStaff(role) && atLeast(role, minRole);
 }
 
-/** Navigation items for `role`, from the enabled modules, in order. */
+/**
+ * Navigation items for the viewer, from the enabled modules, in order. Someone
+ * on the staff gets each module their role reaches; someone off it, each
+ * module's `outsideStaff` tab whose permission they hold.
+ */
 export function moduleNav(
   manifests: readonly ModuleManifest[],
   enabled: readonly ModuleKey[],
-  role: Role,
+  viewer: Viewer,
 ): ModuleNavEntry[] {
+  const staff = isStaff(viewer.role);
   return manifests
     .filter((m) => enabled.includes(m.key))
-    .flatMap((m) =>
-      m.nav && reaches(role, m.nav.minRole)
+    .flatMap((m) => {
+      const nav = m.nav;
+      if (!nav) return [];
+      if (staff) {
+        return reaches(viewer.role, nav.minRole)
+          ? [
+              {
+                key: m.key,
+                href: nav.href,
+                icon: nav.icon,
+                order: nav.order,
+                outside: false,
+              },
+            ]
+          : [];
+      }
+      const outside = nav.outsideStaff;
+      return outside && viewer.perms.includes(outside.perm)
         ? [
             {
               key: m.key,
-              href: m.nav.href,
-              icon: m.nav.icon,
-              order: m.nav.order,
+              href: outside.href,
+              icon: nav.icon,
+              order: nav.order,
+              outside: true,
             },
           ]
-        : [],
-    )
+        : [];
+    })
     .sort((a, b) => a.order - b.order)
     .slice(0, MAX_MODULE_NAV)
-    .map(({ key, href, icon }) => ({ key, href, icon }));
+    .map(({ key, href, icon, outside }) => ({ key, href, icon, outside }));
 }
 
 /**
@@ -219,35 +259,40 @@ export function fitsTabBar(
   return tabs.length <= MAX_MODULE_NAV;
 }
 
-/** What the Today screen shows for `role`, from the enabled modules, in nav order. */
+/**
+ * What the Today screen shows for the viewer, from the enabled modules, in nav
+ * order. Nothing for someone off the staff: their Home is their own.
+ */
 export function moduleWidgets(
   manifests: readonly ModuleManifest[],
   enabled: readonly ModuleKey[],
-  role: Role,
+  viewer: Viewer,
 ): ModuleNavEntry[] {
   const visible = new Set(
     manifests
-      .filter((m) => m.homeWidget && reaches(role, m.homeWidget.minRole))
+      .filter((m) => m.homeWidget && reaches(viewer.role, m.homeWidget.minRole))
       .map((m) => m.key),
   );
-  return moduleNav(manifests, enabled, role).filter((entry) =>
-    visible.has(entry.key),
+  return moduleNav(manifests, enabled, viewer).filter(
+    (entry) => !entry.outside && visible.has(entry.key),
   );
 }
 
 /**
- * Whether `role` may open the module's screens: the module is on and the
- * role reaches its nav item.
+ * Whether the viewer may open the module's own screens: the module is on and
+ * their role reaches its nav item. Never for someone off the staff, whose
+ * `outsideStaff` screen checks its own permission: an accountant's
+ * `/clock/pay` opens, `/clock` doesn't.
  */
 export function canOpenModule(
   manifest: ModuleManifest,
   enabled: readonly ModuleKey[],
-  role: Role,
+  viewer: Viewer,
 ): boolean {
   return (
     enabled.includes(manifest.key) &&
     manifest.nav !== null &&
-    reaches(role, manifest.nav.minRole)
+    reaches(viewer.role, manifest.nav.minRole)
   );
 }
 

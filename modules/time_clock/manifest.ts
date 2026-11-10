@@ -5,7 +5,14 @@ import { z } from "zod";
 export const manifest = defineManifest({
   key: "time_clock",
   requires: [],
-  nav: { href: "/clock", icon: "clock", minRole: "worker", order: 20 },
+  nav: {
+    href: "/clock",
+    icon: "clock",
+    minRole: "worker",
+    order: 20,
+    // An accountant's tab: everyone's hours for payroll (payroll P3).
+    outsideStaff: { perm: "clock.payroll", href: "/clock/pay" },
+  },
   homeWidget: { minRole: "worker" },
   permissions: [
     { key: "clock.edit", defaultRole: "manager" },

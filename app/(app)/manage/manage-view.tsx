@@ -7,6 +7,7 @@ import { pageGlowClass } from "@ui/page-glow";
 import {
   Building2,
   History,
+  KeyRound,
   Network,
   SlidersHorizontal,
   Users,
@@ -28,6 +29,7 @@ export function ManageView({
   team,
   shabbatCity,
   departments,
+  payAccess = false,
   wording,
 }: {
   modules: ModuleKey[];
@@ -38,6 +40,8 @@ export function ManageView({
   shabbatCity: "missing" | "chosen" | "notAsked";
   /** The business's live departments' names, or null while lists are off. */
   departments: readonly string[] | null;
+  /** The owner decides who sees pay: the row to it. */
+  payAccess?: boolean;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -99,6 +103,14 @@ export function ManageView({
           title={t("team.title")}
           subtitle={t("team.subtitle")}
         />
+        {payAccess ? (
+          <ListRow
+            href={`${base}/manage/access`}
+            leading={<KeyRound />}
+            title={t("access.title")}
+            subtitle={t("access.row")}
+          />
+        ) : null}
       </ListGroup>
       {/* Looking back, apart from what's changed here. */}
       <ListGroup className="md:max-w-2xl">

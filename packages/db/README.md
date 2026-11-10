@@ -174,6 +174,42 @@ shop's managers hold pay access (`rolePermissions` in its definition, put back
 by `private.seed_demo_pay`). `payroll_access.test.sql`, `team_invites`,
 `view_as`, `helpers`, `create_business`, `demo_reset` and `rls_enabled` cover it.
 
+The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
+`public.note_payroll_access(business, pay_month, view_kind)` notes that the
+caller opened a pay screen (`view_kind`: month, person or access; 22023 for
+anything else): one `payroll.view` row a day per person, by the business's
+own clock, and only for someone holding `clock.payroll` or viewing as an
+accountant (nothing, and no error, for anyone else). The person's own session
+calls it (`notePayrollAccess` in `@db/payroll`), from a server action the screen
+calls after it mounts, never while a page renders: a prefetch logs nothing. The
+row is a pay row, so only pay holders read it, and the activity list leaves it
+out as routine. `private.notify_for_payroll`, on its own trigger
+(`audit_log_notifies_payroll`, the lists pattern), tells a person given
+`clock.payroll` personally (`access.pay_granted`, no facts in the line, the
+giver as its actor) and settles the line when it is taken back; a role's grant
+tells nobody. A settled `access.pay_granted` line leads to the inbox, since the
+pay screens are then closed to its reader: `getNotification` in
+`@db/notifications` reads `resolved_at` for `linkFor`. The demo: the shop has
+an accountant (Galit, door account `accountant`, in no department and on no
+shift; on the hosted project `supabase/hosted-demo.sql` starts a demo business
+again when someone its definition names has an account but no membership, so
+she joins once the demo step makes hers), and `private.seed_demo_pay`
+now ends with `private.seed_demo_hours`, which writes last month's hours from a
+definition's `hours` (`{"fridays": …, "cases": [{"user_id", "case", "note"}]}`):
+every active member on the staff but the owner works Sunday to Thursday
+09:00–17:00 with a half-hour break (unpaid when the business's breaks are),
+one weekday off by their place, Fridays 08:00–14:00 for workers when
+`fridays`, and the cases on the people they name (`corrected` by the first
+manager with its `clock.correct` row, `evening`, `without_code`, `night`,
+`friday_late`, `saturday_night`), each on its own weekday, in the business's
+time zone, none left open; a plan that fails writes no hours and the reset
+stands. `@db/payroll` reads the pay people (everyone who was ever a member,
+with name, photo and form of address), the roles given pay access, the access
+screen's people and the times corrected entries had before (from the log's
+`clock.correct` rows), and writes the grants for an owner. The session's
+`membership.perms` now comes from `public.my_permissions`. Covered by
+`payroll_screens.test.sql`.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 
