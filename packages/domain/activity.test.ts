@@ -800,6 +800,42 @@ describe("buildActivity: each action", () => {
     });
   });
 
+  it("reads a file for payroll taken: its month, and how many people and shifts", () => {
+    expect(
+      lineOf(
+        row("payroll.export", {
+          month: "2026-10",
+          format: "xlsx",
+          people: 4,
+          shifts: 120,
+          ids: false,
+          engine: "2026-11",
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.export",
+      month: "2026-10",
+      people: 4,
+      shifts: 120,
+    });
+    expect(lineOf(row("payroll.export", { month: "2026-10" }))).toEqual({
+      action: "payroll.export",
+      month: "2026-10",
+      people: null,
+      shifts: null,
+    });
+    for (const details of [
+      { month: "10/2026" },
+      { month: "2026-13" },
+      { people: 4 },
+      { month: "2026-10", people: -1 },
+    ]) {
+      expect(lineOf(row("payroll.export", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),

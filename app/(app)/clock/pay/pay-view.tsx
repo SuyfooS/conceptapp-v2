@@ -7,6 +7,7 @@ import { PersonAvatar } from "@ui/person-row";
 import { ReceiptText } from "lucide-react";
 import Link from "next/link";
 import { type AppWording, translator } from "../../wording";
+import { ExportButton } from "./export-button";
 import { NoteView } from "./note-view";
 import {
   BeforePayrollCard,
@@ -18,6 +19,7 @@ import {
   personHref,
   useMonthName,
   useShekels,
+  useShortDate,
   WageSpans,
 } from "./pay-parts";
 import { PayMonthTable } from "./pay-table";
@@ -44,9 +46,10 @@ import {
  * and the payroll number on a desktop (P5), and from the hours engine (P7)
  * each person's hours by rate, what to check in words, and while the business
  * shows amounts (`payEstimate`) each estimate before tax and the month's. The
- * file comes with P8, and becomes the screen's main action.
- * `?show=noWage` lists only those whose shifts have no wage, `?show=noNumber`
- * those with no payroll number.
+ * month's file for payroll (P8) is the screen's main action, on every shape,
+ * with what it holds and when the last one went out, warned when the hours or
+ * wages changed since. `?show=noWage` lists only those whose shifts have no
+ * wage, `?show=noNumber` those with no payroll number.
  */
 export function PayMonthView({
   data,
@@ -64,6 +67,7 @@ export function PayMonthView({
   const t = translator(wording, "app.pay");
   const tc: ClockT = translator(wording, "modules.time_clock");
   const monthName = useMonthName();
+  const shortDate = useShortDate();
   const shekels = useShekels();
   const monthHref = (month: string) => `${paths.pay}?month=${month}`;
   const empty = data.counts.withHours === 0;
@@ -170,13 +174,40 @@ export function PayMonthView({
         }
         title={t("title")}
         subtitle={t("subtitle")}
+        // The screen's main action (payroll P8): the month's file, once it
+        // has hours.
+        actions={
+          empty ? undefined : (
+            <ExportButton
+              href={`${paths.file}?month=${data.month}`}
+              label={t("file.download")}
+              done={t("file.downloading")}
+            />
+          )
+        }
       />
 
-      {/* Every amount on the screen sits under one line; without amounts, why. */}
       {empty ? null : (
-        <p className="px-1 text-ink-2">
-          {data.amounts ? t("estimate.under") : t("estimate.off")}
-        </p>
+        <div className="flex flex-col gap-1 px-1 text-ink-2">
+          {/* What the file holds, and what it never does. */}
+          <p>{t("file.what")}</p>
+          {data.lastFile ? (
+            <p
+              className={
+                data.lastFile.changed ? "font-medium text-warning" : undefined
+              }
+            >
+              {t.rich(data.lastFile.changed ? "file.changed" : "file.last", {
+                ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                month: monthName(data.month),
+                date: shortDate(data.lastFile.date),
+                time: data.lastFile.time,
+              })}
+            </p>
+          ) : null}
+          {/* Every amount on the screen sits under one line; without amounts, why. */}
+          <p>{data.amounts ? t("estimate.under") : t("estimate.off")}</p>
+        </div>
       )}
 
       <BeforePayrollCard

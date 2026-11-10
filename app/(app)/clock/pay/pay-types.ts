@@ -126,6 +126,12 @@ export type PayMonthData = {
   };
   /** How the table names the rest rates: by the rest day everyone listed shares. */
   restName: RestName;
+  /**
+   * When the month's newest file for payroll went out (payroll P8), on the
+   * business's clock, and whether its hours or wages changed since; null when
+   * none did.
+   */
+  lastFile: { date: string; time: string; changed: boolean } | null;
 };
 
 /** What the reader may do with this person's wage. */
@@ -221,6 +227,8 @@ export type PayPaths = {
   clock: string;
   /** The clock's settings, where an owner sets the work week. */
   settings: string;
+  /** The month's file for payroll, downloaded with `?month=` (payroll P8). */
+  file: string;
 };
 
 export const payPaths: PayPaths = {
@@ -228,6 +236,7 @@ export const payPaths: PayPaths = {
   team: "/clock/team",
   clock: "/clock",
   settings: "/manage/time_clock",
+  file: "/clock/pay/export",
 };
 
 /** What a pay screen notes when it is on screen. The demo notes nothing. */

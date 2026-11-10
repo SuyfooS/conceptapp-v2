@@ -1,7 +1,9 @@
+import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { heT } from "./t";
+import { readWorkbook, unzip } from "./unzip";
 
 // The design system in both appearances, on the demos: no data, no sign-in.
 const PAGES = [
@@ -40,6 +42,8 @@ const PAGES = [
   "/design/shell/clock/pay?show=noNumber",
   "/design/shell/clock/pay?estimate=off",
   "/design/shell/clock/pay?person=yoav&estimate=off",
+  "/design/shell/clock/pay?file=sent",
+  "/design/shell/clock/pay?file=changed",
   "/design/shell/clock/pay/noa",
   "/design/shell/clock/pay/noa?estimate=off",
   "/design/shell/clock/pay/shiran",
@@ -448,4 +452,46 @@ test("the pay demo says what it counts: open shifts, holiday pay and remarks", a
   await expect(
     page.getByText(heT("app.clock.ownPay.openShift", { count: 1 })),
   ).toBeVisible();
+});
+
+// The file for payroll on the demo (payroll P8): the main action downloads
+// the demo's October, four sheets right to left, and says when the last file
+// went out, warned once the hours changed since.
+test("the pay demo's file: its action, what it holds, and the workbook", async ({
+  page,
+}, testInfo) => {
+  const f = he.app.pay.file;
+  await page.goto("/design/shell/clock/pay?file=changed");
+  const action = page.getByRole("link", { name: f.download });
+  await expect(action).toBeVisible();
+  await expect(action).toHaveAttribute(
+    "href",
+    "/design/shell/clock/pay/export?month=2026-10",
+  );
+  await expect(page.getByText(f.what).filter({ visible: true })).toBeVisible();
+  const changed = heT.markup("app.pay.file.changed", {
+    ltr: (chunks: string) => chunks,
+    month: "אוקטובר 2026",
+    date: "3.11",
+    time: "10:00",
+  });
+  await expect(page.getByText(changed).filter({ visible: true })).toBeVisible();
+
+  if (testInfo.project.name !== "desktop") return;
+  const download = page.waitForEvent("download");
+  await action.click();
+  const file = await download;
+  const bytes = readFileSync(await file.path());
+  const { sheets, strings } = readWorkbook(unzip(bytes));
+  expect(sheets.map((sheet) => sheet.name)).toEqual([
+    f.sheets.summary,
+    f.sheets.daily,
+    f.sheets.check,
+    f.sheets.about,
+  ]);
+  for (const sheet of sheets) expect(sheet.xml).toContain('rightToLeft="1"');
+  expect(strings).toContain("אוקטובר 2026");
+  // Noa's payroll number stays text, and her correction keeps its reason.
+  expect(strings).toContain("102");
+  expect(strings).toContain("שכחה לצאת");
 });

@@ -1,7 +1,17 @@
 import { HOLIDAY_PAY_CHECKS } from "@domain/holiday-pay";
+import type { PaySource } from "@domain/pay-month";
 import { type FlagFormat, flagValues, OWN_LIMITS } from "@domain/pay-rates";
 import { BUCKETS } from "@domain/payroll";
 import { ONE_OFF_REST_DAYS, PAID_HOLIDAYS } from "@domain/payroll-calendar";
+import { HOURS_LAW } from "@domain/payroll-details";
+import {
+  ABOUT_COLUMNS,
+  ABOUT_LINES,
+  CHECK_COLUMNS,
+  DAILY_COLUMNS,
+  EXPORT_SHEETS,
+  SUMMARY_COLUMNS,
+} from "@domain/payroll-export";
 import {
   PAYROLL_FLAG_CODES,
   PAYROLL_NOTE_CODES,
@@ -34,6 +44,19 @@ const argumentsOf = (message: string): string[] => [
 ];
 
 const DAY = "2026-10-13";
+
+/** Every way a shift is recorded, for the file's source column: one missing here fails to compile. */
+const PAY_SOURCES = {
+  added: true,
+  self: true,
+  none: true,
+  manager: true,
+  punch: true,
+  off: true,
+  owner: true,
+  typed: true,
+  scan: true,
+} as const satisfies Record<PaySource, true>;
 
 /** One flag of each code, with every value it carries: a code missing here fails to compile. */
 const SAMPLES: { [C in PayrollFlagCode]: Extract<PayrollFlag, { code: C }> } = {
@@ -163,6 +186,58 @@ describe("payroll's words", () => {
       expect(Object.keys(words(messages, "oneOffRestDays")).sort()).toEqual(
         ONE_OFF_REST_DAYS.map((day) => day.key).sort(),
       );
+    });
+
+    it(`name every sheet, column, rule and source of the file for payroll, in ${language}`, () => {
+      // The file (payroll P8): each flag's rule, each sheet and column, how
+      // a shift was recorded, the Hours law, and the lines about the file.
+      const file = appWords(messages, "pay.file");
+      const keys = (tree: unknown) => Object.keys(tree as Tree).sort();
+      expect(keys(file.rules)).toEqual([...PAYROLL_FLAG_CODES].sort());
+      expect(keys(file.sheets)).toEqual([...EXPORT_SHEETS].sort());
+      const columns = file.columns as Tree;
+      expect(keys(columns.summary)).toEqual(
+        SUMMARY_COLUMNS.filter((key) => key !== "rates").sort(),
+      );
+      expect(keys(columns.daily)).toEqual(
+        DAILY_COLUMNS.filter((key) => key !== "rates").sort(),
+      );
+      expect(keys(columns.check)).toEqual([...CHECK_COLUMNS].sort());
+      expect(keys(columns.about)).toEqual([...ABOUT_COLUMNS].sort());
+      expect(keys((file.about as Tree).lines)).toEqual([...ABOUT_LINES].sort());
+      expect(keys(file.source)).toEqual(Object.keys(PAY_SOURCES).sort());
+      expect(keys(file.hoursLaw)).toEqual([...HOURS_LAW].sort());
+      expect(keys(file.weekdays)).toEqual(["0", "1", "2", "3", "4", "5", "6"]);
+    });
+
+    it(`give the file's own sentences only the values its words pass, in ${language}`, () => {
+      // What app/(app)/clock/pay/export/export-words.ts passes each: a day
+      // not worked, what to check about it and its rule, the team's view,
+      // and the file's name. (file.test.ts there fills them for real.)
+      const file = appWords(messages, "pay.file");
+      const about = file.about as Tree;
+      const passed: [string, string | Tree | undefined, string[]][] = [
+        [
+          "dayNotWorked",
+          file.dayNotWorked,
+          ["kind", "name", "date", "average"],
+        ],
+        [
+          "dayNotWorkedCheck",
+          file.dayNotWorkedCheck,
+          ["kind", "name", "date", "average"],
+        ],
+        ["dayNotWorkedRule", file.dayNotWorkedRule, ["kind"]],
+        ["about.madeByTeam", about.madeByTeam, ["name"]],
+        ["about.madeByTeamNoName", about.madeByTeamNoName, []],
+        ["name", file.name, ["business", "month"]],
+      ];
+      for (const [key, message, values] of passed) {
+        expect(typeof message, key).toBe("string");
+        for (const name of argumentsOf(message as string)) {
+          expect(values, `${key}: {${name}}`).toContain(name);
+        }
+      }
     });
 
     it(`name every rate, check and limit the pay screens draw, in ${language}`, () => {

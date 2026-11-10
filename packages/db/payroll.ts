@@ -99,6 +99,59 @@ export async function notePayrollAccess(
   if (error && !isMissingFunction(error)) throw error;
 }
 
+/** What a month's file for payroll holds, as the log keeps it (payroll P8). */
+export type PayrollExportNote = {
+  month: string;
+  people: number;
+  shifts: number;
+  engineVersion: string;
+};
+
+/**
+ * The signed-in person takes a month's file for payroll: logged as
+ * `payroll.export` with their own session, before the file goes out. The
+ * database refuses anyone who doesn't hold clock.payroll or view as an
+ * accountant (42501). Throws when the row isn't written, the function missing
+ * included, so no file goes out without its row.
+ */
+export async function notePayrollExport(
+  businessId: string,
+  note: PayrollExportNote,
+): Promise<void> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("note_payroll_export", {
+    business: businessId,
+    pay_month: `${note.month}-01`,
+    person_count: note.people,
+    shift_count: note.shifts,
+    engine_version: note.engineVersion,
+  });
+  if (error) throw error;
+}
+
+/**
+ * When the month's newest file for payroll was taken, by anyone, as the
+ * signed-in person may read the log (pay holders read pay rows); null when
+ * none was taken.
+ */
+export async function getLastPayrollExport(
+  businessId: string,
+  month: string,
+): Promise<{ at: string } | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("audit_log")
+    .select("created_at")
+    .eq("business_id", businessId)
+    .eq("action", "payroll.export")
+    .eq("details->>month", month)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) throw error;
+  const [row] = data;
+  return row ? { at: row.created_at } : null;
+}
+
 /**
  * The roles the business gives pay access to (`public.role_permissions`), as
  * the signed-in person may read them: its members, and the team viewing it.

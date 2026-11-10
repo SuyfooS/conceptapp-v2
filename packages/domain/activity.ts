@@ -285,6 +285,17 @@ export type ActivityLine =
       confirmed: boolean;
       fields: PeriodField[];
     }
+  | {
+      /**
+       * A pay holder took a month's file for payroll (payroll P8): which
+       * month, and how many people and shifts it listed when the log says.
+       */
+      action: "payroll.export";
+      /** `YYYY-MM`. */
+      month: string;
+      people: number | null;
+      shifts: number | null;
+    }
   | { action: "other" };
 
 /** The fields of someone's details for payroll, as the log names them, in order. */
@@ -442,6 +453,11 @@ const schemas = {
     added: z.boolean().default(false),
     confirmed: z.boolean().default(false),
     fields: z.array(z.unknown()).default([]),
+  }),
+  "payroll.export": z.object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    people: z.int().min(0).optional(),
+    shifts: z.int().min(0).optional(),
   }),
 };
 
@@ -822,6 +838,17 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         confirmed: details.confirmed,
         fields: knownFields(details.fields, PERIOD_FIELDS),
       };
+    }
+    case "payroll.export": {
+      const details = read(schemas["payroll.export"]);
+      return details
+        ? {
+            action: row.action,
+            month: details.month,
+            people: details.people ?? null,
+            shifts: details.shifts ?? null,
+          }
+        : other;
     }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);

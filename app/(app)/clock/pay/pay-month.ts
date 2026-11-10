@@ -80,42 +80,75 @@ export function payrollReadOf(month: string, timeZone: string) {
 export const currentPayrollMonth = cache(
   async (asked: string | undefined): Promise<PayrollMonth | null> => {
     const access = await payAccess();
-    const place = (await currentMember())?.membership?.business.place;
-    if (!access || !place) return null;
+    if (!access) return null;
     const month = payMonthFrom(asked, access.currentMonth, access.defaultMonth);
-    const read = payrollReadOf(month, access.timeZone);
-    const [settings, people, entries, wages, details, periods] =
-      await Promise.all([
-        currentModuleSettings("time_clock"),
-        getPayPeople(access.businessId),
-        getTimeEntries(access.businessId, read.from, read.to),
-        getWages(access.businessId).then(wagesByPerson),
-        getPayrollDetails(access.businessId),
-        getEmploymentPeriods(access.businessId),
-      ]);
-    const inMonth = entries.filter(
-      (entry) => monthOf(entryDate(entry, access.timeZone)) === month,
-    );
-    const result = payrollMonth(
-      payrollInputOf({
-        month,
-        place,
-        settings,
-        entries,
-        people: payrollPeopleOf(people, inMonth).map((userId) =>
-          payrollPersonOf(
-            userId,
-            details.get(userId),
-            periods.get(userId) ?? [],
-            wages.get(userId) ?? [],
-          ),
-        ),
-        now: new Date(),
-      }),
-    );
-    return settings.payEstimate ? result : withoutAmounts(result);
+    const reads = await currentPayrollReads(month);
+    if (!reads) return null;
+    return reads.settings.payEstimate
+      ? reads.result
+      : withoutAmounts(reads.result);
   },
 );
+
+/**
+ * Everything the hours engine read for a month (`month`, `YYYY-MM`, already
+ * checked by the caller), with what it worked out, amounts and all: the pay
+ * screens' month (`currentPayrollMonth`, which drops the amounts while
+ * `payEstimate` is off) and the file for payroll (payroll P8, which never
+ * holds one). Null when the person may not open the pay screens. Under their
+ * own session, once per request.
+ */
+export const currentPayrollReads = cache(async (month: string) => {
+  const access = await payAccess();
+  const place = (await currentMember())?.membership?.business.place;
+  if (!access || !place) return null;
+  const read = payrollReadOf(month, access.timeZone);
+  const [settings, people, entries, wages, details, periods] =
+    await Promise.all([
+      currentModuleSettings("time_clock"),
+      getPayPeople(access.businessId),
+      getTimeEntries(access.businessId, read.from, read.to),
+      getWages(access.businessId).then(wagesByPerson),
+      getPayrollDetails(access.businessId),
+      getEmploymentPeriods(access.businessId),
+    ]);
+  const inMonth = entries.filter(
+    (entry) => monthOf(entryDate(entry, access.timeZone)) === month,
+  );
+  const now = new Date();
+  const result = payrollMonth(
+    payrollInputOf({
+      month,
+      place,
+      settings,
+      entries,
+      people: payrollPeopleOf(people, inMonth).map((userId) =>
+        payrollPersonOf(
+          userId,
+          details.get(userId),
+          periods.get(userId) ?? [],
+          wages.get(userId) ?? [],
+        ),
+      ),
+      now,
+    }),
+  );
+  return {
+    access,
+    place,
+    settings,
+    people,
+    /** Every entry read: the month's weeks and the history months before. */
+    entries,
+    /** The month's own, by the business's day. */
+    inMonth,
+    details,
+    /** Each person's wages, as the engine read them. */
+    wages,
+    now,
+    result,
+  };
+});
 
 /**
  * One person's month by the hours engine, for their pay page: their entries,
