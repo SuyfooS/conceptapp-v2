@@ -65,6 +65,7 @@ export function MethodButton({
         onOpenChange={setOpen}
         title={t("title")}
         closeLabel={t("close")}
+        readingLabel={t("title")}
       >
         <div className="flex flex-col gap-4 px-2 pb-2">
           <ol className="flex list-decimal flex-col gap-2 ps-6 text-ink">
