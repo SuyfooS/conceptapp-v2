@@ -188,12 +188,17 @@ test("a time saved opens its list, which turns late, and the manager's day shows
     try {
       await signIn(noa, NOA);
       await noa.goto("/lists");
-      const card = noa
+      // On a computer the list is a table: its name is a link in the first
+      // cell, and "late" is the row's status cell.
+      const lateRow = noa
         .getByRole("main")
-        .getByRole("link", { name: new RegExp(literal(TIMED)) })
+        .getByRole("row")
+        .filter({
+          has: noa.getByRole("link", { name: new RegExp(literal(TIMED)) }),
+        })
         .filter({ visible: true })
         .first();
-      await expect(card).toContainText(l.card.late);
+      await expect(lateRow).toContainText(l.card.late);
       await noa.goto("/notifications");
       // The desktop's table, not the list the phone and the tablet read.
       await expect(
