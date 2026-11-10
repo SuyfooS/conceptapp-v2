@@ -27,7 +27,7 @@ function sourcesUnder(dir: string): string[] {
 const isClient = (source: string) => /^\s*["']use client["']/.test(source);
 
 /** Exported names that aren't components: constants and helper functions. */
-export function clientValueExports(source: string): string[] {
+function clientValueExports(source: string): string[] {
   const names = [
     ...source.matchAll(/export\s+(?:const|let|function)\s+([A-Za-z_$][\w$]*)/g),
   ].map((match) => match[1] ?? "");
@@ -35,7 +35,7 @@ export function clientValueExports(source: string): string[] {
 }
 
 /** The value names a file imports from `specifier`, type-only ones left out. */
-export function valueImports(
+function valueImports(
   source: string,
 ): { specifier: string; names: string[] }[] {
   return [
