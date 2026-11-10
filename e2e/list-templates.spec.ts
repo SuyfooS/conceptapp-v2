@@ -287,18 +287,28 @@ test("a manager writes a new list of every kind, which saves itself, and sends i
   await bumpDemoTemplate(made.id);
   await page
     .getByLabel(te.note, { exact: true })
+    .filter({ visible: true })
     .fill("לפני שבת מנקים גם את המנדף");
-  await page.getByLabel(te.note, { exact: true }).blur();
+  await page
+    .getByLabel(te.note, { exact: true })
+    .filter({ visible: true })
+    .blur();
   const changed = page.getByRole("status").filter({ hasText: te.changed });
   await expect(changed).toBeVisible();
-  await expect(page.getByLabel(te.note, { exact: true })).toHaveValue(
-    "נשמר במסך אחר",
-  );
+  await expect(
+    page.getByLabel(te.note, { exact: true }).filter({ visible: true }),
+  ).toHaveValue("נשמר במסך אחר");
   // It is said once: the address loses `?changed=`, so a reload doesn't.
   await expect(page).toHaveURL(/\/lists\/templates\/[0-9a-f-]{36}$/);
   // From the latest, saving works again, and the notice goes.
-  await page.getByLabel(te.note, { exact: true }).fill("ניקיון לפני שבת");
-  await page.getByLabel(te.note, { exact: true }).blur();
+  await page
+    .getByLabel(te.note, { exact: true })
+    .filter({ visible: true })
+    .fill("ניקיון לפני שבת");
+  await page
+    .getByLabel(te.note, { exact: true })
+    .filter({ visible: true })
+    .blur();
   await expect
     .poll(async () => (await demoTemplates(RENAMED))[0]?.note)
     .toBe("ניקיון לפני שבת");
