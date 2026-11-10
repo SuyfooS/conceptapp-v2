@@ -7,7 +7,10 @@ import {
   isOutOfRange,
   itemResult,
   listHref,
+  listItemInput,
   listItemSeed,
+  listName,
+  listNote,
   listProgress,
   listState,
   listsTally,
@@ -15,6 +18,7 @@ import {
   listTemplateProblem,
   listTemplateSeed,
   listTemplateSeeds,
+  MAX_LIST_ITEMS,
   parseReading,
   scheduleInput,
   sendInput,
@@ -70,6 +74,42 @@ describe("an item", () => {
         defaultQuantity: 2,
       }).success,
     ).toBe(true);
+  });
+
+  it("keeps to the database's lengths, ends trimmed", () => {
+    // supabase/migrations/20261109000600_lists.sql: label 1-120, hint 1-200,
+    // unit 1-12, each stored trimmed.
+    const at = (field: string, length: number) =>
+      listItemSeed.safeParse({
+        kind: "number",
+        label: "Fridge",
+        [field]: "x".repeat(length),
+      }).success;
+    expect(at("label", 120)).toBe(true);
+    expect(at("label", 121)).toBe(false);
+    expect(at("hint", 200)).toBe(true);
+    expect(at("hint", 201)).toBe(false);
+    expect(at("unit", 12)).toBe(true);
+    expect(at("unit", 13)).toBe(false);
+    expect(
+      listItemSeed.safeParse({ kind: "check", label: "Clean", hint: "  " })
+        .success,
+    ).toBe(false);
+  });
+
+  it("keeps its id in the editor, and only a real one", () => {
+    expect(
+      listItemInput.parse({ id: ITEM, kind: "check", label: "Clean" }),
+    ).toEqual({ id: ITEM, kind: "check", label: "Clean", required: true });
+    expect(
+      listItemInput.safeParse({ id: "item-1", kind: "check", label: "Clean" })
+        .success,
+    ).toBe(false);
+    // The editor's items keep the same rules as a template's.
+    expect(
+      listItemInput.safeParse({ kind: "check", label: "Clean", unit: "kg" })
+        .success,
+    ).toBe(false);
   });
 
   it("is not a photo yet", () => {
@@ -405,6 +445,28 @@ describe("sending", () => {
         dueAt: "2026-11-11T10:00:00",
       }).success,
     ).toBe(false);
+  });
+
+  it("keeps a name, a note and its items to the database's limits", () => {
+    // send_list: a name of 1-60, a note of 1-300, from 1 to 60 typed items.
+    expect(listName.parse("  Fix the door ")).toBe("Fix the door");
+    expect(listName.safeParse("x".repeat(60)).success).toBe(true);
+    expect(listName.safeParse("x".repeat(61)).success).toBe(false);
+    expect(listName.safeParse("   ").success).toBe(false);
+    expect(listNote.safeParse("x".repeat(300)).success).toBe(true);
+    expect(listNote.safeParse("x".repeat(301)).success).toBe(false);
+    const typed = (count: number) =>
+      sendInput.safeParse({
+        name: "Count",
+        items: Array.from({ length: count }, (_, i) => ({
+          kind: "check",
+          label: `Item ${i + 1}`,
+        })),
+        recipient: toKitchen,
+      }).success;
+    expect(typed(MAX_LIST_ITEMS)).toBe(true);
+    expect(typed(MAX_LIST_ITEMS + 1)).toBe(false);
+    expect(typed(0)).toBe(false);
   });
 
   it("takes counts by item id, for a template only", () => {
