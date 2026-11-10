@@ -23,10 +23,12 @@ values
   ('76000000-0000-4000-a000-00000000000c', 'authenticated', 'authenticated', '972500002603'),
   ('76000000-0000-4000-a000-00000000000d', 'authenticated', 'authenticated', '972500002604'),
   ('76000000-0000-4000-a000-00000000000e', 'authenticated', 'authenticated', '972500002605'),
-  ('76000000-0000-4000-a000-00000000000f', 'authenticated', 'authenticated', '972500002606');
+  ('76000000-0000-4000-a000-00000000000f', 'authenticated', 'authenticated', '972500002606'),
+  ('76000000-0000-4000-a000-000000000010', 'authenticated', 'authenticated', '972500002607');
 
--- a: owner of X and Y; b: manager of X; c: worker of X, with hours; d: X's
--- accountant, who only acted (log rows, no hours, and off the staff, so no
+-- a: owner of X; g: owner of Y (one place on a staff per login,
+-- 20261110000900_several_businesses.sql); b: manager of X; c: worker of X,
+-- with hours; d: X's accountant, who only acted (log rows, no hours, and off the staff, so no
 -- employment period either: 20261110000600_payroll_details.sql keeps those);
 -- e and f: the owner and a worker of a demo business.
 insert into public.businesses (id, slug, name)
@@ -40,7 +42,7 @@ values
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000b', 'manager'),
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000c', 'worker'),
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000d', 'accountant'),
-  ('76000000-0000-4000-b000-000000000002', '76000000-0000-4000-a000-00000000000a', 'owner');
+  ('76000000-0000-4000-b000-000000000002', '76000000-0000-4000-a000-000000000010', 'owner');
 
 -- Nothing set: no code asked for.
 insert into public.business_modules (business_id, module_key, enabled, settings)
@@ -57,13 +59,13 @@ create temporary table ids (name text primary key, id uuid) on commit drop;
 grant all on ids to service_role, authenticated;
 
 -- c's shift at X with a break; the log's rows by c and by d; a log row of a
--- template, with no business; a's shift at Y.
+-- template, with no business; g's shift at Y.
 insert into public.time_entries (id, business_id, user_id, clock_in, clock_out)
 values
   ('76000000-0000-4000-e000-000000000001', '76000000-0000-4000-b000-000000000001',
     '76000000-0000-4000-a000-00000000000c', '2026-11-02 06:00+00', '2026-11-02 14:00+00'),
   ('76000000-0000-4000-e000-000000000002', '76000000-0000-4000-b000-000000000002',
-    '76000000-0000-4000-a000-00000000000a', '2026-11-02 06:00+00', '2026-11-02 14:00+00');
+    '76000000-0000-4000-a000-000000000010', '2026-11-02 06:00+00', '2026-11-02 14:00+00');
 insert into public.time_breaks (id, entry_id, business_id, user_id, started_at, ended_at, unpaid)
 values ('76000000-0000-4000-e000-0000000000b1', '76000000-0000-4000-e000-000000000001',
   '76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000c',

@@ -600,3 +600,34 @@ export const demoActivityRows: ActivityRow[] = [
     invites: 6,
   }),
 ];
+
+/**
+ * The businesses one login is in, for the switcher's demo (payroll P3b): the
+ * demo's accountant keeps the books of this restaurant, where she is now, and
+ * of a shop with two lines she hasn't read. In the switcher's order.
+ */
+export const demoBusinesses: {
+  id: string;
+  name: string;
+  accent: string;
+  role: "accountant";
+  unread: number;
+}[] = [
+  {
+    id: "shop",
+    name: "חנות הדגמה",
+    accent: "#7c3aed",
+    role: "accountant",
+    unread: 2,
+  },
+  {
+    id: "restaurant",
+    name: business.name,
+    accent: demoBusinessDetails.accent,
+    role: "accountant",
+    unread: 1,
+  },
+];
+
+/** Where the demo's accountant is now. */
+export const demoBusinessHere = "restaurant";

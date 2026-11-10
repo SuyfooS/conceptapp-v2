@@ -25,8 +25,8 @@ export function EnterForm({
   reset,
   signInHref,
 }: {
-  /** `enterAs`, or the design demo's stand-in. */
-  enter: (person: string) => Promise<EnterResult>;
+  /** `enterAs`, or the design demo's stand-in: who, and in which business. */
+  enter: (person: string, business: string) => Promise<EnterResult>;
   /** `resetDemo`, or the design demo's stand-in. */
   reset: () => Promise<ResetResult>;
   /** Where real sign-in is: `/sign-in`, or the design demo's. */
@@ -38,14 +38,15 @@ export function EnterForm({
   const [chosen, setChosen] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
-  function choose(person: string) {
+  // The accountant is offered in both businesses: each row is its own.
+  function choose(person: string, business: string) {
     if (pending) return;
-    setChosen(person);
+    setChosen(`${business}:${person}`);
     setFailed(false);
     start(async () => {
       try {
         // Success leaves this screen: the action redirects.
-        await enter(person);
+        await enter(person, business);
         setFailed(true);
       } catch (error) {
         unstable_rethrow(error);
@@ -84,11 +85,15 @@ export function EnterForm({
             {business.people.map((person) => (
               <ListRow
                 key={person}
-                onClick={() => choose(person)}
+                onClick={() => choose(person, business.key)}
                 leading={<PersonAvatar name={t(`people.${person}.name`)} />}
                 title={t(`people.${person}.name`)}
                 subtitle={t(`people.${person}.role`)}
-                trailing={pending && chosen === person ? <Spinner /> : null}
+                trailing={
+                  pending && chosen === `${business.key}:${person}` ? (
+                    <Spinner />
+                  ) : null
+                }
               />
             ))}
           </ListGroup>

@@ -124,6 +124,7 @@ export function ProfileEditor({
   actions,
   signOut,
   notifications,
+  businesses,
 }: {
   name: string;
   photo: string | null;
@@ -139,6 +140,8 @@ export function ProfileEditor({
   signOut: () => Promise<void>;
   /** The switch for notifications on this phone, where there is one. */
   notifications?: ReactNode;
+  /** The switch between businesses, for someone in more than one. */
+  businesses?: ReactNode;
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
@@ -388,6 +391,8 @@ export function ProfileEditor({
             />
           </ListGroup>
         </PageSection>
+
+        {businesses}
 
         {notifications}
 

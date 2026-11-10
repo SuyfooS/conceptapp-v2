@@ -3,9 +3,10 @@
 -- signs in with its own number, so the SMS resend cooldown never trips between
 -- specs.
 --   the restaurant  an owner, a shift manager and two workers (the same as
---                   /design/shell). Its schedule is the visitor's to build.
---   the shop        an owner, a manager, four workers and an accountant, with
---                   this week's schedule always published.
+--                   /design/shell), and the shop's accountant, Galit. Its
+--                   schedule is the visitor's to build.
+--   the shop        an owner, a manager, four workers and Galit, its
+--                   accountant, with this week's schedule always published.
 --   both            last month's hours, everyone's hourly wage and their
 --                   details for payroll, for the pay screens, with the pay
 --                   estimate on.
@@ -103,8 +104,9 @@ values
 -- departments they are in, by their template's keys (tooling/demo-departments.test.ts).
 -- The shop's managers hold pay access ("rolePermissions"), to show the owner's
 -- switch; the restaurant's start without it, as a real business does
--- (20261110000300_payroll_access.sql). The shop also has an accountant, Galit,
--- in no department and on no shift. Each starts with last month's hours
+-- (20261110000300_payroll_access.sql). Both have the same accountant, Galit,
+-- in no department and on no shift: one login in two businesses, to show the
+-- switch between them (20261110000900_several_businesses.sql). Each starts with last month's hours
 -- ("hours", 20261110000400_payroll_screens.sql): its staff's usual days, and
 -- the cases the pay screens show, each on the person it names. And with its
 -- wages from the first of last month ("wages",
@@ -137,7 +139,8 @@ values
       { "user_id": "00000000-0000-4000-a000-000000000001", "role": "owner", "name": "אורי הדגמה" },
       { "user_id": "00000000-0000-4000-a000-000000000002", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
       { "user_id": "00000000-0000-4000-a000-000000000003", "role": "worker", "name": "נועה כהן", "departments": ["kitchen"] },
-      { "user_id": "00000000-0000-4000-a000-000000000004", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] }
+      { "user_id": "00000000-0000-4000-a000-000000000004", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] },
+      { "user_id": "00000000-0000-4000-a000-000000000014", "role": "accountant", "name": "גלית הדגמה" }
     ]
   }
   $json$::jsonb),

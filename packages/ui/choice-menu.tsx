@@ -3,7 +3,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useLocale } from "next-intl";
 import { DropdownMenu } from "radix-ui";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { cn } from "./cn";
 
 export type ChoiceMenuProps = {
@@ -11,7 +11,14 @@ export type ChoiceMenuProps = {
   label: string;
   /** The key of the chosen option. */
   value: string;
-  options: { key: string; label: string }[];
+  options: {
+    key: string;
+    label: string;
+    /** A mark at the start of the option, in the menu only. */
+    leading?: ReactNode;
+    /** A second line under it, in the menu only. */
+    hint?: string;
+  }[];
   onChange: (key: string) => void;
   /** Shown while no option is chosen yet. */
   placeholder?: string;
@@ -73,7 +80,21 @@ export function ChoiceMenu({
                 value={option.key}
                 className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-[14px] px-3 text-md text-ink outline-none data-[highlighted]:bg-surface-2"
               >
-                {option.label}
+                {option.leading || option.hint ? (
+                  <span className="flex min-w-0 items-center gap-3 py-1.5">
+                    {option.leading}
+                    <span className="flex min-w-0 flex-col">
+                      {option.label}
+                      {option.hint ? (
+                        <span className="text-ink-2 text-sm">
+                          {option.hint}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                ) : (
+                  option.label
+                )}
                 <DropdownMenu.ItemIndicator>
                   <Check aria-hidden="true" className="size-5" />
                 </DropdownMenu.ItemIndicator>

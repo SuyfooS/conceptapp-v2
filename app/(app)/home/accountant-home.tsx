@@ -22,6 +22,7 @@ import Link from "next/link";
 import { useFormatter } from "next-intl";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { Businesses } from "../businesses";
 import type { PayHomeData } from "../clock/pay/pay";
 import {
   payCaption,
@@ -30,6 +31,7 @@ import {
   useShekels,
 } from "../clock/pay/pay-parts";
 import { type AppWording, translator } from "../wording";
+import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
 
 export type AccountantHomeData = {
@@ -55,16 +57,21 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * months before. With the clock off, a card says the hours come once it is on.
  * From the same loader as the pay screens (payroll P7), the hero adds the
  * month's estimate before tax while the business shows amounts, and the card
- * how many things the hours engine asks to check.
- * `base` keeps the links inside the demo on /design/shell.
+ * how many things the hours engine asks to check. Someone who keeps the books
+ * of several businesses (payroll P3b) has them listed last, on phones and
+ * tablets, to switch between. `base` keeps the links inside the demo on
+ * /design/shell.
  */
 export async function AccountantHome({
   data,
   wording,
+  businesses,
   base = "",
 }: {
   data: AccountantHomeData;
   wording: AppWording;
+  /** The businesses to switch between, for someone in more than one. */
+  businesses?: Businesses | null;
   base?: string;
 }) {
   const t = translator(wording, "app");
@@ -150,6 +157,11 @@ export async function AccountantHome({
             <CardText>{t("home.accountant.noClock.body")}</CardText>
           </Card>
         )}
+        <MyBusinesses
+          businesses={businesses}
+          wording={wording}
+          className="md:max-w-xl"
+        />
       </PageBody>
     </div>
   );

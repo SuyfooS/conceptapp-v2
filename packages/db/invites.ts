@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, randomBytes } from "node:crypto";
 import { INVITE_STATUSES, isInviteToken } from "@domain/invites";
-import { ROLES, type Role } from "@domain/modules";
+import { isStaff, ROLES, type Role } from "@domain/modules";
 import { z } from "zod";
 import { createAdminClient } from "./supabase/admin";
 
@@ -96,13 +96,17 @@ export async function ensurePhoneAccount(phone: string): Promise<void> {
 
 export type ClaimResult =
   | { ok: true; businessId: string }
-  | { ok: false; error: "notOpen" | "otherNumber" | "shiftsLeft" };
+  | {
+      ok: false;
+      error: "notOpen" | "otherNumber" | "shiftsLeft" | "elsewhere";
+    };
 
 /**
  * The signed-in person joins the invite's business with its role, in one
  * transaction (`public.claim_invite`). The database refuses a link that is
- * used, expired or replaced, anyone but the invited number, and someone who
- * comes back as an accountant with an open entry or shifts still ahead.
+ * used, expired or replaced, anyone but the invited number, someone who
+ * comes back as an accountant with an open entry or shifts still ahead, and
+ * a staff place for someone on another business's staff (23505).
  */
 export async function claimInvite(
   token: string,
@@ -117,6 +121,7 @@ export async function claimInvite(
     if (error.code === "P0002") return { ok: false, error: "notOpen" };
     if (error.code === "42501") return { ok: false, error: "otherNumber" };
     if (error.code === "55000") return { ok: false, error: "shiftsLeft" };
+    if (error.code === "23505") return { ok: false, error: "elsewhere" };
     throw new Error(`Could not claim invite: ${error.message}`);
   }
   return { ok: true, businessId: z.uuid().parse(data) };
@@ -225,21 +230,52 @@ export async function inviteFromConsole(
 }
 
 /**
- * Whether the number is already active in another business. Such a person
- * would never see a second one: the app opens the oldest membership, and
- * there is no switching between businesses yet.
+ * Whether inviting the number in this role would put them on a second staff
+ * (payroll P3b; Orel, 8 November 2026): one place on a staff per login, and
+ * any number as an accountant. False for an accountant's invite, and false
+ * when every other business has them as its accountant. The database refuses
+ * the claim anyway (`memberships_one_staff_idx`); this says it before the
+ * link goes out.
  */
 export async function activeElsewhere(
   phone: string,
   businessId: string,
+  role: Role,
 ): Promise<boolean> {
+  if (!isStaff(role)) return false;
   const { data, error } = await createAdminClient()
     .from("memberships")
     .select("business_id, profiles!inner(phone)")
     .eq("active", true)
     .eq("profiles.phone", phone)
     .neq("business_id", businessId)
+    .neq("role", "accountant")
     .limit(1);
   if (error) throw error;
   return data.length > 0;
+}
+
+/**
+ * Which of the staff list's numbers are on a business's staff already, for a
+ * business not opened yet (the console's new-business wizard): `activeElsewhere`
+ * for the whole list in one read. Only the entries in a staff role count: an
+ * accountant may keep the books of any number of businesses. The numbers come
+ * back as given (E.164), in the list's order.
+ */
+export async function onAnotherStaff(
+  entries: readonly { phone: string; role: Role }[],
+): Promise<string[]> {
+  const phones = [
+    ...new Set(entries.filter((e) => isStaff(e.role)).map((e) => e.phone)),
+  ];
+  if (phones.length === 0) return [];
+  const { data, error } = await createAdminClient()
+    .from("memberships")
+    .select("profiles!inner(phone)")
+    .eq("active", true)
+    .in("profiles.phone", phones)
+    .neq("role", "accountant");
+  if (error) throw error;
+  const taken = new Set(data.map((row) => row.profiles.phone));
+  return phones.filter((phone) => taken.has(phone));
 }

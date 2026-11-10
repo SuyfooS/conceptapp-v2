@@ -78,10 +78,18 @@ const notFound = (page: Page) =>
 const shown = (page: Page, text: string | RegExp) =>
   page.getByText(text).filter({ visible: true }).first();
 
-/** In through the door, as one of the demo's people. */
+/**
+ * In through the door, as one of the demo's people. Galit keeps the books of
+ * both businesses (payroll P3b), so the door offers her in each: here, in the
+ * shop.
+ */
 async function enterAs(page: Page, key: keyof typeof e.people) {
   await page.goto("/enter");
-  await page
+  const door =
+    key === "accountant"
+      ? page.getByRole("region", { name: e.businesses.shop.name })
+      : page;
+  await door
     .getByRole("button", { name: new RegExp(e.people[key].name) })
     .click();
   await expect(page).toHaveURL(/\/home$/);

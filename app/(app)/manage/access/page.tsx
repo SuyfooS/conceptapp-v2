@@ -20,14 +20,17 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function AccessPage() {
   const [data, member] = await Promise.all([currentAccess(), currentMember()]);
   if (!data || !member?.membership) notFound();
-  const today = clockAt(
-    new Date(),
-    member.membership.business.place.timeZone,
-  ).date;
+  const { business } = member.membership;
+  const today = clockAt(new Date(), business.place.timeZone).date;
   return (
     <AccessView
       data={data}
-      actions={{ setRole: setRolePayAction, setPerson: setPersonalPayAction }}
+      // Each write names the business the screen is drawn for: one sent after
+      // a switch to another business is refused there (payroll P3b).
+      actions={{
+        setRole: setRolePayAction.bind(null, business.id),
+        setPerson: setPersonalPayAction.bind(null, business.id),
+      }}
       paths={{ manage: "/manage" }}
       month={monthOf(today)}
       note={notePayViewAction}

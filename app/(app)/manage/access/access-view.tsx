@@ -11,6 +11,7 @@ import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { FieldRow } from "@ui/field-row";
+import { onLeavingBusiness } from "@ui/leaving-business";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
@@ -62,8 +63,10 @@ function useUndoSlot() {
  * switches; and people given access personally, each removed with an undo
  * under their list that holds the removal for six seconds before it is
  * written (so nobody is told twice), and added from the staff without it. A
- * held removal is written early when the page is hidden or closed, or the
- * screen is left, and its undo goes with it. How many see pay is said under
+ * held removal is written early when the page is hidden or closed, the
+ * screen is left, or the person switches business, and its undo goes with
+ * it. Each write names the business the screen was drawn for, and the
+ * server refuses it in any other. How many see pay is said under
  * the roles, with the warning past ten. Phone: one column. Tablet and desktop:
  * the roles at the start, the personal access at the end.
  */
@@ -170,12 +173,15 @@ export function AccessView({
     return held.person;
   }
 
-  /** Writes a removal held for its undo, now. Its undo goes with it. */
-  function commitPending() {
+  /**
+   * Writes a removal held for its undo, now, and returns the write (none when
+   * nothing is held). Its undo goes with it.
+   */
+  function commitPending(): Promise<boolean> | null {
     const person = releasePending();
-    if (person === null) return;
+    if (person === null) return null;
     personUndo.clear();
-    void run(
+    return run(
       () => actions.setPerson(person, false),
       () => markPersonal(person, true),
     );
@@ -199,7 +205,7 @@ export function AccessView({
 
   function remove(person: AccessPersonRow) {
     // One removal waits at a time: an earlier one is written now.
-    commitPending();
+    void commitPending();
     markPersonal(person.userId, false);
     pending.current = {
       person: person.userId,
@@ -229,7 +235,7 @@ export function AccessView({
       say(t("done.added", { name: nameOf(person) }));
       return;
     }
-    commitPending();
+    void commitPending();
     markPersonal(personId, true);
     void run(
       () => actions.setPerson(personId, true),
@@ -240,18 +246,23 @@ export function AccessView({
   }
 
   // While a removal is held, a hidden or closing page writes it now: a phone
-  // may never run the screen's timer again, and a closed tab never will.
+  // may never run the screen's timer again, and a closed tab never will. So
+  // does a switch to another business (payroll P3b), which waits for the
+  // write, so it runs in this business and not in the next.
   // biome-ignore lint/correctness/useExhaustiveDependencies: listens while one is held
   useEffect(() => {
     if (holding === null) return;
+    const now = () => void commitPending();
     const hidden = () => {
-      if (document.visibilityState === "hidden") commitPending();
+      if (document.visibilityState === "hidden") now();
     };
-    window.addEventListener("pagehide", commitPending);
+    window.addEventListener("pagehide", now);
     document.addEventListener("visibilitychange", hidden);
+    const stopLeaving = onLeavingBusiness(commitPending);
     return () => {
-      window.removeEventListener("pagehide", commitPending);
+      window.removeEventListener("pagehide", now);
       document.removeEventListener("visibilitychange", hidden);
+      stopLeaving();
     };
   }, [holding]);
 
@@ -262,7 +273,7 @@ export function AccessView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: only on leaving
   useLayoutEffect(
     () => () => {
-      commitPending();
+      void commitPending();
       roleUndo.clear();
       personUndo.clear();
     },

@@ -12,6 +12,12 @@ import {
   useState,
 } from "react";
 import { Avatar } from "./avatar";
+import {
+  type BusinessChoice,
+  BusinessMark,
+  BusinessMenu,
+  type ChooseBusiness,
+} from "./business-switcher";
 import { cn } from "./cn";
 
 export type NavItem = {
@@ -37,6 +43,12 @@ export type AppShellProps = {
   user: { name: string; role: string; photo?: string | null; href?: string };
   /** At most five items: the tab bar has room for five. */
   nav: NavItem[];
+  /**
+   * The businesses the person is in, when there is another to switch to
+   * (payroll P3b): the sidebar names the business as a menu of them. Phones
+   * and tablets switch from Home and the profile instead.
+   */
+  businesses?: { list: BusinessChoice[]; action: ChooseBusiness } | null;
   children: ReactNode;
 };
 
@@ -327,7 +339,13 @@ function UserBlock({ user }: { user: AppShellProps["user"] }) {
  * while the page loads. Items, labels, icons and order are identical
  * everywhere, so moving between devices needs no relearning.
  */
-export function AppShell({ businessName, user, nav, children }: AppShellProps) {
+export function AppShell({
+  businessName,
+  user,
+  nav,
+  businesses,
+  children,
+}: AppShellProps) {
   const { pathname, shown, press } = usePressedPath();
   const t = useTranslations("ui.appShell");
 
@@ -336,13 +354,16 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
       {/* desktop: full sidebar */}
       <aside className="fixed inset-y-3 start-3 z-20 hidden w-64 flex-col rounded-card bg-surface shadow-card xl:flex">
         <div className="flex items-center gap-3 px-5 py-5">
-          <span
-            aria-hidden="true"
-            className="flex size-10 items-center justify-center rounded-control bg-accent font-bold text-accent-ink"
-          >
-            {businessName.slice(0, 1)}
-          </span>
-          <span className="min-w-0 font-bold text-md">{businessName}</span>
+          {/* The same mark as the switcher's, in the business's colour. */}
+          <BusinessMark name={businessName} />
+          {businesses && businesses.list.length > 1 ? (
+            <BusinessMenu
+              businesses={businesses.list}
+              action={businesses.action}
+            />
+          ) : (
+            <span className="min-w-0 font-bold text-md">{businessName}</span>
+          )}
         </div>
         <nav
           aria-label={t("mainNav")}

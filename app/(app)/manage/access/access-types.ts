@@ -26,11 +26,16 @@ export type AccessFailure =
   | "notInTeam"
   | "always"
   | "viewOnly"
+  /** The person switched business since the screen was drawn (payroll P3b). */
+  | "businessChanged"
   | "failed";
 
 export type AccessResult = { ok: true } | { ok: false; failure: AccessFailure };
 
-/** What the screen can do. The demo passes stand-ins that store nothing. */
+/**
+ * What the screen can do, bound by the page to the business it was drawn
+ * for. The demo passes stand-ins that store nothing.
+ */
 export type AccessActions = {
   setRole: (role: PayRole, granted: boolean) => Promise<AccessResult>;
   setPerson: (personId: string, granted: boolean) => Promise<AccessResult>;

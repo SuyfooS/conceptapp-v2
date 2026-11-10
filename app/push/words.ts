@@ -212,14 +212,23 @@ export function pushNotice(
   };
 }
 
-/** Several lines at once: one notification that says how many. */
-export function summaryNotice(count: number, wording: AppWording): PushNotice {
+/**
+ * Several lines at once: one notification that says how many. It opens the
+ * inbox when they are all from the business the person is in; lines from
+ * another of their businesses (payroll P3b) open Home instead, which lists
+ * each business with what is unread there (`summaryPlace`).
+ */
+export function summaryNotice(
+  count: number,
+  wording: AppWording,
+  place: "inbox" | "home" = "inbox",
+): PushNotice {
   const t = translator(wording, "app.notifications.push.notice");
   return {
     tag: "summary",
     title: t("summary", { count }),
-    body: t("summaryBody"),
-    url: "/notifications",
+    body: place === "home" ? t("summaryBodyBusinesses") : t("summaryBody"),
+    url: place === "home" ? "/home" : "/notifications",
     lang: LANG,
     dir: DIR,
   };

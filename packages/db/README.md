@@ -69,8 +69,9 @@ and calls it (`notifications.test.sql`).
 Lines reach phones too (Web Push, `20261109000500_push.sql`), with no payload:
 the phone's service worker asks `/push/inbox` what to show. `private.push_plan`
 queues a line when its person has a device in `public.push_subscriptions` and
-it is from the business the app opens for them, never a demo
-(`private.push_business`). The server, with the secret key, saves (at most ten
+it is from any business of theirs that isn't a demo and has notifications on
+(`private.push_business_ok`, since `20261110000900_several_businesses.sql`;
+before it, only the oldest one). The server, with the secret key, saves (at most ten
 devices each, a new one forgetting the one seen longest ago) and forgets
 devices, claims what is due once per line and device (`claim_due_pushes`, rows
 in `public.push_deliveries`, which only the server touches) and says how each
@@ -347,6 +348,39 @@ throws when the row isn't written, so no file goes out without it) and reads
 when a month's newest file went out (`getLastPayrollExport`), for the screen's
 "changed since the last file". Covered by `payroll_export.test.sql`.
 
+One login in several businesses (`20261110000900_several_businesses.sql`,
+payroll P3b; Orel, 8 November 2026). `public.memberships_one_staff_idx`, a
+unique index on `user_id` where `active and role <> 'accountant'`: one active
+place on a staff per login, any number as an accountant, so also one business
+per owner (branches wait). The migration first counts the logins that would
+break it and stops with how many, deactivating nobody. `claim_invite` refuses
+a staff invite to someone on another business's staff in words (23505,
+"Already in another business's team"), before anything is written, and turns
+a race the index catches into the same; `@db/invites` reads it as `elsewhere`,
+and `activeElsewhere(phone, business, role)` says it before a link goes out
+(false for an accountant's invite, and when every other place is an
+accountant's). `admin_invite`, `team_invite` and `create_business` write
+invites only, so the index never meets them, and the app asks before each:
+`activeElsewhere` on the Team screen and the console's business page, and
+`onAnotherStaff(entries)` (the staff list's numbers in a staff role already
+on a staff, in one read) in the console's new-business wizard, which sends
+the list back with them named before anything is written. The phone:
+`private.push_business_ok(person, business)` (active member, not a demo,
+notifications on) decides `push_plan` and what `claim_due_pushes` still
+sends; `private.push_business(person)` is now the first such business they
+joined (whether a device can be saved, `push_allowed`, and where a test line
+goes otherwise); `note_push_fetch` answers one row per such business, the
+same `since` on each; `send_test_push(actor, at_time, business)` writes the
+test line in `business` when it reaches the phone (dropped and made again for
+the new argument). Which business the app opens is not the database's: the
+`ca_business` cookie, checked by `@db/session` against the person's active
+memberships on every request; someone in several businesses has their unread
+lines read and counted in each one on its own, so one business's lines never
+crowd out another's count. The demo's Galit is the accountant of both demo
+businesses, by their definitions, so each reset keeps her. Covered by
+`several_businesses.test.sql`, with `push.test.sql`, `availability.test.sql`
+and `hours_kept.test.sql` moved to one staff place per login.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 
@@ -401,7 +435,12 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
 - `@db/supabase/proxy`: `refreshSession()` for the root `proxy.ts`, which
   refreshes the session cookies on every app request.
 - `@db/session`: `getCurrentMember()`, the signed-in person and their
-  business. `app/(app)/member.ts` wraps it in React `cache()`.
+  business: the one the `ca_business` cookie names when it is one of their
+  active memberships, else their place on a staff, else the first they
+  joined (`chosenMembership` in `@domain/businesses`), with every business
+  they are in as `businesses` (payroll P3b). `app/(app)/member.ts` wraps it
+  in React `cache()`; the cookie is set only by `app/(app)/business-cookie.ts`
+  (the switch, the door, joining, a line from another business).
 - `@db/supabase/admin`: `createAdminClient()` with `SUPABASE_SECRET_KEY`,
   for server-only writes. Bypasses RLS, so every caller checks who is
   asking first.

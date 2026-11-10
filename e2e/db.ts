@@ -874,6 +874,114 @@ export async function closePushBusiness(): Promise<void> {
   await deletePushBusiness();
 }
 
+/**
+ * Two real businesses whose books one person keeps (payroll P3b), for what
+ * demo businesses never do: lines that reach a phone. Rotem's number is in
+ * no other spec. She joined the first a day before the second, so with no
+ * choice made the app opens the first. Made afresh each run.
+ */
+export const SWITCH_PERSON = {
+  id: "00000000-0000-4000-a000-000000000981",
+  name: "רותם ספרים",
+  local: "050-000-0981",
+  e164: "+972500000981",
+} as const;
+export const SWITCH_BUSINESSES = {
+  first: {
+    id: "00000000-0000-4000-b000-0000000000e5",
+    slug: "switch-e2e-first",
+    name: "המאפייה של רותם",
+  },
+  second: {
+    id: "00000000-0000-4000-b000-0000000000e6",
+    slug: "switch-e2e-second",
+    name: "המספרה של רותם",
+  },
+} as const;
+
+/** Both go with their records, which only the purge may delete. */
+async function deleteSwitchBusinesses(): Promise<void> {
+  await sql.begin(async (tx) => {
+    for (const business of Object.values(SWITCH_BUSINESSES)) {
+      await tx`select private.purge_business_records(${business.id}::uuid)`;
+      await tx`delete from public.businesses where id = ${business.id}`;
+    }
+  });
+}
+
+export async function openSwitchBusinesses(): Promise<void> {
+  await deleteSwitchBusinesses();
+  await sql`
+    insert into auth.users (
+      instance_id, id, aud, role, phone, phone_confirmed_at,
+      raw_app_meta_data, raw_user_meta_data, created_at, updated_at,
+      confirmation_token, recovery_token, email_change,
+      email_change_token_new, email_change_token_current, phone_change,
+      phone_change_token, reauthentication_token
+    )
+    values (
+      '00000000-0000-0000-0000-000000000000', ${SWITCH_PERSON.id}, 'authenticated',
+      'authenticated', ${SWITCH_PERSON.e164.slice(1)}, now(),
+      '{"provider":"phone","providers":["phone"]}', '{}', now(), now(),
+      '', '', '', '', '', '', '', ''
+    )
+    on conflict (id) do nothing`;
+  await sql`update public.profiles set full_name = ${SWITCH_PERSON.name}
+    where id = ${SWITCH_PERSON.id}`;
+  for (const business of Object.values(SWITCH_BUSINESSES)) {
+    await sql`insert into public.businesses (id, slug, name)
+      values (${business.id}, ${business.slug}, ${business.name})`;
+    await sql`select public.apply_template(${business.id}, 'retail')`;
+  }
+  await sql`insert into public.memberships (business_id, user_id, role, created_at)
+    values
+      (${SWITCH_BUSINESSES.first.id}, ${SWITCH_PERSON.id}, 'accountant',
+        now() - interval '1 day'),
+      (${SWITCH_BUSINESSES.second.id}, ${SWITCH_PERSON.id}, 'accountant', now())`;
+}
+
+/** Forget both businesses, when the spec is done. */
+export async function closeSwitchBusinesses(): Promise<void> {
+  await deleteSwitchBusinesses();
+}
+
+/**
+ * A line for Rotem in one of the two businesses, written as the producers
+ * write them: she was given access to the hours there. `pushed`, as if it
+ * had gone to her phone just now. Returns its id.
+ */
+export async function notifySwitchPerson(
+  business: keyof typeof SWITCH_BUSINESSES,
+  pushed: boolean,
+): Promise<string> {
+  const id = SWITCH_BUSINESSES[business].id;
+  const dedupe = `access.pay_granted:e2e:${business}:${Date.now()}`;
+  await sql`select private.notify(
+    ${id}::uuid, array[${SWITCH_PERSON.id}::uuid], 'access.pay_granted',
+    actor => null::uuid,
+    about => 'time_clock'::public.module_key,
+    dedupe => ${dedupe}
+  )`;
+  const [line] = await sql<{ id: string }[]>`
+    select n.id from public.notifications n
+    where n.business_id = ${id} and n.user_id = ${SWITCH_PERSON.id}
+      and n.dedupe_key = ${dedupe}`;
+  if (!line) throw new Error(`No line for Rotem in the ${business} business`);
+  if (pushed) {
+    await sql`update public.notifications
+      set push_state = 'sent', pushed_at = now() where id = ${line.id}`;
+  }
+  return line.id;
+}
+
+/** Whether a line has been read. */
+export async function notificationRead(id: string): Promise<boolean> {
+  const [row] = await sql<{ read: boolean }[]>`
+    select read_at is not null as read from public.notifications
+    where id = ${id}`;
+  return row?.read ?? false;
+}
+
 /** A demo person's line about themselves, written straight to the local database. */
 export async function setDemoBio(
   phone: string,

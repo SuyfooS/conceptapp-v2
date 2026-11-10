@@ -89,15 +89,16 @@ export async function removePushDevice(
 }
 
 /**
- * A phone signed in as `actorId` asks what to show: the business whose lines
- * it shows, and the moment after which they are new to it. Null when it may
- * show nothing of theirs (the device is someone else's, or their lines reach
- * no phone).
+ * A phone signed in as `actorId` asks what to show: the businesses whose lines
+ * it shows (every one of theirs that isn't a demo and has notifications on,
+ * payroll P3b), and the moment after which lines are new to it. Null when it
+ * may show nothing of theirs (the device is someone else's, or their lines
+ * reach no phone).
  */
 export async function notePushFetch(
   actorId: string,
   endpoint: string | null,
-): Promise<{ since: string; businessId: string } | null> {
+): Promise<{ since: string; businessIds: string[] } | null> {
   const { data, error } = await createAdminClient().rpc("note_push_fetch", {
     actor: actorId,
     ...(endpoint ? { push_endpoint: endpoint } : {}),
@@ -106,8 +107,11 @@ export async function notePushFetch(
     if (isMissingFunction(error)) return null;
     throw error;
   }
-  const row = data?.[0];
-  return row ? { since: row.since, businessId: row.business } : null;
+  const rows = data ?? [];
+  const first = rows[0];
+  return first
+    ? { since: first.since, businessIds: rows.map((row) => row.business) }
+    : null;
 }
 
 /** A phone asked what to show with nobody signed in. */
@@ -120,11 +124,25 @@ export async function notePushSignedOut(endpoint: string): Promise<void> {
 
 export type TestPushResult = "sent" | "tooSoon" | "demo" | "failed";
 
-/** "Send a test notification": a line for the person alone. */
-export async function sendTestPush(actorId: string): Promise<TestPushResult> {
-  const { data, error } = await createAdminClient().rpc("send_test_push", {
+/**
+ * "Send a test notification": a line for the person alone, in the business
+ * they are in now when its lines reach their phone, else in the first of
+ * theirs whose lines do.
+ */
+export async function sendTestPush(
+  actorId: string,
+  businessId: string,
+): Promise<TestPushResult> {
+  const admin = createAdminClient();
+  let { data, error } = await admin.rpc("send_test_push", {
     actor: actorId,
+    business: businessId,
   });
+  if (error && isMissingFunction(error)) {
+    // Before 20261110000900_several_businesses.sql reaches the project: the
+    // line goes where it went before, the business it opens first.
+    ({ data, error } = await admin.rpc("send_test_push", { actor: actorId }));
+  }
   if (error) {
     if (error.code === DEMO) return "demo";
     if (!isMissingFunction(error)) {

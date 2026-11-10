@@ -1,4 +1,9 @@
 import "server-only";
+import {
+  BUSINESS_COOKIE,
+  chosenMembership,
+  switcherOrder,
+} from "@domain/businesses";
 import type { ModuleRow } from "@domain/modules";
 import {
   NO_UNREAD,
@@ -14,6 +19,7 @@ import {
 import type { BusinessPlace } from "@domain/shabbat";
 import type { ViewSession } from "@domain/view-as";
 import type { Wording } from "@domain/wording";
+import { cookies } from "next/headers";
 import type { Database } from "./database.types";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
@@ -82,6 +88,22 @@ export type CurrentMember = {
    * viewing as someone.
    */
   unread: UnreadCounts;
+  /**
+   * Every business the person is active in (payroll P3b), `membership`'s
+   * among them, in the switcher's order: their place on a staff first, then
+   * by name. One for nearly everyone; none while viewing as someone.
+   */
+  businesses: OwnBusiness[];
+};
+
+/** One of the businesses a person is active in. */
+export type OwnBusiness = {
+  business: MemberBusiness;
+  role: MemberRole;
+  /** When they joined it (ISO). */
+  since: string;
+  /** Their unread lines there, as `CurrentMember.unread` counts them. */
+  unread: UnreadCounts;
 };
 
 export type OwnProfile = {
@@ -142,6 +164,12 @@ function memberBusiness(
 }
 
 /**
+ * At most this many unread lines are read for a count: more than the bell
+ * shows ("99+") and enough that those needing the person aren't cut short.
+ */
+const UNREAD_READ = 200;
+
+/**
  * A wording table the database doesn't have yet (PostgREST's PGRST205, or
  * Postgres's 42P01): code that reads it can ship before its migration
  * reaches a project, and the app then shows its own sentences instead of
@@ -162,30 +190,36 @@ function wordingRows<T>(result: {
  * Who is signed in and which business they work in, read under RLS. The business
  * comes with its place and its modules, since nearly every screen needs them
  * before it can read anything else; separately they cost two more rounds.
- * Null when nobody is signed in. A person in several businesses gets the
- * oldest membership until the business switcher arrives. Someone on the
- * ConceptApp team with an open view session gets the viewed business and
- * role instead (RLS lets them read it while the session lasts). The
- * business's wording is read alongside, so it costs no extra round.
+ * Null when nobody is signed in. A person in several businesses (payroll
+ * P3b) works in the one the `ca_business` cookie names, checked here against
+ * their active memberships on every request and never trusted alone; else
+ * their place on a staff, else the business they joined first
+ * (`chosenMembership`). Someone on the ConceptApp team with an open view
+ * session gets the viewed business and role instead (RLS lets them read it
+ * while the session lasts). The business's wording is read alongside, so it
+ * costs no extra round.
  */
 export async function getCurrentMember(): Promise<CurrentMember | null> {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getClaims();
   const userId = auth?.claims.sub;
   if (!userId) return null;
+  const chosen = (await cookies()).get(BUSINESS_COOKIE)?.value ?? null;
 
   // Alongside the round below: the business is only known once it is back, so
   // the person's unread lines in every business they read come with it, and
-  // are counted for the chosen one. RLS keeps only lines still for them.
+  // are counted for the one they are in. RLS keeps only lines still for them.
+  // Someone in several businesses has each counted on its own after it
+  // (`unreadIn`), so one business's lines never crowd out another's.
   const unreadLines = Promise.resolve(
     supabase
       .from("notifications")
       .select("business_id, kind")
       .eq("user_id", userId)
       .is("read_at", null)
-      .limit(200),
+      .limit(UNREAD_READ),
   );
-  const [profile, phone, membership, view, businessWording, templateWording] =
+  const [profile, phone, memberships, view, businessWording, templateWording] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -194,6 +228,8 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
         .maybeSingle(),
       // Numbers are not read from the table, the person's own included.
       supabase.rpc("own_phone"),
+      // Every business they are active in: one place on a staff at most, and
+      // any number as an accountant (20261110000900_several_businesses.sql).
       supabase
         .from("memberships")
         .select(
@@ -201,9 +237,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
         )
         .eq("user_id", userId)
         .eq("active", true)
-        .order("created_at")
-        .limit(1)
-        .maybeSingle(),
+        .order("created_at"),
       // At most one is open (a unique index); people off the team have none.
       supabase
         .from("view_sessions")
@@ -239,7 +273,7 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
           .maybeSingle()
       ).data?.phone ?? null)
     : (phone.data ?? null);
-  if (membership.error) throw membership.error;
+  if (memberships.error) throw memberships.error;
   if (view.error) throw view.error;
   const unread = await unreadLines;
   if (unread.error && !isMissingTable(unread.error)) throw unread.error;
@@ -273,28 +307,90 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       },
       viewing: { role: view.data.role, businessSlug: viewed.slug },
       unread: NO_UNREAD,
+      businesses: [],
     };
   }
 
-  const business = membership.data?.businesses;
+  // RLS shows a person every business they are in; a row whose business it
+  // hides is no place to open.
+  const places = (memberships.data ?? []).flatMap((row) =>
+    row.businesses
+      ? [
+          {
+            businessId: row.businesses.id,
+            role: row.role,
+            since: row.created_at,
+            perms: row.perms,
+            business: memberBusiness(row.businesses, wording),
+          },
+        ]
+      : [],
+  );
+  const picked = chosenMembership(places, chosen);
+  // One business: the lines read alongside are all its own. Several: each
+  // business's lines read on their own, together and with the permissions,
+  // so one business's lines never crowd out another's count.
+  const [counts, perms] = await Promise.all([
+    places.length > 1
+      ? Promise.all(
+          places.map(
+            async (m) =>
+              [
+                m.businessId,
+                await unreadIn(supabase, userId, m.businessId),
+              ] as const,
+          ),
+        )
+      : places.map(
+          (m) =>
+            [m.businessId, unreadCounts(unreadRows, m.businessId)] as const,
+        ),
+    picked
+      ? permissionsIn(supabase, picked.businessId, picked.perms)
+      : Promise.resolve([]),
+  ]);
+  const counted = new Map<string, UnreadCounts>(counts);
+  const unreadOf = (businessId: string) => counted.get(businessId) ?? NO_UNREAD;
+  const businesses: OwnBusiness[] = switcherOrder(places, (m) => ({
+    role: m.role,
+    name: m.business.name,
+  })).map((m) => ({
+    business: m.business,
+    role: m.role,
+    since: m.since,
+    unread: unreadOf(m.businessId),
+  }));
   return {
     ...person,
-    membership:
-      membership.data && business
-        ? {
-            role: membership.data.role,
-            perms: await permissionsIn(
-              supabase,
-              business.id,
-              membership.data.perms,
-            ),
-            business: memberBusiness(business, wording),
-            since: membership.data.created_at,
-          }
-        : null,
+    membership: picked
+      ? {
+          role: picked.role,
+          perms,
+          business: picked.business,
+          since: picked.since,
+        }
+      : null,
     viewing: null,
-    unread: business ? unreadCounts(unreadRows, business.id) : NO_UNREAD,
+    unread: picked ? unreadOf(picked.businessId) : NO_UNREAD,
+    businesses,
   };
+}
+
+/** The person's unread lines in one business, counted (payroll P3b). */
+async function unreadIn(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  businessId: string,
+): Promise<UnreadCounts> {
+  const { data, error } = await supabase
+    .from("notifications")
+    .select("business_id, kind")
+    .eq("user_id", userId)
+    .eq("business_id", businessId)
+    .is("read_at", null)
+    .limit(UNREAD_READ);
+  if (error && !isMissingTable(error)) throw error;
+  return unreadCounts(data ?? [], businessId);
 }
 
 /**

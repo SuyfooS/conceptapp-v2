@@ -1,10 +1,11 @@
 -- Notifications on the phone: only the server saves devices and sends, never
 -- the browser, which reads a few plain columns of its own devices and nothing
 -- of their endpoints or keys. A device belongs to whoever saved it last;
--- nobody only in demo businesses can save one, and a line reaches a phone only
--- from the business the app opens for its person. Each push is claimed once,
--- per device, and what its push service said decides what happens next. Fixed
--- ids of its own and explicit times, so nothing here meets the seeded people.
+-- nobody only in demo businesses can save one, and a line reaches a phone from
+-- every business of its person that isn't a demo
+-- (20261110000900_several_businesses.sql). Each push is claimed once, per
+-- device, and what its push service said decides what happens next. Fixed ids
+-- of its own and explicit times, so nothing here meets the seeded people.
 begin;
 select plan(73);
 -- Times read back as text, in UTC.
@@ -18,7 +19,8 @@ values
   ('72000000-0000-4000-a000-000000000004', 'authenticated', 'authenticated', '972500001804');
 
 -- P and Q are real businesses, D a demo. a owns P and b works there. c is only
--- in D. e joined Q first and P after, so the app opens Q for e.
+-- in D. e works in Q and, since joining it after, keeps P's books: one place on
+-- a staff per login (20261110000900_several_businesses.sql).
 insert into public.businesses (id, slug, name)
 values
   ('72000000-0000-4000-b000-000000000001', 'push-p', 'Push P'),
@@ -31,7 +33,7 @@ values
   ('72000000-0000-4000-b000-000000000001', '72000000-0000-4000-a000-000000000002', 'worker', true, '2026-11-01 08:00+00'),
   ('72000000-0000-4000-b000-000000000003', '72000000-0000-4000-a000-000000000003', 'worker', true, '2026-11-01 08:00+00'),
   ('72000000-0000-4000-b000-000000000002', '72000000-0000-4000-a000-000000000004', 'worker', true, '2026-11-01 08:00+00'),
-  ('72000000-0000-4000-b000-000000000001', '72000000-0000-4000-a000-000000000004', 'worker', true, '2026-11-02 08:00+00');
+  ('72000000-0000-4000-b000-000000000001', '72000000-0000-4000-a000-000000000004', 'accountant', true, '2026-11-02 08:00+00');
 
 insert into public.business_modules (business_id, module_key, enabled, settings)
 values
@@ -219,7 +221,7 @@ select is(
 select is(pg_temp.state('l-b'), 'none', 'not for someone without one');
 select is(pg_temp.state('l-c'), 'none', 'nor in a demo business');
 
--- e gets a device for Q, the business the app opens for e.
+-- e gets a device, and lines from both businesses.
 set local role service_role;
 insert into ids values ('e-phone', public.save_push_subscription(
   '72000000-0000-4000-a000-000000000004', 'https://web.push.apple.com/e-phone',
@@ -232,8 +234,8 @@ insert into ids values
     '72000000-0000-4000-a000-000000000004', 'push:l-e-q', '2026-11-20 09:00+00'));
 select is(
   pg_temp.state('l-e-p') || ',' || pg_temp.state('l-e-q'),
-  'none,queued',
-  'someone in two businesses gets pushes only from the one the app opens'
+  'queued,queued',
+  'someone in two businesses gets pushes from both'
 );
 
 ------------------------------------------------------------------------------
