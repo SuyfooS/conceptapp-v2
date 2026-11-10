@@ -5,8 +5,8 @@ what is next, defaults applied.
 
 ## 2026-11-10 · run 33 · the lists' limits, held to the database's (guessed)
 
-- Guessed: Orel left no work, and the newest merges (#91–#95) are covered by open PR #96 where they meet its files. Tests only, in `packages/domain/lists.test.ts`: an item's label, hint and unit, a list's name and note, and the 60 typed items a sent list takes, each at the database's limit and one past it, plus an editor item's id. Planting a looser limit in `@domain/lists` turns them red.
-- Found, not fixed: the inbox shows "לפני שעה (1)", "לפני יומיים (2)": Hebrew ICU data adds the count to `format.relativeTime` (`app/(app)/notifications/inbox-view.tsx:142`). The fix is our own ICU plural under `app.notifications.time`; left for after #96, which changes that file and the messages.
+- Guessed: Orel left no work, and open PR #96 held the files of the newest screens. Tests only, in `packages/domain/lists.test.ts`: an item's label, hint and unit, a list's name and note, and the 60 typed items a sent list takes, each at the database's limit and one past it, plus an editor item's id. Planting a looser limit in `@domain/lists` turns them red.
+- Found, not fixed: the inbox shows "לפני שעה (1)", "לפני יומיים (2)": Hebrew ICU data adds the count to `format.relativeTime` (`app/(app)/notifications/inbox-view.tsx:142`). The fix is our own ICU plural under `app.notifications.time`; left out tonight because #96 was open on that file and the messages (it merged during the run).
 - Restore point: branch `backup/before-night-2026-11-10` at `0c352fb` (the tag push was cut off).
 - Next: the relative-time fix, then P4 onward with Orel by day.
 - Defaults applied: none.
