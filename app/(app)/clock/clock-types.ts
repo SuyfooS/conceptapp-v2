@@ -1,3 +1,4 @@
+import type { RestDay } from "@domain/payroll-details";
 import type { PunchProof } from "@domain/punch-code-format";
 import type { PunchFailure, ShiftRecord, TimeEntry } from "@domain/time-clock";
 import type { WageNow } from "@domain/wages";
@@ -62,8 +63,25 @@ export type ClockData = {
    * the next one set. Null when none is set, or the database has no wages yet.
    */
   ownWage: WageNow | null;
+  /**
+   * The person's own details for payroll (payroll P5), as a pay holder set
+   * them: their payroll number, rest day, until when they are a minor, and
+   * the start of their work once a holder said it. Null when nothing is set.
+   */
+  ownDetails: OwnDetails | null;
   /** Someone from ConceptApp is looking; nothing can be pressed. */
   viewOnly: boolean;
+};
+
+/** What the clock shows of the person's own details for payroll. */
+export type OwnDetails = {
+  payrollNumber: string | null;
+  /** Null when no details are set, so nobody chose it yet. */
+  restDay: RestDay | null;
+  /** A minor's 18th birthday, while they are one. */
+  youthUntil: string | null;
+  /** The start of their work, once a pay holder set it. */
+  startedOn: string | null;
 };
 
 /** Where this screen's links go; the demo keeps them inside the demo. */

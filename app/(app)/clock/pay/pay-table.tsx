@@ -1,5 +1,6 @@
 "use client";
 
+import { Badge } from "@ui/badge";
 import { Card } from "@ui/card";
 import { DataTable } from "@ui/data-table";
 import { PersonAvatar } from "@ui/person-row";
@@ -94,7 +95,11 @@ export function PayMonthTable({
                       </span>
                     ) : null}
                   </span>
+                  {row.minor ? <Badge>{t("minor")}</Badge> : null}
                 </span>
+              ),
+              number: row.payrollNumber ?? (
+                <span className="text-ink-2">{t("none")}</span>
               ),
               days: row.totals.days,
               hours: (

@@ -686,6 +686,45 @@ export function ActivityView({
           href: paths.pay,
         };
       }
+      case "payroll.details":
+        // Which fields, never their values: the log holds none.
+        return plain(
+          line.fields.length > 0
+            ? t("actions.payroll.details", {
+                person: who(line.person),
+                fields: names(
+                  line.fields.map((field) =>
+                    t(`actions.payroll.fields.${field}`),
+                  ),
+                ),
+              })
+            : t("actions.payroll.detailsPlain", { person: who(line.person) }),
+          paths.pay,
+        );
+      case "payroll.period": {
+        const person = who(line.person);
+        const what = line.added
+          ? t("actions.payroll.periodAdded", { person })
+          : line.fields.length > 0
+            ? t("actions.payroll.periodChanged", {
+                person,
+                fields: names(
+                  line.fields.map((field) =>
+                    t(`actions.payroll.periodFields.${field}`),
+                  ),
+                ),
+              })
+            : t("actions.payroll.periodConfirmed", { person });
+        return {
+          what,
+          notes:
+            line.confirmed && line.fields.length > 0
+              ? [t("actions.payroll.wasJoined")]
+              : [],
+          changes: [],
+          href: paths.pay,
+        };
+      }
       case "other":
         return plain(t("actions.other"));
       default: {

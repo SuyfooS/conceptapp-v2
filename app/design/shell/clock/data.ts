@@ -130,6 +130,13 @@ export function demoClock(
       current: { agorot: 3800, from: "2026-10-01" },
       next: { agorot: 4000, from: "2026-12-01" },
     },
+    // Their own details for payroll (payroll P5), as the owner set them.
+    ownDetails: {
+      payrollNumber: "102",
+      restDay: 6,
+      youthUntil: null,
+      startedOn: "2026-03-01",
+    },
     viewOnly: false,
   };
 }

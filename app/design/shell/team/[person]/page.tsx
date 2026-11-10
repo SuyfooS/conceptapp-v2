@@ -8,7 +8,8 @@ export const generateStaticParams = () =>
   teamMembers.map((member) => ({ person: member.userId }));
 
 // A colleague's profile with mock data, as the owner reads it from the Team
-// demo: Noa with her line and her cover, Yoav with his, the rest without one.
+// demo: Noa with her line and her cover, Yoav with his, the rest without one,
+// and a minor with the day she turns 18.
 export default async function ShellTeamPerson({
   params,
 }: {
@@ -26,6 +27,7 @@ export default async function ShellTeamPerson({
         cover: profile?.cover ?? "glow",
         since: profile?.since ?? "2026-09-01T08:00:00.000Z",
       }}
+      youthUntil={profile?.youthUntil ?? null}
       timeZone="Asia/Jerusalem"
       canClear
       clearBio={demoClearBioAction}

@@ -4,6 +4,7 @@ import { accentTokens } from "@domain/color";
 import { avatarHue } from "@domain/people";
 import { COVER_PRESETS, type CoverPreset } from "@domain/profile";
 import { punchPayload, spokenDigits } from "@domain/punch-code-format";
+import { type DateParts, EMPTY_DATE, parseTypedDate } from "@domain/typed-date";
 import { accentProps } from "@ui/accent";
 import { AccentPicker, AccentPreview } from "@ui/accent-picker";
 import { Ambient } from "@ui/ambient";
@@ -22,6 +23,7 @@ import { useCountUp } from "@ui/count-up";
 import { CoverChoices } from "@ui/cover-choices";
 import { CoverageBar } from "@ui/coverage-bar";
 import { DataTable } from "@ui/data-table";
+import { DateField } from "@ui/date-field";
 import { EmptyState } from "@ui/empty-state";
 import {
   FieldGroup,
@@ -157,6 +159,7 @@ function GalleryBody({
   const tNav = useTranslations("app.nav");
   const tCover = useTranslations("ui.profileCover");
   const tList = useTranslations("app.lists.list");
+  const tPay = useTranslations("app.pay");
   const [ticked, setTicked] = useState(false);
   const [fridge, setFridge] = useState("7");
   const [freezer, setFreezer] = useState("18");
@@ -165,6 +168,8 @@ function GalleryBody({
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
+  const [birth, setBirth] = useState<DateParts>(EMPTY_DATE);
+  const typedBirth = parseTypedDate(birth);
   const [day, setDay] = useState("0");
   const [codeStatus, setCodeStatus] = useState<CodeSlotsStatus>("idle");
   const [codeRun, setCodeRun] = useState(0);
@@ -187,6 +192,7 @@ function GalleryBody({
   const switchLang = (next: Locale) => {
     onLangChange(next);
     setPhone({ display: "", e164: null }); // the fields remount empty in the new language
+    setBirth(EMPTY_DATE);
   };
 
   const tokens = accentTokens(requested);
@@ -410,6 +416,29 @@ function GalleryBody({
                 {phone.e164 ? (
                   <Badge tone="success">
                     {t("phoneValid")} · <span dir="ltr">{phone.e164}</span>
+                  </Badge>
+                ) : (
+                  <Badge>{t("phoneIncomplete")}</Badge>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              <DateField
+                label={t("dateField")}
+                parts={{
+                  day: tPay("dateParts.day"),
+                  month: tPay("dateParts.month"),
+                  year: tPay("dateParts.year"),
+                }}
+                value={birth}
+                onChange={setBirth}
+                hint={t("dateFieldHint")}
+              />
+              <div>
+                {typedBirth.ok ? (
+                  <Badge tone="success">
+                    {t("dateFieldValid")} ·{" "}
+                    <span dir="ltr">{typedBirth.date}</span>
                   </Badge>
                 ) : (
                   <Badge>{t("phoneIncomplete")}</Badge>

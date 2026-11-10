@@ -63,6 +63,17 @@ export function useShortDate(): (date: string) => string {
     });
 }
 
+/** A day's month and year, `YYYY-MM-DD` as "4.2027": how long someone is a minor. */
+export function useMonthYear(): (date: string) => string {
+  const format = useFormatter();
+  return (date) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      month: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+}
+
 /** A stretch that runs from the month's first day stands for the whole month. */
 const fromFirst = (span: WageSpan) => span.since.endsWith("-01");
 
@@ -192,6 +203,7 @@ export function BeforePayrollCard({
   t,
   fixHref,
   noWageHref,
+  noNumberHref,
 }: {
   before: BeforePayroll;
   t: PayT;
@@ -199,6 +211,8 @@ export function BeforePayrollCard({
   fixHref: string | null;
   /** The month's list of those without a wage; null when it is on screen. */
   noWageHref: string | null;
+  /** The month's list of those without a payroll number; null when it is on screen. */
+  noNumberHref: string | null;
 }) {
   const lines = [
     before.ownerOnly > 0
@@ -214,10 +228,28 @@ export function BeforePayrollCard({
     before.noWage > 0
       ? t("beforePayroll.noWage", { count: before.noWage })
       : null,
+    before.noNumber > 0
+      ? t("beforePayroll.noNumber", { count: before.noNumber })
+      : null,
     before.rounding ? t("beforePayroll.rounding") : null,
   ].filter((line): line is string => line !== null);
   if (lines.length === 0) return null;
   const waits = before.ownerOnly + before.waiting + before.open > 0;
+  const links = [
+    fixHref && waits
+      ? { key: "fix", href: fixHref, text: t("beforePayroll.fix") }
+      : null,
+    noWageHref && before.noWage > 0
+      ? { key: "noWage", href: noWageHref, text: t("beforePayroll.showNoWage") }
+      : null,
+    noNumberHref && before.noNumber > 0
+      ? {
+          key: "noNumber",
+          href: noNumberHref,
+          text: t("beforePayroll.showNoNumber"),
+        }
+      : null,
+  ].filter((one) => one !== null);
   const link =
     "inline-flex min-h-11 items-center self-start font-semibold text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent";
   return (
@@ -230,18 +262,13 @@ export function BeforePayrollCard({
           <li key={line}>{line}</li>
         ))}
       </ul>
-      {(fixHref && waits) || (noWageHref && before.noWage > 0) ? (
+      {links.length > 0 ? (
         <div className="mt-1 flex flex-wrap gap-x-5">
-          {fixHref && waits ? (
-            <Link href={fixHref} className={link}>
-              {t("beforePayroll.fix")}
+          {links.map((one) => (
+            <Link key={one.key} href={one.href} className={link}>
+              {one.text}
             </Link>
-          ) : null}
-          {noWageHref && before.noWage > 0 ? (
-            <Link href={noWageHref} className={link}>
-              {t("beforePayroll.showNoWage")}
-            </Link>
-          ) : null}
+          ))}
         </div>
       ) : null}
     </Card>
@@ -287,6 +314,7 @@ function PersonFlags({
     person.wage?.missing
       ? { key: "wage", text: <MissingWage wage={person.wage} t={t} /> }
       : null,
+    person.noNumber ? { key: "number", text: t("numberMissing") } : null,
     person.totals.corrected > 0
       ? {
           key: "corrected",
@@ -489,6 +517,7 @@ export const personHref = (pay: string, userId: string, month: string) =>
 export function payMonthColumns(t: PayT): DataColumn[] {
   return [
     { key: "name", label: t("columns.name") },
+    { key: "number", label: t("columns.number"), numeric: true },
     { key: "days", label: t("columns.days"), align: "end", numeric: true },
     { key: "hours", label: t("columns.hours"), align: "end", numeric: true },
     { key: "wage", label: t("columns.wage"), align: "end" },

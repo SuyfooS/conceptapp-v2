@@ -33,7 +33,8 @@ select set_eq(
     'departments', 'department_members', 'list_templates',
     'list_template_items', 'list_schedules', 'lists', 'list_people',
     'list_items', 'list_passes', 'permission_keys', 'role_permissions',
-    'minimum_wages', 'member_wages'
+    'minimum_wages', 'member_wages', 'member_payroll_details',
+    'employment_periods'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

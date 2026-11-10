@@ -1,7 +1,14 @@
 "use server";
 
 import { notePayrollAccess, type PayViewKind } from "@db/payroll";
+import { setEmploymentPeriod, setPayrollDetails } from "@db/payroll-details";
 import { setHourlyWage } from "@db/wages";
+import {
+  type DetailsForm,
+  type PeriodForm,
+  parseDetailsForm,
+  parsePeriodForm,
+} from "@domain/payroll-details";
 import { canWrite } from "@domain/view-as";
 import { parseWageForm, type WageForm } from "@domain/wages";
 import { refresh } from "next/cache";
@@ -9,7 +16,11 @@ import { z } from "zod";
 import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
 import { payAccess } from "./pay";
-import type { WageActionResult } from "./pay-types";
+import type {
+  DetailsActionResult,
+  PeriodActionResult,
+  WageActionResult,
+} from "./pay-types";
 
 const viewed = z.object({
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
@@ -84,6 +95,117 @@ export async function setWageAction(
   if (!result.ok) return { ok: false, failure: result.failure };
   // The person hears of it, on their phone too.
   pushSoon();
+  refresh();
+  return { ok: true };
+}
+
+/**
+ * Who may change a person's details or periods, from the page: a pay holder
+ * who isn't viewing as someone else, for someone else. The database checks
+ * the actor again (pay access, never their own, an owner's only by an owner).
+ */
+async function detailsWriter(personId: string) {
+  const person = z.uuid().safeParse(personId);
+  if (!person.success) return { ok: false, failure: "invalid" } as const;
+  const member = await currentMember();
+  if (!member?.membership) return { ok: false, failure: "noAccess" } as const;
+  if (!canWrite(member.viewing)) {
+    return { ok: false, failure: "viewOnly" } as const;
+  }
+  const access = await payAccess();
+  if (!access) return { ok: false, failure: "noAccess" } as const;
+  if (person.data === access.userId) {
+    return { ok: false, failure: "ownDetails" } as const;
+  }
+  return { ok: true, access, personId: person.data } as const;
+}
+
+const typedDate = z.object({
+  day: z.string().max(8),
+  month: z.string().max(8),
+  year: z.string().max(8),
+});
+
+const detailsForm = z.object({
+  payrollNumber: z.string().max(40),
+  restDay: z.string().max(4),
+  hoursLaw: z.string().max(20),
+  compulsoryEducation: z.boolean(),
+  birth: typedDate,
+});
+
+/**
+ * Set a person's details for payroll. A birth date is read only from an
+ * owner or the accountant, and sent once: the database keeps only the day
+ * they turn 18, and the log only the names of the fields that changed.
+ */
+export async function setDetailsAction(
+  personId: string,
+  values: DetailsForm,
+): Promise<DetailsActionResult> {
+  const form = detailsForm.safeParse(values);
+  if (!form.success) return { ok: false, failure: "invalid" };
+  const writer = await detailsWriter(personId);
+  if (!writer.ok) return writer;
+  const { access } = writer;
+  const parsed = parseDetailsForm(form.data, access.today, {
+    birth: access.birth,
+  });
+  if (!parsed.ok) {
+    return { ok: false, failure: "invalid", errors: parsed.errors };
+  }
+  const result = await setPayrollDetails(
+    access.userId,
+    access.businessId,
+    writer.personId,
+    parsed.patch,
+  );
+  if (!result.ok) return result;
+  refresh();
+  return { ok: true };
+}
+
+const periodForm = z.object({
+  from: typedDate,
+  to: typedDate,
+  paid: typedDate,
+});
+
+/**
+ * Add a period of a person's work, or change one of theirs (`periodId`).
+ * The form is read by the same rules the sheet checks; the database refuses
+ * one that shares a day with another of theirs.
+ */
+export async function setPeriodAction(
+  personId: string,
+  values: PeriodForm,
+  periodId: string | null,
+): Promise<PeriodActionResult> {
+  const form = periodForm.safeParse(values);
+  const period = z.uuid().nullable().safeParse(periodId);
+  if (!form.success || !period.success) {
+    return { ok: false, failure: "invalid" };
+  }
+  const writer = await detailsWriter(personId);
+  if (!writer.ok) return writer;
+  const { access } = writer;
+  // The other periods are the database's to check: it refuses an overlap.
+  const parsed = parsePeriodForm(form.data, access.today, []);
+  if (!parsed.ok) {
+    return { ok: false, failure: "invalid", errors: parsed.errors };
+  }
+  const result = await setEmploymentPeriod(
+    access.userId,
+    access.businessId,
+    writer.personId,
+    {
+      from: parsed.from,
+      to: parsed.to,
+      paid: parsed.paid,
+      periodId: period.data,
+    },
+  );
+  if (!result.ok) return result;
   refresh();
   return { ok: true };
 }

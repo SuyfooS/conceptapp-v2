@@ -267,7 +267,51 @@ export type ActivityLine =
       minimum: number | null;
       note: string | null;
     }
+  | {
+      /**
+       * A pay holder changed someone's details for payroll (payroll P5): which
+       * fields, never their values. A birth date shows as the youth.
+       */
+      action: "payroll.details";
+      person: ActivityPerson;
+      fields: PayrollDetailField[];
+    }
+  | {
+      /** A pay holder added or changed a period of someone's work (payroll P5). */
+      action: "payroll.period";
+      person: ActivityPerson;
+      added: boolean;
+      /** It had been copied from joining the app, and is a holder's now. */
+      confirmed: boolean;
+      fields: PeriodField[];
+    }
   | { action: "other" };
+
+/** The fields of someone's details for payroll, as the log names them, in order. */
+export const PAYROLL_DETAIL_FIELDS = [
+  "payroll_number",
+  "rest_day",
+  "hours_law",
+  "compulsory_education",
+  "youth_until",
+] as const;
+export type PayrollDetailField = (typeof PAYROLL_DETAIL_FIELDS)[number];
+
+/** The fields of a period of work, as the log names them, in order. */
+export const PERIOD_FIELDS = [
+  "started_on",
+  "ended_on",
+  "last_paid_on",
+] as const;
+export type PeriodField = (typeof PERIOD_FIELDS)[number];
+
+/** The known names of a list, in their order; anything else is left out. */
+function knownFields<F extends string>(
+  names: readonly unknown[],
+  known: readonly F[],
+): F[] {
+  return known.filter((field) => names.includes(field));
+}
 
 /** One line of the log. Holds no ids, so it can go anywhere. */
 export type ActivityEntry = {
@@ -388,6 +432,16 @@ const schemas = {
     effective_from: z.iso.date(),
     minimum_agorot: z.int().min(1).nullable().optional(),
     note: z.unknown().optional(),
+  }),
+  "payroll.details": z.object({
+    person: id,
+    fields: z.array(z.unknown()),
+  }),
+  "payroll.period": z.object({
+    person: id,
+    added: z.boolean().default(false),
+    confirmed: z.boolean().default(false),
+    fields: z.array(z.unknown()).default([]),
   }),
 };
 
@@ -747,6 +801,26 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         from: details.effective_from,
         minimum: details.minimum_agorot ?? null,
         note: noteOf(details.note),
+      };
+    }
+    case "payroll.details": {
+      const details = read(schemas["payroll.details"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        fields: knownFields(details.fields, PAYROLL_DETAIL_FIELDS),
+      };
+    }
+    case "payroll.period": {
+      const details = read(schemas["payroll.period"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        added: details.added,
+        confirmed: details.confirmed,
+        fields: knownFields(details.fields, PERIOD_FIELDS),
       };
     }
     case "schedule.publish": {

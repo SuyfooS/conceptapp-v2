@@ -745,6 +745,61 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads which payroll details changed, in their order, never a value", () => {
+    expect(
+      lineOf(
+        row("payroll.details", {
+          person: YOAV,
+          fields: ["youth_until", "payroll_number", "salary"],
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.details",
+      person: { kind: "member", name: "Yoav" },
+      fields: ["payroll_number", "youth_until"],
+    });
+    expect(lineOf(row("payroll.details", { person: YOAV }))).toEqual({
+      action: "other",
+    });
+  });
+
+  it("reads a period of work added, changed or checked", () => {
+    expect(
+      lineOf(
+        row("payroll.period", {
+          person: LEFT,
+          period: SHIFT,
+          added: true,
+          confirmed: false,
+          fields: ["started_on", "ended_on", "last_paid_on"],
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.period",
+      person: { kind: "former" },
+      added: true,
+      confirmed: false,
+      fields: ["started_on", "ended_on", "last_paid_on"],
+    });
+    expect(
+      lineOf(
+        row("payroll.period", {
+          person: YOAV,
+          period: SHIFT,
+          added: false,
+          confirmed: true,
+          fields: [],
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.period",
+      person: { kind: "member", name: "Yoav" },
+      added: false,
+      confirmed: true,
+      fields: [],
+    });
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),

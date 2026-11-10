@@ -25,9 +25,10 @@ values
   ('76000000-0000-4000-a000-00000000000e', 'authenticated', 'authenticated', '972500002605'),
   ('76000000-0000-4000-a000-00000000000f', 'authenticated', 'authenticated', '972500002606');
 
--- a: owner of X and Y; b: manager of X; c: worker of X, with hours; d: worker
--- of X who only acted (log rows, no hours); e and f: the owner and a worker of
--- a demo business.
+-- a: owner of X and Y; b: manager of X; c: worker of X, with hours; d: X's
+-- accountant, who only acted (log rows, no hours, and off the staff, so no
+-- employment period either: 20261110000600_payroll_details.sql keeps those);
+-- e and f: the owner and a worker of a demo business.
 insert into public.businesses (id, slug, name)
 values
   ('76000000-0000-4000-b000-000000000001', 'hk-x', 'Kept X'),
@@ -38,7 +39,7 @@ values
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000a', 'owner'),
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000b', 'manager'),
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000c', 'worker'),
-  ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000d', 'worker'),
+  ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000d', 'accountant'),
   ('76000000-0000-4000-b000-000000000002', '76000000-0000-4000-a000-00000000000a', 'owner');
 
 -- Nothing set: no code asked for.

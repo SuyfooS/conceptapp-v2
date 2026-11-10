@@ -1,3 +1,4 @@
+import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
 import { getOwnPublishedShifts } from "@db/schedule";
 import {
   getClockPeople,
@@ -8,6 +9,11 @@ import { getWages } from "@db/wages";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
 import { canSeePay } from "@domain/payroll-access";
+import {
+  currentPeriod,
+  type EmploymentPeriod,
+  type PayrollDetails,
+} from "@domain/payroll-details";
 import { needsPunchCode } from "@domain/punch-code";
 import { timeIn } from "@domain/shabbat";
 import { canSeeTeam } from "@domain/team";
@@ -32,11 +38,12 @@ import {
 import { clockAt, nextShift } from "@domain/today";
 import { canWrite } from "@domain/view-as";
 import { wageNow } from "@domain/wages";
+import { youthLabel } from "@domain/youth";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
-import type { ClockData, ClockPaths } from "./clock-types";
+import type { ClockData, ClockPaths, OwnDetails } from "./clock-types";
 import type { HistoryData } from "./history/history-view";
 
 export const clockPaths: ClockPaths = {
@@ -125,6 +132,29 @@ async function shiftToday(
   };
 }
 
+/**
+ * What the clock shows of the person's own details for payroll: what a pay
+ * holder set. A start copied from joining the app is left out: it is the
+ * day they joined the app, for a holder to check, not when they started.
+ * Null when there is nothing to show.
+ */
+function ownDetailsOf(
+  details: PayrollDetails | undefined,
+  periods: readonly EmploymentPeriod[],
+  today: string,
+): OwnDetails | null {
+  const period = currentPeriod(periods, today);
+  const own: OwnDetails = {
+    payrollNumber: details?.payrollNumber ?? null,
+    restDay: details ? details.restDay : null,
+    youthUntil: youthLabel(details?.youthUntil ?? null, today)?.until ?? null,
+    startedOn: period?.source === "set" ? period.startedOn : null,
+  };
+  return own.payrollNumber || own.restDay !== null || own.startedOn
+    ? own
+    : null;
+}
+
 /** Everything on the clock screen. Null when the person cannot open it. */
 export async function currentClock(): Promise<ClockData | null> {
   const access = await clockAccess();
@@ -136,7 +166,7 @@ export async function currentClock(): Promise<ClockData | null> {
   const month = monthOf(clockAt(now, timeZone).date);
   const lastMonth = addMonths(month, -1);
   const manager = canSeeTeam(role);
-  const [entries, today, openNow, wages] = await Promise.all([
+  const [entries, today, openNow, wages, details, periods] = await Promise.all([
     getTimeEntries(
       businessId,
       monthRange(lastMonth, timeZone).from,
@@ -145,10 +175,13 @@ export async function currentClock(): Promise<ClockData | null> {
     ),
     scheduling ? shiftToday(businessId, userId, timeZone, now) : null,
     manager ? getTimeEntries(businessId, now, now) : [],
-    // Their own wages only, under their own session.
+    // Their own wages, details and periods only, under their own session.
     getWages(businessId, userId),
+    getPayrollDetails(businessId, userId),
+    getEmploymentPeriods(businessId, userId),
   ]);
-  const ownWage = wageNow(wages, clockAt(now, timeZone).date);
+  const localToday = clockAt(now, timeZone).date;
+  const ownWage = wageNow(wages, localToday);
 
   const step = settings.roundToMinutes;
   const nameOf = await correctorNames(businessId, entries);
@@ -197,6 +230,11 @@ export async function currentClock(): Promise<ClockData | null> {
       : null,
     payroll: canSeePay({ role, perms: access.perms }),
     ownWage: ownWage.current || ownWage.next ? ownWage : null,
+    ownDetails: ownDetailsOf(
+      details.get(userId),
+      periods.get(userId) ?? [],
+      localToday,
+    ),
     viewOnly,
   };
 }

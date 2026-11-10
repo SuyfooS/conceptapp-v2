@@ -1,24 +1,31 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { addYears } from "../packages/domain/youth";
 import {
   forgetShopWages,
+  restoreShopPayrollDetails,
+  restoreShopPeriods,
   seededPayMonth,
   setShopPayRole,
   shopActivityActions,
+  shopActivityDetails,
   shopFirstOfMonth,
   shopPayRoles,
+  shopPayrollDetails,
   shopPayViewsToday,
+  shopPeriods,
   shopWageToday,
 } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
 
-// Hours for payroll (payroll P3) and hourly wages (P4), in the demo shop as
-// supabase/seed.sql starts it: last month's hours for its staff and their
-// wages from the first of last month (private.seed_demo_pay), its accountant
-// Galit, and its managers holding pay access. Every visit names the seeded
-// month: the screens open on last month only until the 10th.
+// Hours for payroll (payroll P3), hourly wages (P4) and details for payroll
+// (P5), in the demo shop as supabase/seed.sql starts it: last month's hours
+// for its staff, their wages from the first of last month and their details
+// (private.seed_demo_pay), its accountant Galit, and its managers holding pay
+// access. Every visit names the seeded month: the screens open on last month
+// only until the 10th.
 const e = he.auth.enter;
 const p = he.app.pay;
 const a = he.app.manage.access;
@@ -30,7 +37,28 @@ const TAMAR = {
 const OMER = "עומר הדגמה";
 const OMER_ID = "00000000-0000-4000-a000-000000000008";
 // Another of the shop's workers, signed in by their number (not at the door).
-const ITAI = { local: "050-000-0011", e164: "+972500000011" };
+const ITAI = {
+  id: "00000000-0000-4000-a000-000000000011",
+  local: "050-000-0011",
+  e164: "+972500000011",
+};
+// The shop's minor, still without a payroll number, and its worker who rests
+// on Friday (supabase/seed.sql's "details").
+const LIYA = { id: "00000000-0000-4000-a000-000000000013", name: "ליה כץ" };
+const RONI = { id: "00000000-0000-4000-a000-000000000012", name: "רוני שלום" };
+
+/** `YYYY-MM-01` plus whole months, as `YYYY-MM-DD` on day `day`. */
+const monthsFrom = (first: string, months: number, day = 1) => {
+  const [year = 0, month = 1] = first.split("-").map(Number);
+  const at = new Date(Date.UTC(year, month - 1 + months, day));
+  return at.toISOString().slice(0, 10);
+};
+
+/** A day's month and year as the screens write how long someone is a minor: "5.2027". */
+const monthYear = (day: string) => {
+  const [year, month] = day.split("-").map(Number);
+  return `${month}.${year}`;
+};
 
 /** A rich sentence as its text reads on screen, its `<ltr>` spans dropped. */
 const plain = (key: Parameters<typeof heT.markup>[0], values = {}) =>
@@ -413,4 +441,262 @@ test("the month says whose shifts have no wage, and lists only them", async ({
 
   await page.getByRole("link", { name: p.filter.all }).click();
   await expect(shown(page, "נועה כהן")).toBeVisible();
+});
+
+test("the details for payroll read at every size: a start to check, a holder's start, a rest day and a minor", async ({
+  page,
+}, testInfo) => {
+  const month = await seededPayMonth();
+  const first = await shopFirstOfMonth();
+  await enterAs(page, "accountant");
+
+  // The minor is marked in the month's list, the row's one badge.
+  await page.goto(`/clock/pay?month=${month}`);
+  await expect(
+    page.getByText(p.minor, { exact: true }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  // Itai's start was set by the owner (the 10th of three months ago): no
+  // note to check it, and his number.
+  await page.goto(`/clock/pay/${ITAI.id}?month=${month}`);
+  await expect(
+    page
+      .getByRole("heading", { name: p.details.title })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("103", { exact: true }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(shown(page, fullDay(monthsFrom(first, -3, 10)))).toBeVisible();
+  await expect(
+    page.getByText(p.details.joined).filter({ visible: true }),
+  ).toHaveCount(0);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("pay-details.png"),
+    fullPage: true,
+  });
+
+  // Tamar's start was copied from joining the app: the card says to check it.
+  await page.goto(`/clock/pay/${TAMAR.id}?month=${month}`);
+  await expect(shown(page, p.details.joined)).toBeVisible();
+
+  // Roni rests on Friday.
+  await page.goto(`/clock/pay/${RONI.id}?month=${month}`);
+  await expect(
+    page
+      .getByText(p.details.restDay["5"], { exact: true })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+});
+
+test("the accountant enters a payroll number and a minor's birth date, kept only as the day she turns 18", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "one run is enough");
+  const month = await seededPayMonth();
+  const first = await shopFirstOfMonth();
+  const before = await shopPayrollDetails(LIYA.id);
+  const since = new Date(Date.now() - 1000);
+  try {
+    await enterAs(page, "accountant");
+    await page.goto(`/clock/pay?month=${month}`);
+    await expect(
+      shown(page, heT("app.pay.beforePayroll.noNumber", { count: 1 })),
+    ).toBeVisible();
+
+    await page.goto(`/clock/pay/${LIYA.id}?month=${month}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(LIYA.name);
+    await expect(
+      page
+        .getByText(p.details.numberMissing, { exact: true })
+        .filter({ visible: true }),
+    ).toBeVisible();
+    // 17 through the seeded month, a minor until the first of the month six
+    // months from now.
+    await expect(
+      shown(
+        page,
+        plain("app.pay.details.youth", {
+          until: monthYear(monthsFrom(first, 6)),
+        }),
+      ),
+    ).toBeVisible();
+
+    await page
+      .getByRole("button", { name: p.details.edit })
+      .filter({ visible: true })
+      .click();
+    const sheet = page.getByRole("dialog", {
+      name: heT("app.pay.details.sheet.title", { name: LIYA.name }),
+    });
+    await expect(sheet).toBeVisible();
+    await sheet.getByLabel(p.details.sheet.number).fill("105");
+    // A minor whatever day this runs: 17 years before the 15th of the month
+    // after next, so she turns 18 more than a year from now.
+    const born = addYears(monthsFrom(first, 2, 15), -17);
+    const turns18 = addYears(born, 18);
+    const [bornYear = "", bornMonth = "", bornDay = ""] = born.split("-");
+    const birth = sheet.getByRole("group", { name: p.details.sheet.birth });
+    await birth
+      .getByLabel(p.dateParts.day, { exact: true })
+      .fill(String(Number(bornDay)));
+    await birth
+      .getByLabel(p.dateParts.month, { exact: true })
+      .fill(String(Number(bornMonth)));
+    await birth.getByLabel(p.dateParts.year, { exact: true }).fill(bornYear);
+    // Before saving, it says what the date makes of her age.
+    await expect(
+      sheet.getByText(
+        plain("app.pay.details.sheet.birthYouth", {
+          until: monthYear(turns18),
+        }),
+      ),
+    ).toBeVisible();
+    await expect(sheet.getByText(p.details.sheet.birthHint)).toBeVisible();
+    // The sheet hides the page from screen readers, heading and all: axe alone.
+    const { violations } = await new AxeBuilder({ page }).analyze();
+    expect(violations.map((v) => v.id)).toEqual([]);
+    await page.screenshot({
+      path: testInfo.outputPath("details-sheet.png"),
+      fullPage: true,
+    });
+
+    await sheet.getByRole("button", { name: p.details.sheet.save }).click();
+    await expect(sheet).toBeHidden();
+    await expect(
+      page.getByRole("status").filter({ hasText: p.details.done }),
+    ).toBeVisible();
+
+    // Only the day she turns 18 is kept, and the log names the fields, never
+    // a value.
+    await expect
+      .poll(() => shopPayrollDetails(LIYA.id))
+      .toMatchObject({ payroll_number: "105", youth_until: turns18 });
+    const logged = await shopActivityDetails("payroll.details", since);
+    expect(logged.map((row) => row.fields)).toEqual([
+      ["payroll_number", "youth_until"],
+    ]);
+    expect(JSON.stringify(logged)).not.toMatch(
+      new RegExp(
+        `${bornYear}|${turns18.slice(0, 4)}|${bornMonth}-${bornDay}|"105"`,
+      ),
+    );
+    await expect(
+      shown(
+        page,
+        plain("app.pay.details.youth", { until: monthYear(turns18) }),
+      ),
+    ).toBeVisible();
+    await expectCleanPage(page);
+
+    // Nobody is missing a number now.
+    await page.goto(`/clock/pay?month=${month}`);
+    await expect(
+      page.getByText(heT("app.pay.beforePayroll.noNumber", { count: 1 })),
+    ).toHaveCount(0);
+
+    // The owner reads it in the log, by field.
+    await page.context().clearCookies();
+    await enterAs(page, "shopOwner");
+    await page.goto("/manage/activity");
+    await expect(
+      shown(
+        page,
+        heT("app.manage.activity.actions.payroll.details", {
+          person: LIYA.name,
+          fields: "מספר העובד וגיל הנוער",
+        }),
+      ),
+    ).toBeVisible();
+  } finally {
+    await restoreShopPayrollDetails(LIYA.id, before);
+  }
+});
+
+test("a start a holder sets makes the period theirs, and no wage starts before it", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "one run is enough");
+  const month = await seededPayMonth();
+  const before = await shopPeriods(RONI.id);
+  const since = new Date(Date.now() - 1000);
+  try {
+    await enterAs(page, "shopOwner");
+    await page.goto(`/clock/pay/${RONI.id}?month=${month}`);
+    await page
+      .getByRole("button", { name: new RegExp(p.details.joined) })
+      .filter({ visible: true })
+      .click();
+    const sheet = page.getByRole("dialog", {
+      name: heT("app.pay.details.period.title", { name: RONI.name }),
+    });
+    await expect(sheet).toBeVisible();
+    await expect(
+      sheet.getByText(heT("app.pay.details.period.joined", { form: "x" })),
+    ).toBeVisible();
+
+    // He started on the 2nd of the seeded month.
+    const [year = "", monthOf = ""] = month.split("-");
+    const from = sheet.getByRole("group", { name: p.details.period.from });
+    await from.getByLabel(p.dateParts.day, { exact: true }).fill("2");
+    await from
+      .getByLabel(p.dateParts.month, { exact: true })
+      .fill(String(Number(monthOf)));
+    await from.getByLabel(p.dateParts.year, { exact: true }).fill(year);
+    const { violations } = await new AxeBuilder({ page }).analyze();
+    expect(violations.map((v) => v.id)).toEqual([]);
+    await sheet.getByRole("button", { name: p.details.period.save }).click();
+    await expect(sheet).toBeHidden();
+    await expect(
+      page.getByRole("status").filter({ hasText: p.details.period.done }),
+    ).toBeVisible();
+
+    await expect
+      .poll(async () =>
+        (await shopPeriods(RONI.id)).map((row) => [
+          row.started_on,
+          row.ended_on,
+          row.source,
+        ]),
+      )
+      .toEqual([[`${month}-02`, null, "set"]]);
+    const logged = await shopActivityDetails("payroll.period", since);
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({
+      added: false,
+      confirmed: true,
+      fields: ["started_on"],
+    });
+    expect(JSON.stringify(logged)).not.toMatch(/\d{4}-\d{2}-\d{2}/);
+    await expect(
+      page.getByText(p.details.joined).filter({ visible: true }),
+    ).toHaveCount(0);
+
+    // A wage from before that day is refused in the sheet already.
+    await page
+      .getByRole("button", { name: p.wage.change })
+      .filter({ visible: true })
+      .click();
+    const wageSheet = page.getByRole("dialog", {
+      name: heT("app.pay.wage.sheet.title", { name: RONI.name }),
+    });
+    await wageSheet.getByLabel(p.wage.sheet.amount).fill("38");
+    await wageSheet.getByLabel(p.wage.sheet.from).fill(`${month}-01`);
+    await wageSheet
+      .getByRole("button", {
+        name: heT("app.pay.wage.sheet.save", {
+          date: `1.${Number(monthOf)}`,
+        }),
+      })
+      .click();
+    await expect(
+      wageSheet.getByText(p.wage.errors.from.beforeStart),
+    ).toBeVisible();
+    expect(await shopActivityActions("wage.set", since)).toBe(0);
+  } finally {
+    await restoreShopPeriods(RONI.id, before);
+  }
 });

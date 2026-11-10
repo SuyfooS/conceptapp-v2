@@ -11,7 +11,7 @@ import {
   WAGE_NOTE_MAX,
   type WageForm,
   type WageFormErrors,
-  wageWarning,
+  wageWarningFor,
 } from "@domain/wages";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -44,18 +44,20 @@ const BAND_KEYS: Record<AgeBand, string> = {
 function WarningLine({
   agorot,
   from,
+  youthUntil,
   which,
   t,
 }: {
   agorot: number;
   from: string;
+  /** A minor's 18th birthday (payroll P5): the minimum of their age, and of each birthday after. */
+  youthUntil: string | null;
   which: "sheet" | "now" | "next";
   t: PayT;
 }) {
   const shekels = useShekels();
   const fullDate = useFullDate();
-  // Until payroll P5 knows ages, every minimum is an adult's.
-  const warning = wageWarning(agorot, from);
+  const warning = wageWarningFor(agorot, from, youthUntil);
   if (!warning) return null;
   const values = {
     ltr,
@@ -162,6 +164,7 @@ export function WageCard({
           <WarningLine
             agorot={wage.current.agorot}
             from={wage.today}
+            youthUntil={wage.youthUntil}
             which="now"
             t={t}
           />
@@ -170,6 +173,7 @@ export function WageCard({
           <WarningLine
             agorot={wage.next.agorot}
             from={wage.next.from}
+            youthUntil={wage.youthUntil}
             which="next"
             t={t}
           />
@@ -286,8 +290,9 @@ function WageSheetForm({
   });
   const [errors, setErrors] = useState<WageFormErrors>({});
   const [failure, setFailure] = useState<string | null>(null);
-  // While typing: under the minimum warns, and never stops the save.
-  const read = parseWageForm(values, wage.today);
+  // While typing: under the minimum warns, and never stops the save; before
+  // the start a holder set, it can't start.
+  const read = parseWageForm(values, wage.today, wage.startsOn);
 
   /** What is wrong is said under its field, and the first one takes the focus. */
   function fail(next: WageFormErrors) {
@@ -341,6 +346,7 @@ function WageSheetForm({
             <WarningLine
               agorot={read.agorot}
               from={read.from}
+              youthUntil={wage.youthUntil}
               which="sheet"
               t={t}
             />
@@ -358,7 +364,11 @@ function WageSheetForm({
         label={t("wage.sheet.from")}
         hint={t("wage.sheet.fromHint")}
         value={values.from}
-        min={wage.from.earliest}
+        min={
+          wage.startsOn && wage.startsOn > wage.from.earliest
+            ? wage.startsOn
+            : wage.from.earliest
+        }
         max={wage.from.latest}
         onChange={(event) => change("from", event.target.value)}
         dir="ltr"

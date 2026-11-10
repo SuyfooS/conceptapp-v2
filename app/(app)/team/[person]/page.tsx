@@ -1,3 +1,4 @@
+import { getTeamYouth } from "@db/payroll-details";
 import { getTeamPerson } from "@db/team";
 import { isUuid } from "@domain/activity";
 import { mayClearBio } from "@domain/profile";
@@ -30,14 +31,17 @@ export default async function TeamPersonPage({
   if (!member || !membership || !canSeeTeam(membership.role)) notFound();
   if (person === member.userId) redirect("/me");
   if (!isUuid(person)) notFound();
-  const [data, wording] = await Promise.all([
+  const [data, youth, wording] = await Promise.all([
     getTeamPerson(membership.business.id, person),
+    // Who is a minor, and until when: the schedule needs it (payroll P5).
+    getTeamYouth(membership.business.id),
     currentWording(),
   ]);
   if (!data) notFound();
   return (
     <PersonView
       data={data}
+      youthUntil={youth.get(data.userId) ?? null}
       timeZone={membership.business.place.timeZone}
       canClear={
         canWrite(member.viewing) && mayClearBio(membership.role, data.role)

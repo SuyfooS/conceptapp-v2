@@ -2,11 +2,12 @@ import type { TeamPerson } from "@db/team";
 import { avatarHue, firstNameOf } from "@domain/people";
 import { displayIsraeliMobile } from "@domain/phone";
 import { formArg, type ProfileSaveResult } from "@domain/profile";
-import { ListRow } from "@ui/list-row";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import { PersonAvatar } from "@ui/person-row";
 import { Phone } from "lucide-react";
 import { getFormatter } from "next-intl/server";
+import type { ReactNode } from "react";
 import { ProfileFrame, profileAvatarRing } from "../../me/profile-frame";
 import { type AppWording, translator } from "../../wording";
 import { BioLine, BioState, BioUndo, PersonActions } from "./bio-control";
@@ -16,11 +17,14 @@ import { BioLine, BioState, BioUndo, PersonActions } from "./bio-control";
  * the same top as their own /me, in their cover and this business's colour,
  * their line about themselves, a way to call them, and a way to delete a line
  * that is hurtful or out of place. The first part of the person page; role
- * changes, deactivation and name fixes come later. Also rendered with mock
- * data on /design/shell/team/[person].
+ * changes, deactivation and name fixes come later. A minor shows until when
+ * (payroll P5): the schedule needs it, and only that day, never a birth date
+ * or the rest of their details for payroll. Also rendered with mock data on
+ * /design/shell/team/[person].
  */
 export async function PersonView({
   data,
+  youthUntil = null,
   timeZone,
   canClear,
   clearBio,
@@ -28,6 +32,8 @@ export async function PersonView({
   wording,
 }: {
   data: TeamPerson;
+  /** A minor's 18th birthday, from `public.team_youth`; null for an adult. */
+  youthUntil?: string | null;
   /** The business's zone, for the month they joined. */
   timeZone: string;
   /** The viewer may delete this person's line (`mayClearBio`, not viewing). */
@@ -82,6 +88,21 @@ export async function PersonView({
             </>
           }
         >
+          {youthUntil ? (
+            <ListGroup>
+              <ListRow
+                title={t.rich("team.person.youth", {
+                  ltr: (chunks: ReactNode) => <span dir="ltr">{chunks}</span>,
+                  until: format.dateTime(new Date(`${youthUntil}T12:00:00Z`), {
+                    month: "numeric",
+                    year: "numeric",
+                    timeZone: "UTC",
+                  }),
+                })}
+                subtitle={t("team.person.youthHint")}
+              />
+            </ListGroup>
+          ) : null}
           <PersonActions
             call={
               data.phone ? (

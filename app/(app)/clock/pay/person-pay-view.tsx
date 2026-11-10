@@ -4,6 +4,7 @@ import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { History } from "lucide-react";
 import { type AppWording, translator } from "../../wording";
+import { DetailsCard } from "./details-card";
 import { NoteView } from "./note-view";
 import {
   MissingWage,
@@ -17,6 +18,8 @@ import type {
   NotePayView,
   PayPaths,
   PayPersonData,
+  SetDetails,
+  SetPeriod,
   SetWage,
 } from "./pay-types";
 import { WageCard } from "./wage-card";
@@ -24,17 +27,21 @@ import { WageCard } from "./wage-card";
 /**
  * One person's month for payroll: their hours, days and shifts, each shift
  * with how it was recorded, who corrected it and why, and its times before;
- * and their hourly wage, with its history and the way to set a new one from a
- * day (payroll P4). Phone: the hero, the wage and the month's wage, then the
- * days. Tablet: the hero, the wage and the month's summary (the month's wage
- * at its top) at the start, the days at the end. Desktop: the hero, the wage
- * and the summary side by side, the days as a table.
+ * their hourly wage, with its history and the way to set a new one from a
+ * day (payroll P4); and their details for payroll and periods of work (P5).
+ * Phone: the hero, the wage, the details and the month's wage, then the days.
+ * Tablet: the hero, the wage, the details and the month's summary (the
+ * month's wage at its top) at the start, the days at the end. Desktop: the
+ * hero, the wage with the details under it, and the summary side by side, the
+ * days as a table.
  */
 export function PersonPayView({
   data,
   paths,
   note,
   setWage,
+  setDetails,
+  setPeriod,
   wording,
 }: {
   data: PayPersonData;
@@ -42,6 +49,10 @@ export function PersonPayView({
   note: NotePayView;
   /** Sets the person's hourly wage; the demo's stores nothing. */
   setWage: SetWage;
+  /** Sets the person's details for payroll; the demo's stores nothing. */
+  setDetails: SetDetails;
+  /** Adds or changes a period of their work; the demo's stores nothing. */
+  setPeriod: SetPeriod;
   wording: AppWording;
 }) {
   const t = translator(wording, "app.pay");
@@ -67,6 +78,16 @@ export function PersonPayView({
       name={name}
       wage={data.wage}
       setWage={setWage}
+    />
+  ) : null;
+  const details = data.details ? (
+    <DetailsCard
+      personId={data.person.userId}
+      name={name}
+      form={data.person.form}
+      data={data.details}
+      setDetails={setDetails}
+      setPeriod={setPeriod}
     />
   ) : null;
   // The month's wage, and whose shifts it leaves without one: in every shape,
@@ -152,10 +173,12 @@ export function PersonPayView({
         }
       />
 
-      {/* Phone: the month, the wage and the month's wage, then the days. */}
+      {/* Phone: the month, the wage, the details and the month's wage, then
+          the days. */}
       <div className="flex flex-col gap-6 md:hidden">
         {hero}
         {wage}
+        {details}
         {monthWage ? <ListGroup>{monthWage}</ListGroup> : null}
         {data.days.length > 0 ? <PayDayList days={data.days} t={t} /> : empty}
       </div>
@@ -165,6 +188,7 @@ export function PersonPayView({
         <div className="flex min-w-0 flex-col gap-6">
           {hero}
           {wage}
+          {details}
           <PageSection title={t("person.summary")}>{summary}</PageSection>
         </div>
         <PageSection title={t("person.daysTitle")}>
@@ -177,7 +201,14 @@ export function PersonPayView({
       <div className="hidden flex-col gap-6 xl:flex">
         <div className="grid grid-cols-[minmax(0,4fr)_minmax(0,3fr)_minmax(0,3fr)] items-start gap-8">
           {hero}
-          {wage ?? <div />}
+          {wage || details ? (
+            <div className="flex min-w-0 flex-col gap-6">
+              {wage}
+              {details}
+            </div>
+          ) : (
+            <div />
+          )}
           <PageSection title={t("person.summary")}>{summary}</PageSection>
         </div>
         <PageSection title={t("person.daysTitle")}>

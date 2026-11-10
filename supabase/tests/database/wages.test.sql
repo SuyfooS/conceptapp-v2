@@ -430,7 +430,14 @@ select throws_ok(
   '23503', null, 'and their account stays'
 );
 -- The manager who set a wage leaves the app: who set it goes to null, and
--- nothing else changes.
+-- nothing else changes. Their own employment period is kept too
+-- (20261110000600_payroll_details.sql), so a purge that names the business
+-- takes it first, for this test.
+select set_config('ca.records_purge', '7c000000-0000-4000-b000-000000000001', true);
+delete from public.employment_periods
+where business_id = '7c000000-0000-4000-b000-000000000001'
+  and user_id = '7c000000-0000-4000-a000-00000000000b';
+select set_config('ca.records_purge', '', true);
 select lives_ok(
   $$delete from auth.users where id = '7c000000-0000-4000-a000-00000000000b'$$,
   'the account of someone who set a wage can go'

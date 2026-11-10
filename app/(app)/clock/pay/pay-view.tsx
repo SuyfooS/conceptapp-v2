@@ -1,3 +1,4 @@
+import { Badge } from "@ui/badge";
 import { EmptyState } from "@ui/empty-state";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
@@ -30,9 +31,11 @@ import type {
  * before paying. Phone: the month's hero with the people rising over it, each
  * opening their month. Tablet: the list at the start and the chosen person's
  * days at the end. Desktop: one table, a person's days in a sheet. Each
- * person's hourly wage for the month beside their hours (P4); amounts come
- * with P7, the file with P8, which becomes the screen's main action.
- * `?show=noWage` lists only those whose shifts have no wage.
+ * person's hourly wage for the month beside their hours (P4), a minor marked
+ * and the payroll number on a desktop (P5); amounts come with P7, the file
+ * with P8, which becomes the screen's main action.
+ * `?show=noWage` lists only those whose shifts have no wage, `?show=noNumber`
+ * those with no payroll number.
  */
 export function PayMonthView({
   data,
@@ -76,6 +79,8 @@ export function PayMonthView({
       leading={<PersonAvatar name={person.name} photo={person.photo} />}
       title={name(person)}
       subtitle={<PersonLine person={person} t={t} />}
+      // A minor: the row's one badge.
+      trailing={person.minor ? <Badge>{t("minor")}</Badge> : undefined}
       // The person shown beside the list.
       current={current}
     />
@@ -108,11 +113,16 @@ export function PayMonthView({
             ? null
             : `${monthHref(data.month)}&show=noWage`
         }
+        noNumberHref={
+          data.filter === "noNumber"
+            ? null
+            : `${monthHref(data.month)}&show=noNumber`
+        }
       />
 
-      {data.filter === "noWage" ? (
+      {data.filter ? (
         <p className="flex flex-wrap items-center gap-x-4 px-1 text-ink-2">
-          <span>{t("filter.noWage")}</span>
+          <span>{t(`filter.${data.filter}`)}</span>
           <Link
             href={monthHref(data.month)}
             className="inline-flex min-h-11 items-center font-semibold text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"

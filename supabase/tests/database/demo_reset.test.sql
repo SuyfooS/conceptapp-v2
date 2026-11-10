@@ -200,10 +200,17 @@ update public.business_modules set settings = '{}'
 where business_id = '6d000000-0000-4000-b000-000000000001' and module_key = 'scheduling';
 insert into public.invites (business_id, phone, role, token_hash)
 values ('6d000000-0000-4000-b000-000000000001', '+972500000979', 'worker', 'demo-reset-test');
--- Their wage goes first: wages are kept, and only a purge that names the
--- business deletes one (20261110000500_hourly_wages.sql).
+-- Their wage, details and periods go first: they are kept, and only a purge
+-- that names the business deletes one (20261110000500_hourly_wages.sql,
+-- 20261110000600_payroll_details.sql).
 select set_config('ca.records_purge', '6d000000-0000-4000-b000-000000000001', true);
 delete from public.member_wages
+where business_id = '6d000000-0000-4000-b000-000000000001'
+  and user_id = '6d000000-0000-4000-a000-00000000000c';
+delete from public.member_payroll_details
+where business_id = '6d000000-0000-4000-b000-000000000001'
+  and user_id = '6d000000-0000-4000-a000-00000000000c';
+delete from public.employment_periods
 where business_id = '6d000000-0000-4000-b000-000000000001'
   and user_id = '6d000000-0000-4000-a000-00000000000c';
 select set_config('ca.records_purge', '', true);

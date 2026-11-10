@@ -49,13 +49,20 @@ export async function inviteToDemo(invite: {
 }): Promise<void> {
   await sql`delete from public.invites
     where business_id = ${DEMO_RESTAURANT} and phone = ${invite.phone}`;
-  // A wage is kept (20261110000500_hourly_wages.sql) and holds its
-  // membership: only a purge that names the business deletes one, for this
-  // transaction, and it goes first.
+  // A wage, payroll details and employment periods are kept
+  // (20261110000500_hourly_wages.sql, 20261110000600_payroll_details.sql) and
+  // hold their membership: only a purge that names the business deletes them,
+  // for this transaction, and they go first.
   await sql.begin(async (tx) => {
     await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
     await tx`delete from public.member_wages w using public.profiles p
       where w.business_id = ${DEMO_RESTAURANT} and w.user_id = p.id
+        and p.phone = ${invite.phone}`;
+    await tx`delete from public.member_payroll_details d using public.profiles p
+      where d.business_id = ${DEMO_RESTAURANT} and d.user_id = p.id
+        and p.phone = ${invite.phone}`;
+    await tx`delete from public.employment_periods e using public.profiles p
+      where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
         and p.phone = ${invite.phone}`;
     await tx`delete from public.memberships m using public.profiles p
       where m.business_id = ${DEMO_RESTAURANT} and m.user_id = p.id
@@ -1084,4 +1091,98 @@ export async function shopActivityActions(
     where business_id = ${DEMO_SHOP} and action = ${action}
       and created_at >= ${since}`;
   return row?.count ?? 0;
+}
+
+export type ShopDetailsRow = {
+  payroll_number: string | null;
+  rest_day: number;
+  hours_law: string;
+  youth_until: string | null;
+  compulsory_education: boolean;
+};
+
+/** A demo shop person's details for payroll as the database has them, or null without a row. */
+export async function shopPayrollDetails(
+  userId: string,
+): Promise<ShopDetailsRow | null> {
+  const [row] = await sql<ShopDetailsRow[]>`
+    select payroll_number, rest_day, hours_law,
+      youth_until::text as youth_until, compulsory_education
+    from public.member_payroll_details
+    where business_id = ${DEMO_SHOP} and user_id = ${userId}`;
+  return row ?? null;
+}
+
+/**
+ * A demo shop person's details back as they were before a spec changed them.
+ * Details are kept (20261110000600_payroll_details.sql): nothing deletes a row
+ * but a purge that names the business, for this transaction; the database's
+ * owner may change one.
+ */
+export async function restoreShopPayrollDetails(
+  userId: string,
+  row: ShopDetailsRow | null,
+): Promise<void> {
+  if (row === null) {
+    await sql.begin(async (tx) => {
+      await tx`select set_config('ca.records_purge', ${DEMO_SHOP}, true)`;
+      await tx`delete from public.member_payroll_details
+        where business_id = ${DEMO_SHOP} and user_id = ${userId}`;
+    });
+    return;
+  }
+  await sql`
+    update public.member_payroll_details
+    set payroll_number = ${row.payroll_number}, rest_day = ${row.rest_day},
+      hours_law = ${row.hours_law}, youth_until = ${row.youth_until}::date,
+      compulsory_education = ${row.compulsory_education}
+    where business_id = ${DEMO_SHOP} and user_id = ${userId}`;
+}
+
+export type ShopPeriodRow = {
+  id: string;
+  started_on: string;
+  ended_on: string | null;
+  last_paid_on: string | null;
+  source: string;
+};
+
+/** A demo shop person's employment periods, oldest first. */
+export async function shopPeriods(userId: string): Promise<ShopPeriodRow[]> {
+  return await sql<ShopPeriodRow[]>`
+    select id::text, started_on::text, ended_on::text, last_paid_on::text, source
+    from public.employment_periods
+    where business_id = ${DEMO_SHOP} and user_id = ${userId}
+    order by started_on`;
+}
+
+/** A demo shop person's periods back as they were, under a purge of this transaction. */
+export async function restoreShopPeriods(
+  userId: string,
+  rows: readonly ShopPeriodRow[],
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_SHOP}, true)`;
+    await tx`delete from public.employment_periods
+      where business_id = ${DEMO_SHOP} and user_id = ${userId}`;
+    for (const row of rows) {
+      await tx`insert into public.employment_periods
+          (id, business_id, user_id, started_on, ended_on, last_paid_on, source)
+        values (${row.id}, ${DEMO_SHOP}, ${userId}, ${row.started_on}::date,
+          ${row.ended_on}::date, ${row.last_paid_on}::date, ${row.source})`;
+    }
+  });
+}
+
+/** The details of the demo shop's log rows of `action` since `since`, oldest first. */
+export async function shopActivityDetails(
+  action: string,
+  since: Date,
+): Promise<Record<string, unknown>[]> {
+  const rows = await sql<{ details: Record<string, unknown> }[]>`
+    select details from public.audit_log
+    where business_id = ${DEMO_SHOP} and action = ${action}
+      and created_at >= ${since}
+    order by id`;
+  return rows.map((row) => row.details);
 }

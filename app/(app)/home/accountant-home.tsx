@@ -13,6 +13,7 @@ import {
   Bell,
   CircleCheck,
   Clock3,
+  Hash,
   PencilLine,
   ReceiptText,
 } from "lucide-react";
@@ -255,6 +256,15 @@ function BeforeCard({
           icon: <Banknote />,
           text: tPay("noWage", { count: pay.before.noWage }),
           href: `${href}&show=noWage`,
+        }
+      : null,
+    // Who has shifts and no payroll number (payroll P5), listed alone.
+    pay.before.noNumber > 0
+      ? {
+          key: "noNumber",
+          icon: <Hash />,
+          text: tPay("noNumber", { count: pay.before.noNumber }),
+          href: `${href}&show=noNumber`,
         }
       : null,
   ].filter((row) => row !== null);
