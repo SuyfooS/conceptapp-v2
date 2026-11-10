@@ -403,6 +403,57 @@ export type Database = {
           },
         ];
       };
+      employment_periods: {
+        Row: {
+          business_id: string;
+          ended_on: string | null;
+          id: string;
+          last_paid_on: string | null;
+          source: string;
+          started_on: string;
+          updated_at: string;
+          updated_by: string | null;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          ended_on?: string | null;
+          id?: string;
+          last_paid_on?: string | null;
+          source?: string;
+          started_on: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          ended_on?: string | null;
+          id?: string;
+          last_paid_on?: string | null;
+          source?: string;
+          started_on?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "employment_periods_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "employment_periods_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       invites: {
         Row: {
           business_id: string;
@@ -1047,6 +1098,57 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "list_templates";
             referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      member_payroll_details: {
+        Row: {
+          business_id: string;
+          compulsory_education: boolean;
+          hours_law: string;
+          payroll_number: string | null;
+          rest_day: number;
+          updated_at: string;
+          updated_by: string | null;
+          user_id: string;
+          youth_until: string | null;
+        };
+        Insert: {
+          business_id: string;
+          compulsory_education?: boolean;
+          hours_law?: string;
+          payroll_number?: string | null;
+          rest_day?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id: string;
+          youth_until?: string | null;
+        };
+        Update: {
+          business_id?: string;
+          compulsory_education?: boolean;
+          hours_law?: string;
+          payroll_number?: string | null;
+          rest_day?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id?: string;
+          youth_until?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "member_payroll_details_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: true;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "member_payroll_details_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
         ];
       };
@@ -2374,6 +2476,19 @@ export type Database = {
         Args: { actor: string; business: string; departments: Json };
         Returns: undefined;
       };
+      set_employment_period: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          from_day: string;
+          paid_until?: string;
+          period_id?: string;
+          person: string;
+          to_day?: string;
+        };
+        Returns: string;
+      };
       set_hourly_wage: {
         Args: {
           actor: string;
@@ -2420,6 +2535,16 @@ export type Database = {
       };
       set_own_profile: {
         Args: { actor: string; patch: Json };
+        Returns: undefined;
+      };
+      set_payroll_details: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          patch: Json;
+          person: string;
+        };
         Returns: undefined;
       };
       set_role_permission: {
@@ -2492,6 +2617,13 @@ export type Database = {
         Returns: {
           phone: string;
           user_id: string;
+        }[];
+      };
+      team_youth: {
+        Args: { business: string };
+        Returns: {
+          user_id: string;
+          youth_until: string;
         }[];
       };
       undo_clock_out: {

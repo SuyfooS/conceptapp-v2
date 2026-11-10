@@ -248,6 +248,69 @@ with the secret key (`setHourlyWage`, refusals read by `wageFailureOf` in
 `@domain/wages`). Covered by `wages.test.sql`, `demo_reset` and
 `rls_enabled`.
 
+Details for payroll (`20261110000600_payroll_details.sql`, payroll P5),
+reconciled with the hiring file's design: no ID number, address, bank account
+or birth date here. `public.member_payroll_details` (one row per person, the
+table's defaults standing for none) holds the payroll system's number
+(`^[0-9A-Za-z-]{1,20}$`, one person's in a business), the weekly rest day
+(6 Saturday, 5 Friday or 0 Sunday: a day, never a religion), whether the Hours
+law applies (`applies`, `trust` for s.30(א)(5), `unsupervised` for
+s.30(א)(6)), a minor's 18th birthday (`youth_until`, null for an adult) and
+whether a minor is at school (`compulsory_education`, the 20:00 limit).
+`public.employment_periods` holds when each person worked here
+(`started_on`, `ended_on` null while it goes on, `last_paid_on` once it
+ended), never overlapping (`employment_periods_no_overlap`, a gist exclusion
+on a closed day range), `source` `joined` for a start copied from the
+membership and `set` for one a pay holder entered. Both are records: their
+keys to the membership are `restrict`, a trigger refuses every delete (42501)
+but a purge that names the business (`private.refuse_payroll_record_delete`),
+nobody but the owner writes or truncates them, and they are read like wages
+(the person while a member, pay holders and a view as an accountant, with the
+time clock on). `private.backfill_employment_periods()` gave every staff
+membership without one a `joined` period from the business's day it began,
+ended on its last change when inactive; the trigger `memberships_track_employment`
+(`private.track_employment`, after insert or update of `active`, `role`) opens
+a `joined` period on the business's day a staff membership starts or comes
+back, closes the open `joined` one when it stops (inactive, or an accountant
+now), goes on with the same one when someone is back the day it closed, and
+never moves a holder's `set` period (a membership write never fails over a
+period). `public.set_payroll_details(actor, business, person, patch, at_time)`
+(secret key) takes only the keys to change (`payroll_number`, `rest_day`,
+`hours_law`, `compulsory_education`, `birth_date`; anything else 22023) by the
+wage's rules (a pay holder, never their own, an owner's only by an owner, never
+an accountant's); a birth date only from an active owner or the accountant
+(42501), a real day in the last 100 years, read once and kept only as
+`youth_until` (29 February + 18 years is 28 February); a call that changes
+nothing writes no log row, and `payroll.details` names the fields that changed
+(`youth_until` for a birth date), never a value. `public.set_employment_period(actor,
+business, person, from_day, to_day, paid_until, period_id, at_time)` adds a
+period or changes one of the person's (P0002 for another's), by the same rules,
+an overlap 23P01 ('Periods overlap'), a start in the last 100 years and at
+most a year ahead, the end on or after the start, a last payment only once it
+ended; the period is `set` from then on, and
+`payroll.period` names the fields that changed, whether it was added, and
+whether a `joined` one was confirmed, never a day. `public.set_hourly_wage` now
+refuses a wage before the first period's start once a holder set it (22023
+'Before they started'); a `joined` start limits nothing. Its `wage.set` row
+now keeps the minimum of the person's age band on the wage's first day
+(`private.minimum_wage_for(business, person, on_day)`: under 16, 16, 17 by
+`youth_until`, else the adult hour), so a minor's legal wage isn't logged as
+under the minimum. `public.team_youth(business)` gives the business's owners
+and managers (and a view as one) who on the staff is a minor today and until
+when, with the time clock on, and nobody else anything. The purge deletes
+details and periods before the log. `private.seed_demo_pay` ends with
+`private.seed_demo_details`, from a definition's `details` (`{"since": "2026-03-01",
+"numbers": 101, "cases": [{"user_id", "case": "youth" | "no_number" |
+"rest_friday" | "started"}]}`): payroll numbers in the definition's order for
+managers and workers, the reset's open periods from `since`, still `joined`,
+and the cases (a minor until the first of the month six months on, no number,
+rest on Friday, a start on the 10th of three months ago set by the owner); no
+log rows. `@db/payroll-details` reads details and periods under the person's
+session and `team_youth`, and writes both with the secret key (refusals read by
+`detailsFailureOf` in `@domain/payroll-details`). Covered by
+`payroll_details.test.sql`, `demo_reset`, `hours_kept`, `wages`, `lists` and
+`rls_enabled`.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

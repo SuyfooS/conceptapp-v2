@@ -35,6 +35,7 @@ const PAGES = [
   "/design/shell/clock/pay",
   "/design/shell/clock/pay?person=yoav",
   "/design/shell/clock/pay?show=noWage",
+  "/design/shell/clock/pay?show=noNumber",
   "/design/shell/clock/pay/noa",
   "/design/shell/clock/pay/yoav",
   "/design/shell/clock/pay/maya",
@@ -43,6 +44,7 @@ const PAGES = [
   "/design/shell/today/accountant?state=off",
   "/design/shell/team",
   "/design/shell/team/noa",
+  "/design/shell/team/maya",
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
@@ -222,5 +224,75 @@ test("the pay demo sets a wage, and warns under the minimum", async ({
     page.getByRole("status").filter({
       hasText: heT("app.pay.wage.done", { date: "1.11.2026" }),
     }),
+  ).toBeVisible();
+});
+
+// The pay demo's details (payroll P5): a start copied from joining is marked,
+// a minor's birth date says what it makes of her age and is never kept, and
+// a period that overlaps another is refused in words.
+test("the pay demo's details: a joined start, a birth date, and periods that never overlap", async ({
+  page,
+}) => {
+  const d = he.app.pay.details;
+  const parts = he.app.pay.dateParts;
+  await page.goto("/design/shell/clock/pay/noa");
+  await expect(
+    page.getByText(d.joined).filter({ visible: true }).first(),
+  ).toBeVisible();
+
+  await page.goto("/design/shell/clock/pay/maya");
+  await expect(
+    page.getByText(d.numberMissing, { exact: true }).filter({ visible: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: d.edit })
+    .filter({ visible: true })
+    .click();
+  const sheet = page.getByRole("dialog", {
+    name: heT("app.pay.details.sheet.title", { name: "מאיה פרץ" }),
+  });
+  const birth = sheet.getByRole("group", { name: d.sheet.birth });
+  await birth.getByLabel(parts.day, { exact: true }).fill("15");
+  await birth.getByLabel(parts.month, { exact: true }).fill("4");
+  await birth.getByLabel(parts.year, { exact: true }).fill("2009");
+  await expect(
+    sheet.getByText(
+      heT.markup("app.pay.details.sheet.birthYouth", {
+        ltr: (chunks: string) => chunks,
+        until: "4.2027",
+      }),
+    ),
+  ).toBeVisible();
+  // The sheet hides the page from screen readers, heading and all: axe alone.
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  expect(violations.map((v) => v.id)).toEqual([]);
+  await sheet.getByRole("button", { name: d.sheet.save }).click();
+  await expect(sheet).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: d.done }),
+  ).toBeVisible();
+
+  // Yoav worked here from June to December 2024: October 2024 overlaps.
+  await page.goto("/design/shell/clock/pay/yoav");
+  await page
+    .getByRole("button", { name: d.addPeriod })
+    .filter({ visible: true })
+    .click();
+  const period = page.getByRole("dialog", {
+    name: heT("app.pay.details.period.titleNew", { name: "יואב לוי" }),
+  });
+  const from = period.getByRole("group", { name: d.period.from });
+  await from.getByLabel(parts.day, { exact: true }).fill("1");
+  await from.getByLabel(parts.month, { exact: true }).fill("10");
+  await from.getByLabel(parts.year, { exact: true }).fill("2024");
+  const to = period.getByRole("group", { name: d.period.to });
+  await to.getByLabel(parts.day, { exact: true }).fill("31");
+  await to.getByLabel(parts.month, { exact: true }).fill("10");
+  await to.getByLabel(parts.year, { exact: true }).fill("2024");
+  await period.getByRole("button", { name: d.period.save }).click();
+  await expect(
+    period.getByText(
+      heT("app.pay.details.period.errors.overlap", { name: "יואב לוי" }),
+    ),
   ).toBeVisible();
 });

@@ -183,7 +183,13 @@ export const teamMembers: TeamMember[] = [
  */
 export const teamProfiles: Record<
   string,
-  { bio: string | null; cover: CoverPreset; since: string }
+  {
+    bio: string | null;
+    cover: CoverPreset;
+    since: string;
+    /** A minor's 18th birthday, as a manager sees it (payroll P5). */
+    youthUntil?: string;
+  }
 > = {
   shiran: {
     bio: "אחראית משמרת בערב. אם משהו לא ברור בסידור, אפשר לשאול אותי.",
@@ -199,6 +205,13 @@ export const teamProfiles: Record<
     bio: "ערבי חמישי ושישי בבר. את קוקטייל הבית המצאתי בעצמי.",
     cover: "arcs",
     since: "2026-10-04T08:00:00.000Z",
+  },
+  // A minor: her manager sees until when, and nothing else of her details.
+  maya: {
+    bio: null,
+    cover: "glow",
+    since: "2026-03-01T08:00:00.000Z",
+    youthUntil: "2027-04-15",
   },
 };
 
@@ -397,6 +410,19 @@ const demoRow = (
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
 export const demoActivityRows: ActivityRow[] = [
+  // Details for payroll (payroll P5): a number and a minor's age entered,
+  // never their values, and a start copied from joining set right.
+  demoRow(129, "2026-11-04T13:40:00+02:00", "shiran", "payroll.details", {
+    person: "dana",
+    fields: ["payroll_number", "youth_until"],
+  }),
+  demoRow(128, "2026-11-04T13:30:00+02:00", "shiran", "payroll.period", {
+    person: "yoav",
+    period: "period-yoav",
+    added: false,
+    confirmed: true,
+    fields: ["started_on"],
+  }),
   // Hourly wages (payroll P4): a raise, with what it was and its note, and a
   // wage under the minimum of its day, which was saved all the same.
   demoRow(127, "2026-11-04T13:20:00+02:00", "shiran", "wage.set", {

@@ -7,6 +7,7 @@ import {
   minimumWageRowOn,
 } from "./minimum-wage";
 import { MAX_HOURLY_AGOROT, parseShekels } from "./money";
+import { addYears, ageBandOn } from "./youth";
 
 /**
  * Hourly wages (payroll P4): each person's wage from a date, append-only
@@ -206,7 +207,7 @@ export type WageForm = { amount: string; from: string; note: string };
 
 export type WageFormErrors = {
   amount?: "invalid" | "tooHigh" | "zero";
-  from?: "invalid" | "tooEarly" | "tooLate";
+  from?: "invalid" | "tooEarly" | "tooLate" | "beforeStart";
   note?: "tooLong";
 };
 
@@ -224,10 +225,15 @@ export function isDay(value: unknown): value is string {
 
 /**
  * The wage form, read: the amount in shekels ("38", "38.50", "38,50"), the
- * day it starts, within `wageFromBounds(today)`, and an optional note.
- * Everything wrong at once, by field.
+ * day it starts, within `wageFromBounds(today)` and not before `startsOn`
+ * (the start a holder set, payroll P5), and an optional note. Everything
+ * wrong at once, by field.
  */
-export function parseWageForm(input: WageForm, today: string): ParsedWage {
+export function parseWageForm(
+  input: WageForm,
+  today: string,
+  startsOn: string | null = null,
+): ParsedWage {
   const errors: WageFormErrors = {};
   const agorot = parseShekels(input.amount, Number.MAX_SAFE_INTEGER);
   if (agorot === null) errors.amount = "invalid";
@@ -239,6 +245,7 @@ export function parseWageForm(input: WageForm, today: string): ParsedWage {
   if (!isDay(from)) errors.from = "invalid";
   else if (from < earliest) errors.from = "tooEarly";
   else if (from > latest) errors.from = "tooLate";
+  else if (startsOn !== null && from < startsOn) errors.from = "beforeStart";
 
   const note = input.note.trim();
   if ([...note].length > WAGE_NOTE_MAX) errors.note = "tooLong";
@@ -262,7 +269,7 @@ export type WageWarning = {
  * Whether a wage starting on `from` is under the minimum wage, on that day or
  * on any later change of the table while it stands (the minimum goes up each
  * April): the first such minimum, or null. Below the minimum the screens warn
- * and still save. Until payroll P5 knows ages, the band is an adult's.
+ * and still save. For someone whose age is known, `wageWarningFor`.
  */
 export function wageWarning(
   agorot: number,
@@ -284,6 +291,47 @@ export function wageWarning(
   return null;
 }
 
+/**
+ * `wageWarning` for someone a minor until `youthUntil` (payroll P5; null for
+ * an adult): the band on the day the wage starts, then on each later
+ * birthday that moves them up one (16, 17, 18) and each later change of the
+ * table, while the wage stands. The first minimum it falls under; its
+ * `tableFrom` is then the day that minimum starts to apply to them: the
+ * table's day, or the birthday.
+ */
+export function wageWarningFor(
+  agorot: number,
+  from: string,
+  youthUntil: string | null,
+  table: readonly MinimumWageRow[] = MINIMUM_WAGES,
+): WageWarning | null {
+  if (youthUntil === null) return wageWarning(agorot, from, "adult", table);
+  const birthdays = [
+    addYears(youthUntil, -2),
+    addYears(youthUntil, -1),
+    youthUntil,
+  ];
+  const days = [
+    ...new Set([from, ...table.map((row) => row.from), ...birthdays]),
+  ]
+    .filter((day) => day >= from)
+    .sort();
+  for (const day of days) {
+    const row = minimumWageRowOn(day, table);
+    if (!row) continue;
+    const band = ageBandOn(day, youthUntil);
+    const minimum = hourlyFor(row, band);
+    if (agorot < minimum) {
+      return {
+        minimum,
+        tableFrom: birthdays.includes(day) && day > row.from ? day : row.from,
+        band,
+      };
+    }
+  }
+  return null;
+}
+
 /** Why the database refused a wage, in the screen's terms. */
 export type WageFailure =
   | "ownWage"
@@ -293,6 +341,7 @@ export type WageFailure =
   | "notStaff"
   | "tooEarly"
   | "tooLate"
+  | "beforeStart"
   | "invalid"
   | "failed";
 
@@ -312,6 +361,8 @@ export function wageFailureOf(
       if (/accountant/i.test(message)) return "notStaff";
       if (/last month/i.test(message)) return "tooEarly";
       if (/year ahead/i.test(message)) return "tooLate";
+      // A holder said when they started (payroll P5): not before it.
+      if (/before they started/i.test(message)) return "beforeStart";
       return "invalid";
     default:
       return "failed";

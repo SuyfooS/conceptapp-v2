@@ -1,7 +1,7 @@
 // Mock rows for the pay screens' demo: October 2026 at the demo restaurant,
-// to the minute, with each person's hourly wage. They stand in for database
-// data (names, the reasons and notes a manager wrote), so their Hebrew stays
-// here; tooling/hebrew-literals.ts allows this file.
+// to the minute, with each person's hourly wage and details for payroll. They
+// stand in for database data (names, the reasons and notes a manager wrote),
+// so their Hebrew stays here; tooling/hebrew-literals.ts allows this file.
 
 import { addDays, weekdayOf } from "@domain/availability";
 import {
@@ -11,6 +11,13 @@ import {
   type PayTotals,
 } from "@domain/pay-month";
 import {
+  currentPeriod,
+  DEFAULT_DETAILS,
+  type EmploymentPeriod,
+  type PayrollDetails,
+  wageFloorOf,
+} from "@domain/payroll-details";
+import {
   firstOfMonth,
   monthWage,
   type WageRow,
@@ -18,12 +25,14 @@ import {
   wageHistory,
   wageNow,
 } from "@domain/wages";
+import { youthLabel } from "@domain/youth";
 import type { PayHomeData } from "../../../../(app)/clock/pay/pay";
 import type {
   PayMonthData,
   PayPaths,
   PayPerson,
   PayPersonData,
+  PersonDetails,
   PersonWage,
 } from "../../../../(app)/clock/pay/pay-types";
 import { portraits } from "../../../portraits";
@@ -142,6 +151,39 @@ const wages: Record<string, WageRow[]> = {
   maya: [],
 };
 
+/** Each person's details for payroll, as the database would give them. */
+const details: Record<string, PayrollDetails> = {
+  shiran: { ...DEFAULT_DETAILS, payrollNumber: "101" },
+  noa: { ...DEFAULT_DETAILS, payrollNumber: "102" },
+  // He asked to rest on Friday.
+  yoav: { ...DEFAULT_DETAILS, payrollNumber: "103", restDay: 5 },
+  // A minor at school, 17 until April, still without a number.
+  maya: { ...DEFAULT_DETAILS, youthUntil: "2027-04-15" },
+};
+
+const period = (
+  id: string,
+  startedOn: string,
+  endedOn: string | null,
+  source: EmploymentPeriod["source"],
+  lastPaidOn: string | null = null,
+): EmploymentPeriod => ({ id, startedOn, endedOn, lastPaidOn, source });
+
+/** Each person's periods of work, oldest first. */
+const periods: Record<string, EmploymentPeriod[]> = {
+  shiran: [period("p-shiran", "2025-09-01", null, "set")],
+  // Copied from when she joined the app, for someone to check.
+  noa: [period("p-noa", "2026-03-01", null, "joined")],
+  // He worked here before, and came back in August.
+  yoav: [
+    period("p-yoav-1", "2024-06-01", "2024-12-31", "set", "2025-01-10"),
+    period("p-yoav-2", "2026-08-10", null, "set"),
+  ],
+  maya: [period("p-maya", "2026-03-01", "2026-10-19", "set")],
+};
+
+const detailsOfDemo = (userId: string) => details[userId] ?? DEFAULT_DETAILS;
+
 const person = (
   userId: string,
   name: string,
@@ -161,6 +203,11 @@ const person = (
     MONTH,
     days.map((day) => day.date),
   ),
+  payrollNumber: detailsOfDemo(userId).payrollNumber,
+  // Shifts and no number: everyone here is on the staff, and nobody an owner.
+  noNumber:
+    totalsOf(days).shifts > 0 && detailsOfDemo(userId).payrollNumber === null,
+  minor: youthLabel(detailsOfDemo(userId).youthUntil, TODAY) !== null,
   ...more,
 });
 
@@ -178,6 +225,21 @@ function personWage(userId: string): PersonWage {
     can: "set",
     today: TODAY,
     from: { initial: firstOfMonth(TODAY), earliest, latest },
+    youthUntil: detailsOfDemo(userId).youthUntil,
+    startsOn: wageFloorOf(periods[userId] ?? []),
+  };
+}
+
+/** The person page's details, as their owner reads them on the demo's today. */
+function personDetails(userId: string): PersonDetails {
+  const own = periods[userId] ?? [];
+  return {
+    details: detailsOfDemo(userId),
+    periods: own,
+    current: currentPeriod(own, TODAY),
+    can: "set",
+    birth: true,
+    today: TODAY,
   };
 }
 
@@ -237,14 +299,26 @@ const people: PayPerson[] = [
 
 const all = addTotals(people.map((row) => row.totals));
 const noWage = people.filter((row) => row.wage?.missing).length;
+const noNumber = people.filter((row) => row.noNumber).length;
 
 /**
  * Everyone's October, with Noa beside the list on a tablet unless asked;
- * `show` "noWage" lists only those whose shifts have no wage.
+ * `show` "noWage" lists only those whose shifts have no wage, "noNumber"
+ * those with no payroll number.
  */
 export function demoPayMonth(person?: string, show?: string): PayMonthData {
-  const filter = show === "noWage" && noWage > 0 ? "noWage" : null;
-  const shown = filter ? people.filter((row) => row.wage?.missing) : people;
+  const filter =
+    show === "noWage" && noWage > 0
+      ? "noWage"
+      : show === "noNumber" && noNumber > 0
+        ? "noNumber"
+        : null;
+  const shown =
+    filter === "noWage"
+      ? people.filter((row) => row.wage?.missing)
+      : filter === "noNumber"
+        ? people.filter((row) => row.noNumber)
+        : people;
   return {
     month: MONTH,
     currentMonth: CURRENT,
@@ -260,6 +334,7 @@ export function demoPayMonth(person?: string, show?: string): PayMonthData {
       open: all.open,
       corrected: all.corrected,
       noWage,
+      noNumber,
       rounding: false,
     },
     filter,
@@ -276,7 +351,15 @@ export function demoPayMonth(person?: string, show?: string): PayMonthData {
 export function demoPayPerson(userId: string): PayPersonData | null {
   const row = people.find((one) => one.userId === userId);
   if (!row) return null;
-  const { days, totals, wage: monthWageOf, ...who } = row;
+  const {
+    days,
+    totals,
+    wage: monthWageOf,
+    payrollNumber: _number,
+    noNumber: _noNumber,
+    minor: _minor,
+    ...who
+  } = row;
   return {
     person: who,
     month: MONTH,
@@ -285,6 +368,7 @@ export function demoPayPerson(userId: string): PayPersonData | null {
     days,
     monthWage: monthWageOf,
     wage: personWage(userId),
+    details: personDetails(userId),
     fixes: true,
   };
 }
@@ -320,6 +404,7 @@ export const demoPayHomeEmpty: PayHomeData = {
     open: 0,
     corrected: 0,
     noWage: 0,
+    noNumber: 0,
     rounding: false,
   },
   earlier: demoPayHome.earlier.map((month) => ({ ...month, minutes: 0 })),

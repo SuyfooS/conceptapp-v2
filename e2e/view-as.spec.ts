@@ -210,6 +210,16 @@ test("viewing as an accountant shows the hours for payroll and nothing else", as
   await expect(
     page.getByRole("button", { name: he.app.pay.wage.change }),
   ).toHaveCount(0);
+  // Her details for payroll read too, and nothing changes them (payroll P5).
+  await expect(
+    page.getByText("102", { exact: true }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(he.app.pay.details.can.viewOnly).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: he.app.pay.details.edit }),
+  ).toHaveCount(0);
 
   for (const path of ["/schedule", "/clock", "/team", "/manage/access"]) {
     await page.goto(path);

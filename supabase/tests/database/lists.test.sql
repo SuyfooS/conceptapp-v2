@@ -1194,6 +1194,14 @@ values (
   pg_temp.id_of('t1'), '73000000-0000-4000-b000-000000000001', '{1}', 600, 630, 'person',
   '73000000-0000-4000-a000-000000000005', '2026-11-11'
 );
+-- Their employment periods are kept (20261110000600_payroll_details.sql) and
+-- hold their place in the business: a purge that names it takes them first,
+-- for this test, so only the lists are left to show what stays.
+select set_config('ca.records_purge', '73000000-0000-4000-b000-000000000001', true);
+delete from public.employment_periods
+where business_id = '73000000-0000-4000-b000-000000000001'
+  and user_id in ('73000000-0000-4000-a000-000000000005', '73000000-0000-4000-a000-000000000003');
+select set_config('ca.records_purge', '', true);
 select lives_ok(
   $$delete from auth.users where id = '73000000-0000-4000-a000-000000000005'$$,
   'deleting someone a schedule names goes through'

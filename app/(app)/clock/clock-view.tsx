@@ -9,9 +9,14 @@ import type { ReactNode } from "react";
 import { RefreshOnReturn } from "../home/refresh-on-return";
 import { type AppWording, translator } from "../wording";
 import { ClockPanel } from "./clock-panel";
-import type { ClockActions, ClockData, ClockPaths } from "./clock-types";
+import type {
+  ClockActions,
+  ClockData,
+  ClockPaths,
+  OwnDetails,
+} from "./clock-types";
 import { HoursCount } from "./hours-count";
-import { useFullDate, useShekels } from "./pay/pay-parts";
+import { useFullDate, useMonthYear, useShekels } from "./pay/pay-parts";
 import { ShiftList } from "./shift-list";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -82,9 +87,14 @@ export function ClockView({
             </PageSection>
           ) : null}
 
-          {data.ownWage ? (
+          {data.ownWage || data.ownDetails ? (
             <ListGroup>
-              <OwnWage wage={data.ownWage} wording={wording} />
+              {data.ownWage ? (
+                <OwnWage wage={data.ownWage} wording={wording} />
+              ) : null}
+              {data.ownDetails ? (
+                <OwnDetailsRow details={data.ownDetails} wording={wording} />
+              ) : null}
             </ListGroup>
           ) : null}
 
@@ -180,6 +190,60 @@ function OwnWage({ wage, wording }: { wage: WageNow; wording: AppWording }) {
           ) : null}
         </>
       }
+    />
+  );
+}
+
+/**
+ * The person's own details for payroll, as a pay holder set them, and
+ * nobody else's: their payroll number, rest day, until when they are a
+ * minor, and when their work began.
+ */
+function OwnDetailsRow({
+  details,
+  wording,
+}: {
+  details: OwnDetails;
+  wording: AppWording;
+}) {
+  const t = translator(wording, "app.clock.ownDetails");
+  const tDays = translator(wording, "app.pay.details.restDay");
+  const fullDate = useFullDate();
+  const monthYear = useMonthYear();
+  const lines = [
+    details.payrollNumber
+      ? {
+          key: "number",
+          text: t.rich("number", { ltr, number: details.payrollNumber }),
+        }
+      : null,
+    details.restDay !== null
+      ? {
+          key: "rest",
+          text: t("restDay", { day: tDays(`${details.restDay}`) }),
+        }
+      : null,
+    details.youthUntil
+      ? {
+          key: "youth",
+          text: t.rich("youth", { ltr, until: monthYear(details.youthUntil) }),
+        }
+      : null,
+    details.startedOn
+      ? {
+          key: "since",
+          text: t.rich("since", { ltr, date: fullDate(details.startedOn) }),
+        }
+      : null,
+  ].filter((line) => line !== null);
+  return (
+    <ListRow
+      title={t("title")}
+      subtitle={lines.map((line) => (
+        <span key={line.key} className="block">
+          {line.text}
+        </span>
+      ))}
     />
   );
 }

@@ -55,8 +55,8 @@ begin
   -- the next reset. Each person names the departments they are in, by their
   -- template's keys, as supabase/seed.sql does. The shop's managers hold pay
   -- access, as there, and the shop has its accountant. Both start with last
-  -- month's hours and the wages from the first of last month, with the same
-  -- cases as there.
+  -- month's hours, the wages from the first of last month and the details for
+  -- payroll, with the same cases as there.
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$
@@ -70,6 +70,7 @@ begin
       "wages": { "manager": 4500, "worker": 3800, "cases": [
         { "user_id": "10000000-0000-4000-a000-000000000105", "case": "none" }
       ] },
+      "details": { "since": "2026-03-01", "numbers": 101, "cases": [] },
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000102", "role": "owner", "name": "אורי הדגמה" },
         { "user_id": "10000000-0000-4000-a000-000000000103", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
@@ -93,6 +94,12 @@ begin
       ] },
       "wages": { "manager": 4500, "worker": 3800, "cases": [
         { "user_id": "10000000-0000-4000-a000-000000000110", "case": "raise", "agorot": 3600 }
+      ] },
+      "details": { "since": "2026-03-01", "numbers": 101, "cases": [
+        { "user_id": "10000000-0000-4000-a000-000000000111", "case": "youth" },
+        { "user_id": "10000000-0000-4000-a000-000000000111", "case": "no_number" },
+        { "user_id": "10000000-0000-4000-a000-000000000110", "case": "rest_friday" },
+        { "user_id": "10000000-0000-4000-a000-000000000109", "case": "started" }
       ] },
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000106", "role": "owner", "name": "מיכל הדגמה" },

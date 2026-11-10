@@ -10,7 +10,8 @@ type Props = { searchParams: Promise<{ person?: string; show?: string }> };
 // The real hours for payroll with mock data: October at the demo restaurant,
 // with a correction, hours waiting, a raise in the month and someone who left
 // with no hourly wage. ?person= chooses who a tablet shows beside the list;
-// ?show=noWage lists only those whose shifts have no wage.
+// ?show=noWage lists only those whose shifts have no wage, ?show=noNumber
+// those with no payroll number.
 export default function ShellClockPay({ searchParams }: Props) {
   return (
     <Suspense>

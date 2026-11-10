@@ -16,6 +16,7 @@ import {
   wageStart,
   wagesBetween,
   wageWarning,
+  wageWarningFor,
 } from "./wages";
 
 const row = (
@@ -213,6 +214,23 @@ describe("parseWageForm", () => {
     ).toEqual({ ok: true, agorot: 4000, from: "2026-10-01", note: "העלאה" });
   });
 
+  it("refuses a day before the start a holder set, and only then", () => {
+    expect(
+      parseWageForm(
+        { amount: "38", from: "2026-11-01", note: "" },
+        today,
+        "2026-11-05",
+      ),
+    ).toEqual({ ok: false, errors: { from: "beforeStart" } });
+    expect(
+      parseWageForm(
+        { amount: "38", from: "2026-11-05", note: "" },
+        today,
+        "2026-11-05",
+      ).ok,
+    ).toBe(true);
+  });
+
   it("says what is wrong with each field at once", () => {
     expect(
       parseWageForm({ amount: "38.505", from: "2026-09-30", note: "" }, today),
@@ -276,6 +294,44 @@ describe("wageWarning", () => {
   });
 });
 
+describe("wageWarningFor", () => {
+  it("is the adult warning without an age", () => {
+    expect(wageWarningFor(3000, "2026-11-01", null)).toEqual(
+      wageWarning(3000, "2026-11-01"),
+    );
+  });
+
+  it("reads the band on the day the wage starts", () => {
+    // 18 on 1 May 2027: 17 from 1 May 2026.
+    expect(wageWarningFor(3000, "2026-11-01", "2027-05-01")).toEqual({
+      minimum: 3092,
+      tableFrom: "2026-04-01",
+      band: "17",
+    });
+    expect(wageWarningFor(3100, "2026-11-01", "2027-05-01")?.band).toBe(
+      "adult",
+    );
+  });
+
+  it("warns from the birthday that moves them up past the wage", () => {
+    // Above 17's 30.92 now, under the adult 35.40 from their 18th birthday.
+    expect(wageWarningFor(3100, "2026-11-01", "2027-05-01")).toEqual({
+      minimum: 3540,
+      tableFrom: "2027-05-01",
+      band: "adult",
+    });
+    expect(wageWarningFor(3540, "2026-11-01", "2027-05-01")).toBeNull();
+  });
+
+  it("warns under 16 from before the 16th birthday", () => {
+    expect(wageWarningFor(2600, "2026-11-01", "2029-01-01")).toEqual({
+      minimum: 2607,
+      tableFrom: "2026-04-01",
+      band: "under16",
+    });
+  });
+});
+
 describe("wageFailureOf", () => {
   it("reads the database's refusals", () => {
     expect(wageFailureOf("42501", "Someone else sets your own wage")).toBe(
@@ -293,6 +349,7 @@ describe("wageFailureOf", () => {
       wageFailureOf("22023", "From the start of last month at the earliest"),
     ).toBe("tooEarly");
     expect(wageFailureOf("22023", "At most a year ahead")).toBe("tooLate");
+    expect(wageFailureOf("22023", "Before they started")).toBe("beforeStart");
     expect(wageFailureOf("22023", "A wage is 0.01 to 1,000.00")).toBe(
       "invalid",
     );

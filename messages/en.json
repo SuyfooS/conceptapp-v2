@@ -320,7 +320,10 @@
     "dataTableWaiting": "Waiting",
     "dataTableOpen": "Open {name}'s row",
     "dataTableChosen": "{name}'s row is chosen",
-    "dataTableHint": "A name chooses its row."
+    "dataTableHint": "A name chooses its row.",
+    "dateField": "Date of birth",
+    "dateFieldHint": "Three fields of digits, never a wheel",
+    "dateFieldValid": "A real day"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -720,7 +723,9 @@
           "changed": "The line changed in the meantime, so it wasn't deleted. The new line shows now.",
           "notYet": "Deleting a line opens shortly. Try again later.",
           "failed": "The line wasn't deleted. Try again."
-        }
+        },
+        "youth": "A minor until <ltr>{until}</ltr>",
+        "youthHint": "A minor's hours of work and rest differ. Those with access to pay see the other details."
       }
     },
     "availability": {
@@ -1363,6 +1368,13 @@
         "title": "Your hourly wage: <ltr>{amount}</ltr>",
         "since": "From <ltr>{date}</ltr>",
         "next": "From <ltr>{date}</ltr>: <ltr>{amount}</ltr>"
+      },
+      "ownDetails": {
+        "title": "Your details for payroll",
+        "number": "Payroll number: <ltr>{number}</ltr>",
+        "restDay": "Rest day: {day}",
+        "youth": "A minor until <ltr>{until}</ltr>",
+        "since": "Work began: <ltr>{date}</ltr>"
       }
     },
     "pay": {
@@ -1380,6 +1392,7 @@
       "corrected": "{count, plural, one {One shift corrected} other {# shifts corrected}}",
       "toCheck": "{count, plural, one {One shift to check} other {# shifts to check}}",
       "former": "{form, select, f {Has left} m {Has left} other {Has left}}",
+      "numberMissing": "No payroll number",
       "noName": "No name",
       "beforePayroll": {
         "title": "Before payroll",
@@ -1390,7 +1403,9 @@
         "rounding": "These hours are exact to the minute, even though the clock rounds",
         "fix": "Approve and fix them in team hours",
         "noWage": "{count, plural, one {One person's shifts have no hourly wage} other {# people's shifts have no hourly wage}}",
-        "showNoWage": "Show the people without an hourly wage"
+        "showNoWage": "Show the people without an hourly wage",
+        "noNumber": "{count, plural, one {One person has no payroll number} other {# people have no payroll number}}",
+        "showNoNumber": "Show the people without a payroll number"
       },
       "columns": {
         "name": "Name",
@@ -1401,7 +1416,8 @@
         "corrected": "Corrected",
         "waiting": "Waiting",
         "toCheck": "To check",
-        "wage": "Hourly wage"
+        "wage": "Hourly wage",
+        "number": "Payroll no."
       },
       "minutes": "{minutes} min",
       "none": "—",
@@ -1473,6 +1489,7 @@
       },
       "filter": {
         "noWage": "Showing only the people whose shifts have no hourly wage.",
+        "noNumber": "Showing only the people without a payroll number.",
         "all": "Show everyone"
       },
       "wage": {
@@ -1518,7 +1535,8 @@
           "from": {
             "invalid": "Choose a day.",
             "tooEarly": "From the start of last month, not before.",
-            "tooLate": "Up to a year ahead, not more."
+            "tooLate": "Up to a year ahead, not more.",
+            "beforeStart": "The wage can't start before the day the work began."
           },
           "note": {
             "tooLong": "The note is at most 200 characters."
@@ -1534,7 +1552,8 @@
           "tooLate": "Up to a year ahead, not more.",
           "invalid": "The wage wasn't saved. Check the amount and the day.",
           "viewOnly": "In a view the wage can't be changed.",
-          "failed": "The wage wasn't saved. Check the connection and try again."
+          "failed": "The wage wasn't saved. Check the connection and try again.",
+          "beforeStart": "The wage can't start before the day the work began."
         },
         "history": {
           "title": "Wage history",
@@ -1545,6 +1564,134 @@
           "note": "Note: {note}"
         },
         "stale": "The minimum wage here is from <ltr>{from}</ltr>. If a new one was published since, the warning doesn't know it yet."
+      },
+      "minor": "Minor",
+      "dateParts": {
+        "day": "Day",
+        "month": "Month",
+        "year": "Year"
+      },
+      "details": {
+        "title": "Details for payroll",
+        "number": "Payroll number",
+        "numberMissing": "Missing",
+        "restDay": {
+          "0": "Sunday",
+          "5": "Friday",
+          "6": "Saturday",
+          "label": "Rest day"
+        },
+        "hoursLaw": {
+          "label": "Hours of Work law",
+          "applies": "Applies",
+          "notApplies": "Doesn't apply",
+          "trust": "Management or personal trust",
+          "unsupervised": "Hours that can't be supervised"
+        },
+        "youth": "A minor until <ltr>{until}</ltr>",
+        "school": "{school, select, yes {School: yes, work until 20:00 at night} other {School: no}}",
+        "since": "{form, select, f {Works here from <ltr>{date}</ltr>} m {Works here from <ltr>{date}</ltr>} other {Works here from <ltr>{date}</ltr>}}",
+        "starts": "{form, select, f {Starts on <ltr>{date}</ltr>} m {Starts on <ltr>{date}</ltr>} other {Starts on <ltr>{date}</ltr>}}",
+        "between": "{form, select, f {Worked here from <ltr>{from}</ltr> to <ltr>{to}</ltr>} m {Worked here from <ltr>{from}</ltr> to <ltr>{to}</ltr>} other {Worked here from <ltr>{from}</ltr> to <ltr>{to}</ltr>}}",
+        "joined": "From joining the app, worth checking",
+        "lastPaid": "Last paid: <ltr>{date}</ltr>",
+        "noPeriod": "No period of work yet",
+        "edit": "Edit the details",
+        "addPeriod": "Add a period of work",
+        "done": "The details for payroll were saved.",
+        "can": {
+          "own": "Someone else in the business keeps your details for payroll.",
+          "ownOwner": "The business's other owners keep your details for payroll.",
+          "soleOwner": "No other owner keeps your details for payroll, so they aren't set here.",
+          "ownerOnly": "Only an owner keeps an owner's details.",
+          "viewOnly": "In a view the details are seen, not changed."
+        },
+        "sheet": {
+          "title": "Details for payroll: {name}",
+          "subtitle": "What the payroll system needs to know. No ID number and no bank account.",
+          "close": "Close",
+          "number": "Number in the payroll system",
+          "numberHint": "Digits, Latin letters and dashes. It can stay empty.",
+          "restDay": "Rest day",
+          "restDayHint": "{form, select, f {Only if she asked for it} m {Only if he asked for it} other {Only if they asked for it}}",
+          "hoursLaw": "Hours of Work law",
+          "law": {
+            "applies": {
+              "title": "It applies",
+              "hint": "As for most workers: overtime and a weekly rest"
+            },
+            "trust": {
+              "title": "It doesn't: management or personal trust",
+              "hint": "Section 30(a)(5). Labour courts allow it only for the most senior posts, and then the law doesn't apply at all, rest-day pay included."
+            },
+            "unsupervised": {
+              "title": "It doesn't: hours that can't be supervised",
+              "hint": "Section 30(a)(6). The payslip has to say so too."
+            }
+          },
+          "birth": "Date of birth, if not 18 yet",
+          "birthHint": "It isn't kept. Only until when they are a minor is kept.",
+          "birthYouth": "By this date: a minor until <ltr>{until}</ltr>",
+          "birthAdult": "By this date: 18 or over, and nothing about age is kept",
+          "school": "{form, select, f {She is at school} m {He is at school} other {At school}}",
+          "schoolHint": "A minor at school works until 20:00 at night.",
+          "save": "Save the details"
+        },
+        "errors": {
+          "number": "A payroll number is up to 20 digits, Latin letters or dashes.",
+          "birth": {
+            "invalid": "It needs a real day: a day, a month and a four-digit year.",
+            "future": "A date of birth can't be after today.",
+            "tooOld": "The date is more than 100 years back."
+          }
+        },
+        "failure": {
+          "ownDetails": "Someone else in the business keeps your details for payroll.",
+          "ownerOnly": "Only an owner keeps an owner's details.",
+          "birthNotAllowed": "Only an owner or the accountant types a date of birth.",
+          "noAccess": "You have no access to pay in this business.",
+          "notInTeam": "This person isn't in the business's team.",
+          "notStaff": "This role has no hours in the business, so no details for payroll either.",
+          "numberTaken": "This number is already someone else's in the business.",
+          "overlap": "The period overlaps another one already written down.",
+          "unknownPeriod": "This period no longer exists. Refresh the page.",
+          "invalid": "The details weren't saved. Check what is marked.",
+          "viewOnly": "In a view the details can't be changed.",
+          "failed": "The details weren't saved. Check the connection and try again."
+        },
+        "period": {
+          "title": "A period of work: {name}",
+          "titleNew": "A new period of work for {name}",
+          "subtitle": "{form, select, f {From when to when she worked in the business} m {From when to when he worked in the business} other {From when to when in the business}}. Periods never overlap.",
+          "joined": "{form, select, f {The day was copied from joining the app. If she started work on another day, set it to that day. If the day is right, confirm it as it is.} m {The day was copied from joining the app. If he started work on another day, set it to that day. If the day is right, confirm it as it is.} other {The day was copied from joining the app. If the work began on another day, set it to that day. If the day is right, confirm it as it is.}}",
+          "from": "From",
+          "to": "Until",
+          "toHint": "{form, select, f {Empty while she still works here.} m {Empty while he still works here.} other {Empty while the work goes on.}}",
+          "paid": "Last payment",
+          "paidHint": "The day the last pay was paid, once the period ended.",
+          "save": "Save the period",
+          "confirm": "Confirm the start date",
+          "done": "The period of work was saved.",
+          "errors": {
+            "from": {
+              "empty": "It needs a first day.",
+              "invalid": "It needs a real day: a day, a month and a four-digit year.",
+              "tooLate": "Up to a year ahead, not more.",
+              "tooOld": "The date is more than 100 years back."
+            },
+            "to": {
+              "invalid": "It needs a real day: a day, a month and a four-digit year.",
+              "beforeStart": "The last day is on the first day or after it.",
+              "tooLate": "Up to a year ahead, not more."
+            },
+            "paid": {
+              "invalid": "It needs a real day: a day, a month and a four-digit year.",
+              "noEnd": "A last payment goes with a last day.",
+              "beforeStart": "The last payment can't come before the period began."
+            },
+            "overlap": "The period overlaps another one of {name}'s."
+          }
+        }
       }
     },
     "manage": {
@@ -1808,6 +1955,26 @@
             "label": "Hourly wage",
             "belowMinimum": "Below that day's minimum wage (<ltr>{minimum}</ltr>)",
             "note": "Note: {note}"
+          },
+          "payroll": {
+            "details": "Updated {fields} for {person}",
+            "detailsPlain": "Updated the details for payroll of {person}",
+            "fields": {
+              "payroll_number": "the payroll number",
+              "rest_day": "the rest day",
+              "hours_law": "the Hours of Work law",
+              "compulsory_education": "school",
+              "youth_until": "the minor's age"
+            },
+            "periodAdded": "Added a period of work for {person}",
+            "periodChanged": "Updated {fields} of {person}'s period of work",
+            "periodConfirmed": "Confirmed {person}'s period of work as copied from joining",
+            "wasJoined": "The day had been copied from joining the app",
+            "periodFields": {
+              "started_on": "the first day",
+              "ended_on": "the last day",
+              "last_paid_on": "the last payment"
+            }
           }
         }
       },
