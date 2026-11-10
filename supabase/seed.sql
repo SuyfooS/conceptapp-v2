@@ -119,7 +119,10 @@ values
 -- and Itai started on the 10th of three months ago, as the owner set it.
 -- Both show the pay estimate ("settings", over the template's;
 -- 20261110000700_pay_rules.sql), which a real business has only once an
--- accountant confirms.
+-- accountant confirms. Neither opens its scheduled lists when it is reset
+-- (only a definition that says "scheduledLists": true does, as the hosted
+-- ones do; 20261110001300_list_schedules.sql): the browser tests open them at
+-- the times they choose, so none depends on the hour.
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -220,10 +223,11 @@ revoke execute on function dev.send_sms(jsonb) from public, anon, authenticated;
 grant usage on schema dev to supabase_auth_admin;
 grant execute on function dev.send_sms(jsonb) to supabase_auth_admin;
 
--- The minute job and the daily ones (20261109000500_push.sql, and payroll's
--- reminder of 20261110001000_payroll_months.sql) stay off here, or they would
--- send, clean and remind at real time under the tests, which call what the
--- jobs run themselves, at times they choose. A hosted project keeps them.
+-- The minute jobs and the daily ones (20261109000500_push.sql, payroll's
+-- reminder of 20261110001000_payroll_months.sql, and lists' times of
+-- 20261110001300_list_schedules.sql) stay off here, or they would send,
+-- clean, remind and open lists at real time under the tests, which call what
+-- the jobs run themselves, at times they choose. A hosted project keeps them.
 select cron.alter_job(j.jobid, active => false)
 from cron.job j
-where j.jobname in ('notifications', 'notifications-clean', 'payroll');
+where j.jobname in ('notifications', 'notifications-clean', 'payroll', 'lists');

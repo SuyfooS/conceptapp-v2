@@ -3,6 +3,7 @@ import { isUuid } from "./activity";
 import { addDays, dateIn, instantIn } from "./availability";
 import { departmentKey } from "./departments";
 import { dayOfWeek, minutesOf, rangeMinutes, timeOfDay } from "./hours";
+import type { ScheduleOpenings } from "./list-openings";
 import { type Role, STAFF_ROLES, type StaffRole } from "./modules";
 import { timeIn } from "./shabbat";
 
@@ -813,6 +814,11 @@ export type ListSchedule = {
   recipient: ScheduleRecipient;
   active: boolean;
   startsOn: string;
+  /**
+   * From when its openings count: when it was saved, or last given other
+   * days or hours, or switched back on. Nothing opens before then.
+   */
+  opensFrom: string;
 };
 
 /** A template as the editor and the send screen read it. */
@@ -995,9 +1001,13 @@ export function templateDraftProblem(
     note: string;
     recipient: TemplateRecipient | null;
     items: readonly DraftItem[];
+    /** Its times, when the editor edits them: one that can't save holds the rest. */
+    schedules?: readonly DraftSchedule[];
   },
   fromDepartment: string | null,
-): "name" | "note" | "items" | "item" | "recipient" | null {
+  /** The business's live departments and shift keys, to say a time points at one gone. */
+  places?: SchedulePlaces,
+): "name" | "note" | "items" | "item" | "recipient" | "schedule" | null {
   if (!listName.safeParse(draft.name).success) return "name";
   if (draft.note.trim() !== "" && !listNote.safeParse(draft.note).success) {
     return "note";
@@ -1019,6 +1029,14 @@ export function templateDraftProblem(
   ) {
     return "recipient";
   }
+  if (
+    (draft.schedules ?? []).length > MAX_LIST_SCHEDULES ||
+    (draft.schedules ?? []).some(
+      (schedule) => scheduleProblem(schedule, places) !== null,
+    )
+  ) {
+    return "schedule";
+  }
   return null;
 }
 
@@ -1027,11 +1045,15 @@ export function typedItems(items: readonly DraftItem[]): ListItemInput[] {
   return items.map((item) => itemFieldsOf(item));
 }
 
-/** What a schedule saves as again, from how it was read. */
-function scheduleInputOf(schedule: ListSchedule): ScheduleInput {
+/** What a schedule saves as, from its fields; its id only when it has one. */
+function scheduleInputOf(
+  schedule: Omit<ListSchedule, "id" | "startsOn" | "opensFrom"> & {
+    id: string | null;
+  },
+): ScheduleInput {
   return {
-    id: schedule.id,
-    days: schedule.days,
+    ...(schedule.id ? { id: schedule.id } : {}),
+    days: [...schedule.days].sort((a, b) => a - b),
     anchor: schedule.anchor,
     ...(schedule.shift === null ? {} : { shift: schedule.shift }),
     ...fromOffsets(schedule.anchor, schedule.opensOffset, schedule.dueOffset),
@@ -1042,8 +1064,9 @@ function scheduleInputOf(schedule: ListSchedule): ScheduleInput {
 
 /**
  * A template as the editor saves it, with these fields of its own. What the
- * editor doesn't change (an order's department, its quantities, the times it
- * is sent) goes back as it was read, so a save never loses them.
+ * editor doesn't change (an order's department, its quantities) goes back as
+ * it was read, so a save never loses them, and so do its times when the
+ * editor leaves them out.
  */
 export function templateInputOf(
   template: Pick<
@@ -1055,6 +1078,7 @@ export function templateInputOf(
     note: string;
     recipient: TemplateRecipient | null;
     items: ListItemInput[];
+    schedules?: ScheduleInput[];
   },
 ): ListTemplateInput {
   const note = own.note.trim();
@@ -1066,12 +1090,153 @@ export function templateInputOf(
     fromDepartment: template.fromDepartment,
     asksQuantities: template.asksQuantities,
     items: own.items,
-    schedules: template.schedules.map(scheduleInputOf),
+    schedules: own.schedules ?? template.schedules.map(scheduleInputOf),
   };
 }
 
-/** A template just saved: its id, its version now, and its items' ids in order. */
-export type SavedTemplate = { id: string; version: number; items: string[] };
+/**
+ * A template just saved: its id, its version now, its items' and its times'
+ * ids in order, and each time's next openings as the database works them out.
+ */
+export type SavedTemplate = {
+  id: string;
+  version: number;
+  items: string[];
+  schedules: string[];
+  openings: ScheduleOpenings;
+};
+
+/*
+ * A template's times in its editor (L4): the shape the editor keeps while
+ * someone works on them, as it keeps items.
+ */
+
+/**
+ * A time as the editor keeps it: `key` is its own on this screen, `id` the
+ * database's once it is saved. `startsOn` and `opensFrom` are the saved
+ * one's, so its next openings read as the database will open them; null for
+ * a new one, and `opensFrom` null too once its days or hours change or it is
+ * switched back on here (`restartsOpenings`): it counts from now.
+ */
+export type DraftSchedule = {
+  key: string;
+  id: string | null;
+  days: number[];
+  anchor: ScheduleAnchor;
+  shift: string | null;
+  opensOffset: number;
+  dueOffset: number;
+  recipient: ScheduleRecipient;
+  active: boolean;
+  startsOn: string | null;
+  opensFrom: string | null;
+};
+
+/**
+ * A time's days as runs of days in a row, Sunday first, for its summary:
+ * Sunday to Thursday and Saturday are [[0, 4], [6, 6]].
+ */
+export function dayRuns(days: readonly number[]): [number, number][] {
+  const runs: [number, number][] = [];
+  for (const day of [...new Set(days)].sort((a, b) => a - b)) {
+    const last = runs.at(-1);
+    if (last && day === last[1] + 1) last[1] = day;
+    else runs.push([day, day]);
+  }
+  return runs;
+}
+
+/** A key for a time added on a screen. */
+export function newScheduleKey(): string {
+  const [random = 0] = crypto.getRandomValues(new Uint32Array(1));
+  return `s-${random.toString(16).padStart(8, "0")}`;
+}
+
+/** A template's times as the editor starts with them. */
+export function draftSchedulesOf(
+  schedules: readonly ListSchedule[],
+): DraftSchedule[] {
+  return schedules.map((schedule) => ({ ...schedule, key: schedule.id }));
+}
+
+/**
+ * The times to save, in their order. A time keeps its id only while the
+ * database still has it (`known`), so one removed and saved, then brought
+ * back by its undo, is added again rather than refused.
+ */
+export function schedulesForSave(
+  schedules: readonly DraftSchedule[],
+  known: ReadonlySet<string>,
+): ScheduleInput[] {
+  return schedules.map((schedule) =>
+    scheduleInputOf({
+      ...schedule,
+      id: schedule.id && known.has(schedule.id) ? schedule.id : null,
+    }),
+  );
+}
+
+/**
+ * Whether a time points at something gone: a shift it follows, or a
+ * department or a shift it goes to, that the business no longer has. The
+ * database takes neither in a save, and a shift that's gone opens nothing.
+ * A person who has left is the database's to refuse.
+ */
+export function scheduleGone(
+  schedule: Pick<ListSchedule, "shift" | "recipient">,
+  liveDepartments: readonly string[],
+  shiftKeys: readonly string[],
+): boolean {
+  return (
+    (schedule.shift !== null && !shiftKeys.includes(schedule.shift)) ||
+    (schedule.recipient.kind !== "person" &&
+      recipientGone(schedule.recipient, liveDepartments, shiftKeys))
+  );
+}
+
+/** The business's live departments and its scheduling settings' shift keys. */
+export type SchedulePlaces = {
+  departments: readonly string[];
+  shifts: readonly string[];
+};
+
+/**
+ * What keeps a time from saving, by the rules the database holds it to,
+ * whatever its ids: its days (one to seven, each once), its times (a time of
+ * the day, or up to 12 hours around a shift it names, due after it opens and
+ * within a day), or (when the business's places are given) something it
+ * points at that is gone.
+ */
+export function scheduleProblem(
+  schedule: DraftSchedule,
+  places?: SchedulePlaces,
+): "days" | "times" | "gone" | null {
+  if (places && scheduleGone(schedule, places.departments, places.shifts)) {
+    return "gone";
+  }
+  const days = schedule.days;
+  if (
+    days.length === 0 ||
+    new Set(days).size !== days.length ||
+    days.some((day) => !dayOfWeek.safeParse(day).success)
+  ) {
+    return "days";
+  }
+  const byDay = schedule.anchor === "day";
+  const { opensOffset: opens, dueOffset: due } = schedule;
+  if (
+    byDay !== (schedule.shift === null) ||
+    (schedule.shift !== null && !shiftKey.safeParse(schedule.shift).success) ||
+    !Number.isInteger(opens) ||
+    !Number.isInteger(due)
+  ) {
+    return "times";
+  }
+  const opensOk = byDay
+    ? opens >= 0 && opens < DAY_MINUTES
+    : Math.abs(opens) <= MAX_SHIFT_OFFSET;
+  return opensOk && due > opens && due <= opens + DAY_MINUTES ? null : "times";
+}
 
 /** The list with the entry at `index` moved one place up or down. */
 export function moved<T>(list: readonly T[], index: number, by: -1 | 1): T[] {
@@ -1105,30 +1270,19 @@ export function recipientGone(
 /**
  * Why a template can't be saved from its editor whatever is done there, or
  * null: an order whose asking department was removed ("order"; L5 lets an
- * order's department be changed), or one of its times (L4) that follows a
- * shift, or goes to a department or a shift, that is gone ("schedule"). The
- * database refuses every save of either (22023), so the editor only reads it
- * and says why. A time sent to someone who has left is the database's to
- * refuse: the editor doesn't read the people.
+ * order's department be changed). The database refuses every save of it
+ * (22023), so the editor only reads it and says why. A time that points at
+ * something gone is the editor's to change or remove (`scheduleGone`), since
+ * L4 edits the times.
  */
 export function templateStuck(
-  template: Pick<ListTemplate, "fromDepartment" | "schedules">,
+  template: Pick<ListTemplate, "fromDepartment">,
   liveDepartments: readonly string[],
-  shiftKeys: readonly string[],
-): "order" | "schedule" | null {
-  if (
-    template.fromDepartment !== null &&
+): "order" | null {
+  return template.fromDepartment !== null &&
     !liveDepartments.includes(template.fromDepartment)
-  ) {
-    return "order";
-  }
-  const gone = template.schedules.some(
-    (schedule) =>
-      (schedule.shift !== null && !shiftKeys.includes(schedule.shift)) ||
-      (schedule.recipient.kind !== "person" &&
-        recipientGone(schedule.recipient, liveDepartments, shiftKeys)),
-  );
-  return gone ? "schedule" : null;
+    ? "order"
+    : null;
 }
 
 /**

@@ -1,12 +1,18 @@
 import type { ListSummary, ListsTally } from "@domain/lists";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
-import { Card } from "@ui/card";
+import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
-import { ChevronDown, ClipboardList, ListChecks, Send } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  ListChecks,
+  Send,
+} from "lucide-react";
 import Link from "next/link";
 import { type AppWording, type Translator, translator } from "../wording";
 import { ListCard, type ListShown, ListTable } from "./list-card";
@@ -24,24 +30,47 @@ export type ListsPaths = {
   base: string;
 };
 
-/** The business's day, for those who manage lists: one line, late in warning. */
-export function TeamToday({ t, team }: { t: T; team: ListsTally }) {
+/**
+ * The business's day, for those who manage lists: one line, late in warning,
+ * leading to the day's overview (L4).
+ */
+export function TeamToday({
+  t,
+  team,
+  href,
+}: {
+  t: T;
+  team: ListsTally;
+  /** The overview of the day. */
+  href: string;
+}) {
   return (
-    <Card
-      tone="flat"
-      padding="lg"
-      className="flex flex-wrap items-center gap-x-3 gap-y-2"
+    <Link
+      href={href}
+      className={cn(
+        "pressable flex min-h-[4.5rem] items-center gap-3 rounded-card bg-surface p-5 shadow-card",
+        "focus-visible:outline-2 focus-visible:outline-accent focus-visible:outline-offset-2",
+      )}
     >
-      <span className="font-semibold text-md">{t("team.title")}</span>
-      <span className="text-base text-ink-2">
-        {team.total === 0
-          ? t("team.none")
-          : t("team.counts", { open: team.open, finished: team.finished })}
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-2">
+        <span className="font-semibold text-ink text-md">
+          {t("team.title")}
+        </span>
+        <span className="text-base text-ink-2">
+          {team.total === 0
+            ? t("team.none")
+            : t("team.counts", { open: team.open, finished: team.finished })}
+        </span>
+        {team.late > 0 ? (
+          <Badge tone="warning">{t("team.late", { count: team.late })}</Badge>
+        ) : null}
+        <span className="sr-only">{t("team.open")}</span>
       </span>
-      {team.late > 0 ? (
-        <Badge tone="warning">{t("team.late", { count: team.late })}</Badge>
-      ) : null}
-    </Card>
+      <ChevronRight
+        aria-hidden="true"
+        className="size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
+      />
+    </Link>
   );
 }
 
@@ -127,7 +156,13 @@ export function ListsView({
         // For those who manage lists: the business's day, and the way to
         // its templates, side by side from a tablet up.
         <div className="grid items-start gap-3 md:grid-cols-2 md:gap-4">
-          {data.team ? <TeamToday t={t} team={data.team} /> : null}
+          {data.team ? (
+            <TeamToday
+              t={t}
+              team={data.team}
+              href={`${paths.base}/lists/today`}
+            />
+          ) : null}
           {data.templates !== null ? (
             <ListGroup>
               <ListRow

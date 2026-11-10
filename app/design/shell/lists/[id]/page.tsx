@@ -3,11 +3,11 @@ import { Suspense } from "react";
 import { ListView } from "../../../../(app)/lists/[id]/list-view";
 import { baseWording } from "../../../../(app)/wording";
 import { demoListChange, demoSetListItem } from "../actions";
-import { demoListScreen, demoLists } from "../data";
+import { demoEarlierLists, demoListScreen, demoLists } from "../data";
 import { demoListsPaths } from "../paths";
 
 export const generateStaticParams = () =>
-  demoLists.map((list) => ({ id: list.id }));
+  [...demoLists, ...demoEarlierLists].map((list) => ({ id: list.id }));
 
 type Props = {
   params: Promise<{ id: string }>;

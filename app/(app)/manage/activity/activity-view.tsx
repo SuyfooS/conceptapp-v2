@@ -11,6 +11,7 @@ import {
 import { dateIn } from "@domain/availability";
 import { WEEKDAY_KEYS } from "@domain/availability-form";
 import { accentTokens } from "@domain/color";
+import { numberRange, signed } from "@domain/lists";
 import {
   type ModuleKey,
   type ModuleManifest,
@@ -623,6 +624,32 @@ export function ActivityView({
         };
       case "lists.cancel":
         return plain(t("actions.lists.cancel", { name: line.name }));
+      case "lists.late":
+        return plain(t("actions.lists.late", { name: line.name }));
+      case "lists.missed":
+        return plain(t("actions.lists.missed", { name: line.name }));
+      case "lists.out_of_range": {
+        // The reading and its range as the list shows them, with a real
+        // minus sign and the item's unit.
+        const range = numberRange(line);
+        return {
+          what: t.rich("actions.lists.outOfRange", {
+            ltr,
+            name: line.name,
+            label: line.label,
+            reading: `${signed(line.reading)}${line.unit ? ` ${line.unit}` : ""}`,
+          }),
+          notes: range
+            ? [
+                t.rich(`actions.lists.range.${range.kind}`, {
+                  ltr,
+                  range: range.range,
+                }),
+              ]
+            : [],
+          changes: [],
+        };
+      }
       case "lists.reopen":
         return plain(
           t("actions.lists.reopen", {

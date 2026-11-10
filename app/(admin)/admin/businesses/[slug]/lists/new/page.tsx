@@ -21,7 +21,10 @@ export default async function TeamNewListTemplatePage({
   const { slug } = await params;
   const setup = await teamListsSetup(slug);
   if (!setup) notFound();
-  const paths = await teamTemplatePaths(slug);
+  const [paths, times] = await Promise.all([
+    teamTemplatePaths(slug),
+    setup.times("", null),
+  ]);
   return (
     <TemplateEditor
       data={templateEditor({
@@ -30,6 +33,7 @@ export default async function TeamNewListTemplatePage({
         shifts: setup.shifts,
         readOnly: false,
         changed: false,
+        times,
       })}
       actions={{
         save: saveTeamListTemplateAction.bind(null, setup.business.id),

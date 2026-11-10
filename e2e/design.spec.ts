@@ -86,6 +86,12 @@ const PAGES = [
   "/design/shell/lists/list-kitchen-opening",
   "/design/shell/lists/list-kitchen-opening?state=finished",
   "/design/shell/lists/list-bar-order",
+  "/design/shell/lists/list-kitchen-closing-mon",
+  "/design/shell/lists/today",
+  "/design/shell/lists/today?day=2026-11-01",
+  "/design/shell/lists/today?state=empty",
+  "/design/shell/lists/today?state=viewing",
+  "/design/shell/lists/today?state=shiftGone",
   "/design/shell/lists/send",
   "/design/shell/lists/send?template=new",
   "/design/shell/lists/send?template=t-weekly-cleaning",
@@ -100,6 +106,9 @@ const PAGES = [
   "/design/shell/lists/templates/t-kitchen-opening?as=viewing",
   "/design/shell/lists/templates/t-bar-order",
   "/design/shell/lists/templates/t-bar-order?state=barGone",
+  "/design/shell/lists/templates/t-bar-closing",
+  "/design/shell/lists/templates/t-bar-closing?state=shiftGone",
+  "/design/shell/lists/templates/t-weekly-cleaning",
   "/design/shell/lists/templates/t-stock-count",
   "/design/shell/lists/templates/new",
   "/design/shell/notifications",
@@ -887,5 +896,100 @@ test("the pay demo closes a month, says so, and reopens it with a reason", async
   await wage.getByRole("button", { name: /^שמירת השכר/ }).click();
   await expect(
     wage.getByText(he.app.pay.wage.errors.from.closed),
+  ).toBeVisible();
+});
+
+// A template's times in the editor's demo (lists L4): a saved time says when
+// it is sent next, a paused one says so, and a time added in its sheet, here
+// one that follows a shift, saves itself and says when it goes; the sheet is
+// clean. The manager's day leads to a list from its table, late first, and
+// the week on top opens a day of the history.
+test("the times demo adds a time by a shift, and the day's overview reads its history", async ({
+  page,
+}) => {
+  const ls = he.app.lists.schedules;
+  const lo = he.app.lists.overview;
+  await page.goto("/design/shell/lists/templates/t-kitchen-opening");
+  // Tuesday at 08:12: today's opening went at 07:30, the next is tomorrow.
+  await expect(
+    page.getByRole("button", { name: /07:30/ }).filter({ hasText: "עד" }),
+  ).toContainText(ls.next.tomorrow.replace("<ltr>{time}</ltr>", "07:30"));
+
+  await page.getByRole("button", { name: ls.add, exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: ls.sheet.newTitle });
+  await sheet
+    .getByRole("button", { name: ls.sheet.anchors.shift, exact: true })
+    .click();
+  await expect(
+    sheet
+      .getByRole("button", { name: new RegExp(`^${ls.sheet.shift}`) })
+      .first(),
+  ).toBeVisible();
+  const open = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .analyze();
+  expect(open.violations.map((v) => v.id)).toEqual([]);
+  await sheet
+    .getByRole("button", { name: ls.sheet.create, exact: true })
+    .click();
+  await expect(sheet).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: he.app.manage.saved }),
+  ).toBeVisible();
+
+  // The weekly cleaning's time is paused.
+  await page.goto("/design/shell/lists/templates/t-weekly-cleaning");
+  await expect(page.getByText(ls.next.paused).first()).toBeVisible();
+
+  // With the evening gone from the settings, the bar's closing says on top
+  // that its time holds the saves, and the way to it opens that time.
+  await page.goto(
+    "/design/shell/lists/templates/t-bar-closing?state=shiftGone",
+  );
+  const held = page.getByRole("status").filter({
+    hasText: heT("app.lists.templates.editor.held", { count: 1 }),
+  });
+  await expect(held).toBeVisible();
+  await held
+    .getByRole("button", { name: he.app.lists.templates.editor.fixTime })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: ls.sheet.title }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  await page.goto("/design/shell/lists/today");
+  await expect(
+    page
+      .getByText(heT("app.lists.overview.readings.outOfRange", { count: 1 }), {
+        exact: true,
+      })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  // Monday's dot says what it has to look at: last night's closing, late,
+  // with its fridge out of range.
+  await expect(
+    page
+      .getByRole("group", { name: lo.pick })
+      .getByRole("button", { name: /^ב׳\s*2(\s|$)/ }),
+  ).toContainText(heT("app.lists.overview.readings.outOfRange", { count: 1 }));
+  // Sunday the 1st, five days before.
+  await page
+    .getByRole("group", { name: lo.pick })
+    .getByRole("button", { name: /^א׳\s*1(\s|$)/ })
+    .click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/lists\/today\?day=2026-11-01$/,
+  );
+  // Sunday's floor opening nobody did: a section of its own on a phone and
+  // a tablet, a row in the table on a computer.
+  await expect(
+    page
+      .getByText(heT("app.lists.overview.sections.missed", { count: 1 }))
+      .first(),
+  ).toBeAttached();
+  await expect(
+    page.getByText("פתיחת אולם").filter({ visible: true }).first(),
   ).toBeVisible();
 });

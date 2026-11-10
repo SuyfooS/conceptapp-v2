@@ -148,6 +148,42 @@ export const NOTIFICATION_KINDS = {
     href: "/lists",
     to: "list",
   },
+  // A list's times (lists L4): due soon and late, to the people it is for,
+  // whose Lists tab already counts it.
+  "lists.due": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: false,
+    href: "/lists",
+    to: "list",
+  },
+  "lists.late": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: false,
+    href: "/lists",
+    to: "list",
+  },
+  // To list managers, whose Lists tab counts only what they hold: these ask
+  // them to look.
+  "lists.late_team": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: true,
+    href: "/lists/today",
+    to: "list",
+  },
+  "lists.out_of_range": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: true,
+    href: "/lists/today",
+    to: "list",
+  },
   // Someone was given pay access to them alone (payroll P3): about their own
   // access, so not a line anyone switches off. Taking it back settles it, and
   // the pay screens are then not found for them: a settled line stays in the
@@ -479,6 +515,29 @@ export type NotificationLine =
       /** The list's name, as it was sent. */
       name: string;
     }
+  | {
+      kind: "lists.due" | "lists.late" | "lists.late_team";
+      name: string;
+      /** When it is due, as an ISO instant; null when the line lost it. */
+      due: string | null;
+    }
+  | {
+      /** A reading outside its item's range; the actor read it. */
+      kind: "lists.out_of_range";
+      name: string;
+      /** The item's label; null when the line lost it. */
+      label: string | null;
+      /**
+       * The reading with its range and unit; null for a line from before it
+       * kept them.
+       */
+      reading: {
+        value: number;
+        min: number | null;
+        max: number | null;
+        unit: string | null;
+      } | null;
+    }
   /** Pay access, given to the reader alone; the actor gave it. */
   | { kind: "access.pay_granted" }
   | {
@@ -548,6 +607,14 @@ const schemas = {
   }),
   person: z.object({ person: uuid }),
   list: z.object({ list: uuid, name: z.string().min(1) }),
+  due: z.object({ due: instant }),
+  label: z.object({ label: z.string().min(1) }),
+  reading: z.object({
+    reading: z.number(),
+    min: z.number().nullable().default(null),
+    max: z.number().nullable().default(null),
+    unit: z.string().nullable().default(null),
+  }),
   since: z.object({ since: z.iso.date() }),
   month: z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) }),
   counts: z.object({
@@ -649,6 +716,34 @@ function lineOf(
     case "lists.finished": {
       const params = read(schemas.list);
       return params ? { kind, name: params.name } : other;
+    }
+    case "lists.due":
+    case "lists.late":
+    case "lists.late_team": {
+      const params = read(schemas.list);
+      // Still a line without its due time.
+      return params
+        ? { kind, name: params.name, due: read(schemas.due)?.due ?? null }
+        : other;
+    }
+    case "lists.out_of_range": {
+      const params = read(schemas.list);
+      const reading = read(schemas.reading);
+      return params
+        ? {
+            kind,
+            name: params.name,
+            label: read(schemas.label)?.label ?? null,
+            reading: reading
+              ? {
+                  value: reading.reading,
+                  min: reading.min,
+                  max: reading.max,
+                  unit: reading.unit,
+                }
+              : null,
+          }
+        : other;
     }
     case "pay.wage_set":
       // The line still says the wage changed without its day.

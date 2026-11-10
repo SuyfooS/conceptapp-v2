@@ -17,8 +17,10 @@ type Props = {
 // nothing. `?changed=1` is the editor opened again after someone else's save
 // overtook this one; `?as=viewing` the team viewing the restaurant as a
 // manager, which only reads; `?state=barGone` the restaurant after its bar
-// was removed, so the bar's order can't be saved and says why. The removed
-// one (t-stock-count) is only read.
+// was removed, so the bar's order can't be saved and says why;
+// `?state=shiftGone` the restaurant after its evening shift left the
+// settings, so the bar's closing, which follows it, holds the saves and says
+// so on top. The removed one (t-stock-count) is only read.
 export default function ShellTemplate({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -37,6 +39,7 @@ async function Demo({ params, searchParams }: Props) {
     changed !== undefined,
     as === "viewing",
     state === "barGone" ? "dep-bar" : undefined,
+    state === "shiftGone" ? "evening" : undefined,
   );
   if (!data) notFound();
   return (

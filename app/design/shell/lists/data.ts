@@ -3,10 +3,15 @@
 // rows, so their Hebrew stays here rather than in messages/; the Hebrew-literal
 // check in tooling/ allows this file.
 
+import type { ListReading } from "@db/lists";
+import { dateIn } from "@domain/availability";
+import { nextOpenings } from "@domain/list-openings";
 import {
   byUrgency,
+  isOutOfRange,
   type ListDetail,
   type ListItem,
+  type ListSchedule,
   type ListSummary,
   type ListTemplate,
   listProgress,
@@ -17,17 +22,25 @@ import {
 import { STAFF_ROLES } from "@domain/modules";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import {
+  type EditorTimes,
   type ListLookups,
   type ListScreenData,
   type ListsHomeData,
   type ListsTiming,
+  type ListsTodayData,
   NEW_LIST,
   type SendFormData,
 } from "../../../(app)/lists/list-types";
+import { editorTimes } from "../../../(app)/lists/templates/editor-times";
 import {
+  placesOf,
   templateEditor,
   templatesScreen,
 } from "../../../(app)/lists/templates/templates-data";
+import {
+  listsTodayData,
+  overviewWeek,
+} from "../../../(app)/lists/today/today-data";
 import { demoShiftPatterns, teamMembers } from "../data";
 
 /** Tuesday 3 November 2026, 08:12 in Tel Aviv, as the rest of the demo. */
@@ -118,6 +131,7 @@ export const demoLists: ListDetail[] = [
     items: [
       item("kitchen-fridge", {
         kind: "number",
+        templateItemId: "ti-ko-fridge",
         label: "מקרר ראשי",
         unit: "°C",
         min: 0,
@@ -127,6 +141,7 @@ export const demoLists: ListDetail[] = [
       }),
       item("kitchen-freezer", {
         kind: "number",
+        templateItemId: "ti-ko-freezer",
         label: "מקפיא",
         unit: "°C",
         min: -25,
@@ -248,6 +263,145 @@ export const demoLists: ListDetail[] = [
   }),
 ];
 
+/**
+ * The restaurant's lists of the days before, for the manager's overview and
+ * its history only: last night's kitchen closing, still open and late, with a
+ * fridge reading out of range; Monday's and Sunday's openings, finished; and
+ * Sunday's floor opening, which nobody did.
+ */
+const reading = (
+  id: string,
+  templateItemId: string,
+  label: string,
+  [min, max]: [number, number],
+  value: number,
+  at: string,
+) =>
+  item(id, {
+    kind: "number",
+    templateItemId,
+    label,
+    unit: "°C",
+    min,
+    max,
+    reading: value,
+    ...done("noa", at),
+  });
+const FRIDGE: [number, number] = [0, 5];
+const FREEZER: [number, number] = [-25, -18];
+
+export const demoEarlierLists: ListDetail[] = [
+  list({
+    ...base,
+    id: "list-kitchen-closing-mon",
+    name: "סגירת מטבח",
+    origin: "scheduled",
+    status: "open",
+    holder: { kind: "department", department: "dep-kitchen" },
+    sentBy: null,
+    opensAt: "2026-11-02T21:00:00.000Z",
+    dueAt: "2026-11-02T21:45:00.000Z",
+    items: [
+      reading(
+        "kc-mon-fridge",
+        "ti-kc-fridge",
+        "מקרר ראשי",
+        FRIDGE,
+        7,
+        "2026-11-02T21:20:00.000Z",
+      ),
+      reading(
+        "kc-mon-freezer",
+        "ti-kc-freezer",
+        "מקפיא",
+        FREEZER,
+        -19,
+        "2026-11-02T21:21:00.000Z",
+      ),
+      item("kc-mon-cover", { kind: "check", label: "כיסוי ואחסון מזון" }),
+      item("kc-mon-gas", { kind: "check", label: "סגירת גז" }),
+    ],
+  }),
+  list({
+    ...base,
+    id: "list-kitchen-opening-mon",
+    name: "פתיחת מטבח",
+    origin: "scheduled",
+    status: "finished",
+    holder: { kind: "department", department: "dep-kitchen" },
+    sentBy: null,
+    opensAt: "2026-11-02T05:30:00.000Z",
+    dueAt: "2026-11-02T06:30:00.000Z",
+    finishedAt: "2026-11-02T06:20:00.000Z",
+    finishedBy: "noa",
+    items: [
+      reading(
+        "ko-mon-fridge",
+        "ti-ko-fridge",
+        "מקרר ראשי",
+        FRIDGE,
+        4,
+        "2026-11-02T05:41:00.000Z",
+      ),
+      reading(
+        "ko-mon-freezer",
+        "ti-ko-freezer",
+        "מקפיא",
+        FREEZER,
+        -20,
+        "2026-11-02T05:42:00.000Z",
+      ),
+    ],
+  }),
+  list({
+    ...base,
+    id: "list-kitchen-opening-sun",
+    name: "פתיחת מטבח",
+    origin: "scheduled",
+    status: "finished",
+    holder: { kind: "department", department: "dep-kitchen" },
+    sentBy: null,
+    opensAt: "2026-11-01T05:30:00.000Z",
+    dueAt: "2026-11-01T06:30:00.000Z",
+    finishedAt: "2026-11-01T06:10:00.000Z",
+    finishedBy: "noa",
+    items: [
+      reading(
+        "ko-sun-fridge",
+        "ti-ko-fridge",
+        "מקרר ראשי",
+        FRIDGE,
+        2,
+        "2026-11-01T05:38:00.000Z",
+      ),
+      reading(
+        "ko-sun-freezer",
+        "ti-ko-freezer",
+        "מקפיא",
+        FREEZER,
+        -21,
+        "2026-11-01T05:39:00.000Z",
+      ),
+    ],
+  }),
+  list({
+    ...base,
+    id: "list-floor-opening-sun",
+    name: "פתיחת אולם",
+    origin: "scheduled",
+    status: "missed",
+    holder: { kind: "department", department: "dep-floor" },
+    sentBy: null,
+    opensAt: "2026-11-01T06:00:00.000Z",
+    dueAt: "2026-11-01T08:30:00.000Z",
+    closedAt: "2026-11-02T06:00:00.000Z",
+    items: [
+      item("fo-sun-tables", { kind: "check", label: "סידור שולחנות וכיסאות" }),
+      item("fo-sun-menus", { kind: "check", label: "תפריטים נקיים" }),
+    ],
+  }),
+];
+
 const summaryOf = ({
   note: _note,
   asksQuantities: _asks,
@@ -274,7 +428,12 @@ function homeFor(
   const departments = demoDepartments
     .filter((d) => d.members.includes(userId))
     .map((d) => d.id);
-  const mine = demoLists.filter(holdersOf(userId, departments)).map(summaryOf);
+  // Today's lists, and last night's closing, still open and late.
+  const current = [
+    ...demoLists,
+    ...demoEarlierLists.filter((l) => l.status === "open"),
+  ];
+  const mine = current.filter(holdersOf(userId, departments)).map(summaryOf);
   const sentList = demoLists.find((l) => l.id === sent);
   return {
     now: demoListsNow,
@@ -289,7 +448,7 @@ function homeFor(
       timing,
     ),
     closed: mine.filter((l) => l.status !== "open"),
-    team: manager ? listsTally(demoLists, now, timing) : null,
+    team: manager ? listsTally(current, now, timing) : null,
     send: manager
       ? { href: "/lists/send", only: null }
       : departments.includes("dep-bar")
@@ -322,12 +481,72 @@ export const demoEmptyBusinessLists = (): ListsHomeData => ({
   send: null,
 });
 
+/**
+ * The manager's overview as Shiran has it on the demo's Tuesday morning:
+ * last night's closing late, the morning's lists, the cleaning closed, and
+ * the week's readings; `day` one of the week's days (the history), `empty`
+ * a day with nothing, `viewing` the team viewing as a manager, `shiftGone`
+ * the restaurant after its evening shift left the settings, so the bar's
+ * closing, which follows it, opens nothing.
+ */
+export function demoListsToday(
+  day?: string,
+  state?: "empty" | "viewing" | "shiftGone",
+): ListsTodayData {
+  const all = state === "empty" ? [] : [...demoLists, ...demoEarlierLists];
+  const lists = all.map(summaryOf);
+  const today = dateIn(now, ISRAEL_TIME_ZONE);
+  const week = overviewWeek(today);
+  const readings: ListReading[] = all.flatMap((l) =>
+    l.items
+      .filter((i) => i.kind === "number")
+      .map((i) => ({
+        listId: l.id,
+        itemId: i.id,
+        templateItemId: i.templateItemId,
+        label: i.label,
+        unit: i.unit,
+        min: i.min,
+        max: i.max,
+        reading: i.reading,
+        doneAt: i.doneAt,
+        doneBy: i.doneBy,
+        outOfRange: isOutOfRange(i),
+      })),
+  );
+  return listsTodayData({
+    now,
+    timeZone: ISRAEL_TIME_ZONE,
+    timing,
+    lookups: demoListLookups,
+    userId: "shiran",
+    day: day && week.includes(day) ? day : today,
+    week,
+    current: lists.filter(
+      (l) =>
+        l.status === "open" ||
+        dateIn(new Date(l.opensAt), ISRAEL_TIME_ZONE) === today,
+    ),
+    weekLists: lists,
+    readings,
+    templates: demoTemplates,
+    places: placesOf(
+      demoDepartments.map((d) => ({ ...d, archivedAt: null })),
+      demoListShifts.filter(
+        (s) => state !== "shiftGone" || s.key !== "evening",
+      ),
+    ),
+    send: state === "viewing" ? null : { href: "/lists/send", only: null },
+    viewOnly: state === "viewing",
+  });
+}
+
 /** One list on its screen, as Shiran reads it; `finished` just now by her. */
 export function demoListScreen(
   id: string,
   finished: boolean,
 ): ListScreenData | null {
-  const found = demoLists.find((l) => l.id === id);
+  const found = [...demoLists, ...demoEarlierLists].find((l) => l.id === id);
   if (!found) return null;
   const finishedAt = new Date(now.getTime() - 60_000).toISOString();
   const shown: ListDetail = finished
@@ -399,6 +618,25 @@ const freezer = (id: string) =>
     max: -18,
   });
 
+/** A template's time, saved long before the demo's week. */
+const time = (
+  id: string,
+  fields: Pick<
+    ListSchedule,
+    "days" | "opensOffset" | "dueOffset" | "recipient"
+  > &
+    Partial<ListSchedule>,
+): ListSchedule => ({
+  id,
+  anchor: "day",
+  shift: null,
+  active: true,
+  startsOn: "2026-10-01",
+  opensFrom: "2026-10-01T00:00:00.000Z",
+  ...fields,
+});
+const kitchen = { kind: "department", department: "dep-kitchen" } as const;
+
 const template = (
   fields: Pick<ListTemplate, "id" | "name" | "recipient" | "items"> &
     Partial<ListTemplate>,
@@ -420,6 +658,14 @@ export const demoTemplates: ListTemplate[] = [
     key: "kitchen-opening",
     name: "פתיחת מטבח",
     recipient: { kind: "department", department: "dep-kitchen" },
+    schedules: [
+      time("ts-ko-week", {
+        days: [0, 1, 2, 3, 4, 5],
+        opensOffset: 7 * 60 + 30,
+        dueOffset: 8 * 60 + 30,
+        recipient: kitchen,
+      }),
+    ],
     items: [
       fridge("ti-ko-fridge"),
       freezer("ti-ko-freezer"),
@@ -447,6 +693,14 @@ export const demoTemplates: ListTemplate[] = [
     key: "floor-opening",
     name: "פתיחת אולם",
     recipient: { kind: "department", department: "dep-floor" },
+    schedules: [
+      time("ts-fo-week", {
+        days: [0, 1, 2, 3, 4],
+        opensOffset: 8 * 60,
+        dueOffset: 10 * 60 + 30,
+        recipient: { kind: "department", department: "dep-floor" },
+      }),
+    ],
     items: [
       templateItem("ti-fo-tables", {
         kind: "check",
@@ -465,6 +719,20 @@ export const demoTemplates: ListTemplate[] = [
     key: "kitchen-closing",
     name: "סגירת מטבח",
     recipient: { kind: "department", department: "dep-kitchen" },
+    schedules: [
+      time("ts-kc-week", {
+        days: [0, 1, 2, 3, 4],
+        opensOffset: 23 * 60,
+        dueOffset: 23 * 60 + 45,
+        recipient: kitchen,
+      }),
+      time("ts-kc-saturday", {
+        days: [6],
+        opensOffset: 23 * 60 + 30,
+        dueOffset: 24 * 60 + 15,
+        recipient: kitchen,
+      }),
+    ],
     items: [
       fridge("ti-kc-fridge"),
       freezer("ti-kc-freezer"),
@@ -485,6 +753,16 @@ export const demoTemplates: ListTemplate[] = [
     key: "bar-closing",
     name: "סגירת בר",
     recipient: { kind: "department", department: "dep-bar" },
+    schedules: [
+      time("ts-bc-evening", {
+        days: [0, 1, 2, 3, 4],
+        anchor: "shift_end",
+        shift: "evening",
+        opensOffset: -30,
+        dueOffset: 30,
+        recipient: { kind: "shift", shift: "evening" },
+      }),
+    ],
     items: [
       templateItem("ti-bc-taps", {
         kind: "check",
@@ -531,6 +809,15 @@ export const demoTemplates: ListTemplate[] = [
     name: "ניקיון שבועי",
     recipient: { kind: "department", department: "dep-kitchen" },
     note: "בסוף הניקיון מכבים את המנדף.",
+    schedules: [
+      time("ts-wc-sunday", {
+        days: [0],
+        opensOffset: 15 * 60,
+        dueOffset: 17 * 60,
+        recipient: kitchen,
+        active: false,
+      }),
+    ],
     items: [
       templateItem("ti-wc-fridge", { kind: "check", label: "ניקוי מקרר ראשי" }),
       templateItem("ti-wc-hood", { kind: "check", label: "ניקוי מנדף" }),
@@ -592,13 +879,16 @@ export const demoEmptyTemplatesScreen = (readOnly = false) =>
  * One template in its editor, or a new one (`id` "new"). `readOnly` is a
  * view session, which opens no new one; a removed template is only read too.
  * `removedDepartment` is one removed since, which the template may still
- * name (the bar, for its order: an editor that can't save it).
+ * name (the bar, for its order: an editor that can't save it), and
+ * `removedShift` a shift the settings no longer have (the evening, which the
+ * bar's closing follows: a time that holds the editor's saves).
  */
 export function demoTemplateEditor(
   id: string,
   changed: boolean,
   readOnly = false,
   removedDepartment?: string,
+  removedShift?: string,
 ) {
   if (id === "new" && readOnly) return null;
   const found = id === "new" ? null : demoTemplates.find((t) => t.id === id);
@@ -610,10 +900,48 @@ export function demoTemplateEditor(
       archivedAt:
         d.id === removedDepartment ? "2026-11-02T15:00:00.000Z" : null,
     })),
-    shifts: demoListShifts,
+    shifts: demoListShifts.filter((s) => s.key !== removedShift),
     readOnly,
     changed,
+    times: demoEditorTimes(found, removedShift),
   });
+}
+
+/**
+ * What the demo's editor works its times out with: the restaurant, closed on
+ * Shabbat in Tel Aviv, on its Tuesday morning, with its week's shifts and
+ * people, and each saved time's next openings by the same rules the
+ * database's job opens lists by (none for one that follows `removedShift`).
+ */
+export function demoEditorTimes(
+  found: ListTemplate | null,
+  removedShift?: string,
+): EditorTimes {
+  const base = editorTimes({
+    now,
+    place: { shabbatCity: "telAviv", timeZone: ISRAEL_TIME_ZONE },
+    closesOnShabbat: true,
+    shifts: demoSendShifts,
+    people: teamMembers,
+    openings: {},
+  });
+  const context = {
+    timeZone: base.timeZone,
+    shabbat: base.shabbat,
+    shifts: base.shifts,
+    patterns: demoListShifts
+      .map((s) => s.key)
+      .filter((key) => key !== removedShift),
+  };
+  return {
+    ...base,
+    openings: Object.fromEntries(
+      (found?.schedules ?? []).map((s) => [
+        s.id,
+        nextOpenings(s, now, context),
+      ]),
+    ),
+  };
 }
 
 /**

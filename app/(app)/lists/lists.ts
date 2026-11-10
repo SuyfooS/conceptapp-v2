@@ -2,10 +2,13 @@ import { getDepartments } from "@db/departments";
 import {
   getBusinessLists,
   getList,
+  getListReadings,
+  getListsOn,
   getListTemplate,
   getListTemplates,
   getMyLists,
   getSentLists,
+  nextListOpenings,
   type Window,
 } from "@db/lists";
 import { getPublishedShifts } from "@db/schedule";
@@ -41,6 +44,7 @@ import {
   type ListReadOnly,
   type ListScreenData,
   type ListsHomeData,
+  type ListsTodayData,
   type ListsView,
   NEW_LIST,
   type SendFormData,
@@ -49,7 +53,13 @@ import {
   type TemplatePaths,
   type TemplatesScreenData,
 } from "./list-types";
-import { templateEditor, templatesScreen } from "./templates/templates-data";
+import { editorTimes } from "./templates/editor-times";
+import {
+  placesOf,
+  templateEditor,
+  templatesScreen,
+} from "./templates/templates-data";
+import { listsTodayData, overviewWeek } from "./today/today-data";
 
 export const listsPaths = {
   lists: "/lists",
@@ -57,6 +67,7 @@ export const listsPaths = {
   list: (id: string) => `/lists/${id}`,
   home: "/home",
   templates: "/lists/templates",
+  today: "/lists/today",
 };
 
 /** The template screens' links inside the app; `back` is named in words. */
@@ -98,6 +109,7 @@ export const listsAccess = cache(async () => {
     businessId: business.id,
     role,
     timeZone: business.place.timeZone,
+    place: business.place,
     canManage,
     canSend: canManage || holdsPermission(manifest, role, perms, "lists.send"),
     viewOnly: !canWrite(member.viewing),
@@ -132,13 +144,18 @@ async function lookupsFor(businessId: string): Promise<ListLookups> {
   };
 }
 
+/** Days in the business, as instants: from the first one's midnight to the last one's end. */
+function daysIn(first: string, last: string, timeZone: string): Window {
+  return {
+    from: instantIn(first, "00:00", timeZone).toISOString(),
+    to: instantIn(addDays(last, 1), "00:00", timeZone).toISOString(),
+  };
+}
+
 /** Today in the business, as instants: from its midnight to the next. */
 function todayIn(now: Date, timeZone: string): Window {
   const today = dateIn(now, timeZone);
-  return {
-    from: instantIn(today, "00:00", timeZone).toISOString(),
-    to: instantIn(addDays(today, 1), "00:00", timeZone).toISOString(),
-  };
+  return daysIn(today, today, timeZone);
 }
 
 /**
@@ -443,6 +460,50 @@ async function shiftPatterns() {
   return (await currentModuleSettings("scheduling")).shifts;
 }
 
+/** Whether Shabbat matters to the business's times: its schedule on and closed on Shabbat. */
+async function closedOnShabbat(): Promise<boolean> {
+  const [enabled, scheduling] = await Promise.all([
+    currentModules(),
+    currentModuleSettings("scheduling"),
+  ]);
+  return enabled.includes("scheduling") && scheduling.closedOnShabbat;
+}
+
+/**
+ * What the editor works a template's times out with: the business's
+ * Shabbat, the coming week's published shifts, its people, and the saved
+ * times' next openings as the database will open them.
+ */
+async function templateTimes(
+  access: Access,
+  templateId: string | null,
+  now: Date,
+) {
+  const today = dateIn(now, access.timeZone);
+  const [closes, enabled, colleagues, openings] = await Promise.all([
+    closedOnShabbat(),
+    currentModules(),
+    currentColleagues(access.businessId),
+    templateId === null ? {} : nextListOpenings(access.userId, templateId, now),
+  ]);
+  const shifts = enabled.includes("scheduling")
+    ? await getPublishedShifts(
+        access.businessId,
+        addDays(today, -1),
+        addDays(today, SHIFT_DAYS_AHEAD),
+      )
+    : [];
+  return editorTimes({
+    now,
+    place: access.place,
+    closesOnShabbat: closes,
+    shifts,
+    // A list goes to someone on the staff, never to an accountant.
+    people: colleagues.filter((c) => isStaff(c.role)),
+    openings,
+  });
+}
+
 /**
  * The business's templates on their own screen, for whoever manages lists
  * (a view session as a manager only reads). Null for anyone else.
@@ -478,10 +539,12 @@ export async function currentTemplateEditor(
   if (!access?.canManage) return null;
   if (templateId !== null && !isUuid(templateId)) return null;
   if (templateId === null && access.viewOnly) return null;
-  const [template, departments, shifts] = await Promise.all([
+  const now = new Date();
+  const [template, departments, shifts, times] = await Promise.all([
     templateId === null ? null : getListTemplate(access.businessId, templateId),
     currentDepartments(access.businessId),
     shiftPatterns(),
+    templateTimes(access, templateId, now),
   ]);
   if (template === "notYet" || (templateId !== null && template === null)) {
     return null;
@@ -492,5 +555,63 @@ export async function currentTemplateEditor(
     shifts,
     readOnly: access.viewOnly,
     changed,
+    times,
+  });
+}
+
+/**
+ * The manager's overview of a day (L4), for whoever manages lists (a view
+ * session as a manager only reads): today's lists, late first, then open,
+ * closed and missed, with the day's readings and the week's, and the times
+ * that open nothing since what they follow is gone; or, for a day of the
+ * last week (`asked`), the lists that opened that day. Null for anyone else.
+ */
+export async function currentListsToday(
+  asked?: string,
+): Promise<ListsTodayData | null> {
+  const access = await listsAccess();
+  if (!access?.canManage) return null;
+  const { businessId, userId, timeZone } = access;
+  const now = new Date();
+  const today = dateIn(now, timeZone);
+  const week = overviewWeek(today);
+  const day = asked && week.includes(asked) ? asked : today;
+  const [settings, lookups, inWeek, current, templates, departments, shifts] =
+    await Promise.all([
+      currentModuleSettings("lists"),
+      lookupsFor(businessId),
+      getListsOn(businessId, daysIn(week[0] ?? today, today, timeZone)),
+      // Today is every list still open, whenever it opened, and today's.
+      day === today
+        ? getBusinessLists(businessId, todayIn(now, timeZone))
+        : null,
+      currentTemplates(businessId),
+      currentDepartments(businessId),
+      shiftPatterns(),
+    ]);
+  const weekLists = inWeek === "notYet" ? [] : inWeek;
+  const todays = current === "notYet" ? [] : current;
+  const ids = [
+    ...new Set([...weekLists, ...(todays ?? [])].map((list) => list.id)),
+  ];
+  const readings = await getListReadings(ids);
+  return listsTodayData({
+    now,
+    timeZone,
+    timing: {
+      remindBeforeMinutes: settings.remindBeforeMinutes,
+      lateAfterMinutes: settings.lateAfterMinutes,
+    },
+    lookups,
+    userId,
+    day,
+    week,
+    current: todays,
+    weekLists,
+    readings: readings === "notYet" ? [] : readings,
+    templates,
+    places: placesOf(departments, shifts),
+    send: access.viewOnly ? null : { href: listsPaths.send, only: null },
+    viewOnly: access.viewOnly,
   });
 }

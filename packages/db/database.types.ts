@@ -719,6 +719,7 @@ export type Database = {
           days: number[];
           due_offset: number;
           id: string;
+          opens_from: string;
           opens_offset: number;
           position: number;
           recipient_department: string | null;
@@ -739,6 +740,7 @@ export type Database = {
           days: number[];
           due_offset: number;
           id?: string;
+          opens_from?: string;
           opens_offset: number;
           position?: number;
           recipient_department?: string | null;
@@ -759,6 +761,7 @@ export type Database = {
           days?: number[];
           due_offset?: number;
           id?: string;
+          opens_from?: string;
           opens_offset?: number;
           position?: number;
           recipient_department?: string | null;
@@ -969,6 +972,7 @@ export type Database = {
           recipient_kind: string;
           recipient_role: Database["public"]["Enums"]["member_role"] | null;
           reminded_at: string | null;
+          reopened_at: string | null;
           schedule_id: string | null;
           sent_by: string | null;
           shift: Json | null;
@@ -998,6 +1002,7 @@ export type Database = {
           recipient_kind: string;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
           reminded_at?: string | null;
+          reopened_at?: string | null;
           schedule_id?: string | null;
           sent_by?: string | null;
           shift?: Json | null;
@@ -1027,6 +1032,7 @@ export type Database = {
           recipient_kind?: string;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
           reminded_at?: string | null;
+          reopened_at?: string | null;
           schedule_id?: string | null;
           sent_by?: string | null;
           shift?: Json | null;
@@ -2406,6 +2412,10 @@ export type Database = {
         Returns: number;
       };
       my_permissions: { Args: { business: string }; Returns: string[] };
+      next_list_openings: {
+        Args: { actor: string; at_time?: string; template: string };
+        Returns: Json;
+      };
       note_auth_attempt: {
         Args: { at_time?: string; caller: string; kind: string; phone: string };
         Returns: number;

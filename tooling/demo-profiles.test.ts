@@ -51,6 +51,16 @@ describe("demo businesses and profiles", () => {
     expect(read("supabase/hosted-demo.sql")).not.toMatch(/"profiles"/);
   });
 
+  // Lists' times (L4): a hosted demo opens today's scheduled lists when it is
+  // reset, and the minute job keeps them coming; the local seed's open none,
+  // so no browser test depends on the hour CI runs at (they tick themselves).
+  it("opens scheduled lists on a reset only in the hosted demo", () => {
+    // A definition's own line, not the comments that name it.
+    const flag = /^\s+"scheduledLists": true,\r?$/gm;
+    expect(read("supabase/hosted-demo.sql").match(flag)).toHaveLength(2);
+    expect(read("supabase/seed.sql").match(flag)).toBeNull();
+  });
+
   it("opens only the local seed's restaurant, for the browser tests", () => {
     const seed = read("supabase/seed.sql");
     // Each definition's line: `…, "invites": true, "profiles": true,`.
