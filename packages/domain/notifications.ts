@@ -159,6 +159,16 @@ export const NOTIFICATION_KINDS = {
     href: "/clock/pay",
     settledHref: "/notifications",
   },
+  // The reader's own hourly wage was set, from a day (payroll P4): about
+  // their own pay, so not a line anyone switches off. It names the day and
+  // never the amount, which the clock shows them.
+  "pay.wage_set": {
+    group: null,
+    module: "time_clock",
+    minRole: "worker",
+    needsAction: false,
+    href: "/clock",
+  },
   // "Send a test notification", from the phone switch: to the person alone.
   "push.test": {
     group: null,
@@ -445,6 +455,12 @@ export type NotificationLine =
     }
   /** Pay access, given to the reader alone; the actor gave it. */
   | { kind: "access.pay_granted" }
+  | {
+      /** The reader's hourly wage changed; the actor set it. */
+      kind: "pay.wage_set";
+      /** The day it takes effect, YYYY-MM-DD; null when the line lost it. */
+      since: string | null;
+    }
   | { kind: "push.test" }
   | { kind: "other" };
 
@@ -491,6 +507,7 @@ const schemas = {
   }),
   person: z.object({ person: uuid }),
   list: z.object({ list: uuid, name: z.string().min(1) }),
+  since: z.object({ since: z.iso.date() }),
 };
 
 function personOf(
@@ -587,6 +604,9 @@ function lineOf(
       const params = read(schemas.list);
       return params ? { kind, name: params.name } : other;
     }
+    case "pay.wage_set":
+      // The line still says the wage changed without its day.
+      return { kind, since: read(schemas.since)?.since ?? null };
     case "access.pay_granted":
     case "push.test":
       return { kind };

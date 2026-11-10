@@ -32,6 +32,7 @@ import { History, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
+import { useFullDate, useShekels } from "../../clock/pay/pay-parts";
 import { type AppWording, translator } from "../../wording";
 
 export type ActivityPaths = {
@@ -44,6 +45,8 @@ export type ActivityPaths = {
   departments: string;
   /** Who sees pay, where its lines lead: the owner's alone. */
   access?: string;
+  /** The hours for payroll, where a wage's line leads (only pay holders read it). */
+  pay?: string;
 };
 
 /**
@@ -140,6 +143,8 @@ export function ActivityView({
   const tDetails = translator(wording, "app.manage.business");
   const tManage = translator(wording, "app.manage");
   const format = useFormatter();
+  const shekels = useShekels();
+  const fullDate = useFullDate();
 
   const dayName = (date: string) =>
     format.dateTime(new Date(`${date}T12:00:00Z`), {
@@ -643,6 +648,43 @@ export function ActivityView({
             : t("actions.permission.revoke", { perm, from: whom }),
           paths.access,
         );
+      }
+      case "wage.set": {
+        // The minimum of that day, as the log kept it: under it, it says so.
+        const below = line.minimum !== null && line.agorot < line.minimum;
+        return {
+          what: t.rich("actions.wage.set", {
+            ltr,
+            person: who(line.person),
+            amount: shekels(line.agorot),
+            date: fullDate(line.from),
+          }),
+          notes: [
+            ...(below && line.minimum !== null
+              ? [
+                  t.rich("actions.wage.belowMinimum", {
+                    ltr,
+                    minimum: shekels(line.minimum),
+                  }),
+                ]
+              : []),
+            ...(line.note ? [t("actions.wage.note", { note: line.note })] : []),
+          ],
+          changes:
+            line.previous === null || line.previous === line.agorot
+              ? []
+              : [
+                  {
+                    key: "wage",
+                    label: t("actions.wage.label"),
+                    values: {
+                      from: <span dir="ltr">{shekels(line.previous)}</span>,
+                      to: <span dir="ltr">{shekels(line.agorot)}</span>,
+                    },
+                  },
+                ],
+          href: paths.pay,
+        };
       }
       case "other":
         return plain(t("actions.other"));

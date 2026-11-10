@@ -210,6 +210,44 @@ screen's people and the times corrected entries had before (from the log's
 `membership.perms` now comes from `public.my_permissions`. Covered by
 `payroll_screens.test.sql`.
 
+Hourly wages (`20261110000500_hourly_wages.sql`, payroll P4). Money is whole
+agorot, as integers, everywhere. `public.minimum_wages` holds Israel's minimum
+wage by the day it took effect, every figure as published (the adult hour on
+182 hours, cut, not rounded: 35.40 from 1.4.2026; the statute's 186-hour
+figure; the youth bands and the apprentice's), read by anyone signed in and
+written only by migrations; `youth_published` is false for 1.4.2025, whose
+youth figures were worked out and must be checked before a business pays a
+minor from them. `packages/db/minimum-wages.db.test.ts` keeps it equal to
+`MINIMUM_WAGES` in `@domain/minimum-wage` (`pnpm test:db`).
+`private.minimum_wage_on(on_day)` reads the adult hour of a day.
+`public.member_wages` is a person's wage from a day (`effective_from`), 0.01 to
+1,000.00, with an optional note; append-only: the wage on a day is the latest
+`effective_from` on or before it, then the latest `set_at`
+(`private.wage_on`), so a typo is fixed by a new row for the same day and both
+stay. Its key to the membership is `restrict`, so a person or business with
+wages stays (23503); a trigger refuses every update and delete (42501) but a
+purge that names the business and the setter going to null when their account
+goes, and nobody but its owner writes or truncates it. The person reads their
+own while a member; pay holders and a view as an accountant read the
+business's; nobody reads any with the time clock off.
+`public.set_hourly_wage(actor, business, person, agorot, from_day, wage_note,
+at_time)` (secret key) sets one for a pay holder: never their own (42501), an
+owner's only by an owner (42501), never an accountant's (22023), someone who
+left allowed, from the first of last month to a year ahead by the business's
+day (22023), under the minimum saved all the same; it logs `wage.set` with the
+wage before on that day, after, the day, the adult minimum of the day and the
+note, and `private.notify_for_payroll` tells the person (`pay.wage_set`, with
+`since` and never an amount, one line per person). The purge deletes wages
+before the log. `private.seed_demo_pay` ends with `private.seed_demo_wages`,
+from a definition's `wages` (`{"manager": 4500, "worker": 3800, "cases":
+[{"user_id", "case": "raise", "agorot"} | {"user_id", "case": "none"}]}`): the
+role's wage from the first of last month for every active manager and worker,
+a raise on the 15th, or none; set by the definition's owner, with no log rows.
+`@db/wages` reads wages under the person's session (`getWages`) and sets one
+with the secret key (`setHourlyWage`, refusals read by `wageFailureOf` in
+`@domain/wages`). Covered by `wages.test.sql`, `demo_reset` and
+`rls_enabled`.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

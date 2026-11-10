@@ -125,6 +125,11 @@ export function demoClock(
     punch: { required: code, needsCode: code, canShowCode: true },
     team: { atWork: 2, overdue: state === "working" ? 0 : 1 },
     payroll: true,
+    // Their own wage, and the raise set for December.
+    ownWage: {
+      current: { agorot: 3800, from: "2026-10-01" },
+      next: { agorot: 4000, from: "2026-12-01" },
+    },
     viewOnly: false,
   };
 }

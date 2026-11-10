@@ -1,4 +1,3 @@
-import { toCheck } from "@domain/pay-month";
 import { EmptyState } from "@ui/empty-state";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
@@ -10,11 +9,13 @@ import { type AppWording, translator } from "../../wording";
 import { NoteView } from "./note-view";
 import {
   BeforePayrollCard,
+  MissingWage,
   PayDayList,
   PayHero,
   PersonLine,
   personHref,
   useMonthName,
+  WageSpans,
 } from "./pay-parts";
 import { PayMonthTable } from "./pay-table";
 import type {
@@ -28,8 +29,10 @@ import type {
  * Hours for payroll: everyone's month, to the minute, with what to look at
  * before paying. Phone: the month's hero with the people rising over it, each
  * opening their month. Tablet: the list at the start and the chosen person's
- * days at the end. Desktop: one table, a person's days in a sheet. Hours only:
- * P4 and P7 add wages and amounts, P8 the file, which becomes its main action.
+ * days at the end. Desktop: one table, a person's days in a sheet. Each
+ * person's hourly wage for the month beside their hours (P4); amounts come
+ * with P7, the file with P8, which becomes the screen's main action.
+ * `?show=noWage` lists only those whose shifts have no wage.
  */
 export function PayMonthView({
   data,
@@ -47,14 +50,10 @@ export function PayMonthView({
   const t = translator(wording, "app.pay");
   const monthName = useMonthName();
   const monthHref = (month: string) => `${paths.pay}?month=${month}`;
-  const empty = data.people.every((person) => person.totals.shifts === 0);
-  const withHours = data.people.filter((person) => person.totals.shifts > 0);
+  const empty = data.counts.withHours === 0;
   const caption = t("caption", {
-    people: withHours.length,
-    toCheck: data.people.reduce(
-      (sum, person) => sum + toCheck(person.totals),
-      0,
-    ),
+    people: data.counts.withHours,
+    toCheck: data.counts.toCheck,
   });
   const selected =
     data.people.find((person) => person.userId === data.selected) ?? null;
@@ -104,7 +103,24 @@ export function PayMonthView({
         before={data.before}
         t={t}
         fixHref={data.fixes ? `${paths.team}?month=${data.month}` : null}
+        noWageHref={
+          data.filter === "noWage"
+            ? null
+            : `${monthHref(data.month)}&show=noWage`
+        }
       />
+
+      {data.filter === "noWage" ? (
+        <p className="flex flex-wrap items-center gap-x-4 px-1 text-ink-2">
+          <span>{t("filter.noWage")}</span>
+          <Link
+            href={monthHref(data.month)}
+            className="inline-flex min-h-11 items-center font-semibold text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            {t("filter.all")}
+          </Link>
+        </p>
+      ) : null}
 
       {empty ? (
         <div className="flex flex-col gap-2 md:mx-auto md:w-full md:max-w-2xl">
@@ -141,7 +157,9 @@ export function PayMonthView({
                 {data.people.map((person) =>
                   row(
                     person,
-                    `${paths.pay}?month=${data.month}&person=${person.userId}`,
+                    `${paths.pay}?month=${data.month}&person=${person.userId}${
+                      data.filter ? `&show=${data.filter}` : ""
+                    }`,
                     person.userId === selected?.userId,
                   ),
                 )}
@@ -164,6 +182,16 @@ export function PayMonthView({
                     days: selected.totals.days,
                     shifts: selected.totals.shifts,
                   })}
+                  {selected.wage && selected.wage.spans.length > 0 ? (
+                    <span className="block">
+                      <WageSpans wage={selected.wage} t={t} />
+                    </span>
+                  ) : null}
+                  {selected.wage?.missing ? (
+                    <span className="block font-medium text-warning">
+                      <MissingWage wage={selected.wage} t={t} />
+                    </span>
+                  ) : null}
                 </p>
                 {selected.days.length > 0 ? (
                   <PayDayList days={selected.days} t={t} />

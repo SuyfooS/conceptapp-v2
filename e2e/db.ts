@@ -49,9 +49,18 @@ export async function inviteToDemo(invite: {
 }): Promise<void> {
   await sql`delete from public.invites
     where business_id = ${DEMO_RESTAURANT} and phone = ${invite.phone}`;
-  await sql`delete from public.memberships m using public.profiles p
-    where m.business_id = ${DEMO_RESTAURANT} and m.user_id = p.id
-      and p.phone = ${invite.phone}`;
+  // A wage is kept (20261110000500_hourly_wages.sql) and holds its
+  // membership: only a purge that names the business deletes one, for this
+  // transaction, and it goes first.
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.member_wages w using public.profiles p
+      where w.business_id = ${DEMO_RESTAURANT} and w.user_id = p.id
+        and p.phone = ${invite.phone}`;
+    await tx`delete from public.memberships m using public.profiles p
+      where m.business_id = ${DEMO_RESTAURANT} and m.user_id = p.id
+        and p.phone = ${invite.phone}`;
+  });
   await sql`insert into public.invites
       (business_id, phone, role, full_name, token_hash, expires_at)
     values (${DEMO_RESTAURANT}, ${invite.phone}, ${invite.role},
@@ -970,7 +979,10 @@ const SHOP_OWNER = "00000000-0000-4000-a000-000000000007";
  * spec that let the next reset through (`allowDemoReset`) leaves no reset time:
  * the newest hours the reset wrote say it then.
  */
-export async function seededPayMonth(): Promise<string> {
+export async function seededPayMonth(
+  business: "shop" | "restaurant" = "shop",
+): Promise<string> {
+  const id = business === "shop" ? DEMO_SHOP : DEMO_RESTAURANT;
   const [row] = await sql<{ month: string }[]>`
     select to_char(
       date_trunc('month', coalesce(d.reset_at,
@@ -980,9 +992,51 @@ export async function seededPayMonth(): Promise<string> {
       'YYYY-MM') as month
     from private.demo_businesses d
     join public.businesses b on b.id = d.business_id
-    where d.business_id = ${DEMO_SHOP}`;
-  if (!row) throw new Error("The demo shop is missing");
+    where d.business_id = ${id}`;
+  if (!row) throw new Error(`The demo ${business} is missing`);
   return row.month;
+}
+
+/** A demo shop person's wage today, as the database has it (the latest day, then the latest set). */
+export async function shopWageToday(
+  userId: string,
+): Promise<{ agorot: number; from: string } | null> {
+  const [row] = await sql<{ agorot: number; from: string }[]>`
+    select w.hourly_agorot as agorot, w.effective_from::text as "from"
+    from public.member_wages w
+    join public.businesses b on b.id = w.business_id
+    where w.business_id = ${DEMO_SHOP} and w.user_id = ${userId}
+      and w.effective_from <= (now() at time zone b.timezone)::date
+    order by w.effective_from desc, w.set_at desc
+    limit 1`;
+  return row ?? null;
+}
+
+/**
+ * The wages a spec set for a demo shop person since `since` go, so the shop
+ * is as the seed left it for the next run. Wages are kept
+ * (20261110000500_hourly_wages.sql): only a purge that names the business may
+ * delete one, for this transaction. The log keeps its rows.
+ */
+export async function forgetShopWages(
+  userId: string,
+  since: Date,
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_SHOP}, true)`;
+    await tx`delete from public.member_wages
+      where business_id = ${DEMO_SHOP} and user_id = ${userId}
+        and set_at >= ${since}`;
+  });
+}
+
+/** The first of this month in the demo shop's own days, `YYYY-MM-DD`. */
+export async function shopFirstOfMonth(): Promise<string> {
+  const [row] = await sql<{ day: string }[]>`
+    select date_trunc('month', now() at time zone b.timezone)::date::text as day
+    from public.businesses b where b.id = ${DEMO_SHOP}`;
+  if (!row) throw new Error("The demo shop is missing");
+  return row.day;
 }
 
 /**

@@ -1,5 +1,6 @@
 import type { PunchProof } from "@domain/punch-code-format";
 import type { PunchFailure, ShiftRecord, TimeEntry } from "@domain/time-clock";
+import type { WageNow } from "@domain/wages";
 
 export type ClockActionResult =
   | {
@@ -56,6 +57,11 @@ export type ClockData = {
   team: { atWork: number; overdue: number } | null;
   /** They hold pay access: the way to the hours for payroll. */
   payroll: boolean;
+  /**
+   * The person's own hourly wage (payroll P4): the one in effect today and
+   * the next one set. Null when none is set, or the database has no wages yet.
+   */
+  ownWage: WageNow | null;
   /** Someone from ConceptApp is looking; nothing can be pressed. */
   viewOnly: boolean;
 };

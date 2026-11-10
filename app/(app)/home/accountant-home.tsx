@@ -9,6 +9,7 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { PersonAvatar } from "@ui/person-row";
 import {
+  Banknote,
   Bell,
   CircleCheck,
   Clock3,
@@ -220,6 +221,7 @@ function BeforeCard({
           key: "ownerOnly",
           icon: <Clock3 />,
           text: tPay("ownerOnly", { count: pay.before.ownerOnly }),
+          href,
         }
       : null,
     pay.before.waiting > 0
@@ -227,6 +229,7 @@ function BeforeCard({
           key: "waiting",
           icon: <Clock3 />,
           text: tPay("waiting", { count: pay.before.waiting }),
+          href,
         }
       : null,
     pay.before.open > 0
@@ -234,6 +237,7 @@ function BeforeCard({
           key: "open",
           icon: <Clock3 />,
           text: tPay("open", { count: pay.before.open }),
+          href,
         }
       : null,
     pay.before.corrected > 0
@@ -241,6 +245,16 @@ function BeforeCard({
           key: "corrected",
           icon: <PencilLine />,
           text: tPay("corrected", { count: pay.before.corrected }),
+          href,
+        }
+      : null,
+    // Leads to the month with only them listed.
+    pay.before.noWage > 0
+      ? {
+          key: "noWage",
+          icon: <Banknote />,
+          text: tPay("noWage", { count: pay.before.noWage }),
+          href: `${href}&show=noWage`,
         }
       : null,
   ].filter((row) => row !== null);
@@ -251,7 +265,7 @@ function BeforeCard({
           {rows.map((row) => (
             <ListRow
               key={row.key}
-              href={href}
+              href={row.href}
               leading={row.icon}
               title={row.text}
             />

@@ -1,5 +1,6 @@
 import { timeIn } from "@domain/shabbat";
 import { clockStatus } from "@domain/time-clock";
+import type { WageNow } from "@domain/wages";
 import { Card } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
@@ -10,6 +11,7 @@ import { type AppWording, translator } from "../wording";
 import { ClockPanel } from "./clock-panel";
 import type { ClockActions, ClockData, ClockPaths } from "./clock-types";
 import { HoursCount } from "./hours-count";
+import { useFullDate, useShekels } from "./pay/pay-parts";
 import { ShiftList } from "./shift-list";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -80,6 +82,12 @@ export function ClockView({
             </PageSection>
           ) : null}
 
+          {data.ownWage ? (
+            <ListGroup>
+              <OwnWage wage={data.ownWage} wording={wording} />
+            </ListGroup>
+          ) : null}
+
           {data.team || data.payroll ? (
             <ListGroup>
               {data.punch.required && data.punch.canShowCode ? (
@@ -139,6 +147,41 @@ function headerLine(data: ClockData, wording: AppWording): ReactNode {
   }
   if (scheduling) return t("noShift");
   return data.punch.needsCode ? null : t("idle");
+}
+
+/**
+ * The person's own hourly wage, and nobody else's: the one in effect today
+ * from its day, and the next one when one is set (or that one alone, when
+ * it's the first).
+ */
+function OwnWage({ wage, wording }: { wage: WageNow; wording: AppWording }) {
+  const t = translator(wording, "app.clock.ownWage");
+  const shekels = useShekels();
+  const fullDate = useFullDate();
+  const shown = wage.current ?? wage.next;
+  if (!shown) return null;
+  const later = wage.current ? wage.next : null;
+  return (
+    <ListRow
+      title={t.rich("title", { ltr, amount: shekels(shown.agorot) })}
+      subtitle={
+        <>
+          <span className="block">
+            {t.rich("since", { ltr, date: fullDate(shown.from) })}
+          </span>
+          {later ? (
+            <span className="block">
+              {t.rich("next", {
+                ltr,
+                date: fullDate(later.from),
+                amount: shekels(later.agorot),
+              })}
+            </span>
+          ) : null}
+        </>
+      }
+    />
+  );
 }
 
 function Hours({

@@ -55,7 +55,8 @@ begin
   -- the next reset. Each person names the departments they are in, by their
   -- template's keys, as supabase/seed.sql does. The shop's managers hold pay
   -- access, as there, and the shop has its accountant. Both start with last
-  -- month's hours, with the same cases as there.
+  -- month's hours and the wages from the first of last month, with the same
+  -- cases as there.
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$
@@ -65,6 +66,9 @@ begin
       "template": "restaurant", "renews": false,
       "hours": { "fridays": false, "cases": [
         { "user_id": "10000000-0000-4000-a000-000000000105", "case": "night" }
+      ] },
+      "wages": { "manager": 4500, "worker": 3800, "cases": [
+        { "user_id": "10000000-0000-4000-a000-000000000105", "case": "none" }
       ] },
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000102", "role": "owner", "name": "אורי הדגמה" },
@@ -86,6 +90,9 @@ begin
         { "user_id": "10000000-0000-4000-a000-000000000109", "case": "saturday_night" },
         { "user_id": "10000000-0000-4000-a000-000000000109", "case": "without_code" },
         { "user_id": "10000000-0000-4000-a000-000000000111", "case": "evening" }
+      ] },
+      "wages": { "manager": 4500, "worker": 3800, "cases": [
+        { "user_id": "10000000-0000-4000-a000-000000000110", "case": "raise", "agorot": 3600 }
       ] },
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000106", "role": "owner", "name": "מיכל הדגמה" },

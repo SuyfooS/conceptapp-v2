@@ -1,10 +1,10 @@
 -- Demo businesses: the reset puts one back the way it starts (details,
--- template, people and their departments, the role grants it names, nothing
--- else left), a demo business
+-- template, people and their departments, the role grants and wages it names,
+-- nothing else left), a demo business
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(33);
+select plan(35);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -22,6 +22,7 @@ values ('6d000000-0000-4000-b000-000000000001', $json$
     "address": "Demo street 2", "shabbat_city": "haifa",
     "template": "retail", "renews": true,
     "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
+    "wages": { "manager": 4500, "worker": 3800 },
     "people": [
       { "user_id": "6d000000-0000-4000-a000-00000000000a", "role": "owner", "name": "Owner A" },
       { "user_id": "6d000000-0000-4000-a000-00000000000b", "role": "manager", "name": "Manager B", "departments": ["floor"] },
@@ -110,6 +111,15 @@ select results_eq(
   $$values ('manager'::text, 'clock.payroll'::text, null::uuid)$$,
   'and the pay access its definition gives its managers (20261110000300_payroll_access.sql)'
 );
+select results_eq(
+  $$select user_id, hourly_agorot from public.member_wages
+    where business_id = '6d000000-0000-4000-b000-000000000001' order by user_id$$,
+  $$values
+    ('6d000000-0000-4000-a000-00000000000b'::uuid, 4500),
+    ('6d000000-0000-4000-a000-00000000000c'::uuid, 3800),
+    ('6d000000-0000-4000-a000-00000000000d'::uuid, 3800)$$,
+  'and the wages its definition gives its manager and workers, none for the owner (20261110000500_hourly_wages.sql)'
+);
 
 -- The example lists (20261109000700_lists_on.sql): the manager sends the
 -- template's opening list to a worker it is for, with two checks done by them,
@@ -190,6 +200,13 @@ update public.business_modules set settings = '{}'
 where business_id = '6d000000-0000-4000-b000-000000000001' and module_key = 'scheduling';
 insert into public.invites (business_id, phone, role, token_hash)
 values ('6d000000-0000-4000-b000-000000000001', '+972500000979', 'worker', 'demo-reset-test');
+-- Their wage goes first: wages are kept, and only a purge that names the
+-- business deletes one (20261110000500_hourly_wages.sql).
+select set_config('ca.records_purge', '6d000000-0000-4000-b000-000000000001', true);
+delete from public.member_wages
+where business_id = '6d000000-0000-4000-b000-000000000001'
+  and user_id = '6d000000-0000-4000-a000-00000000000c';
+select set_config('ca.records_purge', '', true);
 delete from public.memberships
 where business_id = '6d000000-0000-4000-b000-000000000001'
   and user_id = '6d000000-0000-4000-a000-00000000000c';
@@ -203,6 +220,9 @@ select public.set_role_permission('6d000000-0000-4000-a000-00000000000a',
   '6d000000-0000-4000-b000-000000000001', 'manager', 'clock.payroll', false);
 select public.set_role_permission('6d000000-0000-4000-a000-00000000000a',
   '6d000000-0000-4000-b000-000000000001', 'worker', 'clock.payroll', true);
+select public.set_hourly_wage('6d000000-0000-4000-a000-00000000000a',
+  '6d000000-0000-4000-b000-000000000001', '6d000000-0000-4000-a000-00000000000d',
+  4100, date_trunc('month', now())::date, 'A visitor''s raise');
 insert into public.lists (business_id, name, origin, recipient_kind, recipient_role, opens_at)
 values ('6d000000-0000-4000-b000-000000000001', 'A visitor''s list', 'sent', 'role', 'worker', now());
 -- Hours, a break and the log's rows, which nothing but the reset's purge
@@ -275,6 +295,15 @@ select results_eq(
     where business_id = '6d000000-0000-4000-b000-000000000001'$$,
   $$values ('manager'::text, 'clock.payroll'::text)$$,
   'and the pay access the visitor switched, as it starts'
+);
+select results_eq(
+  $$select user_id, hourly_agorot, note from public.member_wages
+    where business_id = '6d000000-0000-4000-b000-000000000001' order by user_id$$,
+  $$values
+    ('6d000000-0000-4000-a000-00000000000b'::uuid, 4500, null::text),
+    ('6d000000-0000-4000-a000-00000000000c'::uuid, 3800, null::text),
+    ('6d000000-0000-4000-a000-00000000000d'::uuid, 3800, null::text)$$,
+  'and the wages as they start, the visitor''s raise gone'
 );
 select is(
   (select string_agg(action, ',' order by id) from public.audit_log

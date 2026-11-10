@@ -9,4 +9,8 @@ The profile's checks (Israeli ID, passports and other documents, banks and
 Masav's account rules, the pasted-number splitter, address) take their rules
 from dated lists: a new source is a new date and a new entry, by PR.
 
+Payroll keeps money in whole agorot (`money.ts`), and the minimum wage is a
+dated list too (`minimum-wage.ts`, every figure as published): each April's is
+a new entry, with its twin in `public.minimum_wages`.
+
 Import as `@domain/<file>`.

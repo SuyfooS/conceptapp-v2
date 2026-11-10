@@ -1,7 +1,7 @@
 // Mock rows for the pay screens' demo: October 2026 at the demo restaurant,
-// to the minute. They stand in for database data (names, the reasons a
-// manager wrote), so their Hebrew stays here; tooling/hebrew-literals.ts
-// allows this file.
+// to the minute, with each person's hourly wage. They stand in for database
+// data (names, the reasons and notes a manager wrote), so their Hebrew stays
+// here; tooling/hebrew-literals.ts allows this file.
 
 import { addDays, weekdayOf } from "@domain/availability";
 import {
@@ -10,17 +10,28 @@ import {
   type PayDay,
   type PayTotals,
 } from "@domain/pay-month";
+import {
+  firstOfMonth,
+  monthWage,
+  type WageRow,
+  wageFromBounds,
+  wageHistory,
+  wageNow,
+} from "@domain/wages";
 import type { PayHomeData } from "../../../../(app)/clock/pay/pay";
 import type {
   PayMonthData,
   PayPaths,
   PayPerson,
   PayPersonData,
+  PersonWage,
 } from "../../../../(app)/clock/pay/pay-types";
 import { portraits } from "../../../portraits";
 
 const MONTH = "2026-10";
 const CURRENT = "2026-11";
+/** The demo's today: wages are shown as they stand on it. */
+const TODAY = "2026-11-10";
 
 export const demoPayPaths: PayPaths = {
   pay: "/design/shell/clock/pay",
@@ -80,6 +91,57 @@ function totalsOf(days: readonly PayDay[]): PayTotals {
   };
 }
 
+const URI = "69000000-0000-4000-a000-0000000000a1";
+const SHIRAN = "69000000-0000-4000-a000-0000000000a2";
+/** Who set the demo's wages, by id. */
+const setters: Record<string, string> = {
+  [URI]: "אורי הדגמה",
+  [SHIRAN]: "שירן הדגמה",
+};
+
+const wage = (
+  id: string,
+  agorot: number,
+  from: string,
+  setAt: string,
+  setBy: string | null,
+  note: string | null = null,
+): WageRow => ({ id, agorot, from, setAt, setBy, note });
+
+/** Each person's wages, as the database would give them. */
+const wages: Record<string, WageRow[]> = {
+  // A typo fixed the same day, and a raise set for December.
+  noa: [
+    wage("w-noa-1", 3880, "2026-10-01", "2026-09-28T07:00:00.000Z", URI),
+    wage(
+      "w-noa-2",
+      3800,
+      "2026-10-01",
+      "2026-09-28T07:05:00.000Z",
+      URI,
+      "תיקון הקלדה",
+    ),
+    wage("w-noa-3", 4000, "2026-12-01", "2026-11-08T08:00:00.000Z", URI),
+  ],
+  shiran: [
+    wage("w-shiran", 4500, "2026-09-01", "2026-08-30T08:00:00.000Z", URI),
+  ],
+  // A raise in the middle of October.
+  yoav: [
+    wage("w-yoav-1", 3600, "2026-09-01", "2026-08-30T08:00:00.000Z", URI),
+    wage(
+      "w-yoav-2",
+      3800,
+      "2026-10-15",
+      "2026-10-14T08:00:00.000Z",
+      SHIRAN,
+      "העלאה אחרי חצי שנה",
+    ),
+  ],
+  // She left before anyone set hers: her October has nothing to pay it by.
+  maya: [],
+};
+
 const person = (
   userId: string,
   name: string,
@@ -94,8 +156,30 @@ const person = (
   former: false,
   totals: totalsOf(days),
   days,
+  wage: monthWage(
+    wages[userId] ?? [],
+    MONTH,
+    days.map((day) => day.date),
+  ),
   ...more,
 });
+
+/** The person page's wage, as it stands on the demo's today. */
+function personWage(userId: string): PersonWage {
+  const rows = wages[userId] ?? [];
+  const { earliest, latest } = wageFromBounds(TODAY);
+  return {
+    ...wageNow(rows, TODAY),
+    history: wageHistory(rows).map((row) => ({
+      ...row,
+      setByName: row.setBy ? (setters[row.setBy] ?? null) : null,
+      setOn: row.setAt.slice(0, 10),
+    })),
+    can: "set",
+    today: TODAY,
+    from: { initial: firstOfMonth(TODAY), earliest, latest },
+  };
+}
 
 const people: PayPerson[] = [
   person(
@@ -152,22 +236,37 @@ const people: PayPerson[] = [
 ];
 
 const all = addTotals(people.map((row) => row.totals));
+const noWage = people.filter((row) => row.wage?.missing).length;
 
-/** Everyone's October, with Noa beside the list on a tablet unless asked. */
-export function demoPayMonth(person?: string): PayMonthData {
+/**
+ * Everyone's October, with Noa beside the list on a tablet unless asked;
+ * `show` "noWage" lists only those whose shifts have no wage.
+ */
+export function demoPayMonth(person?: string, show?: string): PayMonthData {
+  const filter = show === "noWage" && noWage > 0 ? "noWage" : null;
+  const shown = filter ? people.filter((row) => row.wage?.missing) : people;
   return {
     month: MONTH,
     currentMonth: CURRENT,
     minutes: all.minutes,
-    people,
+    people: shown,
+    counts: {
+      withHours: people.filter((row) => row.totals.shifts > 0).length,
+      toCheck: all.waiting + all.open,
+    },
     before: {
       ownerOnly: all.ownerOnly,
       waiting: all.waiting - all.ownerOnly,
       open: all.open,
       corrected: all.corrected,
+      noWage,
       rounding: false,
     },
-    selected: people.find((row) => row.userId === person)?.userId ?? "noa",
+    filter,
+    selected:
+      shown.find((row) => row.userId === person)?.userId ??
+      shown[0]?.userId ??
+      null,
     back: "team",
     fixes: true,
   };
@@ -177,13 +276,15 @@ export function demoPayMonth(person?: string): PayMonthData {
 export function demoPayPerson(userId: string): PayPersonData | null {
   const row = people.find((one) => one.userId === userId);
   if (!row) return null;
-  const { days, totals, ...who } = row;
+  const { days, totals, wage: monthWageOf, ...who } = row;
   return {
     person: who,
     month: MONTH,
     currentMonth: CURRENT,
     totals,
     days,
+    monthWage: monthWageOf,
+    wage: personWage(userId),
     fixes: true,
   };
 }
@@ -218,6 +319,7 @@ export const demoPayHomeEmpty: PayHomeData = {
     waiting: 0,
     open: 0,
     corrected: 0,
+    noWage: 0,
     rounding: false,
   },
   earlier: demoPayHome.earlier.map((month) => ({ ...month, minutes: 0 })),

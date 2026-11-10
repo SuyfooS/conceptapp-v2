@@ -1358,6 +1358,11 @@
         "fullScreen": "Full screen",
         "exitFullScreen": "Exit full screen",
         "viewOnly": "No code is shown in view-only mode."
+      },
+      "ownWage": {
+        "title": "Your hourly wage: <ltr>{amount}</ltr>",
+        "since": "From <ltr>{date}</ltr>",
+        "next": "From <ltr>{date}</ltr>: <ltr>{amount}</ltr>"
       }
     },
     "pay": {
@@ -1383,7 +1388,9 @@
         "open": "{count, plural, one {One shift is still open} other {# shifts are still open}}",
         "corrected": "{count, plural, one {One shift was corrected} other {# shifts were corrected}}",
         "rounding": "These hours are exact to the minute, even though the clock rounds",
-        "fix": "Approve and fix them in team hours"
+        "fix": "Approve and fix them in team hours",
+        "noWage": "{count, plural, one {One person's shifts have no hourly wage} other {# people's shifts have no hourly wage}}",
+        "showNoWage": "Show the people without an hourly wage"
       },
       "columns": {
         "name": "Name",
@@ -1393,7 +1400,8 @@
         "breaks": "Unpaid breaks",
         "corrected": "Corrected",
         "waiting": "Waiting",
-        "toCheck": "To check"
+        "toCheck": "To check",
+        "wage": "Hourly wage"
       },
       "minutes": "{minutes} min",
       "none": "—",
@@ -1420,7 +1428,8 @@
         "empty": {
           "title": "No shifts in {month}",
           "body": "{form, select, f {Once she clocks in} m {Once he clocks in} other {Once they clock in}}, the shifts show here. The arrows beside the month's name lead to other months."
-        }
+        },
+        "wage": "Hourly wage in {month}"
       },
       "day": {
         "times": "<ltr>{in}–{out}</ltr>",
@@ -1461,6 +1470,81 @@
       "sheet": {
         "close": "Close",
         "page": "{name}'s page"
+      },
+      "filter": {
+        "noWage": "Showing only the people whose shifts have no hourly wage.",
+        "all": "Show everyone"
+      },
+      "wage": {
+        "title": "Hourly wage",
+        "since": "From <ltr>{date}</ltr>",
+        "next": "And from <ltr>{date}</ltr>: <ltr>{amount}</ltr>",
+        "none": "No hourly wage set yet",
+        "noneHint": "Without an hourly wage there is nothing to pay the hours by.",
+        "perHour": "<ltr>{amount}</ltr> an hour",
+        "spanFrom": "From <ltr>{date}</ltr>: <ltr>{amount}</ltr>",
+        "missing": "No hourly wage",
+        "missingBefore": "No hourly wage before <ltr>{date}</ltr>",
+        "notSet": "Not set",
+        "change": "Change the hourly wage",
+        "set": "Set an hourly wage",
+        "own": "Someone else in the business sets your hourly wage.",
+        "ownOwner": "The business's other owners set your hourly wage.",
+        "soleOwner": "There is no other owner in the business to set your hourly wage, so it isn't set here.",
+        "ownerOnly": "Only an owner sets an owner's wage.",
+        "viewOnly": "In a view you see the wage, and don't change it.",
+        "warning": "{band, select, age17 {Below the minimum wage at 17} age16 {Below the minimum wage at 16} under16 {Below the minimum wage under 16} other {Below the minimum wage}} from <ltr>{from}</ltr> (<ltr>{minimum}</ltr>). You can save it anyway.",
+        "warningNow": "Today's hourly wage is {band, select, age17 {below the minimum wage at 17} age16 {below the minimum wage at 16} under16 {below the minimum wage under 16} other {below the minimum wage}} in effect from <ltr>{from}</ltr> (<ltr>{minimum}</ltr>).",
+        "warningNext": "The wage from <ltr>{date}</ltr> is {band, select, age17 {below the minimum wage at 17} age16 {below the minimum wage at 16} under16 {below the minimum wage under 16} other {below the minimum wage}} in effect from <ltr>{from}</ltr> (<ltr>{minimum}</ltr>).",
+        "done": "The hourly wage was saved, from {date}.",
+        "sheet": {
+          "title": "Hourly wage for {name}",
+          "subtitle": "The new wage applies from the day you choose. The one before stays in the history.",
+          "amount": "Hourly wage, in shekels",
+          "from": "From",
+          "fromHint": "From the start of last month to a year ahead.",
+          "note": "Note, optional",
+          "noteHint": "Shown in the history and in the activity log.",
+          "save": "Save the wage from {date}",
+          "close": "Close",
+          "saveNoDate": "Save the wage"
+        },
+        "errors": {
+          "amount": {
+            "invalid": "Write an amount in shekels, such as 38 or 38.50.",
+            "zero": "The wage has to be more than zero.",
+            "tooHigh": "An hourly wage is at most ₪1,000."
+          },
+          "from": {
+            "invalid": "Choose a day.",
+            "tooEarly": "From the start of last month, not before.",
+            "tooLate": "Up to a year ahead, not more."
+          },
+          "note": {
+            "tooLong": "The note is at most 200 characters."
+          }
+        },
+        "failure": {
+          "ownWage": "Someone else in the business sets your hourly wage.",
+          "ownerOnly": "Only an owner sets an owner's wage.",
+          "noAccess": "You have no access to pay in this business.",
+          "notInTeam": "This person isn't in the business's team.",
+          "notStaff": "This role has no hours in the business, so no hourly wage either.",
+          "tooEarly": "From the start of last month, not before.",
+          "tooLate": "Up to a year ahead, not more.",
+          "invalid": "The wage wasn't saved. Check the amount and the day.",
+          "viewOnly": "In a view the wage can't be changed.",
+          "failed": "The wage wasn't saved. Check the connection and try again."
+        },
+        "history": {
+          "title": "Wage history",
+          "row": "<ltr>{amount}</ltr> from <ltr>{date}</ltr>",
+          "setBy": "Set by {name}, <ltr>{date}</ltr>",
+          "setOn": "Set on <ltr>{date}</ltr>",
+          "superseded": "Corrected",
+          "note": "Note: {note}"
+        },
+        "stale": "The minimum wage here is from <ltr>{from}</ltr>. If a new one was published since, the warning doesn't know it yet."
       }
     },
     "manage": {
@@ -1718,6 +1802,12 @@
               "role": "{role, select, manager {from managers} worker {from workers} other {from a role}}",
               "person": "from {person}"
             }
+          },
+          "wage": {
+            "set": "Hourly wage for {person}: <ltr>{amount}</ltr> from <ltr>{date}</ltr>",
+            "label": "Hourly wage",
+            "belowMinimum": "Below that day's minimum wage (<ltr>{minimum}</ltr>)",
+            "note": "Note: {note}"
           }
         }
       },
@@ -2011,6 +2101,13 @@
           "test": {
             "title": "Test notification",
             "note": "This is how notifications arrive"
+          }
+        },
+        "pay": {
+          "wage_set": {
+            "title": "Your hourly wage was updated",
+            "note": "From <ltr>{since}</ltr>.",
+            "noteUndated": "The new wage applies from the day it was set for."
           }
         }
       },

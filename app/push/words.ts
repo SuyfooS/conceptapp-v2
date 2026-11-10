@@ -8,6 +8,7 @@ import type {
 } from "@domain/notifications";
 import type { PushNotice } from "@domain/push";
 import { timeIn } from "@domain/shabbat";
+import { dayMonthYear } from "@domain/wages";
 import { type AppWording, translator } from "@/app/(app)/wording";
 import { defaultLocale, direction } from "@/i18n/config";
 
@@ -164,6 +165,19 @@ export function pushWords(
             title: t("kinds.access.pay_granted.title"),
             ...body(t("kinds.access.pay_granted.note")),
           };
+    case "pay.wage_set":
+      // The day it takes effect, never the amount.
+      return {
+        title: t("kinds.pay.wage_set.title"),
+        ...body(
+          line.since
+            ? t.markup("kinds.pay.wage_set.note", {
+                ltr: isolate,
+                since: dayMonthYear(line.since),
+              })
+            : t("kinds.pay.wage_set.noteUndated"),
+        ),
+      };
     case "push.test":
       return {
         title: t("kinds.push.test.title"),
