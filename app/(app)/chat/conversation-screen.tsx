@@ -764,12 +764,17 @@ export function ConversationScreen(props: Props) {
     return () => clearTimeout(timer);
   }, [notice]);
 
-  // What the server has now shows as itself.
+  // What the server has now shows as itself, and a picture the phone held
+  // for it is let go.
   useEffect(() => {
     const shown = shownMessages(messages);
     setOutgoing((list) => {
       const next = stillOutgoing(list, shown);
-      return next.length === list.length ? list : next;
+      if (next.length === list.length) return list;
+      for (const item of list) {
+        if (!next.includes(item)) pictures.current.delete(item.draft);
+      }
+      return next;
     });
   }, [messages]);
 
@@ -1360,20 +1365,18 @@ export function ConversationScreen(props: Props) {
   /**
    * A message's picture: its thumbnail, opening the whole picture; the line
    * that its file is no longer kept; or, where the answer brought no address
-   * (an answer from before pictures), that it can't be shown now. One sent
-   * from here shows from the phone, never fetched again.
+   * (an answer from before pictures), that it can't be shown now. The server's
+   * copy always shows from its own address, the one everyone in the
+   * conversation reads (kept a week in the browser's private cache): the
+   * phone's copy is only for while it is on its way (outgoingContent), so the
+   * picture never swaps source on whether an answer carried its draft.
    */
   function imageOf(message: ChatSyncMessage): MessageImage {
     if (message.fileGone) {
       return { kind: "gone", label: t("message.fileGone") };
     }
-    const local = message.draft
-      ? pictures.current.get(message.draft.toLowerCase())
-      : undefined;
-    const thumb = message.thumbSrc
-      ? (local?.preview ?? message.thumbSrc)
-      : null;
-    const whole = message.fileSrc ? (local?.whole ?? message.fileSrc) : null;
+    const thumb = message.thumbSrc ?? null;
+    const whole = message.fileSrc ?? null;
     if (!thumb || !whole) {
       return { kind: "gone", label: t("image.unavailable") };
     }

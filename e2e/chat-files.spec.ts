@@ -197,8 +197,16 @@ test("a phone's photo goes as a thumbnail, opens whole, keeps nothing from the c
   expect(file.filePath).toBe(file.thumbPath.replace("-s.webp", ".webp"));
 
   // Drawn again from the server: the thumbnail, from the app's own route.
+  // The route answers the sender's own session first, as the picture on
+  // screen will ask it: a refusal here says so, before the bubble turns it
+  // into "try again".
   await page.goto(`/chat/${conversation}`);
   await expect(log(page).getByText(WORDS)).toBeVisible();
+  const first = await page.request.get(thumbSrc);
+  expect(
+    first.status(),
+    `the thumbnail answered ${first.status()} (${first.headers()["content-type"] ?? "no type"})`,
+  ).toBe(200);
   await expect(served(page)).toHaveCount(1);
   expect(await served(page).getAttribute("src")).toBe(thumbSrc);
   await expectCleanPage(page);
