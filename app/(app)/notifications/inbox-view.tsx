@@ -22,6 +22,7 @@ import {
   Bell,
   CalendarDays,
   ClipboardCheck,
+  FileText,
   ListChecks,
   MessageCircle,
   Repeat,
@@ -50,6 +51,7 @@ const GROUP_ICONS: Record<NotificationGroup, ReactNode> = {
   team: <Users />,
   lists: <ListChecks />,
   chat: <MessageCircle />,
+  documents: <FileText />,
 };
 
 /** A week is long enough to say "3 days ago"; older lines say their date. */
@@ -120,6 +122,7 @@ export function InboxView({
 }) {
   const t = translator(wording, "app.notifications");
   const tDays = translator(wording, "app.availability.weekdays");
+  const tDocuments = translator(wording, "app.chat.documents");
   const format = useFormatter();
   const nowDate = new Date(now);
 
@@ -461,6 +464,42 @@ export function InboxView({
                       group: line.chat.name,
                     })
                   : t("kinds.chat.announcement.bodyPlain"),
+          ],
+        };
+      // A document's lines (chat C6): who sent it, and here, behind
+      // sign-in, its category, read from the document itself under the
+      // reader's own session; nothing of it once they no longer read it.
+      // The phone never says the category.
+      case "documents.received":
+        return {
+          title: t("kinds.documents.received.title", { name: who(line.from) }),
+          shift: null,
+          notes: [
+            ...(line.category
+              ? [tDocuments(`categories.${line.category}`)]
+              : []),
+            ...(settled ? [t("kinds.documents.received.settledNote")] : []),
+          ],
+        };
+      case "documents.sent":
+        return {
+          title: t("kinds.documents.sent.title"),
+          shift: null,
+          notes: line.category
+            ? [tDocuments(`categories.${line.category}`)]
+            : [],
+        };
+      case "documents.to_confirm":
+        return {
+          title: t("kinds.documents.to_confirm.title"),
+          shift: null,
+          notes: [
+            ...(line.category
+              ? [tDocuments(`categories.${line.category}`)]
+              : []),
+            settled
+              ? t("kinds.documents.to_confirm.settledNote")
+              : t("kinds.documents.to_confirm.body"),
           ],
         };
       case "push.test":

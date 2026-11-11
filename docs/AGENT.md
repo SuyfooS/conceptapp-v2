@@ -275,8 +275,20 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   10 minutes within its space, and a place let go keeps a 1-byte tombstone so its signed
   upload can't write there again), sent once the server
   read their first KB (`isPdf`), and served by `/chat-files` as a download only
-  (`attachment`, the name in UTF-8 with an ASCII fallback). Next: C6, documents in the
-  database.
+  (`attachment`, the name in UTF-8 with an ASCII fallback). C6 is built too, in the
+  database only (`20261111000700_documents.sql`, Orel's answers of 11 November on #1):
+  official documents both ways (a worker's to the business, read by them and the office,
+  the `clock.payroll` holders; the business's to people, asking for "קראתי" or not), kept
+  forever (no delete but the demo reset's purge, never evicted for space: past
+  `documentSpaceMb`, 50 MB, new ones are refused), a file removed only by its sender in 10
+  minutes or by the office with a reason from a list, with 10 minutes to undo; lines and log
+  rows with ids and codes only, the log's `document.*` rows for the office alone; the bucket
+  `documents`; three samples in each demo; `@domain/documents`, `@db/documents`, the
+  `documents.*` kinds and the activity cases. Next: C7, documents on screen
+  (`/chat/documents`, the send screen, a document's page, the accountant's tab, the
+  attach sheet's third row, `/document-files` with the sample files in
+  `public/demo-documents/`, and the office's "הורדת כל המסמכים" with its one line that the
+  business should keep its own copy, since the free plan has no backups).
   A private chat has no branch
   for owners, managers, the team or a view session, anywhere: a change that adds one
   is refused (see "Never").

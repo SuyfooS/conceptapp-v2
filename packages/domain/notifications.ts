@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { isUuid } from "./activity";
+import { type DocumentCategory, isDocumentCategory } from "./documents";
 import { atLeast, isStaff, type ModuleKey, type Role } from "./modules";
 
 /**
@@ -20,6 +21,7 @@ export const NOTIFICATION_GROUPS = [
   "team",
   "lists",
   "chat",
+  "documents",
 ] as const;
 
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
@@ -43,9 +45,10 @@ type KindInfo = {
    * Leads to the thing itself when the line names it: "list" opens
    * `/lists/<params.list>`, "payMonth" the hours for payroll of
    * `params.month`, "conversation" the chat `/chat/<params.conversation>`,
-   * and `href` is where it leads otherwise.
+   * "document" the document `/chat/documents/<params.document>` (C7's
+   * screen), and `href` is where it leads otherwise.
    */
-  to?: "list" | "payMonth" | "conversation";
+  to?: "list" | "payMonth" | "conversation" | "document";
   /**
    * Shown in the bell and the inbox, and counted there: all but a chat's own
    * lines, which the Chat tab counts instead (as chats with unread messages).
@@ -286,6 +289,48 @@ export const NOTIFICATION_KINDS = {
     to: "conversation",
     staffOnly: true,
   },
+  // Official documents (chat C6): to the office (pay holders, never a
+  // manager without pay access), a document someone on the staff sent the
+  // business; to each recipient, one sent to them, asking for "קראתי" or
+  // not. Their params hold the document's id and who sent it, never its
+  // category, title or file: a line outlives its reader's pay access, and a
+  // lock screen is seen by whoever is near the phone. The inbox names the
+  // category from the document itself, read under the reader's own session
+  // (`documents` in the lookups), and says "מסמך" to whoever no longer reads
+  // it. The office's first opening settles documents.received for all of
+  // it, and losing pay access one's own; a recipient's opening settles their
+  // documents.sent, and their "קראתי" their documents.to_confirm; removing
+  // the document's file settles every line about it.
+  "documents.received": {
+    group: "documents",
+    module: "chat",
+    minRole: "worker",
+    needsAction: true,
+    href: "/chat/documents",
+    to: "document",
+    // Settled when the reader lost pay access, too: the document's screen
+    // is then not found for them.
+    settledHref: "/notifications",
+  },
+  "documents.sent": {
+    group: "documents",
+    module: "chat",
+    minRole: "worker",
+    needsAction: false,
+    href: "/chat/documents",
+    to: "document",
+    // Only people on the staff are sent documents.
+    staffOnly: true,
+  },
+  "documents.to_confirm": {
+    group: "documents",
+    module: "chat",
+    minRole: "worker",
+    needsAction: true,
+    href: "/chat/documents",
+    to: "document",
+    staffOnly: true,
+  },
   // "Send a test notification", from the phone switch: to the person alone.
   "push.test": {
     group: null,
@@ -335,6 +380,12 @@ export function linkFor(
     const chat = z.object({ conversation: z.string() }).safeParse(params);
     if (chat.success && isUuid(chat.data.conversation)) {
       return `/chat/${chat.data.conversation.toLowerCase()}`;
+    }
+  }
+  if (info.to === "document") {
+    const document = z.object({ document: z.string() }).safeParse(params);
+    if (document.success && isUuid(document.data.document)) {
+      return `/chat/documents/${document.data.document.toLowerCase()}`;
     }
   }
   if (info.to === "payMonth") {
@@ -535,6 +586,12 @@ export type NotificationLookups = {
    * Left out where no line needs them.
    */
   chats?: ReadonlyMap<string, NotificationChat>;
+  /**
+   * The categories of the documents lines name, by document: those the
+   * reader still reads, for the inbox alone. Never read for a phone: a lock
+   * screen never names a category ("אישור מחלה").
+   */
+  documents?: ReadonlyMap<string, DocumentCategory>;
 };
 
 /** Someone a line names, as its reader may know them. */
@@ -682,6 +739,19 @@ export type NotificationLine =
       from: NotificationPerson;
       chat: NotificationChat | null;
     }
+  | {
+      /**
+       * A document: to the business (to the office, from `from`), or to the
+       * reader, asking for "קראתי" (`to_confirm`) or not (`sent`).
+       */
+      kind: "documents.received" | "documents.sent" | "documents.to_confirm";
+      from: NotificationPerson;
+      /**
+       * Its category, as the reader may still read the document; null when
+       * they no longer do, or nobody looked it up (a phone never does).
+       */
+      category: DocumentCategory | null;
+    }
   | { kind: "push.test" }
   | { kind: "other" };
 
@@ -751,6 +821,10 @@ const schemas = {
     from: uuid.nullable().catch(null),
     count: z.int().min(1).max(99).catch(1),
   }),
+  document: z.object({
+    document: uuid,
+    from: uuid.nullable().catch(null),
+  }),
 };
 
 function personOf(
@@ -762,6 +836,15 @@ function personOf(
   return member.active
     ? { kind: "member", name: member.name }
     : { kind: "former" };
+}
+
+/** The category of a document a line names, as the reader may still read it. */
+function categoryOf(
+  document: string,
+  lookups: NotificationLookups,
+): DocumentCategory | null {
+  const category = lookups.documents?.get(document.toLowerCase());
+  return isDocumentCategory(category) ? category : null;
 }
 
 /** The group a chat line names, as the reader may know it. */
@@ -938,6 +1021,18 @@ function lineOf(
           }
         : other;
     }
+    case "documents.received":
+    case "documents.sent":
+    case "documents.to_confirm": {
+      const params = read(schemas.document);
+      return params
+        ? {
+            kind,
+            from: personOf(params.from, lookups),
+            category: categoryOf(params.document, lookups),
+          }
+        : other;
+    }
     case "access.pay_granted":
     case "push.test":
       return { kind };
@@ -986,6 +1081,24 @@ export function notificationChats(rows: readonly NotificationRow[]): string[] {
     if (isUuid(conversation)) chats.add(conversation.toLowerCase());
   }
   return [...chats];
+}
+
+/**
+ * The documents a page of rows names (a document's line), each one safe to
+ * look up: for the inbox to name their categories, under the reader's own
+ * session. A phone's lines are never looked up this way.
+ */
+export function notificationDocuments(
+  rows: readonly NotificationRow[],
+): string[] {
+  const documents = new Set<string>();
+  for (const row of rows) {
+    if (!row.kind.startsWith("documents.")) continue;
+    const params = z.object({ document: z.unknown() }).safeParse(row.params);
+    const document = params.success ? params.data.document : null;
+    if (isUuid(document)) documents.add(document.toLowerCase());
+  }
+  return [...documents];
 }
 
 /** The inbox's lines from their rows, in the order given. */

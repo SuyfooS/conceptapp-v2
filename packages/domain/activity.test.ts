@@ -1005,6 +1005,64 @@ describe("buildActivity: each action", () => {
     });
   });
 
+  it("reads a document sent, opened, removed and put back, never what it is (chat C6)", () => {
+    // The ids and codes the database writes; nothing else is read.
+    expect(
+      lineOf(
+        row("document.send", {
+          document: GONE,
+          direction: "to_people",
+          recipients: 3,
+          category: "payslip",
+        }),
+      ),
+    ).toEqual({
+      action: "document.send",
+      direction: "to_people",
+      recipients: 3,
+    });
+    expect(
+      lineOf(
+        row("document.send", {
+          document: GONE,
+          direction: "from_person",
+          recipients: 7,
+        }),
+      ),
+    ).toEqual({
+      action: "document.send",
+      direction: "from_person",
+      recipients: 0,
+    });
+    expect(
+      lineOf(row("document.open", { document: GONE, person: YOAV }, NOA)),
+    ).toEqual({
+      action: "document.open",
+      person: { kind: "member", name: "Yoav" },
+    });
+    expect(
+      lineOf(row("document.open", { document: GONE, person: null })),
+    ).toEqual({ action: "document.open", person: null });
+    expect(
+      lineOf(row("document.remove", { document: GONE, reason: "wrong_file" })),
+    ).toEqual({ action: "document.remove", reason: "wrong_file" });
+    // A reason it doesn't know is no reason, never shown as written.
+    expect(
+      lineOf(row("document.remove", { document: GONE, reason: "her flu" })),
+    ).toEqual({ action: "document.remove", reason: null });
+    expect(lineOf(row("document.restore", { document: GONE }))).toEqual({
+      action: "document.restore",
+    });
+    for (const [action, details] of [
+      ["document.send", { document: GONE, direction: "both" }],
+      ["document.open", { person: NOA }],
+      ["document.remove", { reason: "duplicate" }],
+      ["document.restore", {}],
+    ] as const) {
+      expect(lineOf(row(action, details)), action).toEqual({ action: "other" });
+    }
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),
@@ -1326,6 +1384,21 @@ describe("activityRefs", () => {
       shifts: [SHIFT],
       swaps: [SWAP],
       departments: [KITCHEN, GONE],
+    });
+  });
+
+  it("looks up whose document the office opened, and never the document", () => {
+    expect(
+      activityRefs([
+        row("document.open", { document: GONE, person: YOAV }, NOA),
+        row("document.send", { document: SHIFT, direction: "to_people" }, NOA),
+      ]),
+    ).toEqual({
+      people: [NOA, YOAV],
+      invites: [],
+      shifts: [],
+      swaps: [],
+      departments: [],
     });
   });
 });

@@ -8,7 +8,7 @@
 -- by the server alone, and read by its own person alone. Fixed ids of its own;
 -- the seed's times are relative to now.
 begin;
-select plan(32);
+select plan(33);
 
 ------------------------------------------------------------------------------
 -- On everywhere (before anything of the test's own)
@@ -205,12 +205,36 @@ select is(
   0,
   'the seed writes no row of the log'
 );
+-- Chat lines only: the demo's sick note (20261111000700_documents.sql) is a
+-- line for the office, the accountant included.
 select is(
   (select count(*)::integer from public.notifications n
    where n.business_id = '87000000-0000-4000-b000-000000000001'
-     and n.user_id = '87000000-0000-4000-a000-000000000005'),
+     and n.user_id = '87000000-0000-4000-a000-000000000005'
+     and n.kind ~ '^chat\.'),
   0,
-  'and tells the accountant, who is in no chat, nothing'
+  'and tells the accountant, who is in no chat, nothing of it'
+);
+-- The demo's documents (C6), from the same people as the conversations, and
+-- the accountant: samples with the category's words, no note and no file.
+select results_eq(
+  $$select d.sample, d.author_id, d.title, d.note is null and d.file_path is null,
+      (select string_agg(r.person_id::text || '=' || (r.confirmed_at is not null)::text, ','
+         order by r.person_id)
+       from public.document_recipients r where r.document_id = d.id),
+      d.opened_by
+    from public.documents d
+    where d.business_id = '87000000-0000-4000-b000-000000000001'
+    order by d.sample collate "C"$$,
+  $$values
+    ('payslip'::text, '87000000-0000-4000-a000-000000000005'::uuid, 'תלוש שכר'::text, true,
+     '87000000-0000-4000-a000-000000000003=false'::text, null::uuid),
+    ('procedure'::text, '87000000-0000-4000-a000-000000000002'::uuid, 'נוהל'::text, true,
+     '87000000-0000-4000-a000-000000000001=false,87000000-0000-4000-a000-000000000003=false,87000000-0000-4000-a000-000000000004=true'::text,
+     null::uuid),
+    ('sick_note'::text, '87000000-0000-4000-a000-000000000003'::uuid, 'אישור מחלה'::text, true,
+     null::text, '87000000-0000-4000-a000-000000000001'::uuid)$$,
+  'the reset''s seed writes the demo''s documents: the accountant''s payslip to the first worker, the manager''s procedure to everyone else on the staff, confirmed by the second worker, and the first worker''s sick note, opened by the owner'
 );
 
 ------------------------------------------------------------------------------

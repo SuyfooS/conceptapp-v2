@@ -2397,6 +2397,15 @@
               "department": "the {name} group",
               "departmentUnknown": "a department's group"
             }
+          },
+          "document": {
+            "sendToBusiness": "Sent a document to the business",
+            "sendToPeople": "{count, plural, one {Sent a document to one person} other {Sent a document to # people}}",
+            "open": "Opened a document of {person}",
+            "openToPeople": "Opened a document the business sent",
+            "remove": "Deleted a document's file",
+            "reason": "Reason: {reason}",
+            "restore": "Put back a document's deleted file"
           }
         }
       },
@@ -2605,6 +2614,10 @@
         "chat": {
           "name": "Chat",
           "hint": "New messages in your chats and groups, without what they say, and messages from management"
+        },
+        "documents": {
+          "name": "Documents",
+          "hint": "New documents for you, and documents to confirm you read"
         }
       },
       "time": {
@@ -2762,6 +2775,20 @@
             "bodyTeam": "In the whole team's group. Please confirm you read it",
             "bodyPlain": "Please confirm you read it",
             "settledNote": "No longer waiting for you"
+          }
+        },
+        "documents": {
+          "received": {
+            "title": "A new document from {name}",
+            "settledNote": "No longer waiting for you"
+          },
+          "sent": {
+            "title": "A new document from the business"
+          },
+          "to_confirm": {
+            "title": "A new document from the business",
+            "body": "Please confirm you read it",
+            "settledNote": "No longer waiting for your confirmation"
           }
         }
       },
@@ -3658,6 +3685,23 @@
         "notYet": "PDFs can't be sent here yet. The message itself can still be sent",
         "failed": "The file wasn't sent. You can try again",
         "cancelled": "Sending the file was stopped"
+      },
+      "documents": {
+        "categories": {
+          "sick_note": "Sick note",
+          "payslip": "Payslip",
+          "contract": "Contract",
+          "procedure": "Procedure",
+          "form": "Form",
+          "other": "Other document"
+        },
+        "reasons": {
+          "taken_back": "Taken back after sending",
+          "wrong_person": "Sent to the wrong person",
+          "wrong_file": "The wrong file",
+          "duplicate": "Sent twice",
+          "other": "Another reason"
+        }
       }
     }
   },

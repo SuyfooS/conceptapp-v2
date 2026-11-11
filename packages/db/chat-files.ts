@@ -18,6 +18,11 @@ import {
   isPlaceTombstone,
   parseChatFilePath,
 } from "@domain/chat-files";
+import {
+  DOCUMENT_BUCKET,
+  isDocumentFilePath,
+  parseDocumentFilePath,
+} from "@domain/documents";
 import { sniffPhotoType } from "@domain/profile-photos";
 import { z } from "zod";
 import { readAtLeast, withStart } from "./byte-stream";
@@ -342,11 +347,15 @@ function pdfReserveFailureOf(error: {
  * secret key), so the upload, which writes wherever nothing is, can't write
  * there again. Nobody reads it, and the clean-up removes it a day on. False
  * when Storage refused: what was there stays, read by nobody, until the same
- * clean-up.
+ * clean-up. In chat's bucket, or (C6) in `documents` for a document's PDF
+ * whose file the job removes.
  */
-async function occupyPlace(path: string): Promise<boolean> {
+async function occupyPlace(
+  path: string,
+  bucket: typeof CHAT_FILE_BUCKET | typeof DOCUMENT_BUCKET = CHAT_FILE_BUCKET,
+): Promise<boolean> {
   const { error } = await createAdminClient()
-    .storage.from(CHAT_FILE_BUCKET)
+    .storage.from(bucket)
     .upload(path, chatPlaceTombstone(), {
       contentType: CHAT_PDF_TYPE,
       upsert: true,
@@ -956,20 +965,27 @@ export async function getConversationPdfs(
 const CLEAN_BATCH = 500;
 const CLEAN_BATCHES = 20;
 
+/** A PDF's path in either bucket's shape: chat's or (C6) a document's. */
+function isPdfPath(path: string): boolean {
+  return (
+    parseChatFilePath(path)?.extension === "pdf" ||
+    parseDocumentFilePath(path)?.extension === "pdf"
+  );
+}
+
 /**
- * Of these chat files, the PDFs whose signed upload may still be good
+ * Of these files, the PDFs whose signed upload may still be good
  * (`public.chat_paths_signed`: a place reserved less than 2 hours and 5
- * minutes ago): the clean-up lets them go with a tombstone rather than
- * leaving their path empty, where that upload could write again. None before
- * the migration reaches the project: no PDF could be sent there.
+ * minutes ago, a chat file's or, from C6, a document's): the clean-up lets
+ * them go with a tombstone rather than leaving their path empty, where that
+ * upload could write again. None before the migration reaches the project:
+ * no PDF could be sent there.
  */
 async function signedPaths(
   paths: string[],
   when: { at_time?: string },
 ): Promise<Set<string>> {
-  if (!paths.some((path) => parseChatFilePath(path)?.extension === "pdf")) {
-    return new Set();
-  }
+  if (!paths.some(isPdfPath)) return new Set();
   const { data, error } = await createAdminClient().rpc("chat_paths_signed", {
     paths,
     ...when,
@@ -985,8 +1001,11 @@ async function signedPaths(
  * The chat job's clean-up (`/cron/chat-files`): the files due to go
  * (`public.expired_files`: past their days, the oldest past a business's
  * space, removed messages' after their undo, reservations never sent, what
- * nothing points at) are removed from Storage, a bucket at a time, and marked
- * (`public.forget_files`), a batch at a time. A PDF whose signed upload may
+ * nothing points at, and from C6 a removed document's file once its undo is
+ * over, with the `documents` bucket's own places and orphans) are removed
+ * from Storage, a bucket at a time, each from its own bucket, and marked
+ * (`public.forget_files`, which clears a document's path and keeps its row), a
+ * batch at a time. A PDF whose signed upload may
  * still be good is let go with the server's tombstone instead of removed, so
  * that upload can't write its path again (`signedPaths`); the tombstone goes
  * a day on, with what nothing points at. Returns how many went. A batch
@@ -1007,19 +1026,32 @@ export async function cleanChatFiles(at?: Date): Promise<number> {
     }
     const rows = data ?? [];
     if (rows.length === 0) return removed;
-    // Only files in the app's own shape are asked of Storage, a bucket at a
-    // time; every path listed is marked, so none is listed again.
-    const byBucket = new Map<string, string[]>();
+    // Only files in the app's own shape are asked of Storage, each bucket's
+    // in its own shape, a bucket at a time; every path listed is marked, so
+    // none is listed again. A document's file left in Storage once its path
+    // was cleared would be listed every run as nothing's, so it goes from
+    // its own bucket as a chat file does.
+    const byBucket = new Map<
+      typeof CHAT_FILE_BUCKET | typeof DOCUMENT_BUCKET,
+      string[]
+    >();
     for (const row of rows) {
-      if (row.bucket !== CHAT_FILE_BUCKET || !isChatFilePath(row.path))
-        continue;
-      byBucket.set(row.bucket, [...(byBucket.get(row.bucket) ?? []), row.path]);
+      const bucket =
+        row.bucket === CHAT_FILE_BUCKET && isChatFilePath(row.path)
+          ? CHAT_FILE_BUCKET
+          : row.bucket === DOCUMENT_BUCKET && isDocumentFilePath(row.path)
+            ? DOCUMENT_BUCKET
+            : null;
+      if (!bucket) continue;
+      byBucket.set(bucket, [...(byBucket.get(bucket) ?? []), row.path]);
     }
     for (const [bucket, paths] of byBucket) {
       const signed = await signedPaths(paths, when);
       for (const path of paths) {
         // Storage said no: this batch waits for the next run, unmarked.
-        if (signed.has(path) && !(await occupyPlace(path))) return removed;
+        if (signed.has(path) && !(await occupyPlace(path, bucket))) {
+          return removed;
+        }
       }
       const unsigned = paths.filter((path) => !signed.has(path));
       if (unsigned.length > 0) {
