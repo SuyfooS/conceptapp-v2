@@ -147,12 +147,21 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
 ];
 
-async function expectCleanPage(page: Page) {
+// Demo states that open with a sheet (who confirmed, a message's actions):
+// the sheet hides the page behind it from the accessibility tree.
+const OPENS_A_SHEET = /[?&]state=(readers|actions)\b/;
+
+async function expectCleanPage(page: Page, path = "") {
   await expect(page).toHaveTitle(/ConceptApp$/);
-  // The title can arrive before a demo's streamed part: check the page itself.
-  await expect(
-    page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
-  ).toBeVisible();
+  // The title can arrive before a demo's streamed part: check the page itself,
+  // or the sheet it opens with, which is checked once it is there.
+  if (OPENS_A_SHEET.test(path)) {
+    await expect(page.getByRole("dialog")).toBeVisible();
+  } else {
+    await expect(
+      page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
+    ).toBeVisible();
+  }
   const { violations } = await new AxeBuilder({ page }).analyze();
   expect(
     violations.flatMap((v) =>
@@ -172,7 +181,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     for (const path of PAGES) {
       test(`${path} is clean`, async ({ page }) => {
         await page.goto(path);
-        await expectCleanPage(page);
+        await expectCleanPage(page, path);
       });
     }
 

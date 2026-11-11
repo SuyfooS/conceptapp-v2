@@ -203,7 +203,10 @@ export function ChatDetails(props: ChatDetailsProps) {
       tabIndex={0}
       className={cn(
         "hidden flex-col gap-6 rounded-card focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
-        "xl:sticky xl:top-8 xl:flex xl:max-h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:pb-4",
+        // Its parts keep their height and the column scrolls: in a capped
+        // flex column a part that clips (the mute row's group) would shrink
+        // to nothing.
+        "xl:sticky xl:top-8 xl:flex xl:max-h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:pb-4 [&>*]:shrink-0",
       )}
     >
       <ChatDetailsBody {...props} />
