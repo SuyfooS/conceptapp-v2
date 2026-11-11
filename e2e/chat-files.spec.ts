@@ -52,8 +52,9 @@ const WORDS = "תמונה לבדיקה של הצ'אט";
 const PDF_WORDS = "קובץ לבדיקה של הצ'אט";
 const PDF_NAME = "תפריט לבדיקה.pdf";
 const FAKE_NAME = "לא באמת PDF.pdf";
-/** The name as the screen writes it: without its ".pdf" (`shownFileName`). */
+/** The names as the screen writes them: without their ".pdf" (`shownFileName`). */
 const PDF_SHOWN = "תפריט לבדיקה";
+const FAKE_SHOWN = "לא באמת PDF";
 /** Where the browser PUTs a PDF: Storage's signed upload for the chat bucket. */
 const SIGNED_UPLOAD = "/storage/v1/object/upload/sign/chat-files/";
 const CORS_HINT =
@@ -789,7 +790,7 @@ test("a PDF over 10 MB goes nowhere, and one whose bytes aren't a PDF is refused
     mimeType: "application/pdf",
     buffer: fakePdf(),
   });
-  await expect(composer(page).getByText(FAKE_NAME)).toBeVisible();
+  await expect(composer(page).getByText(FAKE_SHOWN)).toBeVisible();
   await expect(notice(c.pdfFailure.notPdf)).toHaveCount(0);
   await field.fill(PDF_WORDS);
   await page
@@ -798,7 +799,7 @@ test("a PDF over 10 MB goes nowhere, and one whose bytes aren't a PDF is refused
     .click();
   await expectPutAnswered(page, watched, 200);
   await expect(notice(c.pdfFailure.notPdf)).toBeVisible({ timeout: 15_000 });
-  await expect(log(page).getByText(FAKE_NAME)).toHaveCount(0);
+  await expect(log(page).getByText(FAKE_SHOWN)).toHaveCount(0);
   await expect(field).toHaveValue(PDF_WORDS);
 
   // Its place was reserved and never sent, and Storage holds the server's
