@@ -249,8 +249,13 @@ jobs:
       - name: Playwright (${{ matrix.project }})
         run: pnpm e2e --project=${{ matrix.project }}
 
+      # The results are for reading a failure, not part of passing: when
+      # GitHub's artifact service is down (11 November 2026, it answered with
+      # a web page), the job keeps the tests' own outcome and still records
+      # the tree it passed on.
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
+        continue-on-error: true
         with:
           name: playwright-results-${{ matrix.project }}
           path: test-results/
