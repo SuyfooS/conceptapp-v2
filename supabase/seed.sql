@@ -123,8 +123,10 @@ values
 -- (only a definition that says "scheduledLists": true does, as the hosted
 -- ones do; 20261110001300_list_schedules.sql): the browser tests open them at
 -- the times they choose, so none depends on the hour. The restaurant also takes
--- photos on its lists ("photos": true; 20261110001500_list_photos.sql), for the
--- browser tests; the shop takes none, like the hosted ones. Both start with the
+-- photos on its lists ("photos": true; 20261110001500_list_photos.sql) and
+-- pictures in chat ("chatFiles": true; 20261111000500_chat_files.sql), for the
+-- browser tests, which remove their own files; the shop takes neither, like the
+-- hosted ones. Both start with the
 -- demo's own conversations (private.seed_demo_chat,
 -- 20261111000300_chat_on.sql), written by the first owner, manager and two
 -- workers each names, as the hosted ones are (tooling/demo-chat.test.ts).
@@ -135,6 +137,7 @@ values
     "slug": "demo-restaurant", "name": "מסעדת הדגמה", "accent": "#2563eb",
     "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
     "template": "restaurant", "renews": false, "invites": true, "profiles": true, "photos": true,
+    "chatFiles": true,
     "settings": { "time_clock": { "payEstimate": true } },
     "hours": { "fridays": false, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000004", "case": "night" }
@@ -232,7 +235,8 @@ grant execute on function dev.send_sms(jsonb) to supabase_auth_admin;
 -- reminder of 20261110001000_payroll_months.sql, lists' times of
 -- 20261110001300_list_schedules.sql and their photos' clean-up of
 -- 20261110001500_list_photos.sql) and chat's every 10 minutes
--- (20261111000200_chat.sql) stay off here, or they would send, clean, remind
+-- (20261111000200_chat.sql, with its files' clean-up from
+-- 20261111000500_chat_files.sql) stay off here, or they would send, clean, remind
 -- and open lists at real time under the tests, which call what the jobs run
 -- themselves, at times they choose. A hosted project keeps them.
 select cron.alter_job(j.jobid, active => false)

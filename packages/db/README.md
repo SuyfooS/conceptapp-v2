@@ -30,6 +30,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or manages lists |
 | `private.can_read_list_photo(object_name)` | may read that file of the `list-photos` bucket: an item of a list they see (or view as a manager) points at it, in its business, with lists on |
 | `private.chat_reads_from(conversation, person)` | (that person) reads the chat, and from when: one of a private chat's two people while on the staff, the active staff in the team's group from when each came onto the staff this time (`memberships.staff_since`, which moves when someone comes back after leaving or from being an accountant), a live department's members on the staff from when each was added or came back, whichever is later, and moderators (`chat.moderate`) all of every group; null for anyone else, with chat off, and for a view session |
+| `private.can_read_chat_file(object_name)` | may read that file of the `chat-files` bucket: a message of the path's conversation and business points at it (its picture or thumbnail), not removed and its file still kept, and they read that message (`private.reads_chat_message`, no branch for owners, the team or a view session); a name of the wrong shape is false, never an error |
 | `private.is_private_action(action)` | (any user) a log row about chats or documents (`chat.*`, `document.*`), which no view session reads |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
@@ -642,16 +643,68 @@ owner's and any other worker's wait. Every other part is C1's: `@db/chat` adds
 RLS), `getPinnedState` (a conversation's pinned announcements as the reader sees them,
 with whether they confirmed each and, for its author and management only, how many of
 the group did, from `public.announcement_readers`, which is asked only for those),
-`getRemovedMessages` and `getMessagesById` (what `/chat-sync` reads again of what a
-screen holds when the conversation's `changed_at` moved: the removed messages from its
-oldest to its newest, however far up, and those it shows as removed, to put back one
-restored), `getWaitingAnnouncements` (the
+`getMarkedMessages` (C4's name; C3's `getRemovedMessages`) and `getMessagesById` (what
+`/chat-sync` reads again of what a screen holds when the conversation's stamp moved: the
+removed messages from its oldest to its newest, however far up, and from C4 those whose
+file is no longer kept, and those it shows as removed, to put back one restored), `getWaitingAnnouncements` (the
 pinned ones waiting for the reader's "קראתי", for Today) and `getAnnouncements` (every
 announcement in the reader's groups, pinned first, for `/chat/announcements`); the
 writes it calls (`confirmAnnouncement`, `pinAnnouncement`, `removeChatMessage`,
 `restoreChatMessage`, `muteChat`) were there since C1. `getOwnPlace` reads the
 membership's `perms` too, so the sync knows who holds `chat.moderate`. Covered by
 `chat_announce.test.sql`, with `chat_on.test.sql`'s seed checks.
+
+Chat's files (`20261111000500_chat_files.sql`, chat C4): pictures, kept 90 days. The
+private bucket `chat-files` (10 MiB, JPEG, WebP and, from C5, PDF) holds a picture at
+`<business>/<conversation>/<32 hex>.<webp|jpg>` and its thumbnail beside it at
+`…-s.<ext>`; nothing in the browser writes it (no insert, update or delete policy) and
+`private.can_read_chat_file` (above) is its read policy. The server, with the secret key:
+`public.chat_files_closed(business)` (a demo business takes no files unless its definition
+says `"chatFiles": true`, the local seed's restaurant only; the trigger
+`chat_messages_demo_file` refuses one too, 55000), `public.reserve_chat_upload(actor,
+business, upload_kind, upload_type, upload_size, conversation, to_person, upload_name,
+at_time)` (the sending's own checks, opening a private chat as a first message does; 22023
+for a kind, type, size or name it doesn't take, 55000 in a closed demo, 54000 for a 31st in a
+minute, and 54000 with hint `storage` once the project's Storage holds 900 MB,
+`private.storage_used` and `private.files_guard_bytes`), which writes
+`private.file_uploads` (nobody reads it but the functions) and returns
+`{upload, path, thumb, conversation}`; and `public.send_chat_message` with `upload`, last
+(dropped and made again, the same grants), which checks the reservation
+(`private.attach_chat_upload`: the sender's, for this conversation, unused, under 2 hours
+old, and its picture and thumbnail in `storage.objects` at the type reserved, at most
+400 KB and 48 KB, and together the size reserved; 22023 otherwise) before the row is
+written, and returns `attached` false for a draft sent already. `public.chat_page` gives
+`file_path` and `thumb_path` too (dropped and made again). Keeping:
+`public.expired_files(at_time, max_rows)` lists, oldest first and each thumbnail before its
+picture, the files past their business's `fileDays` (30, 90 or 180), each business's oldest
+past its `fileSpaceMb` (50, 100 or 200 MB; Orel, 11 November 2026: the oldest go first, even
+before their days), removed messages' held files once their undo is over, reservations never
+sent after a day, and anything in the bucket older than a day that nothing points at; and
+`public.forget_files(paths, at_time)` marks them (`file_removed_at`, the message stays,
+and its conversation's `changed_at` moves, so every reader's sync hears of it and an open
+screen shows "הקובץ כבר לא נשמר"), lets go of held files and drops unused reservations. C1's job `chat` (`private.chat_tick`)
+now also drops the reservations sent more than a day before and, while a file is due, asks
+the app's `/cron/chat-files` through pg_net with the minute job's Vault secrets.
+`public.admin_storage()` is the console's storage card, for platform staff only (42501
+otherwise): the database's size, Storage per bucket, each business's chat space beside its
+caps and the caps' sum, sizes only, and no chat table read for it. "קראתי" no longer moves
+`chat_conversations.changed_at` (a worker's sync could tell someone confirmed):
+`public.confirm_announcement` is replaced without it, `public.chat_acks.recorded_at` (the
+clock's time of the row) moves `public.chat_stamp(business, conversation)` (the sync's
+per-reader stamp, new) and `public.chat_version` (replaced) for the announcement's author
+while they still read it (as `announcement_readers` shows its readers), the moderators and
+the person themselves only. `@db/chat-files` has `chatFilesAllowed`,
+`sendChatImage` (checked by `@domain/chat-files`, reserved, both files uploaded with
+`upsert: false`, sent; both removed at once on any refusal, and kept when the sending's end
+is unknown, for the message that may hold them or the clean-up a day on), `chatFileBytes` (for
+`/chat-files`: the message read under the reader's session, the file downloaded under it,
+its type from its bytes), `getConversationPictures` (a conversation's latest pictures still
+kept, for its details, under the reader's session), `cleanChatFiles` (for
+`/cron/chat-files`) and `getStorageUse` (null, and the card hidden, when it can't be
+read);
+`@db/chat` reads `getConversationStamp` from `public.chat_stamp` and gives each message its
+`fileSrc` and `thumbSrc`. Covered by `chat_files.test.sql`, with `chat.test.sql` (the
+confirmation's timing), `isolation` and `demo_reset`.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

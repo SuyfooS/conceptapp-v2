@@ -1,4 +1,10 @@
 import { Constants } from "@db/database.types";
+import {
+  CHAT_FILE_DAYS,
+  CHAT_FILE_SPACE_MB,
+  DEFAULT_CHAT_FILE_DAYS,
+  DEFAULT_CHAT_FILE_SPACE_MB,
+} from "@domain/chat-files";
 import { DEFAULT_LIST_PHOTO_DAYS, LIST_PHOTO_DAYS } from "@domain/list-photos";
 import {
   MODULE_KEYS,
@@ -116,6 +122,24 @@ describe("module registry", () => {
     expect(fieldsFor(settings, "owner").map((f) => f.key)).toEqual([
       "teamGroupWho",
     ]);
+  });
+
+  it("keeps chat's files for the days and space public.expired_files reads", () => {
+    // C4: the database counts only these choices, anything else stored as
+    // the default (20261111000500_chat_files.sql).
+    const settings = manifestFor("chat").settings;
+    const fields = describeSettings(settings);
+    const options = (key: string) => {
+      const field = fields.find((f) => f.key === key);
+      return field?.kind === "choice" ? field.options : null;
+    };
+    expect(options("fileDays")).toEqual([...CHAT_FILE_DAYS]);
+    expect(options("fileSpaceMb")).toEqual([...CHAT_FILE_SPACE_MB]);
+    expect(settings.parse({}).fileDays).toBe(DEFAULT_CHAT_FILE_DAYS);
+    expect(settings.parse({}).fileSpaceMb).toBe(DEFAULT_CHAT_FILE_SPACE_MB);
+    for (const key of ["fileDays", "fileSpaceMb"]) {
+      expect(fields.find((f) => f.key === key)?.level).toBe("team");
+    }
   });
 
   it("starts every permission an owner gives with the owner alone", () => {

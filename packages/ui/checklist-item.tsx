@@ -12,6 +12,7 @@ import { type ReactNode, useId, useRef, useState } from "react";
 import { Badge } from "./badge";
 import { Button } from "./button";
 import { cn } from "./cn";
+import { PICKED_PHOTO_ACCEPT } from "./photo-encode";
 import { Spinner } from "./spinner";
 import { Stepper } from "./stepper";
 import { fieldInputClass, ltrInputClass } from "./text-field";
@@ -120,9 +121,6 @@ export type ChecklistItemProps = {
     after?: ReactNode;
   };
 };
-
-/** What the phone's chooser offers: the camera, and its photos as JPEG (an iPhone's HEIC is converted). */
-const PHOTO_ACCEPT = "image/jpeg,image/png,image/webp";
 
 const rowClass =
   "relative flex min-h-16 flex-col gap-2 px-4 py-3 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
@@ -546,7 +544,7 @@ function PhotoPart({
                 <input
                   ref={input}
                   type="file"
-                  accept={PHOTO_ACCEPT}
+                  accept={PICKED_PHOTO_ACCEPT}
                   hidden
                   onChange={(event) => {
                     const file = event.target.files?.[0];

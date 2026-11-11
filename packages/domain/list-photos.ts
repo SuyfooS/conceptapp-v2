@@ -114,13 +114,27 @@ export function checkListPhoto(file: {
   size: number;
   bytes: Uint8Array;
 }): ListPhotoCheck {
+  return checkStillPhoto(file, {
+    maxBytes: LIST_PHOTO_MAX_BYTES,
+    maxPixels: LIST_PHOTO_PIXELS,
+  });
+}
+
+/**
+ * The check of a picture the app re-encoded in the browser, with the sizes of
+ * where it goes (a list's photo, and chat's pictures and thumbnails in
+ * @domain/chat-files): a JPEG or WebP by its bytes and as the browser says, at
+ * most `maxBytes`, nothing from the camera inside (EXIF, XMP), still, and its
+ * longest side at most `maxPixels`.
+ */
+export function checkStillPhoto(
+  file: { type: string; size: number; bytes: Uint8Array },
+  limits: { maxBytes: number; maxPixels: number },
+): ListPhotoCheck {
   if (file.size === 0 || file.bytes.length === 0) {
     return { ok: false, problem: "empty" };
   }
-  if (
-    file.size > LIST_PHOTO_MAX_BYTES ||
-    file.bytes.length > LIST_PHOTO_MAX_BYTES
-  ) {
+  if (file.size > limits.maxBytes || file.bytes.length > limits.maxBytes) {
     return { ok: false, problem: "tooBig" };
   }
   const type = sniffPhotoType(file.bytes);
@@ -135,7 +149,7 @@ export function checkListPhoto(file: {
     size === null ||
     size.width < 1 ||
     size.height < 1 ||
-    Math.max(size.width, size.height) > LIST_PHOTO_PIXELS ||
+    Math.max(size.width, size.height) > limits.maxPixels ||
     isAnimatedPhoto(file.bytes, type)
   ) {
     return { ok: false, problem: "pixels" };

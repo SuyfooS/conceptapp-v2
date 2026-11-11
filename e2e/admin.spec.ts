@@ -12,14 +12,26 @@ const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 
 const a = he.admin;
 
-/** The business list shows the demo restaurant in the shape for this width. */
+/**
+ * The business list shows the demo restaurant in the shape for this width:
+ * once, beside the storage card, which names each business with its space.
+ */
 async function expectDemoRestaurant(page: Page) {
   await expect(
     page.getByRole("heading", { level: 1, name: a.businesses.title }),
   ).toBeVisible();
-  await expect(
-    page.getByText("מסעדת הדגמה", { exact: true }).filter({ visible: true }),
-  ).toHaveCount(1);
+  // The innermost section holding its title: the card itself.
+  const storage = page
+    .locator("section")
+    .filter({
+      has: page.getByRole("heading", { name: a.storage.title, exact: true }),
+    })
+    .last();
+  await expect(storage).toBeVisible();
+  const named = (where: Page | typeof storage) =>
+    where.getByText("מסעדת הדגמה", { exact: true }).filter({ visible: true });
+  const inStorage = await named(storage).count();
+  await expect(named(page)).toHaveCount(1 + inStorage);
   await expect(
     page.getByText(a.businesses.templates.restaurant).filter({ visible: true }),
   ).not.toHaveCount(0);

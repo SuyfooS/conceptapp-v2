@@ -1,7 +1,8 @@
 "use client";
 
 import { checkMessage } from "@domain/chat";
-import { Lock, SendHorizontal } from "lucide-react";
+import { ImagePlus, Lock, SendHorizontal, X } from "lucide-react";
+import Image from "next/image";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -16,7 +17,42 @@ import {
 } from "react";
 import { Button } from "./button";
 import { cn } from "./cn";
+import { IconButton } from "./icon-button";
+import { Spinner } from "./spinner";
 import { Switch } from "./switch";
+
+/**
+ * The attach button (chat C4): the phone's picture picker, which offers its
+ * camera too; or, where nothing can be attached (a demo business), the
+ * button says why when pressed, and the picker never opens.
+ */
+export type ComposerAttach =
+  | {
+      /** Its name and tooltip ("צירוף תמונה"). */
+      label: string;
+      /** What the picker offers (`PICKED_PHOTO_ACCEPT` in @ui/photo-encode). */
+      accept: string;
+      onPick: (file: File) => void;
+    }
+  | {
+      label: string;
+      /** Why nothing can be attached here ("בעסק הדגמה אי אפשר לצרף קבצים"). */
+      refused: ReactNode;
+    };
+
+/** A picture chosen to go with the next message, over the field. */
+export type ComposerAttached = {
+  /** Its preview (a data URL, `photoDataUrl`), or null while it is made ready. */
+  src: string | null;
+  /** What it is, for those who don't see it. */
+  alt: string;
+  /** Said while it is made ready ("מכינים את התמונה"). */
+  busyLabel: string;
+  /** Told to screen readers once it is ready ("התמונה מוכנה לשליחה"). */
+  readyLabel: string;
+  /** "הסרת התמונה": it doesn't go. */
+  remove: { label: string; onRemove: () => void };
+};
 
 export type ComposerProps = {
   /** The field's name, also its placeholder ("כתיבת הודעה"). */
@@ -57,6 +93,13 @@ export type ComposerProps = {
     onChange: (checked: boolean) => void;
     hint?: ReactNode;
   } | null;
+  /** The attach button at the field's start (C4), or none. */
+  attach?: ComposerAttach | null;
+  /**
+   * The picture that goes with the next message: over the field, with a way
+   * to take it out. What is typed is its caption, and may stay empty.
+   */
+  attached?: ComposerAttached | null;
   /** The field, for a screen that moves the keyboard to it. */
   fieldRef?: RefObject<HTMLTextAreaElement | null>;
   /** The field's name in a form. */
@@ -85,7 +128,11 @@ const FINE_POINTER = "(pointer: fine)";
  * phone's keyboard stays open between messages; pressed from the keyboard, it
  * gives the focus back to the field, as it goes off once the field empties.
  * On desktop a soft fade under it, where the messages pass, as the tab bar's
- * has on phones and tablets.
+ * has on phones and tablets. The attach button (C4) opens the phone's
+ * picture picker; a chosen picture shows over the field until it goes with
+ * the next message, whose words are then its caption and may be left out.
+ * Screen readers hear it being made ready, and that it is ready, from a live
+ * region that is always there (one that came with its words would be missed).
  */
 export function Composer({
   label,
@@ -98,6 +145,8 @@ export function Composer({
   tooLong,
   above,
   toggle,
+  attach,
+  attached,
   fieldRef,
   name,
   floating = true,
@@ -114,9 +163,20 @@ export function Composer({
   const linesId = useId();
   const toggleId = useId();
   const hintId = useId();
+  const refusedId = useId();
   const [finePointer, setFinePointer] = useState(false);
+  const picker = useRef<HTMLInputElement>(null);
+  // "In a demo business no files": said once the button is pressed.
+  const [refusedSaid, setRefusedSaid] = useState(false);
   const checked = checkMessage(value);
   const over = !checked.ok && checked.reason === "tooLong";
+  // A picture goes with words or without them, once it is ready: until
+  // then sending waits, so its caption never goes without it.
+  const withPicture = Boolean(attached?.src);
+  const preparing = Boolean(attached) && !withPicture;
+  const sendable =
+    !preparing &&
+    (checked.ok || (withPicture && !checked.ok && checked.reason === "empty"));
 
   useEffect(() => {
     const query = window.matchMedia(FINE_POINTER);
@@ -136,8 +196,9 @@ export function Composer({
   }, [value]);
 
   function send(fromButton: boolean) {
-    if (!checked.ok) return;
-    onSend(checked.body);
+    if (!sendable) return;
+    onSend(checked.ok ? checked.body : "");
+    setRefusedSaid(false);
     // The field empties and the button goes off, which would drop a
     // keyboard's focus to the page: the next message starts in the field.
     if (fromButton) field.current?.focus();
@@ -195,7 +256,13 @@ export function Composer({
     );
   }
 
-  const said = Boolean(notice) || over;
+  const refused = attach && "refused" in attach ? attach.refused : null;
+  const said = Boolean(notice) || over || (refusedSaid && refused !== null);
+  const pictureSaid = attached
+    ? attached.src
+      ? attached.readyLabel
+      : attached.busyLabel
+    : null;
   return (
     <form onSubmit={onSubmit} className={cn(position, className)}>
       {fade}
@@ -231,20 +298,97 @@ export function Composer({
             ) : null}
           </div>
         ) : null}
+        <p className="sr-only" aria-live="polite">
+          {pictureSaid}
+        </p>
         <div id={linesId} aria-live="polite">
           {said ? (
             <div className="flex flex-col gap-0.5 px-3.5 pt-1.5 pb-1 text-sm">
               {notice ? <p className="text-ink-2">{notice}</p> : null}
+              {refusedSaid && refused ? (
+                <p className="text-ink-2">{refused}</p>
+              ) : null}
               {over ? <p className="text-danger">{tooLong}</p> : null}
             </div>
           ) : null}
         </div>
+        {attached ? (
+          <div className="flex items-start gap-2 px-1.5 pt-1.5">
+            <span className="relative grid size-24 shrink-0 place-items-center overflow-hidden rounded-control bg-surface-2">
+              {attached.src ? (
+                <Image
+                  src={attached.src}
+                  alt={attached.alt}
+                  fill
+                  unoptimized
+                  draggable={false}
+                  sizes="96px"
+                  className="object-cover"
+                />
+              ) : (
+                <Spinner className="size-5" />
+              )}
+            </span>
+            {/* Heard from the live region above. */}
+            <p
+              aria-hidden="true"
+              className="min-w-0 flex-1 self-center text-ink-2 text-sm"
+            >
+              {attached.src ? null : attached.busyLabel}
+            </p>
+            <IconButton
+              label={attached.remove.label}
+              icon={<X />}
+              variant="secondary"
+              onClick={attached.remove.onRemove}
+            />
+          </div>
+        ) : null}
         <div className="flex items-end gap-1.5">
+          {attach ? (
+            <>
+              {"onPick" in attach ? (
+                <input
+                  ref={picker}
+                  type="file"
+                  accept={attach.accept}
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    // The same file can be picked again after a problem.
+                    event.target.value = "";
+                    if (file) attach.onPick(file);
+                  }}
+                />
+              ) : null}
+              {/* Why nothing can be attached, told before it is pressed. */}
+              {refused !== null && !refusedSaid ? (
+                <span id={refusedId} hidden>
+                  {refused}
+                </span>
+              ) : null}
+              <IconButton
+                label={attach.label}
+                icon={<ImagePlus />}
+                aria-describedby={
+                  said ? linesId : refused !== null ? refusedId : undefined
+                }
+                onClick={() => {
+                  if ("onPick" in attach) picker.current?.click();
+                  else setRefusedSaid(true);
+                }}
+                className="text-ink-2"
+              />
+            </>
+          ) : null}
           <textarea
             ref={setField}
             name={name}
             value={value}
-            onChange={(event) => onValueChange(event.target.value)}
+            onChange={(event) => {
+              setRefusedSaid(false);
+              onValueChange(event.target.value);
+            }}
             onKeyDown={onKeyDown}
             aria-label={label}
             aria-describedby={said ? linesId : undefined}
@@ -255,13 +399,14 @@ export function Composer({
             autoComplete="off"
             enterKeyHint={finePointer ? "send" : "enter"}
             className={cn(
-              "max-h-40 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-3.5 py-2.5 text-md text-ink text-start",
+              "max-h-40 min-h-11 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent py-2.5 pe-3.5 text-md text-ink text-start",
+              attach ? "ps-1" : "ps-3.5",
               "placeholder:text-ink-3 focus-visible:outline-none",
             )}
           />
           <Button
             type="submit"
-            disabled={!checked.ok}
+            disabled={!sendable}
             // Keeps the focus, and a phone's keyboard, in the field.
             onPointerDown={(event) => event.preventDefault()}
             className="shrink-0 px-4"

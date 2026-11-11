@@ -12,12 +12,15 @@ import { DayDivider } from "@ui/day-divider";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { MessageBubble, type MessageStatus } from "@ui/message-bubble";
 import { NewBelow } from "@ui/new-below";
+import { PICKED_PHOTO_ACCEPT } from "@ui/photo-encode";
+import { PhotoSheet } from "@ui/photo-sheet";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { Building, Copy, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
 /** The gallery's day and its eve, so the dividers and times never move. */
@@ -232,10 +235,153 @@ export function GalleryChat() {
         blocked={tc("conversation.closed")}
       />
       <GalleryAnnouncements />
+      <GalleryPictures />
       <p className="text-ink-2">{t("chatImmersive")}</p>
       <Button asChild variant="secondary" className="w-full">
         <Link href="/design/chat">{t("chatDemo")}</Link>
       </Button>
+    </div>
+  );
+}
+
+/**
+ * The chat's parts of C4: a picture in a message, which opens whole in a
+ * sheet; one on its way; one whose file is no longer kept; the composer's
+ * attach button with a picture chosen, and as a demo business has it. Nothing
+ * is picked or stored here: the demo at /design/chat makes a picked photo
+ * ready as the app does.
+ */
+function GalleryPictures() {
+  const t = useTranslations("design");
+  const tc = useTranslations("app.chat");
+  const [open, setOpen] = useState(false);
+  const [chosen, setChosen] = useState(true);
+  const [draft, setDraft] = useState(t("chatPictureSample"));
+  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+  const alt = tc("image.alt", { name: t("person1") });
+  const tooLong = tc.rich("conversation.tooLong", {
+    max: CHAT_MESSAGE_MAX,
+    ltr,
+  });
+  const openPhoto = {
+    label: tc("image.open"),
+    onOpen: () => setOpen(true),
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-ink-2">{t("chatPicturesText")}</p>
+      <div>
+        <MessageBubble
+          own={false}
+          author={{ name: t("person1"), shown: true }}
+          content={{
+            kind: "image",
+            body: t("chatPictureSample"),
+            image: {
+              kind: "shown",
+              src: listPhotos.kitchen,
+              alt,
+              open: openPhoto,
+              retry: tc("image.retry"),
+            },
+          }}
+          time={{ label: "07:41", at: at(TODAY, "07:41") }}
+        />
+        <MessageBubble
+          own
+          author={{ name: tc("message.own"), shown: false }}
+          content={{
+            kind: "image",
+            body: null,
+            image: {
+              kind: "shown",
+              src: listPhotos.kitchen,
+              alt: tc("image.altOwn"),
+              open: openPhoto,
+              busy: true,
+              retry: tc("image.retry"),
+            },
+          }}
+          time={{ label: "08:12", at: at(TODAY, "08:12") }}
+          status={{ kind: "sending", label: tc("conversation.sending") }}
+        />
+        <MessageBubble
+          own={false}
+          author={{ name: t("person3"), shown: true }}
+          content={{
+            kind: "image",
+            body: t("chatSample1"),
+            image: { kind: "gone", label: tc("message.fileGone") },
+          }}
+          time={{ label: "18:20", at: at(YESTERDAY, "18:20") }}
+        />
+      </div>
+      <Button
+        variant="secondary"
+        onClick={() => setOpen(true)}
+        className="self-start"
+      >
+        {t("chatPictureSheet")}
+      </Button>
+      <PhotoSheet
+        open={open}
+        onOpenChange={setOpen}
+        photo={{
+          src: listPhotos.kitchen,
+          alt,
+          caption: t("chatPictureSample"),
+        }}
+        subtitle={tc.rich("image.when", { time: "07:41", ltr })}
+        closeLabel={tc("image.close")}
+        loadingLabel={tc("image.loading")}
+        unavailable={tc("image.unavailable")}
+      />
+      <p className="text-ink-2">{t("chatAttachText")}</p>
+      <Composer
+        floating={false}
+        label={tc("conversation.placeholder")}
+        sendLabel={tc("conversation.send")}
+        value={draft}
+        onValueChange={setDraft}
+        onSend={() => {
+          setDraft("");
+          setChosen(false);
+        }}
+        tooLong={tooLong}
+        attach={{
+          label: tc("conversation.attach"),
+          accept: PICKED_PHOTO_ACCEPT,
+          onPick: () => setChosen(true),
+        }}
+        attached={
+          chosen
+            ? {
+                src: listPhotos.kitchen,
+                alt: tc("image.chosen"),
+                busyLabel: tc("image.preparing"),
+                readyLabel: tc("image.ready"),
+                remove: {
+                  label: tc("image.remove"),
+                  onRemove: () => setChosen(false),
+                },
+              }
+            : null
+        }
+      />
+      <Composer
+        floating={false}
+        label={tc("conversation.placeholder")}
+        sendLabel={tc("conversation.send")}
+        value=""
+        onValueChange={() => {}}
+        onSend={() => {}}
+        tooLong={tooLong}
+        attach={{
+          label: tc("conversation.attach"),
+          refused: tc("fileFailure.demo"),
+        }}
+      />
     </div>
   );
 }

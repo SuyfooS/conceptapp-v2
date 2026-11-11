@@ -46,6 +46,10 @@ type Props = {
 // for her "קראתי": `?state=confirmed` once she pressed it, `?state=readers`
 // with who confirmed open, and `?state=actions` with a message's actions
 // open (any message opens them on a tap, or its button on a desktop).
+// The kitchen has Noa's photo of the kitchen (C4): `?state=photo` opens it
+// whole; the removed desserts group has a picture no longer kept. The
+// composer's attach button makes a picked photo ready as the app does, and
+// shows it from the browser.
 // `?announce=1` opens the composer as "הודעה מההנהלה", as the
 // announcements' "פרסום הודעה מההנהלה" does. The title's details button
 // opens /design/chat/<id>/info on a phone and a sheet on a tablet.
@@ -91,6 +95,8 @@ async function Demo({ params, searchParams }: Props) {
     body: m.body,
     removedBy: m.removedBy,
     announcement: m.kind === "announcement",
+    photo: m.photo ?? null,
+    fileGone: m.fileGone,
   }));
   const pinnedMessage = chat.pinned
     ? chat.messages.find((m) => m.id === chat.pinned?.message)
@@ -116,7 +122,10 @@ async function Demo({ params, searchParams }: Props) {
         }
       : null;
   const opened: DemoOpened =
-    state === "confirmed" || state === "readers" || state === "actions"
+    state === "confirmed" ||
+    state === "readers" ||
+    state === "actions" ||
+    state === "photo"
       ? state
       : null;
   if (state === "failed" && !chat.closed) {

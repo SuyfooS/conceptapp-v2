@@ -138,6 +138,7 @@ const PAGES = [
   "/design/chat/announcements",
   "/design/chat/floor",
   "/design/chat/kitchen",
+  "/design/chat/kitchen?state=photo",
   "/design/chat/desserts",
   "/design/chat/noa",
   "/design/chat/noa?state=failed",
@@ -147,9 +148,10 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
 ];
 
-// Demo states that open with a sheet (who confirmed, a message's actions):
-// the sheet hides the page behind it from the accessibility tree.
-const OPENS_A_SHEET = /[?&]state=(readers|actions)\b/;
+// The chat demo's states that open with a sheet (who confirmed, a message's
+// actions, a picture shown whole): the sheet hides the page behind it from
+// the accessibility tree. Lists' `?state=photo` opens none.
+const OPENS_A_SHEET = /^\/design\/chat\/.*[?&]state=(readers|actions|photo)\b/;
 
 async function expectCleanPage(page: Page, path = "") {
   await expect(page).toHaveTitle(/ConceptApp$/);
@@ -1571,5 +1573,59 @@ test("the times demo adds a time by a shift, and the day's overview reads its hi
   ).toBeAttached();
   await expect(
     page.getByText("פתיחת אולם").filter({ visible: true }).first(),
+  ).toBeVisible();
+});
+
+// Pictures in the chat demo (C4): Noa's photo in the kitchen opens whole in a
+// sheet, with what she wrote under it; one picked from the attach button is
+// made ready on the page as the app makes it, shown over the field, and goes
+// with the next message; the removed desserts group keeps a message whose
+// picture is no longer kept, and says so.
+test("the chat demo opens a picture whole, sends a picked photo, and says when a file is no longer kept", async ({
+  page,
+}) => {
+  const c = he.app.chat;
+  const log = page
+    .getByRole("log", { name: c.conversation.log })
+    .filter({ visible: true });
+  const alt = c.image.alt.replace("{name}", "נועה כהן");
+
+  await page.goto("/design/chat/kitchen");
+  await log.getByRole("img", { name: alt }).click();
+  const sheet = page.getByRole("dialog", { name: alt });
+  await expect(sheet).toBeVisible();
+  await expect(sheet.getByText("ככה המטבח נראה עכשיו")).toBeVisible();
+  // The sheet hides the page from screen readers while it is open: axe alone.
+  const opened = await new AxeBuilder({ page }).analyze();
+  expect(opened.violations.map((v) => v.id)).toEqual([]);
+  await sheet.getByRole("button", { name: c.image.close }).click();
+  await expect(sheet).toHaveCount(0);
+
+  const chooser = page.waitForEvent("filechooser");
+  await page
+    .getByRole("button", { name: c.conversation.attach, exact: true })
+    .filter({ visible: true })
+    .click();
+  await (await chooser).setFiles({
+    name: "photo.jpg",
+    mimeType: "image/jpeg",
+    buffer: await cameraPhoto(page),
+  });
+  const chosen = page
+    .getByRole("img", { name: c.image.chosen })
+    .filter({ visible: true });
+  await expect(chosen).toBeVisible();
+  await expectCleanPage(page);
+  const send = page
+    .getByRole("button", { name: c.conversation.send, exact: true })
+    .filter({ visible: true });
+  await expect(send).toBeEnabled();
+  await send.click();
+  await expect(log.getByRole("img", { name: c.image.altOwn })).toBeVisible();
+  await expect(chosen).toHaveCount(0);
+
+  await page.goto("/design/chat/desserts");
+  await expect(
+    log.getByText(c.message.fileGone, { exact: true }),
   ).toBeVisible();
 });

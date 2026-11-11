@@ -6,10 +6,10 @@ import {
   getChatAuthors,
   getChatList,
   getConversationStamp,
+  getMarkedMessages,
   getMessages,
   getMessagesById,
   getPinnedState,
-  getRemovedMessages,
   withOwnDrafts,
 } from "@db/chat";
 import { getOwnPlace } from "@db/session";
@@ -60,20 +60,24 @@ function status(code: 204 | 400 | 401 | 403 | 404 | 500): Response {
  * newest too) and of the pinned announcements (`chatMarks`), where its
  * messages start (`heldMarks`), the newest of those it shows as removed, and
  * the conversation's own stamp from the last answer, the route reads them
- * again whenever that stamp moved (a message sent, removed, put back, pinned
- * or confirmed there each moves it) or `r=1` asks (the conversation just came
- * on screen, or the reader's own change just settled). When its own marks
- * differ it sends `open.recent` (the messages removed where the screen's are,
- * however far up, and those it showed as removed that were put back, with
- * their words) and `open.pinned`, in place of what the screen has: a removed
- * message is gone, and an unpinned card goes, with that one answer. A message
- * only read changes nothing there, so nothing old is read again for it; who
- * confirmed is counted for its author and management only, nobody else's
- * sync asks. 401 signed out, never a redirect (the screen reloads into
- * sign-in); 404 for a conversation they don't read (another business's
- * included) and while viewing as someone or with chat off; 400 for a
- * question that isn't one; 403 from another site. Every answer is
- * `no-store`.
+ * again whenever that stamp moved (a message sent, removed, put back or
+ * pinned there each moves it, and so does a picture's file going for its days
+ * or the business's space, and a confirmation only for its announcement's
+ * author, the moderators and the person who confirmed: `public.chat_stamp`,
+ * so no worker learns that someone else confirmed) or `r=1` asks (the
+ * conversation just came on screen, or the reader's own change just
+ * settled). When its own marks differ it sends `open.recent` (the messages
+ * removed where the screen's are, however far up, those whose file is no
+ * longer kept, and those it showed as removed that were put back, with their
+ * words) and `open.pinned`, in place of what the screen has: a removed
+ * message is gone, a lost file says so in its picture's place, and an
+ * unpinned card goes, with that one answer. A message only read changes nothing there, so
+ * nothing old is read again for it; who confirmed is counted for its author
+ * and management only, nobody else's sync asks. 401 signed out, never a
+ * redirect (the screen reloads into sign-in); 404 for a conversation they
+ * don't read (another business's included) and while viewing as someone or
+ * with chat off; 400 for a question that isn't one; 403 from another site.
+ * Every answer is `no-store`.
  *
  * Outside the proxy's matcher (tooling/proxy.test.ts), as /push/inbox is, so a
  * poll costs one invocation and no extra session check; an expired session is
@@ -143,9 +147,9 @@ export async function GET(request: Request): Promise<Response> {
         place.perms,
         "chat.moderate",
       );
-      const [removed, shownRemoved, pinned] = await Promise.all([
+      const [marked, shownRemoved, pinned] = await Promise.all([
         after && from
-          ? getRemovedMessages({
+          ? getMarkedMessages({
               businessId,
               conversationId,
               from,
@@ -158,13 +162,13 @@ export async function GET(request: Request): Promise<Response> {
           ? Promise.resolve<PinnedAnnouncement[]>([])
           : getPinnedState(businessId, conversationId, own.userId, moderates),
       ]);
-      const removedHere = withinHeld(removed, from, after);
-      if (chatMarks(removedHere, pinned) !== query.marks) {
-        const gone = new Set(removedHere.map((m) => m.id));
+      const markedHere = withinHeld(marked, from, after);
+      if (chatMarks(markedHere, pinned) !== query.marks) {
+        const sent = new Set(markedHere.map((m) => m.id));
         const putBack = shownRemoved.filter(
-          (m) => !m.removed && !gone.has(m.id),
+          (m) => !m.removed && !sent.has(m.id),
         );
-        again = { recent: [...removedHere, ...putBack], pinned };
+        again = { recent: [...markedHere, ...putBack], pinned };
       }
     }
     if (!moved && !brings && !again && !stampMoved) return status(204);

@@ -152,6 +152,11 @@ export type OutgoingMessage = {
   message: string | null;
   /** Sent as an announcement from management (C3). */
   announce?: boolean;
+  /**
+   * With a picture (C4), which the screen keeps by its draft while it goes
+   * and for its retries; `body` is then its caption, and may be empty.
+   */
+  picture?: boolean;
 };
 
 /**

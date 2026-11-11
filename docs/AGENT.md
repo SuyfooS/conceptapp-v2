@@ -190,11 +190,12 @@ if a reverted migration reached one, open an `urgent` issue.
 - Read anyone's chats. Chats aren't end-to-end encrypted, so that the ConceptApp
   team doesn't read them is this rule: never select from `chat_messages`,
   `chat_conversations`, `chat_reads`, `chat_acks` or `private.chat_removed` (from C6
-  also `documents` and `document_recipients`, and from C4 the `chat-files` and
-  `documents` buckets) on any hosted project, never print their rows in a log, an
-  issue or a PR, and never call `/cron/chat-files` on the hosted project (C4). No
-  console page or script reads them; a test reads only its own rows, locally or in
-  CI.
+  also `documents` and `document_recipients`, and from C4 `private.file_uploads` and
+  the `chat-files` and `documents` buckets) on any hosted project, never print
+  their rows in a log, an issue or a PR, and never call `/cron/chat-files` on the
+  hosted project (C4). No console page or script reads them (the console's storage
+  card gets sizes per business from `public.admin_storage`, never a file or a row);
+  a test reads only its own rows, locally or in CI.
 - Contact the pilot restaurant or anyone else outside this repo.
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.
@@ -260,8 +261,14 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   what. C3 is built too (`20261111000400_chat_announce.sql`, the demo's announcement
   only): announcements with "קראתי" and who confirmed, `/chat/announcements`, Today's
   part, a message's actions with undo, mute and `/chat/[conversation]/info`, and
-  `/chat-sync` bringing changes to messages already on screen. Next: C4, images in chat
-  and keeping them. A private chat has no branch
+  `/chat-sync` bringing changes to messages already on screen. C4 is built too
+  (`20261111000500_chat_files.sql`): pictures in chat, made ready on the phone
+  (`encodeChatImage`: about 0.3 MB, a 360 px thumbnail, nothing from the camera) and
+  sent through the server, served by `/chat-files` to the readers of their message only,
+  kept `fileDays` (90) and, past a business's `fileSpaceMb` (100), the oldest first, by
+  the `chat` job and `/cron/chat-files`; the message stays ("הקובץ כבר לא נשמר"). A demo
+  business takes none, and the console's storage card shows sizes only. Next: C5, PDFs.
+  A private chat has no branch
   for owners, managers, the team or a view session, anywhere: a change that adds one
   is refused (see "Never").
 - **Not in the pilot, do not start:** reservations, storefront, the public page.

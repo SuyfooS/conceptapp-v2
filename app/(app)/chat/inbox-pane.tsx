@@ -95,10 +95,16 @@ export function InboxPane() {
   };
 
   function row(item: ChatListRow) {
+    // A picture says so, with what was written with it (C4); a removed
+    // message has neither words nor a picture.
     const said =
-      item.lastPreview !== null
-        ? chatPreview(item.lastPreview)
-        : t("message.removed");
+      item.lastFileKind === "image"
+        ? item.lastPreview !== null
+          ? t("list.photoWith", { caption: chatPreview(item.lastPreview) })
+          : t("list.photo")
+        : item.lastPreview !== null
+          ? chatPreview(item.lastPreview)
+          : t("message.removed");
     const author = nameOf(item.lastAuthor);
     const preview = !item.lastAt
       ? t("list.noMessages")

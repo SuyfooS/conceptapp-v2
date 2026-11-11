@@ -273,18 +273,21 @@ export type Database = {
           acked_at: string;
           business_id: string;
           message_id: string;
+          recorded_at: string;
           user_id: string;
         };
         Insert: {
           acked_at?: string;
           business_id: string;
           message_id: string;
+          recorded_at?: string;
           user_id: string;
         };
         Update: {
           acked_at?: string;
           business_id?: string;
           message_id?: string;
+          recorded_at?: string;
           user_id?: string;
         };
         Relationships: [
@@ -2506,6 +2509,7 @@ export type Database = {
         };
         Returns: string;
       };
+      admin_storage: { Args: Record<PropertyKey, never>; Returns: Json };
       announcement_readers: {
         Args: { message: string };
         Returns: {
@@ -2544,6 +2548,7 @@ export type Database = {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
       };
+      chat_files_closed: { Args: { business: string }; Returns: boolean };
       chat_inbox: {
         Args: { business: string };
         Returns: {
@@ -2578,6 +2583,7 @@ export type Database = {
           created_at: string;
           file_kind: string;
           file_name: string;
+          file_path: string;
           file_removed_at: string;
           file_size: number;
           id: string;
@@ -2585,9 +2591,17 @@ export type Database = {
           pinned: boolean;
           removed_at: string;
           removed_by: string;
+          thumb_path: string;
         }[];
       };
       chat_seen: { Args: { conversation: string }; Returns: string };
+      chat_stamp: {
+        Args: { business: string; conversation: string };
+        Returns: {
+          changed: string;
+          kind: string;
+        }[];
+      };
       chat_version: { Args: { business: string }; Returns: string };
       claim_due_pushes: {
         Args: { at_time?: string; max_rows?: number };
@@ -2687,6 +2701,13 @@ export type Database = {
         Returns: string;
       };
       end_view_session: { Args: { actor: string }; Returns: string };
+      expired_files: {
+        Args: { at_time?: string; max_rows?: number };
+        Returns: {
+          bucket: string;
+          path: string;
+        }[];
+      };
       expired_list_photos: {
         Args: { at_time?: string; max_rows?: number };
         Returns: {
@@ -2705,6 +2726,10 @@ export type Database = {
       forget_auth_attempt: {
         Args: { at_time: string; caller: string; kind: string; phone: string };
         Returns: undefined;
+      };
+      forget_files: {
+        Args: { at_time?: string; paths: string[] };
+        Returns: number;
       };
       forget_list_photos: {
         Args: { at_time?: string; paths: string[] };
@@ -2863,6 +2888,20 @@ export type Database = {
         Args: { actor: string; at_time?: string; note?: string; shift: string };
         Returns: string;
       };
+      reserve_chat_upload: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          conversation?: string;
+          to_person?: string;
+          upload_kind: string;
+          upload_name?: string;
+          upload_size: number;
+          upload_type: string;
+        };
+        Returns: Json;
+      };
       reset_demo_business: { Args: { business: string }; Returns: undefined };
       reset_demo_businesses: {
         Args: Record<PropertyKey, never>;
@@ -2913,6 +2952,7 @@ export type Database = {
           conversation?: string;
           draft: string;
           to_person?: string;
+          upload?: string;
           words?: string;
         };
         Returns: Json;

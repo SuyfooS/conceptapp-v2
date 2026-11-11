@@ -18,8 +18,9 @@ import { loopbackOrigin } from "@domain/push-endpoint";
  *   VAPID_PRIVATE_KEY  its private scalar d, 32 bytes, base64url. A secret.
  *   VAPID_SUBJECT      who the push services may contact: mailto: or https:.
  *   CRON_SECRET        what the database's jobs send to /cron/notifications
- *                      (every minute) and /cron/list-photos (once a day). A
- *                      secret, 32 characters or more.
+ *                      (every minute), /cron/list-photos (once a day) and
+ *                      /cron/chat-files (every 10 minutes while a chat file
+ *                      is due). A secret, 32 characters or more.
  *   PUSH_TEST_ORIGIN   the browser tests' loopback mock push service; never
  *                      honoured on Vercel.
  *

@@ -42,9 +42,11 @@ export const manifest = defineManifest({
      */
     teamGroupWho: z.enum(["everyone", "announcers"]).default("everyone"),
     /**
-     * Days a chat file is kept (C4; Orel: 90); the message stays. For the
-     * ConceptApp team only, since storage is what could cost, as lists'
-     * photoDays.
+     * Days a chat file is kept (C4; Orel: 90); the message stays and says its
+     * file is no longer kept. For the ConceptApp team only, since storage is
+     * what could cost, as lists' photoDays. public.expired_files counts only
+     * these three (CHAT_FILE_DAYS in @domain/chat-files), anything else as 90;
+     * private.chat_settings holds the same default.
      */
     fileDays: z
       .union([z.literal(30), z.literal(90), z.literal(180)])
@@ -52,7 +54,9 @@ export const manifest = defineManifest({
       .meta({ level: "team" }),
     /**
      * A business's space for chat files, in MB (C4): past it, its oldest
-     * files go first (Orel's default, §17, question 1). The team's.
+     * files go first, even before their days are up (Orel, 11 November 2026);
+     * official documents never go for space. The team's, as public.
+     * expired_files reads it (CHAT_FILE_SPACE_MB, anything else as 100).
      */
     fileSpaceMb: z
       .union([z.literal(50), z.literal(100), z.literal(200)])

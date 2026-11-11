@@ -11,6 +11,8 @@ import {
   chatPeople,
   currentChatDepartments,
   currentChatDirectory,
+  currentChatFiles,
+  currentChatPictures,
 } from "../../chat";
 import { chatAccess } from "../../chat-access";
 import { ChatDetailsBody } from "../../chat-details";
@@ -43,11 +45,15 @@ export default async function ConversationInfoPage({
   const view = await getConversation(businessId, conversation, access.userId);
   if (!view) notFound();
 
-  const [settings, directory, departments] = await Promise.all([
+  const [settings, directory, departments, files, latest] = await Promise.all([
     currentModuleSettings("chat"),
     currentChatDirectory(businessId),
     currentChatDepartments(businessId),
+    currentChatFiles(businessId),
+    currentChatPictures(businessId, view.id),
   ]);
+  // Its pictures, where the business takes them (C4).
+  const pictures = files === "yes" ? latest : [];
   const t = translator(wording, "app.chat");
   const people = chatPeople(directory, departments, wording);
   const other = view.otherPerson
@@ -89,6 +95,8 @@ export default async function ConversationInfoPage({
         businessName={access.businessName}
         fileDays={settings.fileDays}
         demo={access.demo}
+        files={files}
+        pictures={pictures}
         mute={muteChatAction.bind(null, businessId)}
         wording={wording}
       />

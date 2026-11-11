@@ -9,6 +9,7 @@ import {
   chatPeople,
   currentChatDepartments,
   currentChatDirectory,
+  currentChatFiles,
   currentChatInbox,
 } from "../../chat";
 import { chatAccess } from "../../chat-access";
@@ -42,11 +43,12 @@ export default async function WithPersonPage({
   if (id === access.userId.toLowerCase()) redirect(chatPaths.list);
   const businessId = access.businessId;
 
-  const [inbox, directory, departments, settings] = await Promise.all([
+  const [inbox, directory, departments, settings, files] = await Promise.all([
     currentChatInbox(businessId),
     currentChatDirectory(businessId),
     currentChatDepartments(businessId),
     currentModuleSettings("chat"),
+    currentChatFiles(businessId),
   ]);
   const existing = inbox.rows.find(
     (row) => row.kind === "direct" && row.otherPerson === id,
@@ -82,6 +84,8 @@ export default async function WithPersonPage({
       businessName={access.businessName}
       fileDays={settings.fileDays}
       demo={access.demo}
+      files={files}
+      pictures={[]}
       actions={boundChatActions(businessId)}
       pinned={[]}
       powers={{ announce: false, moderate: false }}

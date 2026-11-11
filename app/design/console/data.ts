@@ -3,6 +3,7 @@
 // Hebrew-literal check in tooling/ allows this file.
 
 import type { AdminBusiness, BusinessSetup } from "@db/admin";
+import type { StorageUse } from "@db/chat-files";
 
 export const consoleUser = { name: "אורל הדגמה" };
 
@@ -54,6 +55,85 @@ export const businesses: AdminBusiness[] = [
     expiredInvites: 0,
   },
 ];
+
+const MB = 1024 * 1024;
+
+/** How full the demo's free plan is (`?storage=` on /design/console). */
+export type DemoStorageLevel = "low" | "high" | "full";
+
+/**
+ * How full the free plan is, as the console's storage card reads it (sizes
+ * only): `high` is a project past 700 MB whose businesses' space adds up past
+ * the 900 MB where new chat files stop; `full` is one past those 900 MB,
+ * where new chat files are refused now.
+ */
+export function demoStorage(level: DemoStorageLevel): StorageUse {
+  const high = level !== "low";
+  const chat = (
+    id: string,
+    name: string,
+    slug: string,
+    used: number,
+    cap: number,
+  ) => ({
+    id,
+    slug,
+    name,
+    chatBytes: used * MB,
+    filesOpen: cap > 0,
+    chatCapBytes: cap * MB,
+    documentCapBytes: cap > 0 ? 50 * MB : 0,
+  });
+  const businessesUse =
+    level === "full"
+      ? [
+          chat("4", "השולחן של סבתא", "shulchan", 200, 200),
+          chat("3", "בר הים", "bar-hayam", 199, 200),
+          chat("1", "קפה נועה", "cafe-noa", 197, 200),
+          chat("5", "פיצה בכיכר", "pizza", 196, 200),
+          chat("2", "מסעדת הדגמה", "demo-restaurant", 0, 0),
+        ]
+      : high
+        ? [
+            chat("4", "השולחן של סבתא", "shulchan", 196, 200),
+            chat("3", "בר הים", "bar-hayam", 188, 200),
+            chat("1", "קפה נועה", "cafe-noa", 171, 200),
+            chat("5", "פיצה בכיכר", "pizza", 120, 200),
+            chat("2", "מסעדת הדגמה", "demo-restaurant", 0, 0),
+          ]
+        : [
+            chat("3", "בר הים", "bar-hayam", 97, 100),
+            chat("4", "השולחן של סבתא", "shulchan", 64, 100),
+            chat("1", "קפה נועה", "cafe-noa", 12.5, 100),
+            chat("2", "מסעדת הדגמה", "demo-restaurant", 0, 0),
+          ];
+  const chatBytes = businessesUse.reduce((sum, b) => sum + b.chatBytes, 0);
+  const lists = (high ? 104 : 38) * MB;
+  const avatars = 6.4 * MB;
+  return {
+    databaseBytes: (high ? 362 : 41) * MB,
+    storageBytes: Math.round(chatBytes + lists + avatars),
+    guardBytes: 900 * MB,
+    buckets: [
+      { bucket: "avatars", bytes: Math.round(avatars), files: 41 },
+      {
+        bucket: "chat-files",
+        bytes: Math.round(chatBytes),
+        files: high ? 4120 : 1066,
+      },
+      { bucket: "list-photos", bytes: lists, files: high ? 371 : 140 },
+    ],
+    businesses: businessesUse.map((b) => ({
+      ...b,
+      chatBytes: Math.round(b.chatBytes),
+    })),
+    chatCapsBytes: businessesUse.reduce((sum, b) => sum + b.chatCapBytes, 0),
+    documentCapsBytes: businessesUse.reduce(
+      (sum, b) => sum + b.documentCapBytes,
+      0,
+    ),
+  };
+}
 
 /** The demo's businesses by address; `created` shows the just-opened state. */
 export const setups: Record<

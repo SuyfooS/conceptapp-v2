@@ -70,12 +70,31 @@ const SERVICE_WORKER: Header[] = [
   },
 ];
 
+/**
+ * The routes that serve files people sent (chat's pictures from C4, its PDFs
+ * from C5; `/document-files` joins with C7). Nothing scans them for viruses on
+ * the free plan, so none is ever a page of the app's origin: even a file a
+ * browser chose to render runs no script, loads nothing, sits in no frame,
+ * and no other site may embed it. Each route also sets these itself, so
+ * whichever of the two a response keeps says the same.
+ */
+export const FILE_ROUTES = ["/chat-files"] as const;
+
+/** The content policy of a served file: nothing at all, in a sandbox. */
+export const FILE_CONTENT_POLICY =
+  "default-src 'none'; sandbox; frame-ancestors 'none'";
+
+export const FILE_HEADERS: readonly Header[] = [
+  { key: "Content-Security-Policy", value: FILE_CONTENT_POLICY },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+];
+
 export type HeaderRule = { source: string; headers: Header[] };
 
 /**
  * next.config.ts's `headers()`. When two rules set the same header on a
- * path, the later one wins, so the service worker's own content policy
- * comes after the one for every page.
+ * path, the later one wins, so the service worker's own content policy and
+ * the file routes' come after the one for every page.
  */
 export function headerRules(): HeaderRule[] {
   return [
@@ -83,6 +102,10 @@ export function headerRules(): HeaderRule[] {
     ...OUT_OF_SEARCH.map((path) => ({
       source: `${path}/:path*`,
       headers: [NOINDEX],
+    })),
+    ...FILE_ROUTES.map((path) => ({
+      source: `${path}/:path*`,
+      headers: [...FILE_HEADERS],
     })),
     { source: "/sw.js", headers: SERVICE_WORKER },
   ];

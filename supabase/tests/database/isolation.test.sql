@@ -1,7 +1,7 @@
 -- Tenant isolation: a member of business A never sees business B, and each
 -- role sees only what it should inside its own business.
 begin;
-select plan(31);
+select plan(33);
 
 -- Fixtures: business A (owner, manager, worker) and business B (owner).
 insert into auth.users (id, aud, role, phone)
@@ -235,6 +235,36 @@ select throws_ok(
 );
 select pg_temp.sign_in('20000000-0000-4000-a000-00000000000a');
 select is_empty('select 1 from public.chat_notices', 'the owner of A reads none of their people''s');
+
+-- Chat files (20261111000500_chat_files.sql): the manager of A's picture in
+-- A's team group, and its thumbnail, in the bucket as the server puts them.
+reset role;
+insert into public.chat_messages (business_id, conversation_id, author_id, draft_id,
+  file_kind, file_path, thumb_path, file_size)
+select c.business_id, c.id, '20000000-0000-4000-a000-00000000000b', gen_random_uuid(), 'image',
+  c.business_id::text || '/' || c.id::text || '/' || md5('isolation') || '.webp',
+  c.business_id::text || '/' || c.id::text || '/' || md5('isolation') || '-s.webp', 42000
+from public.chat_conversations c
+where c.business_id = '20000000-0000-4000-b000-00000000000a' and c.kind = 'team';
+insert into storage.objects (bucket_id, name, metadata)
+select 'chat-files', f.name, jsonb_build_object('size', f.bytes, 'mimetype', 'image/webp')
+from public.chat_messages m
+cross join lateral (values (m.file_path, 40000), (m.thumb_path, 2000)) as f (name, bytes)
+where m.business_id = '20000000-0000-4000-b000-00000000000a' and m.file_path is not null;
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select results_eq(
+  $$select count(*)::int from storage.objects
+    where bucket_id = 'chat-files' and name like '20000000-0000-4000-b000-00000000000a/%'$$,
+  array[2],
+  'worker of A reads the picture of A''s team group and its thumbnail'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
+select is_empty(
+  $$select 1 from storage.objects
+    where bucket_id = 'chat-files' and name like '20000000-0000-4000-b000-00000000000a/%'$$,
+  'the owner of B reads neither'
+);
 
 select * from finish();
 rollback;

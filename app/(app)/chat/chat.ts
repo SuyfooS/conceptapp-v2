@@ -6,6 +6,11 @@ import {
   getChatInbox,
   getWaitingAnnouncements,
 } from "@db/chat";
+import {
+  type ChatPicture,
+  chatFilesAllowed,
+  getConversationPictures,
+} from "@db/chat-files";
 import { getDepartments } from "@db/departments";
 import type { ChatInboxRow } from "@domain/chat";
 import { type ChatDirectory, chatListRows } from "@domain/chat-sync";
@@ -42,6 +47,45 @@ export const currentChatInbox = cache(
 /** Who the business has had, with names, photos and roles. */
 export const currentChatDirectory = cache(
   (businessId: string): Promise<ChatDirectory> => getChatDirectory(businessId),
+);
+
+/** An optional part of a chat screen failed: only its code is logged. */
+function logPart(part: string, error: unknown) {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code: unknown }).code)
+      : "without a code";
+  console.error(`chat ${part} could not be read`, code);
+}
+
+/**
+ * Whether the business takes pictures in chat (C4): "demo" for a demo
+ * business whose definition doesn't open it (the attach button says so),
+ * "notYet" before the files reach the project (no button). If it can't be
+ * asked, pictures wait ("notYet") and the conversation still opens; sending a
+ * picture asks again, strictly (`sendChatImage`).
+ */
+export const currentChatFiles = cache(
+  (businessId: string): Promise<"yes" | "demo" | "notYet"> =>
+    chatFilesAllowed(businessId).catch((error: unknown): "notYet" => {
+      logPart("files", error);
+      return "notYet";
+    }),
+);
+
+/**
+ * A conversation's latest pictures for its details (C4,
+ * `getConversationPictures`), or none when they can't be read: the details
+ * say there are none yet, and the conversation still opens.
+ */
+export const currentChatPictures = cache(
+  (businessId: string, conversationId: string): Promise<ChatPicture[]> =>
+    getConversationPictures(businessId, conversationId).catch(
+      (error: unknown): ChatPicture[] => {
+        logPart("pictures", error);
+        return [];
+      },
+    ),
 );
 
 /** The business's departments with their people, removed ones too. */

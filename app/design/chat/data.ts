@@ -8,6 +8,7 @@
 import { instantIn } from "@domain/availability";
 import type { ChatKind } from "@domain/chat";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
+import { listPhotos } from "../list-photos";
 import { business, staff, teamMembers, user } from "../shell/data";
 
 export const chatDemoBusiness = business.name;
@@ -56,6 +57,10 @@ export type ChatDemoMessage = {
   removedBy?: "author" | "management";
   /** An announcement from management (C3). */
   kind?: "announcement";
+  /** A picture sent with it (C4): an illustration, as a stored one would show. */
+  photo?: string;
+  /** Its picture is no longer kept (its days or the business's space took it). */
+  fileGone?: boolean;
 };
 
 /** A group's pinned announcement (C3): which message, and who confirmed it when. */
@@ -193,6 +198,10 @@ export const chatDemoConversations: ChatDemoConversation[] = [
         "07:40",
         "המקרר השני לא מקרר. העברתי הכול לראשון",
       ),
+      {
+        ...said("noa", CHAT_DEMO_TODAY, "07:41", "ככה המטבח נראה עכשיו"),
+        photo: listPhotos.kitchen,
+      },
       said(
         "itay",
         CHAT_DEMO_TODAY,
@@ -210,6 +219,10 @@ export const chatDemoConversations: ChatDemoConversation[] = [
     closed: true,
     unread: 0,
     messages: [
+      {
+        ...said("shira", "2026-10-14", "14:55", "התפריט של הקינוחים לשבוע"),
+        fileGone: true,
+      },
       said("shira", "2026-10-14", "15:00", "ממחר הקינוחים עוברים למטבח"),
       said("omer", "2026-10-14", "15:05", "קיבלתי"),
     ],

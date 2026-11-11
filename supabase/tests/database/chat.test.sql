@@ -11,7 +11,7 @@
 -- messages. Fixed ids of its own, so nothing here meets the seeded people, and
 -- explicit times before now (but for the last message, sent now).
 begin;
-select plan(122);
+select plan(132);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -209,8 +209,10 @@ select ok(
   and not has_table_privilege('service_role', 'public.chat_conversations', 'select')
   and not has_table_privilege('service_role', 'public.chat_reads', 'select')
   and not has_table_privilege('service_role', 'private.chat_removed', 'select')
+  and not has_table_privilege('service_role', 'private.file_uploads', 'select')
+  -- With C4's `upload` last (20261111000500_chat_files.sql).
   and has_function_privilege('service_role',
-    'public.send_chat_message(uuid, uuid, uuid, text, uuid, uuid, boolean, timestamptz)', 'execute'),
+    'public.send_chat_message(uuid, uuid, uuid, text, uuid, uuid, boolean, timestamptz, uuid)', 'execute'),
   'the server role reads no chat, so no console page can; it only calls the functions'
 );
 
@@ -904,14 +906,48 @@ reset role;
 select isnt(pg_temp.version_at('restored'), pg_temp.version_at('removed'),
   'when it is put back');
 
+-- Tal confirms Shiran's announcement in the kitchen (20261111000500_chat_files.sql):
+-- only its author and the moderators learn of it, never another worker,
+-- through the version or through the conversation's own stamp (C3's `cv`);
+-- and Tal's own stamp moves, so his other screens show it confirmed.
+create function pg_temp.keep_marks(step_name text, who uuid,
+  in_conversation text default 'kitchen') returns void language sql as $$
+  select pg_temp.sign_in(who);
+  insert into versions
+  values (step_name, public.chat_version('85000000-0000-4000-b000-000000000001'));
+  insert into versions
+  values (step_name || '-stamp', (
+    select s.changed::text
+    from public.chat_stamp('85000000-0000-4000-b000-000000000001', pg_temp.id_of(in_conversation)) s
+  ));
+  select set_config('role', 'postgres', true);
+$$;
+select pg_temp.keep_marks('author-restored', '85000000-0000-4000-a000-000000000002');
+select pg_temp.keep_marks('owner-restored', '85000000-0000-4000-a000-000000000001');
+select pg_temp.keep_marks('noa-restored', '85000000-0000-4000-a000-000000000003');
+select pg_temp.keep_marks('tal-restored', '85000000-0000-4000-a000-000000000006');
 select public.confirm_announcement('85000000-0000-4000-a000-000000000006',
   pg_temp.id_of('ka'), '2026-11-08 12:03+00');
+select pg_temp.keep_marks('author-confirmed', '85000000-0000-4000-a000-000000000002');
+select pg_temp.keep_marks('owner-confirmed', '85000000-0000-4000-a000-000000000001');
+select pg_temp.keep_marks('noa-confirmed', '85000000-0000-4000-a000-000000000003');
+select pg_temp.keep_marks('tal-confirmed', '85000000-0000-4000-a000-000000000006');
 select pg_temp.sign_in('85000000-0000-4000-a000-000000000003');
 insert into versions
 values ('confirmed', public.chat_version('85000000-0000-4000-b000-000000000001'));
 reset role;
-select isnt(pg_temp.version_at('confirmed'), pg_temp.version_at('restored'),
-  'when someone else confirms an announcement in her group');
+select is(pg_temp.version_at('confirmed'), pg_temp.version_at('restored'),
+  'not when another worker confirms an announcement in her group: who confirmed is not hers to learn');
+select is(pg_temp.version_at('noa-confirmed-stamp'), pg_temp.version_at('noa-restored-stamp'),
+  'nor does the conversation''s stamp move for her');
+select isnt(pg_temp.version_at('author-confirmed'), pg_temp.version_at('author-restored'),
+  'the announcement''s author''s version moves');
+select isnt(pg_temp.version_at('author-confirmed-stamp'), pg_temp.version_at('author-restored-stamp'),
+  'and so does her stamp, so her screen reads who confirmed again');
+select isnt(pg_temp.version_at('owner-confirmed'), pg_temp.version_at('owner-restored'),
+  'and a moderator''s version moves too');
+select isnt(pg_temp.version_at('tal-confirmed-stamp'), pg_temp.version_at('tal-restored-stamp'),
+  'and the stamp of the worker who confirmed, so his other screens show it confirmed');
 
 select public.pin_announcement('85000000-0000-4000-a000-000000000001',
   pg_temp.id_of('ka'), false, '2026-11-08 12:04+00');
@@ -939,6 +975,43 @@ select is(pg_temp.version_at('view-end'), pg_temp.version_at('view-start'),
   'a view''s stays the same, whatever changes in N');
 select is(pg_temp.version_at('outsider-end'), pg_temp.version_at('outsider-start'),
   'and so does another business''s owner''s');
+
+-- An announcer who moderates nothing: Yoav, a worker given chat.announce of
+-- his own (memberships.perms), posts in the team's group and Tal confirms.
+-- Yoav learns of it through his own announcement alone; Noa, there too,
+-- learns nothing.
+update public.memberships set perms = '{chat.announce}'
+where business_id = '85000000-0000-4000-b000-000000000001'
+  and user_id = '85000000-0000-4000-a000-000000000004';
+select ok(
+  private.holds_perm('85000000-0000-4000-b000-000000000001',
+    '85000000-0000-4000-a000-000000000004', 'chat.announce')
+  and not private.chat_moderates('85000000-0000-4000-b000-000000000001',
+    '85000000-0000-4000-a000-000000000004'),
+  'a worker may announce without moderating'
+);
+select pg_temp.send('ya', '85000000-0000-4000-a000-000000000004', 'Deliveries come at seven',
+  '2026-11-08 14:00+00', pg_temp.id_of('team'), announce => true);
+select pg_temp.keep_marks('yoav-sent', '85000000-0000-4000-a000-000000000004', 'team');
+select pg_temp.keep_marks('noa-team-sent', '85000000-0000-4000-a000-000000000003', 'team');
+select public.confirm_announcement('85000000-0000-4000-a000-000000000006',
+  pg_temp.id_of('ya'), '2026-11-08 14:05+00');
+select pg_temp.keep_marks('yoav-confirmed', '85000000-0000-4000-a000-000000000004', 'team');
+select pg_temp.keep_marks('noa-team-confirmed', '85000000-0000-4000-a000-000000000003', 'team');
+select isnt(pg_temp.version_at('yoav-confirmed'), pg_temp.version_at('yoav-sent'),
+  'his version moves when someone confirms his announcement');
+select isnt(pg_temp.version_at('yoav-confirmed-stamp'), pg_temp.version_at('yoav-sent-stamp'),
+  'and so does his stamp of the group');
+select is(pg_temp.version_at('noa-team-confirmed'), pg_temp.version_at('noa-team-sent'),
+  'while another worker''s version stays the same');
+select is(pg_temp.version_at('noa-team-confirmed-stamp'), pg_temp.version_at('noa-team-sent-stamp'),
+  'and her stamp of the group too');
+-- Unpinned, it is history like the rest, and Yoav announces no more.
+select public.pin_announcement('85000000-0000-4000-a000-000000000001',
+  pg_temp.id_of('ya'), false, '2026-11-08 14:10+00');
+update public.memberships set perms = '{}'
+where business_id = '85000000-0000-4000-b000-000000000001'
+  and user_id = '85000000-0000-4000-a000-000000000004';
 
 ------------------------------------------------------------------------------
 -- A closed group: an announcement is unpinned there, never pinned

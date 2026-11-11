@@ -70,7 +70,14 @@ export function ChatList({
   function row(chat: ChatDemoConversation): ReactNode {
     const last = chat.messages.at(-1);
     const author = last ? chatDemoPerson(last.author) : null;
-    const said = last?.body ? chatPreview(last.body) : t("message.removed");
+    const said =
+      last && !last.removedBy && (last.photo || last.fileGone)
+        ? last.body
+          ? t("list.photoWith", { caption: chatPreview(last.body) })
+          : t("list.photo")
+        : last?.body
+          ? chatPreview(last.body)
+          : t("message.removed");
     const preview = !last
       ? t("list.noMessages")
       : last.author === CHAT_DEMO_READER

@@ -5,10 +5,11 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
 import { VisibilityNote } from "@ui/visibility-note";
-import { Building, Users } from "lucide-react";
+import { Building, Clock3, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import { WhoSeesLines } from "./chat-notice";
+import { ChatPicturesGrid, type DetailsPicture } from "./chat-pictures-grid";
 import type { ChatActionResult } from "./chat-types";
 import { MuteSwitch } from "./mute-switch";
 
@@ -38,6 +39,13 @@ export type ChatDetailsProps = {
   fileDays: number;
   /** A demo business: anyone at its door reads every chat. */
   demo: boolean;
+  /**
+   * Whether the business takes pictures in chat (C4): only then do the
+   * details show the conversation's pictures, and how long they are kept.
+   */
+  files: "yes" | "demo" | "notYet";
+  /** Its latest pictures still kept, newest first (`getConversationPictures`). */
+  pictures: readonly DetailsPicture[];
   /** "בלי התראות מהשיחה הזאת" (C3), bound to the business. */
   mute: (conversation: string, muted: boolean) => Promise<ChatActionResult>;
   /** The business's words. */
@@ -51,8 +59,9 @@ export type ChatDetailsProps = {
  * that management reads every department's group too), and who sees what in
  * chat, the notice again (in a demo business, as it is there). The same on
  * the phone's /chat/<id>/info, in the tablet's sheet and in the desktop's
- * column; in the sheet its cards are a sheet's (`inSheet`). Files come with
- * C4.
+ * column; in the sheet its cards are a sheet's (`inSheet`). Where the
+ * business takes pictures (C4), its latest pictures, each opening the whole of
+ * it, and how long they are kept: the messages stay.
  */
 export function ChatDetailsBody({
   conversation,
@@ -65,6 +74,8 @@ export function ChatDetailsBody({
   businessName,
   fileDays,
   demo,
+  files,
+  pictures,
   mute,
   wording,
   headingLevel = "h2",
@@ -170,6 +181,17 @@ export function ChatDetailsBody({
           <VisibilityNote className="px-1">
             {t("details.alsoManagement")}
           </VisibilityNote>
+        </PageSection>
+      ) : null}
+      {files === "yes" && conversation ? (
+        <PageSection title={t("details.pictures")}>
+          <ChatPicturesGrid pictures={pictures} />
+          <p className="flex items-start gap-1.5 px-1 text-ink-2 text-sm">
+            <Clock3 aria-hidden="true" className="mt-px size-4 shrink-0" />
+            <span className="min-w-0">
+              {t.rich("info.filesKept", { days: fileDays, ltr })}
+            </span>
+          </p>
         </PageSection>
       ) : null}
       <PageSection title={t("notice.title")}>

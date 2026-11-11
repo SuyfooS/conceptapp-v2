@@ -40,6 +40,13 @@ describe("proxy", () => {
     expect(source).toContain('"/list-photos/:path*"');
   });
 
+  it("guards the files sent in chat", () => {
+    // /chat-files serves a message's picture under the reader's session
+    // (C4), as /list-photos does: a signed-out visitor goes to sign-in.
+    expect(source).toContain('"/chat-files",');
+    expect(source).toContain('"/chat-files/:path*"');
+  });
+
   it("guards every module screen", () => {
     for (const m of manifests) {
       if (!m.nav) continue;
@@ -69,11 +76,14 @@ describe("proxy", () => {
         ? path === pattern.slice(0, -"/:path*".length) ||
           path.startsWith(pattern.slice(0, -":path*".length))
         : path === pattern;
-    for (const path of ["/chat-sync", "/push/inbox"]) {
+    for (const path of ["/chat-sync", "/chat-sync/x", "/push/inbox"]) {
       expect(listed.filter((pattern) => matches(pattern, path))).toEqual([]);
     }
     expect(listed.some((pattern) => matches(pattern, "/chat"))).toBe(true);
     expect(listed.some((pattern) => matches(pattern, "/chat/x"))).toBe(true);
+    expect(
+      listed.some((pattern) => matches(pattern, "/chat-files/a/b/c.webp")),
+    ).toBe(true);
     expect(source).not.toContain('"/chat-sync');
   });
 });

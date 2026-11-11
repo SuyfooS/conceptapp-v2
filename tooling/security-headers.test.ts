@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  FILE_CONTENT_POLICY,
+  FILE_ROUTES,
   headerRules,
   NOINDEX,
   OUT_OF_SEARCH,
@@ -69,6 +71,49 @@ describe("keeping the design gallery and invite links out of search", () => {
     ]) {
       expect(read(file), file).toMatch(/robots: \{ index: false/);
     }
+  });
+});
+
+describe("the routes that serve files people sent", () => {
+  // No virus scan on the free plan (§6.3 of the chat plan): a file a browser
+  // chose to render runs nothing, loads nothing and sits in no frame, and no
+  // other site embeds it.
+  const rules = headerRules();
+  const general = rules.findIndex((rule) => rule.source === "/:path*");
+
+  it("serve chat's files under a sandbox, from this site only", () => {
+    expect(FILE_ROUTES).toContain("/chat-files");
+    for (const path of FILE_ROUTES) {
+      const at = rules.findIndex((rule) => rule.source === `${path}/:path*`);
+      const headers = rules[at]?.headers ?? [];
+      // After the rule for every page, so its policy wins on these paths.
+      expect(at, path).toBeGreaterThan(general);
+      expect(headers, path).toContainEqual({
+        key: "Content-Security-Policy",
+        value: FILE_CONTENT_POLICY,
+      });
+      expect(headers, path).toContainEqual({
+        key: "Cross-Origin-Resource-Policy",
+        value: "same-origin",
+      });
+    }
+    expect(FILE_CONTENT_POLICY.split("; ")).toEqual([
+      "default-src 'none'",
+      "sandbox",
+      "frame-ancestors 'none'",
+    ]);
+  });
+
+  it("set the same in the route itself, with the type from the bytes", () => {
+    // Whichever of the two a response keeps, it says the same.
+    const route = read(
+      "app/chat-files/[business]/[conversation]/[file]/route.ts",
+    );
+    expect(route).toContain('"Content-Security-Policy": FILE_CONTENT_POLICY');
+    expect(route).toContain('"Cross-Origin-Resource-Policy": "same-origin"');
+    expect(route).toContain('"X-Content-Type-Options": "nosniff"');
+    expect(route).toContain('"Cache-Control": "private, max-age=604800"');
+    expect(route).toContain('"Content-Type": found.type');
   });
 });
 

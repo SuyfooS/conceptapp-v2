@@ -44,14 +44,22 @@ import {
 } from "@domain/chat-thread";
 import { AnnouncementCard } from "@ui/announcement-card";
 import { ChatHeader } from "@ui/chat-header";
-import { Composer } from "@ui/composer";
+import { Composer, type ComposerAttach } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
 import {
   MessageBubble,
   type MessageContent,
+  type MessageImage,
   type MessageStatus,
 } from "@ui/message-bubble";
 import { NewBelow } from "@ui/new-below";
+import {
+  encodeChatImage,
+  PhotoReadError,
+  PICKED_PHOTO_ACCEPT,
+  photoDataUrl,
+} from "@ui/photo-encode";
+import { PhotoSheet } from "@ui/photo-sheet";
 import { Spinner } from "@ui/spinner";
 import { StatusToast } from "@ui/status-toast";
 import { ChevronUp } from "lucide-react";
@@ -71,8 +79,18 @@ import {
 import { focusLost } from "./chat-focus";
 import { ChatNotice } from "./chat-notice";
 import { chatPaths } from "./chat-paths";
+import {
+  type ComposerNotice,
+  type PictureFiles,
+  pictureForm,
+  pictureRefusal,
+} from "./chat-pictures";
 import { type SyncOpen, useChat } from "./chat-provider";
-import type { ChatActionResult, ChatReaders } from "./chat-types";
+import type {
+  ChatActionResult,
+  ChatImageResult,
+  ChatReaders,
+} from "./chat-types";
 import { InfoButton } from "./info-button";
 import { MessageActionsSheet } from "./message-actions";
 import { ReadersSheet } from "./readers-sheet";
@@ -82,6 +100,11 @@ export type ConversationActions = {
   send: (
     input: ChatSendInput,
   ) => Promise<ChatActionResult<{ conversation: string; message: string }>>;
+  /**
+   * A picture, with what was written with it (C4): `pictureForm`'s fields,
+   * the files as the phone made them ready (`encodeChatImage`).
+   */
+  sendImage: (form: FormData) => Promise<ChatImageResult>;
   read: (conversation: string, upTo: string) => Promise<ChatActionResult>;
   older: (
     conversation: string,
@@ -152,6 +175,35 @@ type Props = {
    * its first message hasn't made yet.
    */
   details: ReactNode | null;
+  /**
+   * Whether pictures can be sent here (C4, `chatFilesAllowed`): "demo" keeps
+   * the attach button, which says a demo business takes no files; "notYet"
+   * (the database hasn't the files yet) has none.
+   */
+  files: "yes" | "demo" | "notYet";
+};
+
+/**
+ * A picture made ready on the phone, with what it is shown from here: data
+ * URLs, which go with the screen (an object URL would stay until it was let
+ * go, and a screen kept hidden for going back runs its clean-up while it
+ * still shows them when it comes back).
+ */
+type Picture = PictureFiles & {
+  /** The thumbnail: the bubble's, and the composer's. */
+  preview: string;
+  /** The whole picture: what opens in the sheet. */
+  whole: string;
+};
+
+/** A picture opened in its sheet: whose bubble it is, and what it shows. */
+type PhotoShown = {
+  /** The message's id, or a draft's key while it goes. */
+  id: string;
+  src: string;
+  alt: string;
+  caption: string | null;
+  subtitle: ReactNode;
 };
 
 /**
@@ -285,9 +337,25 @@ export function ConversationScreen(props: Props) {
   const [seenUpTo, setSeenUpTo] = useState(props.seenUpTo);
   const [outgoing, setOutgoing] = useState<OutgoingMessage[]>([]);
   const [text, setText] = useState("");
-  const [notice, setNotice] = useState<"tooFast" | "businessChanged" | null>(
-    null,
-  );
+  const [notice, setNotice] = useState<ComposerNotice | null>(null);
+  /** The picture that goes with the next message, once made ready (C4). */
+  const [picked, setPicked] = useState<Picture | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  /** The newest pick: one made ready after another was picked changes nothing. */
+  const picks = useRef(0);
+  /**
+   * The pictures sent from here, by draft: shown from the phone while they
+   * go and once they arrived (nothing is fetched again), kept for retries.
+   */
+  const pictures = useRef(new Map<string, Picture>());
+  const pickedNow = useRef<Picture | null>(null);
+  useLayoutEffect(() => {
+    pickedNow.current = picked;
+  }, [picked]);
+  /** The picture open in its sheet, kept while the sheet closes. */
+  const [photo, setPhoto] = useState<PhotoShown | null>(null);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const photoOpener = useRef<HTMLElement | null>(null);
   const [below, setBelow] = useState(false);
   const [ready, setReady] = useState(false);
   /**
@@ -688,19 +756,25 @@ export function ConversationScreen(props: Props) {
     };
   }, []);
 
-  // "Too many in a minute" goes once the minute has passed.
+  // "Too many in a minute" goes once the minute has passed, and so does what
+  // was said of a picture; a business switched since stays said.
   useEffect(() => {
-    if (notice !== "tooFast") return;
+    if (!notice || notice.key === "businessChanged") return;
     const timer = setTimeout(() => setNotice(null), NOTICE_MS);
     return () => clearTimeout(timer);
   }, [notice]);
 
-  // What the server has now shows as itself.
+  // What the server has now shows as itself, and a picture the phone held
+  // for it is let go.
   useEffect(() => {
     const shown = shownMessages(messages);
     setOutgoing((list) => {
       const next = stillOutgoing(list, shown);
-      return next.length === list.length ? list : next;
+      if (next.length === list.length) return list;
+      for (const item of list) {
+        if (!next.includes(item)) pictures.current.delete(item.draft);
+      }
+      return next;
     });
   }, [messages]);
 
@@ -760,7 +834,81 @@ export function ConversationScreen(props: Props) {
     return () => observer.disconnect();
   }, [hasOlder, ready, loadOlder, firstId]);
 
+  /** The server has it: it shows as sent, and the screen goes on as its chat. */
+  function delivered(
+    item: OutgoingMessage,
+    sent: { conversation: string; message: string },
+  ) {
+    setNotice(null);
+    if (!conversationNow.current) {
+      // The first message made the chat: the screen goes on as it, where
+      // it is, and is kept up to date as it from now on.
+      conversationNow.current = sent.conversation;
+      setConversation(sent.conversation);
+    }
+    setOutgoing((list) =>
+      list.map((m) =>
+        m.draft === item.draft
+          ? { ...m, state: "sent", message: sent.message }
+          : m,
+      ),
+    );
+    chat.syncNow();
+  }
+
+  /** It didn't go: it stays, with its way to try again. */
+  function undelivered(item: OutgoingMessage) {
+    setOutgoing((list) =>
+      list.map((m) => (m.draft === item.draft ? { ...m, state: "failed" } : m)),
+    );
+  }
+
+  /**
+   * A picture goes with what was written with it (C4), as the phone made it
+   * ready. One that can't go as it is (a demo business, no room, a file the
+   * server takes for none of the app's own) leaves the conversation and its
+   * words go back to the field, so they can still be sent; any other failure
+   * keeps it, with its way to try again under the same draft.
+   */
+  async function deliverPicture(item: OutgoingMessage) {
+    const picture = pictures.current.get(item.draft);
+    if (!picture) {
+      undelivered(item);
+      return;
+    }
+    const known = conversationNow.current;
+    const form = pictureForm(
+      picture,
+      { draft: item.draft, words: item.body, announce: item.announce === true },
+      known ? { conversation: known } : { toPerson: toPerson ?? "" },
+    );
+    let result: ChatImageResult;
+    try {
+      result = await actions.sendImage(form);
+    } catch {
+      result = { ok: false, failure: "failed" };
+    }
+    if (result.ok) {
+      delivered(item, result.value);
+      return;
+    }
+    const refusal = pictureRefusal(result.failure);
+    setNotice(refusal.notice);
+    if (refusal.next === "drop") {
+      setOutgoing((list) => list.filter((m) => m.draft !== item.draft));
+      pictures.current.delete(item.draft);
+      if (item.body) setText((now) => (now.trim() === "" ? item.body : now));
+    } else {
+      undelivered(item);
+    }
+    if (refusal.refresh) router.refresh();
+  }
+
   async function deliver(item: OutgoingMessage) {
+    if (item.picture) {
+      await deliverPicture(item);
+      return;
+    }
     const known = conversationNow.current;
     const input: ChatSendInput = known
       ? {
@@ -777,44 +925,81 @@ export function ConversationScreen(props: Props) {
       result = { ok: false, failure: "failed" };
     }
     if (result.ok) {
-      const sent = result.value;
-      setNotice(null);
-      if (!conversationNow.current) {
-        // The first message made the chat: the screen goes on as it, where
-        // it is, and is kept up to date as it from now on.
-        conversationNow.current = sent.conversation;
-        setConversation(sent.conversation);
-      }
-      setOutgoing((list) =>
-        list.map((m) =>
-          m.draft === item.draft
-            ? { ...m, state: "sent", message: sent.message }
-            : m,
-        ),
-      );
-      chat.syncNow();
+      delivered(item, result.value);
       return;
     }
-    setOutgoing((list) =>
-      list.map((m) => (m.draft === item.draft ? { ...m, state: "failed" } : m)),
-    );
-    if (result.failure === "tooFast") setNotice("tooFast");
-    else if (result.failure === "businessChanged") setNotice("businessChanged");
+    undelivered(item);
+    if (result.failure === "tooFast") {
+      setNotice({ of: "conversation", key: "tooFast" });
+    } else if (result.failure === "businessChanged") {
+      setNotice({ of: "conversation", key: "businessChanged" });
+    }
     // The chat closed, or the other person left: the screen says so now.
     else if (result.failure === "closed" || result.failure === "noAccess") {
       router.refresh();
     }
   }
 
+  /**
+   * A picture picked or taken for the next message: made ready here first
+   * (`encodeChatImage`: upright, about 0.3 MB, with its thumbnail, nothing
+   * from the camera inside), shown over the field until it goes, and said
+   * when it can't be. A newer pick, or taking it out, wins over one still
+   * being made ready.
+   */
+  async function pickPicture(file: File) {
+    picks.current += 1;
+    const mine = picks.current;
+    setPicked(null);
+    setPreparing(true);
+    setNotice((now) => (now?.of === "fileFailure" ? null : now));
+    try {
+      const files = await encodeChatImage(file);
+      const [preview, whole] = await Promise.all([
+        photoDataUrl(files.thumb),
+        photoDataUrl(files.full),
+      ]);
+      if (picks.current !== mine) return;
+      setPicked({ full: files.full, thumb: files.thumb, preview, whole });
+    } catch (error) {
+      if (picks.current !== mine) return;
+      setNotice({
+        of: "fileFailure",
+        key: error instanceof PhotoReadError ? error.problem : "unreadable",
+      });
+    } finally {
+      if (picks.current === mine) setPreparing(false);
+    }
+  }
+
+  /** "הסרת התמונה": the picture doesn't go, and the field is next. */
+  function dropPicked() {
+    picks.current += 1;
+    setPreparing(false);
+    setPicked(null);
+    focusOnward(field, log);
+  }
+
   function send(body: string) {
+    const picture = pickedNow.current;
     const item: OutgoingMessage = {
       draft: newDraftId(),
       body,
       at: new Date().toISOString(),
       state: "sending",
       message: null,
-      ...(announce && canAnnounce ? { announce: true } : {}),
+      // A picture goes as a message: the pinned card shows words alone.
+      ...(picture
+        ? { picture: true }
+        : announce && canAnnounce
+          ? { announce: true }
+          : {}),
     };
+    if (picture) {
+      pictures.current.set(item.draft, picture);
+      pickedNow.current = null;
+      setPicked(null);
+    }
     setOutgoing((list) => [...list, item]);
     setText("");
     // One announcement at a time: what is written next is a message again.
@@ -1140,7 +1325,9 @@ export function ConversationScreen(props: Props) {
               ? content.body
               : content.kind === "announcement"
                 ? `${content.label}: ${content.body}`
-                : content.label,
+                : content.kind === "image"
+                  ? photoWords(content.body)
+                  : content.label,
         }),
         content.kind === "removed" ? null : last.id,
       );
@@ -1153,7 +1340,122 @@ export function ConversationScreen(props: Props) {
     };
   });
 
+  /** A picture in words: "תמונה", with what was written with it. */
+  function photoWords(caption: string | null): string {
+    return caption
+      ? t("list.photoWith", { caption: chatPreview(caption) })
+      : t("list.photo");
+  }
+
+  /** When a message was sent, for its picture's sheet: its time, and its day before today. */
+  function whenOf(at: string): ReactNode {
+    const day = dateIn(new Date(at), chat.timeZone);
+    const time = messageTime(at, chat.timeZone);
+    return day === today
+      ? t.rich("image.when", { time, ltr })
+      : t.rich("image.whenDay", { time, day: dayLabel(day), ltr });
+  }
+
+  function openPhoto(shown: PhotoShown, trigger: HTMLElement) {
+    photoOpener.current = trigger;
+    setPhoto(shown);
+    setPhotoOpen(true);
+  }
+
+  /**
+   * A message's picture: its thumbnail, opening the whole picture; the line
+   * that its file is no longer kept; or, where the answer brought no address
+   * (an answer from before pictures), that it can't be shown now. The server's
+   * copy always shows from its own address, the one everyone in the
+   * conversation reads (kept a week in the browser's private cache): the
+   * phone's copy is only for while it is on its way (outgoingContent), so the
+   * picture never swaps source on whether an answer carried its draft.
+   */
+  function imageOf(message: ChatSyncMessage): MessageImage {
+    if (message.fileGone) {
+      return { kind: "gone", label: t("message.fileGone") };
+    }
+    const thumb = message.thumbSrc ?? null;
+    const whole = message.fileSrc ?? null;
+    if (!thumb || !whole) {
+      return { kind: "gone", label: t("image.unavailable") };
+    }
+    const alt =
+      message.authorId === reader
+        ? t("image.altOwn")
+        : t("image.alt", { name: nameOf(message.authorId) });
+    return {
+      kind: "shown",
+      src: thumb,
+      alt,
+      retry: t("image.retry"),
+      open: {
+        label: t("image.open"),
+        onOpen: (trigger) =>
+          openPhoto(
+            {
+              id: message.id,
+              src: whole,
+              alt,
+              caption: message.body,
+              subtitle: whenOf(message.createdAt),
+            },
+            trigger,
+          ),
+      },
+    };
+  }
+
+  /** One's own message on its way, or one that didn't go. */
+  function outgoingContent(item: OutgoingMessage): MessageContent {
+    if (item.picture) {
+      const picture = pictures.current.get(item.draft);
+      const alt = t("image.altOwn");
+      const image: MessageImage = picture
+        ? {
+            kind: "shown",
+            src: picture.preview,
+            alt,
+            busy: item.state === "sending",
+            retry: t("image.retry"),
+            open: {
+              label: t("image.open"),
+              onOpen: (trigger) =>
+                openPhoto(
+                  {
+                    id: draftKey(item.draft),
+                    src: picture.whole,
+                    alt,
+                    caption: item.body || null,
+                    subtitle: whenOf(item.at),
+                  },
+                  trigger,
+                ),
+            },
+          }
+        : { kind: "gone", label: t("image.unavailable") };
+      return { kind: "image", image, body: item.body || null };
+    }
+    return item.announce
+      ? {
+          kind: "announcement",
+          body: item.body,
+          label: t("announcement.label"),
+        }
+      : { kind: "text", body: item.body };
+  }
+
   function contentOf(message: ChatSyncMessage): MessageContent {
+    if (!message.removed && message.fileKind === "image") {
+      return {
+        kind: "image",
+        image: imageOf(message),
+        body: message.body,
+        ...(message.kind === "announcement"
+          ? { label: t("announcement.label") }
+          : {}),
+      };
+    }
     if (!message.removed && message.body !== null) {
       return message.kind === "announcement"
         ? {
@@ -1328,6 +1630,52 @@ export function ConversationScreen(props: Props) {
   }, [actionsGone]);
   const sheetMessage = actionsGone ? null : actionsMessage;
 
+  // The picture open in its sheet went (removed, or its file no longer
+  // kept): the sheet closes, and nothing of it stays on screen.
+  const photoMessage =
+    photo && !photo.id.startsWith("draft:")
+      ? (messages.find((m) => m.id === photo.id) ?? null)
+      : null;
+  const photoGone =
+    photoOpen &&
+    photo !== null &&
+    !photo.id.startsWith("draft:") &&
+    (!photoMessage || photoMessage.removed || photoMessage.fileGone);
+  useEffect(() => {
+    if (photoGone) setPhotoOpen(false);
+  }, [photoGone]);
+
+  // The details' pictures beside it (the desktop's column, the tablet's
+  // sheet) are drawn by the server: what this screen shows as removed, or as
+  // no longer kept, leaves them at once, and what was put back returns.
+  // A removed message has no file kind left: any removed one counts.
+  const notePictures = chat.notePictures;
+  useEffect(() => {
+    const gone: string[] = [];
+    const shown: string[] = [];
+    for (const message of messages) {
+      if (message.removed || message.fileGone) gone.push(message.id);
+      else if (message.fileKind === "image") shown.push(message.id);
+    }
+    notePictures(gone, shown);
+  }, [messages, notePictures]);
+
+  // Pictures (C4): the attach button opens the phone's picker, which offers
+  // its camera too; in a demo business it says why there is none.
+  const attach: ComposerAttach | null =
+    props.files === "yes"
+      ? {
+          label: t("conversation.attach"),
+          accept: PICKED_PHOTO_ACCEPT,
+          onPick: (file) => void pickPicture(file),
+        }
+      : props.files === "demo"
+        ? { label: t("conversation.attach"), refused: t("fileFailure.demo") }
+        : null;
+  const picturing = picked !== null || preparing;
+  // A picture goes as a message: the switch steps aside while one is chosen.
+  const announcing = announce && canAnnounce && !picturing;
+
   /** Where the focus goes back to once a sheet closes: what opened it, else the messages. */
   const backTo = (opener: HTMLElement | null) =>
     opener?.isConnected && opener.getClientRects().length > 0
@@ -1441,13 +1789,7 @@ export function ConversationScreen(props: Props) {
                       content={
                         shown.kind === "message"
                           ? contentOf(shown.message)
-                          : shown.outgoing.announce
-                            ? {
-                                kind: "announcement",
-                                body: shown.outgoing.body,
-                                label: t("announcement.label"),
-                              }
-                            : { kind: "text", body: shown.outgoing.body }
+                          : outgoingContent(shown.outgoing)
                       }
                       time={{
                         label: messageTime(item.createdAt, chat.timeZone),
@@ -1482,19 +1824,33 @@ export function ConversationScreen(props: Props) {
       )}
       <Composer
         label={t("conversation.placeholder")}
-        sendLabel={
-          announce && canAnnounce
-            ? t("announcement.send")
-            : t("conversation.send")
-        }
+        sendLabel={announcing ? t("announcement.send") : t("conversation.send")}
         value={text}
         onValueChange={setText}
         onSend={send}
         blocked={props.blocked}
-        notice={notice ? t(`conversation.${notice}`) : null}
+        notice={
+          notice
+            ? notice.of === "conversation"
+              ? t(`conversation.${notice.key}`)
+              : t(`fileFailure.${notice.key}`)
+            : null
+        }
         tooLong={t.rich("conversation.tooLong", { max: CHAT_MESSAGE_MAX, ltr })}
+        attach={attach}
+        attached={
+          picturing
+            ? {
+                src: picked?.preview ?? null,
+                alt: t("image.chosen"),
+                busyLabel: t("image.preparing"),
+                readyLabel: t("image.ready"),
+                remove: { label: t("image.remove"), onRemove: dropPicked },
+              }
+            : null
+        }
         toggle={
-          canAnnounce
+          canAnnounce && !picturing
             ? {
                 label: t("announcement.switch"),
                 checked: announce,
@@ -1523,9 +1879,13 @@ export function ConversationScreen(props: Props) {
           if (!open) setActionsFor(null);
         }}
         quote={
-          sheetMessage?.body && !sheetMessage.removed
-            ? chatPreview(sheetMessage.body, 160)
-            : null
+          !sheetMessage || sheetMessage.removed
+            ? null
+            : sheetMessage.fileKind === "image"
+              ? photoWords(sheetMessage.body)
+              : sheetMessage.body
+                ? chatPreview(sheetMessage.body, 160)
+                : null
         }
         actions={sheetMessage ? actionsOf(sheetMessage) : []}
         onAction={act}
@@ -1533,6 +1893,16 @@ export function ConversationScreen(props: Props) {
         // button went with it), else the messages; the toast's "ביטול"
         // takes it from there when it comes.
         returnFocus={() => backTo(actionsOpener.current)}
+      />
+      <PhotoSheet
+        open={photoOpen}
+        onOpenChange={setPhotoOpen}
+        photo={photo}
+        subtitle={photo?.subtitle}
+        closeLabel={t("image.close")}
+        loadingLabel={t("image.loading")}
+        unavailable={t("image.unavailable")}
+        returnFocus={() => backTo(photoOpener.current)}
       />
       <ReadersSheet
         message={readersFor}
