@@ -533,7 +533,7 @@ under the person's session, and closes and reopens (`closePayrollMonth`,
 Covered by `payroll_months.test.sql`, with `rls_enabled.test.sql`.
 
 Chat (`20261111000100_chat_module.sql`, `20261111000200_chat.sql`, chat C1), in
-the database only: the module is off everywhere until C2. `public.chat_conversations`
+the database first, with the module off everywhere until C2 (below). `public.chat_conversations`
 holds a business's chats: its team's group (made with the business, by the
 trigger `businesses_open_team_chat`), a group for each department (made with it,
 `closed_at` while it is removed and cleared when it comes back) and a private chat
@@ -597,7 +597,7 @@ settled by its reader's "קראתי" (`private.settle_own_line`) and for everyon
 removing or unpinning it. The job `chat` (`private.chat_tick`, every 10 minutes,
 pure SQL, off in `seed.sql`) runs `private.clean_chat`: removed texts past their
 undo, and a demo business's visitors' messages after an hour. The demo reset ends
-with `private.seed_demo_chat`, a stub C2 fills; chats go with the business by
+with `private.seed_demo_chat` (C2 fills it, below); chats go with the business by
 cascade. Orel's defaults of the plan's §17 are one function each
 (`private.chat_history_from_joining`, `private.chat_read_marks`,
 `private.chat_demo_keeps`, `private.chat_demo_per_hour`; `CHAT_RULES` in
@@ -605,6 +605,33 @@ cascade. Orel's defaults of the plan's §17 are one function each
 keeps `private.chat_settings` equal to the manifest's defaults). `@db/chat` reads
 and calls them (`chat.test.sql`, `chat_notifications.test.sql`, with
 `isolation`, `demo_reset` and `rls_enabled`).
+
+Chat on (`20261111000300_chat_on.sql`, chat C2): every template switches chat on, a
+version up each (the fourth module tab, so the bar is full), and every business has it
+on where its tab fits, which is all of them. `public.chat_notices` keeps when each
+person first read chat's notice, who sees what, per business (own rows only, under
+RLS; written once by `public.see_chat_notice(actor, business)`, the server's, for
+someone on the staff with chat on: 42501 otherwise, 55000 with chat off; no log row).
+`private.seed_demo_chat`, which the reset ends with, writes the demo's conversations
+through the chat functions, all `seeded` and at times relative to now: the owner's
+thanks and the manager's two morning messages (read by the first two workers) in the
+team's group, with no announcement until C3 brings the "קראתי" that settles one, the
+first worker's message and the
+manager's answer in that worker's first department, and the manager's private chat with
+that worker (the question read, the answer not yet). It picks people by role in the
+order the definition names them, in both definitions alike
+(`tooling/demo-chat.test.ts`), and moves the demo people's `staff_since` and
+`added_at` a month back, so they read that history. `@db/chat` adds `getChatDirectory`
+(names, photos and departments the screens title chats with, nothing of any chat),
+`getChatList` (the inbox, titled), `getConversation` (now with its title, whether one
+may write in it and the names its messages show), `getConversationKind` and `getChatAuthors` (for
+`/chat-sync`), `getMessages`'s `since` (the sync's second look, a moment before its cursor, for a
+message stamped earlier but written later), `withOwnDrafts` (the draft each of the reader's own
+messages was sent with, read under their session: how the screen knows its own message on its
+way), `chatNoticeSeen` and `seeChatNotice`; `getOwnPlace` in `@db/session`
+reads who is signed in and their business in one round, for the sync. Covered by
+`chat_on.test.sql`, with `isolation`, `demo_reset`, `templates`, `create_business` and
+`rls_enabled`.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

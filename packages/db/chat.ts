@@ -9,10 +9,21 @@ import {
   type ChatInboxRow,
   type ChatKind,
   type ChatMessageKind,
+  type ChatTitle,
   checkMessage,
+  conversationTitle,
   readChatInbox,
   sortInbox,
 } from "@domain/chat";
+import {
+  type ChatDirectory,
+  type ChatListRow,
+  type ChatMember,
+  type ChatSyncPerson,
+  chatListRows,
+} from "@domain/chat-sync";
+import { isStaff } from "@domain/modules";
+import { profilePhotoSrc } from "@domain/profile-photos";
 import { z } from "zod";
 import type { Database } from "./database.types";
 import { isMissingFunction } from "./missing";
@@ -21,7 +32,8 @@ import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
 /*
- * Chat (supabase/migrations/20261111000200_chat.sql). Reads run under RLS as
+ * Chat (supabase/migrations/20261111000200_chat.sql, and from C2
+ * 20261111000300_chat_on.sql). Reads run under RLS as
  * the signed-in person, so a private chat is read by its two people only and a
  * group from when the reader joined it; a view session reads nothing. Writes
  * run with the secret key for `actorId`; the database checks who may do what,
@@ -101,6 +113,68 @@ export async function getChatInbox(
   return sortInbox(readChatInbox(data));
 }
 
+/**
+ * Who and what the chat screens name in the business, as the signed-in person
+ * reads them (RLS: everyone in a business reads its team and departments):
+ * every membership, active or not, with its name and photo (`active` is on
+ * the staff now, so someone who left, or is only the accountant, reads as
+ * having left a private chat), and every department, removed ones too, by id.
+ * Nothing about any chat. Empty before anything is readable.
+ */
+export async function getChatDirectory(
+  businessId: string,
+): Promise<ChatDirectory> {
+  const supabase = await createClient();
+  const [members, departments] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select("user_id, role, active, profiles (full_name, avatar_path)")
+      .eq("business_id", businessId),
+    supabase
+      .from("departments")
+      .select("id, name")
+      .eq("business_id", businessId),
+  ]);
+  if (members.error) throw members.error;
+  if (departments.error && !isMissingTable(departments.error)) {
+    throw departments.error;
+  }
+  return {
+    members: new Map(
+      (members.data ?? []).map((row): [string, ChatMember] => [
+        row.user_id.toLowerCase(),
+        {
+          active: row.active && isStaff(row.role),
+          name: row.profiles?.full_name?.trim() || null,
+          photo: profilePhotoSrc(row.profiles?.avatar_path),
+          role: row.role,
+        },
+      ]),
+    ),
+    departments: new Map(
+      (departments.data ?? []).map((row): [string, string] => [
+        row.id.toLowerCase(),
+        row.name,
+      ]),
+    ),
+  };
+}
+
+/**
+ * The signed-in person's chats in the business, in the list's order and each
+ * with its title and picture (`getChatInbox` named from `getChatDirectory`):
+ * what the list draws, and what `/chat-sync` sends when it moved.
+ */
+export async function getChatList(
+  businessId: string,
+): Promise<ChatListRow[] | "notYet"> {
+  const [rows, directory] = await Promise.all([
+    getChatInbox(businessId),
+    getChatDirectory(businessId),
+  ]);
+  return rows === "notYet" ? rows : chatListRows(rows, directory);
+}
+
 /** A conversation as its reader may see it. */
 export type ChatConversation = {
   id: string;
@@ -115,20 +189,115 @@ export type ChatConversation = {
 };
 
 /**
- * One conversation of the business, when the signed-in person reads it
- * (RLS); null otherwise, the same for one that doesn't exist.
+ * Whether the reader may write in it, as far as the conversation says:
+ * "closed" while its department is removed, "left" when the other person of
+ * a private chat is no longer on the staff, else "open". Who writes in the
+ * whole team's group (`teamGroupWho`) is the screen's, from the settings and
+ * the reader's permissions.
+ */
+export type ChatConversationState = "open" | "closed" | "left";
+
+/** A conversation as its screen draws it. */
+export type ChatConversationView = ChatConversation & {
+  title: ChatTitle;
+  /** A private chat: the other person. */
+  otherPerson: string | null;
+  state: ChatConversationState;
+  /**
+   * The names and photos its messages' authors are shown with: a private
+   * chat's two people, or for a group everyone in the business, those who
+   * left too. A lookup, not who is in the group (that is C3's details).
+   */
+  names: ChatSyncPerson[];
+};
+
+const CONVERSATION_COLUMNS =
+  "id, kind, department_id, person_a, person_b, last_message_at, closed_at";
+
+/**
+ * One conversation of the business, when the signed-in person (`readerId`)
+ * reads it (RLS), with its title, whether they may write in it and the people
+ * it names; null otherwise, the same for one that doesn't exist.
  */
 export async function getConversation(
   businessId: string,
   conversationId: string,
-): Promise<ChatConversation | null> {
+  readerId: string,
+): Promise<ChatConversationView | null> {
+  if (!isUuid(conversationId)) return null;
+  const supabase = await createClient();
+  const [read, directory] = await Promise.all([
+    supabase
+      .from("chat_conversations")
+      .select(CONVERSATION_COLUMNS)
+      .eq("business_id", businessId)
+      .eq("id", conversationId.toLowerCase())
+      .maybeSingle(),
+    getChatDirectory(businessId),
+  ]);
+  const { data, error } = read;
+  if (error) {
+    if (isMissingTable(error)) return null;
+    throw error;
+  }
+  if (!data) return null;
+  const kind = oneOf(CHAT_KINDS, data.kind, "team");
+  const people: [string, string] | null =
+    data.person_a && data.person_b ? [data.person_a, data.person_b] : null;
+  const reader = readerId.toLowerCase();
+  const otherPerson = people
+    ? (people.find((person) => person.toLowerCase() !== reader) ?? null)
+    : null;
+  const title = conversationTitle(
+    { kind, department: data.department_id, otherPerson },
+    directory,
+  );
+  const named = (id: string): ChatSyncPerson => {
+    const member = directory.members.get(id.toLowerCase());
+    return {
+      id: id.toLowerCase(),
+      name: member?.name ?? null,
+      photo: member?.photo ?? null,
+    };
+  };
+  return {
+    id: data.id,
+    kind,
+    departmentId: data.department_id,
+    people,
+    lastMessageAt: data.last_message_at,
+    closed: data.closed_at !== null,
+    title,
+    otherPerson,
+    state:
+      data.closed_at !== null
+        ? "closed"
+        : kind === "direct" &&
+            !(
+              otherPerson &&
+              directory.members.get(otherPerson.toLowerCase())?.active
+            )
+          ? "left"
+          : "open",
+    names: people
+      ? people.map(named)
+      : [...directory.members.keys()].map(named),
+  };
+}
+
+/**
+ * The kind of one conversation of the business, when the signed-in person
+ * reads it (RLS); null otherwise. One small read, for `/chat-sync`.
+ */
+export async function getConversationKind(
+  businessId: string,
+  conversationId: string,
+): Promise<ChatKind | null> {
   if (!isUuid(conversationId)) return null;
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("chat_conversations")
-    .select(
-      "id, kind, department_id, person_a, person_b, last_message_at, closed_at",
-    )
+    .select("id, kind")
     .eq("business_id", businessId)
     .eq("id", conversationId.toLowerCase())
     .maybeSingle();
@@ -136,16 +305,34 @@ export async function getConversation(
     if (isMissingTable(error)) return null;
     throw error;
   }
-  if (!data) return null;
-  return {
-    id: data.id,
-    kind: oneOf(CHAT_KINDS, data.kind, "team"),
-    departmentId: data.department_id,
-    people:
-      data.person_a && data.person_b ? [data.person_a, data.person_b] : null,
-    lastMessageAt: data.last_message_at,
-    closed: data.closed_at !== null,
-  };
+  return data ? oneOf(CHAT_KINDS, data.kind, "team") : null;
+}
+
+/**
+ * The names and photos of the people who wrote messages, as the signed-in
+ * person reads them (their colleagues, RLS); someone they can't read comes
+ * back without a name.
+ */
+export async function getChatAuthors(
+  ids: readonly string[],
+): Promise<ChatSyncPerson[]> {
+  const wanted = [...new Set(ids.filter(isUuid).map((id) => id.toLowerCase()))];
+  if (wanted.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, avatar_path")
+    .in("id", wanted);
+  if (error) throw error;
+  const found = new Map((data ?? []).map((row) => [row.id.toLowerCase(), row]));
+  return wanted.map((id) => {
+    const row = found.get(id);
+    return {
+      id,
+      name: row?.full_name?.trim() || null,
+      photo: profilePhotoSrc(row?.avatar_path),
+    };
+  });
 }
 
 /** A message as its reader may see it. */
@@ -165,6 +352,11 @@ export type ChatMessage = {
   createdAt: string;
   removed: boolean;
   removedBy: string | null;
+  /**
+   * The browser's own id it was sent with, for the reader's own messages
+   * (`withOwnDrafts`); null for anyone else's, and before it is read.
+   */
+  draft: string | null;
 };
 
 /** Messages a page reads at most. */
@@ -204,6 +396,7 @@ const toMessage = (row: MessageRow): ChatMessage => ({
   createdAt: row.created_at,
   removed: row.removed_at !== null,
   removedBy: row.removed_by,
+  draft: null,
 });
 
 /**
@@ -219,6 +412,7 @@ export async function getMessages({
   conversationId,
   before,
   after,
+  since,
   limit = CHAT_PAGE_SIZE,
 }: {
   businessId: string;
@@ -226,6 +420,11 @@ export async function getMessages({
   /** From `parseChatCursor`. */
   before?: ChatCursor | null;
   after?: ChatCursor | null;
+  /**
+   * Strictly after this instant, whatever the id, in place of `after`: the
+   * sync's second look before its cursor (`syncWindowStart`).
+   */
+  since?: string | null;
   limit?: number;
 }): Promise<ChatMessage[]> {
   if (!isUuid(conversationId)) return [];
@@ -234,7 +433,11 @@ export async function getMessages({
     business: businessId,
     conversation: conversationId.toLowerCase(),
     ...(before ? { before_at: before.at, before_id: before.id } : {}),
-    ...(after ? { after_at: after.at, after_id: after.id } : {}),
+    ...(since
+      ? { after_at: since }
+      : after
+        ? { after_at: after.at, after_id: after.id }
+        : {}),
     page_limit: Math.min(Math.max(limit, 1), CHAT_PAGE_SIZE),
   });
   if (error) {
@@ -242,6 +445,43 @@ export async function getMessages({
     throw error;
   }
   return (data ?? []).map(toMessage);
+}
+
+/**
+ * The messages, with the draft each of the reader's own was sent with (the
+ * browser's own id for it), read under their session: how the screen knows
+ * its own message on its way, and keeps it one bubble once it arrives.
+ * Nobody else's draft is read, and nothing is when none is theirs.
+ */
+export async function withOwnDrafts(
+  messages: readonly ChatMessage[],
+  readerId: string,
+): Promise<ChatMessage[]> {
+  const reader = readerId.toLowerCase();
+  const own = messages
+    .filter((m) => m.authorId?.toLowerCase() === reader)
+    .map((m) => m.id.toLowerCase());
+  if (own.length === 0) return [...messages];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("id, draft_id")
+    .eq("author_id", reader)
+    .in("id", own);
+  if (error) {
+    if (isMissingTable(error)) return [...messages];
+    throw error;
+  }
+  const drafts = new Map(
+    (data ?? []).map((row) => [
+      row.id.toLowerCase(),
+      row.draft_id.toLowerCase(),
+    ]),
+  );
+  return messages.map((m) => ({
+    ...m,
+    draft: drafts.get(m.id.toLowerCase()) ?? null,
+  }));
 }
 
 /**
@@ -477,6 +717,41 @@ export async function pinAnnouncement(
     message: messageId.toLowerCase(),
     pin,
     ...atTime(at),
+  });
+  return error ? refused(failureOf(error)) : done(null);
+}
+
+/**
+ * Whether the signed-in person has read chat's notice in the business, who
+ * sees what (`public.chat_notices`, their own row under RLS): the list shows
+ * it until they have. False before the migration reaches the project, so the
+ * notice is never skipped.
+ */
+export async function chatNoticeSeen(businessId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_notices")
+    .select("seen_at")
+    .eq("business_id", businessId)
+    .limit(1);
+  if (error) {
+    if (isMissingTable(error)) return false;
+    throw error;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
+ * The person read chat's notice in the business (`public.see_chat_notice`):
+ * kept once. "noAccess" off the staff, "closed" while chat is off.
+ */
+export async function seeChatNotice(
+  actorId: string,
+  businessId: string,
+): Promise<ChatWrite<null>> {
+  const { error } = await createAdminClient().rpc("see_chat_notice", {
+    actor: actorId,
+    business: businessId,
   });
   return error ? refused(failureOf(error)) : done(null);
 }

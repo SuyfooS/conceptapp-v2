@@ -5,6 +5,8 @@ import he from "../messages/he.json" with { type: "json" };
 // The console, the door to the app and the screens for when something is
 // missing, on their demos: both appearances, no data and no sign-in. What they
 // do with real data is in admin, new-business, sign-in, invite and view-as.
+// Chat's list is opened for real too, as a worker, a manager and an owner of
+// the demo restaurant come in through the door: it only reads.
 const PAGES = [
   "/design/console",
   "/design/console/new",
@@ -53,6 +55,32 @@ for (const colorScheme of ["light", "dark"] as const) {
         await expectAccessible(page);
       });
     }
+  });
+}
+
+// Chat's list (C2): each of the restaurant's staff reads it, with no
+// horizontal scroll and nothing for axe, whatever the width.
+for (const key of ["worker", "manager", "owner"] as const) {
+  test(`/chat is clean for the ${key}`, async ({ page }) => {
+    const door = he.auth.enter;
+    await page.goto("/enter");
+    await page
+      .getByRole("region", { name: door.businesses.restaurant.name })
+      .getByRole("button", { name: new RegExp(door.people[key].name) })
+      .click();
+    await expect(page).toHaveURL(/\/home$/);
+    await page.goto("/chat");
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.modules.chat.name }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: he.app.chat.list.groups,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(page).toHaveTitle(/ConceptApp$/);
+    await expectAccessible(page);
   });
 }
 

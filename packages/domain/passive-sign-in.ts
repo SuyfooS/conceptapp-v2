@@ -88,6 +88,16 @@ export function demoEmailOf(person: unknown): string | null {
   return known ? `${ACCOUNTS[known]}@demo.conceptapp.invalid` : null;
 }
 
+/**
+ * Whether the business at this slug is one of the demo businesses, where
+ * anyone who comes in reads what the last visitor wrote (chat's note on
+ * screen). The database keeps its own list (`private.demo_businesses`) for
+ * what it refuses and clears there.
+ */
+export function isDemoBusiness(slug: string | null | undefined): boolean {
+  return DEMO_BUSINESSES.some((b) => b.slug === slug);
+}
+
 /** Whether the business at this slug is a demo business whose week renews. */
 export function renewsDemoWeek(slug: string | null | undefined): boolean {
   return (

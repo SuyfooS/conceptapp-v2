@@ -457,6 +457,32 @@ export type Database = {
           },
         ];
       };
+      chat_notices: {
+        Row: {
+          business_id: string;
+          seen_at: string;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          seen_at?: string;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          seen_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "chat_notices_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: true;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+        ];
+      };
       chat_reads: {
         Row: {
           business_id: string;
@@ -2873,6 +2899,10 @@ export type Database = {
       save_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
+      };
+      see_chat_notice: {
+        Args: { actor: string; business: string };
+        Returns: undefined;
       };
       send_chat_message: {
         Args: {

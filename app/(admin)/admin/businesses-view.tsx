@@ -11,6 +11,7 @@ import { PersonList, PersonRow } from "@ui/person-row";
 import { ChevronRight, Plus, Store } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
+import { type SignOutAction, SignOutForm } from "@/app/sign-out-form";
 import { BusinessMark } from "../business-mark";
 
 type Labels = Awaited<ReturnType<typeof labelsFor>>;
@@ -54,7 +55,7 @@ export async function BusinessesView({
   basePath: string;
   account: { name: string; role: string };
   /** `signOut`, or the design demo's stand-in. */
-  signOut: () => Promise<void>;
+  signOut: SignOutAction;
 }) {
   const [labels, ta] = await Promise.all([
     labelsFor(),
@@ -114,11 +115,11 @@ export async function BusinessesView({
             title={account.name}
             subtitle={account.role}
             trailing={
-              <form action={signOut}>
+              <SignOutForm action={signOut}>
                 <Button type="submit" variant="secondary">
                   {ta("signOut")}
                 </Button>
-              </form>
+              </SignOutForm>
             }
           />
         </PersonList>

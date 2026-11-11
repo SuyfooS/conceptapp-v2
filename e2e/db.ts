@@ -1778,3 +1778,144 @@ export async function demoListLineSpread(
       and n.params ->> 'name' = ${name}`;
   return row ?? { lines: 0, people: 0 };
 }
+
+/*
+ * Chat (C2). The demo's conversations are written by its reset
+ * (private.seed_demo_chat): in the restaurant, Uri's thanks and Shiran's two
+ * morning messages (read by Noa and Yoav) in the whole team's group, Noa's
+ * message and Shiran's answer in the kitchen, and Shiran's
+ * private chat with Noa (her question read, Noa's answer not yet); the same
+ * shape in the shop with Michal, Omer, Tamar, Itai and the checkout. A spec
+ * that writes puts them back first and after, and never counts what another
+ * spec may add.
+ */
+
+type DemoChatBusiness = "restaurant" | "shop";
+
+const chatBusiness = (business: DemoChatBusiness) =>
+  business === "shop" ? DEMO_SHOP : DEMO_RESTAURANT;
+
+/**
+ * A demo business's chats as its reset leaves them: every message (with its
+ * confirmations), read mark, private chat and chat line gone, then the demo's
+ * own conversations written again by the function the reset ends with.
+ * `notices` also forgets who read chat's notice, so a first visit shows it.
+ */
+export async function clearDemoChat(
+  business: DemoChatBusiness = "restaurant",
+  { notices = false }: { notices?: boolean } = {},
+): Promise<void> {
+  const id = chatBusiness(business);
+  await sql`delete from public.chat_messages where business_id = ${id}`;
+  await sql`delete from public.chat_reads where business_id = ${id}`;
+  await sql`delete from public.chat_conversations
+    where business_id = ${id} and kind = 'direct'`;
+  await sql`update public.chat_conversations
+    set last_message_at = null, changed_at = now()
+    where business_id = ${id}`;
+  await sql`delete from public.notifications
+    where business_id = ${id} and kind like 'chat.%'`;
+  if (notices) {
+    await sql`delete from public.chat_notices where business_id = ${id}`;
+  }
+  await sql`select private.seed_demo_chat(${id}::uuid)`;
+}
+
+/**
+ * A message in a demo business's team group from before its people came onto
+ * the staff (40 days ago; the seed moves them a month back), as its first
+ * manager wrote it: management reads it, and nobody who joined after it
+ * does. Kept until the next clearDemoChat.
+ */
+export async function demoOldTeamMessage(
+  words: string,
+  business: DemoChatBusiness = "restaurant",
+): Promise<void> {
+  await sql`insert into public.chat_messages
+      (business_id, conversation_id, author_id, draft_id, body, created_at, seeded)
+    select c.business_id, c.id, m.user_id, gen_random_uuid(), ${words},
+      now() - interval '40 days', true
+    from public.chat_conversations c
+    join public.memberships m
+      on m.business_id = c.business_id and m.role = 'manager' and m.active
+    where c.business_id = ${chatBusiness(business)} and c.kind = 'team'
+    order by m.created_at
+    limit 1`;
+}
+
+/** The person (by phone, E.164) read chat's notice, as "הבנתי" keeps it. */
+export async function seeDemoChatNotice(
+  phone: string,
+  business: DemoChatBusiness = "restaurant",
+): Promise<void> {
+  await sql`insert into public.chat_notices (business_id, user_id)
+    select m.business_id, m.user_id from public.memberships m
+    join public.profiles p on p.id = m.user_id
+    where m.business_id = ${chatBusiness(business)} and p.phone = ${phone}
+    on conflict (business_id, user_id) do nothing`;
+}
+
+export type DemoChat =
+  | { kind: "team" }
+  /** A department's group, by the department's name. */
+  | { kind: "department"; name: string }
+  /** Two people's private chat, by their phones (E.164). */
+  | { kind: "direct"; between: [string, string] };
+
+/** A demo business's conversation's id, for its address; null when there is none. */
+export async function demoConversation(
+  which: DemoChat,
+  business: DemoChatBusiness = "restaurant",
+): Promise<string | null> {
+  const id = chatBusiness(business);
+  if (which.kind === "team") {
+    const [row] = await sql<{ id: string }[]>`
+      select c.id from public.chat_conversations c
+      where c.business_id = ${id} and c.kind = 'team'`;
+    return row?.id ?? null;
+  }
+  if (which.kind === "department") {
+    const [row] = await sql<{ id: string }[]>`
+      select c.id from public.chat_conversations c
+      join public.departments d on d.id = c.department_id
+      where c.business_id = ${id} and c.kind = 'department'
+        and d.name = ${which.name} and d.archived_at is null`;
+    return row?.id ?? null;
+  }
+  const [one, two] = which.between;
+  const [row] = await sql<{ id: string }[]>`
+    select c.id from public.chat_conversations c
+    join public.profiles a on a.id = c.person_a
+    join public.profiles b on b.id = c.person_b
+    where c.business_id = ${id} and c.kind = 'direct'
+      and ((a.phone = ${one} and b.phone = ${two})
+        or (a.phone = ${two} and b.phone = ${one}))`;
+  return row?.id ?? null;
+}
+
+export type DemoChatLine = {
+  kind: string;
+  conversation: string | null;
+  /** How many messages wait, for a chat's own line; null for an announcement. */
+  count: number | null;
+  read: boolean;
+  /** none, queued, sending, sent, skipped… (a demo business never queues). */
+  pushState: string;
+};
+
+/** The person's chat lines in a demo business (by phone, E.164), newest first. */
+export async function demoChatLines(
+  phone: string,
+  business: DemoChatBusiness = "restaurant",
+): Promise<DemoChatLine[]> {
+  return await sql<DemoChatLine[]>`
+    select n.kind, n.params ->> 'conversation' as conversation,
+      (n.params ->> 'count')::int as count,
+      n.read_at is not null as read,
+      n.push_state as "pushState"
+    from public.notifications n
+    join public.profiles p on p.id = n.user_id
+    where n.business_id = ${chatBusiness(business)} and p.phone = ${phone}
+      and n.kind like 'chat.%'
+    order by n.created_at desc, n.id`;
+}

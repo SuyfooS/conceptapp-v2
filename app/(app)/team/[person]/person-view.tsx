@@ -5,7 +5,7 @@ import { formArg, type ProfileSaveResult } from "@domain/profile";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import { PersonAvatar } from "@ui/person-row";
-import { Phone } from "lucide-react";
+import { MessageCircle, Phone } from "lucide-react";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { ProfileFrame, profileAvatarRing } from "../../me/profile-frame";
@@ -29,6 +29,7 @@ export async function PersonView({
   canClear,
   clearBio,
   teamHref,
+  messageHref = null,
   wording,
 }: {
   data: TeamPerson;
@@ -42,6 +43,11 @@ export async function PersonView({
   clearBio: (personId: string, seenBio: string) => Promise<ProfileSaveResult>;
   /** Where "back" leads: the Team screen, or the demo's. */
   teamHref: string;
+  /**
+   * Their private chat with the viewer (`/chat/with/<id>`), when the viewer
+   * is in chat and they are on the staff; null otherwise, and while viewing.
+   */
+  messageHref?: string | null;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
 }) {
@@ -105,15 +111,28 @@ export async function PersonView({
           ) : null}
           <PersonActions
             call={
-              data.phone ? (
-                <ListRow
-                  href={`tel:${data.phone}`}
-                  leading={<Phone />}
-                  title={t("team.person.call", { name: first })}
-                  subtitle={
-                    <span dir="ltr">{displayIsraeliMobile(data.phone)}</span>
-                  }
-                />
+              messageHref || data.phone ? (
+                <>
+                  {messageHref ? (
+                    <ListRow
+                      href={messageHref}
+                      leading={<MessageCircle />}
+                      title={t("team.person.message")}
+                    />
+                  ) : null}
+                  {data.phone ? (
+                    <ListRow
+                      href={`tel:${data.phone}`}
+                      leading={<Phone />}
+                      title={t("team.person.call", { name: first })}
+                      subtitle={
+                        <span dir="ltr">
+                          {displayIsraeliMobile(data.phone)}
+                        </span>
+                      }
+                    />
+                  ) : null}
+                </>
               ) : null
             }
             clearLabel={t("team.person.clearBio")}

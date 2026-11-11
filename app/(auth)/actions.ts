@@ -4,7 +4,6 @@ import { createClient } from "@db/supabase/server";
 import { normalizeOtpCode } from "@domain/otp";
 import { signInPath } from "@domain/passive-sign-in";
 import { normalizeIsraeliMobile } from "@domain/phone";
-import { redirect } from "next/navigation";
 import { forgetBusiness } from "../(app)/business-cookie";
 import { forgetThisDevice } from "../push/server";
 import { type SignInError, sendCode, verifyCode } from "./otp";
@@ -69,12 +68,14 @@ export async function signIn(
  * getting the last person's notifications, and which business it was in, so
  * the next person starts in their own. Only this device's session ends
  * (`scope: "local"`, #80): signing out of a shared tablet doesn't sign the
- * person out of their own phone.
+ * person out of their own phone. Returns the door, which SignOutForm opens
+ * as a whole new page, so nothing the last person's screens held stays in
+ * the browser for the next one.
  */
-export async function signOut() {
+export async function signOut(): Promise<string> {
   await forgetThisDevice();
   await forgetBusiness();
   const supabase = await createClient();
   await supabase.auth.signOut({ scope: "local" });
-  redirect(signInPath);
+  return signInPath;
 }

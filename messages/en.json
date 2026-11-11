@@ -352,7 +352,21 @@
     "dateField": "Date of birth",
     "dateFieldHint": "Three fields of digits, never a wheel",
     "dateFieldValid": "A real day",
-    "dayToggles": "Days of the week"
+    "dayToggles": "Days of the week",
+    "chat": "Chat",
+    "chatText": "Message bubbles, a row of the chat list, a day divider, a conversation's title, the composer and the new-messages pill.",
+    "chatImmersive": "On a phone, a conversation hides the tab bar, and the composer takes its place.",
+    "chatDemo": "Open the chat demo",
+    "chatMetaTitle": "Chat demo",
+    "chatKitchen": "Kitchen",
+    "chatNewBelow": "Show the new-messages pill",
+    "chatSample1": "Good morning. The supplier comes at 10:00, can someone meet them?",
+    "chatSample2": "I'm already here, I'll meet them",
+    "chatSample3": "The technician's details are here: https://www.example.com/service",
+    "chatSample4": "תודה, נתראה מחר",
+    "chatSample5": "For tomorrow:\nCheck the second fridge\nOrder lemons\nClose the till by 23:00",
+    "chatSample6": "I'll be there in ten minutes",
+    "chatSample7": "Can I swap Friday with you?"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -758,7 +772,8 @@
           "failed": "The line wasn't deleted. Try again."
         },
         "youth": "A minor until <ltr>{until}</ltr>",
-        "youthHint": "A minor's hours of work and rest differ. Those with access to pay see the other details."
+        "youthHint": "A minor's hours of work and rest differ. Those with access to pay see the other details.",
+        "message": "Send a message"
       }
     },
     "availability": {
@@ -3376,6 +3391,97 @@
             "recipient": "Pick who it goes to."
           }
         }
+      }
+    },
+    "chat": {
+      "list": {
+        "label": "Chats",
+        "newMessage": "Send a message",
+        "groups": "Groups",
+        "people": "Private chats",
+        "team": "Whole team",
+        "moreDepartments": "Other departments",
+        "unread": "{count, plural, one {# new message} other {# new messages}}",
+        "muted": "No notifications",
+        "waiting": "A message from management waits for your confirmation",
+        "fromYou": "You: {preview}",
+        "from": "{name}: {preview}",
+        "noMessages": "No messages yet",
+        "empty": {
+          "title": "No chats yet",
+          "body": "You can write to anyone on the team, or to the whole team's group"
+        },
+        "demoNote": "In a demo business everyone who comes in sees the messages. They're deleted after an hour",
+        "choose": {
+          "title": "Choose a chat from the list",
+          "body": "It opens here. You can also write a new message to anyone on the team"
+        },
+        "noName": "No name",
+        "former": "Someone who left the team",
+        "department": "A department"
+      },
+      "newMessage": {
+        "hint": "Only the two of you see a private chat",
+        "search": "Search by name",
+        "close": "Close",
+        "none": "Nobody on the team has that name",
+        "nobody": "There's nobody else on the team yet"
+      },
+      "day": {
+        "today": "Today",
+        "yesterday": "Yesterday"
+      },
+      "conversation": {
+        "log": "Messages",
+        "back": "All chats",
+        "placeholder": "Write a message",
+        "send": "Send",
+        "sending": "Sending",
+        "seen": "Read",
+        "failed": "Not sent. Try again",
+        "newBelow": "New messages below",
+        "privateNote": "Only the two of you see this chat",
+        "teamNote": "Seen by: the whole team from the day they joined, and management, all of it",
+        "departmentNote": "Seen by: the department and management",
+        "left": "<b>{name}</b> is no longer on the team, so you can't write here",
+        "closed": "The department was removed. You can read, not write",
+        "announcersOnly": "Only management writes in this group",
+        "tooFast": "Too many messages in a minute. Try again in a moment",
+        "tooLong": "The message is too long. Up to <ltr>{max}</ltr> characters",
+        "emptyGroup": "Write the group's first message here",
+        "emptyPrivate": "Write the first message here",
+        "leftNoName": "This chat is with someone who left the team, so you can't write here",
+        "businessChanged": "You switched to another business since this screen opened, so the message wasn't sent. Reload the screen.",
+        "older": "Earlier messages",
+        "loadingOlder": "Loading earlier messages",
+        "olderCame": "Earlier messages loaded",
+        "arrived": "New message from {name}: {text}",
+        "arrivedMany": "{count, plural, one {# new message} other {# new messages}}"
+      },
+      "message": {
+        "own": "Your message",
+        "removedOwn": "You deleted this message",
+        "removedByManager": "Management removed this message",
+        "removed": "This message was deleted"
+      },
+      "details": {
+        "label": "Chat details",
+        "members": "Who's in the group",
+        "departmentMembers": "Who's in the department",
+        "alsoManagement": "Management sees this group too",
+        "membersCount": "{count, plural, one {# person} other {# people}}",
+        "profile": "{name}'s profile"
+      },
+      "viewing": "Chats and documents aren't shown while viewing",
+      "notice": {
+        "title": "Who sees what",
+        "private": "Only the two of you see a private chat. Owners and managers don't.",
+        "demoPrivate": "In a demo business everyone who comes in sees every chat, private ones too.",
+        "groups": "In groups, everyone in the group and management see the messages. Management can remove a message, and sees who confirmed reading its announcements.",
+        "kept": "Photos and files are kept for <ltr>{days}</ltr> days. Messages stay.",
+        "demoKept": "In a demo business what is written is deleted after an hour, and whenever the demo is reset.",
+        "stored": "{business}'s chats are kept with ConceptApp, on servers in Germany. They aren't end-to-end encrypted.",
+        "ok": "Got it"
       }
     }
   },

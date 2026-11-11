@@ -254,9 +254,12 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
 - **Chat, database first** (Orel, 8 November 2026, issue #1; the plan's C1 to C8, each
   its own PR). C1 is built: `20261111000100_chat_module.sql` and `20261111000200_chat.sql`
   (conversations, messages, reads, announcements, removal with undo, the line per
-  conversation, the job `chat`), the module off everywhere. Next: C2, the screens and
-  the module on. A private chat has no branch for owners, managers, the team or a view
-  session, anywhere: a change that adds one is refused (see "Never").
+  conversation, the job `chat`). C2 is built too (`20261111000300_chat_on.sql`): the
+  module on everywhere its tab fits, `/chat`, `/chat/[conversation]`,
+  `/chat/with/[person]`, `/chat-sync` (polling, no Realtime) and the notice of who sees
+  what. Next: C3, announcements and removing on screen. A private chat has no branch
+  for owners, managers, the team or a view session, anywhere: a change that adds one
+  is refused (see "Never").
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

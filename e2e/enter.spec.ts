@@ -172,6 +172,7 @@ test("in the shop, this week is already published and no tab is empty", async ({
     he.modules.scheduling.name,
     he.modules.time_clock.name,
     he.modules.lists.name,
+    he.modules.chat.name,
   ]);
   const week = await demoShopWeek();
   expect(week.published).toBe(true);

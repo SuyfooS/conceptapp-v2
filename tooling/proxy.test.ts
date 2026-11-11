@@ -52,4 +52,28 @@ describe("proxy", () => {
     expect(source).toContain(`"/admin",`);
     expect(source).toContain(`"/admin/:path*"`);
   });
+
+  it("leaves chat's sync out, as the push routes are", () => {
+    // /chat-sync is asked every few seconds while a chat is on screen: in the
+    // matcher, each ask would run the proxy too. It renews the session itself
+    // and answers a signed-out caller 401, never a redirect.
+    // Every path proxy.ts lists, in PRIVATE and in the matcher.
+    const listed = [...source.matchAll(/^\s+"(\/[^"]*)",$/gm)].map(
+      ([, pattern = ""]) => pattern,
+    );
+    expect(listed).toContain("/chat/:path*");
+    // Each entry as Next.js reads it: a literal path, or one with
+    // `/:path*`, which is the path itself or anything under it.
+    const matches = (pattern: string, path: string) =>
+      pattern.endsWith("/:path*")
+        ? path === pattern.slice(0, -"/:path*".length) ||
+          path.startsWith(pattern.slice(0, -":path*".length))
+        : path === pattern;
+    for (const path of ["/chat-sync", "/push/inbox"]) {
+      expect(listed.filter((pattern) => matches(pattern, path))).toEqual([]);
+    }
+    expect(listed.some((pattern) => matches(pattern, "/chat"))).toBe(true);
+    expect(listed.some((pattern) => matches(pattern, "/chat/x"))).toBe(true);
+    expect(source).not.toContain('"/chat-sync');
+  });
 });
