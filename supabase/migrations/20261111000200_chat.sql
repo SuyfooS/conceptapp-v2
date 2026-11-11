@@ -663,13 +663,22 @@ create policy "people read the messages of their chats from when they joined"
     or (pinned and private.chat_reads_from(conversation_id, (select auth.uid())) is not null)
   );
 
+-- One's own marks, and only while one reads their conversation: someone who
+-- left, or a business with chat off, reads none of them either.
 create policy "people read their own reads"
   on public.chat_reads for select to authenticated
-  using (user_id = (select auth.uid()));
+  using (
+    user_id = (select auth.uid())
+    and private.chat_reads_from(conversation_id, (select auth.uid())) is not null
+  );
 
+-- The message's own policy decides whether one still reads it.
 create policy "people read their own confirmations"
   on public.chat_acks for select to authenticated
-  using (user_id = (select auth.uid()));
+  using (
+    user_id = (select auth.uid())
+    and exists (select 1 from public.chat_messages m where m.id = message_id)
+  );
 
 -- The signed-in person's chats in the business, one row each, for the list:
 -- its last message (the first 120 characters of its text, none when removed
