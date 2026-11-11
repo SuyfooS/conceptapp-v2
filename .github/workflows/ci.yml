@@ -199,6 +199,11 @@ jobs:
       # fails the step if it did not start, and the log is printed either way.
       # Storage runs for the profile photos (e2e/profile.spec.ts); its image
       # transformations (imgproxy) are not used.
+      # Chromium's system packages come from Ubuntu's archives. The runner
+      # already has all but a few fonts, so when the archives can't be
+      # reached (11 November 2026, a DNS outage on the runners) Chromium is
+      # installed alone, on what the runner has, with a warning. Chromium
+      # itself must install: that failing still fails the step.
       - name: Start local Supabase (database, auth, API, storage) and install Chromium
         run: |
           log="$RUNNER_TEMP/supabase-start.log"
@@ -207,7 +212,10 @@ jobs:
             > "$log" 2>&1 &
           supabase=$!
           trap 'echo "::group::supabase start"; cat "$log"; echo "::endgroup::"' EXIT
-          pnpm exec playwright install --with-deps chromium
+          if ! pnpm exec playwright install --with-deps chromium; then
+            echo "::warning::Chromium's system packages could not be installed from Ubuntu's archives; installing Chromium on the runner's own packages"
+            pnpm exec playwright install chromium
+          fi
           echo "Chromium ready at $(date -u +%T)"
           wait "$supabase"
           echo "Supabase ready at $(date -u +%T)"
