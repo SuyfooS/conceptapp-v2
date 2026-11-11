@@ -5,6 +5,10 @@ import {
   DEFAULT_CHAT_FILE_DAYS,
   DEFAULT_CHAT_FILE_SPACE_MB,
 } from "@domain/chat-files";
+import {
+  DEFAULT_DOCUMENT_SPACE_MB,
+  DOCUMENT_SPACE_MB,
+} from "@domain/documents";
 import { DEFAULT_LIST_PHOTO_DAYS, LIST_PHOTO_DAYS } from "@domain/list-photos";
 import {
   MODULE_KEYS,
@@ -140,6 +144,24 @@ describe("module registry", () => {
     for (const key of ["fileDays", "fileSpaceMb"]) {
       expect(fields.find((f) => f.key === key)?.level).toBe("team");
     }
+  });
+
+  it("gives documents the space private.document_space_bytes reads, the team's", () => {
+    // C6: 50 MB unless the team chose 100 or 200, anything else stored read
+    // as 50 (20261111000700_documents.sql); documents are never deleted for
+    // space, so past it new ones are refused.
+    const settings = manifestFor("chat").settings;
+    const field = describeSettings(settings).find(
+      (f) => f.key === "documentSpaceMb",
+    );
+    expect(field?.kind === "choice" ? field.options : null).toEqual([
+      ...DOCUMENT_SPACE_MB,
+    ]);
+    expect(field?.level).toBe("team");
+    expect(settings.parse({}).documentSpaceMb).toBe(DEFAULT_DOCUMENT_SPACE_MB);
+    expect(fieldsFor(settings, "owner").map((f) => f.key)).not.toContain(
+      "documentSpaceMb",
+    );
   });
 
   it("starts every permission an owner gives with the owner alone", () => {

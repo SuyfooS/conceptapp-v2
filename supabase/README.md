@@ -53,7 +53,17 @@ pinned announcement, which the first two workers confirmed): in the whole team's
 department and in the manager's private chat with that worker, written by the people
 each definition names by role, so neither definition needed a change and that
 migration's Migrate run needs no "demo". A visitor's messages go after an hour (the
-`chat` job) and with every reset.
+`chat` job) and with every reset. From `20261111000700_documents.sql` (chat C6) they also
+start with three sample documents (`private.seed_demo_documents`, called from the chat
+seed, so the reset itself is not replaced): a payslip from the accountant to the first
+worker, a procedure from the manager to everyone else on the staff asking for "קראתי",
+which the second worker confirmed, and a sick note from the first worker, which the owner
+opened. Samples only, with no note and no file, titled with their category's own words,
+from both definitions alike; the sample files themselves and `/document-files` come with
+C7. Documents are never deleted but by the reset (`private.purge_business_records`), and a
+demo business takes no uploaded one unless its definition says `"chatFiles": true` (the
+local seed's restaurant only), so a visitor never leaves a file or typed words in a row
+that waits for the next reset.
 
 A demo business takes no invites and nobody joins one, since anyone at the door is its
 owner. Only a definition with `"invites": true` opens one: `seed.sql` does, so the browser
@@ -99,7 +109,10 @@ business's `fileDays` (90 unless the team chose 30 or 180), the oldest past its
 `fileSpaceMb` (100 MB unless the team chose 50 or 200), a removed message's once its undo is
 over, a reservation never sent, and anything in the `chat-files` bucket a day old that no
 row points at (from `20261111000600_chat_pdfs.sql`, a PDF the browser put through its signed
-upload and never sent among them). The app removes them through Storage and marks them;
+upload and never sent among them). From `20261111000700_documents.sql` it also lists the
+file of an official document someone removed, once its 10 minutes of undo are over (the row
+stays, saying its file is gone), and the `documents` bucket's own unused places and
+orphans; documents are never listed for days or space. The app removes them through Storage and marks them;
 without the secrets it calls nothing and the files wait. `seed.sql` switches all six off locally
 and in CI, and only a demo definition that says `"scheduledLists": true` (the hosted ones)
 opens today's lists when it is reset; the tests call what the jobs run, at times they choose.

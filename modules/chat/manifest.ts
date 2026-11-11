@@ -18,6 +18,11 @@ import { z } from "zod";
  * reservations' 30, so `moduleNav`'s cut keeps chat). An accountant's
  * documents tab (`outsideStaff`) comes with the documents' screens (C7):
  * until then an accountant has no chat tab and no documents tab.
+ *
+ * Official documents (C6, 20261111000700_documents.sql; @domain/documents)
+ * are on wherever chat is (private.documents_on), so they can become a module
+ * of their own by changing that one function: a worker's to the business,
+ * read by them and the office (clock.payroll), and the business's to people.
  */
 export const manifest = defineManifest({
   key: "chat",
@@ -64,7 +69,10 @@ export const manifest = defineManifest({
       .meta({ level: "team" }),
     /**
      * A business's space for official documents, in MB (C6): past it, new
-     * ones are refused, and none is ever deleted for space. The team's.
+     * ones are refused (54000 with hint 'space'), and none is ever deleted
+     * for space. The team's. private.document_space_bytes counts only these
+     * three (DOCUMENT_SPACE_MB in @domain/documents), anything else as 50;
+     * private.chat_settings holds the same default.
      */
     documentSpaceMb: z
       .union([z.literal(50), z.literal(100), z.literal(200)])

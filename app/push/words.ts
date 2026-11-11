@@ -21,7 +21,8 @@ import { defaultLocale, direction } from "@/i18n/config";
  * sit in Unicode isolates, as `<ltr>` does on screen. Never a note, a message
  * or a number of hours: the lines hold none. A chat's line says who wrote and
  * how many messages wait, and a group's name, never a word of them: a lock
- * screen is seen by whoever is near the phone.
+ * screen is seen by whoever is near the phone. A document's says who sent it,
+ * never its category, title or file.
  */
 
 const isolate = (chunks: string) => `⁦${chunks}⁩`;
@@ -328,6 +329,25 @@ export function pushWords(
               : line.chat?.name
                 ? t("kinds.chat.announcement.body", { group: line.chat.name })
                 : t("kinds.chat.announcement.bodyPlain"),
+        ),
+      };
+    // A document's lines (chat C6) say who sent it, and that it waits for
+    // "קראתי", never what it is: the category ("אישור מחלה") stays off a lock
+    // screen anyone near the phone can see, whatever the line was read with.
+    case "documents.received":
+      return {
+        title: t("kinds.documents.received.title", { name: who(line.from) }),
+        ...body(settled ? t("kinds.documents.received.settledNote") : null),
+      };
+    case "documents.sent":
+      return { title: t("kinds.documents.sent.title") };
+    case "documents.to_confirm":
+      return {
+        title: t("kinds.documents.to_confirm.title"),
+        ...body(
+          settled
+            ? t("kinds.documents.to_confirm.settledNote")
+            : t("kinds.documents.to_confirm.body"),
         ),
       };
     case "push.test":

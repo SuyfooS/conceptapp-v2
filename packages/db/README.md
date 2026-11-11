@@ -743,6 +743,65 @@ conversation's latest PDFs for its details. `public.chat_inbox` gives `last_file
 lists a private chat only once it has a message (a file's reservation opens it first). A demo
 business takes no PDF, as no picture (C4's refusals). Covered by `chat_pdfs.test.sql`.
 
+Official documents (`20261111000700_documents.sql`, chat C6), in the database only: the
+screens, the demo's sample files (`public/demo-documents/`) and the `/document-files` route
+that serves them come with C7. `public.documents` (a worker's to the business,
+`from_person`: a sick note, a form or another document; the business's to people,
+`to_people`: a payslip, a contract, a procedure, a form or another document, asking for
+"קראתי" or not) and `public.document_recipients` (who it went to, each one's opening and
+confirmation), and the private bucket `documents` (10 MiB, JPEG, WebP and PDF, at
+`<business>/<32 hex>.<pdf|webp|jpg>`, a path that names neither the person nor the
+category; no browser writes). Both tables are read by `authenticated` alone, under
+`private.sees_document`: a document to the business by its person and the office (the
+business's active members who hold `clock.payroll`, `private.in_office`: owners and
+accountants always, managers when the owner gives it), one to people by its recipients, its
+sender and the office; a removed one by the office and its sender only; someone who left
+keeps reading their own and those sent to them. Never a manager without pay access, the
+ConceptApp team or a view session, and the secret key reads neither table, so no console
+page or script can. The bucket's read policy (`private.can_read_document`) follows the
+document, and a removed one's file only for its 10 minutes of undo. Kept forever: on delete
+restrict to the business and the people, a trigger that refuses deletes but under the demo
+reset's purge (`private.purge_business_records`, replaced once here with the documents and
+their recipients before the log), and truncate for nobody; never deleted for space either
+(past a business's `documentSpaceMb`, 50 MB unless the team chose 100 or 200, a new one is
+54000 with hint `space`, and across the project past 980 MB, hint `storage`). All of it
+through server functions with the secret key, for `actor`: `public.reserve_document_upload`
+(a photo of a page, at most 700 KB, which the server uploads itself, or a PDF, at most
+10 MiB, through a signed upload, as chat's), `public.document_upload_place` (finishing a
+PDF), `public.send_document` (every rule checked before the row: the categories each way
+takes, 1 to 200 others on the staff, a title of 1 to 80, a note of at most 300; in a demo
+business samples only, no note, its category's words as the title; at most 30 a minute),
+`public.open_document` (a recipient's opening marked, the office's first opening of a
+document to the business marked received, and each opening by the office of someone else's
+logged, once a day per reader), `public.confirm_document` (55000 for a removed one only to
+a recipient in the office, who still reads it; to a plain recipient a removed one is unknown,
+P0002), `public.remove_document` (the
+file, never the row: its sender in their first 10 minutes as `taken_back`, the office with
+`wrong_person`, `wrong_file`, `duplicate` or `other`; never free text) and
+`public.restore_document` (whoever removed it, within its 10 minutes), and
+`public.documents_closed`. The lines are `documents.received` (to the office),
+`documents.sent` and `documents.to_confirm` (to each recipient), with `{document, from}`
+only, and the trigger `audit_log_settles_documents` settles `documents.received` for anyone
+whose pay access goes. The log's `document.send`, `document.open`, `document.remove` and
+`document.restore` hold ids and codes only and are read by the office alone (the policy
+"managers read the log, pay holders the pay rows", altered here; C1's view policy already
+keeps them from every view). C4's `public.expired_files` and `public.forget_files` are
+replaced with the same grants for a removed document's file once its undo is over (its path,
+kind, name and size cleared, the row kept), the bucket's unused places and its orphans, and
+C5's `public.chat_paths_signed` for a document's PDF too; `cleanChatFiles` in
+`@db/chat-files` removes each listed file from its own bucket (`isDocumentFilePath`), with
+the tombstone in `documents` for a PDF whose signed upload may still be good. The demo reset
+writes three samples through these functions (`private.seed_demo_documents`, from
+`private.seed_demo_chat`). `@db/documents` has what C7 calls: `getDocuments`,
+`getDocument` (under the reader's session, with the marks RLS gives them),
+`reserveDocumentUpload`, `documentUploadPlace`, `sendDocument` (a reserved place or a demo's
+sample), `openDocument`, `confirmDocument`, `removeDocument`, `restoreDocument`,
+`documentsAllowed` and `documentFileBytes` (for `/document-files`, under the reader's
+session, the type from the bytes). `@db/notifications` reads a document line's category from
+the document itself under the reader's session, for the inbox alone; a phone's lines never
+look one up. Covered by `documents.test.sql`, with `rls_enabled`, `isolation`, `demo_reset`
+and `chat_on`, and `modules/chat/documents.db.test.ts` (`pnpm test:db`).
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

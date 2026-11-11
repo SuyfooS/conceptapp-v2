@@ -75,3 +75,51 @@ describe("a chat's words on the phone", () => {
     expect(group.body).toContain("שירן הדגמה");
   });
 });
+
+// What a document's lines say on a phone (chat C6): who sent it, and that it
+// waits for "קראתי", never its category, title or file, even when the line
+// was read with its category (only the inbox looks one up).
+describe("a document's words on the phone", () => {
+  const documents = he.app.notifications.kinds.documents;
+  const categories = Object.values(he.app.chat.documents.categories);
+  const from = { kind: "member", name: "נועה הדגמה" } as const;
+
+  const never = (said: { title: string; body?: string }) => {
+    for (const category of categories) {
+      expect(said.title).not.toContain(category);
+      expect(said.body ?? "").not.toContain(category);
+    }
+  };
+
+  it("names who sent one to the business, and nothing of what it is", () => {
+    const said = say({
+      kind: "documents.received",
+      from,
+      category: "sick_note",
+    });
+    expect(said).toEqual({
+      title: documents.received.title.replace("{name}", "נועה הדגמה"),
+    });
+    never(said);
+    expect(
+      say({ kind: "documents.received", from, category: null }, true).body,
+    ).toBe(documents.received.settledNote);
+  });
+
+  it("says one came from the business, and asks for the confirmation", () => {
+    for (const category of ["payslip", "procedure", "contract"] as const) {
+      const sent = say({ kind: "documents.sent", from, category });
+      expect(sent).toEqual({ title: documents.sent.title });
+      never(sent);
+      const asks = say({ kind: "documents.to_confirm", from, category });
+      expect(asks).toEqual({
+        title: documents.to_confirm.title,
+        body: documents.to_confirm.body,
+      });
+      never(asks);
+    }
+    expect(
+      say({ kind: "documents.to_confirm", from, category: null }, true).body,
+    ).toBe(documents.to_confirm.settledNote);
+  });
+});

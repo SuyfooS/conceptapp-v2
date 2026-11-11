@@ -1,5 +1,11 @@
 import { z } from "zod";
 import { addDays, dateIn } from "./availability";
+import {
+  DOCUMENT_DIRECTIONS,
+  DOCUMENT_REMOVE_REASONS,
+  type DocumentDirection,
+  type DocumentRemoveReason,
+} from "./documents";
 import { ROLES, type Role } from "./modules";
 import { shabbatCityOf } from "./shabbat";
 
@@ -344,6 +350,32 @@ export type ActivityLine =
       /** Who wrote it. */
       author: ActivityPerson;
     }
+  | {
+      /**
+       * A document was sent (chat C6): to the business by the actor, or by
+       * the actor to people, how many. Never its category, title or file:
+       * the row holds ids and codes only, and only the office reads it.
+       */
+      action: "document.send";
+      direction: DocumentDirection;
+      /** People it went to; 0 for a document to the business. */
+      recipients: number;
+    }
+  | {
+      /**
+       * The office opened someone's document (once a day per reader): the
+       * access log. `person` is whose it is, null for one sent to people.
+       */
+      action: "document.open";
+      person: ActivityPerson | null;
+    }
+  | {
+      /** A document's file was removed, with the reason's code. */
+      action: "document.remove";
+      reason: DocumentRemoveReason | null;
+    }
+  /** A removed document's file was put back by whoever removed it. */
+  | { action: "document.restore" }
   | { action: "other" };
 
 /** A chat's group, as the log names it. */
@@ -537,6 +569,17 @@ const schemas = {
     author: id.nullable().optional(),
     department: id.nullable().optional(),
   }),
+  "document.send": z.object({
+    document: id,
+    direction: z.enum(DOCUMENT_DIRECTIONS),
+    recipients: z.int().min(0).catch(0),
+  }),
+  "document.open": z.object({ document: id, person: id.nullable().optional() }),
+  "document.remove": z.object({
+    document: id,
+    reason: z.enum(DOCUMENT_REMOVE_REASONS).nullable().catch(null),
+  }),
+  "document.restore": z.object({ document: id }),
 };
 
 const DETAIL_COLUMNS: Record<string, DetailKey> = {
@@ -979,6 +1022,32 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         author: personOf(details.author, lookups),
       };
     }
+    case "document.send": {
+      const details = read(schemas["document.send"]);
+      return details
+        ? {
+            action: row.action,
+            direction: details.direction,
+            recipients:
+              details.direction === "to_people" ? details.recipients : 0,
+          }
+        : other;
+    }
+    case "document.open": {
+      const details = read(schemas["document.open"]);
+      if (!details) return other;
+      const person = details.person ?? null;
+      return {
+        action: row.action,
+        person: person === null ? null : personOf(person, lookups),
+      };
+    }
+    case "document.remove": {
+      const details = read(schemas["document.remove"]);
+      return details ? { action: row.action, reason: details.reason } : other;
+    }
+    case "document.restore":
+      return read(schemas["document.restore"]) ? { action: row.action } : other;
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);
       return details

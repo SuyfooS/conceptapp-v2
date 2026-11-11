@@ -14,6 +14,7 @@ import {
   type NotificationRow,
   needsAction,
   notificationChats,
+  notificationDocuments,
   notificationKindOf,
   notificationRefs,
   PHONE_ONLY_KINDS,
@@ -103,6 +104,8 @@ describe("the kinds", () => {
     ).toEqual([
       "chat.announcement",
       "clock.confirm",
+      "documents.received",
+      "documents.to_confirm",
       "lists.late_team",
       "lists.out_of_range",
       "pay.month_due",
@@ -269,10 +272,121 @@ describe("chat's lines", () => {
     ).toEqual([CHAT]);
   });
 
-  it("reach the staff only: an accountant is in no chat", () => {
-    expect(groupsFor("worker", ["chat"])).toEqual(["chat"]);
-    expect(groupsFor("accountant", ["chat"])).toEqual([]);
+  it("reach the staff only: an accountant is in no chat, only in documents", () => {
+    expect(groupsFor("worker", ["chat"])).toEqual(["chat", "documents"]);
+    expect(groupsFor("accountant", ["chat"])).toEqual(["documents"]);
     expect(groupsFor("worker", [])).toEqual([]);
+  });
+});
+
+describe("documents' lines", () => {
+  const DOC = "77777777-7777-4777-8777-777777777777";
+  const KINDS = [
+    "documents.received",
+    "documents.sent",
+    "documents.to_confirm",
+  ] as const;
+  const withCategories: NotificationLookups = {
+    ...lookups,
+    documents: new Map([[DOC, "sick_note"]]),
+  };
+
+  it("are in the inbox and the bell, and ask for action when the reader has to act", () => {
+    for (const kind of KINDS) {
+      expect(inInbox(kind), kind).toBe(true);
+      expect(NOTIFICATION_KINDS[kind].group, kind).toBe("documents");
+    }
+    expect(needsAction("documents.received")).toBe(true);
+    expect(needsAction("documents.to_confirm")).toBe(true);
+    expect(needsAction("documents.sent")).toBe(false);
+  });
+
+  it("lead to their document, and only by a real id", () => {
+    for (const kind of KINDS) {
+      expect(linkFor(kind, { document: DOC.toUpperCase() })).toBe(
+        `/chat/documents/${DOC}`,
+      );
+      expect(linkFor(kind, { document: "../admin" })).toBe("/chat/documents");
+      expect(linkFor(kind)).toBe("/chat/documents");
+    }
+  });
+
+  it("lead a settled one to the inbox when the office's access may have gone", () => {
+    expect(linkFor("documents.received", { document: DOC }, true)).toBe(
+      "/notifications",
+    );
+    // A recipient's line settles when they opened or confirmed it.
+    expect(linkFor("documents.to_confirm", { document: DOC }, true)).toBe(
+      `/chat/documents/${DOC}`,
+    );
+  });
+
+  it("read who sent it, and its category only from the document itself", () => {
+    const params = { document: DOC, from: NOA, category: "payslip" };
+    expect(
+      buildInbox(
+        KINDS.map((kind) => row(kind, params)),
+        withCategories,
+        YOAV,
+      ).map((entry) => [entry.group, entry.href, entry.line]),
+    ).toEqual(
+      KINDS.map((kind) => [
+        "documents",
+        `/chat/documents/${DOC}`,
+        // What params say of a category is never read: the document's is.
+        {
+          kind,
+          from: { kind: "member", name: "Noa" },
+          category: "sick_note",
+        },
+      ]),
+    );
+  });
+
+  it("say nothing of a category the reader can't read, and read without who sent it", () => {
+    expect(
+      lineOf(row("documents.received", { document: DOC, from: LEFT }))?.line,
+    ).toEqual({
+      kind: "documents.received",
+      from: { kind: "former" },
+      category: null,
+    });
+    expect(
+      buildInbox(
+        [row("documents.sent", { document: DOC })],
+        {
+          ...lookups,
+          documents: new Map([[DOC, "medical" as never]]),
+        },
+        NOA,
+      )[0]?.line,
+    ).toEqual({
+      kind: "documents.sent",
+      from: { kind: "unknown" },
+      category: null,
+    });
+    expect(lineOf(row("documents.sent", { from: NOA }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("name the documents to look up, and only by a real id", () => {
+    expect(
+      notificationDocuments([
+        row("documents.received", { document: DOC.toUpperCase() }),
+        row("documents.sent", { document: DOC }),
+        row("documents.to_confirm", { document: "../admin" }),
+        row("lists.sent", { document: LINE }),
+      ]),
+    ).toEqual([DOC]);
+  });
+
+  it("reach the office and the staff: an accountant gets a document to the business", () => {
+    expect(groupsFor("accountant", ["chat"])).toContain("documents");
+    expect(NOTIFICATION_KINDS["documents.received"]).not.toHaveProperty(
+      "staffOnly",
+    );
+    expect(NOTIFICATION_KINDS["documents.sent"].staffOnly).toBe(true);
   });
 });
 

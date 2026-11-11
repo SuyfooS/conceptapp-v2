@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(38);
+select plan(39);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -218,8 +218,15 @@ insert into public.invites (business_id, phone, role, token_hash)
 values ('6d000000-0000-4000-b000-000000000001', '+972500000979', 'worker', 'demo-reset-test');
 -- Their wage, details and periods go first: they are kept, and only a purge
 -- that names the business deletes one (20261110000500_hourly_wages.sql,
--- 20261110000600_payroll_details.sql).
+-- 20261110000600_payroll_details.sql). So do their documents and their marks
+-- on the demo's (20261111000700_documents.sql).
 select set_config('ca.records_purge', '6d000000-0000-4000-b000-000000000001', true);
+delete from public.document_recipients
+where business_id = '6d000000-0000-4000-b000-000000000001'
+  and person_id = '6d000000-0000-4000-a000-00000000000c';
+delete from public.documents
+where business_id = '6d000000-0000-4000-b000-000000000001'
+  and person_id = '6d000000-0000-4000-a000-00000000000c';
 delete from public.member_wages
 where business_id = '6d000000-0000-4000-b000-000000000001'
   and user_id = '6d000000-0000-4000-a000-00000000000c';
@@ -257,6 +264,11 @@ from public.chat_conversations c
 where c.business_id = '6d000000-0000-4000-b000-000000000001' and c.kind = 'team';
 insert into public.chat_notices (business_id, user_id)
 values ('6d000000-0000-4000-b000-000000000001', '6d000000-0000-4000-a000-00000000000b');
+-- A visitor's document (20261111000700_documents.sql): a sample, as a demo
+-- takes, which nothing but the reset deletes.
+select public.send_document('6d000000-0000-4000-a000-00000000000d',
+  '6d000000-0000-4000-b000-000000000001', 'from_person', 'sick_note', 'A visitor typed this',
+  null, null, false, null, 'sick_note');
 -- A file's place reserved there (20261111000500_chat_files.sql), as one a
 -- definition with "chatFiles": true would take.
 insert into private.file_uploads (business_id, owner_id, target, conversation_id, bucket,
@@ -350,8 +362,8 @@ select results_eq(
 select is(
   (select string_agg(action, ',' order by id) from public.audit_log
    where business_id = '6d000000-0000-4000-b000-000000000001'),
-  'schedule.publish,lists.send,lists.send,lists.send',
-  'and starts its log again, with this week published and the example lists sent'
+  'schedule.publish,lists.send,lists.send,lists.send,document.send,document.send,document.open',
+  'and starts its log again, with this week published, the example lists sent and the demo''s documents'
 );
 select is(
   (select string_agg(key, ',' order by position) from public.departments
@@ -384,6 +396,25 @@ select is(
    where business_id = '6d000000-0000-4000-b000-000000000001'),
   '0/7/7/department,department,department,direct,team/0',
   'its chats start again: no visitor''s message or notice, the team''s group, one for each department, and the demo''s own conversations'
+);
+-- The demo's documents (20261111000700_documents.sql): no accountant here,
+-- so no payslip; the manager's procedure to the owner and both workers,
+-- confirmed by the second; the first worker's sick note, which the owner
+-- opened. The visitor's goes.
+select is(
+  (select string_agg(d.sample || ':' || d.title || ':' || coalesce(d.note, '-'), ','
+     order by d.sample collate "C")
+   from public.documents d
+   where d.business_id = '6d000000-0000-4000-b000-000000000001')
+  || '/' || (select count(*)::integer from public.document_recipients r
+   where r.business_id = '6d000000-0000-4000-b000-000000000001')
+  || '/' || (select count(*)::integer from public.document_recipients r
+   where r.business_id = '6d000000-0000-4000-b000-000000000001' and r.confirmed_at is not null)
+  || '/' || (select count(*)::integer from public.documents d
+   where d.business_id = '6d000000-0000-4000-b000-000000000001'
+     and d.opened_by = '6d000000-0000-4000-a000-00000000000a'),
+  'procedure:נוהל:-,sick_note:אישור מחלה:-/3/1/1',
+  'its documents start again: the visitor''s goes, and the demo''s procedure and sick note come back'
 );
 -- Its files, if any reached Storage, are what nothing points at now: the
 -- chat job's clean-up removes them a day later (public.expired_files).

@@ -660,6 +660,167 @@ export type Database = {
           },
         ];
       };
+      document_recipients: {
+        Row: {
+          business_id: string;
+          confirmed_at: string | null;
+          document_id: string;
+          opened_at: string | null;
+          person_id: string;
+        };
+        Insert: {
+          business_id: string;
+          confirmed_at?: string | null;
+          document_id: string;
+          opened_at?: string | null;
+          person_id: string;
+        };
+        Update: {
+          business_id?: string;
+          confirmed_at?: string | null;
+          document_id?: string;
+          opened_at?: string | null;
+          person_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "document_recipients_business_id_person_id_fkey";
+            columns: ["business_id", "person_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "document_recipients_document_id_business_id_fkey";
+            columns: ["document_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "documents";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "document_recipients_person_id_fkey";
+            columns: ["person_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      documents: {
+        Row: {
+          asks_confirmation: boolean;
+          author_id: string | null;
+          business_id: string;
+          category: string;
+          direction: string;
+          file_gone_after: string | null;
+          file_kind: string | null;
+          file_name: string | null;
+          file_path: string | null;
+          file_size: number | null;
+          id: string;
+          note: string | null;
+          opened_at: string | null;
+          opened_by: string | null;
+          person_id: string | null;
+          removed_at: string | null;
+          removed_by: string | null;
+          removed_reason: string | null;
+          sample: string | null;
+          sent_at: string;
+          title: string;
+        };
+        Insert: {
+          asks_confirmation?: boolean;
+          author_id?: string | null;
+          business_id: string;
+          category: string;
+          direction: string;
+          file_gone_after?: string | null;
+          file_kind?: string | null;
+          file_name?: string | null;
+          file_path?: string | null;
+          file_size?: number | null;
+          id?: string;
+          note?: string | null;
+          opened_at?: string | null;
+          opened_by?: string | null;
+          person_id?: string | null;
+          removed_at?: string | null;
+          removed_by?: string | null;
+          removed_reason?: string | null;
+          sample?: string | null;
+          sent_at?: string;
+          title: string;
+        };
+        Update: {
+          asks_confirmation?: boolean;
+          author_id?: string | null;
+          business_id?: string;
+          category?: string;
+          direction?: string;
+          file_gone_after?: string | null;
+          file_kind?: string | null;
+          file_name?: string | null;
+          file_path?: string | null;
+          file_size?: number | null;
+          id?: string;
+          note?: string | null;
+          opened_at?: string | null;
+          opened_by?: string | null;
+          person_id?: string | null;
+          removed_at?: string | null;
+          removed_by?: string | null;
+          removed_reason?: string | null;
+          sample?: string | null;
+          sent_at?: string;
+          title?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "documents_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "documents_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "documents_business_id_person_id_fkey";
+            columns: ["business_id", "person_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "documents_opened_by_fkey";
+            columns: ["opened_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "documents_person_id_fkey";
+            columns: ["person_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "documents_removed_by_fkey";
+            columns: ["removed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       employment_periods: {
         Row: {
           business_id: string;
@@ -2674,6 +2835,10 @@ export type Database = {
         Args: { actor: string; at_time?: string; message: string };
         Returns: undefined;
       };
+      confirm_document: {
+        Args: { actor: string; at_time?: string; document: string };
+        Returns: undefined;
+      };
       confirm_time_entry: {
         Args: { actor: string; at_time?: string; entry: string };
         Returns: undefined;
@@ -2710,6 +2875,16 @@ export type Database = {
         };
         Returns: Database["public"]["Enums"]["swap_status"];
       };
+      document_upload_place: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          upload: string;
+        };
+        Returns: Json;
+      };
+      documents_closed: { Args: { business: string }; Returns: boolean };
       end_break: {
         Args: { actor: string; at_time?: string; business: string };
         Returns: string;
@@ -2826,6 +3001,10 @@ export type Database = {
         Args: { push_endpoint: string };
         Returns: undefined;
       };
+      open_document: {
+        Args: { actor: string; at_time?: string; document: string };
+        Returns: Json;
+      };
       open_schedule_week: {
         Args: { business: string; due_at: string; week_start: string };
         Returns: string;
@@ -2876,6 +3055,15 @@ export type Database = {
         Args: { actor: string; at_time?: string; message: string };
         Returns: undefined;
       };
+      remove_document: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          document: string;
+          reason: string;
+        };
+        Returns: undefined;
+      };
       remove_push_subscription: {
         Args: { actor: string; device?: string; push_endpoint?: string };
         Returns: boolean;
@@ -2916,6 +3104,19 @@ export type Database = {
         };
         Returns: Json;
       };
+      reserve_document_upload: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          upload_direction: string;
+          upload_kind: string;
+          upload_name?: string;
+          upload_size: number;
+          upload_type: string;
+        };
+        Returns: Json;
+      };
       reset_demo_business: { Args: { business: string }; Returns: undefined };
       reset_demo_businesses: {
         Args: Record<PropertyKey, never>;
@@ -2923,6 +3124,10 @@ export type Database = {
       };
       restore_chat_message: {
         Args: { actor: string; at_time?: string; message: string };
+        Returns: undefined;
+      };
+      restore_document: {
+        Args: { actor: string; at_time?: string; document: string };
         Returns: undefined;
       };
       restore_list_template: {
@@ -2970,6 +3175,22 @@ export type Database = {
           words?: string;
         };
         Returns: Json;
+      };
+      send_document: {
+        Args: {
+          actor: string;
+          asks?: boolean;
+          at_time?: string;
+          business: string;
+          send_category: string;
+          send_direction: string;
+          send_note?: string;
+          send_sample?: string;
+          send_title: string;
+          send_to?: string[];
+          upload?: string;
+        };
+        Returns: string;
       };
       send_list: {
         Args: { actor: string; at_time?: string; business: string; list: Json };

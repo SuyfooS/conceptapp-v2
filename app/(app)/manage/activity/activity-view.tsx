@@ -143,6 +143,7 @@ export function ActivityView({
   const tDays = translator(wording, "days");
   const tDetails = translator(wording, "app.manage.business");
   const tManage = translator(wording, "app.manage");
+  const tDocuments = translator(wording, "app.chat.documents");
   const format = useFormatter();
   const shekels = useShekels();
   const fullDate = useFullDate();
@@ -824,6 +825,36 @@ export function ActivityView({
             : t("actions.chat.restore", { author: who(line.author), group }),
         );
       }
+      // Documents (chat C6), read by the office alone: who sent one and to
+      // how many, whose was opened, a file removed with its reason's code and
+      // put back. Never a category, title, note or file's name: the rows hold
+      // ids and codes only.
+      case "document.send":
+        return plain(
+          line.direction === "from_person"
+            ? t("actions.document.sendToBusiness")
+            : t("actions.document.sendToPeople", { count: line.recipients }),
+        );
+      case "document.open":
+        return plain(
+          line.person
+            ? t("actions.document.open", { person: who(line.person) })
+            : t("actions.document.openToPeople"),
+        );
+      case "document.remove":
+        return {
+          what: t("actions.document.remove"),
+          notes: line.reason
+            ? [
+                t("actions.document.reason", {
+                  reason: tDocuments(`reasons.${line.reason}`),
+                }),
+              ]
+            : [],
+          changes: [],
+        };
+      case "document.restore":
+        return plain(t("actions.document.restore"));
       case "other":
         return plain(t("actions.other"));
       default: {

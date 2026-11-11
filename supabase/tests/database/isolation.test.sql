@@ -1,7 +1,7 @@
 -- Tenant isolation: a member of business A never sees business B, and each
 -- role sees only what it should inside its own business.
 begin;
-select plan(33);
+select plan(36);
 
 -- Fixtures: business A (owner, manager, worker) and business B (owner).
 insert into auth.users (id, aud, role, phone)
@@ -264,6 +264,51 @@ select is_empty(
   $$select 1 from storage.objects
     where bucket_id = 'chat-files' and name like '20000000-0000-4000-b000-00000000000a/%'$$,
   'the owner of B reads neither'
+);
+
+-- Documents (20261111000700_documents.sql): the worker of A's sick note to
+-- the business, and the owner of A's form to the worker, each with its file
+-- in the bucket, as the server puts them.
+reset role;
+insert into public.documents (id, business_id, direction, person_id, author_id, category, title,
+  file_kind, file_path, file_size)
+values
+  ('20000000-0000-4000-c000-00000000000a', '20000000-0000-4000-b000-00000000000a', 'from_person',
+   '20000000-0000-4000-a000-00000000000c', '20000000-0000-4000-a000-00000000000c', 'sick_note',
+   'Sick note', 'pdf', '20000000-0000-4000-b000-00000000000a/' || md5('isolation-sick') || '.pdf', 50000),
+  ('20000000-0000-4000-c000-00000000000b', '20000000-0000-4000-b000-00000000000a', 'to_people',
+   null, '20000000-0000-4000-a000-00000000000a', 'form',
+   'Form', 'pdf', '20000000-0000-4000-b000-00000000000a/' || md5('isolation-form') || '.pdf', 50000);
+insert into public.document_recipients (document_id, business_id, person_id)
+values ('20000000-0000-4000-c000-00000000000b', '20000000-0000-4000-b000-00000000000a',
+  '20000000-0000-4000-a000-00000000000c');
+insert into storage.objects (bucket_id, name, metadata)
+select 'documents', d.file_path, jsonb_build_object('size', 50000, 'mimetype', 'application/pdf')
+from public.documents d
+where d.business_id = '20000000-0000-4000-b000-00000000000a';
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select is(
+  (select count(*)::integer from public.documents)
+  + (select count(*)::integer from public.document_recipients)
+  + (select count(*)::integer from storage.objects where bucket_id = 'documents'),
+  5,
+  'worker of A reads their sick note and the form sent to them, their mark, and both files'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000b');
+select is(
+  (select count(*)::integer from public.documents)
+  + (select count(*)::integer from storage.objects where bucket_id = 'documents'),
+  0,
+  'the manager of A, without pay access, reads neither, nor their files'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
+select is(
+  (select count(*)::integer from public.documents)
+  + (select count(*)::integer from public.document_recipients)
+  + (select count(*)::integer from storage.objects where bucket_id = 'documents'),
+  0,
+  'and the owner of B reads none of A''s documents, marks or files'
 );
 
 select * from finish();
