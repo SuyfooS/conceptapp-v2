@@ -939,7 +939,8 @@ $$;
 create function public.admin_storage()
 returns jsonb
 language plpgsql
-stable
+-- Volatile, as pg_database_size is.
+volatile
 security definer
 set search_path = ''
 as $$
