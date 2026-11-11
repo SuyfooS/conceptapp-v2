@@ -79,6 +79,45 @@ describe("module registry", () => {
     );
   });
 
+  it("gives chat the default roles its SQL helpers hold", () => {
+    // public.send_chat_message and private.chat_moderates ask
+    // private.holds_perm, which reads these from public.permission_keys
+    // (modules/permissions.db.test.ts): owners hold all three, managers by
+    // default, and nobody off the staff.
+    const roles = Object.fromEntries(
+      manifestFor("chat").permissions.map((p) => [p.key, p.defaultRole]),
+    );
+    expect(roles).toEqual({
+      "chat.announce": "manager",
+      "chat.moderate": "manager",
+      "chat.send_documents": "manager",
+    });
+  });
+
+  it("puts chat's tab after lists, ahead of reservations", () => {
+    // moduleNav cuts at four module tabs: if reservations ever comes back
+    // beside chat, the cut drops reservations (fitsTabBar refuses it first).
+    const order = (key: "chat" | "lists" | "reservations") =>
+      manifestFor(key).nav?.order ?? 0;
+    expect(order("chat")).toBeGreaterThan(order("lists"));
+    expect(order("chat")).toBeLessThan(order("reservations"));
+  });
+
+  it("leaves chat's files and space to the team, and its team's group to the business", () => {
+    // Storage is what could cost (§6.6 of the chat plan): owners and
+    // managers see only who writes in the whole team's group.
+    const settings = manifestFor("chat").settings;
+    expect(settings.parse({})).toEqual({
+      teamGroupWho: "everyone",
+      fileDays: 90,
+      fileSpaceMb: 100,
+      documentSpaceMb: 50,
+    });
+    expect(fieldsFor(settings, "owner").map((f) => f.key)).toEqual([
+      "teamGroupWho",
+    ]);
+  });
+
   it("starts every permission an owner gives with the owner alone", () => {
     // public.permission_keys refuses default roles for one (payroll P2): an
     // owner switches it on for managers, workers or a person.

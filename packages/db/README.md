@@ -29,6 +29,8 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.can_manage_lists(business, person)` | (that person) is an active owner or manager, or holds `lists.manage` |
 | `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or manages lists |
 | `private.can_read_list_photo(object_name)` | may read that file of the `list-photos` bucket: an item of a list they see (or view as a manager) points at it, in its business, with lists on |
+| `private.chat_reads_from(conversation, person)` | (that person) reads the chat, and from when: one of a private chat's two people while on the staff, the active staff in the team's group from when each came onto the staff this time (`memberships.staff_since`, which moves when someone comes back after leaving or from being an accountant), a live department's members on the staff from when each was added or came back, whichever is later, and moderators (`chat.moderate`) all of every group; null for anyone else, with chat off, and for a view session |
+| `private.is_private_action(action)` | (any user) a log row about chats or documents (`chat.*`, `document.*`), which no view session reads |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
 audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
@@ -529,6 +531,80 @@ reads a month (`getPayrollMonthRecord`) and the closed ones (`getClosedMonths`)
 under the person's session, and closes and reopens (`closePayrollMonth`,
 `reopenPayrollMonth`, refusals by `closeFailureOf` in `@domain/payroll-close`).
 Covered by `payroll_months.test.sql`, with `rls_enabled.test.sql`.
+
+Chat (`20261111000100_chat_module.sql`, `20261111000200_chat.sql`, chat C1), in
+the database only: the module is off everywhere until C2. `public.chat_conversations`
+holds a business's chats: its team's group (made with the business, by the
+trigger `businesses_open_team_chat`), a group for each department (made with it,
+`closed_at` while it is removed and cleared when it comes back) and a private chat
+per pair on the staff (`person_a < person_b`, made by the first message). Who is in
+one is derived, never synced (`private.chat_reads_from`, above, and
+`private.chat_members` for who a message tells): owners and managers hold
+`chat.moderate` and `chat.announce` by default (`public.permission_keys`, with
+`chat.send_documents` for C6), so they are in every department's group and read
+all of it; someone new reads a group from when they joined it, and a pinned
+announcement whenever; someone who comes back reads it from their return, since
+`public.memberships.staff_since` (its `created_at` at first, set again by the
+trigger `memberships_staff_since` whenever the row comes back onto the staff:
+active again, or from an accountant to a staff role; a change of permissions
+or between staff roles keeps it); an accountant is in no chat (`chat_reads` and
+`chat_acks` refuse them, `private.refuse_non_staff`). `public.chat_messages`
+keeps every message (Orel), its text 1 to 2000 characters, an announcement
+`pinned`; a removed
+one keeps its row with its text, file and pin moved to `private.chat_removed`,
+which nobody reads, for an undo of 10 minutes. `public.chat_reads` (how far each
+person read each chat, and `muted`) and `public.chat_acks` ("קראתי") are read by
+their own person only. A private chat has no branch for owners, managers, the
+ConceptApp team or a view session in any policy or function: a view session reads
+no chat at all, and the server role has no privilege on these tables, so no
+console page or script with the secret key reads them; only the functions do. The
+screens read with the person's own session `public.chat_inbox(business)` (each
+chat with its last message's first 120 characters, what waits unread, muted,
+closed, pinned announcements waiting; each chat's gate asked once, and never for
+other people's private chats), `public.chat_page(business, conversation,
+before_at, before_id, after_at, after_id, page_limit)` (a page of a chat, newest
+first, at most 50: the gate asked once, and it and the cursor bound the index
+scan, so a page stops at the reader's start instead of walking the older
+history; pinned announcements from before it are read under the policy),
+`public.chat_version(business)` (an opaque "anything new?" for the sync),
+`public.chat_seen(conversation)` (how far the
+other person of a private chat read it, for its two people) and
+`public.announcement_readers(message)` (who of the group confirmed, for its author
+and the moderators). The server, with the secret key for `actor`:
+`public.send_chat_message(actor, business, draft, words, conversation, to_person,
+announce, at_time)` (a conversation they read or someone else on the staff, a
+draft id the browser made so a retry sends nothing twice, announcements for
+`chat.announce` holders in groups; 42501 off the staff, P0002 for a chat they
+don't read, 55000 for chat off, a closed group or a private chat whose other
+person left, 22023 for no text or more than 2000 characters, 54000 for a 31st in
+a minute or a demo business's 101st visitors' message in an hour; every rule
+checked before the row is written, so a refused message never reaches the
+Postgres log), `read_chat(actor, conversation, up_to, at_time)`,
+`mute_chat(actor, conversation, mute)`, `remove_chat_message` (one's own
+anywhere, a moderator's in a group), `restore_chat_message` (the remover, within
+10 minutes), `confirm_announcement` and `pin_announcement` (55000 for pinning
+in a closed group; unpinning, removing and the undo still work there). Only a
+moderator's removal of someone else's message, and its undo, write the log (`chat.remove`,
+`chat.restore`, ids only): sending, opening a private chat, reading and muting
+write nothing, and `private.is_private_action` keeps every `chat.*` and
+`document.*` row from a view session ("a view reads the log as its role would",
+altered). A message tells its chat's members through `private.notify_chat`, one
+line per person per conversation (`chat.direct`, `chat.group`, params
+`{conversation, from, count}` and never text), its push 15 seconds late, waiting
+a minute (private) or 10 (group) after one unread, none from a muted chat; an
+announcement is its own line (`chat.announcement`) through `private.notify`,
+settled by its reader's "קראתי" (`private.settle_own_line`) and for everyone by
+removing or unpinning it. The job `chat` (`private.chat_tick`, every 10 minutes,
+pure SQL, off in `seed.sql`) runs `private.clean_chat`: removed texts past their
+undo, and a demo business's visitors' messages after an hour. The demo reset ends
+with `private.seed_demo_chat`, a stub C2 fills; chats go with the business by
+cascade. Orel's defaults of the plan's §17 are one function each
+(`private.chat_history_from_joining`, `private.chat_read_marks`,
+`private.chat_demo_keeps`, `private.chat_demo_per_hour`; `CHAT_RULES` in
+`@domain/chat`, kept equal by `modules/chat/settings.db.test.ts`, which also
+keeps `private.chat_settings` equal to the manifest's defaults). `@db/chat` reads
+and calls them (`chat.test.sql`, `chat_notifications.test.sql`, with
+`isolation`, `demo_reset` and `rls_enabled`).
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

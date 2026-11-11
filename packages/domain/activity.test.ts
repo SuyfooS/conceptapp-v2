@@ -953,6 +953,58 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads a message management removed in a group, and put back, never its text (chat C1)", () => {
+    expect(
+      lineOf(
+        row(
+          "chat.remove",
+          {
+            conversation: LIST,
+            message: GONE,
+            author: NOA,
+            department: KITCHEN.toUpperCase(),
+          },
+          YOAV,
+        ),
+      ),
+    ).toEqual({
+      action: "chat.remove",
+      group: { kind: "department", name: "Kitchen" },
+      author: { kind: "member", name: "Noa" },
+    });
+    expect(
+      lineOf(
+        row("chat.restore", {
+          conversation: LIST,
+          message: GONE,
+          author: null,
+          department: null,
+        }),
+      ),
+    ).toEqual({
+      action: "chat.restore",
+      group: { kind: "team" },
+      author: { kind: "unknown" },
+    });
+    expect(
+      lineOf(
+        row("chat.remove", {
+          conversation: LIST,
+          message: GONE,
+          author: LEFT,
+          department: GONE,
+        }),
+      ),
+    ).toEqual({
+      action: "chat.remove",
+      group: { kind: "department", name: null },
+      author: { kind: "former" },
+    });
+    expect(lineOf(row("chat.remove", { author: NOA }))).toEqual({
+      action: "other",
+    });
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),
@@ -1261,9 +1313,15 @@ describe("activityRefs", () => {
           to_department: KITCHEN,
           has_note: false,
         }),
+        row("chat.remove", {
+          conversation: LIST,
+          message: SHIFT,
+          author: INVITE,
+          department: KITCHEN,
+        }),
       ]),
     ).toEqual({
-      people: [NOA, YOAV, STAFF, LEFT, GONE, NAMELESS],
+      people: [NOA, YOAV, STAFF, LEFT, GONE, NAMELESS, INVITE],
       invites: [INVITE],
       shifts: [SHIFT],
       swaps: [SWAP],

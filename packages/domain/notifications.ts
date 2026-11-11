@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { isUuid } from "./activity";
-import { atLeast, type ModuleKey, type Role } from "./modules";
+import { atLeast, isStaff, type ModuleKey, type Role } from "./modules";
 
 /**
  * Notifications in the app: what happened that a person should know, one line
@@ -19,6 +19,7 @@ export const NOTIFICATION_GROUPS = [
   "approvals",
   "team",
   "lists",
+  "chat",
 ] as const;
 
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
@@ -41,9 +42,21 @@ type KindInfo = {
   /**
    * Leads to the thing itself when the line names it: "list" opens
    * `/lists/<params.list>`, "payMonth" the hours for payroll of
-   * `params.month`, and `href` is where it leads otherwise.
+   * `params.month`, "conversation" the chat `/chat/<params.conversation>`,
+   * and `href` is where it leads otherwise.
    */
-  to?: "list" | "payMonth";
+  to?: "list" | "payMonth" | "conversation";
+  /**
+   * Shown in the bell and the inbox, and counted there: all but a chat's own
+   * lines, which the Chat tab counts instead (as chats with unread messages).
+   * They still reach the phone (/push/inbox reads them).
+   */
+  inbox?: false;
+  /**
+   * Never for someone off the staff (an accountant), who is in no chat: the
+   * inbox doesn't say such lines reach them.
+   */
+  staffOnly?: true;
   /**
    * Where a settled line leads instead, when settling it closes `href` to its
    * reader (access taken back): the inbox, which leads nowhere new.
@@ -237,6 +250,42 @@ export const NOTIFICATION_KINDS = {
     href: "/clock/pay",
     to: "payMonth",
   },
+  // A chat's line (chat C1): one per person per conversation, with how many
+  // messages wait and who wrote last, never a word of them. The Chat tab
+  // counts chats with unread messages, so these stay out of the bell and the
+  // inbox and reach the phone only.
+  "chat.direct": {
+    group: "chat",
+    module: "chat",
+    minRole: "worker",
+    needsAction: false,
+    href: "/chat",
+    to: "conversation",
+    inbox: false,
+    staffOnly: true,
+  },
+  "chat.group": {
+    group: "chat",
+    module: "chat",
+    minRole: "worker",
+    needsAction: false,
+    href: "/chat",
+    to: "conversation",
+    inbox: false,
+    staffOnly: true,
+  },
+  // An announcement in a group (chat C1), which asks the reader for
+  // "קראתי": confirming it settles their line, removing or unpinning it
+  // everyone's.
+  "chat.announcement": {
+    group: "chat",
+    module: "chat",
+    minRole: "worker",
+    needsAction: true,
+    href: "/chat",
+    to: "conversation",
+    staffOnly: true,
+  },
   // "Send a test notification", from the phone switch: to the person alone.
   "push.test": {
     group: null,
@@ -282,6 +331,12 @@ export function linkFor(
       return `/lists/${list.data.list.toLowerCase()}`;
     }
   }
+  if (info.to === "conversation") {
+    const chat = z.object({ conversation: z.string() }).safeParse(params);
+    if (chat.success && isUuid(chat.data.conversation)) {
+      return `/chat/${chat.data.conversation.toLowerCase()}`;
+    }
+  }
   if (info.to === "payMonth") {
     const month = schemas.month.safeParse(params);
     if (month.success) return `${info.href}?month=${month.data.month}`;
@@ -309,6 +364,21 @@ export function needsAction(kind: string): boolean {
   return known ? NOTIFICATION_KINDS[known].needsAction : false;
 }
 
+/**
+ * Whether a line shows in the bell and the inbox: every kind but a chat's own
+ * lines (`inbox: false`). A kind this app doesn't know shows, as a plain line.
+ */
+export function inInbox(kind: string): boolean {
+  const known = notificationKindOf(kind);
+  if (!known) return true;
+  const info: KindInfo = NOTIFICATION_KINDS[known];
+  return info.inbox !== false;
+}
+
+/** The kinds the inbox and the bell leave out: they reach the phone only. */
+export const PHONE_ONLY_KINDS: readonly NotificationKind[] =
+  NOTIFICATION_KIND_KEYS.filter((kind) => !inInbox(kind));
+
 /** How many lines a person has not read in a business. */
 export type UnreadCounts = {
   /** Everything unread: the bell. */
@@ -330,7 +400,7 @@ export function unreadCounts(
   let all = 0;
   let action = 0;
   for (const row of rows) {
-    if (row.business_id !== businessId) continue;
+    if (row.business_id !== businessId || !inInbox(row.kind)) continue;
     all += 1;
     if (needsAction(row.kind)) action += 1;
   }
@@ -351,6 +421,7 @@ export function groupsFor(
       return (
         info.group === group &&
         atLeast(role, info.minRole) &&
+        !(info.staffOnly && !isStaff(role)) &&
         (info.module === null || enabled.includes(info.module))
       );
     }),
@@ -449,10 +520,21 @@ export function inboxPage<T extends { createdAt: string; id: string }>(
   };
 }
 
+/** A chat's group as a line names it. */
+export type NotificationChat =
+  | { kind: "team" }
+  /** The name is null when the department is not known (any more). */
+  | { kind: "department"; name: string | null };
+
 /** What lines point at, read under the reader's own access. */
 export type NotificationLookups = {
   /** The business's memberships, active or not, by person. */
   members: ReadonlyMap<string, { active: boolean; name: string | null }>;
+  /**
+   * The groups chat lines name, by conversation: those the reader reads.
+   * Left out where no line needs them.
+   */
+  chats?: ReadonlyMap<string, NotificationChat>;
 };
 
 /** Someone a line names, as its reader may know them. */
@@ -580,6 +662,26 @@ export type NotificationLine =
       waiting: number;
       open: number;
     }
+  | {
+      /** A private chat's line: who wrote last, and how many messages wait. */
+      kind: "chat.direct";
+      from: NotificationPerson;
+      count: number;
+    }
+  | {
+      /** A group's line: who wrote last, and how many messages wait. */
+      kind: "chat.group";
+      from: NotificationPerson;
+      count: number;
+      /** The group, as its reader may know it; null when the line lost it. */
+      chat: NotificationChat | null;
+    }
+  | {
+      /** An announcement in a group, asking the reader for "קראתי". */
+      kind: "chat.announcement";
+      from: NotificationPerson;
+      chat: NotificationChat | null;
+    }
   | { kind: "push.test" }
   | { kind: "other" };
 
@@ -644,6 +746,11 @@ const schemas = {
     waiting: z.int().min(0).catch(0),
     open: z.int().min(0).catch(0),
   }),
+  chat: z.object({
+    conversation: uuid,
+    from: uuid.nullable().catch(null),
+    count: z.int().min(1).max(99).catch(1),
+  }),
 };
 
 function personOf(
@@ -655,6 +762,14 @@ function personOf(
   return member.active
     ? { kind: "member", name: member.name }
     : { kind: "former" };
+}
+
+/** The group a chat line names, as the reader may know it. */
+function chatOf(
+  conversation: string,
+  lookups: NotificationLookups,
+): NotificationChat | null {
+  return lookups.chats?.get(conversation.toLowerCase()) ?? null;
 }
 
 function lineOf(
@@ -796,6 +911,33 @@ function lineOf(
         open: counts?.open ?? 0,
       };
     }
+    case "chat.direct": {
+      const params = read(schemas.chat);
+      return params
+        ? { kind, from: personOf(params.from, lookups), count: params.count }
+        : other;
+    }
+    case "chat.group": {
+      const params = read(schemas.chat);
+      return params
+        ? {
+            kind,
+            from: personOf(params.from, lookups),
+            count: params.count,
+            chat: chatOf(params.conversation, lookups),
+          }
+        : other;
+    }
+    case "chat.announcement": {
+      const params = read(schemas.chat);
+      return params
+        ? {
+            kind,
+            from: personOf(params.from, lookups),
+            chat: chatOf(params.conversation, lookups),
+          }
+        : other;
+    }
     case "access.pay_granted":
     case "push.test":
       return { kind };
@@ -826,6 +968,24 @@ export function notificationRefs(rows: readonly NotificationRow[]): string[] {
     add(person);
   }
   return [...people];
+}
+
+/**
+ * The chats a page of rows names for their group (a group's line and an
+ * announcement), each one safe to look up. A private chat's line names its
+ * person, which `notificationRefs` gives.
+ */
+export function notificationChats(rows: readonly NotificationRow[]): string[] {
+  const chats = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== "chat.group" && row.kind !== "chat.announcement") continue;
+    const params = z
+      .object({ conversation: z.unknown() })
+      .safeParse(row.params);
+    const conversation = params.success ? params.data.conversation : null;
+    if (isUuid(conversation)) chats.add(conversation.toLowerCase());
+  }
+  return [...chats];
 }
 
 /** The inbox's lines from their rows, in the order given. */

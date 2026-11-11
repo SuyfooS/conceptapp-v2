@@ -25,6 +25,7 @@ const manifests: ModuleManifest[] = [
   manifest("storefront"),
   manifest("notifications"),
   manifest("lists"),
+  manifest("chat"),
 ];
 
 const template = (overrides: Record<string, unknown> = {}) => ({
@@ -96,6 +97,7 @@ describe("validateTemplate", () => {
     const fewer = template();
     fewer.modules.notifications = { enabled: false, settings: {} };
     fewer.modules.lists = { enabled: false, settings: {} };
+    fewer.modules.chat = { enabled: false, settings: {} };
     expect(() => validateTemplate(tabbed, fewer)).not.toThrow();
   });
 

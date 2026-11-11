@@ -4,6 +4,7 @@ import {
   CalendarDays,
   Clock,
   ListChecks,
+  MessageCircle,
   Store,
   UtensilsCrossed,
 } from "lucide-react";
@@ -17,4 +18,5 @@ export const moduleIcons: Record<ModuleIcon, ReactNode> = {
   store: <Store />,
   bell: <Bell />,
   list: <ListChecks />,
+  chat: <MessageCircle />,
 };

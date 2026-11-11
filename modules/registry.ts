@@ -1,4 +1,5 @@
 import type { ModuleKey, ModuleManifest } from "@domain/modules";
+import { manifest as chat } from "./chat/manifest";
 import { manifest as lists } from "./lists/manifest";
 import { manifest as notifications } from "./notifications/manifest";
 import { manifest as reservations } from "./reservations/manifest";
@@ -18,6 +19,7 @@ export const manifests = [
   storefront,
   notifications,
   lists,
+  chat,
 ] as const satisfies readonly ModuleManifest[];
 
 export type Manifests = typeof manifests;

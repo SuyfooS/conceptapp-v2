@@ -444,7 +444,7 @@ select ok(
 select pg_temp.sign_in('77000000-0000-4000-a000-00000000000a');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.edit,clock.payroll,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,clock.payroll,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
   'an owner holds every permission'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-00000000000d');
@@ -467,19 +467,19 @@ select is(
 select pg_temp.sign_in('77000000-0000-4000-a000-00000000000b');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
   'a manager without pay access holds the rest'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-000000000012');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
   'a view as a manager holds what a manager does by default'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-000000000018');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
   'and a view as an owner everything but pay access'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-000000000011');

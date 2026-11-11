@@ -1,0 +1,66 @@
+import { defineManifest } from "@domain/modules";
+import { z } from "zod";
+
+/**
+ * Chat (Orel, 8 November 2026, issue #1): the whole team's group, a group for
+ * each department, and a private chat between any two people on the staff. A
+ * private chat is read by its two people and nobody else: not the owner, not a
+ * manager, not the ConceptApp team, not a view session. In groups, management
+ * posts announcements that ask for "קראתי" and removes messages, with undo.
+ * Accountants are off the staff and in no chat. The database holds it all
+ * (supabase/migrations/20261111000200_chat.sql); the screens come in C2, and
+ * until then the module is off in every template and business.
+ *
+ * The tab is the fifth with Home, after Lists (order 28, ahead of
+ * reservations' 30, so `moduleNav`'s cut keeps chat). An accountant's
+ * documents tab (`outsideStaff`) comes with the documents' screens (C7).
+ */
+export const manifest = defineManifest({
+  key: "chat",
+  requires: [],
+  nav: { href: "/chat", icon: "chat", minRole: "worker", order: 28 },
+  homeWidget: { minRole: "worker" },
+  permissions: [
+    // Post announcements in groups. public.send_chat_message asks
+    // private.holds_perm, which holds the same default.
+    { key: "chat.announce", defaultRole: "manager" },
+    // Be in every department's group, read all of it, and remove others'
+    // messages in groups (private.chat_moderates).
+    { key: "chat.moderate", defaultRole: "manager" },
+    // Send official documents to people (C6; pay holders send them too).
+    { key: "chat.send_documents", defaultRole: "manager" },
+  ],
+  settings: z.object({
+    /**
+     * Who writes in the whole team's group: everyone, or management only
+     * (announcers, the holders of chat.announce). Orel's default (§17,
+     * question 5): everyone. Owners and managers set it on /manage.
+     */
+    teamGroupWho: z.enum(["everyone", "announcers"]).default("everyone"),
+    /**
+     * Days a chat file is kept (C4; Orel: 90); the message stays. For the
+     * ConceptApp team only, since storage is what could cost, as lists'
+     * photoDays.
+     */
+    fileDays: z
+      .union([z.literal(30), z.literal(90), z.literal(180)])
+      .default(90)
+      .meta({ level: "team" }),
+    /**
+     * A business's space for chat files, in MB (C4): past it, its oldest
+     * files go first (Orel's default, §17, question 1). The team's.
+     */
+    fileSpaceMb: z
+      .union([z.literal(50), z.literal(100), z.literal(200)])
+      .default(100)
+      .meta({ level: "team" }),
+    /**
+     * A business's space for official documents, in MB (C6): past it, new
+     * ones are refused, and none is ever deleted for space. The team's.
+     */
+    documentSpaceMb: z
+      .union([z.literal(50), z.literal(100), z.literal(200)])
+      .default(50)
+      .meta({ level: "team" }),
+  }),
+});

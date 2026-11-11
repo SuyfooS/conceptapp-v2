@@ -5,9 +5,12 @@ import {
   type InboxPlace,
   inboxCursor,
   inboxPage,
+  type NotificationChat,
   type NotificationLookups,
   type NotificationRow,
+  notificationChats,
   notificationRefs,
+  PHONE_ONLY_KINDS,
 } from "@domain/notifications";
 import { isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
@@ -34,6 +37,10 @@ export type InboxPage = {
 
 const COLUMNS = "id, kind, params, actor_id, created_at, read_at, resolved_at";
 
+// A chat's own lines reach the phone only (`inbox: false`): the Chat tab
+// counts them. Quoted: PostgREST reads a dot in a list as its own syntax.
+const PHONE_ONLY = `(${PHONE_ONLY_KINDS.map((kind) => `"${kind}"`).join(",")})`;
+
 type Row = {
   id: string;
   kind: string;
@@ -56,10 +63,10 @@ const toRow = (row: Row): NotificationRow => ({
 
 /**
  * A page of the signed-in person's lines in a business, under RLS: only their
- * own, and only those still for them (their role, the modules that are on).
- * Every unread line comes first, a page at a time, then the read ones
- * (`inboxPage`), so whatever the bell counts is on some page. The names they
- * point at are read the same way.
+ * own, and only those still for them (their role, the modules that are on),
+ * but a chat's own lines, which only the phone shows. Every unread line comes
+ * first, a page at a time, then the read ones (`inboxPage`), so whatever the
+ * bell counts is on some page. The names they point at are read the same way.
  */
 export async function getInbox(
   businessId: string,
@@ -73,7 +80,8 @@ export async function getInbox(
       .from("notifications")
       .select(COLUMNS)
       .eq("business_id", businessId)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .not("kind", "in", PHONE_ONLY);
     query = read ? query.not("read_at", "is", null) : query.is("read_at", null);
     if (after) {
       query = query.or(
@@ -108,22 +116,49 @@ export async function getInbox(
   };
 }
 
-/** The names the rows point at, read under the reader's own access. */
+/**
+ * The names the rows point at, read under the reader's own access: people,
+ * and the groups chat lines name (a group the reader no longer reads, and its
+ * department's name, stay unknown).
+ */
 async function lookupsFor(
   supabase: Awaited<ReturnType<typeof createClient>>,
   businessId: string,
   rows: readonly NotificationRow[],
 ): Promise<NotificationLookups> {
   const people = notificationRefs(rows);
-  const members = people.length
-    ? await supabase
-        .from("memberships")
-        .select("user_id, active, profiles (full_name)")
-        .eq("business_id", businessId)
-        .in("user_id", people)
-    : null;
+  const chatIds = notificationChats(rows);
+  const [members, chats] = await Promise.all([
+    people.length
+      ? supabase
+          .from("memberships")
+          .select("user_id, active, profiles (full_name)")
+          .eq("business_id", businessId)
+          .in("user_id", people)
+      : null,
+    chatIds.length
+      ? supabase
+          .from("chat_conversations")
+          .select("id, kind, departments (name)")
+          .eq("business_id", businessId)
+          .in("id", chatIds)
+      : null,
+  ]);
   if (members?.error) throw members.error;
+  // Before the chat migration reaches a project there are no chats.
+  if (chats?.error && !isMissingTable(chats.error)) throw chats.error;
+  const groups = new Map<string, NotificationChat>();
+  for (const chat of chats?.data ?? []) {
+    if (chat.kind === "team") groups.set(chat.id, { kind: "team" });
+    if (chat.kind === "department") {
+      groups.set(chat.id, {
+        kind: "department",
+        name: chat.departments?.name ?? null,
+      });
+    }
+  }
   return {
+    chats: groups,
     members: new Map(
       (members?.data ?? []).map((row) => [
         row.user_id,

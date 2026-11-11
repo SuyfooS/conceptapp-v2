@@ -82,7 +82,11 @@ its lines go to phones with the `notifications` job.
 on a list is older than its business keeps photos (`photoDays`, 90 days unless the team chose
 another), it asks the app's `/cron/list-photos`, with the same two Vault secrets as the minute
 job, to remove the files through Storage (only the app reaches them) and mark their items; without
-the secrets it calls nothing and the photos wait. `seed.sql` switches all five off locally
+the secrets it calls nothing and the photos wait.
+`20261111000200_chat.sql` adds a sixth, `chat`, every 10 minutes: pure SQL
+(`private.chat_tick`), with no pg_net and no Vault secret. It deletes the text of a removed
+message once its 10 minutes of undo are over, and a demo business's visitors' messages
+after an hour. `seed.sql` switches all six off locally
 and in CI, and only a demo definition that says `"scheduledLists": true` (the hosted ones)
 opens today's lists when it is reset; the tests call what the jobs run, at times they choose.
 

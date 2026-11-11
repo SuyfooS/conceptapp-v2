@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(36);
+select plan(37);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -248,6 +248,12 @@ select public.set_hourly_wage('6d000000-0000-4000-a000-00000000000a',
   4100, date_trunc('month', now())::date, 'A visitor''s raise');
 insert into public.lists (business_id, name, origin, recipient_kind, recipient_role, opens_at)
 values ('6d000000-0000-4000-b000-000000000001', 'A visitor''s list', 'sent', 'role', 'worker', now());
+-- A visitor's message in the team's group (20261111000200_chat.sql).
+insert into public.chat_messages (business_id, conversation_id, author_id, draft_id, body)
+select c.business_id, c.id, '6d000000-0000-4000-a000-00000000000b', gen_random_uuid(),
+  'A visitor wrote this'
+from public.chat_conversations c
+where c.business_id = '6d000000-0000-4000-b000-000000000001' and c.kind = 'team';
 -- Hours, a break and the log's rows, which nothing but the reset's purge
 -- deletes (20261110000100_hours_kept.sql).
 insert into public.time_entries (id, business_id, user_id, clock_in, clock_out)
@@ -349,6 +355,14 @@ select is(
    where business_id = '6d000000-0000-4000-b000-000000000001' and module_key = 'lists'),
   true,
   'with lists on, as their template has them'
+);
+select is(
+  (select count(*)::integer from public.chat_messages
+   where business_id = '6d000000-0000-4000-b000-000000000001')
+  || '/' || (select string_agg(c.kind, ',' order by c.kind) from public.chat_conversations c
+   where c.business_id = '6d000000-0000-4000-b000-000000000001'),
+  '0/department,department,department,team',
+  'its chats start again: no visitor''s message, the team''s group and one for each department'
 );
 
 select throws_ok(

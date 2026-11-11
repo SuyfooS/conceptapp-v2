@@ -15,6 +15,7 @@ export const MODULE_KEYS = [
   "storefront",
   "notifications",
   "lists",
+  "chat",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -70,6 +71,7 @@ export const MODULE_ICONS = [
   "store",
   "bell",
   "list",
+  "chat",
 ] as const;
 
 export type ModuleIcon = (typeof MODULE_ICONS)[number];

@@ -5,6 +5,7 @@ import {
   INBOX_PAGE_SIZE,
   inboxCursor,
   inboxPage,
+  inInbox,
   isAppPath,
   linkFor,
   NOTIFICATION_KIND_KEYS,
@@ -12,8 +13,10 @@ import {
   type NotificationLookups,
   type NotificationRow,
   needsAction,
+  notificationChats,
   notificationKindOf,
   notificationRefs,
+  PHONE_ONLY_KINDS,
   parseInboxCursor,
   unreadCounts,
 } from "./notifications";
@@ -98,6 +101,7 @@ describe("the kinds", () => {
     expect(
       NOTIFICATION_KIND_KEYS.filter((kind) => needsAction(kind)).sort(),
     ).toEqual([
+      "chat.announcement",
       "clock.confirm",
       "lists.late_team",
       "lists.out_of_range",
@@ -152,6 +156,123 @@ describe("unreadCounts", () => {
     expect(unreadCounts(rows, "a")).toEqual({ all: 4, action: 2 });
     expect(unreadCounts(rows, "b")).toEqual({ all: 1, action: 1 });
     expect(unreadCounts(rows, "c")).toEqual({ all: 0, action: 0 });
+  });
+
+  it("leaves out a chat's own lines, which the Chat tab counts", () => {
+    const rows = [
+      { business_id: "a", kind: "chat.direct" },
+      { business_id: "a", kind: "chat.group" },
+      { business_id: "a", kind: "chat.announcement" },
+      { business_id: "a", kind: "something.new" },
+    ];
+    // An announcement asks for "קראתי": the bell and Home count it.
+    expect(unreadCounts(rows, "a")).toEqual({ all: 2, action: 1 });
+  });
+});
+
+describe("chat's lines", () => {
+  const CHAT = "66666666-6666-4666-8666-666666666666";
+  const chatLookups: NotificationLookups = {
+    ...lookups,
+    chats: new Map([[CHAT, { kind: "department", name: "Kitchen" }]]),
+  };
+
+  it("reach the phone only, but for an announcement", () => {
+    expect([...PHONE_ONLY_KINDS].sort()).toEqual(["chat.direct", "chat.group"]);
+    expect(inInbox("chat.announcement")).toBe(true);
+    expect(inInbox("lists.sent")).toBe(true);
+    // An unknown kind shows, as a plain line.
+    expect(inInbox("chat.message")).toBe(true);
+  });
+
+  it("lead to their chat, and only by a real id", () => {
+    for (const kind of ["chat.direct", "chat.group", "chat.announcement"]) {
+      expect(linkFor(kind, { conversation: CHAT.toUpperCase() })).toBe(
+        `/chat/${CHAT}`,
+      );
+      expect(linkFor(kind, { conversation: "../admin" })).toBe("/chat");
+      expect(linkFor(kind)).toBe("/chat");
+    }
+  });
+
+  it("read who wrote and how many wait, never a word of the messages", () => {
+    expect(
+      buildInbox(
+        [
+          row("chat.direct", { conversation: CHAT, from: YOAV, count: 3 }),
+          row("chat.group", { conversation: CHAT, from: LEFT, count: 120 }),
+          row("chat.announcement", {
+            conversation: CHAT,
+            message: LINE,
+            from: MANAGER,
+          }),
+        ],
+        chatLookups,
+        NOA,
+      ).map((entry) => [entry.group, entry.href, entry.line]),
+    ).toEqual([
+      [
+        "chat",
+        `/chat/${CHAT}`,
+        {
+          kind: "chat.direct",
+          from: { kind: "member", name: "Yoav" },
+          count: 3,
+        },
+      ],
+      [
+        "chat",
+        `/chat/${CHAT}`,
+        {
+          kind: "chat.group",
+          from: { kind: "former" },
+          // A count it can't read is one.
+          count: 1,
+          chat: { kind: "department", name: "Kitchen" },
+        },
+      ],
+      [
+        "chat",
+        `/chat/${CHAT}`,
+        {
+          kind: "chat.announcement",
+          from: { kind: "member", name: null },
+          chat: { kind: "department", name: "Kitchen" },
+        },
+      ],
+    ]);
+  });
+
+  it("still read without the group's name, and as a plain line without their chat", () => {
+    expect(
+      lineOf(row("chat.group", { conversation: CHAT, from: YOAV, count: 2 }))
+        ?.line,
+    ).toEqual({
+      kind: "chat.group",
+      from: { kind: "member", name: "Yoav" },
+      count: 2,
+      chat: null,
+    });
+    expect(lineOf(row("chat.direct", { from: YOAV }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("name the groups to look up, and only by a real id", () => {
+    expect(
+      notificationChats([
+        row("chat.group", { conversation: CHAT.toUpperCase() }),
+        row("chat.announcement", { conversation: CHAT }),
+        row("chat.direct", { conversation: LINE }),
+        row("chat.group", { conversation: "../admin" }),
+      ]),
+    ).toEqual([CHAT]);
+  });
+
+  it("reach the staff only: an accountant is in no chat", () => {
+    expect(groupsFor("worker", ["chat"])).toEqual(["chat"]);
+    expect(groupsFor("accountant", ["chat"])).toEqual([]);
+    expect(groupsFor("worker", [])).toEqual([]);
   });
 });
 

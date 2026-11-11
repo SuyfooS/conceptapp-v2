@@ -268,6 +268,234 @@ export type Database = {
           },
         ];
       };
+      chat_acks: {
+        Row: {
+          acked_at: string;
+          business_id: string;
+          message_id: string;
+          user_id: string;
+        };
+        Insert: {
+          acked_at?: string;
+          business_id: string;
+          message_id: string;
+          user_id: string;
+        };
+        Update: {
+          acked_at?: string;
+          business_id?: string;
+          message_id?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "chat_acks_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "chat_acks_message_id_business_id_fkey";
+            columns: ["message_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_messages";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      chat_conversations: {
+        Row: {
+          business_id: string;
+          changed_at: string;
+          closed_at: string | null;
+          created_at: string;
+          department_id: string | null;
+          id: string;
+          kind: string;
+          last_message_at: string | null;
+          person_a: string | null;
+          person_b: string | null;
+        };
+        Insert: {
+          business_id: string;
+          changed_at?: string;
+          closed_at?: string | null;
+          created_at?: string;
+          department_id?: string | null;
+          id?: string;
+          kind: string;
+          last_message_at?: string | null;
+          person_a?: string | null;
+          person_b?: string | null;
+        };
+        Update: {
+          business_id?: string;
+          changed_at?: string;
+          closed_at?: string | null;
+          created_at?: string;
+          department_id?: string | null;
+          id?: string;
+          kind?: string;
+          last_message_at?: string | null;
+          person_a?: string | null;
+          person_b?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "chat_conversations_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "chat_conversations_business_id_person_a_fkey";
+            columns: ["business_id", "person_a"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "chat_conversations_business_id_person_b_fkey";
+            columns: ["business_id", "person_b"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "chat_conversations_department_id_business_id_fkey";
+            columns: ["department_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      chat_messages: {
+        Row: {
+          author_id: string | null;
+          body: string | null;
+          business_id: string;
+          conversation_id: string;
+          created_at: string;
+          draft_id: string;
+          file_kind: string | null;
+          file_name: string | null;
+          file_path: string | null;
+          file_removed_at: string | null;
+          file_size: number | null;
+          id: string;
+          kind: string;
+          pinned: boolean;
+          removed_at: string | null;
+          removed_by: string | null;
+          seeded: boolean;
+          thumb_path: string | null;
+        };
+        Insert: {
+          author_id?: string | null;
+          body?: string | null;
+          business_id: string;
+          conversation_id: string;
+          created_at?: string;
+          draft_id: string;
+          file_kind?: string | null;
+          file_name?: string | null;
+          file_path?: string | null;
+          file_removed_at?: string | null;
+          file_size?: number | null;
+          id?: string;
+          kind?: string;
+          pinned?: boolean;
+          removed_at?: string | null;
+          removed_by?: string | null;
+          seeded?: boolean;
+          thumb_path?: string | null;
+        };
+        Update: {
+          author_id?: string | null;
+          body?: string | null;
+          business_id?: string;
+          conversation_id?: string;
+          created_at?: string;
+          draft_id?: string;
+          file_kind?: string | null;
+          file_name?: string | null;
+          file_path?: string | null;
+          file_removed_at?: string | null;
+          file_size?: number | null;
+          id?: string;
+          kind?: string;
+          pinned?: boolean;
+          removed_at?: string | null;
+          removed_by?: string | null;
+          seeded?: boolean;
+          thumb_path?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "chat_messages_author_id_fkey";
+            columns: ["author_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "chat_messages_conversation_id_business_id_fkey";
+            columns: ["conversation_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_conversations";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "chat_messages_removed_by_fkey";
+            columns: ["removed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      chat_reads: {
+        Row: {
+          business_id: string;
+          conversation_id: string;
+          muted: boolean;
+          read_at: string | null;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          conversation_id: string;
+          muted?: boolean;
+          read_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          conversation_id?: string;
+          muted?: boolean;
+          read_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "chat_reads_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: false;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+          {
+            foreignKeyName: "chat_reads_conversation_id_business_id_fkey";
+            columns: ["conversation_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "chat_conversations";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
       clock_stations: {
         Row: {
           business_id: string;
@@ -1217,6 +1445,7 @@ export type Database = {
           id: string;
           perms: string[];
           role: Database["public"]["Enums"]["member_role"];
+          staff_since: string;
           updated_at: string;
           user_id: string;
         };
@@ -1227,6 +1456,7 @@ export type Database = {
           id?: string;
           perms?: string[];
           role?: Database["public"]["Enums"]["member_role"];
+          staff_since?: string;
           updated_at?: string;
           user_id: string;
         };
@@ -1237,6 +1467,7 @@ export type Database = {
           id?: string;
           perms?: string[];
           role?: Database["public"]["Enums"]["member_role"];
+          staff_since?: string;
           updated_at?: string;
           user_id?: string;
         };
@@ -2249,6 +2480,13 @@ export type Database = {
         };
         Returns: string;
       };
+      announcement_readers: {
+        Args: { message: string };
+        Returns: {
+          acked_at: string;
+          person: string;
+        }[];
+      };
       apply_template: {
         Args: { business: string; template: string };
         Returns: undefined;
@@ -2280,6 +2518,51 @@ export type Database = {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
       };
+      chat_inbox: {
+        Args: { business: string };
+        Returns: {
+          closed: boolean;
+          conversation: string;
+          department: string;
+          kind: string;
+          last_at: string;
+          last_author: string;
+          last_file_kind: string;
+          last_kind: string;
+          last_preview: string;
+          muted: boolean;
+          other_person: string;
+          pinned_waiting: number;
+          unread: number;
+        }[];
+      };
+      chat_page: {
+        Args: {
+          after_at?: string;
+          after_id?: string;
+          before_at?: string;
+          before_id?: string;
+          business: string;
+          conversation: string;
+          page_limit?: number;
+        };
+        Returns: {
+          author_id: string;
+          body: string;
+          created_at: string;
+          file_kind: string;
+          file_name: string;
+          file_removed_at: string;
+          file_size: number;
+          id: string;
+          kind: string;
+          pinned: boolean;
+          removed_at: string;
+          removed_by: string;
+        }[];
+      };
+      chat_seen: { Args: { conversation: string }; Returns: string };
+      chat_version: { Args: { business: string }; Returns: string };
       claim_due_pushes: {
         Args: { at_time?: string; max_rows?: number };
         Returns: {
@@ -2333,6 +2616,10 @@ export type Database = {
         Returns: undefined;
       };
       closed_to_invites: { Args: { business: string }; Returns: boolean };
+      confirm_announcement: {
+        Args: { actor: string; at_time?: string; message: string };
+        Returns: undefined;
+      };
       confirm_time_entry: {
         Args: { actor: string; at_time?: string; entry: string };
         Returns: undefined;
@@ -2423,6 +2710,10 @@ export type Database = {
       };
       keeps_demo_profile: { Args: { person: string }; Returns: boolean };
       list_photos_closed: { Args: { business: string }; Returns: boolean };
+      mute_chat: {
+        Args: { actor: string; conversation: string; mute: boolean };
+        Returns: undefined;
+      };
       my_open_lists: {
         Args: { actor: string; business: string };
         Returns: number;
@@ -2485,6 +2776,15 @@ export type Database = {
         };
         Returns: undefined;
       };
+      pin_announcement: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          message: string;
+          pin: boolean;
+        };
+        Returns: undefined;
+      };
       publish_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
@@ -2494,9 +2794,22 @@ export type Database = {
         Returns: boolean;
       };
       push_allowed: { Args: { person: string }; Returns: boolean };
+      read_chat: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          conversation: string;
+          up_to?: string;
+        };
+        Returns: undefined;
+      };
       read_notifications: {
         Args: { actor: string; business: string; ids?: string[] };
         Returns: number;
+      };
+      remove_chat_message: {
+        Args: { actor: string; at_time?: string; message: string };
+        Returns: undefined;
       };
       remove_push_subscription: {
         Args: { actor: string; device?: string; push_endpoint?: string };
@@ -2529,6 +2842,10 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      restore_chat_message: {
+        Args: { actor: string; at_time?: string; message: string };
+        Returns: undefined;
+      };
       restore_list_template: {
         Args: { actor: string; template: string };
         Returns: undefined;
@@ -2556,6 +2873,19 @@ export type Database = {
       save_week_schedule: {
         Args: { actor: string; shifts: Json; week: string };
         Returns: number;
+      };
+      send_chat_message: {
+        Args: {
+          actor: string;
+          announce?: boolean;
+          at_time?: string;
+          business: string;
+          conversation?: string;
+          draft: string;
+          to_person?: string;
+          words?: string;
+        };
+        Returns: Json;
       };
       send_list: {
         Args: { actor: string; at_time?: string; business: string; list: Json };
@@ -2773,7 +3103,8 @@ export type Database = {
         | "reservations"
         | "storefront"
         | "notifications"
-        | "lists";
+        | "lists"
+        | "chat";
       platform_role: "platform_admin" | "onboarder";
       swap_status: "open" | "taken" | "approved" | "declined" | "cancelled";
       time_entry_source: "punch" | "manager";
@@ -2915,6 +3246,7 @@ export const Constants = {
         "storefront",
         "notifications",
         "lists",
+        "chat",
       ],
       platform_role: ["platform_admin", "onboarder"],
       swap_status: ["open", "taken", "approved", "declined", "cancelled"],

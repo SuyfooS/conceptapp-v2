@@ -2111,7 +2111,8 @@
         "reservations": "Booking times and party size",
         "storefront": "The business's public page",
         "notifications": "Reminders to the team",
-        "lists": "When to remind, and when a list is late"
+        "lists": "When to remind, and when a list is late",
+        "chat": "Who writes in the whole team's group"
       },
       "team": {
         "title": "Team",
@@ -2358,6 +2359,15 @@
             "close": "Closed {month} for payroll",
             "reopen": "Reopened {month}",
             "reopenReason": "The reason: {reason}"
+          },
+          "chat": {
+            "remove": "Removed a message by {author} from {group}",
+            "restore": "Put back a message by {author} removed from {group}",
+            "group": {
+              "team": "the whole team's group",
+              "department": "the {name} group",
+              "departmentUnknown": "a department's group"
+            }
           }
         }
       },
@@ -2562,6 +2572,10 @@
         "lists": {
           "name": "Lists",
           "hint": "Lists sent to you or passed to your department, reminders before they are due, late lists and readings out of range, and lists you sent that were finished"
+        },
+        "chat": {
+          "name": "Chat",
+          "hint": "New messages in your chats and groups, without what they say, and messages from management"
         }
       },
       "time": {
@@ -2700,6 +2714,25 @@
             "waiting": "{count, plural, one {One shift waits for approval} other {# shifts wait for approval}}",
             "open": "{count, plural, one {One shift is still open} other {# shifts are still open}}",
             "ready": "Every shift is approved. The month can be closed."
+          }
+        },
+        "chat": {
+          "direct": {
+            "title": "{name}",
+            "body": "{count, plural, one {A new message} other {# new messages}}"
+          },
+          "group": {
+            "title": "{group}",
+            "titleTeam": "Whole team",
+            "titlePlain": "A new message in a group",
+            "body": "{count, plural, one {A new message from {name}} other {# new messages}}"
+          },
+          "announcement": {
+            "title": "From management",
+            "body": "In the {group} group. Please confirm you read it",
+            "bodyTeam": "In the whole team's group. Please confirm you read it",
+            "bodyPlain": "Please confirm you read it",
+            "settledNote": "No longer waiting for you"
           }
         }
       },
@@ -3554,6 +3587,47 @@
             "90": "Three months",
             "180": "Half a year",
             "365": "A year"
+          }
+        }
+      }
+    },
+    "chat": {
+      "name": "Chat",
+      "description": "A group for the whole team and each department, and private chats",
+      "settings": {
+        "teamGroupWho": {
+          "label": "Who writes in the whole team's group",
+          "hint": "When only management writes, everyone else reads and confirms they read.",
+          "options": {
+            "everyone": "Everyone",
+            "announcers": "Management only"
+          }
+        },
+        "fileDays": {
+          "label": "How long chat files are kept",
+          "hint": "Photos and files are deleted after this time. The messages themselves stay.",
+          "options": {
+            "30": "A month",
+            "90": "Three months",
+            "180": "Half a year"
+          }
+        },
+        "fileSpaceMb": {
+          "label": "Space for chat files",
+          "hint": "When the space runs out, the oldest files are deleted first.",
+          "options": {
+            "50": "50 MB",
+            "100": "100 MB",
+            "200": "200 MB"
+          }
+        },
+        "documentSpaceMb": {
+          "label": "Space for documents",
+          "hint": "When the space runs out, no new documents are sent. Documents are never deleted for space.",
+          "options": {
+            "50": "50 MB",
+            "100": "100 MB",
+            "200": "200 MB"
           }
         }
       }

@@ -808,6 +808,22 @@ export function ActivityView({
           href: paths.pay ? `${paths.pay}?month=${line.month}` : undefined,
         };
       }
+      case "chat.remove":
+      case "chat.restore": {
+        // Management took someone's message out of a group, or put it back
+        // (chat C1): whose, and where, never what it said.
+        const group =
+          line.group.kind === "team"
+            ? t("actions.chat.group.team")
+            : line.group.name
+              ? t("actions.chat.group.department", { name: line.group.name })
+              : t("actions.chat.group.departmentUnknown");
+        return plain(
+          line.action === "chat.remove"
+            ? t("actions.chat.remove", { author: who(line.author), group })
+            : t("actions.chat.restore", { author: who(line.author), group }),
+        );
+      }
       case "other":
         return plain(t("actions.other"));
       default: {
