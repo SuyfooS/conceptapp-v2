@@ -1,13 +1,18 @@
 import { dateIn } from "@domain/availability";
-import { chatDay } from "@domain/chat-days";
+import { chatDay, messageTime } from "@domain/chat-days";
 import { ImmersiveScreen } from "@ui/immersive-screen";
 import { PageBody } from "@ui/page";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
-import { ChatDetails } from "../chat-details";
+import { ChatDemoDetailsBody, ChatDetails } from "../chat-details";
 import { ChatDemoMark, ChatList } from "../chat-list";
-import { ConversationDemo, type DemoBubble } from "../conversation-demo";
+import {
+  ConversationDemo,
+  type DemoBubble,
+  type DemoOpened,
+  type DemoPinned,
+} from "../conversation-demo";
 import {
   CHAT_DEMO_NOW,
   CHAT_DEMO_READER,
@@ -17,6 +22,7 @@ import {
   chatDemoFailed,
   chatDemoIds,
   chatDemoLongDate,
+  chatDemoPeople,
   chatDemoPerson,
 } from "../data";
 import { chatDetailsClass, chatPaneClass } from "../panes";
@@ -26,7 +32,7 @@ export const generateStaticParams = () =>
 
 type Props = {
   params: Promise<{ conversation: string }>;
-  searchParams: Promise<{ state?: string }>;
+  searchParams: Promise<{ state?: string; announce?: string }>;
 };
 
 // One of Shiran's conversations: on a phone the whole screen, with no tab
@@ -36,6 +42,13 @@ type Props = {
 // written to yet (/design/chat/uri) opens an empty private chat, and the
 // removed department (/design/chat/desserts) reads but takes nothing.
 // `?state=failed` adds a message of hers that didn't go, with its retry.
+// The whole team's group has the owner's announcement pinned (C3), waiting
+// for her "קראתי": `?state=confirmed` once she pressed it, `?state=readers`
+// with who confirmed open, and `?state=actions` with a message's actions
+// open (any message opens them on a tap, or its button on a desktop).
+// `?announce=1` opens the composer as "הודעה מההנהלה", as the
+// announcements' "פרסום הודעה מההנהלה" does. The title's details button
+// opens /design/chat/<id>/info on a phone and a sheet on a tablet.
 export default function ChatDemoConversationPage({
   params,
   searchParams,
@@ -48,7 +61,7 @@ export default function ChatDemoConversationPage({
 }
 
 async function Demo({ params, searchParams }: Props) {
-  const [{ conversation }, { state }] = await Promise.all([
+  const [{ conversation }, { state, announce }] = await Promise.all([
     params,
     searchParams,
   ]);
@@ -77,7 +90,35 @@ async function Demo({ params, searchParams }: Props) {
     at: m.at,
     body: m.body,
     removedBy: m.removedBy,
+    announcement: m.kind === "announcement",
   }));
+  const pinnedMessage = chat.pinned
+    ? chat.messages.find((m) => m.id === chat.pinned?.message)
+    : undefined;
+  const pinned: DemoPinned | null =
+    chat.pinned && pinnedMessage?.body
+      ? {
+          id: pinnedMessage.id,
+          authorName: chatDemoPerson(pinnedMessage.author)?.name ?? "",
+          time: messageTime(pinnedMessage.at, CHAT_DEMO_ZONE),
+          body: pinnedMessage.body,
+          readers: chatDemoPeople
+            .filter((p) => p.id !== pinnedMessage.author)
+            .map((p) => {
+              const at = chat.pinned?.confirmedBy[p.id];
+              return {
+                id: p.id,
+                name: p.name,
+                photo: p.photo,
+                at: at ? messageTime(at, CHAT_DEMO_ZONE) : null,
+              };
+            }),
+        }
+      : null;
+  const opened: DemoOpened =
+    state === "confirmed" || state === "readers" || state === "actions"
+      ? state
+      : null;
   if (state === "failed" && !chat.closed) {
     messages.push({
       id: "failed",
@@ -121,7 +162,7 @@ async function Demo({ params, searchParams }: Props) {
           <ChatList heading="h2" current={chat.id} />
         </div>
         <ConversationDemo
-          key={state ?? ""}
+          key={`${state ?? ""}:${announce ?? ""}`}
           kind={chat.kind}
           title={title}
           subtitle={subtitle}
@@ -140,6 +181,19 @@ async function Demo({ params, searchParams }: Props) {
               : t("conversation.emptyGroup")
           }
           reply={reply}
+          pinned={pinned}
+          moderates
+          opened={opened}
+          announceFirst={announce === "1"}
+          infoHref={`/design/chat/${chat.id}/info`}
+          details={
+            <ChatDemoDetailsBody
+              chat={chat}
+              title={title}
+              subtitle={subtitle}
+              inSheet
+            />
+          }
         />
         <ChatDetails
           chat={chat}

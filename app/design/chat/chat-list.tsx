@@ -3,10 +3,10 @@ import { chatWhen } from "@domain/chat-days";
 import { Avatar } from "@ui/avatar";
 import { ChatGroupMark, ChatRow } from "@ui/chat-row";
 import { EmptyState } from "@ui/empty-state";
-import { ListGroup } from "@ui/list-row";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageHeader, PageSection } from "@ui/page";
 import { VisibilityNote } from "@ui/visibility-note";
-import { Building, MessageCircle, Users } from "lucide-react";
+import { Building, Megaphone, MessageCircle, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import { firstName } from "../shell/data";
@@ -43,10 +43,12 @@ function sheetPeople() {
 }
 
 /**
- * Shiran's chat list: the whole team's group and her departments, the other
- * departments she reads as management, then her private chats by their last
- * message. On a phone it is the screen; from tablet up it stays beside the
- * conversation (`current`), with its title one level down.
+ * Shiran's chat list: the way to every announcement from management (C3),
+ * saying how many wait for her "קראתי", the whole team's group and her
+ * departments, the other departments she reads as management, then her
+ * private chats by their last message. On a phone it is the screen; from
+ * tablet up it stays beside the conversation (`current`, "announcements"
+ * for /design/chat/announcements), with its title one level down.
  */
 export function ChatList({
   current,
@@ -111,6 +113,7 @@ export function ChatList({
             : null
         }
         muted={chat.muted ? t("list.muted") : null}
+        waiting={chat.pinned ? t("list.waiting") : null}
       />
     );
   }
@@ -121,7 +124,7 @@ export function ChatList({
         ...chat,
         conversation: chat.id,
         lastAt: chat.messages.at(-1)?.at ?? null,
-        pinnedWaiting: 0,
+        pinnedWaiting: chat.pinned ? 1 : 0,
       })),
     );
   const team = chatDemoConversations.filter((c) => c.kind === "team");
@@ -137,6 +140,7 @@ export function ChatList({
   );
 
   const title = tModules("chat.name");
+  const toConfirm = chatDemoConversations.filter((c) => c.pinned).length;
   const action = <NewMessage people={sheetPeople()} quiet={heading !== "h1"} />;
   const level = heading === "h1" ? 2 : 3;
 
@@ -151,6 +155,21 @@ export function ChatList({
         </div>
       )}
       {demo ? <VisibilityNote>{t("list.demoNote")}</VisibilityNote> : null}
+      {empty ? null : (
+        <ListGroup>
+          <ListRow
+            href="/design/chat/announcements"
+            current={current === "announcements"}
+            leading={<Megaphone />}
+            title={t("list.announcements")}
+            subtitle={
+              toConfirm > 0
+                ? t("list.announcementsWaiting", { count: toConfirm })
+                : t("list.announcementsAll")
+            }
+          />
+        </ListGroup>
+      )}
       {empty ? (
         <EmptyState
           headingLevel="h2"

@@ -15,12 +15,14 @@ import {
   readChatInbox,
   sortInbox,
 } from "@domain/chat";
+import { readersCount } from "@domain/chat-announce";
 import {
   type ChatDirectory,
   type ChatListRow,
   type ChatMember,
   type ChatSyncPerson,
   chatListRows,
+  type PinnedAnnouncement,
 } from "@domain/chat-sync";
 import { isStaff } from "@domain/modules";
 import { profilePhotoSrc } from "@domain/profile-photos";
@@ -286,18 +288,20 @@ export async function getConversation(
 }
 
 /**
- * The kind of one conversation of the business, when the signed-in person
- * reads it (RLS); null otherwise. One small read, for `/chat-sync`.
+ * The kind of one conversation of the business, and its own stamp (when
+ * anything its readers see last changed there: a message sent, removed, put
+ * back, pinned or confirmed), when the signed-in person reads it (RLS); null
+ * otherwise. One small read, for `/chat-sync`.
  */
-export async function getConversationKind(
+export async function getConversationStamp(
   businessId: string,
   conversationId: string,
-): Promise<ChatKind | null> {
+): Promise<{ kind: ChatKind; changed: string } | null> {
   if (!isUuid(conversationId)) return null;
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("chat_conversations")
-    .select("id, kind")
+    .select("id, kind, changed_at")
     .eq("business_id", businessId)
     .eq("id", conversationId.toLowerCase())
     .maybeSingle();
@@ -305,7 +309,9 @@ export async function getConversationKind(
     if (isMissingTable(error)) return null;
     throw error;
   }
-  return data ? oneOf(CHAT_KINDS, data.kind, "team") : null;
+  return data
+    ? { kind: oneOf(CHAT_KINDS, data.kind, "team"), changed: data.changed_at }
+    : null;
 }
 
 /**
@@ -364,6 +370,9 @@ export const CHAT_PAGE_SIZE = 50;
 
 const MESSAGE_COLUMNS =
   "id, author_id, kind, body, file_kind, file_name, file_size, file_removed_at, pinned, created_at, removed_at, removed_by";
+
+const ANNOUNCEMENT_COLUMNS =
+  "conversation_id, id, author_id, kind, body, file_kind, file_name, file_size, file_removed_at, pinned, created_at, removed_at, removed_by";
 
 type MessageRow = Pick<
   Database["public"]["Tables"]["chat_messages"]["Row"],
@@ -484,6 +493,76 @@ export async function withOwnDrafts(
   }));
 }
 
+/** At most this many removed messages a sync reads where a screen's are. */
+const REMOVED_READ_MAX = 500;
+
+/**
+ * The removed messages of a conversation the signed-in person reads (RLS),
+ * from the instant of `from` to that of `through` (the oldest and the newest
+ * message a screen holds; the caller trims the ends to the ids), oldest
+ * first: what `/chat-sync` compares a screen's marks with, so a removal
+ * reaches every screen that holds the message, however far up. Their words
+ * are gone already; the page index bounds the read.
+ */
+export async function getRemovedMessages({
+  businessId,
+  conversationId,
+  from,
+  through,
+}: {
+  businessId: string;
+  conversationId: string;
+  from: ChatCursor;
+  through: ChatCursor;
+}): Promise<ChatMessage[]> {
+  if (!isUuid(conversationId)) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("conversation_id", conversationId.toLowerCase())
+    .not("removed_at", "is", null)
+    .gte("created_at", from.at)
+    .lte("created_at", through.at)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(REMOVED_READ_MAX);
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map(toMessage);
+}
+
+/**
+ * Some of a conversation's messages by id, as the signed-in person reads
+ * them (RLS), oldest first: the ones a screen shows as removed, read again
+ * by `/chat-sync` so one put back comes back with its words.
+ */
+export async function getMessagesById(
+  businessId: string,
+  conversationId: string,
+  ids: readonly string[],
+): Promise<ChatMessage[]> {
+  const wanted = [...new Set(ids.filter(isUuid).map((id) => id.toLowerCase()))];
+  if (!isUuid(conversationId) || wanted.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("conversation_id", conversationId.toLowerCase())
+    .in("id", wanted)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map(toMessage);
+}
+
 /**
  * A conversation's pinned announcements the signed-in person reads (RLS: every
  * member reads them, from before they joined too), newest first, for the top
@@ -509,6 +588,166 @@ export async function getPinnedAnnouncements(
     throw error;
   }
   return (data ?? []).map(toMessage);
+}
+
+/**
+ * Which of these announcements the signed-in person confirmed ("קראתי"):
+ * their own confirmations, under RLS (nobody reads anyone else's).
+ */
+export async function getOwnConfirmations(
+  messageIds: readonly string[],
+): Promise<Set<string>> {
+  const wanted = [
+    ...new Set(messageIds.filter(isUuid).map((id) => id.toLowerCase())),
+  ];
+  if (wanted.length === 0) return new Set();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_acks")
+    .select("message_id")
+    .in("message_id", wanted);
+  if (error) {
+    if (isMissingTable(error)) return new Set();
+    throw error;
+  }
+  return new Set((data ?? []).map((row) => row.message_id.toLowerCase()));
+}
+
+/**
+ * How many of the group confirmed an announcement of how many, for its
+ * author and management (`public.announcement_readers`, which reads nobody
+ * for anyone else): null for anyone else, who isn't asked at all. A group
+ * with nobody in it but its author counts 0 of 0 for that author.
+ */
+async function readersOf(
+  message: Pick<ChatMessage, "id" | "authorId">,
+  readerId: string,
+  moderates: boolean,
+): Promise<{ count: number; total: number } | null> {
+  const own = message.authorId?.toLowerCase() === readerId.toLowerCase();
+  if (!own && !moderates) return null;
+  const readers = await announcementReaders(message.id);
+  if (readers.length === 0 && !own) return null;
+  return readersCount(readers);
+}
+
+/**
+ * The pinned announcements of a conversation as the signed-in person
+ * (`readerId`, who holds chat.moderate when `moderates`) sees them, newest
+ * first: each with whether they confirmed it and, for its author and
+ * management, how many did. Every member reads them, those from before they
+ * joined too (RLS).
+ */
+export async function getPinnedState(
+  businessId: string,
+  conversationId: string,
+  readerId: string,
+  moderates: boolean,
+): Promise<PinnedAnnouncement[]> {
+  const pinned = await getPinnedAnnouncements(businessId, conversationId);
+  if (pinned.length === 0) return [];
+  const [mine, readers] = await Promise.all([
+    getOwnConfirmations(pinned.map((m) => m.id)),
+    Promise.all(pinned.map((m) => readersOf(m, readerId, moderates))),
+  ]);
+  return pinned.map((message, i) => ({
+    message,
+    confirmed: mine.has(message.id.toLowerCase()),
+    readers: readers[i] ?? null,
+  }));
+}
+
+/**
+ * The pinned announcements waiting for the signed-in person's "קראתי" in the
+ * business: someone else's, in any of their groups (RLS), not confirmed yet,
+ * newest first, each with its conversation. For Today.
+ */
+export async function getWaitingAnnouncements(
+  businessId: string,
+  readerId: string,
+): Promise<{ conversation: string; message: ChatMessage }[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(ANNOUNCEMENT_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("pinned", true)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(ANNOUNCEMENTS_SHOWN);
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  const reader = readerId.toLowerCase();
+  const theirs = (data ?? []).filter(
+    (row) => row.author_id?.toLowerCase() !== reader,
+  );
+  const mine = await getOwnConfirmations(theirs.map((row) => row.id));
+  return theirs
+    .filter((row) => !mine.has(row.id.toLowerCase()))
+    .map((row) => ({
+      conversation: row.conversation_id.toLowerCase(),
+      message: toMessage(row),
+    }));
+}
+
+/** An announcement of /chat/announcements, with where it was posted. */
+export type ChatAnnouncement = PinnedAnnouncement & {
+  conversation: string;
+};
+
+/** Announcements /chat/announcements lists at most. */
+export const ANNOUNCEMENTS_SHOWN = 50;
+
+/**
+ * Every announcement in the signed-in person's groups that wasn't removed, as
+ * they read them (RLS: from when they joined a group, pinned ones whenever),
+ * pinned ones first, then newest first, at most `ANNOUNCEMENTS_SHOWN`; each
+ * with whether they confirmed it, and for a pinned one of theirs, or any for
+ * management, how many did. Nothing for a view session.
+ */
+export async function getAnnouncements(
+  businessId: string,
+  readerId: string,
+  moderates: boolean,
+): Promise<ChatAnnouncement[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(ANNOUNCEMENT_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("kind", "announcement")
+    .is("removed_at", null)
+    .order("pinned", { ascending: false })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(ANNOUNCEMENTS_SHOWN);
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  const rows = data ?? [];
+  const reader = readerId.toLowerCase();
+  const messages = rows.map(toMessage);
+  const [mine, readers] = await Promise.all([
+    getOwnConfirmations(messages.map((m) => m.id)),
+    // Counted for the pinned ones only: the rest open who confirmed when
+    // asked (announcementReaders).
+    Promise.all(
+      messages.map((m) =>
+        m.pinned && (moderates || m.authorId?.toLowerCase() === reader)
+          ? readersOf(m, readerId, moderates)
+          : null,
+      ),
+    ),
+  ]);
+  return messages.map((message, i) => ({
+    conversation: (rows[i]?.conversation_id ?? "").toLowerCase(),
+    message,
+    confirmed: mine.has(message.id.toLowerCase()),
+    readers: readers[i] ?? null,
+  }));
 }
 
 /**

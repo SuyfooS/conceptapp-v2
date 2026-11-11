@@ -387,6 +387,8 @@ export type OwnPlace = {
   place: {
     businessId: string;
     role: MemberRole;
+    /** The permissions given to them there (`holdsPermission`). */
+    perms: string[];
     /** The modules on there. */
     enabled: ModuleRow["key"][];
   } | null;
@@ -412,7 +414,7 @@ export async function getOwnPlace(): Promise<OwnPlace | null> {
     supabase
       .from("memberships")
       .select(
-        "business_id, role, created_at, businesses (business_modules (module_key, enabled))",
+        "business_id, role, perms, created_at, businesses (business_modules (module_key, enabled))",
       )
       .eq("user_id", userId)
       .eq("active", true),
@@ -432,6 +434,7 @@ export async function getOwnPlace(): Promise<OwnPlace | null> {
           {
             businessId: row.business_id,
             role: row.role,
+            perms: row.perms,
             since: row.created_at,
             enabled: row.businesses.business_modules
               .filter((module) => module.enabled)
@@ -447,6 +450,7 @@ export async function getOwnPlace(): Promise<OwnPlace | null> {
       ? {
           businessId: picked.businessId,
           role: picked.role,
+          perms: picked.perms,
           enabled: picked.enabled,
         }
       : null,

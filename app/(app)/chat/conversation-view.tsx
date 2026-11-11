@@ -1,15 +1,26 @@
 import type { ChatKind, ChatTitle } from "@domain/chat";
-import type { ChatSyncMessage, ChatSyncPerson } from "@domain/chat-sync";
+import type {
+  ChatSyncMessage,
+  ChatSyncPerson,
+  PinnedAnnouncement,
+} from "@domain/chat-sync";
 import { ChatGroupMark } from "@ui/chat-row";
 import { ImmersiveScreen } from "@ui/immersive-screen";
 import { PersonAvatar } from "@ui/person-row";
 import { Building, Users } from "lucide-react";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
-import { ChatDetails, type DetailsPerson } from "./chat-details";
+import {
+  ChatDetails,
+  ChatDetailsBody,
+  type ChatDetailsProps,
+  type DetailsPerson,
+} from "./chat-details";
 import { chatTitleText } from "./chat-paths";
+import type { ChatActionResult } from "./chat-types";
 import {
   type ConversationActions,
+  type ConversationPowers,
   ConversationScreen,
 } from "./conversation-screen";
 
@@ -50,6 +61,10 @@ export function ConversationView({
   fileDays,
   demo,
   actions,
+  pinned,
+  powers,
+  announceFirst,
+  mute,
   wording,
 }: {
   /** Who reads it: the signed-in person. */
@@ -73,6 +88,13 @@ export function ConversationView({
   /** A demo business: anyone at its door reads every chat. */
   demo: boolean;
   actions: ConversationActions;
+  /** Its pinned announcements, newest first, as the reader sees them (C3). */
+  pinned: PinnedAnnouncement[];
+  powers: ConversationPowers;
+  /** The composer opens as "הודעה מההנהלה" (/chat/<id>?announce=1). */
+  announceFirst: boolean;
+  /** "בלי התראות מהשיחה הזאת", bound to the business. */
+  mute: (conversation: string, muted: boolean) => Promise<ChatActionResult>;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -117,6 +139,21 @@ export function ConversationView({
             })
           : t("conversation.leftNoName");
 
+  const details: ChatDetailsProps = {
+    conversation,
+    kind,
+    title,
+    subtitle,
+    person: otherPerson,
+    profileHref,
+    members,
+    businessName,
+    fileDays,
+    demo,
+    mute,
+    wording,
+  };
+
   return (
     <div className="xl:contents">
       <ImmersiveScreen />
@@ -139,19 +176,17 @@ export function ConversationView({
             : t("conversation.emptyGroup")
         }
         actions={actions}
+        pinned={pinned}
+        powers={powers}
+        closed={block?.kind === "closed"}
+        announceFirst={announceFirst}
+        details={
+          conversation ? (
+            <ChatDetailsBody {...details} headingLevel="h2" inSheet />
+          ) : null
+        }
       />
-      <ChatDetails
-        kind={kind}
-        title={title}
-        subtitle={subtitle}
-        person={otherPerson}
-        profileHref={profileHref}
-        members={members}
-        businessName={businessName}
-        fileDays={fileDays}
-        demo={demo}
-        wording={wording}
-      />
+      <ChatDetails {...details} />
     </div>
   );
 }

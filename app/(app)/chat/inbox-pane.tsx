@@ -2,17 +2,18 @@
 
 import { dateIn } from "@domain/availability";
 import { chatPreview } from "@domain/chat";
+import { announcementsWaiting } from "@domain/chat-announce";
 import { chatShortDate, chatWhen } from "@domain/chat-days";
 import type { ChatListRow } from "@domain/chat-sync";
 import { firstNameOf } from "@domain/people";
 import { ChatGroupMark, ChatRow } from "@ui/chat-row";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
-import { ListGroup } from "@ui/list-row";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageHeader, PageSection } from "@ui/page";
 import { PersonAvatar } from "@ui/person-row";
 import { VisibilityNote } from "@ui/visibility-note";
-import { Building, MessageCircle, Users } from "lucide-react";
+import { Building, Megaphone, MessageCircle, Users } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
@@ -144,8 +145,8 @@ export function InboxPane() {
             : null
         }
         muted={item.muted ? t("list.muted") : null}
-        // An announcement waiting for "קראתי" shows here with C3, which
-        // brings the button that settles it.
+        // An announcement here waits for the reader's "קראתי" (C3).
+        waiting={item.pinnedWaiting > 0 ? t("list.waiting") : null}
       />
     );
   }
@@ -159,6 +160,8 @@ export function InboxPane() {
   const groups = [...team, ...own];
   const direct = chat.rows.filter((r) => r.kind === "direct");
   const quiet = chat.rows.every((r) => !r.lastAt);
+  const announcementsNow = pathname === chatPaths.announcements;
+  const toConfirm = announcementsWaiting(chat.rows);
 
   const title = tModules("chat.name");
   const level = atList ? 2 : 3;
@@ -209,6 +212,22 @@ export function InboxPane() {
             body={t("list.empty.body")}
             className="py-4"
           />
+        ) : null}
+        {/* Every announcement in the reader's groups, and what waits there. */}
+        {chat.rows.some((r) => r.kind !== "direct") ? (
+          <ListGroup>
+            <ListRow
+              href={chatPaths.announcements}
+              current={announcementsNow}
+              leading={<Megaphone />}
+              title={t("list.announcements")}
+              subtitle={
+                toConfirm > 0
+                  ? t("list.announcementsWaiting", { count: toConfirm })
+                  : t("list.announcementsAll")
+              }
+            />
+          </ListGroup>
         ) : null}
         {groups.length > 0 ? (
           <PageSection

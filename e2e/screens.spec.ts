@@ -1,12 +1,14 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { demoConversation } from "./db";
 
 // The console, the door to the app and the screens for when something is
 // missing, on their demos: both appearances, no data and no sign-in. What they
 // do with real data is in admin, new-business, sign-in, invite and view-as.
-// Chat's list is opened for real too, as a worker, a manager and an owner of
-// the demo restaurant come in through the door: it only reads.
+// Chat's screens are opened for real too, as a worker, a manager and an owner
+// of the demo restaurant come in through the door: they only read, but for
+// the owner's read mark on the one conversation opened.
 const PAGES = [
   "/design/console",
   "/design/console/new",
@@ -58,17 +60,24 @@ for (const colorScheme of ["light", "dark"] as const) {
   });
 }
 
-// Chat's list (C2): each of the restaurant's staff reads it, with no
-// horizontal scroll and nothing for axe, whatever the width.
+/** In through the door, as one of the demo restaurant's people. */
+async function enterDemoAs(page: Page, key: "worker" | "manager" | "owner") {
+  const door = he.auth.enter;
+  await page.goto("/enter");
+  await page
+    .getByRole("region", { name: door.businesses.restaurant.name })
+    .getByRole("button", { name: new RegExp(door.people[key].name) })
+    .click();
+  await expect(page).toHaveURL(/\/home$/);
+}
+
+// Chat's list (C2), and from C3 every announcement in the person's groups
+// and a group's details (the phone's own page, which the tablet and the
+// desktop show beside the list too): each of the restaurant's staff reads
+// them, with no horizontal scroll and nothing for axe, whatever the width.
 for (const key of ["worker", "manager", "owner"] as const) {
   test(`/chat is clean for the ${key}`, async ({ page }) => {
-    const door = he.auth.enter;
-    await page.goto("/enter");
-    await page
-      .getByRole("region", { name: door.businesses.restaurant.name })
-      .getByRole("button", { name: new RegExp(door.people[key].name) })
-      .click();
-    await expect(page).toHaveURL(/\/home$/);
+    await enterDemoAs(page, key);
     await page.goto("/chat");
     await expect(
       page.getByRole("heading", { level: 1, name: he.modules.chat.name }),
@@ -82,7 +91,99 @@ for (const key of ["worker", "manager", "owner"] as const) {
     await expect(page).toHaveTitle(/ConceptApp$/);
     await expectAccessible(page);
   });
+
+  test(`/chat/announcements and a group's details are clean for the ${key}`, async ({
+    page,
+  }) => {
+    const c = he.app.chat;
+    const team = await demoConversation({ kind: "team" });
+    expect(team).not.toBeNull();
+    await enterDemoAs(page, key);
+
+    await page.goto("/chat/announcements");
+    await expect(
+      page.getByRole("heading", { level: 1, name: c.announcement.page.title }),
+    ).toBeVisible();
+    // The seeded announcement, pinned; management also has the main action.
+    await expect(
+      page.getByRole("heading", { name: c.announcement.page.pinnedTitle }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: c.announcement.page.publish }),
+    ).toHaveCount(key === "worker" ? 0 : 1);
+    await expect(page).toHaveTitle(/ConceptApp$/);
+    await expectAccessible(page);
+
+    await page.goto(`/chat/${team}/info`);
+    await expect(
+      page.getByRole("heading", { level: 1, name: c.info.open }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: c.details.members }),
+    ).toBeVisible();
+    await expect(page.getByRole("switch", { name: c.info.mute })).toBeVisible();
+    await expect(page).toHaveTitle(/ConceptApp$/);
+    await expectAccessible(page);
+  });
 }
+
+// A conversation's details beside a phone's page of them (C3): on a tablet a
+// sheet from the title, on a desktop the column beside the conversation,
+// with mute in both; the owner's waiting announcement is pinned under the
+// title. Opening the conversation marks it read for the owner, and nothing
+// in these two widths counts that; the phone's page is chat-announce.spec's.
+test("a group's details open from the title on a tablet and stay beside it on a desktop", async ({
+  page,
+}, testInfo) => {
+  const project = testInfo.project.name;
+  test.skip(project === "phone", "The phone opens a page of its own.");
+  const c = he.app.chat;
+  const team = await demoConversation({ kind: "team" });
+  expect(team).not.toBeNull();
+  await enterDemoAs(page, "owner");
+  await page.goto(`/chat/${team}`);
+  await expect(
+    page.getByRole("log", { name: c.conversation.log }).filter({
+      visible: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("heading", { level: 2, name: c.announcement.label })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  const open = page
+    .getByRole("button", { name: c.info.open, exact: true })
+    .filter({ visible: true });
+  await expect(
+    page
+      .getByRole("link", { name: c.info.open, exact: true })
+      .filter({ visible: true }),
+  ).toHaveCount(0);
+
+  if (project === "tablet") {
+    await open.click();
+    const sheet = page.getByRole("dialog", { name: c.info.open });
+    await expect(sheet).toBeVisible();
+    await expect(
+      sheet.getByRole("heading", { name: c.details.members }),
+    ).toBeVisible();
+    await expect(
+      sheet.getByRole("switch", { name: c.info.mute }),
+    ).toBeVisible();
+    await expectAccessible(page);
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+  } else {
+    await expect(open).toHaveCount(0);
+    const column = page.getByRole("region", { name: c.details.label });
+    await expect(column).toBeVisible();
+    await expect(
+      column.getByRole("switch", { name: c.info.mute }),
+    ).toBeVisible();
+    await expectAccessible(page);
+  }
+});
 
 const e = he.errors;
 const w = he.admin.newBusiness;

@@ -86,10 +86,15 @@ describe("the demo's conversations", () => {
     expect(seed).toContain("language plpgsql");
     expect(seed).toContain("public.send_chat_message(");
     expect(seed).toContain("public.read_chat(");
-    // No announcement before C3, whose "קראתי" settles it: one now would wait
-    // in the bell and on the Chat tab for a press nothing offers.
-    expect(seed).not.toContain("confirm_announcement");
-    expect(seed).not.toMatch(/insert into public\.chat_messages/);
+    // From C3, whose screens offer its "קראתי": the manager's announcement,
+    // pinned, confirmed by the first two workers through the same function
+    // the button calls, so their own lines about it are settled.
+    expect(seed).toMatch(
+      /'מהשבוע הבא סוגרים את הקופה ב-22:00'::text, team_chat, null::uuid, true,/,
+    );
+    expect(seed).toContain("public.confirm_announcement(\n        worker_one,");
+    expect(seed).toContain("public.confirm_announcement(\n        worker_two,");
+    expect(seed).not.toMatch(/insert into public\.chat_(messages|acks)/);
     expect(seed).toMatch(/set seeded = true/);
     // By role, in the order the definition names them.
     for (const role of ["owner", "manager", "worker"]) {

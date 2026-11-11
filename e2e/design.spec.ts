@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { cameraPhoto } from "./photo";
 import { heT } from "./t";
@@ -128,6 +128,14 @@ const PAGES = [
   "/design/chat?state=empty",
   "/design/chat?state=demo",
   "/design/chat/team",
+  "/design/chat/team?state=confirmed",
+  "/design/chat/team?state=readers",
+  "/design/chat/team?state=actions",
+  "/design/chat/team?announce=1",
+  "/design/chat/team/info",
+  "/design/chat/kitchen/info",
+  "/design/chat/noa/info",
+  "/design/chat/announcements",
   "/design/chat/floor",
   "/design/chat/kitchen",
   "/design/chat/desserts",
@@ -139,12 +147,21 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
 ];
 
-async function expectCleanPage(page: Page) {
+// Demo states that open with a sheet (who confirmed, a message's actions):
+// the sheet hides the page behind it from the accessibility tree.
+const OPENS_A_SHEET = /[?&]state=(readers|actions)\b/;
+
+async function expectCleanPage(page: Page, path = "") {
   await expect(page).toHaveTitle(/ConceptApp$/);
-  // The title can arrive before a demo's streamed part: check the page itself.
-  await expect(
-    page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
-  ).toBeVisible();
+  // The title can arrive before a demo's streamed part: check the page itself,
+  // or the sheet it opens with, which is checked once it is there.
+  if (OPENS_A_SHEET.test(path)) {
+    await expect(page.getByRole("dialog")).toBeVisible();
+  } else {
+    await expect(
+      page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
+    ).toBeVisible();
+  }
   const { violations } = await new AxeBuilder({ page }).analyze();
   expect(
     violations.flatMap((v) =>
@@ -164,7 +181,7 @@ for (const colorScheme of ["light", "dark"] as const) {
     for (const path of PAGES) {
       test(`${path} is clean`, async ({ page }) => {
         await page.goto(path);
-        await expectCleanPage(page);
+        await expectCleanPage(page, path);
       });
     }
 
@@ -284,6 +301,184 @@ test("the chat demo retries a message, and a removed department takes none", asy
       .getByRole("textbox", { name: c.conversation.placeholder })
       .filter({ visible: true }),
   ).toHaveCount(0);
+});
+
+// The whole team's group with the owner's announcement pinned (C3), in each
+// shape: "קראתי" is counted, who confirmed opens, and a message management
+// removes comes back from the toast. A phone and a tablet open a message's
+// actions with a tap on it; a desktop with its button, shown while the
+// pointer is on the message, and its details column mutes the group.
+test("the chat demo confirms the pinned announcement, and a removed message comes back", async ({
+  page,
+}, testInfo) => {
+  const c = he.app.chat;
+  const desktop = testInfo.project.name === "desktop";
+  const words = "אני כבר פה, אקבל אותו";
+  const readBy = (count: number) =>
+    new RegExp(
+      `^${c.announcement.readBy
+        .replace("<ltr>{count}</ltr>", String(count))
+        .replace("<ltr>{total}</ltr>", "\\d+")}$`,
+    );
+  const log = page
+    .getByRole("log", { name: c.conversation.log })
+    .filter({ visible: true });
+  const visibleButton = (name: string | RegExp) =>
+    page
+      .getByRole("button", {
+        name,
+        exact: typeof name === "string" ? true : undefined,
+      })
+      .filter({ visible: true });
+
+  await page.goto("/design/chat/team");
+  await expect(
+    page
+      .getByRole("heading", { level: 2, name: c.announcement.label })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(c.announcement.whoSees).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(visibleButton(readBy(2))).toBeVisible();
+  await visibleButton(c.announcement.confirm).click();
+  await expect(
+    page.getByText(c.announcement.confirmed).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(visibleButton(c.announcement.confirm)).toHaveCount(0);
+  await expect(visibleButton(readBy(3))).toBeVisible();
+
+  await visibleButton(readBy(3)).click();
+  const readers = page.getByRole("dialog", {
+    name: c.announcement.readers.title,
+  });
+  await expect(
+    readers.getByRole("heading", {
+      name: c.announcement.readers.confirmed,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    readers.getByRole("heading", {
+      name: c.announcement.readers.waiting,
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(readers).toHaveCount(0);
+
+  // Someone else's message: management copies or removes it.
+  if (desktop) {
+    const bubble = page.locator("[data-bubble]").filter({ hasText: words });
+    await bubble.hover();
+    await bubble.getByRole("button", { name: c.messageActions.open }).click();
+  } else {
+    await log.getByText(words, { exact: true }).click();
+  }
+  const sheet = page.getByRole("dialog", { name: c.messageActions.title });
+  await expect(
+    sheet.getByRole("button", {
+      name: new RegExp(`^${c.messageActions.copy}`),
+    }),
+  ).toBeVisible();
+  await sheet
+    .getByRole("button", { name: new RegExp(`^${c.messageActions.remove}`) })
+    .click();
+  await expect(sheet).toHaveCount(0);
+  await expect(log.getByText(c.message.removedByManager)).toBeVisible();
+  await expect(log.getByText(words, { exact: true })).toHaveCount(0);
+  const removed = page
+    .getByRole("status")
+    .filter({ hasText: c.messageActions.removed });
+  await removed.getByRole("button", { name: c.messageActions.undo }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: c.messageActions.restored }),
+  ).toBeVisible();
+  await expect(log.getByText(words, { exact: true })).toBeVisible();
+  await expect(log.getByText(c.message.removedByManager)).toHaveCount(0);
+
+  // The details column, on a desktop only, mutes the group.
+  const mute = page
+    .getByRole("switch", { name: c.info.mute })
+    .filter({ visible: true });
+  await expect(mute).toHaveCount(desktop ? 1 : 0);
+  if (desktop) {
+    await mute.click();
+    await expect(mute).toBeChecked();
+  }
+});
+
+// A conversation's details from its title (C3): on a phone their own page,
+// on a tablet a sheet over the conversation, which gives the focus back to
+// the button once closed, on a desktop the column beside it. The
+// announcements' main action asks for the group and opens its composer as
+// "הודעה מההנהלה".
+test("the chat demo opens a group's details from its title, and posts as management", async ({
+  page,
+}, testInfo) => {
+  const c = he.app.chat;
+  const phone = testInfo.project.name === "phone";
+  const desktop = testInfo.project.name === "desktop";
+  const visible = (locator: Locator) => locator.filter({ visible: true });
+
+  await page.goto("/design/chat/team");
+  if (phone) {
+    await visible(
+      page.getByRole("link", { name: c.info.open, exact: true }),
+    ).click();
+    await expect(page).toHaveURL(/\/design\/chat\/team\/info$/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: c.info.open }),
+    ).toBeVisible();
+    await expect(
+      visible(page.getByRole("switch", { name: c.info.mute })),
+    ).toHaveCount(1);
+    await visible(page.getByRole("link", { name: c.info.back })).click();
+    await expect(page).toHaveURL(/\/design\/chat\/team$/);
+  } else if (!desktop) {
+    const open = visible(
+      page.getByRole("button", { name: c.info.open, exact: true }),
+    );
+    await open.click();
+    const sheet = page.getByRole("dialog", { name: c.info.open });
+    await expect(
+      sheet.getByRole("switch", { name: c.info.mute }),
+    ).toBeVisible();
+    await expect(
+      sheet.getByRole("heading", { name: c.details.members }),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+    await expect(open).toBeFocused();
+  } else {
+    await expect(
+      visible(page.getByRole("button", { name: c.info.open, exact: true })),
+    ).toHaveCount(0);
+    await expect(
+      visible(page.getByRole("link", { name: c.info.open, exact: true })),
+    ).toHaveCount(0);
+  }
+
+  await page.goto("/design/chat/announcements");
+  await expect(
+    page.getByRole("heading", { level: 1, name: c.announcement.page.title }),
+  ).toBeVisible();
+  await visible(
+    page.getByRole("button", { name: c.announcement.page.publish }),
+  ).click();
+  const choose = page.getByRole("dialog", {
+    name: c.announcement.page.chooseGroup,
+  });
+  await choose.getByRole("link", { name: c.list.team, exact: true }).click();
+  await expect(page).toHaveURL(/\/design\/chat\/team\?announce=1$/);
+  await expect(
+    visible(page.getByRole("switch", { name: c.announcement.switch })),
+  ).toBeChecked();
+  await expect(
+    visible(
+      page.getByRole("button", { name: c.announcement.send, exact: true }),
+    ),
+  ).toBeVisible();
 });
 
 // A demo business takes no invites (#80): its Team screen offers none and

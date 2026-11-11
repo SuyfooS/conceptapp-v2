@@ -3,6 +3,7 @@ import { profilePhotoSrc } from "@domain/profile-photos";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
 import { currentBusinesses } from "../businesses";
+import { currentChatHome } from "../chat/chat";
 import { currentClockLine } from "../clock/clock";
 import { currentPayHome } from "../clock/pay/pay";
 import { currentWording } from "../current-wording";
@@ -48,6 +49,7 @@ export default async function HomePage() {
     build,
     clockLine,
     lists,
+    chat,
     wording,
     businesses,
   ] = await Promise.all([
@@ -60,6 +62,7 @@ export default async function HomePage() {
     currentScheduleBuild(),
     currentClockLine(),
     currentListsHome(),
+    currentChatHome(),
     currentWording(),
     currentBusinesses(),
   ]);
@@ -91,6 +94,7 @@ export default async function HomePage() {
             ? { unread: member.unread.all }
             : null,
         lists,
+        chat,
       }}
     />
   );

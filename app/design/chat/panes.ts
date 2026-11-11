@@ -7,6 +7,10 @@
 export const chatPaneClass =
   "md:sticky md:top-8 md:-mx-1 md:max-h-[calc(100dvh-env(safe-area-inset-bottom)-10.5rem)] md:overflow-y-auto md:px-1 md:pb-4 xl:max-h-[calc(100dvh-4rem)]";
 
-/** The desktop's details column, from 1280px, held the same way. */
+/**
+ * The desktop's details column, from 1280px, held the same way. Its parts
+ * keep their height and the column scrolls: in a capped flex column a part
+ * that clips (the mute row's group) would shrink to nothing.
+ */
 export const chatDetailsClass =
-  "hidden xl:sticky xl:top-8 xl:flex xl:max-h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:pb-4";
+  "hidden xl:sticky xl:top-8 xl:flex xl:max-h-[calc(100dvh-4rem)] xl:overflow-y-auto xl:pb-4 [&>*]:shrink-0";

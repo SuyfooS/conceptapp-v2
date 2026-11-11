@@ -4,6 +4,7 @@ import {
   chatVersion,
   getChatDirectory,
   getChatInbox,
+  getWaitingAnnouncements,
 } from "@db/chat";
 import { getDepartments } from "@db/departments";
 import type { ChatInboxRow } from "@domain/chat";
@@ -13,7 +14,7 @@ import type { Role } from "@domain/modules";
 import { cache } from "react";
 import { currentModuleSettings } from "../modules";
 import { type AppWording, translator } from "../wording";
-import type { ChatAccess } from "./chat-access";
+import { type ChatAccess, chatAccess } from "./chat-access";
 import type { ChatContact, ChatFrame } from "./chat-provider";
 
 /*
@@ -139,3 +140,73 @@ export async function currentChatFrame(
     now: new Date().toISOString(),
   };
 }
+
+/** What chat brings to Today (plan §11.4): what waits for the person there. */
+export type ChatHomeData = {
+  /** The business the screen was drawn for: "קראתי" is bound to it. */
+  business: string;
+  timeZone: string;
+  /** When it was read, for the times it names. */
+  now: string;
+  /** Conversations with messages the person hasn't read. */
+  chatsWithNew: number;
+  /** Pinned announcements waiting for the person's "קראתי", newest first. */
+  waiting: {
+    id: string;
+    conversation: string;
+    /** The department's group it was posted in; null for the whole team's. */
+    group: string | null;
+    author: string | null;
+    body: string;
+    createdAt: string;
+  }[];
+};
+
+/**
+ * Chat's part of Today, for someone on the staff of a business with chat on
+ * (null for anyone else, and while viewing as someone, who reads no chat):
+ * how many conversations have something new, and the announcements waiting
+ * for their "קראתי". Under their own session, so only their chats.
+ */
+export const currentChatHome = cache(async (): Promise<ChatHomeData | null> => {
+  const access = await chatAccess();
+  if (!access || access.viewing) return null;
+  const businessId = access.businessId;
+  const [inbox, directory, waiting] = await Promise.all([
+    currentChatInbox(businessId),
+    currentChatDirectory(businessId),
+    getWaitingAnnouncements(businessId, access.userId),
+  ]);
+  const departments = new Map(
+    inbox.rows.flatMap((row) =>
+      row.kind === "department" && row.department
+        ? [[row.conversation, row.department] as const]
+        : [],
+    ),
+  );
+  return {
+    business: businessId,
+    timeZone: access.timeZone,
+    now: new Date().toISOString(),
+    chatsWithNew: inbox.rows.filter((row) => row.unread > 0).length,
+    waiting: waiting.flatMap(({ conversation, message }) => {
+      if (message.body === null) return [];
+      const department = departments.get(conversation);
+      return [
+        {
+          id: message.id,
+          conversation,
+          group: department
+            ? (directory.departments.get(department.toLowerCase()) ?? null)
+            : null,
+          author: message.authorId
+            ? (directory.members.get(message.authorId.toLowerCase())?.name ??
+              null)
+            : null,
+          body: message.body,
+          createdAt: message.createdAt,
+        },
+      ];
+    }),
+  };
+});

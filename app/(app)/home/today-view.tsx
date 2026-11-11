@@ -50,6 +50,8 @@ import Link from "next/link";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import type { Businesses } from "../businesses";
+import type { ChatHomeData } from "../chat/chat";
+import { TodayChat } from "../chat/today-chat";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
 import { moduleIcons } from "../module-icons";
@@ -97,6 +99,8 @@ export type TodayData = {
   bell?: { unread: number } | null;
   /** What lists bring to Today; null when they are off or out of reach. */
   lists?: ListsHomeData | null;
+  /** What chat brings to Today (C3); null when it is off or out of reach. */
+  chat?: ChatHomeData | null;
 };
 
 type T = Translator<"app">;
@@ -173,19 +177,26 @@ export async function TodayView({
     data.widgets.some((w) => w.key === "lists") && data.lists
       ? data.lists
       : null;
+  const chat =
+    data.widgets.some((w) => w.key === "chat") && data.chat ? data.chat : null;
   // Modules with a part of their own aren't quiet rows.
   const quiet = data.widgets.filter(
-    (w) => w.key !== "scheduling" && !(w.key === "lists" && lists),
+    (w) =>
+      w.key !== "scheduling" &&
+      !(w.key === "lists" && lists) &&
+      !(w.key === "chat" && chat),
   );
   const view = schedule ? { t, path, clock, role: data.role, schedule } : null;
+  // Chat's part, then lists', one under the other where lists' part was:
+  // what waits for the person's "קראתי" first.
   const listsPart = (className?: string) =>
-    lists ? (
-      <TodayLists
-        data={lists}
-        wording={wording}
-        path={path}
-        className={className}
-      />
+    lists || chat ? (
+      <div className={cn("flex min-w-0 flex-col gap-6", className)}>
+        {chat ? <TodayChat data={chat} wording={wording} path={path} /> : null}
+        {lists ? (
+          <TodayLists data={lists} wording={wording} path={path} />
+        ) : null}
+      </div>
     ) : null;
 
   /** The quiet lists at the end: modules with no part of their own yet, the team. */
@@ -318,7 +329,7 @@ export async function TodayView({
             )}
             <WhoWorksToday {...view} />
             {rest(
-              lists
+              lists || chat
                 ? "md:col-span-2"
                 : "md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2",
             )}

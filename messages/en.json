@@ -366,7 +366,12 @@
     "chatSample4": "תודה, נתראה מחר",
     "chatSample5": "For tomorrow:\nCheck the second fridge\nOrder lemons\nClose the till by 23:00",
     "chatSample6": "I'll be there in ten minutes",
-    "chatSample7": "Can I swap Friday with you?"
+    "chatSample7": "Can I swap Friday with you?",
+    "chatAnnounceText": "A message from management is pinned to the top of its group, with \"I've read it\" for everyone it asks, and for its author and management how many did. While it waits for the reader it stays under the title.",
+    "chatAnnounceSample": "From next week the till closes at 22:00",
+    "chatAuthorView": "As its author and management see it",
+    "chatActionsText": "Tapping a message, or the button beside it on a computer, opens what can be done with it. After deleting or removing one, \"Undo\" stays for 10 seconds.",
+    "chatComposerAnnounce": "Management's composer in a group, with the switch for a message from management"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -3418,7 +3423,10 @@
         },
         "noName": "No name",
         "former": "Someone who left the team",
-        "department": "A department"
+        "department": "A department",
+        "announcements": "From management",
+        "announcementsWaiting": "{count, plural, one {# waits for your confirmation} other {# wait for your confirmation}}",
+        "announcementsAll": "Every message from management in your groups"
       },
       "newMessage": {
         "hint": "Only the two of you see a private chat",
@@ -3482,6 +3490,90 @@
         "demoKept": "In a demo business what is written is deleted after an hour, and whenever the demo is reset.",
         "stored": "{business}'s chats are kept with ConceptApp, on servers in Germany. They aren't end-to-end encrypted.",
         "ok": "Got it"
+      },
+      "announcement": {
+        "label": "From management",
+        "confirm": "I've read it",
+        "confirmed": "You confirmed you read it",
+        "whoSees": "Management sees who confirmed",
+        "readBy": "<ltr>{count}</ltr> of <ltr>{total}</ltr> confirmed",
+        "readersOpen": "Who confirmed",
+        "byline": "{name} · <ltr>{time}</ltr>",
+        "bylineDay": "{name} · {day} · <ltr>{time}</ltr>",
+        "more": "{count, plural, one {and # more pinned} other {and # more pinned}}",
+        "pin": "Pin to the top of the group",
+        "unpin": "Unpin",
+        "pinned": "Pinned to the top of the group again",
+        "unpinned": "No longer pinned",
+        "notPinned": "No longer pinned",
+        "confirmFailed": "Your confirmation wasn't saved. Try again",
+        "switch": "From management",
+        "switchHint": "It's pinned to the top of the group, and everyone in it is asked to press \"I've read it\". Management sees who did.",
+        "send": "Post",
+        "inTeam": "In the whole team's group",
+        "inGroup": "In {group}",
+        "readers": {
+          "title": "Who confirmed",
+          "subtitle": "Only its author and management see this",
+          "confirmed": "Confirmed",
+          "waiting": "Not yet",
+          "none": "Nobody yet",
+          "all": "Everyone confirmed",
+          "at": "<ltr>{time}</ltr>",
+          "atDay": "{day} · <ltr>{time}</ltr>",
+          "loading": "Loading",
+          "failed": "It didn't load. Try again",
+          "close": "Close",
+          "retry": "Try again"
+        },
+        "page": {
+          "title": "From management",
+          "subtitle": "Messages from management in your groups, pinned ones first",
+          "back": "All chats",
+          "publish": "Post a message from management",
+          "chooseGroup": "Which group?",
+          "chooseHint": "It's pinned to the top of the group, and everyone in it is asked to confirm",
+          "close": "Close",
+          "open": "To the chat",
+          "pinnedTitle": "Pinned",
+          "earlierTitle": "Earlier",
+          "empty": {
+            "title": "No messages from management yet",
+            "body": "When management posts one in your group, it shows here and on Today",
+            "bodyAnnouncer": "A message from management is pinned to the top of its group, and everyone in it is asked to press \"I've read it\""
+          }
+        }
+      },
+      "messageActions": {
+        "open": "Actions",
+        "title": "The message",
+        "close": "Close",
+        "copy": "Copy",
+        "copied": "Message copied",
+        "copyFailed": "It couldn't be copied",
+        "delete": "Delete message",
+        "deleteHint": "It's deleted for everyone",
+        "deleted": "Message deleted",
+        "remove": "Remove message",
+        "removeHint": "It's removed for everyone in the group, and the activity log records the removal",
+        "removed": "Message removed",
+        "undo": "Undo",
+        "restored": "Message back",
+        "tooLate": "It's too late to bring the message back",
+        "failed": "That didn't work. Try again"
+      },
+      "info": {
+        "open": "Chat details",
+        "back": "Back to the chat",
+        "mute": "No notifications from this chat",
+        "muteHint": "Messages still show as new in the app. Nobody else knows you muted it.",
+        "muteFailed": "That didn't change. Try again",
+        "close": "Close"
+      },
+      "today": {
+        "title": "Chat",
+        "all": "All chats",
+        "chats": "{count, plural, =0 {No chats with new messages} one {# chat with new messages} other {# chats with new messages}}"
       }
     }
   },

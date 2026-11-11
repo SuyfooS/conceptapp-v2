@@ -5,19 +5,26 @@ import {
   chatVersion,
   getChatAuthors,
   getChatList,
-  getConversationKind,
+  getConversationStamp,
   getMessages,
+  getMessagesById,
+  getPinnedState,
+  getRemovedMessages,
   withOwnDrafts,
 } from "@db/chat";
 import { getOwnPlace } from "@db/session";
 import {
   type ChatSyncAnswer,
+  chatMarks,
   newestCursor,
+  type PinnedAnnouncement,
   readChatSyncQuery,
   syncBrings,
   syncWindowStart,
+  withinHeld,
 } from "@domain/chat-sync";
-import { isStaff } from "@domain/modules";
+import { holdsPermission, isStaff } from "@domain/modules";
+import { manifestFor } from "@modules/registry";
 import { sameOriginRequest } from "@/app/origin";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -42,14 +49,31 @@ function status(code: 204 | 400 | 401 | 403 | 404 | 500): Response {
  * from when they joined it, nothing at all for a view session or someone off
  * the staff. The business is the one the app opens for them, the cookie's as
  * @db/session checks it. Two rounds of reads at most for the usual answer,
- * 204 when the list's version is still `v` and nothing came after the cursor
- * or into the look before it that the screen doesn't hold (`syncBrings`);
- * else 200 with `inbox` (when the version moved) and `open` (whenever `c` was
- * asked), as `chatSyncAnswer` reads it. 401 signed out, never a redirect (the
- * screen reloads into sign-in); 404 for a conversation they don't read
- * (another business's included) and while viewing as someone or with chat
- * off; 400 for a question that isn't one; 403 from another site. Every answer
- * is `no-store`.
+ * 204 when the list's version is still `v`, the conversation's stamp is
+ * still `cv`, and nothing came after the cursor or into the look before it
+ * that the screen doesn't hold (`syncBrings`); else 200 with `inbox` (when
+ * the version moved) and `open` (whenever `c` was asked), as
+ * `chatSyncAnswer` reads it.
+ *
+ * Changes to messages already on screen (C3): with `m=<marks>&from=<cursor>
+ * &x=<ids>&cv=<stamp>`, what the screen holds of every message it has (its
+ * newest too) and of the pinned announcements (`chatMarks`), where its
+ * messages start (`heldMarks`), the newest of those it shows as removed, and
+ * the conversation's own stamp from the last answer, the route reads them
+ * again whenever that stamp moved (a message sent, removed, put back, pinned
+ * or confirmed there each moves it) or `r=1` asks (the conversation just came
+ * on screen, or the reader's own change just settled). When its own marks
+ * differ it sends `open.recent` (the messages removed where the screen's are,
+ * however far up, and those it showed as removed that were put back, with
+ * their words) and `open.pinned`, in place of what the screen has: a removed
+ * message is gone, and an unpinned card goes, with that one answer. A message
+ * only read changes nothing there, so nothing old is read again for it; who
+ * confirmed is counted for its author and management only, nobody else's
+ * sync asks. 401 signed out, never a redirect (the screen reloads into
+ * sign-in); 404 for a conversation they don't read (another business's
+ * included) and while viewing as someone or with chat off; 400 for a
+ * question that isn't one; 403 from another site. Every answer is
+ * `no-store`.
  *
  * Outside the proxy's matcher (tooling/proxy.test.ts), as /push/inbox is, so a
  * poll costs one invocation and no extra session check; an expired session is
@@ -80,9 +104,9 @@ export async function GET(request: Request): Promise<Response> {
     const since =
       after && query.held !== null ? syncWindowStart(after.at) : null;
 
-    const [version, kind, page] = await Promise.all([
+    const [version, stamp, page] = await Promise.all([
       chatVersion(businessId),
-      conversationId ? getConversationKind(businessId, conversationId) : null,
+      conversationId ? getConversationStamp(businessId, conversationId) : null,
       conversationId
         ? getMessages(
             since
@@ -92,25 +116,75 @@ export async function GET(request: Request): Promise<Response> {
         : Promise.resolve<ChatMessage[]>([]),
     ]);
     if (version === null) return status(404);
-    if (conversationId && !kind) return status(404);
+    if (conversationId && !stamp) return status(404);
     const moved = version !== query.version;
     const brings =
       after && since
         ? syncBrings(page, after, query.held ?? 0)
         : page.length > 0;
-    if (!moved && !brings) return status(204);
+    // The conversation changed since the screen last heard: what it holds
+    // may have too. Read after the stamp, so a change the stamp missed moves
+    // it for the next sync.
+    const stampMoved =
+      stamp !== null && query.marks ? stamp.changed !== query.changed : false;
+
+    let again: { recent: ChatMessage[]; pinned: PinnedAnnouncement[] } | null =
+      null;
+    if (
+      conversationId &&
+      stamp &&
+      query.marks &&
+      (stampMoved || query.recheck)
+    ) {
+      const from = query.from ?? null;
+      const moderates = holdsPermission(
+        manifestFor("chat"),
+        place.role,
+        place.perms,
+        "chat.moderate",
+      );
+      const [removed, shownRemoved, pinned] = await Promise.all([
+        after && from
+          ? getRemovedMessages({
+              businessId,
+              conversationId,
+              from,
+              through: after,
+            })
+          : Promise.resolve<ChatMessage[]>([]),
+        getMessagesById(businessId, conversationId, query.removed ?? []),
+        // A private chat has no announcements.
+        stamp.kind === "direct"
+          ? Promise.resolve<PinnedAnnouncement[]>([])
+          : getPinnedState(businessId, conversationId, own.userId, moderates),
+      ]);
+      const removedHere = withinHeld(removed, from, after);
+      if (chatMarks(removedHere, pinned) !== query.marks) {
+        const gone = new Set(removedHere.map((m) => m.id));
+        const putBack = shownRemoved.filter(
+          (m) => !m.removed && !gone.has(m.id),
+        );
+        again = { recent: [...removedHere, ...putBack], pinned };
+      }
+    }
+    if (!moved && !brings && !again && !stampMoved) return status(204);
 
     // Oldest first, as the screen adds them; what it holds already merges.
     const oldestFirst = [...page].reverse();
-    const [list, seenUpTo, people, messages] = await Promise.all([
+    const [list, seenUpTo, people, messages, recent] = await Promise.all([
       moved ? getChatList(businessId) : null,
-      conversationId && kind === "direct" ? chatSeen(conversationId) : null,
+      conversationId && stamp?.kind === "direct"
+        ? chatSeen(conversationId)
+        : null,
       getChatAuthors(
-        oldestFirst.flatMap((message) =>
-          message.authorId ? [message.authorId] : [],
-        ),
+        [
+          ...oldestFirst,
+          ...(again?.recent ?? []),
+          ...(again?.pinned.map((p) => p.message) ?? []),
+        ].flatMap((message) => (message.authorId ? [message.authorId] : [])),
       ),
       withOwnDrafts(oldestFirst, own.userId),
+      again ? withOwnDrafts(again.recent, own.userId) : null,
     ]);
 
     const answer: ChatSyncAnswer = {};
@@ -124,6 +198,8 @@ export async function GET(request: Request): Promise<Response> {
         people,
         seenUpTo,
         cursor: newestCursor(messages, after),
+        changed: stamp?.changed ?? null,
+        ...(again && recent ? { recent, pinned: again.pinned } : {}),
       };
     }
     return Response.json(answer, { status: 200, headers: NO_STORE });

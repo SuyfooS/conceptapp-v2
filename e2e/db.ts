@@ -1919,3 +1919,120 @@ export async function demoChatLines(
       and n.kind like 'chat.%'
     order by n.created_at desc, n.id`;
 }
+
+/*
+ * Announcements, removing and muting (C3). The reset's seed pins Shiran's
+ * 08:10 line in the restaurant's whole team's group as an announcement, which
+ * Noa and Yoav confirmed; clearDemoChat puts it back. The log keeps every
+ * chat.remove and chat.restore (it is append-only), so a spec counts its own
+ * from when it started.
+ */
+
+/**
+ * How many people a demo business's conversation has now, as the database
+ * counts them (private.chat_members): an announcement there asks every one of
+ * them but its author for "קראתי".
+ */
+export async function demoChatMembers(conversation: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select cardinality(private.chat_members(${conversation}::uuid))::int as count`;
+  return row?.count ?? 0;
+}
+
+/**
+ * Whether the person (by phone, E.164) read the conversation up to its newest
+ * message, as the open screen marks it (public.read_chat).
+ */
+export async function demoChatRead(
+  phone: string,
+  conversation: string,
+): Promise<boolean> {
+  const [row] = await sql<{ read: boolean }[]>`
+    select coalesce(r.read_at >= c.last_message_at, false) as read
+    from public.chat_conversations c
+    join public.chat_reads r on r.conversation_id = c.id
+    join public.profiles p on p.id = r.user_id
+    where c.id = ${conversation} and p.phone = ${phone}`;
+  return row?.read ?? false;
+}
+
+/** Whether the person (by phone, E.164) muted the conversation. */
+export async function demoChatMuted(
+  phone: string,
+  conversation: string,
+): Promise<boolean> {
+  const [row] = await sql<{ muted: boolean }[]>`
+    select r.muted from public.chat_reads r
+    join public.profiles p on p.id = r.user_id
+    where r.conversation_id = ${conversation} and p.phone = ${phone}`;
+  return row?.muted ?? false;
+}
+
+/**
+ * How many rows about chats (chat.*) the person (by phone, E.164) wrote to a
+ * demo business's log since `since`: removing one's own message writes none.
+ */
+export async function demoChatLogBy(
+  phone: string,
+  since: Date,
+  business: DemoChatBusiness = "restaurant",
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log a
+    join public.profiles p on p.id = a.actor_id
+    where a.business_id = ${chatBusiness(business)} and p.phone = ${phone}
+      and a.action like 'chat.%' and a.created_at >= ${since}`;
+  return row?.count ?? 0;
+}
+
+/** Thrown to take back what demoChatPushStates wrote. */
+class TakenBack extends Error {}
+
+/**
+ * What a message from `from` in a demo restaurant conversation would queue
+ * for each of `to`'s phones, were the restaurant a business whose lines reach
+ * phones and each of them had one: `push_state` of each one's line about the
+ * conversation, by phone (E.164). A demo business never queues
+ * (private.push_business_ok), so demoChatLines says "none" there muted or
+ * not; this asks the database what the mute decides, inside a transaction it
+ * takes back: the restaurant off the demo list for that moment, a device for
+ * each of `to`, and the message sent through public.send_chat_message, as the
+ * app sends it. Nothing of it stays: no message, device, line or change to
+ * the demo.
+ */
+export async function demoChatPushStates(
+  conversation: string,
+  from: string,
+  to: string[],
+): Promise<Record<string, string>> {
+  let states: Record<string, string> = {};
+  try {
+    await sql.begin(async (tx) => {
+      await tx`delete from private.demo_businesses
+        where business_id = ${DEMO_RESTAURANT}`;
+      await tx`insert into public.push_subscriptions
+          (user_id, endpoint, endpoint_hash, p256dh, auth_secret)
+        select p.id, 'https://push.invalid/e2e-chat-' || p.id::text,
+          md5('e2e-chat-a-' || p.id::text) || md5('e2e-chat-b-' || p.id::text),
+          'BOr8a4N2Qbv1dDdEh5a3X9nTq0wKcY6UoL1mZpR4sVf8gJ2kHtE7yWiAxC3uNbQ5lMzO9vP0rS6eTgIjFhDwKy0',
+          'aW5zdGFudC1hdXRoLWtleQ'
+        from public.profiles p where p.phone in ${tx(to)}`;
+      const sent = await tx`select public.send_chat_message(
+          p.id, ${DEMO_RESTAURANT}::uuid, gen_random_uuid(),
+          'הודעה לבדיקה, שלא נשמרת'::text, ${conversation}::uuid)
+        from public.profiles p where p.phone = ${from}`;
+      if (sent.length !== 1) throw new Error(`No one at ${from}`);
+      const rows = await tx<{ phone: string; state: string }[]>`
+        select p.phone, n.push_state as state from public.notifications n
+        join public.profiles p on p.id = n.user_id
+        where n.business_id = ${DEMO_RESTAURANT}
+          and n.dedupe_key = ${`chat.${conversation}`}
+          and p.phone in ${tx(to)}`;
+      states = Object.fromEntries(rows.map((r) => [r.phone, r.state]));
+      throw new TakenBack();
+    });
+  } catch (error) {
+    if (!(error instanceof TakenBack)) throw error;
+  }
+  return states;
+}

@@ -6,14 +6,27 @@ import {
   type ChatCursor,
   type ChatKind,
   chatCursor,
+  chatPreview,
   groupMessages,
 } from "@domain/chat";
+import {
+  announcementState,
+  type MessageAction,
+  mergePinned,
+  messageActions,
+  shownPinned,
+  UNDO_SHOWN_MS,
+  waitsFor,
+} from "@domain/chat-announce";
 import { chatDay, inThisYear, messageTime } from "@domain/chat-days";
 import {
   type ChatSendInput,
   type ChatSyncMessage,
   type ChatSyncPerson,
+  chatMarks,
   heldInWindow,
+  heldMarks,
+  type PinnedAnnouncement,
 } from "@domain/chat-sync";
 import {
   bubbleKey,
@@ -29,6 +42,7 @@ import {
   shownMessages,
   stillOutgoing,
 } from "@domain/chat-thread";
+import { AnnouncementCard } from "@ui/announcement-card";
 import { ChatHeader } from "@ui/chat-header";
 import { Composer } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
@@ -39,7 +53,9 @@ import {
 } from "@ui/message-bubble";
 import { NewBelow } from "@ui/new-below";
 import { Spinner } from "@ui/spinner";
+import { StatusToast } from "@ui/status-toast";
 import { ChevronUp } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import {
@@ -56,7 +72,10 @@ import { focusLost } from "./chat-focus";
 import { ChatNotice } from "./chat-notice";
 import { chatPaths } from "./chat-paths";
 import { type SyncOpen, useChat } from "./chat-provider";
-import type { ChatActionResult } from "./chat-types";
+import type { ChatActionResult, ChatReaders } from "./chat-types";
+import { InfoButton } from "./info-button";
+import { MessageActionsSheet } from "./message-actions";
+import { ReadersSheet } from "./readers-sheet";
 
 /** What the screen asks the server to do, bound to the business it was drawn for. */
 export type ConversationActions = {
@@ -74,6 +93,24 @@ export type ConversationActions = {
       more: boolean;
     }>
   >;
+  /** "קראתי" on an announcement (C3). */
+  confirm: (message: string) => Promise<ChatActionResult>;
+  /** Its author or management pins an announcement again, or unpins it. */
+  pin: (message: string, pin: boolean) => Promise<ChatActionResult>;
+  /** One's own message anywhere, or management someone else's in a group. */
+  remove: (message: string) => Promise<ChatActionResult>;
+  /** "ביטול" right after removing. */
+  restore: (message: string) => Promise<ChatActionResult>;
+  /** Who of the group confirmed an announcement, for its author and management. */
+  readers: (message: string) => Promise<ChatActionResult<ChatReaders>>;
+};
+
+/** What the reader may do in this conversation, beside writing. */
+export type ConversationPowers = {
+  /** chat.announce: "הודעה מההנהלה" in groups. */
+  announce: boolean;
+  /** chat.moderate: removes others' messages in groups, unpins any announcement. */
+  moderate: boolean;
 };
 
 type Props = {
@@ -102,12 +139,51 @@ type Props = {
   /** What an empty conversation says. */
   empty: string;
   actions: ConversationActions;
+  /** Its pinned announcements, newest first, as the reader sees them (C3). */
+  pinned: PinnedAnnouncement[];
+  powers: ConversationPowers;
+  /** A removed department's group: nothing is pinned there again. */
+  closed: boolean;
+  /** The composer opens as "הודעה מההנהלה" (/chat/<id>?announce=1). */
+  announceFirst: boolean;
+  /**
+   * Its details, for the tablet's sheet from the title (the phone opens
+   * /chat/<id>/info, the desktop has its column); null for a private chat
+   * its first message hasn't made yet.
+   */
+  details: ReactNode | null;
 };
+
+/**
+ * What the toast says now, and its way back when it has one: whether its
+ * button takes the focus as it shows, and the message whose actions take it
+ * back once the toast goes.
+ */
+type Toast = {
+  text: string;
+  stamp: string;
+  undo?: () => void;
+  focus?: boolean;
+  back?: string;
+};
+
+/**
+ * Which message the actions sheet is for, by id: what it shows is the
+ * message as it is now, never as it was when the sheet opened.
+ */
+type ActionsFor = { id: string };
 
 /** This close to the foot of the page counts as reading the newest. */
 const NEAR_END = 96;
 /** How long "too many messages" stays over the field. */
 const NOTICE_MS = 20_000;
+/**
+ * How long the screen reader line keeps what it said: read out by then, it
+ * goes, so a message removed later isn't left there in words.
+ */
+const SAID_MS = 8_000;
+/** This far scrolled once confirmed, an announcement under the title moves on. */
+const MOVED_ON_PX = 24;
 /** Where a keyboard or a trackpad is: the field may take the focus. */
 const FINE_POINTER = "(pointer: fine)";
 
@@ -214,12 +290,125 @@ export function ConversationScreen(props: Props) {
   );
   const [below, setBelow] = useState(false);
   const [ready, setReady] = useState(false);
-  /** What the screen reader line says now; a new one each time, so it's read. */
-  const [said, setSaid] = useState<{ id: number; text: string } | null>(null);
+  /**
+   * What the screen reader line says now; a new one each time, so it's read.
+   * With the message whose words it says, so they go when it is removed.
+   */
+  const [said, setSaid] = useState<{
+    id: number;
+    text: string;
+    message: string | null;
+  } | null>(null);
+  const [pinned, setPinned] = useState(props.pinned);
+  const canAnnounce = props.powers.announce && kind !== "direct";
+  const [announce, setAnnounce] = useState(
+    canAnnounce && props.announceFirst && !props.blocked,
+  );
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [actionsFor, setActionsFor] = useState<ActionsFor | null>(null);
+  const [readersFor, setReadersFor] = useState<string | null>(null);
+  /** The button that opened who confirmed, for the focus once it closes. */
+  const readersOpener = useRef<HTMLElement | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
+  /**
+   * The announcement the reader confirmed here: it stays the card for the
+   * rest of the visit, saying so, and the next one waiting never takes its
+   * place under their finger (it is one tap away, through "ועוד").
+   */
+  const [keptTop, setKeptTop] = useState<string | null>(null);
+  /**
+   * Announcements that waited for the reader on this screen: under the title
+   * until they confirm and move on.
+   */
+  const [stuck, setStuck] = useState<string[]>(() =>
+    props.pinned.flatMap((p) =>
+      waitsFor(p, chat.readerId) ? [p.message.id] : [],
+    ),
+  );
+  useEffect(() => {
+    const now = pinned.flatMap((p) =>
+      waitsFor(p, reader) ? [p.message.id] : [],
+    );
+    if (now.some((id) => !stuck.includes(id))) {
+      setStuck((ids) => [...new Set([...ids, ...now])]);
+    }
+  }, [pinned, reader, stuck]);
 
-  const held = useRef(messages);
+  const pinnedNow = useRef(pinned);
+  useLayoutEffect(() => {
+    pinnedNow.current = pinned;
+  }, [pinned]);
+  // Opened again from "פרסום הודעה מההנהלה" (the same screen, kept): the
+  // switch goes on, as on a first visit; only when the address asks anew,
+  // so a drawing again (the tab's count) never turns it back on.
+  const askedAnnounce = useRef(props.announceFirst);
+  const writable = !props.blocked;
+  useEffect(() => {
+    const asked = props.announceFirst;
+    if (asked && !askedAnnounce.current && canAnnounce && writable) {
+      setAnnounce(true);
+    }
+    askedAnnounce.current = asked;
+    // Hidden for going back: shown again at that address, it asks anew.
+    return () => {
+      askedAnnounce.current = false;
+    };
+  }, [props.announceFirst, canAnnounce, writable]);
+  /**
+   * Messages and pins changed here and not yet answered: what a sync brings
+   * of them waits, so a removal on its way doesn't flicker back.
+   */
+  const changing = useRef(new Set<string>());
+  /**
+   * Each change here that settled, with the number of the newest sync sent
+   * then (`chat.sent`): what an answer to that one, or an older one, brings
+   * of it is older than the screen, and waits too. Once settled, the next
+   * sync compares the marks whatever the stamp (`chat.recheck`), so nothing
+   * held back meanwhile stays behind.
+   */
+  const settledAt = useRef(new Map<string, number>());
+  /**
+   * The conversation's stamp from the last answer the screen took whole
+   * (`cv=`): one that came while something here waited isn't taken, so the
+   * route compares again.
+   */
+  const changedSeen = useRef<string | null>(null);
   const field = useRef<HTMLTextAreaElement | null>(null);
   const log = useRef<HTMLDivElement | null>(null);
+  const toastCount = useRef(0);
+  /** What opened the actions sheet, for the focus once it closes. */
+  const actionsOpener = useRef<HTMLElement | null>(null);
+  /**
+   * What the toast says. With `focus`, its "ביטול" takes the keyboard's focus
+   * as it shows when what was pressed went with the focus (it fell to the
+   * page, the screen put it on the messages, or it is still in the sheet
+   * that is closing): the way back is the next thing to reach, and waits
+   * while the keyboard is there. `back` is the message whose actions take
+   * the focus once the toast goes with it.
+   */
+  const showToast = useCallback(
+    (
+      text: string,
+      options: { undo?: () => void; focus?: boolean; back?: string } = {},
+    ) => {
+      toastCount.current += 1;
+      const active = document.activeElement;
+      const lost =
+        focusLost() ||
+        (log.current !== null && active === log.current) ||
+        (actionsOpener.current !== null && active === actionsOpener.current);
+      setToast({
+        text,
+        stamp: String(toastCount.current),
+        undo: options.undo,
+        focus: Boolean(options.undo && options.focus && lost),
+        back: options.back,
+      });
+    },
+    [],
+  );
+
+  const held = useRef(messages);
   const heading = useRef<HTMLHeadingElement | null>(null);
   const saidCount = useRef(0);
   /** A retry's button goes once it is sending, maybe with the focus. */
@@ -250,22 +439,54 @@ export function ConversationScreen(props: Props) {
     });
   }, []);
 
-  const say = useCallback((text: string) => {
+  /** Says `text` once; `message` when it carries that message's words. */
+  const say = useCallback((text: string, message: string | null = null) => {
     saidCount.current += 1;
-    setSaid({ id: saidCount.current, text });
+    setSaid({ id: saidCount.current, text, message });
   }, []);
+  // Read out by now: the line goes quiet, so nothing a message said stays in
+  // it for a screen reader to find later.
+  useEffect(() => {
+    if (!said) return;
+    const timer = setTimeout(
+      () => setSaid((now) => (now?.id === said.id ? null : now)),
+      SAID_MS,
+    );
+    return () => clearTimeout(timer);
+  }, [said]);
+  // The message it named was removed meanwhile: its words go from it at once.
+  useEffect(() => {
+    const named = said?.message;
+    if (!named) return;
+    if (messages.find((m) => m.id === named)?.removed) setSaid(null);
+  }, [said, messages]);
   // What arrived from others, in words: set each drawing, with its names.
   const sayArrived = useRef<
     (arrived: ChatSyncMessage[], authors: readonly ChatSyncPerson[]) => void
   >(() => {});
+  // What someone else removed of what is on screen, in words: never what it said.
+  const sayRemoved = useRef<(removed: ChatSyncMessage[]) => void>(() => {});
 
   // The server drew the page again (the tab's count, a conversation kept for
-  // going back): what it brings joins what is on screen.
+  // going back): what it brings joins what is on screen, but for what the
+  // reader is changing here, and the next sync compares the rest again (it
+  // may have been drawn before a change of theirs that settled since; every
+  // drawing brings its messages anew, which asks for that sync below).
+  const drawnPinned = useRef(props.pinned);
+  useEffect(() => {
+    if (props.pinned === drawnPinned.current) return;
+    drawnPinned.current = props.pinned;
+    const server = props.pinned;
+    setPinned((list) =>
+      mergePinned(list, server, (id) => changing.current.has(id)),
+    );
+  }, [props.pinned]);
   const drawn = useRef(props.messages);
   useEffect(() => {
     if (props.messages === drawn.current) return;
     drawn.current = props.messages;
-    setMessages((list) => mergeMessages(list, props.messages));
+    const server = props.messages.filter((m) => !changing.current.has(m.id));
+    setMessages((list) => mergeMessages(list, server));
     if (props.older) setHasOlder(true);
     addPeople(props.people);
     setSeenUpTo((seen) =>
@@ -273,7 +494,15 @@ export function ConversationScreen(props: Props) {
         ? props.seenUpTo
         : seen,
     );
-  }, [props.messages, props.people, props.seenUpTo, props.older, addPeople]);
+    chat.recheck();
+  }, [
+    props.messages,
+    props.people,
+    props.seenUpTo,
+    props.older,
+    addPeople,
+    chat.recheck,
+  ]);
 
   const markRead = useCallback(() => {
     if (!conversation || document.visibilityState !== "visible" || !atEnd()) {
@@ -312,9 +541,54 @@ export function ConversationScreen(props: Props) {
   // back stops asking, and asks at once when it shows again.
   useEffect(() => {
     if (!conversation) return;
-    const receive = (open: SyncOpen) => {
+    // A conversation shown anew asks the route to compare from scratch.
+    changedSeen.current = null;
+    const receive = (open: SyncOpen, asked: number) => {
+      // What the reader is changing here, or changed since this was asked
+      // for, stays as the screen has it: the next sync brings it again.
+      const kept = (id: string) =>
+        changing.current.has(id) || (settledAt.current.get(id) ?? 0) >= asked;
+      const keptAny =
+        changing.current.size > 0 ||
+        [...settledAt.current.values()].some((n) => n >= asked);
+      for (const [id, n] of settledAt.current) {
+        if (n < asked) settledAt.current.delete(id);
+      }
       addPeople(open.people);
       setSeenUpTo(open.seenUpTo);
+      // Taken whole: the route compares again only once the conversation
+      // changes since. Not while something here waited.
+      if (open.changed !== undefined && !keptAny) {
+        changedSeen.current = open.changed;
+      }
+      // What changed of what is on screen (C3): a message removed or put
+      // back, a pin or an unpin, a "קראתי".
+      if (open.pinned) {
+        const server = open.pinned;
+        setPinned((list) => mergePinned(list, server, kept));
+      }
+      const recent = (open.recent ?? []).filter((m) => !kept(m.id));
+      if (recent.length > 0) {
+        const before = new Map(held.current.map((m) => [m.id, m]));
+        const goneByOthers = recent.filter((m) => {
+          const had = before.get(m.id);
+          return (
+            had !== undefined &&
+            !had.removed &&
+            m.removed &&
+            m.removedBy?.toLowerCase() !== reader.toLowerCase()
+          );
+        });
+        setMessages((list) => {
+          const had = new Map(list.map((m) => [m.id, m]));
+          const changed = recent.filter((m) => {
+            const was = had.get(m.id);
+            return !was || changedMessage(was, m);
+          });
+          return changed.length > 0 ? mergeMessages(list, changed) : list;
+        });
+        if (goneByOthers.length > 0) sayRemoved.current(goneByOthers);
+      }
       if (open.messages.length === 0) return;
       const known = new Map(held.current.map((m) => [m.id, m]));
       const fresh = open.messages.filter((m) => !known.has(m.id));
@@ -330,12 +604,17 @@ export function ConversationScreen(props: Props) {
         fresh.length > 0 ||
         open.messages.some((m) => {
           const had = known.get(m.id);
-          return !had || changedMessage(had, m);
+          return !had || (!kept(m.id) && changedMessage(had, m));
         })
       ) {
         // The look again before the cursor brings what is on screen too:
         // only something new, or changed since, is drawn again.
-        setMessages((list) => mergeMessages(list, open.messages));
+        setMessages((list) =>
+          mergeMessages(
+            list,
+            open.messages.filter((m) => !kept(m.id) || !known.has(m.id)),
+          ),
+        );
       }
       if (fresh.length === 0) return;
       if (reading) toTheEnd.current = true;
@@ -347,6 +626,15 @@ export function ConversationScreen(props: Props) {
       held: () => {
         const cursor = cursorOf(held.current.at(-1));
         return cursor ? heldInWindow(held.current, cursor) : null;
+      },
+      marks: () => {
+        const sent = heldMarks(held.current);
+        return {
+          marks: chatMarks(held.current, pinnedNow.current),
+          from: sent.from,
+          removed: sent.removed,
+          changed: changedSeen.current,
+        };
       },
       receive,
     });
@@ -475,7 +763,12 @@ export function ConversationScreen(props: Props) {
   async function deliver(item: OutgoingMessage) {
     const known = conversationNow.current;
     const input: ChatSendInput = known
-      ? { draft: item.draft, words: item.body, conversation: known }
+      ? {
+          draft: item.draft,
+          words: item.body,
+          conversation: known,
+          ...(item.announce ? { announce: true } : {}),
+        }
       : { draft: item.draft, words: item.body, toPerson: toPerson ?? "" };
     let result: Awaited<ReturnType<ConversationActions["send"]>>;
     try {
@@ -520,9 +813,12 @@ export function ConversationScreen(props: Props) {
       at: new Date().toISOString(),
       state: "sending",
       message: null,
+      ...(announce && canAnnounce ? { announce: true } : {}),
     };
     setOutgoing((list) => [...list, item]);
     setText("");
+    // One announcement at a time: what is written next is a message again.
+    setAnnounce(false);
     toTheEnd.current = true;
     setBelow(false);
     chat.moved();
@@ -538,6 +834,251 @@ export function ConversationScreen(props: Props) {
     chat.moved();
     void deliver(again);
   }
+
+  /**
+   * Runs a change of one message here: what a sync brings of it meanwhile
+   * waits, `then` puts the screen as the answer says, and the next sync
+   * compares the marks whatever the stamp (with the list too, when `list`
+   * asks for a refused change), so a removal, an unpin or a "קראתי" by
+   * someone else that came while this one was on its way is never lost.
+   */
+  async function changeOne(
+    id: string,
+    run: () => Promise<ChatActionResult>,
+    then: (result: ChatActionResult) => void,
+    options: { listIfRefused?: boolean } = {},
+  ): Promise<void> {
+    changing.current.add(id);
+    let result: ChatActionResult;
+    try {
+      result = await run();
+    } catch {
+      result = { ok: false, failure: "failed" };
+    }
+    changing.current.delete(id);
+    then(result);
+    settledAt.current.set(id, chat.sent());
+    chat.recheck({ list: !result.ok && options.listIfRefused === true });
+  }
+
+  /** Puts one message on screen as it was, or as it now is. */
+  const replaceMessage = useCallback((message: ChatSyncMessage) => {
+    setMessages((list) => list.map((m) => (m.id === message.id ? message : m)));
+  }, []);
+  /** Pins or unpins a message on screen, keeping all else of it. */
+  const pinMessage = useCallback((id: string, pin: boolean) => {
+    setMessages((list) =>
+      list.map((m) => (m.id === id ? { ...m, pinned: pin } : m)),
+    );
+  }, []);
+  /** One pinned announcement back at the top, as it was, the rest as they are. */
+  const putPinned = useCallback((entry: PinnedAnnouncement) => {
+    setPinned((list) =>
+      mergePinned(list, [entry], (id) => id !== entry.message.id),
+    );
+  }, []);
+  const dropPinned = useCallback((id: string) => {
+    setPinned((list) => list.filter((p) => p.message.id !== id));
+  }, []);
+  const removedAs = (message: ChatSyncMessage): ChatSyncMessage => ({
+    ...message,
+    body: null,
+    pinned: false,
+    removed: true,
+    removedBy: reader,
+  });
+
+  async function confirm(item: PinnedAnnouncement) {
+    const id = item.message.id;
+    setKeptTop(id);
+    setConfirming(id);
+    setPinned((list) =>
+      list.map((p) => (p.message.id === id ? { ...p, confirmed: true } : p)),
+    );
+    if (conversation) {
+      chat.changeRowLocally(conversation, (row) => ({
+        ...row,
+        pinnedWaiting: Math.max(0, row.pinnedWaiting - 1),
+      }));
+    }
+    await changeOne(
+      id,
+      () => actions.confirm(id),
+      (result) => {
+        setConfirming(null);
+        if (result.ok) return;
+        if (conversation) {
+          chat.changeRowLocally(conversation, (row) => ({
+            ...row,
+            pinnedWaiting: row.pinnedWaiting + 1,
+          }));
+        }
+        if (result.failure === "closed" || result.failure === "noAccess") {
+          // Removed or unpinned meanwhile: it goes now, its words with it.
+          dropPinned(id);
+          if (result.failure === "noAccess") router.refresh();
+        } else {
+          setPinned((list) =>
+            list.map((p) =>
+              p.message.id === id ? { ...p, confirmed: false } : p,
+            ),
+          );
+        }
+        showToast(t("announcement.confirmFailed"));
+      },
+      // The list's count came down here: the server's comes back with it.
+      { listIfRefused: true },
+    );
+  }
+
+  /**
+   * Unpins an announcement, or pins it again: from its actions, from the
+   * card, or from "ביטול" right after unpinning (`was`: the card as it was,
+   * which comes back at once).
+   */
+  async function setPin(
+    message: ChatSyncMessage,
+    pin: boolean,
+    from: "sheet" | "card" | "undo",
+    was?: PinnedAnnouncement,
+  ) {
+    const id = message.id;
+    const entry = pinnedNow.current.find((p) => p.message.id === id) ?? was;
+    if (!pin) {
+      dropPinned(id);
+      pinMessage(id, false);
+    } else if (entry) {
+      putPinned({ ...entry, message: { ...entry.message, pinned: true } });
+      pinMessage(id, true);
+    }
+    await changeOne(
+      id,
+      () => actions.pin(id, pin),
+      (result) => {
+        if (!result.ok) {
+          if (!pin && entry) {
+            putPinned(entry);
+            pinMessage(id, true);
+          } else if (pin && entry) {
+            dropPinned(id);
+            pinMessage(id, false);
+          }
+          showToast(t("messageActions.failed"));
+          return;
+        }
+        if (pin) {
+          pinMessage(id, true);
+          showToast(t("announcement.pinned"));
+        } else {
+          showToast(t("announcement.unpinned"), {
+            undo: () => void setPin(message, true, "undo", entry),
+            focus: from !== "undo",
+            back: id,
+          });
+        }
+      },
+    );
+  }
+
+  async function remove(message: ChatSyncMessage) {
+    const own = message.authorId === reader;
+    const entry = pinnedNow.current.find((p) => p.message.id === message.id);
+    replaceMessage(removedAs(message));
+    dropPinned(message.id);
+    await changeOne(
+      message.id,
+      () => actions.remove(message.id),
+      (result) => {
+        if (!result.ok) {
+          replaceMessage(message);
+          if (entry) putPinned(entry);
+          showToast(t("messageActions.failed"));
+          return;
+        }
+        showToast(
+          own ? t("messageActions.deleted") : t("messageActions.removed"),
+          {
+            undo: () => void restore(message, entry),
+            focus: true,
+            back: message.id,
+          },
+        );
+      },
+    );
+  }
+
+  /** "ביטול" right after removing: the message comes back as it was. */
+  async function restore(
+    message: ChatSyncMessage,
+    entry: PinnedAnnouncement | undefined,
+  ) {
+    replaceMessage(message);
+    if (message.pinned && entry) putPinned(entry);
+    await changeOne(
+      message.id,
+      () => actions.restore(message.id),
+      (result) => {
+        if (!result.ok) {
+          replaceMessage(removedAs(message));
+          dropPinned(message.id);
+          showToast(
+            result.failure === "closed"
+              ? t("messageActions.tooLate")
+              : t("messageActions.failed"),
+          );
+          return;
+        }
+        showToast(t("messageActions.restored"));
+      },
+    );
+  }
+
+  /** Its words as they are now: never those of a message removed since. */
+  async function copy(message: ChatSyncMessage) {
+    if (message.removed || message.body === null) return;
+    try {
+      await navigator.clipboard.writeText(message.body);
+      showToast(t("messageActions.copied"));
+    } catch {
+      showToast(t("messageActions.copyFailed"));
+    }
+  }
+
+  function act(action: MessageAction) {
+    const chosen = actionsFor;
+    setActionsFor(null);
+    if (!chosen) return;
+    // The message as it is now: one removed meanwhile offers nothing.
+    const message = held.current.find((m) => m.id === chosen.id);
+    if (!message || !actionsOf(message).includes(action)) return;
+    switch (action) {
+      case "copy":
+        void copy(message);
+        return;
+      case "delete":
+      case "remove":
+        void remove(message);
+        return;
+      case "pin":
+        void setPin(message, true, "sheet");
+        return;
+      case "unpin":
+        void setPin(message, false, "sheet");
+        return;
+      default: {
+        const unhandled: never = action;
+        return unhandled;
+      }
+    }
+  }
+
+  const actionsOf = (message: ChatSyncMessage): MessageAction[] =>
+    messageActions(message, {
+      readerId: reader,
+      chat: kind,
+      moderates: props.powers.moderate,
+      closed: props.closed,
+    });
 
   const pending = stillOutgoing(outgoing, shownMessages(messages));
   const seenId =
@@ -594,15 +1135,33 @@ export function ConversationScreen(props: Props) {
       say(
         t("conversation.arrived", {
           name: author,
-          text: content.kind === "text" ? content.body : content.label,
+          text:
+            content.kind === "text"
+              ? content.body
+              : content.kind === "announcement"
+                ? `${content.label}: ${content.body}`
+                : content.label,
         }),
+        content.kind === "removed" ? null : last.id,
       );
+    };
+    // Who took it out, as its bubble now says, and never what it said.
+    sayRemoved.current = (removed) => {
+      const last = removed.at(-1);
+      const content = last ? contentOf(last) : null;
+      if (content?.kind === "removed") say(content.label);
     };
   });
 
   function contentOf(message: ChatSyncMessage): MessageContent {
     if (!message.removed && message.body !== null) {
-      return { kind: "text", body: message.body };
+      return message.kind === "announcement"
+        ? {
+            kind: "announcement",
+            body: message.body,
+            label: t("announcement.label"),
+          }
+        : { kind: "text", body: message.body };
     }
     const byAuthor = message.removedBy === message.authorId;
     return {
@@ -637,6 +1196,155 @@ export function ConversationScreen(props: Props) {
   const nothing = messages.length === 0 && pending.length === 0;
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
+  // The pinned announcement under the title (plan §11.4): the one waiting
+  // for the reader's "קראתי" stays there while the messages scroll; one
+  // they confirmed, or their own, sits at the top of the conversation. One
+  // confirmed here stays the card for the visit (`keptTop`).
+  const keptItem = keptTop
+    ? (pinned.find((p) => p.message.id === keptTop) ?? null)
+    : null;
+  const chosen = shownPinned(pinned, reader);
+  const pinnedTop = keptItem ?? chosen.shown;
+  const more = pinnedTop ? pinned.length - 1 : 0;
+  const topId = pinnedTop?.message.id ?? null;
+  const topState = pinnedTop
+    ? announcementState(
+        {
+          authorId: pinnedTop.message.authorId,
+          confirmed: pinnedTop.confirmed,
+        },
+        reader,
+      )
+    : null;
+  // Once it waited for the reader on this screen, it stays under the title
+  // ("אישרת שקראת" where "קראתי" was) until they confirm it and move on.
+  const waiting =
+    topState === "waiting" || (topId !== null && stuck.includes(topId));
+  const confirmedTop = topState === "confirmed";
+  useEffect(() => {
+    if (!topId || !confirmedTop || !stuck.includes(topId)) return;
+    const from = window.scrollY;
+    const onScroll = () => {
+      if (Math.abs(window.scrollY - from) < MOVED_ON_PX) return;
+      setStuck((ids) => ids.filter((id) => id !== topId));
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, [topId, confirmedTop, stuck]);
+  // The card changed under the focus (another one in its place, none any
+  // more, or out from under the title): the messages take the focus, so the
+  // keyboard goes on from there rather than the top of the page.
+  const cardPlace = `${topId ?? ""}:${waiting ? "under" : "top"}`;
+  const lastCardPlace = useRef(cardPlace);
+  useEffect(() => {
+    if (lastCardPlace.current === cardPlace) return;
+    lastCardPlace.current = cardPlace;
+    if (focusLost()) log.current?.focus({ preventScroll: true });
+  }, [cardPlace]);
+
+  const announcementCard =
+    pinnedTop && pinnedTop.message.body !== null ? (
+      <AnnouncementCard
+        // A card of its own for each: another one never takes this one's
+        // button, or the focus on it.
+        key={pinnedTop.message.id}
+        tone="accent"
+        headingLevel="h2"
+        label={t("announcement.label")}
+        byline={(() => {
+          const day = dateIn(
+            new Date(pinnedTop.message.createdAt),
+            chat.timeZone,
+          );
+          const time = messageTime(pinnedTop.message.createdAt, chat.timeZone);
+          const name = nameOf(pinnedTop.message.authorId);
+          return day === today
+            ? t.rich("announcement.byline", { name, time, ltr })
+            : t.rich("announcement.bylineDay", {
+                name,
+                time,
+                day: dayLabel(day),
+                ltr,
+              });
+        })()}
+        body={pinnedTop.message.body}
+        confirm={
+          topState === "own"
+            ? null
+            : {
+                confirmed: pinnedTop.confirmed,
+                label: t("announcement.confirm"),
+                confirmedLabel: t("announcement.confirmed"),
+                onConfirm: () => void confirm(pinnedTop),
+                pending: confirming === pinnedTop.message.id,
+                note: t("announcement.whoSees"),
+              }
+        }
+        readers={
+          pinnedTop.readers
+            ? {
+                label: t.rich("announcement.readBy", {
+                  count: pinnedTop.readers.count,
+                  total: pinnedTop.readers.total,
+                  ltr,
+                }),
+                onOpen: (trigger) => {
+                  readersOpener.current = trigger;
+                  setReadersFor(pinnedTop.message.id);
+                },
+              }
+            : null
+        }
+        unpin={
+          kind !== "direct" && (topState === "own" || props.powers.moderate)
+            ? {
+                label: t("announcement.unpin"),
+                onClick: () => void setPin(pinnedTop.message, false, "card"),
+              }
+            : null
+        }
+        footer={
+          more > 0 ? (
+            <Link
+              href={chatPaths.announcements}
+              className="inline-flex min-h-11 items-center font-medium text-ink underline underline-offset-2 focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              {t("announcement.more", { count: more })}
+            </Link>
+          ) : null
+        }
+      />
+    ) : null;
+
+  // The message the actions sheet is for, as it is now. Removed meanwhile,
+  // or gone, it has nothing left to show: the sheet closes.
+  const actionsMessage = actionsFor
+    ? (messages.find((m) => m.id === actionsFor.id) ?? null)
+    : null;
+  const actionsGone =
+    actionsFor !== null && (!actionsMessage || actionsMessage.removed);
+  useEffect(() => {
+    if (actionsGone) setActionsFor(null);
+  }, [actionsGone]);
+  const sheetMessage = actionsGone ? null : actionsMessage;
+
+  /** Where the focus goes back to once a sheet closes: what opened it, else the messages. */
+  const backTo = (opener: HTMLElement | null) =>
+    opener?.isConnected && opener.getClientRects().length > 0
+      ? opener
+      : log.current;
+
+  /** The toast went with the focus: to the message it brought back, else the messages. */
+  function afterToast() {
+    const id = toast?.back;
+    const button = id
+      ? log.current?.querySelector<HTMLElement>(
+          `[data-message-id="${CSS.escape(id)}"] [data-message-actions]`,
+        )
+      : null;
+    (button ?? log.current)?.focus({ preventScroll: true });
+  }
+
   return (
     <section
       aria-label={props.title}
@@ -648,7 +1356,20 @@ export function ConversationScreen(props: Props) {
         leading={props.leading}
         back={{ href: chatPaths.list, label: t("conversation.back") }}
         headingRef={heading}
+        trailing={
+          conversation && props.details ? (
+            <InfoButton
+              href={chatPaths.info(conversation)}
+              details={props.details}
+            />
+          ) : null
+        }
+        below={waiting ? announcementCard : null}
+        belowLabel={t("announcement.label")}
       />
+      {!waiting && announcementCard ? (
+        <div className="pt-3">{announcementCard}</div>
+      ) : null}
       <p className="sr-only" aria-live="polite" aria-atomic="true">
         {said ? <span key={said.id}>{said.text}</span> : null}
       </p>
@@ -699,9 +1420,14 @@ export function ConversationScreen(props: Props) {
                     shown.kind === "message"
                       ? bubbleKey(shown.message)
                       : draftKey(shown.outgoing.draft);
+                  const offered =
+                    shown.kind === "message" ? actionsOf(shown.message) : [];
                   return (
                     <MessageBubble
                       key={key}
+                      messageId={
+                        shown.kind === "message" ? shown.message.id : undefined
+                      }
                       own={own}
                       run={runPlace(index, run.messages.length)}
                       author={
@@ -715,13 +1441,30 @@ export function ConversationScreen(props: Props) {
                       content={
                         shown.kind === "message"
                           ? contentOf(shown.message)
-                          : { kind: "text", body: shown.outgoing.body }
+                          : shown.outgoing.announce
+                            ? {
+                                kind: "announcement",
+                                body: shown.outgoing.body,
+                                label: t("announcement.label"),
+                              }
+                            : { kind: "text", body: shown.outgoing.body }
                       }
                       time={{
                         label: messageTime(item.createdAt, chat.timeZone),
                         at: item.createdAt,
                       }}
                       status={statusOf(shown)}
+                      actions={
+                        shown.kind === "message" && offered.length > 0
+                          ? {
+                              label: t("messageActions.open"),
+                              onOpen: (trigger) => {
+                                actionsOpener.current = trigger;
+                                setActionsFor({ id: shown.message.id });
+                              },
+                            }
+                          : null
+                      }
                     />
                   );
                 }),
@@ -739,13 +1482,27 @@ export function ConversationScreen(props: Props) {
       )}
       <Composer
         label={t("conversation.placeholder")}
-        sendLabel={t("conversation.send")}
+        sendLabel={
+          announce && canAnnounce
+            ? t("announcement.send")
+            : t("conversation.send")
+        }
         value={text}
         onValueChange={setText}
         onSend={send}
         blocked={props.blocked}
         notice={notice ? t(`conversation.${notice}`) : null}
         tooLong={t.rich("conversation.tooLong", { max: CHAT_MESSAGE_MAX, ltr })}
+        toggle={
+          canAnnounce
+            ? {
+                label: t("announcement.switch"),
+                checked: announce,
+                onChange: setAnnounce,
+                hint: t("announcement.switchHint"),
+              }
+            : null
+        }
         fieldRef={field}
         above={
           <NewBelow
@@ -759,6 +1516,43 @@ export function ConversationScreen(props: Props) {
             }}
           />
         }
+      />
+      <MessageActionsSheet
+        open={actionsFor !== null}
+        onOpenChange={(open) => {
+          if (!open) setActionsFor(null);
+        }}
+        quote={
+          sheetMessage?.body && !sheetMessage.removed
+            ? chatPreview(sheetMessage.body, 160)
+            : null
+        }
+        actions={sheetMessage ? actionsOf(sheetMessage) : []}
+        onAction={act}
+        // What opened it, while it is still there (a removed message's
+        // button went with it), else the messages; the toast's "ביטול"
+        // takes it from there when it comes.
+        returnFocus={() => backTo(actionsOpener.current)}
+      />
+      <ReadersSheet
+        message={readersFor}
+        onClose={() => setReadersFor(null)}
+        load={actions.readers}
+        timeZone={chat.timeZone}
+        now={chat.now}
+        returnFocus={() => backTo(readersOpener.current)}
+      />
+      <StatusToast
+        message={toast?.text ?? null}
+        stamp={toast?.stamp}
+        duration={toast?.undo ? UNDO_SHOWN_MS : 4000}
+        action={
+          toast?.undo
+            ? { label: t("messageActions.undo"), onClick: toast.undo }
+            : null
+        }
+        focusAction={toast?.focus === true}
+        onFocusLeave={afterToast}
       />
     </section>
   );

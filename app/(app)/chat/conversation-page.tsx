@@ -1,18 +1,27 @@
 import "server-only";
 import {
   CHAT_PAGE_SIZE,
+  type ChatConversationView,
   chatSeen,
   getConversation,
   getMessages,
+  getPinnedState,
   withOwnDrafts,
 } from "@db/chat";
+import type { Department } from "@domain/departments";
 import { canSeeTeam } from "@domain/team";
 import { notFound } from "next/navigation";
 import { currentModuleSettings } from "../modules";
 import type { AppWording } from "../wording";
 import {
+  announcementReadersAction,
+  confirmAnnouncementAction,
+  muteChatAction,
   olderChatMessagesAction,
+  pinAnnouncementAction,
   readChatAction,
+  removeChatMessageAction,
+  restoreChatMessageAction,
   sendChatMessageAction,
 } from "./actions";
 import {
@@ -22,7 +31,50 @@ import {
   currentChatDirectory,
 } from "./chat";
 import type { ChatAccess } from "./chat-access";
+import type { ConversationActions } from "./conversation-screen";
 import { type ConversationBlock, ConversationView } from "./conversation-view";
+
+/**
+ * What a conversation's screen asks the server to do, each bound to the
+ * business it was drawn for (a tab left open after switching is refused, never
+ * written in the other one).
+ */
+export function boundChatActions(businessId: string): ConversationActions {
+  return {
+    send: sendChatMessageAction.bind(null, businessId),
+    read: readChatAction.bind(null, businessId),
+    older: olderChatMessagesAction.bind(null, businessId),
+    confirm: confirmAnnouncementAction.bind(null, businessId),
+    pin: pinAnnouncementAction.bind(null, businessId),
+    remove: removeChatMessageAction.bind(null, businessId),
+    restore: restoreChatMessageAction.bind(null, businessId),
+    readers: announcementReadersAction.bind(null, businessId),
+  };
+}
+
+/**
+ * Who is in a group now: the whole staff, or a department's people (its
+ * group's moderators read it too, which its details say); nobody for a
+ * private chat, whose details show the other person.
+ */
+export function groupMembers(
+  view: Pick<ChatConversationView, "kind" | "departmentId">,
+  people: ReturnType<typeof chatPeople>,
+  departments: readonly Department[],
+) {
+  if (view.kind === "team") {
+    return [...people.values()].filter((person) => person.active);
+  }
+  if (view.kind !== "department") return [];
+  return (
+    departments
+      .find((d) => d.id.toLowerCase() === view.departmentId?.toLowerCase())
+      ?.members.flatMap((id) => {
+        const person = people.get(id.toLowerCase());
+        return person?.active ? [person] : [];
+      }) ?? []
+  );
+}
 
 /**
  * One conversation the person reads, as both its addresses draw it: the
@@ -37,12 +89,15 @@ export async function ConversationPageView({
   access,
   conversationId,
   toPerson,
+  announceFirst = false,
   wording,
 }: {
   access: ChatAccess;
   conversationId: string;
   /** Drawn at /chat/with/<person>: that person, the other of the two. */
   toPerson: string | null;
+  /** /chat/<id>?announce=1: the composer opens as "הודעה מההנהלה". */
+  announceFirst?: boolean;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -50,34 +105,29 @@ export async function ConversationPageView({
   const view = await getConversation(businessId, conversationId, access.userId);
   if (!view) notFound();
 
-  const [page, seenUpTo, settings, directory, departments] = await Promise.all([
-    getMessages({ businessId, conversationId: view.id }).then((found) =>
-      withOwnDrafts(found, access.userId),
-    ),
-    view.kind === "direct" ? chatSeen(view.id) : Promise.resolve(null),
-    currentModuleSettings("chat"),
-    currentChatDirectory(businessId),
-    currentChatDepartments(businessId),
-  ]);
+  const [page, seenUpTo, settings, directory, departments, pinned] =
+    await Promise.all([
+      getMessages({ businessId, conversationId: view.id }).then((found) =>
+        withOwnDrafts(found, access.userId),
+      ),
+      view.kind === "direct" ? chatSeen(view.id) : Promise.resolve(null),
+      currentModuleSettings("chat"),
+      currentChatDirectory(businessId),
+      currentChatDepartments(businessId),
+      view.kind === "direct"
+        ? Promise.resolve([])
+        : getPinnedState(
+            businessId,
+            view.id,
+            access.userId,
+            access.canModerate,
+          ),
+    ]);
   const people = chatPeople(directory, departments, wording);
   const other = view.otherPerson
     ? (people.get(view.otherPerson.toLowerCase()) ?? null)
     : null;
-  // Who is in the group now: the whole staff, or a department's people (its
-  // group's moderators read it too, which its details say).
-  const members =
-    view.kind === "team"
-      ? [...people.values()].filter((person) => person.active)
-      : view.kind === "department"
-        ? (departments
-            .find(
-              (d) => d.id.toLowerCase() === view.departmentId?.toLowerCase(),
-            )
-            ?.members.flatMap((id) => {
-              const person = people.get(id.toLowerCase());
-              return person?.active ? [person] : [];
-            }) ?? [])
-        : [];
+  const members = groupMembers(view, people, departments);
   const block: ConversationBlock | null =
     view.state === "closed"
       ? { kind: "closed" }
@@ -110,11 +160,11 @@ export async function ConversationPageView({
       businessName={access.businessName}
       fileDays={settings.fileDays}
       demo={access.demo}
-      actions={{
-        send: sendChatMessageAction.bind(null, businessId),
-        read: readChatAction.bind(null, businessId),
-        older: olderChatMessagesAction.bind(null, businessId),
-      }}
+      actions={boundChatActions(businessId)}
+      pinned={pinned}
+      powers={{ announce: access.canAnnounce, moderate: access.canModerate }}
+      announceFirst={announceFirst && view.kind !== "direct"}
+      mute={muteChatAction.bind(null, businessId)}
       wording={wording}
     />
   );

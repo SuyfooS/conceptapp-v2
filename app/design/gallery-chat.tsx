@@ -1,19 +1,23 @@
 "use client";
 
 import { CHAT_MESSAGE_MAX, chatPreview } from "@domain/chat";
+import { UNDO_SHOWN_MS } from "@domain/chat-announce";
+import { AnnouncementCard } from "@ui/announcement-card";
 import { Avatar } from "@ui/avatar";
 import { Button } from "@ui/button";
 import { ChatHeader } from "@ui/chat-header";
 import { ChatGroupMark, ChatRow } from "@ui/chat-row";
 import { Composer } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
-import { ListGroup } from "@ui/list-row";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { MessageBubble, type MessageStatus } from "@ui/message-bubble";
 import { NewBelow } from "@ui/new-below";
-import { Building, Users } from "lucide-react";
+import { Sheet } from "@ui/sheet";
+import { StatusToast } from "@ui/status-toast";
+import { Building, Copy, Trash2, Users } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { type ReactNode, useState } from "react";
 import { portraits } from "./portraits";
 
 /** The gallery's day and its eve, so the dividers and times never move. */
@@ -227,10 +231,194 @@ export function GalleryChat() {
         tooLong={tooLong}
         blocked={tc("conversation.closed")}
       />
+      <GalleryAnnouncements />
       <p className="text-ink-2">{t("chatImmersive")}</p>
       <Button asChild variant="secondary" className="w-full">
         <Link href="/design/chat">{t("chatDemo")}</Link>
       </Button>
+    </div>
+  );
+}
+
+/**
+ * The chat's parts of C3: an announcement pinned under a conversation's
+ * title, as its readers and as its author see it; one in the conversation;
+ * a message's actions, with the undo after removing; the composer's switch
+ * for a message from management. Nothing is stored.
+ */
+function GalleryAnnouncements() {
+  const t = useTranslations("design");
+  const tc = useTranslations("app.chat");
+  const [confirmed, setConfirmed] = useState(false);
+  const [announce, setAnnounce] = useState(true);
+  const [draft, setDraft] = useState("");
+  const [removed, setRemoved] = useState(false);
+  const [actions, setActions] = useState(false);
+  const [toast, setToast] = useState<{ text: string; stamp: number } | null>(
+    null,
+  );
+  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+  const byline = tc.rich("announcement.byline", {
+    name: t("person2"),
+    time: "08:10",
+    ltr,
+  });
+  const tooLong = tc.rich("conversation.tooLong", {
+    max: CHAT_MESSAGE_MAX,
+    ltr,
+  });
+
+  function remove() {
+    setActions(false);
+    setRemoved(true);
+    setToast({ text: tc("messageActions.removed"), stamp: Date.now() });
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-ink-2">{t("chatAnnounceText")}</p>
+      <ChatHeader
+        floating={false}
+        headingLevel="h3"
+        back={{ href: "/design/chat", label: tc("conversation.back") }}
+        leading={<ChatGroupMark icon={<Building />} />}
+        title={tc("list.team")}
+        subtitle={tc("conversation.teamNote")}
+        below={
+          <AnnouncementCard
+            tone="accent"
+            headingLevel="h3"
+            label={tc("announcement.label")}
+            byline={byline}
+            body={t("chatAnnounceSample")}
+            confirm={{
+              confirmed,
+              label: tc("announcement.confirm"),
+              confirmedLabel: tc("announcement.confirmed"),
+              onConfirm: () => setConfirmed(true),
+              note: tc("announcement.whoSees"),
+            }}
+          />
+        }
+      />
+      <p className="text-ink-2">{t("chatAuthorView")}</p>
+      <AnnouncementCard
+        headingLevel="h3"
+        label={tc("announcement.label")}
+        byline={byline}
+        body={t("chatAnnounceSample")}
+        readers={{
+          label: tc.rich("announcement.readBy", {
+            count: confirmed ? 2 : 1,
+            total: 3,
+            ltr,
+          }),
+          href: "/design/chat/team?state=readers",
+        }}
+        unpin={{ label: tc("announcement.unpin"), onClick: () => {} }}
+        footer={tc("announcement.more", { count: 1 })}
+      />
+      <div>
+        <MessageBubble
+          own={false}
+          author={{ name: t("person2"), shown: true }}
+          content={{
+            kind: "announcement",
+            body: t("chatAnnounceSample"),
+            label: tc("announcement.label"),
+          }}
+          time={{ label: "08:10", at: at(TODAY, "08:10") }}
+        />
+        <MessageBubble
+          own={false}
+          author={{ name: t("person1"), shown: true }}
+          content={
+            removed
+              ? { kind: "removed", label: tc("message.removedByManager") }
+              : { kind: "text", body: t("chatSample6") }
+          }
+          time={{ label: "08:14", at: at(TODAY, "08:14") }}
+          actions={
+            removed
+              ? null
+              : {
+                  label: tc("messageActions.open"),
+                  onOpen: () => setActions(true),
+                }
+          }
+        />
+      </div>
+      <p className="text-ink-2">{t("chatActionsText")}</p>
+      <Sheet
+        open={actions}
+        onOpenChange={setActions}
+        title={tc("messageActions.title")}
+        closeLabel={tc("messageActions.close")}
+      >
+        <div className="flex flex-col gap-3 px-2 pb-2">
+          <p className="rounded-card bg-elevated px-4 py-3 text-ink-2">
+            {t("chatSample6")}
+          </p>
+          <ListGroup className="bg-elevated shadow-none">
+            <ListRow
+              leading={<Copy />}
+              title={tc("messageActions.copy")}
+              onClick={() => {
+                setActions(false);
+                setToast({
+                  text: tc("messageActions.copied"),
+                  stamp: Date.now(),
+                });
+              }}
+            />
+            <ListRow
+              leading={<Trash2 />}
+              title={
+                <span className="text-danger">
+                  {tc("messageActions.remove")}
+                </span>
+              }
+              subtitle={tc("messageActions.removeHint")}
+              onClick={remove}
+            />
+          </ListGroup>
+        </div>
+      </Sheet>
+      <StatusToast
+        message={toast?.text ?? null}
+        stamp={toast ? String(toast.stamp) : undefined}
+        duration={removed ? UNDO_SHOWN_MS : 4000}
+        action={
+          removed
+            ? {
+                label: tc("messageActions.undo"),
+                onClick: () => {
+                  setRemoved(false);
+                  setToast({
+                    text: tc("messageActions.restored"),
+                    stamp: Date.now(),
+                  });
+                },
+              }
+            : null
+        }
+      />
+      <p className="text-ink-2">{t("chatComposerAnnounce")}</p>
+      <Composer
+        floating={false}
+        label={tc("conversation.placeholder")}
+        sendLabel={announce ? tc("announcement.send") : tc("conversation.send")}
+        value={draft}
+        onValueChange={setDraft}
+        onSend={() => setDraft("")}
+        tooLong={tooLong}
+        toggle={{
+          label: tc("announcement.switch"),
+          checked: announce,
+          onChange: setAnnounce,
+          hint: tc("announcement.switchHint"),
+        }}
+      />
     </div>
   );
 }

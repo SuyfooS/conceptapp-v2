@@ -11,11 +11,17 @@ export const chatPaths = {
   conversation: (id: string) => `/chat/${id}`,
   /** Someone's private chat, opened by its first message. */
   withPerson: (id: string) => `/chat/with/${id}`,
+  /** A conversation's details, the phone's own page of them (C3). */
+  info: (id: string) => `/chat/${id}/info`,
+  /** Every announcement in the person's groups (C3). */
+  announcements: "/chat/announcements",
+  /** A group's conversation, its composer open as an announcement (C3). */
+  announceIn: (id: string) => `/chat/${id}?announce=1`,
 } as const;
 
-/** The conversation an address of chat shows, or null. */
+/** The conversation an address of chat shows (or its details), or null. */
 export function conversationOfPath(pathname: string): string | null {
-  const id = /^\/chat\/([^/]+)$/.exec(pathname)?.[1] ?? null;
+  const id = /^\/chat\/([^/]+)(?:\/info)?$/.exec(pathname)?.[1] ?? null;
   return id && isUuid(id) ? id.toLowerCase() : null;
 }
 

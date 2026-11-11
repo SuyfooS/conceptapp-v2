@@ -2,7 +2,13 @@
 
 import { X } from "lucide-react";
 import { Dialog } from "radix-ui";
-import { type PointerEvent, type ReactNode, useRef, useState } from "react";
+import {
+  type PointerEvent,
+  type ReactNode,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { Button } from "./button";
 
 export type SheetProps = {
@@ -20,13 +26,32 @@ export type SheetProps = {
    * screen (axe scrollable-region-focusable).
    */
   readingLabel?: string;
+  /**
+   * Where the keyboard's focus goes once it has closed: what opened it, when
+   * that is still there, else a place on the screen that makes sense (what
+   * it acted on may have gone with it). By default, what held the focus
+   * when it opened, if that is still on screen.
+   */
+  returnFocus?: () => HTMLElement | null | undefined;
   children: ReactNode;
 };
+
+/** Still drawn and shown: an element the focus can go back to. */
+function onScreen(element: Element | null | undefined): element is HTMLElement {
+  return (
+    element instanceof HTMLElement &&
+    element !== document.body &&
+    element.isConnected &&
+    element.getClientRects().length > 0
+  );
+}
 
 /**
  * A glass sheet that rises from the bottom, for one short task. Dragging the
  * grabber down closes it, and so do the button, the scrim and Escape. It renders
  * inside the nearest [data-accent] wrapper, so it keeps the business's colour.
+ * Closed, it gives the keyboard's focus back (`returnFocus`), never to the
+ * top of the page.
  */
 export function Sheet({
   open,
@@ -36,9 +61,15 @@ export function Sheet({
   closeLabel,
   action,
   readingLabel,
+  returnFocus,
   children,
 }: SheetProps) {
   const anchor = useRef<HTMLSpanElement>(null);
+  // What held the focus as it opened, before the sheet takes it.
+  const opener = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    if (open) opener.current = document.activeElement;
+  }, [open]);
   const pull = useRef<number | null>(null);
   const [offset, setOffset] = useState(0);
 
@@ -68,6 +99,24 @@ export function Sheet({
           <Dialog.Overlay className="fixed inset-0 z-40 bg-[var(--scrim)] data-[state=closed]:animate-[fade-out_200ms] data-[state=open]:animate-[fade-in_200ms]" />
           <Dialog.Content
             aria-describedby={undefined}
+            onCloseAutoFocus={(event) => {
+              const chosen = returnFocus ? returnFocus() : opener.current;
+              opener.current = null;
+              // Something already took the focus as it closed (a toast's
+              // way back): it stays there.
+              const active = document.activeElement;
+              const inside =
+                event.target instanceof Node &&
+                active !== null &&
+                event.target.contains(active);
+              if (onScreen(active) && !inside) {
+                event.preventDefault();
+                return;
+              }
+              if (!onScreen(chosen)) return;
+              event.preventDefault();
+              chosen.focus({ preventScroll: true });
+            }}
             style={
               offset ? { transform: `translateY(${offset}px)` } : undefined
             }

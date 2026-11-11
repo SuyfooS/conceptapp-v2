@@ -54,6 +54,15 @@ export type ChatDemoMessage = {
   /** Null once removed: by its author, or by management in a group. */
   body: string | null;
   removedBy?: "author" | "management";
+  /** An announcement from management (C3). */
+  kind?: "announcement";
+};
+
+/** A group's pinned announcement (C3): which message, and who confirmed it when. */
+export type ChatDemoPinned = {
+  message: string;
+  /** Who of the group confirmed it, and when. */
+  confirmedBy: Record<string, string>;
 };
 
 export type ChatDemoConversation = {
@@ -78,6 +87,8 @@ export type ChatDemoConversation = {
   messages: ChatDemoMessage[];
   /** How someone answers in the demo when Shiran writes. */
   reply?: { author: string; body: string };
+  /** Its pinned announcement, waiting for Shiran's "קראתי" (C3). */
+  pinned?: ChatDemoPinned;
 };
 
 const at = (day: string, time: string) =>
@@ -97,12 +108,30 @@ const said = (
   return { id: `m${next}`, author, at: at(day, time), body, removedBy };
 };
 
+/** The owner's announcement in the whole team's group, pinned (C3). */
+const announcement: ChatDemoMessage = {
+  ...said(
+    "uri",
+    CHAT_DEMO_TODAY,
+    "07:50",
+    "מהשבוע הבא סוגרים את הקופה ב-22:00",
+  ),
+  kind: "announcement",
+};
+
 export const chatDemoConversations: ChatDemoConversation[] = [
   {
     id: "team",
     kind: "team",
     members: chatDemoPeople.map((p) => p.id),
     unread: 1,
+    pinned: {
+      message: announcement.id,
+      confirmedBy: {
+        noa: at(CHAT_DEMO_TODAY, "07:58"),
+        itay: at(CHAT_DEMO_TODAY, "08:07"),
+      },
+    },
     messages: [
       said(
         "uri",
@@ -112,6 +141,7 @@ export const chatDemoConversations: ChatDemoConversation[] = [
       ),
       said("maya", YESTERDAY, "18:34", "תודה אורי"),
       said("noa", YESTERDAY, "18:36", "תודה, היה כיף"),
+      announcement,
       said("shiran", CHAT_DEMO_TODAY, "08:05", "בוקר טוב. הספק מגיע ב-10:00"),
       said("itay", CHAT_DEMO_TODAY, "08:07", "אני כבר פה, אקבל אותו"),
     ],
@@ -243,6 +273,20 @@ export const chatDemoConversations: ChatDemoConversation[] = [
     reply: { author: "maya", body: "אין בעיה" },
   },
 ];
+
+/**
+ * An earlier announcement of Shiran's in the kitchen's group, no longer
+ * pinned (C3): /design/chat/announcements lists it under the pinned ones.
+ */
+export const chatDemoEarlierAnnouncement = {
+  message: {
+    id: "a-earlier",
+    author: CHAT_DEMO_READER,
+    at: at(SUNDAY, "09:00"),
+    body: "תזכורת: ביום חמישי מגיעה ביקורת תברואה. מסדרים את המחסן עד רביעי בערב",
+  },
+  conversation: "kitchen",
+};
 
 /** What Shiran tried to send in `?state=failed`, when the network let her down. */
 export const chatDemoFailed = "אחזור אלייך עד הצהריים";

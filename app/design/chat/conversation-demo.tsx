@@ -1,10 +1,22 @@
 "use client";
 
-import { CHAT_MESSAGE_MAX, type ChatKind, groupMessages } from "@domain/chat";
+import {
+  CHAT_MESSAGE_MAX,
+  type ChatKind,
+  chatPreview,
+  groupMessages,
+} from "@domain/chat";
+import {
+  type MessageAction,
+  messageActions,
+  UNDO_SHOWN_MS,
+} from "@domain/chat-announce";
 import { messageTime } from "@domain/chat-days";
+import { AnnouncementCard } from "@ui/announcement-card";
 import { ChatHeader } from "@ui/chat-header";
 import { Composer } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
+import { ListGroup, ListRow } from "@ui/list-row";
 import {
   MessageBubble,
   type MessageContent,
@@ -12,8 +24,14 @@ import {
   type MessageStatus,
 } from "@ui/message-bubble";
 import { NewBelow } from "@ui/new-below";
+import { PageSection } from "@ui/page";
+import { PersonList, PersonRow } from "@ui/person-row";
+import { Sheet } from "@ui/sheet";
+import { StatusToast } from "@ui/status-toast";
+import { Copy, Pin, PinOff, Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { InfoButton } from "../../(app)/chat/info-button";
 
 export type DemoBubble = {
   id: string;
@@ -26,7 +44,33 @@ export type DemoBubble = {
   removedBy?: "author" | "management";
   sending?: boolean;
   failed?: boolean;
+  /** An announcement from management (C3). */
+  announcement?: boolean;
 };
+
+/** Someone of the group, for the readers sheet. */
+export type DemoReader = {
+  id: string;
+  name: string;
+  photo: string | null;
+  /** When they confirmed, as "08:07"; null: not yet. */
+  at: string | null;
+};
+
+/** The group's pinned announcement, as Shiran sees it (C3). */
+export type DemoPinned = {
+  /** Its message among the bubbles. */
+  id: string;
+  authorName: string;
+  /** "08:10". */
+  time: string;
+  body: string;
+  /** Everyone it asks, Shiran among them. */
+  readers: DemoReader[];
+};
+
+/** What the demo opens with: `?state=confirmed|readers|actions`. */
+export type DemoOpened = "confirmed" | "readers" | "actions" | null;
 
 type Props = {
   kind: ChatKind;
@@ -50,6 +94,20 @@ type Props = {
   empty: string;
   /** How someone answers, once, when Shiran writes. */
   reply: { author: string; authorName: string; body: string } | null;
+  /** Its pinned announcement, if any (C3). */
+  pinned?: DemoPinned | null;
+  /**
+   * Shiran manages: she removes others' messages in groups and unpins, and
+   * posts announcements there ("הודעה מההנהלה").
+   */
+  moderates?: boolean;
+  opened?: DemoOpened;
+  /** `?announce=1`: the composer opens as "הודעה מההנהלה". */
+  announceFirst?: boolean;
+  /** The phone's details page, /design/chat/<id>/info. */
+  infoHref: string;
+  /** The details, for the tablet's sheet from the title. */
+  details: ReactNode;
 };
 
 /** How long a sent message is on its way, and how long until the answer. */
@@ -104,9 +162,36 @@ export function ConversationDemo({
   blocked,
   empty,
   reply,
+  pinned,
+  moderates = false,
+  opened = null,
+  announceFirst = false,
+  infoHref,
+  details,
 }: Props) {
   const t = useTranslations("app.chat");
   const [messages, setMessages] = useState(initial);
+  // Management writes an announcement in a group with the composer's switch.
+  const canAnnounce = moderates && kind !== "direct" && blocked === null;
+  const [announce, setAnnounce] = useState(canAnnounce && announceFirst);
+  const [confirmed, setConfirmed] = useState(opened === "confirmed");
+  // Waiting for her "קראתי" when the screen opened, it stays under the title.
+  const [stuck] = useState(opened !== "confirmed");
+  const [pinShown, setPinShown] = useState(true);
+  const [readersOpen, setReadersOpen] = useState(opened === "readers");
+  const [actionsFor, setActionsFor] = useState<DemoBubble | null>(() =>
+    opened === "actions"
+      ? (initial.findLast((m) => m.author !== reader && m.body !== null) ??
+        null)
+      : null,
+  );
+  const [toast, setToast] = useState<{
+    text: string;
+    stamp: number;
+    undo?: () => void;
+  } | null>(null);
+  const say = (text: string, undo?: () => void) =>
+    setToast({ text, stamp: Date.now(), undo });
   const [draft, setDraft] = useState("");
   const [seen, setSeen] = useState(seenUpTo);
   const [below, setBelow] = useState(false);
@@ -176,11 +261,22 @@ export function ConversationDemo({
       Date.parse(now) + sentCount.current * 1000,
     ).toISOString();
     toTheEnd.current = true;
+    const asAnnouncement = announce && canAnnounce;
     setMessages((list) => [
       ...list,
-      { id, author: reader, authorName: "", at, body, sending: true },
+      {
+        id,
+        author: reader,
+        authorName: "",
+        at,
+        body,
+        sending: true,
+        announcement: asAnnouncement,
+      },
     ]);
     setDraft("");
+    // One announcement at a time: what is written next is a message again.
+    setAnnounce(false);
     arrive(id);
     answer(at);
   }
@@ -219,7 +315,64 @@ export function ConversationDemo({
     return null;
   }
 
+  function actionsOf(m: DemoBubble): MessageAction[] {
+    if (m.sending || m.failed) return [];
+    // The demo pins only the group's own announcement: one Shiran sends
+    // here offers what any message of hers does.
+    const theAnnouncement = m.announcement === true && m.id === pinned?.id;
+    return messageActions(
+      {
+        authorId: m.author,
+        kind: theAnnouncement ? "announcement" : "text",
+        body: m.body,
+        pinned: theAnnouncement && pinShown,
+        removed: m.body === null,
+      },
+      { readerId: reader, chat: kind, moderates, closed: blocked !== null },
+    );
+  }
+
+  function act(action: MessageAction) {
+    const m = actionsFor;
+    setActionsFor(null);
+    if (!m) return;
+    if (action === "copy") {
+      say(t("messageActions.copied"));
+      return;
+    }
+    if (action === "pin" || action === "unpin") {
+      setPinShown(action === "pin");
+      say(
+        action === "pin"
+          ? t("announcement.pinned")
+          : t("announcement.unpinned"),
+      );
+      return;
+    }
+    const own = m.author === reader;
+    setMessages((list) =>
+      list.map((x) =>
+        x.id === m.id
+          ? { ...x, body: null, removedBy: own ? "author" : "management" }
+          : x,
+      ),
+    );
+    if (m.announcement) setPinShown(false);
+    say(own ? t("messageActions.deleted") : t("messageActions.removed"), () => {
+      setMessages((list) => list.map((x) => (x.id === m.id ? m : x)));
+      if (m.announcement) setPinShown(true);
+      say(t("messageActions.restored"));
+    });
+  }
+
   function contentOf(m: DemoBubble): MessageContent {
+    if (m.body !== null && m.announcement) {
+      return {
+        kind: "announcement",
+        body: m.body,
+        label: t("announcement.label"),
+      };
+    }
     if (m.body !== null) return { kind: "text", body: m.body };
     return {
       kind: "removed",
@@ -237,10 +390,75 @@ export function ConversationDemo({
       ...m,
       authorId: m.author,
       createdAt: m.at,
-      kind: "text" as const,
+      kind: m.announcement ? ("announcement" as const) : ("text" as const),
     })),
     timeZone,
   );
+
+  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+  const readers = (pinned?.readers ?? []).map((r) =>
+    r.id === reader && confirmed && !r.at ? { ...r, at: "08:12" } : r,
+  );
+  const card =
+    pinned && pinShown ? (
+      <AnnouncementCard
+        tone="accent"
+        label={t("announcement.label")}
+        byline={t.rich("announcement.byline", {
+          name: pinned.authorName,
+          time: pinned.time,
+          ltr,
+        })}
+        body={pinned.body}
+        confirm={{
+          confirmed,
+          label: t("announcement.confirm"),
+          confirmedLabel: t("announcement.confirmed"),
+          onConfirm: () => setConfirmed(true),
+          note: t("announcement.whoSees"),
+        }}
+        readers={
+          moderates
+            ? {
+                label: t.rich("announcement.readBy", {
+                  count: readers.filter((r) => r.at).length,
+                  total: readers.length,
+                  ltr,
+                }),
+                onOpen: () => setReadersOpen(true),
+              }
+            : null
+        }
+        unpin={
+          moderates
+            ? {
+                label: t("announcement.unpin"),
+                onClick: () => {
+                  setPinShown(false);
+                  say(t("announcement.unpinned"), () => {
+                    setPinShown(true);
+                    say(t("announcement.pinned"));
+                  });
+                },
+              }
+            : null
+        }
+      />
+    ) : null;
+  const icons: Record<MessageAction, ReactNode> = {
+    copy: <Copy />,
+    delete: <Trash2 />,
+    remove: <Trash2 />,
+    pin: <Pin />,
+    unpin: <PinOff />,
+  };
+  const actionWords: Record<MessageAction, string> = {
+    copy: t("messageActions.copy"),
+    delete: t("messageActions.delete"),
+    remove: t("messageActions.remove"),
+    pin: t("announcement.pin"),
+    unpin: t("announcement.unpin"),
+  };
 
   return (
     <section
@@ -252,7 +470,11 @@ export function ConversationDemo({
         subtitle={subtitle}
         leading={leading}
         back={{ href: backHref, label: t("conversation.back") }}
+        trailing={<InfoButton href={infoHref} details={details} />}
+        below={stuck ? card : null}
+        belowLabel={t("announcement.label")}
       />
+      {!stuck && card ? <div className="pt-3">{card}</div> : null}
       <div
         role="log"
         aria-label={t("conversation.log")}
@@ -283,6 +505,14 @@ export function ConversationDemo({
                       content={contentOf(m)}
                       time={{ label: messageTime(m.at, timeZone), at: m.at }}
                       status={statusOf(m)}
+                      actions={
+                        actionsOf(m).length > 0
+                          ? {
+                              label: t("messageActions.open"),
+                              onOpen: () => setActionsFor(m),
+                            }
+                          : null
+                      }
                     />
                   );
                 }),
@@ -293,7 +523,21 @@ export function ConversationDemo({
       </div>
       <Composer
         label={t("conversation.placeholder")}
-        sendLabel={t("conversation.send")}
+        sendLabel={
+          announce && canAnnounce
+            ? t("announcement.send")
+            : t("conversation.send")
+        }
+        toggle={
+          canAnnounce
+            ? {
+                label: t("announcement.switch"),
+                checked: announce,
+                onChange: setAnnounce,
+                hint: t("announcement.switchHint"),
+              }
+            : null
+        }
         value={draft}
         onValueChange={setDraft}
         onSend={send}
@@ -311,6 +555,103 @@ export function ConversationDemo({
               toEnd(true);
             }}
           />
+        }
+      />
+      <Sheet
+        open={actionsFor !== null}
+        onOpenChange={(open) => {
+          if (!open) setActionsFor(null);
+        }}
+        title={t("messageActions.title")}
+        closeLabel={t("messageActions.close")}
+      >
+        <div className="flex flex-col gap-3 px-2 pb-2">
+          {actionsFor?.body ? (
+            <p
+              dir="auto"
+              className="rounded-card bg-elevated px-4 py-3 text-start text-ink-2 wrap-anywhere"
+            >
+              {chatPreview(actionsFor.body, 160)}
+            </p>
+          ) : null}
+          <ListGroup className="bg-elevated shadow-none">
+            {(actionsFor ? actionsOf(actionsFor) : []).map((action) => (
+              <ListRow
+                key={action}
+                leading={icons[action]}
+                title={
+                  action === "delete" || action === "remove" ? (
+                    <span className="text-danger">{actionWords[action]}</span>
+                  ) : (
+                    actionWords[action]
+                  )
+                }
+                subtitle={
+                  action === "remove"
+                    ? t("messageActions.removeHint")
+                    : action === "delete"
+                      ? t("messageActions.deleteHint")
+                      : undefined
+                }
+                onClick={() => act(action)}
+              />
+            ))}
+          </ListGroup>
+        </div>
+      </Sheet>
+      {pinned ? (
+        <Sheet
+          open={readersOpen}
+          onOpenChange={setReadersOpen}
+          title={t("announcement.readers.title")}
+          subtitle={t("announcement.readers.subtitle")}
+          closeLabel={t("announcement.readers.close")}
+          readingLabel={t("announcement.readers.title")}
+        >
+          <div className="flex flex-col gap-5 px-2 pb-2">
+            <PageSection title={t("announcement.readers.confirmed")} level={3}>
+              <PersonList className="bg-elevated shadow-none">
+                {readers
+                  .filter((r) => r.at)
+                  .map((r) => (
+                    <PersonRow
+                      key={r.id}
+                      name={r.name}
+                      photo={r.photo}
+                      title={r.name}
+                      subtitle={t.rich("announcement.readers.at", {
+                        time: r.at ?? "",
+                        ltr,
+                      })}
+                    />
+                  ))}
+              </PersonList>
+            </PageSection>
+            <PageSection title={t("announcement.readers.waiting")} level={3}>
+              <PersonList className="bg-elevated shadow-none">
+                {readers
+                  .filter((r) => !r.at)
+                  .map((r) => (
+                    <PersonRow
+                      key={r.id}
+                      name={r.name}
+                      photo={r.photo}
+                      title={r.name}
+                    />
+                  ))}
+              </PersonList>
+            </PageSection>
+          </div>
+        </Sheet>
+      ) : null}
+      <StatusToast
+        message={toast?.text ?? null}
+        stamp={toast ? String(toast.stamp) : undefined}
+        duration={toast?.undo ? UNDO_SHOWN_MS : 4000}
+        action={
+          toast?.undo
+            ? { label: t("messageActions.undo"), onClick: toast.undo }
+            : null
         }
       />
     </section>

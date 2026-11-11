@@ -615,7 +615,7 @@ someone on the staff with chat on: 42501 otherwise, 55000 with chat off; no log 
 `private.seed_demo_chat`, which the reset ends with, writes the demo's conversations
 through the chat functions, all `seeded` and at times relative to now: the owner's
 thanks and the manager's two morning messages (read by the first two workers) in the
-team's group, with no announcement until C3 brings the "קראתי" that settles one, the
+team's group (the second an announcement from C3, below), the
 first worker's message and the
 manager's answer in that worker's first department, and the manager's private chat with
 that worker (the question read, the answer not yet). It picks people by role in the
@@ -624,14 +624,34 @@ order the definition names them, in both definitions alike
 `added_at` a month back, so they read that history. `@db/chat` adds `getChatDirectory`
 (names, photos and departments the screens title chats with, nothing of any chat),
 `getChatList` (the inbox, titled), `getConversation` (now with its title, whether one
-may write in it and the names its messages show), `getConversationKind` and `getChatAuthors` (for
-`/chat-sync`), `getMessages`'s `since` (the sync's second look, a moment before its cursor, for a
+may write in it and the names its messages show), `getConversationStamp` (its kind and, from
+C3, its `changed_at`) and `getChatAuthors` (for `/chat-sync`), `getMessages`'s `since` (the sync's second look, a moment before its cursor, for a
 message stamped earlier but written later), `withOwnDrafts` (the draft each of the reader's own
 messages was sent with, read under their session: how the screen knows its own message on its
 way), `chatNoticeSeen` and `seeChatNotice`; `getOwnPlace` in `@db/session`
 reads who is signed in and their business in one round, for the sync. Covered by
 `chat_on.test.sql`, with `isolation`, `demo_reset`, `templates`, `create_business` and
 `rls_enabled`.
+
+Chat's announcements on screen (`20261111000400_chat_announce.sql`, chat C3), which
+replaces only `private.seed_demo_chat`: the manager's 08:10 line in the team's group is
+an announcement now, pinned, and the first two workers confirm it as they read it
+(`public.confirm_announcement`), so their own lines about it are settled and the
+owner's and any other worker's wait. Every other part is C1's: `@db/chat` adds
+`getOwnConfirmations` (which announcements the reader confirmed, their own rows under
+RLS), `getPinnedState` (a conversation's pinned announcements as the reader sees them,
+with whether they confirmed each and, for its author and management only, how many of
+the group did, from `public.announcement_readers`, which is asked only for those),
+`getRemovedMessages` and `getMessagesById` (what `/chat-sync` reads again of what a
+screen holds when the conversation's `changed_at` moved: the removed messages from its
+oldest to its newest, however far up, and those it shows as removed, to put back one
+restored), `getWaitingAnnouncements` (the
+pinned ones waiting for the reader's "קראתי", for Today) and `getAnnouncements` (every
+announcement in the reader's groups, pinned first, for `/chat/announcements`); the
+writes it calls (`confirmAnnouncement`, `pinAnnouncement`, `removeChatMessage`,
+`restoreChatMessage`, `muteChat`) were there since C1. `getOwnPlace` reads the
+membership's `perms` too, so the sync knows who holds `chat.moderate`. Covered by
+`chat_announce.test.sql`, with `chat_on.test.sql`'s seed checks.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

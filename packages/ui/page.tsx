@@ -42,6 +42,11 @@ export type PageHeaderProps = {
    * hit with a thumb), inline at the end of the header from tablet up.
    */
   actions?: ReactNode;
+  /**
+   * The title, for a screen that puts the keyboard's focus there when it
+   * opens with nothing focused (what was pressed to open it went away).
+   */
+  headingRef?: Ref<HTMLHeadingElement>;
 };
 
 /**
@@ -54,6 +59,7 @@ export function PageHeader({
   eyebrow,
   back,
   actions,
+  headingRef,
 }: PageHeaderProps) {
   const header = useRef<HTMLElement>(null);
   const [scrolled, setScrolled] = useState(false);
@@ -88,7 +94,13 @@ export function PageHeader({
           </Link>
         ) : null}
         {eyebrow ? <p className="text-base text-ink-2">{eyebrow}</p> : null}
-        <h1 className="text-balance font-bold text-2xl">{title}</h1>
+        <h1
+          ref={headingRef}
+          tabIndex={headingRef ? -1 : undefined}
+          className="text-balance font-bold text-2xl outline-none"
+        >
+          {title}
+        </h1>
         {subtitle ? <p className="text-base text-ink-2">{subtitle}</p> : null}
       </div>
       {actions ? (
