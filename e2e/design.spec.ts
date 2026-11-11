@@ -148,10 +148,10 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
 ];
 
-// Demo states that open with a sheet (who confirmed, a message's actions, a
-// picture shown whole): the sheet hides the page behind it from the
-// accessibility tree.
-const OPENS_A_SHEET = /[?&]state=(readers|actions|photo)\b/;
+// The chat demo's states that open with a sheet (who confirmed, a message's
+// actions, a picture shown whole): the sheet hides the page behind it from
+// the accessibility tree. Lists' `?state=photo` opens none.
+const OPENS_A_SHEET = /^\/design\/chat\/.*[?&]state=(readers|actions|photo)\b/;
 
 async function expectCleanPage(page: Page, path = "") {
   await expect(page).toHaveTitle(/ConceptApp$/);

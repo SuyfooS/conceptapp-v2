@@ -56,6 +56,11 @@ for (const colorScheme of ["light", "dark"] as const) {
       test(`${path} is clean`, async ({ page }) => {
         await page.goto(path);
         await expect(page).toHaveTitle(/ConceptApp$/);
+        // The title can arrive with a streamed page's skeleton: wait for the
+        // page itself before checking it.
+        await expect(
+          page.getByRole("heading", { level: 1 }).first(),
+        ).toBeAttached();
         await expectAccessible(page);
       });
     }
