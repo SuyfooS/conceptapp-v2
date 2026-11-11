@@ -471,6 +471,8 @@ export const chatListRow = z.object({
   lastKind: z.enum(CHAT_MESSAGE_KINDS).nullable(),
   lastPreview: z.string().nullable(),
   lastFileKind: z.enum(CHAT_FILE_KINDS).nullable(),
+  /** Left out by an answer from before C5. */
+  lastFileName: z.string().nullable().catch(null),
   unread: count,
   muted: z.boolean(),
   closed: z.boolean(),

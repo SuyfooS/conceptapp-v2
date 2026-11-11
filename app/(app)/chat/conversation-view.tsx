@@ -16,6 +16,7 @@ import {
   type ChatDetailsProps,
   type DetailsPerson,
 } from "./chat-details";
+import type { DetailsPdf } from "./chat-files-details";
 import { chatTitleText } from "./chat-paths";
 import type { DetailsPicture } from "./chat-pictures-grid";
 import type { ChatActionResult } from "./chat-types";
@@ -63,6 +64,7 @@ export function ConversationView({
   demo,
   files,
   pictures,
+  pdfs,
   actions,
   pinned,
   powers,
@@ -90,10 +92,12 @@ export function ConversationView({
   fileDays: number;
   /** A demo business: anyone at its door reads every chat. */
   demo: boolean;
-  /** Whether the business takes pictures in chat (C4, `chatFilesAllowed`). */
+  /** Whether the business takes files in chat (C4, C5, `chatFilesAllowed`). */
   files: "yes" | "demo" | "notYet";
   /** The conversation's latest pictures, for its details. */
   pictures: readonly DetailsPicture[];
+  /** The conversation's latest PDFs, for its details (C5). */
+  pdfs: readonly DetailsPdf[];
   actions: ConversationActions;
   /** Its pinned announcements, newest first, as the reader sees them (C3). */
   pinned: PinnedAnnouncement[];
@@ -159,6 +163,7 @@ export function ConversationView({
     demo,
     files,
     pictures,
+    pdfs,
     mute,
     wording,
   };

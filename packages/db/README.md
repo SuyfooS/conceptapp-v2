@@ -706,6 +706,43 @@ read);
 `fileSrc` and `thumbSrc`. Covered by `chat_files.test.sql`, with `chat.test.sql` (the
 confirmation's timing), `isolation` and `demo_reset`.
 
+Chat's PDFs (`20261111000600_chat_pdfs.sql`, chat C5), up to 10 MiB. Vercel refuses
+request bodies over 4.5 MB, so a PDF never passes through the server: `startChatPdf` in
+`@db/chat-files` checks its name (cleaned, ending in `.pdf`) and size, reserves its place
+(`public.reserve_chat_upload` with kind `pdf`, replaced with the same grants: a PDF's
+name ends in `.pdf`, 22023; a person holds at most 10 PDF places unsent from the last day
+that hold a file or may still be given one, 54000 with hint `pdfs`, since what the browser
+put and never sent waits for the clean-up a day on; a business's PDFs reserved in the last
+10 minutes, sent or not, bring at most its `fileSpaceMb`, 54000 with hint `busy`, so
+nobody fills Storage faster than the job lets files go; the 900 MB guard counts the places
+on their way, a PDF's for 10 MiB whatever its size, `private.uploads_on_their_way`; a
+person's reservations, and a business's PDFs, are counted one at a time under advisory
+locks) and makes Storage's signed upload for that one path with the secret key (`upsert`
+off). That upload is good for 2 hours and writes wherever nothing is, so a place let go
+while it may still be good holds the server's 1-byte tombstone (`chatPlaceTombstone` in
+`@domain/chat-files`) rather than nothing: on a stop, a refusal on finishing, and in
+`cleanChatFiles`, for the PDFs `public.chat_paths_signed` names (a place under 2 hours and
+5 minutes old). The browser PUTs the file to that URL itself, with no Supabase client and
+no session. `finishChatPdf` asks
+`public.chat_upload_place(actor, business, upload, at_time)` (the server's alone: the
+person's own reservation's path, conversation, kind, size and name, whether it was sent and
+whether its 2 hours are on; null for anyone else's), so the file it reads is the
+reservation's and never a path the browser names; reads its first KB with a ranged request
+(a short-lived signed link; when the range isn't honoured, the rest of the transfer is
+cancelled after the first KB), checks `%PDF-` (`isPdf` in `@domain/chat-files`) and sends it
+with C4's `public.send_chat_message`, which checks its size and type in `storage.objects`.
+On any refusal the file gives way to the tombstone, unless a message holds it by then (a
+retry of the same sending is given back its message and never loses its file), and a later
+try of that place is told to start again (`expired`); `cancelChatPdf` lets go the place of
+a sending stopped and says whether it was sent after all. `chatPdfDownload` serves `/chat-files`: the message
+read under the reader's session, the file downloaded under it and streamed on after its
+first KB proved it a PDF, as a download (`chatPdfDisposition`: `attachment`, the name in
+UTF-8 per RFC 5987 with the ASCII fallback `document.pdf`). `getConversationPdfs` gives a
+conversation's latest PDFs for its details. `public.chat_inbox` gives `last_file_name` too
+(dropped and made again, the same grants), for "קובץ PDF" with its name in the list, and
+lists a private chat only once it has a message (a file's reservation opens it first). A demo
+business takes no PDF, as no picture (C4's refusals). Covered by `chat_pdfs.test.sql`.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

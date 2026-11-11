@@ -86,6 +86,7 @@ export default async function WithPersonPage({
       demo={access.demo}
       files={files}
       pictures={[]}
+      pdfs={[]}
       actions={boundChatActions(businessId)}
       pinned={[]}
       powers={{ announce: false, moderate: false }}

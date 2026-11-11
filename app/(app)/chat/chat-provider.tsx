@@ -124,16 +124,17 @@ type ChatContextValue = Omit<ChatFrame, "rows" | "noticeSeen" | "now"> & {
     change: (row: ChatListRow) => ChatListRow,
   ) => void;
   /**
-   * The pictures' messages a conversation on screen showed as removed, or
-   * with their file no longer kept (C4), by id: the details' pictures, drawn
-   * by the server, leave them out at once, and one open from there closes.
+   * The files' messages (pictures, C4; PDFs, C5) a conversation on screen
+   * showed as removed, or with their file no longer kept, by id: the
+   * details' pictures and PDFs, drawn by the server, leave them out at once,
+   * and a picture open from there closes.
    */
-  picturesGone: ReadonlySet<string>;
+  filesGone: ReadonlySet<string>;
   /**
-   * The conversation screen says which of its pictures' messages it shows
-   * as gone now, and which as there (one put back).
+   * The conversation screen says which of its files' messages it shows as
+   * gone now, and which as there (one put back).
    */
-  notePictures: (gone: readonly string[], shown: readonly string[]) => void;
+  noteFiles: (gone: readonly string[], shown: readonly string[]) => void;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -422,12 +423,12 @@ export function ChatProvider({
     },
     [],
   );
-  const [picturesGone, setPicturesGone] = useState<ReadonlySet<string>>(
+  const [filesGone, setFilesGone] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
-  const notePictures = useCallback(
+  const noteFiles = useCallback(
     (gone: readonly string[], shown: readonly string[]) => {
-      setPicturesGone((now) => {
+      setFilesGone((now) => {
         let next: Set<string> | null = null;
         for (const id of gone.map((g) => g.toLowerCase())) {
           if (now.has(id)) continue;
@@ -491,8 +492,8 @@ export function ChatProvider({
       moved,
       readLocally,
       changeRowLocally,
-      picturesGone,
-      notePictures,
+      filesGone,
+      noteFiles,
     }),
     [
       frame,
@@ -507,8 +508,8 @@ export function ChatProvider({
       moved,
       readLocally,
       changeRowLocally,
-      picturesGone,
-      notePictures,
+      filesGone,
+      noteFiles,
     ],
   );
 

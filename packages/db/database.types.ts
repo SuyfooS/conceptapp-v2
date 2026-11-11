@@ -2559,6 +2559,7 @@ export type Database = {
           last_at: string;
           last_author: string;
           last_file_kind: string;
+          last_file_name: string;
           last_kind: string;
           last_preview: string;
           muted: boolean;
@@ -2594,6 +2595,10 @@ export type Database = {
           thumb_path: string;
         }[];
       };
+      chat_paths_signed: {
+        Args: { at_time?: string; paths: string[] };
+        Returns: string[];
+      };
       chat_seen: { Args: { conversation: string }; Returns: string };
       chat_stamp: {
         Args: { business: string; conversation: string };
@@ -2601,6 +2606,15 @@ export type Database = {
           changed: string;
           kind: string;
         }[];
+      };
+      chat_upload_place: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          upload: string;
+        };
+        Returns: Json;
       };
       chat_version: { Args: { business: string }; Returns: string };
       claim_due_pushes: {

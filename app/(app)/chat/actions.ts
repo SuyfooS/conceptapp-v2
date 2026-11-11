@@ -17,10 +17,24 @@ import {
   sendChatMessage,
   withOwnDrafts,
 } from "@db/chat";
-import { type ChatFileFailure, sendChatImage } from "@db/chat-files";
+import {
+  type ChatFileFailure,
+  type ChatPdfFailure,
+  type ChatPdfStart,
+  cancelChatPdf,
+  finishChatPdf,
+  sendChatImage,
+  startChatPdf,
+} from "@db/chat-files";
 import { parseChatCursor } from "@domain/chat";
 import { splitReaders } from "@domain/chat-announce";
-import { CHAT_IMAGE_MAX_BYTES, CHAT_THUMB_MAX_BYTES } from "@domain/chat-files";
+import {
+  CHAT_IMAGE_MAX_BYTES,
+  CHAT_THUMB_MAX_BYTES,
+  chatPdfCancelInput,
+  chatPdfFinishInput,
+  chatPdfStartInput,
+} from "@domain/chat-files";
 import { type ChatSyncPerson, chatSendInput } from "@domain/chat-sync";
 import { refresh } from "next/cache";
 import { z } from "zod";
@@ -30,6 +44,9 @@ import type {
   ChatActionFailure,
   ChatActionResult,
   ChatImageResult,
+  ChatPdfCancelResult,
+  ChatPdfFinishResult,
+  ChatPdfStartResult,
   ChatReaders,
   ReaderShown,
 } from "./chat-types";
@@ -184,6 +201,97 @@ export async function sendChatImageAction(
   );
   if (result.ok) pushSoon();
   return result;
+}
+
+/**
+ * Starts sending a PDF (C5; `chatPdfStartInput`: its `name` and `size` as
+ * the browser has them, the `draft` it will go under, and `conversation` or
+ * `toPerson`). Bound on the page to the business it was drawn for, which
+ * must still be the session's, and never while viewing as someone. The
+ * server checks the name (a .pdf) and size (1 byte to 10 MiB), reserves its
+ * place with the sending's own checks, and returns `ChatPdfStart`: the place
+ * (`upload`), the conversation (a new private chat's id when it opened one),
+ * the name as kept, and `signedUrl`, Storage's signed upload for that one
+ * path, good for 2 hours. The browser then PUTs the file's bytes to it with
+ * `Content-Type: application/pdf`, by itself (plain `fetch` or
+ * `XMLHttpRequest`, for its progress), with no Supabase client and no
+ * session, and calls `finishChatPdfAction`. Nothing is written to the
+ * conversation yet.
+ */
+export async function startChatPdfAction(
+  business: string,
+  input: unknown,
+): Promise<ChatPdfStartResult> {
+  const parsed = chatPdfStartInput.safeParse(input);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const asked = parsed.data;
+  return asMember<ChatPdfStart, ChatPdfFailure>(business, (actor, businessId) =>
+    startChatPdf(
+      actor,
+      businessId,
+      "conversation" in asked
+        ? {
+            draft: asked.draft,
+            name: asked.name,
+            size: asked.size,
+            conversation: asked.conversation,
+          }
+        : {
+            draft: asked.draft,
+            name: asked.name,
+            size: asked.size,
+            toPerson: asked.toPerson,
+          },
+    ),
+  );
+}
+
+/**
+ * Sends the PDF the browser put at its place (C5; `chatPdfFinishInput`: the
+ * `upload` `startChatPdfAction` gave, the same `draft`, and the `words`
+ * sent with it). The server reads the place's file (its database's path,
+ * never one the browser names), checks its first KB is a PDF's, and sends it,
+ * the database checking its size and type in Storage; on any refusal the file
+ * is let go (the server's tombstone replaces it, so its signed upload can't
+ * write there again, and a later try is told to start again). Sending again
+ * with the same draft gives back the same message.
+ * Returns where it went and the message's id; the next sync brings it. Its
+ * push goes as a message's does.
+ */
+export async function finishChatPdfAction(
+  business: string,
+  input: unknown,
+): Promise<ChatPdfFinishResult> {
+  const parsed = chatPdfFinishInput.safeParse(input);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const finished = parsed.data;
+  const result = await asMember<
+    { conversation: string; message: string },
+    ChatPdfFailure
+  >(business, (actor, businessId) =>
+    finishChatPdf(actor, businessId, finished),
+  );
+  if (result.ok) pushSoon();
+  return result;
+}
+
+/**
+ * The person stopped sending a PDF (C5; `chatPdfCancelInput`: its
+ * `upload`): its place is let go (whatever the browser put there gives way to
+ * the server's tombstone), unless it was sent, which the answer says
+ * (`sent`). The screen aborts its PUT first.
+ */
+export async function cancelChatPdfAction(
+  business: string,
+  input: unknown,
+): Promise<ChatPdfCancelResult> {
+  const parsed = chatPdfCancelInput.safeParse(input);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const { upload } = parsed.data;
+  return asMember<{ sent: boolean }, ChatPdfFailure>(
+    business,
+    (actor, businessId) => cancelChatPdf(actor, businessId, upload),
+  );
 }
 
 const conversationId = z.uuid();

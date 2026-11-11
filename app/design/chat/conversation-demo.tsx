@@ -12,7 +12,17 @@ import {
   UNDO_SHOWN_MS,
 } from "@domain/chat-announce";
 import { messageTime } from "@domain/chat-days";
+import {
+  CHAT_PDF_ACCEPT,
+  CHAT_PDF_MAX_BYTES,
+  type ChatPdfProblem,
+  chatFileSize,
+  checkChatPdf,
+  pickedPdfName,
+  shownFileName,
+} from "@domain/chat-files";
 import { AnnouncementCard } from "@ui/announcement-card";
+import { AttachSheet } from "@ui/attach-sheet";
 import { ChatHeader } from "@ui/chat-header";
 import { Composer, type ComposerAttached } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
@@ -35,8 +45,8 @@ import {
 import { PhotoSheet } from "@ui/photo-sheet";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
-import { Copy, Pin, PinOff, Trash2 } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { Copy, FileText, ImageIcon, Pin, PinOff, Trash2 } from "lucide-react";
+import { useFormatter, useTranslations } from "next-intl";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { InfoButton } from "../../(app)/chat/info-button";
 
@@ -57,6 +67,15 @@ export type DemoBubble = {
   photo?: string | null;
   /** Its picture is no longer kept: the message stays. */
   fileGone?: boolean;
+  /**
+   * Its PDF (C5): its name, size, and where it downloads from once it is
+   * there (the demo's own file, or the one Shiran picked here).
+   */
+  pdf?: { name: string; size: number; href: string } | null;
+  /** A PDF on its way: how much of it went up (0 to 1). */
+  progress?: number | null;
+  /** A PDF on its way, being checked once its bytes are up. */
+  checking?: boolean;
 };
 
 /** Someone of the group, for the readers sheet. */
@@ -80,8 +99,20 @@ export type DemoPinned = {
   readers: DemoReader[];
 };
 
-/** What the demo opens with: `?state=confirmed|readers|actions|photo`. */
-export type DemoOpened = "confirmed" | "readers" | "actions" | "photo" | null;
+/**
+ * What the demo opens with: `?state=confirmed|readers|actions|photo`, and
+ * for PDFs (C5) `attach` (the attach sheet open), `uploading` (Shiran's
+ * PDF part of the way up) and `pdfFailed` (one that didn't go).
+ */
+export type DemoOpened =
+  | "confirmed"
+  | "readers"
+  | "actions"
+  | "photo"
+  | "attach"
+  | "uploading"
+  | "pdfFailed"
+  | null;
 
 type Props = {
   kind: ChatKind;
@@ -123,6 +154,11 @@ type Props = {
 
 /** How long a sent message is on its way, and how long until the answer. */
 const ON_THE_WAY_MS = 700;
+/** A PDF goes up a tenth at a time, then is checked for a moment. */
+const UPLOAD_TICK_MS = 160;
+const CHECK_MS = 600;
+/** A PDF's limit in MB, as the words say it. */
+const PDF_MB = CHAT_PDF_MAX_BYTES / (1024 * 1024);
 const ANSWER_MS = 2200;
 /** This close to the end of the page counts as reading the newest. */
 const NEAR_END = 96;
@@ -154,7 +190,7 @@ function toEnd(smooth: boolean) {
 /** Whether a demo message was removed: by its author or by management. */
 const removedOf = (m: DemoBubble) =>
   m.removedBy !== undefined ||
-  (m.body === null && !m.photo && m.fileGone !== true);
+  (m.body === null && !m.photo && !m.pdf && m.fileGone !== true);
 
 /**
  * A conversation of the demo, with the parts the real screen uses: the
@@ -163,7 +199,10 @@ const removedOf = (m: DemoBubble) =>
  * once; nothing is stored. When the answer comes while she reads further up,
  * the page stays where it is and NewBelow says so. A picture (C4) opens whole
  * in a sheet; one she picks is made ready here, as the app does, and shown
- * from the browser.
+ * from the browser. The attach button opens the attach sheet (C5): a PDF she
+ * picks is checked for its name and size as the app checks it, goes up a bit
+ * at a time with its bar and the way to stop it, and then downloads from its
+ * chip, the file she picked.
  */
 export function ConversationDemo({
   kind,
@@ -188,6 +227,7 @@ export function ConversationDemo({
   details,
 }: Props) {
   const t = useTranslations("app.chat");
+  const format = useFormatter();
   const [messages, setMessages] = useState(initial);
   // Management writes an announcement in a group with the composer's switch.
   const canAnnounce = moderates && kind !== "direct" && blocked === null;
@@ -214,7 +254,20 @@ export function ConversationDemo({
   // A picture picked here: made ready as the app makes it, never sent.
   const [picked, setPicked] = useState<string | null>(null);
   const [preparing, setPreparing] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<ReactNode>(() =>
+    opened === "pdfFailed" ? t("pdfFailure.failed") : null,
+  );
+  // The attach sheet (C5), and a PDF picked for the next message.
+  const [attachOpen, setAttachOpen] = useState(opened === "attach");
+  const [pickedPdf, setPickedPdf] = useState<DemoBubble["pdf"]>(null);
+  // PDFs going up, by message, to stop them.
+  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  useEffect(() => {
+    const running = timers.current;
+    return () => {
+      for (const timer of running.values()) clearTimeout(timer);
+    };
+  }, []);
   // A newer pick, or taking it out, wins over one still being made ready.
   const picks = useRef(0);
   const [photo, setPhoto] = useState<{
@@ -235,8 +288,9 @@ export function ConversationDemo({
       : null;
   });
   const [photoOpen, setPhotoOpen] = useState(opened === "photo");
-  // A picture goes as a message: the switch steps aside while one is chosen.
-  const picturing = picked !== null || preparing;
+  // A picture or a PDF goes as a message: the switch steps aside while one
+  // is chosen.
+  const picturing = picked !== null || preparing || Boolean(pickedPdf);
   const [seen, setSeen] = useState(seenUpTo);
   const [below, setBelow] = useState(false);
   const toTheEnd = useRef(false);
@@ -303,6 +357,7 @@ export function ConversationDemo({
     const mine = picks.current;
     setProblem(null);
     setPicked(null);
+    setPickedPdf(null);
     setPreparing(true);
     try {
       const files = await encodeChatImage(file);
@@ -328,16 +383,109 @@ export function ConversationDemo({
     setPreparing(false);
   }
 
+  /** What the field says of a PDF that can't go, or was stopped. */
+  function pdfProblem(key: ChatPdfProblem | "failed" | "cancelled") {
+    return t.rich(`pdfFailure.${key}`, {
+      max: PDF_MB,
+      ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+    });
+  }
+
+  /**
+   * A PDF picked from the attach sheet: its name and size checked as the app
+   * checks them, then over the field until it goes; it downloads from the
+   * browser itself once sent.
+   */
+  function pickPdf(file: File) {
+    const checked = checkChatPdf({
+      name: pickedPdfName(file),
+      size: file.size,
+    });
+    if (!checked.ok) {
+      setProblem(pdfProblem(checked.problem));
+      return;
+    }
+    picks.current += 1;
+    setPicked(null);
+    setPreparing(false);
+    setProblem(null);
+    setPickedPdf({
+      name: checked.name,
+      size: checked.size,
+      href: URL.createObjectURL(file),
+    });
+  }
+
+  /** A PDF's size and kind, under its name. */
+  function pdfMeta(size: number): ReactNode {
+    const shown = chatFileSize(size);
+    const value = format.number(shown.value, { maximumFractionDigits: 1 });
+    return shown.unit === "mb"
+      ? t.rich("pdf.sizeMb", { size: value, ltr })
+      : t.rich("pdf.sizeKb", { size: value, ltr });
+  }
+
+  /** A PDF goes up a tenth at a time, is checked for a moment, and is there. */
+  function goUp(id: string) {
+    clearTimeout(timers.current.get(id));
+    const step = (progress: number) => {
+      if (progress < 1) {
+        setMessages((list) =>
+          list.map((m) =>
+            m.id === id ? { ...m, progress, checking: false } : m,
+          ),
+        );
+        timers.current.set(
+          id,
+          setTimeout(() => step(Math.min(1, progress + 0.1)), UPLOAD_TICK_MS),
+        );
+        return;
+      }
+      setMessages((list) =>
+        list.map((m) =>
+          m.id === id ? { ...m, progress: null, checking: true } : m,
+        ),
+      );
+      timers.current.set(
+        id,
+        setTimeout(() => {
+          timers.current.delete(id);
+          setMessages((list) =>
+            list.map((m) =>
+              m.id === id ? { ...m, sending: false, checking: false } : m,
+            ),
+          );
+        }, CHECK_MS),
+      );
+    };
+    step(0);
+  }
+
+  /** "ביטול השליחה": it stops, and what was written with it goes back to the field. */
+  function stopUpload(id: string) {
+    clearTimeout(timers.current.get(id));
+    timers.current.delete(id);
+    const stopped = messages.find((m) => m.id === id);
+    setMessages((list) => list.filter((m) => m.id !== id));
+    if (stopped?.body) {
+      const words = stopped.body;
+      setDraft((now) => (now.trim() === "" ? words : now));
+    }
+    setProblem(pdfProblem("cancelled"));
+  }
+
   function send(body: string) {
     const withPhoto = picked;
+    const withPdf = withPhoto ? null : (pickedPdf ?? null);
     setPicked(null);
+    setPickedPdf(null);
     sentCount.current += 1;
     const id = `sent-${sentCount.current}`;
     const at = new Date(
       Date.parse(now) + sentCount.current * 1000,
     ).toISOString();
     toTheEnd.current = true;
-    const asAnnouncement = announce && canAnnounce && !withPhoto;
+    const asAnnouncement = announce && canAnnounce && !withPhoto && !withPdf;
     setMessages((list) => [
       ...list,
       {
@@ -349,22 +497,29 @@ export function ConversationDemo({
         sending: true,
         announcement: asAnnouncement,
         photo: withPhoto,
+        pdf: withPdf,
+        progress: withPdf ? 0 : null,
       },
     ]);
     setDraft("");
     // One announcement at a time: what is written next is a message again.
     setAnnounce(false);
-    arrive(id);
+    if (withPdf) goUp(id);
+    else arrive(id);
     answer(at);
   }
 
   function retry(id: string) {
+    const again = messages.find((m) => m.id === id);
     setMessages((list) =>
       list.map((m) =>
         m.id === id ? { ...m, failed: false, sending: true } : m,
       ),
     );
-    arrive(id);
+    if (again?.pdf) {
+      setProblem(null);
+      goUp(id);
+    } else arrive(id);
   }
 
   const lastSeen =
@@ -435,6 +590,7 @@ export function ConversationDemo({
               ...x,
               body: null,
               photo: null,
+              pdf: null,
               fileGone: false,
               removedBy: own ? "author" : "management",
             }
@@ -450,6 +606,43 @@ export function ConversationDemo({
   }
 
   function contentOf(m: DemoBubble): MessageContent {
+    if (!removedOf(m) && m.pdf) {
+      const there = !m.sending && !m.failed;
+      const going =
+        typeof m.progress === "number" && !m.checking ? m.progress : null;
+      return {
+        kind: "pdf",
+        body: m.body,
+        file: {
+          kind: "shown",
+          name: m.pdf.name,
+          meta: pdfMeta(m.pdf.size),
+          href: there ? m.pdf.href : null,
+          saveAs: m.pdf.name,
+          label: there ? t("pdf.download") : t("pdf.own"),
+          progress: !m.sending
+            ? null
+            : going === null
+              ? {
+                  value: null,
+                  label: t("pdf.progress"),
+                  text: m.checking ? t("pdf.checking") : t("pdf.preparing"),
+                }
+              : {
+                  value: going,
+                  label: t("pdf.progress"),
+                  text: t.rich("pdf.uploading", {
+                    percent: Math.round(going * 100),
+                    ltr,
+                  }),
+                },
+          cancel:
+            (m.sending && !m.checking) || m.failed
+              ? { label: t("pdf.cancel"), onCancel: () => stopUpload(m.id) }
+              : null,
+        },
+      };
+    }
     if (!removedOf(m) && (m.photo || m.fileGone)) {
       const own = m.author === reader;
       const alt = own
@@ -662,19 +855,30 @@ export function ConversationDemo({
         notice={problem}
         attach={{
           label: t("conversation.attach"),
-          accept: PICKED_PHOTO_ACCEPT,
-          onPick: (file) => void pick(file),
+          onOpen: () => setAttachOpen(true),
         }}
         attached={
-          picked || preparing
+          pickedPdf
             ? ({
-                src: picked,
-                alt: t("image.chosen"),
-                busyLabel: t("image.preparing"),
-                readyLabel: t("image.ready"),
-                remove: { label: t("image.remove"), onRemove: dropPicked },
+                kind: "file",
+                name: pickedPdf.name,
+                meta: pdfMeta(pickedPdf.size),
+                label: t("pdf.chosen"),
+                readyLabel: t("pdf.ready"),
+                remove: {
+                  label: t("pdf.remove"),
+                  onRemove: () => setPickedPdf(null),
+                },
               } satisfies ComposerAttached)
-            : null
+            : picked || preparing
+              ? ({
+                  src: picked,
+                  alt: t("image.chosen"),
+                  busyLabel: t("image.preparing"),
+                  readyLabel: t("image.ready"),
+                  remove: { label: t("image.remove"), onRemove: dropPicked },
+                } satisfies ComposerAttached)
+              : null
         }
         tooLong={t.rich("conversation.tooLong", {
           max: CHAT_MESSAGE_MAX,
@@ -700,12 +904,16 @@ export function ConversationDemo({
         closeLabel={t("messageActions.close")}
       >
         <div className="flex flex-col gap-3 px-2 pb-2">
-          {actionsFor?.body ? (
+          {actionsFor?.body || actionsFor?.pdf ? (
             <p
               dir="auto"
               className="rounded-card bg-elevated px-4 py-3 text-start text-ink-2 wrap-anywhere"
             >
-              {chatPreview(actionsFor.body, 160)}
+              {actionsFor.body
+                ? chatPreview(actionsFor.body, 160)
+                : t("list.pdfWith", {
+                    caption: shownFileName(actionsFor.pdf?.name ?? ""),
+                  })}
             </p>
           ) : null}
           <ListGroup className="bg-elevated shadow-none">
@@ -778,6 +986,30 @@ export function ConversationDemo({
           </div>
         </Sheet>
       ) : null}
+      <AttachSheet
+        open={attachOpen}
+        onOpenChange={setAttachOpen}
+        title={t("attach.title")}
+        closeLabel={t("attach.close")}
+        choices={[
+          {
+            key: "photo",
+            icon: <ImageIcon />,
+            title: t("attach.photo"),
+            hint: t("attach.photoHint"),
+            accept: PICKED_PHOTO_ACCEPT,
+            onPick: (file) => void pick(file),
+          },
+          {
+            key: "pdf",
+            icon: <FileText />,
+            title: t("attach.pdf"),
+            hint: t.rich("attach.pdfHint", { max: PDF_MB, ltr }),
+            accept: CHAT_PDF_ACCEPT,
+            onPick: pickPdf,
+          },
+        ]}
+      />
       <PhotoSheet
         open={photoOpen}
         onOpenChange={setPhotoOpen}

@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { heT } from "./t";
 import { readWorkbook, unzip } from "./unzip";
@@ -139,6 +140,9 @@ const PAGES = [
   "/design/chat/floor",
   "/design/chat/kitchen",
   "/design/chat/kitchen?state=photo",
+  "/design/chat/kitchen?state=attach",
+  "/design/chat/kitchen?state=uploading",
+  "/design/chat/kitchen?state=pdfFailed",
   "/design/chat/desserts",
   "/design/chat/noa",
   "/design/chat/noa?state=failed",
@@ -149,9 +153,10 @@ const PAGES = [
 ];
 
 // The chat demo's states that open with a sheet (who confirmed, a message's
-// actions, a picture shown whole): the sheet hides the page behind it from
-// the accessibility tree. Lists' `?state=photo` opens none.
-const OPENS_A_SHEET = /^\/design\/chat\/.*[?&]state=(readers|actions|photo)\b/;
+// actions, a picture shown whole, the attach sheet): the sheet hides the page
+// behind it from the accessibility tree. Lists' `?state=photo` opens none.
+const OPENS_A_SHEET =
+  /^\/design\/chat\/.*[?&]state=(readers|actions|photo|attach)\b/;
 
 async function expectCleanPage(page: Page, path = "") {
   await expect(page).toHaveTitle(/ConceptApp$/);
@@ -1601,10 +1606,15 @@ test("the chat demo opens a picture whole, sends a picked photo, and says when a
   await sheet.getByRole("button", { name: c.image.close }).click();
   await expect(sheet).toHaveCount(0);
 
-  const chooser = page.waitForEvent("filechooser");
+  // The attach button opens the attach sheet; its picture row, the picker.
   await page
     .getByRole("button", { name: c.conversation.attach, exact: true })
     .filter({ visible: true })
+    .click();
+  const chooser = page.waitForEvent("filechooser");
+  await page
+    .getByRole("dialog", { name: c.attach.title })
+    .getByRole("button", { name: new RegExp(`^${c.attach.photo}`) })
     .click();
   await (await chooser).setFiles({
     name: "photo.jpg",
@@ -1628,4 +1638,91 @@ test("the chat demo opens a picture whole, sends a picked photo, and says when a
   await expect(
     log.getByText(c.message.fileGone, { exact: true }),
   ).toBeVisible();
+});
+
+// PDFs in the chat demo (C5): Omer's menu in the kitchen is a download; one
+// picked from the attach sheet is checked for its name and size, shows over
+// the field, goes up with its bar and becomes a download of the file picked;
+// one too big is said over the field and goes nowhere; one part of the way up
+// stops, and its words come back; one that didn't go tries again.
+test("the chat demo sends a PDF from the attach sheet, stops one on its way, and tries one again", async ({
+  page,
+}) => {
+  const c = he.app.chat;
+  const log = page
+    .getByRole("log", { name: c.conversation.log })
+    .filter({ visible: true });
+  const visibleButton = (name: string | RegExp) =>
+    page
+      .getByRole("button", {
+        name,
+        exact: typeof name === "string" ? true : undefined,
+      })
+      .filter({ visible: true });
+  const pdfRow = () =>
+    page
+      .getByRole("dialog", { name: c.attach.title })
+      .getByRole("button", { name: new RegExp(`^${c.attach.pdf}`) });
+
+  await page.goto("/design/chat/kitchen");
+  // Written without its ".pdf" (the line under it says PDF); saved with it.
+  const menu = log.getByRole("link", { name: /תפריט סתיו 2026/ });
+  await expect(menu).toBeVisible();
+  expect(await menu.getAttribute("href")).toMatch(/^data:application\/pdf;/);
+  expect(await menu.getAttribute("download")).toBe("תפריט סתיו 2026.pdf");
+
+  // Too big: said over the field, and nothing is chosen.
+  await visibleButton(c.conversation.attach).click();
+  let chooser = page.waitForEvent("filechooser");
+  await pdfRow().click();
+  await (await chooser).setFiles({
+    name: "big.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.alloc(10 * 1024 * 1024 + 1, 0x20),
+  });
+  await expect(
+    page
+      .getByText(c.pdfFailure.tooBig.replace("<ltr>{max}</ltr>", "10"))
+      .filter({ visible: true }),
+  ).toBeVisible();
+
+  // A PDF goes with the next message, up a bit at a time, then downloads.
+  await visibleButton(c.conversation.attach).click();
+  chooser = page.waitForEvent("filechooser");
+  await pdfRow().click();
+  await (await chooser).setFiles({
+    name: "הזמנה.pdf",
+    mimeType: "application/pdf",
+    buffer: minimalPdf("ConceptApp design"),
+  });
+  await expect(visibleButton(c.pdf.remove)).toBeVisible();
+  await expectCleanPage(page);
+  await visibleButton(c.conversation.send).click();
+  await expect(
+    log.getByRole("progressbar", { name: c.pdf.progress }),
+  ).toBeVisible();
+  const sent = log.getByRole("link", { name: /הזמנה/ });
+  await expect(sent).toBeVisible({ timeout: 10_000 });
+  expect(await sent.getAttribute("href")).toMatch(/^blob:/);
+  await expect(visibleButton(c.pdf.remove)).toHaveCount(0);
+
+  // Part of the way up: its bar says how far; stopped, it goes, and says so.
+  await page.goto("/design/chat/kitchen?state=uploading");
+  const bar = log.getByRole("progressbar", { name: c.pdf.progress });
+  await expect(bar).toHaveAttribute("aria-valuenow", "45");
+  await log.getByRole("button", { name: c.pdf.cancel }).click();
+  await expect(bar).toHaveCount(0);
+  await expect(
+    page.getByText(c.pdfFailure.cancelled).filter({ visible: true }),
+  ).toBeVisible();
+
+  // One that didn't go says so over the field, and goes when tried again.
+  await page.goto("/design/chat/kitchen?state=pdfFailed");
+  await expect(
+    page.getByText(c.pdfFailure.failed).filter({ visible: true }),
+  ).toBeVisible();
+  await log.getByRole("button", { name: c.conversation.failed }).click();
+  await expect(log.getByRole("link", { name: /הזמנה לספק/ })).toBeVisible({
+    timeout: 10_000,
+  });
 });

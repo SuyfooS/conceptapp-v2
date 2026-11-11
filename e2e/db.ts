@@ -2125,3 +2125,53 @@ export async function demoChatFilesLeft(prefix: string): Promise<string[]> {
       and m.file_removed_at is null and starts_with(m.body, ${prefix})`;
   return rows.map((row) => row.message);
 }
+
+/*
+ * PDFs in chat (C5, supabase/migrations/20261111000600_chat_pdfs.sql): the
+ * browser puts one in Storage itself through a signed upload for the path the
+ * server reserved (private.file_uploads), and the server sends it once it read
+ * its start. As for pictures, SQL reads Storage's rows and never removes its
+ * files.
+ */
+
+/** A message's PDF, as the database keeps it. */
+export type DemoChatPdf = {
+  message: string;
+  filePath: string;
+  fileName: string | null;
+  fileSize: number;
+  body: string | null;
+};
+
+/** The newest PDF in a demo restaurant conversation kept with this name. */
+export async function demoChatPdf(
+  conversation: string,
+  name: string,
+): Promise<DemoChatPdf | null> {
+  const [row] = await sql<DemoChatPdf[]>`
+    select m.id as message, m.file_path as "filePath",
+      m.file_name as "fileName", m.file_size as "fileSize", m.body
+    from public.chat_messages m
+    where m.business_id = ${DEMO_RESTAURANT}
+      and m.conversation_id = ${conversation}
+      and m.file_kind = 'pdf' and m.file_name = ${name}
+    order by m.created_at desc limit 1`;
+  return row ?? null;
+}
+
+/**
+ * The PDF places the person (by phone, E.164) reserved in the demo
+ * restaurant, newest first: where the browser was to put each, whether a
+ * message holds it, and the name it was reserved with.
+ */
+export async function demoPdfPlaces(
+  phone: string,
+): Promise<{ path: string; used: boolean; name: string | null }[]> {
+  return await sql<{ path: string; used: boolean; name: string | null }[]>`
+    select u.path, u.used_at is not null as used, u.file_name as name
+    from private.file_uploads u
+    join public.profiles p on p.id = u.owner_id
+    where u.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
+      and u.file_kind = 'pdf'
+    order by u.created_at desc`;
+}

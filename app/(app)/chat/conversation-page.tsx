@@ -15,7 +15,9 @@ import { currentModuleSettings } from "../modules";
 import type { AppWording } from "../wording";
 import {
   announcementReadersAction,
+  cancelChatPdfAction,
   confirmAnnouncementAction,
+  finishChatPdfAction,
   muteChatAction,
   olderChatMessagesAction,
   pinAnnouncementAction,
@@ -24,6 +26,7 @@ import {
   restoreChatMessageAction,
   sendChatImageAction,
   sendChatMessageAction,
+  startChatPdfAction,
 } from "./actions";
 import {
   byName,
@@ -31,6 +34,7 @@ import {
   currentChatDepartments,
   currentChatDirectory,
   currentChatFiles,
+  currentChatPdfs,
   currentChatPictures,
 } from "./chat";
 import type { ChatAccess } from "./chat-access";
@@ -46,6 +50,9 @@ export function boundChatActions(businessId: string): ConversationActions {
   return {
     send: sendChatMessageAction.bind(null, businessId),
     sendImage: sendChatImageAction.bind(null, businessId),
+    startPdf: startChatPdfAction.bind(null, businessId),
+    finishPdf: finishChatPdfAction.bind(null, businessId),
+    cancelPdf: cancelChatPdfAction.bind(null, businessId),
     read: readChatAction.bind(null, businessId),
     older: olderChatMessagesAction.bind(null, businessId),
     confirm: confirmAnnouncementAction.bind(null, businessId),
@@ -118,6 +125,7 @@ export async function ConversationPageView({
     pinned,
     files,
     latest,
+    latestPdfs,
   ] = await Promise.all([
     getMessages({ businessId, conversationId: view.id }).then((found) =>
       withOwnDrafts(found, access.userId),
@@ -131,9 +139,11 @@ export async function ConversationPageView({
       : getPinnedState(businessId, view.id, access.userId, access.canModerate),
     currentChatFiles(businessId),
     currentChatPictures(businessId, view.id),
+    currentChatPdfs(businessId, view.id),
   ]);
-  // The details' pictures, where the business takes them (C4).
+  // The details' pictures and PDFs, where the business takes them (C4, C5).
   const pictures = files === "yes" ? latest : [];
+  const pdfs = files === "yes" ? latestPdfs : [];
   const people = chatPeople(directory, departments, wording);
   const other = view.otherPerson
     ? (people.get(view.otherPerson.toLowerCase()) ?? null)
@@ -173,6 +183,7 @@ export async function ConversationPageView({
       demo={access.demo}
       files={files}
       pictures={pictures}
+      pdfs={pdfs}
       actions={boundChatActions(businessId)}
       pinned={pinned}
       powers={{ announce: access.canAnnounce, moderate: access.canModerate }}

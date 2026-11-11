@@ -20,6 +20,17 @@ import {
 } from "@domain/chat-announce";
 import { chatDay, inThisYear, messageTime } from "@domain/chat-days";
 import {
+  CHAT_PDF_ACCEPT,
+  CHAT_PDF_MAX_BYTES,
+  type ChatPdfCancelInput,
+  type ChatPdfFinishInput,
+  type ChatPdfStartInput,
+  chatFileSize,
+  checkChatPdf,
+  pickedPdfName,
+  shownFileName,
+} from "@domain/chat-files";
+import {
   type ChatSendInput,
   type ChatSyncMessage,
   type ChatSyncPerson,
@@ -43,12 +54,14 @@ import {
   stillOutgoing,
 } from "@domain/chat-thread";
 import { AnnouncementCard } from "@ui/announcement-card";
+import { AttachSheet } from "@ui/attach-sheet";
 import { ChatHeader } from "@ui/chat-header";
 import { Composer, type ComposerAttach } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
 import {
   MessageBubble,
   type MessageContent,
+  type MessageFile,
   type MessageImage,
   type MessageStatus,
 } from "@ui/message-bubble";
@@ -62,7 +75,7 @@ import {
 import { PhotoSheet } from "@ui/photo-sheet";
 import { Spinner } from "@ui/spinner";
 import { StatusToast } from "@ui/status-toast";
-import { ChevronUp } from "lucide-react";
+import { ChevronUp, FileText, ImageIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -80,6 +93,16 @@ import { focusLost } from "./chat-focus";
 import { ChatNotice } from "./chat-notice";
 import { chatPaths } from "./chat-paths";
 import {
+  canStopPdf,
+  newPdfJob,
+  type PdfJob,
+  type PdfStep,
+  putPdf,
+  retryPdfJob,
+  runPdfJob,
+  stopPdfJob,
+} from "./chat-pdfs";
+import {
   type ComposerNotice,
   type PictureFiles,
   pictureForm,
@@ -89,6 +112,9 @@ import { type SyncOpen, useChat } from "./chat-provider";
 import type {
   ChatActionResult,
   ChatImageResult,
+  ChatPdfCancelResult,
+  ChatPdfFinishResult,
+  ChatPdfStartResult,
   ChatReaders,
 } from "./chat-types";
 import { InfoButton } from "./info-button";
@@ -105,6 +131,14 @@ export type ConversationActions = {
    * the files as the phone made them ready (`encodeChatImage`).
    */
   sendImage: (form: FormData) => Promise<ChatImageResult>;
+  /**
+   * A PDF (C5), in three steps: its place and Storage's signed upload for it
+   * (`startChatPdfAction`), then, once the browser put its bytes there, the
+   * message (`finishChatPdfAction`), or the place let go (`cancelChatPdfAction`).
+   */
+  startPdf: (input: ChatPdfStartInput) => Promise<ChatPdfStartResult>;
+  finishPdf: (input: ChatPdfFinishInput) => Promise<ChatPdfFinishResult>;
+  cancelPdf: (input: ChatPdfCancelInput) => Promise<ChatPdfCancelResult>;
   read: (conversation: string, upTo: string) => Promise<ChatActionResult>;
   older: (
     conversation: string,
@@ -176,12 +210,15 @@ type Props = {
    */
   details: ReactNode | null;
   /**
-   * Whether pictures can be sent here (C4, `chatFilesAllowed`): "demo" keeps
-   * the attach button, which says a demo business takes no files; "notYet"
-   * (the database hasn't the files yet) has none.
+   * Whether pictures and PDFs can be sent here (C4, C5, `chatFilesAllowed`):
+   * "demo" keeps the attach button, which says a demo business takes no
+   * files; "notYet" (the database hasn't the files yet) has none.
    */
   files: "yes" | "demo" | "notYet";
 };
+
+/** A PDF chosen for the next message (C5): the file, and the name it goes with. */
+type ChosenPdf = { file: File; name: string; size: number };
 
 /**
  * A picture made ready on the phone, with what it is shown from here: data
@@ -225,6 +262,8 @@ type Toast = {
  */
 type ActionsFor = { id: string };
 
+/** A PDF's limit in MB, as the words say it. */
+const PDF_MB = CHAT_PDF_MAX_BYTES / (1024 * 1024);
 /** This close to the foot of the page counts as reading the newest. */
 const NEAR_END = 96;
 /** How long "too many messages" stays over the field. */
@@ -299,7 +338,11 @@ type Shown =
  * shows at once as being sent, with its own id, so a retry never sends it
  * twice; one that didn't go says so and tries again. A new private chat's
  * first message makes it, and the screen goes on as that chat where it is:
- * nothing is drawn again under the writer, and the keyboard stays.
+ * nothing is drawn again under the writer, and the keyboard stays. The
+ * attach button opens the attach sheet: a picture (C4), made ready here and
+ * sent through the server, or a PDF (C5), put in Storage by the browser
+ * through the signed upload the server gives for its one place, with its bar
+ * and the way to stop it, and sent once the server has checked it.
  *
  * The messages are a log screen readers don't read out as it grows (older
  * pages come in above it, a long gap at once); a line of its own says what
@@ -352,6 +395,30 @@ export function ConversationScreen(props: Props) {
   useLayoutEffect(() => {
     pickedNow.current = picked;
   }, [picked]);
+  /** The PDF that goes with the next message, once chosen (C5). */
+  const [pickedPdf, setPickedPdf] = useState<ChosenPdf | null>(null);
+  const pickedPdfNow = useRef<ChosenPdf | null>(null);
+  useLayoutEffect(() => {
+    pickedPdfNow.current = pickedPdf;
+  }, [pickedPdf]);
+  /**
+   * The PDFs sent from here, by draft: the file and where it is on its way
+   * (`PdfJob`), kept for retries; once the server has the message, its
+   * bubble is the server's.
+   */
+  const pdfs = useRef(new Map<string, PdfJob>());
+  /** Where each PDF on its way is, for its bubble. */
+  const [pdfSteps, setPdfSteps] = useState<ReadonlyMap<string, PdfStep>>(
+    () => new Map(),
+  );
+  /**
+   * The database turned a PDF away as not ready for them yet ("notYet": C4's
+   * files are there, C5's not): the attach sheet stops offering them.
+   */
+  const [pdfsNotYet, setPdfsNotYet] = useState(false);
+  /** The attach sheet (C5), and the button that opened it. */
+  const [attachOpen, setAttachOpen] = useState(false);
+  const attachOpener = useRef<HTMLElement | null>(null);
   /** The picture open in its sheet, kept while the sheet closes. */
   const [photo, setPhoto] = useState<PhotoShown | null>(null);
   const [photoOpen, setPhotoOpen] = useState(false);
@@ -778,6 +845,13 @@ export function ConversationScreen(props: Props) {
     });
   }, [messages]);
 
+  // A PDF whose message the server now shows, or that left, lets its file go.
+  useEffect(() => {
+    for (const draft of [...pdfs.current.keys()]) {
+      if (!outgoing.some((m) => m.draft === draft)) pdfs.current.delete(draft);
+    }
+  }, [outgoing]);
+
   // A retry's button went once it was sending: the focus goes on from it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a retry going out is what may have dropped it
   useEffect(() => {
@@ -904,9 +978,112 @@ export function ConversationScreen(props: Props) {
     if (refusal.refresh) router.refresh();
   }
 
+  /** Where a PDF on its way is now, for its bubble; null once it isn't on its way. */
+  function stepPdf(draft: string, step: PdfStep | null) {
+    setPdfSteps((now) => {
+      if (!step && !now.has(draft)) return now;
+      const next = new Map(now);
+      if (step) next.set(draft, step);
+      else next.delete(draft);
+      return next;
+    });
+  }
+
+  /**
+   * A PDF that can't go as it is, or was stopped: it leaves the conversation,
+   * what was written with it goes back to the field, and the field says why.
+   */
+  function dropPdf(item: OutgoingMessage, said: ComposerNotice | null) {
+    pdfs.current.delete(item.draft);
+    stepPdf(item.draft, null);
+    setOutgoing((list) => list.filter((m) => m.draft !== item.draft));
+    if (item.body) setText((now) => (now.trim() === "" ? item.body : now));
+    setNotice(said);
+  }
+
+  /**
+   * A PDF goes (C5, plan §6.3) as `runPdfJob` takes it, in three steps kept
+   * on its job for a retry under the same draft: its place and signed upload,
+   * its bytes put there by the browser itself with how far they went, and the
+   * message. One that can't go as it is (a demo business, no room, too many
+   * unsent, over 10 MB, not a PDF, PDFs not open here yet) leaves the
+   * conversation and its words go back to the field; any other failure keeps
+   * it, with its way to try again (and to stop, unless it may have gone).
+   */
+  async function deliverPdf(item: OutgoingMessage) {
+    const job = pdfs.current.get(item.draft);
+    if (!job) {
+      undelivered(item);
+      return;
+    }
+    const asked = { draft: item.draft, name: job.name, size: job.size };
+    const cancel = (upload: string) => actions.cancelPdf({ upload });
+    const end = await runPdfJob(job, {
+      start: () => {
+        const known = conversationNow.current;
+        return actions.startPdf(
+          known
+            ? { ...asked, conversation: known }
+            : { ...asked, toPerson: toPerson ?? "" },
+        );
+      },
+      put: putPdf,
+      finish: (upload) =>
+        actions.finishPdf({ upload, draft: item.draft, words: item.body }),
+      cancel,
+      onStep: (step) => stepPdf(item.draft, step),
+    });
+    switch (end.end) {
+      case "stopped":
+        return;
+      case "sent":
+        delivered(item, end.value);
+        return;
+      case "dropped":
+        dropPdf(item, end.notice);
+        if (end.failure === "notYet") setPdfsNotYet(true);
+        break;
+      case "failed":
+        setNotice(end.notice);
+        undelivered(item);
+        break;
+    }
+    if (end.refresh) router.refresh();
+  }
+
+  /**
+   * "ביטול השליחה": a PDF on its way stops (its PUT too), its place is let
+   * go, its words go back to the field, and the field says it was stopped.
+   * Offered only while it surely hasn't gone (`canStopPdf`): never while it
+   * is being sent as a message, nor after a sending whose end is unknown. Were
+   * the server to say it was sent after all, its message shows with the next
+   * sync and nothing says it was stopped.
+   */
+  function stopPdf(item: OutgoingMessage) {
+    const job = pdfs.current.get(item.draft);
+    if (!job) return;
+    dropPdf(item, { of: "pdfFailure", key: "cancelled" });
+    // Its button went with it: the field, or the messages, is next.
+    focusOnward(field, log);
+    void stopPdfJob(job, (upload) => actions.cancelPdf({ upload })).then(
+      (answer) => {
+        if (!answer?.sent) return;
+        setNotice((now) =>
+          now?.of === "pdfFailure" && now.key === "cancelled" ? null : now,
+        );
+        setText((now) => (now === item.body ? "" : now));
+        chat.syncNow();
+      },
+    );
+  }
+
   async function deliver(item: OutgoingMessage) {
     if (item.picture) {
       await deliverPicture(item);
+      return;
+    }
+    if (item.pdf) {
+      await deliverPdf(item);
       return;
     }
     const known = conversationNow.current;
@@ -951,8 +1128,12 @@ export function ConversationScreen(props: Props) {
     picks.current += 1;
     const mine = picks.current;
     setPicked(null);
+    // One thing goes with a message: the picture takes a PDF's place.
+    setPickedPdf(null);
     setPreparing(true);
-    setNotice((now) => (now?.of === "fileFailure" ? null : now));
+    setNotice((now) =>
+      now?.of === "fileFailure" || now?.of === "pdfFailure" ? null : now,
+    );
     try {
       const files = await encodeChatImage(file);
       const [preview, whole] = await Promise.all([
@@ -980,25 +1161,67 @@ export function ConversationScreen(props: Props) {
     focusOnward(field, log);
   }
 
+  /**
+   * A PDF picked for the next message (C5): its name (with ".pdf" where the
+   * picker left it out) and size are checked here first, so one over 10 MB
+   * or not a PDF never goes up; it shows over the field until it goes, with
+   * what is written as its caption. Its bytes are checked by the server once
+   * they are in Storage.
+   */
+  function pickPdf(file: File) {
+    const checked = checkChatPdf({
+      name: pickedPdfName(file),
+      size: file.size,
+    });
+    if (!checked.ok) {
+      setNotice({ of: "pdfFailure", key: checked.problem });
+      return;
+    }
+    // One thing goes with a message: the PDF takes a picture's place, even
+    // one still being made ready.
+    picks.current += 1;
+    setPreparing(false);
+    setPicked(null);
+    setNotice((now) =>
+      now?.of === "fileFailure" || now?.of === "pdfFailure" ? null : now,
+    );
+    setPickedPdf({ file, name: checked.name, size: checked.size });
+  }
+
+  /** "הסרת הקובץ": the PDF doesn't go, and the field is next. */
+  function dropPickedPdf() {
+    setPickedPdf(null);
+    focusOnward(field, log);
+  }
+
   function send(body: string) {
     const picture = pickedNow.current;
+    const pdf = picture ? null : pickedPdfNow.current;
     const item: OutgoingMessage = {
       draft: newDraftId(),
       body,
       at: new Date().toISOString(),
       state: "sending",
       message: null,
-      // A picture goes as a message: the pinned card shows words alone.
+      // A picture or a PDF goes as a message: the pinned card shows words
+      // alone.
       ...(picture
         ? { picture: true }
-        : announce && canAnnounce
-          ? { announce: true }
-          : {}),
+        : pdf
+          ? { pdf: true }
+          : announce && canAnnounce
+            ? { announce: true }
+            : {}),
     };
     if (picture) {
       pictures.current.set(item.draft, picture);
       pickedNow.current = null;
       setPicked(null);
+    }
+    if (pdf) {
+      pdfs.current.set(item.draft, newPdfJob(pdf));
+      pickedPdfNow.current = null;
+      setPickedPdf(null);
     }
     setOutgoing((list) => [...list, item]);
     setText("");
@@ -1012,6 +1235,9 @@ export function ConversationScreen(props: Props) {
 
   function retry(item: OutgoingMessage) {
     const again: OutgoingMessage = { ...item, state: "sending" };
+    // Tried again by hand: a PDF may go back a step by itself once more.
+    const job = pdfs.current.get(item.draft);
+    if (job) retryPdfJob(job);
     refocus.current = true;
     setOutgoing((list) =>
       list.map((m) => (m.draft === item.draft ? again : m)),
@@ -1327,7 +1553,9 @@ export function ConversationScreen(props: Props) {
                 ? `${content.label}: ${content.body}`
                 : content.kind === "image"
                   ? photoWords(content.body)
-                  : content.label,
+                  : content.kind === "pdf"
+                    ? pdfWords(content.body, last.fileName)
+                    : content.label,
         }),
         content.kind === "removed" ? null : last.id,
       );
@@ -1345,6 +1573,60 @@ export function ConversationScreen(props: Props) {
     return caption
       ? t("list.photoWith", { caption: chatPreview(caption) })
       : t("list.photo");
+  }
+
+  /** A PDF in words: "קובץ PDF", with what was written with it, else its name. */
+  function pdfWords(caption: string | null, name: string | null): string {
+    if (caption) return t("list.pdfWith", { caption: chatPreview(caption) });
+    return name
+      ? t("list.pdfWith", { caption: shownFileName(name) })
+      : t("list.pdf");
+  }
+
+  /** A PDF's size and kind, under its name: "2.4 MB · PDF". */
+  function pdfMeta(size: number | null): ReactNode {
+    if (size === null) return null;
+    const shown = chatFileSize(size);
+    const value = format.number(shown.value, { maximumFractionDigits: 1 });
+    return shown.unit === "mb"
+      ? t.rich("pdf.sizeMb", { size: value, ltr })
+      : t.rich("pdf.sizeKb", { size: value, ltr });
+  }
+
+  /**
+   * A message's PDF: its download, from the app's own route, which checks the
+   * reader again; or the line that its file is no longer kept. Where the
+   * answer brought no address (an answer from before files), its name alone.
+   */
+  function pdfOf(message: ChatSyncMessage): MessageFile {
+    if (message.fileGone) {
+      return { kind: "gone", label: t("message.fileGone") };
+    }
+    return {
+      kind: "shown",
+      name: message.fileName ?? t("pdf.unnamed"),
+      meta: pdfMeta(message.fileSize),
+      href: message.fileSrc ?? null,
+      label: t("pdf.download"),
+    };
+  }
+
+  /** How far a PDF on its way went, in words and as a bar. */
+  function pdfProgress(step: PdfStep | undefined) {
+    const label = t("pdf.progress");
+    if (step?.step === "put" && step.progress !== null) {
+      const percent = Math.round(step.progress * 100);
+      return {
+        value: step.progress,
+        label,
+        text: t.rich("pdf.uploading", { percent, ltr }),
+      };
+    }
+    return {
+      value: null,
+      label,
+      text: step?.step === "finish" ? t("pdf.checking") : t("pdf.preparing"),
+    };
   }
 
   /** When a message was sent, for its picture's sheet: its time, and its day before today. */
@@ -1408,6 +1690,30 @@ export function ConversationScreen(props: Props) {
 
   /** One's own message on its way, or one that didn't go. */
   function outgoingContent(item: OutgoingMessage): MessageContent {
+    if (item.pdf) {
+      const job = pdfs.current.get(item.draft);
+      const step = pdfSteps.get(item.draft);
+      // It may be stopped while it waits for its place or its bytes go up,
+      // and once it didn't go; not while it is being sent as a message, nor
+      // after a sending whose end is unknown.
+      const stoppable = canStopPdf(job, item.state, step);
+      return {
+        kind: "pdf",
+        body: item.body || null,
+        file: {
+          kind: "shown",
+          name: job?.name ?? t("pdf.unnamed"),
+          meta: job ? pdfMeta(job.size) : null,
+          href: null,
+          label: t("pdf.own"),
+          progress: item.state === "sending" ? pdfProgress(step) : null,
+          cancel:
+            stoppable && job
+              ? { label: t("pdf.cancel"), onCancel: () => stopPdf(item) }
+              : null,
+        },
+      };
+    }
     if (item.picture) {
       const picture = pictures.current.get(item.draft);
       const alt = t("image.altOwn");
@@ -1446,6 +1752,16 @@ export function ConversationScreen(props: Props) {
   }
 
   function contentOf(message: ChatSyncMessage): MessageContent {
+    if (!message.removed && message.fileKind === "pdf") {
+      return {
+        kind: "pdf",
+        file: pdfOf(message),
+        body: message.body,
+        ...(message.kind === "announcement"
+          ? { label: t("announcement.label") }
+          : {}),
+      };
+    }
     if (!message.removed && message.fileKind === "image") {
       return {
         kind: "image",
@@ -1645,35 +1961,40 @@ export function ConversationScreen(props: Props) {
     if (photoGone) setPhotoOpen(false);
   }, [photoGone]);
 
-  // The details' pictures beside it (the desktop's column, the tablet's
-  // sheet) are drawn by the server: what this screen shows as removed, or as
-  // no longer kept, leaves them at once, and what was put back returns.
-  // A removed message has no file kind left: any removed one counts.
-  const notePictures = chat.notePictures;
+  // The details' pictures and PDFs beside it (the desktop's column, the
+  // tablet's sheet) are drawn by the server: what this screen shows as
+  // removed, or as no longer kept, leaves them at once, and what was put
+  // back returns. A removed message has no file kind left: any removed one
+  // counts.
+  const noteFiles = chat.noteFiles;
   useEffect(() => {
     const gone: string[] = [];
     const shown: string[] = [];
     for (const message of messages) {
       if (message.removed || message.fileGone) gone.push(message.id);
-      else if (message.fileKind === "image") shown.push(message.id);
+      else if (message.fileKind !== null) shown.push(message.id);
     }
-    notePictures(gone, shown);
-  }, [messages, notePictures]);
+    noteFiles(gone, shown);
+  }, [messages, noteFiles]);
 
-  // Pictures (C4): the attach button opens the phone's picker, which offers
-  // its camera too; in a demo business it says why there is none.
+  // Files (C4, C5): the attach button opens the attach sheet, a picture (the
+  // phone's picker, which offers its camera too) or a PDF; in a demo
+  // business it says why there is none.
   const attach: ComposerAttach | null =
     props.files === "yes"
       ? {
           label: t("conversation.attach"),
-          accept: PICKED_PHOTO_ACCEPT,
-          onPick: (file) => void pickPicture(file),
+          onOpen: (trigger) => {
+            attachOpener.current = trigger;
+            setAttachOpen(true);
+          },
         }
       : props.files === "demo"
         ? { label: t("conversation.attach"), refused: t("fileFailure.demo") }
         : null;
-  const picturing = picked !== null || preparing;
-  // A picture goes as a message: the switch steps aside while one is chosen.
+  const picturing = picked !== null || preparing || pickedPdf !== null;
+  // A picture or a PDF goes as a message: the switch steps aside while one
+  // is chosen.
   const announcing = announce && canAnnounce && !picturing;
 
   /** Where the focus goes back to once a sheet closes: what opened it, else the messages. */
@@ -1833,21 +2154,32 @@ export function ConversationScreen(props: Props) {
           notice
             ? notice.of === "conversation"
               ? t(`conversation.${notice.key}`)
-              : t(`fileFailure.${notice.key}`)
+              : notice.of === "pdfFailure"
+                ? t.rich(`pdfFailure.${notice.key}`, { max: PDF_MB, ltr })
+                : t(`fileFailure.${notice.key}`)
             : null
         }
         tooLong={t.rich("conversation.tooLong", { max: CHAT_MESSAGE_MAX, ltr })}
         attach={attach}
         attached={
-          picturing
+          pickedPdf
             ? {
-                src: picked?.preview ?? null,
-                alt: t("image.chosen"),
-                busyLabel: t("image.preparing"),
-                readyLabel: t("image.ready"),
-                remove: { label: t("image.remove"), onRemove: dropPicked },
+                kind: "file",
+                name: pickedPdf.name,
+                meta: pdfMeta(pickedPdf.size),
+                label: t("pdf.chosen"),
+                readyLabel: t("pdf.ready"),
+                remove: { label: t("pdf.remove"), onRemove: dropPickedPdf },
               }
-            : null
+            : picturing
+              ? {
+                  src: picked?.preview ?? null,
+                  alt: t("image.chosen"),
+                  busyLabel: t("image.preparing"),
+                  readyLabel: t("image.ready"),
+                  remove: { label: t("image.remove"), onRemove: dropPicked },
+                }
+              : null
         }
         toggle={
           canAnnounce && !picturing
@@ -1883,9 +2215,11 @@ export function ConversationScreen(props: Props) {
             ? null
             : sheetMessage.fileKind === "image"
               ? photoWords(sheetMessage.body)
-              : sheetMessage.body
-                ? chatPreview(sheetMessage.body, 160)
-                : null
+              : sheetMessage.fileKind === "pdf"
+                ? pdfWords(sheetMessage.body, sheetMessage.fileName)
+                : sheetMessage.body
+                  ? chatPreview(sheetMessage.body, 160)
+                  : null
         }
         actions={sheetMessage ? actionsOf(sheetMessage) : []}
         onAction={act}
@@ -1894,6 +2228,38 @@ export function ConversationScreen(props: Props) {
         // takes it from there when it comes.
         returnFocus={() => backTo(actionsOpener.current)}
       />
+      {props.files === "yes" ? (
+        <AttachSheet
+          open={attachOpen}
+          onOpenChange={setAttachOpen}
+          title={t("attach.title")}
+          closeLabel={t("attach.close")}
+          choices={[
+            {
+              key: "photo",
+              icon: <ImageIcon />,
+              title: t("attach.photo"),
+              hint: t("attach.photoHint"),
+              accept: PICKED_PHOTO_ACCEPT,
+              onPick: (file) => void pickPicture(file),
+            },
+            // Not offered once the database said it takes no PDF yet.
+            ...(pdfsNotYet
+              ? []
+              : [
+                  {
+                    key: "pdf",
+                    icon: <FileText />,
+                    title: t("attach.pdf"),
+                    hint: t.rich("attach.pdfHint", { max: PDF_MB, ltr }),
+                    accept: CHAT_PDF_ACCEPT,
+                    onPick: pickPdf,
+                  },
+                ]),
+          ]}
+          returnFocus={() => backTo(attachOpener.current)}
+        />
+      ) : null}
       <PhotoSheet
         open={photoOpen}
         onOpenChange={setPhotoOpen}

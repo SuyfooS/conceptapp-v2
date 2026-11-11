@@ -24,7 +24,9 @@ import {
   chatDemoLongDate,
   chatDemoPeople,
   chatDemoPerson,
+  chatDemoUpload,
 } from "../data";
+import { demoPdfHref } from "../demo-pdf";
 import { chatDetailsClass, chatPaneClass } from "../panes";
 
 export const generateStaticParams = () =>
@@ -47,9 +49,13 @@ type Props = {
 // with who confirmed open, and `?state=actions` with a message's actions
 // open (any message opens them on a tap, or its button on a desktop).
 // The kitchen has Noa's photo of the kitchen (C4): `?state=photo` opens it
-// whole; the removed desserts group has a picture no longer kept. The
-// composer's attach button makes a picked photo ready as the app does, and
-// shows it from the browser.
+// whole; the removed desserts group has a picture no longer kept. It also has
+// Omer's PDF of the menu (C5), which downloads from its chip. The composer's
+// attach button opens the attach sheet (`?state=attach` opens with it): a
+// picked photo is made ready as the app does and shown from the browser, a
+// picked PDF goes up with its bar. `?state=uploading` has Shiran's PDF part
+// of the way up, with the way to stop it, and `?state=pdfFailed` one that
+// didn't go, with its retry and what the field says.
 // `?announce=1` opens the composer as "הודעה מההנהלה", as the
 // announcements' "פרסום הודעה מההנהלה" does. The title's details button
 // opens /design/chat/<id>/info on a phone and a sheet on a tablet.
@@ -97,6 +103,7 @@ async function Demo({ params, searchParams }: Props) {
     announcement: m.kind === "announcement",
     photo: m.photo ?? null,
     fileGone: m.fileGone,
+    pdf: m.pdf ? { ...m.pdf, href: demoPdfHref("ConceptApp demo") } : null,
   }));
   const pinnedMessage = chat.pinned
     ? chat.messages.find((m) => m.id === chat.pinned?.message)
@@ -125,9 +132,25 @@ async function Demo({ params, searchParams }: Props) {
     state === "confirmed" ||
     state === "readers" ||
     state === "actions" ||
-    state === "photo"
+    state === "photo" ||
+    state === "attach" ||
+    state === "uploading" ||
+    state === "pdfFailed"
       ? state
       : null;
+  if ((state === "uploading" || state === "pdfFailed") && !chat.closed) {
+    messages.push({
+      id: state,
+      author: CHAT_DEMO_READER,
+      authorName: "",
+      at: CHAT_DEMO_NOW,
+      body: null,
+      pdf: { ...chatDemoUpload, href: demoPdfHref("ConceptApp order") },
+      sending: state === "uploading",
+      failed: state === "pdfFailed",
+      progress: state === "uploading" ? 0.45 : null,
+    });
+  }
   if (state === "failed" && !chat.closed) {
     messages.push({
       id: "failed",

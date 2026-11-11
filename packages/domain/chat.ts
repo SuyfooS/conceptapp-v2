@@ -267,6 +267,11 @@ export type ChatInboxRow = {
   /** Its first 120 characters; null when it was removed or is only a file. */
   lastPreview: string | null;
   lastFileKind: ChatFileKind | null;
+  /**
+   * Its file's name (a PDF's, C5), for "קובץ PDF" with it; null with no
+   * file, for a picture, once removed, and from a project before C5.
+   */
+  lastFileName: string | null;
   /** Messages by others since the reader last read it, at most 99. */
   unread: number;
   muted: boolean;
@@ -293,6 +298,7 @@ const inboxRow = z.object({
   last_kind: z.enum(CHAT_MESSAGE_KINDS).nullable().catch(null),
   last_preview: z.string().nullable().catch(null),
   last_file_kind: z.enum(CHAT_FILE_KINDS).nullable().catch(null),
+  last_file_name: z.string().nullable().catch(null),
   unread: count,
   muted: z.boolean().catch(false),
   closed: z.boolean().catch(false),
@@ -320,6 +326,7 @@ export function readChatInbox(rows: unknown): ChatInboxRow[] {
         lastKind: r.last_kind,
         lastPreview: r.last_preview,
         lastFileKind: r.last_file_kind,
+        lastFileName: r.last_file_name,
         unread: r.unread,
         muted: r.muted,
         closed: r.closed,

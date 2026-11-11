@@ -34,9 +34,9 @@ type Opened = {
  * written with it, and each is named with who sent it and when, so pictures
  * from one person can be told apart. The server drew them: one the
  * conversation on screen shows as removed, or as no longer kept, leaves at
- * once (`picturesGone`), and its sheet closes; with none left, it says there
- * are none yet. One no longer there by the time it is looked at says so in
- * its place.
+ * once (`filesGone`), and its sheet closes; with none left, it shows
+ * nothing (the details say there are no files, `ChatDetailsFiles`). One no
+ * longer there by the time it is looked at says so in its place.
  */
 export function ChatPicturesGrid({
   pictures,
@@ -51,10 +51,10 @@ export function ChatPicturesGrid({
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
   const today = dateIn(new Date(chat.now), chat.timeZone);
   const shown = pictures.filter(
-    (picture) => !chat.picturesGone.has(picture.id.toLowerCase()),
+    (picture) => !chat.filesGone.has(picture.id.toLowerCase()),
   );
   const openedGone =
-    open && opened !== null && chat.picturesGone.has(opened.id.toLowerCase());
+    open && opened !== null && chat.filesGone.has(opened.id.toLowerCase());
   useEffect(() => {
     if (openedGone) setOpen(false);
   }, [openedGone]);
@@ -100,9 +100,7 @@ export function ChatPicturesGrid({
 
   return (
     <>
-      {shown.length === 0 ? (
-        <p className="px-1 text-ink-2">{t("details.noPictures")}</p>
-      ) : (
+      {shown.length === 0 ? null : (
         <ul className="grid grid-cols-3 gap-2">
           {shown.map((picture) => {
             const alt = altOf(picture);

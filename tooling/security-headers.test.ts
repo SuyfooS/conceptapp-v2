@@ -115,6 +115,22 @@ describe("the routes that serve files people sent", () => {
     expect(route).toContain('"Cache-Control": "private, max-age=604800"');
     expect(route).toContain('"Content-Type": found.type');
   });
+
+  it("serve a PDF as a download only, typed by its bytes (C5)", () => {
+    const route = read(
+      "app/chat-files/[business]/[conversation]/[file]/route.ts",
+    );
+    expect(route).toContain('"Content-Type": CHAT_PDF_TYPE');
+    expect(route).toContain(
+      '"Content-Disposition": chatPdfDisposition(pdf.name)',
+    );
+    expect(route).toContain("chatPdfDownload(path)");
+    // Both answers carry the sandbox: once for the picture, once for the PDF.
+    expect(
+      route.split('"Content-Security-Policy": FILE_CONTENT_POLICY').length,
+    ).toBe(3);
+    expect(route.split('"Content-Disposition": "inline"').length).toBe(2);
+  });
 });
 
 describe("Permissions-Policy", () => {
