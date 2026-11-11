@@ -1,4 +1,5 @@
 import { ImmersiveScreen } from "@ui/immersive-screen";
+import { SkeletonBones } from "@ui/skeleton";
 import { baseWording, translator } from "../wording";
 
 /*
@@ -52,6 +53,23 @@ export function ChooseSkeleton() {
       <div role="status">
         <span className="sr-only">{t("loading")}</span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * A chat page that is no conversation, while it loads (a conversation's
+ * details, the announcements): its title and a card, beside the list from
+ * tablet up, with the tab bar where it is.
+ */
+export function ChatPageSkeleton() {
+  const t = translator(baseWording, "app");
+  return (
+    <div className="flex min-w-0 flex-col gap-6 md:max-w-2xl xl:col-span-2">
+      <div role="status">
+        <h1 className="sr-only">{t("loading")}</h1>
+      </div>
+      <SkeletonBones />
     </div>
   );
 }

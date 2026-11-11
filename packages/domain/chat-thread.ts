@@ -150,6 +150,8 @@ export type OutgoingMessage = {
   state: "sending" | "failed" | "sent";
   /** Its id once the server has it. */
   message: string | null;
+  /** Sent as an announcement from management (C3). */
+  announce?: boolean;
 };
 
 /**
@@ -233,6 +235,6 @@ export function outgoingAsMessage(
     id: draftKey(outgoing.draft),
     authorId: readerId,
     createdAt: outgoing.at,
-    kind: "text",
+    kind: outgoing.announce ? "announcement" : "text",
   };
 }

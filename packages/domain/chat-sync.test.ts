@@ -4,12 +4,16 @@ import {
   CHAT_SYNC_PATH,
   type ChatDirectory,
   chatListRows,
+  chatMarks,
   chatSendInput,
   chatSyncAnswer,
   chatSyncHref,
   heldInWindow,
+  heldMarks,
   newestCursor,
   nextSyncDelay,
+  type PinnedAnnouncement,
+  REMOVED_SENT_MAX,
   readChatSyncQuery,
   SYNC_BUSY_MS,
   SYNC_IDLE_MS,
@@ -19,6 +23,7 @@ import {
   syncBrings,
   syncWindowStart,
   waitingChats,
+  withinHeld,
 } from "./chat-sync";
 
 const A = "0a000000-0000-4000-a000-000000000001";
@@ -113,6 +118,11 @@ describe("the sync's question", () => {
       conversation: A,
       after: { at: AT, id: B },
       held: 3,
+      marks: null,
+      from: null,
+      removed: [],
+      changed: null,
+      recheck: false,
     });
   });
 
@@ -141,6 +151,11 @@ describe("the sync's question", () => {
       conversation: null,
       after: null,
       held: null,
+      marks: null,
+      from: null,
+      removed: [],
+      changed: null,
+      recheck: false,
     });
   });
 
@@ -382,7 +397,8 @@ describe("chatSendInput", () => {
       { draft, words: "x", conversation: A, toPerson: B },
       { draft, words: "x" },
       { draft: "draft-1", words: "x", conversation: A },
-      { draft, words: "x", conversation: A, announce: true },
+      { draft, words: "x", conversation: A, pinned: true },
+      { draft, words: "x", conversation: A, announce: "yes" },
       { draft, words: "x".repeat(8_001), conversation: A },
       { draft, words: 5, conversation: A },
       null,
@@ -404,7 +420,213 @@ describe("waitingChats", () => {
     expect(waitingChats([])).toBe(0);
   });
 
-  it("doesn't count an announcement nothing on screen can settle yet (C3)", () => {
-    expect(waitingChats([row({ unread: 0, pinnedWaiting: 1 })])).toBe(0);
+  it('counts a chat with an announcement waiting for the reader\'s "קראתי" (C3)', () => {
+    expect(waitingChats([row({ unread: 0, pinnedWaiting: 1 })])).toBe(1);
+    expect(waitingChats([row({ unread: 2, pinnedWaiting: 1 })])).toBe(1);
+  });
+});
+
+describe("the marks of what is on screen (C3)", () => {
+  const at = (minute: number) =>
+    `2026-11-11T08:${String(minute).padStart(2, "0")}:00.000000+00:00`;
+  const shown = (minute: number, removedBy: string | null = null) => ({
+    id: `0e000000-0000-4000-a000-${String(minute).padStart(12, "0")}`,
+    createdAt: at(minute),
+    removed: removedBy !== null,
+    removedBy,
+  });
+  const pin = (
+    overrides: Partial<Pick<PinnedAnnouncement, "confirmed" | "readers">> = {},
+  ) => ({
+    message: { ...shown(5), kind: "announcement" as const },
+    confirmed: false,
+    readers: null,
+    ...overrides,
+  });
+
+  it("start where the screen's messages do, and name the newest it shows as removed", () => {
+    const held = Array.from({ length: 30 }, (_, i) =>
+      shown(i, i % 2 === 0 ? B : null),
+    );
+    const sent = heldMarks(held);
+    expect(sent.from).toEqual({ at: at(0), id: shown(0).id });
+    expect(sent.removed).toHaveLength(Math.min(15, REMOVED_SENT_MAX));
+    expect(sent.removed[0]).toBe(shown(28).id);
+    expect(sent.removed.every((id) => !id.endsWith("1"))).toBe(true);
+    const many = Array.from({ length: REMOVED_SENT_MAX + 5 }, (_, i) =>
+      shown(i, B),
+    );
+    expect(heldMarks(many).removed).toHaveLength(REMOVED_SENT_MAX);
+    expect(heldMarks(many).removed.at(-1)).toBe(shown(5).id);
+    expect(heldMarks([])).toEqual({ from: null, removed: [] });
+  });
+
+  it("cover every message the screen holds, its newest (the cursor) too", () => {
+    const held = Array.from({ length: 80 }, (_, i) => shown(i));
+    const before = chatMarks(held, []);
+    // The oldest of a long conversation, scrolled up to, or its newest:
+    // either removed changes the marks.
+    expect(chatMarks([shown(0, B), ...held.slice(1)], [])).not.toBe(before);
+    expect(chatMarks([...held.slice(0, -1), shown(79, C)], [])).not.toBe(
+      before,
+    );
+  });
+
+  it("compare the route's messages where the screen's are, both ends included", () => {
+    const page = [shown(1), shown(2), shown(3), shown(4)];
+    const from = { at: at(2), id: shown(2).id };
+    const through = { at: at(3), id: shown(3).id };
+    expect(withinHeld(page, from, through).map((m) => m.id)).toEqual([
+      shown(2).id,
+      shown(3).id,
+    ]);
+    expect(withinHeld(page, null, through)).toEqual([]);
+    expect(withinHeld(page, from, null)).toEqual([]);
+  });
+
+  it("stay the same when a message is sent or read, whatever the order", () => {
+    const one = chatMarks([shown(1), shown(2, B)], [pin()]);
+    expect(one).toMatch(/^[0-9a-f]{8}$/);
+    expect(chatMarks([shown(2, B), shown(1), shown(3)], [pin()])).toBe(one);
+  });
+
+  it("move when a message is removed, put back, or removed by someone else", () => {
+    const before = chatMarks([shown(1), shown(2)], []);
+    const removed = chatMarks([shown(1), shown(2, B)], []);
+    expect(removed).not.toBe(before);
+    expect(chatMarks([shown(1), shown(2, C)], [])).not.toBe(removed);
+    expect(chatMarks([shown(1), shown(2)], [])).toBe(before);
+  });
+
+  it("move when an announcement is pinned, unpinned, confirmed, or counted again", () => {
+    const none = chatMarks([], []);
+    const pinned = chatMarks([], [pin()]);
+    expect(pinned).not.toBe(none);
+    expect(chatMarks([], [pin({ confirmed: true })])).not.toBe(pinned);
+    const counted = chatMarks([], [pin({ readers: { count: 1, total: 3 } })]);
+    expect(counted).not.toBe(pinned);
+    expect(chatMarks([], [pin({ readers: { count: 2, total: 3 } })])).not.toBe(
+      counted,
+    );
+  });
+
+  it("ask with the marks of a conversation only, and read them back", () => {
+    const href = chatSyncHref({
+      version: null,
+      conversation: A,
+      after: { at: AT, id: B },
+      held: 0,
+      marks: "0a1b2c3d",
+      from: { at: AT, id: C },
+      removed: [D, B],
+      changed: AT,
+      recheck: true,
+    });
+    const params = new URL(href, "https://example.invalid").searchParams;
+    expect(readChatSyncQuery(params)).toMatchObject({
+      marks: "0a1b2c3d",
+      from: { at: AT, id: C },
+      removed: [D, B],
+      changed: AT,
+      recheck: true,
+    });
+    expect(
+      readChatSyncQuery(
+        new URLSearchParams(`c=${A}&m=0a1b2c3d&x=${D.toUpperCase()},${D}`),
+      )?.removed,
+    ).toEqual([D]);
+    expect(
+      chatSyncHref({
+        version: null,
+        conversation: null,
+        after: null,
+        held: null,
+        marks: "0a1b2c3d",
+        recheck: true,
+      }),
+    ).toBe(CHAT_SYNC_PATH);
+  });
+
+  it("refuse marks that aren't marks, or what comes without them", () => {
+    for (const query of [
+      "m=0a1b2c3d",
+      `c=${A}&m=nothex!!`,
+      `c=${A}&m=0A1B2C3D`,
+      `c=${A}&from=${encodeURIComponent(`${AT}~${C}`)}`,
+      `c=${A}&r=1`,
+      `c=${A}&m=0a1b2c3d&r=yes`,
+      `c=${A}&m=0a1b2c3d&from=yesterday`,
+      `c=${A}&x=${B}`,
+      `c=${A}&cv=${encodeURIComponent(AT)}`,
+      `c=${A}&m=0a1b2c3d&x=nope`,
+      `c=${A}&m=0a1b2c3d&x=${B},`,
+      `c=${A}&m=0a1b2c3d&x=${Array.from({ length: REMOVED_SENT_MAX + 1 }, () => B).join(",")}`,
+      `c=${A}&m=0a1b2c3d&cv=soon`,
+      `c=${A}&m=0a1b2c3d&cv=2026-11-11`,
+    ]) {
+      expect(readChatSyncQuery(new URLSearchParams(query)), query).toBeNull();
+    }
+  });
+
+  it("reads the pinned announcements and the messages again in an answer", () => {
+    const message = {
+      id: A,
+      authorId: B,
+      kind: "announcement" as const,
+      body: "שלום",
+      fileKind: null,
+      fileName: null,
+      fileSize: null,
+      fileGone: false,
+      pinned: true,
+      createdAt: AT,
+      removed: false,
+      removedBy: null,
+      draft: null,
+    };
+    const answer = {
+      open: {
+        conversation: A,
+        messages: [],
+        gap: false,
+        people: [],
+        seenUpTo: null,
+        cursor: null,
+        changed: AT,
+        recent: [{ ...message, pinned: false, removed: true, body: null }],
+        pinned: [{ message, confirmed: true, readers: { count: 1, total: 3 } }],
+      },
+    };
+    expect(chatSyncAnswer.parse(answer)).toEqual(answer);
+    expect(
+      chatSyncAnswer.safeParse({
+        open: {
+          ...answer.open,
+          pinned: [
+            { message, confirmed: true, readers: { count: -1, total: 3 } },
+          ],
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("send an announcement to a conversation only", () => {
+    const draft = C;
+    expect(
+      chatSendInput.safeParse({
+        draft,
+        words: "שלום",
+        conversation: A,
+        announce: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      chatSendInput.safeParse({
+        draft,
+        words: "שלום",
+        toPerson: B,
+        announce: true,
+      }).success,
+    ).toBe(false);
   });
 });

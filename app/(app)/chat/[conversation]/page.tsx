@@ -11,9 +11,11 @@ export const generateMetadata = () => moduleMetadata("chat");
 // they may not read is the same not-found screen as one that doesn't exist.
 export default async function ConversationPage({
   params,
+  searchParams,
 }: PageProps<"/chat/[conversation]">) {
-  const [{ conversation }, access, wording] = await Promise.all([
+  const [{ conversation }, query, access, wording] = await Promise.all([
     params,
+    searchParams,
     chatAccess(),
     currentWording(),
   ]);
@@ -24,6 +26,7 @@ export default async function ConversationPage({
       access={access}
       conversationId={conversation}
       toPerson={null}
+      announceFirst={query.announce === "1"}
       wording={wording}
     />
   );

@@ -92,11 +92,13 @@ Only `app/` imports app code (`@/…`).
   Built so far: Button, IconButton (also as a link, with a count), TextField, PhoneField, DateField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
   ChoiceList, ChoiceMenu (options with a mark and hint), Segmented, Card, ListRow (with submit and current) and ListGroup, DataTable, PersonList, Badge, Avatar
   and AvatarStack (with photos), AvatarPhotoPicker, VisibilityNote, ProfileCover (eight presets) and CoverChoices, Tile, CoverageBar, ProgressRing, PunchCircle and ScanCircle, ChecklistItem, DayToggles, Sheet, FloatingAction, FloatingDock,
-  StatusToast, EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
+  StatusToast (with an undo), EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
   PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay,
   BusinessList, BusinessSwitchRow, BusinessMenu and BusinessMark (business-switcher),
-  and the chat's MessageBubble, DayDivider, Composer, ChatRow and ChatGroupMark, ChatHeader,
-  NewBelow and ImmersiveScreen (hides the phone's tab bar; mock screens at `/design/chat`).
+  and the chat's MessageBubble (an announcement, removed, its actions), DayDivider, Composer
+  (with a switch), ChatRow and ChatGroupMark, ChatHeader (with what stays under it),
+  AnnouncementCard, NewBelow and ImmersiveScreen (hides the phone's tab bar; mock screens
+  at `/design/chat`).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a

@@ -1,23 +1,30 @@
 "use server";
 
 import {
+  announcementReaders,
   CHAT_PAGE_SIZE,
   type ChatMessage,
   type ChatWrite,
+  confirmAnnouncement,
   getChatAuthors,
   getMessages,
+  muteChat,
+  pinAnnouncement,
   readChat,
+  removeChatMessage,
+  restoreChatMessage,
   seeChatNotice,
   sendChatMessage,
   withOwnDrafts,
 } from "@db/chat";
 import { parseChatCursor } from "@domain/chat";
+import { splitReaders } from "@domain/chat-announce";
 import { type ChatSyncPerson, chatSendInput } from "@domain/chat-sync";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { pushSoon } from "../../push/server";
 import { chatAccess } from "./chat-access";
-import type { ChatActionResult } from "./chat-types";
+import type { ChatActionResult, ChatReaders, ReaderShown } from "./chat-types";
 
 /**
  * A chat write as the signed-in person, in the business the screen was drawn
@@ -74,6 +81,7 @@ export async function sendChatMessageAction(
             draft: sent.draft,
             words: sent.words,
             conversation: sent.conversation,
+            announce: sent.announce === true,
           }
         : { draft: sent.draft, words: sent.words, toPerson: sent.toPerson },
     ),
@@ -165,4 +173,141 @@ export async function seeChatNoticeAction(
   );
   if (result.ok) refresh();
   return result;
+}
+
+const messageId = z.uuid();
+
+/**
+ * A change to one message as the signed-in person, which the database checks
+ * again (who may, where, and for how long); the next sync brings it to
+ * everyone else. `pushes`: it may tell people again (a pin, a message put
+ * back that was pinned), so the phone's part goes out soon.
+ */
+async function changeMessageAs(
+  business: string,
+  message: unknown,
+  change: (actor: string, id: string) => Promise<ChatWrite<null>>,
+  pushes = false,
+): Promise<ChatActionResult> {
+  const id = messageId.safeParse(message);
+  if (!id.success) return { ok: false, failure: "invalid" };
+  const result = await asMember(business, (actor) => change(actor, id.data));
+  if (result.ok && pushes) pushSoon();
+  return result;
+}
+
+/**
+ * "קראתי" on an announcement the person reads: once, and their own line
+ * about it is settled. Its author and management see that they did; nobody
+ * else does. From the conversation, /chat/announcements and Today.
+ */
+export async function confirmAnnouncementAction(
+  business: string,
+  message: unknown,
+): Promise<ChatActionResult> {
+  return changeMessageAs(business, message, (actor, id) =>
+    confirmAnnouncement(actor, id),
+  );
+}
+
+/**
+ * Its author or management pins an announcement again, or unpins it, which
+ * settles its lines for everyone. Pinned again, it asks those who haven't
+ * confirmed it, again.
+ */
+export async function pinAnnouncementAction(
+  business: string,
+  message: unknown,
+  pin: unknown,
+): Promise<ChatActionResult> {
+  if (typeof pin !== "boolean") return { ok: false, failure: "invalid" };
+  return changeMessageAs(
+    business,
+    message,
+    (actor, id) => pinAnnouncement(actor, id, pin),
+    pin,
+  );
+}
+
+/**
+ * Removes a message: one's own anywhere ("מחיקת ההודעה"), or as management
+ * someone else's in a group ("הסרת ההודעה"; never in a private chat, which
+ * the database refuses too). Its text waits 10 minutes for the undo; a
+ * removal by management of someone else's is in the activity log, with no
+ * word of it.
+ */
+export async function removeChatMessageAction(
+  business: string,
+  message: unknown,
+): Promise<ChatActionResult> {
+  return changeMessageAs(business, message, (actor, id) =>
+    removeChatMessage(actor, id),
+  );
+}
+
+/**
+ * "ביטול" right after removing: whoever removed the message puts it back,
+ * within the database's 10 minutes ("closed" after).
+ */
+export async function restoreChatMessageAction(
+  business: string,
+  message: unknown,
+): Promise<ChatActionResult> {
+  return changeMessageAs(
+    business,
+    message,
+    (actor, id) => restoreChatMessage(actor, id),
+    true,
+  );
+}
+
+/**
+ * No notifications from a conversation on the person's phone (`mute`), or
+ * again. It still counts as unread in the app, and nobody else learns of it.
+ */
+export async function muteChatAction(
+  business: string,
+  conversation: unknown,
+  mute: unknown,
+): Promise<ChatActionResult> {
+  const id = conversationId.safeParse(conversation);
+  if (!id.success || typeof mute !== "boolean") {
+    return { ok: false, failure: "invalid" };
+  }
+  return asMember(business, (actor) => muteChat(actor, id.data, mute));
+}
+
+/**
+ * Who of the group confirmed an announcement and who not yet, named, for its
+ * author and management only (`public.announcement_readers` reads nobody for
+ * anyone else, so both lists are empty for them). Read under the person's
+ * own session; nothing is written.
+ */
+export async function announcementReadersAction(
+  business: string,
+  message: unknown,
+): Promise<ChatActionResult<ChatReaders>> {
+  const id = messageId.safeParse(message);
+  if (!id.success) return { ok: false, failure: "invalid" };
+  return asMember(business, async () => {
+    const readers = await announcementReaders(id.data);
+    const people = new Map(
+      (await getChatAuthors(readers.map((r) => r.person))).map((p) => [
+        p.id,
+        p,
+      ]),
+    );
+    const named = readers
+      .map((reader): ReaderShown => {
+        const person = people.get(reader.person.toLowerCase());
+        return {
+          person: reader.person.toLowerCase(),
+          ackedAt: reader.ackedAt,
+          name: person?.name ?? null,
+          photo: person?.photo ?? null,
+        };
+      })
+      .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", "he"));
+    return { ok: true, value: splitReaders(named) };
+  });
 }

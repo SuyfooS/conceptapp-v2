@@ -4,11 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { currentWording } from "../../../current-wording";
 import { moduleMetadata } from "../../../module-screen";
 import { currentModuleSettings } from "../../../modules";
-import {
-  olderChatMessagesAction,
-  readChatAction,
-  sendChatMessageAction,
-} from "../../actions";
+import { muteChatAction } from "../../actions";
 import {
   chatPeople,
   currentChatDepartments,
@@ -17,7 +13,10 @@ import {
 } from "../../chat";
 import { chatAccess } from "../../chat-access";
 import { chatPaths } from "../../chat-paths";
-import { ConversationPageView } from "../../conversation-page";
+import {
+  boundChatActions,
+  ConversationPageView,
+} from "../../conversation-page";
 import { ConversationView } from "../../conversation-view";
 
 export const generateMetadata = () => moduleMetadata("chat");
@@ -83,11 +82,11 @@ export default async function WithPersonPage({
       businessName={access.businessName}
       fileDays={settings.fileDays}
       demo={access.demo}
-      actions={{
-        send: sendChatMessageAction.bind(null, businessId),
-        read: readChatAction.bind(null, businessId),
-        older: olderChatMessagesAction.bind(null, businessId),
-      }}
+      actions={boundChatActions(businessId)}
+      pinned={[]}
+      powers={{ announce: false, moderate: false }}
+      announceFirst={false}
+      mute={muteChatAction.bind(null, businessId)}
       wording={wording}
     />
   );

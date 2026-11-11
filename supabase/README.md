@@ -48,7 +48,8 @@ own through `private.purge_business_records`, which only the database's owner ma
 (the reset, and test clean-ups). The shop's week is always published
 (`public.renew_demo_schedules`); the restaurant's is the visitor's to build. Both start
 with the demo's own conversations (`private.seed_demo_chat`,
-`20261111000300_chat_on.sql`): in the whole team's group, in the first worker's first
+`20261111000300_chat_on.sql`, and from `20261111000400_chat_announce.sql` the manager's
+pinned announcement, which the first two workers confirmed): in the whole team's group, in the first worker's first
 department and in the manager's private chat with that worker, written by the people
 each definition names by role, so neither definition needed a change and that
 migration's Migrate run needs no "demo". A visitor's messages go after an hour (the

@@ -148,7 +148,10 @@ export function syncBrings(
   return inside > held;
 }
 
-/** What the screen asks: `/chat-sync?v=…&c=…&after=…&n=…`. */
+/**
+ * What the screen asks:
+ * `/chat-sync?v=…&c=…&after=…&n=…&m=…&from=…&x=…&cv=…&r=1`.
+ */
 export type ChatSyncQuery = {
   /** The list's version from the last answer (`inbox.version`); null at first. */
   version: string | null;
@@ -162,10 +165,143 @@ export type ChatSyncQuery = {
    * Null asks only for what came after the cursor.
    */
   held: number | null;
+  /**
+   * With a conversation, what the screen holds of every message it has (its
+   * newest, the cursor, too) and of its pinned announcements (`chatMarks`):
+   * when the conversation changed since `changed`, or `recheck` asks, the
+   * route reads them again and sends what it has otherwise. Null asks for
+   * none of it.
+   */
+  marks?: string | null;
+  /**
+   * With `marks`, the oldest message the screen holds (`heldMarks`): the
+   * route compares from there to the cursor. Null: it holds none.
+   */
+  from?: ChatCursor | null;
+  /**
+   * With `marks`, the newest of the messages the screen shows as removed, at
+   * most `REMOVED_SENT_MAX` (`heldMarks`): the route reads them again, so one
+   * put back comes back with its words wherever it is on screen.
+   */
+  removed?: string[];
+  /**
+   * With `marks`, the conversation's own stamp from the last answer
+   * (`open.changed`, its `changed_at`): it moves with every message sent,
+   * removed, put back, pinned or confirmed there, and the route compares the
+   * marks only when it moved. Null: compare.
+   */
+  changed?: string | null;
+  /**
+   * Compare the marks whatever the stamp: the conversation just came on
+   * screen (one kept hidden for going back may have missed what the list's
+   * syncs moved past), or the reader's own change just settled, so nothing a
+   * sync brought meanwhile and the screen left waiting stays behind.
+   */
+  recheck?: boolean;
 };
+
+/**
+ * How many of the messages it shows as removed the screen sends with its
+ * marks (`x=`), newest first: a message is put back only within minutes of
+ * its removal, so the newest of them are the ones that may come back.
+ */
+export const REMOVED_SENT_MAX = 20;
+
+/**
+ * What the screen sends of what it holds besides its marks (C3): where its
+ * messages start (the oldest it holds, `from=`), and the newest of those it
+ * shows as removed, at most `REMOVED_SENT_MAX` (`x=`). The marks themselves
+ * (`chatMarks`) cover every message it holds, its newest too.
+ */
+export function heldMarks(
+  held: readonly (ThreadMessage & { removed: boolean })[],
+): { from: ChatCursor | null; removed: string[] } {
+  const first = held[0];
+  const removed: string[] = [];
+  for (let i = held.length - 1; i >= 0; i -= 1) {
+    const message = held[i];
+    if (!message?.removed) continue;
+    removed.push(message.id.toLowerCase());
+    if (removed.length === REMOVED_SENT_MAX) break;
+  }
+  return {
+    from: first ? { at: first.createdAt, id: first.id } : null,
+    removed,
+  };
+}
+
+/**
+ * The route's messages that lie where the screen's do, from its oldest
+ * (`from`) to its newest (`through`, the cursor), both included, as the
+ * screen's marks count them.
+ */
+export function withinHeld<T extends ThreadMessage>(
+  messages: readonly T[],
+  from: ChatCursor | null,
+  through: ChatCursor | null,
+): T[] {
+  if (!from || !through) return [];
+  const start = { createdAt: from.at, id: from.id };
+  const end = { createdAt: through.at, id: through.id };
+  return messages.filter(
+    (m) => compareMessages(m, start) >= 0 && compareMessages(m, end) <= 0,
+  );
+}
+
+/** 32-bit FNV-1a, as eight hex digits: the same on the screen and the route. */
+function fnv1a(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return hash.toString(16).padStart(8, "0");
+}
+
+/**
+ * What may change of messages already on screen, in one short value: which
+ * of them were removed and by whom, and the conversation's pinned
+ * announcements with whether the reader confirmed each and, for its author
+ * and management, how many did. A message sent, or read, changes none of it,
+ * so a busy conversation never sends its older messages again; a removal, a
+ * message put back, a pin or an unpin, or a "קראתי" does. The order of either
+ * list doesn't matter, and only removed messages count: the route passes
+ * those it has where the screen's are, the screen every one it holds.
+ */
+export function chatMarks(
+  messages: readonly Pick<ChatSyncMessage, "id" | "removed" | "removedBy">[],
+  pinned: readonly {
+    message: Pick<ChatSyncMessage, "id">;
+    confirmed: boolean;
+    readers: PinnedAnnouncement["readers"];
+  }[],
+): string {
+  const removed = messages
+    .filter((m) => m.removed)
+    .map((m) => `${m.id.toLowerCase()}:${m.removedBy?.toLowerCase() ?? ""}`)
+    .sort();
+  const pins = pinned
+    .map(
+      (p) =>
+        `${p.message.id.toLowerCase()}:${p.confirmed ? 1 : 0}:${
+          p.readers ? `${p.readers.count}/${p.readers.total}` : "-"
+        }`,
+    )
+    .sort();
+  return fnv1a(`${removed.join(",")}|${pins.join(",")}`);
+}
+
+const MARKS = /^[0-9a-f]{8}$/;
 
 /** `public.chat_version` is an md5: a value that isn't one asks for the list. */
 const VERSION = /^[0-9a-f]{32}$/;
+
+/** A conversation's stamp as the database writes it: a timestamptz. */
+function isStamp(value: string): boolean {
+  return (
+    value.length <= 40 && STAMP.test(value) && !Number.isNaN(Date.parse(value))
+  );
+}
 
 /** The address the screen asks, with what it already has. */
 export function chatSyncHref(query: ChatSyncQuery): string {
@@ -175,6 +311,14 @@ export function chatSyncHref(query: ChatSyncQuery): string {
   if (query.conversation && query.after) {
     params.set("after", chatCursor(query.after));
     if (query.held !== null) params.set("n", String(query.held));
+  }
+  if (query.conversation && query.marks) {
+    params.set("m", query.marks);
+    if (query.from) params.set("from", chatCursor(query.from));
+    const removed = (query.removed ?? []).slice(0, REMOVED_SENT_MAX);
+    if (removed.length > 0) params.set("x", removed.join(","));
+    if (query.changed) params.set("cv", query.changed);
+    if (query.recheck) params.set("r", "1");
   }
   const search = params.toString();
   return search ? `${CHAT_SYNC_PATH}?${search}` : CHAT_SYNC_PATH;
@@ -186,8 +330,11 @@ const HELD_MAX = 1_000;
 /**
  * What the route was asked, or null when it isn't a question it answers (a
  * conversation that isn't an id, a cursor that isn't one, a cursor with no
- * conversation, or a count that isn't one or comes without a cursor). A
- * version that isn't one reads as none, so the list comes.
+ * conversation, a count that isn't one or comes without a cursor, marks that
+ * aren't marks or come without a conversation, `from`, `x`, `cv` and `r`
+ * without marks, removed messages that aren't ids or are more than
+ * `REMOVED_SENT_MAX`, or a stamp that isn't one). A version that isn't one
+ * reads as none, so the list comes.
  */
 export function readChatSyncQuery(
   params: URLSearchParams,
@@ -196,6 +343,12 @@ export function readChatSyncQuery(
   const c = params.get("c");
   const after = params.get("after");
   const n = params.get("n");
+  const m = params.get("m");
+  const from = params.get("from");
+  const x = params.get("x");
+  // A "+" in a link reads back as a space when it isn't escaped.
+  const cv = params.get("cv")?.replace(/ /g, "+") ?? null;
+  const r = params.get("r");
   if (c !== null && !isUuid(c)) return null;
   if (after !== null && (c === null || after === "")) return null;
   const cursor = after === null ? null : parseChatCursor(after);
@@ -203,11 +356,29 @@ export function readChatSyncQuery(
   if (n !== null && (cursor === null || !/^\d{1,4}$/.test(n))) return null;
   const held = n === null ? null : Number(n);
   if (held !== null && held > HELD_MAX) return null;
+  if (m !== null && (c === null || !MARKS.test(m))) return null;
+  if (
+    (from !== null || x !== null || cv !== null || r !== null) &&
+    m === null
+  ) {
+    return null;
+  }
+  const start = from === null ? null : parseChatCursor(from);
+  if (from !== null && start === null) return null;
+  const removed = x === null ? [] : x.split(",");
+  if (removed.length > REMOVED_SENT_MAX || !removed.every(isUuid)) return null;
+  if (cv !== null && !isStamp(cv)) return null;
+  if (r !== null && r !== "1") return null;
   return {
     version: v !== null && VERSION.test(v) ? v : null,
     conversation: c === null ? null : c.toLowerCase(),
     after: cursor,
     held,
+    marks: m,
+    from: start,
+    removed: [...new Set(removed.map((id) => id.toLowerCase()))],
+    changed: cv,
+    recheck: r === "1",
   };
 }
 
@@ -326,6 +497,19 @@ export const chatSyncPerson = z.object({
 export type ChatSyncPerson = z.infer<typeof chatSyncPerson>;
 
 /**
+ * A pinned announcement as its reader sees it (C3): the message, whether they
+ * pressed "קראתי" on it, and, for its author and management only, how many of
+ * the group's people did of how many (`public.announcement_readers`; null for
+ * anyone else, who never learns who confirmed).
+ */
+export const chatPinned = z.object({
+  message: chatSyncMessage,
+  confirmed: z.boolean(),
+  readers: z.object({ count: count, total: count }).nullable(),
+});
+export type PinnedAnnouncement = z.infer<typeof chatPinned>;
+
+/**
  * What `/chat-sync` answers with a 200 (a 204 says nothing changed):
  * - `inbox`, when the list's version moved (or none was given): the version
  *   to ask with next, and every row, named;
@@ -334,7 +518,12 @@ export type ChatSyncPerson = z.infer<typeof chatSyncPerson>;
  *   (`gap`: more than a page came, so these replace what is on screen and older
  *   ones load as at first), the people who wrote them, how far the other
  *   person of a private chat read it ("נקראה"; null in a group or before they
- *   read), and the cursor to ask with next.
+ *   read), the cursor to ask with next, and the conversation's own stamp
+ *   (`changed`, to send back as `cv`); and, when the marks the screen sent
+ *   are no longer the route's, `recent` (the messages where the screen's are
+ *   that are removed now, and those it showed as removed that were put back,
+ *   as they are now) and `pinned` (every pinned announcement, newest first,
+ *   in place of what the screen has).
  */
 export const chatSyncAnswer = z.object({
   inbox: z
@@ -351,6 +540,9 @@ export const chatSyncAnswer = z.object({
       people: z.array(chatSyncPerson),
       seenUpTo: instant.nullable(),
       cursor: z.string().nullable(),
+      changed: z.string().refine(isStamp).nullable().optional(),
+      recent: z.array(chatSyncMessage).optional(),
+      pinned: z.array(chatPinned).optional(),
     })
     .optional(),
 });
@@ -362,13 +554,16 @@ export type ChatSyncAnswer = z.infer<typeof chatSyncAnswer>;
  * fresh `crypto.randomUUID()` per message, kept for its retries, so a retry
  * never sends it twice), what was typed (cleaned and checked on the server by
  * `checkMessage`), and where: a conversation, or someone's private chat,
- * opened on its first message.
+ * opened on its first message. In a group, management may send it as an
+ * announcement (`announce`, C3), which the database refuses anyone else and
+ * any private chat.
  */
 export const chatSendInput = z.union([
   z.strictObject({
     draft: uuid,
     words: z.string().max(8_000),
     conversation: uuid,
+    announce: z.boolean().optional(),
   }),
   z.strictObject({
     draft: uuid,
@@ -380,13 +575,13 @@ export type ChatSendInput = z.input<typeof chatSendInput>;
 
 /**
  * How many chats the Chat tab counts: those with messages waiting for the
- * reader. An announcement waiting for "קראתי" joins them with C3, which
- * brings the button that settles it: until then nothing could clear it.
+ * reader, or an announcement waiting for their "קראתי" (C3, whose button
+ * settles it, in the conversation and on Today).
  */
 export function waitingChats(
-  rows: readonly Pick<ChatInboxRow, "unread">[],
+  rows: readonly Pick<ChatInboxRow, "unread" | "pinnedWaiting">[],
 ): number {
-  return rows.filter((row) => row.unread > 0).length;
+  return rows.filter((row) => row.unread > 0 || row.pinnedWaiting > 0).length;
 }
 
 /**

@@ -16,6 +16,7 @@ import {
 } from "react";
 import { Button } from "./button";
 import { cn } from "./cn";
+import { Switch } from "./switch";
 
 export type ComposerProps = {
   /** The field's name, also its placeholder ("כתיבת הודעה"). */
@@ -44,6 +45,18 @@ export type ComposerProps = {
    * nobody can write too, so new messages there still say so.
    */
   above?: ReactNode;
+  /**
+   * A switch over the field that changes what is sent, such as "הודעה
+   * מההנהלה" for management in a group (C3), with a line saying what it
+   * does: shown while it is on, and told to screen readers before they turn
+   * it on.
+   */
+  toggle?: {
+    label: string;
+    checked: boolean;
+    onChange: (checked: boolean) => void;
+    hint?: ReactNode;
+  } | null;
   /** The field, for a screen that moves the keyboard to it. */
   fieldRef?: RefObject<HTMLTextAreaElement | null>;
   /** The field's name in a form. */
@@ -84,6 +97,7 @@ export function Composer({
   notice,
   tooLong,
   above,
+  toggle,
   fieldRef,
   name,
   floating = true,
@@ -98,6 +112,8 @@ export function Composer({
     [fieldRef],
   );
   const linesId = useId();
+  const toggleId = useId();
+  const hintId = useId();
   const [finePointer, setFinePointer] = useState(false);
   const checked = checkMessage(value);
   const over = !checked.ok && checked.reason === "tooLong";
@@ -190,6 +206,31 @@ export function Composer({
           "has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-accent",
         )}
       >
+        {toggle ? (
+          <div className="flex flex-col gap-0.5 px-3.5 pt-0.5">
+            <div className="flex items-center justify-between gap-3">
+              <span id={toggleId} className="font-medium text-base text-ink">
+                {toggle.label}
+              </span>
+              <Switch
+                aria-labelledby={toggleId}
+                aria-describedby={toggle.hint ? hintId : undefined}
+                checked={toggle.checked}
+                onChange={toggle.onChange}
+              />
+            </div>
+            {toggle.hint ? (
+              <p
+                id={hintId}
+                className={
+                  toggle.checked ? "pb-1 text-ink-2 text-sm" : "sr-only"
+                }
+              >
+                {toggle.hint}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div id={linesId} aria-live="polite">
           {said ? (
             <div className="flex flex-col gap-0.5 px-3.5 pt-1.5 pb-1 text-sm">

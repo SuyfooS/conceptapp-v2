@@ -70,7 +70,24 @@ export type WatchedConversation = {
    * looks again there for one that arrived late.
    */
   held: () => number | null;
-  receive: (open: SyncOpen) => void;
+  /**
+   * What it holds of its messages and pinned announcements, for `m=`,
+   * `from=`, `x=` and `cv=` (`chatMarks` and `heldMarks`, and the
+   * conversation's stamp from the last answer it took): the route sends them
+   * again when they changed (C3).
+   */
+  marks: () => {
+    marks: string;
+    from: ChatCursor | null;
+    removed: string[];
+    changed: string | null;
+  };
+  /**
+   * What the sync brought of it, and the number of the request that asked
+   * (`sent`): an answer to a request sent before one of the reader's own
+   * changes settled is older than what the screen shows of it.
+   */
+  receive: (open: SyncOpen, asked: number) => void;
 };
 
 type ChatContextValue = Omit<ChatFrame, "rows" | "noticeSeen" | "now"> & {
@@ -85,10 +102,27 @@ type ChatContextValue = Omit<ChatFrame, "rows" | "noticeSeen" | "now"> & {
   watch: (open: WatchedConversation) => () => void;
   /** Asks at once, as after sending. */
   syncNow: () => void;
+  /**
+   * Asks at once and compares the open conversation's marks whatever its
+   * stamp, and with `list` brings the list again too: the reader's own
+   * change just settled, kept or refused, so what a sync brought meanwhile
+   * and the screen left waiting comes again.
+   */
+  recheck: (options?: { list?: boolean }) => void;
+  /** How many syncs were sent so far: the number of the newest. */
+  sent: () => number;
   /** A message went: the conversation is moving, so it is asked often. */
   moved: () => void;
   /** The reader read a conversation: its count goes before the next sync. */
   readLocally: (conversation: string) => void;
+  /**
+   * The reader changed something of a conversation's row (an announcement
+   * confirmed, muted): it shows before the next sync brings the server's.
+   */
+  changeRowLocally: (
+    conversation: string,
+    change: (row: ChatListRow) => ChatListRow,
+  ) => void;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -115,6 +149,16 @@ type Loop = {
   controller: AbortController | null;
   /** The loop ran before: it is chat shown again. */
   shownBefore: boolean;
+  /**
+   * A conversation just came on screen: its next sync compares its marks
+   * whatever the version (one kept hidden may have missed changes the list
+   * moved past).
+   */
+  recheck: boolean;
+  /** The next sync asks for the list whatever the version (`recheck`). */
+  listAgain: boolean;
+  /** Syncs sent so far, each one's number. */
+  sent: number;
 };
 
 /** At least this long between two drawings for the tab's count. */
@@ -162,6 +206,9 @@ export function ChatProvider({
     redrawn: false,
     controller: null,
     shownBefore: false,
+    recheck: false,
+    listAgain: false,
+    sent: 0,
   });
   const api = useRef<{ run: () => void; schedule: () => void } | null>(null);
 
@@ -198,6 +245,7 @@ export function ChatProvider({
     const apply = (
       answer: ChatSyncAnswer,
       open: WatchedConversation | null,
+      asked: number,
     ) => {
       setNow(Date.now());
       if (answer.inbox) {
@@ -208,7 +256,7 @@ export function ChatProvider({
       if (brought && open && s.open === open) {
         if (brought.conversation !== open.conversation) return;
         if (brought.messages.length > 0) s.lastMove = Date.now();
-        open.receive(brought);
+        open.receive(brought, asked);
       }
     };
 
@@ -224,13 +272,30 @@ export function ChatProvider({
       const open = s.open;
       const controller = new AbortController();
       s.controller = controller;
+      const marks = open?.marks() ?? null;
+      const recheck = s.recheck;
+      const listAgain = s.listAgain;
+      s.recheck = false;
+      s.listAgain = false;
+      s.sent += 1;
+      const asked = s.sent;
+      // Asked again next time, whatever stopped this one.
+      const askAgain = () => {
+        if (recheck && open !== null && s.open === open) s.recheck = true;
+        if (listAgain) s.listAgain = true;
+      };
       try {
         const response = await fetch(
           chatSyncHref({
-            version: s.version,
+            version: listAgain ? null : s.version,
             conversation: open?.conversation ?? null,
             after: open?.cursor() ?? null,
             held: open?.held() ?? null,
+            marks: marks?.marks ?? null,
+            from: marks?.from ?? null,
+            removed: marks?.removed ?? [],
+            changed: marks?.changed ?? null,
+            recheck: recheck && open !== null,
           }),
           { cache: "no-store", signal: controller.signal },
         );
@@ -246,11 +311,13 @@ export function ChatProvider({
           const answer = chatSyncAnswer.safeParse(await response.json());
           if (answer.success) {
             s.failures = 0;
-            apply(answer.data, open);
+            apply(answer.data, open, asked);
           } else {
+            askAgain();
             s.failures += 1;
           }
         } else {
+          askAgain();
           s.failures += 1;
           // Chat went off, the conversation went, or a view began: the
           // server says what is there now.
@@ -260,6 +327,7 @@ export function ChatProvider({
           }
         }
       } catch {
+        askAgain();
         if (controller.signal.aborted) return;
         s.failures += 1;
       } finally {
@@ -303,6 +371,7 @@ export function ChatProvider({
     s.open = open;
     s.lastMove = Date.now();
     s.redrawn = false;
+    s.recheck = true;
     // A conversation shown again (one kept for going back) may be behind.
     api.current?.run();
     return () => {
@@ -313,6 +382,13 @@ export function ChatProvider({
   }, []);
 
   const syncNow = useCallback(() => api.current?.run(), []);
+  const recheck = useCallback((options?: { list?: boolean }) => {
+    const s = loop.current;
+    if (s.open) s.recheck = true;
+    if (options?.list) s.listAgain = true;
+    api.current?.run();
+  }, []);
+  const sent = useCallback(() => loop.current.sent, []);
   const moved = useCallback(() => {
     loop.current.lastMove = Date.now();
   }, []);
@@ -325,6 +401,16 @@ export function ChatProvider({
       ),
     );
   }, []);
+  const changeRowLocally = useCallback(
+    (conversation: string, change: (row: ChatListRow) => ChatListRow) => {
+      setRows((list) =>
+        list.map((row) =>
+          row.conversation === conversation ? change(row) : row,
+        ),
+      );
+    },
+    [],
+  );
   const seeNoticeNow = useCallback(() => {
     setNoticeSeen(true);
     seeNotice().catch(() => {
@@ -367,8 +453,11 @@ export function ChatProvider({
       seeNotice: seeNoticeNow,
       watch,
       syncNow,
+      recheck,
+      sent,
       moved,
       readLocally,
+      changeRowLocally,
     }),
     [
       frame,
@@ -378,8 +467,11 @@ export function ChatProvider({
       seeNoticeNow,
       watch,
       syncNow,
+      recheck,
+      sent,
       moved,
       readLocally,
+      changeRowLocally,
     ],
   );
 

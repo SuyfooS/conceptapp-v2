@@ -18,3 +18,14 @@ export type ChatActionFailure =
 export type ChatActionResult<T = null> =
   | { ok: true; value: T }
   | { ok: false; failure: ChatActionFailure };
+
+/** Someone of a group, named, and when they confirmed an announcement (null: not yet). */
+export type ReaderShown = {
+  person: string;
+  ackedAt: string | null;
+  name: string | null;
+  photo: string | null;
+};
+
+/** Who confirmed an announcement, in the order they did, and who not yet, by name. */
+export type ChatReaders = { confirmed: ReaderShown[]; waiting: ReaderShown[] };

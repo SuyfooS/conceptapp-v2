@@ -111,9 +111,11 @@ select results_eq(
   $$values
     ('87000000-0000-4000-a000-000000000001'::uuid, 'text'::text, false),
     ('87000000-0000-4000-a000-000000000002'::uuid, 'text'::text, false),
-    ('87000000-0000-4000-a000-000000000002'::uuid, 'text'::text, false)$$,
-  'the team''s group: the owner''s thanks and the manager''s two morning messages'
+    ('87000000-0000-4000-a000-000000000002'::uuid, 'announcement'::text, true)$$,
+  'the team''s group: the owner''s thanks, the manager''s morning message and, from C3, her pinned announcement'
 );
+-- From C3 (20261111000400_chat_announce.sql): chat_announce.test.sql has the
+-- rest of the announcement.
 select is(
   (select count(*)::integer from public.chat_messages m
    where m.business_id = '87000000-0000-4000-b000-000000000001'
@@ -123,8 +125,8 @@ select is(
   || '|' || (select count(*)::integer from public.notifications n
    where n.business_id = '87000000-0000-4000-b000-000000000001'
      and n.kind = 'chat.announcement'),
-  '0|0|0',
-  'and no announcement: none waits for a "קראתי" no screen offers before C3'
+  '1|2|3',
+  'one announcement, which the first two workers confirmed, and its lines for the owner and both workers'
 );
 select is(
   (select count(*)::integer from public.chat_reads r
