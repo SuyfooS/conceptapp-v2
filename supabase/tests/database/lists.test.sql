@@ -319,9 +319,11 @@ select 'ty', (public.save_list_template('73000000-0000-4000-a000-000000000009',
     "items": [{"kind": "check", "label": "Y item"}]}') ->> 'id')::uuid;
 insert into ids values ('ty-item', pg_temp.titem_of('ty', 'Y item'));
 
+-- Photo items are taken from L6 (20261110001500_list_photos.sql,
+-- list_photos.test.sql), like a note: with no unit or range.
 select throws_ok(
-  $$select pg_temp.save_x('{"name": "P", "items": [{"kind": "photo", "label": "Picture"}]}')$$,
-  '22023', 'Photo items come later', 'photo items wait for their part'
+  $$select pg_temp.save_x('{"name": "P", "items": [{"kind": "photo", "label": "Picture", "unit": "cm"}]}')$$,
+  '22023', 'Only numbers have a unit and a range', 'a photo item has no unit or range'
 );
 select throws_ok(
   $$select pg_temp.save_x(jsonb_build_object('name', 'Long', 'items',

@@ -103,11 +103,11 @@ type ItemShape = {
   defaultQuantity?: number;
 };
 
-/** The rules an item keeps whatever holds it; photos come with their own part. */
+/**
+ * The rules an item keeps whatever holds it. A photo (from L6) is like a
+ * note: no unit, range or usual count.
+ */
 function checkItem(item: ItemShape, ctx: z.RefinementCtx) {
-  if (item.kind === "photo") {
-    ctx.addIssue({ code: "custom", message: "Photo items come later" });
-  }
   if (
     item.kind !== "number" &&
     (item.unit !== undefined ||
@@ -772,6 +772,16 @@ export type ListItem = {
   checked: boolean;
   reading: number | null;
   answer: string | null;
+  /**
+   * A photo item's photo (L6), where the app shows it (`listPhotoSrc` in
+   * @domain/list-photos), or null when none was taken or it is no longer kept.
+   */
+  photo: string | null;
+  /**
+   * The photo was taken, and the daily clean-up removed it after the days the
+   * business keeps photos: the item stays done.
+   */
+  photoRemoved: boolean;
   comment: string | null;
   done: boolean;
   doneBy: string | null;

@@ -77,7 +77,12 @@ template's times have opened by then (up to 12 hours late after an outage, never
 the times there already count from the migration, so its first minute catches up on
 nothing), reminds before they are due, marks late ones and closes as missed what nobody did
 (never a list opened again by hand), each once;
-its lines go to phones with the `notifications` job. `seed.sql` switches all four off locally
+its lines go to phones with the `notifications` job.
+`20261110001500_list_photos.sql` adds a fifth, `list-photos`, daily at 03:43 UTC: while a photo
+on a list is older than its business keeps photos (`photoDays`, 90 days unless the team chose
+another), it asks the app's `/cron/list-photos`, with the same two Vault secrets as the minute
+job, to remove the files through Storage (only the app reaches them) and mark their items; without
+the secrets it calls nothing and the photos wait. `seed.sql` switches all five off locally
 and in CI, and only a demo definition that says `"scheduledLists": true` (the hosted ones)
 opens today's lists when it is reset; the tests call what the jobs run, at times they choose.
 

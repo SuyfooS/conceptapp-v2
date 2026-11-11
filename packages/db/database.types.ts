@@ -536,6 +536,7 @@ export type Database = {
           max_value: number | null;
           min_value: number | null;
           photo_path: string | null;
+          photo_removed_at: string | null;
           position: number;
           reading: number | null;
           requested: number | null;
@@ -560,6 +561,7 @@ export type Database = {
           max_value?: number | null;
           min_value?: number | null;
           photo_path?: string | null;
+          photo_removed_at?: string | null;
           position: number;
           reading?: number | null;
           requested?: number | null;
@@ -584,6 +586,7 @@ export type Database = {
           max_value?: number | null;
           min_value?: number | null;
           photo_path?: string | null;
+          photo_removed_at?: string | null;
           position?: number;
           reading?: number | null;
           requested?: number | null;
@@ -2371,6 +2374,13 @@ export type Database = {
         Returns: string;
       };
       end_view_session: { Args: { actor: string }; Returns: string };
+      expired_list_photos: {
+        Args: { at_time?: string; max_rows?: number };
+        Returns: {
+          item: string;
+          path: string;
+        }[];
+      };
       finish_list: {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
@@ -2382,6 +2392,10 @@ export type Database = {
       forget_auth_attempt: {
         Args: { at_time: string; caller: string; kind: string; phone: string };
         Returns: undefined;
+      };
+      forget_list_photos: {
+        Args: { at_time?: string; paths: string[] };
+        Returns: number;
       };
       invite_by_token: { Args: { token_hash: string }; Returns: Json };
       issue_invite_link: {
@@ -2408,6 +2422,7 @@ export type Database = {
         Returns: Json;
       };
       keeps_demo_profile: { Args: { person: string }; Returns: boolean };
+      list_photos_closed: { Args: { business: string }; Returns: boolean };
       my_open_lists: {
         Args: { actor: string; business: string };
         Returns: number;
@@ -2614,6 +2629,15 @@ export type Database = {
       set_list_item: {
         Args: { actor: string; at_time?: string; item: string; result: Json };
         Returns: Json;
+      };
+      set_list_item_photo: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          item: string;
+          new_path?: string;
+        };
+        Returns: string;
       };
       set_member_permission: {
         Args: {

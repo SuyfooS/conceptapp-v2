@@ -185,7 +185,8 @@ if a reverted migration reached one, open an `urgent` issue.
   uses Supabase test numbers and a logging SMS hook. The app sending the
   notifications people turned on is the product, but a nightly run never sends a
   test notification, never calls `/cron/notifications` on the hosted project, and
-  never writes Vault secrets.
+  never writes Vault secrets. It never calls `/cron/list-photos` on the hosted
+  project either: that route deletes stored photos.
 - Contact the pilot restaurant or anyone else outside this repo.
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.

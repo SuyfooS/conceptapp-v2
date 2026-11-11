@@ -1,5 +1,6 @@
 import "server-only";
 import type { ScheduleOpenings } from "@domain/list-openings";
+import { listPhotoSrc } from "@domain/list-photos";
 import {
   holdsList,
   type ItemResult,
@@ -36,7 +37,7 @@ import { type Role, STAFF_ROLES, type StaffRole } from "@domain/modules";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "./database.types";
-import { isMissingFunction } from "./missing";
+import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -367,6 +368,35 @@ const shiftSchema = z.object({
   end: z.string(),
 });
 
+const ITEM_COLUMNS =
+  "id, template_item_id, kind, label, hint, required, unit, min_value, max_value, requested, given, checked, reading, answer, photo_path, comment, done, done_by, done_at";
+
+/**
+ * A list's items in order, under RLS. When the photos' migration
+ * (20261110001500_list_photos.sql) isn't on the project yet, read without
+ * when a photo was removed: none was.
+ */
+async function itemRows(supabase: Supabase, listId: string) {
+  const withRemoved = await supabase
+    .from("list_items")
+    .select(`${ITEM_COLUMNS}, photo_removed_at`)
+    .eq("list_id", listId)
+    .order("position");
+  if (!isMissingColumn(withRemoved.error)) return withRemoved;
+  const without = await supabase
+    .from("list_items")
+    .select(ITEM_COLUMNS)
+    .eq("list_id", listId)
+    .order("position");
+  return {
+    ...without,
+    data: (without.data ?? []).map((row) => ({
+      ...row,
+      photo_removed_at: null,
+    })),
+  };
+}
+
 /** One list with its items and passes, if the person may read it. */
 export async function getList(
   listId: string,
@@ -378,13 +408,7 @@ export async function getList(
       .select(`${LIST_COLUMNS}, note, asks_quantities, shift`)
       .eq("id", listId)
       .maybeSingle(),
-    supabase
-      .from("list_items")
-      .select(
-        "id, template_item_id, kind, label, hint, required, unit, min_value, max_value, requested, given, checked, reading, answer, comment, done, done_by, done_at",
-      )
-      .eq("list_id", listId)
-      .order("position"),
+    itemRows(supabase, listId),
     supabase.from("list_people").select("user_id").eq("list_id", listId),
     supabase
       .from("list_passes")
@@ -414,6 +438,10 @@ export async function getList(
     checked: row.checked === true,
     reading: row.reading,
     answer: row.answer,
+    // A photo still kept is shown through the app's route; one the clean-up
+    // removed is said in words.
+    photo: row.photo_removed_at === null ? listPhotoSrc(row.photo_path) : null,
+    photoRemoved: row.photo_path !== null && row.photo_removed_at !== null,
     comment: row.comment,
     done: row.done,
     doneBy: row.done_by,

@@ -1687,6 +1687,81 @@ export async function shopListLines(
   return rows.map((row) => row.user_id);
 }
 
+const RESTAURANT_MANAGER = "00000000-0000-4000-a000-000000000002";
+const NOA_ID = "00000000-0000-4000-a000-000000000003";
+const TAMAR_ID = "00000000-0000-4000-a000-000000000010";
+
+/**
+ * A list with one photo item (L6), typed now and sent by the business's
+ * manager to one person: Noa in the demo restaurant, which takes photos
+ * ("photos": true in supabase/seed.sql), or Tamar in the demo shop, which
+ * takes none. Its id.
+ */
+export async function sendPhotoList(
+  business: "restaurant" | "shop",
+  name: string,
+  label: string,
+): Promise<string> {
+  const [sender, place, person] =
+    business === "restaurant"
+      ? [RESTAURANT_MANAGER, DEMO_RESTAURANT, NOA_ID]
+      : [SHOP_MANAGER, DEMO_SHOP, TAMAR_ID];
+  const list = {
+    name,
+    items: [{ kind: "photo", label }],
+    recipient: { kind: "person", user: person },
+  };
+  const [row] = await sql<{ id: string | null }[]>`
+    select public.send_list(${sender}::uuid, ${place}::uuid,
+      ${sql.json(list)}::jsonb) as id`;
+  if (!row?.id) throw new Error(`No photo list was sent in the ${business}`);
+  return row.id;
+}
+
+/** The photo a list's first photo item points at now, as the database keeps it. */
+export async function photoListPath(listId: string): Promise<string | null> {
+  const [row] = await sql<{ photo_path: string | null }[]>`
+    select i.photo_path from public.list_items i
+    where i.list_id = ${listId} and i.kind = 'photo'
+    order by i.position limit 1`;
+  return row?.photo_path ?? null;
+}
+
+/**
+ * Makes a list's photo as old as if it was taken `days` days ago, for the
+ * daily clean-up (L6, `public.expired_list_photos`) to find once that is past
+ * the days its business keeps photos.
+ */
+export async function agePhotoList(
+  listId: string,
+  days: number,
+): Promise<void> {
+  await sql`update public.list_items
+    set done_at = now() - make_interval(days => ${days}::integer)
+    where list_id = ${listId} and kind = 'photo' and photo_path is not null`;
+}
+
+/** Whether the daily clean-up removed a list's first photo: its item says so. */
+export async function photoListRemoved(listId: string): Promise<boolean> {
+  const [row] = await sql<{ removed: boolean }[]>`
+    select i.photo_removed_at is not null as removed from public.list_items i
+    where i.list_id = ${listId} and i.kind = 'photo'
+    order by i.position limit 1`;
+  return row?.removed ?? false;
+}
+
+/**
+ * Removes the photo lists a test sent, in both demo businesses. Their files,
+ * if any are left, are the local Storage's, unread by anyone.
+ */
+export async function removePhotoLists(name: string): Promise<void> {
+  await sql`delete from public.lists
+    where business_id in (${DEMO_RESTAURANT}, ${DEMO_SHOP}) and name = ${name}`;
+  await sql`delete from public.notifications
+    where business_id in (${DEMO_RESTAURANT}, ${DEMO_SHOP})
+      and kind like 'lists.%' and params ->> 'name' = ${name}`;
+}
+
 /**
  * The demo restaurant's lines of a kind about a list by name, and how many
  * people they went to: other specs may give the restaurant another manager

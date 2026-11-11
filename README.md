@@ -35,7 +35,7 @@ once these are set; without them the app says nothing about phones and shows no 
 | `VAPID_PUBLIC_KEY` | The key browsers subscribe with (public) | Vercel, `.env.local` |
 | `VAPID_PRIVATE_KEY` | Its private half: a secret | Vercel (Sensitive), `.env.local` |
 | `VAPID_SUBJECT` | A `mailto:` address push services may write to | Vercel, `.env.local` |
-| `CRON_SECRET` | What the database's minute job sends to `/cron/notifications`: a secret of its own, 32+ characters | Vercel (Sensitive), Supabase Vault as `cron_secret` |
+| `CRON_SECRET` | What the database's jobs send to `/cron/notifications` (every minute) and `/cron/list-photos` (once a day): a secret of its own, 32+ characters | Vercel (Sensitive), Supabase Vault as `cron_secret` |
 | `PUSH_TEST_ORIGIN` | The browser tests' mock push service, never on Vercel | CI only |
 
 Locally, `node tooling/vapid-keys.mjs` prints a fresh pair for `.env.local`. CI makes its

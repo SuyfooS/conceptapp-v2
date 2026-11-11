@@ -69,4 +69,22 @@ describe("demo businesses and profiles", () => {
       seed.match(/"template": "restaurant", [^\n]*"profiles": true,/g),
     ).toHaveLength(1);
   });
+
+  // Photos on lists (L6, 20261110001500_list_photos.sql): a demo business
+  // takes none unless its definition says `"photos": true`, as with profile
+  // photos. The local seed opens its restaurant for the browser tests and
+  // keeps the shop closed; the hosted ones stay closed, or a visitor's photo
+  // would wait for the next one, and pile up in Storage.
+  it("never opens a hosted demo business to photos on lists", () => {
+    expect(read("supabase/hosted-demo.sql")).not.toMatch(/"photos"/);
+  });
+
+  it("opens only the local seed's restaurant to photos on lists", () => {
+    const seed = read("supabase/seed.sql");
+    // A definition's own line, not the comments that name it.
+    expect(seed.match(/^\s+"template": [^\n]*"photos": true,\r?$/gm)).toEqual([
+      expect.stringMatching(/"template": "restaurant", /),
+    ]);
+    expect(seed.match(/"photos": true,/g)).toHaveLength(1);
+  });
 });

@@ -35,6 +35,11 @@ describe("proxy", () => {
     expect(source).toContain('"/photos/:path*"');
   });
 
+  it("guards the list photos", () => {
+    expect(source).toContain('"/list-photos",');
+    expect(source).toContain('"/list-photos/:path*"');
+  });
+
   it("guards every module screen", () => {
     for (const m of manifests) {
       if (!m.nav) continue;
