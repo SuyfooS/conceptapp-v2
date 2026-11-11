@@ -9,11 +9,13 @@ import {
 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { cn } from "./cn";
+import { type MessageImage, MessageImageView } from "./message-image";
+
+export type { MessageImage } from "./message-image";
 
 /**
  * What a message shows. Each kind is one case here and in `Body`, so a new
- * one (an image and a file in C4 and C5, a file no longer kept) is added
- * without touching the others.
+ * one (a PDF in C5) is added without touching the others.
  */
 export type MessageContent =
   /** Text as it was sent; http(s) addresses in it become links. */
@@ -24,7 +26,19 @@ export type MessageContent =
    */
   | { kind: "announcement"; body: string; label: string }
   /** Removed: whose doing it was, in words ("ההודעה נמחקה"). */
-  | { kind: "removed"; label: string };
+  | { kind: "removed"; label: string }
+  /**
+   * A picture (C4), with what was written with it, if anything: its
+   * thumbnail, which opens the whole picture, or the line saying its file is
+   * no longer kept ("הקובץ כבר לא נשמר"). A removed one is `removed`, with no
+   * picture. `label` says it is an announcement, as for text.
+   */
+  | {
+      kind: "image";
+      image: MessageImage;
+      body: string | null;
+      label?: string;
+    };
 
 /**
  * Where one's own message is. A message sent and not yet read says nothing:
@@ -63,7 +77,9 @@ export type MessageBubbleProps = {
    * when the pointer or the keyboard is on the message, always on a touch
    * screen that wide, and kept for screen readers and keyboards everywhere;
    * below 1280px, and on any touch screen, a tap on the message itself opens
-   * them too, but not on a link in it or while text is selected.
+   * them too, but not on a link in it or while text is selected. A picture's
+   * message (C4) shows the button below 1280px too: a tap on the picture
+   * opens the picture, and the rest of the bubble is too small a place.
    */
   actions?: { label: string; onOpen: (trigger: HTMLElement) => void } | null;
   /**
@@ -103,6 +119,8 @@ export function MessageBubble({
   const closes = run === "single" || run === "last";
   const removed = content.kind === "removed";
   const named = author && !own && author.shown;
+  // The picture takes the tap: its message's actions keep a button of their own.
+  const picture = content.kind === "image" && content.image.kind === "shown";
 
   function onTap(event: MouseEvent<HTMLDivElement>) {
     if (!actions || !window.matchMedia(TAP_OPENS).matches) return;
@@ -186,8 +204,9 @@ export function MessageBubble({
               "pressable grid size-11 shrink-0 place-items-center rounded-full text-ink-2 hover:bg-surface-2 active:bg-surface-3",
               "focus-visible:outline-2 focus-visible:outline-accent",
               // Below 1280px the message itself is the way in: the button
-              // stays for keyboards and screen readers, and shows on focus.
-              "max-xl:not-focus-visible:sr-only",
+              // stays for keyboards and screen readers, and shows on focus;
+              // beside a picture it shows.
+              !picture && "max-xl:not-focus-visible:sr-only",
               // Wider, it shows as the mouse or the keyboard reaches the
               // message; on a touch screen that wide it always shows.
               "[@media(hover:hover)]:xl:opacity-0 xl:group-hover/bubble:opacity-100 xl:focus-visible:opacity-100",
@@ -281,6 +300,25 @@ function Body({ content }: { content: MessageContent }) {
           <Ban aria-hidden="true" className="size-4 shrink-0" />
           {content.label}
         </p>
+      );
+    case "image":
+      return (
+        <>
+          {content.label ? (
+            <span className="flex items-center gap-1.5 font-semibold text-ink text-sm">
+              <Megaphone aria-hidden="true" className="size-4 shrink-0" />
+              {content.label}
+            </span>
+          ) : null}
+          <span
+            className={
+              content.image.kind === "shown" ? "-mx-1.5 pt-0.5" : undefined
+            }
+          >
+            <MessageImageView image={content.image} />
+          </span>
+          {content.body ? <MessageText body={content.body} /> : null}
+        </>
       );
     default: {
       const unhandled: never = content;

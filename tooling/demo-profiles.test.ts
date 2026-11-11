@@ -87,4 +87,25 @@ describe("demo businesses and profiles", () => {
     ]);
     expect(seed.match(/"photos": true,/g)).toHaveLength(1);
   });
+
+  // Files in chat (C4, 20261111000500_chat_files.sql): the same rule, with
+  // its own flag. A hosted demo never takes one: anyone at the door is any of
+  // its people, and the reset can't remove Storage files.
+  it("never opens a hosted demo business to files in chat", () => {
+    expect(read("supabase/hosted-demo.sql")).not.toMatch(/"chatFiles"/);
+  });
+
+  it("opens only the local seed's restaurant to files in chat", () => {
+    const seed = read("supabase/seed.sql");
+    // A definition's own line, not the comments that name it.
+    expect(seed.match(/^\s+"chatFiles": true,\r?$/gm)).toHaveLength(1);
+    const restaurant = seed.indexOf('"slug": "demo-restaurant"');
+    const shop = seed.indexOf('"slug": "demo-shop"');
+    const flag = seed.search(/^\s+"chatFiles": true,\r?$/m);
+    expect(restaurant).toBeGreaterThan(-1);
+    expect(shop).toBeGreaterThan(restaurant);
+    // In the restaurant's definition, before the shop's begins.
+    expect(flag).toBeGreaterThan(restaurant);
+    expect(flag).toBeLessThan(shop);
+  });
 });

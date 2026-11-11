@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(37);
+select plan(38);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -257,6 +257,16 @@ from public.chat_conversations c
 where c.business_id = '6d000000-0000-4000-b000-000000000001' and c.kind = 'team';
 insert into public.chat_notices (business_id, user_id)
 values ('6d000000-0000-4000-b000-000000000001', '6d000000-0000-4000-a000-00000000000b');
+-- A file's place reserved there (20261111000500_chat_files.sql), as one a
+-- definition with "chatFiles": true would take.
+insert into private.file_uploads (business_id, owner_id, target, conversation_id, bucket,
+  path, thumb_path, file_kind, file_type, declared_size)
+select c.business_id, '6d000000-0000-4000-a000-00000000000b', 'chat', c.id, 'chat-files',
+  c.business_id::text || '/' || c.id::text || '/' || md5('demo-reset') || '.webp',
+  c.business_id::text || '/' || c.id::text || '/' || md5('demo-reset') || '-s.webp',
+  'image', 'image/webp', 42000
+from public.chat_conversations c
+where c.business_id = '6d000000-0000-4000-b000-000000000001' and c.kind = 'team';
 -- Hours, a break and the log's rows, which nothing but the reset's purge
 -- deletes (20261110000100_hours_kept.sql).
 insert into public.time_entries (id, business_id, user_id, clock_in, clock_out)
@@ -374,6 +384,14 @@ select is(
    where business_id = '6d000000-0000-4000-b000-000000000001'),
   '0/7/7/department,department,department,direct,team/0',
   'its chats start again: no visitor''s message or notice, the team''s group, one for each department, and the demo''s own conversations'
+);
+-- Its files, if any reached Storage, are what nothing points at now: the
+-- chat job's clean-up removes them a day later (public.expired_files).
+select is(
+  (select count(*)::integer from private.file_uploads
+   where business_id = '6d000000-0000-4000-b000-000000000001'),
+  0,
+  'and no file''s place reserved before it is left'
 );
 
 select throws_ok(

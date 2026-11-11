@@ -22,6 +22,7 @@ import {
   readChatAction,
   removeChatMessageAction,
   restoreChatMessageAction,
+  sendChatImageAction,
   sendChatMessageAction,
 } from "./actions";
 import {
@@ -29,6 +30,8 @@ import {
   chatPeople,
   currentChatDepartments,
   currentChatDirectory,
+  currentChatFiles,
+  currentChatPictures,
 } from "./chat";
 import type { ChatAccess } from "./chat-access";
 import type { ConversationActions } from "./conversation-screen";
@@ -42,6 +45,7 @@ import { type ConversationBlock, ConversationView } from "./conversation-view";
 export function boundChatActions(businessId: string): ConversationActions {
   return {
     send: sendChatMessageAction.bind(null, businessId),
+    sendImage: sendChatImageAction.bind(null, businessId),
     read: readChatAction.bind(null, businessId),
     older: olderChatMessagesAction.bind(null, businessId),
     confirm: confirmAnnouncementAction.bind(null, businessId),
@@ -105,24 +109,31 @@ export async function ConversationPageView({
   const view = await getConversation(businessId, conversationId, access.userId);
   if (!view) notFound();
 
-  const [page, seenUpTo, settings, directory, departments, pinned] =
-    await Promise.all([
-      getMessages({ businessId, conversationId: view.id }).then((found) =>
-        withOwnDrafts(found, access.userId),
-      ),
-      view.kind === "direct" ? chatSeen(view.id) : Promise.resolve(null),
-      currentModuleSettings("chat"),
-      currentChatDirectory(businessId),
-      currentChatDepartments(businessId),
-      view.kind === "direct"
-        ? Promise.resolve([])
-        : getPinnedState(
-            businessId,
-            view.id,
-            access.userId,
-            access.canModerate,
-          ),
-    ]);
+  const [
+    page,
+    seenUpTo,
+    settings,
+    directory,
+    departments,
+    pinned,
+    files,
+    latest,
+  ] = await Promise.all([
+    getMessages({ businessId, conversationId: view.id }).then((found) =>
+      withOwnDrafts(found, access.userId),
+    ),
+    view.kind === "direct" ? chatSeen(view.id) : Promise.resolve(null),
+    currentModuleSettings("chat"),
+    currentChatDirectory(businessId),
+    currentChatDepartments(businessId),
+    view.kind === "direct"
+      ? Promise.resolve([])
+      : getPinnedState(businessId, view.id, access.userId, access.canModerate),
+    currentChatFiles(businessId),
+    currentChatPictures(businessId, view.id),
+  ]);
+  // The details' pictures, where the business takes them (C4).
+  const pictures = files === "yes" ? latest : [];
   const people = chatPeople(directory, departments, wording);
   const other = view.otherPerson
     ? (people.get(view.otherPerson.toLowerCase()) ?? null)
@@ -160,6 +171,8 @@ export async function ConversationPageView({
       businessName={access.businessName}
       fileDays={settings.fileDays}
       demo={access.demo}
+      files={files}
+      pictures={pictures}
       actions={boundChatActions(businessId)}
       pinned={pinned}
       powers={{ announce: access.canAnnounce, moderate: access.canModerate }}

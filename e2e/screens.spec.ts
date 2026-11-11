@@ -11,6 +11,8 @@ import { demoConversation } from "./db";
 // the owner's read mark on the one conversation opened.
 const PAGES = [
   "/design/console",
+  "/design/console?storage=high",
+  "/design/console?storage=full",
   "/design/console/new",
   "/design/console/businesses/cafe-noa",
   "/design/console/businesses/demo-restaurant",

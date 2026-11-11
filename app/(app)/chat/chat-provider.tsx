@@ -123,6 +123,17 @@ type ChatContextValue = Omit<ChatFrame, "rows" | "noticeSeen" | "now"> & {
     conversation: string,
     change: (row: ChatListRow) => ChatListRow,
   ) => void;
+  /**
+   * The pictures' messages a conversation on screen showed as removed, or
+   * with their file no longer kept (C4), by id: the details' pictures, drawn
+   * by the server, leave them out at once, and one open from there closes.
+   */
+  picturesGone: ReadonlySet<string>;
+  /**
+   * The conversation screen says which of its pictures' messages it shows
+   * as gone now, and which as there (one put back).
+   */
+  notePictures: (gone: readonly string[], shown: readonly string[]) => void;
 };
 
 const ChatContext = createContext<ChatContextValue | null>(null);
@@ -411,6 +422,28 @@ export function ChatProvider({
     },
     [],
   );
+  const [picturesGone, setPicturesGone] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
+  const notePictures = useCallback(
+    (gone: readonly string[], shown: readonly string[]) => {
+      setPicturesGone((now) => {
+        let next: Set<string> | null = null;
+        for (const id of gone.map((g) => g.toLowerCase())) {
+          if (now.has(id)) continue;
+          next ??= new Set(now);
+          next.add(id);
+        }
+        for (const id of shown.map((s) => s.toLowerCase())) {
+          if (!(next ?? now).has(id)) continue;
+          next ??= new Set(now);
+          next.delete(id);
+        }
+        return next ?? now;
+      });
+    },
+    [],
+  );
   const seeNoticeNow = useCallback(() => {
     setNoticeSeen(true);
     seeNotice().catch(() => {
@@ -458,6 +491,8 @@ export function ChatProvider({
       moved,
       readLocally,
       changeRowLocally,
+      picturesGone,
+      notePictures,
     }),
     [
       frame,
@@ -472,6 +507,8 @@ export function ChatProvider({
       moved,
       readLocally,
       changeRowLocally,
+      picturesGone,
+      notePictures,
     ],
   );
 

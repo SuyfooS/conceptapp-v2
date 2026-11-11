@@ -93,7 +93,13 @@ the secrets it calls nothing and the photos wait.
 `20261111000200_chat.sql` adds a sixth, `chat`, every 10 minutes: pure SQL
 (`private.chat_tick`), with no pg_net and no Vault secret. It deletes the text of a removed
 message once its 10 minutes of undo are over, and a demo business's visitors' messages
-after an hour. `seed.sql` switches all six off locally
+after an hour. From `20261111000500_chat_files.sql` it also asks the app's
+`/cron/chat-files`, with the same two Vault secrets, whenever a chat file is due: past its
+business's `fileDays` (90 unless the team chose 30 or 180), the oldest past its
+`fileSpaceMb` (100 MB unless the team chose 50 or 200), a removed message's once its undo is
+over, a reservation never sent, and anything in the `chat-files` bucket a day old that no
+row points at. The app removes them through Storage and marks them; without the secrets it
+calls nothing and the files wait. `seed.sql` switches all six off locally
 and in CI, and only a demo definition that says `"scheduledLists": true` (the hosted ones)
 opens today's lists when it is reset; the tests call what the jobs run, at times they choose.
 
@@ -106,8 +112,9 @@ editor, which keeps what was typed):
   does not carry a POST through a redirect.
 - `cron_secret`: the same value as `CRON_SECRET` in Vercel.
 
-A nightly run never writes these, never calls `/cron/notifications` on a hosted project
-and never sends a test notification (`docs/AGENT.md`).
+A nightly run never writes these, never calls `/cron/notifications`, `/cron/list-photos` or
+`/cron/chat-files` on a hosted project and never sends a test notification
+(`docs/AGENT.md`).
 
 ### Real sign-in, later
 

@@ -17,14 +17,22 @@ import {
   sendChatMessage,
   withOwnDrafts,
 } from "@db/chat";
+import { type ChatFileFailure, sendChatImage } from "@db/chat-files";
 import { parseChatCursor } from "@domain/chat";
 import { splitReaders } from "@domain/chat-announce";
+import { CHAT_IMAGE_MAX_BYTES, CHAT_THUMB_MAX_BYTES } from "@domain/chat-files";
 import { type ChatSyncPerson, chatSendInput } from "@domain/chat-sync";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { pushSoon } from "../../push/server";
 import { chatAccess } from "./chat-access";
-import type { ChatActionResult, ChatReaders, ReaderShown } from "./chat-types";
+import type {
+  ChatActionFailure,
+  ChatActionResult,
+  ChatImageResult,
+  ChatReaders,
+  ReaderShown,
+} from "./chat-types";
 
 /**
  * A chat write as the signed-in person, in the business the screen was drawn
@@ -34,10 +42,15 @@ import type { ChatActionResult, ChatReaders, ReaderShown } from "./chat-types";
  * other), never while viewing as someone. The database holds the rules of who
  * may do what. Nothing is logged but an error's code: never what was typed.
  */
-async function asMember<T>(
+async function asMember<T, F extends string = ChatActionFailure>(
   business: unknown,
-  run: (actorId: string, businessId: string) => Promise<ChatWrite<T>>,
-): Promise<ChatActionResult<T>> {
+  run: (
+    actorId: string,
+    businessId: string,
+  ) => Promise<ChatWrite<T> | { ok: false; failure: F }>,
+): Promise<
+  { ok: true; value: T } | { ok: false; failure: F | ChatActionFailure }
+> {
   const access = await chatAccess();
   if (!access) return { ok: false, failure: "noAccess" };
   if (business !== access.businessId) {
@@ -84,6 +97,89 @@ export async function sendChatMessageAction(
             announce: sent.announce === true,
           }
         : { draft: sent.draft, words: sent.words, toPerson: sent.toPerson },
+    ),
+  );
+  if (result.ok) pushSoon();
+  return result;
+}
+
+/** A picture and its thumbnail together, at most: what the action takes. */
+const IMAGE_FORM_MAX_BYTES = CHAT_IMAGE_MAX_BYTES + CHAT_THUMB_MAX_BYTES;
+
+/** A text field of the form, or undefined when it isn't one. */
+function formText(form: FormData, name: string): string | undefined {
+  const value = form.get(name);
+  return typeof value === "string" ? value : undefined;
+}
+
+/**
+ * Sends a picture (C4), as the screen re-encoded it: `full` (at most 1280 px
+ * and 400 KB) and `thumb` (360 px, 48 KB), both JPEG or both WebP, nothing
+ * from the camera inside; `draft` (the browser's own id for the message, kept
+ * for its retries); `words` (what is written with it, or empty); and
+ * `conversation` with `announce` ("true"), or `toPerson` for someone's
+ * private chat, which it opens. Bound on the page to the business it was drawn
+ * for, which must still be the session's, and never while viewing as someone.
+ * The server checks both files again, reserves their place, uploads them with
+ * the secret key and sends the message with them, removing both at once on
+ * any failure; the whole form stays under the 1 MB a server action takes.
+ * Returns where it went and the message's id; the next sync brings it, with
+ * its thumbnail. Its push goes as a message's does.
+ */
+export async function sendChatImageAction(
+  business: string,
+  form: FormData,
+): Promise<ChatImageResult> {
+  if (!(form instanceof FormData)) return { ok: false, failure: "invalid" };
+  const full = form.get("full");
+  const thumb = form.get("thumb");
+  if (!(full instanceof Blob) || !(thumb instanceof Blob)) {
+    return { ok: false, failure: "empty" };
+  }
+  if (full.size + thumb.size > IMAGE_FORM_MAX_BYTES) {
+    return { ok: false, failure: "tooBig" };
+  }
+  const conversation = formText(form, "conversation");
+  const toPerson = formText(form, "toPerson");
+  const parsed = chatSendInput.safeParse(
+    conversation !== undefined
+      ? {
+          draft: formText(form, "draft"),
+          words: formText(form, "words") ?? "",
+          conversation,
+          ...(formText(form, "announce") === "true" ? { announce: true } : {}),
+        }
+      : {
+          draft: formText(form, "draft"),
+          words: formText(form, "words") ?? "",
+          toPerson,
+        },
+  );
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const sent = parsed.data;
+  const result = await asMember<
+    { conversation: string; message: string },
+    ChatFileFailure
+  >(business, (actor, businessId) =>
+    sendChatImage(
+      actor,
+      businessId,
+      "conversation" in sent
+        ? {
+            draft: sent.draft,
+            words: sent.words,
+            conversation: sent.conversation,
+            announce: sent.announce === true,
+            full,
+            thumb,
+          }
+        : {
+            draft: sent.draft,
+            words: sent.words,
+            toPerson: sent.toPerson,
+            full,
+            thumb,
+          },
     ),
   );
   if (result.ok) pushSoon();

@@ -14,7 +14,7 @@ import {
 import { messageTime } from "@domain/chat-days";
 import { AnnouncementCard } from "@ui/announcement-card";
 import { ChatHeader } from "@ui/chat-header";
-import { Composer } from "@ui/composer";
+import { Composer, type ComposerAttached } from "@ui/composer";
 import { DayDivider } from "@ui/day-divider";
 import { ListGroup, ListRow } from "@ui/list-row";
 import {
@@ -26,6 +26,13 @@ import {
 import { NewBelow } from "@ui/new-below";
 import { PageSection } from "@ui/page";
 import { PersonList, PersonRow } from "@ui/person-row";
+import {
+  encodeChatImage,
+  PhotoReadError,
+  PICKED_PHOTO_ACCEPT,
+  photoDataUrl,
+} from "@ui/photo-encode";
+import { PhotoSheet } from "@ui/photo-sheet";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { Copy, Pin, PinOff, Trash2 } from "lucide-react";
@@ -46,6 +53,10 @@ export type DemoBubble = {
   failed?: boolean;
   /** An announcement from management (C3). */
   announcement?: boolean;
+  /** Its picture (C4): an illustration, or a picture Shiran picked here. */
+  photo?: string | null;
+  /** Its picture is no longer kept: the message stays. */
+  fileGone?: boolean;
 };
 
 /** Someone of the group, for the readers sheet. */
@@ -69,8 +80,8 @@ export type DemoPinned = {
   readers: DemoReader[];
 };
 
-/** What the demo opens with: `?state=confirmed|readers|actions`. */
-export type DemoOpened = "confirmed" | "readers" | "actions" | null;
+/** What the demo opens with: `?state=confirmed|readers|actions|photo`. */
+export type DemoOpened = "confirmed" | "readers" | "actions" | "photo" | null;
 
 type Props = {
   kind: ChatKind;
@@ -140,12 +151,19 @@ function toEnd(smooth: boolean) {
   });
 }
 
+/** Whether a demo message was removed: by its author or by management. */
+const removedOf = (m: DemoBubble) =>
+  m.removedBy !== undefined ||
+  (m.body === null && !m.photo && m.fileGone !== true);
+
 /**
  * A conversation of the demo, with the parts the real screen uses: the
  * floating title, the days and runs of messages in a polite log, and the
  * composer. What Shiran writes goes on its way, arrives, and is answered
  * once; nothing is stored. When the answer comes while she reads further up,
- * the page stays where it is and NewBelow says so.
+ * the page stays where it is and NewBelow says so. A picture (C4) opens whole
+ * in a sheet; one she picks is made ready here, as the app does, and shown
+ * from the browser.
  */
 export function ConversationDemo({
   kind,
@@ -193,6 +211,32 @@ export function ConversationDemo({
   const say = (text: string, undo?: () => void) =>
     setToast({ text, stamp: Date.now(), undo });
   const [draft, setDraft] = useState("");
+  // A picture picked here: made ready as the app makes it, never sent.
+  const [picked, setPicked] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  // A newer pick, or taking it out, wins over one still being made ready.
+  const picks = useRef(0);
+  const [photo, setPhoto] = useState<{
+    src: string;
+    alt: string;
+    caption: string | null;
+    time: string;
+  } | null>(() => {
+    const first =
+      opened === "photo" ? initial.find((m) => m.photo && !m.removedBy) : null;
+    return first?.photo
+      ? {
+          src: first.photo,
+          alt: t("image.alt", { name: first.authorName }),
+          caption: first.body,
+          time: messageTime(first.at, timeZone),
+        }
+      : null;
+  });
+  const [photoOpen, setPhotoOpen] = useState(opened === "photo");
+  // A picture goes as a message: the switch steps aside while one is chosen.
+  const picturing = picked !== null || preparing;
   const [seen, setSeen] = useState(seenUpTo);
   const [below, setBelow] = useState(false);
   const toTheEnd = useRef(false);
@@ -254,14 +298,46 @@ export function ConversationDemo({
     }, ANSWER_MS);
   }
 
+  async function pick(file: File) {
+    picks.current += 1;
+    const mine = picks.current;
+    setProblem(null);
+    setPicked(null);
+    setPreparing(true);
+    try {
+      const files = await encodeChatImage(file);
+      const preview = await photoDataUrl(files.thumb);
+      if (picks.current !== mine) return;
+      setPicked(preview);
+    } catch (error) {
+      if (picks.current !== mine) return;
+      setProblem(
+        t(
+          `fileFailure.${error instanceof PhotoReadError ? error.problem : "unreadable"}`,
+        ),
+      );
+    } finally {
+      if (picks.current === mine) setPreparing(false);
+    }
+  }
+
+  /** "הסרת התמונה": the picture doesn't go, even one still being made ready. */
+  function dropPicked() {
+    picks.current += 1;
+    setPicked(null);
+    setPreparing(false);
+  }
+
   function send(body: string) {
+    const withPhoto = picked;
+    setPicked(null);
     sentCount.current += 1;
     const id = `sent-${sentCount.current}`;
     const at = new Date(
       Date.parse(now) + sentCount.current * 1000,
     ).toISOString();
     toTheEnd.current = true;
-    const asAnnouncement = announce && canAnnounce;
+    const asAnnouncement = announce && canAnnounce && !withPhoto;
     setMessages((list) => [
       ...list,
       {
@@ -269,9 +345,10 @@ export function ConversationDemo({
         author: reader,
         authorName: "",
         at,
-        body,
+        body: body === "" ? null : body,
         sending: true,
         announcement: asAnnouncement,
+        photo: withPhoto,
       },
     ]);
     setDraft("");
@@ -317,6 +394,7 @@ export function ConversationDemo({
 
   function actionsOf(m: DemoBubble): MessageAction[] {
     if (m.sending || m.failed) return [];
+    const removed = removedOf(m);
     // The demo pins only the group's own announcement: one Shiran sends
     // here offers what any message of hers does.
     const theAnnouncement = m.announcement === true && m.id === pinned?.id;
@@ -326,7 +404,7 @@ export function ConversationDemo({
         kind: theAnnouncement ? "announcement" : "text",
         body: m.body,
         pinned: theAnnouncement && pinShown,
-        removed: m.body === null,
+        removed,
       },
       { readerId: reader, chat: kind, moderates, closed: blocked !== null },
     );
@@ -353,7 +431,13 @@ export function ConversationDemo({
     setMessages((list) =>
       list.map((x) =>
         x.id === m.id
-          ? { ...x, body: null, removedBy: own ? "author" : "management" }
+          ? {
+              ...x,
+              body: null,
+              photo: null,
+              fileGone: false,
+              removedBy: own ? "author" : "management",
+            }
           : x,
       ),
     );
@@ -366,6 +450,39 @@ export function ConversationDemo({
   }
 
   function contentOf(m: DemoBubble): MessageContent {
+    if (!removedOf(m) && (m.photo || m.fileGone)) {
+      const own = m.author === reader;
+      const alt = own
+        ? t("image.altOwn")
+        : t("image.alt", { name: m.authorName });
+      const src = m.photo;
+      return {
+        kind: "image",
+        body: m.body,
+        image:
+          m.fileGone || !src
+            ? { kind: "gone", label: t("message.fileGone") }
+            : {
+                kind: "shown",
+                src,
+                alt,
+                busy: m.sending === true,
+                retry: t("image.retry"),
+                open: {
+                  label: t("image.open"),
+                  onOpen: () => {
+                    setPhoto({
+                      src,
+                      alt,
+                      caption: m.body,
+                      time: messageTime(m.at, timeZone),
+                    });
+                    setPhotoOpen(true);
+                  },
+                },
+              },
+      };
+    }
     if (m.body !== null && m.announcement) {
       return {
         kind: "announcement",
@@ -524,12 +641,12 @@ export function ConversationDemo({
       <Composer
         label={t("conversation.placeholder")}
         sendLabel={
-          announce && canAnnounce
+          announce && canAnnounce && !picturing
             ? t("announcement.send")
             : t("conversation.send")
         }
         toggle={
-          canAnnounce
+          canAnnounce && !picturing
             ? {
                 label: t("announcement.switch"),
                 checked: announce,
@@ -542,6 +659,23 @@ export function ConversationDemo({
         onValueChange={setDraft}
         onSend={send}
         blocked={blocked}
+        notice={problem}
+        attach={{
+          label: t("conversation.attach"),
+          accept: PICKED_PHOTO_ACCEPT,
+          onPick: (file) => void pick(file),
+        }}
+        attached={
+          picked || preparing
+            ? ({
+                src: picked,
+                alt: t("image.chosen"),
+                busyLabel: t("image.preparing"),
+                readyLabel: t("image.ready"),
+                remove: { label: t("image.remove"), onRemove: dropPicked },
+              } satisfies ComposerAttached)
+            : null
+        }
         tooLong={t.rich("conversation.tooLong", {
           max: CHAT_MESSAGE_MAX,
           ltr: (chunks) => <span dir="ltr">{chunks}</span>,
@@ -644,6 +778,17 @@ export function ConversationDemo({
           </div>
         </Sheet>
       ) : null}
+      <PhotoSheet
+        open={photoOpen}
+        onOpenChange={setPhotoOpen}
+        photo={photo}
+        subtitle={
+          photo ? t.rich("image.when", { time: photo.time, ltr }) : undefined
+        }
+        closeLabel={t("image.close")}
+        loadingLabel={t("image.loading")}
+        unavailable={t("image.unavailable")}
+      />
       <StatusToast
         message={toast?.text ?? null}
         stamp={toast ? String(toast.stamp) : undefined}

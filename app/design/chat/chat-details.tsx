@@ -1,3 +1,5 @@
+import { messageTime } from "@domain/chat-days";
+import { DEFAULT_CHAT_FILE_DAYS } from "@domain/chat-files";
 import { Avatar } from "@ui/avatar";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
@@ -5,10 +7,17 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { PersonList, PersonRow } from "@ui/person-row";
 import { VisibilityNote } from "@ui/visibility-note";
-import { Building, Users } from "lucide-react";
+import { Building, Clock3, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type ChatDemoConversation, chatDemoPerson } from "./data";
+import type { ReactNode } from "react";
+import {
+  CHAT_DEMO_READER,
+  CHAT_DEMO_ZONE,
+  type ChatDemoConversation,
+  chatDemoPerson,
+} from "./data";
 import { DemoMute } from "./demo-mute";
+import { DemoPictures } from "./demo-pictures";
 
 type DetailsProps = {
   chat: ChatDemoConversation;
@@ -22,7 +31,7 @@ type DetailsProps = {
  * tablet's sheet from the title (`inSheet`: a sheet's cards) and the
  * desktop's column. Its face and who sees it, mute (C3), and its people: a
  * group's members, or a private chat's other person with the way to their
- * profile. Files come with C4.
+ * profile; its latest pictures, newest first, and how long they are kept (C4).
  */
 export function ChatDemoDetailsBody({
   chat,
@@ -38,6 +47,20 @@ export function ChatDemoDetailsBody({
     const found = chatDemoPerson(id);
     return found ? [found] : [];
   });
+  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+  const pictures = chat.messages
+    .filter((m) => m.photo && !m.removedBy)
+    .reverse()
+    .map((m) => ({
+      id: m.id,
+      src: m.photo ?? "",
+      alt:
+        m.author === CHAT_DEMO_READER
+          ? t("image.altOwn")
+          : t("image.alt", { name: chatDemoPerson(m.author)?.name ?? "" }),
+      caption: m.body,
+      time: messageTime(m.at, CHAT_DEMO_ZONE),
+    }));
   return (
     <>
       <Card
@@ -105,6 +128,19 @@ export function ChatDemoDetailsBody({
           ) : null}
         </PageSection>
       )}
+      <PageSection title={t("details.pictures")}>
+        {pictures.length > 0 ? (
+          <DemoPictures pictures={pictures} />
+        ) : (
+          <p className="px-1 text-ink-2">{t("details.noPictures")}</p>
+        )}
+        <p className="flex items-start gap-1.5 px-1 text-ink-2 text-sm">
+          <Clock3 aria-hidden="true" className="mt-px size-4 shrink-0" />
+          <span className="min-w-0">
+            {t.rich("info.filesKept", { days: DEFAULT_CHAT_FILE_DAYS, ltr })}
+          </span>
+        </p>
+      </PageSection>
     </>
   );
 }

@@ -498,6 +498,22 @@ describe("the marks of what is on screen (C3)", () => {
     expect(chatMarks([shown(1), shown(2)], [])).toBe(before);
   });
 
+  it("move when a picture's file is no longer kept, and stay as before while none went", () => {
+    const before = chatMarks([shown(1), shown(2)], []);
+    expect(chatMarks([shown(1), { ...shown(2), fileGone: false }], [])).toBe(
+      before,
+    );
+    const gone = chatMarks([shown(1), { ...shown(2), fileGone: true }], []);
+    expect(gone).not.toBe(before);
+    // Whatever the order, and a removed one counts as removed alone.
+    expect(chatMarks([{ ...shown(2), fileGone: true }, shown(1)], [])).toBe(
+      gone,
+    );
+    expect(chatMarks([shown(1), { ...shown(2, B), fileGone: true }], [])).toBe(
+      chatMarks([shown(1), shown(2, B)], []),
+    );
+  });
+
   it("move when an announcement is pinned, unpinned, confirmed, or counted again", () => {
     const none = chatMarks([], []);
     const pinned = chatMarks([], [pin()]);

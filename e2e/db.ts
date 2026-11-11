@@ -2036,3 +2036,92 @@ export async function demoChatPushStates(
   }
   return states;
 }
+
+/*
+ * Pictures in chat (C4, supabase/migrations/20261111000500_chat_files.sql).
+ * The demo restaurant takes them for these tests ("chatFiles": true in
+ * supabase/seed.sql); the demo shop takes none, like the hosted demo
+ * businesses. SQL reads Storage's rows but never removes its files: a spec
+ * that sends a picture ages it and runs the clean-up (/cron/chat-files), which
+ * removes it through Storage.
+ */
+
+/** A message's picture, as the database keeps it. */
+export type DemoChatFile = {
+  message: string;
+  filePath: string;
+  thumbPath: string;
+  /** The picture and its thumbnail together, as reserved. */
+  fileSize: number;
+  removed: boolean;
+};
+
+/** The newest picture in a demo restaurant conversation sent with these words. */
+export async function demoChatFile(
+  conversation: string,
+  words: string,
+): Promise<DemoChatFile | null> {
+  const [row] = await sql<DemoChatFile[]>`
+    select m.id as message, m.file_path as "filePath",
+      m.thumb_path as "thumbPath", m.file_size as "fileSize",
+      m.file_removed_at is not null as removed
+    from public.chat_messages m
+    where m.business_id = ${DEMO_RESTAURANT}
+      and m.conversation_id = ${conversation}
+      and m.body = ${words} and m.file_kind = 'image'
+    order by m.created_at desc limit 1`;
+  return row ?? null;
+}
+
+/** What Storage keeps of chat files, by path: their sizes and types. */
+export async function chatFileObjects(
+  paths: string[],
+): Promise<{ name: string; size: number; type: string }[]> {
+  if (paths.length === 0) return [];
+  return await sql<{ name: string; size: number; type: string }[]>`
+    select o.name, (o.metadata ->> 'size')::int as size,
+      o.metadata ->> 'mimetype' as type
+    from storage.objects o
+    where o.bucket_id = 'chat-files' and o.name in ${sql(paths)}
+    order by o.name`;
+}
+
+/**
+ * Makes a chat message's picture as old as if it was sent `days` days ago,
+ * its message and both files in Storage, for the clean-up to find once that
+ * is past the days its business keeps files (`public.expired_files`; 90 by
+ * default).
+ */
+export async function ageChatFile(
+  message: string,
+  days: number,
+): Promise<void> {
+  await sql`update storage.objects o
+    set created_at = now() - make_interval(days => ${days}::integer)
+    from public.chat_messages m
+    where m.id = ${message} and o.bucket_id = 'chat-files'
+      and o.name in (m.file_path, m.thumb_path)`;
+  await sql`update public.chat_messages
+    set created_at = now() - make_interval(days => ${days}::integer)
+    where id = ${message}`;
+}
+
+/** Whether the clean-up removed a chat message's picture: the message says so. */
+export async function chatFileRemoved(message: string): Promise<boolean> {
+  const [row] = await sql<{ removed: boolean }[]>`
+    select m.file_removed_at is not null as removed
+    from public.chat_messages m where m.id = ${message}`;
+  return row?.removed ?? false;
+}
+
+/**
+ * The pictures the demo restaurant's messages still hold with words that
+ * start so: what a spec sent and hasn't had removed yet.
+ */
+export async function demoChatFilesLeft(prefix: string): Promise<string[]> {
+  const rows = await sql<{ message: string }[]>`
+    select m.id as message from public.chat_messages m
+    where m.business_id = ${DEMO_RESTAURANT} and m.file_path is not null
+      and m.file_removed_at is null and starts_with(m.body, ${prefix})`;
+  return rows.map((row) => row.message);
+}

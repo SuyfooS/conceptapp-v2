@@ -16,6 +16,7 @@ import {
   sortInbox,
 } from "@domain/chat";
 import { readersCount } from "@domain/chat-announce";
+import { chatFileSrc } from "@domain/chat-files";
 import {
   type ChatDirectory,
   type ChatListRow,
@@ -63,7 +64,8 @@ export type ChatWrite<T> =
   | { ok: true; value: T }
   | { ok: false; failure: ChatFailure };
 
-function failureOf(error: { code?: string }): ChatFailure {
+/** A chat write's refusal, by its code (@db/chat-files reads the same). */
+export function chatFailureOf(error: { code?: string }): ChatFailure {
   if (isMissingFunction(error)) return "notYet";
   switch (error.code) {
     case "42501":
@@ -288,10 +290,13 @@ export async function getConversation(
 }
 
 /**
- * The kind of one conversation of the business, and its own stamp (when
- * anything its readers see last changed there: a message sent, removed, put
- * back, pinned or confirmed), when the signed-in person reads it (RLS); null
- * otherwise. One small read, for `/chat-sync`.
+ * The kind of one conversation of the business, and its own stamp for the
+ * signed-in person (`public.chat_stamp`, C4: when anything they see there last
+ * changed, a message sent, removed, put back or pinned, a file no longer
+ * kept, and a confirmation
+ * only when they see who confirmed: their own announcement's, any for a
+ * moderator, their own), when they read it; null otherwise. One small read,
+ * for `/chat-sync`. Before C4's migration, the conversation's `changed_at`.
  */
 export async function getConversationStamp(
   businessId: string,
@@ -299,6 +304,21 @@ export async function getConversationStamp(
 ): Promise<{ kind: ChatKind; changed: string } | null> {
   if (!isUuid(conversationId)) return null;
   const supabase = await createClient();
+  const stamp = await supabase
+    .rpc("chat_stamp", {
+      business: businessId,
+      conversation: conversationId.toLowerCase(),
+    })
+    .maybeSingle();
+  if (!stamp.error) {
+    return stamp.data
+      ? {
+          kind: oneOf(CHAT_KINDS, stamp.data.kind, "team"),
+          changed: stamp.data.changed,
+        }
+      : null;
+  }
+  if (!isMissingFunction(stamp.error)) throw stamp.error;
   const { data, error } = await supabase
     .from("chat_conversations")
     .select("id, kind, changed_at")
@@ -353,6 +373,13 @@ export type ChatMessage = {
   fileSize: number | null;
   /** The days or the space took its file; the message stays. */
   fileGone: boolean;
+  /**
+   * Where its picture is shown, and its thumbnail (`chatFileSrc`, the app's
+   * own route, which checks the reader again); null with no file, once it is
+   * removed, or no longer kept.
+   */
+  fileSrc: string | null;
+  thumbSrc: string | null;
   pinned: boolean;
   /** ISO instant. */
   createdAt: string;
@@ -369,10 +396,10 @@ export type ChatMessage = {
 export const CHAT_PAGE_SIZE = 50;
 
 const MESSAGE_COLUMNS =
-  "id, author_id, kind, body, file_kind, file_name, file_size, file_removed_at, pinned, created_at, removed_at, removed_by";
+  "id, author_id, kind, body, file_kind, file_name, file_size, file_removed_at, file_path, thumb_path, pinned, created_at, removed_at, removed_by";
 
 const ANNOUNCEMENT_COLUMNS =
-  "conversation_id, id, author_id, kind, body, file_kind, file_name, file_size, file_removed_at, pinned, created_at, removed_at, removed_by";
+  "conversation_id, id, author_id, kind, body, file_kind, file_name, file_size, file_removed_at, file_path, thumb_path, pinned, created_at, removed_at, removed_by";
 
 type MessageRow = Pick<
   Database["public"]["Tables"]["chat_messages"]["Row"],
@@ -384,11 +411,22 @@ type MessageRow = Pick<
   | "file_name"
   | "file_size"
   | "file_removed_at"
+  | "file_path"
+  | "thumb_path"
   | "pinned"
   | "created_at"
   | "removed_at"
   | "removed_by"
 >;
+
+/** A message's file as the screen may show it: kept, and not removed. */
+const shownFile = (
+  row: Pick<MessageRow, "removed_at" | "file_removed_at">,
+  path: string | null,
+): string | null =>
+  row.removed_at === null && row.file_removed_at === null
+    ? chatFileSrc(path)
+    : null;
 
 const toMessage = (row: MessageRow): ChatMessage => ({
   id: row.id,
@@ -401,6 +439,8 @@ const toMessage = (row: MessageRow): ChatMessage => ({
   fileName: row.file_name,
   fileSize: row.file_size,
   fileGone: row.file_removed_at !== null,
+  fileSrc: shownFile(row, row.file_path),
+  thumbSrc: shownFile(row, row.thumb_path),
   pinned: row.pinned,
   createdAt: row.created_at,
   removed: row.removed_at !== null,
@@ -493,18 +533,20 @@ export async function withOwnDrafts(
   }));
 }
 
-/** At most this many removed messages a sync reads where a screen's are. */
-const REMOVED_READ_MAX = 500;
+/** At most this many marked messages a sync reads where a screen's are. */
+const MARKED_READ_MAX = 500;
 
 /**
- * The removed messages of a conversation the signed-in person reads (RLS),
- * from the instant of `from` to that of `through` (the oldest and the newest
- * message a screen holds; the caller trims the ends to the ids), oldest
- * first: what `/chat-sync` compares a screen's marks with, so a removal
- * reaches every screen that holds the message, however far up. Their words
- * are gone already; the page index bounds the read.
+ * The messages of a conversation the signed-in person reads (RLS) that count
+ * in a screen's marks (`chatMarks`): those removed, and those whose file is
+ * no longer kept (C4), from the instant of `from` to that of `through` (the
+ * oldest and the newest message a screen holds; the caller trims the ends to
+ * the ids), oldest first: what `/chat-sync` compares a screen's marks with,
+ * so a removal, or a picture's file going, reaches every screen that holds
+ * the message, however far up. A removed one's words are gone already; the
+ * page index bounds the read.
  */
-export async function getRemovedMessages({
+export async function getMarkedMessages({
   businessId,
   conversationId,
   from,
@@ -522,12 +564,12 @@ export async function getRemovedMessages({
     .select(MESSAGE_COLUMNS)
     .eq("business_id", businessId)
     .eq("conversation_id", conversationId.toLowerCase())
-    .not("removed_at", "is", null)
+    .or("removed_at.not.is.null,file_removed_at.not.is.null")
     .gte("created_at", from.at)
     .lte("created_at", through.at)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true })
-    .limit(REMOVED_READ_MAX);
+    .limit(MARKED_READ_MAX);
   if (error) {
     if (isMissingTable(error)) return [];
     throw error;
@@ -847,7 +889,7 @@ export async function sendChatMessage(
     ...target,
     ...atTime(at),
   });
-  if (error) return refused(failureOf(error));
+  if (error) return refused(chatFailureOf(error));
   const sent = sentSchema.safeParse(data);
   return sent.success ? done(sent.data) : refused("failed");
 }
@@ -875,7 +917,7 @@ export async function readChat(
     ...(upTo !== undefined ? { up_to: upTo } : {}),
     ...atTime(at),
   });
-  return error ? refused(failureOf(error)) : done(null);
+  return error ? refused(chatFailureOf(error)) : done(null);
 }
 
 /** Mutes a conversation for its reader, or unmutes it (`public.mute_chat`). */
@@ -890,7 +932,7 @@ export async function muteChat(
     conversation: conversationId.toLowerCase(),
     mute,
   });
-  return error ? refused(failureOf(error)) : done(null);
+  return error ? refused(chatFailureOf(error)) : done(null);
 }
 
 type MessageChange =
@@ -910,7 +952,7 @@ async function changeMessage(
     message: messageId.toLowerCase(),
     ...atTime(at),
   });
-  return error ? refused(failureOf(error)) : done(null);
+  return error ? refused(chatFailureOf(error)) : done(null);
 }
 
 /**
@@ -957,7 +999,7 @@ export async function pinAnnouncement(
     pin,
     ...atTime(at),
   });
-  return error ? refused(failureOf(error)) : done(null);
+  return error ? refused(chatFailureOf(error)) : done(null);
 }
 
 /**
@@ -992,5 +1034,5 @@ export async function seeChatNotice(
     actor: actorId,
     business: businessId,
   });
-  return error ? refused(failureOf(error)) : done(null);
+  return error ? refused(chatFailureOf(error)) : done(null);
 }

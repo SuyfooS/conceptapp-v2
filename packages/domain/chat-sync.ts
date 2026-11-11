@@ -11,6 +11,7 @@ import {
   conversationTitle,
   parseChatCursor,
 } from "./chat";
+import { isChatFileSrc } from "./chat-files";
 import {
   compareInstants,
   compareMessages,
@@ -186,9 +187,12 @@ export type ChatSyncQuery = {
   removed?: string[];
   /**
    * With `marks`, the conversation's own stamp from the last answer
-   * (`open.changed`, its `changed_at`): it moves with every message sent,
-   * removed, put back, pinned or confirmed there, and the route compares the
-   * marks only when it moved. Null: compare.
+   * (`open.changed`, `public.chat_stamp` for its reader): it moves with every
+   * message sent, removed, put back or pinned there, every file no longer
+   * kept, and with a confirmation
+   * only for those who see who confirmed (the announcement's author, the
+   * moderators, the person themselves), and the route compares the marks only
+   * when it moved. Null: compare.
    */
   changed?: string | null;
   /**
@@ -260,16 +264,20 @@ function fnv1a(text: string): string {
 
 /**
  * What may change of messages already on screen, in one short value: which
- * of them were removed and by whom, and the conversation's pinned
+ * of them were removed and by whom, which lost their file to its days or the
+ * business's space (C4: "הקובץ כבר לא נשמר"), and the conversation's pinned
  * announcements with whether the reader confirmed each and, for its author
  * and management, how many did. A message sent, or read, changes none of it,
  * so a busy conversation never sends its older messages again; a removal, a
- * message put back, a pin or an unpin, or a "קראתי" does. The order of either
- * list doesn't matter, and only removed messages count: the route passes
- * those it has where the screen's are, the screen every one it holds.
+ * message put back, a file no longer kept, a pin or an unpin, or a "קראתי"
+ * does. The order of either list doesn't matter, and only removed messages
+ * and those whose file went count: the route passes those it has where the
+ * screen's are (`getMarkedMessages`), the screen every one it holds.
  */
 export function chatMarks(
-  messages: readonly Pick<ChatSyncMessage, "id" | "removed" | "removedBy">[],
+  messages: readonly (Pick<ChatSyncMessage, "id" | "removed" | "removedBy"> & {
+    fileGone?: boolean;
+  })[],
   pinned: readonly {
     message: Pick<ChatSyncMessage, "id">;
     confirmed: boolean;
@@ -288,7 +296,14 @@ export function chatMarks(
         }`,
     )
     .sort();
-  return fnv1a(`${removed.join(",")}|${pins.join(",")}`);
+  // A removed message says so whatever its file: it counts once, above.
+  const filesGone = messages
+    .filter((m) => !m.removed && m.fileGone === true)
+    .map((m) => m.id.toLowerCase())
+    .sort();
+  // Before any file goes, the same value as before C4's.
+  const files = filesGone.length > 0 ? `|${filesGone.join(",")}` : "";
+  return fnv1a(`${removed.join(",")}|${pins.join(",")}${files}`);
 }
 
 const MARKS = /^[0-9a-f]{8}$/;
@@ -475,6 +490,14 @@ export const chatSyncMessage = z.object({
   fileName: z.string().nullable(),
   fileSize: count.nullable(),
   fileGone: z.boolean(),
+  /**
+   * Where the screen shows its picture and its thumbnail (C4, `chatFileSrc`
+   * in @domain/chat-files): the app's own route, which checks the reader
+   * again. Null with no file, once it is removed, or no longer kept; left out
+   * by an answer from before C4.
+   */
+  fileSrc: z.string().refine(isChatFileSrc).nullable().optional(),
+  thumbSrc: z.string().refine(isChatFileSrc).nullable().optional(),
   pinned: z.boolean(),
   /** ISO instant. */
   createdAt: instant,
@@ -521,9 +544,9 @@ export type PinnedAnnouncement = z.infer<typeof chatPinned>;
  *   read), the cursor to ask with next, and the conversation's own stamp
  *   (`changed`, to send back as `cv`); and, when the marks the screen sent
  *   are no longer the route's, `recent` (the messages where the screen's are
- *   that are removed now, and those it showed as removed that were put back,
- *   as they are now) and `pinned` (every pinned announcement, newest first,
- *   in place of what the screen has).
+ *   that are removed now or whose file is no longer kept, and those it showed
+ *   as removed that were put back, as they are now) and `pinned` (every
+ *   pinned announcement, newest first, in place of what the screen has).
  */
 export const chatSyncAnswer = z.object({
   inbox: z

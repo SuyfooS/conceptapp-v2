@@ -95,10 +95,11 @@ Only `app/` imports app code (`@/…`).
   StatusToast (with an undo), EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
   PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay,
   BusinessList, BusinessSwitchRow, BusinessMenu and BusinessMark (business-switcher),
-  and the chat's MessageBubble (an announcement, removed, its actions), DayDivider, Composer
-  (with a switch), ChatRow and ChatGroupMark, ChatHeader (with what stays under it),
-  AnnouncementCard, NewBelow and ImmersiveScreen (hides the phone's tab bar; mock screens
-  at `/design/chat`).
+  and the chat's MessageBubble (an announcement, removed, its actions, a picture and a
+  file no longer kept: MessageImageView), DayDivider, Composer (with a switch, the attach
+  button and the chosen picture), PhotoSheet (a picture opened whole), ChatRow and
+  ChatGroupMark, ChatHeader (with what stays under it), AnnouncementCard, NewBelow and
+  ImmersiveScreen (hides the phone's tab bar; mock screens at `/design/chat`).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a

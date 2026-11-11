@@ -371,7 +371,11 @@
     "chatAnnounceSample": "From next week the till closes at 22:00",
     "chatAuthorView": "As its author and management see it",
     "chatActionsText": "Tapping a message, or the button beside it on a computer, opens what can be done with it. After deleting or removing one, \"Undo\" stays for 10 seconds.",
-    "chatComposerAnnounce": "Management's composer in a group, with the switch for a message from management"
+    "chatComposerAnnounce": "Management's composer in a group, with the switch for a message from management",
+    "chatPicturesText": "Photos in chat: the thumbnail in a message, which opens whole in a sheet, a photo on its way, and a file no longer kept. The message itself stays.",
+    "chatPictureSample": "This is how the kitchen looks now",
+    "chatAttachText": "The attach button opens the phone's photo picker, and its camera too. The chosen photo is made ready on the phone and shows over the field. In a demo business the button says nothing can be attached.",
+    "chatPictureSheet": "Open the photo whole"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -3426,7 +3430,9 @@
         "department": "A department",
         "announcements": "From management",
         "announcementsWaiting": "{count, plural, one {# waits for your confirmation} other {# wait for your confirmation}}",
-        "announcementsAll": "Every message from management in your groups"
+        "announcementsAll": "Every message from management in your groups",
+        "photo": "Photo",
+        "photoWith": "Photo · {caption}"
       },
       "newMessage": {
         "hint": "Only the two of you see a private chat",
@@ -3464,13 +3470,15 @@
         "loadingOlder": "Loading earlier messages",
         "olderCame": "Earlier messages loaded",
         "arrived": "New message from {name}: {text}",
-        "arrivedMany": "{count, plural, one {# new message} other {# new messages}}"
+        "arrivedMany": "{count, plural, one {# new message} other {# new messages}}",
+        "attach": "Attach a photo"
       },
       "message": {
         "own": "Your message",
         "removedOwn": "You deleted this message",
         "removedByManager": "Management removed this message",
-        "removed": "This message was deleted"
+        "removed": "This message was deleted",
+        "fileGone": "The file is no longer kept"
       },
       "details": {
         "label": "Chat details",
@@ -3478,7 +3486,9 @@
         "departmentMembers": "Who's in the department",
         "alsoManagement": "Management sees this group too",
         "membersCount": "{count, plural, one {# person} other {# people}}",
-        "profile": "{name}'s profile"
+        "profile": "{name}'s profile",
+        "pictures": "Latest photos",
+        "noPictures": "No photos in this chat yet"
       },
       "viewing": "Chats and documents aren't shown while viewing",
       "notice": {
@@ -3486,7 +3496,7 @@
         "private": "Only the two of you see a private chat. Owners and managers don't.",
         "demoPrivate": "In a demo business everyone who comes in sees every chat, private ones too.",
         "groups": "In groups, everyone in the group and management see the messages. Management can remove a message, and sees who confirmed reading its announcements.",
-        "kept": "Photos and files are kept for <ltr>{days}</ltr> days. Messages stay.",
+        "kept": "Photos and files are kept for up to <ltr>{days}</ltr> days, or less when the business's space fills. Messages stay.",
         "demoKept": "In a demo business what is written is deleted after an hour, and whenever the demo is reset.",
         "stored": "{business}'s chats are kept with ConceptApp, on servers in Germany. They aren't end-to-end encrypted.",
         "ok": "Got it"
@@ -3568,12 +3578,41 @@
         "mute": "No notifications from this chat",
         "muteHint": "Messages still show as new in the app. Nobody else knows you muted it.",
         "muteFailed": "That didn't change. Try again",
-        "close": "Close"
+        "close": "Close",
+        "filesKept": "Files are kept for up to <ltr>{days}</ltr> days, or less when the business's space fills. Messages stay"
       },
       "today": {
         "title": "Chat",
         "all": "All chats",
         "chats": "{count, plural, =0 {No chats with new messages} one {# chat with new messages} other {# chats with new messages}}"
+      },
+      "fileFailure": {
+        "demo": "Files can't be attached in a demo business",
+        "noRoom": "There's no room for files right now. The message itself can still be sent",
+        "empty": "The picture didn't arrive. You can try again",
+        "tooBig": "The picture is too large. You can try another one",
+        "type": "Only a picture can be attached. You can try another one",
+        "metadata": "We couldn't prepare the picture. You can try again",
+        "pixels": "We couldn't prepare the picture. You can try again",
+        "failed": "The picture wasn't sent. You can try again",
+        "unreadable": "This photo can't be opened. Try another photo"
+      },
+      "image": {
+        "alt": "A photo from {name}",
+        "altOwn": "The photo you sent",
+        "chosen": "The photo you chose",
+        "open": "Open the photo",
+        "close": "Close",
+        "loading": "Loading the photo",
+        "unavailable": "The photo can't be shown right now",
+        "retry": "The photo can't be shown right now. Try again",
+        "preparing": "Getting the photo ready",
+        "ready": "The photo is ready to send",
+        "remove": "Remove the photo",
+        "when": "<ltr>{time}</ltr>",
+        "whenDay": "{day} · <ltr>{time}</ltr>",
+        "sent": "sent at <ltr>{time}</ltr>",
+        "sentDay": "sent {day} · <ltr>{time}</ltr>"
       }
     }
   },
@@ -4148,6 +4187,45 @@
       "undo": "Undo",
       "row": "The business's sentences",
       "rowSubtitle": "Replace the app's sentences for this business"
+    },
+    "storage": {
+      "title": "Database and file space",
+      "subtitle": "Sizes only, never a file, chat or person",
+      "database": "Database",
+      "files": "Files",
+      "amount": "<ltr>{value}</ltr> {unit}",
+      "usedOf": "<ltr>{used}</ltr> {usedUnit} of <ltr>{plan}</ltr> {planUnit}",
+      "plan": "The free plan",
+      "percent": "<ltr>{share}%</ltr>",
+      "units": {
+        "kb": "KB",
+        "mb": "MB",
+        "gb": "GB"
+      },
+      "byBucket": "By kind",
+      "buckets": {
+        "avatars": "Profile photos",
+        "list-photos": "Photos on lists",
+        "chat-files": "Chat files",
+        "documents": "Documents",
+        "other": "Other files"
+      },
+      "filesCount": "{count, plural, =0 {No files} one {One file} other {# files}}",
+      "byBusiness": "Chat files by business",
+      "businessLabel": "Each business's space for chat files",
+      "business": "Business",
+      "chatUsed": "In use",
+      "chatCap": "Its space",
+      "closed": "Takes no files",
+      "noBusinesses": "No businesses yet",
+      "caps": "All businesses' space together",
+      "capsLine": "Chat files <ltr>{chat}</ltr> {chatUnit} and documents <ltr>{documents}</ltr> {documentsUnit}",
+      "alerts": {
+        "filesRefused": "Files passed <ltr>{guard}</ltr> {guardUnit}, so new chat files aren't kept right now. Messages still go.",
+        "storageHigh": "Files passed <ltr>{limit}</ltr> {limitUnit}. Decide what's next before they reach <ltr>{guard}</ltr> {guardUnit}, where new files stop.",
+        "capsOver": "All businesses' space together is over <ltr>{guard}</ltr> {guardUnit}: if they all filled it, new files would stop before a business reached its own. Give new businesses less space.",
+        "databaseHigh": "The database passed <ltr>{limit}</ltr> {limitUnit} of the free plan's <ltr>{plan}</ltr> {planUnit}."
+      }
     }
   },
   "errors": {
