@@ -5,6 +5,7 @@ import {
   cancelUnstartedList,
   finishList,
   type ListWrite,
+  passList,
   reopenList,
   restoreListTemplate,
   saveListTemplate,
@@ -15,6 +16,7 @@ import {
   anyItemResult,
   type ListProgress,
   listTemplateInput,
+  passInput,
   type SavedTemplate,
   sendInput,
 } from "@domain/lists";
@@ -90,6 +92,31 @@ export async function reopenListAction(id: unknown): Promise<ListActionResult> {
   return asMember((actor) => reopenList(actor, list.data), {
     refresh: true,
     tells: true,
+  });
+}
+
+/**
+ * Passes a list to another department, with a note (blank for none). Bound on
+ * the page to the business it was drawn for. Nothing is read again here: the
+ * screen refreshes itself, or goes back to Lists when the person no longer
+ * reads the list.
+ */
+export async function passListAction(
+  business: string,
+  id: unknown,
+  department: unknown,
+  note: unknown,
+): Promise<ListActionResult> {
+  const pass = passInput.safeParse({
+    list: id,
+    department,
+    ...(typeof note === "string" && note.trim() !== "" ? { note } : {}),
+  });
+  if (!pass.success) return { ok: false, failure: "invalid" };
+  return asMember((actor) => passList(actor, pass.data), {
+    refresh: false,
+    tells: true,
+    business,
   });
 }
 

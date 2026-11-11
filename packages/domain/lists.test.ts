@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   anyItemResult,
+  askingGone,
   boundOf,
   byUrgency,
   type DraftItem,
@@ -27,7 +28,12 @@ import {
   listTemplateSeeds,
   moved,
   numberRange,
+  ofDepartment,
+  parseQuantity,
   parseReading,
+  passInput,
+  passTargets,
+  quantitiesOf,
   readBound,
   recipientGone,
   type SendShift,
@@ -42,7 +48,6 @@ import {
   templateDraftProblem,
   templateForSave,
   templateInputOf,
-  templateStuck,
   templatesByDepartment,
   toOffsets,
   typedBound,
@@ -890,6 +895,34 @@ describe("the template editor's save", () => {
     ).toBe(true);
   });
 
+  it("saves an order's department and counts as the editor has them (L5)", () => {
+    const input = templateInputOf(template, {
+      name: "Bar order",
+      note: "",
+      recipient: { kind: "department", department: KITCHEN },
+      items: itemsForSave(draftItemsOf(template.items), new Set([ITEM])),
+      fromDepartment: BAR,
+      asksQuantities: true,
+    });
+    expect(listTemplateInput.parse(input)).toMatchObject({
+      fromDepartment: BAR,
+      asksQuantities: true,
+    });
+    // None asking: no order any more.
+    expect(
+      templateInputOf(
+        { ...template, fromDepartment: BAR, asksQuantities: true },
+        {
+          name: "Bar order",
+          note: "",
+          recipient: template.recipient,
+          items: [],
+          fromDepartment: null,
+        },
+      ),
+    ).toMatchObject({ fromDepartment: null, asksQuantities: true });
+  });
+
   it("is a new template without an id", () => {
     const input = templateInputOf(
       { ...template, id: null, schedules: [] },
@@ -965,14 +998,30 @@ describe("the template editor's save", () => {
     expect(recipientGone(null, [], [])).toBe(false);
   });
 
-  it("knows a template no save can pass: an order whose department is gone", () => {
-    expect(templateStuck(template, [KITCHEN, BAR])).toBeNull();
-    expect(templateStuck({ ...template, fromDepartment: BAR }, [KITCHEN])).toBe(
-      "order",
+  it("knows an order whose asking department is gone, which holds its saves", () => {
+    expect(askingGone(template, [KITCHEN, BAR])).toBe(false);
+    expect(askingGone({ ...template, fromDepartment: BAR }, [KITCHEN])).toBe(
+      true,
     );
     expect(
-      templateStuck({ ...template, fromDepartment: BAR }, [KITCHEN, BAR]),
+      askingGone({ ...template, fromDepartment: BAR }, [KITCHEN, BAR]),
+    ).toBe(false);
+    const draft = {
+      name: "Bar order",
+      note: "",
+      recipient: template.recipient,
+      items: draftItemsOf(template.items),
+    };
+    const places = { departments: [KITCHEN], shifts: [] };
+    expect(templateDraftProblem(draft, BAR, places)).toBe("order");
+    expect(
+      templateDraftProblem(draft, BAR, {
+        ...places,
+        departments: [KITCHEN, BAR],
+      }),
     ).toBeNull();
+    // With none asking, it is a list of its own, and saves.
+    expect(templateDraftProblem(draft, null, places)).toBeNull();
   });
 
   it("knows a time pointing at something gone, which the editor changes now", () => {
@@ -1316,5 +1365,107 @@ describe("the shifts a list can go to", () => {
     expect(
       upcomingShifts([night], new Date("2026-11-10T23:00:00.000Z"), zone),
     ).toEqual([]);
+  });
+});
+
+describe("between departments (L5)", () => {
+  const STOREROOM = "66666666-6666-4666-8666-666666666666";
+  const departments = [
+    { id: KITCHEN, name: "Kitchen", archivedAt: null, members: [NOA] },
+    { id: BAR, name: "Bar", archivedAt: null, members: [] },
+    {
+      id: STOREROOM,
+      name: "Old",
+      archivedAt: "2026-11-01T00:00:00Z",
+      members: [],
+    },
+  ];
+
+  it("passes a list to any live department but the one holding it", () => {
+    const active = new Set([NOA]);
+    expect(
+      passTargets(
+        departments,
+        { kind: "department", department: KITCHEN },
+        active,
+      ),
+    ).toEqual([{ id: BAR, name: "Bar", people: 0 }]);
+    // From a person or a role, every live department, its people counted.
+    expect(
+      passTargets(departments, { kind: "role", role: "worker" }, active),
+    ).toEqual([
+      { id: KITCHEN, name: "Kitchen", people: 1 },
+      { id: BAR, name: "Bar", people: 0 },
+    ]);
+    // Someone who left isn't counted.
+    expect(
+      passTargets(departments, { kind: "person", people: [NOA] }, new Set())[0],
+    ).toMatchObject({ id: KITCHEN, people: 0 });
+  });
+
+  it("takes a note of at most 200, trimmed", () => {
+    expect(
+      passInput.parse({ list: LIST, department: BAR, note: "  Twenty  " }),
+    ).toEqual({ list: LIST, department: BAR, note: "Twenty" });
+    expect(passInput.safeParse({ list: LIST, department: BAR }).success).toBe(
+      true,
+    );
+    expect(
+      passInput.safeParse({
+        list: LIST,
+        department: BAR,
+        note: "x".repeat(201),
+      }).success,
+    ).toBe(false);
+    expect(
+      passInput.safeParse({ list: LIST, department: "dep-bar" }).success,
+    ).toBe(false);
+  });
+
+  it("keeps a department's lists: those it holds, and the orders it asked for", () => {
+    const order = {
+      holder: { kind: "department", department: KITCHEN } as const,
+      fromDepartment: BAR,
+    };
+    expect(ofDepartment(order, KITCHEN)).toBe(true);
+    expect(ofDepartment(order, BAR)).toBe(true);
+    expect(
+      ofDepartment(
+        { holder: { kind: "person", people: [NOA] }, fromDepartment: null },
+        KITCHEN,
+      ),
+    ).toBe(false);
+  });
+
+  it("reads an order's counts, the usual ones for what isn't typed", () => {
+    expect(parseQuantity(" 24 ")).toBe(24);
+    expect(parseQuantity("0")).toBe(0);
+    for (const bad of ["", "-1", "2.5", "10000", "abc"]) {
+      expect(parseQuantity(bad), bad).toBeNull();
+    }
+    const items = [
+      { id: ITEM, kind: "check" as const },
+      { id: LIST, kind: "check" as const },
+      { id: NOA, kind: "number" as const },
+    ];
+    expect(
+      quantitiesOf(items, { [ITEM]: "24", [LIST]: " ", [NOA]: "3" }),
+    ).toEqual({ ok: true, counts: { [ITEM]: 24 } });
+    // Each count that isn't one, by its item, so the form says which.
+    expect(quantitiesOf(items, { [ITEM]: "a lot", [LIST]: "6" })).toEqual({
+      ok: false,
+      invalid: [ITEM],
+    });
+    expect(
+      quantitiesOf(items, { [ITEM]: "-2", [LIST]: "10000", [NOA]: "x" }),
+    ).toEqual({ ok: false, invalid: [ITEM, LIST] });
+    const typed = quantitiesOf(items, { [ITEM]: "24" });
+    expect(
+      sendInput.safeParse({
+        template: LIST,
+        recipient: { kind: "department", department: BAR },
+        quantities: typed.ok ? typed.counts : null,
+      }).success,
+    ).toBe(true);
   });
 });

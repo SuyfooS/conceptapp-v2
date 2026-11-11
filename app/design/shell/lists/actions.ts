@@ -6,6 +6,7 @@ import {
   type ListProgress,
   listItemInput,
   listName,
+  passNote,
   type SavedTemplate,
 } from "@domain/lists";
 import { STAFF_ROLES } from "@domain/modules";
@@ -40,6 +41,20 @@ export async function demoListChange(
   _listId: string,
 ): Promise<ListActionResult> {
   return { ok: true, value: null };
+}
+
+/**
+ * Passing a list on (L5), as the demo's sheet does it: a department of the
+ * mock data ("dep-bar") and a note of at most 200, and nothing stored.
+ */
+export async function demoPassList(
+  _listId: string,
+  department: string,
+  note: string,
+): Promise<ListActionResult> {
+  return department.startsWith("dep-") && passNote.safeParse(note).success
+    ? { ok: true, value: null }
+    : { ok: false, failure: "invalid" };
 }
 
 /**

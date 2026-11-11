@@ -167,6 +167,22 @@ export function pushWords(
       return {
         title: t("kinds.lists.finished.title", { name: line.name }),
       };
+    case "lists.passed":
+      // Finished, or passed on again: nothing waits on it now.
+      if (settled) {
+        return {
+          title: t("kinds.lists.passed.settledTitle", { name: line.name }),
+        };
+      }
+      return {
+        title: line.department
+          ? t("kinds.lists.passed.title", {
+              name: line.name,
+              department: line.department,
+            })
+          : t("kinds.lists.passed.titlePlain", { name: line.name }),
+        ...body(line.hasNote ? t("kinds.lists.passed.note") : null),
+      };
     case "lists.due":
     case "lists.late":
     case "lists.late_team": {

@@ -4,10 +4,11 @@ import he from "../messages/he.json" with { type: "json" };
 import { demoLists, endViewSessions, resetDemoLists } from "./db";
 import { secondPage, signIn } from "./session";
 
-// Lists, part 2 (L2): the demo restaurant starts with two example lists
+// Lists, part 2 (L2): the demo restaurant starts with example lists
 // (supabase/migrations/20261109000700_lists_on.sql): the kitchen's opening
 // list sent to Noa, with two of its checks done by her, and the floor's
-// opening list sent to the floor. Each test starts from them again. The
+// opening list sent to the floor; from L5 also the bar's order waiting at the
+// storeroom (lists-pass.spec.ts). Each test starts from them again. The
 // people are seeded in supabase/seed.sql: Noa in the kitchen, Yoav at the bar
 // and the storeroom, Shiran (the manager) on the floor and at the bar.
 const NOA = { local: "050-000-0003", e164: "+972500000003" };

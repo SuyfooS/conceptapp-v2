@@ -25,8 +25,9 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /**
  * A list as the person it goes to will see it: its name, the note on top and
- * its items, each with its kind, its range and whether it may stay empty. On
- * the send screen and beside the template editor, from a tablet up.
+ * its items, each with its kind, its range, an order's count ("8 asked for")
+ * and whether it may stay empty. On the send screen and beside the template
+ * editor, from a tablet up.
  */
 export function ListPreview({
   name,
@@ -56,6 +57,12 @@ export function ListPreview({
           {items.map((item, index) => {
             const Icon = ITEM_ICONS[item.kind];
             const range = item.kind === "number" ? numberRange(item) : null;
+            const requested =
+              item.kind === "check" &&
+              item.requested !== undefined &&
+              item.requested !== null
+                ? item.requested
+                : null;
             return (
               <li
                 // Items have no id until they are saved; the preview follows
@@ -70,7 +77,7 @@ export function ListPreview({
                 />
                 <span className="flex min-w-0 flex-col">
                   <span>{item.label}</span>
-                  {range || !item.required ? (
+                  {range || requested !== null || !item.required ? (
                     <span className="text-ink-2 text-sm">
                       {[
                         range
@@ -79,11 +86,14 @@ export function ListPreview({
                               ltr,
                             })
                           : null,
+                        requested !== null
+                          ? t("list.requested", { count: requested })
+                          : null,
                         item.required ? null : t("list.optional"),
                       ]
                         .filter((part) => part !== null)
                         .map((part, at) => (
-                          // biome-ignore lint/suspicious/noArrayIndexKey: two fixed parts
+                          // biome-ignore lint/suspicious/noArrayIndexKey: fixed parts
                           <span key={at}>
                             {at > 0 ? " · " : null}
                             {part}

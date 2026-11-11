@@ -14,6 +14,13 @@ export type StepperProps = {
   max: number;
   decreaseLabel: string;
   increaseLabel: string;
+  /**
+   * Names the number for screen readers when no visible label points at it
+   * with `htmlFor` (a count beside an item's own name, say).
+   */
+  label?: string;
+  /** Room for four digits (an order's count), not two. */
+  wide?: boolean;
   invalid?: boolean;
   describedBy?: string;
   onKeyDown?: KeyboardEventHandler<HTMLInputElement>;
@@ -34,6 +41,8 @@ export function Stepper({
   max,
   decreaseLabel,
   increaseLabel,
+  label,
+  wide = false,
   invalid,
   describedBy,
   onKeyDown,
@@ -66,9 +75,13 @@ export function Stepper({
         onChange={(event) => onValueChange(event.target.value)}
         onKeyDown={onKeyDown}
         onBlur={onBlur}
+        aria-label={label}
         aria-invalid={invalid || undefined}
         aria-describedby={describedBy}
-        className="min-h-11 w-9 bg-transparent text-center font-semibold text-md text-ink [appearance:textfield] focus-visible:outline-2 focus-visible:outline-accent aria-invalid:text-danger [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        className={cn(
+          "min-h-11 bg-transparent text-center font-semibold text-md text-ink [appearance:textfield] focus-visible:outline-2 focus-visible:outline-accent aria-invalid:text-danger [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none",
+          wide ? "w-14" : "w-9",
+        )}
       />
       <IconButton
         label={increaseLabel}

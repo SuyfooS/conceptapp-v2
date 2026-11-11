@@ -81,12 +81,15 @@ const PAGES = [
   "/design/shell/manage/access",
   "/design/shell/lists",
   "/design/shell/lists?sent=list-floor-opening",
+  "/design/shell/lists?department=dep-bar",
+  "/design/shell/lists?passed=dep-storeroom",
   "/design/shell/lists/worker",
   "/design/shell/lists/empty",
   "/design/shell/lists/empty?as=business",
   "/design/shell/lists/list-kitchen-opening",
   "/design/shell/lists/list-kitchen-opening?state=finished",
   "/design/shell/lists/list-bar-order",
+  "/design/shell/lists/list-bar-order?state=passed",
   "/design/shell/lists/list-kitchen-closing-mon",
   "/design/shell/lists/today",
   "/design/shell/lists/today?day=2026-11-01",
@@ -96,6 +99,7 @@ const PAGES = [
   "/design/shell/lists/send",
   "/design/shell/lists/send?template=new",
   "/design/shell/lists/send?template=t-weekly-cleaning",
+  "/design/shell/lists/send?template=t-bar-order",
   "/design/shell/lists/send?state=kitchenGone",
   "/design/shell/lists/templates",
   "/design/shell/lists/templates?removed=t-stock-count",
@@ -346,9 +350,10 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
 
 // The template editor's demo (lists L3): an item added from its sheet saves
 // itself and moves up, one already there opens in its own sheet, and an order
-// whose department was removed is only read; the console's twin has nothing
-// to send; a template whose department was removed sends to nobody until
-// someone is chosen; a list typed now goes out from the send screen.
+// whose asking department was removed holds its saves until another asks, or
+// none (L5); the console's twin has nothing to send; a template whose
+// department was removed sends to nobody until someone is chosen; a list
+// typed now goes out from the send screen.
 test("the template demo adds an item, moves it, and a typed list is sent", async ({
   page,
 }) => {
@@ -408,16 +413,34 @@ test("the template demo adds an item, moves it, and a typed list is sent", async
   await page.keyboard.press("Escape");
   await expect(existing).toBeHidden();
 
-  // The bar's order after the bar was removed: only read, and says why.
+  // The bar's order after the bar was removed (L5): it says so and holds its
+  // saves until another department asks, or none, which saves it as a list
+  // of its own.
   await page.goto("/design/shell/lists/templates/t-bar-order?state=barGone");
   await expect(
-    page
-      .getByRole("status")
-      .filter({ hasText: l.templates.editor.stuck.order }),
+    page.getByRole("status").filter({ hasText: l.templates.editor.askingGone }),
   ).toBeVisible();
   await expect(
     page.getByLabel(l.templates.editor.name, { exact: true }),
-  ).toBeDisabled();
+  ).toBeEnabled();
+  // Named as it reads while the removed one holds it: still to choose.
+  await page
+    .getByRole("button", {
+      name: `${l.templates.editor.asking}: ${l.templates.editor.choose}`,
+    })
+    .click();
+  await page
+    .getByRole("menuitemradio", {
+      name: l.templates.editor.askingNone,
+      exact: true,
+    })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: he.app.manage.saved }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("status").filter({ hasText: l.templates.editor.askingGone }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: l.templates.editor.archive }),
   ).toBeVisible();
@@ -470,6 +493,111 @@ test("the template demo adds an item, moves it, and a typed list is sent", async
   await expect(page).toHaveURL(
     /\/design\/shell\/lists\?sent=list-floor-opening$/,
   );
+});
+
+// The order demo (lists L5): the bar's order at the storeroom says how many
+// were given and how many are short, and passes on from its sheet, which
+// names where it goes; passed back, its timeline keeps the note; Lists shows
+// it waiting elsewhere, and the department filter keeps the bar's lists.
+test("the order demo gives counts, passes the list on, and filters by department", async ({
+  page,
+}, testInfo) => {
+  const l = he.app.lists;
+  const one = (text: string) =>
+    /one \{([^}]*)\}/.exec(text)?.[1] ?? text.replace(/\{.*\}/, "");
+  await page.goto("/design/shell/lists/list-bar-order");
+  await expect(
+    page.getByRole("spinbutton", {
+      name: l.list.givenOf.replace("{label}", "יין לבן"),
+    }),
+  ).toHaveValue("4");
+  await expect(
+    page
+      .getByText(
+        (/other \{([^}]*)\}/.exec(l.list.short)?.[1] ?? "").replace("#", "2"),
+        { exact: true },
+      )
+      .first(),
+  ).toBeVisible();
+  await page.getByRole("button", { name: l.list.pass.action }).click();
+  const sheet = page.getByRole("dialog", { name: l.list.pass.title });
+  await sheet.getByRole("radio", { name: /^בר/ }).check();
+  await sheet
+    .getByLabel(l.list.pass.note, { exact: true })
+    .fill("חסר יין לבן, יגיע מחר");
+  const open = await new AxeBuilder({ page })
+    .include('[role="dialog"]')
+    .analyze();
+  expect(open.violations.map((v) => v.id)).toEqual([]);
+  await sheet
+    .getByRole("button", { name: l.list.pass.submit.replace("{name}", "בר") })
+    .click();
+  await expect(
+    page
+      .getByRole("status")
+      .filter({ hasText: l.list.pass.passed.replace("{name}", "בר") }),
+  ).toBeVisible();
+
+  // Passed back from the storeroom, with its note. A phone folds what
+  // happened at the end: it opens first.
+  await page.goto("/design/shell/lists/list-bar-order?state=passed");
+  if (testInfo.project.name === "phone") {
+    await page
+      .locator("summary")
+      .filter({ hasText: l.list.timeline.title })
+      .filter({ visible: true })
+      .click();
+  }
+  // It was sent to the storeroom, and passed from there to the bar.
+  const [sentBefore = ""] = l.list.timeline.sent.split("{name}");
+  await expect(
+    page
+      .getByText(
+        new RegExp(
+          `^${sentBefore}.+ ${l.card.to.department.replace("{name}", "מחסן")},`,
+        ),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        l.list.timeline.note.replace(
+          "{note}",
+          "יין לבן יגיע מחר בבוקר. השאר כאן.",
+        ),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+
+  // Lists: the bar's order waits at the storeroom; the bar's lists alone.
+  await page.goto("/design/shell/lists");
+  await expect(
+    page.getByRole("heading", { name: one(l.asked) }).filter({ visible: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: l.filter.menu.replace("{name}", l.filter.all),
+    })
+    .filter({ visible: true })
+    .click();
+  await page.getByRole("menuitemradio", { name: "בר", exact: true }).click();
+  await expect(page).toHaveURL(/\/design\/shell\/lists\?department=dep-bar$/);
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: /^הזמנה מהבר למחסן/ })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: /^פתיחת אולם/ })
+      .filter({ visible: true }),
+  ).toHaveCount(0);
 });
 
 // The pay demo's wage (payroll P4): under the minimum warns in words and
