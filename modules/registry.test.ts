@@ -1,10 +1,12 @@
 import { Constants } from "@db/database.types";
+import { DEFAULT_LIST_PHOTO_DAYS, LIST_PHOTO_DAYS } from "@domain/list-photos";
 import {
   MODULE_KEYS,
   type ModuleManifest,
   ROLES,
   readModuleSettings,
 } from "@domain/modules";
+import { describeSettings, fieldsFor } from "@domain/settings-form";
 import { describe, expect, it } from "vitest";
 import en from "../messages/en.json";
 import he from "../messages/he.json";
@@ -58,6 +60,23 @@ describe("module registry", () => {
       "lists.manage": "manager",
       "lists.send": "manager",
     });
+  });
+
+  it("leaves how long lists' photos are kept to the team, 90 days at first", () => {
+    // Storage is what could cost (L6; Orel's default on #1): owners and
+    // managers don't see it on /manage, and the app refuses it from them
+    // (checkSettingsChange); private.list_settings holds the same default,
+    // and public.expired_list_photos reads only the values offered here.
+    const settings = manifestFor("lists").settings;
+    const field = describeSettings(settings).find((f) => f.key === "photoDays");
+    expect(field?.level).toBe("team");
+    expect(field?.kind === "choice" ? field.options : null).toEqual([
+      ...LIST_PHOTO_DAYS,
+    ]);
+    expect(settings.parse({}).photoDays).toBe(DEFAULT_LIST_PHOTO_DAYS);
+    expect(fieldsFor(settings, "owner").map((f) => f.key)).not.toContain(
+      "photoDays",
+    );
   });
 
   it("starts every permission an owner gives with the owner alone", () => {

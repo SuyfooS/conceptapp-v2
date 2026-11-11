@@ -15,9 +15,15 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { type AppWording, type Translator, translator } from "../wording";
+import { DepartmentFilter } from "./department-filter";
 import { ListCard, type ListShown, ListTable } from "./list-card";
-import type { ListActionResult, ListsHomeData } from "./list-types";
+import {
+  ALL_DEPARTMENTS,
+  type ListActionResult,
+  type ListsHomeData,
+} from "./list-types";
 import { sentWords } from "./list-words";
+import { PassedNotice } from "./passed-notice";
 import { SentNotice } from "./sent-notice";
 
 type T = Translator<"app.lists">;
@@ -75,10 +81,12 @@ export function TeamToday({
 }
 
 /**
- * Lists: what is for the person now, most urgent first, and what closed today.
+ * Lists: what is for the person now, most urgent first, the orders their
+ * departments asked for that wait in another one, and what closed today.
+ * Someone in more than one department chooses which one's lists show (L5).
  * Phone: one card under the other, today's closed ones folded. Tablet: now
- * beside closed. Desktop: both as tables. Whoever manages lists sees the
- * business's day on top; whoever may send one has the main action. Also on
+ * beside closed. Desktop: tables. Whoever manages lists sees the business's
+ * day on top; whoever may send one has the main action. Also on
  * /design/shell/lists with mock data.
  */
 export function ListsView({
@@ -113,7 +121,14 @@ export function ListsView({
       </Link>
     </Button>
   ) : null;
-  const nothing = data.open.length === 0 && data.closed.length === 0;
+  const chosen = data.filter?.chosen ?? null;
+  // A department chosen with nothing of its own still shows its sections,
+  // each saying so, rather than "nothing for you".
+  const nothing =
+    data.open.length === 0 &&
+    data.closed.length === 0 &&
+    data.asked.length === 0 &&
+    chosen === null;
 
   const cards = (lists: readonly ListSummary[]) => (
     <div className="flex flex-col gap-3">
@@ -124,9 +139,49 @@ export function ListsView({
   );
   const noneOpen = (
     <p className="px-1 text-ink-2">
-      {data.view === "business" ? t("noneOpenBusiness") : t("noneOpen")}
+      {data.view === "business"
+        ? t("noneOpenBusiness")
+        : chosen
+          ? t("noneOpenDepartment")
+          : t("noneOpen")}
     </p>
   );
+  const noneClosed = (
+    <p className="px-1 text-ink-2">
+      {chosen ? t("noneClosedDepartment") : t("noneClosed")}
+    </p>
+  );
+  const askedTitle = t("asked", { count: data.asked.length });
+  // Orders asked for that wait elsewhere: the same cards, in every shape.
+  const asked =
+    data.asked.length > 0 ? (
+      <PageSection title={askedTitle}>
+        <p className="-mt-1 px-1 text-ink-2 text-sm">{t("askedHint")}</p>
+        {cards(data.asked)}
+      </PageSection>
+    ) : null;
+  const filter = data.filter ? (
+    <DepartmentFilter
+      label={t("filter.label")}
+      menuLabel={t("filter.menu", {
+        name:
+          data.filter.departments.find((d) => d.id === chosen)?.name ??
+          t("filter.all"),
+      })}
+      value={chosen ?? ALL_DEPARTMENTS}
+      options={[
+        { key: ALL_DEPARTMENTS, label: t("filter.all") },
+        ...data.filter.departments.map((d) => ({ key: d.id, label: d.name })),
+      ]}
+      hrefs={Object.fromEntries([
+        [ALL_DEPARTMENTS, paths.lists],
+        ...data.filter.departments.map((d) => [
+          d.id,
+          `${paths.lists}?department=${d.id}`,
+        ]),
+      ])}
+    />
+  ) : null;
 
   return (
     <PageBody className={pageGlowClass}>
@@ -150,6 +205,12 @@ export function ListsView({
         }
         cancel={cancel}
         listsHref={paths.lists}
+      />
+      {/* A list just passed on by someone who no longer reads it (L5). */}
+      <PassedNotice
+        message={
+          data.passed ? t("list.pass.passed", { name: data.passed }) : null
+        }
       />
 
       {data.team || data.templates !== null ? (
@@ -208,38 +269,42 @@ export function ListsView({
         />
       ) : (
         <>
+          {filter}
+
           {/* Phone: one thing at a time, today's closed lists folded away. */}
           <div className="flex flex-col gap-6 md:hidden">
             <PageSection title={t("now")}>
               {data.open.length > 0 ? cards(data.open) : noneOpen}
             </PageSection>
-            {data.closed.length > 0 ? (
-              <details className="group flex flex-col gap-3">
-                <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-full px-1 font-bold text-lg focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
-                  {t("closedToday", { count: data.closed.length })}
-                  <ChevronDown
-                    aria-hidden="true"
-                    className="size-5 text-ink-2 transition-transform duration-200 group-open:rotate-180"
-                  />
-                </summary>
-                <div className="mt-3">{cards(data.closed)}</div>
-              </details>
-            ) : null}
+            {asked}
+            {/* Always there, as on the wider screens, saying so when empty. */}
+            <details className="group flex flex-col gap-3">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 rounded-full px-1 font-bold text-lg focus-visible:outline-2 focus-visible:outline-accent [&::-webkit-details-marker]:hidden">
+                {t("closedToday", { count: data.closed.length })}
+                <ChevronDown
+                  aria-hidden="true"
+                  className="size-5 text-ink-2 transition-transform duration-200 group-open:rotate-180"
+                />
+              </summary>
+              <div className="mt-3">
+                {data.closed.length > 0 ? cards(data.closed) : noneClosed}
+              </div>
+            </details>
           </div>
 
-          {/* Tablet: what's open beside what closed today. */}
-          <div className="hidden gap-6 md:grid md:grid-cols-2 xl:hidden">
-            <PageSection title={t("now")}>
-              {data.open.length > 0 ? cards(data.open) : noneOpen}
-            </PageSection>
+          {/* Tablet: what's open, and what waits elsewhere, beside what
+              closed today. */}
+          <div className="hidden items-start gap-6 md:grid md:grid-cols-2 xl:hidden">
+            <div className="flex min-w-0 flex-col gap-6">
+              <PageSection title={t("now")}>
+                {data.open.length > 0 ? cards(data.open) : noneOpen}
+              </PageSection>
+              {asked}
+            </div>
             <PageSection
               title={t("closedToday", { count: data.closed.length })}
             >
-              {data.closed.length > 0 ? (
-                cards(data.closed)
-              ) : (
-                <p className="px-1 text-ink-2">{t("noneClosed")}</p>
-              )}
+              {data.closed.length > 0 ? cards(data.closed) : noneClosed}
             </PageSection>
           </div>
 
@@ -252,17 +317,31 @@ export function ListsView({
                 noneOpen
               )}
             </PageSection>
-            {data.closed.length > 0 ? (
-              <PageSection
-                title={t("closedToday", { count: data.closed.length })}
-              >
+            {data.asked.length > 0 ? (
+              <PageSection title={askedTitle}>
+                <p className="-mt-1 px-1 text-ink-2 text-sm">
+                  {t("askedHint")}
+                </p>
+                <ListTable
+                  lists={data.asked}
+                  shown={shown}
+                  caption={askedTitle}
+                />
+              </PageSection>
+            ) : null}
+            <PageSection
+              title={t("closedToday", { count: data.closed.length })}
+            >
+              {data.closed.length > 0 ? (
                 <ListTable
                   lists={data.closed}
                   shown={shown}
                   caption={t("closedToday", { count: data.closed.length })}
                 />
-              </PageSection>
-            ) : null}
+              ) : (
+                noneClosed
+              )}
+            </PageSection>
           </div>
         </>
       )}

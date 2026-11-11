@@ -8,6 +8,9 @@ import {
   dueAtOf,
   dueTimeFor,
   listName,
+  MAX_QUANTITY,
+  parseQuantity,
+  quantitiesOf,
   type RecipientKind,
   type SendInput,
   sendDefaults,
@@ -26,6 +29,7 @@ import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Segmented } from "@ui/segmented";
+import { Stepper } from "@ui/stepper";
 import { ltrInputClass, TextArea } from "@ui/text-field";
 import {
   Building2,
@@ -49,6 +53,15 @@ import { ItemsEditor } from "../templates/items-editor";
 type Kind = RecipientKind;
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/** An order's usual counts, as its steppers start (L5). */
+const usualCounts = (template: SendFormData["templates"][number] | undefined) =>
+  Object.fromEntries(
+    (template?.quantities ?? []).map((item) => [
+      item.id,
+      item.usual === null ? "" : String(item.usual),
+    ]),
+  );
 
 /**
  * Sending a list now: which list (a template, or one typed now with its own
@@ -97,6 +110,14 @@ export function SendForm({
   const [timeSet, setTimeSet] = useState(false);
   const [duePast, setDuePast] = useState(false);
   const [note, setNote] = useState("");
+  // An order's counts, as typed, by the template's item.
+  const [counts, setCounts] = useState<Record<string, string>>(() =>
+    usualCounts(template),
+  );
+  // The items whose count typed isn't one, until each is changed.
+  const [wrongCounts, setWrongCounts] = useState<ReadonlySet<string>>(
+    () => new Set(),
+  );
   const [failure, setFailure] = useState<ListFailure | null>(null);
   const [pending, startSend] = useTransition();
 
@@ -115,8 +136,11 @@ export function SendForm({
   function choose(next: string) {
     setSource(next);
     setFailure(null);
+    const chosen = data.templates.find((x) => x.id === next);
+    setCounts(usualCounts(chosen));
+    setWrongCounts(new Set());
     const defaults = sendDefaults(
-      data.templates.find((x) => x.id === next)?.recipient,
+      chosen?.recipient,
       data.shifts,
       liveDepartments,
     );
@@ -192,6 +216,21 @@ export function SendForm({
       dueAt = due.dueAt;
     }
     setFailure(null);
+    // An order's counts: those typed, and the usual ones for the rest.
+    const asked: ReturnType<typeof quantitiesOf> =
+      !typed && template && template.quantities.length > 0
+        ? quantitiesOf(
+            template.quantities.map((item) => ({
+              id: item.id,
+              kind: "check" as const,
+            })),
+            counts,
+          )
+        : { ok: true, counts: {} };
+    if (!asked.ok) {
+      setWrongCounts(new Set(asked.invalid));
+      return;
+    }
     const text = note.trim();
     const extra = {
       recipient,
@@ -201,7 +240,13 @@ export function SendForm({
     const input: SendInput =
       typed || !template
         ? { name: ownName.trim(), items: typedItems(ownItems), ...extra }
-        : { template: template.id, ...extra };
+        : {
+            template: template.id,
+            ...extra,
+            ...(Object.keys(asked.counts).length > 0
+              ? { quantities: asked.counts }
+              : {}),
+          };
     startSend(async () => {
       let result: SendResult;
       try {
@@ -224,6 +269,18 @@ export function SendForm({
     "role",
   ];
 
+  /**
+   * How many an order's check will ask for, as the preview shows it: the
+   * count typed, the usual one while its field is empty (as `send_list` takes
+   * it), and none while what is typed isn't a count.
+   */
+  const requestedOf = (itemId: string): number | null => {
+    const asked = template?.quantities.find((item) => item.id === itemId);
+    if (typed || !asked) return null;
+    const text = counts[itemId] ?? "";
+    return text.trim() === "" ? asked.usual : parseQuantity(text);
+  };
+
   const preview = typed
     ? {
         name: ownName.trim() || t("newList"),
@@ -234,7 +291,10 @@ export function SendForm({
       ? {
           name: template.name,
           note: [template.note, note.trim()].filter(Boolean).join("\n") || null,
-          items: template.items,
+          items: template.items.map((item) => ({
+            ...item,
+            requested: requestedOf(item.id),
+          })),
         }
       : null;
 
@@ -295,6 +355,7 @@ export function SendForm({
                   setOwnItems(items);
                   setFailure(null);
                 }}
+                photosClosed={data.photosClosed}
               />
             </section>
           ) : null}
@@ -482,6 +543,70 @@ export function SendForm({
               </p>
             ) : null}
           </section>
+
+          {!typed && template && template.quantities.length > 0 ? (
+            <section className="flex flex-col gap-3">
+              <h2 className="px-1 font-bold text-lg">{t("quantities")}</h2>
+              <FieldGroup>
+                {template.quantities.map((item) => {
+                  const wrong = wrongCounts.has(item.id);
+                  return (
+                    <FieldRow
+                      key={item.id}
+                      label={item.label}
+                      htmlFor={`${id}-count-${item.id}`}
+                    >
+                      <Stepper
+                        id={`${id}-count-${item.id}`}
+                        value={counts[item.id] ?? ""}
+                        min={0}
+                        max={MAX_QUANTITY}
+                        wide
+                        label={t("quantityOf", { label: item.label })}
+                        invalid={wrong || undefined}
+                        describedBy={
+                          wrong ? `${id}-count-${item.id}-wrong` : undefined
+                        }
+                        decreaseLabel={t("fewer", { label: item.label })}
+                        increaseLabel={t("more", { label: item.label })}
+                        onValueChange={(value) => {
+                          setCounts((current) => ({
+                            ...current,
+                            [item.id]: value,
+                          }));
+                          // Only this one's word goes; the others' stay.
+                          setWrongCounts((current) => {
+                            if (!current.has(item.id)) return current;
+                            const next = new Set(current);
+                            next.delete(item.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    </FieldRow>
+                  );
+                })}
+              </FieldGroup>
+              {wrongCounts.size > 0 ? (
+                // One line for each count that isn't one, named by its item.
+                <div role="alert" className="flex flex-col gap-1 px-1">
+                  {template.quantities
+                    .filter((item) => wrongCounts.has(item.id))
+                    .map((item) => (
+                      <p
+                        key={item.id}
+                        id={`${id}-count-${item.id}-wrong`}
+                        className="font-medium text-danger text-sm"
+                      >
+                        {t("quantityInvalidOf", { label: item.label })}
+                      </p>
+                    ))}
+                </div>
+              ) : (
+                <p className="px-1 text-ink-2 text-sm">{t("quantitiesHint")}</p>
+              )}
+            </section>
+          ) : null}
 
           <TextArea
             label={t("note")}

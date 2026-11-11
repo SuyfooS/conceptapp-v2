@@ -28,6 +28,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only) |
 | `private.can_manage_lists(business, person)` | (that person) is an active owner or manager, or holds `lists.manage` |
 | `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or manages lists |
+| `private.can_read_list_photo(object_name)` | may read that file of the `list-photos` bucket: an item of a list they see (or view as a manager) points at it, in its business, with lists on |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
 audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
@@ -100,8 +101,8 @@ business (where its tab fits), gives businesses opened before lists their
 template's departments and lists (`private.backfill_lists`), adds
 `public.cancel_unstarted_list`, the undo right after sending (`cancel_list`
 only while nobody has started the list), and fills `private.seed_demo_lists`:
-the demo reset ends with two example lists sent by the demo's manager
-(`lists_on.test.sql`).
+the demo reset ends with two example lists sent by the demo's manager, and
+from L5 an order (`lists_on.test.sql`).
 `@db/departments` `getDepartmentsForTeam` reads them for the console with the
 secret key, since the team is no member.
 Templates and the full send (L3) need no migration. `saveListTemplate` calls
@@ -153,6 +154,60 @@ reminder and of a late list, and its managers of a late list and of a reading
 out of range, with the reading.
 `getListReadings(lists)` reads the number items of some lists with their
 readings, under RLS, for the manager's day (`lists_schedule.test.sql`).
+
+Lists between departments (L5, `20261110001400_lists_pass.sql`):
+`public.pass_list(actor, list, department, pass_note, at_time)` (secret key)
+passes an open list to another live department of its business, for whoever
+holds it or manages lists (42501 otherwise, P0002 for a list that isn't
+theirs to know, 22023 for the department holding it already, a removed one,
+another business's or a note over 200, 55000 once it is closed). It writes a
+`list_passes` row (from where, to where, who, when, the note), makes the list
+the department's, and logs `lists.pass` with whether a note came, never the
+note. Whoever held it as a person or a shift keeps reading it through
+`list_people`, and a department through its pass row (`private.sees_list`);
+someone who held it only by their role no longer reads it unless they sent
+it, manage lists, or are in the department that asked. None of them fills it
+any more. `private.notify_for_lists`
+tells the new department's people (`lists.passed`, with the department's
+name) and settles the list's lines for everyone who no longer holds it.
+Orders' counts were there from L1: `send_list` takes `quantities` by the
+template's item, and `set_list_item` takes `given`. `private.seed_demo_lists`
+also sends the template's first order, by someone of the department that
+asks, its first item given where it goes, in a block of its own that runs
+whatever became of the examples before it. `@db/lists` `passList` calls it,
+and `getMyLists` returns, beside what the person holds, the open orders their
+departments asked for that wait elsewhere (`lists_pass.test.sql`,
+`demo_reset.test.sql`).
+
+Photos on lists (L6, `20261110001500_list_photos.sql`) live in the private
+bucket `list-photos`, a JPEG or WebP of at most 400 KB at
+`<business>/<list>/<key>.<webp|jpg>` (the rule `list_items.photo_path` keeps).
+Storage has one policy for it, select, through
+`private.can_read_list_photo(object_name)`: the path's list is of the path's
+business, lists are on there, one of its photo items points at the file, and
+the reader sees the list or views the business as a manager. Nothing lets the
+browser upload, replace or remove a file, as with avatars. `@db/list-photos`
+`setListItemPhoto` checks the file the browser re-encoded
+(`@domain/list-photos` `checkListPhoto`), uploads it with the secret key under
+a random key, then calls `public.set_list_item_photo(actor, item, new_path,
+at_time)` (secret key; whoever holds the open list or manages lists, the item a
+photo, the path in its own list's folder; no log row), which returns the file
+it replaced for the server to remove; a refused save removes the upload again.
+`removeListItemPhoto` clears it (no `new_path`). `listPhotoBytes` downloads a
+photo under the reader's own session, for the app's `/list-photos` route. A
+demo business takes none unless its definition says `"photos": true`
+(`public.list_photos_closed` for the server, which the list screen and the
+editors ask through `listPhotosAllowed`, so a photo item there is never
+required; the trigger `list_items_demo_photo` in the database, 55000; clearing
+stays allowed). Photos are kept the lists setting `photoDays` (90 unless the
+team chose 30, 180 or 365; the app holds it to the team, `level: "team"`,
+since `set_module_settings` has no lists branch): once a day the job
+`list-photos` (`private.list_photos_tick`, off locally and in CI) asks the
+app's `/cron/list-photos` while one is due, and `cleanListPhotos` lists them
+(`public.expired_list_photos`), removes the files and marks their items
+(`public.forget_list_photos`, `list_items.photo_removed_at`): the item stays
+done and says its photo is no longer kept (`list_photos.test.sql`; the route,
+its bearer and the whole clean-up in `e2e/list-photos.spec.ts`).
 
 Hours stay (`20261110000100_hours_kept.sql`, payroll P1). `time_entries`,
 `time_breaks` and `audit_log` refer to their business, person and entry with

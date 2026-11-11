@@ -1,4 +1,5 @@
 import { getDepartments } from "@db/departments";
+import { listPhotosAllowed } from "@db/list-photos";
 import {
   getBusinessLists,
   getList,
@@ -22,6 +23,8 @@ import {
   type ListSummary,
   type ListTemplate,
   listsTally,
+  ofDepartment,
+  passTargets,
   REOPEN_MINUTES,
   type SendShift,
   SHIFT_DAYS_AHEAD,
@@ -181,12 +184,16 @@ async function currentTemplates(businessId: string): Promise<ListTemplate[]> {
 
 /**
  * Lists and the part of it Today shows: the open lists the person holds, most
- * urgent first, those closed today, the business's day for those who manage
- * lists, and how to send one. `sent` is a list they just sent, from the
- * address, while it can still be taken back.
+ * urgent first, those closed today, the orders their departments asked for
+ * that wait elsewhere, the business's day for those who manage lists, and how
+ * to send one. `sent` is a list they just sent, from the address, while it can
+ * still be taken back; `department` the department filter's choice (L5), for
+ * someone in more than one: their lists of that department, held or asked for.
  */
 export async function currentListsHome(
   sent?: string,
+  department?: string,
+  passed?: string,
 ): Promise<ListsHomeData | null> {
   const access = await listsAccess();
   if (!access) return null;
@@ -203,7 +210,7 @@ export async function currentListsHome(
       access.viewOnly && !access.canManage ? [] : currentTemplates(businessId),
       access.view === "mine"
         ? getMyLists(businessId, { userId, role: access.role }, window)
-        : [],
+        : null,
       access.canManage ? getBusinessLists(businessId, window) : [],
       sent && isUuid(sent) && !access.viewOnly ? getList(sent) : null,
     ]);
@@ -212,9 +219,25 @@ export async function currentListsHome(
     lateAfterMinutes: settings.lateAfterMinutes,
   };
   const everyone = business === "notYet" ? [] : business;
-  const shown: ListSummary[] =
-    access.view === "mine" ? (own === "notYet" ? [] : own) : everyone;
+  const held = own === null || own === "notYet" ? [] : own.held;
+  const shown: ListSummary[] = access.view === "mine" ? held : everyone;
   const mine = departmentsOf(departments, userId, { live: true });
+  // The filter, for someone in more than one live department.
+  const theirs = departments.filter(
+    (d) => d.archivedAt === null && mine.includes(d.id),
+  );
+  const filter =
+    access.view === "mine" && theirs.length > 1
+      ? {
+          departments: theirs.map((d) => ({ id: d.id, name: d.name })),
+          chosen: theirs.some((d) => d.id === department)
+            ? (department ?? null)
+            : null,
+        }
+      : null;
+  const chosen = filter?.chosen ?? null;
+  const kept = (list: ListSummary) =>
+    chosen === null || ofDepartment(list, chosen);
   const offered = sendable(templates, access, mine);
   // Whoever sends lists may type one now, with no template at all.
   const send: SendWay | null =
@@ -235,7 +258,7 @@ export async function currentListsHome(
     view: access.view,
     userId,
     open: byUrgency(
-      shown.filter((list) => list.status === "open"),
+      shown.filter((list) => list.status === "open" && kept(list)),
       now,
       timing,
     ),
@@ -244,9 +267,16 @@ export async function currentListsHome(
         (list) =>
           list.status !== "open" &&
           list.opensAt >= window.from &&
-          list.opensAt < window.to,
+          list.opensAt < window.to &&
+          kept(list),
       )
       .sort((a, b) => Date.parse(b.opensAt) - Date.parse(a.opensAt)),
+    asked: byUrgency(
+      own === null || own === "notYet" ? [] : own.asked.filter(kept),
+      now,
+      timing,
+    ),
+    filter,
     team: access.canManage
       ? listsTally(
           everyone.filter(
@@ -270,6 +300,12 @@ export async function currentListsHome(
       Date.parse(taken.opensAt) > now.getTime() - REOPEN_MINUTES * 60_000
         ? taken
         : null,
+    // A list just passed to a live department of the business, said once.
+    passed:
+      (passed &&
+        departments.find((d) => d.id === passed && d.archivedAt === null)
+          ?.name) ||
+      null,
     templates: access.canManage
       ? templates.filter((t) => t.archivedAt === null).length
       : null,
@@ -283,21 +319,52 @@ export async function currentList(
   const access = await listsAccess();
   if (!access || !isUuid(listId)) return null;
   const { businessId, userId, timeZone } = access;
-  const [list, settings, departments, lookups] = await Promise.all([
-    getList(listId),
-    currentModuleSettings("lists"),
-    currentDepartments(businessId),
-    lookupsFor(businessId),
-  ]);
+  const [list, settings, departments, lookups, colleagues, photos] =
+    await Promise.all([
+      getList(listId),
+      currentModuleSettings("lists"),
+      currentDepartments(businessId),
+      lookupsFor(businessId),
+      currentColleagues(businessId),
+      // Asked beside the rest, so a list with a photo item waits for nothing;
+      // if it can't be asked, photos wait ("notYet") and the list still opens.
+      listPhotosAllowed(businessId).catch((): "notYet" => "notYet"),
+    ]);
   if (!list || list === "notYet") return null;
   const now = new Date();
   // Removed departments count: what they already hold stays with their
   // people, as `private.holds_list` and Lists have it.
+  const mine = departmentsOf(departments, userId, { live: false });
   const holds = holdsList(list.holder, {
     userId,
     role: access.role,
-    departments: departmentsOf(departments, userId, { live: false }),
+    departments: mine,
   });
+  // Passing it on (L5): whoever holds it or manages lists, to any other live
+  // department, its people counted as `private.list_holders` counts them.
+  const targets =
+    list.status === "open" && !access.viewOnly && (holds || access.canManage)
+      ? passTargets(
+          departments,
+          list.holder,
+          new Set(
+            colleagues.filter((c) => isStaff(c.role)).map((c) => c.userId),
+          ),
+        )
+      : [];
+  // After passing it, they read it still (`private.sees_list`): list
+  // managers, its sender, its people (a person, a shift), a department it
+  // was with or that asked; someone it reached by their role alone doesn't.
+  const stays =
+    access.canManage ||
+    list.holder.kind !== "role" ||
+    list.sentBy === userId ||
+    (list.fromDepartment !== null && mine.includes(list.fromDepartment)) ||
+    list.passes.some(
+      (pass) =>
+        mine.includes(pass.toDepartment) ||
+        (pass.fromDepartment !== null && mine.includes(pass.fromDepartment)),
+    );
   const open = list.status === "open";
   const closed = list.status === "finished" || list.status === "cancelled";
   const readOnly: ListReadOnly | null = access.viewOnly
@@ -326,7 +393,21 @@ export async function currentList(
     },
     readOnly,
     undoUntil,
+    pass: targets.length > 0 ? { targets, stays } : null,
+    photos: { taking: photos },
   };
+}
+
+/**
+ * Whether the business takes no photos (a demo one): its editors then keep a
+ * photo item optional. Asked beside the rest; if it can't be asked, the
+ * editor still opens, with a photo item's switch as usual.
+ */
+function photosClosedIn(businessId: string): Promise<boolean> {
+  return listPhotosAllowed(businessId).then(
+    (allowed) => allowed === "demo",
+    () => false,
+  );
 }
 
 /**
@@ -365,10 +446,11 @@ export async function currentSendForm(
   if (!access || access.viewOnly) return null;
   const { businessId, userId, timeZone } = access;
   const now = new Date();
-  const [templates, departments, colleagues] = await Promise.all([
+  const [templates, departments, colleagues, photosClosed] = await Promise.all([
     currentTemplates(businessId),
     currentDepartments(businessId),
     currentColleagues(businessId),
+    photosClosedIn(businessId),
   ]);
   const offered = sendable(
     templates,
@@ -399,6 +481,7 @@ export async function currentSendForm(
       name: t.name,
       note: t.note,
       items: t.items.map((item) => ({
+        id: item.id,
         kind: item.kind,
         label: item.label,
         required: item.required,
@@ -408,6 +491,15 @@ export async function currentSendForm(
       })),
       recipient: t.recipient,
       fromDepartment: t.fromDepartment,
+      quantities: t.asksQuantities
+        ? t.items
+            .filter((item) => item.kind === "check")
+            .map((item) => ({
+              id: item.id,
+              label: item.label,
+              usual: item.defaultQuantity,
+            }))
+        : [],
     })),
     initial,
     free: access.canSend,
@@ -421,6 +513,7 @@ export async function currentSendForm(
       .map((d) => ({ id: d.id, name: d.name })),
     roles: STAFF_ROLES,
     shifts,
+    photosClosed,
   };
 }
 
@@ -540,12 +633,16 @@ export async function currentTemplateEditor(
   if (templateId !== null && !isUuid(templateId)) return null;
   if (templateId === null && access.viewOnly) return null;
   const now = new Date();
-  const [template, departments, shifts, times] = await Promise.all([
-    templateId === null ? null : getListTemplate(access.businessId, templateId),
-    currentDepartments(access.businessId),
-    shiftPatterns(),
-    templateTimes(access, templateId, now),
-  ]);
+  const [template, departments, shifts, times, photosClosed] =
+    await Promise.all([
+      templateId === null
+        ? null
+        : getListTemplate(access.businessId, templateId),
+      currentDepartments(access.businessId),
+      shiftPatterns(),
+      templateTimes(access, templateId, now),
+      photosClosedIn(access.businessId),
+    ]);
   if (template === "notYet" || (templateId !== null && template === null)) {
     return null;
   }
@@ -556,6 +653,7 @@ export async function currentTemplateEditor(
     readOnly: access.viewOnly,
     changed,
     times,
+    photosClosed,
   });
 }
 

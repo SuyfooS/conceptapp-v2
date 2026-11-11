@@ -122,14 +122,16 @@ values
 -- accountant confirms. Neither opens its scheduled lists when it is reset
 -- (only a definition that says "scheduledLists": true does, as the hosted
 -- ones do; 20261110001300_list_schedules.sql): the browser tests open them at
--- the times they choose, so none depends on the hour.
+-- the times they choose, so none depends on the hour. The restaurant also takes
+-- photos on its lists ("photos": true; 20261110001500_list_photos.sql), for the
+-- browser tests; the shop takes none, like the hosted ones.
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
   {
     "slug": "demo-restaurant", "name": "מסעדת הדגמה", "accent": "#2563eb",
     "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
-    "template": "restaurant", "renews": false, "invites": true, "profiles": true,
+    "template": "restaurant", "renews": false, "invites": true, "profiles": true, "photos": true,
     "settings": { "time_clock": { "payEstimate": true } },
     "hours": { "fridays": false, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000004", "case": "night" }
@@ -224,10 +226,11 @@ grant usage on schema dev to supabase_auth_admin;
 grant execute on function dev.send_sms(jsonb) to supabase_auth_admin;
 
 -- The minute jobs and the daily ones (20261109000500_push.sql, payroll's
--- reminder of 20261110001000_payroll_months.sql, and lists' times of
--- 20261110001300_list_schedules.sql) stay off here, or they would send,
+-- reminder of 20261110001000_payroll_months.sql, lists' times of
+-- 20261110001300_list_schedules.sql and their photos' clean-up of
+-- 20261110001500_list_photos.sql) stay off here, or they would send,
 -- clean, remind and open lists at real time under the tests, which call what
 -- the jobs run themselves, at times they choose. A hosted project keeps them.
 select cron.alter_job(j.jobid, active => false)
 from cron.job j
-where j.jobname in ('notifications', 'notifications-clean', 'payroll', 'lists');
+where j.jobname in ('notifications', 'notifications-clean', 'payroll', 'lists', 'list-photos');

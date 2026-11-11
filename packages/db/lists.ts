@@ -1,5 +1,6 @@
 import "server-only";
 import type { ScheduleOpenings } from "@domain/list-openings";
+import { listPhotoSrc } from "@domain/list-photos";
 import {
   holdsList,
   type ItemResult,
@@ -20,6 +21,8 @@ import {
   type ListTemplateInput,
   listProgress,
   listProgressSchema,
+  type PassInput,
+  passInput,
   type Reading,
   type SavedTemplate,
   SCHEDULE_ANCHORS,
@@ -34,7 +37,7 @@ import { type Role, STAFF_ROLES, type StaffRole } from "@domain/modules";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "./database.types";
-import { isMissingFunction } from "./missing";
+import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -270,13 +273,15 @@ async function openAndClosed(
 /**
  * The lists a person holds now (their people, their departments, their role):
  * every open one, and those that opened in the window and are closed. Not
- * every list they may read: a list manager reads them all.
+ * every list they may read: a list manager reads them all. `asked` is the
+ * open orders one of their departments asked for that another holds (L5),
+ * which they follow from Lists.
  */
 export async function getMyLists(
   businessId: string,
   person: { userId: string; role: Role },
   window: Window,
-): Promise<ListSummary[] | "notYet"> {
+): Promise<{ held: ListSummary[]; asked: ListSummary[] } | "notYet"> {
   const supabase = await createClient();
   const [[open, closed], departments] = await Promise.all([
     openAndClosed(supabase, businessId, window),
@@ -301,7 +306,15 @@ export async function getMyLists(
     ...person,
     departments: (departments.data ?? []).map((row) => row.department_id),
   };
-  return all.filter((list) => holdsList(list.holder, mine));
+  const held = all.filter((list) => holdsList(list.holder, mine));
+  const asked = all.filter(
+    (list) =>
+      list.status === "open" &&
+      list.fromDepartment !== null &&
+      mine.departments.includes(list.fromDepartment) &&
+      !holdsList(list.holder, mine),
+  );
+  return { held, asked };
 }
 
 /**
@@ -355,6 +368,35 @@ const shiftSchema = z.object({
   end: z.string(),
 });
 
+const ITEM_COLUMNS =
+  "id, template_item_id, kind, label, hint, required, unit, min_value, max_value, requested, given, checked, reading, answer, photo_path, comment, done, done_by, done_at";
+
+/**
+ * A list's items in order, under RLS. When the photos' migration
+ * (20261110001500_list_photos.sql) isn't on the project yet, read without
+ * when a photo was removed: none was.
+ */
+async function itemRows(supabase: Supabase, listId: string) {
+  const withRemoved = await supabase
+    .from("list_items")
+    .select(`${ITEM_COLUMNS}, photo_removed_at`)
+    .eq("list_id", listId)
+    .order("position");
+  if (!isMissingColumn(withRemoved.error)) return withRemoved;
+  const without = await supabase
+    .from("list_items")
+    .select(ITEM_COLUMNS)
+    .eq("list_id", listId)
+    .order("position");
+  return {
+    ...without,
+    data: (without.data ?? []).map((row) => ({
+      ...row,
+      photo_removed_at: null,
+    })),
+  };
+}
+
 /** One list with its items and passes, if the person may read it. */
 export async function getList(
   listId: string,
@@ -366,13 +408,7 @@ export async function getList(
       .select(`${LIST_COLUMNS}, note, asks_quantities, shift`)
       .eq("id", listId)
       .maybeSingle(),
-    supabase
-      .from("list_items")
-      .select(
-        "id, template_item_id, kind, label, hint, required, unit, min_value, max_value, requested, given, checked, reading, answer, comment, done, done_by, done_at",
-      )
-      .eq("list_id", listId)
-      .order("position"),
+    itemRows(supabase, listId),
     supabase.from("list_people").select("user_id").eq("list_id", listId),
     supabase
       .from("list_passes")
@@ -402,6 +438,10 @@ export async function getList(
     checked: row.checked === true,
     reading: row.reading,
     answer: row.answer,
+    // A photo still kept is shown through the app's route; one the clean-up
+    // removed is said in words.
+    photo: row.photo_removed_at === null ? listPhotoSrc(row.photo_path) : null,
+    photoRemoved: row.photo_path !== null && row.photo_removed_at !== null,
     comment: row.comment,
     done: row.done,
     doneBy: row.done_by,
@@ -1073,4 +1113,27 @@ export function reopenList(
   at?: Date,
 ): Promise<ListWrite<null>> {
   return changeList("reopen_list", actorId, listId, at);
+}
+
+/**
+ * Passes an open list to another department of its business, with a note if
+ * there is one (`public.pass_list`): whoever holds it, or a list manager.
+ * "invalid" for the department holding it already, a removed one, or a note
+ * too long; "finished" once it is closed.
+ */
+export async function passList(
+  actorId: string,
+  input: PassInput,
+  at?: Date,
+): Promise<ListWrite<null>> {
+  const pass = passInput.safeParse(input);
+  if (!pass.success) return refused("invalid");
+  const { error } = await createAdminClient().rpc("pass_list", {
+    actor: actorId,
+    list: pass.data.list,
+    department: pass.data.department,
+    ...(pass.data.note ? { pass_note: pass.data.note } : {}),
+    ...atTime(at),
+  });
+  return error ? refused(failureOf(error)) : { ok: true, value: null };
 }

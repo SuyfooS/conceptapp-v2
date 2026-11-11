@@ -238,6 +238,17 @@ export type ActivityLine =
       leftOptional: number;
     }
   | { action: "lists.cancel"; name: string }
+  | {
+      /** A list passed from one department to another (lists L5). */
+      action: "lists.pass";
+      name: string;
+      /** Where it was: null for a person, a shift or a role, or a department not known. */
+      from: string | null;
+      /** Null when the department is not known (any more). */
+      to: string | null;
+      /** A note came with it; the log never keeps the note. */
+      note: boolean;
+    }
   /** A list's times (lists L4): one late, or closed with nobody doing it. */
   | { action: "lists.late" | "lists.missed"; name: string }
   | {
@@ -456,6 +467,12 @@ const schemas = {
   "lists.reopen": z.object({
     name: z.string(),
     was: z.string().optional(),
+  }),
+  "lists.pass": z.object({
+    name: z.string(),
+    from_department: id.nullable().optional(),
+    to_department: id,
+    has_note: z.boolean().default(false),
   }),
   "lists.out_of_range": z.object({
     name: z.string(),
@@ -822,6 +839,21 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       const details = read(schemas["lists.out_of_range"]);
       return details ? { action: row.action, ...details } : other;
     }
+    case "lists.pass": {
+      const details = read(schemas["lists.pass"]);
+      if (!details) return other;
+      const named = (department: string | null | undefined) =>
+        department
+          ? (lookups.departments.get(department.toLowerCase()) ?? null)
+          : null;
+      return {
+        action: row.action,
+        name: details.name,
+        from: named(details.from_department),
+        to: named(details.to_department),
+        note: details.has_note,
+      };
+    }
     case "lists.reopen": {
       const details = read(schemas["lists.reopen"]);
       if (!details) return other;
@@ -953,6 +985,10 @@ export function activityRefs(rows: readonly ActivityRow[]) {
       add(departments, details.data.department);
       addAll(people, details.data.added);
       addAll(people, details.data.removed);
+    }
+    if (row.action === "lists.pass") {
+      add(departments, details.data.from_department);
+      add(departments, details.data.to_department);
     }
     if (row.action === "lists.send") {
       const recipient = fields.safeParse(details.data.recipient);

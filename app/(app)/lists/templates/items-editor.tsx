@@ -6,9 +6,11 @@ import {
   type ListItemKind,
   listItemInput,
   MAX_LIST_ITEMS,
+  MAX_QUANTITY,
   moved,
   newItemKey,
   numberRange,
+  parseQuantity,
   readBound,
   type TypedBound,
   typedBound,
@@ -22,6 +24,7 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageSection } from "@ui/page";
 import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
+import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
 import { ltrInputClass } from "@ui/text-field";
 import { ArrowDown, ArrowUp, Plus } from "lucide-react";
@@ -37,9 +40,13 @@ import {
 import { UndoRow } from "../../manage/undo-row";
 import { ITEM_ICONS } from "../list-preview";
 
-/** The kinds an item can be made as now; photos come with their own part. */
-const KINDS = ["check", "number", "note"] as const satisfies ListItemKind[];
-type MadeKind = (typeof KINDS)[number];
+/** The kinds an item can be made as: a photo too, from L6. */
+const KINDS = [
+  "check",
+  "number",
+  "note",
+  "photo",
+] as const satisfies ListItemKind[];
 
 const LABEL_MAX = 120;
 const HINT_MAX = 200;
@@ -72,8 +79,11 @@ const blank = (): DraftItem => ({
  * it, with up and down beside it rather than a drag. A move keeps the focus
  * on the item's arrow (the other one once it reaches an end) and is said to
  * a screen reader. Adding is the row at the end. Removing has an undo, which
- * puts the item back where it was. Used by the template editor and for a
- * list typed when sending.
+ * puts the item back where it was. A list that asks for counts (L5) gives
+ * each check its usual count. In a business that takes no photos (a demo
+ * one), a photo item is never required, and its sheet says why, so its
+ * list can still be finished. Used by the template editor and for a list
+ * typed when sending.
  */
 export function ItemsEditor({
   title,
@@ -81,6 +91,8 @@ export function ItemsEditor({
   readOnly,
   onChange,
   missing,
+  quantities = false,
+  photosClosed = false,
 }: {
   title: string;
   items: DraftItem[];
@@ -89,6 +101,10 @@ export function ItemsEditor({
   onChange: (next: DraftItem[]) => void;
   /** Said under the items when there are none yet and there must be one. */
   missing?: string;
+  /** The list asks for counts: each check has its usual one. */
+  quantities?: boolean;
+  /** The business takes no photos (`list_photos_closed`): a photo item stays optional. */
+  photosClosed?: boolean;
 }) {
   const t = useTranslations("app.lists.items");
   const tl = useTranslations("app.lists.list");
@@ -192,6 +208,9 @@ export function ItemsEditor({
           ? t.rich("unitOnly", { unit: item.unit, ltr })
           : null,
       item.required ? null : tl("optional"),
+      quantities && item.kind === "check" && item.defaultQuantity !== null
+        ? t("usualOf", { count: item.defaultQuantity })
+        : null,
       item.hint,
     ].filter((part) => part !== null && part !== "");
     return parts.map((part, at) => (
@@ -301,6 +320,8 @@ export function ItemsEditor({
             key={editing.item.key}
             item={editing.item}
             isNew={editing.isNew}
+            quantities={quantities}
+            photosClosed={photosClosed}
             onSave={save}
             onRemove={() => remove(editing.item.key)}
           />
@@ -310,38 +331,50 @@ export function ItemsEditor({
   );
 }
 
-type Problem = "label" | "number" | "range";
+type Problem = "label" | "number" | "range" | "usual";
 
 /**
- * One item in its sheet: its kind, what it is called, a short hint, whether
- * it is required, and for a number its unit and the range a reading is
- * flagged outside. A bound below zero has its own minus beside it, since a
- * phone's number pad may have none; a minus typed in the field turns it on
- * (`typedBound`).
+ * One item in its sheet: its kind (a check, a number, a note or a photo),
+ * what it is called, a short hint, whether it is required, for a number its
+ * unit and the range a reading is flagged outside, and for a check of a list
+ * that asks for counts its usual count. A
+ * bound below zero has its own minus beside it, since a phone's number pad
+ * may have none; a minus typed in the field turns it on (`typedBound`). A
+ * photo in a business that takes none is optional, its switch off and
+ * still, with the reason under it.
  */
 function ItemForm({
   item,
   isNew,
+  quantities,
+  photosClosed,
   onSave,
   onRemove,
 }: {
   item: DraftItem;
   isNew: boolean;
+  quantities: boolean;
+  photosClosed: boolean;
   onSave: (item: DraftItem) => void;
   onRemove: () => void;
 }) {
   const t = useTranslations("app.lists.items");
   const id = useId();
-  const [kind, setKind] = useState<MadeKind>(
-    item.kind === "photo" ? "check" : item.kind,
-  );
+  const [kind, setKind] = useState<ListItemKind>(item.kind);
   const [label, setLabel] = useState(item.label);
   const [hint, setHint] = useState(item.hint ?? "");
   const [required, setRequired] = useState(item.required);
   const [unit, setUnit] = useState(item.unit ?? "");
   const [min, setMin] = useState<TypedBound>(() => boundOf(item.min));
   const [max, setMax] = useState<TypedBound>(() => boundOf(item.max));
+  const [usual, setUsual] = useState(
+    item.defaultQuantity === null ? "" : String(item.defaultQuantity),
+  );
   const [problem, setProblem] = useState<Problem | null>(null);
+  const counted = quantities && kind === "check";
+  // Nobody can take a photo here, so a required one would hold its list
+  // open for good: it stays optional, whatever the switch said before.
+  const photoOptional = photosClosed && kind === "photo";
 
   function submit() {
     const number = kind === "number";
@@ -355,17 +388,28 @@ function ItemForm({
       setProblem("number");
       return;
     }
+    // The usual count, from 1; empty for none. Without counts asked for, the
+    // one it had stays as it was.
+    const usualCount = counted
+      ? usual.trim() === ""
+        ? null
+        : parseQuantity(usual)
+      : item.defaultQuantity;
+    if (counted && usual.trim() !== "" && (usualCount ?? 0) < 1) {
+      setProblem("usual");
+      return;
+    }
     const next: DraftItem = {
       ...item,
       kind,
       label: label.trim(),
       hint: hint.trim() || null,
-      required,
+      required: required && !photoOptional,
       unit: number ? unit.trim() || null : null,
       min: low,
       max: high,
       // A usual count belongs to a check of an order.
-      defaultQuantity: kind === "check" ? item.defaultQuantity : null,
+      defaultQuantity: kind === "check" ? usualCount : null,
     };
     const parsed = listItemInput.safeParse({
       kind: next.kind,
@@ -488,10 +532,39 @@ function ItemForm({
         <p className="px-2 text-ink-2 text-sm">{t("rangeHint")}</p>
       ) : null}
 
+      {counted ? (
+        <FieldGroup className="bg-elevated">
+          <FieldRow
+            label={t("usual")}
+            hint={t("usualHint")}
+            htmlFor={`${id}-usual`}
+          >
+            <Stepper
+              id={`${id}-usual`}
+              value={usual}
+              min={1}
+              max={MAX_QUANTITY}
+              wide
+              invalid={problem === "usual"}
+              decreaseLabel={t("fewer")}
+              increaseLabel={t("more")}
+              onValueChange={(value) => {
+                setUsual(value);
+                setProblem(null);
+              }}
+            />
+          </FieldRow>
+        </FieldGroup>
+      ) : null}
+
       <FieldGroup className="bg-elevated">
-        <FieldRow label={t("required")} hint={t("requiredHint")}>
+        <FieldRow
+          label={t("required")}
+          hint={photoOptional ? t("photoOptional") : t("requiredHint")}
+        >
           <Switch
-            checked={required}
+            checked={required && !photoOptional}
+            disabled={photoOptional}
             aria-label={t("required")}
             title={t("required")}
             onChange={setRequired}

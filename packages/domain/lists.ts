@@ -53,6 +53,10 @@ export const MAX_OPEN_LISTS = 500;
 export const REOPEN_MINUTES = 5;
 /** A due time is at most this many days after sending. */
 export const MAX_DUE_DAYS = 14;
+/** A note passed on with a list, at most (`public.pass_list`). */
+export const MAX_PASS_NOTE = 200;
+/** The most of one item an order asks for, or says was given. */
+export const MAX_QUANTITY = 9999;
 /** A list sent to a shift names one from today to this many days ahead. */
 export const SHIFT_DAYS_AHEAD = 7;
 /** A shift-anchored time is at most this many minutes around the shift. */
@@ -74,7 +78,7 @@ const itemLabel = z.string().trim().min(1).max(120);
 const itemHint = z.string().trim().min(1).max(200);
 const itemUnit = z.string().trim().min(1).max(12);
 const bound = z.number().min(-100000).max(100000);
-const count = z.int().min(0).max(9999);
+const count = z.int().min(0).max(MAX_QUANTITY);
 const itemComment = z.string().trim().min(1).max(200);
 const itemAnswer = z.string().trim().min(1).max(500);
 
@@ -88,7 +92,7 @@ const itemFields = {
   min: bound.optional(),
   max: bound.optional(),
   /** Orders: the usual count of a check item, filled in when sending. */
-  defaultQuantity: z.int().min(1).max(9999).optional(),
+  defaultQuantity: z.int().min(1).max(MAX_QUANTITY).optional(),
 };
 
 type ItemShape = {
@@ -99,11 +103,11 @@ type ItemShape = {
   defaultQuantity?: number;
 };
 
-/** The rules an item keeps whatever holds it; photos come with their own part. */
+/**
+ * The rules an item keeps whatever holds it. A photo (from L6) is like a
+ * note: no unit, range or usual count.
+ */
 function checkItem(item: ItemShape, ctx: z.RefinementCtx) {
-  if (item.kind === "photo") {
-    ctx.addIssue({ code: "custom", message: "Photo items come later" });
-  }
   if (
     item.kind !== "number" &&
     (item.unit !== undefined ||
@@ -768,6 +772,16 @@ export type ListItem = {
   checked: boolean;
   reading: number | null;
   answer: string | null;
+  /**
+   * A photo item's photo (L6), where the app shows it (`listPhotoSrc` in
+   * @domain/list-photos), or null when none was taken or it is no longer kept.
+   */
+  photo: string | null;
+  /**
+   * The photo was taken, and the daily clean-up removed it after the days the
+   * business keeps photos: the item stays done.
+   */
+  photoRemoved: boolean;
   comment: string | null;
   done: boolean;
   doneBy: string | null;
@@ -992,8 +1006,9 @@ export function itemsForSave(
 /**
  * What keeps the editor's draft from saving, by the rules the database holds
  * it to, whatever its ids: no name, no items or too many, an item that
- * doesn't keep its kind's rules, or an order without another department to
- * go to. Null when it can be saved.
+ * doesn't keep its kind's rules, an order whose asking department is gone
+ * (when the business's places are given) or without another department to go
+ * to. Null when it can be saved.
  */
 export function templateDraftProblem(
   draft: {
@@ -1007,7 +1022,15 @@ export function templateDraftProblem(
   fromDepartment: string | null,
   /** The business's live departments and shift keys, to say a time points at one gone. */
   places?: SchedulePlaces,
-): "name" | "note" | "items" | "item" | "recipient" | "schedule" | null {
+):
+  | "name"
+  | "note"
+  | "items"
+  | "item"
+  | "order"
+  | "recipient"
+  | "schedule"
+  | null {
   if (!listName.safeParse(draft.name).success) return "name";
   if (draft.note.trim() !== "" && !listNote.safeParse(draft.note).success) {
     return "note";
@@ -1021,6 +1044,13 @@ export function templateDraftProblem(
     )
   ) {
     return "item";
+  }
+  if (
+    places &&
+    fromDepartment !== null &&
+    !places.departments.includes(fromDepartment)
+  ) {
+    return "order";
   }
   if (
     fromDepartment !== null &&
@@ -1064,9 +1094,8 @@ function scheduleInputOf(
 
 /**
  * A template as the editor saves it, with these fields of its own. What the
- * editor doesn't change (an order's department, its quantities) goes back as
- * it was read, so a save never loses them, and so do its times when the
- * editor leaves them out.
+ * editor leaves out (an order's department and its counts, its times) goes
+ * back as it was read, so a save never loses them.
  */
 export function templateInputOf(
   template: Pick<
@@ -1079,6 +1108,9 @@ export function templateInputOf(
     recipient: TemplateRecipient | null;
     items: ListItemInput[];
     schedules?: ScheduleInput[];
+    /** The department that asks, null for none: the list is then no order. */
+    fromDepartment?: string | null;
+    asksQuantities?: boolean;
   },
 ): ListTemplateInput {
   const note = own.note.trim();
@@ -1087,8 +1119,11 @@ export function templateInputOf(
     name: own.name.trim(),
     ...(note ? { note } : {}),
     recipient: own.recipient,
-    fromDepartment: template.fromDepartment,
-    asksQuantities: template.asksQuantities,
+    fromDepartment:
+      own.fromDepartment === undefined
+        ? template.fromDepartment
+        : own.fromDepartment,
+    asksQuantities: own.asksQuantities ?? template.asksQuantities,
     items: own.items,
     schedules: own.schedules ?? template.schedules.map(scheduleInputOf),
   };
@@ -1268,21 +1303,117 @@ export function recipientGone(
 }
 
 /**
- * Why a template can't be saved from its editor whatever is done there, or
- * null: an order whose asking department was removed ("order"; L5 lets an
- * order's department be changed). The database refuses every save of it
- * (22023), so the editor only reads it and says why. A time that points at
- * something gone is the editor's to change or remove (`scheduleGone`), since
- * L4 edits the times.
+ * Whether an order's asking department was removed since. The database takes
+ * it in no save (22023), so the editor opens with no department asking and
+ * says so, and the person chooses another or keeps it a list of its own.
  */
-export function templateStuck(
+export function askingGone(
   template: Pick<ListTemplate, "fromDepartment">,
   liveDepartments: readonly string[],
-): "order" | null {
-  return template.fromDepartment !== null &&
+): boolean {
+  return (
+    template.fromDepartment !== null &&
     !liveDepartments.includes(template.fromDepartment)
-    ? "order"
-    : null;
+  );
+}
+
+/*
+ * Between departments (L5): orders with their counts, and lists passed from
+ * one department to another (`public.pass_list`).
+ */
+
+/** A note passed on with a list: trimmed, at most `MAX_PASS_NOTE`; blank is none. */
+export const passNote = z.string().trim().max(MAX_PASS_NOTE);
+
+/** What passing a list on sends: the department it goes to, and a note. */
+export const passInput = z.strictObject({
+  list: uuid,
+  department: uuid,
+  note: passNote.optional(),
+});
+export type PassInput = z.input<typeof passInput>;
+
+/** A department a list can be passed to, with how many people are in it now. */
+export type PassTarget = { id: string; name: string; people: number };
+
+/**
+ * Where a list can be passed: every live department but the one holding it,
+ * in their order. One with nobody in it is there too, with its count of none,
+ * which the sheet says and doesn't take.
+ */
+export function passTargets(
+  departments: readonly {
+    id: string;
+    name: string;
+    archivedAt: string | null;
+    members: readonly string[];
+  }[],
+  holder: ListHolder,
+  active: ReadonlySet<string>,
+): PassTarget[] {
+  return departments
+    .filter(
+      (d) =>
+        d.archivedAt === null &&
+        !(holder.kind === "department" && holder.department === d.id),
+    )
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      people: d.members.filter((person) => active.has(person)).length,
+    }));
+}
+
+/**
+ * Whether a list is a department's: it holds it, or asked for it (an order).
+ * What the department filter on Lists keeps.
+ */
+export function ofDepartment(
+  list: Pick<ListSummary, "holder" | "fromDepartment">,
+  department: string,
+): boolean {
+  return (
+    (list.holder.kind === "department" &&
+      list.holder.department === department) ||
+    list.fromDepartment === department
+  );
+}
+
+/**
+ * An order's count as it is typed ("24", " 6 "), or null when it is empty or
+ * not a whole number from 0 to `MAX_QUANTITY`.
+ */
+export function parseQuantity(text: string): number | null {
+  const clean = text.trim();
+  if (!/^\d{1,4}$/.test(clean)) return null;
+  const value = Number(clean);
+  return count.safeParse(value).success ? value : null;
+}
+
+/**
+ * The counts a list sent from a template asks for, by the template's item id,
+ * from what the send screen has typed: only the check items, and only those
+ * typed as a count; the rest take their usual one (`send_list`). When
+ * something typed isn't a count, the ids of those items instead, in order, so
+ * the form says which.
+ */
+export function quantitiesOf(
+  items: readonly { id: string; kind: ListItemKind }[],
+  typed: Readonly<Record<string, string>>,
+):
+  | { ok: true; counts: Record<string, number> }
+  | { ok: false; invalid: string[] } {
+  const counts: Record<string, number> = {};
+  const invalid: string[] = [];
+  for (const item of items) {
+    if (item.kind !== "check") continue;
+    const text = typed[item.id];
+    if (text === undefined || text.trim() === "") continue;
+    const value = parseQuantity(text);
+    if (value === null) invalid.push(item.id);
+    else counts[item.id] = value;
+  }
+  return invalid.length > 0 ? { ok: false, invalid } : { ok: true, counts };
 }
 
 /**

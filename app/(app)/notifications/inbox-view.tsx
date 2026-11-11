@@ -282,6 +282,24 @@ export function InboxView({
           shift: null,
           notes: [],
         };
+      case "lists.passed":
+        // Finished, or passed on again: nothing waits on it now.
+        return settled
+          ? {
+              title: t("kinds.lists.passed.settledTitle", { name: line.name }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: line.department
+                ? t("kinds.lists.passed.title", {
+                    name: line.name,
+                    department: line.department,
+                  })
+                : t("kinds.lists.passed.titlePlain", { name: line.name }),
+              shift: null,
+              notes: line.hasNote ? [t("kinds.lists.passed.note")] : [],
+            };
       case "lists.due":
       case "lists.late":
       case "lists.late_team": {

@@ -624,6 +624,19 @@ export function ActivityView({
         };
       case "lists.cancel":
         return plain(t("actions.lists.cancel", { name: line.name }));
+      case "lists.pass":
+        return {
+          what: line.to
+            ? t("actions.lists.pass", { name: line.name, to: line.to })
+            : t("actions.lists.passPlain", { name: line.name }),
+          notes: [
+            ...(line.from
+              ? [t("actions.lists.passedFrom", { from: line.from })]
+              : []),
+            ...(line.note ? [t("actions.lists.passNote")] : []),
+          ],
+          changes: [],
+        };
       case "lists.late":
         return plain(t("actions.lists.late", { name: line.name }));
       case "lists.missed":

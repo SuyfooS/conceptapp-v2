@@ -5,7 +5,7 @@ import { type NextRequest, NextResponse } from "next/server";
 /**
  * Screens for signed-in people: home, each module's screens (the `nav`
  * hrefs in `modules/<key>/manifest.ts`), the notifications, which have no
- * tab, the profile, the photos it shows and the admin console
+ * tab, the profile, the photos it shows, the photos on lists and the admin console
  * (tooling/proxy.test.ts keeps both lists in step). Everything else is public.
  */
 const HOME = "/home";
@@ -21,6 +21,7 @@ export const PRIVATE = [
   "/notifications",
   "/me",
   "/photos",
+  "/list-photos",
   "/admin",
 ];
 const DOORS = ["/sign-in", "/enter"];
@@ -66,6 +67,7 @@ export const config = {
     "/notifications/:path*",
     "/me/:path*",
     "/photos/:path*",
+    "/list-photos/:path*",
     "/admin/:path*",
     "/sign-in",
     "/enter",

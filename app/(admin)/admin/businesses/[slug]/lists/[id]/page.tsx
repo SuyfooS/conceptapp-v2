@@ -1,3 +1,4 @@
+import { listPhotosAllowed } from "@db/list-photos";
 import { getListTemplateForTeam } from "@db/lists";
 import { isUuid } from "@domain/activity";
 import type { Metadata } from "next";
@@ -27,10 +28,12 @@ export default async function TeamListTemplatePage({
   if (!isUuid(id)) notFound();
   const setup = await teamListsSetup(slug);
   if (!setup) notFound();
-  const [template, paths, staff] = await Promise.all([
+  const [template, paths, staff, photos] = await Promise.all([
     getListTemplateForTeam(setup.business.id, id),
     teamTemplatePaths(slug),
     currentPlatformStaff(),
+    // A demo business takes no photos: its photo items stay optional.
+    listPhotosAllowed(setup.business.id).catch((): "notYet" => "notYet"),
   ]);
   if (!template || template === "notYet" || !staff) notFound();
   const stamp = typeof changed === "string" ? changed : "";
@@ -45,6 +48,7 @@ export default async function TeamListTemplatePage({
         readOnly: false,
         changed: stamp !== "",
         times,
+        photosClosed: photos === "demo",
       })}
       actions={{
         save: saveTeamListTemplateAction.bind(null, setup.business.id),

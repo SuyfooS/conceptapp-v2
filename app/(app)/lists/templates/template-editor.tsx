@@ -2,6 +2,7 @@
 
 import type { ScheduleOpenings } from "@domain/list-openings";
 import {
+  askingGone,
   type DraftItem,
   type DraftSchedule,
   draftItemsOf,
@@ -14,7 +15,6 @@ import {
   type TemplateRecipient,
   templateDraftProblem,
   templateInputOf,
-  templateStuck,
 } from "@domain/lists";
 import type { StaffRole } from "@domain/modules";
 import { Button } from "@ui/button";
@@ -26,6 +26,7 @@ import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Segmented } from "@ui/segmented";
 import { StatusToast } from "@ui/status-toast";
+import { Switch } from "@ui/switch";
 import { Send, Trash2, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -50,9 +51,15 @@ type Draft = {
   name: string;
   note: string;
   recipient: TemplateRecipient | null;
+  /** An order between departments (L5): the department that asks, or none. */
+  fromDepartment: string | null;
+  asksQuantities: boolean;
   items: DraftItem[];
   schedules: DraftSchedule[];
 };
+
+/** "No department asks" in the order's menu. */
+const NO_DEPARTMENT = "none";
 
 /** A time as it would be stored, without what only this screen or the database keeps. */
 const scheduleMark = ({
@@ -71,6 +78,8 @@ const signature = (draft: Draft) =>
     name: draft.name.trim(),
     note: draft.note.trim(),
     recipient: draft.recipient,
+    fromDepartment: draft.fromDepartment,
+    asksQuantities: draft.asksQuantities,
     items: draft.items.map(({ key: _key, id: _id, ...item }) => item),
     schedules: draft.schedules.map(scheduleMark),
   });
@@ -90,15 +99,17 @@ type Failure = ListFailure | "createUnknown";
  * save at a time and the newest last, each with the version it read, so a
  * save behind someone else's is refused (40001) and the screen opens again
  * with the latest, saying so once. A new template is saved once it has a
- * name and an item. One the database would refuse whatever is done here
- * (`templateStuck`: an order whose department was removed) is only read,
- * says why, and can still be removed or sent; a time that points at
- * something gone says so on its row, and on top that it holds the saves
- * until it is changed or removed, with the way to it (L4). Its times say
- * when each is sent next, as the database will open it. Phone: the sections
- * one under the other. Tablet and desktop: the editor beside the list as it
- * will arrive. The main action sends it now;
- * removing it has its undo on the screen of templates. Used on
+ * name and an item. An order between departments (L5) has its department
+ * that asks and whether it asks for counts, with a usual count on each of
+ * its checks, and a department to ask only while the business has two or
+ * more. One whose asking department was removed says on top that it holds
+ * the saves until another, or none, is chosen, and "send now" leads there.
+ * A time that points at something gone says so on its
+ * row, and on top that it holds the saves until it is changed or removed,
+ * with the way to it (L4). Its times say when each is sent next, as the
+ * database will open it. Phone: the sections one under the other. Tablet and
+ * desktop: the editor beside the list as it will arrive. The main action
+ * sends it now; removing it has its undo on the screen of templates. Used on
  * /lists/templates/[id] and by the team in the console.
  */
 export function TemplateEditor({
@@ -116,23 +127,25 @@ export function TemplateEditor({
   const tm = useTranslations("app.manage");
   const router = useRouter();
   const { template, readOnly } = data;
-  const order = template?.fromDepartment ?? null;
   const liveDepartments = data.departments.map((d) => d.id);
   const shiftKeys = data.shifts.map((s) => s.key);
   const gone = template
     ? recipientGone(template.recipient, liveDepartments, shiftKeys)
     : false;
-  const stuck =
-    template && !readOnly ? templateStuck(template, liveDepartments) : null;
   const places = { departments: liveDepartments, shifts: shiftKeys };
-  // Nothing here changes: a view session, a removed template, or a stuck one.
-  const locked = readOnly || stuck !== null;
+  // Nothing here changes: a view session, or a removed template.
+  const locked = readOnly;
 
   const initial: Draft = {
     name: template?.name ?? "",
     note: template?.note ?? "",
     // One that is gone can't be saved again: the person chooses another.
     recipient: gone && !locked ? null : (template?.recipient ?? null),
+    // An asking department removed since stays until another is chosen (or
+    // none): the saves wait, as for a time that points at something gone,
+    // so the order never becomes a list of its own by itself.
+    fromDepartment: template?.fromDepartment ?? null,
+    asksQuantities: template?.asksQuantities ?? false,
     items: draftItemsOf(template?.items ?? []),
     schedules: draftSchedulesOf(template?.schedules ?? []),
   };
@@ -155,6 +168,8 @@ export function TemplateEditor({
   // Asks the times to open the first one that points at something gone.
   const [fixGone, setFixGone] = useState(0);
   const heldCard = useRef<HTMLDivElement>(null);
+  // The card that says the asking department was removed, which holds the saves.
+  const askingCard = useRef<HTMLDivElement>(null);
 
   // The newest draft, what the database has, and the save in flight: read by
   // the saves, which outlive the render that started them.
@@ -167,7 +182,11 @@ export function TemplateEditor({
   });
   const lastSaved = useRef<string | null>(
     template
-      ? signature({ ...initial, recipient: template.recipient ?? null })
+      ? signature({
+          ...initial,
+          recipient: template.recipient ?? null,
+          fromDepartment: template.fromDepartment,
+        })
       : null,
   );
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -187,6 +206,8 @@ export function TemplateEditor({
         name: snapshot.name,
         note: snapshot.note,
         recipient: snapshot.recipient,
+        fromDepartment: snapshot.fromDepartment,
+        asksQuantities: snapshot.asksQuantities,
         items: itemsForSave(snapshot.items, server.current.items),
         schedules: schedulesForSave(
           snapshot.schedules,
@@ -215,7 +236,9 @@ export function TemplateEditor({
     const snapshot = draft.current;
     const mark = signature(snapshot);
     if (mark === lastSaved.current) return "unchanged";
-    if (templateDraftProblem(snapshot, order, places) !== null) {
+    if (
+      templateDraftProblem(snapshot, snapshot.fromDepartment, places) !== null
+    ) {
       return "invalid";
     }
     const input = inputOf(snapshot);
@@ -403,17 +426,23 @@ export function TemplateEditor({
   async function sendNow() {
     if (!paths.send) return;
     setSending(true);
-    // One that can't be saved here goes as it is stored.
-    const outcome = stuck === null ? await flush() : "unchanged";
+    const outcome = await flush();
     setSending(false);
     const id = server.current.id;
     if (outcome === "failed" || outcome === "invalid" || !id) {
       setTouched(true);
-      // A time that points at something gone holds it: the card on top says so.
-      if (outcome === "invalid" && heldCount(draft.current) > 0) {
-        heldCard.current?.scrollIntoView({ block: "center" });
-        heldCard.current?.focus({ preventScroll: true });
-      }
+      // A removed asking department, or a time that points at something
+      // gone, holds it: the card on top says so.
+      const card =
+        outcome !== "invalid"
+          ? null
+          : askingHeld(draft.current)
+            ? askingCard.current
+            : heldCount(draft.current) > 0
+              ? heldCard.current
+              : null;
+      card?.scrollIntoView({ block: "center" });
+      card?.focus({ preventScroll: true });
       return;
     }
     router.push(`${paths.send}?template=${id}`);
@@ -421,10 +450,7 @@ export function TemplateEditor({
 
   function archive() {
     startArchive(async () => {
-      // A stuck one has nothing to save first: it is only removed.
-      if (stuck === null && (await flush()) === "failed" && stopped.current) {
-        return;
-      }
+      if ((await flush()) === "failed" && stopped.current) return;
       const id = server.current.id;
       if (!id) return;
       stopped.current = true;
@@ -453,11 +479,46 @@ export function TemplateEditor({
   }
   const held = heldCount(shown);
 
+  /**
+   * Whether a draft's asking department was removed, which holds its saves
+   * until another (or none) is chosen.
+   */
+  function askingHeld(snapshot: Draft) {
+    return (
+      !locked &&
+      askingGone({ fromDepartment: snapshot.fromDepartment }, liveDepartments)
+    );
+  }
+
   const nameMissing =
     !listName.safeParse(shown.name).success && (savedId !== null || touched);
   const kind: RecipientKind = shown.recipient?.kind ?? "none";
-  // An order goes to another department; it is set up as one (L5).
+  // An order (L5): the department that asks, which goes to another one.
+  const order = shown.fromDepartment;
+  const askerHeld = askingHeld(shown);
   const departments = data.departments.filter((d) => d.id !== order);
+  // An order needs a department that asks and another it goes to: with
+  // fewer than two, none is offered to ask, except one already saved, which
+  // still shows.
+  const fewDepartments = data.departments.length < 2;
+  const askingChoices = fewDepartments
+    ? data.departments.filter((d) => d.id === order)
+    : data.departments;
+
+  /**
+   * Another department asks, or none: what goes to the department asking
+   * can't, so the person chooses where it goes again.
+   */
+  function chooseAsking(next: string) {
+    const asking = next === NO_DEPARTMENT ? null : next;
+    const recipient =
+      asking !== null &&
+      (shown.recipient?.kind !== "department" ||
+        shown.recipient.department === asking)
+        ? null
+        : shown.recipient;
+    change({ fromDepartment: asking, recipient }, "now");
+  }
   const kinds: RecipientKind[] = order
     ? ["department"]
     : [
@@ -583,18 +644,27 @@ export function TemplateEditor({
             ? te("removedNote")
             : readOnly
               ? te("viewOnly")
-              : stuck
-                ? te("stuckSubtitle")
-                : savedId
-                  ? te("subtitle")
-                  : te("newSubtitle")
+              : savedId
+                ? te("subtitle")
+                : te("newSubtitle")
         }
         actions={sendButton}
       />
 
-      {stuck ? (
-        <Card tone="float" padding="md" role="status" className="font-medium">
-          {te(`stuck.${stuck}`)}
+      {askerHeld ? (
+        <Card
+          ref={askingCard}
+          tabIndex={-1}
+          tone="float"
+          padding="md"
+          role="status"
+          className="flex items-start gap-2 font-medium focus-visible:outline-2 focus-visible:outline-accent"
+        >
+          <TriangleAlert
+            aria-hidden="true"
+            className="mt-0.5 size-5 shrink-0 text-warning"
+          />
+          {te("askingGone")}
         </Card>
       ) : null}
       {changedShown ? (
@@ -679,6 +749,8 @@ export function TemplateEditor({
             readOnly={locked}
             onChange={(items) => change({ items }, "now")}
             missing={locked ? undefined : te("itemsMissing")}
+            quantities={shown.asksQuantities}
+            photosClosed={data.photosClosed}
           />
 
           <PageSection title={te("recipient")}>
@@ -709,7 +781,7 @@ export function TemplateEditor({
                   />
                 )}
                 {order && departments.length === 0 ? (
-                  <p className="px-1 text-ink-2">{te("noDepartments")}</p>
+                  <p className="px-1 text-ink-2">{te("noOtherDepartment")}</p>
                 ) : order && shown.recipient?.kind !== "department" ? (
                   <FieldGroup>
                     <FieldRow label={te("department")}>
@@ -738,6 +810,63 @@ export function TemplateEditor({
                 </p>
               </>
             )}
+          </PageSection>
+
+          {/* An order between departments (L5): who asks, and for how many. */}
+          <PageSection title={te("orderTitle")}>
+            <FieldGroup>
+              <FieldRow
+                label={te("asking")}
+                hint={
+                  order
+                    ? te("askingHint")
+                    : fewDepartments && !locked
+                      ? te("askingNeedsTwo")
+                      : te("askingNoneHint")
+                }
+              >
+                {locked ? (
+                  <span className="text-ink-2">
+                    {order ? departmentName(order) : te("askingNone")}
+                  </span>
+                ) : (
+                  <ChoiceMenu
+                    // Named as it reads: "choose" while the removed one holds it.
+                    label={`${te("asking")}: ${
+                      askerHeld
+                        ? te("choose")
+                        : order
+                          ? departmentName(order)
+                          : te("askingNone")
+                    }`}
+                    value={askerHeld ? "" : (order ?? NO_DEPARTMENT)}
+                    placeholder={te("choose")}
+                    options={[
+                      { key: NO_DEPARTMENT, label: te("askingNone") },
+                      ...askingChoices.map((d) => ({
+                        key: d.id,
+                        label: d.name,
+                      })),
+                    ]}
+                    onChange={chooseAsking}
+                  />
+                )}
+              </FieldRow>
+              <FieldRow
+                label={te("asksQuantities")}
+                hint={te("asksQuantitiesHint")}
+              >
+                <Switch
+                  checked={shown.asksQuantities}
+                  disabled={locked}
+                  aria-label={te("asksQuantities")}
+                  title={te("asksQuantities")}
+                  onChange={(asksQuantities) =>
+                    change({ asksQuantities }, "now")
+                  }
+                />
+              </FieldRow>
+            </FieldGroup>
           </PageSection>
 
           <SchedulesEditor
@@ -781,7 +910,14 @@ export function TemplateEditor({
           <ListPreview
             name={shown.name.trim()}
             note={shown.note.trim() || null}
-            items={shown.items}
+            // An order's checks with their usual counts, as they will ask.
+            items={shown.items.map((item) => ({
+              ...item,
+              requested:
+                shown.asksQuantities && item.kind === "check"
+                  ? item.defaultQuantity
+                  : null,
+            }))}
           />
         </aside>
       </div>

@@ -1,10 +1,16 @@
 "use server";
 
 import {
+  type ListPhotoWrite,
+  removeListItemPhoto,
+  setListItemPhoto,
+} from "@db/list-photos";
+import {
   archiveListTemplate,
   cancelUnstartedList,
   finishList,
   type ListWrite,
+  passList,
   reopenList,
   restoreListTemplate,
   saveListTemplate,
@@ -15,13 +21,14 @@ import {
   anyItemResult,
   type ListProgress,
   listTemplateInput,
+  passInput,
   type SavedTemplate,
   sendInput,
 } from "@domain/lists";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { pushSoon } from "../../push/server";
-import type { ListActionResult } from "./list-types";
+import type { ListActionResult, ListPhotoResult } from "./list-types";
 import { listsAccess } from "./lists";
 
 /**
@@ -91,6 +98,90 @@ export async function reopenListAction(id: unknown): Promise<ListActionResult> {
     refresh: true,
     tells: true,
   });
+}
+
+/**
+ * Passes a list to another department, with a note (blank for none). Bound on
+ * the page to the business it was drawn for. Nothing is read again here: the
+ * screen refreshes itself, or goes back to Lists when the person no longer
+ * reads the list.
+ */
+export async function passListAction(
+  business: string,
+  id: unknown,
+  department: unknown,
+  note: unknown,
+): Promise<ListActionResult> {
+  const pass = passInput.safeParse({
+    list: id,
+    department,
+    ...(typeof note === "string" && note.trim() !== "" ? { note } : {}),
+  });
+  if (!pass.success) return { ok: false, failure: "invalid" };
+  return asMember((actor) => passList(actor, pass.data), {
+    refresh: false,
+    tells: true,
+    business,
+  });
+}
+
+/**
+ * A photo write as the signed-in person, in the business the screen was drawn
+ * for (P3b), never while viewing; nothing of the file is logged. The screen
+ * keeps what it shows, so nothing is read again.
+ */
+async function photoWrite(
+  business: string,
+  run: (actorId: string, businessId: string) => Promise<ListPhotoWrite>,
+): Promise<ListPhotoResult> {
+  const access = await listsAccess();
+  if (!access) return { ok: false, failure: "noAccess" };
+  if (business !== access.businessId) {
+    return { ok: false, failure: "businessChanged" };
+  }
+  if (access.viewOnly) return { ok: false, failure: "viewOnly" };
+  let result: ListPhotoWrite;
+  try {
+    result = await run(access.userId, access.businessId);
+  } catch (error) {
+    console.error(
+      "a list photo failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return { ok: false, failure: "failed" };
+  }
+  return result.ok ? { ok: true, value: { photo: result.photo } } : result;
+}
+
+/**
+ * Sets a photo item's photo (L6), as the screen re-encoded it (`photo` in the
+ * form). The server checks the file again, stores it and removes the one it
+ * replaced. Bound on the page to the business it was drawn for.
+ */
+export async function setListPhotoAction(
+  business: string,
+  itemId: unknown,
+  form: FormData,
+): Promise<ListPhotoResult> {
+  const item = z.uuid().safeParse(itemId);
+  if (!item.success) return { ok: false, failure: "invalid" };
+  const photo = form instanceof FormData ? form.get("photo") : null;
+  if (!(photo instanceof Blob)) return { ok: false, failure: "empty" };
+  return photoWrite(business, (actor, id) =>
+    setListItemPhoto(actor, id, item.data, photo),
+  );
+}
+
+/** Removes a photo item's photo; the screen kept its bytes for the undo. */
+export async function removeListPhotoAction(
+  business: string,
+  itemId: unknown,
+): Promise<ListPhotoResult> {
+  const item = z.uuid().safeParse(itemId);
+  if (!item.success) return { ok: false, failure: "invalid" };
+  return photoWrite(business, (actor, id) =>
+    removeListItemPhoto(actor, id, item.data),
+  );
 }
 
 /**

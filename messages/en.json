@@ -323,6 +323,7 @@
     "checklistFreezer": "Freezer",
     "checklistNote": "What's missing in the kitchen",
     "checklistPhoto": "A photo of the kitchen after cleaning",
+    "checklistOrder": "Lemons",
     "checklistWho": "Noa",
     "switcher": "Switching business",
     "switcherText": "Only for someone in more than one business: a list on Home, a row on the profile that opens it, and a menu on the sidebar on a computer.",
@@ -2301,6 +2302,10 @@
             "finishLate": "Finished the list {name}, late",
             "leftOptional": "{count, plural, one {One optional item left empty} other {# optional items left empty}}",
             "cancel": "Cancelled the list {name}",
+            "pass": "Passed {name} to {to}",
+            "passPlain": "Passed {name} to another department",
+            "passedFrom": "It was with {from}",
+            "passNote": "With a note",
             "reopen": "{was, select, cancelled {Brought back the list {name} after it was cancelled} other {Opened the list {name} again}}",
             "late": "{name} was late",
             "missed": "{name} was not done",
@@ -2556,7 +2561,7 @@
         },
         "lists": {
           "name": "Lists",
-          "hint": "Lists sent to you, reminders before they are due, late lists and readings out of range, and lists you sent that were finished"
+          "hint": "Lists sent to you or passed to your department, reminders before they are due, late lists and readings out of range, and lists you sent that were finished"
         }
       },
       "time": {
@@ -2631,6 +2636,12 @@
           },
           "finished": {
             "title": "{name} is finished"
+          },
+          "passed": {
+            "title": "{name} came to {department}",
+            "titlePlain": "{name} came to a department",
+            "settledTitle": "{name} no longer waits for you",
+            "note": "It came with a note, on the list itself."
           },
           "due": {
             "title": "A reminder: {name}",
@@ -2745,6 +2756,15 @@
       "noneOpen": "Nothing is open for you right now.",
       "noneOpenBusiness": "No list is open in the business right now.",
       "noneClosed": "No list has closed today yet.",
+      "asked": "{count, plural, one {One order waits in another department} other {# orders wait in other departments}}",
+      "askedHint": "Orders your departments asked for, until they come back or are finished.",
+      "noneOpenDepartment": "No open lists in this department right now.",
+      "noneClosedDepartment": "No list of this department was finished today yet.",
+      "filter": {
+        "label": "Department",
+        "all": "All departments",
+        "menu": "Department: {name}"
+      },
       "sendOne": "Send {name}",
       "empty": {
         "title": "Nothing for you right now",
@@ -2824,6 +2844,13 @@
         "optional": "Optional",
         "doneBy": "{name} · <ltr>{time}</ltr>",
         "requested": "{count, plural, one {One asked for} other {# asked for}}",
+        "given": "{given, plural, one {One of {requested} given} other {# of {requested} given}}",
+        "givenOnly": "{count, plural, one {One given} other {# given}}",
+        "short": "{count, plural, one {One short} other {# short}}",
+        "givenLabel": "Given",
+        "givenOf": "How many given: {label}",
+        "fewer": "Fewer: {label}",
+        "more": "More: {label}",
         "readingOf": "Reading: {label}",
         "minus": "Minus",
         "range": {
@@ -2833,7 +2860,41 @@
         },
         "outOfRange": "Outside <ltr>{range}</ltr>",
         "answerPlaceholder": "Write here",
-        "photoLater": "Photos come in the app's next version",
+        "photoStillSaving": "One moment, the photo is still saving",
+        "photo": {
+          "take": "Add a photo",
+          "replace": "Replace the photo",
+          "takeHint": "Take one, or choose one you already have.",
+          "remove": "Remove the photo",
+          "retry": "Try again",
+          "preparing": "Preparing the photo…",
+          "saving": "Saving the photo…",
+          "removing": "Removing the photo…",
+          "saved": "The photo is saved",
+          "removed": "The photo was removed",
+          "undoFailed": "The photo didn't come back. You can try again.",
+          "alt": "Photo: {label}",
+          "none": "No photo was added",
+          "demo": "The demo business takes no photos",
+          "notYet": "Photos can be added soon",
+          "removedAfter": "The photo is no longer kept: photos are kept for a limited time",
+          "failures": {
+            "demo": "The demo business takes no photos.",
+            "empty": "The photo wasn't saved. Choose it again.",
+            "tooBig": "The photo is too large. Take it again or choose another.",
+            "type": "Only a photo can be added: JPEG, PNG or WebP.",
+            "metadata": "The photo wasn't saved. Choose it again.",
+            "pixels": "The photo wasn't saved. Choose it again.",
+            "unreadable": "This file can't be opened. Take the photo again or choose another.",
+            "offline": "There is no connection, so the photo isn't saved yet. It stays here until you try again.",
+            "removeOffline": "There is no connection, so the photo wasn't removed. Try again once there is one.",
+            "removeFailed": "The photo wasn't removed. Try again.",
+            "removeFinished": "The list is already closed, so the photo wasn't removed.",
+            "failed": "The photo isn't saved yet. It stays here: check the connection and try again.",
+            "notYet": "Photos can be added soon. Try again later.",
+            "finished": "The list is already closed, so the photo wasn't saved."
+          }
+        },
         "comment": {
           "add": "Add a comment",
           "edit": "Change the comment",
@@ -2842,10 +2903,23 @@
           "save": "Save the comment",
           "close": "Close"
         },
+        "pass": {
+          "action": "Pass to another department",
+          "title": "Pass to another department",
+          "to": "Which department",
+          "people": "{count, plural, =0 {Nobody in the department} one {One person} other {# people}}",
+          "note": "Note",
+          "noteHint": "Optional. The department's people see it on the list.",
+          "submit": "Pass to {name}",
+          "choose": "Choose a department",
+          "passed": "The list went to {name}",
+          "close": "Close"
+        },
         "readOnly": {
           "missed": "The list wasn't done in time.",
           "cancelled": "The list was cancelled.",
           "elsewhere": "Sent {to}. It updates here.",
+          "passedElsewhere": "Passed {to}. It updates here.",
           "viewOnly": "While viewing, the list can only be read."
         },
         "details": {
@@ -2861,8 +2935,11 @@
         "timeline": {
           "title": "What happened to the list",
           "sent": "Sent by {name} {to}, at <ltr>{time}</ltr>",
+          "sentBy": "Sent by {name}, at <ltr>{time}</ltr>",
           "opened": "Opened on its own times, at <ltr>{time}</ltr>",
           "passed": "Passed to {to} by {name}, at <ltr>{time}</ltr>",
+          "passedFrom": "Passed from {from} to {to} by {name}, at <ltr>{time}</ltr>",
+          "note": "Note: {note}",
           "finished": "Finished by {name}, at <ltr>{time}</ltr>",
           "cancelled": "Cancelled by {name}, at <ltr>{time}</ltr>",
           "missed": "Not done in time"
@@ -2913,6 +2990,12 @@
         "noName": "No name",
         "note": "Note",
         "noteHint": "Optional. It shows at the top of the list.",
+        "quantities": "How many",
+        "quantitiesHint": "What isn't changed stays as usual.",
+        "quantityOf": "How many: {label}",
+        "fewer": "Fewer: {label}",
+        "more": "More: {label}",
+        "quantityInvalidOf": "The count for {label} is a whole number from 0 to 9999.",
         "choose": "Choose who it goes to",
         "submit": {
           "person": "Send to {name}",
@@ -2983,7 +3066,8 @@
         "kindHints": {
           "check": "Checked once it's done.",
           "number": "A number is written, such as a temperature or a count.",
-          "note": "A few words are written."
+          "note": "A few words are written.",
+          "photo": "Add a photo, such as of the place after cleaning."
         },
         "unitOnly": "In <ltr>{unit}</ltr>",
         "up": "Move {label} up",
@@ -2995,11 +3079,17 @@
         "hintHint": "Optional. It shows under the item's name.",
         "required": "Required",
         "requiredHint": "The list can't be finished while a required item is empty.",
+        "photoOptional": "The demo business takes no photos, so a photo item is optional there: the list can be finished without a photo.",
         "unit": "Unit",
         "unitHint": "Optional, such as °C or ₪.",
         "min": "Lowest",
         "max": "Highest",
         "rangeHint": "Optional. A reading outside the range is flagged on the list.",
+        "usual": "Usual count",
+        "usualHint": "Optional. The send screen starts from this number.",
+        "usualOf": "Usually {count}",
+        "fewer": "Fewer",
+        "more": "More",
         "minus": "Minus",
         "minusOf": "Minus: {field}",
         "create": "Add the item",
@@ -3011,7 +3101,8 @@
         "problem": {
           "label": "Write the item's name.",
           "number": "That isn't a number. Use digits only, and a point for a fraction.",
-          "range": "The lowest number is above the highest."
+          "range": "The lowest number is above the highest.",
+          "usual": "A usual count is a whole number from 1 to 9999."
         }
       },
       "templates": {
@@ -3073,10 +3164,6 @@
           "subtitle": "Saves itself with every change.",
           "newSubtitle": "Saves itself once it has a name and an item.",
           "viewOnly": "While viewing, the list can only be read.",
-          "stuckSubtitle": "For now, the list can only be read.",
-          "stuck": {
-            "order": "This order belongs to a department that was removed, so changes to it can't be saved. The department can be brought back under Manage, Departments, or the order removed."
-          },
           "toLists": "To the business's lists",
           "removedNote": "This list was removed. It can be brought back from the business's lists.",
           "about": "Name and note",
@@ -3099,9 +3186,18 @@
           "shift": "Shift",
           "role": "Role",
           "choose": "Choose",
-          "noDepartments": "The business has no departments yet. Add them under Manage, Departments.",
           "gone": "{kind, select, department {The department the list went to was removed.} other {The shift the list went to no longer exists.}} Choose who it goes to now.",
           "order": "An order of {name}: its people send it, and it goes to the department chosen here.",
+          "orderTitle": "An order between departments",
+          "asking": "Department that asks",
+          "askingNone": "No department",
+          "askingHint": "The department's people send the order themselves, to the department chosen above.",
+          "askingNoneHint": "With no department asking, only those who send lists send it.",
+          "askingNeedsTwo": "An order between departments needs at least two departments in the business. Add them under Manage, Departments.",
+          "askingGone": "The department that asked for this order was removed. Until another department, or none, is chosen, changes to the list are not saved.",
+          "noOtherDepartment": "There is no other department to send the order to. Add one under Manage, Departments.",
+          "asksQuantities": "Asks for counts",
+          "asksQuantitiesHint": "Whoever sends says how many of each, and whoever gives says how many were given.",
           "preview": "How it arrives",
           "sendNow": "Send the list now",
           "archive": "Remove the list",
@@ -3449,6 +3545,16 @@
         "tellWhenFinished": {
           "label": "Tell when a list is finished",
           "hint": "Whoever sent a list, and the department that asked for it, hear when it's finished."
+        },
+        "photoDays": {
+          "label": "How long photos are kept",
+          "hint": "Photos on lists are deleted this long after the day they were taken. The item stays done.",
+          "options": {
+            "30": "A month",
+            "90": "Three months",
+            "180": "Half a year",
+            "365": "A year"
+          }
         }
       }
     }

@@ -82,6 +82,7 @@ import { type ReactNode, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
+import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
 const ACCENTS = [
@@ -172,10 +173,13 @@ function GalleryBody({
   const tPay = useTranslations("app.pay");
   const tRoles = useTranslations("app.roles");
   const [ticked, setTicked] = useState(false);
+  const [ordered, setOrdered] = useState(true);
+  const [givenCount, setGivenCount] = useState("20");
   const [fridge, setFridge] = useState("7");
   const [freezer, setFreezer] = useState("18");
   const [below, setBelow] = useState(true);
   const [missing, setMissing] = useState("");
+  const [listPhoto, setListPhoto] = useState<string | null>(null);
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
@@ -863,6 +867,57 @@ function GalleryBody({
               check={{ checked: ticked, onToggle: () => setTicked(!ticked) }}
               commentAction={{ label: tList("comment.add"), onClick: () => {} }}
             />
+            {/* An order's check: ticked, how many were given, and how many short. */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistOrder")}
+              hint={tList("requested", { count: 24 })}
+              required
+              optionalLabel={tList("optional")}
+              done={ordered}
+              check={{
+                checked: ordered,
+                onToggle: () => {
+                  setOrdered(!ordered);
+                  setGivenCount("24");
+                },
+              }}
+              quantity={{
+                label: tList("givenLabel"),
+                value: givenCount,
+                onValueChange: setGivenCount,
+                onCommit: () => {},
+                fieldLabel: tList("givenOf", { label: t("checklistOrder") }),
+                decreaseLabel: tList("fewer", { label: t("checklistOrder") }),
+                increaseLabel: tList("more", { label: t("checklistOrder") }),
+                max: 9999,
+                short:
+                  Number(givenCount) < 24
+                    ? tList("short", { count: 24 - Number(givenCount) })
+                    : null,
+              }}
+            />
+            {/* The same, only read: the count in words. */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistOrder")}
+              hint={tList("requested", { count: 24 })}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              quantity={{
+                label: tList("givenLabel"),
+                value: "20",
+                onValueChange: () => {},
+                onCommit: () => {},
+                fieldLabel: tList("givenOf", { label: t("checklistOrder") }),
+                decreaseLabel: tList("fewer", { label: t("checklistOrder") }),
+                increaseLabel: tList("more", { label: t("checklistOrder") }),
+                max: 9999,
+                text: tList("given", { given: 20, requested: 24 }),
+              }}
+            />
             <ChecklistItem
               kind="number"
               label={t("checklistNumber")}
@@ -927,13 +982,68 @@ function GalleryBody({
                 placeholder: tList("answerPlaceholder"),
               }}
             />
+            {/* A photo (L6): taken or chosen here, shown at once, nothing stored. */}
+            <ChecklistItem
+              kind="photo"
+              label={t("checklistPhoto")}
+              required={false}
+              optionalLabel={tList("optional")}
+              done={listPhoto !== null}
+              photo={{
+                src: listPhoto,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+                take: {
+                  label: tList("photo.take"),
+                  replaceLabel: tList("photo.replace"),
+                  hint: tList("photo.takeHint"),
+                  onPick: (file) => {
+                    if (!file.type.startsWith("image/")) return;
+                    setListPhoto((old) => {
+                      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
+                      return URL.createObjectURL(file);
+                    });
+                  },
+                },
+                remove: {
+                  label: tList("photo.remove"),
+                  onRemove: () =>
+                    setListPhoto((old) => {
+                      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
+                      return null;
+                    }),
+                },
+              }}
+            />
+            {/* Taken, only read: who took it and when. */}
+            <ChecklistItem
+              kind="photo"
+              label={t("checklistPhoto")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              doneLine={tList.rich("doneBy", {
+                name: t("checklistWho"),
+                time: "16:52",
+                ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+              })}
+              photo={{
+                src: listPhotos.kitchen,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+              }}
+            />
+            {/* In a demo business: said, with no way to take one. */}
             <ChecklistItem
               kind="photo"
               label={t("checklistPhoto")}
               required={false}
               optionalLabel={tList("optional")}
               done={false}
-              photo={{ text: tList("photoLater") }}
+              photo={{
+                src: null,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+                locked: tList("photo.demo"),
+              }}
             />
             <ChecklistItem
               kind="check"

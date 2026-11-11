@@ -148,6 +148,16 @@ export const NOTIFICATION_KINDS = {
     href: "/lists",
     to: "list",
   },
+  // A list passed to the reader's department (lists L5), which their Lists
+  // tab then counts.
+  "lists.passed": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: false,
+    href: "/lists",
+    to: "list",
+  },
   // A list's times (lists L4): due soon and late, to the people it is for,
   // whose Lists tab already counts it.
   "lists.due": {
@@ -516,6 +526,15 @@ export type NotificationLine =
       name: string;
     }
   | {
+      /** A list passed to the reader's department; the actor passed it. */
+      kind: "lists.passed";
+      name: string;
+      /** The department's name when it was passed; null when the line lost it. */
+      department: string | null;
+      /** A note came with it, which the list itself shows. */
+      hasNote: boolean;
+    }
+  | {
       kind: "lists.due" | "lists.late" | "lists.late_team";
       name: string;
       /** When it is due, as an ISO instant; null when the line lost it. */
@@ -608,6 +627,10 @@ const schemas = {
   person: z.object({ person: uuid }),
   list: z.object({ list: uuid, name: z.string().min(1) }),
   due: z.object({ due: instant }),
+  passed: z.object({
+    departmentName: z.string().min(1).nullable().catch(null),
+    hasNote: z.boolean().catch(false),
+  }),
   label: z.object({ label: z.string().min(1) }),
   reading: z.object({
     reading: z.number(),
@@ -716,6 +739,19 @@ function lineOf(
     case "lists.finished": {
       const params = read(schemas.list);
       return params ? { kind, name: params.name } : other;
+    }
+    case "lists.passed": {
+      const params = read(schemas.list);
+      // Still a line without the department's name.
+      const passed = read(schemas.passed);
+      return params
+        ? {
+            kind,
+            name: params.name,
+            department: passed?.departmentName ?? null,
+            hasNote: passed?.hasNote ?? false,
+          }
+        : other;
     }
     case "lists.due":
     case "lists.late":

@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(35);
+select plan(36);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -123,7 +123,9 @@ select results_eq(
 
 -- The example lists (20261109000700_lists_on.sql): the manager sends the
 -- template's opening list to a worker it is for, with two checks done by them,
--- and the next list to its own department, untouched.
+-- and the next list to its own department, untouched; and (L5,
+-- 20261110001400_lists_pass.sql) the template's order, sent by someone of the
+-- department that asks, with its first item given where it goes.
 select results_eq(
   $$select l.name, l.status, l.recipient_kind, l.sent_by,
       (select string_agg(p.user_id::text, ',') from public.list_people p where p.list_id = l.id),
@@ -131,20 +133,34 @@ select results_eq(
        where i.list_id = l.id and i.done and i.done_by = '6d000000-0000-4000-a000-00000000000c')
     from public.lists l
     where l.business_id = '6d000000-0000-4000-b000-000000000001'
-    order by l.recipient_kind desc$$,
+    order by l.recipient_kind desc, l.from_department is not null$$,
   $$values
     ('פתיחת החנות'::text, 'open'::text, 'person'::text,
      '6d000000-0000-4000-a000-00000000000b'::uuid, '6d000000-0000-4000-a000-00000000000c'::text, 2),
     ('סגירת החנות'::text, 'open'::text, 'department'::text,
-     '6d000000-0000-4000-a000-00000000000b'::uuid, null::text, 0)$$,
-  'the demo starts with two example lists, one of them begun'
+     '6d000000-0000-4000-a000-00000000000b'::uuid, null::text, 0),
+    ('הזמנה מהמחסן'::text, 'open'::text, 'department'::text,
+     '6d000000-0000-4000-a000-00000000000b'::uuid, null::text, 1)$$,
+  'the demo starts with three example lists, two of them begun'
 );
 select is(
   (select d.key from public.lists l
    join public.departments d on d.id = l.recipient_department
-   where l.business_id = '6d000000-0000-4000-b000-000000000001' and l.recipient_kind = 'department'),
+   where l.business_id = '6d000000-0000-4000-b000-000000000001' and l.recipient_kind = 'department'
+     and l.from_department is null),
   'checkout',
   'the second one with its own department'
+);
+select is(
+  (select f.key || '>' || d.key || '|'
+     || (select i.given || '/' || i.requested from public.list_items i
+         where i.list_id = l.id order by i.position limit 1)
+   from public.lists l
+   join public.departments d on d.id = l.recipient_department
+   join public.departments f on f.id = l.from_department
+   where l.business_id = '6d000000-0000-4000-b000-000000000001'),
+  'floor>stock|2/2',
+  'and the order goes from the floor to the stock, its first item given as asked'
 );
 
 -- It renews: this week is published from the shop's own shifts.
@@ -315,7 +331,7 @@ select results_eq(
 select is(
   (select string_agg(action, ',' order by id) from public.audit_log
    where business_id = '6d000000-0000-4000-b000-000000000001'),
-  'schedule.publish,lists.send,lists.send',
+  'schedule.publish,lists.send,lists.send,lists.send',
   'and starts its log again, with this week published and the example lists sent'
 );
 select is(
@@ -325,7 +341,7 @@ select is(
    where business_id = '6d000000-0000-4000-b000-000000000001')
   || '/' || (select count(*)::integer from public.department_members
    where business_id = '6d000000-0000-4000-b000-000000000001'),
-  'checkout,floor,stock/2/3',
+  'checkout,floor,stock/3/3',
   'the visitors'' departments and lists go, the demo people are back in theirs, and the example lists are back'
 );
 select is(
