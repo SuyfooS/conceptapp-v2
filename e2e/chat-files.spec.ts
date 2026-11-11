@@ -79,8 +79,15 @@ const attachButton = (page: Page) =>
   page
     .getByRole("button", { name: c.conversation.attach, exact: true })
     .filter({ visible: true });
-/** A picture the app serves (`chatFileSrc`). */
-const served = (page: Page) => log(page).locator('img[src^="/chat-files/"]');
+/**
+ * A picture the app serves (`chatFileSrc`). The browser may hold its address
+ * resolved against the page (a picture with an error handler does), so it is
+ * matched by its path, written either way.
+ */
+const served = (page: Page) => log(page).locator('img[src*="/chat-files/"]');
+/** An address on screen as the path it names on this page's own origin. */
+const onThisPage = (page: Page, src: string | null) =>
+  src === null ? null : new URL(src, page.url()).pathname;
 
 /**
  * Noa's photo to Yoav, taken on a phone (larger than the app keeps, with its
@@ -196,26 +203,9 @@ test("a phone's photo goes as a thumbnail, opens whole, keeps nothing from the c
   );
   expect(file.filePath).toBe(file.thumbPath.replace("-s.webp", ".webp"));
 
-  // Drawn again from the server: the thumbnail, from the app's own route.
-  // The route answers the sender's own session first, as the picture on
-  // screen will ask it: a refusal here says so, before the bubble turns it
-  // into "try again". What the page itself got for its files, and what it
-  // logged, is told if the picture isn't there.
-  const seen: string[] = [];
-  page.on("response", (answer) => {
-    if (!answer.url().includes("/chat-files/")) return;
-    const type = answer.headers()["content-type"] ?? "no type";
-    const kind = answer.request().resourceType();
-    seen.push(`${kind} ${answer.status()} ${type}`);
-  });
-  page.on("requestfailed", (asked) => {
-    if (asked.url().includes("/chat-files/")) {
-      seen.push(`failed ${asked.failure()?.errorText ?? ""}`);
-    }
-  });
-  page.on("console", (line) => {
-    if (line.type() === "error") seen.push(`console ${line.text()}`);
-  });
+  // Drawn again from the server: the thumbnail, from the app's own route,
+  // which answers the sender's own session (asked first, so a refusal says
+  // so before the bubble turns it into "try again").
   await page.goto(`/chat/${conversation}`);
   await expect(log(page).getByText(WORDS)).toBeVisible();
   const first = await page.request.get(thumbSrc, { maxRedirects: 0 });
@@ -224,32 +214,10 @@ test("a phone's photo goes as a thumbnail, opens whole, keeps nothing from the c
     `the thumbnail answered ${first.status()} (${first.headers()["content-type"] ?? "no type"})`,
   ).toBe(200);
   expect(first.headers()["content-type"]).toBe("image/webp");
-  try {
-    await expect(served(page)).toHaveCount(1);
-  } catch (error) {
-    const mine = log(page)
-      .locator("[data-bubble]")
-      .filter({ hasText: WORDS })
-      .first();
-    const bubble = await mine.innerText().catch(() => "no bubble");
-    const html = await mine
-      .evaluate((node) => node.outerHTML.replace(/class="[^"]*"/g, ""))
-      .catch(() => "");
-    const pictures = await page.evaluate(() =>
-      [...document.querySelectorAll("img")].map(
-        (img) =>
-          `${(img.getAttribute("src") ?? "none").slice(0, 90)} in-log=${Boolean(img.closest('[role="log"]'))}`,
-      ),
-    );
-    throw new Error(
-      `${error instanceof Error ? error.message : String(error)}\n` +
-        `the page's files: ${seen.join(" | ") || "none asked"}\n` +
-        `the bubble: ${bubble.replace(/\s+/g, " ")}\n` +
-        `its HTML: ${html.slice(0, 1500)}\n` +
-        `the page's pictures: ${pictures.join(" | ")}`,
-    );
-  }
-  expect(await served(page).getAttribute("src")).toBe(thumbSrc);
+  await expect(served(page)).toHaveCount(1);
+  expect(onThisPage(page, await served(page).getAttribute("src"))).toBe(
+    thumbSrc,
+  );
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("chat-photo.png"),
@@ -260,7 +228,7 @@ test("a phone's photo goes as a thumbnail, opens whole, keeps nothing from the c
   await log(page).getByRole("img", { name: c.image.altOwn }).click();
   const sheet = page.getByRole("dialog", { name: c.image.altOwn });
   await expect(sheet).toBeVisible();
-  await expect(sheet.locator(`img[src="${fileSrc}"]`)).toBeVisible();
+  await expect(sheet.locator(`img[src$="${fileSrc}"]`)).toBeVisible();
   await expect(sheet.getByText(WORDS)).toBeVisible();
   await expectCleanPage(page);
   await sheet.getByRole("button", { name: c.image.close }).click();
