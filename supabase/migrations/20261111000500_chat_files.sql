@@ -283,8 +283,9 @@ begin
   if file_ext is null then
     raise exception 'A picture is a JPEG or a WebP, a document a PDF' using errcode = '22023';
   end if;
+  -- In parentheses: PL/pgSQL ends an IF's condition at its first THEN.
   if upload_size is null or upload_size < 1
-    or upload_size > case when upload_kind = 'image' then 458752 else 10485760 end
+    or upload_size > (case when upload_kind = 'image' then 458752 else 10485760 end)
   then
     raise exception 'Too large a file' using errcode = '22023';
   end if;
@@ -413,7 +414,7 @@ begin
   from storage.objects o
   where o.bucket_id = 'chat-files' and o.name = held.path;
   if full_size is null or full_size < 1 or full_type is distinct from held.file_type
-    or full_size > case when held.file_kind = 'image' then 409600 else 10485760 end
+    or full_size > (case when held.file_kind = 'image' then 409600 else 10485760 end)
   then
     raise exception 'The file is not in place' using errcode = '22023';
   end if;
