@@ -3,6 +3,16 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-11 · nightly run 34 · the list card's chip under its words
+
+- Guessed: Orel left no work. Last night's "next" (the inbox's "לפני שעה (1)") is in `inbox-view.tsx`, which both of Orel's open PRs (#118, #120) change, so it waits for them.
+- Audited the screens merged since the last run on the design demo (pay, clock, lists, templates, `/lists/today`, access, my businesses, the accountant's Today) at 390, 820 and 1440: axe clean, no horizontal scroll. One thing broken: on a phone a late list's chip ("באיחור · עד 2.11, 23:45") sat beside the words and left the name one word per line.
+- `app/(app)/lists/list-card.tsx`: the chip now sits under the words, as on the "היום בעסק" card beside it. Same on `/lists`, Today and `/lists/today`; the computer's table is unchanged.
+- Restore point: branch `backup/before-night-2026-11-11` at `075892d` (the tag push was cut off).
+- #99 closed: CI runs again since the repo went public.
+- Next: the inbox's relative times, once #118 and #120 are in.
+- Defaults applied: none.
+
 ## 2026-11-09 · chat · the profile, H1: `/me` and photos (#82)
 
 - On chat/profile-me from `c702064`, following the H1 plan with its critique applied. Migration `20261109000100_profile_photo_demo.sql`: `private.keeps_demo_profile` / `public.keeps_demo_profile` (server only) and a trigger that refuses a new photo (55000) to someone in a demo business that keeps its people; clearing stays allowed, so the reset still works. The local seed opens its restaurant (`"profiles": true`) for the browser tests and keeps the shop closed; `tooling/demo-profiles.test.ts` keeps `hosted-demo.sql` closed. pgTAP in `profile_photo_demo.test.sql`; `database.types.ts` gained `keeps_demo_profile`, written by hand in the generator's format.
