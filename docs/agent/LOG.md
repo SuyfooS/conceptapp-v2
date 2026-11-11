@@ -10,7 +10,7 @@ what is next, defaults applied.
 - `app/(app)/lists/list-card.tsx`: the chip now sits under the words, as on the "היום בעסק" card beside it. Same on `/lists`, Today and `/lists/today`; the computer's table is unchanged.
 - Restore point: branch `backup/before-night-2026-11-11` at `075892d` (the tag push was cut off).
 - #99 closed: CI runs again since the repo went public.
-- Next: the inbox's relative times, once #118 and #120 are in.
+- Next: the inbox's relative times. #118 and #120 merged during this run, so `inbox-view.tsx` is free now.
 - Defaults applied: none.
 
 ## 2026-11-09 · chat · the profile, H1: `/me` and photos (#82)
