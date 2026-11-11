@@ -20,7 +20,10 @@ import { demoWording } from "./data";
 // Stand-ins for the console's actions on the design demo: the same checks, a
 // link that leads nowhere, and nothing stored.
 
-export async function demoSignOut(): Promise<void> {}
+/** Nothing is signed in on the demo: nowhere to go. */
+export async function demoSignOut(): Promise<null> {
+  return null;
+}
 
 export async function demoViewAs(_form: FormData): Promise<void> {}
 

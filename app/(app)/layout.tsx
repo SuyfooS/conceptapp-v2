@@ -1,7 +1,9 @@
+import { getChatInbox } from "@db/chat";
 import { countMyOpenLists } from "@db/lists";
 import { pushConfig } from "@db/push/env";
+import { waitingChats } from "@domain/chat-sync";
 import { accentTokens } from "@domain/color";
-import { enabledModules, moduleNav } from "@domain/modules";
+import { enabledModules, isStaff, moduleNav } from "@domain/modules";
 import { signInPath } from "@domain/passive-sign-in";
 import { displayIsraeliMobile } from "@domain/phone";
 import { profilePhotoSrc } from "@domain/profile-photos";
@@ -57,19 +59,34 @@ async function Shell({ children }: { children: ReactNode }) {
   }
 
   const { business, role, perms } = member.membership;
-  const [enabled, wording, businesses, openLists] = await Promise.all([
+  const on = enabledModules(manifests, business.modules);
+  const [enabled, wording, businesses, openLists, chats] = await Promise.all([
     currentModules(),
     currentWording(),
     // Someone in more than one business switches from the sidebar too.
     currentBusinesses(),
     // The Lists tab carries the open lists the person holds; none while
     // viewing as someone, who holds none.
-    enabledModules(manifests, business.modules).includes("lists") &&
-    !member.viewing
+    on.includes("lists") && !member.viewing
       ? countMyOpenLists(member.userId, business.id).catch((error: Error) => {
           console.error("counting open lists failed", error.message);
           return 0;
         })
+      : 0,
+    // The Chat tab carries the chats with something waiting for the person
+    // (`waitingChats`), drawn here and again when a chat screen sees the
+    // count move; none while viewing as someone, who reads no chat, and none
+    // for someone off the staff, who is in none.
+    on.includes("chat") && !member.viewing && isStaff(role)
+      ? getChatInbox(business.id)
+          .then((rows) => (rows === "notYet" ? 0 : waitingChats(rows)))
+          .catch((error: { code?: string }) => {
+            console.error(
+              "counting chats failed",
+              error.code ?? "without a code",
+            );
+            return 0;
+          })
       : 0,
   ]);
   // The business's words: its tab names and role names may be its own.
@@ -97,7 +114,12 @@ async function Shell({ children }: { children: ReactNode }) {
         ? tm(`${entry.key}.outsideNav` as never)
         : tm(`${entry.key}.name`),
       icon: moduleIcons[entry.icon],
-      count: entry.key === "lists" && openLists > 0 ? openLists : undefined,
+      count:
+        entry.key === "lists" && openLists > 0
+          ? openLists
+          : entry.key === "chat" && chats > 0
+            ? chats
+            : undefined,
     })),
   ];
   const name =

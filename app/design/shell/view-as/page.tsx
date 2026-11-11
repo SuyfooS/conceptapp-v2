@@ -2,7 +2,7 @@ import { buildTeam } from "@domain/team";
 import { TeamView } from "../../../(app)/team/team-view";
 import { ViewAsBanner } from "../../../(app)/view-as-banner";
 import { baseWording } from "../../../(app)/wording";
-import { demoSignOut } from "../../screens/actions";
+import { demoEndView } from "../../screens/actions";
 import { business, teamInvites, teamMembers, teamToday } from "../data";
 import { demoResendAction } from "../team/actions";
 
@@ -15,7 +15,7 @@ export default function ShellViewAs() {
         viewing={{ role: "manager", businessSlug: "demo-restaurant" }}
         businessName={business.name}
         wording={baseWording}
-        end={demoSignOut}
+        end={demoEndView}
       />
       <TeamView
         team={buildTeam(teamMembers, teamInvites, teamToday)}

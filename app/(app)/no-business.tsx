@@ -2,6 +2,7 @@ import { Button } from "@ui/button";
 import { EmptyState } from "@ui/empty-state";
 import { Store } from "lucide-react";
 import { CenteredScreen } from "@/app/centered-screen";
+import { type SignOutAction, SignOutForm } from "@/app/sign-out-form";
 import { baseWording, translator } from "./wording";
 
 /**
@@ -12,7 +13,7 @@ export async function NoBusinessScreen({
   signOut,
 }: {
   /** `signOut`, or the design demo's stand-in. */
-  signOut: () => Promise<void>;
+  signOut: SignOutAction;
 }) {
   // No business, so no business's words.
   const t = translator(baseWording, "app");
@@ -23,11 +24,11 @@ export async function NoBusinessScreen({
         title={t("noBusiness.title")}
         body={t("noBusiness.body")}
       >
-        <form action={signOut} className="flex flex-col">
+        <SignOutForm action={signOut} className="flex flex-col">
           <Button type="submit" variant="secondary" size="lg">
             {t("signOut")}
           </Button>
-        </form>
+        </SignOutForm>
       </EmptyState>
     </CenteredScreen>
   );

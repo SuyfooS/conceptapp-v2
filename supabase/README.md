@@ -46,7 +46,13 @@ its template with the same id. Hours, breaks and the log never go with a busines
 visitor's write already under way finish and holds new ones back, then deletes the demo's
 own through `private.purge_business_records`, which only the database's owner may run
 (the reset, and test clean-ups). The shop's week is always published
-(`public.renew_demo_schedules`); the restaurant's is the visitor's to build.
+(`public.renew_demo_schedules`); the restaurant's is the visitor's to build. Both start
+with the demo's own conversations (`private.seed_demo_chat`,
+`20261111000300_chat_on.sql`): in the whole team's group, in the first worker's first
+department and in the manager's private chat with that worker, written by the people
+each definition names by role, so neither definition needed a change and that
+migration's Migrate run needs no "demo". A visitor's messages go after an hour (the
+`chat` job) and with every reset.
 
 A demo business takes no invites and nobody joins one, since anyone at the door is its
 owner. Only a definition with `"invites": true` opens one: `seed.sql` does, so the browser

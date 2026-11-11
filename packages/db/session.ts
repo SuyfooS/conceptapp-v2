@@ -376,6 +376,84 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
   };
 }
 
+/** The signed-in person's own place, as a route polled often reads it. */
+export type OwnPlace = {
+  userId: string;
+  /**
+   * The business the app opens for them among their own active memberships
+   * (the `ca_business` cookie's when it is one of theirs, as
+   * `getCurrentMember` chooses), or null in none.
+   */
+  place: {
+    businessId: string;
+    role: MemberRole;
+    /** The modules on there. */
+    enabled: ModuleRow["key"][];
+  } | null;
+  /** A view session is open: the app shows the viewed business instead. */
+  viewing: boolean;
+};
+
+/**
+ * Who is signed in and the business they work in, in one round of two reads
+ * and nothing more: for `/chat-sync`, which a chat screen asks every few
+ * seconds, where `getCurrentMember`'s profile, wording and counts would cost
+ * five more. Under the person's own session, which this renews when it has
+ * expired (the cookies go out with the answer, as in a route handler they
+ * can); null when nobody is signed in.
+ */
+export async function getOwnPlace(): Promise<OwnPlace | null> {
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getClaims();
+  const userId = auth?.claims.sub;
+  if (!userId) return null;
+  const chosen = (await cookies()).get(BUSINESS_COOKIE)?.value ?? null;
+  const [memberships, view] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select(
+        "business_id, role, created_at, businesses (business_modules (module_key, enabled))",
+      )
+      .eq("user_id", userId)
+      .eq("active", true),
+    supabase
+      .from("view_sessions")
+      .select("id")
+      .eq("staff_id", userId)
+      .is("ended_at", null)
+      .gt("expires_at", new Date().toISOString())
+      .limit(1),
+  ]);
+  if (memberships.error) throw memberships.error;
+  if (view.error) throw view.error;
+  const places = (memberships.data ?? []).flatMap((row) =>
+    row.businesses
+      ? [
+          {
+            businessId: row.business_id,
+            role: row.role,
+            since: row.created_at,
+            enabled: row.businesses.business_modules
+              .filter((module) => module.enabled)
+              .map((module) => module.module_key),
+          },
+        ]
+      : [],
+  );
+  const picked = chosenMembership(places, chosen);
+  return {
+    userId,
+    place: picked
+      ? {
+          businessId: picked.businessId,
+          role: picked.role,
+          enabled: picked.enabled,
+        }
+      : null,
+    viewing: (view.data ?? []).length > 0,
+  };
+}
+
 /** The person's unread lines in one business, counted (payroll P3b). */
 async function unreadIn(
   supabase: Awaited<ReturnType<typeof createClient>>,

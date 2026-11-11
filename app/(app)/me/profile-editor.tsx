@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { type SignOutAction, SignOutForm } from "@/app/sign-out-form";
 import { UndoRow } from "../manage/undo-row";
 import {
   BioSheet,
@@ -137,7 +138,7 @@ export function ProfileEditor({
   /** Where "back" leads: Today, or the demo's. */
   home: string;
   actions: MeActions;
-  signOut: () => Promise<void>;
+  signOut: SignOutAction;
   /** The switch for notifications on this phone, where there is one. */
   notifications?: ReactNode;
   /** The switch between businesses, for someone in more than one. */
@@ -396,12 +397,15 @@ export function ProfileEditor({
 
         {notifications}
 
-        <form action={signOut} className="flex justify-center md:justify-start">
+        <SignOutForm
+          action={signOut}
+          className="flex justify-center md:justify-start"
+        >
           <Button type="submit" variant="ghost" className="text-ink-2">
             <LogOut aria-hidden="true" className="rtl:-scale-x-100" />
             {t("signOut")}
           </Button>
-        </form>
+        </SignOutForm>
       </ProfileFrame>
 
       {locked ? null : (

@@ -82,6 +82,7 @@ import { type ReactNode, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
+import { GalleryChat } from "./gallery-chat";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
@@ -537,6 +538,10 @@ function GalleryBody({
               subtitle={t("rowDisabledText")}
             />
           </ListGroup>
+        </Section>
+
+        <Section title={t("chat")}>
+          <GalleryChat />
         </Section>
 
         <Section title={t("switcher")}>

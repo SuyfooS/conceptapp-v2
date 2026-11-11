@@ -8,12 +8,16 @@ import { z } from "zod";
  * manager, not the ConceptApp team, not a view session. In groups, management
  * posts announcements that ask for "קראתי" and removes messages, with undo.
  * Accountants are off the staff and in no chat. The database holds it all
- * (supabase/migrations/20261111000200_chat.sql); the screens come in C2, and
- * until then the module is off in every template and business.
+ * (supabase/migrations/20261111000200_chat.sql); the screens came with C2,
+ * which switched the module on in every template, a version up each, and in
+ * every business where its tab fits (20261111000300_chat_on.sql): the fourth
+ * module tab, beside the schedule, the clock and lists, so the tab bar is
+ * full (modules/templates.db.test.ts checks every template still fits).
  *
  * The tab is the fifth with Home, after Lists (order 28, ahead of
  * reservations' 30, so `moduleNav`'s cut keeps chat). An accountant's
- * documents tab (`outsideStaff`) comes with the documents' screens (C7).
+ * documents tab (`outsideStaff`) comes with the documents' screens (C7):
+ * until then an accountant has no chat tab and no documents tab.
  */
 export const manifest = defineManifest({
   key: "chat",

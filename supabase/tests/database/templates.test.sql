@@ -93,8 +93,8 @@ select is(
 select is(
   (select array_agg(module_key order by module_key) from public.business_modules
    where business_id = '40000000-0000-4000-b000-00000000000b' and enabled),
-  array['scheduling', 'time_clock', 'notifications', 'lists']::public.module_key[],
-  'cafe-bar starts with the schedule, the clock, notifications and lists'
+  array['scheduling', 'time_clock', 'notifications', 'lists', 'chat']::public.module_key[],
+  'cafe-bar starts with the schedule, the clock, notifications, lists and chat'
 );
 select is(
   (select jsonb_array_length(settings -> 'shifts') from public.business_modules
@@ -105,7 +105,7 @@ select is(
 select is(
   (select template_key || '@' || template_version from public.businesses
    where id = '40000000-0000-4000-b000-00000000000a'),
-  'restaurant@6',
+  'restaurant@7',
   'the business records the template and its version'
 );
 

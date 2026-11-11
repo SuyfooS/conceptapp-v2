@@ -1,7 +1,7 @@
 -- Tenant isolation: a member of business A never sees business B, and each
 -- role sees only what it should inside its own business.
 begin;
-select plan(28);
+select plan(31);
 
 -- Fixtures: business A (owner, manager, worker) and business B (owner).
 insert into auth.users (id, aud, role, phone)
@@ -210,6 +210,31 @@ select results_eq(
 
 select pg_temp.sign_in('20000000-0000-4000-a000-00000000000e');
 select is_empty('select 1 from public.chat_conversations', 'an inactive member reads no chat');
+
+-- Chat's notice (20261111000300_chat_on.sql): the worker and the manager of A
+-- and the owner of B have read it.
+reset role;
+insert into public.chat_notices (business_id, user_id)
+values
+  ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-a000-00000000000c'),
+  ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-a000-00000000000b'),
+  ('20000000-0000-4000-b000-00000000000b', '20000000-0000-4000-a000-00000000000d');
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select results_eq(
+  'select business_id, user_id from public.chat_notices',
+  $$values ('20000000-0000-4000-b000-00000000000a'::uuid, '20000000-0000-4000-a000-00000000000c'::uuid)$$,
+  'worker of A reads their own notice only, not the manager''s or B''s'
+);
+select throws_ok(
+  $$insert into public.chat_notices (business_id, user_id)
+    values ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-a000-00000000000c')$$,
+  '42501',
+  null,
+  'and writes none from the browser'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000a');
+select is_empty('select 1 from public.chat_notices', 'the owner of A reads none of their people''s');
 
 select * from finish();
 rollback;

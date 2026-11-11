@@ -98,6 +98,20 @@ function Count({ value, className }: { value?: number; className?: string }) {
  * page, or after scrolling up a good way, so small movements of a finger reading
  * the page don't keep resizing it. The soft blur under the wide bar goes with it.
  */
+/**
+ * A screen that takes the whole phone marks itself (ImmersiveScreen), and the
+ * tab bar steps aside there: the Composer floats in its place, over the bar's
+ * soft fade, which stays whole however the page scrolls and goes under the
+ * Composer (z-20) while still over the messages, so the content needs only
+ * the room under it. Tablets keep the bar. The selectors live here, in one
+ * place.
+ */
+const whenImmersive = {
+  hide: "max-md:[body:has([data-immersive])_&]:hidden",
+  fade: "max-md:[body:has([data-immersive])_&]:z-10 max-md:[body:has([data-immersive])_&]:opacity-100",
+  room: "max-md:[body:has([data-immersive])_&]:pb-[calc(env(safe-area-inset-bottom)+14px)]",
+};
+
 /** Below this far from the top of the page, the bar is always full. */
 const NEAR_TOP = 40;
 /** How far scrolling up has to go before a shrunk bar opens again. */
@@ -194,6 +208,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
         className={cn(
           "edge-fade-bottom pointer-events-none fixed inset-x-0 bottom-0 z-20 h-24 transition-opacity duration-200 ease-calm xl:hidden",
           small && "opacity-0",
+          whenImmersive.fade,
         )}
       />
       <nav
@@ -205,6 +220,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
         className={cn(
           "pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-30 flex xl:hidden",
           "md:justify-center",
+          whenImmersive.hide,
         )}
       >
         <ul
@@ -430,7 +446,12 @@ export function AppShell({
         )}
       </aside>
 
-      <div className="pb-[calc(env(safe-area-inset-bottom)+6.5rem)] xl:ps-[17.5rem] xl:pb-0">
+      <div
+        className={cn(
+          "pb-[calc(env(safe-area-inset-bottom)+6.5rem)] xl:ps-[17.5rem] xl:pb-0",
+          whenImmersive.room,
+        )}
+      >
         {children}
       </div>
 

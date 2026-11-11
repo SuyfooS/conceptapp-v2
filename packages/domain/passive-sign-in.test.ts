@@ -5,6 +5,7 @@ import {
   demoBusinessesOf,
   demoBusinessOf,
   demoEmailOf,
+  isDemoBusiness,
   renewsDemoWeek,
 } from "./passive-sign-in";
 
@@ -86,6 +87,14 @@ describe("demo businesses", () => {
     expect(renewsDemoWeek("demo-shop")).toBe(true);
     for (const slug of ["demo-restaurant", "cafe-noa", "", null, undefined]) {
       expect(renewsDemoWeek(slug)).toBe(false);
+    }
+  });
+
+  it("knows both demo businesses, and nothing else, as a demo", () => {
+    expect(isDemoBusiness("demo-restaurant")).toBe(true);
+    expect(isDemoBusiness("demo-shop")).toBe(true);
+    for (const slug of ["cafe-noa", "demo", "", null, undefined]) {
+      expect(isDemoBusiness(slug)).toBe(false);
     }
   });
 });

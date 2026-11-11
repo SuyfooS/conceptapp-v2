@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   type ComponentProps,
   type ReactNode,
+  type Ref,
   useEffect,
   useRef,
   useState,
@@ -122,6 +123,7 @@ export function PageSection({
   title,
   action,
   level = 2,
+  headingRef,
   className,
   children,
 }: {
@@ -129,6 +131,11 @@ export function PageSection({
   action?: ReactNode;
   /** 3 for a section inside another section. */
   level?: 2 | 3;
+  /**
+   * The title, for a screen that puts the keyboard's focus there when what
+   * held it goes away (a notice put away above the section).
+   */
+  headingRef?: Ref<HTMLHeadingElement>;
   className?: string;
   children: ReactNode;
 }) {
@@ -136,7 +143,13 @@ export function PageSection({
   return (
     <section className={cn("flex min-w-0 flex-col gap-3", className)}>
       <div className="flex items-center justify-between gap-3 px-1">
-        <Heading className="font-bold text-lg">{title}</Heading>
+        <Heading
+          ref={headingRef}
+          tabIndex={headingRef ? -1 : undefined}
+          className="font-bold text-lg outline-none"
+        >
+          {title}
+        </Heading>
         {action}
       </div>
       {children}

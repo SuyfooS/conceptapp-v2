@@ -248,12 +248,15 @@ select public.set_hourly_wage('6d000000-0000-4000-a000-00000000000a',
   4100, date_trunc('month', now())::date, 'A visitor''s raise');
 insert into public.lists (business_id, name, origin, recipient_kind, recipient_role, opens_at)
 values ('6d000000-0000-4000-b000-000000000001', 'A visitor''s list', 'sent', 'role', 'worker', now());
--- A visitor's message in the team's group (20261111000200_chat.sql).
+-- A visitor's message in the team's group (20261111000200_chat.sql), and
+-- their reading of chat's notice (20261111000300_chat_on.sql).
 insert into public.chat_messages (business_id, conversation_id, author_id, draft_id, body)
 select c.business_id, c.id, '6d000000-0000-4000-a000-00000000000b', gen_random_uuid(),
   'A visitor wrote this'
 from public.chat_conversations c
 where c.business_id = '6d000000-0000-4000-b000-000000000001' and c.kind = 'team';
+insert into public.chat_notices (business_id, user_id)
+values ('6d000000-0000-4000-b000-000000000001', '6d000000-0000-4000-a000-00000000000b');
 -- Hours, a break and the log's rows, which nothing but the reset's purge
 -- deletes (20261110000100_hours_kept.sql).
 insert into public.time_entries (id, business_id, user_id, clock_in, clock_out)
@@ -356,13 +359,21 @@ select is(
   true,
   'with lists on, as their template has them'
 );
+-- The demo's own conversations (20261111000300_chat_on.sql): three messages
+-- in the team's group, two in the first worker's first department and two in
+-- the manager's private chat with that worker.
 select is(
-  (select count(*)::integer from public.chat_messages
+  (select (count(*) filter (where body = 'A visitor wrote this'))::integer
+     || '/' || (count(*) filter (where seeded))::integer
+     || '/' || count(*)::integer
+   from public.chat_messages
    where business_id = '6d000000-0000-4000-b000-000000000001')
   || '/' || (select string_agg(c.kind, ',' order by c.kind) from public.chat_conversations c
-   where c.business_id = '6d000000-0000-4000-b000-000000000001'),
-  '0/department,department,department,team',
-  'its chats start again: no visitor''s message, the team''s group and one for each department'
+   where c.business_id = '6d000000-0000-4000-b000-000000000001')
+  || '/' || (select count(*)::integer from public.chat_notices
+   where business_id = '6d000000-0000-4000-b000-000000000001'),
+  '0/7/7/department,department,department,direct,team/0',
+  'its chats start again: no visitor''s message or notice, the team''s group, one for each department, and the demo''s own conversations'
 );
 
 select throws_ok(

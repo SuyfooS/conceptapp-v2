@@ -124,7 +124,10 @@ values
 -- ones do; 20261110001300_list_schedules.sql): the browser tests open them at
 -- the times they choose, so none depends on the hour. The restaurant also takes
 -- photos on its lists ("photos": true; 20261110001500_list_photos.sql), for the
--- browser tests; the shop takes none, like the hosted ones.
+-- browser tests; the shop takes none, like the hosted ones. Both start with the
+-- demo's own conversations (private.seed_demo_chat,
+-- 20261111000300_chat_on.sql), written by the first owner, manager and two
+-- workers each names, as the hosted ones are (tooling/demo-chat.test.ts).
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$

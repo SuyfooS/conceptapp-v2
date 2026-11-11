@@ -124,6 +124,16 @@ const PAGES = [
   "/design/shell/lists/templates/new",
   "/design/shell/notifications",
   "/design/shell/notifications/empty",
+  "/design/chat",
+  "/design/chat?state=empty",
+  "/design/chat?state=demo",
+  "/design/chat/team",
+  "/design/chat/floor",
+  "/design/chat/kitchen",
+  "/design/chat/desserts",
+  "/design/chat/noa",
+  "/design/chat/noa?state=failed",
+  "/design/chat/uri",
   "/design/console/businesses/demo-restaurant/settings",
   "/design/console/businesses/demo-restaurant/lists",
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
@@ -169,6 +179,112 @@ for (const colorScheme of ["light", "dark"] as const) {
     });
   });
 }
+
+// The chat's mock screens (C2). On a phone a conversation takes the whole
+// screen: no tab bar, the composer in its place, and the list it goes back to
+// has its bar again (the conversation kept hidden for going back must not
+// hide it). From tablet up the list stays beside the conversation, and the
+// desktop adds its details. What is sent goes on its way and is answered.
+test("the chat demo hides the phone's tab bar in a conversation, and sends", async ({
+  page,
+}, testInfo) => {
+  const c = he.app.chat;
+  const phone = testInfo.project.name === "phone";
+  const desktop = testInfo.project.name === "desktop";
+  const bar = page
+    .getByRole("navigation", { name: he.ui.appShell.mainNav })
+    .filter({ visible: true });
+  const visible = (name: string | RegExp) =>
+    page.getByRole("link", { name }).filter({ visible: true }).first();
+
+  await page.goto("/design/chat");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.modules.chat.name }),
+  ).toBeVisible();
+  await expect(bar).toHaveCount(1);
+  if (!phone) {
+    await expect(
+      page.getByRole("heading", { name: c.list.choose.title }),
+    ).toBeVisible();
+  }
+
+  await visible(/נועה כהן/).click();
+  await expect(page).toHaveURL(/\/design\/chat\/noa$/);
+  await expect(
+    page
+      .getByRole("heading", { level: 1, name: "נועה כהן" })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(c.conversation.privateNote).filter({ visible: true }),
+  ).toHaveCount(desktop ? 2 : 1);
+  // The phone's bar steps aside; the tablet keeps it, the desktop its sidebar.
+  await expect(bar).toHaveCount(phone ? 0 : 1);
+  await expect(
+    page
+      .getByRole("heading", { name: c.list.people })
+      .filter({ visible: true }),
+  ).toHaveCount(phone ? 0 : 1);
+  await expect(page.getByRole("region", { name: c.details.label })).toBeVisible(
+    { visible: desktop },
+  );
+
+  const field = page
+    .getByRole("textbox", { name: c.conversation.placeholder })
+    .filter({ visible: true });
+  const send = page
+    .getByRole("button", { name: c.conversation.send, exact: true })
+    .filter({ visible: true });
+  await expect(send).toBeDisabled();
+  await field.fill("נתראה בשש");
+  await send.click();
+  await expect(field).toHaveValue("");
+  const log = page
+    .getByRole("log", { name: c.conversation.log })
+    .filter({ visible: true });
+  await expect(log.getByText("נתראה בשש")).toBeVisible();
+  await expect(log.getByText("תודה רבה")).toBeVisible({ timeout: 10_000 });
+  await expect(log.getByText(c.conversation.sending)).toHaveCount(0);
+  await expect(log.getByText(c.conversation.seen)).toHaveCount(1);
+
+  if (phone) {
+    await visible(c.conversation.back).click();
+  } else {
+    await visible(/כל הצוות/).click();
+  }
+  await expect(page).toHaveURL(
+    phone ? /\/design\/chat$/ : /\/design\/chat\/team$/,
+  );
+  await expect(bar).toHaveCount(1);
+});
+
+// A message that didn't go says so under it, and goes when tried again; a
+// removed department reads, and says why nothing can be written.
+test("the chat demo retries a message, and a removed department takes none", async ({
+  page,
+}) => {
+  const c = he.app.chat;
+  await page.goto("/design/chat/noa?state=failed");
+  const log = page
+    .getByRole("log", { name: c.conversation.log })
+    .filter({ visible: true });
+  await log.getByRole("button", { name: c.conversation.failed }).click();
+  await expect(log.getByText(c.conversation.sending)).toBeVisible();
+  await expect(
+    log.getByRole("button", { name: c.conversation.failed }),
+  ).toHaveCount(0);
+  await expect(log.getByText(c.conversation.sending)).toHaveCount(0);
+
+  await page.goto("/design/chat/desserts");
+  await expect(
+    page.getByText(c.conversation.closed).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("textbox", { name: c.conversation.placeholder })
+      .filter({ visible: true }),
+  ).toHaveCount(0);
+});
 
 // A demo business takes no invites (#80): its Team screen offers none and
 // says why, at every size; a real one keeps its invite and new links.

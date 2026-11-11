@@ -74,6 +74,8 @@ export type PersonRowProps = {
    * `below` stays outside it, since an action can't sit inside a link.
    */
   href?: string;
+  /** Pressing the link, as a sheet that closes on a choice needs. */
+  onClick?: () => void;
   className?: string;
 };
 
@@ -86,6 +88,7 @@ export function PersonRow({
   trailing,
   below,
   href,
+  onClick,
   className,
 }: PersonRowProps) {
   const top = (
@@ -113,6 +116,7 @@ export function PersonRow({
       {href ? (
         <Link
           href={href}
+          onClick={onClick}
           className="flex min-h-16 items-center gap-3 px-4 py-2.5 transition-colors duration-150 ease-calm hover:bg-surface-2 active:bg-surface-3 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"
         >
           {top}
