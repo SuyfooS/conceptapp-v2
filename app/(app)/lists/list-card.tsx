@@ -31,7 +31,7 @@ export type ListShown = {
 
 /**
  * One list as a card: its progress as a ring, its name, who it is for and who
- * asked, and by when, or how it closed. The whole card leads to the list.
+ * asked, and by when (a chip under the words), or how it closed. The whole card leads to the list.
  */
 export function ListCard({
   list,
@@ -70,12 +70,14 @@ export function ListCard({
         <span className="text-ink-2 text-sm">
           {closed ?? progressWords(t, list.progress)}
         </span>
+        {/* Under the words, not beside them: beside, a long "late" chip left
+            the name one word per line on a phone. */}
+        {chip ? (
+          <Badge tone={chip.tone} className="mt-1 self-start">
+            {chip.label}
+          </Badge>
+        ) : null}
       </span>
-      {chip ? (
-        <Badge tone={chip.tone} className="shrink-0">
-          {chip.label}
-        </Badge>
-      ) : null}
       <ChevronRight
         aria-hidden="true"
         className="size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
