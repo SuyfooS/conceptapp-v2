@@ -227,16 +227,26 @@ test("a phone's photo goes as a thumbnail, opens whole, keeps nothing from the c
   try {
     await expect(served(page)).toHaveCount(1);
   } catch (error) {
-    const bubble = await log(page)
+    const mine = log(page)
       .locator("[data-bubble]")
       .filter({ hasText: WORDS })
-      .first()
-      .innerText()
-      .catch(() => "no bubble");
+      .first();
+    const bubble = await mine.innerText().catch(() => "no bubble");
+    const html = await mine
+      .evaluate((node) => node.outerHTML.replace(/class="[^"]*"/g, ""))
+      .catch(() => "");
+    const pictures = await page.evaluate(() =>
+      [...document.querySelectorAll("img")].map(
+        (img) =>
+          `${(img.getAttribute("src") ?? "none").slice(0, 90)} in-log=${Boolean(img.closest('[role="log"]'))}`,
+      ),
+    );
     throw new Error(
       `${error instanceof Error ? error.message : String(error)}\n` +
         `the page's files: ${seen.join(" | ") || "none asked"}\n` +
-        `the bubble: ${bubble.replace(/\s+/g, " ")}`,
+        `the bubble: ${bubble.replace(/\s+/g, " ")}\n` +
+        `its HTML: ${html.slice(0, 1500)}\n` +
+        `the page's pictures: ${pictures.join(" | ")}`,
     );
   }
   expect(await served(page).getAttribute("src")).toBe(thumbSrc);
