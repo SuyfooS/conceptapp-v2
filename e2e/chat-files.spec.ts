@@ -199,15 +199,46 @@ test("a phone's photo goes as a thumbnail, opens whole, keeps nothing from the c
   // Drawn again from the server: the thumbnail, from the app's own route.
   // The route answers the sender's own session first, as the picture on
   // screen will ask it: a refusal here says so, before the bubble turns it
-  // into "try again".
+  // into "try again". What the page itself got for its files, and what it
+  // logged, is told if the picture isn't there.
+  const seen: string[] = [];
+  page.on("response", (answer) => {
+    if (!answer.url().includes("/chat-files/")) return;
+    const type = answer.headers()["content-type"] ?? "no type";
+    const kind = answer.request().resourceType();
+    seen.push(`${kind} ${answer.status()} ${type}`);
+  });
+  page.on("requestfailed", (asked) => {
+    if (asked.url().includes("/chat-files/")) {
+      seen.push(`failed ${asked.failure()?.errorText ?? ""}`);
+    }
+  });
+  page.on("console", (line) => {
+    if (line.type() === "error") seen.push(`console ${line.text()}`);
+  });
   await page.goto(`/chat/${conversation}`);
   await expect(log(page).getByText(WORDS)).toBeVisible();
-  const first = await page.request.get(thumbSrc);
+  const first = await page.request.get(thumbSrc, { maxRedirects: 0 });
   expect(
     first.status(),
     `the thumbnail answered ${first.status()} (${first.headers()["content-type"] ?? "no type"})`,
   ).toBe(200);
-  await expect(served(page)).toHaveCount(1);
+  expect(first.headers()["content-type"]).toBe("image/webp");
+  try {
+    await expect(served(page)).toHaveCount(1);
+  } catch (error) {
+    const bubble = await log(page)
+      .locator("[data-bubble]")
+      .filter({ hasText: WORDS })
+      .first()
+      .innerText()
+      .catch(() => "no bubble");
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\n` +
+        `the page's files: ${seen.join(" | ") || "none asked"}\n` +
+        `the bubble: ${bubble.replace(/\s+/g, " ")}`,
+    );
+  }
   expect(await served(page).getAttribute("src")).toBe(thumbSrc);
   await expectCleanPage(page);
   await page.screenshot({
