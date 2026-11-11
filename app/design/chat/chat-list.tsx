@@ -1,5 +1,6 @@
 import { chatPreview, sortInbox } from "@domain/chat";
 import { chatWhen } from "@domain/chat-days";
+import { shownFileName } from "@domain/chat-files";
 import { Avatar } from "@ui/avatar";
 import { ChatGroupMark, ChatRow } from "@ui/chat-row";
 import { EmptyState } from "@ui/empty-state";
@@ -71,13 +72,17 @@ export function ChatList({
     const last = chat.messages.at(-1);
     const author = last ? chatDemoPerson(last.author) : null;
     const said =
-      last && !last.removedBy && (last.photo || last.fileGone)
-        ? last.body
-          ? t("list.photoWith", { caption: chatPreview(last.body) })
-          : t("list.photo")
-        : last?.body
-          ? chatPreview(last.body)
-          : t("message.removed");
+      last && !last.removedBy && last.pdf
+        ? t("list.pdfWith", {
+            caption: chatPreview(last.body ?? shownFileName(last.pdf.name)),
+          })
+        : last && !last.removedBy && (last.photo || last.fileGone)
+          ? last.body
+            ? t("list.photoWith", { caption: chatPreview(last.body) })
+            : t("list.photo")
+          : last?.body
+            ? chatPreview(last.body)
+            : t("message.removed");
     const preview = !last
       ? t("list.noMessages")
       : last.author === CHAT_DEMO_READER

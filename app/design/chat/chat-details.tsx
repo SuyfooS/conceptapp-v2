@@ -1,5 +1,6 @@
 import { messageTime } from "@domain/chat-days";
-import { DEFAULT_CHAT_FILE_DAYS } from "@domain/chat-files";
+import { chatFileSize, DEFAULT_CHAT_FILE_DAYS } from "@domain/chat-files";
+import { AttachmentList } from "@ui/attachment-chip";
 import { Avatar } from "@ui/avatar";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
@@ -8,7 +9,7 @@ import { PageSection } from "@ui/page";
 import { PersonList, PersonRow } from "@ui/person-row";
 import { VisibilityNote } from "@ui/visibility-note";
 import { Building, Clock3, Users } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import {
   CHAT_DEMO_READER,
@@ -17,6 +18,7 @@ import {
   chatDemoPerson,
 } from "./data";
 import { DemoMute } from "./demo-mute";
+import { demoPdfHref } from "./demo-pdf";
 import { DemoPictures } from "./demo-pictures";
 
 type DetailsProps = {
@@ -31,7 +33,8 @@ type DetailsProps = {
  * tablet's sheet from the title (`inSheet`: a sheet's cards) and the
  * desktop's column. Its face and who sees it, mute (C3), and its people: a
  * group's members, or a private chat's other person with the way to their
- * profile; its latest pictures, newest first, and how long they are kept (C4).
+ * profile; its latest pictures and PDFs, newest first, and how long they are
+ * kept (C4, C5).
  */
 export function ChatDemoDetailsBody({
   chat,
@@ -40,6 +43,7 @@ export function ChatDemoDetailsBody({
   inSheet = false,
 }: DetailsProps & { inSheet?: boolean }) {
   const t = useTranslations("app.chat");
+  const format = useFormatter();
   const surface = inSheet ? "bg-elevated shadow-none" : undefined;
   const person =
     chat.kind === "direct" ? chatDemoPerson(chat.person ?? "") : null;
@@ -61,6 +65,32 @@ export function ChatDemoDetailsBody({
       caption: m.body,
       time: messageTime(m.at, CHAT_DEMO_ZONE),
     }));
+  const pdfs = chat.messages
+    .filter((m) => m.pdf && !m.removedBy)
+    .reverse()
+    .flatMap((m) => {
+      if (!m.pdf) return [];
+      const size = chatFileSize(m.pdf.size);
+      const value = format.number(size.value, { maximumFractionDigits: 1 });
+      return [
+        {
+          id: m.id,
+          name: m.pdf.name,
+          meta:
+            size.unit === "mb"
+              ? t.rich("pdf.sizeMb", { size: value, ltr })
+              : t.rich("pdf.sizeKb", { size: value, ltr }),
+          detail: t.rich("pdf.sent", {
+            name:
+              m.author === CHAT_DEMO_READER
+                ? t("pdf.me")
+                : (chatDemoPerson(m.author)?.name ?? ""),
+            time: messageTime(m.at, CHAT_DEMO_ZONE),
+            ltr,
+          }),
+        },
+      ];
+    });
   return (
     <>
       <Card
@@ -128,12 +158,25 @@ export function ChatDemoDetailsBody({
           ) : null}
         </PageSection>
       )}
-      <PageSection title={t("details.pictures")}>
-        {pictures.length > 0 ? (
-          <DemoPictures pictures={pictures} />
-        ) : (
-          <p className="px-1 text-ink-2">{t("details.noPictures")}</p>
-        )}
+      <PageSection title={t("details.files")}>
+        {pictures.length === 0 && pdfs.length === 0 ? (
+          <p className="px-1 text-ink-2">{t("details.noFiles")}</p>
+        ) : null}
+        {pictures.length > 0 ? <DemoPictures pictures={pictures} /> : null}
+        {pdfs.length > 0 ? (
+          <AttachmentList
+            className={surface}
+            files={pdfs.map((pdf) => ({
+              id: pdf.id,
+              name: pdf.name,
+              meta: pdf.meta,
+              detail: pdf.detail,
+              href: demoPdfHref("ConceptApp demo"),
+              saveAs: pdf.name,
+              label: t("pdf.download"),
+            }))}
+          />
+        ) : null}
         <p className="flex items-start gap-1.5 px-1 text-ink-2 text-sm">
           <Clock3 aria-hidden="true" className="mt-px size-4 shrink-0" />
           <span className="min-w-0">

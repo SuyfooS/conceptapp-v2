@@ -374,8 +374,13 @@
     "chatComposerAnnounce": "Management's composer in a group, with the switch for a message from management",
     "chatPicturesText": "Photos in chat: the thumbnail in a message, which opens whole in a sheet, a photo on its way, and a file no longer kept. The message itself stays.",
     "chatPictureSample": "This is how the kitchen looks now",
-    "chatAttachText": "The attach button opens the phone's photo picker, and its camera too. The chosen photo is made ready on the phone and shows over the field. In a demo business the button says nothing can be attached.",
-    "chatPictureSheet": "Open the photo whole"
+    "chatAttachText": "The attach button opens a sheet with a photo or a PDF. A chosen photo is made ready on the phone and shows over the field, and so does a PDF, with its name and size. In a demo business the button says nothing can be attached.",
+    "chatPictureSheet": "Open the photo whole",
+    "chatPdfText": "PDFs in chat: the file in a message, which opens once downloaded, a file on its way with how much of it went and a way to stop, a file that wasn't sent, and a file no longer kept. The message itself stays. In a conversation's details the files are in one card, a row for each.",
+    "chatPdfName": "Autumn menu 2026.pdf",
+    "chatPdfNameSecond": "Closing checklist.pdf",
+    "chatPdfCaption": "The new menu, please read it by tomorrow",
+    "chatAttachSheet": "Open the attach sheet"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -3432,7 +3437,9 @@
         "announcementsWaiting": "{count, plural, one {# waits for your confirmation} other {# wait for your confirmation}}",
         "announcementsAll": "Every message from management in your groups",
         "photo": "Photo",
-        "photoWith": "Photo · {caption}"
+        "photoWith": "Photo · {caption}",
+        "pdf": "PDF file",
+        "pdfWith": "PDF file · {caption}"
       },
       "newMessage": {
         "hint": "Only the two of you see a private chat",
@@ -3471,7 +3478,7 @@
         "olderCame": "Earlier messages loaded",
         "arrived": "New message from {name}: {text}",
         "arrivedMany": "{count, plural, one {# new message} other {# new messages}}",
-        "attach": "Attach a photo"
+        "attach": "Attach a photo or a file"
       },
       "message": {
         "own": "Your message",
@@ -3487,8 +3494,8 @@
         "alsoManagement": "Management sees this group too",
         "membersCount": "{count, plural, one {# person} other {# people}}",
         "profile": "{name}'s profile",
-        "pictures": "Latest photos",
-        "noPictures": "No photos in this chat yet"
+        "files": "Latest photos and files",
+        "noFiles": "No photos or files in this chat yet"
       },
       "viewing": "Chats and documents aren't shown while viewing",
       "notice": {
@@ -3613,6 +3620,44 @@
         "whenDay": "{day} · <ltr>{time}</ltr>",
         "sent": "sent at <ltr>{time}</ltr>",
         "sentDay": "sent {day} · <ltr>{time}</ltr>"
+      },
+      "attach": {
+        "title": "Attach to the message",
+        "close": "Close",
+        "photo": "Photo",
+        "photoHint": "From your pictures",
+        "pdf": "PDF file",
+        "pdfHint": "A document up to <ltr>{max}</ltr> MB, opened once downloaded"
+      },
+      "pdf": {
+        "download": "Download",
+        "own": "The file you sent",
+        "chosen": "The file you chose",
+        "ready": "The file is ready to send",
+        "remove": "Remove the file",
+        "unnamed": "PDF file",
+        "sizeKb": "<ltr>{size} KB</ltr> · PDF",
+        "sizeMb": "<ltr>{size} MB</ltr> · PDF",
+        "progress": "Uploading the file",
+        "preparing": "Getting it ready to send",
+        "uploading": "Uploading the file · <ltr>{percent}%</ltr>",
+        "checking": "Checking the file",
+        "cancel": "Stop sending",
+        "me": "Me",
+        "sent": "{name} · <ltr>{time}</ltr>",
+        "sentDay": "{name} · {day} · <ltr>{time}</ltr>"
+      },
+      "pdfFailure": {
+        "demo": "Files can't be attached in a demo business",
+        "noRoom": "There's no room for files right now. The message itself can still be sent",
+        "empty": "The file is empty. You can choose another one",
+        "tooBig": "The file is too large. You can send a PDF of up to <ltr>{max}</ltr> MB",
+        "notPdf": "That isn't a PDF, so it wasn't sent. You can choose another file",
+        "tooMany": "Too many files didn't finish sending in the last day. You can try again later",
+        "busy": "Many PDFs were sent here in the last few minutes. You can try again in a few minutes",
+        "notYet": "PDFs can't be sent here yet. The message itself can still be sent",
+        "failed": "The file wasn't sent. You can try again",
+        "cancelled": "Sending the file was stopped"
       }
     }
   },

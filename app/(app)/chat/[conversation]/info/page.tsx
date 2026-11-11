@@ -12,6 +12,7 @@ import {
   currentChatDepartments,
   currentChatDirectory,
   currentChatFiles,
+  currentChatPdfs,
   currentChatPictures,
 } from "../../chat";
 import { chatAccess } from "../../chat-access";
@@ -45,15 +46,18 @@ export default async function ConversationInfoPage({
   const view = await getConversation(businessId, conversation, access.userId);
   if (!view) notFound();
 
-  const [settings, directory, departments, files, latest] = await Promise.all([
-    currentModuleSettings("chat"),
-    currentChatDirectory(businessId),
-    currentChatDepartments(businessId),
-    currentChatFiles(businessId),
-    currentChatPictures(businessId, view.id),
-  ]);
-  // Its pictures, where the business takes them (C4).
+  const [settings, directory, departments, files, latest, latestPdfs] =
+    await Promise.all([
+      currentModuleSettings("chat"),
+      currentChatDirectory(businessId),
+      currentChatDepartments(businessId),
+      currentChatFiles(businessId),
+      currentChatPictures(businessId, view.id),
+      currentChatPdfs(businessId, view.id),
+    ]);
+  // Its pictures and PDFs, where the business takes them (C4, C5).
   const pictures = files === "yes" ? latest : [];
+  const pdfs = files === "yes" ? latestPdfs : [];
   const t = translator(wording, "app.chat");
   const people = chatPeople(directory, departments, wording);
   const other = view.otherPerson
@@ -97,6 +101,7 @@ export default async function ConversationInfoPage({
         demo={access.demo}
         files={files}
         pictures={pictures}
+        pdfs={pdfs}
         mute={muteChatAction.bind(null, businessId)}
         wording={wording}
       />

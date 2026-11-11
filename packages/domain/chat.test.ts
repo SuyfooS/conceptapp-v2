@@ -215,6 +215,7 @@ const row = (over: Partial<ChatInboxRow>): ChatInboxRow => ({
   lastKind: null,
   lastPreview: null,
   lastFileKind: null,
+  lastFileName: null,
   unread: 0,
   muted: false,
   closed: false,
@@ -272,6 +273,23 @@ describe("readChatInbox", () => {
         },
       ]),
     ).toEqual([row({ conversation: C, kind: "department" })]);
+  });
+
+  it("reads a PDF's name (C5), and none from a project before it", () => {
+    const base = {
+      conversation: A,
+      kind: "team",
+      unread: 0,
+      pinned_waiting: 0,
+    };
+    expect(
+      readChatInbox([
+        { ...base, last_file_kind: "pdf", last_file_name: "תפריט.pdf" },
+      ]),
+    ).toEqual([row({ lastFileKind: "pdf", lastFileName: "תפריט.pdf" })]);
+    expect(readChatInbox([{ ...base, last_file_kind: "pdf" }])).toEqual([
+      row({ lastFileKind: "pdf" }),
+    ]);
   });
 });
 

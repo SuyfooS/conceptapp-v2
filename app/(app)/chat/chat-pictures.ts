@@ -1,3 +1,4 @@
+import type { PdfWords } from "./chat-pdfs";
 import type { ChatImageFailure } from "./chat-types";
 
 /*
@@ -22,10 +23,11 @@ export type PictureWords =
   | "failed"
   | "unreadable";
 
-/** What the screen says over the field: a message's words, or a picture's. */
+/** What the screen says over the field: a message's words, a picture's, or a PDF's (C5). */
 export type ComposerNotice =
   | { of: "conversation"; key: "tooFast" | "businessChanged" }
-  | { of: "fileFailure"; key: PictureWords };
+  | { of: "fileFailure"; key: PictureWords }
+  | { of: "pdfFailure"; key: PdfWords };
 
 /**
  * What the screen does next with a picture the server refused (`next`):

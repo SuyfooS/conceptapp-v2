@@ -202,6 +202,7 @@ const row = (overrides: Partial<ChatInboxRow>): ChatInboxRow => ({
   lastKind: "text",
   lastPreview: "שלום",
   lastFileKind: null,
+  lastFileName: null,
   unread: 0,
   muted: false,
   closed: false,
@@ -285,6 +286,22 @@ describe("chatSyncAnswer", () => {
     };
     expect(chatSyncAnswer.parse(answer)).toEqual(answer);
     expect(chatSyncAnswer.parse({})).toEqual({});
+  });
+
+  it("reads a list row's PDF name, and none from a route before C5", () => {
+    const [listed] = chatListRows(
+      [row({ lastFileKind: "pdf", lastFileName: "תפריט.pdf" })],
+      directory,
+    );
+    expect(
+      chatSyncAnswer.parse({ inbox: { version: "v", rows: [listed] } }).inbox
+        ?.rows[0]?.lastFileName,
+    ).toBe("תפריט.pdf");
+    const { lastFileName: _left, ...before } = listed ?? {};
+    expect(
+      chatSyncAnswer.parse({ inbox: { version: "v", rows: [before] } }).inbox
+        ?.rows[0]?.lastFileName,
+    ).toBeNull();
   });
 
   it("refuses a message that isn't one", () => {

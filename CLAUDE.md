@@ -96,8 +96,11 @@ Only `app/` imports app code (`@/…`).
   PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay,
   BusinessList, BusinessSwitchRow, BusinessMenu and BusinessMark (business-switcher),
   and the chat's MessageBubble (an announcement, removed, its actions, a picture and a
-  file no longer kept: MessageImageView), DayDivider, Composer (with a switch, the attach
-  button and the chosen picture), PhotoSheet (a picture opened whole), ChatRow and
+  file no longer kept: MessageImageView, a PDF), DayDivider, Composer (with a switch, the attach
+  button and the chosen picture or PDF), AttachSheet (what the attach button opens: a picture
+  or a PDF), AttachmentChip (a file's name and size as a download, with its progress and
+  stop) and AttachmentList (files in one card, a row each), PhotoSheet (a picture opened
+  whole), ChatRow and
   ChatGroupMark, ChatHeader (with what stays under it), AnnouncementCard, NewBelow and
   ImmersiveScreen (hides the phone's tab bar; mock screens at `/design/chat`).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where

@@ -267,7 +267,16 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   sent through the server, served by `/chat-files` to the readers of their message only,
   kept `fileDays` (90) and, past a business's `fileSpaceMb` (100), the oldest first, by
   the `chat` job and `/cron/chat-files`; the message stays ("הקובץ כבר לא נשמר"). A demo
-  business takes none, and the console's storage card shows sizes only. Next: C5, PDFs.
+  business takes none, and the console's storage card shows sizes only. C5 is built too
+  (`20261111000600_chat_pdfs.sql`): PDFs up to 10 MB from the composer's attach sheet
+  ("תמונה", "קובץ PDF"; C7 adds the business's documents as its third row), put in Storage
+  by the browser itself through a signed upload for the one path the server reserved (no
+  Supabase client, no session; at most 10 unsent a day per person, a business's PDFs of
+  10 minutes within its space, and a place let go keeps a 1-byte tombstone so its signed
+  upload can't write there again), sent once the server
+  read their first KB (`isPdf`), and served by `/chat-files` as a download only
+  (`attachment`, the name in UTF-8 with an ASCII fallback). Next: C6, documents in the
+  database.
   A private chat has no branch
   for owners, managers, the team or a view session, anywhere: a change that adds one
   is refused (see "Never").

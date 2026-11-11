@@ -2,15 +2,28 @@ import { describe, expect, it } from "vitest";
 import {
   CHAT_FILE_NAME_MAX,
   CHAT_IMAGE_MAX_BYTES,
+  CHAT_PDF_ACCEPT,
+  CHAT_PDF_FALLBACK_NAME,
+  CHAT_PDF_HEAD_BYTES,
   CHAT_PDF_MAX_BYTES,
+  CHAT_PDF_TYPE,
+  CHAT_PDFS_WAITING_MAX,
   CHAT_THUMB_MAX_BYTES,
   CHAT_THUMB_PIXELS,
   CHAT_THUMB_STEPS,
+  chatFileKindOf,
   chatFilePath,
+  chatFileSize,
   chatFileSrc,
   chatImageTypeOf,
+  chatPdfCancelInput,
+  chatPdfDisposition,
+  chatPdfFinishInput,
+  chatPdfStartInput,
+  chatPlaceTombstone,
   chatThumbVerdict,
   checkChatImage,
+  checkChatPdf,
   checkChatThumb,
   cleanFileName,
   contentDisposition,
@@ -18,8 +31,13 @@ import {
   isChatFileName,
   isChatFilePath,
   isChatFileSrc,
+  isPdf,
+  isPdfName,
+  isPlaceTombstone,
   parseChatFilePath,
+  pickedPdfName,
   rfc5987,
+  shownFileName,
 } from "./chat-files";
 
 // Small files in the shapes the browser writes, built byte by byte as in
@@ -249,6 +267,19 @@ describe("chat file paths", () => {
   });
 });
 
+describe("shownFileName", () => {
+  it("leaves out the extension the line under it says, whatever its case", () => {
+    expect(shownFileName("תפריט סתיו 2026.pdf")).toBe("תפריט סתיו 2026");
+    expect(shownFileName("Payslip.PDF")).toBe("Payslip");
+  });
+
+  it("keeps a name that would be left with nothing, and any other dot", () => {
+    expect(shownFileName(".pdf")).toBe(".pdf");
+    expect(shownFileName("גרסה 1.2 סופית.pdf")).toBe("גרסה 1.2 סופית");
+    expect(shownFileName("notes.pdf.txt")).toBe("notes.pdf.txt");
+  });
+});
+
 describe("cleanFileName", () => {
   it("keeps a name as people write it, Hebrew included", () => {
     expect(cleanFileName("אישור מחלה.pdf")).toBe("אישור מחלה.pdf");
@@ -317,5 +348,275 @@ describe("contentDisposition", () => {
   it("encodes only what RFC 5987's attr-chars leave out", () => {
     expect(rfc5987("a-b_c.d~e!")).toBe("a-b_c.d~e!");
     expect(rfc5987("a b'c(d)*")).toBe("a%20b%27c%28d%29%2A");
+  });
+});
+
+describe("PDFs", () => {
+  const DRAFT = "0c000000-0000-4000-d000-000000000003";
+  const PERSON = "0d000000-0000-4000-a000-000000000004";
+
+  it("have the database's numbers", () => {
+    // public.reserve_chat_upload and private.attach_chat_upload: a PDF is
+    // application/pdf, at most 10 MiB; ten unsent from the last day each.
+    expect(CHAT_PDF_TYPE).toBe("application/pdf");
+    expect(CHAT_PDFS_WAITING_MAX).toBe(10);
+    expect(CHAT_PDF_HEAD_BYTES).toBe(1024);
+    expect(CHAT_PDF_FALLBACK_NAME).toMatch(/^[A-Za-z0-9._-]+\.pdf$/);
+  });
+
+  it("are told by their first bytes, at the very start", () => {
+    expect(isPdf(bytesOf("%PDF-1.7\n%âã"))).toBe(true);
+    expect(isPdf(bytesOf("%PDF-2.0"))).toBe(true);
+    expect(isPdf(bytesOf("%PDF-"))).toBe(false);
+    expect(isPdf(bytesOf("%PDF-x"))).toBe(false);
+    expect(isPdf(bytesOf(" %PDF-1.7"))).toBe(false);
+    expect(isPdf(bytesOf([0xef, 0xbb, 0xbf], "%PDF-1.7"))).toBe(false);
+    expect(isPdf(bytesOf("<html><body>%PDF-1.7"))).toBe(false);
+    expect(isPdf(bytesOf("%pdf-1.7"))).toBe(false);
+    expect(isPdf(new Uint8Array())).toBe(false);
+    expect(isPdf(webpOf(10, 10))).toBe(false);
+    expect(isPdf(jpegOf(10, 10))).toBe(false);
+  });
+
+  it("leave a tombstone of one byte at a place let go, which is never a PDF", () => {
+    const tombstone = chatPlaceTombstone();
+    expect(tombstone.length).toBe(1);
+    expect(isPlaceTombstone(tombstone)).toBe(true);
+    expect(isPdf(tombstone)).toBe(false);
+    // A new one each time: nothing written to one reaches the next.
+    tombstone[0] = 1;
+    expect(isPlaceTombstone(chatPlaceTombstone())).toBe(true);
+    expect(isPlaceTombstone(tombstone)).toBe(false);
+    expect(isPlaceTombstone(new Uint8Array())).toBe(false);
+    expect(isPlaceTombstone(bytesOf([0, 0]))).toBe(false);
+    expect(isPlaceTombstone(bytesOf("%PDF-1.7"))).toBe(false);
+  });
+
+  it("are a name ending in .pdf, of 1 byte to 10 MiB", () => {
+    expect(checkChatPdf({ name: "תפריט 2026.pdf", size: 6_000_000 })).toEqual({
+      ok: true,
+      name: "תפריט 2026.pdf",
+      size: 6_000_000,
+    });
+    expect(
+      checkChatPdf({ name: "Menu.PDF", size: CHAT_PDF_MAX_BYTES }),
+    ).toEqual({ ok: true, name: "Menu.PDF", size: CHAT_PDF_MAX_BYTES });
+    expect(
+      checkChatPdf({ name: "a.pdf", size: CHAT_PDF_MAX_BYTES + 1 }),
+    ).toEqual({ ok: false, problem: "tooBig" });
+    expect(checkChatPdf({ name: "a.pdf", size: 0 })).toEqual({
+      ok: false,
+      problem: "empty",
+    });
+    for (const size of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(checkChatPdf({ name: "a.pdf", size })).toEqual({
+        ok: false,
+        problem: "notPdf",
+      });
+    }
+    for (const name of [
+      "menu.docx",
+      "menu.pdf.html",
+      "menu",
+      "",
+      RLO,
+      ".pdf",
+    ]) {
+      expect(checkChatPdf({ name, size: 10 })).toEqual({
+        ok: false,
+        problem: "notPdf",
+      });
+    }
+  });
+
+  it("keep their name cleaned, never a direction mark that turns it around", () => {
+    const check = checkChatPdf({ name: `invoice${RLO}fdp.exe`, size: 10 });
+    expect(check.ok).toBe(false);
+    const turned = checkChatPdf({ name: `menu${RLM}\r\n"x".pdf`, size: 10 });
+    expect(turned).toEqual({ ok: true, name: "menu x .pdf", size: 10 });
+    expect(isPdfName("a.Pdf")).toBe(true);
+    expect(isPdfName("a.pdf ")).toBe(false);
+  });
+
+  it("are a kind of file of their own, by extension", () => {
+    expect(chatFileKindOf("pdf")).toBe("pdf");
+    expect(chatFileKindOf("webp")).toBe("image");
+    expect(chatFileKindOf("jpg")).toBe("image");
+    const path = chatFilePath(BUSINESS, CONVERSATION, KEY, "pdf");
+    expect(parseChatFilePath(path)).toEqual({
+      businessId: BUSINESS,
+      conversationId: CONVERSATION,
+      key: KEY,
+      thumb: false,
+      extension: "pdf",
+    });
+    expect(chatFileSrc(path)).toBe(`/chat-files/${path}`);
+  });
+
+  it("go out as a download, named in UTF-8 with an ASCII fallback", () => {
+    expect(chatPdfDisposition("אישור מחלה.pdf")).toBe(
+      `attachment; filename="document.pdf"; filename*=UTF-8''${encodeURIComponent("אישור מחלה.pdf")}`,
+    );
+    expect(chatPdfDisposition(null)).toBe(
+      'attachment; filename="document.pdf"',
+    );
+    expect(chatPdfDisposition("")).toBe('attachment; filename="document.pdf"');
+    // A name kept before the extension rule still downloads as a PDF.
+    expect(chatPdfDisposition("menu")).toBe(
+      `attachment; filename="document.pdf"; filename*=UTF-8''menu.pdf`,
+    );
+  });
+
+  it("let no quote, CR, LF or direction mark reach the header, which stays ASCII", () => {
+    const evil = [
+      'x"; filename="evil.html\r\nSet-Cookie: a=b.pdf',
+      `${RLO}fdp.exe.pdf`,
+      `a${LRM}${RLM}${RLO}b.pdf`,
+      "a\u0000b\u0085c d e⁦f⁩g﻿h.pdf",
+      `${"א".repeat(300)}.pdf`,
+      "..../etc/passwd.pdf",
+    ];
+    for (const name of evil) {
+      const header = chatPdfDisposition(name);
+      expect(header).toMatch(/^[\x20-\x7e]+$/);
+      expect(header.split('"').length).toBe(3);
+      expect(header).not.toMatch(/[\r\n]/);
+      expect(
+        header.startsWith('attachment; filename="document.pdf"; filename*='),
+      ).toBe(true);
+      const encoded = header.split("filename*=UTF-8''")[1] ?? "";
+      expect(encoded).toMatch(/^[A-Za-z0-9!#$&+.^_`|~%-]+$/);
+      const decoded = decodeURIComponent(encoded);
+      for (const unsafe of ['"', "\r", "\n", "/", "\\", LRM, RLM, RLO]) {
+        expect(decoded).not.toContain(unsafe);
+      }
+      expect(decoded.endsWith(".pdf")).toBe(true);
+      expect([...decoded].length).toBeLessThanOrEqual(CHAT_FILE_NAME_MAX);
+    }
+  });
+
+  it("are asked for with a draft, a name, a size and where, never as an announcement", () => {
+    expect(
+      chatPdfStartInput.parse({
+        draft: DRAFT.toUpperCase(),
+        name: "menu.pdf",
+        size: 10,
+        conversation: CONVERSATION,
+      }),
+    ).toEqual({
+      draft: DRAFT,
+      name: "menu.pdf",
+      size: 10,
+      conversation: CONVERSATION,
+    });
+    expect(
+      chatPdfStartInput.safeParse({
+        draft: DRAFT,
+        name: "menu.pdf",
+        size: 10,
+        toPerson: PERSON,
+      }).success,
+    ).toBe(true);
+    for (const wrong of [
+      { draft: DRAFT, name: "menu.pdf", size: 10 },
+      {
+        draft: DRAFT,
+        name: "menu.pdf",
+        size: 10,
+        conversation: CONVERSATION,
+        toPerson: PERSON,
+      },
+      {
+        draft: DRAFT,
+        name: "menu.pdf",
+        size: 10,
+        conversation: CONVERSATION,
+        announce: true,
+      },
+      { draft: "nope", name: "menu.pdf", size: 10, conversation: CONVERSATION },
+      { draft: DRAFT, name: "menu.pdf", size: 1.5, conversation: CONVERSATION },
+      {
+        draft: DRAFT,
+        name: "x".repeat(1001),
+        size: 1,
+        conversation: CONVERSATION,
+      },
+    ]) {
+      expect(chatPdfStartInput.safeParse(wrong).success).toBe(false);
+    }
+  });
+
+  it("are finished, or stopped, by their place", () => {
+    const upload = "0e000000-0000-4000-e000-000000000005";
+    expect(chatPdfFinishInput.parse({ upload, draft: DRAFT })).toEqual({
+      upload,
+      draft: DRAFT,
+    });
+    expect(
+      chatPdfFinishInput.parse({ upload, draft: DRAFT, words: "התפריט החדש" }),
+    ).toEqual({ upload, draft: DRAFT, words: "התפריט החדש" });
+    expect(
+      chatPdfFinishInput.safeParse({ upload, draft: DRAFT, path: "a/b.pdf" })
+        .success,
+    ).toBe(false);
+    expect(
+      chatPdfFinishInput.safeParse({ upload: "x", draft: DRAFT }).success,
+    ).toBe(false);
+    expect(chatPdfCancelInput.parse({ upload: upload.toUpperCase() })).toEqual({
+      upload,
+    });
+  });
+});
+
+describe("a picked PDF", () => {
+  it("keeps its name, and gets .pdf where the picker left it out", () => {
+    expect(pickedPdfName({ name: "תפריט.pdf", type: CHAT_PDF_TYPE })).toBe(
+      "תפריט.pdf",
+    );
+    expect(pickedPdfName({ name: "Menu.PDF", type: "" })).toBe("Menu.PDF");
+    expect(pickedPdfName({ name: "תפריט", type: CHAT_PDF_TYPE })).toBe(
+      "תפריט.pdf",
+    );
+    expect(pickedPdfName({ name: "scan.", type: CHAT_PDF_TYPE })).toBe(
+      "scan.pdf",
+    );
+    expect(pickedPdfName({ name: "  ", type: CHAT_PDF_TYPE })).toBe(
+      CHAT_PDF_FALLBACK_NAME,
+    );
+    // Anything else keeps its name, which checkChatPdf refuses.
+    expect(pickedPdfName({ name: "notes.docx", type: "" })).toBe("notes.docx");
+    expect(
+      checkChatPdf({
+        name: pickedPdfName({ name: "notes.docx", type: "" }),
+        size: 10,
+      }),
+    ).toEqual({ ok: false, problem: "notPdf" });
+    expect(CHAT_PDF_ACCEPT.split(",")).toEqual([CHAT_PDF_TYPE, ".pdf"]);
+  });
+});
+
+describe("chatFileSize", () => {
+  it("says kilobytes below a megabyte, never 0", () => {
+    expect(chatFileSize(0)).toEqual({ unit: "kb", value: 1 });
+    expect(chatFileSize(1)).toEqual({ unit: "kb", value: 1 });
+    expect(chatFileSize(1024)).toEqual({ unit: "kb", value: 1 });
+    expect(chatFileSize(1025)).toEqual({ unit: "kb", value: 2 });
+    expect(chatFileSize(340 * 1024)).toEqual({ unit: "kb", value: 340 });
+    expect(chatFileSize(1024 * 1024 - 1)).toEqual({ unit: "kb", value: 1024 });
+  });
+
+  it("says megabytes to a tenth, rounded up, so the limit reads 10", () => {
+    expect(chatFileSize(1024 * 1024)).toEqual({ unit: "mb", value: 1 });
+    expect(chatFileSize(2.4 * 1024 * 1024)).toEqual({ unit: "mb", value: 2.4 });
+    expect(chatFileSize(2.41 * 1024 * 1024)).toEqual({
+      unit: "mb",
+      value: 2.5,
+    });
+    expect(chatFileSize(CHAT_PDF_MAX_BYTES)).toEqual({ unit: "mb", value: 10 });
+    expect(chatFileSize(CHAT_PDF_MAX_BYTES - 1)).toEqual({
+      unit: "mb",
+      value: 10,
+    });
+    expect(chatFileSize(Number.NaN)).toEqual({ unit: "kb", value: 1 });
   });
 });

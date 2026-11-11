@@ -1,7 +1,7 @@
 "use client";
 
 import { checkMessage } from "@domain/chat";
-import { ImagePlus, Lock, SendHorizontal, X } from "lucide-react";
+import { ImagePlus, Lock, Paperclip, SendHorizontal, X } from "lucide-react";
 import Image from "next/image";
 import {
   type FormEvent,
@@ -15,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AttachmentChip } from "./attachment-chip";
 import { Button } from "./button";
 import { cn } from "./cn";
 import { IconButton } from "./icon-button";
@@ -22,13 +23,15 @@ import { Spinner } from "./spinner";
 import { Switch } from "./switch";
 
 /**
- * The attach button (chat C4): the phone's picture picker, which offers its
- * camera too; or, where nothing can be attached (a demo business), the
- * button says why when pressed, and the picker never opens.
+ * The attach button: the phone's picture picker, which offers its camera too
+ * (C4); what it opens instead, such as the AttachSheet with a picture and a
+ * PDF (C5: `onOpen`, given the button for the focus once that closes); or,
+ * where nothing can be attached (a demo business), the button says why when
+ * pressed, and nothing opens.
  */
 export type ComposerAttach =
   | {
-      /** Its name and tooltip ("צירוף תמונה"). */
+      /** Its name and tooltip ("צירוף תמונה או קובץ"). */
       label: string;
       /** What the picker offers (`PICKED_PHOTO_ACCEPT` in @ui/photo-encode). */
       accept: string;
@@ -36,23 +39,46 @@ export type ComposerAttach =
     }
   | {
       label: string;
+      /** Opens what to attach (the AttachSheet), from this button. */
+      onOpen: (trigger: HTMLElement) => void;
+    }
+  | {
+      label: string;
       /** Why nothing can be attached here ("בעסק הדגמה אי אפשר לצרף קבצים"). */
       refused: ReactNode;
     };
 
-/** A picture chosen to go with the next message, over the field. */
-export type ComposerAttached = {
-  /** Its preview (a data URL, `photoDataUrl`), or null while it is made ready. */
-  src: string | null;
-  /** What it is, for those who don't see it. */
-  alt: string;
-  /** Said while it is made ready ("מכינים את התמונה"). */
-  busyLabel: string;
-  /** Told to screen readers once it is ready ("התמונה מוכנה לשליחה"). */
-  readyLabel: string;
-  /** "הסרת התמונה": it doesn't go. */
-  remove: { label: string; onRemove: () => void };
-};
+/**
+ * What goes with the next message, over the field, with the way to take it
+ * out: a picture (C4), or a file (C5, a PDF: its name and size).
+ */
+export type ComposerAttached =
+  | {
+      kind?: "picture";
+      /** Its preview (a data URL, `photoDataUrl`), or null while it is made ready. */
+      src: string | null;
+      /** What it is, for those who don't see it. */
+      alt: string;
+      /** Said while it is made ready ("מכינים את התמונה"). */
+      busyLabel: string;
+      /** Told to screen readers once it is ready ("התמונה מוכנה לשליחה"). */
+      readyLabel: string;
+      /** "הסרת התמונה": it doesn't go. */
+      remove: { label: string; onRemove: () => void };
+    }
+  | {
+      kind: "file";
+      /** Its name, as it goes. */
+      name: string;
+      /** Its size and kind ("2.4 MB · PDF"). */
+      meta: ReactNode;
+      /** What it is, heard before its name ("הקובץ שבחרת"). */
+      label: string;
+      /** Told to screen readers once it is chosen ("הקובץ מוכן לשליחה"). */
+      readyLabel: string;
+      /** "הסרת הקובץ": it doesn't go. */
+      remove: { label: string; onRemove: () => void };
+    };
 
 export type ComposerProps = {
   /** The field's name, also its placeholder ("כתיבת הודעה"). */
@@ -96,8 +122,9 @@ export type ComposerProps = {
   /** The attach button at the field's start (C4), or none. */
   attach?: ComposerAttach | null;
   /**
-   * The picture that goes with the next message: over the field, with a way
-   * to take it out. What is typed is its caption, and may stay empty.
+   * The picture or file that goes with the next message: over the field,
+   * with a way to take it out. What is typed is its caption, and may stay
+   * empty.
    */
   attached?: ComposerAttached | null;
   /** The field, for a screen that moves the keyboard to it. */
@@ -128,9 +155,10 @@ const FINE_POINTER = "(pointer: fine)";
  * phone's keyboard stays open between messages; pressed from the keyboard, it
  * gives the focus back to the field, as it goes off once the field empties.
  * On desktop a soft fade under it, where the messages pass, as the tab bar's
- * has on phones and tablets. The attach button (C4) opens the phone's
- * picture picker; a chosen picture shows over the field until it goes with
- * the next message, whose words are then its caption and may be left out.
+ * has on phones and tablets. The attach button opens the phone's picture
+ * picker (C4) or the attach sheet (C5); a chosen picture, or a PDF with its
+ * name and size, shows over the field until it goes with the next message,
+ * whose words are then its caption and may be left out.
  * Screen readers hear it being made ready, and that it is ready, from a live
  * region that is always there (one that came with its words would be missed).
  */
@@ -171,8 +199,11 @@ export function Composer({
   const checked = checkMessage(value);
   const over = !checked.ok && checked.reason === "tooLong";
   // A picture goes with words or without them, once it is ready: until
-  // then sending waits, so its caption never goes without it.
-  const withPicture = Boolean(attached?.src);
+  // then sending waits, so its caption never goes without it. A file is
+  // ready once chosen.
+  const withPicture = attached
+    ? attached.kind === "file" || Boolean(attached.src)
+    : false;
   const preparing = Boolean(attached) && !withPicture;
   const sendable =
     !preparing &&
@@ -259,7 +290,7 @@ export function Composer({
   const refused = attach && "refused" in attach ? attach.refused : null;
   const said = Boolean(notice) || over || (refusedSaid && refused !== null);
   const pictureSaid = attached
-    ? attached.src
+    ? attached.kind === "file" || attached.src
       ? attached.readyLabel
       : attached.busyLabel
     : null;
@@ -312,7 +343,24 @@ export function Composer({
             </div>
           ) : null}
         </div>
-        {attached ? (
+        {attached?.kind === "file" ? (
+          <div className="flex items-start gap-2 px-1.5 pt-1.5">
+            <AttachmentChip
+              name={attached.name}
+              meta={attached.meta}
+              href={null}
+              label={attached.label}
+              className="flex-1"
+            />
+            <IconButton
+              label={attached.remove.label}
+              icon={<X />}
+              variant="secondary"
+              onClick={attached.remove.onRemove}
+              className="self-center"
+            />
+          </div>
+        ) : attached ? (
           <div className="flex items-start gap-2 px-1.5 pt-1.5">
             <span className="relative grid size-24 shrink-0 place-items-center overflow-hidden rounded-control bg-surface-2">
               {attached.src ? (
@@ -369,13 +417,16 @@ export function Composer({
               ) : null}
               <IconButton
                 label={attach.label}
-                icon={<ImagePlus />}
+                icon={"onPick" in attach ? <ImagePlus /> : <Paperclip />}
+                aria-haspopup={"onOpen" in attach ? "dialog" : undefined}
                 aria-describedby={
                   said ? linesId : refused !== null ? refusedId : undefined
                 }
-                onClick={() => {
+                onClick={(event) => {
                   if ("onPick" in attach) picker.current?.click();
-                  else setRefusedSaid(true);
+                  else if ("onOpen" in attach) {
+                    attach.onOpen(event.currentTarget);
+                  } else setRefusedSaid(true);
                 }}
                 className="text-ink-2"
               />

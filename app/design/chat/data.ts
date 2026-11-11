@@ -61,6 +61,8 @@ export type ChatDemoMessage = {
   photo?: string;
   /** Its picture is no longer kept (its days or the business's space took it). */
   fileGone?: boolean;
+  /** A PDF sent with it (C5): its name and size, as a stored one would show. */
+  pdf?: { name: string; size: number };
 };
 
 /** A group's pinned announcement (C3): which message, and who confirmed it when. */
@@ -208,6 +210,10 @@ export const chatDemoConversations: ChatDemoConversation[] = [
         "07:52",
         "הזמנתי טכנאי, הוא מגיע בצהריים. הפרטים כאן: https://www.example.com/service",
       ),
+      {
+        ...said("omer", CHAT_DEMO_TODAY, "07:58", null),
+        pdf: { name: "תפריט סתיו 2026.pdf", size: 2_516_582 },
+      },
     ],
     reply: { author: "itay", body: "תודה שירן" },
   },
@@ -303,6 +309,12 @@ export const chatDemoEarlierAnnouncement = {
 
 /** What Shiran tried to send in `?state=failed`, when the network let her down. */
 export const chatDemoFailed = "אחזור אלייך עד הצהריים";
+
+/**
+ * The PDF Shiran is sending in `?state=uploading` (part of it up) and
+ * `?state=pdfFailed` (it didn't go), C5.
+ */
+export const chatDemoUpload = { name: "הזמנה לספק.pdf", size: 1_363_149 };
 
 /**
  * A conversation of the demo, or a private chat with someone on the team

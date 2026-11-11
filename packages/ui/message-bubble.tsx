@@ -4,14 +4,25 @@ import {
   CheckCheck,
   Clock3,
   Ellipsis,
+  FileX2,
   Megaphone,
   RotateCcw,
 } from "lucide-react";
 import type { MouseEvent } from "react";
+import { AttachmentChip, type AttachmentChipProps } from "./attachment-chip";
 import { cn } from "./cn";
 import { type MessageImage, MessageImageView } from "./message-image";
 
 export type { MessageImage } from "./message-image";
+
+/**
+ * A message's file (chat C5, a PDF): its chip, a download once the server has
+ * it (`href`), on its way with how far it went; or the line saying it is no
+ * longer kept ("הקובץ כבר לא נשמר"), where the message stays.
+ */
+export type MessageFile =
+  | ({ kind: "shown" } & Omit<AttachmentChipProps, "className">)
+  | { kind: "gone"; label: string };
 
 /**
  * What a message shows. Each kind is one case here and in `Body`, so a new
@@ -36,6 +47,17 @@ export type MessageContent =
   | {
       kind: "image";
       image: MessageImage;
+      body: string | null;
+      label?: string;
+    }
+  /**
+   * A PDF (C5), with what was written with it, if anything: its name and
+   * size as a download, which the phone opens in its own viewer, or the line
+   * saying its file is no longer kept. A removed one is `removed`.
+   */
+  | {
+      kind: "pdf";
+      file: MessageFile;
       body: string | null;
       label?: string;
     };
@@ -79,7 +101,8 @@ export type MessageBubbleProps = {
    * below 1280px, and on any touch screen, a tap on the message itself opens
    * them too, but not on a link in it or while text is selected. A picture's
    * message (C4) shows the button below 1280px too: a tap on the picture
-   * opens the picture, and the rest of the bubble is too small a place.
+   * opens the picture, and the rest of the bubble is too small a place; so
+   * does a PDF's (C5), whose chip is its download.
    */
   actions?: { label: string; onOpen: (trigger: HTMLElement) => void } | null;
   /**
@@ -119,8 +142,11 @@ export function MessageBubble({
   const closes = run === "single" || run === "last";
   const removed = content.kind === "removed";
   const named = author && !own && author.shown;
-  // The picture takes the tap: its message's actions keep a button of their own.
-  const picture = content.kind === "image" && content.image.kind === "shown";
+  // The picture, or the file's download, takes the tap: its message's
+  // actions keep a button of their own.
+  const picture =
+    (content.kind === "image" && content.image.kind === "shown") ||
+    (content.kind === "pdf" && content.file.kind === "shown");
 
   function onTap(event: MouseEvent<HTMLDivElement>) {
     if (!actions || !window.matchMedia(TAP_OPENS).matches) return;
@@ -176,7 +202,7 @@ export function MessageBubble({
               {author.name}
             </span>
           ) : null}
-          <Body content={content} />
+          <Body content={content} own={own} />
           <span
             className={cn(
               "flex items-center gap-1 self-end text-sm",
@@ -280,7 +306,30 @@ export function MessageText({
   );
 }
 
-function Body({ content }: { content: MessageContent }) {
+/** A message's file: its chip, on a fill that stands off the bubble's own. */
+function FileView({ file, own }: { file: MessageFile; own: boolean }) {
+  if (file.kind === "gone") {
+    return (
+      <p className="flex items-center gap-1.5 text-ink-2">
+        <FileX2 aria-hidden="true" className="size-4 shrink-0" />
+        {file.label}
+      </p>
+    );
+  }
+  const { kind: _shown, ...chip } = file;
+  // The span stretches across the bubble, 6px into its padding on both
+  // sides, as a picture does; the chip's own width sizes the bubble.
+  return (
+    <span className="-mx-1.5 block pt-0.5">
+      <AttachmentChip
+        {...chip}
+        className={cn(own ? "bg-surface" : "bg-surface-2", "w-72 max-w-full")}
+      />
+    </span>
+  );
+}
+
+function Body({ content, own }: { content: MessageContent; own: boolean }) {
   switch (content.kind) {
     case "text":
       return <MessageText body={content.body} />;
@@ -317,6 +366,19 @@ function Body({ content }: { content: MessageContent }) {
           >
             <MessageImageView image={content.image} />
           </span>
+          {content.body ? <MessageText body={content.body} /> : null}
+        </>
+      );
+    case "pdf":
+      return (
+        <>
+          {content.label ? (
+            <span className="flex items-center gap-1.5 font-semibold text-ink text-sm">
+              <Megaphone aria-hidden="true" className="size-4 shrink-0" />
+              {content.label}
+            </span>
+          ) : null}
+          <FileView file={content.file} own={own} />
           {content.body ? <MessageText body={content.body} /> : null}
         </>
       );

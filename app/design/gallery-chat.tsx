@@ -2,7 +2,14 @@
 
 import { CHAT_MESSAGE_MAX, chatPreview } from "@domain/chat";
 import { UNDO_SHOWN_MS } from "@domain/chat-announce";
+import {
+  CHAT_PDF_ACCEPT,
+  CHAT_PDF_MAX_BYTES,
+  chatFileSize,
+} from "@domain/chat-files";
 import { AnnouncementCard } from "@ui/announcement-card";
+import { AttachSheet } from "@ui/attach-sheet";
+import { AttachmentList } from "@ui/attachment-chip";
 import { Avatar } from "@ui/avatar";
 import { Button } from "@ui/button";
 import { ChatHeader } from "@ui/chat-header";
@@ -16,10 +23,18 @@ import { PICKED_PHOTO_ACCEPT } from "@ui/photo-encode";
 import { PhotoSheet } from "@ui/photo-sheet";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
-import { Building, Copy, Trash2, Users } from "lucide-react";
+import {
+  Building,
+  Copy,
+  FileText,
+  ImageIcon,
+  Trash2,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
+import { demoPdfHref } from "./chat/demo-pdf";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
@@ -236,6 +251,7 @@ export function GalleryChat() {
       />
       <GalleryAnnouncements />
       <GalleryPictures />
+      <GalleryPdfs />
       <p className="text-ink-2">{t("chatImmersive")}</p>
       <Button asChild variant="secondary" className="w-full">
         <Link href="/design/chat">{t("chatDemo")}</Link>
@@ -244,18 +260,22 @@ export function GalleryChat() {
   );
 }
 
+/** A PDF's limit in MB, as the words say it. */
+const PDF_MB = CHAT_PDF_MAX_BYTES / (1024 * 1024);
+
 /**
  * The chat's parts of C4: a picture in a message, which opens whole in a
  * sheet; one on its way; one whose file is no longer kept; the composer's
- * attach button with a picture chosen, and as a demo business has it. Nothing
- * is picked or stored here: the demo at /design/chat makes a picked photo
- * ready as the app does.
+ * attach button, which opens the attach sheet (C5), with a picture chosen,
+ * and as a demo business has it. Nothing is stored here: the demo at
+ * /design/chat makes a picked photo ready as the app does.
  */
 function GalleryPictures() {
   const t = useTranslations("design");
   const tc = useTranslations("app.chat");
   const [open, setOpen] = useState(false);
   const [chosen, setChosen] = useState(true);
+  const [sheet, setSheet] = useState(false);
   const [draft, setDraft] = useState(t("chatPictureSample"));
   const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
   const alt = tc("image.alt", { name: t("person1") });
@@ -351,8 +371,7 @@ function GalleryPictures() {
         tooLong={tooLong}
         attach={{
           label: tc("conversation.attach"),
-          accept: PICKED_PHOTO_ACCEPT,
-          onPick: () => setChosen(true),
+          onOpen: () => setSheet(true),
         }}
         attached={
           chosen
@@ -369,6 +388,30 @@ function GalleryPictures() {
             : null
         }
       />
+      <AttachSheet
+        open={sheet}
+        onOpenChange={setSheet}
+        title={tc("attach.title")}
+        closeLabel={tc("attach.close")}
+        choices={[
+          {
+            key: "photo",
+            icon: <ImageIcon />,
+            title: tc("attach.photo"),
+            hint: tc("attach.photoHint"),
+            accept: PICKED_PHOTO_ACCEPT,
+            onPick: () => setChosen(true),
+          },
+          {
+            key: "pdf",
+            icon: <FileText />,
+            title: tc("attach.pdf"),
+            hint: tc.rich("attach.pdfHint", { max: PDF_MB, ltr }),
+            accept: CHAT_PDF_ACCEPT,
+            onPick: () => setChosen(false),
+          },
+        ]}
+      />
       <Composer
         floating={false}
         label={tc("conversation.placeholder")}
@@ -380,6 +423,235 @@ function GalleryPictures() {
         attach={{
           label: tc("conversation.attach"),
           refused: tc("fileFailure.demo"),
+        }}
+      />
+    </div>
+  );
+}
+
+/**
+ * The chat's parts of C5: a PDF in a message, its name and size as a
+ * download that opens outside the app (AttachmentChip); one on its way up,
+ * with its bar and the way to stop it; one that didn't go, with its retry and
+ * what the field says; one no longer kept; a conversation's files in its
+ * details, one card a row each (AttachmentList); the attach sheet the
+ * composer opens; and the composer with a PDF chosen. Nothing is uploaded
+ * here: the demo at /design/chat sends a picked PDF as the app does, without
+ * Storage.
+ */
+function GalleryPdfs() {
+  const t = useTranslations("design");
+  const tc = useTranslations("app.chat");
+  const format = useFormatter();
+  const [sheet, setSheet] = useState(false);
+  const [chosen, setChosen] = useState(true);
+  const [going, setGoing] = useState(true);
+  const [draft, setDraft] = useState("");
+  const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+  const tooLong = tc.rich("conversation.tooLong", {
+    max: CHAT_MESSAGE_MAX,
+    ltr,
+  });
+  const meta = (bytes: number) => {
+    const size = chatFileSize(bytes);
+    const value = format.number(size.value, { maximumFractionDigits: 1 });
+    return size.unit === "mb"
+      ? tc.rich("pdf.sizeMb", { size: value, ltr })
+      : tc.rich("pdf.sizeKb", { size: value, ltr });
+  };
+  const name = t("chatPdfName");
+  const href = demoPdfHref("ConceptApp demo");
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-ink-2">{t("chatPdfText")}</p>
+      <div>
+        <MessageBubble
+          own={false}
+          author={{ name: t("person2"), shown: true }}
+          content={{
+            kind: "pdf",
+            body: t("chatPdfCaption"),
+            file: {
+              kind: "shown",
+              name,
+              meta: meta(2_516_582),
+              href,
+              saveAs: name,
+              label: tc("pdf.download"),
+            },
+          }}
+          time={{ label: "07:58", at: at(TODAY, "07:58") }}
+          actions={{ label: tc("messageActions.open"), onOpen: () => {} }}
+        />
+        {going ? (
+          <MessageBubble
+            own
+            author={{ name: tc("message.own"), shown: false }}
+            content={{
+              kind: "pdf",
+              body: null,
+              file: {
+                kind: "shown",
+                name,
+                meta: meta(1_363_149),
+                href: null,
+                label: tc("pdf.own"),
+                progress: {
+                  value: 0.45,
+                  label: tc("pdf.progress"),
+                  text: tc.rich("pdf.uploading", { percent: 45, ltr }),
+                },
+                cancel: {
+                  label: tc("pdf.cancel"),
+                  onCancel: () => setGoing(false),
+                },
+              },
+            }}
+            time={{ label: "08:12", at: at(TODAY, "08:12") }}
+            status={{ kind: "sending", label: tc("conversation.sending") }}
+          />
+        ) : null}
+        <MessageBubble
+          own
+          author={{ name: tc("message.own"), shown: false }}
+          content={{
+            kind: "pdf",
+            body: t("chatSample6"),
+            file: {
+              kind: "shown",
+              name,
+              meta: meta(340 * 1024),
+              href: null,
+              label: tc("pdf.own"),
+              cancel: { label: tc("pdf.cancel"), onCancel: () => {} },
+            },
+          }}
+          time={{ label: "08:13", at: at(TODAY, "08:13") }}
+          status={{
+            kind: "failed",
+            label: tc("conversation.failed"),
+            onRetry: () => {},
+          }}
+        />
+        <MessageBubble
+          own={false}
+          author={{ name: t("person3"), shown: true }}
+          content={{
+            kind: "pdf",
+            body: null,
+            file: { kind: "gone", label: tc("message.fileGone") },
+          }}
+          time={{ label: "18:20", at: at(YESTERDAY, "18:20") }}
+        />
+      </div>
+      <AttachmentList
+        files={[
+          {
+            id: "menu",
+            name,
+            meta: meta(2_516_582),
+            detail: tc.rich("pdf.sentDay", {
+              name: t("person2"),
+              day: tc("day.yesterday"),
+              time: "07:58",
+              ltr,
+            }),
+            href,
+            saveAs: name,
+            label: tc("pdf.download"),
+          },
+          {
+            id: "closing",
+            name: t("chatPdfNameSecond"),
+            meta: meta(184 * 1024),
+            detail: tc.rich("pdf.sentDay", {
+              name: tc("pdf.me"),
+              day: tc("day.yesterday"),
+              time: "06:40",
+              ltr,
+            }),
+            href,
+            saveAs: t("chatPdfNameSecond"),
+            label: tc("pdf.download"),
+          },
+        ]}
+      />
+      <Button
+        variant="secondary"
+        aria-haspopup="dialog"
+        onClick={() => setSheet(true)}
+        className="self-start"
+      >
+        {t("chatAttachSheet")}
+      </Button>
+      <AttachSheet
+        open={sheet}
+        onOpenChange={setSheet}
+        title={tc("attach.title")}
+        closeLabel={tc("attach.close")}
+        choices={[
+          {
+            key: "photo",
+            icon: <ImageIcon />,
+            title: tc("attach.photo"),
+            hint: tc("attach.photoHint"),
+            accept: PICKED_PHOTO_ACCEPT,
+            onPick: () => setChosen(false),
+          },
+          {
+            key: "pdf",
+            icon: <FileText />,
+            title: tc("attach.pdf"),
+            hint: tc.rich("attach.pdfHint", { max: PDF_MB, ltr }),
+            accept: CHAT_PDF_ACCEPT,
+            onPick: () => setChosen(true),
+          },
+        ]}
+      />
+      <Composer
+        floating={false}
+        label={tc("conversation.placeholder")}
+        sendLabel={tc("conversation.send")}
+        value={draft}
+        onValueChange={setDraft}
+        onSend={() => {
+          setDraft("");
+          setChosen(false);
+        }}
+        tooLong={tooLong}
+        attach={{
+          label: tc("conversation.attach"),
+          onOpen: () => setSheet(true),
+        }}
+        attached={
+          chosen
+            ? {
+                kind: "file",
+                name,
+                meta: meta(2_516_582),
+                label: tc("pdf.chosen"),
+                readyLabel: tc("pdf.ready"),
+                remove: {
+                  label: tc("pdf.remove"),
+                  onRemove: () => setChosen(false),
+                },
+              }
+            : null
+        }
+      />
+      <Composer
+        floating={false}
+        label={tc("conversation.placeholder")}
+        sendLabel={tc("conversation.send")}
+        value=""
+        onValueChange={() => {}}
+        onSend={() => {}}
+        notice={tc.rich("pdfFailure.tooBig", { max: PDF_MB, ltr })}
+        tooLong={tooLong}
+        attach={{
+          label: tc("conversation.attach"),
+          onOpen: () => setSheet(true),
         }}
       />
     </div>

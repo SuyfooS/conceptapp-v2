@@ -7,8 +7,10 @@ import {
   getWaitingAnnouncements,
 } from "@db/chat";
 import {
+  type ChatPdf,
   type ChatPicture,
   chatFilesAllowed,
+  getConversationPdfs,
   getConversationPictures,
 } from "@db/chat-files";
 import { getDepartments } from "@db/departments";
@@ -83,6 +85,21 @@ export const currentChatPictures = cache(
     getConversationPictures(businessId, conversationId).catch(
       (error: unknown): ChatPicture[] => {
         logPart("pictures", error);
+        return [];
+      },
+    ),
+);
+
+/**
+ * A conversation's latest PDFs for its details (C5, `getConversationPdfs`),
+ * or none when they can't be read: the details say there are no files yet,
+ * and the conversation still opens.
+ */
+export const currentChatPdfs = cache(
+  (businessId: string, conversationId: string): Promise<ChatPdf[]> =>
+    getConversationPdfs(businessId, conversationId).catch(
+      (error: unknown): ChatPdf[] => {
+        logPart("PDFs", error);
         return [];
       },
     ),

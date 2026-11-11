@@ -4,6 +4,7 @@ import { dateIn } from "@domain/availability";
 import { chatPreview } from "@domain/chat";
 import { announcementsWaiting } from "@domain/chat-announce";
 import { chatShortDate, chatWhen } from "@domain/chat-days";
+import { shownFileName } from "@domain/chat-files";
 import type { ChatListRow } from "@domain/chat-sync";
 import { firstNameOf } from "@domain/people";
 import { ChatGroupMark, ChatRow } from "@ui/chat-row";
@@ -95,16 +96,25 @@ export function InboxPane() {
   };
 
   function row(item: ChatListRow) {
-    // A picture says so, with what was written with it (C4); a removed
-    // message has neither words nor a picture.
+    // A picture says so, with what was written with it (C4); a PDF too, or
+    // else with its name (C5); a removed message has neither words nor a
+    // file.
     const said =
       item.lastFileKind === "image"
         ? item.lastPreview !== null
           ? t("list.photoWith", { caption: chatPreview(item.lastPreview) })
           : t("list.photo")
-        : item.lastPreview !== null
-          ? chatPreview(item.lastPreview)
-          : t("message.removed");
+        : item.lastFileKind === "pdf"
+          ? item.lastPreview !== null
+            ? t("list.pdfWith", { caption: chatPreview(item.lastPreview) })
+            : item.lastFileName
+              ? t("list.pdfWith", {
+                  caption: chatPreview(shownFileName(item.lastFileName)),
+                })
+              : t("list.pdf")
+          : item.lastPreview !== null
+            ? chatPreview(item.lastPreview)
+            : t("message.removed");
     const author = nameOf(item.lastAuthor);
     const preview = !item.lastAt
       ? t("list.noMessages")

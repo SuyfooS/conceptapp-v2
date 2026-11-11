@@ -1,5 +1,9 @@
 import type { ChatFailure } from "@db/chat";
-import type { ChatFileFailure } from "@db/chat-files";
+import type {
+  ChatFileFailure,
+  ChatPdfFailure,
+  ChatPdfStart,
+} from "@db/chat-files";
 
 /**
  * Why a chat action was refused, for the screens' words: the database's
@@ -34,6 +38,32 @@ export type ChatImageFailure = ChatActionFailure | ChatFileFailure;
 export type ChatImageResult =
   | { ok: true; value: { conversation: string; message: string } }
   | { ok: false; failure: ChatImageFailure };
+
+/**
+ * Why a PDF was refused (`startChatPdfAction`, `finishChatPdfAction`,
+ * `cancelChatPdfAction`, C5): a message's reasons, the app's own two, and the
+ * PDF's (`ChatPdfFailure` in @db/chat-files): demo, noRoom, empty, tooBig,
+ * notPdf (its name isn't a .pdf, or its bytes aren't a PDF's), notUploaded
+ * (Storage holds nothing at its place: the PUT didn't arrive), expired (its 2
+ * hours are over, or its place was let go: start again), tooMany (ten unsent
+ * from the last day) and busy (the business's PDFs of the last 10 minutes
+ * bring its space).
+ */
+export type ChatPdfActionFailure = ChatActionFailure | ChatPdfFailure;
+
+/** What the browser gets to put a PDF in Storage (`ChatPdfStart`). */
+export type ChatPdfStartResult =
+  | { ok: true; value: ChatPdfStart }
+  | { ok: false; failure: ChatPdfActionFailure };
+
+export type ChatPdfFinishResult =
+  | { ok: true; value: { conversation: string; message: string } }
+  | { ok: false; failure: ChatPdfActionFailure };
+
+/** A stop: whether the PDF was sent after all (`sent`: the stop changed nothing). */
+export type ChatPdfCancelResult =
+  | { ok: true; value: { sent: boolean } }
+  | { ok: false; failure: ChatPdfActionFailure };
 
 /** Someone of a group, named, and when they confirmed an announcement (null: not yet). */
 export type ReaderShown = {

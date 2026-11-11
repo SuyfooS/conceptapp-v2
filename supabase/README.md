@@ -98,8 +98,9 @@ after an hour. From `20261111000500_chat_files.sql` it also asks the app's
 business's `fileDays` (90 unless the team chose 30 or 180), the oldest past its
 `fileSpaceMb` (100 MB unless the team chose 50 or 200), a removed message's once its undo is
 over, a reservation never sent, and anything in the `chat-files` bucket a day old that no
-row points at. The app removes them through Storage and marks them; without the secrets it
-calls nothing and the files wait. `seed.sql` switches all six off locally
+row points at (from `20261111000600_chat_pdfs.sql`, a PDF the browser put through its signed
+upload and never sent among them). The app removes them through Storage and marks them;
+without the secrets it calls nothing and the files wait. `seed.sql` switches all six off locally
 and in CI, and only a demo definition that says `"scheduledLists": true` (the hosted ones)
 opens today's lists when it is reset; the tests call what the jobs run, at times they choose.
 

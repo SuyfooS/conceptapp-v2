@@ -157,6 +157,12 @@ export type OutgoingMessage = {
    * and for its retries; `body` is then its caption, and may be empty.
    */
   picture?: boolean;
+  /**
+   * With a PDF (C5), which the screen keeps by its draft while it goes up
+   * through its signed upload and for its retries; `body` is then what was
+   * written with it, and may be empty.
+   */
+  pdf?: boolean;
 };
 
 /**
