@@ -333,7 +333,24 @@ export type ActivityLine =
       month: string;
       reason: string | null;
     }
+  | {
+      /**
+       * Management removed someone's message in a group, or put it back
+       * (chat C1). Never what it said: the row holds ids only, and a view
+       * session reads none of these.
+       */
+      action: "chat.remove" | "chat.restore";
+      group: ActivityChatGroup;
+      /** Who wrote it. */
+      author: ActivityPerson;
+    }
   | { action: "other" };
+
+/** A chat's group, as the log names it. */
+export type ActivityChatGroup =
+  | { kind: "team" }
+  /** The name is null when the department is not known (any more). */
+  | { kind: "department"; name: string | null };
 
 /** The fields of someone's details for payroll, as the log names them, in order. */
 export const PAYROLL_DETAIL_FIELDS = [
@@ -513,6 +530,12 @@ const schemas = {
   "payroll.month": z.object({
     month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
     reason: z.unknown().optional(),
+  }),
+  "chat.moderation": z.object({
+    conversation: id,
+    message: id,
+    author: id.nullable().optional(),
+    department: id.nullable().optional(),
   }),
 };
 
@@ -940,6 +963,22 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
           }
         : other;
     }
+    case "chat.remove":
+    case "chat.restore": {
+      const details = read(schemas["chat.moderation"]);
+      if (!details) return other;
+      const department = details.department ?? null;
+      return {
+        action: row.action,
+        group: department
+          ? {
+              kind: "department",
+              name: lookups.departments.get(department.toLowerCase()) ?? null,
+            }
+          : { kind: "team" },
+        author: personOf(details.author, lookups),
+      };
+    }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);
       return details
@@ -989,6 +1028,10 @@ export function activityRefs(rows: readonly ActivityRow[]) {
     if (row.action === "lists.pass") {
       add(departments, details.data.from_department);
       add(departments, details.data.to_department);
+    }
+    if (row.action === "chat.remove" || row.action === "chat.restore") {
+      add(people, details.data.author);
+      add(departments, details.data.department);
     }
     if (row.action === "lists.send") {
       const recipient = fields.safeParse(details.data.recipient);

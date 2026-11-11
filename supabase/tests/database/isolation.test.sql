@@ -1,7 +1,7 @@
 -- Tenant isolation: a member of business A never sees business B, and each
 -- role sees only what it should inside its own business.
 begin;
-select plan(24);
+select plan(28);
 
 -- Fixtures: business A (owner, manager, worker) and business B (owner).
 insert into auth.users (id, aud, role, phone)
@@ -178,6 +178,38 @@ select results_eq(
   array[1],
   'an inactive member sees only themself'
 );
+
+-- Chats (20261111000200_chat.sql), with chat on in both ---------------------
+reset role;
+insert into public.business_modules (business_id, module_key)
+values
+  ('20000000-0000-4000-b000-00000000000a', 'chat'),
+  ('20000000-0000-4000-b000-00000000000b', 'chat');
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select results_eq(
+  'select business_id from public.chat_conversations',
+  array['20000000-0000-4000-b000-00000000000a'::uuid],
+  'worker of A reads the team''s group of A only'
+);
+select throws_ok(
+  $$insert into public.chat_messages (business_id, conversation_id, author_id, draft_id, body)
+    select c.business_id, c.id, '20000000-0000-4000-a000-00000000000c', gen_random_uuid(), 'Hi'
+    from public.chat_conversations c$$,
+  '42501',
+  null,
+  'and writes no message from the browser'
+);
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
+select results_eq(
+  'select business_id from public.chat_conversations',
+  array['20000000-0000-4000-b000-00000000000b'::uuid],
+  'the owner of B reads B''s only'
+);
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000e');
+select is_empty('select 1 from public.chat_conversations', 'an inactive member reads no chat');
 
 select * from finish();
 rollback;

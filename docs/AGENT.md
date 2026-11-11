@@ -187,6 +187,14 @@ if a reverted migration reached one, open an `urgent` issue.
   test notification, never calls `/cron/notifications` on the hosted project, and
   never writes Vault secrets. It never calls `/cron/list-photos` on the hosted
   project either: that route deletes stored photos.
+- Read anyone's chats. Chats aren't end-to-end encrypted, so that the ConceptApp
+  team doesn't read them is this rule: never select from `chat_messages`,
+  `chat_conversations`, `chat_reads`, `chat_acks` or `private.chat_removed` (from C6
+  also `documents` and `document_recipients`, and from C4 the `chat-files` and
+  `documents` buckets) on any hosted project, never print their rows in a log, an
+  issue or a PR, and never call `/cron/chat-files` on the hosted project (C4). No
+  console page or script reads them; a test reads only its own rows, locally or in
+  CI.
 - Contact the pilot restaurant or anyone else outside this repo.
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.
@@ -243,6 +251,12 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   `/me`. It reaches a phone once Orel sets the VAPID keys and the cron secret
   (`README.md`, `supabase/README.md`), never for a demo business. A new producing action
   calls `pushSoon()` from `app/push/server.ts` after it writes.
+- **Chat, database first** (Orel, 8 November 2026, issue #1; the plan's C1 to C8, each
+  its own PR). C1 is built: `20261111000100_chat_module.sql` and `20261111000200_chat.sql`
+  (conversations, messages, reads, announcements, removal with undo, the line per
+  conversation, the job `chat`), the module off everywhere. Next: C2, the screens and
+  the module on. A private chat has no branch for owners, managers, the team or a view
+  session, anywhere: a change that adds one is refused (see "Never").
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

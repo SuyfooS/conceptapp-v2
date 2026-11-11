@@ -3,6 +3,7 @@ import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { numberRange, signed } from "@domain/lists";
 import type {
+  NotificationChat,
   NotificationEntry,
   NotificationPerson,
   NotificationShift,
@@ -18,7 +19,9 @@ import { defaultLocale, direction } from "@/i18n/config";
  * What a phone shows for a line: its title and one body, in plain text, with
  * the business's words (the same sentences as the inbox). Times and numbers
  * sit in Unicode isolates, as `<ltr>` does on screen. Never a note, a message
- * or a number of hours: the lines hold none.
+ * or a number of hours: the lines hold none. A chat's line says who wrote and
+ * how many messages wait, and a group's name, never a word of them: a lock
+ * screen is seen by whoever is near the phone.
  */
 
 const isolate = (chunks: string) => `⁦${chunks}⁩`;
@@ -62,6 +65,13 @@ export function pushWords(
       year: "numeric",
       timeZone: "UTC",
     }).format(new Date(`${month}-15T12:00:00Z`));
+  /** A group's name in a line's title, or null when the line lost it. */
+  const groupTitle = (chat: NotificationChat | null) =>
+    chat?.kind === "team"
+      ? t("kinds.chat.group.titleTeam")
+      : chat?.name
+        ? t("kinds.chat.group.title", { group: chat.name })
+        : null;
   const { line, settled } = entry;
 
   switch (line.kind) {
@@ -292,6 +302,34 @@ export function pushWords(
         ),
       };
     }
+    case "chat.direct":
+      return {
+        title: t("kinds.chat.direct.title", { name: who(line.from) }),
+        ...body(t("kinds.chat.direct.body", { count: line.count })),
+      };
+    case "chat.group":
+      return {
+        title: groupTitle(line.chat) ?? t("kinds.chat.group.titlePlain"),
+        ...body(
+          t("kinds.chat.group.body", {
+            count: line.count,
+            name: who(line.from),
+          }),
+        ),
+      };
+    case "chat.announcement":
+      return {
+        title: t("kinds.chat.announcement.title"),
+        ...body(
+          settled
+            ? t("kinds.chat.announcement.settledNote")
+            : line.chat?.kind === "team"
+              ? t("kinds.chat.announcement.bodyTeam")
+              : line.chat?.name
+                ? t("kinds.chat.announcement.body", { group: line.chat.name })
+                : t("kinds.chat.announcement.bodyPlain"),
+        ),
+      };
     case "push.test":
       return {
         title: t("kinds.push.test.title"),

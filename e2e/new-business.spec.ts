@@ -168,7 +168,7 @@ test("an onboarder opens a café from the template, with no staff yet", async ({
     name,
     accent: "#0f766e",
     templateKey: "cafe-bar",
-    modules: 6,
+    modules: 7,
     audited: 1,
   });
   expect(await invitesBySlug(slug)).toEqual([]);
@@ -270,7 +270,7 @@ test("a platform admin opens a restaurant and invites its staff", async ({
   expect(await businessBySlug(slug)).toMatchObject({
     name,
     templateKey: "restaurant",
-    modules: 6,
+    modules: 7,
     audited: 1,
   });
   expect(await invitesBySlug(slug)).toEqual([

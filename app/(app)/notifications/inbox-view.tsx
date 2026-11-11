@@ -23,6 +23,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   ListChecks,
+  MessageCircle,
   Repeat,
   Users,
 } from "lucide-react";
@@ -48,6 +49,7 @@ const GROUP_ICONS: Record<NotificationGroup, ReactNode> = {
   approvals: <ClipboardCheck />,
   team: <Users />,
   lists: <ListChecks />,
+  chat: <MessageCircle />,
 };
 
 /** A week is long enough to say "3 days ago"; older lines say their date. */
@@ -421,6 +423,46 @@ export function InboxView({
           notes: counts.length > 0 ? counts : [t("kinds.pay.month_due.ready")],
         };
       }
+      // A chat's own lines don't reach the inbox (`inbox: false`); the
+      // phone says the same words.
+      case "chat.direct":
+        return {
+          title: t("kinds.chat.direct.title", { name: who(line.from) }),
+          shift: null,
+          notes: [t("kinds.chat.direct.body", { count: line.count })],
+        };
+      case "chat.group":
+        return {
+          title:
+            line.chat?.kind === "team"
+              ? t("kinds.chat.group.titleTeam")
+              : line.chat?.name
+                ? t("kinds.chat.group.title", { group: line.chat.name })
+                : t("kinds.chat.group.titlePlain"),
+          shift: null,
+          notes: [
+            t("kinds.chat.group.body", {
+              count: line.count,
+              name: who(line.from),
+            }),
+          ],
+        };
+      case "chat.announcement":
+        return {
+          title: t("kinds.chat.announcement.title"),
+          shift: null,
+          notes: [
+            settled
+              ? t("kinds.chat.announcement.settledNote")
+              : line.chat?.kind === "team"
+                ? t("kinds.chat.announcement.bodyTeam")
+                : line.chat?.name
+                  ? t("kinds.chat.announcement.body", {
+                      group: line.chat.name,
+                    })
+                  : t("kinds.chat.announcement.bodyPlain"),
+          ],
+        };
       case "push.test":
         return {
           title: t("kinds.push.test.title"),
