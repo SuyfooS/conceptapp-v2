@@ -673,6 +673,14 @@ function GalleryBody({
                 { name: t("person3") },
               ]}
             />
+            {/* All the link holds: the avatar says what it does, as on Today. */}
+            <Link
+              href="/design/shell/me"
+              title={t("profileLink")}
+              className="pressable shrink-0 rounded-full p-0.5 focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <Avatar name={t("person1")} label={t("profileLink")} />
+            </Link>
           </div>
         </Section>
 
@@ -1458,9 +1466,9 @@ function GalleryTable() {
               numeric: true,
             },
           ]}
+          // Each row's button is named by its name; what it does is said after.
           rows={people.map((person) => ({
             key: person.key,
-            label: t("dataTableOpen", { name: person.name }),
             cells: {
               name: person.name,
               days: person.days,
@@ -1468,6 +1476,7 @@ function GalleryTable() {
               waiting: person.waiting,
             },
           }))}
+          rowHint={t("dataTableRowHint")}
           selected={chosen}
           onSelect={setChosen}
         />

@@ -7,7 +7,7 @@ import { chatShortDate, chatWhen } from "@domain/chat-days";
 import { shownFileName } from "@domain/chat-files";
 import type { ChatListRow } from "@domain/chat-sync";
 import { firstNameOf } from "@domain/people";
-import { ChatGroupMark, ChatRow } from "@ui/chat-row";
+import { ChatGroupMark, ChatRow, UNREAD_MOST } from "@ui/chat-row";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -156,7 +156,11 @@ export function InboxPane() {
           item.unread > 0
             ? {
                 count: item.unread,
-                label: t("list.unread", { count: item.unread }),
+                // The badge stops at "99+", and the words say the number shown.
+                label:
+                  item.unread > UNREAD_MOST
+                    ? t("list.unreadMore", { count: UNREAD_MOST })
+                    : t("list.unread", { count: item.unread }),
               }
             : null
         }

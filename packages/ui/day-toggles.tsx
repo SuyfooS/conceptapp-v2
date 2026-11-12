@@ -9,16 +9,21 @@ export type DayTogglesProps = {
   value: readonly number[];
   /** The days on now, in order. */
   onChange: (days: number[]) => void;
-  /** Sunday first: the short name each button shows, and the full one it says. */
+  /**
+   * Sunday first: the short name each button shows ("א׳"), and the full one
+   * said after it ("ראשון").
+   */
   days: readonly { short: string; long: string }[];
   disabled?: boolean;
   className?: string;
 };
 
 /**
- * The days of the week as seven round toggles, Sunday first, each 44px and
- * named in full for screen readers. One tap turns a day on or off. Used for a
- * shift's days on /manage and a list's times in its editor.
+ * The days of the week as seven round toggles, Sunday first, each 44px. Each
+ * is named by what it shows, then the day in full ("א׳, ראשון"): speech input
+ * answers to the letter on it, and a screen reader still hears the day. One
+ * tap turns a day on or off. Used for a shift's days on /manage and a list's
+ * times in its editor.
  */
 export function DayToggles({
   legend,
@@ -48,7 +53,7 @@ export function DayToggles({
               key={day.long}
               type="button"
               aria-pressed={on}
-              aria-label={day.long}
+              aria-label={`${day.short}, ${day.long}`}
               onClick={() => toggle(index)}
               className={cn(
                 "pressable grid size-11 place-items-center rounded-full font-semibold transition-colors duration-150",

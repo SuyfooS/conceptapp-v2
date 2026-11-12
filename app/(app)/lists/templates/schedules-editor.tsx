@@ -24,7 +24,7 @@ import {
 import type { StaffRole } from "@domain/modules";
 import { timeIn } from "@domain/shabbat";
 import { Button } from "@ui/button";
-import { ChoiceMenu } from "@ui/choice-menu";
+import { ChoiceMenu, choiceShown } from "@ui/choice-menu";
 import { cn } from "@ui/cn";
 import { DayToggles } from "@ui/day-toggles";
 import { FieldGroup } from "@ui/field-group";
@@ -528,6 +528,23 @@ function ScheduleForm({
           : to?.kind === "role"
             ? to.role
             : "";
+  // Each menu is named "field: what it shows", from the same options, so a
+  // removed shift or department reads as the "choose" on the button.
+  const shiftOptions = places.shifts.map((s) => ({
+    key: s.key,
+    label: s.name,
+  }));
+  const recipientOptions =
+    to?.kind === "department"
+      ? places.departments.map((d) => ({ key: d.id, label: d.name }))
+      : times.people.map((p) => ({
+          key: p.userId,
+          label: p.name ?? tSend("noName"),
+        }));
+  const shownOf = (
+    options: readonly { key: string; label: string }[],
+    value: string,
+  ) => choiceShown(options, value, t("sheet.choose"));
 
   return (
     <div className="flex flex-col gap-4">
@@ -591,13 +608,10 @@ function ScheduleForm({
           <>
             <FieldRow label={t("sheet.shift")}>
               <ChoiceMenu
-                label={`${t("sheet.shift")}: ${shiftLabel}`}
+                label={`${t("sheet.shift")}: ${shownOf(shiftOptions, shift)}`}
                 value={shift}
                 placeholder={t("sheet.choose")}
-                options={places.shifts.map((s) => ({
-                  key: s.key,
-                  label: s.name,
-                }))}
+                options={shiftOptions}
                 onChange={(key) => {
                   setProblem(null);
                   setShift(key);
@@ -661,20 +675,10 @@ function ScheduleForm({
           <FieldGroup className="bg-elevated">
             <FieldRow label={t(`sheet.${to.kind}`)}>
               <ChoiceMenu
-                label={`${t(`sheet.${to.kind}`)}: ${words.recipient(to)}`}
+                label={`${t(`sheet.${to.kind}`)}: ${shownOf(recipientOptions, recipientValue)}`}
                 value={recipientValue}
                 placeholder={t("sheet.choose")}
-                options={
-                  to.kind === "department"
-                    ? places.departments.map((d) => ({
-                        key: d.id,
-                        label: d.name,
-                      }))
-                    : times.people.map((p) => ({
-                        key: p.userId,
-                        label: p.name ?? t("sheet.person"),
-                      }))
-                }
+                options={recipientOptions}
                 onChange={(key) => {
                   setProblem(null);
                   setTo(
@@ -690,12 +694,13 @@ function ScheduleForm({
           <FieldGroup className="bg-elevated">
             <FieldRow label={t("sheet.shift")}>
               <ChoiceMenu
-                label={`${t("sheet.shift")}: ${words.recipient(to)}`}
+                // The same words as the timing's shift menu above it, so
+                // the name goes on to say this one is whom it goes to
+                // ("משמרת: בוקר, לאנשי משמרת בוקר").
+                label={`${t("sheet.shift")}: ${shownOf(shiftOptions, to.shift)}, ${words.recipient(to)}`}
                 value={to.shift}
-                options={places.shifts.map((s) => ({
-                  key: s.key,
-                  label: s.name,
-                }))}
+                placeholder={t("sheet.choose")}
+                options={shiftOptions}
                 onChange={(key) => {
                   setProblem(null);
                   setTo({ kind: "shift", shift: key });

@@ -7,7 +7,12 @@ import { type ReactNode, useRef, useState } from "react";
 import { cn } from "./cn";
 
 export type ChoiceMenuProps = {
-  /** Names the control for screen readers, with its current value in it. */
+  /**
+   * Names the control for screen readers, with exactly the words the button
+   * shows in it, so speech input can say them: the field, as the row beside
+   * it says, then those words ("מחלקה: מטבח", and "מחלקה: בחירה" before a
+   * choice). `choiceShown` gives the words.
+   */
   label: string;
   /** The key of the chosen option. */
   value: string;
@@ -26,6 +31,19 @@ export type ChoiceMenuProps = {
 };
 
 /**
+ * What a ChoiceMenu's button shows for `value`: the chosen option's label,
+ * or the placeholder while none of the options is chosen (a removed one
+ * included). Its `label` takes these same words.
+ */
+export function choiceShown(
+  options: readonly { key: string; label: string }[],
+  value: string,
+  placeholder?: string,
+): string | undefined {
+  return options.find((option) => option.key === value)?.label ?? placeholder;
+}
+
+/**
  * Choosing one of a short list: a quiet button with the current value, and a
  * menu that floats beside it. Takes the place of a native select where a choice
  * sits inside a row. In a sheet the menu stays inside it, so it belongs to the
@@ -42,7 +60,7 @@ export function ChoiceMenu({
   const locale = useLocale();
   const trigger = useRef<HTMLButtonElement>(null);
   const [container, setContainer] = useState<HTMLElement | null>(null);
-  const current = options.find((option) => option.key === value);
+  const shown = choiceShown(options, value, placeholder);
   return (
     <DropdownMenu.Root
       dir={locale === "he" ? "rtl" : "ltr"}
@@ -63,7 +81,7 @@ export function ChoiceMenu({
           className,
         )}
       >
-        {current?.label ?? placeholder}
+        {shown}
         <ChevronDown aria-hidden="true" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal container={container ?? undefined}>

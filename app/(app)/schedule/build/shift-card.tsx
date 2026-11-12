@@ -15,7 +15,7 @@ import { CoverageBar } from "@ui/coverage-bar";
 import { IconButton } from "@ui/icon-button";
 import { ChevronRight, Plus, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { MouseEvent, ReactNode } from "react";
+import { type MouseEvent, type ReactNode, useId } from "react";
 
 /**
  * How much room a card has: a whole phone's width, a cell of the tablet's
@@ -209,6 +209,10 @@ export function RemovedShift({
   );
 }
 
+/** The card's ring while its button has the keyboard. */
+const ringWithin =
+  "has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-accent";
+
 /** The clear way to add a shift to a day, at the end of its shifts. */
 export function AddShiftRow({
   label,
@@ -217,7 +221,7 @@ export function AddShiftRow({
   density,
   onClick,
 }: {
-  /** Says which day, for a screen reader. */
+  /** Its name: what it shows, then which day ("הוספת משמרת ליום ראשון…"). */
   label: string;
   /** The day has nothing else to show. */
   alone: boolean;
@@ -227,6 +231,7 @@ export function AddShiftRow({
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const t = useTranslations("app.build");
+  const hintId = useId();
   // On a tablet it sits small under the day's name, leaving the grid to shifts.
   if (density === "tile" && !alone) {
     return (
@@ -239,42 +244,66 @@ export function AddShiftRow({
       />
     );
   }
+  // The button holds only its words, so its name starts with all it shows,
+  // and it stretches over the whole card, so all of it opens the sheet. The
+  // hint is an instruction, not its label: it sits beside the button, in the
+  // same card, and is said after the name as its description.
+  const button = (content: ReactNode, className: string) => (
+    <button
+      type="button"
+      aria-label={label}
+      aria-haspopup="dialog"
+      aria-describedby={hint ? hintId : undefined}
+      onClick={onClick}
+      className={cn(
+        "outline-none after:absolute after:inset-0 after:rounded-card after:content-['']",
+        className,
+      )}
+    >
+      {content}
+    </button>
+  );
   if (density === "full") {
     return (
-      <button
-        type="button"
-        aria-label={label}
-        aria-haspopup="dialog"
-        onClick={onClick}
+      <div
         className={cn(
-          pressClass,
-          "flex min-h-16 w-full items-center gap-3 rounded-card bg-surface px-4 py-2.5 text-start shadow-card",
+          "pressable relative flex min-h-16 w-full items-center gap-3 rounded-card bg-surface px-4 py-2.5 text-start shadow-card",
+          ringWithin,
         )}
       >
         <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-ink [&_svg]:size-5">
           <Plus aria-hidden="true" />
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="font-medium">{t("addShift")}</span>
-          {hint ? <span className="text-ink-2 text-sm">{hint}</span> : null}
+          {button(t("addShift"), "text-start font-medium")}
+          {hint ? (
+            <span id={hintId} className="text-ink-2 text-sm">
+              {hint}
+            </span>
+          ) : null}
         </span>
-      </button>
+      </div>
     );
   }
   return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-haspopup="dialog"
-      onClick={onClick}
+    <div
       className={cn(
-        pressClass,
-        "flex min-h-11 w-full flex-wrap items-center justify-center gap-x-1 rounded-card bg-surface-2/60 px-2 py-2 text-center font-medium text-ink-2 text-sm transition-colors hover:bg-surface-2 [&_svg]:size-4",
+        "pressable relative flex min-h-11 w-full flex-wrap items-center justify-center gap-x-1 rounded-card bg-surface-2/60 px-2 py-2 text-center font-medium text-ink-2 text-sm transition-colors hover:bg-surface-2",
+        ringWithin,
       )}
     >
-      <Plus aria-hidden="true" />
-      {t("addShift")}
-      {hint ? <span className="w-full font-normal">{hint}</span> : null}
-    </button>
+      {button(
+        <>
+          <Plus aria-hidden="true" />
+          {t("addShift")}
+        </>,
+        "inline-flex items-center gap-x-1 [&_svg]:size-4",
+      )}
+      {hint ? (
+        <span id={hintId} className="w-full font-normal">
+          {hint}
+        </span>
+      ) : null}
+    </div>
   );
 }

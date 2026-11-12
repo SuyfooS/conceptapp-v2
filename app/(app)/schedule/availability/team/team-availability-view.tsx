@@ -178,23 +178,25 @@ function CallLink({
   showNumber?: boolean;
 }) {
   if (!person.phone) return null;
-  const label = t("availability.team.call", {
-    name: personName(t, person.name),
-  });
+  const name = personName(t, person.name);
+  const number = displayIsraeliMobile(person.phone);
+  const call = t("availability.team.call", { name });
   return (
     <a
       href={`tel:${person.phone}`}
-      aria-label={label}
-      title={label}
+      // With the number showing, the name starts with it, as it reads, and
+      // the words need no tooltip; the phone alone has one.
+      aria-label={
+        showNumber ? t("availability.team.callNumber", { number, name }) : call
+      }
+      title={showNumber ? undefined : call}
       className={cn(
         "pressable inline-flex size-11 shrink-0 items-center justify-center gap-2 rounded-full bg-accent-soft text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [&_svg]:size-5",
         showNumber && "w-auto ps-3.5 pe-4 font-medium text-base",
       )}
     >
       <Phone aria-hidden="true" />
-      {showNumber ? (
-        <span dir="ltr">{displayIsraeliMobile(person.phone)}</span>
-      ) : null}
+      {showNumber ? <span dir="ltr">{number}</span> : null}
     </a>
   );
 }

@@ -17,6 +17,10 @@ const tt = ta.team;
 // The text of a message up to its first placeholder or tag.
 const before = (message: string) => message.split(/[<{]/)[0] ?? message;
 const callYoav = tt.call.replace("{name}", YOAV.name);
+// The table's link shows the number, and its name starts with it.
+const callYoavNumber = tt.callNumber
+  .replace("{number}", YOAV.local)
+  .replace("{name}", YOAV.name);
 // Any form of an ICU plural message, with # as a number.
 const plural = (message: string) =>
   new RegExp(
@@ -79,10 +83,9 @@ test("a manager sees who has not sent availability", async ({
     const table = page.getByRole("table", { name: tt.everyone });
     const yoav = table.getByRole("row", { name: new RegExp(YOAV.name) });
     await expect(yoav).toContainText(tt.notSent);
-    await expect(yoav.getByRole("link", { name: callYoav })).toHaveAttribute(
-      "href",
-      `tel:${YOAV.e164}`,
-    );
+    await expect(
+      yoav.getByRole("link", { name: callYoavNumber, exact: true }),
+    ).toHaveAttribute("href", `tel:${YOAV.e164}`);
     const noa = table.getByRole("row", { name: new RegExp(NOA.name) });
     await expect(noa).toContainText(before(tt.sentAt));
     await expect(noa).toContainText("09:00–17:00");

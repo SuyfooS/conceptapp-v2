@@ -268,6 +268,7 @@
     "person1": "Noa Cohen",
     "person2": "Yoav Levi",
     "person3": "Maya Peretz",
+    "profileLink": "My profile",
     "tiles": "What needs action",
     "tileGaps": "Open places",
     "tileMissing": "Have not sent availability",
@@ -316,7 +317,7 @@
     "scanCircle": "Scanning in the circle",
     "scanCircleText": "Pressing the circle turns it into the camera in the same place, and the line under it says what is happening.",
     "covers": "Eight covers, all drawn in the business's colour, so any colour works in light and dark. Below: choosing one, as on the profile.",
-    "notificationsNew": "{count, plural, one {one new} other {# new}}",
+    "notificationsNew": "{count, plural, one {# new} other {# new}}",
     "checklist": "List item",
     "checklistCheck": "Clean the work surfaces",
     "checklistNumber": "Main fridge",
@@ -334,7 +335,7 @@
     "dataTableDays": "Days",
     "dataTableHours": "Hours",
     "dataTableWaiting": "Waiting",
-    "dataTableOpen": "Open {name}'s row",
+    "dataTableRowHint": "Choose the row",
     "dataTableChosen": "{name}'s row is chosen",
     "dataTableHint": "A name chooses its row.",
     "dataTableRead": "A table that only reads",
@@ -877,6 +878,7 @@
         "noTeam": "No staff on the team yet",
         "noTeamHint": "Invite them on the Team screen, then see here who sent and who did not.",
         "call": "Call {name}",
+        "callNumber": "{number}, call {name}",
         "missing": {
           "title": "Not sent yet",
           "count": "{count, plural, one {One answer missing} other {# answers missing}}",
@@ -1521,7 +1523,7 @@
       },
       "minutes": "{minutes} min",
       "none": "—",
-      "open": "Open {name}'s hours",
+      "rowHint": "Open their hours for the month",
       "empty": {
         "title": "No hours in {month}",
         "body": "There are no hours in {month} yet. Once the team clocks in, they show here.",
@@ -2437,9 +2439,9 @@
           "none": "Nobody has personal access.",
           "roleCovers": "Their role gives access too",
           "remove": "Remove",
-          "removeLabel": "Remove {name}'s access",
+          "removeLabel": "{remove} {name}'s personal access",
           "add": "Add someone",
-          "addLabel": "Add someone to see the hours and pay",
+          "addLabel": "{add} to see the hours and pay",
           "nobody": "The whole team already sees the hours and pay.",
           "choose": "Choose"
         },
@@ -2479,7 +2481,7 @@
         "taken": "There's already a department called {name}.",
         "people": "{count, plural, =0 {No people} one {One person} other {# people}}",
         "peopleOf": "Who's in {name}",
-        "peopleIn": "{count, plural, =0 {No people} one {One person} other {# people}} in {name}",
+        "peopleWhere": "in {name}",
         "inDepartment": "{name} in {department}",
         "noPeople": "Nobody is in the business yet.",
         "noName": "No name",
@@ -2574,7 +2576,8 @@
       "title": "Notifications",
       "subtitle": "What happened at work that concerns you",
       "bell": "Notifications",
-      "bellCount": "{count, plural, one {one new} other {# new}}",
+      "bellCount": "{count, plural, one {# new} other {# new}}",
+      "bellCountMore": "more than {count} new",
       "back": "Today",
       "inbox": {
         "new": "New",
@@ -2956,7 +2959,7 @@
       "filter": {
         "label": "Department",
         "all": "All departments",
-        "menu": "Department: {name}"
+        "menu": "{label}: {name}"
       },
       "sendOne": "Send {name}",
       "empty": {
@@ -3547,6 +3550,7 @@
         "team": "Whole team",
         "moreDepartments": "Other departments",
         "unread": "{count, plural, one {# new message} other {# new messages}}",
+        "unreadMore": "more than {count} new messages",
         "muted": "No notifications",
         "waiting": "A message from management waits for your confirmation",
         "fromYou": "You: {preview}",
@@ -3913,7 +3917,7 @@
             "direction": "Way",
             "sent": "Sent",
             "status": "Opened or confirmed",
-            "rowLabel": "Preview {title}, {name}",
+            "rowLabel": "{person}, preview of {title}, {direction}",
             "people": "{count, plural, one {One person} other {# people}}"
           },
           "directions": {
@@ -4579,7 +4583,7 @@
           "hasOwner": "The business already has an owner, so this invite no longer works. Another owner is invited by the owner."
         },
         "renew": "Renew the invite",
-        "renewFor": "Renew {name}'s invite"
+        "renewFor": "Renew the invite for {name}"
       },
       "viewAs": {
         "title": "View the app",

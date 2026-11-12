@@ -39,13 +39,16 @@ export type IconButtonProps = Omit<
     href?: string;
     /**
      * A count on the icon, and what it means for a screen reader ("3 new"),
-     * which joins the label. Nothing shows at 0.
+     * which joins the label ("Notifications, 3 new"). The label writes the
+     * number as the badge shows it, in digits, so speech input can say what
+     * it sees: above `BADGE_MOST` the badge shows "99+", and the label says
+     * "more than 99". Nothing shows at 0.
      */
     badge?: { count: number; label: string };
   };
 
 /** Above this the badge says "99+": a number that long would cover the icon. */
-const MOST = 99;
+export const BADGE_MOST = 99;
 
 export function IconButton({
   label,
@@ -69,7 +72,7 @@ export function IconButton({
           aria-hidden="true"
           className="absolute -top-0.5 -end-0.5 min-w-5 rounded-full bg-accent px-1 text-center font-bold text-[11px] text-accent-ink leading-5 ring-2 ring-bg tabular-nums"
         >
-          {counted.count > MOST ? `${MOST}+` : counted.count}
+          {counted.count > BADGE_MOST ? `${BADGE_MOST}+` : counted.count}
         </span>
       ) : null}
     </>

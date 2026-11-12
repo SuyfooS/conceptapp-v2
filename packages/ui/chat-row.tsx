@@ -5,7 +5,7 @@ import { Badge } from "./badge";
 import { cn } from "./cn";
 
 /** Above this the count says "99+", as the database counts no further. */
-const MOST = 99;
+export const UNREAD_MOST = 99;
 
 export type ChatRowProps = {
   /** The conversation. */
@@ -24,7 +24,12 @@ export type ChatRowProps = {
   preview?: ReactNode;
   /** When it last spoke ("08:05", "אתמול", "1.11"), and the instant. */
   time?: { label: string; at: string } | null;
-  /** Messages the reader hasn't read, and that count in words for screen readers. */
+  /**
+   * Messages the reader hasn't read, and that count in words for screen
+   * readers ("3 הודעות חדשות"). The words write the number as the badge
+   * shows it, in digits, so speech input can say what it sees: above
+   * `UNREAD_MOST` the badge shows "99+", and the words say "more than 99".
+   */
   unread?: { count: number; label: string } | null;
   /** The words for its mark when it sends no notifications ("בלי התראות"). */
   muted?: string | null;
@@ -119,7 +124,7 @@ export function ChatRow({
                 aria-hidden="true"
                 className="min-w-6 shrink-0 rounded-full bg-accent px-1.5 text-center font-bold text-accent-ink text-sm leading-6 tabular-nums"
               >
-                {fresh.count > MOST ? `${MOST}+` : fresh.count}
+                {fresh.count > UNREAD_MOST ? `${UNREAD_MOST}+` : fresh.count}
               </span>
               <span className="sr-only">{fresh.label}</span>
             </>

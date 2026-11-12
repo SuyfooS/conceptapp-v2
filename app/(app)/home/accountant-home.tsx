@@ -4,7 +4,7 @@ import { clockAt, dayPart } from "@domain/today";
 import { Ambient } from "@ui/ambient";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
-import { IconButton } from "@ui/icon-button";
+import { BADGE_MOST, IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { PersonAvatar } from "@ui/person-row";
@@ -92,13 +92,17 @@ export async function AccountantHome({
       <RefreshOnReturn />
       <PageBody>
         <div className="flex items-center gap-3">
+          {/* Named by its picture: the initials are a monogram, not words. */}
           <Link
             href={path("/me")}
-            aria-label={t("me.open")}
             title={t("me.open")}
             className="pressable shrink-0 rounded-full p-0.5 focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <PersonAvatar name={data.name} photo={data.photo} />
+            <PersonAvatar
+              name={data.name}
+              photo={data.photo}
+              label={t("me.open")}
+            />
           </Link>
           <div className="min-w-0 flex-1">
             <PageHeader
@@ -130,9 +134,13 @@ export async function AccountantHome({
               label={t("notifications.bell")}
               badge={{
                 count: data.bell.unread,
-                label: t("notifications.bellCount", {
-                  count: data.bell.unread,
-                }),
+                // The badge stops at "99+", and the name says the number shown.
+                label:
+                  data.bell.unread > BADGE_MOST
+                    ? t("notifications.bellCountMore", { count: BADGE_MOST })
+                    : t("notifications.bellCount", {
+                        count: data.bell.unread,
+                      }),
               }}
               icon={<Bell />}
               variant="ghost"

@@ -185,7 +185,13 @@ test("a manager fits the schedule to the business, and it stays", async ({
   await sheet.getByLabel(m.shifts.start).fill("22:00");
   await sheet.getByLabel(m.shifts.end).fill("01:00");
   await expect(sheet.getByText(m.shifts.nextDay)).toBeVisible();
-  await sheet.getByRole("button", { name: he.days.fri.long }).click();
+  // The day as it shows, then in full ("ו׳, שישי").
+  await sheet
+    .getByRole("button", {
+      name: `${he.days.fri.short}, ${he.days.fri.long}`,
+      exact: true,
+    })
+    .click();
   await sheet.getByRole("button", { name: m.shifts.create }).click();
   await expect(sheet).toBeHidden();
   await expect.poll(async () => (await stored()).shifts).toContain("פתיחה");

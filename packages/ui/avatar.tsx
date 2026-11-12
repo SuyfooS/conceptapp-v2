@@ -18,13 +18,34 @@ export const AVATAR_PIXELS: Record<AvatarSize, string> = {
   xl: "96px",
 };
 
-export type AvatarProps = Omit<ComponentProps<"span">, "children"> & {
+export type AvatarProps = Omit<
+  ComponentProps<"span">,
+  "children" | "aria-label" | "aria-hidden" | "role"
+> & {
   name: string;
   /** A photo to show over the initials; they stay underneath if it fails. */
   photo?: string | null;
   /** 32, 40 or 96 px. */
   size?: AvatarSize;
+  /**
+   * When the avatar is all a link or button holds, what pressing it does
+   * ("הפרופיל שלי"): the avatar is then a picture with that text, and the
+   * control takes its name from it. Leave out beside a name, where the
+   * avatar is decoration and stays hidden from screen readers.
+   */
+  label?: string;
 };
+
+/**
+ * Hidden beside words, or a picture named by what its control does. The
+ * initials are a monogram standing in for a photo, not words, so they are
+ * never the name.
+ */
+export function avatarAria(label: string | undefined) {
+  return label
+    ? ({ role: "img", "aria-label": label } as const)
+    : ({ "aria-hidden": true } as const);
+}
 
 /**
  * A photo over a decorative circle, as the app shows a stored one: never
@@ -57,19 +78,21 @@ export function AvatarPhoto({
 /**
  * A person's photo, or their initials on a soft gradient, the same colour on
  * every screen. The initials stay under the photo, so they show while it
- * loads and if it can't.
+ * loads and if it can't. A control with words beside the avatar takes its
+ * name from those words; one that holds only the avatar passes `label`.
  */
 export function Avatar({
   name,
   photo,
   size = "md",
+  label,
   className,
   ...props
 }: AvatarProps) {
   const hue = avatarHue(name);
   return (
     <span
-      aria-hidden="true"
+      {...avatarAria(label)}
       className={cn(
         "relative grid shrink-0 select-none place-items-center overflow-hidden rounded-full font-bold text-white",
         SIZES[size],
