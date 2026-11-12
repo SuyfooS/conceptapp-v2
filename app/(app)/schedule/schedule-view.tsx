@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { getLocale } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { PushAskOffer } from "../notifications/push-ask";
 import { type AppWording, type Translator, translator } from "../wording";
 import type { SwapAction } from "./shifts/shift-sheet";
 import { ltr, upcomingShifts } from "./shifts/shift-text";
@@ -52,6 +53,8 @@ export type ScheduleViewProps = {
   team: TeamAvailabilityWeek | null;
   build: ScheduleBuildWeek | null;
   swap: SwapAction;
+  /** After giving a shift away, once, the offer of notifications on the phone. */
+  ask?: PushAskOffer | null;
 };
 
 /**
@@ -67,6 +70,7 @@ export async function ScheduleView({
   build,
   swap,
   wording,
+  ask = null,
 }: ScheduleViewProps & {
   /** The business's words. */
   wording: AppWording;
@@ -172,6 +176,7 @@ export async function ScheduleView({
         }}
         manager={manager}
         swap={swap}
+        ask={ask}
         draftHref="/schedule/build"
         prompt={
           prompt ? (

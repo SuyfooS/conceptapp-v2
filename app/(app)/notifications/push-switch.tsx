@@ -15,9 +15,7 @@ import {
   forgetSubscription,
   leaveFallback,
   ourWorker,
-  readyWorker,
-  saveSubscription,
-  subscribe,
+  turnOnPush,
 } from "./push-client";
 
 /** Where this browser's notifications stand. */
@@ -118,43 +116,17 @@ export function PushSwitch({
     if (working) return;
     setWorking(true);
     setFailed(null);
-    let subscription: PushSubscription;
-    try {
-      let registration = worker.current;
-      if (registration) {
-        // Turned on here before: subscribe at once, inside the press.
-        subscription = await subscribe(registration, publicKey);
-      } else {
-        // First, while the press still counts: the browser asks for
-        // permission, which Safari lets it do only now.
-        const permission = await Notification.requestPermission();
-        if (permission !== "granted") {
-          setWorking(false);
-          setState(permission === "denied" ? "denied" : "off");
-          return;
-        }
-        registration = await readyWorker();
-        worker.current = registration;
-        leaveFallback(registration, {
-          title: fallbackTitle,
-          body: fallbackBody,
-          lang: locale,
-          dir,
-        });
-        subscription = await subscribe(registration, publicKey);
-      }
-    } catch {
-      setWorking(false);
-      if (Notification.permission === "denied") setState("denied");
-      else setFailed("on");
-      return;
-    }
-    const saved = await saveSubscription(subscription);
-    if (saved !== "saved") await subscription.unsubscribe().catch(() => false);
+    // Turned on here before: it subscribes at once, inside the press; else
+    // the browser asks for permission first, which Safari allows only now.
+    const { answer, registration } = await turnOnPush(
+      worker.current,
+      publicKey,
+      { title: fallbackTitle, body: fallbackBody, lang: locale, dir },
+    );
+    worker.current = registration;
     setWorking(false);
-    if (saved === "saved") setState("on");
-    else if (saved === "demo") setState("demo");
-    else setFailed("on");
+    if (answer === "failed") setFailed("on");
+    else setState(answer);
   }
 
   async function turnOff() {

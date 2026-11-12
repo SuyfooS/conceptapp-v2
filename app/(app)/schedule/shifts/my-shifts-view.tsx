@@ -1,5 +1,6 @@
 import { shiftMinutes } from "@domain/schedule";
 import { PageBody, PageHeader } from "@ui/page";
+import type { PushAskOffer } from "../../notifications/push-ask";
 import { type AppWording, translator } from "../../wording";
 import type { PublishedSchedule } from "../week";
 import { MyShiftsBoard } from "./my-shifts-board";
@@ -12,18 +13,21 @@ export { upcomingShifts };
  * The person's own shifts from today on, and the shifts colleagues give away
  * for them to take. The team's week lives on the schedule tab. Phone: one
  * under the other. Tablet and desktop: side by side. `swap` is `swapAction`,
- * or the demo's stand-in. Also rendered with mock data on
- * /design/shell/schedule/shifts.
+ * or the demo's stand-in. `ask`: after giving a shift away, once, the offer
+ * of notifications on the phone (`currentPushAsk`). Also rendered with mock
+ * data on /design/shell/schedule/shifts.
  */
 export function MyShiftsView({
   data,
   swap,
   wording,
+  ask = null,
 }: {
   data: PublishedSchedule;
   swap: SwapAction;
   /** The business's words. */
   wording: AppWording;
+  ask?: PushAskOffer | null;
 }) {
   const t = translator(wording, "app");
   const tm = translator(wording, "modules.scheduling");
@@ -56,6 +60,7 @@ export function MyShiftsView({
           swaps: data.swaps,
         }}
         swap={swap}
+        ask={ask}
       />
     </PageBody>
   );

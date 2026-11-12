@@ -11,7 +11,8 @@ import { DEMO_READER, demoInboxLookups, demoInboxNow } from "./data";
 
 /**
  * The real inbox with the demo's rows, as Shiran, the shift manager, reads
- * it. Its lines are plain links that stay inside the demo.
+ * it. Its lines are plain links that stay inside the demo, and so does the
+ * way to the settings.
  */
 export function InboxDemo({
   unread,
@@ -37,6 +38,7 @@ export function InboxDemo({
         base: "/design/shell",
       }}
       wording={baseWording}
+      settings="/design/shell/notifications/settings"
     />
   );
 }

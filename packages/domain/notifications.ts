@@ -1,7 +1,10 @@
 import { z } from "zod";
 import { isUuid } from "./activity";
+import { addDays, dateIn, instantIn } from "./availability";
 import { type DocumentCategory, isDocumentCategory } from "./documents";
+import { timeOfDay } from "./hours";
 import { atLeast, isStaff, type ModuleKey, type Role } from "./modules";
+import { timeIn } from "./shabbat";
 
 /**
  * Notifications in the app: what happened that a person should know, one line
@@ -13,7 +16,10 @@ import { atLeast, isStaff, type ModuleKey, type Role } from "./modules";
  * read leniently: anything unexpected becomes a plain line, never an error.
  */
 
-/** What a person switches on or off for the phone, later: each kind is in one. */
+/**
+ * What a person switches on or off for the phone (notifications part 3):
+ * each kind is in one, or in none when nobody switches it off.
+ */
 export const NOTIFICATION_GROUPS = [
   "schedule",
   "swaps",
@@ -27,7 +33,11 @@ export const NOTIFICATION_GROUPS = [
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
 
 type KindInfo = {
-  /** Null for a line nobody switches off: the test from the phone switch. */
+  /**
+   * Null for a line nobody switches off: the lines about pay (the person's
+   * own access and wage, and the office's month to close and corrections
+   * after closing it) and the test from the phone switch.
+   */
   group: NotificationGroup | null;
   /** The module the line is about; switching it off hides the line. */
   module: ModuleKey | null;
@@ -234,7 +244,10 @@ export const NOTIFICATION_KINDS = {
   },
   // A shift of a month closed for payroll was corrected or added (payroll
   // P9): to the month's closer and the accountants, one line per month. Its
-  // difference goes into the next month's file; nothing to do here.
+  // difference goes into the next month's file; nothing to do here. Not about
+  // the reader's own pay, yet payroll kept it out of every group, as it did
+  // the month to close below: both always reach the phone, and the settings
+  // say pay always comes (`alwaysOnPhone`).
   "pay.after_close": {
     group: null,
     module: "time_clock",
@@ -478,6 +491,226 @@ export function groupsFor(
     }),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Each person's choices (notifications part 3,
+// supabase/migrations/20261112000100_notification_preferences.sql): which
+// groups reach their phone, quiet hours, and what a lock screen shows. They
+// are the person's own, across every business they are in, and read by
+// nobody else. The app's inbox always shows everything.
+
+/** Whether a value names a group. */
+export function isNotificationGroup(
+  value: unknown,
+): value is NotificationGroup {
+  return NOTIFICATION_GROUPS.some((group) => group === value);
+}
+
+/**
+ * The group a kind is in, as the database reads it
+ * (`private.notification_group`, kept equal by
+ * packages/db/notification-preferences.db.test.ts): null for a line nobody
+ * switches off (the lines about pay, the person's own and the office's, and
+ * the test) and for a kind this app doesn't know.
+ */
+export function notificationGroupOf(kind: string): NotificationGroup | null {
+  const known = notificationKindOf(kind);
+  if (!known) return null;
+  const info: KindInfo = NOTIFICATION_KINDS[known];
+  return info.group;
+}
+
+/**
+ * The kinds that reach this role's phone here whatever they switch off: in
+ * no group, for this role, with their module on. Only the lines about pay
+ * (payroll kept each of them out of every group), so a settings screen that
+ * finds any says pay always comes. The test from the phone switch, asked for
+ * there and then, isn't one.
+ */
+export function alwaysOnPhone(
+  role: Role,
+  enabled: readonly ModuleKey[],
+): NotificationKind[] {
+  return NOTIFICATION_KIND_KEYS.filter((kind) => {
+    const info: KindInfo = NOTIFICATION_KINDS[kind];
+    return (
+      kind !== "push.test" &&
+      info.group === null &&
+      atLeast(role, info.minRole) &&
+      !(info.staffOnly && !isStaff(role)) &&
+      (info.module === null || enabled.includes(info.module))
+    );
+  });
+}
+
+/**
+ * The groups a person may keep off their phone: every one, those whose lines
+ * ask them to act included, since those still wait in the app and count on
+ * Home and the bell. Nothing is ever switched off in the app. Which of them a
+ * settings screen offers is `groupsFor` the person's role.
+ */
+export const SWITCHABLE_GROUPS: readonly NotificationGroup[] =
+  NOTIFICATION_GROUPS;
+
+/** Quiet hours, "HH:MM" on the person's clock; `to` before `from` crosses midnight. */
+export type QuietHours = { from: string; to: string };
+
+/** Quiet hours when first switched on (plan §9): 22:00 to 07:00. */
+export const DEFAULT_QUIET_HOURS: QuietHours = { from: "22:00", to: "07:00" };
+
+/** The clock quiet hours are read on, until a screen says the business's. */
+export const NOTIFICATION_TIME_ZONE = "Asia/Jerusalem";
+
+export type NotificationPreferences = {
+  /** Groups that don't reach the phone; their lines still reach the app. */
+  pushOff: NotificationGroup[];
+  /** Null while quiet hours are off, as they are until switched on. */
+  quiet: QuietHours | null;
+  /** The clock `quiet` is read on (an IANA zone). */
+  timeZone: string;
+  /** What the lock screen shows: the line, or only its group's words. */
+  previews: boolean;
+  /**
+   * When the person was first offered notifications on the phone after
+   * giving away a shift or sending availability, as an ISO instant: asked
+   * once, never again. Null: not yet.
+   */
+  askedAt: string | null;
+};
+
+/** Everyone's choices until they make their own. */
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  pushOff: [],
+  quiet: null,
+  timeZone: NOTIFICATION_TIME_ZONE,
+  previews: true,
+  askedAt: null,
+};
+
+/** "HH:MM" of a stored time ("22:00:00"), or null for anything else. */
+function clockOf(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const clock = value.slice(0, 5);
+  return timeOfDay.safeParse(clock).success ? clock : null;
+}
+
+/**
+ * Choices as the database keeps them, read leniently: anything unexpected
+ * reads as its default, and quiet hours are on only with both ends.
+ */
+export function readNotificationPreferences(stored: {
+  pushOff: unknown;
+  quietFrom: unknown;
+  quietTo: unknown;
+  timeZone: unknown;
+  previews: unknown;
+  askedAt: unknown;
+}): NotificationPreferences {
+  const from = clockOf(stored.quietFrom);
+  const to = clockOf(stored.quietTo);
+  return {
+    pushOff: SWITCHABLE_GROUPS.filter(
+      (group) =>
+        Array.isArray(stored.pushOff) && stored.pushOff.includes(group),
+    ),
+    quiet: from && to && from !== to ? { from, to } : null,
+    timeZone:
+      typeof stored.timeZone === "string" && stored.timeZone
+        ? stored.timeZone
+        : NOTIFICATION_TIME_ZONE,
+    previews: stored.previews !== false,
+    askedAt:
+      typeof stored.askedAt === "string" &&
+      !Number.isNaN(Date.parse(stored.askedAt))
+        ? stored.askedAt
+        : null,
+  };
+}
+
+/** Whether a kind's lines reach the person's phone by their choices. */
+export function reachesPhone(
+  kind: string,
+  preferences: Pick<NotificationPreferences, "pushOff">,
+): boolean {
+  const group = notificationGroupOf(kind);
+  return group === null || !preferences.pushOff.includes(group);
+}
+
+/**
+ * When the quiet hours `at` falls in end, or null when it falls outside them
+ * (or there are none): from `from` (included) until `to` (not), on the clock
+ * of `timeZone`, the next day's `to` when they cross midnight. The same as
+ * `private.quiet_end`, which packages/db/notification-preferences.db.test.ts
+ * compares with this across the clock changes.
+ */
+export function quietEnd(
+  quiet: QuietHours | null,
+  timeZone: string,
+  at: Date,
+): Date | null {
+  if (!quiet || quiet.from === quiet.to) return null;
+  const day = dateIn(at, timeZone);
+  const now = timeIn(at, timeZone);
+  const { from, to } = quiet;
+  if (from < to) {
+    return now >= from && now < to ? instantIn(day, to, timeZone) : null;
+  }
+  if (now >= from) return instantIn(addDays(day, 1), to, timeZone);
+  if (now < to) return instantIn(day, to, timeZone);
+  return null;
+}
+
+/**
+ * When a line of `kind` written at `at` goes to the person's phone, by their
+ * choices, or null for not at all (`private.push_plan`, for someone whose
+ * phone gets the business's lines): at once, or at the end of their quiet
+ * hours. The test from the phone switch is asked for there and then, so it
+ * never waits.
+ */
+export function phoneTime(
+  kind: string,
+  preferences: Pick<NotificationPreferences, "pushOff" | "quiet" | "timeZone">,
+  at: Date,
+): Date | null {
+  if (!reachesPhone(kind, preferences)) return null;
+  if (kind === "push.test") return at;
+  return quietEnd(preferences.quiet, preferences.timeZone, at) ?? at;
+}
+
+const quietHours = z
+  .object({ from: timeOfDay, to: timeOfDay })
+  .refine((hours) => hours.from !== hours.to, "Quiet hours need a length");
+
+/**
+ * One change from the settings screen, saved at once: a group on or off for
+ * the phone, quiet hours on with their times or off (`hours: null`), or
+ * whether the lock screen shows the line.
+ */
+export const notificationPreferenceChange = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("group"),
+    group: z.enum(NOTIFICATION_GROUPS),
+    on: z.boolean(),
+  }),
+  z.object({ kind: z.literal("quiet"), hours: quietHours.nullable() }),
+  z.object({ kind: z.literal("previews"), on: z.boolean() }),
+]);
+
+export type NotificationPreferenceChange = z.infer<
+  typeof notificationPreferenceChange
+>;
+
+/**
+ * Why a change was not saved: the team viewing as someone changes nothing
+ * (`viewOnly`), a change the screen can't have sent (`invalid`), or anything
+ * else (`failed`).
+ */
+export type PreferencesFailure = "viewOnly" | "invalid" | "failed";
+
+/** What saving a change answers: the choices as they now stand. */
+export type PreferencesSaveResult =
+  | { ok: true; preferences: NotificationPreferences }
+  | { ok: false; failure: PreferencesFailure };
 
 /**
  * How long ago a line came, in the inbox's own words: "now" under a minute,

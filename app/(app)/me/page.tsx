@@ -1,6 +1,5 @@
 import { photoAllowed } from "@db/profile-photos";
 import { pushAllowed } from "@db/push/devices";
-import { pushConfig } from "@db/push/env";
 import { displayIsraeliMobile } from "@domain/phone";
 import { profilePhotoSrc } from "@domain/profile-photos";
 import type { Metadata } from "next";
@@ -13,7 +12,7 @@ import { currentWording } from "../current-wording";
 import { SwitchBusinessSection } from "../home/my-businesses";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
-import { PushSwitch } from "../notifications/push-switch";
+import { NotificationSettingsLink } from "../notifications/settings-link";
 import { baseWording, translator } from "../wording";
 import {
   removeMyPhotoAction,
@@ -46,15 +45,15 @@ export default async function MePage() {
   // While viewing as a role nothing changes; otherwise the database says
   // whether the person is in a demo business that keeps its people.
   let locked: PhotoLock | null = "viewOnly";
-  // Notifications on this phone: not while viewing as someone, and not
-  // without the VAPID settings or with the module off.
-  const push =
-    !member.viewing && enabled.includes("notifications") ? pushConfig() : null;
-  let canPush: boolean | null = null;
+  // The way to the notification settings: not while viewing as someone, not
+  // with the module off, and not in a demo business, whose lines never reach
+  // a phone (the inbox says so).
+  const notificationsOn = !member.viewing && enabled.includes("notifications");
+  let canPush: boolean | null = false;
   if (!member.viewing) {
     const [allowed, pushes] = await Promise.all([
       photoAllowed(member.userId),
-      push ? pushAllowed(member.userId) : null,
+      notificationsOn ? pushAllowed(member.userId) : false,
     ]);
     locked = allowed === "yes" ? null : allowed;
     canPush = pushes;
@@ -71,8 +70,12 @@ export default async function MePage() {
         saveProfile: saveMyProfileAction,
       }}
       notifications={
-        push && canPush !== null ? (
-          <PushSwitch publicKey={push.publicKey} demo={!canPush} />
+        notificationsOn && canPush !== false ? (
+          <NotificationSettingsLink
+            href="/notifications/settings"
+            wording={wording}
+            from="profile"
+          />
         ) : null
       }
       businesses={

@@ -21,7 +21,8 @@ export async function generateMetadata(): Promise<Metadata> {
 // The signed-in person's notifications in their business: what happened that
 // concerns them. Not while the module is off for the business (the team's
 // switch in the console), and not while viewing as someone, whose lines are
-// theirs alone. `?before=` reads older ones.
+// theirs alone. `?before=` reads older ones. The way to the settings, except
+// in a demo business, whose lines never reach a phone.
 export default async function NotificationsPage({
   searchParams,
 }: {
@@ -45,7 +46,7 @@ export default async function NotificationsPage({
   const push = pushConfig();
   const [page, allowed] = await Promise.all([
     getInbox(membership.business.id, member.userId, before),
-    push ? pushAllowed(member.userId) : null,
+    pushAllowed(member.userId),
   ]);
   return (
     <InboxView
@@ -60,6 +61,7 @@ export default async function NotificationsPage({
       readAll={readAllNotificationsAction}
       paths={{ self: "/notifications", home: "/home", base: "" }}
       wording={wording}
+      settings={allowed === false ? null : "/notifications/settings"}
       push={
         push && allowed !== null ? (
           <PushSwitch publicKey={push.publicKey} demo={!allowed} quietWhenOn />

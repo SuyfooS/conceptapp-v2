@@ -169,6 +169,24 @@ for (const key of ["worker", "manager", "owner", "accountant"] as const) {
   });
 }
 
+// The notification settings in a demo business (N3), whose lines never
+// reach a phone: they say so, with nothing to switch, at every width. What
+// they offer in a real business is notification-settings.spec's.
+test("/notifications/settings says a demo business has nothing to choose", async ({
+  page,
+}) => {
+  const s = he.app.notifications.settings;
+  await enterDemoAs(page, "worker");
+  await page.goto("/notifications/settings");
+  await expect(
+    page.getByRole("heading", { level: 1, name: s.title }),
+  ).toBeVisible();
+  await expect(page.getByText(s.demo).filter({ visible: true })).toBeVisible();
+  await expect(page.getByRole("switch")).toHaveCount(0);
+  await expect(page).toHaveTitle(/ConceptApp$/);
+  await expectAccessible(page);
+});
+
 // A conversation's details beside a phone's page of them (C3): on a tablet a
 // sheet from the title, on a desktop the column beside the conversation,
 // with mute in both; the owner's waiting announcement is pinned under the

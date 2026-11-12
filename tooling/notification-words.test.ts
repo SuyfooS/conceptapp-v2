@@ -42,5 +42,14 @@ describe("notifications", () => {
         expect(at(words, ["groups", group, "hint"]), group).toBeTruthy();
       }
     });
+
+    it(`say every group alone for a lock screen without details in ${language}`, () => {
+      for (const group of [...NOTIFICATION_GROUPS, "other"]) {
+        expect(
+          at(words, ["push", "notice", "hidden", group]),
+          group,
+        ).toBeTruthy();
+      }
+    });
   }
 });

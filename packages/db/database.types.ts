@@ -1743,6 +1743,47 @@ export type Database = {
         };
         Relationships: [];
       };
+      notification_preferences: {
+        Row: {
+          previews: boolean;
+          push_asked_at: string | null;
+          push_off: string[];
+          quiet_from: string | null;
+          quiet_to: string | null;
+          time_zone: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          previews?: boolean;
+          push_asked_at?: string | null;
+          push_off?: string[];
+          quiet_from?: string | null;
+          quiet_to?: string | null;
+          time_zone?: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          previews?: boolean;
+          push_asked_at?: string | null;
+          push_off?: string[];
+          quiet_from?: string | null;
+          quiet_to?: string | null;
+          time_zone?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: true;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       notifications: {
         Row: {
           actor_id: string | null;
@@ -3192,6 +3233,7 @@ export type Database = {
         Args: { actor: string; business: string };
         Returns: undefined;
       };
+      see_push_ask: { Args: Record<PropertyKey, never>; Returns: undefined };
       send_chat_message: {
         Args: {
           actor: string;
@@ -3331,6 +3373,25 @@ export type Database = {
           patch: Json;
         };
         Returns: undefined;
+      };
+      set_notification_preferences: {
+        Args: {
+          lock_previews?: boolean;
+          phone_group?: string;
+          phone_on?: boolean;
+          quiet_on?: boolean;
+          quiet_start?: string;
+          quiet_stop?: string;
+          tz_name?: string;
+        };
+        Returns: {
+          asked_at: string;
+          off_groups: string[];
+          quiet_starts: string;
+          quiet_stops: string;
+          shows_previews: boolean;
+          zone_name: string;
+        }[];
       };
       set_own_profile: {
         Args: { actor: string; patch: Json };

@@ -66,7 +66,8 @@ function Consequence({
  * One shift in a sheet: who is on it, and what the person can do about it.
  * Giving a shift away and taking one are confirmed here, each saying what
  * will happen. `shifts` are the published shifts the id is looked up in,
- * `offers` the colleagues' requests for them.
+ * `offers` the colleagues' requests for them. `onGiven` runs once a shift
+ * was given away.
  */
 export function ShiftSheet({
   id,
@@ -76,6 +77,7 @@ export function ShiftSheet({
   offers,
   data,
   swap,
+  onGiven,
 }: {
   id: string | null;
   open: boolean;
@@ -84,6 +86,7 @@ export function ShiftSheet({
   offers: readonly Offer<WeekScheduleShift>[];
   data: ShiftData;
   swap: SwapAction;
+  onGiven?: () => void;
 }) {
   const t = useTranslations("app");
   const shift = shifts.find((s) => s.id === id);
@@ -110,6 +113,7 @@ export function ShiftSheet({
           data={data}
           swap={swap}
           onDone={() => onOpenChange(false)}
+          onGiven={onGiven}
         />
       ) : null}
     </Sheet>
@@ -122,12 +126,14 @@ function SheetBody({
   data,
   swap,
   onDone,
+  onGiven,
 }: {
   shift: WeekScheduleShift;
   offers: readonly Offer<WeekScheduleShift>[];
   data: ShiftData;
   swap: SwapAction;
   onDone: () => void;
+  onGiven?: () => void;
 }) {
   const t = useTranslations("app");
   const subject = shiftLabel(t, shift);
@@ -187,7 +193,10 @@ function SheetBody({
               variant="primary"
               size="lg"
               block
-              onDone={onDone}
+              onDone={() => {
+                onDone();
+                onGiven?.();
+              }}
             />
           }
         >

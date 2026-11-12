@@ -2850,8 +2850,61 @@
           "fallback": {
             "title": "There's something new in ConceptApp",
             "body": "Open the app to see it"
+          },
+          "hidden": {
+            "schedule": "A schedule update",
+            "swaps": "A shift swap update",
+            "approvals": "Something is waiting for approval",
+            "team": "A team update",
+            "lists": "A lists update",
+            "chat": "A new chat message",
+            "documents": "A documents update",
+            "other": "Something new"
           }
         }
+      },
+      "settings": {
+        "title": "Notification settings",
+        "subtitle": "Everything shows in the app, always. Here you choose what also reaches your phone, and when.",
+        "row": "Notification settings",
+        "rowHint": "What reaches the phone, quiet hours and the lock screen",
+        "kinds": {
+          "title": "What reaches the phone",
+          "note": "What's off here doesn't reach the phone, but waits in the app, in the notifications.",
+          "always": "Notifications about pay always reach the phone, even with everything here off."
+        },
+        "quiet": {
+          "title": "Quiet hours",
+          "label": "Silence at set hours",
+          "hint": "Notifications for the phone wait until these hours end",
+          "from": "From",
+          "to": "Until",
+          "note": "In the app they show at once. A reminder whose time has passed by then won't reach the phone.",
+          "now": "Quiet hours now. What comes waits until <ltr>{time}</ltr>."
+        },
+        "previews": {
+          "title": "Lock screen",
+          "label": "Details on the lock screen",
+          "hint": "When off, the lock screen shows only the kind of notification, like \"A schedule update\", with no names or times."
+        },
+        "demo": "In a demo business, notifications show only here, in the app, so there is nothing to choose. In a real business you choose here what reaches the phone.",
+        "saved": "Saved",
+        "failures": {
+          "viewOnly": "Settings can't be changed while viewing as someone.",
+          "invalid": "The start and the end need to be different times.",
+          "failed": "The change wasn't saved. You can try again."
+        }
+      },
+      "ask": {
+        "swap": "Want to know when someone takes the shift?",
+        "availability": "Want to know when the schedule is published?",
+        "body": "{device, select, phone {A notification on the phone arrives even with the app closed.} other {A notification on the device arrives even with the app closed.}}",
+        "enable": "{device, select, phone {Turn on notifications on the phone} other {Turn on notifications on the device}}",
+        "install": "On an iPhone, add the app to the home screen first. The notification settings say how.",
+        "on": "{device, select, phone {Notifications are on for this phone. In the settings you choose what reaches it.} other {Notifications are on for this device. In the settings you choose what reaches it.}}",
+        "settings": "Notification settings",
+        "dismiss": "Not now",
+        "close": "Close"
       }
     },
     "lists": {

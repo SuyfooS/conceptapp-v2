@@ -249,9 +249,22 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   (`20261109000500_push.sql`): devices in `push_subscriptions`, one delivery per line
   and device in `push_deliveries`, the minute job (off locally), `public/sw.js` with no
   fetch handler, `/push/*` and `/cron/notifications`, the switch on `/notifications` and
-  `/me`. It reaches a phone once Orel sets the VAPID keys and the cron secret
+  (since N3) `/notifications/settings`. It reaches a phone once Orel sets the VAPID keys and the cron secret
   (`README.md`, `supabase/README.md`), never for a demo business. A new producing action
-  calls `pushSoon()` from `app/push/server.ts` after it writes.
+  calls `pushSoon()` from `app/push/server.ts` after it writes. N3 is built too
+  (`20261112000100_notification_preferences.sql`): each person's own choices in
+  `notification_preferences` (read by that person alone, written only through
+  `set_notification_preferences` and `see_push_ask` under their own session, never the
+  secret key or a view session), `private.notification_group` kept equal to
+  `@domain/notifications` by `packages/db/notification-preferences.db.test.ts`,
+  `private.push_plan` holding a group kept off the phone and waiting out quiet hours
+  (the minute job sends it when they end), `claim_due_pushes` asking again at every send
+  (a retry stops for a group switched off and waits out quiet hours), the lines about pay
+  in no group and always on the phone (whether the office's two get a group is Orel's call), `/push/inbox` showing only the group's words
+  when details are off the lock screen, `/notifications/settings` (the phone's switch,
+  a switch per group, quiet hours, the lock screen) reached from `/me` and the inbox,
+  and the one-time offer after giving a shift away or sending availability. A new kind is
+  a row in `private.notification_kind_groups` too. Next: N4, the reminders.
 - **Chat, database first** (Orel, 8 November 2026, issue #1; the plan's C1 to C8, each
   its own PR). C1 is built: `20261111000100_chat_module.sql` and `20261111000200_chat.sql`
   (conversations, messages, reads, announcements, removal with undo, the line per

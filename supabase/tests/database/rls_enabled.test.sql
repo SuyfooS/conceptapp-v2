@@ -36,7 +36,8 @@ select set_eq(
     'minimum_wages', 'member_wages', 'member_payroll_details',
     'employment_periods', 'payroll_months', 'chat_conversations', 'chat_messages',
     'chat_reads', 'chat_acks', 'chat_notices', 'documents', 'document_recipients',
-    'document_notices'
+    'document_notices',
+    'notification_preferences'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );
