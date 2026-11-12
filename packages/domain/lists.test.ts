@@ -832,7 +832,7 @@ const template: ListTemplate = {
   ],
 };
 
-describe("the template editor's save", () => {
+describe("the template editor", () => {
   it("saves a template as it was read, its times untouched", () => {
     const drafts = draftItemsOf(template.items);
     expect(drafts.map((d) => d.key)).toEqual([ITEM, ITEM_2]);
