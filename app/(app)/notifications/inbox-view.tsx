@@ -1,11 +1,12 @@
 import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { numberRange, signed } from "@domain/lists";
-import type {
-  NotificationEntry,
-  NotificationGroup,
-  NotificationPerson,
-  NotificationShift,
+import {
+  inboxAgo,
+  type NotificationEntry,
+  type NotificationGroup,
+  type NotificationPerson,
+  type NotificationShift,
 } from "@domain/notifications";
 import { timeIn } from "@domain/shabbat";
 import { addMonths } from "@domain/time-clock-format";
@@ -53,9 +54,6 @@ const GROUP_ICONS: Record<NotificationGroup, ReactNode> = {
   chat: <MessageCircle />,
   documents: <FileText />,
 };
-
-/** A week is long enough to say "3 days ago"; older lines say their date. */
-const RELATIVE_FOR_MS = 7 * 24 * 60 * 60 * 1000;
 
 const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
 const td = "border-line border-t px-4 py-3 align-top";
@@ -152,9 +150,9 @@ export function InboxView({
       : null;
   const when = (at: string) => {
     const instant = new Date(at);
-    const ago = nowDate.getTime() - instant.getTime();
-    if (ago < 60_000) return t("time.now");
-    if (ago < RELATIVE_FOR_MS) return format.relativeTime(instant, nowDate);
+    const ago = inboxAgo(instant, nowDate);
+    if (ago?.unit === "now") return t("time.now");
+    if (ago) return t(`time.${ago.unit}`, { count: ago.count });
     return format.dateTime(instant, {
       day: "numeric",
       month: "numeric",

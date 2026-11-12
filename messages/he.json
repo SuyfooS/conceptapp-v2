@@ -2621,7 +2621,10 @@
         }
       },
       "time": {
-        "now": "עכשיו"
+        "now": "עכשיו",
+        "minutes": "{count, plural, one {לפני דקה} two {לפני שתי דקות} other {לפני # דקות}}",
+        "hours": "{count, plural, one {לפני שעה} two {לפני שעתיים} other {לפני # שעות}}",
+        "days": "{count, plural, one {לפני יום} two {לפני יומיים} other {לפני # ימים}}"
       },
       "who": {
         "noName": "בלי שם",

@@ -480,6 +480,34 @@ export function groupsFor(
 }
 
 /**
+ * How long ago a line came, in the inbox's own words: "now" under a minute,
+ * then whole minutes, hours and days (rounded down) for a week, and `null`
+ * after that, when the line says its date. Our own words, not
+ * `Intl.RelativeTimeFormat`, which writes "לפני שעה (1)" in Hebrew.
+ */
+export type InboxAgo =
+  | { unit: "now" }
+  | { unit: "minutes" | "hours" | "days"; count: number }
+  | null;
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+export function inboxAgo(at: Date, now: Date): InboxAgo {
+  const ago = now.getTime() - at.getTime();
+  if (Number.isNaN(ago)) return null;
+  // A clock a little ahead of the server's still reads "now".
+  if (ago < MINUTE_MS) return { unit: "now" };
+  if (ago < HOUR_MS)
+    return { unit: "minutes", count: Math.floor(ago / MINUTE_MS) };
+  if (ago < DAY_MS) return { unit: "hours", count: Math.floor(ago / HOUR_MS) };
+  if (ago < 7 * DAY_MS)
+    return { unit: "days", count: Math.floor(ago / DAY_MS) };
+  return null;
+}
+
+/**
  * Lines a page of the inbox shows. The unread ones come first, every one of
  * them a page at a time, then the ones already read: what the bell counts can
  * always be found.

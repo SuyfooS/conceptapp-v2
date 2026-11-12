@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-12 · nightly run 35 · "how long ago" in the inbox, in our own words
+
+- Guessed: no open work from Orel. The newest notes were chat decisions for the day sessions (C7 is theirs), and the bug noted on nights 33 and 34 was next: the inbox said "לפני שעה (1)" and "לפני יומיים (2)", which is what `Intl.RelativeTimeFormat` writes in Hebrew.
+- `inboxAgo` in `@domain/notifications` (now under a minute, then whole minutes, hours and days, rounded down, for a week; the date after that), with tests; `inbox-view.tsx` reads it instead of `format.relativeTime`; `app.notifications.time.minutes|hours|days` in he and en, ICU plurals with Hebrew's `two` ("לפני שתי דקות", "לפני שעתיים", "לפני יומיים").
+- Checked: `pnpm check` (1831 tests), `pnpm build`; `/design/shell/notifications` at 390, 820 and 1440: "לפני 14 דקות … לפני 4 ימים", axe clean, no horizontal scroll.
+- Restore point: branch `backup/before-night-2026-11-12` at `d8f4c67` (the tag push was cut off again). Commit: at merge.
+- Next: C7 in the day sessions. #97 (lists limits tests, night 33) is still open and behind `main`.
+- Defaults applied: none.
+
 ## 2026-11-11 · chat · official documents in the database, C6
 
 - On chat/documents-db, stacked on C5 (chat/chat-pdfs, #127). Orel's answers of 11 November (#1): documents are built now, kept forever, with the office's "הורדת כל המסמכים" and a line that the business should keep its own copy (C7), since the free plan has no backups; accountants get documents only; a file is removed by its sender within 10 minutes, then by the owner or a pay holder with a reason from a list and 10 minutes to undo, and the row always stays.
