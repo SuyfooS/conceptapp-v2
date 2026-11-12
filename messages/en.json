@@ -4240,7 +4240,7 @@
       "settings": {
         "availabilityReminderHours": {
           "label": "Reminder to send availability",
-          "hint": "How long before it's due to remind whoever hasn't sent availability for next week. When it's due, owners and managers are told how many still haven't sent it. With no reminder, neither is sent. The reminder comes no earlier than 8 in the morning on the week's first day, when next week opens for sending. When it's due before then, it only shows in the app.",
+          "hint": "How long before it is due to remind whoever has not sent availability. When it is due, owners and managers see how many still have not. With no reminder, neither is sent.",
           "options": {
             "0": "No reminder",
             "3": "3 hours before",
@@ -4251,7 +4251,7 @@
         },
         "clockOutReminderMinutes": {
           "label": "Reminder to clock out",
-          "hint": "How long after the end of their shift to remind whoever is still clocked in. With no shift in the schedule, the reminder comes 12 hours after clocking in. When another shift starts within that time after the one before it ends, it counts from the end of the last one. Only a manager can close a shift open for more than 24 hours, so owners and managers are told about it either way.",
+          "hint": "How long after the end of their shift to remind whoever is still clocked in. With no shift in the schedule, after 12 hours. After 24 hours, owners and managers are told either way.",
           "options": {
             "0": "No reminder",
             "30": "Half an hour after",
