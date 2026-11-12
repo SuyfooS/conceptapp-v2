@@ -3,6 +3,7 @@ import {
   buildInbox,
   groupsFor,
   INBOX_PAGE_SIZE,
+  inboxAgo,
   inboxCursor,
   inboxPage,
   inInbox,
@@ -919,5 +920,36 @@ describe("notificationRefs", () => {
         row("other.thing", "text"),
       ]).sort(),
     ).toEqual([NOA, YOAV, MANAGER].sort());
+  });
+});
+
+describe("inboxAgo", () => {
+  const now = new Date("2026-11-12T10:00:00Z");
+  const agoBy = (ms: number) => inboxAgo(new Date(now.getTime() - ms), now);
+  const min = 60_000;
+  const hour = 60 * min;
+  const day = 24 * hour;
+
+  it("says now under a minute, and for a clock a little ahead", () => {
+    expect(agoBy(0)).toEqual({ unit: "now" });
+    expect(agoBy(59_999)).toEqual({ unit: "now" });
+    expect(agoBy(-5_000)).toEqual({ unit: "now" });
+  });
+
+  it("counts whole minutes, hours and days, rounded down", () => {
+    expect(agoBy(min)).toEqual({ unit: "minutes", count: 1 });
+    expect(agoBy(59 * min + 59_000)).toEqual({ unit: "minutes", count: 59 });
+    expect(agoBy(hour)).toEqual({ unit: "hours", count: 1 });
+    expect(agoBy(2 * hour - 1)).toEqual({ unit: "hours", count: 1 });
+    expect(agoBy(23 * hour + 59 * min)).toEqual({ unit: "hours", count: 23 });
+    expect(agoBy(day)).toEqual({ unit: "days", count: 1 });
+    expect(agoBy(2 * day)).toEqual({ unit: "days", count: 2 });
+    expect(agoBy(7 * day - 1)).toEqual({ unit: "days", count: 6 });
+  });
+
+  it("gives way to the date from a week on, or for a time it can't read", () => {
+    expect(agoBy(7 * day)).toBeNull();
+    expect(agoBy(400 * day)).toBeNull();
+    expect(inboxAgo(new Date("not a time"), now)).toBeNull();
   });
 });
