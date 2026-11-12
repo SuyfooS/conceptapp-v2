@@ -7,7 +7,7 @@ import he from "@/messages/he.json";
 
 vi.mock("server-only", () => ({}));
 
-const { pushWords } = await import("./words");
+const { pushNotice, pushWords } = await import("./words");
 const { baseWording } = await import("@/app/(app)/wording");
 
 const words = he.app.notifications.kinds.chat;
@@ -121,5 +121,58 @@ describe("a document's words on the phone", () => {
     expect(
       say({ kind: "documents.to_confirm", from, category: null }, true).body,
     ).toBe(documents.to_confirm.settledNote);
+  });
+});
+
+// With details kept off the lock screen (notifications part 3), a line says
+// its group alone: no name, no shift, no time, and no body.
+describe("a line with details kept off the lock screen", () => {
+  const hidden = he.app.notifications.push.notice.hidden;
+  const from = { kind: "member", name: "שירן הדגמה" } as const;
+  const shift = {
+    day: "2026-11-17",
+    name: "ערב",
+    start: "16:00",
+    end: "23:00",
+  };
+
+  it("says its group alone", () => {
+    const notice = pushNotice(
+      {
+        ...entry({ kind: "swap.offered", shift, from }),
+        group: "swaps",
+      },
+      baseWording,
+      "Asia/Jerusalem",
+      { previews: false },
+    );
+    expect(notice.title).toBe(hidden.swaps);
+    expect(notice.body).toBeUndefined();
+    expect(JSON.stringify(notice)).not.toContain("שירן");
+    expect(JSON.stringify(notice)).not.toContain("16:00");
+    expect(notice.url).toBe(
+      "/notifications/open/0a000000-0000-4000-a000-000000000001",
+    );
+  });
+
+  it("says only that something is new for a line with no group", () => {
+    const notice = pushNotice(
+      { ...entry({ kind: "pay.wage_set", since: "2026-11-01" }), group: null },
+      baseWording,
+      "Asia/Jerusalem",
+      { previews: false, again: true },
+    );
+    expect(notice).toMatchObject({ title: hidden.other, silent: true });
+    expect(notice.body).toBeUndefined();
+  });
+
+  it("shows the line itself by default", () => {
+    const notice = pushNotice(
+      entry({ kind: "chat.direct", from, count: 2 }),
+      baseWording,
+      "Asia/Jerusalem",
+    );
+    expect(notice.title).toBe("שירן הדגמה");
+    expect(notice.silent).toBeUndefined();
   });
 });

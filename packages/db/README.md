@@ -85,6 +85,35 @@ devices, never their endpoints or keys. `@db/push/*` signs VAPID with
 `node:crypto` and sends; pg_cron's minute job asks the app to send while
 something is due (`push.test.sql`).
 
+What reaches each person's phone is theirs to choose
+(`20261112000100_notification_preferences.sql`). `public.notification_preferences`
+holds one row per person, across their businesses: the groups kept off the
+phone (`push_off`), quiet hours on the clock of `time_zone`, whether the lock
+screen shows the line (`previews`), and when they were offered notifications
+on the phone (`push_asked_at`). No row means everything reaches the phone, no
+quiet hours, details shown. The person alone reads it (select own); anon, the
+secret key and a view session read nothing, and nothing writes a log row.
+It is written only through `public.set_notification_preferences` (one change
+at a time, 22023 for what can't be) and `public.see_push_ask`, both for
+`auth.uid()` and granted to `authenticated` alone, refused during a view session:
+`@db/notification-preferences` calls them under the person's own session and
+takes no person id. `private.push_plan` asks those choices too: nothing for a
+group in `push_off` (the line still reaches the app, with `push_state` 'none'),
+and the end of quiet hours (`private.quiet_until`) for a line inside them, which
+the minute job then sends; the test is never held. `claim_due_pushes` asks them
+again at every send: a push going again after a failure stops when its group is
+kept off the phone now (`private.push_kept_off`), and one that comes due inside
+quiet hours stays queued until a send after they end (`private.push_held`,
+which the minute job asks too, so it doesn't wake the app for it). A change
+re-plans what waits, retries included. The lines about pay (`access.pay_granted`,
+`pay.wage_set`, and the office's `pay.after_close` and `pay.month_due`) are in no
+group, as payroll left them, and always reach the phone; the settings screen
+says so. `private.notification_group` mirrors `@domain/notifications` for every
+kind, so a new kind is a row in `private.notification_kind_groups` too
+(`notification_preferences.test.sql`, and `notification-preferences.db.test.ts`
+for the groups and for `private.quiet_end` against `quietEnd` across both clock
+changes).
+
 Lists (`20261109000600_lists.sql`) work the same way as the rest. A
 business's departments are its own data, read by every member;
 `public.set_departments` and `public.set_department_members` save them for an

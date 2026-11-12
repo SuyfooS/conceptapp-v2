@@ -13,6 +13,11 @@ import { cn } from "@ui/cn";
 import { PageSection } from "@ui/page";
 import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
+import {
+  PushAsk,
+  type PushAskOffer,
+  usePushAskOnce,
+} from "../../notifications/push-ask";
 import { CardTarget, MyShiftHero } from "./shift-card";
 import {
   personRow,
@@ -56,15 +61,19 @@ export function MyShiftsBoard({
   shifts,
   data,
   swap,
+  ask = null,
 }: {
   mine: OwnShift<WeekScheduleShift>[];
   anyPublished: boolean;
   shifts: WeekScheduleShift[];
   data: ShiftData;
   swap: SwapAction;
+  /** Offered once, right after a shift is given away. */
+  ask?: PushAskOffer | null;
 }) {
   const t = useTranslations("app");
   const sheet = useShiftSheet();
+  const pushAsk = usePushAskOnce(ask);
   const offers = offersFor(data.swaps, shifts, data.userId, data.today);
   const available = offers.filter((o) => o.state === "available").length;
   const [next, ...later] = mine;
@@ -76,6 +85,7 @@ export function MyShiftsBoard({
   return (
     <div className="grid items-start gap-8 md:grid-cols-2 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="flex min-w-0 flex-col gap-6">
+        <PushAsk offer={pushAsk.asking} moment="swap" onClose={pushAsk.close} />
         {next && whenNext ? (
           <MyShiftHero
             shift={next.shift}
@@ -257,6 +267,7 @@ export function MyShiftsBoard({
         offers={offers}
         data={data}
         swap={swap}
+        onGiven={pushAsk.offer}
       />
     </div>
   );

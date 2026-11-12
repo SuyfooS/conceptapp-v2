@@ -55,7 +55,7 @@ export async function MeView({
   /** `signOut`, or the design demo's stand-in. */
   signOut: SignOutAction;
   actions: MeActions;
-  /** The switch for notifications on this phone, where there is one. */
+  /** The way to the notification settings, where there is one. */
   notifications?: ReactNode;
   /** The switch between businesses, for someone in more than one. */
   businesses?: ReactNode;

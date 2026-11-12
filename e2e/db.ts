@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { sql } from "./pg";
 
 export type OpenedBusiness = {
@@ -762,20 +763,34 @@ export const PUSH_PEOPLE = {
 } as const;
 
 /**
- * The push business goes with its records: its log is kept
+ * A real business goes with its records: its log is kept
  * (20261110000100_hours_kept.sql), so the purge, which only the database's
  * owner may run, clears it first, in the same transaction.
  */
-async function deletePushBusiness(): Promise<void> {
+async function deleteRealBusiness(id: string): Promise<void> {
   await sql.begin(async (tx) => {
-    await tx`select private.purge_business_records(${PUSH_BUSINESS}::uuid)`;
-    await tx`delete from public.businesses where id = ${PUSH_BUSINESS}`;
+    await tx`select private.purge_business_records(${id}::uuid)`;
+    await tx`delete from public.businesses where id = ${id}`;
   });
 }
 
-export async function openPushBusiness(): Promise<void> {
-  const people = Object.values(PUSH_PEOPLE);
-  await deletePushBusiness();
+type RealPerson = { id: string; name: string; e164: string };
+
+/**
+ * A real business made afresh, from the shop's template, through the
+ * database functions the app uses: its owner and worker (their logins made
+ * when missing, their devices forgotten), the worker on a published morning
+ * shift next Sunday.
+ */
+async function openRealBusiness(business: {
+  id: string;
+  slug: string;
+  name: string;
+  owner: RealPerson;
+  worker: RealPerson;
+}): Promise<void> {
+  const people = [business.owner, business.worker];
+  await deleteRealBusiness(business.id);
   for (const person of people) {
     await sql`
       insert into auth.users (
@@ -798,11 +813,11 @@ export async function openPushBusiness(): Promise<void> {
   await sql`delete from public.push_subscriptions
     where user_id in ${sql(people.map((p) => p.id))}`;
   await sql`insert into public.businesses (id, slug, name)
-    values (${PUSH_BUSINESS}, 'push-e2e', 'עסק להתראות')`;
-  await sql`select public.apply_template(${PUSH_BUSINESS}, 'retail')`;
+    values (${business.id}, ${business.slug}, ${business.name})`;
+  await sql`select public.apply_template(${business.id}, 'retail')`;
   await sql`insert into public.memberships (business_id, user_id, role)
-    values (${PUSH_BUSINESS}, ${PUSH_PEOPLE.owner.id}, 'owner'),
-      (${PUSH_BUSINESS}, ${PUSH_PEOPLE.worker.id}, 'worker')`;
+    values (${business.id}, ${business.owner.id}, 'owner'),
+      (${business.id}, ${business.worker.id}, 'worker')`;
 
   const [week] = await sql<{ id: string; starts_on: string }[]>`
     with business as (
@@ -811,19 +826,19 @@ export async function openPushBusiness(): Promise<void> {
       from public.businesses b
       join public.business_modules m
         on m.business_id = b.id and m.module_key = 'scheduling'
-      where b.id = ${PUSH_BUSINESS}
+      where b.id = ${business.id}
     ),
     next_week as (
       select today - ((extract(dow from today)::int - starts_on + 7) % 7)
         + 7 as starts_on
       from business
     )
-    select public.open_schedule_week(${PUSH_BUSINESS}, starts_on,
+    select public.open_schedule_week(${business.id}, starts_on,
         now() + interval '1 day')::text as id,
       starts_on::text as starts_on
     from next_week`;
   if (!week) throw new Error("Could not open next week");
-  await sql`select public.publish_week_schedule(${PUSH_PEOPLE.owner.id}, ${week.id},
+  await sql`select public.publish_week_schedule(${business.owner.id}, ${week.id},
     ${sql.json([
       {
         day: week.starts_on,
@@ -831,9 +846,18 @@ export async function openPushBusiness(): Promise<void> {
         start: "09:00",
         end: "16:00",
         needed: 1,
-        assignees: [{ user: PUSH_PEOPLE.worker.id, position: null }],
+        assignees: [{ user: business.worker.id, position: null }],
       },
     ])})`;
+}
+
+export async function openPushBusiness(): Promise<void> {
+  await openRealBusiness({
+    id: PUSH_BUSINESS,
+    slug: "push-e2e",
+    name: "עסק להתראות",
+    ...PUSH_PEOPLE,
+  });
 }
 
 /** The person's saved devices: where each sends, and its kind. */
@@ -871,7 +895,7 @@ export async function notifyPushOwner(): Promise<void> {
 export async function closePushBusiness(): Promise<void> {
   await sql`delete from public.push_subscriptions
     where user_id in ${sql(Object.values(PUSH_PEOPLE).map((p) => p.id))}`;
-  await deletePushBusiness();
+  await deleteRealBusiness(PUSH_BUSINESS);
 }
 
 /**
@@ -2356,4 +2380,229 @@ export async function forgetDemoDocuments(
     });
   }
   return held.map((row) => row.id);
+}
+
+/**
+ * A real business for each person's notification choices (notifications
+ * part 3), which a demo business doesn't offer: an owner and a worker of
+ * their own (their numbers are in no other spec), the worker on a published
+ * shift next Sunday. Made afresh each run; their choices and devices go with
+ * it when the spec is done.
+ */
+export const SETTINGS_BUSINESS = "00000000-0000-4000-b000-0000000000e3";
+export const SETTINGS_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000967",
+    name: "דפנה בחירות",
+    local: "050-000-0967",
+    e164: "+972500000967",
+  },
+  worker: {
+    id: "00000000-0000-4000-a000-000000000968",
+    name: "עמית בחירות",
+    local: "050-000-0968",
+    e164: "+972500000968",
+  },
+} as const;
+
+const settingsPeople = () =>
+  Object.values(SETTINGS_PEOPLE).map((person) => person.id);
+
+/** The business afresh, its people with no choices made and no devices. */
+export async function openSettingsBusiness(): Promise<void> {
+  await sql`delete from public.notification_preferences
+    where user_id in ${sql(settingsPeople())}`;
+  await openRealBusiness({
+    id: SETTINGS_BUSINESS,
+    slug: "settings-e2e",
+    name: "עסק לבחירות",
+    ...SETTINGS_PEOPLE,
+  });
+}
+
+/** Forget the business, its people's choices and devices. */
+export async function closeSettingsBusiness(): Promise<void> {
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(settingsPeople())}`;
+  await sql`delete from public.notification_preferences
+    where user_id in ${sql(settingsPeople())}`;
+  await deleteRealBusiness(SETTINGS_BUSINESS);
+}
+
+export type StoredPreferences = {
+  pushOff: string[];
+  quietFrom: string | null;
+  quietTo: string | null;
+  previews: boolean;
+  askedAt: string | null;
+};
+
+/** A person's choices as stored, or null before they made any. */
+export async function storedPreferences(
+  userId: string,
+): Promise<StoredPreferences | null> {
+  const [row] = await sql<StoredPreferences[]>`
+    select push_off as "pushOff",
+      to_char(quiet_from, 'HH24:MI') as "quietFrom",
+      to_char(quiet_to, 'HH24:MI') as "quietTo",
+      previews, push_asked_at::text as "askedAt"
+    from public.notification_preferences where user_id = ${userId}`;
+  return row ?? null;
+}
+
+/** Back to no choices made. */
+export async function forgetPreferences(userId: string): Promise<void> {
+  await sql`delete from public.notification_preferences
+    where user_id = ${userId}`;
+}
+
+/**
+ * Quiet hours straight into the database, on Israel's clock: from an hour
+ * ago until `minutes` minutes from now, in whole minutes (so they end at
+ * least `minutes - 1` minutes from now), with the moment inside them. Written
+ * this way nothing already waiting is planned again: set them before the
+ * line. Returns when they end, "HH:MM".
+ */
+export async function quietUntilSoon(
+  userId: string,
+  minutes: number,
+): Promise<string> {
+  const [row] = await sql<{ stops: string }[]>`
+    insert into public.notification_preferences as p
+      (user_id, quiet_from, quiet_to, time_zone)
+    select ${userId}::uuid,
+      date_trunc('minute', here.t - interval '1 hour')::time,
+      date_trunc('minute', here.t + make_interval(mins => ${minutes}::int))::time,
+      'Asia/Jerusalem'
+    from (select now() at time zone 'Asia/Jerusalem' as t) here
+    on conflict (user_id) do update
+      set quiet_from = excluded.quiet_from, quiet_to = excluded.quiet_to,
+        time_zone = excluded.time_zone, updated_at = now()
+    returning to_char(p.quiet_to, 'HH24:MI') as stops`;
+  if (!row) throw new Error("No quiet hours written");
+  return row.stops;
+}
+
+/**
+ * A device for the person, as saving one leaves it, sending to `origin`
+ * (the tests' loopback push service). Returns its endpoint.
+ */
+export async function addTestDevice(
+  userId: string,
+  origin: string,
+): Promise<string> {
+  const endpoint = `${origin}/push/${randomUUID()}`;
+  await sql`insert into public.push_subscriptions
+      (user_id, endpoint, endpoint_hash, p256dh, auth_secret, label)
+    values (${userId}, ${endpoint}, private.endpoint_hash(${endpoint}),
+      ${`B${"A".repeat(86)}`}, 'aW5zdGFudC1hdXRoLWtleQ', 'computer')`;
+  return endpoint;
+}
+
+/** Forget the person's devices. */
+export async function forgetDevices(userId: string): Promise<void> {
+  await sql`delete from public.push_subscriptions where user_id = ${userId}`;
+}
+
+/**
+ * The settings business's worker gives away their shift, through the
+ * database function the app uses: whoever could take it gets a line.
+ */
+export async function giveSettingsShift(): Promise<void> {
+  await sql`
+    select public.request_shift_swap(${SETTINGS_PEOPLE.worker.id}::uuid, s.id)
+    from public.schedule_shifts s
+    where s.business_id = ${SETTINGS_BUSINESS}
+    order by s.day limit 1`;
+}
+
+/** The worker's requests in the settings business, withdrawn. */
+export async function withdrawSettingsShift(): Promise<void> {
+  await sql`
+    select public.cancel_shift_swap(${SETTINGS_PEOPLE.worker.id}::uuid, w.id)
+    from public.shift_swaps w
+    where w.business_id = ${SETTINGS_BUSINESS} and w.status = 'open'`;
+}
+
+/**
+ * A line for the settings business's owner, written as the producers write
+ * them: someone joined. `pushed`: as if it had just gone to their phone,
+ * for /push/inbox to show. Returns its id.
+ */
+export async function notifySettingsOwner({
+  pushed = false,
+}: {
+  pushed?: boolean;
+} = {}): Promise<string> {
+  const dedupe = `team.joined:e2e:settings:${Date.now()}`;
+  await sql`select private.notify(
+    ${SETTINGS_BUSINESS}::uuid, array[${SETTINGS_PEOPLE.owner.id}::uuid],
+    'team.joined',
+    ${sql.json({ person: SETTINGS_PEOPLE.worker.id })}::jsonb,
+    actor => ${SETTINGS_PEOPLE.worker.id}::uuid,
+    audience => 'manager',
+    dedupe => ${dedupe}
+  )`;
+  const [line] = await sql<{ id: string }[]>`
+    select id from public.notifications
+    where business_id = ${SETTINGS_BUSINESS}
+      and user_id = ${SETTINGS_PEOPLE.owner.id} and dedupe_key = ${dedupe}`;
+  if (!line) throw new Error("No line for the settings business's owner");
+  if (pushed) {
+    await sql`update public.notifications
+      set push_state = 'sent', pushed_at = now() where id = ${line.id}`;
+  }
+  return line.id;
+}
+
+/**
+ * What still waits for a person's phone in the settings business goes no
+ * more. Nothing sends between the spec's tests (the minute job is off in
+ * the tests, and no action of theirs asks for a send), so a line one test
+ * leaves waiting would go to the next test's device on its first send.
+ */
+export async function skipWaitingPushes(userId: string): Promise<void> {
+  await sql`update public.notifications set push_state = 'skipped'
+    where business_id = ${SETTINGS_BUSINESS}
+      and user_id = ${userId} and push_state = 'queued'`;
+}
+
+/** A line and what waits for the phone. */
+export type PushPlan = {
+  id: string;
+  state: string;
+  /** When it goes to the phone, "HH:MM" in Israel; null for not at all. */
+  after: string | null;
+  /** Whether that moment is still to come. */
+  later: boolean;
+};
+
+/** The settings business owner's newest line of a kind, and its push. */
+export async function ownerLine(kind: string): Promise<PushPlan | null> {
+  const [row] = await sql<PushPlan[]>`
+    select id, push_state as state,
+      to_char(push_after at time zone 'Asia/Jerusalem', 'HH24:MI') as after,
+      coalesce(push_after > now(), false) as later
+    from public.notifications
+    where business_id = ${SETTINGS_BUSINESS}
+      and user_id = ${SETTINGS_PEOPLE.owner.id} and kind = ${kind}
+    order by created_at desc limit 1`;
+  return row ?? null;
+}
+
+/**
+ * As if the person's quiet hours ended now: they stop at this minute on
+ * their clock (the end isn't inside them), and the line that waited for
+ * them is due. A send holds whatever comes due while they last, so ending
+ * them is what lets it go.
+ */
+export async function endQuietNow(userId: string, id: string): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`update public.notification_preferences p
+      set quiet_to = date_trunc('minute', now() at time zone p.time_zone)::time,
+        updated_at = now()
+      where p.user_id = ${userId} and p.quiet_to is not null`;
+    await tx`update public.notifications set push_after = now()
+      where id = ${id} and push_state = 'queued'`;
+  });
 }

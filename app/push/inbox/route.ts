@@ -1,3 +1,4 @@
+import { getNotificationPreferences } from "@db/notification-preferences";
 import { getPushedLines, PUSHED_LINES_READ } from "@db/notifications";
 import { notePushFetch, notePushSignedOut } from "@db/push/devices";
 import type { OwnBusiness } from "@db/session";
@@ -44,10 +45,13 @@ type Read = {
  * summary. Each line opens through /notifications/open, which switches to
  * the line's business first; a summary opens the inbox when every line is
  * from the business the person is in, else Home, which lists each business
- * with what is unread there. Signed in as someone else on the device, a line
- * that says nothing; signed out, a line saying to sign in again, and the
- * third time in a row the device is forgotten. Outside the sign-in guard: it
- * never redirects a service worker, and renews an expired session itself.
+ * with what is unread there. A person who keeps details off the lock screen
+ * (notifications part 3) gets each line as its group's words alone ("עדכון
+ * בסידור"), never the line, and so does anyone whose choice can't be read.
+ * Signed in as someone else on the device, a line that says nothing; signed
+ * out, a line saying to sign in again, and the third time in a row the
+ * device is forgotten. Outside the sign-in guard: it never redirects a
+ * service worker, and renews an expired session itself.
  */
 export async function POST(request: Request): Promise<Response> {
   if (!(await sameOriginRequest(request))) {
@@ -92,6 +96,15 @@ export async function POST(request: Request): Promise<Response> {
     : [];
   if (!fetched || pushing.length === 0) return plain();
 
+  // The person's own choice, under their own session: when it can't be
+  // read, nothing of a line reaches the lock screen.
+  const previewsRead = getNotificationPreferences().then(
+    (choices) => choices.previews,
+    (error: Error) => {
+      console.error("reading notification choices failed", error.message);
+      return false;
+    },
+  );
   // A browser that wouldn't say which device it is gets the newest line only.
   const max = endpoint ? PUSHED_LINES_READ : 1;
   const reads: Read[] = await Promise.all(
@@ -121,6 +134,7 @@ export async function POST(request: Request): Promise<Response> {
           .slice(0, 1);
   shown.sort((a, b) => b.entry.at.localeCompare(a.entry.at));
   const again = fresh.length === 0;
+  const previews = await previewsRead;
 
   const wording = wordingFrom(membership.business.wording);
   const batch = pushBatch(shown);
@@ -143,7 +157,7 @@ export async function POST(request: Request): Promise<Response> {
             entry,
             wordingFrom(own.business.wording),
             own.business.place.timeZone,
-            again,
+            { again, previews },
           ),
         );
   // The home-screen icon counts what is unread in all of them.

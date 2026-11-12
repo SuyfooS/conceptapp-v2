@@ -20,6 +20,11 @@ import { WeekStrip } from "@ui/week-strip";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import {
+  PushAsk,
+  type PushAskOffer,
+  usePushAskOnce,
+} from "../notifications/push-ask";
+import {
   type BoardShift,
   CardTarget,
   CoverageBadge,
@@ -90,7 +95,9 @@ function shabbatNote(week: BoardWeek, date: string) {
  * across, the day beside the rows that lead elsewhere. Desktop: the whole
  * week at once. `opening` is where it starts (`scheduleOpening`); the slots
  * are the server's rows: `prompt` the one thing waiting for this person,
- * `manage` and `own` the screens around the schedule.
+ * `manage` and `own` the screens around the schedule. `ask`: after giving a
+ * shift away here, once, the offer of notifications on the phone
+ * (`currentPushAsk`), under the week's title, as on the person's own shifts.
  */
 export function WeekBoard({
   title,
@@ -103,6 +110,7 @@ export function WeekBoard({
   prompt,
   manage,
   own,
+  ask = null,
 }: {
   title: string;
   weeks: [BoardWeek, BoardWeek];
@@ -114,6 +122,7 @@ export function WeekBoard({
   prompt?: ReactNode;
   manage?: ReactNode;
   own: ReactNode;
+  ask?: PushAskOffer | null;
 }) {
   const t = useTranslations("app");
   const tb = useTranslations("app.shifts.board");
@@ -123,6 +132,7 @@ export function WeekBoard({
     [opening.week]: opening.day,
   });
   const sheet = useShiftSheet();
+  const pushAsk = usePushAskOnce(ask);
 
   const week = weeks.find((w) => w.key === weekKey) ?? weeks[0];
   const published = weeks.flatMap((w) =>
@@ -184,6 +194,12 @@ export function WeekBoard({
         />
       </div>
       {prompt}
+      <PushAsk
+        offer={pushAsk.asking}
+        moment="swap"
+        onClose={pushAsk.close}
+        className="md:max-w-2xl"
+      />
       {week.state === "draft" ? (
         <p className="-my-2 px-1 text-base text-ink-2">{tb("draft")}</p>
       ) : null}
@@ -310,6 +326,7 @@ export function WeekBoard({
         offers={offers}
         data={data}
         swap={swap}
+        onGiven={pushAsk.offer}
       />
     </>
   );

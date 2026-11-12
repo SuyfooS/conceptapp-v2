@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  alwaysOnPhone,
   buildInbox,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  DEFAULT_QUIET_HOURS,
   groupsFor,
   INBOX_PAGE_SIZE,
   inboxAgo,
@@ -8,7 +11,9 @@ import {
   inboxPage,
   inInbox,
   isAppPath,
+  isNotificationGroup,
   linkFor,
+  NOTIFICATION_GROUPS,
   NOTIFICATION_KIND_KEYS,
   NOTIFICATION_KINDS,
   type NotificationLookups,
@@ -16,10 +21,17 @@ import {
   needsAction,
   notificationChats,
   notificationDocuments,
+  notificationGroupOf,
   notificationKindOf,
+  notificationPreferenceChange,
   notificationRefs,
   PHONE_ONLY_KINDS,
   parseInboxCursor,
+  phoneTime,
+  quietEnd,
+  reachesPhone,
+  readNotificationPreferences,
+  SWITCHABLE_GROUPS,
   unreadCounts,
 } from "./notifications";
 
@@ -951,5 +963,184 @@ describe("inboxAgo", () => {
     expect(agoBy(7 * day)).toBeNull();
     expect(agoBy(400 * day)).toBeNull();
     expect(inboxAgo(new Date("not a time"), now)).toBeNull();
+  });
+});
+
+describe("each person's choices", () => {
+  const ZONE = "Asia/Jerusalem";
+  const at = (instant: string) => new Date(instant);
+  const iso = (date: Date | null) => date?.toISOString() ?? null;
+  const night = { from: "22:00", to: "07:00" };
+
+  it("puts every kind in the group the database does, or in none", () => {
+    expect(notificationGroupOf("swap.offered")).toBe("swaps");
+    expect(notificationGroupOf("clock.confirm")).toBe("approvals");
+    expect(notificationGroupOf("chat.direct")).toBe("chat");
+    expect(notificationGroupOf("documents.to_confirm")).toBe("documents");
+    expect(notificationGroupOf("push.test")).toBeNull();
+    expect(notificationGroupOf("pay.month_due")).toBeNull();
+    expect(notificationGroupOf("weather.rain")).toBeNull();
+    for (const kind of NOTIFICATION_KIND_KEYS) {
+      const group = notificationGroupOf(kind);
+      expect(group === null || SWITCHABLE_GROUPS.includes(group), kind).toBe(
+        true,
+      );
+    }
+  });
+
+  it("says which lines reach the phone whatever is switched off: pay's alone", () => {
+    expect(alwaysOnPhone("worker", ["time_clock"])).toEqual([
+      "access.pay_granted",
+      "pay.wage_set",
+      "pay.after_close",
+      "pay.month_due",
+    ]);
+    expect(alwaysOnPhone("accountant", ["time_clock"])).toContain(
+      "pay.after_close",
+    );
+    // With the time clock off, nothing about pay comes; the test never counts.
+    expect(alwaysOnPhone("owner", ["scheduling", "chat"])).toEqual([]);
+    // The settings say "pay always comes": a line in no group that isn't
+    // about pay needs its own words there first.
+    for (const kind of NOTIFICATION_KIND_KEYS) {
+      if (kind === "push.test" || notificationGroupOf(kind) !== null) continue;
+      expect(
+        kind.startsWith("pay.") || kind === "access.pay_granted",
+        kind,
+      ).toBe(true);
+    }
+  });
+
+  it("lets every group be kept off the phone, those that ask to act too", () => {
+    expect([...SWITCHABLE_GROUPS]).toEqual([...NOTIFICATION_GROUPS]);
+    expect(isNotificationGroup("approvals")).toBe(true);
+    expect(isNotificationGroup("weather")).toBe(false);
+  });
+
+  it("starts with every group on, no quiet hours and the line on the lock screen", () => {
+    expect(DEFAULT_NOTIFICATION_PREFERENCES).toEqual({
+      pushOff: [],
+      quiet: null,
+      timeZone: ZONE,
+      previews: true,
+      askedAt: null,
+    });
+    expect(DEFAULT_QUIET_HOURS).toEqual(night);
+  });
+
+  it("reads stored choices leniently", () => {
+    expect(
+      readNotificationPreferences({
+        pushOff: ["chat", "weather", "swaps"],
+        quietFrom: "22:00:00",
+        quietTo: "07:00:00",
+        timeZone: ZONE,
+        previews: false,
+        askedAt: "2026-11-12T08:00:00+00:00",
+      }),
+    ).toEqual({
+      pushOff: ["swaps", "chat"],
+      quiet: night,
+      timeZone: ZONE,
+      previews: false,
+      askedAt: "2026-11-12T08:00:00+00:00",
+    });
+    expect(
+      readNotificationPreferences({
+        pushOff: "chat",
+        quietFrom: "22:00:00",
+        quietTo: null,
+        timeZone: "",
+        previews: null,
+        askedAt: "soon",
+      }),
+    ).toEqual(DEFAULT_NOTIFICATION_PREFERENCES);
+  });
+
+  it("keeps a group off the phone, never a line with none", () => {
+    const choices = { pushOff: ["swaps" as const, "chat" as const] };
+    expect(reachesPhone("swap.offered", choices)).toBe(false);
+    expect(reachesPhone("chat.group", choices)).toBe(false);
+    expect(reachesPhone("swap.waiting", choices)).toBe(true);
+    expect(reachesPhone("pay.month_due", choices)).toBe(true);
+    expect(reachesPhone("push.test", choices)).toBe(true);
+  });
+
+  it("holds a line in quiet hours until they end, across midnight", () => {
+    // Israel in November is two hours ahead of UTC.
+    expect(iso(quietEnd(night, ZONE, at("2026-11-20T21:00:00Z")))).toBe(
+      "2026-11-21T05:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2026-11-21T01:30:00Z")))).toBe(
+      "2026-11-21T05:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2026-11-20T20:00:00Z")))).toBe(
+      "2026-11-21T05:00:00.000Z",
+    );
+    expect(quietEnd(night, ZONE, at("2026-11-20T19:59:59Z"))).toBeNull();
+    expect(quietEnd(night, ZONE, at("2026-11-21T05:00:00Z"))).toBeNull();
+    expect(quietEnd(night, ZONE, at("2026-11-20T10:00:00Z"))).toBeNull();
+    expect(quietEnd(null, ZONE, at("2026-11-20T21:00:00Z"))).toBeNull();
+  });
+
+  it("ends them on the clock of the day they end, across the clock changes", () => {
+    // Back on 25 October 2026 at 02:00, forward on 26 March 2027 at 02:00.
+    expect(iso(quietEnd(night, ZONE, at("2026-10-24T20:00:00Z")))).toBe(
+      "2026-10-25T05:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2026-10-24T23:30:00Z")))).toBe(
+      "2026-10-25T05:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2027-03-25T21:00:00Z")))).toBe(
+      "2027-03-26T04:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2027-03-26T01:30:00Z")))).toBe(
+      "2027-03-26T04:00:00.000Z",
+    );
+  });
+
+  it("holds within a day too", () => {
+    const noon = { from: "13:00", to: "15:00" };
+    expect(iso(quietEnd(noon, ZONE, at("2026-11-20T11:30:00Z")))).toBe(
+      "2026-11-20T13:00:00.000Z",
+    );
+    expect(quietEnd(noon, ZONE, at("2026-11-20T13:30:00Z"))).toBeNull();
+    expect(quietEnd(noon, ZONE, at("2026-11-20T21:00:00Z"))).toBeNull();
+  });
+
+  it("says when a line goes to the phone, and never holds the test", () => {
+    const choices = {
+      pushOff: ["swaps" as const],
+      quiet: night,
+      timeZone: ZONE,
+    };
+    const late = at("2026-11-20T21:00:00Z");
+    expect(phoneTime("swap.offered", choices, late)).toBeNull();
+    expect(iso(phoneTime("schedule.published", choices, late))).toBe(
+      "2026-11-21T05:00:00.000Z",
+    );
+    expect(phoneTime("push.test", choices, late)).toEqual(late);
+    const noon = at("2026-11-20T10:00:00Z");
+    expect(phoneTime("schedule.published", choices, noon)).toEqual(noon);
+  });
+
+  it("takes one change at a time from the settings screen", () => {
+    const ok = (change: unknown) =>
+      notificationPreferenceChange.safeParse(change).success;
+    expect(ok({ kind: "group", group: "chat", on: false })).toBe(true);
+    expect(ok({ kind: "quiet", hours: { from: "22:00", to: "07:00" } })).toBe(
+      true,
+    );
+    expect(ok({ kind: "quiet", hours: null })).toBe(true);
+    expect(ok({ kind: "previews", on: false })).toBe(true);
+    expect(ok({ kind: "group", group: "weather", on: false })).toBe(false);
+    expect(ok({ kind: "quiet", hours: { from: "07:00", to: "07:00" } })).toBe(
+      false,
+    );
+    expect(ok({ kind: "quiet", hours: { from: "7:00", to: "22:00" } })).toBe(
+      false,
+    );
+    expect(ok({ kind: "quiet" })).toBe(false);
+    expect(ok({ kind: "everything", on: false })).toBe(false);
   });
 });

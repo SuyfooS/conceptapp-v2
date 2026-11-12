@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { MyDocumentsSection } from "../../../(app)/chat/documents/my-documents";
 import { MeView } from "../../../(app)/me/me-view";
+import { NotificationSettingsLink } from "../../../(app)/notifications/settings-link";
 import { baseWording } from "../../../(app)/wording";
 import { demoSignOut } from "../actions";
 import { business, teamMembers, teamProfiles } from "../data";
@@ -15,7 +16,9 @@ type Props = { searchParams: Promise<{ state?: string }> };
 // The real profile with mock data: Shiran, the shift manager, with her photo,
 // a line about herself, the "dots" cover and the feminine form. ?state=empty
 // has none of them yet; ?state=demo is a demo business, where photos stay as
-// they are and there's no line, but a cover and a form can be chosen.
+// they are and there's no line, but a cover and a form can be chosen. The
+// way to the notification settings stays in the demo, and a demo business
+// has none.
 export default function ShellMe({ searchParams }: Props) {
   return (
     <Suspense>
@@ -47,6 +50,15 @@ async function Demo({ searchParams }: Props) {
           office={false}
           toConfirm={0}
         />
+      }
+      notifications={
+        demo ? null : (
+          <NotificationSettingsLink
+            href="/design/shell/notifications/settings"
+            wording={baseWording}
+            from="profile"
+          />
+        )
       }
       data={{
         name: shiran?.name ?? "",

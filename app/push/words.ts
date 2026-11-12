@@ -22,7 +22,8 @@ import { defaultLocale, direction } from "@/i18n/config";
  * or a number of hours: the lines hold none. A chat's line says who wrote and
  * how many messages wait, and a group's name, never a word of them: a lock
  * screen is seen by whoever is near the phone. A document's says who sent it,
- * never its category, title or file.
+ * never its category, title or file. Someone who keeps details off the lock
+ * screen gets the group's words alone (`hiddenWords`).
  */
 
 const isolate = (chunks: string) => `⁦${chunks}⁩`;
@@ -365,14 +366,37 @@ export function pushWords(
   }
 }
 
-/** A line as the phone shows it, opening through /notifications/open. */
+/**
+ * What a lock screen shows of a line when its person keeps details off it
+ * (notifications part 3): its group's words alone ("עדכון בסידור"), never a
+ * name, a time or anything else of the line, and no body. A line with no
+ * group says only that something is new.
+ */
+export function hiddenWords(
+  entry: NotificationEntry,
+  wording: AppWording,
+): { title: string } {
+  const t = translator(wording, "app.notifications.push.notice.hidden");
+  return { title: t(entry.group ?? "other") };
+}
+
+/**
+ * A line as the phone shows it, opening through /notifications/open. Shown
+ * `again` in place of itself, it makes no sound; without `previews`, the
+ * lock screen gets its group's words alone.
+ */
 export function pushNotice(
   entry: NotificationEntry,
   wording: AppWording,
   timeZone: string,
-  again = false,
+  {
+    again = false,
+    previews = true,
+  }: { again?: boolean; previews?: boolean } = {},
 ): PushNotice {
-  const words = pushWords(entry, wording, timeZone);
+  const words = previews
+    ? pushWords(entry, wording, timeZone)
+    : hiddenWords(entry, wording);
   return {
     tag: entry.id,
     ...words,

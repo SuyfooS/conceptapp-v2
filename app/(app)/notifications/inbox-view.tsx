@@ -19,21 +19,14 @@ import { ListGroup } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
-import {
-  Bell,
-  CalendarDays,
-  ClipboardCheck,
-  FileText,
-  ListChecks,
-  MessageCircle,
-  Repeat,
-  Users,
-} from "lucide-react";
+import { Bell } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
+import { GROUP_ICONS } from "./group-icons";
 import { InboxOpen, InboxRow, ReadAllButton } from "./inbox-row";
+import { NotificationSettingsLink } from "./settings-link";
 
 export type InboxPaths = {
   /** This screen, for the newest page and an older one's cursor. */
@@ -44,16 +37,6 @@ export type InboxPaths = {
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
-
-const GROUP_ICONS: Record<NotificationGroup, ReactNode> = {
-  schedule: <CalendarDays />,
-  swaps: <Repeat />,
-  approvals: <ClipboardCheck />,
-  team: <Users />,
-  lists: <ListChecks />,
-  chat: <MessageCircle />,
-  documents: <FileText />,
-};
 
 const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
 const td = "border-line border-t px-4 py-3 align-top";
@@ -79,7 +62,9 @@ type Described = {
  * each section is a table with who, what, the shift and when, beside the same
  * card. The words are worked out once per line, so every shape says the same.
  * `push`, the switch for notifications on this phone, sits at the top on a
- * phone and above the card from the tablet up. Also on the design demo.
+ * phone and above the card from the tablet up. `settings`, the way to what
+ * reaches the phone: under the lines on a phone, under the card from the
+ * tablet up. Also on the design demo.
  */
 export function InboxView({
   unread,
@@ -94,6 +79,7 @@ export function InboxView({
   paths,
   wording,
   push,
+  settings = null,
 }: {
   unread: NotificationEntry[];
   earlier: NotificationEntry[];
@@ -117,6 +103,8 @@ export function InboxView({
   wording: AppWording;
   /** The phone switch (`PushSwitch`), or nothing where push isn't set up. */
   push?: ReactNode;
+  /** Where the notification settings are, where there is something to choose. */
+  settings?: string | null;
 }) {
   const t = translator(wording, "app.notifications");
   const tDays = translator(wording, "app.availability.weekdays");
@@ -688,8 +676,17 @@ export function InboxView({
         </EmptyState>
       ) : null}
       {nothing && !olderPage ? (
-        push ? (
-          <div className="mx-auto w-full max-w-xl">{push}</div>
+        push || settings ? (
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+            {push}
+            {settings ? (
+              <NotificationSettingsLink
+                href={settings}
+                wording={wording}
+                from="inbox"
+              />
+            ) : null}
+          </div>
         ) : null
       ) : nothing ? (
         <EmptyState
@@ -755,9 +752,18 @@ export function InboxView({
                 ) : null}
               </nav>
             ) : null}
+
+            {settings ? (
+              <NotificationSettingsLink
+                href={settings}
+                wording={wording}
+                from="inbox"
+                className="md:hidden"
+              />
+            ) : null}
           </div>
 
-          {push || groups.length > 0 ? (
+          {push || groups.length > 0 || settings ? (
             <div
               className={cn(
                 "order-first flex min-w-0 flex-col gap-6 md:order-none",
@@ -800,6 +806,14 @@ export function InboxView({
                     ))}
                   </ul>
                 </Card>
+              ) : null}
+              {settings ? (
+                <NotificationSettingsLink
+                  href={settings}
+                  wording={wording}
+                  from="inbox"
+                  className="hidden md:block"
+                />
               ) : null}
             </div>
           ) : null}
