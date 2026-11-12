@@ -3,14 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { unzip } from "@/e2e/unzip";
 
 // "הורדת כל המסמכים" (chat C7) with the database stood in for: who is asking
-// (`documentsAccess`), the documents and people they read, each document's
-// row and file, and each opening (`openDocument`, which marks and logs). It
-// holds the rules: the page's own form alone (a POST from the app's own
-// origin, never a link, followed in the app or from outside it), the office
-// alone, never a view session; every document, past the newest 200 too, and
-// every file still kept goes in, read first and opened once after, a removed
-// one in the list only; and the list says what each is, in the business's
-// words, with nothing a spreadsheet would run.
+// (`documentsAccess`), the documents and people they read, each opening
+// (`openDocument`, which decides, marks and logs), each document's row and
+// its file (read with the secret key). It holds the rules: the page's own
+// form alone (a POST from the app's own origin, never a link, followed in the
+// app or from outside it), the office alone, never a view session; every
+// document, past the newest 200 too, and every file still kept goes in,
+// opened once first, its row read next and its file only then (the documents
+// bucket has no policy: every file in the download follows its line in the
+// log), a removed one in the list only; and the list says what each is, in
+// the business's words, with nothing a spreadsheet would run.
 
 vi.mock("server-only", () => ({}));
 
@@ -224,7 +226,7 @@ describe("POST /document-files/download", () => {
     expect(mocks.openDocument).not.toHaveBeenCalled();
   });
 
-  it("puts each kept file in a ZIP, read first and opened once, and lists them all", async () => {
+  it("puts each kept file in a ZIP, opened once first and read after, and lists them all", async () => {
     mocks.getDocumentsToKeep.mockResolvedValue({
       more: false,
       documents: [
@@ -288,20 +290,23 @@ describe("POST /document-files/download", () => {
     const pdf = "001 2026-11-10 - נועה - אישור מחלה - =HYPERLINK( x ).pdf";
     expect([...entries.keys()]).toEqual([pdf, "רשימת המסמכים.csv"]);
     expect(entries.get(pdf)?.data.toString("latin1")).toBe("%PDF-1.7\n%%EOF");
-    // Each file read under the reader's session, then opened once; the
-    // removed one neither read nor opened.
+    // Each one opened once, then its row read under the reader's session,
+    // then its file; the removed one neither opened nor read.
+    expect(mocks.openDocument).toHaveBeenCalledTimes(1);
+    expect(mocks.openDocument).toHaveBeenCalledWith(OWNER, SICK);
     expect(mocks.documentToServe).toHaveBeenCalledTimes(1);
     expect(mocks.documentToServe).toHaveBeenCalledWith(BUSINESS, SICK, {
       session: "the reader's",
     });
+    expect(mocks.documentFileBytes).toHaveBeenCalledTimes(1);
     expect(mocks.documentFileBytes).toHaveBeenCalledWith(PDF, {
       session: "the reader's",
     });
-    expect(mocks.openDocument).toHaveBeenCalledTimes(1);
-    expect(mocks.openDocument).toHaveBeenCalledWith(OWNER, SICK);
-    expect(
-      mocks.documentFileBytes.mock.invocationCallOrder[0] ?? 0,
-    ).toBeLessThan(mocks.openDocument.mock.invocationCallOrder[0] ?? 0);
+    const open = mocks.openDocument.mock.invocationCallOrder[0] ?? 0;
+    const row = mocks.documentToServe.mock.invocationCallOrder[0] ?? 0;
+    const read = mocks.documentFileBytes.mock.invocationCallOrder[0] ?? 0;
+    expect(open).toBeLessThan(row);
+    expect(row).toBeLessThan(read);
     expect(mocks.seeDocumentsNotice).toHaveBeenCalledWith(OWNER, BUSINESS);
 
     const csv = entries.get("רשימת המסמכים.csv")?.data.toString("utf8") ?? "";
@@ -315,7 +320,7 @@ describe("POST /document-files/download", () => {
     ]);
   });
 
-  it("opens nothing it couldn't read: the list says the file isn't in it", async () => {
+  it("leaves out a file it couldn't read, its opening already in the log: the list says so", async () => {
     mocks.getDocumentsToKeep.mockResolvedValue({
       more: false,
       documents: [document({})],
@@ -327,7 +332,48 @@ describe("POST /document-files/download", () => {
     expect(entries.get("רשימת המסמכים.csv")?.data.toString("utf8")).toContain(
       "הקובץ לא נכלל בהורדה",
     );
-    expect(mocks.openDocument).not.toHaveBeenCalled();
+    expect(mocks.openDocument).toHaveBeenCalledTimes(1);
+  });
+
+  it("reads nothing the opening serves nothing of, nor a row that disagrees with it", async () => {
+    mocks.getDocumentsToKeep.mockResolvedValue({
+      more: false,
+      documents: [document({})],
+    });
+    // Removed since the list was read, or not the reader's any more: the
+    // database serves nothing of it.
+    for (const answer of [
+      {
+        ok: true,
+        value: {
+          document: SICK,
+          business: BUSINESS,
+          path: null,
+          kind: null,
+          name: null,
+          sample: null,
+        },
+      },
+      { ok: false, failure: "noAccess" },
+    ]) {
+      mocks.openDocument.mockResolvedValueOnce(answer);
+      const response = await asked(`person=${NOA}`);
+      const entries = unzip(new Uint8Array(await response.arrayBuffer()));
+      expect([...entries.keys()]).toEqual(["רשימת המסמכים.csv"]);
+    }
+    expect(mocks.documentToServe).not.toHaveBeenCalled();
+
+    // The row the reader reads must point at the file the database named.
+    mocks.documentToServe.mockResolvedValueOnce({
+      id: SICK,
+      path: `${BUSINESS}/${"f".repeat(32)}.pdf`,
+      sample: null,
+      title: "a",
+    });
+    const response = await asked(`person=${NOA}`);
+    const entries = unzip(new Uint8Array(await response.arrayBuffer()));
+    expect([...entries.keys()]).toEqual(["רשימת המסמכים.csv"]);
+    expect(mocks.documentFileBytes).not.toHaveBeenCalled();
   });
 
   it("downloads a month's, every one of it past the newest 200, in the business's clock", async () => {

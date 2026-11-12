@@ -4,7 +4,8 @@ vi.mock("server-only", () => ({}));
 
 /**
  * The secret key's side as the database answers it: each call recorded, an
- * answer per function, and Storage's writes and removals by bucket.
+ * answer per function, and Storage's writes, removals and downloads by
+ * bucket, with the files it holds.
  */
 const admin = vi.hoisted(() => ({
   calls: [] as { fn: string; args: Record<string, unknown> }[],
@@ -15,8 +16,52 @@ const admin = vi.hoisted(() => ({
       error: { code?: string; hint?: string | null } | null;
     }
   >,
-  storage: [] as { bucket: string; op: "remove" | "upload"; paths: string[] }[],
+  storage: [] as {
+    bucket: string;
+    op: "remove" | "upload" | "download";
+    paths: string[];
+  }[],
+  held: {} as Record<string, Uint8Array<ArrayBuffer>>,
 }));
+
+/**
+ * The reader's own session: the one row their read gives back (as RLS lets
+ * them read it), the filters it was read with, and a Storage that fails the
+ * test if asked: no session reads the documents bucket
+ * (20261111000900_documents_server_only.sql).
+ */
+const reader = vi.hoisted(() => {
+  const state = {
+    row: null as Record<string, unknown> | null,
+    filters: [] as [string, unknown][],
+    session() {
+      return {
+        from: (table: string) => {
+          const chain = {
+            select: () => chain,
+            eq: (column: string, value: unknown) => {
+              state.filters.push([column, value]);
+              return chain;
+            },
+            maybeSingle: async () => ({
+              data: table === "documents" ? state.row : null,
+              error: null,
+            }),
+          };
+          return chain;
+        },
+        storage: {
+          from: () => {
+            throw new Error("a session read the documents bucket");
+          },
+        },
+      };
+    },
+    createClient: vi.fn(),
+  };
+  state.createClient.mockImplementation(async () => state.session());
+  return state;
+});
 
 vi.mock("./supabase/admin", () => ({
   createAdminClient: () => ({
@@ -35,14 +80,40 @@ vi.mock("./supabase/admin", () => ({
           admin.storage.push({ bucket, op: "upload", paths: [path] });
           return { data: { path }, error: null };
         },
+        // Its own download, awaited as a Blob or (`asStream`) a stream;
+        // nothing there is Storage's "Object not found".
+        download: (path: string) => {
+          admin.storage.push({ bucket, op: "download", paths: [path] });
+          const held = admin.held[path];
+          const missing = {
+            data: null,
+            error: { status: 400, statusCode: "404" },
+          };
+          return Object.assign(
+            Promise.resolve(
+              held ? { data: new Blob([held]), error: null } : missing,
+            ),
+            {
+              asStream: async () =>
+                held
+                  ? { data: new Blob([held]).stream(), error: null }
+                  : missing,
+            },
+          );
+        },
       }),
     },
   }),
 }));
-vi.mock("./supabase/server", () => ({ createClient: async () => ({}) }));
+vi.mock("./supabase/server", () => ({ createClient: reader.createClient }));
 
-const { documentFailureOf, openDocument, reserveDocumentUpload, sendDocument } =
-  await import("./documents");
+const {
+  documentFailureOf,
+  documentFileBytes,
+  openDocument,
+  reserveDocumentUpload,
+  sendDocument,
+} = await import("./documents");
 const { cleanChatFiles } = await import("./chat-files");
 
 const BUSINESS = "10000000-0000-4000-b000-000000000001";
@@ -68,6 +139,10 @@ beforeEach(() => {
   admin.calls = [];
   admin.answers = {};
   admin.storage = [];
+  admin.held = {};
+  reader.row = null;
+  reader.filters = [];
+  reader.createClient.mockClear();
 });
 
 describe("a document write's refusal", () => {
@@ -278,6 +353,89 @@ describe("openDocument", () => {
       ok: false,
       failure: "noAccess",
     });
+  });
+});
+
+describe("documentFileBytes", () => {
+  const PDF = `${BUSINESS}/${KEY}.pdf`;
+  const JPG = `${BUSINESS}/${KEY2}.jpg`;
+  const pdfRow = {
+    file_kind: "pdf",
+    file_path: PDF,
+    file_name: "תלוש נובמבר.pdf",
+    removed_at: null,
+  };
+  const encode = (text: string) => new TextEncoder().encode(text);
+
+  it("reads the row as the reader does, then the file with the secret key, never under their session", async () => {
+    reader.row = pdfRow;
+    admin.held[PDF] = encode("%PDF-1.7\n%%EOF");
+    const file = await documentFileBytes(PDF);
+    expect(file).toMatchObject({ kind: "pdf", name: "תלוש נובמבר.pdf" });
+    if (file?.kind !== "pdf") throw new Error("not a PDF");
+    expect(await new Response(file.body).text()).toBe("%PDF-1.7\n%%EOF");
+    expect(reader.filters).toEqual([
+      ["business_id", BUSINESS],
+      ["file_path", PDF],
+    ]);
+    // The bucket's own download with the secret key: no signed link, and
+    // the reader's session never asked Storage (it would have thrown).
+    expect(admin.storage).toEqual([
+      { bucket: "documents", op: "download", paths: [PDF] },
+    ]);
+  });
+
+  it("gives a photo of a page whole, typed by its bytes", async () => {
+    reader.row = { ...pdfRow, file_kind: "image", file_path: JPG };
+    admin.held[JPG] = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0x10]);
+    expect(await documentFileBytes(JPG)).toMatchObject({
+      kind: "image",
+      type: "image/jpeg",
+    });
+    // A WebP's place holding a JPEG's bytes is nothing.
+    const webp = `${BUSINESS}/${KEY3}.webp`;
+    reader.row = { ...pdfRow, file_kind: "image", file_path: webp };
+    admin.held[webp] = admin.held[JPG];
+    expect(await documentFileBytes(webp)).toBeNull();
+  });
+
+  it("downloads nothing the reader's row doesn't point at, nor a removed one's", async () => {
+    admin.held[PDF] = encode("%PDF-1.7\n%%EOF");
+    for (const row of [
+      null,
+      { ...pdfRow, removed_at: "2026-11-12T08:00:00Z" },
+      { ...pdfRow, file_kind: "image" },
+      { ...pdfRow, file_path: `${BUSINESS}/${KEY2}.pdf` },
+    ]) {
+      reader.row = row;
+      expect(await documentFileBytes(PDF), JSON.stringify(row)).toBeNull();
+    }
+    // A path in no document's shape reads nothing at all.
+    expect(await documentFileBytes(`${BUSINESS}/${CHAT}/${KEY}.pdf`)).toBe(
+      null,
+    );
+    expect(admin.storage).toEqual([]);
+  });
+
+  it("serves nothing whose start isn't a PDF's, or that Storage doesn't hold", async () => {
+    reader.row = pdfRow;
+    admin.held[PDF] = encode("<!doctype html><script>alert(1)</script>");
+    expect(await documentFileBytes(PDF)).toBeNull();
+    delete admin.held[PDF];
+    expect(await documentFileBytes(PDF)).toBeNull();
+  });
+
+  it("reads the row under the session it is given, made while the request was answered", async () => {
+    reader.row = pdfRow;
+    admin.held[PDF] = encode("%PDF-1.7\n%%EOF");
+    const given = reader.session();
+    expect(
+      await documentFileBytes(
+        PDF,
+        given as unknown as Parameters<typeof documentFileBytes>[1],
+      ),
+    ).toMatchObject({ kind: "pdf" });
+    expect(reader.createClient).not.toHaveBeenCalled();
   });
 });
 

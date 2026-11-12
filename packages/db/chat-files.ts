@@ -550,20 +550,21 @@ async function uploadPlace(
 }
 
 /**
- * The first KB of a stored chat file (or, from C7, a document's PDF in its
- * own bucket), read with the secret key: a short-lived signed link for it,
- * asked with `Range: bytes=0-1023`. When Storage doesn't
- * honour the range and sends the whole file, only its first KB is read and the
- * rest of the transfer is cancelled, so at most what was already on its way
- * (never more than the 10 MiB the bucket holds) is spent. "missing" when
- * Storage holds no such file, "unreadable" when it can't be asked now.
+ * The first KB of a stored chat file, read with the secret key: a
+ * short-lived signed link for it, asked with `Range: bytes=0-1023`. When
+ * Storage doesn't honour the range and sends the whole file, only its first
+ * KB is read and the rest of the transfer is cancelled, so at most what was
+ * already on its way (never more than the 10 MiB the bucket holds) is spent.
+ * "missing" when Storage holds no such file, "unreadable" when it can't be
+ * asked now. Chat's bucket only: a document's file is never read through a
+ * signed link, not even the server's (@db/documents reads a document's PDF
+ * with the secret key's own download).
  */
 export async function storedHead(
   path: string,
-  bucket: typeof CHAT_FILE_BUCKET | typeof DOCUMENT_BUCKET = CHAT_FILE_BUCKET,
 ): Promise<Uint8Array | "missing" | "unreadable"> {
   const signed = await createAdminClient()
-    .storage.from(bucket)
+    .storage.from(CHAT_FILE_BUCKET)
     .createSignedUrl(path, 60);
   if (signed.error || !signed.data?.signedUrl) {
     const error = signed.error;

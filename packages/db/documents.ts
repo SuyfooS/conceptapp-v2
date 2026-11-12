@@ -42,7 +42,7 @@ import type { ListPhotoProblem } from "@domain/list-photos";
 import { sniffPhotoType } from "@domain/profile-photos";
 import { z } from "zod";
 import { readAtLeast, withStart } from "./byte-stream";
-import { isSignedUploadFor, occupyPlace, storedHead } from "./chat-files";
+import { isSignedUploadFor, occupyPlace } from "./chat-files";
 import { isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
 import { allPages } from "./pages";
@@ -76,13 +76,23 @@ import { createClient } from "./supabase/server";
  * `sendDocument` with the place), and a PDF through a signed upload for its
  * one reserved path, as chat's PDFs do (`startDocumentPdf`: the place and
  * Storage's signed upload; `finishDocumentPdf`: `documentUploadPlace`, an
- * `isPdf` read of its first KB, then `sendDocument`); on any refusal its file
- * is let go as @db/chat-files does. A demo business sends its samples
- * (`sendDocumentSample`). The /document-files routes read first and open
- * last: `documentToServe` (the row, under the reader's own session, never a
- * removed one), then `documentFileBytes` under that session (or the sample),
- * and only with a file to give `openDocument` (which logs the office's
- * opening and marks a recipient's).
+ * `isPdf` read of its first KB with the secret key, then `sendDocument`); on
+ * any refusal its file is let go as @db/chat-files does. A demo business
+ * sends its samples (`sendDocumentSample`).
+ *
+ * A document's file is read by the server alone (Orel, 12 November 2026;
+ * 20261111000900_documents_server_only.sql): the `documents` bucket has no
+ * policy, so no session reads it, lists it or signs a link to it, and
+ * nothing here makes a signed link to read one. The /document-files routes
+ * open first and read after (the route of one document after a look at it in
+ * the business its address names: `documentToServe` by its id,
+ * `documentIdForFile` by its stored name, so an address with another
+ * business in it opens nothing): `openDocument` for the signed-in person (the
+ * database decides who reads it, marks and logs the opening, and says what
+ * may be served, never anything of a removed one), then `documentToServe`
+ * (the row, under the reader's own session, never a removed one), and only
+ * then `documentFileBytes` (the row again under that session, then the bytes
+ * with the secret key) or the sample.
  */
 
 /** Why a document's write was refused, for the screens' words. */
@@ -245,12 +255,15 @@ function inOrder(
 
 type Session = Awaited<ReturnType<typeof createClient>>;
 
-/** The signed-in person's own Supabase session, as `documentFileBytes` takes it. */
+/**
+ * The signed-in person's own Supabase session, as `documentToServe` and
+ * `documentFileBytes` take it to read the row (never the file).
+ */
 export type DocumentSession = Session;
 
 /**
  * The reader's own session, made now, while the request is being answered:
- * for a download whose files are read after its answer began (the
+ * for a download whose documents' rows are read after its answer began (the
  * documents' download streams), when the request's cookies can't be asked
  * for any more.
  */
@@ -737,8 +750,12 @@ export type DocumentToServe = {
 
 /**
  * A document the signed-in person reads, as the /document-files routes serve
- * it (C7), read under their own session (RLS) before anything opens it: its
- * stored file's path or its demo sample, and its title. Null for one they
+ * it (C7), read under their own session (RLS) once `openDocument` opened it
+ * and before its file is read, to agree with what the database said: its
+ * stored file's path or its demo sample, and its title. The route of one
+ * document also reads it before the opening, as a look at it in the business
+ * its address names, so an address with another business in it opens
+ * nothing (the row only, never the file). Null for one they
  * don't read, one removed (even within its 10 minutes of undo: nobody needs
  * to see a removed file to put it back), and one with nothing left to serve,
  * the same as for none. `session` is the reader's own made while the request
@@ -1306,7 +1323,7 @@ export async function finishDocumentPdf(
     return refusedFile("expired");
   }
 
-  const head = await storedHead(place.path, DOCUMENT_BUCKET);
+  const head = await documentPdfHead(place.path);
   if (head === "missing") return refusedFile("notUploaded");
   if (head === "unreadable") return refusedFile("failed");
   // Let go already (a refusal before this try): a new place, a new upload.
@@ -1325,6 +1342,46 @@ export async function finishDocumentPdf(
   if (sent.ok) return sent;
   const written = await sentOrLetGo(actorId, businessId, place.upload);
   return written ? done({ document: written }) : refusedFile(sent.failure);
+}
+
+/**
+ * The first KB of the PDF the browser put at a document's place, for
+ * `finishDocumentPdf`: downloaded with the secret key, never through a
+ * signed link (nothing makes one to read a document's file,
+ * 20261111000900_documents_server_only.sql), and the rest of the transfer
+ * cancelled once its first KB is in, so at most what was already on its way
+ * (never more than the 10 MiB the bucket holds) is spent. "missing" when
+ * Storage holds nothing there, "unreadable" when it can't be asked now.
+ */
+async function documentPdfHead(
+  path: string,
+): Promise<Uint8Array | "missing" | "unreadable"> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    const file = await createAdminClient()
+      .storage.from(DOCUMENT_BUCKET)
+      .download(path, {}, { signal: controller.signal })
+      .asStream();
+    const stream = (file.data ?? null) as ReadableStream<Uint8Array> | null;
+    if (file.error || !stream) {
+      const error = file.error;
+      const notFound =
+        !error ||
+        error.status === 404 ||
+        error.statusCode === "404" ||
+        ("code" in error && error.code === "NoSuchKey");
+      return notFound ? "missing" : "unreadable";
+    }
+    const start = await readAtLeast(stream, CHAT_PDF_HEAD_BYTES);
+    await start.reader.cancel().catch(() => undefined);
+    return start.bytes.slice(0, CHAT_PDF_HEAD_BYTES);
+  } catch {
+    return "unreadable";
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
 }
 
 /**
@@ -1353,16 +1410,18 @@ export async function cancelDocumentPdf(
 
 /**
  * The signed-in person opens a document (`public.open_document`), for C7's
- * /document-files routes once they hold the file to serve (read first under
- * the reader's own session, `documentToServe` and `documentFileBytes`, so a
- * file that can't be given marks and logs nothing): a recipient's first
- * opening is marked and their documents.sent line settled; the office's
- * first opening of a document to the business marks it received and settles
- * documents.received for all of the office; and every opening by the office
- * of someone else's document is logged (document.open, once a day per
- * reader). Returns where its file is (`path`, null once the file is gone or
- * its removal's 10 minutes passed), its kind and name, or its sample.
- * "noAccess" for a document they don't read, the same as for none.
+ * /document-files routes, first: before its row is read for serving
+ * (`documentToServe`) and before the secret key reads a byte of its file
+ * (`documentFileBytes`), so every file served follows its line in the log.
+ * A recipient's first opening is marked and their documents.sent line
+ * settled; the office's first opening of a document to the business marks it
+ * received and settles documents.received for all of the office; and every
+ * opening by the office of someone else's document that serves something is
+ * logged (document.open, once a day per reader). Returns what the route may
+ * serve: where its file is (`path`, null once the file is gone) or its
+ * sample, both null for a removed one, even within its 10 minutes of undo
+ * (and then nothing is logged); and its kind and name. "noAccess" for a
+ * document they don't read, the same as for none.
  */
 export async function openDocument(
   actorId: string,
@@ -1464,18 +1523,19 @@ export type DocumentFile =
 
 /**
  * A document's file as the signed-in person may read it, for C7's
- * /document-files routes (before `openDocument`, which marks and logs only
- * once there is a file to give): its row read under their own session (RLS:
- * a document they read), pointing at the path and not removed (even within
- * its 10 minutes of undo), and the file downloaded under the same session, so
- * the bucket's policy decides too. Its type always comes from its bytes and
- * must be the path's and the row's: a photo of a page whole (at most 700 KB),
- * a PDF streamed on once its first KB proved it one (up to 10 MiB, never held
- * whole), with its name. Null for anything else, the same whether or not a
- * file is there. `session` is the reader's own, made while the request was
- * being answered (`documentSession`), for a download that reads its files
- * after its answer began streaming, when the request's cookies can no longer
- * be asked for; one is made here otherwise.
+ * /document-files routes, once `openDocument` opened it (and logged the
+ * office's opening): its row read under their own session (RLS: a document
+ * they read), pointing at the path and not removed (even within its 10
+ * minutes of undo), and only then the file, downloaded with the secret key:
+ * the `documents` bucket has no policy, so no session reads it (Orel, 12
+ * November 2026), and no signed link is made for it. Its type always comes
+ * from its bytes and must be the path's and the row's: a photo of a page
+ * whole (at most 700 KB), a PDF streamed on once its first KB proved it one
+ * (up to 10 MiB, never held whole), with its name. Null for anything else,
+ * the same whether or not a file is there. `session` is the reader's own,
+ * made while the request was being answered (`documentSession`), for a
+ * download that reads its rows after its answer began streaming, when the
+ * request's cookies can no longer be asked for; one is made here otherwise.
  */
 export async function documentFileBytes(
   path: string,
@@ -1501,7 +1561,9 @@ export async function documentFileBytes(
   ) {
     return null;
   }
-  const storage = supabase.storage.from(DOCUMENT_BUCKET);
+  // Only now the file, with the secret key's own download: no session
+  // reads the bucket, and no signed link is made for it.
+  const storage = createAdminClient().storage.from(DOCUMENT_BUCKET);
   if (kind === "pdf") {
     const file = await storage.download(path).asStream();
     const stream = (file.data ?? null) as ReadableStream<Uint8Array> | null;

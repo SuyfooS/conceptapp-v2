@@ -311,9 +311,9 @@ export function parseDocumentFilePath(path: string): DocumentFilePath | null {
 }
 
 /**
- * The database's rule (`private.can_read_document`, and the paths
- * public.reserve_document_upload makes): `<business>/<32 hex>.<pdf|webp|jpg>`,
- * lower case, and, when `businessId` is given, in that business's folder.
+ * The database's rule (the paths public.reserve_document_upload makes):
+ * `<business>/<32 hex>.<pdf|webp|jpg>`, lower case, and, when `businessId`
+ * is given, in that business's folder.
  */
 export function isDocumentFilePath(path: string, businessId?: string): boolean {
   const parts = parseDocumentFilePath(path);
@@ -330,8 +330,9 @@ export function documentFileKindOf(
 
 /**
  * Where the app serves a document's file: its own route (C7's
- * /document-files), which opens it through public.open_document under the
- * reader's own session, so the database decides and logs the opening.
+ * /document-files), which opens it through public.open_document for the
+ * signed-in person, so the database decides and logs the opening before the
+ * server reads the file.
  */
 export function documentFileSrc(
   path: string | null | undefined,
@@ -579,7 +580,10 @@ export type DocumentRecipientMark = z.output<typeof documentMarkSchema>;
 export const openedDocumentSchema = z.object({
   document: id,
   business: id,
-  /** Null once its file is gone, or removed more than 10 minutes before. */
+  /**
+   * What the route may serve: null once its file is gone, and for a removed
+   * one, even within its 10 minutes of undo (`sample` too).
+   */
   path: z.string().nullable(),
   kind: z.enum(["image", "pdf"]).nullable(),
   name: z.string().nullable(),
