@@ -147,16 +147,35 @@ const PAGES = [
   "/design/chat/noa",
   "/design/chat/noa?state=failed",
   "/design/chat/uri",
+  "/design/chat/documents",
+  "/design/chat/documents?state=seen",
+  "/design/chat/documents?person=noa",
+  "/design/chat/documents?state=empty",
+  "/design/chat/documents?as=staff",
+  "/design/chat/documents?as=staff&state=empty",
+  "/design/chat/documents?as=manager",
+  "/design/chat/documents/send",
+  "/design/chat/documents/send?to=people",
+  "/design/chat/documents/send?state=demo",
+  "/design/chat/documents/sick-note",
+  "/design/chat/documents/sick-note?state=remove",
+  "/design/chat/documents/sick-note?state=removed",
+  "/design/chat/documents/sick-note?as=staff&state=sent",
+  "/design/chat/documents/procedure",
+  "/design/chat/documents/procedure?as=manager",
+  "/design/chat/documents/payslip?as=staff",
+  "/design/chat/documents/maya-other",
   "/design/console/businesses/demo-restaurant/settings",
   "/design/console/businesses/demo-restaurant/lists",
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
 ];
 
 // The chat demo's states that open with a sheet (who confirmed, a message's
-// actions, a picture shown whole, the attach sheet): the sheet hides the page
-// behind it from the accessibility tree. Lists' `?state=photo` opens none.
+// actions, a picture shown whole, the attach sheet, a document's removal
+// with its reasons): the sheet hides the page behind it from the
+// accessibility tree. Lists' `?state=photo` opens none.
 const OPENS_A_SHEET =
-  /^\/design\/chat\/.*[?&]state=(readers|actions|photo|attach)\b/;
+  /^\/design\/chat\/.*[?&]state=(readers|actions|photo|attach|remove)\b/;
 
 async function expectCleanPage(page: Page, path = "") {
   await expect(page).toHaveTitle(/ConceptApp$/);
@@ -1725,4 +1744,104 @@ test("the chat demo sends a PDF from the attach sheet, stops one on its way, and
   await expect(log.getByRole("link", { name: /הזמנה לספק/ })).toBeVisible({
     timeout: 10_000,
   });
+});
+
+// The documents' mock screens (chat C7): the office's three shapes, one thing
+// at a time on a phone ("מחכה לך" or everyone by person), the people beside
+// the chosen one's documents on a tablet, and the table with its filters and
+// a preview on a desktop, which opens only the row chosen. Its notice to keep
+// a copy goes once "הבנתי" is pressed.
+test("the documents demo shows the office's documents in each device's shape", async ({
+  page,
+}, testInfo) => {
+  const d = he.app.chat.documents;
+  const project = testInfo.project.name;
+  await page.goto("/design/chat/documents");
+  await expect(
+    page.getByRole("heading", { level: 1, name: d.title }),
+  ).toBeVisible();
+  const segments = page
+    .getByRole("group", { name: d.office.segments })
+    .filter({ visible: true });
+  const table = page
+    .getByRole("table", { name: d.office.table.caption })
+    .filter({ visible: true });
+  await expect(segments).toHaveCount(project === "phone" ? 1 : 0);
+  await expect(table).toHaveCount(project === "desktop" ? 1 : 0);
+  if (project === "phone") {
+    await segments.getByRole("button", { name: d.office.all }).click();
+    await expect(
+      page
+        .getByRole("link", { name: /^נועה כהן/ })
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+  } else if (project === "tablet") {
+    await page
+      .getByRole("link", { name: /^נועה כהן/ })
+      .filter({ visible: true })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\?person=noa$/);
+    await expect(
+      page
+        .getByRole("heading", {
+          name: d.office.personTitle.replace("{name}", "נועה כהן"),
+        })
+        .filter({ visible: true }),
+    ).toBeVisible();
+  } else {
+    // Nothing opens until a row is chosen; then its preview shows the photo.
+    await expect(
+      page.locator('img[src$="/demo-documents/sick-note.webp"]'),
+    ).toHaveCount(0);
+    await table.getByRole("button", { name: /אישור מחלה ליום שני/ }).click();
+    await expect(
+      page
+        .getByRole("complementary", { name: d.office.preview.title })
+        .getByRole("img"),
+    ).toBeVisible();
+  }
+  const notice = page.getByRole("heading", { name: d.notice.title });
+  await expect(notice).toBeVisible();
+  await page.getByRole("button", { name: d.notice.ok }).click();
+  await expect(notice).toHaveCount(0);
+});
+
+// A document's file deleted with a reason from the list, and put back from
+// the toast: the row stays, saying why its file went.
+test("the documents demo deletes a file with a reason, and the toast puts it back", async ({
+  page,
+}) => {
+  const d = he.app.chat.documents;
+  await page.goto("/design/chat/documents/sick-note");
+  await page.getByRole("button", { name: d.removeFile }).click();
+  const sheet = page.getByRole("dialog", { name: d.page.removeTitle });
+  await sheet.getByRole("radio", { name: d.reasons.duplicate }).check();
+  await sheet.getByRole("button", { name: d.removeFile }).click();
+  const removed = d.removed.replace("{reason}", d.reasons.duplicate);
+  await expect(page.getByRole("main").getByText(removed).first()).toBeVisible();
+  await page
+    .getByRole("status")
+    .filter({ hasText: d.page.removedToast })
+    .getByRole("button", { name: d.page.undo })
+    .click();
+  await expect(page.getByRole("main").getByText(removed)).toHaveCount(0);
+  await expect(
+    page.getByRole("main").getByRole("img", { name: /אישור מחלה ליום שני/ }),
+  ).toBeVisible();
+});
+
+// Noa's payslip asks for her "קראתי ואישרתי", the page's main action: once
+// pressed, the page says she confirmed.
+test("the documents demo confirms a document that asks for it", async ({
+  page,
+}) => {
+  const d = he.app.chat.documents;
+  await page.goto("/design/chat/documents/payslip?as=staff");
+  await page.getByRole("button", { name: d.confirm }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: d.confirmedNow }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: d.confirm })).toHaveCount(0);
 });

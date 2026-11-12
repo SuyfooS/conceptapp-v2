@@ -19,6 +19,11 @@ export type AccessData = {
   me: string;
   /** Someone from ConceptApp is looking; nothing can be changed. */
   viewOnly: boolean;
+  /**
+   * Documents are on (chat C7): whoever sees pay also reads the documents
+   * people send the business, so the screen says so, with their count.
+   */
+  documents?: boolean;
 };
 
 export type AccessFailure =

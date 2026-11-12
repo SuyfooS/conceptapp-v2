@@ -32,6 +32,11 @@ export type AttachSheetProps = {
   closeLabel: string;
   /** Its rows, in order: what the business takes ("תמונה", "קובץ PDF"). */
   choices: readonly AttachChoice[];
+  /**
+   * A line over the rows: why some aren't offered (a demo business takes no
+   * files, so only the document for the business is there).
+   */
+  note?: ReactNode;
   /** Where the focus goes once it closed: the attach button, while it is there. */
   returnFocus?: () => HTMLElement | null | undefined;
 };
@@ -50,6 +55,7 @@ export function AttachSheet({
   title,
   closeLabel,
   choices,
+  note,
   returnFocus,
 }: AttachSheetProps) {
   const pickers = useRef(new Map<string, HTMLInputElement>());
@@ -83,7 +89,8 @@ export function AttachSheet({
         closeLabel={closeLabel}
         returnFocus={returnFocus}
       >
-        <div className="px-2 pb-2">
+        <div className="flex flex-col gap-3 px-2 pb-2">
+          {note ? <p className="px-2 text-ink-2">{note}</p> : null}
           <ListGroup
             className="bg-elevated shadow-none"
             // Leaving for a row's own screen, the sheet steps aside.

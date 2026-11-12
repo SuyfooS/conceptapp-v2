@@ -3,6 +3,7 @@ import {
   Bell,
   CalendarDays,
   Clock,
+  FileText,
   ListChecks,
   MessageCircle,
   Store,
@@ -19,4 +20,5 @@ export const moduleIcons: Record<ModuleIcon, ReactNode> = {
   bell: <Bell />,
   list: <ListChecks />,
   chat: <MessageCircle />,
+  documents: <FileText />,
 };

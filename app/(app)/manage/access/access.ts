@@ -2,6 +2,7 @@ import { getAccessPeople, getPayRoles } from "@db/payroll";
 import { canGrantPay } from "@domain/payroll-access";
 import { canWrite } from "@domain/view-as";
 import { currentMember } from "../../member";
+import { currentModules } from "../../modules";
 import type { AccessData } from "./access-types";
 
 /**
@@ -24,9 +25,10 @@ export async function accessAccess() {
 export async function currentAccess(): Promise<AccessData | null> {
   const access = await accessAccess();
   if (!access) return null;
-  const [roles, people] = await Promise.all([
+  const [roles, people, enabled] = await Promise.all([
     getPayRoles(access.businessId),
     getAccessPeople(access.businessId),
+    currentModules(),
   ]);
   return {
     roles,
@@ -37,5 +39,7 @@ export async function currentAccess(): Promise<AccessData | null> {
     ),
     me: access.userId,
     viewOnly: access.viewOnly,
+    // Documents are on wherever chat is (private.documents_on).
+    documents: enabled.includes("chat"),
   };
 }

@@ -660,6 +660,32 @@ export type Database = {
           },
         ];
       };
+      document_notices: {
+        Row: {
+          business_id: string;
+          seen_at: string;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          seen_at?: string;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          seen_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "document_notices_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: true;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+        ];
+      };
       document_recipients: {
         Row: {
           business_id: string;
@@ -3159,6 +3185,10 @@ export type Database = {
         Returns: number;
       };
       see_chat_notice: {
+        Args: { actor: string; business: string };
+        Returns: undefined;
+      };
+      see_documents_notice: {
         Args: { actor: string; business: string };
         Returns: undefined;
       };

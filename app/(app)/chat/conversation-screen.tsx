@@ -75,7 +75,7 @@ import {
 import { PhotoSheet } from "@ui/photo-sheet";
 import { Spinner } from "@ui/spinner";
 import { StatusToast } from "@ui/status-toast";
-import { ChevronUp, FileText, ImageIcon } from "lucide-react";
+import { ChevronUp, FileLock, FileText, ImageIcon } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -117,6 +117,7 @@ import type {
   ChatPdfStartResult,
   ChatReaders,
 } from "./chat-types";
+import { documentsPaths } from "./documents/documents-paths";
 import { InfoButton } from "./info-button";
 import { MessageActionsSheet } from "./message-actions";
 import { ReadersSheet } from "./readers-sheet";
@@ -211,8 +212,9 @@ type Props = {
   details: ReactNode | null;
   /**
    * Whether pictures and PDFs can be sent here (C4, C5, `chatFilesAllowed`):
-   * "demo" keeps the attach button, which says a demo business takes no
-   * files; "notYet" (the database hasn't the files yet) has none.
+   * "demo" keeps the attach button, whose sheet says a demo business takes
+   * no files and offers only the document for the business (C7); "notYet"
+   * (the database hasn't the files yet) has none.
    */
   files: "yes" | "demo" | "notYet";
 };
@@ -1978,10 +1980,11 @@ export function ConversationScreen(props: Props) {
   }, [messages, noteFiles]);
 
   // Files (C4, C5): the attach button opens the attach sheet, a picture (the
-  // phone's picker, which offers its camera too) or a PDF; in a demo
-  // business it says why there is none.
+  // phone's picker, which offers its camera too), a PDF, or a document for
+  // the business (C7), which sends nothing here. A demo business takes no
+  // file: its sheet says so and keeps only that last row.
   const attach: ComposerAttach | null =
-    props.files === "yes"
+    props.files === "yes" || props.files === "demo"
       ? {
           label: t("conversation.attach"),
           onOpen: (trigger) => {
@@ -1989,9 +1992,7 @@ export function ConversationScreen(props: Props) {
             setAttachOpen(true);
           },
         }
-      : props.files === "demo"
-        ? { label: t("conversation.attach"), refused: t("fileFailure.demo") }
-        : null;
+      : null;
   const picturing = picked !== null || preparing || pickedPdf !== null;
   // A picture or a PDF goes as a message: the switch steps aside while one
   // is chosen.
@@ -2228,23 +2229,28 @@ export function ConversationScreen(props: Props) {
         // takes it from there when it comes.
         returnFocus={() => backTo(actionsOpener.current)}
       />
-      {props.files === "yes" ? (
+      {props.files === "yes" || props.files === "demo" ? (
         <AttachSheet
           open={attachOpen}
           onOpenChange={setAttachOpen}
           title={t("attach.title")}
           closeLabel={t("attach.close")}
+          note={props.files === "demo" ? t("fileFailure.demo") : null}
           choices={[
-            {
-              key: "photo",
-              icon: <ImageIcon />,
-              title: t("attach.photo"),
-              hint: t("attach.photoHint"),
-              accept: PICKED_PHOTO_ACCEPT,
-              onPick: (file) => void pickPicture(file),
-            },
+            ...(props.files === "demo"
+              ? []
+              : [
+                  {
+                    key: "photo",
+                    icon: <ImageIcon />,
+                    title: t("attach.photo"),
+                    hint: t("attach.photoHint"),
+                    accept: PICKED_PHOTO_ACCEPT,
+                    onPick: (file: File) => void pickPicture(file),
+                  },
+                ]),
             // Not offered once the database said it takes no PDF yet.
-            ...(pdfsNotYet
+            ...(pdfsNotYet || props.files === "demo"
               ? []
               : [
                   {
@@ -2256,6 +2262,15 @@ export function ConversationScreen(props: Props) {
                     onPick: pickPdf,
                   },
                 ]),
+            // A document for the business (C7), such as a sick note: to the
+            // office, never into this conversation, which a manager may be in.
+            {
+              key: "document",
+              icon: <FileLock />,
+              title: t("attach.document"),
+              hint: t("attach.documentHint"),
+              href: documentsPaths.send("business"),
+            },
           ]}
           returnFocus={() => backTo(attachOpener.current)}
         />

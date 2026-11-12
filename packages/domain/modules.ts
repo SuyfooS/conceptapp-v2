@@ -72,6 +72,7 @@ export const MODULE_ICONS = [
   "bell",
   "list",
   "chat",
+  "documents",
 ] as const;
 
 export type ModuleIcon = (typeof MODULE_ICONS)[number];
@@ -105,9 +106,18 @@ export type ModuleManifest<
     /**
      * The tab someone off the staff (an accountant) gets, when they hold
      * `perm`: it leads to `href`, labelled `modules.<key>.outsideNav`. The
-     * module's own screens stay closed to them (`canOpenModule`).
+     * module's own screens stay closed to them (`canOpenModule`). `perm` is
+     * one the module declares, or, with `from`, one that module declares and
+     * the database asks for the same thing (chat's documents are the office's,
+     * and the office is who holds time_clock's `clock.payroll`).
      */
-    outsideStaff?: { perm: `${string}.${string}`; href: `/${string}` };
+    outsideStaff?: {
+      perm: `${string}.${string}`;
+      href: `/${string}`;
+      from?: ModuleKey;
+      /** Its own icon, for a tab that leads elsewhere than the module's (chat's documents). */
+      icon?: ModuleIcon;
+    };
   } | null;
   /**
    * The module's part of the Today screen. Until it has one of its own, one
@@ -234,7 +244,7 @@ export function moduleNav(
             {
               key: m.key,
               href: outside.href,
-              icon: nav.icon,
+              icon: outside.icon ?? nav.icon,
               order: nav.order,
               outside: true,
             },

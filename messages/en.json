@@ -380,7 +380,12 @@
     "chatPdfName": "Autumn menu 2026.pdf",
     "chatPdfNameSecond": "Closing checklist.pdf",
     "chatPdfCaption": "The new menu, please read it by tomorrow",
-    "chatAttachSheet": "Open the attach sheet"
+    "chatAttachSheet": "Open the attach sheet",
+    "fileField": "File field",
+    "fileFieldText": "A document's file: a photo taken now, one from the phone, or a PDF, with its preview and how far it got.",
+    "fileFieldPhoto": "With a photo",
+    "fileFieldPdf": "With a PDF on its way",
+    "fileFieldPdfName": "November payslip.pdf"
   },
   "shell": {
     "metaTitle": "Layout demo",
@@ -2454,7 +2459,9 @@
           "businessChanged": "You moved to another business in the meantime, so the change wasn't saved. Reload the screen.",
           "failed": "The change wasn't saved. Check the connection and try again."
         },
-        "noName": "No name"
+        "noName": "No name",
+        "documents": "Whoever sees pay also sees the documents people send the business",
+        "documentsCount": "{count, plural, one {# person can reach the documents} other {# people can reach the documents}}"
       },
       "ownerOnly": "Owners only",
       "departments": {
@@ -2553,6 +2560,14 @@
         "viewOnly": "Nothing can be changed while viewing.",
         "failed": "The change wasn't saved. Try again.",
         "notYet": "This opens shortly. Try again later."
+      },
+      "documents": {
+        "title": "Documents",
+        "mine": "My documents",
+        "hint": "Sick notes, forms and what the business sent you",
+        "officeHint": "What people sent the business, and what it sent them",
+        "toConfirm": "{count, plural, one {# document waits for your confirmation} other {# documents wait for your confirmation}}",
+        "all": "Every document of the business"
       }
     },
     "notifications": {
@@ -3657,7 +3672,9 @@
         "photo": "Photo",
         "photoHint": "From your pictures",
         "pdf": "PDF file",
-        "pdfHint": "A document up to <ltr>{max}</ltr> MB, opened once downloaded"
+        "pdfHint": "A document up to <ltr>{max}</ltr> MB, opened once downloaded",
+        "document": "A document for the business, like a sick note",
+        "documentHint": "Only the owner and whoever prepares payroll see it"
       },
       "pdf": {
         "download": "Download",
@@ -3704,6 +3721,265 @@
           "wrong_file": "The wrong file",
           "duplicate": "Sent twice",
           "other": "Another reason"
+        },
+        "download": {
+          "name": "Documents - {business} - {what}",
+          "list": "List of documents",
+          "noName": "No name",
+          "columns": {
+            "number": "Number",
+            "person": "Name",
+            "direction": "Which way",
+            "category": "Kind",
+            "title": "Title",
+            "note": "Note",
+            "sentAt": "Sent",
+            "sentBy": "Sent by",
+            "openedAt": "Opened",
+            "confirmedAt": "Confirmed reading",
+            "file": "File"
+          },
+          "directions": {
+            "from_person": "To the business",
+            "to_people": "From the business"
+          },
+          "notOpened": "Not opened yet",
+          "notConfirmed": "Not confirmed yet",
+          "notAsked": "Not asked",
+          "removed": "File deleted: {reason}",
+          "missing": "The file isn't in this download. You can download again",
+          "more": "This file holds only the first {count, number} documents. Download the rest month by month.",
+          "person": "Download all of {name}'s documents",
+          "month": "Download {month}'s documents",
+          "monthLabel": "A month's documents",
+          "monthChoose": "Choose a month",
+          "hint": "A ZIP file with the files and a list of them. Each download counts as opening the documents."
+        },
+        "title": "Documents",
+        "mine": "My documents",
+        "mineSubtitle": "What you sent the business, and what it sent you",
+        "officeSubtitle": "What people sent the business, and what it sent them",
+        "sendToBusiness": "Send a document to the business",
+        "sendToPeople": "Send a document to people",
+        "whoFromPerson": "Only the owner and whoever prepares payroll see this document",
+        "whoToPeople": "Seen by its recipients, the owner and whoever prepares payroll",
+        "sickNoteHint": "Send only the sick note, no other medical documents",
+        "askConfirm": "Ask them to confirm reading",
+        "askConfirmHint": "Each recipient presses “I've read it and confirm”, and you see who did",
+        "confirm": "I've read it and confirm",
+        "confirmedNow": "You confirmed you read it",
+        "confirmHint": "Its sender and the owner see that you confirmed",
+        "confirmFailed": "The confirmation wasn't saved. Try again.",
+        "open": "Open the file",
+        "downloadAll": "Download all documents",
+        "removeFile": "Delete the file",
+        "reason": "Why",
+        "removed": "File deleted: {reason}",
+        "noName": "No name",
+        "former": "No longer on the team",
+        "sample": "A sample document",
+        "state": {
+          "sent": "Sent",
+          "received": "Received <ltr>{date}</ltr>",
+          "waiting": "Not opened yet",
+          "new": "New",
+          "opened": "Opened <ltr>{date}</ltr>",
+          "toConfirm": "Please confirm you read it",
+          "confirmed": "Confirmed <ltr>{date}</ltr>",
+          "opens": "<ltr>{count}</ltr> of <ltr>{total}</ltr> opened",
+          "confirms": "<ltr>{count}</ltr> of <ltr>{total}</ltr> confirmed"
+        },
+        "row": {
+          "fromPerson": "From {name}",
+          "toBusiness": "To the business",
+          "fromBusiness": "From the business",
+          "toPerson": "To {name}",
+          "fromNoName": "From someone without a name",
+          "toNoName": "To someone without a name",
+          "toMany": "{count, plural, one {To one person} other {To # people}}",
+          "when": "{who} · <ltr>{date}</ltr>"
+        },
+        "empty": {
+          "staff": "No documents. Send a sick note or a form from here to the owner and whoever prepares payroll",
+          "office": "No documents yet. You can send to a person, a department or everyone"
+        },
+        "sent": {
+          "title": "You sent",
+          "empty": "You haven't sent documents to people yet"
+        },
+        "office": {
+          "segments": "Which documents",
+          "waiting": "Waiting for you",
+          "all": "All documents",
+          "waitingEmpty": "Nothing waits for you",
+          "people": "People",
+          "count": "{count, plural, one {# document} other {# documents}}",
+          "countWaiting": "{count, plural, one {# document} other {# documents}} · {waiting, plural, one {# waits for you} other {# wait for you}}",
+          "personTitle": "{name}'s documents",
+          "everyone": "Everyone",
+          "choose": "Choose a name from the list to see the documents",
+          "personEmpty": "No documents for {name}",
+          "table": {
+            "caption": "Every document in the business",
+            "person": "Name",
+            "title": "Document",
+            "category": "Kind",
+            "direction": "Way",
+            "sent": "Sent",
+            "status": "Opened or confirmed",
+            "rowLabel": "Preview {title}, {name}",
+            "people": "{count, plural, one {One person} other {# people}}"
+          },
+          "directions": {
+            "from_person": "To the business",
+            "to_people": "From the business"
+          },
+          "filters": {
+            "title": "Filter",
+            "person": "Name",
+            "everyone": "Everyone",
+            "category": "Kind",
+            "allCategories": "All kinds",
+            "state": "State",
+            "states": {
+              "all": "All",
+              "waiting": "Waiting for you",
+              "unconfirmed": "Not confirmed yet",
+              "removed": "File deleted"
+            },
+            "noMatch": "No documents match",
+            "clear": "Clear the filter"
+          },
+          "preview": {
+            "title": "Preview",
+            "choose": "Choose a document in the table to see it here",
+            "page": "Open its page",
+            "close": "Close the preview"
+          }
+        },
+        "notice": {
+          "title": "Keep a copy of the documents",
+          "body": "Documents are kept here with no date for deleting them, but they have no backup yet. Download them now and then, and keep a copy at the business.",
+          "ok": "Got it",
+          "failed": "That wasn't saved. Try again."
+        },
+        "page": {
+          "back": "Documents",
+          "from": "From {name} to the business",
+          "toOne": "From the business to {name}",
+          "fromNoName": "From someone without a name to the business",
+          "toOneNoName": "From the business to someone without a name",
+          "toMany": "{count, plural, one {From the business to one person} other {From the business to # people}}",
+          "toMe": "From the business to you",
+          "sentAt": "Sent <ltr>{date}</ltr> at <ltr>{time}</ltr>",
+          "sentBy": "Sent by {name}",
+          "receivedAt": "Received <ltr>{date}</ltr> at <ltr>{time}</ltr>",
+          "notOpened": "Not opened at the business yet",
+          "note": "Note",
+          "file": "The file",
+          "fileGone": "The file is no longer kept",
+          "imageAlt": "The photo of {title}",
+          "pdfSize": "<ltr>{size}</ltr> · PDF",
+          "pdfPlain": "PDF",
+          "recipients": "Who got it",
+          "markOpened": "Opened <ltr>{date}</ltr>",
+          "markConfirmed": "Confirmed <ltr>{date}</ltr>",
+          "markWaiting": "Not opened yet",
+          "markUnconfirmed": "Not confirmed yet",
+          "yourMark": "You confirmed you read it <ltr>{date}</ltr>",
+          "takeBack": "Take it back",
+          "takeBackHint": "You can take it back until <ltr>{time}</ltr>",
+          "takeBackLate": "The 10 minutes are over, so it can't be taken back",
+          "removeTitle": "Why delete the file",
+          "removeHint": "The document stays in the list, saying its file was deleted and why. You can undo this in the next ten minutes.",
+          "removeClose": "Close",
+          "removedBy": "File deleted by {name}",
+          "restore": "Put the file back",
+          "restoreHint": "You can put the file back until <ltr>{time}</ltr>",
+          "sentToast": "The document was sent",
+          "takenBackToast": "Sending was taken back",
+          "removedToast": "The file was deleted",
+          "restoredToast": "The file is back",
+          "undo": "Undo"
+        },
+        "send": {
+          "title": "Send a document",
+          "back": "Documents",
+          "way": "Where it goes",
+          "toBusiness": "To the business",
+          "toPeople": "To people",
+          "category": "Which document",
+          "titleLabel": "Title",
+          "titleHint": "Shown in the list of documents",
+          "noteLabel": "Note",
+          "noteHint": "Optional",
+          "file": "The file",
+          "fileHint": "A clear photo of the whole page, or a PDF up to <ltr>{max}</ltr> MB",
+          "camera": "Take a photo",
+          "photos": "From photos",
+          "pdf": "PDF file",
+          "chosen": "The file you chose",
+          "removeChosen": "Remove the file",
+          "preparing": "Preparing the photo",
+          "uploadLabel": "Uploading the file",
+          "uploading": "Uploading the file · <ltr>{percent}%</ltr>",
+          "checking": "Checking the file",
+          "stop": "Stop sending",
+          "to": "To whom",
+          "toPerson": "One person",
+          "toDepartment": "A department",
+          "toEveryone": "The whole team",
+          "person": "Who",
+          "department": "Which department",
+          "choose": "Choose",
+          "count": "{count, plural, =0 {Nobody chosen yet} one {It goes to one person} other {It goes to # people}}",
+          "submitBusiness": "Send the document to the business",
+          "submitPeople": "Send the document",
+          "demo": "In a demo business each document is named after its kind, with no note.",
+          "demoSample": "Demo businesses take no files: a sample document of the kind you chose goes.",
+          "needsFile": "Attach the file first",
+          "needsPeople": "Choose to whom first",
+          "needsTitle": "Write a title first",
+          "titleInvalid": "A title on one line, up to <ltr>{max}</ltr> characters",
+          "photoFailure": {
+            "unreadable": "The photo can't be read. Choose another one.",
+            "tooBig": "The photo is too big even made smaller. Take it again.",
+            "type": "You can attach a photo or a PDF file."
+          }
+        },
+        "failure": {
+          "noAccess": "That can't be done with this document.",
+          "invalid": "Something in the document isn't right. Check and try again.",
+          "closed": "Documents are closed now, or the time to undo is over.",
+          "demo": "Demo businesses send sample documents only.",
+          "tooFast": "Too many documents in a short time. Try again in a moment.",
+          "full": "The business's space for documents is full, so no new one can be sent.",
+          "noRoom": "There's no room for files right now. Try again later.",
+          "tooMany": "Too many files are waiting unsent. Try again tomorrow.",
+          "notYet": "Documents aren't ready here yet.",
+          "failed": "That didn't work. Check the connection and try again.",
+          "empty": "The file is empty.",
+          "tooBig": "The file is too big.",
+          "type": "You can send a photo or a PDF file.",
+          "metadata": "The photo wasn't prepared right. Choose it again.",
+          "pixels": "The photo wasn't prepared right. Choose it again.",
+          "notPdf": "This file isn't a PDF.",
+          "notUploaded": "The file didn't go up. Try again.",
+          "expired": "Too much time went by. Choose the file again.",
+          "viewOnly": "Documents can't be sent or changed while viewing.",
+          "businessChanged": "You switched to another business meanwhile, so this wasn't saved. Reload the screen."
+        },
+        "today": {
+          "title": "Documents",
+          "all": "All documents",
+          "toConfirm": "Please confirm you read it",
+          "from": "From the business · <ltr>{date}</ltr>",
+          "openPage": "Open the document",
+          "waiting": "{count, plural, one {# document to the business isn't opened yet} other {# documents to the business aren't opened yet}}",
+          "waitingRow": "From {name} · <ltr>{date}</ltr>",
+          "waitingRowNoName": "From someone without a name · <ltr>{date}</ltr>",
+          "moreToConfirm": "{count, plural, one {One more document waits for your confirmation} other {# more documents wait for your confirmation}}",
+          "allConfirmed": "No more documents wait for your confirmation"
         }
       }
     }
@@ -3923,6 +4199,7 @@
     "chat": {
       "name": "Chat",
       "description": "A group for the whole team and each department, and private chats",
+      "outsideNav": "Documents",
       "settings": {
         "teamGroupWho": {
           "label": "Who writes in the whole team's group",

@@ -45,7 +45,15 @@ import {
 import { PhotoSheet } from "@ui/photo-sheet";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
-import { Copy, FileText, ImageIcon, Pin, PinOff, Trash2 } from "lucide-react";
+import {
+  Copy,
+  FileLock,
+  FileText,
+  ImageIcon,
+  Pin,
+  PinOff,
+  Trash2,
+} from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { InfoButton } from "../../(app)/chat/info-button";
@@ -1007,6 +1015,13 @@ export function ConversationDemo({
             hint: t.rich("attach.pdfHint", { max: PDF_MB, ltr }),
             accept: CHAT_PDF_ACCEPT,
             onPick: pickPdf,
+          },
+          {
+            key: "document",
+            icon: <FileLock />,
+            title: t("attach.document"),
+            hint: t("attach.documentHint"),
+            href: "/design/chat/documents/send",
           },
         ]}
       />

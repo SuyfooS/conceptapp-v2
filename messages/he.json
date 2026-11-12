@@ -380,7 +380,12 @@
     "chatPdfName": "תפריט סתיו 2026.pdf",
     "chatPdfNameSecond": "נוהל סגירה.pdf",
     "chatPdfCaption": "התפריט החדש, לעבור עליו עד מחר",
-    "chatAttachSheet": "לפתוח את חלון הצירוף"
+    "chatAttachSheet": "לפתוח את חלון הצירוף",
+    "fileField": "שדה קובץ",
+    "fileFieldText": "הקובץ של מסמך: צילום, תמונה מהטלפון או PDF, עם התצוגה שלו ומה שקורה בדרך.",
+    "fileFieldPhoto": "עם תמונה",
+    "fileFieldPdf": "עם PDF בדרך",
+    "fileFieldPdfName": "תלוש נובמבר.pdf"
   },
   "shell": {
     "metaTitle": "דמו פריסה",
@@ -2454,7 +2459,9 @@
           "businessChanged": "עברת לעסק אחר בינתיים, ולכן השינוי לא נשמר. כדאי לטעון את המסך מחדש.",
           "failed": "השינוי לא נשמר. בדקו את החיבור ונסו שוב."
         },
-        "noName": "בלי שם"
+        "noName": "בלי שם",
+        "documents": "מי שרואה שכר רואה גם את המסמכים שהעובדים שולחים",
+        "documentsCount": "{count, plural, one {אדם אחד יכול להגיע למסמכים} other {# אנשים יכולים להגיע למסמכים}}"
       },
       "ownerOnly": "לבעלים בלבד",
       "departments": {
@@ -2553,6 +2560,14 @@
         "viewOnly": "בצפייה בתור אי אפשר לשנות דבר.",
         "failed": "השינוי לא נשמר. כדאי לנסות שוב.",
         "notYet": "עוד מעט אפשר יהיה לשנות את זה. כדאי לנסות שוב מאוחר יותר."
+      },
+      "documents": {
+        "title": "מסמכים",
+        "mine": "המסמכים שלי",
+        "hint": "אישורי מחלה, טפסים ומה שהעסק שלח לך",
+        "officeHint": "מה שהעובדים שלחו לעסק, ומה שהעסק שלח להם",
+        "toConfirm": "{count, plural, one {מסמך אחד מחכה לאישור שלך} other {# מסמכים מחכים לאישור שלך}}",
+        "all": "כל המסמכים בעסק"
       }
     },
     "notifications": {
@@ -3657,7 +3672,9 @@
         "photo": "תמונה",
         "photoHint": "מהתמונות שלך",
         "pdf": "קובץ PDF",
-        "pdfHint": "מסמך עד <ltr>{max}</ltr> מגה, שנפתח אחרי הורדה"
+        "pdfHint": "מסמך עד <ltr>{max}</ltr> מגה, שנפתח אחרי הורדה",
+        "document": "מסמך לעסק, כמו אישור מחלה",
+        "documentHint": "רואים אותו רק הבעלים ומי שמכין את השכר"
       },
       "pdf": {
         "download": "הורדה",
@@ -3704,6 +3721,265 @@
           "wrong_file": "נשלח קובץ לא נכון",
           "duplicate": "נשלח פעמיים",
           "other": "סיבה אחרת"
+        },
+        "download": {
+          "name": "מסמכים - {business} - {what}",
+          "list": "רשימת המסמכים",
+          "noName": "בלי שם",
+          "columns": {
+            "number": "מספר",
+            "person": "שם",
+            "direction": "לאן",
+            "category": "סוג",
+            "title": "כותרת",
+            "note": "הערה",
+            "sentAt": "נשלח",
+            "sentBy": "מי שלח",
+            "openedAt": "נפתח",
+            "confirmedAt": "אישור קריאה",
+            "file": "קובץ"
+          },
+          "directions": {
+            "from_person": "לעסק",
+            "to_people": "מהעסק"
+          },
+          "notOpened": "עוד לא נפתח",
+          "notConfirmed": "עוד לא אושר",
+          "notAsked": "לא התבקש",
+          "removed": "הקובץ נמחק: {reason}",
+          "missing": "הקובץ לא נכלל בהורדה. אפשר להוריד שוב",
+          "more": "בקובץ הזה רק {count, number} המסמכים הראשונים. את השאר אפשר להוריד חודש אחרי חודש.",
+          "person": "הורדת כל המסמכים של {name}",
+          "month": "הורדת המסמכים של {month}",
+          "monthLabel": "המסמכים של חודש",
+          "monthChoose": "בחירת חודש",
+          "hint": "קובץ ZIP עם הקבצים ורשימה שלהם. כל הורדה נרשמת כפתיחה של המסמכים."
+        },
+        "title": "מסמכים",
+        "mine": "המסמכים שלי",
+        "mineSubtitle": "מה ששלחת לעסק, ומה שהעסק שלח לך",
+        "officeSubtitle": "מה שהעובדים שלחו לעסק, ומה שהעסק שלח להם",
+        "sendToBusiness": "שליחת מסמך לעסק",
+        "sendToPeople": "שליחת מסמך לעובדים",
+        "whoFromPerson": "את המסמך רואים רק הבעלים ומי שמכין את השכר",
+        "whoToPeople": "את המסמך רואים מי שקיבל אותו, הבעלים ומי שמכין את השכר",
+        "sickNoteHint": "שולחים רק את אישור המחלה, בלי מסמכים רפואיים אחרים",
+        "askConfirm": "לבקש אישור קריאה",
+        "askConfirmHint": "מי שמקבל לוחץ ״קראתי ואישרתי״, ורואים כאן מי אישר",
+        "confirm": "קראתי ואישרתי",
+        "confirmedNow": "אישרת שקראת",
+        "confirmHint": "מי ששלח והבעלים רואים שאישרת",
+        "confirmFailed": "האישור לא נשמר. אפשר לנסות שוב.",
+        "open": "פתיחת הקובץ",
+        "downloadAll": "הורדת כל המסמכים",
+        "removeFile": "מחיקת הקובץ",
+        "reason": "למה מוחקים",
+        "removed": "הקובץ נמחק: {reason}",
+        "noName": "בלי שם",
+        "former": "מי שכבר לא בצוות",
+        "sample": "מסמך לדוגמה",
+        "state": {
+          "sent": "נשלח",
+          "received": "התקבל בעסק <ltr>{date}</ltr>",
+          "waiting": "עוד לא נפתח",
+          "new": "חדש",
+          "opened": "נפתח <ltr>{date}</ltr>",
+          "toConfirm": "צריך לאשר שקראת",
+          "confirmed": "אישרת <ltr>{date}</ltr>",
+          "opens": "<ltr>{count}</ltr> מתוך <ltr>{total}</ltr> פתחו",
+          "confirms": "<ltr>{count}</ltr> מתוך <ltr>{total}</ltr> אישרו"
+        },
+        "row": {
+          "fromPerson": "מ{name}",
+          "toBusiness": "לעסק",
+          "fromBusiness": "מהעסק",
+          "toPerson": "ל{name}",
+          "fromNoName": "מאדם בלי שם",
+          "toNoName": "לאדם בלי שם",
+          "toMany": "{count, plural, one {לאדם אחד} other {ל-# אנשים}}",
+          "when": "{who} · <ltr>{date}</ltr>"
+        },
+        "empty": {
+          "staff": "אין מסמכים. אישור מחלה או טופס שולחים מכאן לבעלים ולמי שמכין את השכר",
+          "office": "עוד לא נשלחו מסמכים. אפשר לשלוח לעובד, למחלקה או לכולם"
+        },
+        "sent": {
+          "title": "שלחת",
+          "empty": "עוד לא שלחת מסמכים לעובדים"
+        },
+        "office": {
+          "segments": "אילו מסמכים",
+          "waiting": "מחכה לך",
+          "all": "כל המסמכים",
+          "waitingEmpty": "אין מסמכים שמחכים לך",
+          "people": "אנשים",
+          "count": "{count, plural, one {מסמך אחד} other {# מסמכים}}",
+          "countWaiting": "{count, plural, one {מסמך אחד} other {# מסמכים}} · {waiting, plural, one {אחד מחכה לך} other {# מחכים לך}}",
+          "personTitle": "המסמכים של {name}",
+          "everyone": "כל האנשים",
+          "choose": "בוחרים שם מהרשימה כדי לראות את המסמכים",
+          "personEmpty": "אין מסמכים של {name}",
+          "table": {
+            "caption": "כל המסמכים בעסק",
+            "person": "שם",
+            "title": "מסמך",
+            "category": "סוג",
+            "direction": "לאן",
+            "sent": "נשלח",
+            "status": "נפתח או אושר",
+            "rowLabel": "תצוגה של {title}, {name}",
+            "people": "{count, plural, one {אדם אחד} other {# אנשים}}"
+          },
+          "directions": {
+            "from_person": "לעסק",
+            "to_people": "מהעסק"
+          },
+          "filters": {
+            "title": "סינון",
+            "person": "שם",
+            "everyone": "כולם",
+            "category": "סוג",
+            "allCategories": "כל הסוגים",
+            "state": "מצב",
+            "states": {
+              "all": "הכול",
+              "waiting": "מחכה לך",
+              "unconfirmed": "עוד לא אושר",
+              "removed": "הקובץ נמחק"
+            },
+            "noMatch": "אין מסמכים שמתאימים לסינון",
+            "clear": "ניקוי הסינון"
+          },
+          "preview": {
+            "title": "תצוגה",
+            "choose": "בוחרים מסמך בטבלה כדי לראות אותו כאן",
+            "page": "לדף המסמך",
+            "close": "סגירת התצוגה"
+          }
+        },
+        "notice": {
+          "title": "כדאי לשמור עותק של המסמכים",
+          "body": "המסמכים נשמרים כאן בלי מועד מחיקה, אבל אין להם עדיין גיבוי נוסף. כדאי להוריד אותם מדי פעם ולשמור עותק אצל העסק.",
+          "ok": "הבנתי",
+          "failed": "זה לא נשמר. אפשר לנסות שוב."
+        },
+        "page": {
+          "back": "מסמכים",
+          "from": "מ{name} לעסק",
+          "toOne": "מהעסק ל{name}",
+          "fromNoName": "מאדם בלי שם לעסק",
+          "toOneNoName": "מהעסק לאדם בלי שם",
+          "toMany": "{count, plural, one {מהעסק לאדם אחד} other {מהעסק ל-# אנשים}}",
+          "toMe": "מהעסק אליך",
+          "sentAt": "נשלח <ltr>{date}</ltr> בשעה <ltr>{time}</ltr>",
+          "sentBy": "נשלח על ידי {name}",
+          "receivedAt": "התקבל בעסק <ltr>{date}</ltr> בשעה <ltr>{time}</ltr>",
+          "notOpened": "עוד לא נפתח בעסק",
+          "note": "הערה",
+          "file": "הקובץ",
+          "fileGone": "הקובץ כבר לא נשמר",
+          "imageAlt": "התמונה של {title}",
+          "pdfSize": "<ltr>{size}</ltr> · PDF",
+          "pdfPlain": "PDF",
+          "recipients": "מי קיבל",
+          "markOpened": "נפתח <ltr>{date}</ltr>",
+          "markConfirmed": "אושר <ltr>{date}</ltr>",
+          "markWaiting": "עוד לא נפתח",
+          "markUnconfirmed": "עוד לא אושר",
+          "yourMark": "אישרת שקראת <ltr>{date}</ltr>",
+          "takeBack": "ביטול השליחה",
+          "takeBackHint": "אפשר לבטל את השליחה עד <ltr>{time}</ltr>",
+          "takeBackLate": "עברו עשר הדקות, ואי אפשר לבטל את השליחה",
+          "removeTitle": "למה מוחקים את הקובץ",
+          "removeHint": "המסמך נשאר ברשימה, ורואים שהקובץ נמחק ולמה. אפשר לבטל בעשר הדקות הקרובות.",
+          "removeClose": "סגירה",
+          "removedBy": "הקובץ נמחק על ידי {name}",
+          "restore": "החזרת הקובץ",
+          "restoreHint": "אפשר להחזיר את הקובץ עד <ltr>{time}</ltr>",
+          "sentToast": "המסמך נשלח",
+          "takenBackToast": "השליחה בוטלה",
+          "removedToast": "הקובץ נמחק",
+          "restoredToast": "הקובץ חזר",
+          "undo": "ביטול"
+        },
+        "send": {
+          "title": "שליחת מסמך",
+          "back": "מסמכים",
+          "way": "לאן שולחים",
+          "toBusiness": "לעסק",
+          "toPeople": "לעובדים",
+          "category": "איזה מסמך",
+          "titleLabel": "כותרת",
+          "titleHint": "רואים אותה ברשימת המסמכים",
+          "noteLabel": "הערה",
+          "noteHint": "לא חובה",
+          "file": "הקובץ",
+          "fileHint": "תמונה ברורה של כל הדף, או קובץ PDF עד <ltr>{max}</ltr> מגה",
+          "camera": "צילום",
+          "photos": "מהתמונות",
+          "pdf": "קובץ PDF",
+          "chosen": "הקובץ שבחרת",
+          "removeChosen": "הסרת הקובץ",
+          "preparing": "מכינים את התמונה",
+          "uploadLabel": "העלאת הקובץ",
+          "uploading": "מעלים את הקובץ · <ltr>{percent}%</ltr>",
+          "checking": "בודקים את הקובץ",
+          "stop": "עצירת השליחה",
+          "to": "למי",
+          "toPerson": "אדם אחד",
+          "toDepartment": "מחלקה",
+          "toEveryone": "כל הצוות",
+          "person": "מי",
+          "department": "איזו מחלקה",
+          "choose": "בחירה",
+          "count": "{count, plural, =0 {עוד לא נבחר אף אחד} one {המסמך יגיע לאדם אחד} other {המסמך יגיע ל-# אנשים}}",
+          "submitBusiness": "שליחת המסמך לעסק",
+          "submitPeople": "שליחת המסמך",
+          "demo": "בעסק הדגמה כל מסמך נקרא בשם הסוג שלו, בלי הערה.",
+          "demoSample": "בעסק הדגמה לא מצרפים קבצים: יוצא מסמך לדוגמה מהסוג שבחרת.",
+          "needsFile": "צריך לצרף את הקובץ",
+          "needsPeople": "צריך לבחור למי",
+          "needsTitle": "צריך לכתוב כותרת",
+          "titleInvalid": "הכותרת צריכה להיות בשורה אחת, עד <ltr>{max}</ltr> תווים",
+          "photoFailure": {
+            "unreadable": "אי אפשר לקרוא את התמונה. אפשר לבחור אחרת.",
+            "tooBig": "התמונה גדולה מדי גם אחרי ההקטנה. אפשר לצלם שוב.",
+            "type": "אפשר לצרף תמונה או קובץ PDF."
+          }
+        },
+        "failure": {
+          "noAccess": "אי אפשר לעשות את זה במסמך הזה.",
+          "invalid": "משהו במסמך לא תקין. כדאי לבדוק ולנסות שוב.",
+          "closed": "המסמכים סגורים כרגע, או שהזמן לביטול עבר.",
+          "demo": "בעסק הדגמה שולחים רק מסמכים לדוגמה.",
+          "tooFast": "יותר מדי מסמכים בזמן קצר. אפשר לנסות שוב בעוד רגע.",
+          "full": "המקום למסמכים של העסק נגמר, ולכן אי אפשר לשלוח מסמך חדש.",
+          "noRoom": "אין כרגע מקום לקבצים. אפשר לנסות שוב מאוחר יותר.",
+          "tooMany": "יש יותר מדי קבצים שלא נשלחו. אפשר לנסות שוב מחר.",
+          "notYet": "המסמכים עוד לא מוכנים כאן.",
+          "failed": "זה לא הצליח. כדאי לבדוק את החיבור ולנסות שוב.",
+          "empty": "הקובץ ריק.",
+          "tooBig": "הקובץ גדול מדי.",
+          "type": "אפשר לשלוח תמונה או קובץ PDF.",
+          "metadata": "התמונה לא הוכנה כמו שצריך. אפשר לבחור אותה שוב.",
+          "pixels": "התמונה לא הוכנה כמו שצריך. אפשר לבחור אותה שוב.",
+          "notPdf": "הקובץ הזה הוא לא PDF.",
+          "notUploaded": "הקובץ לא עלה. אפשר לנסות שוב.",
+          "expired": "עבר יותר מדי זמן. אפשר לבחור את הקובץ שוב.",
+          "viewOnly": "בצפייה אי אפשר לשלוח או לשנות מסמכים.",
+          "businessChanged": "עברת לעסק אחר בינתיים, ולכן זה לא נשמר. כדאי לטעון את המסך מחדש."
+        },
+        "today": {
+          "title": "מסמכים",
+          "all": "לכל המסמכים",
+          "toConfirm": "צריך לאשר שקראת",
+          "from": "מהעסק · <ltr>{date}</ltr>",
+          "openPage": "לדף המסמך",
+          "waiting": "{count, plural, one {מסמך אחד לעסק עוד לא נפתח} other {# מסמכים לעסק עוד לא נפתחו}}",
+          "waitingRow": "מ{name} · <ltr>{date}</ltr>",
+          "waitingRowNoName": "מאדם בלי שם · <ltr>{date}</ltr>",
+          "moreToConfirm": "{count, plural, one {עוד מסמך אחד מחכה לאישור שלך} other {עוד # מסמכים מחכים לאישור שלך}}",
+          "allConfirmed": "אין עוד מסמכים שמחכים לאישור שלך"
         }
       }
     }
@@ -3923,6 +4199,7 @@
     "chat": {
       "name": "צ'אט",
       "description": "קבוצה לכל הצוות ולכל מחלקה, ושיחות פרטיות",
+      "outsideNav": "מסמכים",
       "settings": {
         "teamGroupWho": {
           "label": "מי כותב בקבוצה של כל הצוות",

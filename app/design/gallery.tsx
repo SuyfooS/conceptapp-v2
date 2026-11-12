@@ -83,6 +83,7 @@ import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
 import { GalleryChat } from "./gallery-chat";
+import { GalleryFileField } from "./gallery-documents";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
@@ -542,6 +543,10 @@ function GalleryBody({
 
         <Section title={t("chat")}>
           <GalleryChat />
+        </Section>
+
+        <Section title={t("fileField")}>
+          <GalleryFileField />
         </Section>
 
         <Section title={t("switcher")}>

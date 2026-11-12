@@ -47,6 +47,14 @@ describe("proxy", () => {
     expect(source).toContain('"/chat-files/:path*"');
   });
 
+  it("guards the official documents' files", () => {
+    // /document-files serves a document's file or sample, and the office's
+    // download of them all (C7), under the reader's session: a signed-out
+    // visitor goes to sign-in, and the route itself answers nobody else.
+    expect(source).toContain('"/document-files",');
+    expect(source).toContain('"/document-files/:path*"');
+  });
+
   it("guards every module screen", () => {
     for (const m of manifests) {
       if (!m.nav) continue;
@@ -83,6 +91,12 @@ describe("proxy", () => {
     expect(listed.some((pattern) => matches(pattern, "/chat/x"))).toBe(true);
     expect(
       listed.some((pattern) => matches(pattern, "/chat-files/a/b/c.webp")),
+    ).toBe(true);
+    expect(
+      listed.some((pattern) => matches(pattern, "/document-files/a/b")),
+    ).toBe(true);
+    expect(
+      listed.some((pattern) => matches(pattern, "/document-files/download")),
     ).toBe(true);
     expect(source).not.toContain('"/chat-sync');
   });

@@ -759,7 +759,9 @@ sender and the office; a removed one by the office and its sender only; someone 
 keeps reading their own and those sent to them. Never a manager without pay access, the
 ConceptApp team or a view session, and the secret key reads neither table, so no console
 page or script can. The bucket's read policy (`private.can_read_document`) follows the
-document, and a removed one's file only for its 10 minutes of undo. Kept forever: on delete
+document, and never gives a removed one's file, even within its 10 minutes of undo (C7's
+`20261111000800_documents_screens.sql` replaced it so: putting a file back needs no look at
+it, and a sick note its sender took back is seen by nobody). Kept forever: on delete
 restrict to the business and the people, a trigger that refuses deletes but under the demo
 reset's purge (`private.purge_business_records`, replaced once here with the documents and
 their recipients before the log), and truncate for nobody; never deleted for space either
@@ -801,6 +803,34 @@ session, the type from the bytes). `@db/notifications` reads a document line's c
 the document itself under the reader's session, for the inbox alone; a phone's lines never
 look one up. Covered by `documents.test.sql`, with `rls_enabled`, `isolation`, `demo_reset`
 and `chat_on`, and `modules/chat/documents.db.test.ts` (`pnpm test:db`).
+
+Documents on screen (`20261111000800_documents_screens.sql`, chat C7) add one table:
+`public.document_notices`, when each person in a business's office read, on its documents
+screen, that the business should keep its own copy of its official documents (the free plan
+keeps no backups), read by that person alone and written once by
+`public.see_documents_notice(actor, business)`, the server's, for someone in the office
+(`private.in_office`), 55000 while documents are off; no log row. Chat's notice table takes
+the staff alone, so an accountant couldn't be in it. One rule of C6 is tighter:
+`private.can_read_document` is replaced without its 10 minutes' read of a removed
+document's file, which nobody reads any more (its undo needs no look at it). `@db/documents`
+now also has what C7's screens and routes call: `getDocuments` with a `DocumentsQuery`
+(`person`, `sentBy`, `direction`, `sentFrom`/`sentBefore`; a person's read from every mark
+of theirs, a hundred ids to a read), each `DocumentView` carrying `src`
+(`/document-files/<business>/<id>` while it has a file or a sample to open and isn't removed)
+and `shownKind`, its marks read page by page; `getDocumentsIndex` (every document in brief,
+page by page: the office's people and months) and `getDocumentsToKeep` (a download's every
+document, oldest first, page by page); `getDocumentsForToday` (what the reader is asked to
+confirm, one read of the documents joined to their own mark, and for the office what came
+that nobody there opened, each with its count); `documentToServe` (the row the
+`/document-files` routes read first, never a removed one: they open a document only with
+its file in hand); `documentIdForFile`; `documentsNoticeSeen` and `seeDocumentsNotice`; and the sending with a file of its own, as chat's: `sendDocumentPhoto`
+(checked again, reserved, uploaded with the secret key, sent; the photo removed on any
+refusal unless the document was written after all), `startDocumentPdf` (the place and
+Storage's signed upload for its one path in `documents`), `finishDocumentPdf` (the place's
+first KB a PDF's, then sent; let go with the tombstone on any refusal), `cancelDocumentPdf`,
+and `sendDocumentSample` for a demo. `@db/chat-files` exports `occupyPlace`, `storedHead` and
+`isSignedUploadFor`, each taking the bucket. Covered by `documents_screens.test.sql` and
+`rls_enabled`, and the unit tests `document-sending.test.ts`.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

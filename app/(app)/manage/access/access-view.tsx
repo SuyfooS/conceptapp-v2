@@ -338,6 +338,13 @@ export function AccessView({
             />
           ) : null}
           <p className="px-1 text-ink-2">{t("count", { count })}</p>
+          {/* The office reads the documents people send (chat C7): the same people. */}
+          {data.documents ? (
+            <div className="flex flex-col gap-1 px-1 text-ink-2">
+              <p>{t("documents")}</p>
+              <p>{t("documentsCount", { count })}</p>
+            </div>
+          ) : null}
           {overPayHoldersWarning(count) ? (
             <p className="flex items-start gap-2 px-1 font-medium text-warning">
               <TriangleAlert

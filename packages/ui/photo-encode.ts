@@ -5,6 +5,11 @@ import {
   chatThumbVerdict,
 } from "@domain/chat-files";
 import {
+  DOCUMENT_PHOTO_MAX_BYTES,
+  DOCUMENT_PHOTO_STEPS,
+  documentPhotoVerdict,
+} from "@domain/documents";
+import {
   fitWithin,
   LIST_PHOTO_STEPS,
   listPhotoVerdict,
@@ -25,7 +30,9 @@ import {
  * photo is its centred square at 512 px, 20 to 80 KB from a phone's 4 MB; a
  * list's photo keeps its shape, its longest side at most 1280 px, about
  * 0.3 MB; a chat picture is drawn the same, with a 360 px thumbnail beside it
- * for the conversation. Browser only: it needs a canvas.
+ * for the conversation; a photo of a page sent as an official document keeps
+ * more of its pixels (1600 px), so its print stays legible. Browser only: it
+ * needs a canvas.
  */
 
 /**
@@ -326,6 +333,50 @@ export async function encodeChatImage(file: File): Promise<ChatImageFiles> {
           height: full.height,
         };
       }
+    }
+    throw new PhotoReadError("tooBig");
+  } finally {
+    picture.close();
+  }
+}
+
+/** A photo of a page as the app sends it as a document, and its size. */
+export type DocumentPhotoFile = {
+  /** At most 1600 px on its long side and 700 KB, about 500 KB. */
+  blob: Blob;
+  width: number;
+  height: number;
+};
+
+/**
+ * A photo of a page taken or picked for an official document (chat C7, plan
+ * §6.2): upright, its whole picture, its long side at most 1600 px (about
+ * 136 dpi for an A4 page), WebP (JPEG where the browser can't write WebP),
+ * nothing from the camera, aiming at 500 KB and never over 700 KB, with no
+ * thumbnail. Each of `DOCUMENT_PHOTO_STEPS` is tried in turn until one is
+ * small enough (`documentPhotoVerdict`); "tooBig" when even the smallest is
+ * over 700 KB.
+ */
+export async function encodeDocumentPhoto(
+  file: File,
+): Promise<DocumentPhotoFile> {
+  checkPicked(file);
+  const picture = await decode(file);
+  try {
+    if (picture.width < 1 || picture.height < 1) {
+      throw new PhotoReadError("unreadable");
+    }
+    const tried: DocumentPhotoFile[] = [];
+    for (const step of DOCUMENT_PHOTO_STEPS) {
+      const { target, width, height } = drawn(picture, step.pixels);
+      const blob = await encoded(target, step.quality);
+      if (!blob) throw new PhotoReadError("unreadable");
+      tried.push({ blob, width, height });
+      const verdict = documentPhotoVerdict(tried.map((each) => each.blob.size));
+      if (verdict === "next") continue;
+      if (verdict === "tooBig") break;
+      const kept = tried[verdict.keep];
+      if (kept && kept.blob.size <= DOCUMENT_PHOTO_MAX_BYTES) return kept;
     }
     throw new PhotoReadError("tooBig");
   } finally {

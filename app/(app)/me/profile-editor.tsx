@@ -126,6 +126,7 @@ export function ProfileEditor({
   signOut,
   notifications,
   businesses,
+  documents,
 }: {
   name: string;
   photo: string | null;
@@ -143,6 +144,8 @@ export function ProfileEditor({
   notifications?: ReactNode;
   /** The switch between businesses, for someone in more than one. */
   businesses?: ReactNode;
+  /** "המסמכים שלי" (chat C7), where documents are the person's. */
+  documents?: ReactNode;
 }) {
   const t = useTranslations("app");
   const tp = useTranslations("ui.photoPicker");
@@ -392,6 +395,8 @@ export function ProfileEditor({
             />
           </ListGroup>
         </PageSection>
+
+        {documents}
 
         {businesses}
 

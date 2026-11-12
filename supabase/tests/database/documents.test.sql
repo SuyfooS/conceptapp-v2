@@ -920,7 +920,7 @@ select is(
 
 ------------------------------------------------------------------------------
 -- The bucket's policy: whoever reads the document, never a removed one's
--- file past its 10 minutes
+-- file, even within its 10 minutes of undo (20261111000800_documents_screens.sql)
 
 -- The contract's file was removed long ago; Yoav's other document, and
 -- Shiran's procedure to Noa and Yoav, just now.
@@ -933,17 +933,17 @@ select pg_temp.sign_in('8b000000-0000-4000-a000-000000000003');
 select is(pg_temp.files(), 'rules,sick',
   'Noa reads the files of the documents she reads, never a removed one''s, even within its 10 minutes');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000004');
-select is(pg_temp.files(), 'rules,yoav-other',
-  'Yoav his own, even removed, within its 10 minutes, but not one sent to him that was');
+select is(pg_temp.files(), 'rules',
+  'Yoav his own, but not once removed, even within its 10 minutes, nor one sent to him that was');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000001');
-select is(pg_temp.files(), 'procedure,rina-form,rules,sick,yoav-other',
-  'the owner every one but a removed one''s past its 10 minutes');
+select is(pg_temp.files(), 'rina-form,rules,sick',
+  'the owner every one but a removed one''s, even within its 10 minutes');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000005');
-select is(pg_temp.files(), 'omer-sick,procedure,rina-form,rules,sick,tamar-sick,yoav-other',
-  'the accountant those of both her businesses');
+select is(pg_temp.files(), 'omer-sick,rina-form,rules,sick,tamar-sick',
+  'the accountant those of both her businesses, none removed');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000002');
-select is(pg_temp.files(), 'procedure',
-  'a manager without pay access only what she sent, removed too, within its 10 minutes');
+select is(pg_temp.files(), '',
+  'a manager without pay access only what she sent, and not once removed, even within its 10 minutes');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000006');
 select is(pg_temp.files(), 'rina-form', 'someone who left their own');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000008');
@@ -968,7 +968,7 @@ select is(
 select is(
   public.open_document(pg_temp.person('galit'), pg_temp.id_of('procedure'), now()) ->> 'path',
   pg_temp.up('procedure', 'path'),
-  'the office opening a removed one within its 10 minutes gets its file, for the undo'
+  'the office opening a removed one within its 10 minutes gets its path (whose file the bucket no longer gives, since C7)'
 );
 select is(
   coalesce(public.open_document(pg_temp.person('uri'), pg_temp.id_of('procedure'),

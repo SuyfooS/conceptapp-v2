@@ -284,11 +284,27 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   minutes or by the office with a reason from a list, with 10 minutes to undo; lines and log
   rows with ids and codes only, the log's `document.*` rows for the office alone; the bucket
   `documents`; three samples in each demo; `@domain/documents`, `@db/documents`, the
-  `documents.*` kinds and the activity cases. Next: C7, documents on screen
-  (`/chat/documents`, the send screen, a document's page, the accountant's tab, the
-  attach sheet's third row, `/document-files` with the sample files in
-  `public/demo-documents/`, and the office's "הורדת כל המסמכים" with its one line that the
-  business should keep its own copy, since the free plan has no backups).
+  `documents.*` kinds and the activity cases. C7 is built too (`20261111000800_documents_screens.sql`,
+  the notice's table only): documents on screen. `/chat/documents` is "המסמכים שלי" for
+  the staff (with "שלחת" for a sender outside the office) and the office's for owners, pay
+  holders and accountants (their "מסמכים" tab, by time_clock's `clock.payroll` through the
+  manifest's `outsideStaff.from`): on a phone "מחכה לך" or everyone by person, on a tablet the
+  people beside the chosen one's documents, on a desktop a table with filters and a preview.
+  `/chat/documents/send` (to the business, or to a person, a department or everyone as a
+  count, with "לבקש אישור קריאה"; a photo of a page made ready at 1600 px by
+  `encodeDocumentPhoto` through the server, or a PDF by its signed upload; a demo's titles
+  are its kinds' words, and one that takes no file sends its sample), `/chat/documents/[id]`
+  (the photo inline or the PDF to download, "קראתי ואישרתי", the recipients' marks, the
+  sender's "ביטול" for 10 minutes, the office's "מחיקת הקובץ" with a reason and a toast's
+  undo), the attach sheet's third row, Today's part, the row on `/me`, the line and count on
+  `/manage/access`, and `/document-files` (a same-origin navigation only, never cached,
+  each opening through `public.open_document`, the samples from `public/demo-documents/`),
+  with "הורדת כל המסמכים" of a person or a month as a ZIP with its list, and the office's
+  one notice to keep a copy, read in the database. The conversations' screens moved into
+  the route group `app/(app)/chat/(talk)/`, so documents have a frame of their own. Next:
+  C8, chat and documents on real phones (the keyboard, PDFs into the phone's viewer and
+  back, the camera picker, a sick note's photo legible at 1600 px, push waking an open
+  window).
   A private chat has no branch
   for owners, managers, the team or a view session, anywhere: a change that adds one
   is refused (see "Never").

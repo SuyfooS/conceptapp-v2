@@ -3,6 +3,7 @@ import type { NavItem } from "@ui/app-shell";
 import {
   CalendarDays,
   Clock,
+  FileText,
   House,
   ListChecks,
   Menu,
@@ -54,7 +55,9 @@ export default function ShellDemoLayout({
     { href: "/design/shell/more", label: t("more"), icon: <Menu /> },
   ];
   // The demo's accountant's tabs, as the app gives someone off the staff:
-  // Home, and the clock's tab for the books (`moduleNav`'s `outsideStaff`).
+  // Home, the clock's tab for the books and chat's for the documents
+  // (`moduleNav`'s `outsideStaff`; plan §11.8), which opens the office's
+  // documents in the chat demo.
   const accountantNav: NavItem[] = [
     {
       href: "/design/shell/today/businesses",
@@ -66,6 +69,11 @@ export default function ShellDemoLayout({
       href: "/design/shell/clock/pay",
       label: tModules("time_clock.outsideNav"),
       icon: <Clock />,
+    },
+    {
+      href: "/design/chat/documents",
+      label: tModules("chat.outsideNav"),
+      icon: <FileText />,
     },
   ];
   // Home counts, by the app's own rule, the lines in Shiran's inbox that need

@@ -1,6 +1,11 @@
 import { CHAT_THUMB_MAX_BYTES } from "@domain/chat-files";
+import { DOCUMENT_PHOTO_MAX_BYTES } from "@domain/documents";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { encodeChatImage, PhotoReadError } from "./photo-encode";
+import {
+  encodeChatImage,
+  encodeDocumentPhoto,
+  PhotoReadError,
+} from "./photo-encode";
 
 /*
  * encodeChatImage against stand-ins for the browser's decoder and canvas:
@@ -145,5 +150,57 @@ describe("encodeChatImage", () => {
       problem: "type",
     });
     expect(decoded).not.toHaveBeenCalled();
+  });
+});
+
+describe("encodeDocumentPhoto", () => {
+  it("draws a page at 1600 px, once, upright, with nothing beside it", async () => {
+    sizeOf = () => 420_000;
+    const page = await encodeDocumentPhoto(photo());
+    expect(decoded).toHaveBeenCalledTimes(1);
+    expect(decoded.mock.calls[0]?.[1]).toEqual({
+      imageOrientation: "from-image",
+    });
+    expect(closed).toHaveBeenCalledTimes(1);
+    expect(page.blob.type).toBe("image/webp");
+    expect({ width: page.width, height: page.height }).toEqual({
+      width: 1600,
+      height: 1200,
+    });
+    expect(drawings).toEqual([
+      { type: "image/webp", quality: 0.82, width: 1600, height: 1200 },
+    ]);
+  });
+
+  it("steps the quality down until it is about 500 KB", async () => {
+    sizeOf = (d) => (d.quality > 0.75 ? 600_000 : 450_000);
+    const page = await encodeDocumentPhoto(photo());
+    expect(page.blob.size).toBe(450_000);
+    expect(drawings.map((d) => [longest(d), d.quality])).toEqual([
+      [1600, 0.82],
+      [1600, 0.72],
+    ]);
+  });
+
+  it("keeps the smallest under 700 KB when none reaches 500 KB", async () => {
+    sizeOf = (d) => (longest(d) === 1600 ? 690_000 + d.quality * 100 : 650_000);
+    const page = await encodeDocumentPhoto(photo());
+    expect(page.blob.size).toBe(650_000);
+    expect(Math.max(page.width, page.height)).toBe(1280);
+  });
+
+  it("is too big when every drawing is over 700 KB, and lets the picture go", async () => {
+    sizeOf = () => DOCUMENT_PHOTO_MAX_BYTES + 1;
+    await expect(encodeDocumentPhoto(photo())).rejects.toMatchObject({
+      problem: "tooBig",
+    });
+    expect(closed).toHaveBeenCalledTimes(1);
+  });
+
+  it("writes JPEG where the browser can't write WebP", async () => {
+    writesWebp = false;
+    sizeOf = () => 300_000;
+    const page = await encodeDocumentPhoto(photo());
+    expect(page.blob.type).toBe("image/jpeg");
   });
 });

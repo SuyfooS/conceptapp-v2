@@ -9,6 +9,7 @@ export const demoAccess: AccessData = {
   roles: ["manager"],
   me: "uri",
   viewOnly: false,
+  documents: true,
   people: [
     {
       userId: "uri",
