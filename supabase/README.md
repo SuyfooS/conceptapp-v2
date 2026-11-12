@@ -66,6 +66,15 @@ demo business takes no uploaded one unless its definition says `"chatFiles": tru
 local seed's restaurant only), so a visitor never leaves a file or typed words in a row
 that waits for the next reset.
 
+An official document's file is read by the app's server alone
+(`20261111000900_documents_server_only.sql`, Orel's decision of 12 November 2026): the
+`documents` bucket has no policy, so nobody downloads, lists or signs a link to a file of it
+with their own session, and the server reads one with the secret key only after
+`public.open_document` opened it for the signed-in person, so each opening is in the access
+log. After the Migrate run, the dashboard's Storage, Policies shows none for `documents`; a
+policy added there by hand would open the files to people straight from Storage again, past
+the log.
+
 A demo business takes no invites and nobody joins one, since anyone at the door is its
 owner. Only a definition with `"invites": true` opens one: `seed.sql` does, so the browser
 tests can invite and join; `hosted-demo.sql` never does (`tooling/demo-invites.test.ts`).

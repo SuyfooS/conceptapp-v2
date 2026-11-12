@@ -292,8 +292,8 @@ select is(
   (select count(*)::integer from public.documents)
   + (select count(*)::integer from public.document_recipients)
   + (select count(*)::integer from storage.objects where bucket_id = 'documents'),
-  5,
-  'worker of A reads their sick note and the form sent to them, their mark, and both files'
+  3,
+  'worker of A reads their sick note and the form sent to them, and their mark; their files only through the server (20261111000900_documents_server_only.sql)'
 );
 select pg_temp.sign_in('20000000-0000-4000-a000-00000000000b');
 select is(

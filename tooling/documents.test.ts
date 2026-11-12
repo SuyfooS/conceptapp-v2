@@ -221,25 +221,88 @@ describe("a document's lines and log rows", () => {
   });
 });
 
-describe("a removed document's file", () => {
-  // C7 (20261111000800_documents_screens.sql): the bucket gives nobody a
-  // removed document's file, even within its 10 minutes of undo, which needs
-  // no look at it; a sick note its sender took back is seen by nobody. The
-  // screens and the /document-files routes refuse one too (@db/documents).
-  it("is read by nobody, even within its 10 minutes of undo", () => {
-    const policy = newest("private.can_read_document");
-    expect(policy).toContain("and d.removed_at is null");
-    expect(policy).not.toContain("file_gone_after");
-    expect(policy).toContain("private.sees_document(d.id, reader)");
-    // Replaced last in the migrations, with the signed-in role's grant.
-    const last = migrations.filter((file) =>
-      /create (or replace )?function private\.can_read_document\(/.test(
-        read(file),
+/** A migration's SQL without its `--` comments, for what it does rather than says. */
+function code(file: string): string {
+  return read(file).replace(/--[^\n]*/g, "");
+}
+
+describe("a document's file", () => {
+  // Orel, 12 November 2026 (20261111000900_documents_server_only.sql): a
+  // document's file is read by the server alone, with the secret key, after
+  // public.open_document. The documents bucket has no policy, so no session
+  // downloads it, lists it or signs a link to it.
+  it("has no policy of the documents bucket left in the migrations", () => {
+    const open = new Set<string>();
+    let made = 0;
+    let dropped = 0;
+    for (const file of migrations) {
+      const sql = code(file);
+      for (const statement of sql.matchAll(
+        /create policy "([^"]+)"\s+on storage\.objects\b([^;]*);/g,
+      )) {
+        const [, name = "", body = ""] = statement;
+        if (body.includes("'documents'")) {
+          open.add(name);
+          made += 1;
+        }
+      }
+      for (const statement of sql.matchAll(
+        /drop policy (?:if exists )?"([^"]+)" on storage\.objects\b/g,
+      )) {
+        const [, name = ""] = statement;
+        if (open.delete(name)) dropped += 1;
+      }
+    }
+    expect([...open]).toEqual([]);
+    // C6 made one, and it is gone.
+    expect(made).toBeGreaterThanOrEqual(1);
+    expect(dropped).toBe(made);
+  });
+
+  it("has no reader's check left: private.can_read_document is dropped, and nothing after names it", () => {
+    const defines =
+      /create (or replace )?function private\.can_read_document\(/;
+    const lastMade = migrations.findLastIndex((file) =>
+      defines.test(code(file)),
+    );
+    const drop = migrations.findIndex((file) =>
+      code(file).includes("drop function private.can_read_document(text);"),
+    );
+    expect(lastMade).toBeGreaterThanOrEqual(0);
+    expect(drop).toBeGreaterThan(lastMade);
+    for (const file of migrations.slice(drop + 1)) {
+      expect(code(file), file).not.toContain("can_read_document");
+    }
+    // Dropped after its policy, in the same migration.
+    const sql = code(migrations[drop] ?? "");
+    expect(
+      sql.indexOf(
+        'drop policy "people read the files of the documents they read" on storage.objects;',
       ),
+    ).toBeGreaterThanOrEqual(0);
+    expect(
+      sql.indexOf(
+        'drop policy "people read the files of the documents they read" on storage.objects;',
+      ),
+    ).toBeLessThan(
+      sql.indexOf("drop function private.can_read_document(text);"),
     );
-    const sql = read(last.at(-1) ?? "");
-    expect(sql).toContain(
-      "grant execute on function private.can_read_document(text) to authenticated;",
+  });
+
+  it("is served, and its opening logged, only while its document isn't removed, even within its 10 minutes of undo", () => {
+    // C7 (20261111000800_documents_screens.sql) made a removed document's
+    // file nobody's to see, and putting it back needs no look at it; the
+    // opening that stands before the secret key's read (the /document-files
+    // routes, @db/documents) says the same.
+    const opening = newest("public\\.open_document");
+    expect(opening).toContain(
+      "serves := doc.removed_at is null\n    and (doc.sample is not null or doc.file_path is not null);",
     );
+    expect(opening).toContain(
+      "'path', case when serves then doc.file_path end",
+    );
+    expect(opening).toContain("'sample', case when serves then doc.sample end");
+    expect(opening).not.toContain("file_gone_after");
+    expect(opening).toContain("if serves and not own and private.in_office(");
   });
 });

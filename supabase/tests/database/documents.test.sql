@@ -9,16 +9,18 @@
 -- confirming (a recipient asked to, once), removing the file (its sender in
 -- 10 minutes, then the office with a reason from the list) and putting it
 -- back (the remover, in 10 minutes, asking again whoever it still waits
--- for), the job's part, the bucket's policy, the log's rows for the office
--- alone, lines with no category settled as they should be (losing pay access
--- too, and a push not sent yet with them), a sender who leaves, the demo's
--- rules (a closed demo and one opened to files), the limits (30 a minute, a
--- demo's 100 an hour, 10 PDFs waiting) with the hints the server tells them
--- apart by, and nothing deleting a document but the purge. Fixed ids of its
--- own, explicit times, and Storage's rows written as the database's owner,
--- as the Storage API would.
+-- for), the job's part, the bucket read by the server alone (from
+-- 20261111000900_documents_server_only.sql: no policy, so no session reads a
+-- file, and nothing is served of a removed one), the log's rows for the
+-- office alone, lines with no category settled as they should be (losing pay
+-- access too, and a push not sent yet with them), a sender who leaves, the
+-- demo's rules (a closed demo and one opened to files), the limits (30 a
+-- minute, a demo's 100 an hour, 10 PDFs waiting) with the hints the server
+-- tells them apart by, and nothing deleting a document but the purge. Fixed
+-- ids of its own, explicit times, and Storage's rows written as the
+-- database's owner, as the Storage API would.
 begin;
-select plan(161);
+select plan(163);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -291,8 +293,6 @@ select ok(
 select ok(
   has_function_privilege('authenticated', 'private.sees_document(uuid, uuid)', 'execute')
   and has_function_privilege('authenticated', 'private.manages_document(uuid, uuid)', 'execute')
-  and has_function_privilege('authenticated', 'private.can_read_document(text)', 'execute')
-  and not has_function_privilege('anon', 'private.can_read_document(text)', 'execute')
   and not has_function_privilege('authenticated', 'private.in_office(uuid, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'private.attach_document_upload(uuid, uuid, uuid, timestamptz)', 'execute')
   and not has_function_privilege('service_role', 'private.seed_demo_documents(uuid)', 'execute')
@@ -919,8 +919,12 @@ select is(
 );
 
 ------------------------------------------------------------------------------
--- The bucket's policy: whoever reads the document, never a removed one's
--- file, even within its 10 minutes of undo (20261111000800_documents_screens.sql)
+-- The bucket, read by the server alone (20261111000900_documents_server_only.sql,
+-- Orel's decision of 12 November 2026): no policy, so no session reads a
+-- document's file in Storage, whoever reads the document; the server reads
+-- it with the secret key once public.open_document opened it, which serves
+-- nothing of a removed one, even within its 10 minutes of undo (C7's rule,
+-- 20261111000800_documents_screens.sql)
 
 -- The contract's file was removed long ago; Yoav's other document, and
 -- Shiran's procedure to Noa and Yoav, just now.
@@ -929,27 +933,30 @@ select public.remove_document(pg_temp.person('uri'), pg_temp.id_of('contract'), 
 select public.remove_document(pg_temp.person('uri'), pg_temp.id_of('yoav-other'), 'duplicate');
 select public.remove_document(pg_temp.person('uri'), pg_temp.id_of('procedure'), 'duplicate');
 
+set local role service_role;
+select ok(
+  pg_temp.files() ~ '(^|,)rules(,|$)' and pg_temp.files() ~ '(^|,)sick(,|$)',
+  'the files are in Storage, for the server''s secret key, which RLS doesn''t stop'
+);
+reset role;
+
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000003');
-select is(pg_temp.files(), 'rules,sick',
-  'Noa reads the files of the documents she reads, never a removed one''s, even within its 10 minutes');
-select pg_temp.sign_in('8b000000-0000-4000-a000-000000000004');
-select is(pg_temp.files(), 'rules',
-  'Yoav his own, but not once removed, even within its 10 minutes, nor one sent to him that was');
-select pg_temp.sign_in('8b000000-0000-4000-a000-000000000001');
-select is(pg_temp.files(), 'rina-form,rules,sick',
-  'the owner every one but a removed one''s, even within its 10 minutes');
-select pg_temp.sign_in('8b000000-0000-4000-a000-000000000005');
-select is(pg_temp.files(), 'omer-sick,rina-form,rules,sick,tamar-sick',
-  'the accountant those of both her businesses, none removed');
-select pg_temp.sign_in('8b000000-0000-4000-a000-000000000002');
 select is(pg_temp.files(), '',
-  'a manager without pay access only what she sent, and not once removed, even within its 10 minutes');
+  'Noa reads no file of the documents bucket, not even of the documents she reads: the server serves them');
+select pg_temp.sign_in('8b000000-0000-4000-a000-000000000004');
+select is(pg_temp.files(), '', 'nor Yoav his own, nor one sent to him');
+select pg_temp.sign_in('8b000000-0000-4000-a000-000000000001');
+select is(pg_temp.files(), '', 'nor the owner, who reads every document of the business');
+select pg_temp.sign_in('8b000000-0000-4000-a000-000000000005');
+select is(pg_temp.files(), '', 'nor the accountant, in either of her businesses');
+select pg_temp.sign_in('8b000000-0000-4000-a000-000000000002');
+select is(pg_temp.files(), '', 'nor a manager without pay access what she sent');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000006');
-select is(pg_temp.files(), 'rina-form', 'someone who left their own');
+select is(pg_temp.files(), '', 'nor someone who left their own');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000008');
-select is(pg_temp.files(), 'omer-sick,tamar-sick', 'a manager with pay access a worker''s sick note');
+select is(pg_temp.files(), '', 'nor a manager with pay access a worker''s sick note');
 select pg_temp.sign_in('8b000000-0000-4000-a000-00000000000a');
-select is(pg_temp.files(), '', 'a view as an owner none');
+select is(pg_temp.files(), '', 'nor a view as an owner');
 select pg_temp.sign_in('8b000000-0000-4000-a000-00000000000b');
 select is(pg_temp.files(), '', 'nor as a manager');
 select pg_temp.sign_in('8b000000-0000-4000-a000-00000000000c');
@@ -957,31 +964,40 @@ select is(pg_temp.files(), '', 'nor as an accountant');
 select pg_temp.sign_in('8b000000-0000-4000-a000-00000000000d');
 select is(pg_temp.files(), '', 'nor the ConceptApp team');
 reset role;
-select is(
-  private.can_read_document(repeat('-', 36) || '/' || md5('dashes') || '.pdf'),
-  false,
-  'a name of dashes is false, never an error inside the policy'
+set local role anon;
+select is(pg_temp.files(), '', 'nor an anonymous visitor');
+reset role;
+select ok(
+  not exists (
+    select 1 from pg_policies p
+    where p.schemaname = 'storage'
+      and (
+        p.policyname = 'people read the files of the documents they read'
+        or (coalesce(p.qual, '') || ' ' || coalesce(p.with_check, '')) ~ '''documents'''
+      )
+  )
+  and to_regprocedure('private.can_read_document(text)') is null,
+  'no policy of Storage names the documents bucket, and private.can_read_document is gone: no session downloads, lists or signs a document''s file'
 );
 
 -- Opening the removed procedure: Galit within its 10 minutes, Uri, who never
 -- opened it, after them.
 select is(
-  public.open_document(pg_temp.person('galit'), pg_temp.id_of('procedure'), now()) ->> 'path',
-  pg_temp.up('procedure', 'path'),
-  'the office opening a removed one within its 10 minutes gets its path (whose file the bucket no longer gives, since C7)'
+  coalesce(public.open_document(pg_temp.person('galit'), pg_temp.id_of('procedure'), now()) ->> 'path', '-'),
+  '-',
+  'the office opening a removed one within its 10 minutes is given nothing to serve'
 );
 select is(
   coalesce(public.open_document(pg_temp.person('uri'), pg_temp.id_of('procedure'),
     now() + interval '11 minutes') ->> 'path', '-'),
   '-',
-  'and nothing after them'
+  'nor after them'
 );
 select is(
-  (select string_agg(w.name, ',' order by w.name collate "C")
-   from public.audit_log a join who w on w.id = a.actor_id
+  (select count(*)::integer from public.audit_log a
    where a.action = 'document.open' and a.details ->> 'document' = pg_temp.id_of('procedure')::text),
-  'galit',
-  'an opening that serves the file is logged, a first one that serves nothing is not'
+  0,
+  'and neither opening is logged: nothing was served'
 );
 
 ------------------------------------------------------------------------------
@@ -992,9 +1008,9 @@ values ('8b000000-0000-4000-b000-000000000001', '8b000000-0000-4000-a000-0000000
   'business.details', '{"from": {}, "to": {}}');
 
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000001');
-select is(pg_temp.log_rows(), 22, 'the owner reads every row about the business''s documents');
+select is(pg_temp.log_rows(), 21, 'the owner reads every row about the business''s documents');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000005');
-select is(pg_temp.log_rows(), 24, 'the accountant those of both her businesses');
+select is(pg_temp.log_rows(), 23, 'the accountant those of both her businesses');
 select pg_temp.sign_in('8b000000-0000-4000-a000-000000000002');
 select is(
   pg_temp.log_rows() || '/' || (select count(*)::integer from public.audit_log a
@@ -1029,7 +1045,7 @@ select is(
         and a.business_id in ('8b000000-0000-4000-b000-000000000001', '8b000000-0000-4000-b000-000000000002')
       group by a.action
     ) x),
-  '0/document.open=5,document.remove=7,document.restore=3,document.send=9',
+  '0/document.open=4,document.remove=7,document.restore=3,document.send=9',
   'every row about documents holds ids and codes only: never a category, a title, a note or a file'
 );
 

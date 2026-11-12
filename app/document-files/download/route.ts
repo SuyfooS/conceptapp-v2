@@ -60,10 +60,12 @@ const FORM_MAX_BYTES = 1024;
  * 404, the same as for nothing, before anything is read.
  *
  * One ZIP, streamed as it is built, holding one file at a time: each
- * document's file still kept or its demo sample, read first under the
- * reader's own session and opened through public.open_document only once it
- * is in hand (each one an opening, in the access log as the office reads it),
- * oldest first and numbered; then "רשימת המסמכים.csv", the list of them all,
+ * document's file still kept or its demo sample, oldest first and numbered,
+ * taken as the route that serves one takes it (each one an opening, in the
+ * access log as the office reads it): opened first through
+ * public.open_document, then its row read under the reader's own session,
+ * and only then its file, read with the server's secret key (nobody reads
+ * the documents bucket directly); then "רשימת המסמכים.csv", the list of them all,
  * removed ones too (with why), each document to people once per recipient
  * with their marks. Its words are the business's (`app.chat.documents.download`).
  * Kept by nobody, a download only, in a sandbox. Taking it also reads the
@@ -71,8 +73,9 @@ const FORM_MAX_BYTES = 1024;
  *
  * Everything that needs the request (who is asking, the documents, the
  * words, the reader's session) is read before the answer starts; while it
- * streams, the files are read under the session made here and opened with
- * the secret key for that person (public.open_document).
+ * streams, each document is opened with the secret key for that person
+ * (public.open_document), its row read under the session made here, and its
+ * file read with the secret key.
  */
 export async function POST(request: Request): Promise<Response> {
   if (
@@ -137,7 +140,7 @@ export async function POST(request: Request): Promise<Response> {
   // The download is the copy the notice asks for: it is read, best effort.
   await seeDocumentsNotice(access.userId, access.businessId).catch(() => null);
 
-  // The reader's session, made now: the files are read while the answer
+  // The reader's session, made now: the rows are read while the answer
   // streams, after this handler has returned and its cookies with it.
   const session = await documentSession();
   const parts = archive(documents, more, download, access, t, people, session);
@@ -250,10 +253,13 @@ async function wholeOf(
 
 /**
  * One document's file for the archive, as the route that shows one serves it:
- * read first (its row and its file under the reader's own session, or its
- * sample), and opened through public.open_document only once it is whole in
- * hand, so a file that can't be read is neither marked nor logged. A removed
- * one goes in the list only.
+ * opened first through public.open_document (the database decides, marks and
+ * logs, and says what may be served: nothing of a removed one), then its row
+ * read under the reader's own session, which must say the same, and only
+ * then its file, with the secret key, or its sample, whole in hand. An
+ * opening whose file then can't be read stays logged, and the list says the
+ * file isn't in the download. A removed one goes in the list only, opened by
+ * nothing.
  */
 async function fileOf(
   document: DocumentView,
@@ -263,39 +269,32 @@ async function fileOf(
   if (document.removedAt !== null) return { gone: "removed" };
   if (document.src === null) return { gone: "missing" };
   try {
-    const row = await documentToServe(access.businessId, document.id, session);
-    if (!row) return { gone: "missing" };
-    let file: ArchivedFile;
-    if (row.path !== null) {
-      const stored = await documentFileBytes(row.path, session);
-      if (!stored) return { gone: "missing" };
-      file =
-        stored.kind === "pdf"
-          ? { data: await wholeOf(stored.body), extension: "pdf" }
-          : {
-              data: stored.bytes,
-              extension: stored.type === "image/webp" ? "webp" : "jpg",
-            };
-    } else if (row.sample !== null) {
-      const shown = await readSample(row.sample);
-      if (!shown) return { gone: "missing" };
-      file = {
-        data: shown.bytes,
-        extension: shown.kind === "pdf" ? "pdf" : "webp",
-      };
-    } else {
-      return { gone: "missing" };
-    }
     const opened = await openDocument(access.userId, document.id);
-    if (
-      !opened.ok ||
-      opened.value.business !== access.businessId ||
-      opened.value.path !== row.path ||
-      opened.value.sample !== row.sample
-    ) {
+    if (!opened.ok || opened.value.business !== access.businessId) {
       return { gone: "missing" };
     }
-    return file;
+    const { path, sample } = opened.value;
+    if (path === null && sample === null) return { gone: "missing" };
+    const row = await documentToServe(access.businessId, document.id, session);
+    if (!row || row.path !== path || row.sample !== sample) {
+      return { gone: "missing" };
+    }
+    if (path !== null) {
+      const stored = await documentFileBytes(path, session);
+      if (!stored) return { gone: "missing" };
+      return stored.kind === "pdf"
+        ? { data: await wholeOf(stored.body), extension: "pdf" }
+        : {
+            data: stored.bytes,
+            extension: stored.type === "image/webp" ? "webp" : "jpg",
+          };
+    }
+    const shown = sample === null ? null : await readSample(sample);
+    if (!shown) return { gone: "missing" };
+    return {
+      data: shown.bytes,
+      extension: shown.kind === "pdf" ? "pdf" : "webp",
+    };
   } catch (error) {
     const code = (error as { code?: string } | null)?.code;
     console.error(

@@ -758,10 +758,11 @@ accountants always, managers when the owner gives it), one to people by its reci
 sender and the office; a removed one by the office and its sender only; someone who left
 keeps reading their own and those sent to them. Never a manager without pay access, the
 ConceptApp team or a view session, and the secret key reads neither table, so no console
-page or script can. The bucket's read policy (`private.can_read_document`) follows the
-document, and never gives a removed one's file, even within its 10 minutes of undo (C7's
+page or script can. The bucket's read policy (`private.can_read_document`) followed the
+document, and never gave a removed one's file, even within its 10 minutes of undo (C7's
 `20261111000800_documents_screens.sql` replaced it so: putting a file back needs no look at
-it, and a sick note its sender took back is seen by nobody). Kept forever: on delete
+it, and a sick note its sender took back is seen by nobody); since
+`20261111000900_documents_server_only.sql` the bucket has no policy at all (below). Kept forever: on delete
 restrict to the business and the people, a trigger that refuses deletes but under the demo
 reset's purge (`private.purge_business_records`, replaced once here with the documents and
 their recipients before the log), and truncate for nobody; never deleted for space either
@@ -798,8 +799,9 @@ writes three samples through these functions (`private.seed_demo_documents`, fro
 `getDocument` (under the reader's session, with the marks RLS gives them),
 `reserveDocumentUpload`, `documentUploadPlace`, `sendDocument` (a reserved place or a demo's
 sample), `openDocument`, `confirmDocument`, `removeDocument`, `restoreDocument`,
-`documentsAllowed` and `documentFileBytes` (for `/document-files`, under the reader's
-session, the type from the bytes). `@db/notifications` reads a document line's category from
+`documentsAllowed` and `documentFileBytes` (for `/document-files`: the row under the
+reader's session, the type from the bytes; the file itself with the secret key since
+`20261111000900_documents_server_only.sql`). `@db/notifications` reads a document line's category from
 the document itself under the reader's session, for the inbox alone; a phone's lines never
 look one up. Covered by `documents.test.sql`, with `rls_enabled`, `isolation`, `demo_reset`
 and `chat_on`, and `modules/chat/documents.db.test.ts` (`pnpm test:db`).
@@ -822,15 +824,48 @@ page by page: the office's people and months) and `getDocumentsToKeep` (a downlo
 document, oldest first, page by page); `getDocumentsForToday` (what the reader is asked to
 confirm, one read of the documents joined to their own mark, and for the office what came
 that nobody there opened, each with its count); `documentToServe` (the row the
-`/document-files` routes read first, never a removed one: they open a document only with
-its file in hand); `documentIdForFile`; `documentsNoticeSeen` and `seeDocumentsNotice`; and the sending with a file of its own, as chat's: `sendDocumentPhoto`
+`/document-files` routes read, never a removed one: from
+`20261111000900_documents_server_only.sql` they open the document first and read its row
+and file after, the route of one document after a look at its row in the business its
+address names); `documentIdForFile`; `documentsNoticeSeen` and `seeDocumentsNotice`; and the sending with a file of its own, as chat's: `sendDocumentPhoto`
 (checked again, reserved, uploaded with the secret key, sent; the photo removed on any
 refusal unless the document was written after all), `startDocumentPdf` (the place and
 Storage's signed upload for its one path in `documents`), `finishDocumentPdf` (the place's
 first KB a PDF's, then sent; let go with the tombstone on any refusal), `cancelDocumentPdf`,
-and `sendDocumentSample` for a demo. `@db/chat-files` exports `occupyPlace`, `storedHead` and
-`isSignedUploadFor`, each taking the bucket. Covered by `documents_screens.test.sql` and
+and `sendDocumentSample` for a demo. `@db/chat-files` exports `occupyPlace` and
+`isSignedUploadFor`, each taking the bucket, and `storedHead`, chat's alone since
+`20261111000900_documents_server_only.sql`. Covered by `documents_screens.test.sql` and
 `rls_enabled`, and the unit tests `document-sending.test.ts`.
+
+Official documents' files through the server only (`20261111000900_documents_server_only.sql`,
+Orel's decision of 12 November 2026, on #1). C6's policy let whoever reads a document's row
+read its file straight from Storage under their own session: an access token copied from the
+browser's developer tools downloaded it with no `public.open_document`, so with no
+`document.open` row in the access log of reg 10, and could ask Storage for a signed URL that
+anyone opens without signing in, after the person has lost their access too. The policy is
+dropped, and `private.can_read_document` with it: the `documents` bucket has no policy, so
+`anon` and `authenticated` read nothing of it (no download, no list, no signed URL), whoever
+they are. Only the server reads a file, with the secret key, in the `/document-files` routes:
+for one document, a look at it in the business its address names first (`documentToServe`
+by its id, `documentIdForFile` by its stored name: the row only, under the reader's session),
+so an address with another business in it opens nothing there; then
+`openDocument` (`public.open_document` decides who reads it, marks and logs the
+opening, and says what may be served), then `documentToServe` under the reader's session,
+which must agree, then `documentFileBytes` (the row again under that session, then the bytes
+with the secret key's own download). The download of all does the same for each file. An
+opening whose file then can't be read stays logged: the log may hold more than was served,
+never less. `public.open_document` is replaced with the same arguments, return and grants: it
+serves nothing of a removed document, even within its 10 minutes of undo (`path` and
+`sample` null), and logs no opening of one. Nothing makes a signed URL to read a document's
+file, the server included: `finishDocumentPdf` reads a PDF's first KB with the secret key's
+own download (`storedHead`'s signed, ranged read stays chat's). A PDF's signed upload, for
+its one reserved place, is unchanged: it writes and reads nothing. Covered by
+`documents.test.sql` (163: every person, a view, the team and `anon` read no file, the
+server role does, no policy of Storage names the bucket, the removed procedure opens to
+nothing and logs nothing) and `isolation` (the worker's two files no longer counted), the
+unit tests of both routes and of `documentFileBytes` and `finishDocumentPdf`, and
+`tooling/documents.test.ts` (no policy of the bucket left in the migrations, the function
+dropped after it and named by nothing later, and `open_document`'s rule).
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

@@ -9,11 +9,12 @@ import {
 } from "./documents";
 
 /*
- * How the app opens a document's file (chat C7): `/document-files`, under the
- * reader's own session, which first opens the document through
- * public.open_document (a recipient's opening marked, the office's logged,
- * plan §6.3), then serves its file from Storage, or a demo's sample from the
- * app's own files.
+ * How the app opens a document's file (chat C7): `/document-files`, which
+ * first opens the document through public.open_document for the signed-in
+ * person (a recipient's opening marked, the office's logged, plan §6.3),
+ * reads its row under the reader's own session, then serves its file, read
+ * from Storage with the server's secret key (nobody reads the documents
+ * bucket directly), or a demo's sample from the app's own files.
  */
 
 /**

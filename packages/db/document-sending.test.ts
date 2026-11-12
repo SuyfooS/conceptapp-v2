@@ -1,11 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
 /**
  * The secret key's side as the database and Storage answer it (chat C7's
  * sending of documents with a file of their own): each call recorded, an
- * answer per function, and Storage's writes, removals and signed links.
+ * answer per function, and Storage's writes, removals, signed uploads and
+ * downloads. Nothing signs a link to read a document's file
+ * (20261111000900_documents_server_only.sql): asking for one fails the test.
  */
 const admin = vi.hoisted(() => ({
   calls: [] as { fn: string; args: Record<string, unknown> }[],
@@ -18,12 +20,14 @@ const admin = vi.hoisted(() => ({
   >,
   storage: [] as {
     bucket: string;
-    op: "remove" | "upload" | "signUpload" | "sign";
+    op: "remove" | "upload" | "signUpload" | "download";
     paths: string[];
     upsert?: boolean;
     size?: number;
   }[],
   signedUploadBucket: "documents",
+  /** What Storage holds at a PDF's place: its bytes, or nothing. */
+  held: null as string | null,
 }));
 
 const SUPABASE = "http://127.0.0.1:54321";
@@ -64,15 +68,33 @@ vi.mock("./supabase/admin", () => ({
             error: null,
           };
         },
-        createSignedUrl: async (path: string) => {
-          admin.storage.push({ bucket, op: "sign", paths: [path] });
-          return {
-            data: {
-              signedUrl: `${SUPABASE}/storage/v1/object/sign/${bucket}/${path}?token=t`,
-            },
-            error: null,
-          };
+        createSignedUrl: async () => {
+          throw new Error("no signed link reads a document's file");
         },
+        download: (path: string) => ({
+          asStream: async () => {
+            admin.storage.push({ bucket, op: "download", paths: [path] });
+            const held = admin.held;
+            return held === null
+              ? {
+                  data: null,
+                  error: {
+                    status: 400,
+                    statusCode: "404",
+                    message: "Object not found",
+                  },
+                }
+              : {
+                  data: new ReadableStream<Uint8Array>({
+                    start(controller) {
+                      controller.enqueue(new TextEncoder().encode(held));
+                      controller.close();
+                    },
+                  }),
+                  error: null,
+                };
+          },
+        }),
       }),
     },
   }),
@@ -138,16 +160,9 @@ const place = (more: Record<string, unknown> = {}) => ({
   ...more,
 });
 
-/** Storage's answer to the server's ranged read of a PDF's first KB. */
+/** What Storage holds at the PDF's place, as the secret key downloads it. */
 function stored(bytes: string | null) {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async () =>
-      bytes === null
-        ? new Response(null, { status: 404 })
-        : new Response(new TextEncoder().encode(bytes), { status: 206 }),
-    ),
-  );
+  admin.held = bytes;
 }
 
 beforeEach(() => {
@@ -155,9 +170,7 @@ beforeEach(() => {
   admin.answers = { documents_closed: ok(false) };
   admin.storage = [];
   admin.signedUploadBucket = "documents";
-});
-afterEach(() => {
-  vi.unstubAllGlobals();
+  admin.held = null;
 });
 
 describe("sendDocumentPhoto", () => {
@@ -357,7 +370,7 @@ describe("a document's PDF", () => {
     upload: UPLOAD,
   } as const;
 
-  it("finishes once its first KB is a PDF's, and sends it", async () => {
+  it("finishes once its first KB, downloaded with the secret key, is a PDF's, and sends it", async () => {
     admin.answers.document_upload_place = ok(place());
     admin.answers.send_document = ok(DOCUMENT);
     stored("%PDF-1.7\n%...");
@@ -373,8 +386,9 @@ describe("a document's PDF", () => {
       asks: true,
       upload: UPLOAD,
     });
+    // Its own download, never a signed link.
     expect(admin.storage).toEqual([
-      { bucket: "documents", op: "sign", paths: [PDF_PATH] },
+      { bucket: "documents", op: "download", paths: [PDF_PATH] },
     ]);
   });
 
