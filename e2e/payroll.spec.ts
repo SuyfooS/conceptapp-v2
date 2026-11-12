@@ -907,10 +907,10 @@ test("a worker sees an estimate of their own month and nobody else's, and none w
       ),
     ).toBeVisible();
     const amount = (
-      await ownCard
+      (await ownCard
         .getByText(/^[\d,]+\.\d{2} ₪$/)
         .first()
-        .innerText()
+        .textContent()) ?? ""
     ).trim();
     // How it is worked out, without what waits for an accountant.
     await ownCard.getByRole("button", { name: p.method.open }).click();

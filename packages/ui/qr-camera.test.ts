@@ -22,6 +22,9 @@ function detectorReading(formats: string[] | Error) {
   };
 }
 
+/** A function that can't be constructed, so it isn't a detector. */
+const notAConstructor = () => [];
+
 describe("pickReader", () => {
   it("uses the phone's own reader only when it reads QR codes", async () => {
     expect(
@@ -45,7 +48,7 @@ describe("pickReader", () => {
 
   it("takes only something shaped like a detector", () => {
     expect(barcodeDetectorOf({ BarcodeDetector: {} })).toBe(null);
-    expect(barcodeDetectorOf({ BarcodeDetector: () => [] })).toBe(null);
+    expect(barcodeDetectorOf({ BarcodeDetector: notAConstructor })).toBe(null);
     expect(barcodeDetectorOf({ BarcodeDetector: undefined })).toBe(null);
     const Detector = detectorReading(["qr_code"]);
     expect(barcodeDetectorOf({ BarcodeDetector: Detector })).toBe(Detector);

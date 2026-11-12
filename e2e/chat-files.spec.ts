@@ -197,6 +197,7 @@ function watchPuts(page: Page): { puts: PutSeen[]; cors: string[] } {
 async function composerSays(page: Page): Promise<string> {
   try {
     const lines = composer(page).locator('div[aria-live="polite"]').first();
+    // biome-ignore lint/performance/useDomNodeTextContent: the notice's lines, each on its own line, for the error's hint
     return (await lines.innerText({ timeout: 1_000 })).trim();
   } catch {
     return "";

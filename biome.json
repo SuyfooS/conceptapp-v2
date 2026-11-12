@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.6/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -26,6 +26,11 @@
       "tailwindDirectives": true
     }
   },
+  "markdown": {
+    "formatter": {
+      "enabled": false
+    }
+  },
   "linter": {
     "enabled": true,
     "rules": {
@@ -33,7 +38,8 @@
     },
     "domains": {
       "next": "recommended",
-      "react": "recommended"
+      "react": "recommended",
+      "playwright": "none"
     }
   },
   "assist": {
@@ -44,6 +50,14 @@
     }
   },
   "overrides": [
+    {
+      "includes": ["e2e/**"],
+      "linter": {
+        "domains": {
+          "playwright": "recommended"
+        }
+      }
+    },
     {
       "includes": ["packages/domain/**"],
       "linter": {
