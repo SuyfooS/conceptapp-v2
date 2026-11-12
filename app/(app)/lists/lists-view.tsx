@@ -163,11 +163,6 @@ export function ListsView({
   const filter = data.filter ? (
     <DepartmentFilter
       label={t("filter.label")}
-      menuLabel={t("filter.menu", {
-        name:
-          data.filter.departments.find((d) => d.id === chosen)?.name ??
-          t("filter.all"),
-      })}
       value={chosen ?? ALL_DEPARTMENTS}
       options={[
         { key: ALL_DEPARTMENTS, label: t("filter.all") },

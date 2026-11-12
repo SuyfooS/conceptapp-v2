@@ -2,7 +2,7 @@ import { chatPreview, sortInbox } from "@domain/chat";
 import { chatWhen } from "@domain/chat-days";
 import { shownFileName } from "@domain/chat-files";
 import { Avatar } from "@ui/avatar";
-import { ChatGroupMark, ChatRow } from "@ui/chat-row";
+import { ChatGroupMark, ChatRow, UNREAD_MOST } from "@ui/chat-row";
 import { EmptyState } from "@ui/empty-state";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageHeader, PageSection } from "@ui/page";
@@ -120,7 +120,11 @@ export function ChatList({
           chat.unread > 0
             ? {
                 count: chat.unread,
-                label: t("list.unread", { count: chat.unread }),
+                // The badge stops at "99+", and the words say the number shown.
+                label:
+                  chat.unread > UNREAD_MOST
+                    ? t("list.unreadMore", { count: UNREAD_MOST })
+                    : t("list.unread", { count: chat.unread }),
               }
             : null
         }

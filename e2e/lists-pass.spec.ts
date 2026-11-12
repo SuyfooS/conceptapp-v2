@@ -87,7 +87,9 @@ const line = (page: Page, title: string) =>
 /** The department filter's menu, named with what it shows now. */
 const filterMenu = (page: Page, shown: string) =>
   page
-    .getByRole("button", { name: fill(l.filter.menu, { name: shown }) })
+    .getByRole("button", {
+      name: fill(l.filter.menu, { label: l.filter.label, name: shown }),
+    })
     .filter({ visible: true });
 
 test.beforeEach(async () => {

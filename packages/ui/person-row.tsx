@@ -1,7 +1,13 @@
 import { ChevronRight, UserRound } from "lucide-react";
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
-import { AVATAR_PIXELS, Avatar, AvatarPhoto, type AvatarSize } from "./avatar";
+import {
+  AVATAR_PIXELS,
+  Avatar,
+  AvatarPhoto,
+  type AvatarSize,
+  avatarAria,
+} from "./avatar";
 import { cn } from "./cn";
 
 const FACE: Record<AvatarSize, string> = {
@@ -18,21 +24,30 @@ export function PersonAvatar({
   name,
   photo,
   size = "md",
+  label,
   className,
 }: {
   name: string | null;
   photo?: string | null;
   size?: AvatarSize;
+  /** What its control does, when the avatar is all the control holds. */
+  label?: string;
   className?: string;
 }) {
   if (name?.trim()) {
     return (
-      <Avatar name={name} photo={photo} size={size} className={className} />
+      <Avatar
+        name={name}
+        photo={photo}
+        size={size}
+        label={label}
+        className={className}
+      />
     );
   }
   return (
     <span
-      aria-hidden="true"
+      {...avatarAria(label)}
       className={cn(
         "relative grid shrink-0 place-items-center overflow-hidden rounded-full bg-surface-2 text-ink-2",
         FACE[size],

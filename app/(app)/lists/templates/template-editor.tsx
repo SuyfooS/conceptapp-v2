@@ -786,7 +786,8 @@ export function TemplateEditor({
                   <FieldGroup>
                     <FieldRow label={te("department")}>
                       <ChoiceMenu
-                        label={te("department")}
+                        // Named as it reads: nothing is chosen yet.
+                        label={`${te("department")}: ${te("choose")}`}
                         value=""
                         placeholder={te("choose")}
                         options={departments.map((d) => ({

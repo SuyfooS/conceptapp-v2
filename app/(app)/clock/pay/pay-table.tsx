@@ -114,9 +114,14 @@ export function PayMonthTable({
             setChosen(key);
             setOpen(true);
           }}
+          // Each row's button is named by what it shows: the name, and
+          // "left" and "minor" when they show, each after a comma only a
+          // screen reader hears ("מאיה פרץ, עזבה, נוער"), so they read as
+          // parts, not one sentence. The avatar, a picture, stays out of it;
+          // what the button does is said after, as its hint.
+          rowHint={t("rowHint")}
           rows={people.map((row) => ({
             key: row.userId,
-            label: t("open", { name: nameOf(row) }),
             cells: {
               name: (
                 <span className="flex items-center gap-3">
@@ -125,11 +130,17 @@ export function PayMonthTable({
                     <span>{nameOf(row)}</span>
                     {row.former ? (
                       <span className="font-normal text-ink-2 text-sm">
+                        <span className="sr-only">, </span>
                         {t("former", { form: row.form })}
                       </span>
                     ) : null}
                   </span>
-                  {row.minor ? <Badge>{t("minor")}</Badge> : null}
+                  {row.minor ? (
+                    <>
+                      <span className="sr-only">, </span>
+                      <Badge>{t("minor")}</Badge>
+                    </>
+                  ) : null}
                 </span>
               ),
               number: row.payrollNumber ?? (

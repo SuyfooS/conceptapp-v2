@@ -268,6 +268,7 @@
     "person1": "נועה כהן",
     "person2": "יואב לוי",
     "person3": "מאיה פרץ",
+    "profileLink": "הפרופיל שלי",
     "tiles": "מה דורש פעולה",
     "tileGaps": "מקומות פנויים",
     "tileMissing": "לא שלחו זמינות",
@@ -316,7 +317,7 @@
     "scanCircle": "סריקה בעיגול",
     "scanCircleText": "לחיצה על העיגול הופכת אותו למצלמה באותו מקום, והשורה מתחתיו אומרת מה קורה.",
     "covers": "שמונה רקעים, כולם מצוירים בצבע של העסק, כך שכל צבע עובד בבהיר ובכהה. מתחת: הבחירה, כמו בפרופיל.",
-    "notificationsNew": "{count, plural, one {אחת חדשה} other {# חדשות}}",
+    "notificationsNew": "{count, plural, one {# חדשה} other {# חדשות}}",
     "checklist": "פריט ברשימה",
     "checklistCheck": "ניקוי משטחי עבודה",
     "checklistNumber": "מקרר ראשי",
@@ -334,7 +335,7 @@
     "dataTableDays": "ימים",
     "dataTableHours": "שעות",
     "dataTableWaiting": "מחכות לאישור",
-    "dataTableOpen": "פתיחת השורה של {name}",
+    "dataTableRowHint": "בחירת השורה",
     "dataTableChosen": "נבחרה השורה של {name}",
     "dataTableHint": "לחיצה על שם בוחרת את השורה שלו.",
     "dataTableRead": "טבלה לקריאה בלבד",
@@ -877,6 +878,7 @@
         "noTeam": "עוד אין עובדים בצוות",
         "noTeamHint": "מזמינים אותם במסך „צוות”, ואז רואים כאן מי שלח ומי לא.",
         "call": "התקשרות אל {name}",
+        "callNumber": "{number}, התקשרות אל {name}",
         "missing": {
           "title": "מי עוד לא שלח",
           "count": "{count, plural, one {חסרה תשובה אחת} other {חסרות # תשובות}}",
@@ -1521,7 +1523,7 @@
       },
       "minutes": "{minutes} דק׳",
       "none": "—",
-      "open": "פתיחת השעות של {name}",
+      "rowHint": "פתיחת השעות של החודש",
       "empty": {
         "title": "אין שעות ב{month}",
         "body": "ב{month} עוד אין שעות. כשהצוות יחתים כניסה, הן יופיעו כאן.",
@@ -2437,9 +2439,9 @@
           "none": "אף אחד לא קיבל גישה אישית.",
           "roleCovers": "גם התפקיד נותן גישה",
           "remove": "הסרה",
-          "removeLabel": "הסרת הגישה של {name}",
+          "removeLabel": "{remove}, הגישה האישית של {name}",
           "add": "הוספת אדם",
-          "addLabel": "הוספת אדם שיראה את השעות והשכר",
+          "addLabel": "{add} שיראה את השעות והשכר",
           "nobody": "כל הצוות כבר רואה את השעות והשכר.",
           "choose": "בחירה"
         },
@@ -2479,7 +2481,7 @@
         "taken": "כבר יש מחלקה בשם {name}.",
         "people": "{count, plural, =0 {אין אנשים} one {אדם אחד} other {# אנשים}}",
         "peopleOf": "מי ב{name}",
-        "peopleIn": "{count, plural, =0 {אין אנשים} one {אדם אחד} other {# אנשים}} ב{name}",
+        "peopleWhere": "ב{name}",
         "inDepartment": "{name} ב{department}",
         "noPeople": "עוד אין אנשים בעסק.",
         "noName": "בלי שם",
@@ -2574,7 +2576,8 @@
       "title": "התראות",
       "subtitle": "מה קרה בעסק ונוגע לך",
       "bell": "התראות",
-      "bellCount": "{count, plural, one {אחת חדשה} other {# חדשות}}",
+      "bellCount": "{count, plural, one {# חדשה} other {# חדשות}}",
+      "bellCountMore": "יותר מ-{count} חדשות",
       "back": "היום",
       "inbox": {
         "new": "חדשות",
@@ -2956,7 +2959,7 @@
       "filter": {
         "label": "מחלקה",
         "all": "כל המחלקות",
-        "menu": "מחלקה: {name}"
+        "menu": "{label}: {name}"
       },
       "sendOne": "שליחת {name}",
       "empty": {
@@ -3546,7 +3549,8 @@
         "people": "שיחות פרטיות",
         "team": "כל הצוות",
         "moreDepartments": "עוד מחלקות",
-        "unread": "{count, plural, one {הודעה חדשה} other {# הודעות חדשות}}",
+        "unread": "{count, plural, one {# הודעה חדשה} other {# הודעות חדשות}}",
+        "unreadMore": "יותר מ-{count} הודעות חדשות",
         "muted": "בלי התראות",
         "waiting": "הודעה מההנהלה מחכה לאישור",
         "fromYou": "אני: {preview}",
@@ -3913,7 +3917,7 @@
             "direction": "לאן",
             "sent": "נשלח",
             "status": "נפתח או אושר",
-            "rowLabel": "תצוגה של {title}, {name}",
+            "rowLabel": "{person}, תצוגה של {title}, {direction}",
             "people": "{count, plural, one {אדם אחד} other {# אנשים}}"
           },
           "directions": {

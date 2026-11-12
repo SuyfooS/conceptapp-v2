@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { type ReactNode, useId } from "react";
 import { cn } from "./cn";
 
 export type DataColumn = {
@@ -18,8 +18,11 @@ export type DataRow = {
   /** One cell per column key; a missing one is empty. */
   cells: Record<string, ReactNode>;
   /**
-   * What choosing the row does, read out by its button in the first cell
-   * ("פתיחת השעות של נועה"). Needed when the table has `onSelect`.
+   * Names the row's button when its first cell's words don't tell the rows
+   * apart (a person with two documents). It starts with those words, as
+   * they show, and adds what tells the row apart ("נועה כהן, תצוגה של
+   * אישור מחלה, לעסק"), so speech input can say what it sees. Leave out
+   * when the cell's words are enough: the button is then named by them.
    */
   label?: string;
 };
@@ -34,6 +37,12 @@ export type DataTableProps = {
    * keyboard focus. Leave out for a table that only reads.
    */
   onSelect?: (key: string) => void;
+  /**
+   * What choosing a row does ("פתיחת השעות של החודש"), said after each row
+   * button's name as its description. Not part of the name: the name holds
+   * the words on the button.
+   */
+  rowHint?: string;
   /** The row chosen now, marked as current. */
   selected?: string | null;
   className?: string;
@@ -57,9 +66,11 @@ export function DataTable({
   rows,
   caption,
   onSelect,
+  rowHint,
   selected = null,
   className,
 }: DataTableProps) {
+  const hintId = useId();
   const [first, ...rest] = columns;
   const align = (column: DataColumn) =>
     column.align === "end" ? "text-end" : "text-start";
@@ -123,6 +134,7 @@ export function DataTable({
                     <button
                       type="button"
                       aria-label={row.label}
+                      aria-describedby={rowHint ? hintId : undefined}
                       aria-current={current ? "true" : undefined}
                       onClick={() => onSelect(row.key)}
                       className="flex min-h-11 w-full items-center text-start focus-visible:outline-2 focus-visible:outline-accent"
@@ -151,7 +163,16 @@ export function DataTable({
 
   // A table one chooses rows of is reached through its row buttons.
   if (onSelect) {
-    return <div className={cn("overflow-x-auto", className)}>{table}</div>;
+    return (
+      <div className={cn("overflow-x-auto", className)}>
+        {table}
+        {rowHint ? (
+          <span id={hintId} hidden>
+            {rowHint}
+          </span>
+        ) : null}
+      </div>
+    );
   }
   // One that only reads: its scroller, a region named by the caption, takes
   // the keyboard, its ring inside the card's edge, along its rounded corners.

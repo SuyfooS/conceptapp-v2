@@ -375,10 +375,9 @@ export function AccessView({
                     <Button
                       variant="secondary"
                       disabled={disabled}
+                      // The word it shows, then whose access it takes away.
                       aria-label={t("personal.removeLabel", {
-                        name: nameOf(person),
-                      })}
-                      title={t("personal.removeLabel", {
+                        remove: t("personal.remove"),
                         name: nameOf(person),
                       })}
                       onClick={() => remove(person)}
@@ -406,7 +405,10 @@ export function AccessView({
             <ListGroup>
               <FieldRow label={t("personal.add")}>
                 <ChoiceMenu
-                  label={t("personal.addLabel")}
+                  // Field, then what the button shows, as every menu reads.
+                  // The words beside it come in as a placeholder, so they
+                  // stay the name's first words in any business's wording.
+                  label={`${t("personal.addLabel", { add: t("personal.add") })}: ${t("personal.choose")}`}
                   value=""
                   placeholder={t("personal.choose")}
                   options={candidates.map((person) => ({

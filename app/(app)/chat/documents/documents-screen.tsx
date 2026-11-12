@@ -604,27 +604,36 @@ function DesktopDocuments({
                 { key: "sent", label: t("office.table.sent"), numeric: true },
                 { key: "status", label: t("office.table.status") },
               ]}
-              rows={shown.map((document) => ({
-                key: document.id,
-                label: t("office.table.rowLabel", {
-                  title: document.title,
-                  name: words.who(document, reader),
-                }),
-                cells: {
-                  person: personName(document),
-                  title: <span dir="auto">{document.title}</span>,
-                  category: words.category(document),
-                  direction: t(`office.directions.${document.direction}`),
-                  sent: words.day(document.sentAt),
-                  status: (
-                    <DocumentStateBadge
-                      document={document}
-                      reader={reader}
-                      words={words}
-                    />
-                  ),
-                },
-              }))}
+              rows={shown.map((document) => {
+                // The row's button shows the person, and its name starts
+                // with those same words, then says which document and which
+                // way it went, so a form sent and the same form sent back
+                // read apart.
+                const person = personName(document);
+                const direction = t(`office.directions.${document.direction}`);
+                return {
+                  key: document.id,
+                  label: t("office.table.rowLabel", {
+                    person,
+                    title: document.title,
+                    direction,
+                  }),
+                  cells: {
+                    person,
+                    title: <span dir="auto">{document.title}</span>,
+                    category: words.category(document),
+                    direction,
+                    sent: words.day(document.sentAt),
+                    status: (
+                      <DocumentStateBadge
+                        document={document}
+                        reader={reader}
+                        words={words}
+                      />
+                    ),
+                  },
+                };
+              })}
               onSelect={setSelected}
               selected={preview?.id ?? null}
             />

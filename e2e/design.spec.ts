@@ -926,7 +926,9 @@ test("the order demo gives counts, passes the list on, and filters by department
   ).toBeVisible();
   await page
     .getByRole("button", {
-      name: l.filter.menu.replace("{name}", l.filter.all),
+      name: l.filter.menu
+        .replace("{label}", l.filter.label)
+        .replace("{name}", l.filter.all),
     })
     .filter({ visible: true })
     .click();
@@ -1799,7 +1801,18 @@ test("the documents demo shows the office's documents in each device's shape", a
     await expect(
       page.locator('img[src$="/demo-documents/sick-note.webp"]'),
     ).toHaveCount(0);
-    await table.getByRole("button", { name: /אישור מחלה ליום שני/ }).click();
+    // The row's button starts with the person it shows, then the document
+    // and which way it went.
+    await table
+      .getByRole("button", {
+        name: heT("app.chat.documents.office.table.rowLabel", {
+          person: "נועה כהן",
+          title: "אישור מחלה ליום שני",
+          direction: d.office.directions.from_person,
+        }),
+        exact: true,
+      })
+      .click();
     await expect(
       page
         .getByRole("complementary", { name: d.office.preview.title })
