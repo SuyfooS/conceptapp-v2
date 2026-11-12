@@ -2144,7 +2144,7 @@
         "time_clock": "How breaks count",
         "reservations": "Booking times and party size",
         "storefront": "The business's public page",
-        "notifications": "Reminders to the team",
+        "notifications": "When to remind about availability and clocking out",
         "lists": "When to remind, and when a list is late",
         "chat": "Who writes in the whole team's group"
       },
@@ -2608,15 +2608,19 @@
       "groups": {
         "schedule": {
           "name": "The schedule",
-          "hint": "A published schedule, and changes to your shifts"
+          "hint": "A published schedule, changes to your shifts, and a reminder to send availability"
         },
         "swaps": {
           "name": "Shift swaps",
           "hint": "Shifts you can take, and what happened to your requests"
         },
+        "clock": {
+          "name": "The time clock",
+          "hint": "A reminder to clock out when your shift is over"
+        },
         "approvals": {
           "name": "Approvals",
-          "hint": "Swaps and hours waiting for your approval"
+          "hint": "Swaps and hours waiting for your approval, shifts left open, and how many haven't sent availability"
         },
         "team": {
           "name": "The team",
@@ -2644,7 +2648,8 @@
       "who": {
         "noName": "No name",
         "former": "Someone no longer on the team",
-        "unknown": "Someone on the team"
+        "unknown": "Someone on the team",
+        "app": "The app"
       },
       "shift": "{name}, {day} {date}, <ltr>{start}–{end}</ltr>",
       "kinds": {
@@ -2696,6 +2701,33 @@
             "title": "Hours to approve: {name}",
             "settledTitle": "{name}'s hours are no longer waiting for your approval",
             "body": "{what, select, in {In without a code} out {Out without a code} other {Recorded by themselves, for the owner to approve}}, {day} at <ltr>{time}</ltr>"
+          },
+          "open": {
+            "title": "A reminder to clock out",
+            "settledTitle": "Clocking out no longer waits for you",
+            "afterShift": "The shift ended at <ltr>{time}</ltr>, and no clock-out is recorded yet",
+            "noShift": "Clocked in {day} at <ltr>{time}</ltr>, and no clock-out is recorded yet",
+            "plain": "No clock-out is recorded yet"
+          },
+          "overdue": {
+            "title": "A shift open for more than 24 hours: {name}",
+            "titleMine": "Your shift has been open for more than 24 hours",
+            "settledTitle": "{name}'s shift was corrected",
+            "settledTitleMine": "Your shift was corrected",
+            "since": "Clocked in {day} at <ltr>{time}</ltr>, with no clock-out",
+            "note": "The shift needs correcting, with a time out"
+          }
+        },
+        "availability": {
+          "due": {
+            "title": "A reminder to send availability for the week of {date}",
+            "settledTitle": "Availability for the week of {date} no longer waits for you",
+            "note": "Not sent yet. Send it by {day} at <ltr>{time}</ltr>"
+          },
+          "missing": {
+            "title": "{count, plural, =0 {Availability is due} one {One answer is missing from availability} other {# answers are missing from availability}} for the week of {date}",
+            "settledTitle": "Availability for the week of {date} no longer waits for you",
+            "note": "It was due {day} at <ltr>{time}</ltr>. The team's availability shows who hasn't sent it"
           }
         },
         "team": {
@@ -2854,6 +2886,7 @@
           "hidden": {
             "schedule": "A schedule update",
             "swaps": "A shift swap update",
+            "clock": "A time clock reminder",
             "approvals": "Something is waiting for approval",
             "team": "A team update",
             "lists": "A lists update",
@@ -4203,7 +4236,30 @@
     },
     "notifications": {
       "name": "Notifications",
-      "description": "Updates for the team about the schedule, swaps and hours"
+      "description": "Notifications in the app and on the phone, and reminders for the team",
+      "settings": {
+        "availabilityReminderHours": {
+          "label": "Reminder to send availability",
+          "hint": "How long before it is due to remind whoever has not sent availability. When it is due, owners and managers see how many still have not. With no reminder, neither is sent.",
+          "options": {
+            "0": "No reminder",
+            "3": "3 hours before",
+            "12": "12 hours before",
+            "24": "A day before",
+            "48": "Two days before"
+          }
+        },
+        "clockOutReminderMinutes": {
+          "label": "Reminder to clock out",
+          "hint": "How long after the end of their shift to remind whoever is still clocked in. With no shift in the schedule, after 12 hours. After 24 hours, owners and managers are told either way.",
+          "options": {
+            "0": "No reminder",
+            "30": "Half an hour after",
+            "60": "An hour after",
+            "120": "Two hours after"
+          }
+        }
+      }
     },
     "lists": {
       "name": "Lists",

@@ -74,6 +74,14 @@ export function pushWords(
       : chat?.name
         ? t("kinds.chat.group.title", { group: chat.name })
         : null;
+  /** A moment's weekday and time on the business's clock, in words. */
+  const dayAndTime = (at: string) => {
+    const instant = new Date(at);
+    return {
+      day: weekday(dateIn(instant, timeZone)),
+      time: timeIn(instant, timeZone),
+    };
+  };
   const { line, settled } = entry;
 
   switch (line.kind) {
@@ -167,6 +175,88 @@ export function pushWords(
     case "team.joined":
       return {
         title: t("kinds.team.joined.title", { name: who(line.person) }),
+      };
+    // The reminders (notifications part 4): what they ask for and by when,
+    // from what the line holds (a week, a moment, a count), never who.
+    case "availability.due": {
+      const date = dayMonth(line.startsOn);
+      // Sent, or the week published: nothing waits on it now.
+      if (settled) {
+        return { title: t("kinds.availability.due.settledTitle", { date }) };
+      }
+      return {
+        title: t("kinds.availability.due.title", { date }),
+        ...body(
+          line.dueAt
+            ? t.markup("kinds.availability.due.note", {
+                ltr: isolate,
+                ...dayAndTime(line.dueAt),
+              })
+            : null,
+        ),
+      };
+    }
+    case "availability.missing": {
+      const date = dayMonth(line.startsOn);
+      // Everyone sent it, or the week published.
+      if (settled) {
+        return {
+          title: t("kinds.availability.missing.settledTitle", { date }),
+        };
+      }
+      return {
+        title: t("kinds.availability.missing.title", {
+          count: line.missing,
+          date,
+        }),
+        ...body(
+          line.dueAt
+            ? t.markup("kinds.availability.missing.note", {
+                ltr: isolate,
+                ...dayAndTime(line.dueAt),
+              })
+            : null,
+        ),
+      };
+    }
+    case "clock.open":
+      // Clocked out, closed by a correction, or now a manager's to close.
+      if (settled) return { title: t("kinds.clock.open.settledTitle") };
+      return {
+        title: t("kinds.clock.open.title"),
+        ...body(
+          line.shiftEnd
+            ? t.markup("kinds.clock.open.afterShift", {
+                ltr: isolate,
+                time: timeIn(new Date(line.shiftEnd), timeZone),
+              })
+            : line.since
+              ? t.markup("kinds.clock.open.noShift", {
+                  ltr: isolate,
+                  ...dayAndTime(line.since),
+                })
+              : t("kinds.clock.open.plain"),
+        ),
+      };
+    case "clock.overdue":
+      return {
+        // The reader's own entry says so, without their name.
+        title: line.mine
+          ? settled
+            ? t("kinds.clock.overdue.settledTitleMine")
+            : t("kinds.clock.overdue.titleMine")
+          : settled
+            ? t("kinds.clock.overdue.settledTitle", { name: who(line.person) })
+            : t("kinds.clock.overdue.title", { name: who(line.person) }),
+        ...body(
+          line.since
+            ? t.markup("kinds.clock.overdue.since", {
+                ltr: isolate,
+                ...dayAndTime(line.since),
+              })
+            : null,
+          settled ? null : t("kinds.clock.overdue.note"),
+        ),
       };
     case "lists.sent":
       return {
