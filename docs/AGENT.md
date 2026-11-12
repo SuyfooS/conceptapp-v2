@@ -264,7 +264,25 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   when details are off the lock screen, `/notifications/settings` (the phone's switch,
   a switch per group, quiet hours, the lock screen) reached from `/me` and the inbox,
   and the one-time offer after giving a shift away or sending availability. A new kind is
-  a row in `private.notification_kind_groups` too. Next: N4, the reminders.
+  a row in `private.notification_kind_groups` too. N4 is built too
+  (`20261112000200_reminders.sql`): `private.run_reminders`, which the minute job runs
+  before it sends, writes each reminder once through `private.notify` (its dedupe key),
+  so the group switches and quiet hours apply: `availability.due` to the workers and
+  managers who haven't sent next week's availability, `availabilityReminderHours`
+  before it is due; `availability.missing` to owners and managers at the due moment,
+  a count and never names; `clock.open` to someone still clocked in
+  `clockOutReminderMinutes` after their shift, or 12 hours after clocking in with none
+  (the new group `clock`); `clock.overdue` to owners and managers for an entry open
+  past 24 hours. Sending availability, clocking out, a correction or publishing the
+  week settles them (triggers on `availability_submissions` and the audit log). The
+  two timings are the notifications module's settings, on `/manage/notifications`,
+  read in SQL with the manifest's defaults and choices (`private.reminder_settings`,
+  kept equal by `modules/notifications/reminders.db.test.ts`, which also compares the
+  due moment with `availabilityDueAt` across the clock changes). A demo business gets
+  no reminders at all. The daily job also deletes old lines (read ones after 90 days,
+  any after 180). A nightly run never calls `/cron/notifications` on the hosted project
+  and never writes Vault secrets; `e2e/reminders.spec.ts` runs the reminders at chosen
+  moments in a business of its own.
 - **Chat, database first** (Orel, 8 November 2026, issue #1; the plan's C1 to C8, each
   its own PR). C1 is built: `20261111000100_chat_module.sql` and `20261111000200_chat.sql`
   (conversations, messages, reads, announcements, removal with undo, the line per

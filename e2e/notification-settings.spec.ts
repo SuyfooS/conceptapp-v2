@@ -116,7 +116,13 @@ test("the settings offer each choice, at every width", async ({ page }) => {
   await openSettings(page);
   // Until they choose, everything reaches the phone, with no quiet hours and
   // the line on the lock screen.
-  for (const group of ["schedule", "swaps", "approvals", "team"] as const) {
+  for (const group of [
+    "schedule",
+    "swaps",
+    "clock",
+    "approvals",
+    "team",
+  ] as const) {
     await expect(groupSwitch(page, group)).toHaveAttribute(
       "aria-checked",
       "true",

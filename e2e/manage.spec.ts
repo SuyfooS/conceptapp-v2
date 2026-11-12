@@ -82,6 +82,7 @@ test("a worker has no way in", async ({ page }) => {
   for (const path of [
     "/manage",
     "/manage/scheduling",
+    "/manage/notifications",
     "/manage/business",
     "/manage/activity",
   ]) {

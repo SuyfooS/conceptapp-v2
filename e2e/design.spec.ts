@@ -79,6 +79,7 @@ const PAGES = [
   "/design/shell/manage/scheduling",
   "/design/shell/manage/time_clock",
   "/design/shell/manage/lists",
+  "/design/shell/manage/notifications",
   "/design/shell/manage/departments",
   "/design/shell/manage/access",
   "/design/shell/lists",
