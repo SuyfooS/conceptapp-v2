@@ -26,6 +26,7 @@ import { StatusToast } from "@ui/status-toast";
 import {
   Building,
   Copy,
+  FileLock,
   FileText,
   ImageIcon,
   Trash2,
@@ -410,6 +411,13 @@ function GalleryPictures() {
             accept: CHAT_PDF_ACCEPT,
             onPick: () => setChosen(false),
           },
+          {
+            key: "document",
+            icon: <FileLock />,
+            title: tc("attach.document"),
+            hint: tc("attach.documentHint"),
+            href: "/design/chat/documents/send",
+          },
         ]}
       />
       <Composer
@@ -606,6 +614,13 @@ function GalleryPdfs() {
             hint: tc.rich("attach.pdfHint", { max: PDF_MB, ltr }),
             accept: CHAT_PDF_ACCEPT,
             onPick: () => setChosen(true),
+          },
+          {
+            key: "document",
+            icon: <FileLock />,
+            title: tc("attach.document"),
+            hint: tc("attach.documentHint"),
+            href: "/design/chat/documents/send",
           },
         ]}
       />

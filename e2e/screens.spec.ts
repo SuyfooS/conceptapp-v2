@@ -8,7 +8,8 @@ import { demoConversation } from "./db";
 // do with real data is in admin, new-business, sign-in, invite and view-as.
 // Chat's screens are opened for real too, as a worker, a manager and an owner
 // of the demo restaurant come in through the door: they only read, but for
-// the owner's read mark on the one conversation opened.
+// the owner's read mark on the one conversation opened. So are the
+// documents' (chat C7), for the accountant too: their lists open no file.
 const PAGES = [
   "/design/console",
   "/design/console?storage=high",
@@ -68,7 +69,10 @@ for (const colorScheme of ["light", "dark"] as const) {
 }
 
 /** In through the door, as one of the demo restaurant's people. */
-async function enterDemoAs(page: Page, key: "worker" | "manager" | "owner") {
+async function enterDemoAs(
+  page: Page,
+  key: "worker" | "manager" | "owner" | "accountant",
+) {
   const door = he.auth.enter;
   await page.goto("/enter");
   await page
@@ -129,6 +133,37 @@ for (const key of ["worker", "manager", "owner"] as const) {
       page.getByRole("heading", { name: c.details.members }),
     ).toBeVisible();
     await expect(page.getByRole("switch", { name: c.info.mute })).toBeVisible();
+    await expect(page).toHaveTitle(/ConceptApp$/);
+    await expectAccessible(page);
+  });
+}
+
+// The documents (chat C7) at each width: "המסמכים שלי" for the worker and
+// the manager, who has no pay access in the restaurant (with "שלחת" for her,
+// who sends), and the office's screen for the owner and the accountant, whose
+// tab it is. Only lists: nothing here opens a document's file.
+for (const key of ["worker", "manager", "owner", "accountant"] as const) {
+  test(`/chat/documents is clean for the ${key}`, async ({ page }) => {
+    const d = he.app.chat.documents;
+    await enterDemoAs(page, key);
+    await page.goto("/chat/documents");
+    const office = key === "owner" || key === "accountant";
+    await expect(
+      page.getByRole("heading", { level: 1, name: office ? d.title : d.mine }),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("main")
+        .getByRole("link", {
+          name: office ? d.sendToPeople : d.sendToBusiness,
+        })
+        .first(),
+    ).toBeVisible();
+    if (key === "manager") {
+      await expect(
+        page.getByRole("heading", { name: d.sent.title, exact: true }),
+      ).toBeVisible();
+    }
     await expect(page).toHaveTitle(/ConceptApp$/);
     await expectAccessible(page);
   });

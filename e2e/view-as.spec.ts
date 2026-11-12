@@ -180,13 +180,18 @@ test("viewing as a manager shows the team but saves nothing", async ({
 });
 
 // The one view that reads pay (payroll P3): as an accountant, the business
-// shows Home and the hours for payroll, and nothing of the staff's.
+// shows Home, the hours for payroll and the documents' tab (chat C7), whose
+// screen says only that documents aren't shown, and nothing of the staff's.
 test("viewing as an accountant shows the hours for payroll and nothing else", async ({
   page,
 }) => {
   await viewAs(page, "accountant");
   const items = nav(page).locator("[data-nav-label]");
-  await expect(items).toHaveText([he.app.nav.home, m.time_clock.outsideNav]);
+  await expect(items).toHaveText([
+    he.app.nav.home,
+    m.time_clock.outsideNav,
+    m.chat.outsideNav,
+  ]);
   await expect(
     page.getByRole("link", { name: he.app.home.accountant.open }),
   ).toBeVisible();
@@ -228,6 +233,16 @@ test("viewing as an accountant shows the hours for payroll and nothing else", as
       path,
     ).toBeVisible();
   }
+
+  // The documents' tab (chat C7) says only that documents aren't shown.
+  await nav(page)
+    .getByRole("link", { name: new RegExp(`^${m.chat.outsideNav}`) })
+    .click();
+  await expect(page).toHaveURL(/\/chat\/documents$/);
+  await expect(page.getByText(he.app.chat.viewing)).toBeVisible();
+  await expect(
+    page.getByRole("main").locator('a[href^="/chat/documents/"]'),
+  ).toHaveCount(0);
 });
 
 test("viewing as the owner reads no pay", async ({ page }) => {

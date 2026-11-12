@@ -6,6 +6,9 @@ import { profilePhotoSrc } from "@domain/profile-photos";
 import type { Metadata } from "next";
 import { signOut } from "../../(auth)/actions";
 import { currentBusinesses } from "../businesses";
+import { currentDocumentsHome } from "../chat/documents/documents";
+import { documentsAccess } from "../chat/documents/documents-access";
+import { MyDocumentsSection } from "../chat/documents/my-documents";
 import { currentWording } from "../current-wording";
 import { SwitchBusinessSection } from "../home/my-businesses";
 import { currentMember } from "../member";
@@ -27,12 +30,15 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // The signed-in person's own profile, for everyone in a business.
 export default async function MePage() {
-  const [member, wording, enabled, businesses] = await Promise.all([
-    currentMember(),
-    currentWording(),
-    currentModules(),
-    currentBusinesses(),
-  ]);
+  const [member, wording, enabled, businesses, documents, documentsHome] =
+    await Promise.all([
+      currentMember(),
+      currentWording(),
+      currentModules(),
+      currentBusinesses(),
+      documentsAccess(),
+      currentDocumentsHome(),
+    ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
   if (!member || !membership) return null;
@@ -71,6 +77,16 @@ export default async function MePage() {
       }
       businesses={
         <SwitchBusinessSection businesses={businesses} wording={wording} />
+      }
+      documents={
+        documents ? (
+          <MyDocumentsSection
+            wording={wording}
+            href="/chat/documents"
+            office={documents.office}
+            toConfirm={documentsHome?.toConfirmCount ?? 0}
+          />
+        ) : null
       }
       data={{
         name:

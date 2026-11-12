@@ -2175,3 +2175,185 @@ export async function demoPdfPlaces(
       and u.file_kind = 'pdf'
     order by u.created_at desc`;
 }
+
+/*
+ * Official documents (chat C6, C7; 20261111000700_documents.sql). Nothing
+ * deletes a document but a purge that names its business, so a spec takes
+ * its own away: their files first, through the clean-up (/cron/chat-files,
+ * once their removal's 10 minutes are made to be over), then their rows,
+ * lines and log rows, inside a transaction that names the business
+ * (`ca.records_purge`). SQL reads Storage's rows and never removes its files.
+ * A demo document's title is its category's words, so a spec finds its own
+ * by when they were sent and by whom.
+ */
+
+/** A demo business's document, as the database keeps it. */
+export type DemoDocument = {
+  id: string;
+  direction: "to_people" | "from_person";
+  category: string;
+  /** Its sender's phone (E.164). */
+  author: string | null;
+  filePath: string | null;
+  fileKind: string | null;
+  sample: string | null;
+  openedAt: Date | null;
+  removedAt: Date | null;
+  removedReason: string | null;
+};
+
+/** The documents the person (by phone, E.164) sent in a demo business since `since`, newest first. */
+export async function demoDocumentsBy(
+  phone: string,
+  since: Date,
+  business: DemoChatBusiness = "restaurant",
+): Promise<DemoDocument[]> {
+  return await sql<DemoDocument[]>`
+    select d.id, d.direction, d.category, p.phone as author,
+      d.file_path as "filePath", d.file_kind as "fileKind", d.sample,
+      d.opened_at as "openedAt", d.removed_at as "removedAt",
+      d.removed_reason as "removedReason"
+    from public.documents d
+    join public.profiles p on p.id = d.author_id
+    where d.business_id = ${chatBusiness(business)} and p.phone = ${phone}
+      and d.sent_at >= ${since}
+    order by d.sent_at desc`;
+}
+
+/** One document, as the database keeps it; null when there is none. */
+export async function demoDocument(id: string): Promise<DemoDocument | null> {
+  const [row] = await sql<DemoDocument[]>`
+    select d.id, d.direction, d.category, p.phone as author,
+      d.file_path as "filePath", d.file_kind as "fileKind", d.sample,
+      d.opened_at as "openedAt", d.removed_at as "removedAt",
+      d.removed_reason as "removedReason"
+    from public.documents d
+    left join public.profiles p on p.id = d.author_id
+    where d.id = ${id}`;
+  return row ?? null;
+}
+
+/** A recipient's marks on a document, by their phone (E.164). */
+export async function demoDocumentMark(
+  id: string,
+  phone: string,
+): Promise<{ openedAt: Date | null; confirmedAt: Date | null } | null> {
+  const [row] = await sql<
+    { openedAt: Date | null; confirmedAt: Date | null }[]
+  >`
+    select r.opened_at as "openedAt", r.confirmed_at as "confirmedAt"
+    from public.document_recipients r
+    join public.profiles p on p.id = r.person_id
+    where r.document_id = ${id} and p.phone = ${phone}`;
+  return row ?? null;
+}
+
+/**
+ * A demo business's seeded sick note: the sample its first worker sent to
+ * the business at the reset. Null when there is none.
+ */
+export async function demoSeededSickNote(
+  business: DemoChatBusiness = "restaurant",
+): Promise<string | null> {
+  const [row] = await sql<{ id: string }[]>`
+    select d.id from public.documents d
+    where d.business_id = ${chatBusiness(business)}
+      and d.direction = 'from_person' and d.sample = 'sick_note'
+    order by d.sent_at limit 1`;
+  return row?.id ?? null;
+}
+
+/**
+ * A sample sick note the person (by phone, E.164) sends to a demo business
+ * now, as the app's demo does (public.send_document with its sample): a
+ * document with nothing stored, which its spec takes away
+ * (`forgetDemoDocuments`). Returns its id.
+ */
+export async function sendDemoSickNote(
+  phone: string,
+  business: DemoChatBusiness = "restaurant",
+): Promise<string> {
+  const id = chatBusiness(business);
+  const [row] = await sql<{ id: string }[]>`
+    select public.send_document(
+      p.id, ${id}::uuid, 'from_person', 'sick_note',
+      private.document_title('sick_note'), null, null, false, null,
+      'sick_note'
+    ) as id
+    from public.profiles p where p.phone = ${phone}`;
+  if (!row) throw new Error(`No profile for ${phone}`);
+  return row.id;
+}
+
+/** How many messages a conversation got since `since`. */
+export async function demoChatMessagesSince(
+  conversation: string,
+  since: Date,
+): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.chat_messages m
+    where m.conversation_id = ${conversation} and m.created_at >= ${since}`;
+  return row?.count ?? 0;
+}
+
+/**
+ * Makes these documents' files due for the clean-up: removed (or still
+ * removed) with their 10 minutes to undo over, so /cron/chat-files takes
+ * their files out of Storage and the rows say their file is gone. Returns
+ * the paths still held, for the spec to wait on.
+ */
+export async function retireDemoDocuments(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  await sql`update public.documents
+    set removed_at = coalesce(removed_at, now() - interval '20 minutes'),
+      removed_reason = coalesce(removed_reason, 'other'),
+      file_gone_after = now() - interval '1 minute'
+    where id in ${sql(ids)} and file_path is not null`;
+  const rows = await sql<{ path: string }[]>`
+    select d.file_path as path from public.documents d
+    where d.id in ${sql(ids)} and d.file_path is not null`;
+  return rows.map((row) => row.path);
+}
+
+/** How many of these documents still hold a file. */
+export async function demoDocumentFilesLeft(ids: string[]): Promise<number> {
+  if (ids.length === 0) return 0;
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.documents d
+    where d.id in ${sql(ids)} and d.file_path is not null`;
+  return row?.count ?? 0;
+}
+
+/**
+ * Takes these documents away for good, as only a purge that names their
+ * business may: their recipients, their rows, the lines and the log rows
+ * about them. Their files must be gone first (`retireDemoDocuments` and the
+ * clean-up); one that still holds a file is left, and named in the answer.
+ */
+export async function forgetDemoDocuments(
+  ids: string[],
+  business: DemoChatBusiness = "restaurant",
+): Promise<string[]> {
+  if (ids.length === 0) return [];
+  const id = chatBusiness(business);
+  const held = await sql<{ id: string }[]>`
+    select d.id from public.documents d
+    where d.id in ${sql(ids)} and d.file_path is not null`;
+  const gone = ids.filter((each) => !held.some((row) => row.id === each));
+  if (gone.length > 0) {
+    const keys = gone.map((each) => `documents.${each}`);
+    await sql.begin(async (tx) => {
+      await tx`select set_config('ca.records_purge', ${id}, true)`;
+      await tx`delete from public.notifications n
+        where n.business_id = ${id} and n.dedupe_key in ${tx(keys)}`;
+      await tx`delete from public.audit_log a
+        where a.business_id = ${id} and a.action like 'document.%'
+          and a.details ->> 'document' in ${tx(gone)}`;
+      await tx`delete from public.document_recipients r
+        where r.business_id = ${id} and r.document_id in ${tx(gone)}`;
+      await tx`delete from public.documents d
+        where d.business_id = ${id} and d.id in ${tx(gone)}`;
+    });
+  }
+  return held.map((row) => row.id);
+}

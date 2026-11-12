@@ -15,9 +15,13 @@ import { z } from "zod";
  * full (modules/templates.db.test.ts checks every template still fits).
  *
  * The tab is the fifth with Home, after Lists (order 28, ahead of
- * reservations' 30, so `moduleNav`'s cut keeps chat). An accountant's
- * documents tab (`outsideStaff`) comes with the documents' screens (C7):
- * until then an accountant has no chat tab and no documents tab.
+ * reservations' 30, so `moduleNav`'s cut keeps chat). An accountant, who is
+ * in no chat, gets "מסמכים" (`outsideStaff`, C7) instead, to
+ * /chat/documents: Home, "שעות לשכר" and "מסמכים". It opens by the office's
+ * own permission, time_clock's clock.payroll (`from`), the one the database
+ * asks for (private.in_office: owners and accountants always), so chat
+ * declares no permission of its own for it; the screen checks it again
+ * (app/(app)/chat/documents/documents-access.ts).
  *
  * Official documents (C6, 20261111000700_documents.sql; @domain/documents)
  * are on wherever chat is (private.documents_on), so they can become a module
@@ -27,7 +31,19 @@ import { z } from "zod";
 export const manifest = defineManifest({
   key: "chat",
   requires: [],
-  nav: { href: "/chat", icon: "chat", minRole: "worker", order: 28 },
+  nav: {
+    href: "/chat",
+    icon: "chat",
+    minRole: "worker",
+    order: 28,
+    // An accountant's tab: the office's documents (C7).
+    outsideStaff: {
+      perm: "clock.payroll",
+      from: "time_clock",
+      href: "/chat/documents",
+      icon: "documents",
+    },
+  },
   homeWidget: { minRole: "worker" },
   permissions: [
     // Post announcements in groups. public.send_chat_message asks

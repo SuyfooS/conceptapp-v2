@@ -13,6 +13,7 @@ import { DEFAULT_LIST_PHOTO_DAYS, LIST_PHOTO_DAYS } from "@domain/list-photos";
 import {
   MODULE_KEYS,
   type ModuleManifest,
+  moduleNav,
   ROLES,
   readModuleSettings,
 } from "@domain/modules";
@@ -174,15 +175,20 @@ describe("module registry", () => {
     for (const p of byOwner) expect(p.defaultRole).toBe("owner");
   });
 
-  it("opens a tab off the staff only by a permission its module declares, with its words", () => {
+  it("opens a tab off the staff only by a permission its module declares, or the one it names, with its words", () => {
     // An accountant's tab (payroll P3): its label is modules.<key>.outsideNav,
-    // and its own screen, not the module's, checks the permission.
+    // and its own screen, not the module's, checks the permission. Chat's
+    // documents (C7) are the office's, and the office is whoever holds
+    // time_clock's clock.payroll (private.in_office), so its tab names that
+    // module (`from`) rather than declaring a second key for the same thing.
     const outside = manifests.flatMap((m) =>
       m.nav?.outsideStaff ? [{ m, tab: m.nav.outsideStaff }] : [],
     );
-    expect(outside.map(({ m }) => m.key)).toEqual(["time_clock"]);
+    expect(outside.map(({ m }) => m.key)).toEqual(["time_clock", "chat"]);
     for (const { m, tab } of outside) {
-      expect(m.permissions.map((p) => p.key)).toContain(tab.perm);
+      const declaring = tab.from ? manifestFor(tab.from) : m;
+      expect(tab.from).not.toBe(m.key);
+      expect(declaring.permissions.map((p) => p.key)).toContain(tab.perm);
       expect(tab.href).not.toBe(m.nav?.href);
       expect(tab.href.startsWith(`${m.nav?.href}/`)).toBe(true);
       for (const messages of [he, en]) {
@@ -190,6 +196,36 @@ describe("module registry", () => {
         expect(typeof words.outsideNav).toBe("string");
       }
     }
+  });
+
+  it("gives an accountant the hours for payroll and the documents, and no chat", () => {
+    // Plan §11.8: Home, "שעות לשכר" (/clock/pay) and "מסמכים"
+    // (/chat/documents). The pay permission is all an accountant holds.
+    expect(manifestFor("chat").nav?.outsideStaff).toEqual({
+      perm: "clock.payroll",
+      from: "time_clock",
+      href: "/chat/documents",
+      icon: "documents",
+    });
+    expect(he.modules.chat.outsideNav).toBe("מסמכים");
+    const on = manifests.map((m) => m.key);
+    expect(
+      moduleNav(manifests, on, {
+        role: "accountant",
+        perms: ["clock.payroll"],
+      }),
+    ).toEqual([
+      { key: "time_clock", href: "/clock/pay", icon: "clock", outside: true },
+      {
+        key: "chat",
+        href: "/chat/documents",
+        icon: "documents",
+        outside: true,
+      },
+    ]);
+    expect(moduleNav(manifests, on, { role: "accountant", perms: [] })).toEqual(
+      [],
+    );
   });
 
   it("only requires modules that exist", () => {

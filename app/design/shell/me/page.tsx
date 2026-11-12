@@ -1,4 +1,5 @@
 import { Suspense } from "react";
+import { MyDocumentsSection } from "../../../(app)/chat/documents/my-documents";
 import { MeView } from "../../../(app)/me/me-view";
 import { baseWording } from "../../../(app)/wording";
 import { demoSignOut } from "../actions";
@@ -39,6 +40,14 @@ async function Demo({ searchParams }: Props) {
         saveProfile: demoSaveProfileAction,
       }}
       home="/design/shell"
+      documents={
+        <MyDocumentsSection
+          wording={baseWording}
+          href="/design/chat/documents?as=manager"
+          office={false}
+          toConfirm={0}
+        />
+      }
       data={{
         name: shiran?.name ?? "",
         photo: empty ? null : (shiran?.photo ?? null),

@@ -146,6 +146,47 @@ export const DOCUMENT_BUCKET = "documents";
 export const DOCUMENT_PHOTO_PIXELS = 1600;
 export const DOCUMENT_PHOTO_TARGET_BYTES = 500 * 1024;
 export const DOCUMENT_PHOTO_MAX_BYTES = 700 * 1024;
+
+/**
+ * How the phone draws a photo of a page (`encodeDocumentPhoto`), each tried
+ * in turn until one is small enough: its long side at 1600 px while the
+ * quality steps down (a page's small print needs its pixels more than a
+ * chat picture does), then 1280 px.
+ */
+export const DOCUMENT_PHOTO_STEPS: readonly {
+  pixels: number;
+  quality: number;
+}[] = [
+  { pixels: DOCUMENT_PHOTO_PIXELS, quality: 0.82 },
+  { pixels: DOCUMENT_PHOTO_PIXELS, quality: 0.72 },
+  { pixels: DOCUMENT_PHOTO_PIXELS, quality: 0.6 },
+  { pixels: 1280, quality: 0.6 },
+];
+
+/**
+ * What to do after the photo's encodings tried so far (their sizes, in the
+ * order of `DOCUMENT_PHOTO_STEPS`): keep the last one once it is at most
+ * 500 KB, try the next step while there is one, and at the end keep the
+ * smallest if it is at most 700 KB; "tooBig" when even that is over.
+ */
+export function documentPhotoVerdict(
+  sizes: readonly number[],
+): { keep: number } | "next" | "tooBig" {
+  const last = sizes.length - 1;
+  const size = sizes[last];
+  if (size === undefined) return "next";
+  if (size <= DOCUMENT_PHOTO_TARGET_BYTES) return { keep: last };
+  if (sizes.length < DOCUMENT_PHOTO_STEPS.length) return "next";
+  let smallest = 0;
+  sizes.forEach((each, at) => {
+    if (each < (sizes[smallest] ?? Number.POSITIVE_INFINITY)) smallest = at;
+  });
+  return (sizes[smallest] ?? Number.POSITIVE_INFINITY) <=
+    DOCUMENT_PHOTO_MAX_BYTES
+    ? { keep: smallest }
+    : "tooBig";
+}
+
 /** A PDF, as in chat (Orel's 10 MB), through a signed upload. */
 export const DOCUMENT_PDF_MAX_BYTES = 10 * 1024 * 1024;
 

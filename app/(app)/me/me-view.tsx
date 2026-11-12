@@ -46,6 +46,7 @@ export async function MeView({
   actions,
   notifications,
   businesses,
+  documents,
   home = "/home",
 }: {
   data: MeData;
@@ -58,6 +59,8 @@ export async function MeView({
   notifications?: ReactNode;
   /** The switch between businesses, for someone in more than one. */
   businesses?: ReactNode;
+  /** "המסמכים שלי" (chat C7), where documents are the person's. */
+  documents?: ReactNode;
   home?: string;
 }) {
   const t = translator(wording, "app");
@@ -87,6 +90,7 @@ export async function MeView({
       signOut={signOut}
       notifications={notifications}
       businesses={businesses}
+      documents={documents}
     />
   );
 }

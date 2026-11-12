@@ -51,6 +51,9 @@ import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import type { Businesses } from "../businesses";
 import type { ChatHomeData } from "../chat/chat";
+import { confirmDocumentAction } from "../chat/documents/actions";
+import type { DocumentsTodayData } from "../chat/documents/document-screen-types";
+import { TodayDocuments } from "../chat/documents/today-documents";
 import { TodayChat } from "../chat/today-chat";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
@@ -101,6 +104,11 @@ export type TodayData = {
   lists?: ListsHomeData | null;
   /** What chat brings to Today (C3); null when it is off or out of reach. */
   chat?: ChatHomeData | null;
+  /**
+   * What documents bring (chat C7): those waiting for the person's "קראתי",
+   * and for the office what came that nobody there opened.
+   */
+  documents?: DocumentsTodayData | null;
 };
 
 type T = Translator<"app">;
@@ -179,6 +187,16 @@ export async function TodayView({
       : null;
   const chat =
     data.widgets.some((w) => w.key === "chat") && data.chat ? data.chat : null;
+  // Documents are chat's (private.documents_on). Their part is drawn with
+  // something waiting only, but stays mounted with chat's: once the last
+  // "קראתי ואישרתי" is given there, it says so and keeps the focus.
+  const documents =
+    data.widgets.some((w) => w.key === "chat") && data.documents
+      ? data.documents
+      : null;
+  const documentsWaiting =
+    documents !== null &&
+    (documents.toConfirm.length > 0 || documents.waiting.length > 0);
   // Modules with a part of their own aren't quiet rows.
   const quiet = data.widgets.filter(
     (w) =>
@@ -190,9 +208,16 @@ export async function TodayView({
   // Chat's part, then lists', one under the other where lists' part was:
   // what waits for the person's "קראתי" first.
   const listsPart = (className?: string) =>
-    lists || chat ? (
+    lists || chat || documentsWaiting ? (
       <div className={cn("flex min-w-0 flex-col gap-6", className)}>
         {chat ? <TodayChat data={chat} wording={wording} path={path} /> : null}
+        {documents ? (
+          <TodayDocuments
+            data={documents}
+            base={path("/chat/documents")}
+            confirm={confirmDocumentAction.bind(null, documents.business)}
+          />
+        ) : null}
         {lists ? (
           <TodayLists data={lists} wording={wording} path={path} />
         ) : null}
@@ -329,7 +354,7 @@ export async function TodayView({
             )}
             <WhoWorksToday {...view} />
             {rest(
-              lists || chat
+              lists || chat || documentsWaiting
                 ? "md:col-span-2"
                 : "md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2",
             )}

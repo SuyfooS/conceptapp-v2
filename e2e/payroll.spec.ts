@@ -137,10 +137,11 @@ test("the shop's accountant has the month's hours, and nothing to punch", async 
   const month = await seededPayMonth();
   await enterAs(page, "accountant");
 
-  // Two tabs: Home and the hours for payroll.
+  // Three tabs: Home, the hours for payroll and the documents (chat C7).
   expect(await navItems(page)).toEqual([
     he.app.nav.home,
     he.modules.time_clock.outsideNav,
+    he.modules.chat.outsideNav,
   ]);
   await expect(
     page.getByRole("link", { name: he.app.home.accountant.open }),

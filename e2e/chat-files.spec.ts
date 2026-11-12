@@ -512,7 +512,8 @@ test("a demo business that takes no files says so at the attach button", async (
       .getByRole("heading", { level: 1, name: c.list.team })
       .filter({ visible: true }),
   ).toBeVisible();
-  // Pressed, it says why, and no picker opens.
+  // Pressed, it says why, and no picker opens: the sheet keeps only its row
+  // that sends nothing here, the document for the business (C7).
   let picked = false;
   page.on("filechooser", () => {
     picked = true;
@@ -523,6 +524,15 @@ test("a demo business that takes no files says so at the attach button", async (
       visible: true,
     }),
   ).toBeVisible();
+  const sheet = page.getByRole("dialog", { name: c.attach.title });
+  await expect(
+    sheet.getByRole("link", { name: new RegExp(`^${c.attach.document}`) }),
+  ).toBeVisible();
+  await expect(
+    sheet.getByRole("button", {
+      name: new RegExp(`^(${c.attach.photo}|${c.attach.pdf})`),
+    }),
+  ).toHaveCount(0);
   expect(picked).toBe(false);
   await expectCleanPage(page);
 });

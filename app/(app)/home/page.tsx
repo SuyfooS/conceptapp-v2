@@ -4,6 +4,7 @@ import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
 import { currentBusinesses } from "../businesses";
 import { currentChatHome } from "../chat/chat";
+import { currentDocumentsHome } from "../chat/documents/documents";
 import { currentClockLine } from "../clock/clock";
 import { currentPayHome } from "../clock/pay/pay";
 import { currentWording } from "../current-wording";
@@ -50,6 +51,7 @@ export default async function HomePage() {
     clockLine,
     lists,
     chat,
+    documents,
     wording,
     businesses,
   ] = await Promise.all([
@@ -63,6 +65,7 @@ export default async function HomePage() {
     currentClockLine(),
     currentListsHome(),
     currentChatHome(),
+    currentDocumentsHome(),
     currentWording(),
     currentBusinesses(),
   ]);
@@ -95,6 +98,7 @@ export default async function HomePage() {
             : null,
         lists,
         chat,
+        documents,
       }}
     />
   );
@@ -106,13 +110,15 @@ export default async function HomePage() {
  * about modules, which other modules being on would make untrue.
  */
 async function OutsideStaffHome() {
-  const [member, enabled, pay, wording, businesses] = await Promise.all([
-    currentMember(),
-    currentModules(),
-    currentPayHome(),
-    currentWording(),
-    currentBusinesses(),
-  ]);
+  const [member, enabled, pay, documents, wording, businesses] =
+    await Promise.all([
+      currentMember(),
+      currentModules(),
+      currentPayHome(),
+      currentDocumentsHome(),
+      currentWording(),
+      currentBusinesses(),
+    ]);
   const membership = member?.membership;
   if (!member || !membership) return null;
   return (
@@ -126,6 +132,7 @@ async function OutsideStaffHome() {
         photo: profilePhotoSrc(member.photoPath),
         businessName: membership.business.name,
         pay,
+        documents,
         bell:
           enabled.includes("notifications") && !member.viewing
             ? { unread: member.unread.all }

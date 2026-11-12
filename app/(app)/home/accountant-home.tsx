@@ -23,6 +23,9 @@ import { useFormatter } from "next-intl";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import type { Businesses } from "../businesses";
+import { confirmDocumentAction } from "../chat/documents/actions";
+import type { DocumentsTodayData } from "../chat/documents/document-screen-types";
+import { TodayDocuments } from "../chat/documents/today-documents";
 import type { PayHomeData } from "../clock/pay/pay";
 import {
   payCaption,
@@ -43,6 +46,8 @@ export type AccountantHomeData = {
   businessName: string;
   /** Null when the business has the clock off: no hours come yet. */
   pay: PayHomeData | null;
+  /** What came to the business that nobody in the office opened yet (chat C7). */
+  documents?: DocumentsTodayData | null;
   /** The bell and how many lines are unread; null when there is none. */
   bell: { unread: number } | null;
 };
@@ -157,6 +162,14 @@ export async function AccountantHome({
             <CardText>{t("home.accountant.noClock.body")}</CardText>
           </Card>
         )}
+        {data.documents ? (
+          <TodayDocuments
+            data={data.documents}
+            base={path("/chat/documents")}
+            confirm={confirmDocumentAction.bind(null, data.documents.business)}
+            className="md:max-w-xl"
+          />
+        ) : null}
         <MyBusinesses
           businesses={businesses}
           wording={wording}

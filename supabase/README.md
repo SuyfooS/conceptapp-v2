@@ -59,8 +59,9 @@ seed, so the reset itself is not replaced): a payslip from the accountant to the
 worker, a procedure from the manager to everyone else on the staff asking for "קראתי",
 which the second worker confirmed, and a sick note from the first worker, which the owner
 opened. Samples only, with no note and no file, titled with their category's own words,
-from both definitions alike; the sample files themselves and `/document-files` come with
-C7. Documents are never deleted but by the reset (`private.purge_business_records`), and a
+from both definitions alike. Their files are the app's own (`public/demo-documents/`, made
+by `node tooling/demo-documents.mjs`, fake and marked "SAMPLE" and "דוגמה"), served by
+`/document-files` for those rows alone (C7). Documents are never deleted but by the reset (`private.purge_business_records`), and a
 demo business takes no uploaded one unless its definition says `"chatFiles": true` (the
 local seed's restaurant only), so a visitor never leaves a file or typed words in a row
 that waits for the next reset.

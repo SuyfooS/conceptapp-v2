@@ -6,7 +6,8 @@ import { type NextRequest, NextResponse } from "next/server";
  * Screens for signed-in people: home, each module's screens (the `nav`
  * hrefs in `modules/<key>/manifest.ts`), the notifications, which have no
  * tab, the profile, the photos it shows, the photos on lists, the files sent in
- * chat and the admin console (tooling/proxy.test.ts keeps both lists in step).
+ * chat, the official documents' files and the admin console
+ * (tooling/proxy.test.ts keeps both lists in step).
  * Everything else is public; chat's sync (/chat-sync) stays out on purpose.
  */
 const HOME = "/home";
@@ -25,6 +26,7 @@ export const PRIVATE = [
   "/photos",
   "/list-photos",
   "/chat-files",
+  "/document-files",
   "/admin",
 ];
 const DOORS = ["/sign-in", "/enter"];
@@ -73,6 +75,7 @@ export const config = {
     "/photos/:path*",
     "/list-photos/:path*",
     "/chat-files/:path*",
+    "/document-files/:path*",
     "/admin/:path*",
     "/sign-in",
     "/enter",

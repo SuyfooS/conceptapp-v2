@@ -72,13 +72,14 @@ const SERVICE_WORKER: Header[] = [
 
 /**
  * The routes that serve files people sent (chat's pictures from C4, its PDFs
- * from C5; `/document-files` joins with C7). Nothing scans them for viruses on
- * the free plan, so none is ever a page of the app's origin: even a file a
- * browser chose to render runs no script, loads nothing, sits in no frame,
- * and no other site may embed it. Each route also sets these itself, so
- * whichever of the two a response keeps says the same.
+ * from C5, official documents and the office's download of them from C7).
+ * Nothing scans them for viruses on the free plan, so none is ever a page of
+ * the app's origin: even a file a browser chose to render runs no script,
+ * loads nothing, sits in no frame, and no other site may embed it. Each route
+ * also sets these itself, so whichever of the two a response keeps says the
+ * same.
  */
-export const FILE_ROUTES = ["/chat-files"] as const;
+export const FILE_ROUTES = ["/chat-files", "/document-files"] as const;
 
 /** The content policy of a served file: nothing at all, in a sandbox. */
 export const FILE_CONTENT_POLICY =

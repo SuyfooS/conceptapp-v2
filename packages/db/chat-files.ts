@@ -350,7 +350,7 @@ function pdfReserveFailureOf(error: {
  * clean-up. In chat's bucket, or (C6) in `documents` for a document's PDF
  * whose file the job removes.
  */
-async function occupyPlace(
+export async function occupyPlace(
   path: string,
   bucket: typeof CHAT_FILE_BUCKET | typeof DOCUMENT_BUCKET = CHAT_FILE_BUCKET,
 ): Promise<boolean> {
@@ -384,11 +384,15 @@ function isPdfPathIn(
 }
 
 /**
- * Whether Storage's signed upload is for this path of the chat-files bucket,
- * on the project the app talks to: what the browser is given, so it can put
- * a file there and nowhere else.
+ * Whether Storage's signed upload is for this path of the chat-files bucket
+ * (or, from C7, of `documents`), on the project the app talks to: what the
+ * browser is given, so it can put a file there and nowhere else.
  */
-function isSignedUploadFor(signedUrl: string, path: string): boolean {
+export function isSignedUploadFor(
+  signedUrl: string,
+  path: string,
+  bucket: typeof CHAT_FILE_BUCKET | typeof DOCUMENT_BUCKET = CHAT_FILE_BUCKET,
+): boolean {
   let url: URL;
   let base: URL;
   try {
@@ -401,7 +405,7 @@ function isSignedUploadFor(signedUrl: string, path: string): boolean {
   return (
     url.origin === base.origin &&
     url.pathname ===
-      `${prefix}/storage/v1/object/upload/sign/${CHAT_FILE_BUCKET}/${path}` &&
+      `${prefix}/storage/v1/object/upload/sign/${bucket}/${path}` &&
     (url.searchParams.get("token") ?? "") !== ""
   );
 }
@@ -546,18 +550,20 @@ async function uploadPlace(
 }
 
 /**
- * The first KB of a stored chat file, read with the secret key: a short-lived
- * signed link for it, asked with `Range: bytes=0-1023`. When Storage doesn't
+ * The first KB of a stored chat file (or, from C7, a document's PDF in its
+ * own bucket), read with the secret key: a short-lived signed link for it,
+ * asked with `Range: bytes=0-1023`. When Storage doesn't
  * honour the range and sends the whole file, only its first KB is read and the
  * rest of the transfer is cancelled, so at most what was already on its way
  * (never more than the 10 MiB the bucket holds) is spent. "missing" when
  * Storage holds no such file, "unreadable" when it can't be asked now.
  */
-async function storedHead(
+export async function storedHead(
   path: string,
+  bucket: typeof CHAT_FILE_BUCKET | typeof DOCUMENT_BUCKET = CHAT_FILE_BUCKET,
 ): Promise<Uint8Array | "missing" | "unreadable"> {
   const signed = await createAdminClient()
-    .storage.from(CHAT_FILE_BUCKET)
+    .storage.from(bucket)
     .createSignedUrl(path, 60);
   if (signed.error || !signed.data?.signedUrl) {
     const error = signed.error;

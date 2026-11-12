@@ -220,3 +220,26 @@ describe("a document's lines and log rows", () => {
     }
   });
 });
+
+describe("a removed document's file", () => {
+  // C7 (20261111000800_documents_screens.sql): the bucket gives nobody a
+  // removed document's file, even within its 10 minutes of undo, which needs
+  // no look at it; a sick note its sender took back is seen by nobody. The
+  // screens and the /document-files routes refuse one too (@db/documents).
+  it("is read by nobody, even within its 10 minutes of undo", () => {
+    const policy = newest("private.can_read_document");
+    expect(policy).toContain("and d.removed_at is null");
+    expect(policy).not.toContain("file_gone_after");
+    expect(policy).toContain("private.sees_document(d.id, reader)");
+    // Replaced last in the migrations, with the signed-in role's grant.
+    const last = migrations.filter((file) =>
+      /create (or replace )?function private\.can_read_document\(/.test(
+        read(file),
+      ),
+    );
+    const sql = read(last.at(-1) ?? "");
+    expect(sql).toContain(
+      "grant execute on function private.can_read_document(text) to authenticated;",
+    );
+  });
+});

@@ -15,6 +15,8 @@ import {
   DOCUMENT_CATEGORY_KEYS,
   DOCUMENT_PDF_MAX_BYTES,
   DOCUMENT_PHOTO_MAX_BYTES,
+  DOCUMENT_PHOTO_STEPS,
+  DOCUMENT_PHOTO_TARGET_BYTES,
   DOCUMENT_REMOVE_REASONS,
   DOCUMENT_SAMPLES,
   DOCUMENTS_GUARD_BYTES,
@@ -23,6 +25,7 @@ import {
   documentFilePath,
   documentFileSrc,
   documentMarkSchema,
+  documentPhotoVerdict,
   documentRowSchema,
   documentState,
   isDocumentCategory,
@@ -417,5 +420,32 @@ describe("a document's row", () => {
         sample: "sick_note",
       }).sample,
     ).toBe("sick_note");
+  });
+});
+
+describe("a photo of a page, as the phone draws it", () => {
+  it("keeps the first drawing at most 500 KB", () => {
+    expect(documentPhotoVerdict([DOCUMENT_PHOTO_TARGET_BYTES])).toEqual({
+      keep: 0,
+    });
+    expect(
+      documentPhotoVerdict([DOCUMENT_PHOTO_MAX_BYTES, 400 * 1024]),
+    ).toEqual({ keep: 1 });
+  });
+
+  it("tries every step, then keeps the smallest the server takes", () => {
+    const over = DOCUMENT_PHOTO_TARGET_BYTES + 1;
+    expect(documentPhotoVerdict([over])).toBe("next");
+    const sizes = DOCUMENT_PHOTO_STEPS.map((_, at) => over + 10 - at);
+    expect(documentPhotoVerdict(sizes)).toEqual({ keep: sizes.length - 1 });
+    expect(
+      documentPhotoVerdict(
+        DOCUMENT_PHOTO_STEPS.map(() => DOCUMENT_PHOTO_MAX_BYTES + 1),
+      ),
+    ).toBe("tooBig");
+  });
+
+  it("starts at the long side the server takes", () => {
+    expect(DOCUMENT_PHOTO_STEPS[0]?.pixels).toBe(1600);
   });
 });

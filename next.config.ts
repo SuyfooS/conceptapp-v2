@@ -10,6 +10,12 @@ const nextConfig: NextConfig = {
     return headerRules();
   },
   cacheComponents: true,
+  // A demo business's sample documents, read from public/demo-documents/ by
+  // the routes that serve documents (app/document-files/served.ts): public/
+  // is the CDN's, so a function has them only when traced in.
+  outputFileTracingIncludes: {
+    "/document-files/**": ["./public/demo-documents/**"],
+  },
   partialPrefetching: true,
   reactCompiler: true,
   turbopack: {
