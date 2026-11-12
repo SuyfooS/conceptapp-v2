@@ -29,11 +29,13 @@ import {
   parseInboxCursor,
   phoneTime,
   quietEnd,
+  REMINDER_RULES,
   reachesPhone,
   readNotificationPreferences,
   SWITCHABLE_GROUPS,
   unreadCounts,
 } from "./notifications";
+import { MAX_ENTRY_HOURS } from "./time-clock-format";
 
 const NOA = "11111111-1111-4111-8111-111111111111";
 const YOAV = "22222222-2222-4222-8222-222222222222";
@@ -115,8 +117,12 @@ describe("the kinds", () => {
     expect(
       NOTIFICATION_KIND_KEYS.filter((kind) => needsAction(kind)).sort(),
     ).toEqual([
+      "availability.due",
+      "availability.missing",
       "chat.announcement",
       "clock.confirm",
+      "clock.open",
+      "clock.overdue",
       "documents.received",
       "documents.to_confirm",
       "lists.late_team",
@@ -129,7 +135,13 @@ describe("the kinds", () => {
   });
 
   it("give the manager-only kinds to managers", () => {
-    for (const kind of ["swap.waiting", "clock.confirm", "team.joined"]) {
+    for (const kind of [
+      "swap.waiting",
+      "clock.confirm",
+      "team.joined",
+      "availability.missing",
+      "clock.overdue",
+    ]) {
       expect(
         NOTIFICATION_KINDS[kind as keyof typeof NOTIFICATION_KINDS].minRole,
       ).toBe("manager");
@@ -403,11 +415,181 @@ describe("documents' lines", () => {
   });
 });
 
+describe("the reminders' lines", () => {
+  const DUE = "2026-11-25T16:00:00+00:00";
+
+  it("lead to what they ask for", () => {
+    expect(linkFor("availability.due")).toBe("/schedule/availability");
+    expect(linkFor("availability.missing")).toBe("/schedule/availability/team");
+    expect(linkFor("clock.open", { entry: LINE })).toBe("/clock");
+    // An overdue entry opens its person's hours, by a real id only.
+    expect(linkFor("clock.overdue", { entry: LINE, person: NOA })).toBe(
+      `/clock/team/${NOA}`,
+    );
+    expect(linkFor("clock.overdue", { person: NOA.toUpperCase() }, true)).toBe(
+      `/clock/team/${NOA}`,
+    );
+    for (const params of [{ person: "../pay" }, { person: 7 }, null]) {
+      expect(linkFor("clock.overdue", params), String(params)).toBe(
+        "/clock/team",
+      );
+    }
+  });
+
+  it("are in the groups the settings screen shows", () => {
+    expect(notificationGroupOf("availability.due")).toBe("schedule");
+    expect(notificationGroupOf("availability.missing")).toBe("approvals");
+    expect(notificationGroupOf("clock.open")).toBe("clock");
+    expect(notificationGroupOf("clock.overdue")).toBe("approvals");
+    expect(NOTIFICATION_GROUPS.indexOf("clock")).toBe(
+      NOTIFICATION_GROUPS.indexOf("swaps") + 1,
+    );
+  });
+
+  it("are from the app, which wrote them, not from someone on the team", () => {
+    // The desktop inbox's "who" says so: nobody on the team sent a reminder.
+    for (const kind of [
+      "availability.due",
+      "availability.missing",
+      "clock.open",
+      "clock.overdue",
+      "lists.due",
+      "lists.late",
+      "lists.late_team",
+      "pay.month_due",
+      "push.test",
+    ]) {
+      expect(lineOf(row(kind, {}, { actorId: null }))?.actor, kind).toEqual({
+        kind: "app",
+      });
+    }
+    // A line of what someone did, whose account is gone, still says nobody
+    // knows who; and one the app wrote for what someone did names them.
+    expect(
+      lineOf(row("swap.offered", { from: NOA }, { actorId: null }))?.actor,
+    ).toEqual({ kind: "unknown" });
+    expect(lineOf(row("lists.due", {}))?.actor.kind).toBe("member");
+  });
+
+  it("read next week's availability reminder", () => {
+    expect(
+      lineOf(
+        row(
+          "availability.due",
+          { startsOn: "2026-11-29", dueAt: DUE },
+          { actorId: null },
+        ),
+      ),
+    ).toMatchObject({
+      actor: { kind: "app" },
+      group: "schedule",
+      href: "/schedule/availability",
+      line: { kind: "availability.due", startsOn: "2026-11-29", dueAt: DUE },
+    });
+    // Without its due moment it still reads; without its week it doesn't.
+    expect(
+      lineOf(row("availability.due", { startsOn: "2026-11-29", dueAt: 7 }))
+        ?.line,
+    ).toEqual({
+      kind: "availability.due",
+      startsOn: "2026-11-29",
+      dueAt: null,
+    });
+    expect(lineOf(row("availability.due", { dueAt: DUE }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("read how many haven't sent theirs, a count and never who", () => {
+    expect(
+      lineOf(
+        row("availability.missing", {
+          startsOn: "2026-11-29",
+          dueAt: DUE,
+          missing: 3,
+        }),
+        MANAGER,
+      )?.line,
+    ).toEqual({
+      kind: "availability.missing",
+      startsOn: "2026-11-29",
+      dueAt: DUE,
+      missing: 3,
+    });
+    expect(
+      lineOf(
+        row("availability.missing", { startsOn: "2026-11-29", missing: -1 }),
+        MANAGER,
+      )?.line,
+    ).toMatchObject({ missing: 0, dueAt: null });
+  });
+
+  it("read a reminder to clock out, with the shift or without one", () => {
+    const since = "2026-11-25T05:55:00+00:00";
+    const shiftEnd = "2026-11-25T14:00:00+00:00";
+    expect(
+      lineOf(row("clock.open", { entry: LINE, since, shiftEnd }))?.line,
+    ).toEqual({ kind: "clock.open", since, shiftEnd });
+    expect(
+      lineOf(row("clock.open", { entry: LINE, since, shiftEnd: null }))?.line,
+    ).toEqual({ kind: "clock.open", since, shiftEnd: null });
+    // Still a reminder when the line lost its times.
+    expect(lineOf(row("clock.open", "not an object"))?.line).toEqual({
+      kind: "clock.open",
+      since: null,
+      shiftEnd: null,
+    });
+  });
+
+  it("read an overdue entry, and say when it is the reader's own", () => {
+    const since = "2026-11-24T10:00:00+00:00";
+    const overdue = row("clock.overdue", { entry: LINE, person: NOA, since });
+    expect(lineOf(overdue, MANAGER)).toMatchObject({
+      group: "approvals",
+      href: `/clock/team/${NOA}`,
+      line: {
+        kind: "clock.overdue",
+        person: { kind: "member", name: "Noa" },
+        since,
+        mine: false,
+      },
+    });
+    expect(lineOf(overdue, NOA)?.line).toMatchObject({ mine: true });
+    expect(lineOf(row("clock.overdue", { since }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("ask the reader to act, the Home tab counts them", () => {
+    expect(
+      unreadCounts(
+        [
+          { business_id: LINE, kind: "availability.due" },
+          { business_id: LINE, kind: "clock.open" },
+          { business_id: LINE, kind: "schedule.published" },
+        ],
+        LINE,
+      ),
+    ).toEqual({ all: 3, action: 2 });
+  });
+
+  it("keep their own times, a reminder to clock out lasting as long as an entry", () => {
+    expect(REMINDER_RULES).toEqual({
+      missingForHours: 6,
+      openWithoutShiftHours: 12,
+      openForHours: MAX_ENTRY_HOURS,
+      earliestAt: "08:00",
+    });
+    expect(MAX_ENTRY_HOURS).toBe(24);
+  });
+});
+
 describe("groupsFor", () => {
-  it("gives a worker the schedule and swaps", () => {
+  it("gives a worker the schedule, swaps and the clock", () => {
     expect(groupsFor("worker", ["scheduling", "time_clock"])).toEqual([
       "schedule",
       "swaps",
+      "clock",
     ]);
   });
 
@@ -415,14 +597,26 @@ describe("groupsFor", () => {
     expect(groupsFor("manager", ["scheduling", "time_clock"])).toEqual([
       "schedule",
       "swaps",
+      "clock",
       "approvals",
       "team",
     ]);
   });
 
   it("follows the modules that are on", () => {
-    expect(groupsFor("owner", ["time_clock"])).toEqual(["approvals", "team"]);
+    expect(groupsFor("owner", ["time_clock"])).toEqual([
+      "clock",
+      "approvals",
+      "team",
+    ]);
+    expect(groupsFor("worker", ["time_clock"])).toEqual(["clock"]);
     expect(groupsFor("worker", [])).toEqual([]);
+  });
+
+  it("gives someone off the staff no reminder to clock out", () => {
+    expect(groupsFor("accountant", ["scheduling", "time_clock"])).not.toContain(
+      "clock",
+    );
   });
 });
 
@@ -858,7 +1052,7 @@ describe("buildInbox", () => {
     ).toMatchObject({
       group: null,
       href: "/clock/pay?month=2026-10",
-      actor: { kind: "unknown" },
+      actor: { kind: "app" },
       line: { kind: "pay.month_due", month: "2026-10", waiting: 2, open: 1 },
     });
     // Counts it can't read are none.
@@ -879,7 +1073,7 @@ describe("buildInbox", () => {
     expect(lineOf(row("push.test", {}, { actorId: null }))).toMatchObject({
       group: null,
       href: "/notifications",
-      actor: { kind: "unknown" },
+      actor: { kind: "app" },
       line: { kind: "push.test" },
     });
     expect(needsAction("push.test")).toBe(false);

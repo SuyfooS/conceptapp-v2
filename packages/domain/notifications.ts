@@ -5,6 +5,7 @@ import { type DocumentCategory, isDocumentCategory } from "./documents";
 import { timeOfDay } from "./hours";
 import { atLeast, isStaff, type ModuleKey, type Role } from "./modules";
 import { timeIn } from "./shabbat";
+import { MAX_ENTRY_HOURS } from "./time-clock-format";
 
 /**
  * Notifications in the app: what happened that a person should know, one line
@@ -23,6 +24,8 @@ import { timeIn } from "./shabbat";
 export const NOTIFICATION_GROUPS = [
   "schedule",
   "swaps",
+  // The reminder to clock out (notifications part 4).
+  "clock",
   "approvals",
   "team",
   "lists",
@@ -56,9 +59,10 @@ type KindInfo = {
    * `/lists/<params.list>`, "payMonth" the hours for payroll of
    * `params.month`, "conversation" the chat `/chat/<params.conversation>`,
    * "document" the document `/chat/documents/<params.document>` (C7's
-   * screen), and `href` is where it leads otherwise.
+   * screen), "person" the person's hours `/clock/team/<params.person>`, and
+   * `href` is where it leads otherwise.
    */
-  to?: "list" | "payMonth" | "conversation" | "document";
+  to?: "list" | "payMonth" | "conversation" | "document" | "person";
   /**
    * Shown in the bell and the inbox, and counted there: all but a chat's own
    * lines, which the Chat tab counts instead (as chats with unread messages).
@@ -75,6 +79,13 @@ type KindInfo = {
    * reader (access taken back): the inbox, which leads nowhere new.
    */
   settledHref?: `/${string}`;
+  /**
+   * Written by the app on its own, with nobody behind it: a reminder, a list
+   * or a month coming due, the phone switch's test. Such a line without an
+   * actor names the app where the inbox says who (`NotificationActor`), not
+   * "someone on the team".
+   */
+  byApp?: true;
 };
 
 export const NOTIFICATION_KINDS = {
@@ -156,6 +167,56 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/team",
   },
+  // The reminders (notifications part 4, `private.run_reminders` in
+  // supabase/migrations/20261112000200_reminders.sql), each given once and
+  // settled by what they ask for. Next week's availability, before it is due,
+  // to the workers and managers who haven't sent it (never owners, as
+  // `missingAvailability`); sending it settles the reader's line, publishing
+  // the week everyone's.
+  "availability.due": {
+    group: "schedule",
+    module: "scheduling",
+    minRole: "worker",
+    needsAction: true,
+    href: "/schedule/availability",
+    staffOnly: true,
+    byApp: true,
+  },
+  // At the due moment, to owners and managers: how many haven't sent it,
+  // a count and never who. Settled once nobody is missing or the week is
+  // published.
+  "availability.missing": {
+    group: "approvals",
+    module: "scheduling",
+    minRole: "manager",
+    needsAction: true,
+    href: "/schedule/availability/team",
+    byApp: true,
+  },
+  // Still clocked in a while after the shift ended (or 12 hours with no
+  // shift), to the person: clocking out settles it, and so does a
+  // correction that closes the entry, or its 24 hours passing, when only a
+  // manager can close it (clock.overdue).
+  "clock.open": {
+    group: "clock",
+    module: "time_clock",
+    minRole: "worker",
+    needsAction: true,
+    href: "/clock",
+    staffOnly: true,
+    byApp: true,
+  },
+  // Open longer than an entry can be (`entryOverdue`), to owners and
+  // managers, the person too when they are one: a correction settles it.
+  "clock.overdue": {
+    group: "approvals",
+    module: "time_clock",
+    minRole: "manager",
+    needsAction: true,
+    href: "/clock/team",
+    to: "person",
+    byApp: true,
+  },
   // The Lists tab counts the open lists a person holds, so a list's lines
   // don't ask for action on Home as well.
   "lists.sent": {
@@ -193,6 +254,7 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/lists",
     to: "list",
+    byApp: true,
   },
   "lists.late": {
     group: "lists",
@@ -201,6 +263,7 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/lists",
     to: "list",
+    byApp: true,
   },
   // To list managers, whose Lists tab counts only what they hold: these ask
   // them to look.
@@ -211,6 +274,7 @@ export const NOTIFICATION_KINDS = {
     needsAction: true,
     href: "/lists/today",
     to: "list",
+    byApp: true,
   },
   "lists.out_of_range": {
     group: "lists",
@@ -265,6 +329,7 @@ export const NOTIFICATION_KINDS = {
     needsAction: true,
     href: "/clock/pay",
     to: "payMonth",
+    byApp: true,
   },
   // A chat's line (chat C1): one per person per conversation, with how many
   // messages wait and who wrote last, never a word of them. The Chat tab
@@ -351,6 +416,7 @@ export const NOTIFICATION_KINDS = {
     minRole: "worker",
     needsAction: false,
     href: "/notifications",
+    byApp: true,
   },
 } as const satisfies Record<string, KindInfo>;
 
@@ -404,6 +470,12 @@ export function linkFor(
   if (info.to === "payMonth") {
     const month = schemas.month.safeParse(params);
     if (month.success) return `${info.href}?month=${month.data.month}`;
+  }
+  if (info.to === "person") {
+    const person = z.object({ person: z.string() }).safeParse(params);
+    if (person.success && isUuid(person.data.person)) {
+      return `/clock/team/${person.data.person.toLowerCase()}`;
+    }
   }
   return info.href;
 }
@@ -677,6 +749,44 @@ export function phoneTime(
   return quietEnd(preferences.quiet, preferences.timeZone, at) ?? at;
 }
 
+// ---------------------------------------------------------------------------
+// The reminders (notifications part 4,
+// supabase/migrations/20261112000200_reminders.sql): written by the database
+// once a minute, each once. How long before availability is due and how long
+// after a shift they come are each business's settings
+// (modules/notifications/manifest.ts); the rest are these.
+
+/**
+ * The reminders' own times, the same as `private.reminder_rules` in the
+ * database (modules/notifications/reminders.db.test.ts compares them).
+ */
+export const REMINDER_RULES = {
+  /**
+   * Owners and managers hear how many haven't sent availability from its due
+   * moment until this many hours after, while next week isn't published.
+   */
+  missingForHours: 6,
+  /**
+   * Someone still clocked in with no published shift that day hears it this
+   * many hours after clocking in.
+   */
+  openWithoutShiftHours: 12,
+  /**
+   * The reminder to clock out comes, and reaches the phone, until this many
+   * hours after clocking in; then the entry is overdue and only a manager
+   * closes it, so its owners and managers hear of it instead.
+   */
+  openForHours: MAX_ENTRY_HOURS,
+  /**
+   * Nobody hears of next week's availability before this time on the first
+   * day of the week before it, when the app begins to show it as next week
+   * (`nextWeekStart`): a due moment early in the week gets the hours left
+   * before it, not a push at midnight as the week turns, and one due by then
+   * (on that first day) is a line in the app alone.
+   */
+  earliestAt: "08:00",
+} as const;
+
 const quietHours = z
   .object({ from: timeOfDay, to: timeOfDay })
   .refine((hours) => hours.from !== hours.to, "Quiet hours need a length");
@@ -864,6 +974,13 @@ export type NotificationPerson =
   /** Nothing says who. */
   | { kind: "unknown" };
 
+/**
+ * Who a line is from: a person, or the app itself for a kind it writes on
+ * its own (`byApp`: a reminder, a list or a month coming due) with nobody
+ * behind it.
+ */
+export type NotificationActor = NotificationPerson | { kind: "app" };
+
 /** A shift as a line shows it: what everyone reads in the published week. */
 export type NotificationShift = {
   /** YYYY-MM-DD */
@@ -920,6 +1037,42 @@ export type NotificationLine =
       at: string;
     }
   | { kind: "team.joined"; person: NotificationPerson }
+  | {
+      /** The reader hasn't sent next week's availability yet. */
+      kind: "availability.due";
+      /** The week's first day, YYYY-MM-DD. */
+      startsOn: string;
+      /** When it is due, as an ISO instant; null when the line lost it. */
+      dueAt: string | null;
+    }
+  | {
+      /** At the due moment, how many still haven't sent it: never who. */
+      kind: "availability.missing";
+      startsOn: string;
+      dueAt: string | null;
+      /** How many of the staff hadn't sent it then. */
+      missing: number;
+    }
+  | {
+      /** The reader is still clocked in after their shift. */
+      kind: "clock.open";
+      /** When they clocked in, as an ISO instant; null when the line lost it. */
+      since: string | null;
+      /**
+       * When their shift that day ended, as an ISO instant; null when they
+       * had none (the reminder came 12 hours after clocking in).
+       */
+      shiftEnd: string | null;
+    }
+  | {
+      /** Someone's entry is open longer than one can be: a manager closes it. */
+      kind: "clock.overdue";
+      person: NotificationPerson;
+      /** When they clocked in, as an ISO instant; null when the line lost it. */
+      since: string | null;
+      /** The entry is the reader's own. */
+      mine: boolean;
+    }
   | {
       kind: "lists.sent" | "lists.finished";
       /** The list's name, as it was sent. */
@@ -1027,8 +1180,8 @@ export type NotificationEntry = {
    * decided, hours confirmed): it no longer says something waits.
    */
   settled: boolean;
-  /** Who did it, for the line's picture. */
-  actor: NotificationPerson;
+  /** Who did it, for the line's picture and the inbox's "who". */
+  actor: NotificationActor;
   group: NotificationGroup | null;
   href: `/${string}`;
   line: NotificationLine;
@@ -1058,6 +1211,15 @@ const schemas = {
     at: instant,
   }),
   person: z.object({ person: uuid }),
+  availability: z.object({
+    startsOn: z.iso.date(),
+    dueAt: instant.nullable().catch(null),
+    missing: z.int().min(0).catch(0),
+  }),
+  open: z.object({
+    since: instant.nullable().catch(null),
+    shiftEnd: instant.nullable().catch(null),
+  }),
   list: z.object({ list: uuid, name: z.string().min(1) }),
   due: z.object({ due: instant }),
   passed: z.object({
@@ -1192,6 +1354,43 @@ function lineOf(
       const params = read(schemas.person);
       return params
         ? { kind, person: personOf(params.person, lookups) }
+        : other;
+    }
+    case "availability.due": {
+      const params = read(schemas.availability);
+      return params
+        ? { kind, startsOn: params.startsOn, dueAt: params.dueAt }
+        : other;
+    }
+    case "availability.missing": {
+      const params = read(schemas.availability);
+      return params
+        ? {
+            kind,
+            startsOn: params.startsOn,
+            dueAt: params.dueAt,
+            missing: params.missing,
+          }
+        : other;
+    }
+    case "clock.open": {
+      // Still a reminder to clock out without its times.
+      const params = read(schemas.open);
+      return {
+        kind,
+        since: params?.since ?? null,
+        shiftEnd: params?.shiftEnd ?? null,
+      };
+    }
+    case "clock.overdue": {
+      const params = read(schemas.person);
+      return params
+        ? {
+            kind,
+            person: personOf(params.person, lookups),
+            since: read(schemas.open)?.since ?? null,
+            mine: params.person.toLowerCase() === readerId.toLowerCase(),
+          }
         : other;
     }
     case "lists.sent":
@@ -1370,13 +1569,19 @@ export function buildInbox(
 ): NotificationEntry[] {
   return rows.map((row) => {
     const kind = notificationKindOf(row.kind);
+    const info: KindInfo | null = kind ? NOTIFICATION_KINDS[kind] : null;
     return {
       id: row.id,
       at: row.createdAt,
       read: row.readAt !== null,
       settled: row.resolvedAt !== null,
-      actor: personOf(row.actorId, lookups),
-      group: kind ? NOTIFICATION_KINDS[kind].group : null,
+      // A line the app wrote on its own is from the app; one whose actor's
+      // account is gone (set null) is from someone unknown.
+      actor:
+        row.actorId === null && info?.byApp
+          ? { kind: "app" }
+          : personOf(row.actorId, lookups),
+      group: info ? info.group : null,
       href: linkFor(row.kind, row.params, row.resolvedAt !== null),
       line: lineOf(row, lookups, readerId),
     };

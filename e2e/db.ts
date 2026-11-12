@@ -776,21 +776,8 @@ async function deleteRealBusiness(id: string): Promise<void> {
 
 type RealPerson = { id: string; name: string; e164: string };
 
-/**
- * A real business made afresh, from the shop's template, through the
- * database functions the app uses: its owner and worker (their logins made
- * when missing, their devices forgotten), the worker on a published morning
- * shift next Sunday.
- */
-async function openRealBusiness(business: {
-  id: string;
-  slug: string;
-  name: string;
-  owner: RealPerson;
-  worker: RealPerson;
-}): Promise<void> {
-  const people = [business.owner, business.worker];
-  await deleteRealBusiness(business.id);
+/** Logins for people of a real business, made when missing, with their names. */
+async function ensureLogins(people: readonly RealPerson[]): Promise<void> {
   for (const person of people) {
     await sql`
       insert into auth.users (
@@ -810,6 +797,24 @@ async function openRealBusiness(business: {
     await sql`update public.profiles set full_name = ${person.name}
       where id = ${person.id}`;
   }
+}
+
+/**
+ * A real business made afresh, from the shop's template, through the
+ * database functions the app uses: its owner and worker (their logins made
+ * when missing, their devices forgotten), the worker on a published morning
+ * shift next Sunday.
+ */
+async function openRealBusiness(business: {
+  id: string;
+  slug: string;
+  name: string;
+  owner: RealPerson;
+  worker: RealPerson;
+}): Promise<void> {
+  const people = [business.owner, business.worker];
+  await deleteRealBusiness(business.id);
+  await ensureLogins(people);
   await sql`delete from public.push_subscriptions
     where user_id in ${sql(people.map((p) => p.id))}`;
   await sql`insert into public.businesses (id, slug, name)
@@ -2605,4 +2610,186 @@ export async function endQuietNow(userId: string, id: string): Promise<void> {
     await tx`update public.notifications set push_after = now()
       where id = ${id} and push_state = 'queued'`;
   });
+}
+
+/**
+ * A real business for the reminders (notifications part 4), which a demo
+ * business never gets: an owner and two workers of their own (their numbers
+ * are in no other spec). Next week is open and not published, and one of the
+ * workers has sent availability for it; one press clocks in and out. Made
+ * afresh by each test that uses it; its people's devices and choices go with
+ * it when the test is done.
+ */
+export const REMINDERS_BUSINESS = "00000000-0000-4000-b000-0000000000e7";
+export const REMINDERS_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000971",
+    name: "רונית תזכורות",
+    local: "050-000-0971",
+    e164: "+972500000971",
+  },
+  /** Hasn't sent next week's availability. */
+  missing: {
+    id: "00000000-0000-4000-a000-000000000972",
+    name: "טל תזכורות",
+    local: "050-000-0972",
+    e164: "+972500000972",
+  },
+  /** Sent it when the business opened. */
+  sent: {
+    id: "00000000-0000-4000-a000-000000000973",
+    name: "שחר תזכורות",
+    local: "050-000-0973",
+    e164: "+972500000973",
+  },
+} as const;
+
+const remindersPeople = () =>
+  Object.values(REMINDERS_PEOPLE).map((person) => person.id);
+
+/** Next week as the database's reminders read it, and when it is due. */
+export type RemindersWeek = {
+  /** YYYY-MM-DD */
+  startsOn: string;
+  /** The week as the lines name it, "29.11". */
+  date: string;
+  /** When its availability is due, by the business's settings. */
+  dueAt: Date;
+  /** That moment's weekday (0 = Sunday) and time, on the business's clock. */
+  dueDay: number;
+  dueTime: string;
+};
+
+/** The business afresh: its people with no devices and no choices made. */
+export async function openRemindersBusiness(): Promise<RemindersWeek> {
+  await deleteRealBusiness(REMINDERS_BUSINESS);
+  await ensureLogins(Object.values(REMINDERS_PEOPLE));
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(remindersPeople())}`;
+  await sql`delete from public.notification_preferences
+    where user_id in ${sql(remindersPeople())}`;
+  await sql`insert into public.businesses (id, slug, name)
+    values (${REMINDERS_BUSINESS}, 'reminders-e2e', 'עסק לתזכורות')`;
+  await sql`select public.apply_template(${REMINDERS_BUSINESS}, 'retail')`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${REMINDERS_BUSINESS}, ${REMINDERS_PEOPLE.owner.id}, 'owner'),
+      (${REMINDERS_BUSINESS}, ${REMINDERS_PEOPLE.missing.id}, 'worker'),
+      (${REMINDERS_BUSINESS}, ${REMINDERS_PEOPLE.sent.id}, 'worker')`;
+  await sql`update public.business_modules
+    set settings = settings || ${sql.json({ requirePunchCode: false })}::jsonb
+    where business_id = ${REMINDERS_BUSINESS} and module_key = 'time_clock'`;
+  // Next week and its due moment, from the same functions the reminders use.
+  const [week] = await sql<RemindersWeek[]>`
+    select w.starts_on::text as "startsOn",
+      to_char(w.starts_on, 'FMDD.FMMM') as date,
+      d.due as "dueAt",
+      extract(dow from d.due at time zone r.tz_name)::int as "dueDay",
+      to_char(d.due at time zone r.tz_name, 'HH24:MI') as "dueTime"
+    from private.availability_rules(${REMINDERS_BUSINESS}::uuid) r
+    cross join lateral (
+      select private.week_start_after(now(), r.tz_name, r.first_day) as starts_on
+    ) w
+    cross join lateral (
+      select private.availability_due_at(${REMINDERS_BUSINESS}::uuid, w.starts_on)
+        as due
+    ) d`;
+  if (!week) throw new Error("No next week for the reminders");
+  await sql`select public.open_schedule_week(${REMINDERS_BUSINESS},
+    ${week.startsOn}::date, ${week.dueAt}::timestamptz)`;
+  await sendRemindersAvailability(REMINDERS_PEOPLE.sent.id);
+  return week;
+}
+
+/** Forget the business, its people's devices and choices. */
+export async function closeRemindersBusiness(): Promise<void> {
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(remindersPeople())}`;
+  await sql`delete from public.notification_preferences
+    where user_id in ${sql(remindersPeople())}`;
+  await deleteRealBusiness(REMINDERS_BUSINESS);
+}
+
+/**
+ * What the minute job does, at a moment the test chooses, in the reminders
+ * business alone. Returns how many lines it wrote there.
+ */
+export async function runReminders(at: Date = new Date()): Promise<number> {
+  const [row] = await sql<{ written: number }[]>`
+    select private.run_reminders(${at}::timestamptz,
+      ${REMINDERS_BUSINESS}::uuid) as written`;
+  return row?.written ?? 0;
+}
+
+/** A line in the reminders business, and what waits for the phone. */
+export type ReminderLine = {
+  id: string;
+  read: boolean;
+  settled: boolean;
+  state: string;
+  /** Whether its push waits for a moment still to come. */
+  later: boolean;
+  params: Record<string, unknown>;
+};
+
+/** A person's lines of a kind in the reminders business, oldest first. */
+export async function reminderLines(
+  userId: string,
+  kind: string,
+): Promise<ReminderLine[]> {
+  return await sql<ReminderLine[]>`
+    select id, read_at is not null as read, resolved_at is not null as settled,
+      push_state as state, coalesce(push_after > now(), false) as later, params
+    from public.notifications
+    where business_id = ${REMINDERS_BUSINESS} and user_id = ${userId}
+      and kind = ${kind}
+    order by created_at, id`;
+}
+
+/**
+ * The person sends next week's availability to the reminders business,
+ * through the database function the app uses: 09:00–17:00 on its first day.
+ */
+export async function sendRemindersAvailability(userId: string): Promise<void> {
+  await sql`
+    select public.submit_availability(${userId}::uuid, w.id,
+      jsonb_build_array(jsonb_build_object(
+        'day', w.starts_on::text, 'start', '09:00', 'end', '17:00')),
+      null::text)
+    from public.schedule_weeks w
+    where w.business_id = ${REMINDERS_BUSINESS}
+    order by w.starts_on desc
+    limit 1`;
+}
+
+/**
+ * Someone in the reminders business clocked in `hoursAgo` hours ago and is
+ * still on the clock, with no shift that day. Returns when they clocked in.
+ */
+export async function openReminderEntry(
+  userId: string,
+  hoursAgo: number,
+): Promise<Date> {
+  const since = new Date(Date.now() - hoursAgo * 3_600_000);
+  await sql`insert into public.time_entries (business_id, user_id, clock_in)
+    values (${REMINDERS_BUSINESS}, ${userId}, ${since})`;
+  return since;
+}
+
+/** The reminders business's notification settings, as stored. */
+export async function remindersSettings(): Promise<Record<string, unknown>> {
+  const [row] = await sql<{ settings: Record<string, unknown> }[]>`
+    select settings from public.business_modules
+    where business_id = ${REMINDERS_BUSINESS}
+      and module_key = 'notifications'`;
+  return row?.settings ?? {};
+}
+
+/** Some of the reminders business's notification settings, written as is. */
+export async function setRemindersSettings(
+  settings: Record<string, number>,
+): Promise<void> {
+  await sql`update public.business_modules
+    set settings = settings || ${sql.json(settings)}::jsonb
+    where business_id = ${REMINDERS_BUSINESS}
+      and module_key = 'notifications'`;
 }

@@ -176,3 +176,135 @@ describe("a line with details kept off the lock screen", () => {
     expect(notice.silent).toBeUndefined();
   });
 });
+
+// What the reminders say on a phone (notifications part 4): what they ask for
+// and by when, on the business's clock, from what the line holds (a week, a
+// moment, a count). Never who hasn't sent availability: the count alone.
+describe("the reminders' words on the phone", () => {
+  const kinds = he.app.notifications.kinds;
+  const ltr = (text: string) => `⁦${text}⁩`;
+  // Wednesday 25 November 2026 at 18:00 in Israel, for the week of 29.11.
+  const dueAt = "2026-11-25T16:00:00.000Z";
+  const reminder = (line: NotificationLine, settled = false) =>
+    pushWords(
+      { ...entry(line, settled), actor: { kind: "unknown" } },
+      baseWording,
+      "Asia/Jerusalem",
+    );
+
+  it("asks for next week's availability, and says by when", () => {
+    expect(
+      reminder({ kind: "availability.due", startsOn: "2026-11-29", dueAt }),
+    ).toEqual({
+      title: "תזכורת לשלוח זמינות לשבוע של 29.11",
+      body: `עוד לא נשלחה. אפשר לשלוח עד יום רביעי בשעה ${ltr("18:00")}`,
+    });
+    // Without its moment it still asks; once sent, it says nothing waits.
+    expect(
+      reminder({
+        kind: "availability.due",
+        startsOn: "2026-11-29",
+        dueAt: null,
+      }),
+    ).toEqual({ title: "תזכורת לשלוח זמינות לשבוע של 29.11" });
+    expect(
+      reminder(
+        { kind: "availability.due", startsOn: "2026-11-29", dueAt },
+        true,
+      ),
+    ).toEqual({ title: "הזמינות לשבוע של 29.11 כבר לא מחכה לך" });
+  });
+
+  it("tells managers how many haven't sent it, never who", () => {
+    const missing = (count: number, settled = false) =>
+      reminder(
+        {
+          kind: "availability.missing",
+          startsOn: "2026-11-29",
+          dueAt,
+          missing: count,
+        },
+        settled,
+      );
+    expect(missing(3)).toEqual({
+      title: "חסרות 3 תשובות בזמינות לשבוע של 29.11",
+      body: `המועד היה יום רביעי בשעה ${ltr("18:00")}. בזמינות הצוות רואים מי עוד לא שלח`,
+    });
+    expect(missing(1).title).toBe("חסרה תשובה אחת בזמינות לשבוע של 29.11");
+    expect(missing(0).title).toBe("הגיע המועד לזמינות לשבוע של 29.11");
+    expect(missing(3, true)).toEqual({
+      title: "הזמינות לשבוע של 29.11 כבר לא מחכה לך",
+    });
+  });
+
+  it("reminds someone to clock out, by their shift's end or their arrival", () => {
+    const since = "2026-11-25T05:55:00.000Z";
+    expect(
+      reminder({
+        kind: "clock.open",
+        since,
+        shiftEnd: "2026-11-25T14:00:00.000Z",
+      }),
+    ).toEqual({
+      title: kinds.clock.open.title,
+      body: `המשמרת נגמרה ב-${ltr("16:00")}, ועוד לא נרשמה יציאה`,
+    });
+    expect(reminder({ kind: "clock.open", since, shiftEnd: null })).toEqual({
+      title: kinds.clock.open.title,
+      body: `נרשמה כניסה ביום רביעי ב-${ltr("07:55")}, ועוד לא נרשמה יציאה`,
+    });
+    expect(
+      reminder({ kind: "clock.open", since: null, shiftEnd: null }).body,
+    ).toBe(kinds.clock.open.plain);
+    expect(
+      reminder({ kind: "clock.open", since, shiftEnd: null }, true),
+    ).toEqual({ title: kinds.clock.open.settledTitle });
+  });
+
+  it("names whose shift is open too long, or says it is the reader's own", () => {
+    const since = "2026-11-24T06:00:00.000Z";
+    const person = { kind: "member", name: "יואב לוי" } as const;
+    expect(
+      reminder({ kind: "clock.overdue", person, since, mine: false }),
+    ).toEqual({
+      title: "משמרת פתוחה יותר מ-24 שעות: יואב לוי",
+      body: `כניסה ביום שלישי ב-${ltr("08:00")}, בלי יציאה\n${kinds.clock.overdue.note}`,
+    });
+    const mine = reminder({ kind: "clock.overdue", person, since, mine: true });
+    expect(mine.title).toBe(kinds.clock.overdue.titleMine);
+    expect(JSON.stringify(mine)).not.toContain("יואב");
+    // Corrected: it says so, and asks for nothing.
+    expect(
+      reminder({ kind: "clock.overdue", person, since, mine: false }, true),
+    ).toEqual({
+      title: "המשמרת של יואב לוי תוקנה",
+      body: `כניסה ביום שלישי ב-${ltr("08:00")}, בלי יציאה`,
+    });
+    expect(
+      reminder(
+        { kind: "clock.overdue", person, since: null, mine: true },
+        true,
+      ),
+    ).toEqual({ title: kinds.clock.overdue.settledTitleMine });
+  });
+
+  it("say only their group with details kept off the lock screen", () => {
+    const hidden = he.app.notifications.push.notice.hidden;
+    const notice = pushNotice(
+      {
+        ...entry({
+          kind: "clock.open",
+          since: "2026-11-25T05:55:00.000Z",
+          shiftEnd: null,
+        }),
+        group: "clock",
+      },
+      baseWording,
+      "Asia/Jerusalem",
+      { previews: false },
+    );
+    expect(notice.title).toBe(hidden.clock);
+    expect(notice.body).toBeUndefined();
+    expect(JSON.stringify(notice)).not.toContain("07:55");
+  });
+});

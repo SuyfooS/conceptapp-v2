@@ -147,6 +147,44 @@ describe("module registry", () => {
     }
   });
 
+  it("gives owners and managers the reminders' timings, as private.reminder_settings reads them", () => {
+    // Notifications part 4: /manage/notifications draws these two, and the
+    // database counts only these choices, anything else stored as the
+    // default (20261112000200_reminders.sql; reminders.db.test.ts compares
+    // the two). The reminder before a shift stays hidden until Orel asks.
+    const settings = manifestFor("notifications").settings;
+    const fields = fieldsFor(settings, "business");
+    expect(
+      fields.map((f) => [f.key, f.kind === "choice" && f.options]),
+    ).toEqual([
+      ["availabilityReminderHours", [0, 3, 12, 24, 48]],
+      ["clockOutReminderMinutes", [0, 30, 60, 120]],
+    ]);
+    expect(fieldsFor(settings, "team").map((f) => f.key)).not.toContain(
+      "shiftReminderHours",
+    );
+    expect(settings.parse({})).toMatchObject({
+      availabilityReminderHours: 24,
+      clockOutReminderMinutes: 60,
+    });
+    // Words for every choice, in both languages, as /manage shows them.
+    for (const messages of [he, en]) {
+      const words = messages.modules.notifications.settings;
+      for (const field of fields) {
+        const own = words[field.key as keyof typeof words];
+        expect(own.label, field.key).toBeTruthy();
+        expect(own.hint, field.key).toBeTruthy();
+        if (field.kind !== "choice") continue;
+        for (const option of field.options) {
+          expect(
+            own.options[String(option) as keyof typeof own.options],
+            `${field.key} ${option}`,
+          ).toBeTruthy();
+        }
+      }
+    }
+  });
+
   it("gives documents the space private.document_space_bytes reads, the team's", () => {
     // C6: 50 MB unless the team chose 100 or 200, anything else stored read
     // as 50 (20261111000700_documents.sql); documents are never deleted for

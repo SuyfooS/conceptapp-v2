@@ -2,6 +2,7 @@ import type { NotificationGroup } from "@domain/notifications";
 import {
   CalendarDays,
   ClipboardCheck,
+  Clock,
   FileText,
   ListChecks,
   MessageCircle,
@@ -14,6 +15,7 @@ import type { ReactNode } from "react";
 export const GROUP_ICONS: Record<NotificationGroup, ReactNode> = {
   schedule: <CalendarDays />,
   swaps: <Repeat />,
+  clock: <Clock />,
   approvals: <ClipboardCheck />,
   team: <Users />,
   lists: <ListChecks />,

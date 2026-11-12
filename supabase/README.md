@@ -95,6 +95,14 @@ limits, and CAPTCHA once it is on (below).
 which asks the app to send pushes only while something is due, and `notifications-clean`
 once a day. The minute job calls the app through pg_net with two secrets from Vault, and
 without them calls nothing (what is due then goes out with the next action in the app).
+From `20261112000200_reminders.sql` the same minute job first writes the reminders that are
+due (`private.run_reminders`): next week's availability not sent yet, to the workers and
+managers who haven't sent it, and at the due moment how many haven't, to owners and managers;
+someone still clocked in after their shift, to them; an entry open past 24 hours, to owners
+and managers. Each comes once, never in a demo business, at the times the business chose on
+`/manage/notifications`; it needs no secret, and only its pushes wait for them. The same
+migration has `notifications-clean` also delete old lines: read ones after 90 days, any
+after 180.
 `20261110001000_payroll_months.sql` adds a third, `payroll`, daily at 06:00 UTC: on each
 business's 2nd it reminds pay holders to close last month (never in a demo business), in
 the app and, like any line, on the phone. It needs no secret.
@@ -131,9 +139,9 @@ Once the migration has gone through the Migrate workflow and `CRON_SECRET` is in
 (`README.md`), add the two secrets in the dashboard, Project Settings, Vault (not the SQL
 editor, which keeps what was typed):
 
-- `app_url`: the app's exact address, with no path and no redirect on the way, for
-  example `https://www.conceptapp.co.il` once that is where the app is opened. pg_net
-  does not carry a POST through a redirect.
+- `app_url`: `https://www.conceptapp.co.il`, exactly: the main domain (#1), with no path
+  and no redirect on the way. pg_net does not carry a POST through a redirect, so never
+  the apex or the `vercel.app` address, which only redirect to it.
 - `cron_secret`: the same value as `CRON_SECRET` in Vercel.
 
 A nightly run never writes these, never calls `/cron/notifications`, `/cron/list-photos` or

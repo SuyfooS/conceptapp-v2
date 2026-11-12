@@ -3,9 +3,9 @@ import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { numberRange, signed } from "@domain/lists";
 import {
   inboxAgo,
+  type NotificationActor,
   type NotificationEntry,
   type NotificationGroup,
-  type NotificationPerson,
   type NotificationShift,
 } from "@domain/notifications";
 import { timeIn } from "@domain/shabbat";
@@ -121,7 +121,8 @@ export function InboxView({
       year: "numeric",
       timeZone: "UTC",
     });
-  const who = (person: NotificationPerson) =>
+  /** Who a line names or is from: the app itself for its own reminders. */
+  const who = (person: NotificationActor) =>
     person.kind === "member"
       ? (person.name ?? t("who.noName"))
       : t(`who.${person.kind}`);
@@ -136,6 +137,14 @@ export function InboxView({
           end: shift.end,
         })
       : null;
+  /** A moment's weekday and time on the business's clock, in words. */
+  const dayAndTime = (at: string) => {
+    const instant = new Date(at);
+    return {
+      day: weekday(dateIn(instant, timeZone)),
+      time: timeIn(instant, timeZone),
+    };
+  };
   const when = (at: string) => {
     const instant = new Date(at);
     const ago = inboxAgo(instant, nowDate);
@@ -257,6 +266,107 @@ export function InboxView({
           title: t("kinds.team.joined.title", { name: who(line.person) }),
           shift: null,
           notes: [],
+        };
+      // The reminders (notifications part 4): what they ask for and by when,
+      // from what the line holds (a week, a moment, a count). Who hasn't
+      // sent availability is on the team's screen it leads to, not here.
+      case "availability.due": {
+        const date = dayMonth(line.startsOn);
+        // Sent, or the week published: nothing waits on it now.
+        return settled
+          ? {
+              title: t("kinds.availability.due.settledTitle", { date }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t("kinds.availability.due.title", { date }),
+              shift: null,
+              notes: line.dueAt
+                ? [
+                    t.rich("kinds.availability.due.note", {
+                      ltr,
+                      ...dayAndTime(line.dueAt),
+                    }),
+                  ]
+                : [],
+            };
+      }
+      case "availability.missing": {
+        const date = dayMonth(line.startsOn);
+        // Everyone sent it, or the week published.
+        return settled
+          ? {
+              title: t("kinds.availability.missing.settledTitle", { date }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t("kinds.availability.missing.title", {
+                count: line.missing,
+                date,
+              }),
+              shift: null,
+              notes: line.dueAt
+                ? [
+                    t.rich("kinds.availability.missing.note", {
+                      ltr,
+                      ...dayAndTime(line.dueAt),
+                    }),
+                  ]
+                : [],
+            };
+      }
+      case "clock.open":
+        // Clocked out, closed by a correction, or now a manager's to close.
+        return settled
+          ? {
+              title: t("kinds.clock.open.settledTitle"),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t("kinds.clock.open.title"),
+              shift: null,
+              notes: [
+                line.shiftEnd
+                  ? t.rich("kinds.clock.open.afterShift", {
+                      ltr,
+                      time: timeIn(new Date(line.shiftEnd), timeZone),
+                    })
+                  : line.since
+                    ? t.rich("kinds.clock.open.noShift", {
+                        ltr,
+                        ...dayAndTime(line.since),
+                      })
+                    : t("kinds.clock.open.plain"),
+              ],
+            };
+      case "clock.overdue":
+        return {
+          // The reader's own entry says so, without their name; once
+          // corrected, it says that.
+          title: line.mine
+            ? settled
+              ? t("kinds.clock.overdue.settledTitleMine")
+              : t("kinds.clock.overdue.titleMine")
+            : settled
+              ? t("kinds.clock.overdue.settledTitle", {
+                  name: who(line.person),
+                })
+              : t("kinds.clock.overdue.title", { name: who(line.person) }),
+          shift: null,
+          notes: [
+            ...(line.since
+              ? [
+                  t.rich("kinds.clock.overdue.since", {
+                    ltr,
+                    ...dayAndTime(line.since),
+                  }),
+                ]
+              : []),
+            ...(settled ? [] : [t("kinds.clock.overdue.note")]),
+          ],
         };
       case "lists.sent":
         return {
