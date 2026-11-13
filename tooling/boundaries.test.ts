@@ -328,20 +328,41 @@ describe("Biome layer rules", () => {
 
     // The GitHub reporter prints one stable line per diagnostic:
     // ::error title=<rule>,file=<path>,line=…::<message>
+    // Biome's JavaScript entry runs through Node, because node_modules/.bin/biome
+    // is a shell shim that Windows can't execute directly.
     let output = "";
     try {
       output = execFileSync(
-        join(root, "node_modules/.bin/biome"),
-        ["lint", "--reporter=github", "--max-diagnostics=none", ...files],
+        process.execPath,
+        [
+          join(root, "node_modules/@biomejs/biome/bin/biome"),
+          "lint",
+          "--reporter=github",
+          "--max-diagnostics=none",
+          ...files,
+        ],
         { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
       );
     } catch (error) {
-      output = (error as { stdout: string }).stdout;
+      // Biome exits non-zero when it reports errors; that output is what we read.
+      const { stdout, stderr, message } = error as {
+        stdout?: string;
+        stderr?: string;
+        message?: string;
+      };
+      if (typeof stdout !== "string") {
+        throw new Error(
+          `Biome did not run: ${stderr || message || String(error)}`,
+        );
+      }
+      output = stdout;
     }
     const blocked = output
       .split("\n")
       .filter((line) => line.includes("title=lint/style/noRestrictedImports,"))
-      .map((line) => /file=([^,]+),/.exec(line)?.[1] ?? "");
+      .map((line) =>
+        (/file=([^,]+),/.exec(line)?.[1] ?? "").split("\\").join("/"),
+      );
 
     const result = cases.map((c, i) => ({
       ...c,
