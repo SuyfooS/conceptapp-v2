@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-13 · nightly run 36 · Saturday is "שבת"
+
+- Guessed: no open work from Orel. The last merge (#140, Label in Name) asked in its note whether Saturday's name should be "שבת": `days.sat.long` was "מוצאי שבת" (a restaurant's evening shift, from the prototype), while English says "Saturday" and the app's other day lists already say "שבת". It showed in the day toggles' names ("ש׳, מוצאי שבת"), the week-start setting, the activity log and the list send form's dates.
+- `messages/he.json`: `days.sat.long` is "שבת". Nothing else read the old words.
+- Checked: `pnpm check` (1954 tests), `pnpm build`; `/design` at 390, 820 and 1440: the toggle reads "ש׳, שבת", axe clean, no horizontal scroll.
+- Restore point: branch `backup/before-night-2026-11-13` at `c036b8f` (the tag push was cut off again). Commit: at merge.
+- Next: Orel's phone checks (C8, list photos, push once VAPID is set) and his open decisions (#139, #132, Playwright's browser).
+- Defaults applied: none.
+
 ## 2026-11-12 · chat · official documents' files through the server only
 
 - On chat/documents-server-only, stacked on C7 (chat/documents-screens, #134). Orel's decision of 12 November (#1): a document's file is served only through the server. Until now whoever read a document's row could fetch its file straight from Storage with their own access token (copied from the browser's developer tools), with no `public.open_document` and so no `document.open` row in the access log of reg 10, and could ask Storage for a signed URL that anyone opens without signing in, for as long as asked, after their access is gone too.
