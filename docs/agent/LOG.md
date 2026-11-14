@@ -3,6 +3,16 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-14 · nightly run 37 · the availability test reads havdalah from the screen
+
+- Guessed: no open work from Orel. Since the last run only #143 merged (the boundaries test on Windows), and Orel checked it green on Windows himself, so the smallest known issue in `docs/ROADMAP.md` was next: "בדיקת הזמינות תיכשל בסביבות מרץ 2027". `e2e/availability.spec.ts` set Saturday's start to a fixed 19:30, which falls before havdalah once the clocks move (about 19:30 in late March, past 20:30 in summer), so the screen would refuse it and the test fail.
+- The test now reads the hour from Saturday's sheet ("צאת שבת HH:MM. אפשר לסמן שעות מאז."), fills it in and expects it stored. 12:00 is still refused first. Friday's 23:00 (refused) and 12:00 (kept) hold all year, so they stay.
+- `docs/ROADMAP.md`: the known issue removed, the ones after it renumbered.
+- Checked: `pnpm check` (1954 tests), `pnpm build`. The e2e itself runs in CI only (no Docker here). No screen changed, so no screenshots.
+- Restore point: branch `backup/before-night-2026-11-14` at `7d4d10d` (the tag push was refused again). Commit: at merge.
+- Next: Orel's phone checks (C8, list photos, push once VAPID is set) and his open decisions (#139, #132, Playwright's browser).
+- Defaults applied: none.
+
 ## 2026-11-13 · nightly run 36 · Saturday is "שבת"
 
 - Guessed: no open work from Orel. The last merge (#140, Label in Name) asked in its note whether Saturday's name should be "שבת": `days.sat.long` was "מוצאי שבת" (a restaurant's evening shift, from the prototype), while English says "Saturday" and the app's other day lists already say "שבת". It showed in the day toggles' names ("ש׳, מוצאי שבת"), the week-start setting, the activity log and the list send form's dates.
