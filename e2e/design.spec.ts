@@ -172,6 +172,10 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/settings",
   "/design/console/businesses/demo-restaurant/lists",
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
+  "/design/console/businesses/demo-restaurant/access",
+  "/design/console/businesses/demo-restaurant/access?state=readOnly",
+  // A business nobody has joined yet: only an invite, and one that ran out.
+  "/design/console/businesses/bar-hayam/access",
 ];
 
 // The chat demo's states that open with a sheet (who confirmed, a message's
@@ -1861,4 +1865,88 @@ test("the documents demo confirms a document that asks for it", async ({
     page.getByRole("status").filter({ hasText: d.confirmedNow }),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: d.confirm })).toHaveCount(0);
+});
+
+// Who sees pay from the console (its twin): the business's people lead there,
+// the screen goes back to the business by its name, and a team role that only
+// reads businesses sees the switches and can't change them, told why in the
+// console's own words. A business nobody has joined yet says nobody sees pay,
+// and that whoever joins shows up.
+test("the console's twin leads to who sees pay, and back to the business", async ({
+  page,
+}) => {
+  const a = he.app.manage.access;
+  const addMenu = page.getByRole("button", {
+    name: `${heT("app.manage.access.personal.addLabel", { add: a.personal.add })}: ${a.personal.choose}`,
+  });
+  const removeNoa = page.getByRole("button", {
+    name: heT("app.manage.access.personal.removeLabel", {
+      remove: a.personal.remove,
+      name: "נועה כהן",
+    }),
+  });
+  const shiran = page.getByRole("menuitemradio", { name: /שירן אלון/ });
+  await page.goto("/design/console/businesses/demo-restaurant");
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(`^${a.title}`) })
+    .click();
+  await expect(page).toHaveURL(
+    /\/design\/console\/businesses\/demo-restaurant\/access$/,
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: a.title }),
+  ).toBeVisible();
+  const managers = page.getByRole("switch", { name: a.roles.manager });
+  await expect(managers).toBeEnabled();
+  await expect(managers).toHaveAttribute("aria-checked", "false");
+  // Noa sees pay on her own; Shiran, a manager, can be added.
+  await expect(removeNoa).toBeEnabled();
+  await addMenu.click();
+  await expect(shiran).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(shiran).toHaveCount(0);
+  await expect(page.getByText(he.admin.access.failure.viewOnly)).toHaveCount(0);
+
+  await page.goto(
+    "/design/console/businesses/demo-restaurant/access?state=readOnly",
+  );
+  await expect(page.getByText(he.admin.access.failure.viewOnly)).toBeVisible();
+  await expect(page.getByText(a.failure.viewOnly)).toHaveCount(0);
+  await expect(managers).toBeDisabled();
+  await expect(removeNoa).toBeDisabled();
+  await expect(addMenu).toHaveCount(0);
+  await page.getByRole("link", { name: "מסעדת הדגמה", exact: true }).click();
+  await expect(page).toHaveURL(
+    /\/design\/console\/businesses\/demo-restaurant$/,
+  );
+
+  // Nobody in the business yet: nobody sees pay, and nobody is offered.
+  await page.goto("/design/console/businesses/bar-hayam/access");
+  await expect(
+    page.getByText(heT("app.manage.access.count", { count: 0 })),
+  ).toBeVisible();
+  await expect(page.getByText(a.personal.noStaff)).toBeVisible();
+  await expect(page.getByText(a.personal.nobody)).toHaveCount(0);
+  await expect(page.getByText(he.admin.access.nobody)).toHaveCount(0);
+  await expect(addMenu).toHaveCount(0);
+});
+
+// The inbox's twin has pay access the ConceptApp team gave from the console:
+// its line says so, and on a computer the "who" cell is the team itself (the
+// line's note names the team too, so the cell alone is checked).
+test("the inbox twin says the ConceptApp team gave pay access", async ({
+  page,
+}, testInfo) => {
+  const n = he.app.notifications;
+  const byTeam = n.kinds.access.pay_granted.byTeam;
+  await page.goto("/design/shell/notifications");
+  await expect(
+    page.getByText(byTeam).filter({ visible: true }).first(),
+  ).toBeVisible();
+  if (testInfo.project.name === "desktop") {
+    await expect(
+      page.getByRole("row").filter({ hasText: byTeam }).getByRole("rowheader"),
+    ).toHaveText(n.who.team);
+  }
 });

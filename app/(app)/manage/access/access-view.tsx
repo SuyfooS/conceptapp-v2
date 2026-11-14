@@ -2,6 +2,7 @@
 
 import {
   canGetPersonalPay,
+  hasPayRoleStaff,
   overPayHoldersWarning,
   PAY_ROLES,
   type PayRole,
@@ -68,23 +69,31 @@ function useUndoSlot() {
  * it. Each write names the business the screen was drawn for, and the
  * server refuses it in any other. How many see pay is said under
  * the roles, with the warning past ten. Phone: one column. Tablet and desktop:
- * the roles at the start, the personal access at the end.
+ * the roles at the start, the personal access at the end. The same screen is
+ * the ConceptApp team's in the console (`paths.place`), with its own actions,
+ * its way back to the business and its own words for what a team role can't
+ * do; it notes no view there (`noted`). There a business may have nobody in
+ * it yet, and the screen says nobody sees pay and that whoever joins shows
+ * up, and someone on the team who is also in the business can't take away
+ * their own access.
  */
 export function AccessView({
   data,
   actions,
   paths,
-  month,
-  note,
+  noted,
 }: {
   data: AccessData;
   actions: AccessActions;
   paths: AccessPaths;
-  /** The business's month today, for the view's note. */
-  month: string;
-  note: NotePayView;
+  /**
+   * Notes that the owner opened it (`payroll.view`), with the business's
+   * month today; null in the console, where the team holds no pay access.
+   */
+  noted: { month: string; note: NotePayView } | null;
 }) {
   const t = useTranslations("app.manage.access");
+  const tConsole = useTranslations("admin.access");
   const tRoles = useTranslations("app.team.roles");
   const id = useId();
   // What the screen shows is its own from here: each change shows at once.
@@ -104,6 +113,34 @@ export function AccessView({
 
   const nameOf = (person: AccessPersonRow) => person.name ?? t("noName");
   const disabled = data.viewOnly;
+  /**
+   * What went wrong, said to whoever reads it: in the console, what a team
+   * role can't do, and someone no longer in the business (not "the team");
+   * what only the console's actions say, in its words wherever it comes.
+   */
+  const failureWords = (failure: AccessFailure) => {
+    if (failure === "notInUse" || failure === "self") {
+      return tConsole(`failure.${failure}`);
+    }
+    return paths.place === "console" &&
+      (failure === "noAccess" ||
+        failure === "viewOnly" ||
+        failure === "notInTeam")
+      ? tConsole(`failure.${failure}`)
+      : t(`failure.${failure}`);
+  };
+  /**
+   * Why nobody is offered: nobody pay access is given to (no managers or
+   * workers yet, as in a business the team has just set up), or all of them
+   * see it already, "the business" in the console, where "the team" is
+   * ConceptApp's.
+   */
+  const nobodyWords = () => {
+    if (!hasPayRoleStaff(people)) return t("personal.noStaff");
+    return paths.place === "console"
+      ? tConsole("nobody")
+      : t("personal.nobody");
+  };
   /** Their role sees pay anyway, with or without their own access. */
   const roleCovers = (person: AccessPersonRow) =>
     roles.some((role) => role === person.role);
@@ -294,21 +331,27 @@ export function AccessView({
 
   return (
     <PageBody className={pageGlowClass}>
-      <NoteView month={month} kind="access" note={note} />
+      {noted ? (
+        <NoteView month={noted.month} kind="access" note={noted.note} />
+      ) : null}
       <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
       <PageHeader
-        back={{ href: paths.manage, label: t("back") }}
+        back={
+          paths.place === "app"
+            ? { href: paths.manage, label: t("back") }
+            : { href: paths.business, label: paths.name }
+        }
         title={t("title")}
         subtitle={t("subtitle")}
       />
 
       {failure ? (
         <p role="alert" className="px-1 font-medium text-danger">
-          {t(`failure.${failure}`)}
+          {failureWords(failure)}
         </p>
       ) : null}
       {disabled ? (
-        <p className="px-1 text-ink-2">{t("failure.viewOnly")}</p>
+        <p className="px-1 text-ink-2">{failureWords("viewOnly")}</p>
       ) : null}
 
       <div className="flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8">
@@ -372,18 +415,25 @@ export function AccessView({
                       : tRoles(person.role)
                   }
                   trailing={
-                    <Button
-                      variant="secondary"
-                      disabled={disabled}
-                      // The word it shows, then whose access it takes away.
-                      aria-label={t("personal.removeLabel", {
-                        remove: t("personal.remove"),
-                        name: nameOf(person),
-                      })}
-                      onClick={() => remove(person)}
-                    >
-                      {t("personal.remove")}
-                    </Button>
+                    // Nobody changes their own (the database refuses it): in
+                    // the console, someone on the team who is also in the
+                    // business, given access by its owner.
+                    person.userId === data.me ? (
+                      <span className="text-ink-2">{t("personal.self")}</span>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        disabled={disabled}
+                        // The word it shows, then whose access it takes away.
+                        aria-label={t("personal.removeLabel", {
+                          remove: t("personal.remove"),
+                          name: nameOf(person),
+                        })}
+                        onClick={() => remove(person)}
+                      >
+                        {t("personal.remove")}
+                      </Button>
+                    )
                   }
                 />
               ))}
@@ -420,7 +470,7 @@ export function AccessView({
               </FieldRow>
             </ListGroup>
           ) : candidates.length === 0 ? (
-            <p className="px-1 text-ink-2 text-sm">{t("personal.nobody")}</p>
+            <p className="px-1 text-ink-2 text-sm">{nobodyWords()}</p>
           ) : null}
         </PageSection>
       </div>

@@ -19,7 +19,7 @@ import { ListGroup } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
-import { Bell } from "lucide-react";
+import { Bell, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
@@ -121,7 +121,10 @@ export function InboxView({
       year: "numeric",
       timeZone: "UTC",
     });
-  /** Who a line names or is from: the app itself for its own reminders. */
+  /**
+   * Who a line names or is from: the app itself for its own reminders, and
+   * the ConceptApp team for what it did from the console.
+   */
   const who = (person: NotificationActor) =>
     person.kind === "member"
       ? (person.name ?? t("who.noName"))
@@ -461,7 +464,16 @@ export function InboxView({
             ? t("kinds.access.pay_granted.settledTitle")
             : t("kinds.access.pay_granted.title"),
           shift: null,
-          notes: settled ? [] : [t("kinds.access.pay_granted.note")],
+          // Given from the console: every shape says it was the ConceptApp
+          // team, not a colleague (a phone shows no "who").
+          notes: settled
+            ? []
+            : [
+                ...(entry.actor.kind === "team"
+                  ? [t("kinds.access.pay_granted.byTeam")]
+                  : []),
+                t("kinds.access.pay_granted.note"),
+              ],
         };
       case "pay.wage_set":
         return {
@@ -623,8 +635,11 @@ export function InboxView({
       return {
         entry,
         ...words(entry),
+        // The ConceptApp team has the mark the activity log gives it.
         leading: actor ? (
           <PersonAvatar name={actor} />
+        ) : entry.actor.kind === "team" ? (
+          <ShieldCheck />
         ) : (
           (entry.group && GROUP_ICONS[entry.group]) || <Bell />
         ),

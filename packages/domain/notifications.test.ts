@@ -984,6 +984,65 @@ describe("buildInbox", () => {
     expect(needsAction("access.pay_granted")).toBe(false);
   });
 
+  it("says pay access given from the console is from the ConceptApp team, never a colleague", () => {
+    // TEAM was never in the business: someone on the ConceptApp team gave it
+    // from the console, in their own name (set_member_permission's actor).
+    const TEAM = "66666666-6666-4666-8666-666666666666";
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: TEAM }), NOA),
+    ).toMatchObject({
+      actor: { kind: "team" },
+      href: "/clock/pay",
+      line: { kind: "access.pay_granted" },
+    });
+    // Upper case as any id may come: the same person.
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: TEAM.toUpperCase() }))
+        ?.actor,
+    ).toEqual({ kind: "team" });
+    // The owner who gave it, in the business now, by name; one who left, as
+    // someone who left; an account gone, as nobody known. None is the team.
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: YOAV }))?.actor,
+    ).toEqual({ kind: "member", name: "Yoav" });
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: LEFT }))?.actor,
+    ).toEqual({ kind: "former" });
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: null }))?.actor,
+    ).toEqual({ kind: "unknown" });
+  });
+
+  it("reads an actor the business never had as the ConceptApp team, in every kind", () => {
+    const TEAM = "66666666-6666-4666-8666-666666666666";
+    // A line of what someone did: the team, never "someone on the team".
+    expect(
+      lineOf(
+        row(
+          "schedule.published",
+          { week: GONE, startsOn: "2026-11-15", mine: 3 },
+          { actorId: TEAM },
+        ),
+      )?.actor,
+    ).toEqual({ kind: "team" });
+    // One the app writes on its own: from the app with nobody behind it,
+    // from the team when one of it is, and from a colleague by name.
+    expect(lineOf(row("lists.due", {}, { actorId: null }))?.actor).toEqual({
+      kind: "app",
+    });
+    expect(lineOf(row("lists.due", {}, { actorId: TEAM }))?.actor).toEqual({
+      kind: "team",
+    });
+    expect(lineOf(row("lists.due", {}, { actorId: YOAV }))?.actor).toEqual({
+      kind: "member",
+      name: "Yoav",
+    });
+    // An id that isn't one is nobody known, not the team.
+    expect(
+      lineOf(row("schedule.published", {}, { actorId: "not-an-id" }))?.actor,
+    ).toEqual({ kind: "unknown" });
+  });
+
   it("keeps pay access taken back in the inbox, where the hours are closed", () => {
     expect(
       lineOf(

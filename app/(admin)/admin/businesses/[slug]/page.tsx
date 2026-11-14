@@ -1,8 +1,9 @@
 import { getBusinessSetup } from "@db/admin";
-import { platformCan } from "@domain/platform";
+import { consolePayAccess, platformCan } from "@domain/platform";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentPlatformRole } from "../../../staff";
+import { payAccessIn } from "./access/pay-access";
 import { inviteLinkAction, viewAsAction } from "./actions";
 import { BusinessView } from "./business-view";
 
@@ -27,6 +28,10 @@ export default async function BusinessSetupPage({
   ]);
   const business = await getBusinessSetup(slug);
   if (!business) notFound();
+  // Who sees pay, where a module that is on uses it (its page says why).
+  const payAccess =
+    consolePayAccess(role) !== null &&
+    (await payAccessIn(business.id)) !== null;
 
   return (
     <BusinessView
@@ -48,6 +53,9 @@ export default async function BusinessSetupPage({
         platformCan(role, "staff.invite")
           ? `/admin/businesses/${business.slug}/people/new`
           : null
+      }
+      accessHref={
+        payAccess ? `/admin/businesses/${business.slug}/access` : null
       }
       viewAs={
         platformCan(role, "businesses.view_as")

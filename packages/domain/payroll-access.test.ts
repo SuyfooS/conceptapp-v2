@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  accessOrder,
   canGetPersonalPay,
   canGrantPay,
   canSeePay,
   decimalHours,
   defaultPayMonth,
+  hasPayRoleStaff,
   overPayHoldersWarning,
   PAY_PERMISSION,
   payHolderCount,
@@ -102,5 +104,37 @@ describe("decimalHours", () => {
     expect(decimalHours(0)).toBe("0.00");
     expect(decimalHours(1)).toBe("0.02");
     expect(decimalHours(-5)).toBe("0.00");
+  });
+});
+
+describe("accessOrder", () => {
+  it("lists people by name in Hebrew order, those without one last", () => {
+    const people = [
+      { name: null },
+      { name: "תמר" },
+      { name: "אורי" },
+      { name: "מאיה" },
+    ];
+    expect([...people].sort(accessOrder).map((p) => p.name)).toEqual([
+      "אורי",
+      "מאיה",
+      "תמר",
+      null,
+    ]);
+  });
+});
+
+describe("hasPayRoleStaff", () => {
+  it("is true once a manager or a worker is in the business", () => {
+    expect(hasPayRoleStaff([{ role: "manager" }])).toBe(true);
+    expect(hasPayRoleStaff([{ role: "owner" }, { role: "worker" }])).toBe(true);
+  });
+
+  it("is false with nobody, or only owners and accountants", () => {
+    // A business the team has just set up, before anyone joined.
+    expect(hasPayRoleStaff([])).toBe(false);
+    expect(hasPayRoleStaff([{ role: "owner" }, { role: "accountant" }])).toBe(
+      false,
+    );
   });
 });

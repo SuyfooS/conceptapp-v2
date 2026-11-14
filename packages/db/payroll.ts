@@ -4,6 +4,8 @@ import type { OriginalTimes } from "@domain/pay-month";
 import { PAY_PERMISSION, type PayRole } from "@domain/payroll-access";
 import { type AddressForm, addressFormOf } from "@domain/profile";
 import { profilePhotoSrc } from "@domain/profile-photos";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "./database.types";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -14,7 +16,8 @@ import { createClient } from "./supabase/server";
  * in the business for whoever holds clock.payroll (20261110000300_payroll_access.sql).
  * Grants are written with the secret key for `actor`, whom the database checks
  * is an owner or on the ConceptApp team; callers make sure the actor is the
- * signed-in person and not viewing as someone else.
+ * signed-in person and not viewing as someone else. The console reads the
+ * same with the secret key (`getPayAccessForTeam`), behind its own check.
  */
 
 /** Someone who is or was on the staff, for the month's hours. */
@@ -157,7 +160,13 @@ export async function getLastPayrollExport(
  * the signed-in person may read them: its members, and the team viewing it.
  */
 export async function getPayRoles(businessId: string): Promise<PayRole[]> {
-  const supabase = await createClient();
+  return readPayRoles(await createClient(), businessId);
+}
+
+async function readPayRoles(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+): Promise<PayRole[]> {
   const { data, error } = await supabase
     .from("role_permissions")
     .select("role")
@@ -190,7 +199,13 @@ export type AccessPerson = {
 export async function getAccessPeople(
   businessId: string,
 ): Promise<AccessPerson[]> {
-  const supabase = await createClient();
+  return readAccessPeople(await createClient(), businessId);
+}
+
+async function readAccessPeople(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+): Promise<AccessPerson[]> {
   const { data, error } = await supabase
     .from("memberships")
     .select("user_id, role, perms, profiles (full_name, avatar_path)")
@@ -204,6 +219,30 @@ export async function getAccessPeople(
     role: row.role,
     personal: isStaff(row.role) && row.perms.includes(PAY_PERMISSION),
   }));
+}
+
+/**
+ * Who sees pay in a business, for the console's "מי רואה שכר": the roles
+ * given it and the business's active members, each with their personal
+ * access. Read with the secret key: the team isn't a member, so RLS has
+ * nothing to show it, and no policy is widened for it. Callers check that
+ * the person is on the team first (`consolePayAccess`). Without photos: the
+ * team reads no one's photo (Storage lets people read only their own and
+ * their colleagues'), so each is drawn by initials, as the console's list of
+ * the business's people is.
+ */
+export async function getPayAccessForTeam(
+  businessId: string,
+): Promise<{ roles: PayRole[]; people: AccessPerson[] }> {
+  const admin = createAdminClient();
+  const [roles, people] = await Promise.all([
+    readPayRoles(admin, businessId),
+    readAccessPeople(admin, businessId),
+  ]);
+  return {
+    roles,
+    people: people.map((person) => ({ ...person, photo: null })),
+  };
 }
 
 export type GrantFailure = "noAccess" | "notInTeam" | "always" | "failed";

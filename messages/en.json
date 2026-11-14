@@ -2432,7 +2432,7 @@
           "worker": "Workers"
         },
         "always": "Always",
-        "count": "{count, plural, one {One person sees} other {# people see}} the hours and pay",
+        "count": "{count, plural, =0 {Nobody sees} one {One person sees} other {# people see}} the hours and pay",
         "overTen": "With more than 10 people seeing pay, the business moves to a medium security level",
         "personal": {
           "empty": "Nobody has personal access. You can add someone, such as a worker who also does the books.",
@@ -2443,6 +2443,8 @@
           "add": "Add someone",
           "addLabel": "{add} to see the hours and pay",
           "nobody": "The whole team already sees the hours and pay.",
+          "noStaff": "No managers or workers in the business yet. Whoever joins shows here.",
+          "self": "You can't remove your own",
           "choose": "Choose"
         },
         "done": {
@@ -2463,7 +2465,7 @@
         },
         "noName": "No name",
         "documents": "Whoever sees pay also sees the documents people send the business",
-        "documentsCount": "{count, plural, one {# person can reach the documents} other {# people can reach the documents}}"
+        "documentsCount": "{count, plural, =0 {Nobody can reach the documents} one {# person can reach the documents} other {# people can reach the documents}}"
       },
       "ownerOnly": "Owners only",
       "departments": {
@@ -2652,7 +2654,8 @@
         "noName": "No name",
         "former": "Someone no longer on the team",
         "unknown": "Someone on the team",
-        "app": "The app"
+        "app": "The app",
+        "team": "The ConceptApp team"
       },
       "shift": "{name}, {day} {date}, <ltr>{start}–{end}</ltr>",
       "kinds": {
@@ -2777,7 +2780,8 @@
           "pay_granted": {
             "title": "You were given access to hours and pay",
             "settledTitle": "Your access to hours and pay was removed",
-            "note": "Everyone's hours in the business, in hours for payroll"
+            "note": "Everyone's hours in the business, in hours for payroll",
+            "byTeam": "Given by the ConceptApp team"
           }
         },
         "other": {
@@ -4617,6 +4621,16 @@
       "title": "Add a person to the business",
       "subtitle": "A name, a mobile and a role at {name}, and you get a link to send in a message.",
       "back": "Back to {name}"
+    },
+    "access": {
+      "nobody": "Everyone in the business already sees the hours and pay.",
+      "failure": {
+        "noAccess": "Your role on the ConceptApp team can't change who sees pay.",
+        "viewOnly": "Your role on the ConceptApp team can see who sees pay, but not change it.",
+        "notInTeam": "This person is no longer in the business.",
+        "notInUse": "The clock and chat are off in the business now, so the change wasn't saved. Reload the screen.",
+        "self": "You can't change your own access, so the change wasn't saved."
+      }
     },
     "wording": {
       "title": "The business's sentences",

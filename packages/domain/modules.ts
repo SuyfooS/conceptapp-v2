@@ -309,6 +309,26 @@ export function canOpenModule(
 }
 
 /**
+ * Whether a permission opens anything in a business with these modules on: a
+ * module that is on declares it, or opens its tab for someone off the staff
+ * by it (chat's documents open by time_clock's `clock.payroll`). Where none
+ * does, giving it changes nothing anyone sees, so the console doesn't offer
+ * it (who sees pay).
+ */
+export function permissionInUse(
+  manifests: readonly ModuleManifest[],
+  enabled: readonly ModuleKey[],
+  key: string,
+): boolean {
+  return manifests.some(
+    (manifest) =>
+      enabled.includes(manifest.key) &&
+      (manifest.permissions.some((permission) => permission.key === key) ||
+        manifest.nav?.outsideStaff?.perm === key),
+  );
+}
+
+/**
  * What an accountant always holds, and nothing else (`private.accountant_perms`
  * in the database; `modules/permissions.db.test.ts` keeps the two the same).
  */
