@@ -31,9 +31,8 @@ export default async function AccessPage() {
         setRole: setRolePayAction.bind(null, business.id),
         setPerson: setPersonalPayAction.bind(null, business.id),
       }}
-      paths={{ manage: "/manage" }}
-      month={monthOf(today)}
-      note={notePayViewAction}
+      paths={{ place: "app", manage: "/manage" }}
+      noted={{ month: monthOf(today), note: notePayViewAction }}
     />
   );
 }

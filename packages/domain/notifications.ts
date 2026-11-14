@@ -975,11 +975,17 @@ export type NotificationPerson =
   | { kind: "unknown" };
 
 /**
- * Who a line is from: a person, or the app itself for a kind it writes on
- * its own (`byApp`: a reminder, a list or a month coming due) with nobody
- * behind it.
+ * Who a line is from: a person, the app itself for a kind it writes on its
+ * own (`byApp`: a reminder, a list or a month coming due) with nobody behind
+ * it, or the ConceptApp team, from the console (pay access given there): an
+ * actor who was never in the business, which the activity log reads the same
+ * way (`actorOf` in ./activity), never a colleague's name or "someone on the
+ * team".
  */
-export type NotificationActor = NotificationPerson | { kind: "app" };
+export type NotificationActor =
+  | NotificationPerson
+  | { kind: "app" }
+  | { kind: "team" };
 
 /** A shift as a line shows it: what everyone reads in the published week. */
 export type NotificationShift = {
@@ -1259,6 +1265,29 @@ function personOf(
   return member.active
     ? { kind: "member", name: member.name }
     : { kind: "former" };
+}
+
+/**
+ * Who a line is from. The app, for a line it wrote on its own; someone
+ * unknown when the actor's account is gone (set null). An actor the business
+ * never had as a member, active or not, is the ConceptApp team: the only
+ * other writer of a business's log (the console gives pay access, through
+ * the secret key, in the team member's name). The reader reads every
+ * membership of their business, those of people who left included
+ * (`private.is_member`), and `notificationRefs` asks for every actor, so a
+ * colleague is never taken for the team.
+ */
+function actorOf(
+  actorId: string | null,
+  info: KindInfo | null,
+  lookups: NotificationLookups,
+): NotificationActor {
+  if (actorId === null) {
+    return info?.byApp ? { kind: "app" } : { kind: "unknown" };
+  }
+  if (!isUuid(actorId)) return { kind: "unknown" };
+  if (!lookups.members.has(actorId.toLowerCase())) return { kind: "team" };
+  return personOf(actorId, lookups);
 }
 
 /** The category of a document a line names, as the reader may still read it. */
@@ -1575,12 +1604,7 @@ export function buildInbox(
       at: row.createdAt,
       read: row.readAt !== null,
       settled: row.resolvedAt !== null,
-      // A line the app wrote on its own is from the app; one whose actor's
-      // account is gone (set null) is from someone unknown.
-      actor:
-        row.actorId === null && info?.byApp
-          ? { kind: "app" }
-          : personOf(row.actorId, lookups),
+      actor: actorOf(row.actorId, info, lookups),
       group: info ? info.group : null,
       href: linkFor(row.kind, row.params, row.resolvedAt !== null),
       line: lineOf(row, lookups, readerId),

@@ -2793,3 +2793,107 @@ export async function setRemindersSettings(
     where business_id = ${REMINDERS_BUSINESS}
       and module_key = 'notifications'`;
 }
+
+/**
+ * Who sees pay from the console (Orel's payroll decision 1): a real business
+ * the ConceptApp team changes it in, as its owner would, with an owner and a
+ * worker of its own (their ids and numbers are in no other spec, and in no
+ * pgTAP test either, which runs on the same local database and keeps its
+ * logins), from the shop's template, so the time clock is on. Made afresh
+ * each run, through the database functions the app uses.
+ */
+export const PAY_ACCESS_BUSINESS = {
+  id: "00000000-0000-4000-b000-0000000000e8",
+  slug: "pay-access-e2e",
+  name: "החנות של מי רואה שכר",
+} as const;
+export const PAY_ACCESS_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000947",
+    name: "אביטל שכר",
+    local: "050-000-0947",
+    e164: "+972500000947",
+  },
+  worker: {
+    id: "00000000-0000-4000-a000-000000000948",
+    name: "עידו שכר",
+    local: "050-000-0948",
+    e164: "+972500000948",
+  },
+} as const;
+
+export async function openPayAccessBusiness(): Promise<void> {
+  await openRealBusiness({ ...PAY_ACCESS_BUSINESS, ...PAY_ACCESS_PEOPLE });
+}
+
+/** Forget the business, when the spec is done. */
+export async function closePayAccessBusiness(): Promise<void> {
+  await deleteRealBusiness(PAY_ACCESS_BUSINESS.id);
+}
+
+/**
+ * The time clock and chat on or off in the business: with both off, pay
+ * access opens nothing there, and the console offers none.
+ */
+export async function setPayAccessModules(on: boolean): Promise<void> {
+  await sql`update public.business_modules set enabled = ${on}
+    where business_id = ${PAY_ACCESS_BUSINESS.id}
+      and module_key in ('time_clock', 'chat')`;
+}
+
+/** The roles the business gives pay access to, in order. */
+export async function payAccessRoles(): Promise<string[]> {
+  const rows = await sql<{ role: string }[]>`
+    select role::text as role from public.role_permissions
+    where business_id = ${PAY_ACCESS_BUSINESS.id} and perm = 'clock.payroll'
+    order by role`;
+  return rows.map((row) => row.role);
+}
+
+/** Whether the person was given pay access in the business on their own. */
+export async function payAccessPersonal(userId: string): Promise<boolean> {
+  const [row] = await sql<{ personal: boolean }[]>`
+    select 'clock.payroll' = any (perms) as personal from public.memberships
+    where business_id = ${PAY_ACCESS_BUSINESS.id} and user_id = ${userId}`;
+  return row?.personal ?? false;
+}
+
+/**
+ * The business's changes of who sees pay, oldest first: grant or revoke, by
+ * whom (their id) and for whom (a role, or a person's id).
+ */
+export async function payAccessLog(): Promise<
+  {
+    action: string;
+    actor: string | null;
+    role: string | null;
+    person: string | null;
+  }[]
+> {
+  return await sql<
+    {
+      action: string;
+      actor: string | null;
+      role: string | null;
+      person: string | null;
+    }[]
+  >`
+    select action, actor_id::text as actor, details ->> 'role' as role,
+      details ->> 'person' as person
+    from public.audit_log
+    where business_id = ${PAY_ACCESS_BUSINESS.id}
+      and action in ('permission.grant', 'permission.revoke')
+    order by created_at, id`;
+}
+
+/** The person's lines about their pay access in the business: who wrote them and whether settled. */
+export async function payAccessLines(
+  userId: string,
+): Promise<{ actor: string | null; settled: boolean }[]> {
+  return await sql<{ actor: string | null; settled: boolean }[]>`
+    select actor_id::text as actor, resolved_at is not null as settled
+    from public.notifications
+    where business_id = ${PAY_ACCESS_BUSINESS.id} and user_id = ${userId}
+      and kind = 'access.pay_granted'
+    order by created_at`;
+}

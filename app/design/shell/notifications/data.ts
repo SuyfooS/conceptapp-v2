@@ -99,7 +99,8 @@ export const demoUnread: NotificationRow[] = [
 /**
  * Already read: hours someone else confirmed, her own wage set from the
  * first of the month (its day, never the amount), a swap decided, the week
- * published, someone joining.
+ * published, pay access the ConceptApp team gave her from the console (who
+ * was never in the restaurant, so the line says the team), someone joining.
  */
 export const demoEarlier: NotificationRow[] = [
   {
@@ -148,6 +149,16 @@ export const demoEarlier: NotificationRow[] = [
     actorId: PEOPLE.uri,
     createdAt: "2026-10-29T15:00:00.000Z",
     readAt: "2026-10-29T15:20:00.000Z",
+    resolvedAt: null,
+  },
+  {
+    id: "a0000000-0000-4000-8000-000000000012",
+    kind: "access.pay_granted",
+    params: {},
+    // Someone on the ConceptApp team: in no membership of the restaurant.
+    actorId: "00000000-0000-4000-a000-0000000000c0",
+    createdAt: "2026-10-27T09:30:00.000Z",
+    readAt: "2026-10-27T10:00:00.000Z",
     resolvedAt: null,
   },
   {

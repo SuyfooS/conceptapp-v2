@@ -14,6 +14,7 @@ import {
   type ModuleRow,
   moduleNav,
   moduleWidgets,
+  permissionInUse,
   ROLES,
   type Role,
   readModuleSettings,
@@ -298,6 +299,27 @@ describe("canOpenModule", () => {
         ["scheduling", "time_clock"],
         as("accountant", ["clock.payroll"]),
       ),
+    ).toBe(false);
+  });
+});
+
+describe("permissionInUse", () => {
+  it("is in use where a module that is on declares it", () => {
+    const both = [schedule, reservations];
+    expect(permissionInUse(both, ["reservations"], "clock.payroll")).toBe(true);
+    expect(permissionInUse(both, ["scheduling"], "clock.payroll")).toBe(false);
+  });
+
+  it("is in use where a module that is on opens a tab off the staff by it", () => {
+    // This clock declares no permission: its accountants' tab alone counts.
+    expect(permissionInUse(all, ["time_clock"], "clock.payroll")).toBe(true);
+    expect(permissionInUse(all, ["scheduling"], "clock.payroll")).toBe(false);
+  });
+
+  it("is never in use with nothing on, or for a key no module names", () => {
+    expect(permissionInUse(all, [], "clock.payroll")).toBe(false);
+    expect(
+      permissionInUse(all, ["scheduling", "time_clock"], "lists.manage"),
     ).toBe(false);
   });
 });

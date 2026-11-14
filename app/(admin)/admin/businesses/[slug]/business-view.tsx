@@ -19,6 +19,7 @@ import {
   ChevronRight,
   CircleDashed,
   Eye,
+  KeyRound,
   MessageSquareText,
   SlidersHorizontal,
   UserPlus,
@@ -44,7 +45,8 @@ function templateName(t: T, key: string | null) {
  * desktop: the checklist beside viewing as a role, and the people as a table
  * under them. Also rendered with mock data on /design/console/businesses.
  * Invites that ran out stay on the page, with a way to renew them, so a
- * business whose owner never joined is not stuck.
+ * business whose owner never joined is not stuck. Under the people, who sees
+ * pay, on its own page.
  */
 export async function BusinessView({
   business,
@@ -54,6 +56,7 @@ export async function BusinessView({
   settingsHref,
   wordingHref,
   addHref,
+  accessHref,
   viewAs,
   issue,
 }: {
@@ -67,11 +70,15 @@ export async function BusinessView({
   wordingHref: string | null;
   /** Where to add a person, when the person may invite staff. */
   addHref: string | null;
+  /** Who sees pay, where it opens something and the person reads it. */
+  accessHref: string | null;
   /** Bound to this business, when the person may view it as a role. */
   viewAs: ((form: FormData) => Promise<void>) | null;
   issue: Issue;
 }) {
   const t = await getTranslations("admin");
+  // Its row reads as the page it opens is named, as in the owner's /manage.
+  const tAccess = await getTranslations("app.manage.access");
   const template = templateName(t, business.templateKey);
   // Someone whose invite ran out can't join through it, so they don't count.
   const count = (r: Role) =>
@@ -164,7 +171,20 @@ export async function BusinessView({
           id="people"
           className="scroll-mt-4 md:col-start-2 md:row-span-2 md:row-start-1 xl:col-span-2 xl:col-start-1 xl:row-span-1 xl:row-start-2"
         >
-          <People t={t} business={business} issue={issue} />
+          <People
+            t={t}
+            business={business}
+            issue={issue}
+            access={
+              accessHref
+                ? {
+                    href: accessHref,
+                    title: tAccess("title"),
+                    subtitle: tAccess("row"),
+                  }
+                : null
+            }
+          />
         </div>
         {viewAs ? (
           <div className="md:col-start-1 md:row-start-2 xl:col-start-2 xl:row-start-1">
@@ -390,10 +410,13 @@ function People({
   t,
   business,
   issue,
+  access,
 }: {
   t: T;
   business: BusinessSetup;
   issue: Issue;
+  /** Who sees pay, its row as the owner's /manage names it. */
+  access: { href: string; title: string; subtitle: string } | null;
 }) {
   const { people } = business;
   const name = (n: string) => n || t("setup.people.noName");
@@ -517,6 +540,16 @@ function People({
           </div>
         </>
       )}
+      {access ? (
+        <ListGroup className="xl:max-w-2xl">
+          <ListRow
+            href={access.href}
+            leading={<KeyRound />}
+            title={access.title}
+            subtitle={access.subtitle}
+          />
+        </ListGroup>
+      ) : null}
     </PageSection>
   );
 }

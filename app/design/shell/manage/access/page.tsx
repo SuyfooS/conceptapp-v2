@@ -11,9 +11,8 @@ export default function ShellManageAccess() {
     <AccessView
       data={demoAccess}
       actions={{ setRole: demoSetRolePay, setPerson: demoSetPersonalPay }}
-      paths={{ manage: "/design/shell/manage" }}
-      month="2026-11"
-      note={demoNotePayView}
+      paths={{ place: "app", manage: "/design/shell/manage" }}
+      noted={{ month: "2026-11", note: demoNotePayView }}
     />
   );
 }

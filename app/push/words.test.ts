@@ -308,3 +308,45 @@ describe("the reminders' words on the phone", () => {
     expect(JSON.stringify(notice)).not.toContain("07:55");
   });
 });
+
+// Pay access given to the reader alone (payroll P3): who gave it is said only
+// when it was the ConceptApp team, from the console, so nobody reads a
+// stranger's grant as a colleague's. The owner's own needs no name.
+describe("pay access's words on the phone", () => {
+  const pay = he.app.notifications.kinds.access.pay_granted;
+  const granted = (
+    actor: NotificationEntry["actor"],
+    settled = false,
+  ): NotificationEntry => ({
+    ...entry({ kind: "access.pay_granted" }, settled),
+    actor,
+    group: null,
+    href: "/clock/pay",
+  });
+
+  it("says the ConceptApp team gave it from the console", () => {
+    expect(
+      pushWords(granted({ kind: "team" }), baseWording, "Asia/Jerusalem"),
+    ).toEqual({ title: pay.title, body: `${pay.byTeam}\n${pay.note}` });
+    expect(pay.byTeam).toContain("ConceptApp");
+  });
+
+  it("names nobody when the owner gave it", () => {
+    for (const actor of [
+      { kind: "member", name: "אורי הדגמה" },
+      { kind: "former" },
+      { kind: "unknown" },
+    ] as const) {
+      expect(pushWords(granted(actor), baseWording, "Asia/Jerusalem")).toEqual({
+        title: pay.title,
+        body: pay.note,
+      });
+    }
+  });
+
+  it("says once it was taken back, and nothing about who", () => {
+    expect(
+      pushWords(granted({ kind: "team" }, true), baseWording, "Asia/Jerusalem"),
+    ).toEqual({ title: pay.settledTitle });
+  });
+});

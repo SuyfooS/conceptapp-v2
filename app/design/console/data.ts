@@ -4,6 +4,8 @@
 
 import type { AdminBusiness, BusinessSetup } from "@db/admin";
 import type { StorageUse } from "@db/chat-files";
+import type { PayRole } from "@domain/payroll-access";
+import type { AccessData } from "../../(app)/manage/access/access-types";
 
 export const consoleUser = { name: "אורל הדגמה" };
 
@@ -269,3 +271,40 @@ export const demoWording = {
     "app.team.title": "הצוות של המסעדה",
   },
 };
+
+/**
+ * Who sees pay in the demo's businesses, as the console's "מי רואה שכר" shows
+ * it: the roles given it, and who was given it personally, by name. In the
+ * restaurant, managers don't see pay and Noa does on her own, so Shiran is
+ * there to add.
+ */
+const payAccess: Record<string, { roles: PayRole[]; personal: string[] }> = {
+  "demo-restaurant": { roles: [], personal: ["נועה כהן"] },
+  shulchan: { roles: ["manager"], personal: [] },
+};
+
+/**
+ * A business's people as the console's "מי רואה שכר" lists them: its members
+ * from `setups` (an invite isn't in the business yet), with their access.
+ * `readOnly`, as a team role that only reads businesses would see it.
+ */
+export function consoleAccess(slug: string, readOnly: boolean): AccessData {
+  const access = payAccess[slug] ?? { roles: [], personal: [] };
+  const members = (setups[slug]?.business.people ?? []).filter(
+    (person) => person.status === "member",
+  );
+  return {
+    roles: access.roles,
+    people: members.map((person, index) => ({
+      userId: `${slug}-${index}`,
+      name: person.name || null,
+      photo: null,
+      role: person.role,
+      personal: access.personal.includes(person.name),
+    })),
+    // Someone on the ConceptApp team, never in the business.
+    me: "console",
+    viewOnly: readOnly,
+    documents: true,
+  };
+}

@@ -89,6 +89,32 @@ export function canGetPersonalPay(
   );
 }
 
+/**
+ * Whether the business has anyone pay access is given to, by role or on their
+ * own: a manager or a worker. A business the team has just set up may have
+ * nobody yet, or only its owner, and the access screen says so rather than
+ * that everyone already sees pay.
+ */
+export function hasPayRoleStaff(people: readonly { role: Role }[]): boolean {
+  return people.some((person) =>
+    (PAY_ROLES as readonly Role[]).includes(person.role),
+  );
+}
+
+/**
+ * The order the access screen lists people in, the owner's and the console's
+ * alike: by name in Hebrew order, and those without one last.
+ */
+export function accessOrder(
+  a: { name: string | null },
+  b: { name: string | null },
+): number {
+  return (
+    (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
+    (a.name ?? "").localeCompare(b.name ?? "", "he")
+  );
+}
+
 /** The day of the month up to which the pay screens open on the month before. */
 export const PAY_MONTH_TURNS_ON = 10;
 

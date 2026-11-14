@@ -338,7 +338,13 @@ export function pushWords(
         ? { title: t("kinds.access.pay_granted.settledTitle") }
         : {
             title: t("kinds.access.pay_granted.title"),
-            ...body(t("kinds.access.pay_granted.note")),
+            // Given from the console: the ConceptApp team, as the inbox says.
+            ...body(
+              entry.actor.kind === "team"
+                ? t("kinds.access.pay_granted.byTeam")
+                : null,
+              t("kinds.access.pay_granted.note"),
+            ),
           };
     case "pay.wage_set":
       // The day it takes effect, never the amount.
