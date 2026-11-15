@@ -332,7 +332,7 @@ test("where the time clock and chat are off, the console offers no pay access", 
     ).toHaveCount(0);
     await owner.goto("/manage/access");
     await expect(
-      owner.getByRole("heading", { level: 1, name: he.errors.notFound.title }),
+      owner.getByRole("heading", { level: 1, name: he.app.notFound.title }),
     ).toBeVisible();
   } finally {
     await owner.context().close();
