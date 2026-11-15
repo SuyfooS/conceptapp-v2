@@ -2,12 +2,14 @@
 
 import {
   type AvailabilityRange,
+  addDays,
   dateIn,
   weekdayOf,
 } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import {
   begunShifts,
+  edgeWeek,
   gapsAhead,
   lockBegun,
   type ShiftStage,
@@ -301,6 +303,13 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
       if (moved) {
         const shifts = sent.current;
         setDay((current) => dayOfMoved(current, moved, shifts));
+      }
+      // A clash across the week's edge is with this week's first day (the
+      // week before) or its last (the week after): a phone shows that day.
+      const clash = result.edgeClash;
+      if (clash) {
+        const here = addDays(clash.day, clash.week === "previous" ? 1 : -1);
+        if (props.week.dates.includes(here)) setDay(here);
       }
       return result;
     },
@@ -951,6 +960,22 @@ function WeekBuilder({
               count: answer.past.length,
             })
           : t("app.build.errors.past");
+      }
+      case "edgeClash": {
+        // The shift of the week before or after, which this screen doesn't
+        // show, named for it: its name, day and start, and its week said from
+        // now. A phone shows the day of this week it meets.
+        const clash = answer.edgeClash;
+        if (!clash) return t("app.build.errors.edgeClashUnnamed", { intent });
+        return t.rich("app.build.errors.edgeClash", {
+          name: nameOf.get(clash.user) ?? t("app.shifts.former"),
+          shift: clash.name,
+          day: weekday(clash.day),
+          time: clash.start,
+          week: edgeWeek(running?.which ?? "next", clash.week),
+          intent,
+          ltr,
+        });
       }
       case "weekOver":
         return (

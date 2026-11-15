@@ -195,6 +195,40 @@ basis, sends the people added to it as `joins`, and maps the refusals
 (`shiftStarted`, `shiftEnded`, `past`, `weekOver`). Every pgTAP file that writes a published week again
 passes `at_time`. `running_week.test.sql` covers it.
 
+Nobody works two shifts at once across the week's edge either
+(`20261115000600_running_week_edge.sql`, the running-week plan's X). The
+people a save or a publish puts on shifts (those its check inside the week
+covers: on a shift it adds or moves, put on one, or joining one) are checked
+against their own shifts in the business's weeks either side (those starting
+up to seven days before or after it, from the week's own first day, whatever
+day the business's week starts on), drafts and published alike, by the moments
+the shifts run on the business's clock (`private.shift_span`'s, past midnight
+included, read from the shifts so one the spring change turns inside out holds
+up nothing); only shifts on days next to each other can meet, so only the
+neighbours' shifts from the day before the week to the day after it are read.
+Touching is fine, and someone kept where they were is not checked again. A
+clash inside the week is refused first, as before; one across the edge is
+22023 with hint `clash` and DETAIL `[{user, name, day, start, week}]` (the
+shift next door, `week` 'previous' or 'next'), which `edgeClashes` in
+`@db/schedule-errors` reads and the builder names ("… כבר במשמרת … של יום …",
+the phone showing the day of the week it meets).
+Both writes lock, as their first statement (`private.lock_week_edges`), the
+weeks either side with their own, one at a time in ascending order of their
+first day (their own for update, as before, the others for share), the same
+order `private.leave_staff` takes weeks in, so a save, a publish, a team change
+and a write of a week next door take turns instead of deadlocking; the demo's
+renewal takes the same locks before its publish, and leaves whoever works the
+weeks next door out of a shift that runs into theirs (the night before the
+first morning, and the morning after the last night). After the week's own
+requests, a write also locks the requests taken on those shifts next door, so
+an approval of one (which locks its request, then checks and puts its taker
+on) and the write take turns, and neither misses whom the other put on. A
+publish then opens again, with no taker, a request next door whose taker may
+no longer take it, logged in `reopened` and told as the week's own are; a
+draft saved, which is neither logged nor told, leaves it taken, its approval
+refused until the week is published. `running_week_edge.test.sql` covers it,
+and `tooling/running-week-edge.test.ts` pins the locks' order.
+
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
 `clock.confirm` from `confirm_time_entry`, `clock.code.locked`,
