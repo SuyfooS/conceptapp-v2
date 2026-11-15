@@ -3,12 +3,15 @@ import { accessOrder, canGrantPay } from "@domain/payroll-access";
 import { canWrite } from "@domain/view-as";
 import { currentMember } from "../../member";
 import { currentModules } from "../../modules";
+import { payAccessInUse } from "../manage";
 import type { AccessData } from "./access-types";
 
 /**
  * The owner, and their business, for who sees pay: an owner of it (or the
  * team viewing it as one, read only). Null for anyone else, who gets the
  * not-found screen. Managers never change who sees pay (Orel, 8 November 2026).
+ * `inUse` is false where no module that is on uses pay access: the page is not
+ * found there and the actions write nothing ("notInUse").
  */
 export async function accessAccess() {
   const member = await currentMember();
@@ -18,13 +21,14 @@ export async function accessAccess() {
     userId: member.userId,
     businessId: membership.business.id,
     viewOnly: !canWrite(member.viewing),
+    inUse: payAccessInUse(membership.business.modules),
   };
 }
 
 /** Who sees pay in the business: the roles given it, and everyone in it. */
 export async function currentAccess(): Promise<AccessData | null> {
   const access = await accessAccess();
-  if (!access) return null;
+  if (!access?.inUse) return null;
   const [roles, people, enabled] = await Promise.all([
     getPayRoles(access.businessId),
     getAccessPeople(access.businessId),
