@@ -7,8 +7,10 @@ import {
 } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import {
+  builderKey,
   doubleBooked,
   type ScheduledShift,
+  type ShiftBasis,
   scheduleGaps,
   shiftCoverage,
   shiftSlot,
@@ -29,6 +31,7 @@ import { useTranslations } from "next-intl";
 import {
   type MouseEvent,
   type ReactNode,
+  type RefObject,
   useActionState,
   useRef,
   useState,
@@ -66,7 +69,10 @@ export type ScheduleBuilderProps = {
   savedAt: string | null;
   /** ISO timestamp of the last publish, or null until it is published. */
   publishedAt: string | null;
+  /** The saved shifts with their ids, or the pattern's with none. */
   shifts: ScheduledShift[];
+  /** What was seen of each saved shift, sent back with the week. */
+  basis: ShiftBasis | null;
   /** Where the regular shifts are set, for a week with none. */
   manageHref: string;
   team: Pick<TeamMember, "userId" | "name" | "photo">[];
@@ -78,6 +84,14 @@ export type ScheduleBuilderProps = {
    * `intent` says whether to save the draft or publish.
    */
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
+};
+
+/** What the builder starts from: one reading of the week, kept together. */
+type Reading = {
+  key: string;
+  week: ScheduleBuilderProps["week"];
+  shifts: ScheduledShift[];
+  basis: ShiftBasis | null;
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -99,19 +113,115 @@ function focusOnScreen(selector: string) {
  * it, and publishing floats within reach on all three.
  *
  * Nothing reaches the server until the dock's buttons send the form, and the
- * form holds only what they need: the week as it stands on the screen.
+ * form holds only what they need: the week as it stands on the screen, with
+ * what was read of it. After each save or publish the server reads the week
+ * again (new shifts get their ids), and the builder starts again from that
+ * (`builderKey`): the form's state, the chosen day and the toast stay here,
+ * and the dock stays busy until the new reading is on the screen, so a second
+ * press never sends the same new shifts twice.
+ *
+ * The builder works on one reading at a time: the week, its shifts and what
+ * was seen of them, kept together. A new one from the server replaces it
+ * only while nothing on the screen is unsaved, which is so right after this
+ * screen's own write; a refresh that something else asked for while there is
+ * work here, or after a write that failed, leaves the work and what it was
+ * read from as they were.
  */
-export function ScheduleBuilder({
+export function ScheduleBuilder(props: ScheduleBuilderProps) {
+  const t = useTranslations();
+  const router = useRouter();
+  const { save } = props;
+  const [dirty, setDirty] = useState(false);
+  /** Where to go once the save in progress has worked. */
+  const leaveTo = useRef<string | null>(null);
+
+  const [state, action, pending] = useActionState(
+    async (prev: ScheduleState, data: FormData) => {
+      const result = await save(prev, data);
+      const target = leaveTo.current;
+      leaveTo.current = null;
+      if (result.savedAt && target) router.push(target);
+      return result;
+    },
+    initialState,
+  );
+  const done = !dirty && !pending;
+
+  const latest: Reading = {
+    key: builderKey(props.week.start, props.savedAt, props.publishedAt),
+    week: props.week,
+    shifts: props.shifts,
+    basis: props.basis,
+  };
+  const [reading, setReading] = useState(latest);
+  if (reading.key !== latest.key && done && state.failure === undefined) {
+    setReading(latest);
+  }
+  const { week } = reading;
+  const [day, setDay] = useState(week.dates[0] ?? week.start);
+
+  return (
+    <div className="flex flex-col gap-5 pb-20 xl:pb-16">
+      <WeekBuilder
+        key={reading.key}
+        {...props}
+        week={week}
+        shifts={reading.shifts}
+        basis={reading.basis}
+        // A day of the week on the screen, should the week itself change.
+        day={week.dates.includes(day) ? day : (week.dates[0] ?? week.start)}
+        onDay={setDay}
+        dirty={dirty}
+        onDirty={setDirty}
+        state={state}
+        action={action}
+        pending={pending}
+        leaveTo={leaveTo}
+      />
+      <StatusToast
+        message={
+          state.savedAt && done
+            ? state.published
+              ? t("app.build.published")
+              : t("app.build.saved")
+            : null
+        }
+        stamp={state.savedAt}
+      />
+    </div>
+  );
+}
+
+/** The builder as it stands between two saves. */
+function WeekBuilder({
   week,
   savedAt,
   publishedAt,
   shifts: initial,
+  basis,
   manageHref,
   team,
   answers,
   positions,
-  save,
-}: ScheduleBuilderProps) {
+  day,
+  onDay,
+  dirty,
+  onDirty: setDirty,
+  state,
+  action,
+  pending,
+  leaveTo,
+}: Omit<ScheduleBuilderProps, "save"> & {
+  /** The phone's chosen day, kept as the builder starts again. */
+  day: string;
+  onDay: (day: string) => void;
+  dirty: boolean;
+  onDirty: (dirty: boolean) => void;
+  state: ScheduleState;
+  action: (form: FormData) => void;
+  pending: boolean;
+  leaveTo: RefObject<string | null>;
+}) {
   const t = useTranslations();
   const router = useRouter();
   // Each shift gets an id of its own on this screen, so cards and the open
@@ -122,8 +232,13 @@ export function ScheduleBuilder({
   );
   /** Shifts taken off since the last save, each with the way back. */
   const [removed, setRemoved] = useState<ShiftRow[]>([]);
-  const [dirty, setDirty] = useState(false);
-  const [day, setDay] = useState(week.dates[0] ?? week.start);
+  // A save that worked takes the ways back with it. (After one the app's
+  // builder starts again anyway; the design demo's stays.)
+  const [handled, setHandled] = useState(state.savedAt);
+  if (state.savedAt !== handled) {
+    setHandled(state.savedAt);
+    if (state.savedAt) setRemoved([]);
+  }
   const [blocked, setBlocked] = useState(false);
   /** The button that sent the form last: save the draft, or publish. */
   const [intent, setIntent] = useState<"save" | "publish">("publish");
@@ -135,22 +250,6 @@ export function ScheduleBuilder({
   /** What opened the sheet: where focus goes back to when it closes. */
   const opener = useRef<HTMLElement | null>(null);
   const form = useRef<HTMLFormElement>(null);
-  /** Where to go once the save in progress has worked. */
-  const leaveTo = useRef<string | null>(null);
-
-  const [state, action, pending] = useActionState(
-    async (prev: ScheduleState, data: FormData) => {
-      const result = await save(prev, data);
-      const target = leaveTo.current;
-      leaveTo.current = null;
-      if (result.savedAt) {
-        setRemoved([]);
-        if (target) router.push(target);
-      }
-      return result;
-    },
-    initialState,
-  );
 
   const shifts = rows.map((r) => r.shift);
   const nameOf = new Map(
@@ -192,6 +291,8 @@ export function ScheduleBuilder({
   }
 
   function undoRemove(row: ShiftRow) {
+    // What is on its way stands as sent: the builder starts again from it.
+    if (pending) return;
     setRemoved(removed.filter((r) => r.id !== row.id));
     const at = shiftSlot(shifts, row.shift);
     edited([...rows.slice(0, at), row, ...rows.slice(at)]);
@@ -213,6 +314,7 @@ export function ScheduleBuilder({
   }
 
   function openSheet(next: SheetView, event: MouseEvent<HTMLElement>) {
+    if (pending) return;
     opener.current = event.currentTarget;
     setView(next);
     setSheetOpen(true);
@@ -378,7 +480,7 @@ export function ScheduleBuilder({
       : null;
 
   return (
-    <div className="flex flex-col gap-5 pb-20 xl:pb-16">
+    <>
       {initial.length === 0 ? (
         <Card padding="lg" className="md:max-w-xl">
           <CardText>
@@ -417,7 +519,7 @@ export function ScheduleBuilder({
       <PhoneWeek
         days={days}
         day={day}
-        onDay={setDay}
+        onDay={onDay}
         renderCards={renderCards}
         renderAdd={renderAdd}
       />
@@ -448,6 +550,7 @@ export function ScheduleBuilder({
       >
         <input type="hidden" name="week" value={week.start} />
         <input type="hidden" name="shifts" value={JSON.stringify(shifts)} />
+        <input type="hidden" name="basis" value={JSON.stringify(basis)} />
         {/* Once published and with nothing new, there is nothing to send. */}
         {publishedMoment && !unsaved && !pending ? null : (
           <FloatingDock
@@ -493,17 +596,6 @@ export function ScheduleBuilder({
         )}
       </form>
 
-      <StatusToast
-        message={
-          state.savedAt && done
-            ? state.published
-              ? t("app.build.published")
-              : t("app.build.saved")
-            : null
-        }
-        stamp={state.savedAt}
-      />
-
       <ShiftSheet
         open={sheetOpen}
         view={view}
@@ -548,6 +640,6 @@ export function ScheduleBuilder({
           </Button>
         </div>
       </Sheet>
-    </div>
+    </>
   );
 }

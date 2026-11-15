@@ -486,6 +486,20 @@ export async function scheduleShifts(): Promise<SavedShift[]> {
     order by day, starts_at, name`;
 }
 
+export type SavedShiftId = { name: string; id: string };
+
+/**
+ * The demo restaurant's saved shifts by name with their ids, day by day and
+ * earliest first: a shift written in place keeps its id.
+ */
+export async function scheduleShiftIds(): Promise<SavedShiftId[]> {
+  return await sql<SavedShiftId[]>`
+    select name, id::text as id
+    from public.schedule_shifts
+    where business_id = ${DEMO_RESTAURANT}
+    order by day, starts_at, name`;
+}
+
 /**
  * Put people on next week's Sunday shifts of the demo restaurant through
  * the database functions the app uses, as its manager: a draft, or

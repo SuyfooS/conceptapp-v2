@@ -1035,7 +1035,10 @@
         "failed": "We could not save. Try again in a moment.",
         "clash": "Someone is on two shifts at the same time, so the schedule was not saved. Take them off one of them or change the hours, then save again.",
         "published": "The schedule was published meanwhile. Refresh the screen and publish the changes.",
-        "teamChanged": "Someone on the schedule is no longer on the team, so the schedule was not saved. Refresh the screen, and the shifts they left show as missing."
+        "teamChanged": "Someone on the schedule is no longer on the team, so the schedule was not saved. Refresh the screen, and the shifts they left show as missing.",
+        "weekMoved": "A shift you changed has changed meanwhile, so the schedule was not saved. Refresh the screen to see it as it is now, and change it again.",
+        "weekSaved": "The schedule was saved meanwhile on another screen, so the changes here were not saved. Refresh the screen to see it as it is now, and make them again.",
+        "clashMeanwhile": "Something in the schedule changed meanwhile, and now someone would be on two shifts at the same time, so the schedule was not saved. Refresh the screen to see it as it is now, and make the changes again."
       },
       "entry": {
         "subtitleDraft": "Not saved yet",

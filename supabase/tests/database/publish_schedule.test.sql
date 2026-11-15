@@ -68,8 +68,8 @@ select throws_ok(
   '42501', null, 'a signed-in manager cannot publish through the function'
 );
 select throws_ok(
-  $$select private.replace_week_schedule('66000000-0000-4000-a000-00000000000b',
-    (select id from ids where name = 'x'), '[]')$$,
+  $$select private.write_week_schedule('66000000-0000-4000-a000-00000000000b',
+    (select id from ids where name = 'x'), '[]', null, now())$$,
   '42501', null, 'a signed-in manager cannot reach the shared rules directly'
 );
 reset role;

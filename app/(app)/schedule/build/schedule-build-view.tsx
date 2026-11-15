@@ -43,6 +43,7 @@ export function ScheduleBuildView({
         savedAt={data.savedAt}
         publishedAt={data.publishedAt}
         shifts={data.shifts}
+        basis={data.basis}
         team={data.team}
         answers={data.answers}
         positions={data.positions}

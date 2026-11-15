@@ -32,6 +32,13 @@ export type ShiftAssignee = z.infer<typeof shiftAssignee>;
 
 export const scheduledShift = z
   .object({
+    /**
+     * The stored shift this is, when the screen read it from the week: the
+     * database writes it in place, and keeps its swap requests and lists
+     * (20261115000100_week_in_place.sql). A new shift has none, and so does
+     * a copy of another: the same id twice is refused.
+     */
+    id: z.uuid().optional(),
     day: calendarDate,
     name: z.string().trim().min(1).max(40),
     start: timeOfDay,
@@ -60,9 +67,10 @@ function span(
 
 /**
  * A whole week's schedule for the week starting on `weekStart`: shifts
- * inside the week, each person once per shift, in one of `positionKeys`
- * when given one, and never on two shifts at the same time. People being
- * active members is the database's to check.
+ * inside the week, each stored shift once, each person once per shift, in
+ * one of `positionKeys` when given one, and never on two shifts at the same
+ * time. People being active members, and the ids being the week's own, is
+ * the database's to check.
  */
 export function weekSchedule(
   weekStart: string,
@@ -75,7 +83,18 @@ export function weekSchedule(
     .max(MAX_SHIFTS_IN_A_WEEK)
     .superRefine((shifts, ctx) => {
       const busy = new Map<string, { at: [number, number]; shift: number }[]>();
+      const ids = new Set<string>();
       shifts.forEach((shift, i) => {
+        if (shift.id !== undefined) {
+          if (ids.has(shift.id)) {
+            ctx.addIssue({
+              code: "custom",
+              message: "The same shift twice",
+              path: [i, "id"],
+            });
+          }
+          ids.add(shift.id);
+        }
         if (!days.has(shift.day)) {
           ctx.addIssue({
             code: "custom",
@@ -120,6 +139,32 @@ export function weekSchedule(
         });
       });
     });
+}
+
+/**
+ * What the builder read of a saved week: each stored shift's id and the
+ * digest the database gave it (`seen`, from `public.week_shifts`). Sent back
+ * with the week, it tells which shifts changed since, so a stale screen
+ * never undoes a change it did not see. Null for a week drawn from the
+ * pattern, which replaces whatever is stored, as before.
+ */
+export const shiftBasis = z
+  .record(z.uuid(), z.string().regex(/^[0-9a-f]{32}$/))
+  .nullable();
+
+export type ShiftBasis = NonNullable<z.infer<typeof shiftBasis>>;
+
+/**
+ * The builder's key: it starts again from what the server read after each
+ * save or publish, with the new shifts' ids and what was seen, so a second
+ * press never sends the same new shifts again.
+ */
+export function builderKey(
+  weekStart: string,
+  savedAt: string | null,
+  publishedAt: string | null,
+): string {
+  return [weekStart, savedAt ?? "", publishedAt ?? ""].join("|");
 }
 
 /**

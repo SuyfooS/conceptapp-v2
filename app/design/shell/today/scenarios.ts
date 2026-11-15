@@ -114,6 +114,7 @@ function nextWeekBuild(
         : []
       ).map(({ userId }) => ({ user: userId, position: null })),
     })),
+    basis: null,
     team: members,
     answers: teamAnswers,
     positions: [],

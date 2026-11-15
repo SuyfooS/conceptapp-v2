@@ -4,7 +4,7 @@ import {
   getWeekAvailability,
   type OpenScheduleWeek,
 } from "@db/availability";
-import { getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
+import { basisOf, getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
 import type { MemberBusiness } from "@db/session";
 import { getLiveSwaps } from "@db/swaps";
 import { type Colleague, getColleagues } from "@db/team";
@@ -28,6 +28,7 @@ import { canOpenModule, isStaff } from "@domain/modules";
 import {
   draftWeek,
   type ScheduledShift,
+  type ShiftBasis,
   withKnownPositions,
 } from "@domain/schedule";
 import { shabbatPlaceOf } from "@domain/shabbat";
@@ -175,8 +176,17 @@ export type ScheduleBuildWeek = {
   savedAt: string | null;
   /** ISO timestamp of the last publish, or null until it is published. */
   publishedAt: string | null;
-  /** The saved shifts, or the week drawn from the shift pattern. */
+  /**
+   * The saved shifts with their ids, or the week drawn from the shift pattern
+   * (no ids).
+   */
   shifts: ScheduledShift[];
+  /**
+   * What was seen of each saved shift, sent back with the week so a change
+   * made meanwhile is never undone; null for a week drawn from the pattern,
+   * which replaces what is there.
+   */
+  basis: ShiftBasis | null;
   team: TeamMember[];
   answers: Pick<Availability, "userId" | "ranges">[];
   positions: Position[];
@@ -205,12 +215,14 @@ export const currentScheduleBuild = cache(
       week,
       savedAt,
       publishedAt: open?.schedulePublishedAt ?? null,
+      // Each with its id, so it is written in place.
       shifts: saved
         ? withKnownPositions(
-            saved.map(({ id: _, ...shift }) => shift),
+            saved.map(({ seen: _, ...shift }) => shift),
             context.positions.map((p) => p.key),
           )
         : draftWeek(week.start, context.patterns),
+      basis: saved ? basisOf(saved) : null,
       // Only people on the staff are put on a shift (never an accountant).
       team: team.members.filter((m) => isStaff(m.role)),
       answers: context.answers.map(({ userId, ranges }) => ({
@@ -290,7 +302,10 @@ export const currentPublishedSchedule = cache(
       const shifts =
         open && publishedAt
           ? withKnownPositions(
-              await getWeekSchedule(open.id),
+              // What was seen is the builder's alone.
+              (await getWeekSchedule(open.id)).map(
+                ({ seen: _, ...shift }) => shift,
+              ),
               settings.positions.map((p) => p.key),
             )
           : [];

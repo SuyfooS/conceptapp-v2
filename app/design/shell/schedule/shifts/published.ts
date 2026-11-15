@@ -208,6 +208,7 @@ export function demoManagerSchedule(
         ([user, position]) => ({ user, position }),
       ),
     })),
+    basis: null,
     team: members,
     answers: teamAnswers,
     positions: demoPositions,
