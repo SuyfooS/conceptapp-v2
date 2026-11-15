@@ -4,7 +4,8 @@ import { demoSwap } from "./shifts/actions";
 import { demoManagerSchedule, demoRequest } from "./shifts/published";
 
 // The real schedule tab as Shiran, the shift manager, sees it on Tuesday
-// 3 November: this week published, next week a draft, two requests waiting.
+// 3 November at noon: this week published, next week a draft, two requests
+// waiting. Her morning shift is on, so it offers no giving away.
 export default function ShellSchedule() {
   return (
     <ScheduleView

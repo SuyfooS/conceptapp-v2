@@ -6,6 +6,7 @@ import {
   demoSwaps,
   scheduleAssignments,
   scheduleDemoSunday,
+  scheduleDemoToday,
   takenDemoSwap,
 } from "./db";
 import { signIn } from "./session";
@@ -213,4 +214,38 @@ test("a manager approves a taken request and the colleague takes the shift", asy
   await expect(
     page.getByRole("link", { name: new RegExp(ap.title) }),
   ).toContainText(ap.entry.subtitle.replace(/.*=0 \{([^}]*)\}.*/, "$1"));
+});
+
+// A shift that has begun is no longer given away: the database refuses it
+// from its start on, and the screen no longer offers it, though the day is
+// still today. All day, so nothing here depends on the hour.
+test("a shift that has begun today offers no giving away", async ({ page }) => {
+  await scheduleDemoToday([[YOAV.e164, "bartender"]], {
+    start: "00:00",
+    end: "23:59",
+  });
+  await signIn(page, YOAV);
+  await page.goto("/schedule/shifts");
+
+  const hero = page.getByRole("heading", { level: 2, name: "בוקר, 00:00" });
+  await expect(hero).toBeVisible();
+  await expect(shown(page, he.app.shifts.yours).first()).toBeVisible();
+  await expect(button(page, sw.buttons.give)).toHaveCount(0);
+  await expectCleanPage(page);
+
+  // Nor its sheet.
+  await page
+    .getByRole("button", {
+      name: new RegExp(`^${he.app.shifts.board.open.replace("{shift}", "")}`),
+    })
+    .filter({ visible: true })
+    .first()
+    .click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toContainText(he.app.shifts.sheet.people);
+  await expect(sheet).not.toContainText(he.app.shifts.sheet.give);
+  await expect(
+    sheet.getByRole("button", { name: new RegExp(`^${sw.buttons.give}, `) }),
+  ).toHaveCount(0);
+  expect(await demoSwaps()).toEqual([]);
 });

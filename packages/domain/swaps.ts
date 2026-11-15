@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { dateIn } from "./availability";
 import { minutesOf, rangeMinutes } from "./hours";
-import type { ScheduledShift } from "./schedule";
+import { type ScheduledShift, shiftStarted } from "./schedule";
 
 /**
  * Shift swaps: a worker gives away a shift of a published week, a
@@ -90,24 +91,33 @@ export type Offer<S> = {
 };
 
 /**
- * The shifts colleagues give away that `userId` may take, from `from` on
- * (today), day by day: open requests by others for shifts they are not
- * on, plus the ones they took that wait for a manager. A shift at the same
- * time as one of their own is listed as "busy", so they see why they
- * cannot take it. Requests taken by someone else are left out.
+ * The shifts colleagues give away that `userId` may take, those that have
+ * not begun at `now` (`shiftStarted`, as the database refuses a take or an
+ * approval from the start on), day by day: open requests by others for
+ * shifts they are not on, plus the ones they took that wait for a manager.
+ * A shift at the same time as one of their own is listed as "busy", so they
+ * see why they cannot take it; their own shift on now counts for that.
+ * Requests taken by someone else are left out.
  */
 export function offersFor<S extends SwappableShift>(
   swaps: readonly ShiftSwap[],
   shifts: readonly S[],
   userId: string,
-  from: string,
+  now: Date,
+  timeZone: string,
 ): Offer<S>[] {
   const byId = new Map(shifts.map((s) => [s.id, s]));
   const mine = shifts.filter((s) => s.assignees.some((a) => a.user === userId));
   return swaps
     .flatMap((swap): Offer<S>[] => {
       const shift = byId.get(swap.shiftId);
-      if (!shift || shift.day < from || swap.requestedBy === userId) return [];
+      if (
+        !shift ||
+        swap.requestedBy === userId ||
+        shiftStarted(shift, now, timeZone)
+      ) {
+        return [];
+      }
       if (swap.status === "taken") {
         return swap.takenBy === userId
           ? [{ swap, shift, state: "takenByYou" }]
@@ -128,34 +138,54 @@ export type Approval<S> = {
   shift: S;
   /** The position the worker giving it away holds on the shift. */
   position: string | null;
+  /**
+   * Its shift has begun (`shiftStarted`): the database refuses approving it
+   * from the start on, so declining is all that is left, and it no longer
+   * counts as waiting for approval.
+   */
+  started: boolean;
 };
 
 /**
- * What a manager approves or declines: the requests a colleague took,
- * for shifts from `from` on (today), by shift time. Requests for days that
- * have passed or for shifts no longer in the schedule are left out; the
- * database refuses to decide on a shift that started.
+ * What a manager approves or declines: the requests a colleague took, for
+ * shifts from today on (the business's day at `now`), by shift time.
+ * Requests for days that have passed or for shifts no longer in the
+ * schedule are left out. One whose shift has begun at `now` stays, marked
+ * `started`, as the database still lets a manager decline it.
  */
 export function approvalsFor<S extends SwappableShift>(
   swaps: readonly ShiftSwap[],
   shifts: readonly S[],
-  from: string,
+  now: Date,
+  timeZone: string,
 ): Approval<S>[] {
+  const today = dateIn(now, timeZone);
   const byId = new Map(shifts.map((s) => [s.id, s]));
   return swaps
     .flatMap((swap): Approval<S>[] => {
       const shift = byId.get(swap.shiftId);
       const { takenBy } = swap;
-      if (swap.status !== "taken" || !takenBy || !shift || shift.day < from) {
+      if (swap.status !== "taken" || !takenBy || !shift || shift.day < today) {
         return [];
       }
       const position =
         shift.assignees.find((a) => a.user === swap.requestedBy)?.position ??
         null;
-      return [{ swap: { ...swap, takenBy }, shift, position }];
+      return [
+        {
+          swap: { ...swap, takenBy },
+          shift,
+          position,
+          started: shiftStarted(shift, now, timeZone),
+        },
+      ];
     })
     .sort(byShiftTime);
 }
+
+/** The requests a manager can still approve: their shift has not begun. */
+export const toApprove = <S>(approvals: readonly Approval<S>[]) =>
+  approvals.filter((a) => !a.started);
 
 /** Why the database refused a swap step, for the screen to explain. */
 export type SwapFailure =

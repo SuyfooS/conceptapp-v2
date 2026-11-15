@@ -15,12 +15,14 @@ import {
   shiftDetailsProblem,
   shiftMinutes,
   shiftSlot,
+  shiftStarted,
   shiftsByDay,
   shiftsOf,
   stillNeeded,
   weekSchedule,
   withKnownPositions,
 } from "./schedule";
+import { ISRAEL_TIME_ZONE } from "./shabbat";
 
 // 1 November 2026 is a Sunday.
 const WEEK = "2026-11-01";
@@ -641,6 +643,125 @@ describe("shiftsOf", () => {
     expect(shiftsOf([sunday], "65000000-0000-4000-a000-00000000000e")).toEqual(
       [],
     );
+  });
+});
+
+describe("shiftStarted", () => {
+  const zone = ISRAEL_TIME_ZONE;
+  const at = (iso: string) => new Date(iso);
+  const started = (day: string, start: string, now: string) =>
+    shiftStarted({ day, start }, at(now), zone);
+
+  it("begins at its start, later the same day included", () => {
+    // Sunday 15 November 2026, winter time (UTC+2): 09:00 is 07:00 UTC.
+    expect(started("2026-11-15", "09:00", "2026-11-15T06:59:00.000Z")).toBe(
+      false,
+    );
+    expect(started("2026-11-15", "09:00", "2026-11-15T07:00:00.000Z")).toBe(
+      true,
+    );
+    // The day is still today, but the shift is on.
+    expect(started("2026-11-15", "09:00", "2026-11-15T10:00:00.000Z")).toBe(
+      true,
+    );
+  });
+
+  // Summer time starts on Friday 27 March 2026: 02:00 becomes 03:00, at
+  // 00:00 UTC. Postgres's `(day + start) at time zone 'Asia/Jerusalem'`
+  // reads an hour that does not exist with the offset before the change.
+  it("reads a start the clocks skip as the database does", () => {
+    // 02:30 is 00:30 UTC, the moment the clocks show 03:30.
+    expect(started("2026-03-27", "02:30", "2026-03-27T00:29:00.000Z")).toBe(
+      false,
+    );
+    expect(started("2026-03-27", "02:30", "2026-03-27T00:30:00.000Z")).toBe(
+      true,
+    );
+    // 02:00 and 03:00 are the same moment.
+    expect(started("2026-03-27", "02:00", "2026-03-27T00:00:00.000Z")).toBe(
+      true,
+    );
+    expect(started("2026-03-27", "03:00", "2026-03-26T23:59:00.000Z")).toBe(
+      false,
+    );
+    expect(started("2026-03-27", "03:00", "2026-03-27T00:00:00.000Z")).toBe(
+      true,
+    );
+    // Before the change, winter time: 01:30 is 23:30 UTC the day before.
+    expect(started("2026-03-27", "01:30", "2026-03-26T23:30:00.000Z")).toBe(
+      true,
+    );
+  });
+
+  // Summer time ends on Sunday 25 October 2026: 02:00 goes back to 01:00, at
+  // 23:00 UTC the day before, so 01:00–01:59 happen twice. Postgres reads
+  // them with the offset after the change: the second time.
+  it("reads a start the clocks repeat the second time, as the database does", () => {
+    // 01:30 is 23:30 UTC. At the first 01:45 (22:45 UTC, summer time) the
+    // wall clock is past it, but the shift has not begun yet.
+    expect(started("2026-10-25", "01:30", "2026-10-24T22:45:00.000Z")).toBe(
+      false,
+    );
+    expect(started("2026-10-25", "01:30", "2026-10-24T23:29:00.000Z")).toBe(
+      false,
+    );
+    expect(started("2026-10-25", "01:30", "2026-10-24T23:30:00.000Z")).toBe(
+      true,
+    );
+    // Before the change, summer time: 00:30 is 21:30 UTC.
+    expect(started("2026-10-25", "00:30", "2026-10-24T21:30:00.000Z")).toBe(
+      true,
+    );
+    // After it, winter time: 02:30 is 00:30 UTC.
+    expect(started("2026-10-25", "02:30", "2026-10-25T00:29:00.000Z")).toBe(
+      false,
+    );
+    expect(started("2026-10-25", "02:30", "2026-10-25T00:30:00.000Z")).toBe(
+      true,
+    );
+  });
+
+  it("counts a shift past midnight as begun from its start, on the next day too", () => {
+    // Saturday 14 November 22:00 is 20:00 UTC; it runs until 06:00.
+    expect(started("2026-11-14", "22:00", "2026-11-14T19:59:00.000Z")).toBe(
+      false,
+    );
+    expect(started("2026-11-14", "22:00", "2026-11-14T20:00:00.000Z")).toBe(
+      true,
+    );
+    // 03:00 on Sunday: still on, on the next day.
+    expect(started("2026-11-14", "22:00", "2026-11-15T01:00:00.000Z")).toBe(
+      true,
+    );
+    // 08:00 on Sunday: it ended, and has begun all the same.
+    expect(started("2026-11-14", "22:00", "2026-11-15T06:00:00.000Z")).toBe(
+      true,
+    );
+  });
+
+  it("follows the business's time zone", () => {
+    const shift = { day: "2026-11-15", start: "09:00" };
+    const now = at("2026-11-15T08:00:00.000Z");
+    expect(shiftStarted(shift, now, zone)).toBe(true);
+    expect(shiftStarted(shift, now, "UTC")).toBe(false);
+  });
+
+  // Behind UTC the database reads the changes the same way: a skipped start
+  // just after the change, a repeated one the second time.
+  it("matches the database on the clock changes west of UTC", () => {
+    const ny = (day: string, start: string, now: string) =>
+      shiftStarted({ day, start }, at(now), "America/New_York");
+    // 8 March 2026: 02:00 becomes 03:00 at 07:00 UTC, so a 02:00 start is
+    // the moment the clocks show 03:00.
+    expect(ny("2026-03-08", "02:00", "2026-03-08T06:59:00.000Z")).toBe(false);
+    expect(ny("2026-03-08", "02:00", "2026-03-08T07:00:00.000Z")).toBe(true);
+    expect(ny("2026-03-08", "02:30", "2026-03-08T07:29:00.000Z")).toBe(false);
+    expect(ny("2026-03-08", "02:30", "2026-03-08T07:30:00.000Z")).toBe(true);
+    // 1 November 2026: 02:00 goes back to 01:00 at 06:00 UTC. A 01:30 start
+    // is the second 01:30, in standard time.
+    expect(ny("2026-11-01", "01:30", "2026-11-01T05:30:00.000Z")).toBe(false);
+    expect(ny("2026-11-01", "01:30", "2026-11-01T06:29:00.000Z")).toBe(false);
+    expect(ny("2026-11-01", "01:30", "2026-11-01T06:30:00.000Z")).toBe(true);
   });
 });
 

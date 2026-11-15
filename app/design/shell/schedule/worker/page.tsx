@@ -3,9 +3,9 @@ import { baseWording } from "../../../../(app)/wording";
 import { demoSwap } from "../shifts/actions";
 import { demoRequest, demoWorkerSchedule } from "../shifts/published";
 
-// The real schedule tab as Noa, a worker, sees it on Tuesday 3 November: her
-// shift tonight first. She gives away Friday and can take Maya's Wednesday
-// morning; she has not sent next week's availability yet.
+// The real schedule tab as Noa, a worker, sees it on Tuesday 3 November at
+// noon: her shift tonight first. She gives away Friday and can take Maya's
+// Wednesday morning; she has not sent next week's availability yet.
 export default function ShellScheduleWorker() {
   return (
     <ScheduleView

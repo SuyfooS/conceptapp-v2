@@ -29,6 +29,7 @@ import {
   assigneePeople,
   dayLabel,
   formOf,
+  hasStarted,
   ltr,
   nameOf,
   photoOf,
@@ -74,7 +75,13 @@ export function MyShiftsBoard({
   const t = useTranslations("app");
   const sheet = useShiftSheet();
   const pushAsk = usePushAskOnce(ask);
-  const offers = offersFor(data.swaps, shifts, data.userId, data.today);
+  const offers = offersFor(
+    data.swaps,
+    shifts,
+    data.userId,
+    new Date(data.now),
+    data.timeZone,
+  );
   const available = offers.filter((o) => o.state === "available").length;
   const [next, ...later] = mine;
   const tomorrow = addDays(data.today, 1);
@@ -89,7 +96,12 @@ export function MyShiftsBoard({
         {next && whenNext ? (
           <MyShiftHero
             shift={next.shift}
-            label={t("shifts.hero.next")}
+            // Once it has begun it is no longer the next one, but theirs now.
+            label={
+              hasStarted(data, next.shift)
+                ? t("shifts.yours")
+                : t("shifts.hero.next")
+            }
             heading="h2"
             chip={
               whenNext === data.today

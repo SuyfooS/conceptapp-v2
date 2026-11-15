@@ -19,6 +19,7 @@ import {
   assigneePeople,
   firstNames,
   formOf,
+  hasStarted,
   ltr,
   nameOf,
   positionName,
@@ -125,7 +126,10 @@ export function ShiftCard({
   const { id } = shift;
   const mine = shift.assignees.find((a) => a.user === data.userId);
   const role = mine ? positionName(data, mine.position) : null;
-  const upcoming = shift.day >= data.today;
+  // From its start on, the database refuses to give it away. A request
+  // already made stays in sight until the day is over, as on the sheet: its
+  // "ביטול הבקשה" still works.
+  const upcoming = !hasStarted(data, shift);
   const request = id ? myRequestFor(data.swaps, id, data.userId) : null;
   const offer = offers[0];
 
@@ -182,7 +186,7 @@ export function ShiftCard({
           className="size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
         />
       </div>
-      {id && mine && upcoming ? (
+      {id && mine && (request ? shift.day >= data.today : upcoming) ? (
         <div className="relative flex flex-col gap-2 border-line border-t pt-3">
           {request ? (
             <>
@@ -272,6 +276,9 @@ function heroLine(
 /**
  * The person's own shift, the one strong moment of the screen: the business's
  * colour, with a card lifted over its edge for what they can do about it.
+ * Once the shift has begun it can't be given away: a request already made
+ * stays on the card with its "ביטול הבקשה", as on the sheet, and otherwise
+ * the card goes and the hero stands alone.
  */
 export function MyShiftHero({
   shift,
@@ -297,12 +304,17 @@ export function MyShiftHero({
   const format = useFormatter();
   const subject = shiftLabel(t, shift);
   const request = myRequestFor(data.swaps, shift.id, data.userId);
+  // Nothing to do about it: begun, and not asked to give away.
+  const alone = !request && hasStarted(data, shift);
   return (
     <section aria-label={subject}>
       <Card
         tone="hero"
         padding="none"
-        className="pressable relative px-5 pt-5 pb-[68px]"
+        className={cn(
+          "pressable relative px-5 pt-5",
+          alone ? "pb-5" : "pb-[68px]",
+        )}
       >
         <CardTarget
           label={t("shifts.board.open", { shift: subject })}
@@ -325,48 +337,50 @@ export function MyShiftHero({
         </Heading>
         <p className="text-base">{heroLine(t, format, data, shift)}</p>
       </Card>
-      <Card
-        tone="float"
-        className="relative z-10 mx-3 -mt-11 flex flex-col gap-3"
-      >
-        {request ? (
-          <>
-            <p className="font-medium text-base">
-              {request.status === "taken"
-                ? t("shifts.swap.taken", {
-                    name: nameOf(t, data, request.takenBy),
-                    form: formOf(data, request.takenBy),
-                  })
-                : t("shifts.swap.open")}
-            </p>
-            <SwapButton
-              action={swap}
-              intent="cancel"
-              id={request.id}
-              subject={subject}
-            />
-          </>
-        ) : (
-          <div className="flex items-center gap-3">
-            <p className="flex min-w-0 flex-1 flex-col">
-              <span className="font-semibold text-base">
-                {t("shifts.hero.giveQuestion")}
-              </span>
-              <span className="text-ink-2 text-sm">
-                {t("shifts.hero.giveHint")}
-              </span>
-            </p>
-            <Button
-              variant="secondary"
-              onClick={() => onOpen(shift.id)}
-              aria-label={`${t("shifts.swap.buttons.give")}, ${subject}`}
-              className="shrink-0"
-            >
-              {t("shifts.swap.buttons.give")}
-            </Button>
-          </div>
-        )}
-      </Card>
+      {alone ? null : (
+        <Card
+          tone="float"
+          className="relative z-10 mx-3 -mt-11 flex flex-col gap-3"
+        >
+          {request ? (
+            <>
+              <p className="font-medium text-base">
+                {request.status === "taken"
+                  ? t("shifts.swap.taken", {
+                      name: nameOf(t, data, request.takenBy),
+                      form: formOf(data, request.takenBy),
+                    })
+                  : t("shifts.swap.open")}
+              </p>
+              <SwapButton
+                action={swap}
+                intent="cancel"
+                id={request.id}
+                subject={subject}
+              />
+            </>
+          ) : (
+            <div className="flex items-center gap-3">
+              <p className="flex min-w-0 flex-1 flex-col">
+                <span className="font-semibold text-base">
+                  {t("shifts.hero.giveQuestion")}
+                </span>
+                <span className="text-ink-2 text-sm">
+                  {t("shifts.hero.giveHint")}
+                </span>
+              </p>
+              <Button
+                variant="secondary"
+                onClick={() => onOpen(shift.id)}
+                aria-label={`${t("shifts.swap.buttons.give")}, ${subject}`}
+                className="shrink-0"
+              >
+                {t("shifts.swap.buttons.give")}
+              </Button>
+            </div>
+          )}
+        </Card>
+      )}
     </section>
   );
 }

@@ -85,6 +85,27 @@ describe("instantIn", () => {
     expect(
       instantIn("2026-03-27", "02:30", ISRAEL_TIME_ZONE).toISOString(),
     ).toBe("2026-03-27T00:30:00.000Z");
+    // 01:30 happens twice that night: the second time, in winter time.
+    expect(
+      instantIn("2026-10-25", "01:30", ISRAEL_TIME_ZONE).toISOString(),
+    ).toBe("2026-10-24T23:30:00.000Z");
+  });
+
+  it("reads a skipped or repeated hour as Postgres does west of UTC too", () => {
+    const ny = (date: string, time: string) =>
+      instantIn(date, time, "America/New_York").toISOString();
+    // 8 March 2026: 02:00 becomes 03:00. A skipped time lands just after
+    // the change, so 02:00 and 03:00 are the same instant.
+    expect(ny("2026-03-08", "01:59")).toBe("2026-03-08T06:59:00.000Z");
+    expect(ny("2026-03-08", "02:00")).toBe("2026-03-08T07:00:00.000Z");
+    expect(ny("2026-03-08", "02:30")).toBe("2026-03-08T07:30:00.000Z");
+    expect(ny("2026-03-08", "03:00")).toBe("2026-03-08T07:00:00.000Z");
+    // 1 November 2026: 02:00 goes back to 01:00. A repeated time is the
+    // second one, in standard time.
+    expect(ny("2026-11-01", "00:59")).toBe("2026-11-01T04:59:00.000Z");
+    expect(ny("2026-11-01", "01:00")).toBe("2026-11-01T06:00:00.000Z");
+    expect(ny("2026-11-01", "01:30")).toBe("2026-11-01T06:30:00.000Z");
+    expect(ny("2026-11-01", "02:00")).toBe("2026-11-01T07:00:00.000Z");
   });
 
   it("works in other zones", () => {

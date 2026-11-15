@@ -238,6 +238,11 @@ export type PublishedSchedule = {
   userId: string;
   /** Today in the business's zone. */
   today: string;
+  /**
+   * The moment the server read it (ISO), for what depends on the hour: a
+   * shift that has begun is no longer given away or taken (`shiftStarted`).
+   */
+  now: string;
   timeZone: string;
   thisWeek: PublishedWeek;
   nextWeek: PublishedWeek;
@@ -275,7 +280,8 @@ export const currentPublishedSchedule = cache(
     const settings = await currentModuleSettings("scheduling");
     const { place } = membership.business;
     const { timeZone } = place;
-    const today = dateIn(new Date(), timeZone);
+    const now = new Date();
+    const today = dateIn(now, timeZone);
     const thisStart = weekStartOf(today, settings.weekStartsOn);
 
     const published = async (start: string): Promise<PublishedWeek> => {
@@ -311,6 +317,7 @@ export const currentPublishedSchedule = cache(
     return {
       userId: member.userId,
       today,
+      now: now.toISOString(),
       timeZone,
       thisWeek,
       nextWeek,

@@ -10,7 +10,12 @@ import {
   stillNeeded,
 } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
-import { approvalsFor, myRequestFor, offersFor } from "@domain/swaps";
+import {
+  approvalsFor,
+  myRequestFor,
+  offersFor,
+  toApprove,
+} from "@domain/swaps";
 import { canSeeTeam, type Team } from "@domain/team";
 import {
   availabilityStatus,
@@ -357,7 +362,7 @@ export async function TodayView({
         {view ? (
           <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:gap-x-8">
             <div className="min-w-0 xl:row-span-2">
-              <NextShift {...view} format={format} />
+              <NextShift {...view} format={format} now={data.now} />
             </div>
             <Needs {...view} now={data.now} />
             {listsPart(
@@ -406,7 +411,8 @@ function NextShift({
   role,
   schedule,
   format,
-}: ViewProps & { format: Format }) {
+  now,
+}: ViewProps & { format: Format; now: string }) {
   const { published, availability } = schedule;
   const shifts = allShifts(published);
   const manager = canSeeTeam(role);
@@ -416,8 +422,16 @@ function NextShift({
   // Someone who runs the place and is on no shift still has a next shift to
   // look out for: the business's.
   const shift = own ?? (manager ? nextShift(ahead, clock) : null);
+  // One whose shift has begun can't be approved any more: not offered here.
   const request = manager
-    ? approvalsFor(published.swaps, shifts, clock.date)[0]
+    ? toApprove(
+        approvalsFor(
+          published.swaps,
+          shifts,
+          new Date(now),
+          published.timeZone,
+        ),
+      )[0]
     : null;
   const overlap = Boolean(request);
 
@@ -768,14 +782,7 @@ function tileContent(
   }
 }
 
-function Needs({
-  t,
-  path,
-  clock,
-  role,
-  schedule,
-  now,
-}: ViewProps & { now: string }) {
+function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
   const { published, availability, build } = schedule;
   const shifts = allShifts(published);
   const teamView = canSeeTeam(role) && schedule.teamAvailability;
@@ -793,7 +800,8 @@ function Needs({
       published.swaps,
       shifts,
       published.userId,
-      clock.date,
+      new Date(now),
+      published.timeZone,
     ).filter((offer) => offer.state === "available").length,
     team: teamView
       ? {
@@ -803,7 +811,14 @@ function Needs({
               : null,
           missing: nextWeekPublished ? null : teamView.team.counts.missing,
           pastDue: dueAt.getTime() < new Date(now).getTime(),
-          swaps: approvalsFor(published.swaps, shifts, clock.date).length,
+          swaps: toApprove(
+            approvalsFor(
+              published.swaps,
+              shifts,
+              new Date(now),
+              published.timeZone,
+            ),
+          ).length,
         }
       : null,
   });

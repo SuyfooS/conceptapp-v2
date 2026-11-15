@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { type AvailabilityRange, weekDates, weekdayOf } from "./availability";
+import {
+  type AvailabilityRange,
+  instantIn,
+  weekDates,
+  weekdayOf,
+} from "./availability";
 import { minutesOf, rangeMinutes, timeOfDay } from "./hours";
 import { calendarDate } from "./shabbat";
 import { MAX_SHIFTS_IN_A_WEEK, type ShiftPattern, shiftsOn } from "./staffing";
@@ -483,6 +488,25 @@ export function shiftsOf<S extends Pick<ScheduledShift, "day" | "assignees">>(
     const mine = shift.assignees.find((a) => a.user === userId);
     return mine ? [{ shift, position: mine.position }] : [];
   });
+}
+
+/**
+ * Whether a shift has begun at `now`: its start, on its day in the business's
+ * time zone, is at or before the moment. This is the database's own moment
+ * (`lower(private.shift_span(id)) <= at_time`), the one that refuses giving a
+ * shift away, taking it or approving the swap. A start the clocks skip lands
+ * just after the change, and one they repeat counts the second time, as
+ * Postgres's `timestamp at time zone` reads them (`instantIn`, in any zone,
+ * east or west of UTC). A shift past
+ * midnight has begun from its start, and one that ended has begun too.
+ * Wall-clock comparisons (`shiftPhase`) drift by an hour on those nights.
+ */
+export function shiftStarted(
+  shift: Pick<ScheduledShift, "day" | "start">,
+  now: Date,
+  timeZone: string,
+): boolean {
+  return instantIn(shift.day, shift.start, timeZone).getTime() <= now.getTime();
 }
 
 /** How long a list of shifts is in all, in minutes (past midnight counts). */

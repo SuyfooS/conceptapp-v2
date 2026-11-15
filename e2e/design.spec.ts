@@ -24,6 +24,7 @@ const PAGES = [
   "/design/shell/schedule/availability",
   "/design/shell/schedule/build",
   "/design/shell/schedule/shifts",
+  "/design/shell/schedule/shifts?at=evening",
   "/design/shell/clock",
   "/design/shell/clock?estimate=off",
   "/design/shell/clock?state=working",
@@ -517,6 +518,70 @@ test("the chat demo opens a group's details from its title, and posts as managem
       page.getByRole("button", { name: c.announcement.send, exact: true }),
     ),
   ).toBeVisible();
+});
+
+// A shift that has begun is no longer given away, as the database refuses
+// it: Noa's Tuesday evening offers it at noon, and at 17:30, an hour and a
+// half into it, neither its hero nor its sheet does.
+test("the shifts demo offers no giving away once the shift has begun", async ({
+  page,
+}) => {
+  const sw = he.app.shifts.swap;
+  const evening = heT("app.shifts.shift", {
+    name: "ערב",
+    day: he.app.availability.weekdays.tue,
+    date: "3.11",
+  });
+  const give = page
+    .getByRole("button", { name: `${sw.buttons.give}, ${evening}` })
+    .filter({ visible: true });
+
+  await page.goto("/design/shell/schedule/shifts");
+  await expect(give).toHaveCount(1);
+
+  await page.goto("/design/shell/schedule/shifts?at=evening");
+  const hero = page.getByRole("region", { name: evening, exact: true });
+  await expect(hero).toContainText(he.app.shifts.yours);
+  await expect(give).toHaveCount(0);
+  await hero
+    .getByRole("button", {
+      name: heT("app.shifts.board.open", { shift: evening }),
+    })
+    .click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet).toBeVisible();
+  await expect(sheet).not.toContainText(he.app.shifts.sheet.give);
+  await expect(
+    sheet.getByRole("button", { name: new RegExp(`^${sw.buttons.give}, `) }),
+  ).toHaveCount(0);
+});
+
+// A request whose shift has begun can only be declined, as the database
+// refuses approving it: Maya took Omer's Tuesday morning, which began at
+// 09:00, and at noon it says why, offers no approval and is not counted.
+test("the swaps demo offers only declining once the shift has begun", async ({
+  page,
+}) => {
+  const ap = he.app.swaps;
+  const morning = heT("app.shifts.shift", {
+    name: "בוקר",
+    day: he.app.availability.weekdays.tue,
+    date: "3.11",
+  });
+  const decision = (name: string) =>
+    page
+      .getByRole("button", { name: new RegExp(`^${name}, ${morning}:`) })
+      .filter({ visible: true });
+
+  await page.goto("/design/shell/schedule/swaps");
+  const main = page.getByRole("main");
+  await expect(
+    main.getByText(ap.failures.started).filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(decision(ap.buttons.approve)).toHaveCount(0);
+  await expect(decision(ap.buttons.decline)).toHaveCount(1);
+  // The two taken requests still to come are counted, not the third.
+  await expect(main).toContainText(heT("app.swaps.count", { count: 2 }));
 });
 
 // A demo business takes no invites (#80): its Team screen offers none and
