@@ -5,9 +5,10 @@ import {
   type ModuleKey,
   type ModuleManifest,
   type ModuleRow,
+  permissionInUse,
   readModuleSettings,
 } from "@domain/modules";
-import { canGrantPay } from "@domain/payroll-access";
+import { canGrantPay, PAY_PERMISSION } from "@domain/payroll-access";
 import {
   fieldsFor,
   type SettingLevel,
@@ -43,8 +44,11 @@ export async function manageAccess() {
     rows: business.modules,
     viewOnly: !canWrite(member.viewing),
     level: settingLevelOf(membership.role),
-    /** Who sees pay is the owner's to decide (payroll P3). */
-    grantsPay: canGrantPay(membership.role),
+    /**
+     * Who sees pay is the owner's to decide (payroll P3), where a module that
+     * is on uses it (`payAccessInUse`).
+     */
+    grantsPay: canGrantPay(membership.role) && payAccessInUse(business.modules),
   };
 }
 
@@ -81,6 +85,20 @@ export function closesOnShabbat(rows: readonly ModuleRow[]): boolean {
     rows.find((row) => row.key === "scheduling")?.settings,
   );
   return settings.closedOnShabbat;
+}
+
+/**
+ * Whether who sees pay opens anything in the business: a module that is on
+ * uses pay access (the time clock's hours for payroll, chat's documents). The
+ * console asks the same (`payAccessIn`); where it opens nothing, /manage
+ * offers no way to it and its page is not found.
+ */
+export function payAccessInUse(rows: readonly ModuleRow[]): boolean {
+  return permissionInUse(
+    manifests,
+    enabledModules(manifests, rows),
+    PAY_PERMISSION,
+  );
 }
 
 /**

@@ -33,6 +33,15 @@ what is next, defaults applied.
 - Checked locally: `biome check .`, `next typegen`, `tsc --noEmit`, `vitest run`. Not run here: the database (pgTAP, `db lint`, `db:types`, `test:db`), `pnpm build`, Playwright.
 - Next: the screens (the person's page, the Team screen's invites, the no-longer-on-the-team screen), then e2e.
 - Defaults applied: the ones above. Orel answered the clocked-in, demo and swap ones on 15 November 2026 (see the entry above); the others still wait for him on #1.
+## 2026-11-15 · nightly run 38 · `/manage` offers who sees pay only where it opens something
+
+- Guessed: no open work from Orel, and his note of the night (#1) keeps removing a person and editing the running week for the live session, so neither was touched. The last merge (#145) named its own loose end: the console offers "מי רואה שכר" only where a module that is on uses `clock.payroll` (the time clock, or chat's documents), while the owner's `/manage` offered it whatever was on.
+- `payAccessInUse(rows)` in `app/(app)/manage/manage.ts` asks the console's question (`permissionInUse` with `PAY_PERMISSION`) of the business's module rows. `/manage`'s row and the activity log's link to it need it (`grantsPay`), `/manage/access` is not found without it (`currentAccess`), and its two actions write nothing then, saying "notInUse" (the console's words, already in `AccessView`) for a screen drawn before the time clock and chat went off.
+- Tests: `e2e/console-pay-access.spec.ts`'s test with both off now also signs the owner in: no row on `/manage`, and `/manage/access` not found. `docs/ROADMAP.md` says so on the roles row.
+- Checked: `pnpm check` (1967 tests), `pnpm build`. The e2e runs in CI (no Docker here). No screen's look changed, so no screenshots.
+- Restore point: branch `backup/before-night-2026-11-15` at `81e8ca0` (the tag push was refused again). Commit: at merge.
+- Next: the live session's removal of a person, then the running week; Orel's open decisions (#141, #132, Playwright's browser).
+- Defaults applied: none.
 
 ## 2026-11-14 · chat · "מי רואה שכר" in the console
 

@@ -291,6 +291,7 @@ test("an onboarder changes who sees pay too", async ({ page }, testInfo) => {
 
 test("where the time clock and chat are off, the console offers no pay access", async ({
   page,
+  browser,
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "one run is enough");
   await openPayAccessBusiness();
@@ -315,4 +316,25 @@ test("where the time clock and chat are off, the console offers no pay access", 
   await expect(page.getByRole("switch", { name: a.roles.manager })).toHaveCount(
     0,
   );
+
+  // The owner's /manage offers none either, and its address is not found.
+  const owner = await secondPage(browser, testInfo);
+  try {
+    await signIn(owner, OWNER);
+    await owner.goto("/manage");
+    await expect(
+      owner.getByRole("heading", { level: 1, name: he.app.manage.title }),
+    ).toBeVisible();
+    await expect(
+      owner
+        .getByRole("main")
+        .getByRole("link", { name: new RegExp(`^${a.title}`) }),
+    ).toHaveCount(0);
+    await owner.goto("/manage/access");
+    await expect(
+      owner.getByRole("heading", { level: 1, name: he.app.notFound.title }),
+    ).toBeVisible();
+  } finally {
+    await owner.context().close();
+  }
 });
