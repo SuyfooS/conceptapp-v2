@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { before, buildScreen } from "./build-screen";
+import { before, buildScreen, HOLD_MS } from "./build-screen";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { heT } from "./t";
@@ -594,10 +594,18 @@ test("the swaps demo offers only declining once the shift has begun", async ({
 // ends his, and the line above "פרסום השינויים" says so first. Another
 // manager approved Maya's meanwhile, so the publish is refused: the morning
 // comes back as it is now, marked and named, the evening keeps its change,
-// and publishing again goes out, with its own time on the status line.
+// and publishing again goes out, with its own time on the status line. Each
+// publish waits out its hold for "ביטול" first (R3b). The first is pressed
+// from the keyboard: "ביטול" takes the focus, and the publish waits with the
+// toast for as long as it stays there; once the focus moves on, the rest of
+// the wait runs out and the publish goes, and refused, nothing of the held
+// toast stays, its "ביטול" least of all.
 test("the builder demo warns before ending a request, and puts back a shift changed meanwhile", async ({
   page,
 }) => {
+  // Its publishes wait out their holds for "ביטול" (`HOLD_MS` each), and the
+  // first waits longer, stopped for the keyboard.
+  test.setTimeout(90_000);
   const tb = he.app.build;
   const path = "/design/shell/schedule/build?state=meanwhile";
   const screen = buildScreen(page);
@@ -623,15 +631,31 @@ test("the builder demo warns before ending a request, and puts back a shift chan
   await screen.closeSheet();
   await expect(warning).toBeVisible();
 
-  await publish.click();
-  await expect(
-    page.getByRole("alert").filter({
-      hasText: heT("app.build.moved.changedOne", {
-        name: "בוקר",
-        day: he.app.availability.weekdays.sun,
-      }),
+  // It waits for its undo first, and only then reaches the stand-in. From
+  // the keyboard, the wait stops while the focus is on "ביטול".
+  const refused = page.getByRole("alert").filter({
+    hasText: heT("app.build.moved.changedOne", {
+      name: "בוקר",
+      day: he.app.availability.weekdays.sun,
     }),
-  ).toBeVisible();
+  });
+  await publish.focus();
+  await page.keyboard.press("Enter");
+  await expect(screen.held).toBeVisible();
+  await expect(screen.undoHeld()).toBeFocused();
+  await page.waitForTimeout(HOLD_MS + 1_000);
+  await expect(screen.held).toBeVisible();
+  await expect(publish).toBeDisabled();
+  await expect(refused).toHaveCount(0);
+  await page.keyboard.press("Tab");
+  await expect(screen.undoHeld()).not.toBeFocused();
+  await expect(screen.held).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
+  await expect(refused).toBeVisible();
+  await expect(
+    page
+      .getByRole("status")
+      .getByRole("button", { name: he.app.manage.undo, exact: true }),
+  ).toHaveCount(0);
   // The morning as it is now: Maya in Noa's place, and Itay back on it.
   await expect(morning).toContainText(tb.meanwhile);
   await expect(morning).toContainText("מאיה");
@@ -643,7 +667,7 @@ test("the builder demo warns before ending a request, and puts back a shift chan
   await expect(warning).toBeVisible();
   await expectCleanPage(page, path);
 
-  await publish.click();
+  await screen.publishChanges();
   await expect(
     page.getByRole("status").filter({ hasText: tb.published }),
   ).toBeVisible();
@@ -660,10 +684,13 @@ test("the builder demo warns before ending a request, and puts back a shift chan
 // the evening freed when she left takes Omer, with the line to check with its
 // people directly, and goes out. Roni's request on Thursday evening, which
 // nothing touches, is not counted. The switch to next week asks first while
-// there is unsaved work.
+// there is unsaved work. Publishing the changes waits for "ביטול" (R3b): the
+// held state, let go once and then waited out.
 test("the running week's demo locks what has begun and fills the freed evening", async ({
   page,
 }, testInfo) => {
+  // Its publishes wait out their holds for "ביטול" (`HOLD_MS` each).
+  test.setTimeout(60_000);
   const tb = he.app.build;
   const running = tb.running;
   const path = "/design/shell/schedule/build/running";
@@ -734,11 +761,38 @@ test("the running week's demo locks what has begun and fills the freed evening",
   await expect(warning).toHaveCount(0);
   await expect(evening).toContainText("עומר");
 
+  // Publishing the changes waits for "ביטול" first, with nothing sent: the
+  // team still sees the week as it was. "ביטול" brings the work back.
   await publish.click();
+  await expect(screen.held).toBeVisible();
+  await expect(publish).toBeDisabled();
+  await expect(page.getByText(tb.unpublished)).toBeVisible();
+  await screen.undoHeld().click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tb.hold.undone }),
+  ).toBeVisible();
+  await expect(publish).toBeEnabled();
+  await expect(evening).toContainText("עומר");
+
+  // Held again, and checked as it waits (should the checks outlast the hold,
+  // it goes meanwhile, as it would); then it goes out.
+  await publish.click();
+  await expect(screen.held).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("schedule-build-held.png"),
+    fullPage: true,
+  });
+  await expectCleanPage(page, path);
+  await expect(screen.held).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
   await expect(
     page.getByRole("status").filter({ hasText: tb.published }),
   ).toBeVisible();
   await expect(publish).toHaveCount(0);
+  // "ביטול" had the focus and went with the toast: with no publish left to
+  // press, the focus is on the line that says the week is published.
+  await expect(
+    page.getByText(new RegExp(`^${before(tb.publishedAt)}`)),
+  ).toBeFocused();
   await expect(screen.card("בוקר", tue)).toContainText(running.now);
 
   // Nothing unsaved now: the switch just goes.

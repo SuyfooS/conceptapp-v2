@@ -2,6 +2,7 @@
 
 import { onLeavingBusiness } from "@ui/leaving-business";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type HeldTimer, heldTimer } from "./held-timer";
 
 /** How long a held write waits for "ביטול" before it is sent. */
 export const HOLD_MS = 8000;
@@ -16,12 +17,18 @@ export const HOLD_MS = 8000;
  * when the person switches business, which waits for it so it is made in
  * this business. One write is held at a time: holding another sends the
  * earlier one now. `write` handles its own result.
+ *
+ * Its wait can stop while the way back is being reached (`pause`, as a
+ * StatusToast with the undo waits for the keyboard or a mouse) and go on
+ * with what it had left (`resume`); a hidden page, leaving the screen and a
+ * switch of business send it at once all the same. `replace` holds a newer
+ * form of the same write in the time it has left.
  */
 export function useHeldWrite<T extends NonNullable<unknown>>(
   write: (value: T) => Promise<unknown>,
   ms: number = HOLD_MS,
 ) {
-  const pending = useRef<{ value: T; timer: number } | null>(null);
+  const pending = useRef<{ value: T; wait: HeldTimer } | null>(null);
   const [held, setHeld] = useState<T | null>(null);
   // The latest `write`, for a timer set before the screen drew again.
   const latest = useRef(write);
@@ -33,7 +40,7 @@ export function useHeldWrite<T extends NonNullable<unknown>>(
   function release(): T | null {
     const now = pending.current;
     if (!now) return null;
-    window.clearTimeout(now.timer);
+    now.wait.clear();
     pending.current = null;
     setHeld(null);
     return now.value;
@@ -47,10 +54,25 @@ export function useHeldWrite<T extends NonNullable<unknown>>(
 
   function hold(value: T) {
     void commit();
-    pending.current = {
-      value,
-      timer: window.setTimeout(() => void commit(), ms),
-    };
+    pending.current = { value, wait: heldTimer(ms, () => void commit()) };
+    setHeld(value);
+  }
+
+  /** Stops the held write's wait, keeping the time it has left. */
+  function pause() {
+    pending.current?.wait.pause();
+  }
+
+  /** Goes on with the held write's wait, for the time it had left. */
+  function resume() {
+    pending.current?.wait.resume();
+  }
+
+  /** Holds `value` in place of what is held, in the time it has left. */
+  function replace(value: T) {
+    const now = pending.current;
+    if (!now) return;
+    now.value = value;
     setHeld(value);
   }
 
@@ -83,5 +105,5 @@ export function useHeldWrite<T extends NonNullable<unknown>>(
     [],
   );
 
-  return { held, hold, release, commit };
+  return { held, hold, release, commit, pause, resume, replace };
 }
