@@ -8,6 +8,16 @@ export const before = (message: string) => message.split(/[<{]/)[0] ?? message;
 
 const sunday = he.app.availability.weekdays.sun;
 
+/** Text to find as it is, inside a pattern. */
+const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A day of the week on the screen, by its weekday as the screen names it
+ * (`he.app.availability.weekdays`), and its date ("17.11") when the week
+ * shown could be either of two: next week's Sunday unless it says otherwise.
+ */
+export type OnDay = { day?: string; date?: string };
+
 /**
  * The "build the week" screen as a manager uses it, on any of the three
  * layouts: a card per shift, and one sheet where everything about a shift
@@ -19,11 +29,27 @@ export function buildScreen(page: Page) {
   return {
     sheet,
 
-    /** The card of a shift on next week's Sunday, whatever its date. */
-    card: (name: string): Locator =>
+    /**
+     * The card of a shift on a day of the week on the screen (`on`): next
+     * week's Sunday, whatever its date, unless it names another day of
+     * whichever week the builder shows, this week's included.
+     */
+    card: (name: string, on: OnDay = {}): Locator => {
+      const label = tb.shift
+        .replace("{name}", name)
+        .replace("{day}", on.day ?? sunday);
+      return page.getByRole("button", {
+        name: new RegExp(
+          `^${literal(before(on.date ? label.replace("{date}", on.date) : label))}`,
+        ),
+      });
+    },
+
+    /** Adding a shift to a day (`on`): next week's Sunday unless it says. */
+    addOn: (on: OnDay = {}): Locator =>
       page.getByRole("button", {
         name: new RegExp(
-          `^${before(tb.shift.replace("{name}", name).replace("{day}", sunday))}`,
+          `^${literal(before(tb.addShiftOn.replace("{day}", on.day ?? sunday)))}`,
         ),
       }),
 

@@ -1,4 +1,5 @@
 import "server-only";
+import { type ShiftJoin, shiftJoins } from "@domain/running-week";
 import {
   type ScheduledShift,
   type ShiftBasis,
@@ -34,7 +35,10 @@ type WeekWrite = "save_week_schedule" | "publish_week_schedule";
  * Write a week through `fn`, with what the screen read (`basis`) when it
  * read a saved week. Without one the week is replaced, as before the week was
  * written in place, so a project without that migration takes the call too;
- * a replace has no use for ids, so none is sent with it.
+ * a replace has no use for ids, so none is sent with it. The people put on a
+ * shift under way go apart, as `joins` (20261115000300_running_week.sql),
+ * and only when there are any, so a project without that migration takes
+ * every other call.
  */
 async function writeWeek(
   fn: WeekWrite,
@@ -43,15 +47,18 @@ async function writeWeek(
   positionKeys: readonly string[],
   input: unknown,
   basis: ShiftBasis | null,
+  joining: readonly ShiftJoin[],
 ): Promise<number> {
   const parsed = weekSchedule(week.startsOn, positionKeys).parse(input);
   const read = shiftBasis.parse(basis);
+  const joins = shiftJoins.parse(joining);
   const shifts = read ? parsed : parsed.map(({ id: _, ...shift }) => shift);
   const { data, error } = await createAdminClient().rpc(fn, {
     actor: actorId,
     week: week.id,
     shifts,
     ...(read ? { basis: read } : {}),
+    ...(joins.length > 0 ? { joins } : {}),
   });
   if (error) throw writeError(fn, error);
   return z.int().parse(data);
@@ -73,7 +80,9 @@ function writeError(fn: WeekWrite, error: DatabaseError): ScheduleWriteError {
  * its id, and `basis` is what was seen of each (`basisOf`): the database
  * writes only what changed, and refuses (`movedShifts`) a change to a shift
  * that changed meanwhile. A null `basis` replaces the week: callers send it
- * only while nobody has saved the week yet. Runs with the
+ * only while nobody has saved the week yet. In a published week under way a
+ * shift that has begun is left out of both, and the people put on it are
+ * `joins` (`weekWrite` in @domain/running-week). Runs with the
  * secret key: callers check the actor is the signed-in manager or owner and
  * not viewing as someone else. Returns the number of shifts in the week.
  * Throws a `ScheduleWriteError` with the database's code, hint and detail.
@@ -84,6 +93,7 @@ export async function saveWeekSchedule(
   positionKeys: readonly string[],
   input: unknown,
   basis: ShiftBasis | null,
+  joins: readonly ShiftJoin[] = [],
 ): Promise<number> {
   return await writeWeek(
     "save_week_schedule",
@@ -92,6 +102,7 @@ export async function saveWeekSchedule(
     positionKeys,
     input,
     basis,
+    joins,
   );
 }
 
@@ -108,6 +119,7 @@ export async function publishWeekSchedule(
   positionKeys: readonly string[],
   input: unknown,
   basis: ShiftBasis | null,
+  joins: readonly ShiftJoin[] = [],
 ): Promise<number> {
   return await writeWeek(
     "publish_week_schedule",
@@ -116,6 +128,7 @@ export async function publishWeekSchedule(
     positionKeys,
     input,
     basis,
+    joins,
   );
 }
 

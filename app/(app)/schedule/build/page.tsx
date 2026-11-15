@@ -1,30 +1,99 @@
+import { builderWeekOf, gapsAhead } from "@domain/running-week";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
 import { baseWording, translator } from "../../wording";
-import { currentBuildSwaps, currentScheduleBuild } from "../week";
+import {
+  currentBuildSwaps,
+  currentBuildWeeks,
+  currentScheduleBuild,
+} from "../week";
 import { saveScheduleAction } from "./actions";
-import { ScheduleBuildView } from "./schedule-build-view";
+import { EndedWeekView, ScheduleBuildView } from "./schedule-build-view";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const t = translator(baseWording, "app.build");
-  return { title: t("title") };
+type Props = { searchParams: Promise<{ week?: string | string[] }> };
+
+/** The week `?week=` asks for: the running one, one over, or next week. */
+async function askedWeek(props: Props) {
+  const { week } = await props.searchParams;
+  const weeks = await currentBuildWeeks();
+  const asked = weeks
+    ? builderWeekOf(typeof week === "string" ? week : null, weeks)
+    : null;
+  return { weeks, which: asked ?? "next" };
 }
 
-// Owners and managers build next week's schedule here. Workers get the
-// not-found screen, as on the team availability screen.
-export default async function ScheduleBuildPage() {
-  const [data, swaps] = await Promise.all([
-    currentScheduleBuild(),
-    currentBuildSwaps(),
+export async function generateMetadata(props: Props): Promise<Metadata> {
+  const t = translator(baseWording, "app.build");
+  const { which } = await askedWeek(props);
+  return {
+    title: t(
+      which === "this"
+        ? "titleRunning"
+        : which === "over"
+          ? "ended.title"
+          : "title",
+    ),
+  };
+}
+
+const HREF = "/schedule/build";
+
+/** Where each of the builder's weeks opens. */
+const hrefOf = (start: string) => `${HREF}?week=${start}`;
+
+// Owners and managers build the schedule here: next week, or with
+// `?week=<its first day>` the week running now (the running-week plan's R3a).
+// Any other week opens next week, and one already over says so. Workers get
+// the not-found screen, as on the team availability screen.
+export default async function ScheduleBuildPage(props: Props) {
+  const { weeks, which } = await askedWeek(props);
+  if (!weeks) notFound();
+  const wording = await currentWording();
+  if (which === "over") {
+    return (
+      <EndedWeekView
+        running={weeks.thisWeek}
+        runningHref={hrefOf(weeks.thisWeek)}
+        wording={wording}
+      />
+    );
+  }
+  const start = which === "this" ? weeks.thisWeek : weeks.nextWeek;
+  const [data, swaps, thisWeek, nextWeek] = await Promise.all([
+    currentScheduleBuild(start),
+    currentBuildSwaps(start),
+    currentScheduleBuild(weeks.thisWeek),
+    currentScheduleBuild(weeks.nextWeek),
   ]);
   if (!data) notFound();
+  const now = new Date(weeks.now);
+  // Shifts still to start lacking someone, in each week.
+  const gaps = (build: typeof data | null) =>
+    build ? gapsAhead(build.shifts, now, weeks.timeZone).shifts.length : 0;
   return (
     <ScheduleBuildView
       data={data}
       swaps={swaps}
       save={saveScheduleAction}
-      wording={await currentWording()}
+      wording={wording}
+      running={{
+        which,
+        now: weeks.now,
+        clock: weeks.clock,
+        weeks: [
+          {
+            which: "this",
+            href: hrefOf(weeks.thisWeek),
+            gaps: gaps(thisWeek),
+          },
+          {
+            which: "next",
+            href: hrefOf(weeks.nextWeek),
+            gaps: gaps(nextWeek),
+          },
+        ],
+      }}
     />
   );
 }
