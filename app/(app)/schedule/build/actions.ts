@@ -3,6 +3,8 @@
 import { openWeek } from "@db/availability";
 import { publishWeekSchedule, saveWeekSchedule } from "@db/schedule";
 import {
+  type EdgeClash,
+  edgeClashes,
   endedShifts,
   movedShifts,
   type PastShift,
@@ -50,6 +52,10 @@ export type ScheduleFailure =
   // What was sent would put someone on two shifts at once with a shift that
   // changed meanwhile, which the screen does not show: nothing was saved.
   | "clashMeanwhile"
+  // What was sent would put someone on a shift at the same time as one of
+  // theirs in the week before or after, which the screen does not show:
+  // nothing was saved. The state names the first of them (`edgeClash`).
+  | "edgeClash"
   // In a published week, a shift changed or left out has begun since the
   // screen read it, and stays as it was: nothing was saved. Next week's screen
   // meets it only when the week turned while it was open.
@@ -94,6 +100,11 @@ export type ScheduleState = {
   /** With `past`: the shifts that would start at or before now, as sent. */
   past?: PastShift[];
   /**
+   * With `edgeClash`, when the database named it: who, and the shift of the
+   * week before or after they already work at that time (the first of them).
+   */
+  edgeClash?: EdgeClash;
+  /**
    * The moment the server answered (ISO): a screen whose clock is behind it
    * catches up, so what began meanwhile shows as begun.
    */
@@ -120,7 +131,9 @@ const intentOf = (form: FormData) =>
  * that starts before now (`past`); a week already over changes no more
  * (`weekOver`). Only what changed is written, and a shift changed meanwhile
  * is never undone: a change to one is refused (`weekMoved`, with those shifts
- * as they are now: `moved`), and so is a clash with one (`clashMeanwhile`).
+ * as they are now: `moved`), and so is a clash with one (`clashMeanwhile`),
+ * or with someone's shift in the week before or after, which the screen
+ * doesn't show (`edgeClash`, naming it).
  * Workers see nothing of a draft. A published week is only published again,
  * never saved back into a draft.
  */
@@ -198,6 +211,15 @@ export async function saveScheduleAction(
       return moved ? { failure: "weekMoved", moved } : { failure: "weekMoved" };
     }
     if (scheduleClashedMeanwhile(error)) return { failure: "clashMeanwhile" };
+    // Across the week's edge (20261115000600_running_week_edge.sql): the
+    // other week's shift, which this screen doesn't show, named for it.
+    const across = edgeClashes(error);
+    if (across) {
+      const [first] = across;
+      return first
+        ? { failure: "edgeClash", edgeClash: first }
+        : { failure: "edgeClash" };
+    }
     // The week under way (20261115000300_running_week.sql): what began or
     // ended meanwhile comes back as it is now, for the screen to lock it.
     for (const [failure, ids] of [

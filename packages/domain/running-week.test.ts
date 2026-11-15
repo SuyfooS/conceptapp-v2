@@ -5,6 +5,7 @@ import {
   builderHref,
   builderWeekOf,
   draftAhead,
+  edgeWeek,
   gapsAhead,
   joinedOn,
   lockBegun,
@@ -652,5 +653,19 @@ describe("lockBegun", () => {
         new Set(),
       ),
     ).toBeNull();
+  });
+});
+
+// A clash across the week's edge names the other week from the week written
+// (20261115000600_running_week_edge.sql); the words name it from now.
+describe("edgeWeek", () => {
+  it("is last week or next week from the running week", () => {
+    expect(edgeWeek("this", "previous")).toBe("previous");
+    expect(edgeWeek("this", "next")).toBe("next");
+  });
+
+  it("is this week, or the week after next, from next week", () => {
+    expect(edgeWeek("next", "previous")).toBe("this");
+    expect(edgeWeek("next", "next")).toBe("afterNext");
   });
 });

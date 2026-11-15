@@ -397,3 +397,22 @@ export function touchesSoon(
   }
   return [...readById].some(([id, shift]) => !kept.has(id) && soon(shift));
 }
+
+/**
+ * Which week a shift next door is in, said from now rather than from the
+ * week on the screen: a save or a publish refused because someone works a
+ * shift of the week before or after at the same time (hint `clash`,
+ * 20261115000600_running_week_edge.sql) names that week as `previous` or
+ * `next` of the week written. From the running week those are last week and
+ * next week; from next week, the week before it is this week, and the one
+ * after it the week after next.
+ */
+export type EdgeWeek = "previous" | "this" | "next" | "afterNext";
+
+export function edgeWeek(
+  shown: "this" | "next",
+  side: "previous" | "next",
+): EdgeWeek {
+  if (shown === "this") return side;
+  return side === "previous" ? "this" : "afterNext";
+}

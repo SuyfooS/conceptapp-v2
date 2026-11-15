@@ -5,7 +5,7 @@ import { z } from "zod";
  * (`public.save_week_schedule`, `public.publish_week_schedule`), with what it
  * said: its code, hint and detail as well as its words, so a caller can tell
  * the refusals apart (`scheduleTeamChanged`, `movedShifts`, `startedShifts`,
- * `pastShifts`, `scheduleWeekOver`).
+ * `pastShifts`, `scheduleWeekOver`, `edgeClashes`).
  */
 export class ScheduleWriteError extends Error {
   readonly code: string | null;
@@ -102,7 +102,11 @@ export function movedShifts(error: unknown): string[] | null {
   }
 }
 
-/** A refusal of the week under way (20261115000300_running_week.sql), by its code and hint. */
+/**
+ * A refusal of the week under way (20261115000300_running_week.sql), or
+ * across its edge (20261115000600_running_week_edge.sql), by its code and
+ * hint.
+ */
 function refusedAs(error: unknown, code: string, hint: string): boolean {
   return (
     error instanceof ScheduleWriteError &&
@@ -181,4 +185,38 @@ export function pastShifts(error: unknown): PastShift[] | null {
  */
 export function scheduleWeekOver(error: unknown): boolean {
   return refusedAs(error, "55000", "over");
+}
+
+const EdgeEntry = z.object({
+  /** Who would be on two shifts at once. */
+  user: z.string(),
+  /** The shift next door they are on: its name, day and start ("HH:MM"). */
+  name: z.string(),
+  day: z.iso.date(),
+  start: z.string(),
+  /** The week it is in, from the week written. */
+  week: z.enum(["previous", "next"]),
+});
+const EdgeEntries = z.array(EdgeEntry).min(1);
+
+export type EdgeClash = z.infer<typeof EdgeEntry>;
+
+/**
+ * Someone this save or publish puts on a shift already works one of the week
+ * before or after at the same time (22023 with hint `clash`,
+ * 20261115000600_running_week_edge.sql): each of them with the shift next
+ * door, the earlier week's first, then by day and start. The screen shows
+ * only its own week, so the database names the other shift. Nothing was
+ * written. Empty when the detail can't be read; null for any other failure.
+ */
+export function edgeClashes(error: unknown): EdgeClash[] | null {
+  if (!refusedAs(error, "22023", "clash")) return null;
+  try {
+    const clashes = EdgeEntries.safeParse(
+      JSON.parse((error as ScheduleWriteError).detail ?? ""),
+    );
+    return clashes.success ? clashes.data : [];
+  } catch {
+    return [];
+  }
 }

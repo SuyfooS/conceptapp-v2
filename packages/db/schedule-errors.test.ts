@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  edgeClashes,
   endedShifts,
   movedShifts,
   pastShifts,
@@ -245,5 +246,80 @@ describe("the week under way", () => {
     expect([scheduleClashedMeanwhile(past), scheduleTeamChanged(past)]).toEqual(
       [false, false],
     );
+  });
+});
+
+// 20261115000600_running_week_edge.sql: someone put on a shift that runs at
+// the same time as one of theirs in the week before or after (22023, hint
+// 'clash', each with the shift next door: its name, day, start and week).
+// running_week_edge.test.sql pins it.
+describe("edgeClashes", () => {
+  const USER = "91000000-0000-4000-a000-000000000003";
+  const clash = (details: string | null) =>
+    new ScheduleWriteError(
+      "Could not publish the schedule: Works a shift of the week before or after at the same time",
+      { code: "22023", hint: "clash", details },
+    );
+
+  it("names who, and the shift next door", () => {
+    expect(
+      edgeClashes(
+        clash(
+          `[{"day": "2026-12-05", "name": "Night", "user": "${USER}", "week": "previous", "start": "22:00"}, {"day": "2026-12-13", "name": "Morning", "user": "${USER}", "week": "next", "start": "05:00"}]`,
+        ),
+      ),
+    ).toEqual([
+      {
+        user: USER,
+        name: "Night",
+        day: "2026-12-05",
+        start: "22:00",
+        week: "previous",
+      },
+      {
+        user: USER,
+        name: "Morning",
+        day: "2026-12-13",
+        start: "05:00",
+        week: "next",
+      },
+    ]);
+    // Still that refusal when the detail can't be read.
+    expect(edgeClashes(clash(null))).toEqual([]);
+    expect(edgeClashes(clash("[]"))).toEqual([]);
+    expect(
+      edgeClashes(
+        clash(
+          `[{"day": "2026-12-05", "name": "Night", "user": "${USER}", "week": "later", "start": "22:00"}]`,
+        ),
+      ),
+    ).toEqual([]);
+  });
+
+  it("is nothing for any other refusal, and is no clash inside the week", () => {
+    expect(
+      edgeClashes(
+        new ScheduleWriteError(
+          "Could not publish the schedule: A person works two shifts at once",
+          { code: "22023" },
+        ),
+      ),
+    ).toBeNull();
+    expect(
+      edgeClashes(new ScheduleWriteError("x", { code: "22023", hint: "past" })),
+    ).toBeNull();
+    expect(
+      edgeClashes(
+        new ScheduleWriteError("x", { code: "40001", hint: "clash" }),
+      ),
+    ).toBeNull();
+    expect(edgeClashes(new Error("22023 clash"))).toBeNull();
+    expect(edgeClashes(null)).toBeNull();
+    const across = clash("[]");
+    expect([
+      scheduleClashedMeanwhile(across),
+      scheduleTeamChanged(across),
+      pastShifts(across),
+    ]).toEqual([false, false, null]);
   });
 });
