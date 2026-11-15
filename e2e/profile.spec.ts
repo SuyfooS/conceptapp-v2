@@ -103,6 +103,8 @@ test("a person sets a photo from Today, and colleagues see it", async ({
 }, testInfo) => {
   // Three sign-ins and an upload.
   test.slow();
+  // This week's first publish, whatever a run before left.
+  await clearSchedule();
   await scheduleDemoToday([[NOA.e164, null]]);
   await signIn(page, NOA);
   await profileLink(page).click();

@@ -350,7 +350,9 @@ select is(
   'a taken request waits for the owner and the manager'
 );
 
--- a publishes again: only d's shift moves.
+-- a publishes again: only d's shift moves. Before the week begins, at a
+-- moment of its own, so what has begun (20261115000300_running_week.sql)
+-- never depends on today's date.
 set local role service_role;
 select public.publish_week_schedule('71000000-0000-4000-a000-000000000001',
   pg_temp.id('week'),
@@ -359,7 +361,8 @@ select public.publish_week_schedule('71000000-0000-4000-a000-000000000001',
     {"day": "2026-11-15", "name": "Middle", "start": "12:00", "end": "19:00", "needed": 1,
      "assignees": [{"user": "71000000-0000-4000-a000-000000000004"}]},
     {"day": "2026-11-16", "name": "Morning", "start": "07:00", "end": "15:00", "needed": 1,
-     "assignees": [{"user": "71000000-0000-4000-a000-000000000005"}]}]');
+     "assignees": [{"user": "71000000-0000-4000-a000-000000000005"}]}]',
+  at_time => '2026-11-12 15:00+00');
 reset role;
 select is(
   (select coalesce(array_agg(n.user_id order by n.user_id), '{}'::uuid[]) from public.notifications n

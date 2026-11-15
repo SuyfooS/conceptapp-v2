@@ -1039,7 +1039,10 @@
         "teamChanged": "Someone on the schedule is no longer on the team, so the schedule was not saved. Refresh the screen, and the shifts they left show as missing.",
         "weekMoved": "A shift you changed has changed meanwhile, so the schedule was not saved. Refresh the screen to see it as it is now, and change it again.",
         "weekSaved": "The schedule was saved meanwhile on another screen, so the changes here were not saved. Refresh the screen to see it as it is now, and make them again.",
-        "clashMeanwhile": "Something in the schedule changed meanwhile, and now someone would be on two shifts at the same time, so the schedule was not saved. Refresh the screen to see it as it is now, and make the changes again."
+        "clashMeanwhile": "Something in the schedule changed meanwhile, and now someone would be on two shifts at the same time, so the schedule was not saved. Refresh the screen to see it as it is now, and make the changes again.",
+        "shiftStarted": "A shift you changed has already begun, so the schedule was not saved. A shift that has begun stays as it is. Refresh the screen and make the other changes again.",
+        "past": "A new shift, or one you moved, has to start after now, so the schedule was not saved. Change its time and save again.",
+        "weekOver": "This week is already over, so the schedule was not saved. Refresh the screen to build next week's schedule."
       },
       "entry": {
         "subtitleDraft": "Not saved yet",
@@ -2388,6 +2391,7 @@
           },
           "schedule": {
             "publish": "{first, select, true {Published the schedule for the week of {week}} other {Published changes to the schedule for the week of {week}}}",
+            "running": "{first, select, true {Published the schedule for the week of {week}, already under way} other {Changed the schedule of the week of {week} while it was under way}}",
             "shifts": "{count, plural, =0 {No shifts} one {One shift} other {# shifts}}",
             "swapsRemoved": "{count, plural, one {One swap request was cancelled} other {# swap requests were cancelled}}"
           },

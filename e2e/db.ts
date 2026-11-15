@@ -579,6 +579,9 @@ export async function scheduleDemoSunday(
  * Put people on a morning shift today at the demo restaurant, in this week's
  * schedule published to the team, through the database functions the app
  * uses, as its manager. Phone numbers, each with a position key or null.
+ * Always the week's first publish (callers clear the schedule first): a week
+ * never published is free, while a published one under way keeps what has
+ * begun and takes no new shift that has (20261115000300_running_week.sql).
  */
 export async function scheduleDemoToday(
   people: [phone: string, position: string | null][],

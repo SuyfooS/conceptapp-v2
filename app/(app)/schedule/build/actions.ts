@@ -4,8 +4,11 @@ import { openWeek } from "@db/availability";
 import { publishWeekSchedule, saveWeekSchedule } from "@db/schedule";
 import {
   movedShifts,
+  pastShifts,
   scheduleClashedMeanwhile,
   scheduleTeamChanged,
+  scheduleWeekOver,
+  startedShifts,
 } from "@db/schedule-errors";
 import {
   type ShiftAsNow,
@@ -38,6 +41,17 @@ export type ScheduleFailure =
   // What was sent would put someone on two shifts at once with a shift that
   // changed meanwhile, which the screen does not show: nothing was saved.
   | "clashMeanwhile"
+  // The next three are the running week's (its builder comes with R3a): next
+  // week has nothing begun, and when the week turns while its screen is open
+  // the action stops at `weekChanged` before it writes.
+  // In a published week, a shift changed or left out has begun since the
+  // screen read it, and stays as it was: nothing was saved.
+  | "shiftStarted"
+  // In a published week, a new shift, or one moved, would start at or before
+  // now: nothing was saved.
+  | "past"
+  // The week has wholly ended and no longer changes: nothing was saved.
+  | "weekOver"
   | "failed";
 
 /**
@@ -144,6 +158,9 @@ export async function saveScheduleAction(
       return moved ? { failure: "weekMoved", moved } : { failure: "weekMoved" };
     }
     if (scheduleClashedMeanwhile(error)) return { failure: "clashMeanwhile" };
+    if (startedShifts(error)) return { failure: "shiftStarted" };
+    if (pastShifts(error)) return { failure: "past" };
+    if (scheduleWeekOver(error)) return { failure: "weekOver" };
     console.error(`${intent} schedule failed`, (error as Error).message);
     return { failure: "failed" };
   }

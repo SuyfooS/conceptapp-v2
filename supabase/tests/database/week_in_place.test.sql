@@ -470,8 +470,8 @@ select is(
 );
 select is(
   (select array_agg(k.key order by k.key) from jsonb_object_keys(pg_temp.last_log()) as k (key)),
-  array['added', 'at', 'changed', 'edited', 'first', 'kept', 'removed', 'removed_swaps',
-        'reopened', 'shifts', 'starts_on', 'swaps_removed', 'week'],
+  array['added', 'at', 'changed', 'edited', 'first', 'joined', 'kept', 'removed',
+        'removed_swaps', 'reopened', 'running', 'shifts', 'starts_on', 'swaps_removed', 'week'],
   'ids, counts and shifts only, never a name'
 );
 select is(
@@ -699,7 +699,7 @@ select is(
 );
 select throws_ok(
   $$select public.save_week_schedule('8f000000-0000-4000-a000-000000000002', pg_temp.id('week'),
-    pg_temp.shifts_of('r7'), pg_temp.basis_of('r7'))$$,
+    pg_temp.shifts_of('r7'), pg_temp.basis_of('r7'), '2026-11-19 14:00+00')$$,
   '55000', null,
   'and a published week is still not saved as a draft'
 );
@@ -927,7 +927,7 @@ select is(
 select pg_temp.sign_in('8f000000-0000-4000-a000-000000000002');
 select throws_ok(
   $$select private.write_week_schedule('8f000000-0000-4000-a000-000000000002',
-    gen_random_uuid(), '[]', '{}', now())$$,
+    gen_random_uuid(), '[]', '{}', now(), null)$$,
   '42501', null, 'a signed-in manager cannot reach the write'
 );
 select throws_ok(

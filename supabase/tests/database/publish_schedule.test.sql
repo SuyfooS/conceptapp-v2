@@ -2,7 +2,9 @@
 -- manager or owner, through the same rules as saving; a published week is
 -- changed only by publishing again; once published the whole business
 -- reads it (and "view as" any role), other businesses and inactive members
--- do not, and switching scheduling off closes it.
+-- do not, and switching scheduling off closes it. Every write of the week
+-- once published passes its moment, before the week begins, so what has
+-- begun (20261115000300_running_week.sql) never depends on today's date.
 begin;
 select plan(24);
 
@@ -69,7 +71,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select private.write_week_schedule('66000000-0000-4000-a000-00000000000b',
-    (select id from ids where name = 'x'), '[]', null, now())$$,
+    (select id from ids where name = 'x'), '[]', null, now(), null)$$,
   '42501', null, 'a signed-in manager cannot reach the shared rules directly'
 );
 reset role;
@@ -156,7 +158,7 @@ select results_eq(
 -- A published week is changed only by publishing again.
 select throws_ok(
   $$select public.save_week_schedule('66000000-0000-4000-a000-00000000000b',
-    (select id from ids where name = 'x'), '[]')$$,
+    (select id from ids where name = 'x'), '[]', at_time => '2026-11-05 12:00+00')$$,
   '55000', null, 'a published week cannot be saved as a draft'
 );
 select is(
@@ -170,7 +172,8 @@ select is(
     '[{"day": "2026-11-08", "name": "Morning", "start": "07:00", "end": "15:00", "needed": 2,
        "assignees": [{"user": "66000000-0000-4000-a000-00000000000c", "position": "waiter"}]},
       {"day": "2026-11-09", "name": "Evening", "start": "16:00", "end": "23:00", "needed": 1,
-       "assignees": [{"user": "66000000-0000-4000-a000-00000000000d"}]}]'),
+       "assignees": [{"user": "66000000-0000-4000-a000-00000000000d"}]}]',
+    at_time => '2026-11-05 12:00+00'),
   2,
   'an owner publishes changes to a published week'
 );
@@ -233,7 +236,7 @@ reset role;
 set local role service_role;
 select throws_ok(
   $$select public.publish_week_schedule('66000000-0000-4000-a000-00000000000b',
-    (select id from ids where name = 'x'), '[]')$$,
+    (select id from ids where name = 'x'), '[]', at_time => '2026-11-05 12:00+00')$$,
   '42501', null, 'with scheduling off nobody publishes'
 );
 reset role;

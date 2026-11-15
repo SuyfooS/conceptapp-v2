@@ -152,6 +152,45 @@ business deleted takes its requests with it. A cancelled request says why,
 (`private.write_week_schedule`) or `team` (`private.leave_staff`). The policy
 is unchanged. `swap_history.test.sql` covers it.
 
+What has begun stays as it was (`20261115000300_running_week.sql`; Orel's
+answer of 15 November 2026: a shift that has begun only takes more people).
+In a published week, a shift whose start (its day and start on the business's
+clock, where `private.shift_span` starts it for the swaps' rules, read from the
+shift itself so that one the spring change turns inside out holds up no write)
+is at or before the write's `at_time` (never null: 22023) is never
+rewritten: not read, sent as it was read, or left out of a week replaced with
+nothing read, it keeps its id, its people (someone who left since, or became
+the accountant, included) and its swap requests, which the write neither ends
+nor opens again; sent changed, or read and not sent (a removal), the write is
+refused with 55006, hint `started`, the ids in DETAIL (`startedShifts`). So a
+screen that shows a shift as begun leaves it out of both the shifts and the
+basis. People go on a shift under way only through the last argument of
+`save_week_schedule` and `publish_week_schedule`, `joins`
+(`[{"shift", "user", "position"}]`): a shift of the week that has begun and
+not ended (one that has: 55006, `ended`, `endedShifts`), someone not on it
+yet, a known position or none, an active member on the staff, no clash. In a
+published week, a new shift, or one still to start written again, starts after
+`at_time` (22023, `past`, DETAIL `[{id|null, day, start}]`, `pastShifts`),
+and a week wholly over (at or past both its next week's first midnight in the
+business's zone and the end of its last shift, so a night shift on its last
+day takes people until it ends) no longer changes (55000, `over`,
+`scheduleWeekOver`); a
+save of a published week still ends in 55000 with no hint, after these
+rules. A week never published is free, mid-week included: its first publish
+publishes it as it stands. The log row says whether the week had begun
+(`running`) and who joined which shift (`joined`, ids). `schedule_shifts.opens_lists_from`
+is from when a shift's lists count: set to `at_time` when a write adds a
+shift, moves it in its day or hours or gives it another pattern, raised to
+`at_time` on every shift at a week's first publish, and read by
+`private.list_occurrences`, which opens nothing due before it (null counts
+from the start) and lets the day's list follow the earliest shift of the
+pattern whose list is not late, so a late one never takes it from a later
+shift's on time; a hosted demo's reset ages
+it with its times (`private.seed_demo_lists`). The builder maps the new
+refusals (`shiftStarted`, `past`, `weekOver`) but sends no joins until it
+opens the running week. Every pgTAP file that writes a published week again
+passes `at_time`. `running_week.test.sql` covers it.
+
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
 `clock.confirm` from `confirm_time_entry`, `clock.code.locked`,

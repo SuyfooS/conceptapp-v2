@@ -2232,6 +2232,7 @@ export type Database = {
           id: string;
           name: string;
           needed: number;
+          opens_lists_from: string | null;
           pattern_key: string | null;
           starts_at: string;
           week_id: string;
@@ -2243,6 +2244,7 @@ export type Database = {
           id?: string;
           name: string;
           needed: number;
+          opens_lists_from?: string | null;
           pattern_key?: string | null;
           starts_at: string;
           week_id: string;
@@ -2254,6 +2256,7 @@ export type Database = {
           id?: string;
           name?: string;
           needed?: number;
+          opens_lists_from?: string | null;
           pattern_key?: string | null;
           starts_at?: string;
           week_id?: string;
@@ -3122,6 +3125,7 @@ export type Database = {
           actor: string;
           at_time?: string;
           basis?: Json;
+          joins?: Json;
           shifts: Json;
           week: string;
         };
@@ -3262,6 +3266,7 @@ export type Database = {
           actor: string;
           at_time?: string;
           basis?: Json;
+          joins?: Json;
           shifts: Json;
           week: string;
         };
