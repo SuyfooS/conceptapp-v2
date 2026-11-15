@@ -2614,6 +2614,7 @@
         "row": "What each role sees and does in the business",
         "subtitle": "What each role in the business sees and does. Only the owners change it.",
         "savesItself": "Every change saves at once, and can be undone right after.",
+        "closedAll": "No area is open for changes yet. For now, this shows what each role sees and does today.",
         "back": "Manage the business",
         "add": "Add a role",
         "list": "The roles in the business",
@@ -2687,6 +2688,7 @@
           }
         },
         "needsEdit": "Only with edit",
+        "closed": "This area isn't open for changes yet.",
         "editLabel": "Edit, {area}, {role}",
         "extraLabel": "{extra}, {role}",
         "levelLabel": "{area}, {role}",
@@ -2739,6 +2741,8 @@
         "failure": {
           "noAccess": "Only the owners change permissions.",
           "viewOnly": "While viewing, permissions can't be changed.",
+          "closed": "This area isn't open for changes yet, so the change wasn't saved.",
+          "requires": "The role needs edit in this area first, so the change wasn't saved.",
           "failed": "The change wasn't saved. Check the connection and try again."
         }
       },
@@ -4946,6 +4950,14 @@
         "notInTeam": "This person is no longer in the business.",
         "notInUse": "The clock and chat are off in the business now, so the change wasn't saved. Reload the screen.",
         "self": "You can't change your own access, so the change wasn't saved."
+      }
+    },
+    "permissions": {
+      "subtitle": "What each role in the business sees and does. Only the owners and the ConceptApp team change it.",
+      "emptyRole": "The role is given to people on the business's page",
+      "failure": {
+        "noAccess": "Your role on the ConceptApp team can't change permissions.",
+        "viewOnly": "Your role on the ConceptApp team can see the permissions, but not change them."
       }
     },
     "wording": {

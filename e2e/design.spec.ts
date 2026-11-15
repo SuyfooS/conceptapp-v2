@@ -187,6 +187,11 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
   "/design/console/businesses/demo-restaurant/access",
   "/design/console/businesses/demo-restaurant/access?state=readOnly",
+  // Roles and permissions from the console (R2): every area closed, then
+  // scheduling open as R3 will open it, and a team role that only reads.
+  "/design/console/businesses/demo-restaurant/roles",
+  "/design/console/businesses/demo-restaurant/roles?state=open",
+  "/design/console/businesses/demo-restaurant/roles?state=readOnly",
   // A business nobody has joined yet: only an invite, and one that ran out.
   "/design/console/businesses/bar-hayam/access",
 ];

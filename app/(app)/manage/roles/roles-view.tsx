@@ -131,13 +131,33 @@ function usePayWords() {
 const linkClass =
   "inline-flex min-h-11 items-center font-medium text-ink-2 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent";
 
-/** For a role nobody holds yet: where it is given, on the team screen. */
-function GiveRole({ href, className }: { href: string; className?: string }) {
-  const t = useTranslations("app.manage.roles");
+/**
+ * For a role nobody holds yet: where it is given, on the team screen (the
+ * business's people, in the console), in the words of where it is drawn.
+ */
+function GiveRole({
+  href,
+  label,
+  className,
+}: {
+  href: string;
+  label: string;
+  className?: string;
+}) {
   return (
     <Link href={href} className={cn(linkClass, className)}>
-      {t("emptyRole")}
+      {label}
     </Link>
+  );
+}
+
+/** Why an area's choices can't change yet, in one quiet line. */
+function ClosedNote({ id, className }: { id: string; className?: string }) {
+  const t = useTranslations("app.manage.roles");
+  return (
+    <VisibilityNote icon="lock" className={className}>
+      <span id={id}>{t("closed")}</span>
+    </VisibilityNote>
   );
 }
 
@@ -159,7 +179,10 @@ const markClass =
  * its own, a step in the history (`?role=`); tablet: the roles beside the
  * chosen one; desktop: every area against every role in one table, team and
  * manage as a menu in each narrow cell. Over mock data on
- * /design/shell/manage/roles until the database holds the choices (R1 on).
+ * /design/shell/manage/roles; over the database's answer in the console
+ * (`/admin/businesses/[slug]/roles`, R2), where an area changes only once
+ * its phase opens it (`RolesArea.open`), and says so until then, and no role
+ * is added yet (no `addRole`).
  */
 export function RolesView({
   data,
@@ -177,6 +200,7 @@ export function RolesView({
   const tManage = useTranslations("app.manage");
   const tRoles = useTranslations("app.team.roles");
   const tAccess = useTranslations("app.manage.access");
+  const tConsole = useTranslations("admin.permissions");
   const format = useFormatter();
   const areaName = useAreaName();
   const roleName = useRoleName();
@@ -208,6 +232,22 @@ export function RolesView({
   const lastFocus = useRef<HTMLElement | null>(null);
 
   const disabled = data.viewOnly;
+  const opened = (area: AccessArea) =>
+    data.areas.some((shown) => shown.key === area && shown.open);
+  const anyOpen = data.areas.some((area) => area.open);
+  /**
+   * While no area is open, the screen's one line says so for all of them,
+   * and every control points to it; once some are, a closed one says it
+   * under its own name.
+   */
+  const closedAllId = anyOpen ? null : `${id}-closed-all`;
+  const inConsole = paths.place === "console";
+  /** What went wrong: in the console, what a team role can't do, in its words. */
+  const failureWords = (what: RolesFailure) =>
+    inConsole && (what === "noAccess" || what === "viewOnly")
+      ? tConsole(`failure.${what}`)
+      : t(`failure.${what}`);
+  const giveLabel = inConsole ? tConsole("emptyRole") : t("emptyRole");
   const chosenRole = roles.find((r) => r.key === chosen) ?? null;
   // A role taken back (the undo of adding it) leaves the first one chosen.
   const role = chosenRole ?? roles[0] ?? null;
@@ -337,7 +377,8 @@ export function RolesView({
   /** One area of a role, changed at once and saved, with its undo on the toast. */
   function change(target: EditableRole, area: AccessArea, next: RoleAccess) {
     const before = target.access;
-    if (next === before) return;
+    // Its controls are off: nothing changes in a view or a closed area.
+    if (next === before || disabled || !opened(area)) return;
     const back = areaAccess(before, area);
     const forward = areaAccess(next, area);
     const words = changeWords(roleName(target), area, before, next);
@@ -364,9 +405,11 @@ export function RolesView({
 
   /** Adds a role, or says why not, for the sheet to show. */
   async function add(input: NewRole): Promise<RolesFailure | null> {
-    let result: Awaited<ReturnType<RolesActions["addRole"]>>;
+    const { addRole } = actions;
+    if (!addRole) return "failed";
+    let result: Awaited<ReturnType<typeof addRole>>;
     try {
-      result = await actions.addRole(input);
+      result = await addRole(input);
     } catch {
       return "failed";
     }
@@ -390,10 +433,12 @@ export function RolesView({
 
   /** The undo of adding a role: nobody holds it yet. */
   function takeBack(added: EditableRole) {
+    const { removeRole } = actions;
+    if (!removeRole) return;
     const name = added.name ?? "";
     setRoles((all) => all.filter((r) => r.key !== added.key));
     void run(
-      () => actions.removeRole(added.key),
+      () => removeRole(added.key),
       () => setRoles((all) => [...all, added]),
     ).then((done) => {
       if (done) say(t("done.addUndone", { name }));
@@ -462,6 +507,8 @@ export function RolesView({
     data.documents ? "accountantDocuments" : "accountant",
   );
   const fixedNote = t(data.documents ? "fixedNoteDocuments" : "fixedNote");
+  /** "מי רואה שכר", where pay opens something: nothing leads there otherwise. */
+  const payLink = paths.access ? { href: paths.access } : {};
 
   /**
    * The roles, in rank order, the fixed ones at either end. Each says how
@@ -492,7 +539,7 @@ export function RolesView({
             />
           ))}
           <ListRow
-            href={paths.access}
+            {...payLink}
             leading={<Calculator />}
             title={tRoles("accountant")}
             subtitle={`${people(data.accountants)} · ${accountantSees}`}
@@ -516,27 +563,31 @@ export function RolesView({
             role={target}
             headingLevel={headingLevel}
             disabled={disabled}
+            closedAllId={closedAllId}
             onChange={(next) => change(target, area.key, next)}
           />
         ))}
-        <ListGroup>
-          <ListRow
-            href={paths.access}
-            leading={<Wallet />}
-            title={t("pay.title")}
-            subtitle={payWords(target, data.documents)}
-          />
-        </ListGroup>
+        {paths.access ? (
+          <ListGroup>
+            <ListRow
+              href={paths.access}
+              leading={<Wallet />}
+              title={t("pay.title")}
+              subtitle={payWords(target, data.documents)}
+            />
+          </ListGroup>
+        ) : null}
       </div>
     );
   }
 
-  const addAction = (
+  // Roles a business names come in R11: no way to add one without its action.
+  const addAction = actions.addRole ? (
     <Button disabled={disabled} onClick={() => setAdding(true)}>
       <Plus aria-hidden="true" />
       {t("add")}
     </Button>
-  );
+  ) : undefined;
 
   return (
     <PageBody
@@ -566,9 +617,13 @@ export function RolesView({
       {/* The phone's role screen has its own title in place of this one. */}
       <div className={phoneRole ? "hidden md:block" : undefined}>
         <PageHeader
-          back={{ href: paths.manage, label: t("back") }}
+          back={
+            paths.place === "app"
+              ? { href: paths.manage, label: t("back") }
+              : { href: paths.business, label: paths.name }
+          }
           title={t("title")}
-          subtitle={t("subtitle")}
+          subtitle={inConsole ? tConsole("subtitle") : t("subtitle")}
           actions={addAction}
           headingRef={listHeading}
         />
@@ -594,17 +649,30 @@ export function RolesView({
           {phoneRole.people.length > 0 ? (
             <div className="mt-3">{stack(phoneRole.people, "md")}</div>
           ) : (
-            <GiveRole href={paths.team} className="mt-1 self-start text-base" />
+            <GiveRole
+              href={paths.team}
+              label={giveLabel}
+              className="mt-1 self-start text-base"
+            />
           )}
         </div>
       ) : null}
 
       <p className="-mt-2 px-1 text-ink-2 md:-mt-4">
-        {disabled ? t("failure.viewOnly") : t("savesItself")}
+        {disabled
+          ? failureWords("viewOnly")
+          : anyOpen
+            ? t("savesItself")
+            : null}
+        {closedAllId ? (
+          <span id={closedAllId} className={disabled ? "block" : undefined}>
+            {t("closedAll")}
+          </span>
+        ) : null}
       </p>
       {failure ? (
         <p role="alert" className="px-1 font-medium text-danger">
-          {t(`failure.${failure}`)}
+          {failureWords(failure)}
         </p>
       ) : null}
 
@@ -631,7 +699,11 @@ export function RolesView({
                 </h2>
                 <p className="text-ink-2 text-sm">{about(role)}</p>
                 {role.people.length === 0 ? (
-                  <GiveRole href={paths.team} className="self-start text-sm" />
+                  <GiveRole
+                    href={paths.team}
+                    label={giveLabel}
+                    className="self-start text-sm"
+                  />
                 ) : null}
               </div>
               {stack(role.people, "md")}
@@ -647,9 +719,11 @@ export function RolesView({
           data={data}
           roles={roles}
           disabled={disabled}
+          closedAllId={closedAllId}
           payHref={paths.access}
           payLink={tAccess("title")}
           teamHref={paths.team}
+          giveLabel={giveLabel}
           onChange={change}
         />
         <PageSection title={t("fixed")}>
@@ -661,7 +735,7 @@ export function RolesView({
               trailing={stack(data.owners)}
             />
             <ListRow
-              href={paths.access}
+              {...payLink}
               leading={<Calculator />}
               title={tRoles("accountant")}
               subtitle={`${people(data.accountants)} · ${accountantSees}`}
@@ -674,20 +748,22 @@ export function RolesView({
         </PageSection>
       </div>
 
-      <Sheet
-        open={adding}
-        onOpenChange={setAdding}
-        title={t("addSheet.title")}
-        closeLabel={t("addSheet.close")}
-      >
-        {/* Mounted on each opening, so it starts empty. */}
-        <AddRoleForm
-          roles={roles}
-          taken={[...roles.map(roleName), ...ROLES.map((r) => tRoles(r))]}
-          onAdd={add}
-          onDone={() => setAdding(false)}
-        />
-      </Sheet>
+      {actions.addRole ? (
+        <Sheet
+          open={adding}
+          onOpenChange={setAdding}
+          title={t("addSheet.title")}
+          closeLabel={t("addSheet.close")}
+        >
+          {/* Mounted on each opening, so it starts empty. */}
+          <AddRoleForm
+            roles={roles}
+            taken={[...roles.map(roleName), ...ROLES.map((r) => tRoles(r))]}
+            onAdd={add}
+            onDone={() => setAdding(false)}
+          />
+        </Sheet>
+      ) : null}
     </PageBody>
   );
 }
@@ -695,13 +771,16 @@ export function RolesView({
 /**
  * One area of a role, in a card: in a module, "עריכה" on or off with what
  * each gives, and the switches under it, off and closed while it is off; in
- * team and manage, edit, view or none, with what the chosen one means.
+ * team and manage, edit, view or none, with what the chosen one means. An
+ * area not open for changes yet shows the same, every control off, and says
+ * so under its name, unless no area is open, which the screen says once.
  */
 function AreaCard({
   area,
   role,
   headingLevel,
   disabled,
+  closedAllId,
   onChange,
 }: {
   area: RolesArea;
@@ -709,6 +788,8 @@ function AreaCard({
   /** 2 on the phone's screen for the role, 3 under its name beside the list. */
   headingLevel: 2 | 3;
   disabled: boolean;
+  /** The screen's line that no area is open yet, while none is. */
+  closedAllId: string | null;
   onChange: (next: RoleAccess) => void;
 }) {
   const t = useTranslations("app.manage.roles");
@@ -720,6 +801,12 @@ function AreaCard({
   const roleName = nameOf(role);
   const access = role.access;
   const Heading = headingLevel === 2 ? "h2" : "h3";
+  const locked = disabled || !area.open;
+  const closedId = `${id}-closed`;
+  /** Why it is off while the area is closed: the screen's line, or its own. */
+  const why = area.open ? null : (closedAllId ?? closedId);
+  /** What a control says of itself, and why it is off while the area is closed. */
+  const described = (hint: string) => (why ? `${hint} ${why}` : hint);
   return (
     <ListGroup>
       <div className="flex items-center gap-3 px-4 pt-3.5 pb-2">
@@ -731,6 +818,9 @@ function AreaCard({
         </span>
         <Heading className="font-semibold text-md">{name}</Heading>
       </div>
+      {why === closedId ? (
+        <ClosedNote id={closedId} className="px-4 pb-2" />
+      ) : null}
       {editOrView(key) ? (
         <>
           <FieldRow
@@ -741,9 +831,9 @@ function AreaCard({
           >
             <Switch
               checked={access.levels[key] === "edit"}
-              disabled={disabled}
+              disabled={locked}
               aria-label={t("editLabel", { area: name, role: roleName })}
-              aria-describedby={`${id}-edit`}
+              aria-describedby={described(`${id}-edit`)}
               onChange={(on) =>
                 onChange(withLevel(access, key, on ? "edit" : "view"))
               }
@@ -768,12 +858,12 @@ function AreaCard({
               >
                 <Switch
                   checked={holdsExtra(access, extra)}
-                  disabled={disabled || !open}
+                  disabled={locked || !open}
                   aria-label={t("extraLabel", {
                     extra: t(`extras.${extra}.label`),
                     role: roleName,
                   })}
-                  aria-describedby={hintId}
+                  aria-describedby={described(hintId)}
                   onChange={(on) => onChange(withExtra(access, extra, on))}
                 />
               </FieldRow>
@@ -786,7 +876,7 @@ function AreaCard({
             area={key}
             access={access}
             label={t("levelLabel", { area: name, role: roleName })}
-            disabled={disabled}
+            disabled={locked}
             onChange={onChange}
           />
         </div>
@@ -863,25 +953,33 @@ function PlaceLevel({
 
 /**
  * The desktop's full picture: a row for each area's edit, one for each switch
- * under it, one for team and one for manage, and pay at the foot, against a
- * column for each role, with what each row gives beside its name.
+ * under it, one for team and one for manage, and pay at the foot (where it
+ * opens something), against a column for each role, with what each row gives
+ * beside its name, and, for an area not open for changes yet, that it isn't
+ * (unless no area is open, which the screen says once).
  */
 function RolesMatrix({
   data,
   roles,
   disabled,
+  closedAllId,
   payHref,
   payLink,
   teamHref,
+  giveLabel,
   onChange,
 }: {
   data: RolesData;
   roles: EditableRole[];
   disabled: boolean;
-  payHref: string;
+  /** The screen's line that no area is open yet, while none is. */
+  closedAllId: string | null;
+  payHref: string | null;
   payLink: string;
   /** The team screen, where a role nobody holds yet is given. */
   teamHref: string;
+  /** What that link says, where the screen is drawn. */
+  giveLabel: string;
   onChange: (role: EditableRole, area: AccessArea, next: RoleAccess) => void;
 }) {
   const t = useTranslations("app.manage.roles");
@@ -910,11 +1008,23 @@ function RolesMatrix({
           {role.name !== null ? (
             <span>{t("builtOn", { role: tRoles(role.base) })}</span>
           ) : null}
-          {role.people.length === 0 ? <GiveRole href={teamHref} /> : null}
+          {role.people.length === 0 ? (
+            <GiveRole href={teamHref} label={giveLabel} />
+          ) : null}
         </span>
       ),
     })),
   ];
+
+  const closedId = (key: AccessArea) => `${id}-${key}-closed`;
+  /** Why a control is off while its area is closed: the screen's line, or the area's own. */
+  const why = (area: RolesArea) =>
+    area.open ? null : (closedAllId ?? closedId(area.key));
+  /** What a control says of itself, and why it is off while its area is closed. */
+  const described = (area: RolesArea, ids: string) => {
+    const reason = why(area);
+    return reason ? `${ids} ${reason}` : ids;
+  };
 
   const head = (area: RolesArea, hint: string | null) => (
     <span className="flex min-w-56 max-w-sm items-start gap-3 py-1">
@@ -932,6 +1042,14 @@ function RolesMatrix({
             className="font-normal text-ink-2 text-sm"
           >
             {hint}
+          </span>
+        ) : null}
+        {why(area) === closedId(area.key) ? (
+          <span
+            id={closedId(area.key)}
+            className="font-normal text-ink-2 text-sm"
+          >
+            {t("closed")}
           </span>
         ) : null}
       </span>
@@ -956,7 +1074,7 @@ function RolesMatrix({
                   area={key}
                   access={role.access}
                   label={t("levelLabel", { area: name, role: roleName(role) })}
-                  disabled={disabled}
+                  disabled={disabled || !area.open}
                   menu
                   onChange={(next) => onChange(role, key, next)}
                 />
@@ -977,12 +1095,12 @@ function RolesMatrix({
               <div className="flex items-center gap-3">
                 <Switch
                   checked={level === "edit"}
-                  disabled={disabled}
+                  disabled={disabled || !area.open}
                   aria-label={t("editLabel", {
                     area: name,
                     role: roleName(role),
                   })}
-                  aria-describedby={`${id}-${key}`}
+                  aria-describedby={described(area, `${id}-${key}`)}
                   onChange={(on) =>
                     onChange(
                       role,
@@ -1015,23 +1133,26 @@ function RolesMatrix({
             const open = extraOpen(role.access, extra);
             const hintId = `${id}-${extra}`;
             // Why it is closed, said with what it does, as in a role's card.
-            const closedId = `${hintId}-${role.key}-closed`;
+            const needsId = `${hintId}-${role.key}-closed`;
             return (
               <div className="flex items-center gap-3">
                 <Switch
                   checked={holdsExtra(role.access, extra)}
-                  disabled={disabled || !open}
+                  disabled={disabled || !area.open || !open}
                   aria-label={t("extraLabel", {
                     extra: t(`extras.${extra}.label`),
                     role: roleName(role),
                   })}
-                  aria-describedby={open ? hintId : `${hintId} ${closedId}`}
+                  aria-describedby={described(
+                    area,
+                    open ? hintId : `${hintId} ${needsId}`,
+                  )}
                   onChange={(on) =>
                     onChange(role, key, withExtra(role.access, extra, on))
                   }
                 />
                 {open ? null : (
-                  <span id={closedId} className="text-ink-2 text-sm">
+                  <span id={needsId} className="text-ink-2 text-sm">
                     {t("needsEdit")}
                   </span>
                 )}
@@ -1043,37 +1164,40 @@ function RolesMatrix({
     ];
   });
 
-  rows.push({
-    key: "pay",
-    cells: {
-      area: (
-        <span className="flex min-w-56 max-w-sm items-start gap-3 py-1">
-          <span
-            aria-hidden="true"
-            className={cn(markClass, "size-9 rounded-[12px] [&_svg]:size-5")}
-          >
-            <Wallet />
+  // Pay is given on "מי רואה שכר", where it opens something.
+  if (payHref) {
+    rows.push({
+      key: "pay",
+      cells: {
+        area: (
+          <span className="flex min-w-56 max-w-sm items-start gap-3 py-1">
+            <span
+              aria-hidden="true"
+              className={cn(markClass, "size-9 rounded-[12px] [&_svg]:size-5")}
+            >
+              <Wallet />
+            </span>
+            <span className="flex flex-col items-start">
+              <span className="font-semibold">{t("pay.title")}</span>
+              {data.documents ? (
+                <span className="font-normal text-ink-2 text-sm">
+                  {t("pay.documents")}
+                </span>
+              ) : null}
+              <Link href={payHref} className={linkClass}>
+                {payLink}
+              </Link>
+            </span>
           </span>
-          <span className="flex flex-col items-start">
-            <span className="font-semibold">{t("pay.title")}</span>
-            {data.documents ? (
-              <span className="font-normal text-ink-2 text-sm">
-                {t("pay.documents")}
-              </span>
-            ) : null}
-            <Link href={payHref} className={linkClass}>
-              {payLink}
-            </Link>
+        ),
+        ...byRole((role) => (
+          <span className="text-ink-2">
+            {payWords(role, data.documents, true)}
           </span>
-        </span>
-      ),
-      ...byRole((role) => (
-        <span className="text-ink-2">
-          {payWords(role, data.documents, true)}
-        </span>
-      )),
-    },
-  });
+        )),
+      },
+    });
+  }
 
   return (
     <Card padding="none" className="overflow-hidden">

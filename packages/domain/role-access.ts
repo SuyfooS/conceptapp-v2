@@ -1,4 +1,5 @@
-import type { ModuleKey } from "./modules";
+import type { ModuleKey, PermissionKey } from "./modules";
+import type { PermissionEntry } from "./permissions";
 
 /**
  * What a role may do in each area of the business, as the owner's screen
@@ -242,6 +243,238 @@ export function extrasTurned(
     (extra) =>
       holdsExtra(after, extra) === on && holdsExtra(before, extra) !== on,
   );
+}
+
+/**
+ * The permission behind each area's edit (`public.permission_keys`; the
+ * roles plan's R1): building the schedule, correcting hours, running the
+ * lists, moderating chat, editing the team and the management page. Pay
+ * (`clock.payroll`) is none of an area's: it keeps its own switch.
+ */
+export const AREA_EDIT: Record<AccessArea, PermissionKey> = {
+  scheduling: "schedule.edit",
+  time_clock: "clock.edit",
+  lists: "lists.manage",
+  chat: "chat.moderate",
+  team: "team.edit",
+  manage: "manage.edit",
+};
+
+/** The permission behind view where an area can go down to none. */
+export const AREA_VIEW: Record<PlaceArea, PermissionKey> = {
+  team: "team.view",
+  manage: "manage.view",
+};
+
+function isPlaceArea(area: AccessArea): area is PlaceArea {
+  return (PLACE_AREAS as readonly AccessArea[]).includes(area);
+}
+
+/** An area's permissions: its view (team and manage), its edit, then its switches. */
+export function areaPermissions(area: AccessArea): PermissionKey[] {
+  return [
+    ...(isPlaceArea(area) ? [AREA_VIEW[area]] : []),
+    AREA_EDIT[area],
+    ...extrasOf(area),
+  ];
+}
+
+/**
+ * What a role may do, as the screen draws it, from what the database says it
+ * holds by its role (`held`: `private.role_holds`, which counts what each key
+ * requires): an area at edit while it holds the area's edit, else at view
+ * while it holds its view (always, in the four modules), else none; a switch
+ * on while it holds it.
+ */
+export function accessFromHeld(held: (key: string) => boolean): RoleAccess {
+  const level = (area: AccessArea): AccessLevel => {
+    if (held(AREA_EDIT[area])) return "edit";
+    if (!isPlaceArea(area) || held(AREA_VIEW[area])) return "view";
+    return "none";
+  };
+  return {
+    levels: Object.fromEntries(
+      ACCESS_AREAS.map((area) => [area, level(area)]),
+    ) as Record<AccessArea, AccessLevel>,
+    extras: Object.fromEntries(
+      ACCESS_EXTRA_KEYS.map((extra) => [extra, held(extra)]),
+    ) as Record<AccessExtra, boolean>,
+  };
+}
+
+/**
+ * What one area at `part` gives the role, key by key, in `areaPermissions`
+ * order: the view at view or above, the edit at edit, and a switch at edit
+ * while it is on.
+ */
+export function areaGrants(
+  area: AccessArea,
+  part: AreaAccess,
+): { perm: PermissionKey; granted: boolean }[] {
+  const edit = part.level === "edit";
+  return areaPermissions(area).map((perm) => {
+    if (perm === AREA_EDIT[area]) return { perm, granted: edit };
+    if (isPlaceArea(area) && perm === AREA_VIEW[area]) {
+      return { perm, granted: levelAtLeast(part.level, "view") };
+    }
+    return {
+      perm,
+      granted: edit && part.extras[perm as AccessExtra] === true,
+    };
+  });
+}
+
+/** A role's rules for keys, before a change. */
+export type RoleRules = {
+  /** Its rule for the key: its row, else its default. */
+  given: (key: string) => boolean;
+  /** Its rule without a row: the key's default roles include it. */
+  byDefault: (key: string) => boolean;
+  /** The key it needs (`public.permission_keys.requires`), or null. */
+  requires: (key: string) => string | null;
+};
+
+/**
+ * The writes (`public.set_role_permissions`, in one go) that bring a role's
+ * rules for an area to `part`: those whose rule differs, the denials first,
+ * each before the keys it requires (none is refused for what it requires),
+ * then the grants, each after the keys it requires, so a grant never meets
+ * its requirement missing, and nobody holds more on the way than before or
+ * after. A key whose requirement this leaves off holds nothing either way:
+ * it keeps a denial or its default as it is, and loses only a grant its
+ * default doesn't make, so the rows stay few and an undo (the writes for
+ * the area as it was) leaves none behind.
+ */
+export function areaWrites(
+  area: AccessArea,
+  part: AreaAccess,
+  rules: RoleRules,
+): { perm: PermissionKey; granted: boolean }[] {
+  const grants = areaGrants(area, part);
+  const target = new Map<string, boolean>(
+    grants.map(({ perm, granted }) => [perm, granted]),
+  );
+  // How far down the area's chain a key is: what it requires comes first.
+  const depth = (key: string, seen: readonly string[] = []): number => {
+    const needs = rules.requires(key);
+    if (needs === null || !target.has(needs) || seen.includes(needs)) return 0;
+    return 1 + depth(needs, [...seen, key]);
+  };
+  // Off: a key this leaves off, or one whose requirement it does.
+  const off = (key: string, seen: readonly string[] = []): boolean => {
+    if (target.get(key) === false) return true;
+    const needs = rules.requires(key);
+    if (needs === null || !target.has(needs) || seen.includes(needs)) {
+      return false;
+    }
+    return off(needs, [...seen, key]);
+  };
+  const leftOff = (key: string): boolean => {
+    const needs = rules.requires(key);
+    return needs !== null && target.has(needs) && off(needs, [key]);
+  };
+  const differs = ({ perm, granted }: { perm: string; granted: boolean }) =>
+    leftOff(perm)
+      ? !granted && rules.given(perm) && !rules.byDefault(perm)
+      : rules.given(perm) !== granted;
+  return grants
+    .map((grant, index) => ({ grant, index, depth: depth(grant.perm) }))
+    .filter(({ grant }) => differs(grant))
+    .sort((a, b) => {
+      if (a.grant.granted !== b.grant.granted) return a.grant.granted ? 1 : -1;
+      const byDepth = a.grant.granted ? a.depth - b.depth : b.depth - a.depth;
+      return byDepth || a.index - b.index;
+    })
+    .map(({ grant }) => grant);
+}
+
+/**
+ * Whether an area's choices change: owners switch each of its permissions per
+ * role (`public.permission_keys.settable`), which its phase turns on once
+ * every check in the area reads them. Until then the screen shows the area
+ * as it is, closed.
+ */
+export function areaOpen(
+  area: AccessArea,
+  settable: (key: string) => boolean,
+): boolean {
+  return areaPermissions(area).every(settable);
+}
+
+/** One permission as the console's matrix has it (`public.role_permission_matrix`). */
+export type MatrixKey = {
+  perm: string;
+  area: string;
+  requires: string | null;
+  /** Owners switch it per role (`public.set_role_permission`). */
+  settable: boolean;
+  /** An owner gives it, on "מי רואה שכר" (pay). */
+  byOwner: boolean;
+};
+
+/** What a business's managers and workers hold, as the database says. */
+export type RoleMatrix = {
+  keys: MatrixKey[];
+  /** The keys whose default roles include each role: its rule without a row. */
+  byDefault: Record<BaseRole, ReadonlySet<string>>;
+  /** Each role's own rule for each key: its row, else its default (`private.role_gives`). */
+  given: Record<BaseRole, ReadonlySet<string>>;
+  /** What each role holds by that rule, with what each key requires (`private.role_holds`). */
+  held: Record<BaseRole, ReadonlySet<string>>;
+};
+
+/**
+ * The matrix from the declarations alone, for a project whose database can't
+ * answer yet (its function missing until the migration reaches it): each
+ * key's default roles, pay for the roles given it (`payRoles`, the
+ * business's rows), and nothing settable, so every area shows today's rules,
+ * closed.
+ */
+export function matrixByDefault(
+  catalogue: readonly PermissionEntry[],
+  payRoles: readonly BaseRole[],
+): RoleMatrix {
+  const byKey = new Map<string, PermissionEntry>(
+    catalogue.map((entry) => [entry.key, entry]),
+  );
+  const byDefault = (role: BaseRole, entry: PermissionEntry) =>
+    entry.defaultRoles.some((r) => r === role);
+  const gives = (role: BaseRole, entry: PermissionEntry) =>
+    entry.byOwner ? payRoles.includes(role) : byDefault(role, entry);
+  const holds = (
+    role: BaseRole,
+    key: string,
+    seen: readonly string[],
+  ): boolean => {
+    const entry = byKey.get(key);
+    if (!entry || seen.includes(key) || !gives(role, entry)) return false;
+    return (
+      entry.requires === null || holds(role, entry.requires, [...seen, key])
+    );
+  };
+  const setOf = (
+    keep: (role: BaseRole, entry: PermissionEntry) => boolean,
+  ): Record<BaseRole, ReadonlySet<string>> => {
+    const of = (role: BaseRole): ReadonlySet<string> =>
+      new Set<string>(
+        catalogue
+          .filter((entry) => keep(role, entry))
+          .map((entry) => entry.key),
+      );
+    return { manager: of("manager"), worker: of("worker") };
+  };
+  return {
+    keys: catalogue.map((entry) => ({
+      perm: entry.key,
+      area: entry.area,
+      requires: entry.requires,
+      settable: false,
+      byOwner: entry.byOwner,
+    })),
+    byDefault: setOf(byDefault),
+    given: setOf(gives),
+    held: setOf((role, entry) => holds(role, entry.key, [])),
+  };
 }
 
 /** How long a name a business gives a role may be. */

@@ -3264,6 +3264,20 @@ export type Database = {
         Args: { actor: string; template: string };
         Returns: undefined;
       };
+      role_permission_matrix: {
+        Args: { business: string };
+        Returns: {
+          area: string;
+          by_default: boolean;
+          by_owner: boolean;
+          given: boolean;
+          held: boolean;
+          perm: string;
+          requires: string;
+          role: Database["public"]["Enums"]["member_role"];
+          settable: boolean;
+        }[];
+      };
       save_list_template: {
         Args: {
           actor: string;
@@ -3495,6 +3509,16 @@ export type Database = {
           grant_role: Database["public"]["Enums"]["member_role"];
           granted: boolean;
           perm_key: string;
+        };
+        Returns: undefined;
+      };
+      set_role_permissions: {
+        Args: {
+          actor: string;
+          business: string;
+          grant_role: Database["public"]["Enums"]["member_role"];
+          granted: boolean[];
+          perm_keys: string[];
         };
         Returns: undefined;
       };

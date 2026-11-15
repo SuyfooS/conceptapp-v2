@@ -573,6 +573,53 @@ frozen and compared for every role, personal key and role row, and a role's
 pay row reaching its members but never a view as the role;
 `payroll_access.test.sql` counts the new keys.
 
+The setter (`20261115000800_roles_setter.sql`, the roles plan's R2), with
+still nothing changed for anyone: no key is `settable` until its area's phase
+(R3 to R8) turns it on. `public.set_role_permission` switches a settable key
+per role: granted or denied writes the row's `allowed`, and the key's default
+for the role removes the row, so rows stay few and "back to default" is the
+undo; granting a key whose `requires` the role doesn't hold by role
+(`private.role_holds`) is refused (22023, hint `requires`, the key it needs
+as the detail), and denying one leaves the keys that require it as they are
+(`private.holds_perm` drops them). Managers and workers only, as before; a
+key an owner gives (`clock.payroll`) is added and removed exactly as before,
+logged `permission.grant` / `permission.revoke`, with no demo refusal, and any
+other key is refused (22023). It locks the business (for no key update)
+before the row, as `public.set_member_role` does, so it never deadlocks with
+a demo reset, which locks the business for update and then deletes the rows.
+`public.set_role_permissions` writes several keys of one role in one
+transaction, each as `set_role_permission` (22023 for a key without its
+answer): a refusal of any leaves them all as they were. Each change of a
+settable key is one `role.permission` row of the log (`role`, `perm`, `area`,
+`from`, `to`; a call that changes nothing writes nothing, and nor does
+removing a row that only said the default), never `permission.*`, which pay
+holders and accountants read: its readers are those of `module.settings`
+(owners and managers, and a view as one), with the log's policies unchanged
+until R7 gates the log by area. `private.check_permission_giver` takes a settable key from the
+same givers as pay, an active owner of the business or the ConceptApp team,
+never a manager (Q5), and `public.set_member_permission` still gives a person
+only a key an owner gives. A demo business is changed by its visitors, as its
+pay is, and its reset deletes the business and its rows with it (on delete
+cascade). The rows of `public.role_permissions` are read by the business's
+owners and a view as its owner (`/manage/access`), no longer by every member:
+they say who set each rule and when, which the log keeps from the rest of the
+staff, who learn what they hold from `public.my_permissions`.
+`public.role_permission_matrix(business)` (the secret key only) answers, for
+managers and workers, every key with its `area`, `requires`, `settable`,
+`by_owner`, whether the role holds it by default (`by_default`), the role's
+own rule (`given`, `private.role_gives`) and what it holds by it (`held`,
+`private.role_holds`); `@db/roles` reads it for the console
+(`getRoleMatrixForTeam`; before the migration, the declarations' defaults and
+the business's pay rows, nothing open) and writes one area of a role
+(`setRoleArea`: the rules read again, and the keys whose rule differs written
+in one call to `set_role_permissions`, in the order `areaWrites` in
+`@domain/role-access` gives: denials first, grants after what they require,
+and a grant whose requirement goes taken back, so an undo leaves no row).
+`getPayRoles` and the console's pay reads count only a row that gives pay
+(`allowed`), reading every row on a project without the column.
+`roles_setter.test.sql` covers it, with two keys made settable inside the
+test.
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for

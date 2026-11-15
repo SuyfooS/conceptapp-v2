@@ -59,3 +59,18 @@ export function consolePayAccess(
   if (!platformCan(role, "businesses.read")) return null;
   return platformCan(role, "staff.invite") ? "change" : "read";
 }
+
+/**
+ * What the console's "תפקידים והרשאות" lets a team role do in a business
+ * (Orel, 15 November 2026, issue #1, Q5: the owner, and the ConceptApp team
+ * from the console, as who sees pay), gated as "מי רואה שכר" is: changing
+ * it takes `staff.invite`, since a role holding it invites anyone in any
+ * role, an owner included, who changes all of it, so switching what a role
+ * does gives no power the role lacks. A role that only reads businesses sees
+ * it without changing it ("read"); off the team, nothing (null).
+ */
+export function consoleRolesAccess(
+  role: PlatformRole | null,
+): "change" | "read" | null {
+  return consolePayAccess(role);
+}

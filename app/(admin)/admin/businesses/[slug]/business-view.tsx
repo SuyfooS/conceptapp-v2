@@ -21,6 +21,7 @@ import {
   Eye,
   KeyRound,
   MessageSquareText,
+  ShieldCheck,
   SlidersHorizontal,
   UserPlus,
 } from "lucide-react";
@@ -45,8 +46,8 @@ function templateName(t: T, key: string | null) {
  * desktop: the checklist beside viewing as a role, and the people as a table
  * under them. Also rendered with mock data on /design/console/businesses.
  * Invites that ran out stay on the page, with a way to renew them, so a
- * business whose owner never joined is not stuck. Under the people, who sees
- * pay, on its own page.
+ * business whose owner never joined is not stuck. Under the people, roles and
+ * permissions and who sees pay, each on its own page.
  */
 export async function BusinessView({
   business,
@@ -56,6 +57,7 @@ export async function BusinessView({
   settingsHref,
   wordingHref,
   addHref,
+  rolesHref,
   accessHref,
   viewAs,
   issue,
@@ -70,6 +72,8 @@ export async function BusinessView({
   wordingHref: string | null;
   /** Where to add a person, when the person may invite staff. */
   addHref: string | null;
+  /** What each role sees and does, when the person reads it. */
+  rolesHref: string | null;
   /** Who sees pay, where it opens something and the person reads it. */
   accessHref: string | null;
   /** Bound to this business, when the person may view it as a role. */
@@ -77,8 +81,9 @@ export async function BusinessView({
   issue: Issue;
 }) {
   const t = await getTranslations("admin");
-  // Its row reads as the page it opens is named, as in the owner's /manage.
+  // Its rows read as the pages they open are named, as in the owner's /manage.
   const tAccess = await getTranslations("app.manage.access");
+  const tRoles = await getTranslations("app.manage.roles");
   const template = templateName(t, business.templateKey);
   // Someone whose invite ran out can't join through it, so they don't count.
   const count = (r: Role) =>
@@ -175,6 +180,15 @@ export async function BusinessView({
             t={t}
             business={business}
             issue={issue}
+            roles={
+              rolesHref
+                ? {
+                    href: rolesHref,
+                    title: tRoles("title"),
+                    subtitle: tRoles("row"),
+                  }
+                : null
+            }
             access={
               accessHref
                 ? {
@@ -406,17 +420,22 @@ function ViewAs({
 const th = "px-5 pt-4 pb-2.5 text-start font-medium text-ink-2 text-sm";
 const td = "px-5 py-3 border-line border-t";
 
+type PageLink = { href: string; title: string; subtitle: string };
+
 function People({
   t,
   business,
   issue,
+  roles,
   access,
 }: {
   t: T;
   business: BusinessSetup;
   issue: Issue;
+  /** Roles and permissions, its row as the owner's /manage names it. */
+  roles: PageLink | null;
   /** Who sees pay, its row as the owner's /manage names it. */
-  access: { href: string; title: string; subtitle: string } | null;
+  access: PageLink | null;
 }) {
   const { people } = business;
   const name = (n: string) => n || t("setup.people.noName");
@@ -540,14 +559,24 @@ function People({
           </div>
         </>
       )}
-      {access ? (
+      {roles || access ? (
         <ListGroup className="xl:max-w-2xl">
-          <ListRow
-            href={access.href}
-            leading={<KeyRound />}
-            title={access.title}
-            subtitle={access.subtitle}
-          />
+          {roles ? (
+            <ListRow
+              href={roles.href}
+              leading={<ShieldCheck />}
+              title={roles.title}
+              subtitle={roles.subtitle}
+            />
+          ) : null}
+          {access ? (
+            <ListRow
+              href={access.href}
+              leading={<KeyRound />}
+              title={access.title}
+              subtitle={access.subtitle}
+            />
+          ) : null}
         </ListGroup>
       ) : null}
     </PageSection>

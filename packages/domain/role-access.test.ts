@@ -1,11 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { declaredPermissions } from "./permissions";
 import {
   ACCESS_AREAS,
   ACCESS_EXTRA_KEYS,
   ACCESS_FLOOR,
+  AREA_EDIT,
   AREA_MODULE,
+  AREA_VIEW,
+  accessFromHeld,
   areaAccess,
+  areaGrants,
   areaOfExtra,
+  areaOpen,
+  areaPermissions,
+  areaWrites,
   checkRoleName,
   defaultAccess,
   editedAreas,
@@ -16,6 +24,7 @@ import {
   holdsExtra,
   levelChoices,
   MODULE_AREAS,
+  matrixByDefault,
   PLACE_AREAS,
   withAreaAccess,
   withExtra,
@@ -147,5 +156,266 @@ describe("role access", () => {
       ok: false,
       problem: "taken",
     });
+  });
+});
+
+// What the console reads and writes (the roles plan's R2): each area's
+// permissions, the screen's levels and switches drawn from what the database
+// says a role holds, and the writes that bring one area to a level: denials
+// first, each key before what it requires, then grants, each after it.
+describe("role access from the database", () => {
+  /** What the catalogue requires (`public.permission_keys.requires`). */
+  const REQUIRES: Record<string, string> = {
+    "schedule.publish": "schedule.edit",
+    "team.edit": "team.view",
+    "manage.edit": "manage.view",
+  };
+  const requires = (key: string) => REQUIRES[key] ?? null;
+  /**
+   * A role's rules: the keys it is given, and those its default gives (the
+   * same, unless a row says otherwise).
+   */
+  const rules = (
+    given: readonly string[],
+    defaults: readonly string[] = given,
+  ) => ({
+    given: (key: string) => given.includes(key),
+    byDefault: (key: string) => defaults.includes(key),
+    requires,
+  });
+  /** Today's rules for managers: every key of the six areas. */
+  const MANAGER: readonly string[] = ACCESS_AREAS.flatMap(areaPermissions);
+
+  it("names each area's permissions, its view and edit before its switches", () => {
+    expect(areaPermissions("scheduling")).toEqual([
+      "schedule.edit",
+      "schedule.publish",
+    ]);
+    expect(areaPermissions("time_clock")).toEqual(["clock.edit"]);
+    expect(areaPermissions("lists")).toEqual(["lists.manage", "lists.send"]);
+    expect(areaPermissions("chat")).toEqual([
+      "chat.moderate",
+      "chat.announce",
+      "chat.send_documents",
+    ]);
+    expect(areaPermissions("team")).toEqual(["team.view", "team.edit"]);
+    expect(areaPermissions("manage")).toEqual(["manage.view", "manage.edit"]);
+    for (const area of ACCESS_AREAS) {
+      expect(areaPermissions(area)).not.toContain("clock.payroll");
+    }
+  });
+
+  it("draws today's rules from what each role holds by default", () => {
+    expect(accessFromHeld((key) => MANAGER.includes(key))).toEqual(
+      defaultAccess("manager"),
+    );
+    expect(accessFromHeld(() => false)).toEqual(defaultAccess("worker"));
+  });
+
+  it("draws a level from the area's edit and view", () => {
+    const held = ["team.view", "manage.view", "manage.edit", "lists.send"];
+    const access = accessFromHeld((key) => held.includes(key));
+    expect(access.levels).toEqual({
+      scheduling: "view",
+      time_clock: "view",
+      lists: "view",
+      chat: "view",
+      team: "view",
+      manage: "edit",
+    });
+    // Held, though the screen shows a switch only under edit.
+    expect(access.extras["lists.send"]).toBe(true);
+    expect(holdsExtra(access, "lists.send")).toBe(false);
+  });
+
+  it("says what an area at a level gives, key by key", () => {
+    expect(
+      areaGrants("scheduling", {
+        level: "edit",
+        extras: { "schedule.publish": false },
+      }),
+    ).toEqual([
+      { perm: "schedule.edit", granted: true },
+      { perm: "schedule.publish", granted: false },
+    ]);
+    expect(
+      areaGrants("lists", { level: "view", extras: { "lists.send": true } }),
+    ).toEqual([
+      { perm: "lists.manage", granted: false },
+      { perm: "lists.send", granted: false },
+    ]);
+    expect(areaGrants("team", { level: "view", extras: {} })).toEqual([
+      { perm: "team.view", granted: true },
+      { perm: "team.edit", granted: false },
+    ]);
+    expect(areaGrants("manage", { level: "none", extras: {} })).toEqual([
+      { perm: "manage.view", granted: false },
+      { perm: "manage.edit", granted: false },
+    ]);
+  });
+
+  it("writes what differs, each key after what it requires", () => {
+    const worker = rules([]);
+    expect(
+      areaWrites(
+        "scheduling",
+        { level: "edit", extras: { "schedule.publish": true } },
+        worker,
+      ),
+    ).toEqual([
+      { perm: "schedule.edit", granted: true },
+      { perm: "schedule.publish", granted: true },
+    ]);
+    expect(areaWrites("team", { level: "edit", extras: {} }, worker)).toEqual([
+      { perm: "team.view", granted: true },
+      { perm: "team.edit", granted: true },
+    ]);
+    // Already so: nothing to write.
+    expect(
+      areaWrites(
+        "scheduling",
+        { level: "view", extras: { "schedule.publish": false } },
+        worker,
+      ),
+    ).toEqual([]);
+  });
+
+  it("leaves a key whose requirement it turns off as it is: it holds nothing either way", () => {
+    const manager = rules(MANAGER);
+    expect(
+      areaWrites(
+        "scheduling",
+        { level: "view", extras: { "schedule.publish": false } },
+        manager,
+      ),
+    ).toEqual([{ perm: "schedule.edit", granted: false }]);
+    expect(areaWrites("team", { level: "none", extras: {} }, manager)).toEqual([
+      { perm: "team.view", granted: false },
+    ]);
+    // Back up to view, its edit stays off: written now that its view is
+    // on, and denied before the view is given, so on the way they never
+    // edit the team.
+    expect(
+      areaWrites(
+        "team",
+        { level: "view", extras: {} },
+        rules(
+          MANAGER.filter((key) => key !== "team.view"),
+          MANAGER,
+        ),
+      ),
+    ).toEqual([
+      { perm: "team.edit", granted: false },
+      { perm: "team.view", granted: true },
+    ]);
+    // A switch denied before its area went down keeps its denial.
+    expect(
+      areaWrites(
+        "scheduling",
+        { level: "view", extras: { "schedule.publish": false } },
+        rules(
+          MANAGER.filter((key) => key !== "schedule.publish"),
+          MANAGER,
+        ),
+      ),
+    ).toEqual([{ perm: "schedule.edit", granted: false }]);
+    // A switch that requires nothing is turned off with its area's edit.
+    expect(
+      areaWrites(
+        "lists",
+        { level: "view", extras: { "lists.send": false } },
+        manager,
+      ),
+    ).toEqual([
+      { perm: "lists.manage", granted: false },
+      { perm: "lists.send", granted: false },
+    ]);
+  });
+
+  it("takes back a grant whose requirement goes, so an undo leaves no row", () => {
+    // Workers raised to edit with publishing, then put back: publishing's
+    // grant goes too, first, though it holds nothing without building.
+    const raised = rules(["schedule.edit", "schedule.publish"], []);
+    expect(
+      areaWrites(
+        "scheduling",
+        { level: "view", extras: { "schedule.publish": false } },
+        raised,
+      ),
+    ).toEqual([
+      { perm: "schedule.publish", granted: false },
+      { perm: "schedule.edit", granted: false },
+    ]);
+    expect(
+      areaWrites(
+        "team",
+        { level: "none", extras: {} },
+        rules(["team.view", "team.edit"], []),
+      ),
+    ).toEqual([
+      { perm: "team.edit", granted: false },
+      { perm: "team.view", granted: false },
+    ]);
+  });
+
+  it("orders the writes by what each key requires, whatever the area's order", () => {
+    const backwards = {
+      given: () => false,
+      byDefault: () => false,
+      requires: (key: string) => (key === "lists.manage" ? "lists.send" : null),
+    };
+    expect(
+      areaWrites(
+        "lists",
+        { level: "edit", extras: { "lists.send": true } },
+        backwards,
+      ),
+    ).toEqual([
+      { perm: "lists.send", granted: true },
+      { perm: "lists.manage", granted: true },
+    ]);
+  });
+
+  it("opens an area only when every one of its permissions is settable", () => {
+    const settable = new Set([
+      "schedule.edit",
+      "schedule.publish",
+      "team.edit",
+    ]);
+    const open = (key: string) => settable.has(key);
+    expect(areaOpen("scheduling", open)).toBe(true);
+    expect(areaOpen("team", open)).toBe(false);
+    expect(areaOpen("time_clock", open)).toBe(false);
+  });
+
+  it("keeps each area's edit and view in that area", () => {
+    for (const area of ACCESS_AREAS) {
+      expect(areaPermissions(area)).toContain(AREA_EDIT[area]);
+    }
+    expect(AREA_VIEW).toEqual({ team: "team.view", manage: "manage.view" });
+  });
+
+  it("makes the matrix from the declarations before the database can answer", () => {
+    const catalogue = declaredPermissions([]);
+    const matrix = matrixByDefault(catalogue, ["worker"]);
+    expect(matrix.keys.map((key) => key.perm)).toEqual(
+      catalogue.map((entry) => entry.key),
+    );
+    expect(matrix.keys.every((key) => !key.settable)).toBe(true);
+    expect([...matrix.held.manager].sort()).toEqual([
+      "manage.edit",
+      "manage.view",
+      "team.edit",
+      "team.view",
+    ]);
+    expect([...matrix.held.worker]).toEqual([]);
+    // Each role's default: the managers' keys, the workers' none.
+    expect(matrix.byDefault.worker.size).toBe(0);
+    expect([...matrix.byDefault.manager].sort()).toEqual([
+      "manage.edit",
+      "manage.view",
+      "team.edit",
+      "team.view",
+    ]);
   });
 });

@@ -14,6 +14,13 @@ export type RolesArea = {
   key: AccessArea;
   /** The module's own icon, from its manifest; team and manage have their own. */
   icon: ModuleIcon | null;
+  /**
+   * Its choices change: owners switch each of its permissions per role
+   * (`areaOpen`), as its phase of the roles plan turns them on once every
+   * check in the area reads them. Until then it is shown as it is, closed,
+   * and says so.
+   */
+  open: boolean;
 };
 
 /** A role the owner changes: a manager, a worker, or one the business named. */
@@ -39,7 +46,10 @@ export type RolesData = {
   roles: EditableRole[];
   owners: RolePerson[];
   accountants: RolePerson[];
-  /** Someone from ConceptApp viewing the business as its owner: nothing changes. */
+  /**
+   * Nothing changes: someone from ConceptApp viewing the business as its
+   * owner, or a team role in the console that only reads businesses.
+   */
   viewOnly: boolean;
   /**
    * Documents are on (chat C7, wherever chat is): whoever sees pay, the
@@ -49,7 +59,14 @@ export type RolesData = {
   documents: boolean;
 };
 
-export type RolesFailure = "noAccess" | "viewOnly" | "failed";
+export type RolesFailure =
+  | "noAccess"
+  | "viewOnly"
+  /** The area isn't open for changes (yet, or since the screen was drawn). */
+  | "closed"
+  /** A switch whose area's edit the role lacks (the database refuses it). */
+  | "requires"
+  | "failed";
 
 export type RolesResult = { ok: true } | { ok: false; failure: RolesFailure };
 
@@ -67,20 +84,39 @@ export type RolesActions = {
     area: AccessArea,
     access: AreaAccess,
   ) => Promise<RolesResult>;
-  addRole: (
+  /**
+   * Adds a role the business names (R11). Without it, and `removeRole`,
+   * there is no "הוספת תפקיד": in the console until then.
+   */
+  addRole?: (
     role: NewRole,
   ) => Promise<
     { ok: true; key: string } | { ok: false; failure: RolesFailure }
   >;
   /** Takes back a role just added, which nobody holds yet (its undo). */
-  removeRole: (role: string) => Promise<RolesResult>;
+  removeRole?: (role: string) => Promise<RolesResult>;
 };
 
-export type RolesPaths = {
-  /** Back to managing the business. */
-  manage: string;
-  /** "מי רואה שכר", where pay is given. */
-  access: string;
-  /** The team screen, where a person's role is changed: how a role is given. */
-  team: string;
-};
+/**
+ * Where the screen is drawn, and what it goes back to. The words that speak
+ * to the reader follow it: in the app they speak to the owner; in the console
+ * to someone on the ConceptApp team.
+ */
+export type RolesPaths =
+  /** The owner's screen in the app, back to managing the business. */
+  (
+    | { place: "app"; manage: string }
+    /** The team's in the console, back to the business's page, by its name. */
+    | { place: "console"; business: string; name: string }
+  ) & {
+    /**
+     * "מי רואה שכר", where pay is given; null where pay opens nothing (no
+     * module that is on uses it), so the screen says nothing of pay.
+     */
+    access: string | null;
+    /**
+     * Where a person is given a role: the team screen in the app, the
+     * business's people in the console.
+     */
+    team: string;
+  };
