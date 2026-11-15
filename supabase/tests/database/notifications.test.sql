@@ -7,7 +7,7 @@
 -- settled for everyone, and the hours line tells a time that waits. Fixed ids of its own and explicit
 -- times, so nothing here counts lines of the seeded demo people.
 begin;
-select plan(68);
+select plan(69);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -165,6 +165,9 @@ insert into ids values
   ('z-week', public.open_schedule_week('71000000-0000-4000-b000-000000000003', '2026-11-15', '2026-11-11 16:00+00'));
 
 -- c works Sunday morning, d the middle (overlapping it), e Monday morning.
+-- Before the week begins, at a moment of its own: who a first publish tells
+-- in a week under way (20261115000400_running_week_notices.sql) never
+-- depends on today's date.
 select public.publish_week_schedule('71000000-0000-4000-a000-000000000002',
   pg_temp.id('week'),
   '[{"day": "2026-11-15", "name": "Morning", "start": "07:00", "end": "15:00", "needed": 1,
@@ -172,7 +175,8 @@ select public.publish_week_schedule('71000000-0000-4000-a000-000000000002',
     {"day": "2026-11-15", "name": "Middle", "start": "11:00", "end": "19:00", "needed": 1,
      "assignees": [{"user": "71000000-0000-4000-a000-000000000004"}]},
     {"day": "2026-11-16", "name": "Morning", "start": "07:00", "end": "15:00", "needed": 1,
-     "assignees": [{"user": "71000000-0000-4000-a000-000000000005"}]}]');
+     "assignees": [{"user": "71000000-0000-4000-a000-000000000005"}]}]',
+  at_time => '2026-11-11 16:00+00');
 reset role;
 
 insert into ids
@@ -380,6 +384,13 @@ select is(
    where n.user_id = '71000000-0000-4000-a000-000000000005' and n.dedupe_key = 'schedule:' || pg_temp.id('week')),
   'schedule.published',
   'and leaves the others as they were'
+);
+select is(
+  (select (n.params - 'week') || jsonb_build_object('until', n.push_before)
+   from public.notifications n
+   where n.user_id = '71000000-0000-4000-a000-000000000004' and n.dedupe_key = 'schedule:' || pg_temp.id('week')),
+  '{"startsOn": "2026-11-15", "mine": 1, "until": null}'::jsonb,
+  'a week still to come says how many shifts are theirs, as before, and nothing of a week under way'
 );
 select is(
   pg_temp.who('swap.removed', 'swap:' || pg_temp.id('s4')),
@@ -609,13 +620,15 @@ select is(
 );
 
 ------------------------------------------------------------------------------
--- A demo business
+-- A demo business, its week published before it begins, at a moment of its
+-- own as the first publish above.
 
 set local role service_role;
 select public.publish_week_schedule('71000000-0000-4000-a000-000000000009',
   pg_temp.id('z-week'),
   '[{"day": "2026-11-15", "name": "Morning", "start": "07:00", "end": "15:00", "needed": 1,
-     "assignees": [{"user": "71000000-0000-4000-a000-00000000000a"}]}]');
+     "assignees": [{"user": "71000000-0000-4000-a000-00000000000a"}]}]',
+  at_time => '2026-11-11 16:00+00');
 reset role;
 select is(
   (select string_agg(n.kind || '/' || n.push_state, ',') from public.notifications n

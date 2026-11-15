@@ -33,8 +33,10 @@ import {
   reachesPhone,
   readNotificationPreferences,
   SWITCHABLE_GROUPS,
+  saysShiftsLeft,
   unfilledWeekBegun,
   unreadCounts,
+  weekUnderWay,
 } from "./notifications";
 import { MAX_ENTRY_HOURS } from "./time-clock-format";
 
@@ -735,7 +737,13 @@ describe("buildInbox", () => {
       actor: { kind: "member", name: null },
       group: "schedule",
       href: "/schedule/shifts",
-      line: { kind: "schedule.published", startsOn: "2026-11-15", mine: 3 },
+      line: {
+        kind: "schedule.published",
+        startsOn: "2026-11-15",
+        mine: 3,
+        running: false,
+        nearest: null,
+      },
     });
   });
 
@@ -1434,6 +1442,139 @@ describe("shifts freed by a team change", () => {
     expect(unfilledWeekBegun("2026-11-22", "2026-11-21")).toBe(false);
     expect(unfilledWeekBegun("2026-11-22", "2026-11-22")).toBe(true);
     expect(unfilledWeekBegun("2026-11-22", "2026-11-28")).toBe(true);
+  });
+});
+
+// The running week's lines (Orel, 15 November 2026, answers 4 and 5;
+// supabase/migrations/20261115000400_running_week_notices.sql): written while
+// the week ran, they count the reader's shifts still to start, and a change
+// names the nearest shift it changed.
+describe("a week under way", () => {
+  const moved = {
+    week: GONE,
+    startsOn: "2026-11-15",
+    mine: 2,
+    running: true,
+    nearest: { change: "moved", shift: SHIFT },
+  };
+
+  it("reads a change with its nearest shift and what is left", () => {
+    expect(lineOf(row("schedule.changed", moved))?.line).toEqual({
+      kind: "schedule.changed",
+      startsOn: "2026-11-15",
+      mine: 2,
+      running: true,
+      nearest: { change: "moved", shift: SHIFT },
+    });
+    for (const change of ["added", "removed", "edited"] as const) {
+      expect(
+        lineOf(
+          row("schedule.changed", {
+            ...moved,
+            nearest: { change, shift: SHIFT },
+          }),
+        )?.line,
+      ).toMatchObject({ nearest: { change, shift: SHIFT } });
+    }
+  });
+
+  it("reads a first publish under way, which names no shift", () => {
+    expect(
+      lineOf(
+        row("schedule.published", {
+          ...moved,
+          mine: 1,
+          nearest: { change: "added", shift: SHIFT },
+        }),
+      )?.line,
+    ).toEqual({
+      kind: "schedule.published",
+      startsOn: "2026-11-15",
+      mine: 1,
+      running: true,
+      nearest: null,
+    });
+  });
+
+  it("still reads the week when the change it names can't be read", () => {
+    for (const nearest of [
+      { change: "swapped", shift: SHIFT },
+      { change: "moved", shift: { ...SHIFT, start: "late" } },
+      { change: "moved" },
+      "Tuesday",
+    ]) {
+      expect(
+        lineOf(row("schedule.changed", { ...moved, nearest }))?.line,
+      ).toMatchObject({ kind: "schedule.changed", mine: 2, nearest: null });
+    }
+    // A week still to come names none, whatever the row holds.
+    expect(
+      lineOf(row("schedule.changed", { ...moved, running: false }))?.line,
+    ).toMatchObject({ running: false, nearest: null });
+    expect(
+      lineOf(row("schedule.changed", { ...moved, running: "yes" }))?.line,
+    ).toMatchObject({ running: false, nearest: null });
+  });
+
+  it("reads a line from before the running week as one of a week to come", () => {
+    expect(
+      lineOf(
+        row("schedule.changed", {
+          week: GONE,
+          startsOn: "2026-11-15",
+          mine: 4,
+        }),
+      )?.line,
+    ).toEqual({
+      kind: "schedule.changed",
+      startsOn: "2026-11-15",
+      mine: 4,
+      running: false,
+      nearest: null,
+    });
+  });
+
+  it("reads a change as the database writes it, when it counts from included", () => {
+    expect(
+      lineOf(
+        row("schedule.changed", {
+          ...moved,
+          nearest: {
+            change: "moved",
+            shift: SHIFT,
+            from: "2026-11-17T08:00:00+00:00",
+          },
+        }),
+      )?.line,
+    ).toEqual({
+      kind: "schedule.changed",
+      startsOn: "2026-11-15",
+      mine: 2,
+      running: true,
+      nearest: { change: "moved", shift: SHIFT },
+    });
+  });
+
+  it("says what is left, but not beside a shift under way they joined", () => {
+    const near = (change: "moved" | "added" | "removed" | "edited") => ({
+      change,
+      shift: SHIFT,
+    });
+    expect(saysShiftsLeft({ mine: 0, nearest: near("added") })).toBe(false);
+    expect(saysShiftsLeft({ mine: 1, nearest: near("added") })).toBe(true);
+    expect(saysShiftsLeft({ mine: 0, nearest: near("removed") })).toBe(true);
+    expect(saysShiftsLeft({ mine: 0, nearest: near("edited") })).toBe(true);
+    expect(saysShiftsLeft({ mine: 0, nearest: null })).toBe(true);
+  });
+
+  it("knows the week under way from its first day to its last", () => {
+    expect(weekUnderWay("2026-11-15", "2026-11-14")).toBe(false);
+    expect(weekUnderWay("2026-11-15", "2026-11-15")).toBe(true);
+    expect(weekUnderWay("2026-11-15", "2026-11-21")).toBe(true);
+    expect(weekUnderWay("2026-11-15", "2026-11-22")).toBe(false);
+    // Across a month's end.
+    expect(weekUnderWay("2026-11-29", "2026-12-05")).toBe(true);
+    expect(weekUnderWay("2026-11-29", "2026-12-06")).toBe(false);
   });
 });
 

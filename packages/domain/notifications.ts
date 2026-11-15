@@ -89,6 +89,14 @@ type KindInfo = {
 };
 
 export const NOTIFICATION_KINDS = {
+  // A week published, the first time to everyone in it, and published again
+  // to those whose own shifts changed. Of a week already under way (Orel, 15
+  // November 2026; `private.notify_for` in
+  // supabase/migrations/20261115000400_running_week_notices.sql), the first
+  // time only to those with a shift still to start, and each line says how
+  // many are left; a change names the reader's nearest shift that changed
+  // (`ShiftChange`), and reaches the phone only before it starts, two minutes
+  // after the publish so a later one replaces it.
   "schedule.published": {
     group: "schedule",
     module: "scheduling",
@@ -109,7 +117,11 @@ export const NOTIFICATION_KINDS = {
   // supabase/migrations/20261114000100_team_changes.sql): to the owners and
   // managers who build the schedule, how many of that week's shifts still to
   // start lack someone now, a count and never who left. Publishing the week
-  // again settles it, and so does none being left (filled, or begun). It leads
+  // again counts it again (Orel, 15 November 2026): settled when none is left,
+  // otherwise its count lowered to what is left (never raised: a shift
+  // published with nobody on it wasn't freed by the team change) without
+  // telling anyone again; and none being left later (filled, or begun)
+  // settles it too. It leads
   // to the schedule, which leads on to next week's builder; a week already
   // under way the app can't fill, so its words say to arrange it with the
   // team directly (`unfilledWeekBegun`). Read, it no longer counts.
@@ -531,6 +543,29 @@ export function isAppPath(url: unknown): url is `/${string}` {
  */
 export function unfilledWeekBegun(startsOn: string, today: string): boolean {
   return startsOn <= today;
+}
+
+/**
+ * Whether the week starting on `startsOn` is the one under way on `today`
+ * (both the business's own days, YYYY-MM-DD): a line written while it ran
+ * says "this week" while it still does, and the week's date after.
+ */
+export function weekUnderWay(startsOn: string, today: string): boolean {
+  return startsOn <= today && today < addDays(startsOn, 7);
+}
+
+/**
+ * Whether a running week's line says how many of the reader's shifts are
+ * left. Not when it names a shift they joined under way and none is left to
+ * start: they are on it now, and "none left" would say they aren't. (A shift
+ * that has begun is never moved or taken off anyone, so an added one that
+ * isn't counted as still to start is under way.)
+ */
+export function saysShiftsLeft(line: {
+  mine: number;
+  nearest: ShiftChange | null;
+}): boolean {
+  return !(line.mine === 0 && line.nearest?.change === "added");
 }
 
 /** Whether a line asks its reader to do something. */
@@ -1036,6 +1071,21 @@ export type NotificationShift = {
   end: string;
 };
 
+/**
+ * The reader's nearest shift that a publish of a week under way changed:
+ * moved (its day or hours, named as it is now), added (a shift they are on
+ * now, one under way they joined included), removed (one they are no longer
+ * on, named as it was), or edited (its name or position alone, named as it is
+ * now; only when nothing else of theirs changed, since it moves nothing).
+ */
+export type ShiftChange = {
+  change: (typeof SHIFT_CHANGES)[number];
+  shift: NotificationShift;
+};
+
+/** How a shift of the reader's changed, as `private.nearest_change` says. */
+export const SHIFT_CHANGES = ["moved", "added", "removed", "edited"] as const;
+
 /** The reader's own part in a decided swap. */
 export type SwapSide = "from" | "to" | null;
 
@@ -1044,8 +1094,15 @@ export type NotificationLine =
       kind: "schedule.published" | "schedule.changed";
       /** The week's first day, YYYY-MM-DD. */
       startsOn: string;
-      /** How many of the week's shifts are the reader's. */
+      /**
+       * How many of the week's shifts are the reader's: of a week under way,
+       * those still to start when the line was written.
+       */
       mine: number;
+      /** The week had begun when the line was written. */
+      running: boolean;
+      /** A change in a week under way: the nearest shift it changed, if any. */
+      nearest: ShiftChange | null;
     }
   | {
       /** Shifts still to start in the week lack someone, since a team change. */
@@ -1258,7 +1315,16 @@ const instant = z
   .refine((value) => !Number.isNaN(Date.parse(value)), "not a time");
 
 const schemas = {
-  week: z.object({ startsOn: z.iso.date(), mine: z.int().min(0) }),
+  week: z.object({
+    startsOn: z.iso.date(),
+    mine: z.int().min(0),
+    // Lines from before the running week say nothing of it.
+    running: z.boolean().catch(false),
+    nearest: z
+      .object({ change: z.enum(SHIFT_CHANGES), shift })
+      .nullable()
+      .catch(null),
+  }),
   unfilled: z.object({
     startsOn: z.iso.date(),
     count: z.int().min(0).catch(0),
@@ -1384,7 +1450,17 @@ function lineOf(
     case "schedule.changed": {
       const params = read(schemas.week);
       return params
-        ? { kind, startsOn: params.startsOn, mine: params.mine }
+        ? {
+            kind,
+            startsOn: params.startsOn,
+            mine: params.mine,
+            running: params.running,
+            // Only a change names one, and only of a week under way.
+            nearest:
+              kind === "schedule.changed" && params.running
+                ? params.nearest
+                : null,
+          }
         : other;
     }
     case "schedule.unfilled": {

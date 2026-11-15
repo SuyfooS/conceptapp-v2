@@ -470,7 +470,7 @@ select is(
 );
 select is(
   (select array_agg(k.key order by k.key) from jsonb_object_keys(pg_temp.last_log()) as k (key)),
-  array['added', 'at', 'changed', 'edited', 'first', 'joined', 'kept', 'removed',
+  array['added', 'at', 'changed', 'edited', 'first', 'joined', 'kept', 'nearest', 'removed',
         'removed_swaps', 'reopened', 'running', 'shifts', 'starts_on', 'swaps_removed', 'week'],
   'ids, counts and shifts only, never a name'
 );
