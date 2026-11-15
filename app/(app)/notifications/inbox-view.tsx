@@ -3,6 +3,7 @@ import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { numberRange, signed } from "@domain/lists";
 import {
   inboxAgo,
+  LIST_TIME_WORDS,
   type NotificationActor,
   type NotificationEntry,
   type NotificationGroup,
@@ -491,13 +492,9 @@ export function InboxView({
             };
       case "lists.due":
       case "lists.late":
-      case "lists.late_team": {
-        const key =
-          line.kind === "lists.due"
-            ? "due"
-            : line.kind === "lists.late"
-              ? "late"
-              : "late_team";
+      case "lists.late_team":
+      case "lists.late_owner": {
+        const key = LIST_TIME_WORDS[line.kind];
         // Finished or missed: nothing waits on it now.
         return settled
           ? {

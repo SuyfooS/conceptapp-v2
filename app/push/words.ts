@@ -3,6 +3,7 @@ import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { numberRange, signed } from "@domain/lists";
 import {
+  LIST_TIME_WORDS,
   type NotificationChat,
   type NotificationEntry,
   type NotificationPerson,
@@ -339,13 +340,9 @@ export function pushWords(
       };
     case "lists.due":
     case "lists.late":
-    case "lists.late_team": {
-      const key =
-        line.kind === "lists.due"
-          ? "due"
-          : line.kind === "lists.late"
-            ? "late"
-            : "late_team";
+    case "lists.late_team":
+    case "lists.late_owner": {
+      const key = LIST_TIME_WORDS[line.kind];
       // Finished or missed: nothing waits on it now.
       if (settled) {
         return {

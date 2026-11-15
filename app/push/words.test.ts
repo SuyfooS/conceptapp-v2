@@ -459,6 +459,46 @@ describe("a request open again, on the phone", () => {
   });
 });
 
+// A list still late a while after its late line (Orel, 15 November 2026): its
+// owners hear it is still open, with its name and when it was due, on the
+// business's clock, and once settled that it is no longer open: true whether
+// it was finished, cancelled or missed, never that it got done.
+describe("a list still late, to its owners, on the phone", () => {
+  const words = he.app.notifications.kinds.lists.late_owner;
+  const name = "פתיחת בוקר";
+  const still = (due: string | null, settled = false) =>
+    pushWords(
+      {
+        ...entry({ kind: "lists.late_owner", name, due }, settled),
+        actor: { kind: "app" },
+        group: "lists",
+        href: "/lists/0b000000-0000-4000-a000-000000000002",
+      },
+      baseWording,
+      "Asia/Jerusalem",
+    );
+
+  it("names the list, and says by when it was due and that it is still open", () => {
+    expect(still("2026-11-16T07:15:00.000Z")).toEqual({
+      title: words.title.replace("{name}", name),
+      body: words.note.replace("<ltr>{time}</ltr>", "\u206609:15\u2069"),
+    });
+  });
+
+  it("still says so without its due time", () => {
+    expect(still(null)).toEqual({ title: words.title.replace("{name}", name) });
+  });
+
+  it("says once settled that it is no longer open, not that it is no longer late", () => {
+    const settled = still("2026-11-16T07:15:00.000Z", true);
+    expect(settled).toEqual({
+      title: words.settledTitle.replace("{name}", name),
+    });
+    // Missed or cancelled settle it too: "no longer late" would read as done.
+    expect(settled.title).not.toContain("באיחור");
+  });
+});
+
 // The running week (Orel, 15 November 2026, answers 4 and 5): a line written
 // while the week ran says "this week", names the nearest shift that changed
 // with its hours now (or that the reader came off it), and how many of their

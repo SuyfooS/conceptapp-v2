@@ -90,6 +90,45 @@ describe("module registry", () => {
     );
   });
 
+  it("lets the business choose when its owners hear a list is still late, an hour at first", () => {
+    // Orel, 15 November 2026: the step after the late line. The minute job
+    // reads only these values, anything else stored as 60, and
+    // private.list_settings holds the same default
+    // (20261115000500_lists_owners_late.sql).
+    const manifest = manifestFor("lists");
+    const field = describeSettings(manifest.settings).find(
+      (f) => f.key === "tellOwnersAfterMinutes",
+    );
+    expect(field?.level).toBe("business");
+    expect(field?.kind === "choice" ? field.options : null).toEqual([
+      0, 30, 60, 120,
+    ]);
+    expect(manifest.settings.parse({}).tellOwnersAfterMinutes).toBe(60);
+    // Owners and managers see it on /manage/lists, the team in the console.
+    for (const level of ["business", "owner", "team"] as const) {
+      expect(
+        fieldsFor(manifest.settings, level).map((f) => f.key),
+        level,
+      ).toContain("tellOwnersAfterMinutes");
+    }
+    // Drawn after the managers' own line about a late list.
+    const keys = describeSettings(manifest.settings).map((f) => f.key);
+    expect(keys.indexOf("tellOwnersAfterMinutes")).toBe(
+      keys.indexOf("tellManagersWhenLate") + 1,
+    );
+    // A value not offered reads as the default, the others stay.
+    expect(
+      readModuleSettings(manifest, {
+        tellOwnersAfterMinutes: 45,
+        lateAfterMinutes: 30,
+      }),
+    ).toMatchObject({ tellOwnersAfterMinutes: 60, lateAfterMinutes: 30 });
+    expect(
+      readModuleSettings(manifest, { tellOwnersAfterMinutes: 0 })
+        .tellOwnersAfterMinutes,
+    ).toBe(0);
+  });
+
   it("gives chat the default roles its SQL helpers hold", () => {
     // public.send_chat_message and private.chat_moderates ask
     // private.holds_perm, which reads these from public.permission_keys
