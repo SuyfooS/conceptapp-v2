@@ -2798,11 +2798,21 @@
         "schedule": {
           "published": {
             "title": "The schedule for the week of {date} is out",
-            "body": "{count, plural, =0 {You have no shifts this week} one {You have one shift} other {You have # shifts}}"
+            "titleRunning": "This week's schedule is out",
+            "body": "{count, plural, =0 {You have no shifts this week} one {You have one shift} other {You have # shifts}}",
+            "left": "{count, plural, =0 {You have no shifts left this week} one {You have one shift left this week} other {You have # shifts left this week}}"
           },
           "changed": {
             "title": "Your shifts changed in the week of {date}",
-            "body": "{count, plural, =0 {You now have no shifts this week} one {You now have one shift} other {You now have # shifts}}"
+            "titleRunning": "Your shifts changed this week",
+            "body": "{count, plural, =0 {You now have no shifts this week} one {You now have one shift} other {You now have # shifts}}",
+            "left": "{count, plural, =0 {You have no shifts left this week} one {You have one shift left this week} other {You have # shifts left this week}}",
+            "nearest": {
+              "moved": "Your shift on {day} is now from <ltr>{start}</ltr> to <ltr>{end}</ltr>",
+              "added": "You have a new shift on {day} from <ltr>{start}</ltr> to <ltr>{end}</ltr>",
+              "removed": "You no longer have the shift on {day} from <ltr>{start}</ltr> to <ltr>{end}</ltr>",
+              "edited": "Your shift on {day} from <ltr>{start}</ltr> to <ltr>{end}</ltr> changed"
+            }
           },
           "unfilled": {
             "title": "{count, plural, =0 {Shifts were freed in the week of {date}} one {One shift in the week of {date} needs someone} other {# shifts in the week of {date} need someone}}",

@@ -2798,11 +2798,21 @@
         "schedule": {
           "published": {
             "title": "הסידור לשבוע של {date} פורסם",
-            "body": "{count, plural, =0 {אין לך משמרות בשבוע הזה} one {יש לך משמרת אחת} other {יש לך # משמרות}}"
+            "titleRunning": "הסידור של השבוע פורסם",
+            "body": "{count, plural, =0 {אין לך משמרות בשבוע הזה} one {יש לך משמרת אחת} other {יש לך # משמרות}}",
+            "left": "{count, plural, =0 {לא נשארו לך משמרות השבוע} one {נשארה לך משמרת אחת השבוע} other {נשארו לך # משמרות השבוע}}"
           },
           "changed": {
             "title": "יש שינוי במשמרות שלך בשבוע של {date}",
-            "body": "{count, plural, =0 {עכשיו אין לך משמרות בשבוע הזה} one {עכשיו יש לך משמרת אחת} other {עכשיו יש לך # משמרות}}"
+            "titleRunning": "יש שינוי במשמרות שלך השבוע",
+            "body": "{count, plural, =0 {עכשיו אין לך משמרות בשבוע הזה} one {עכשיו יש לך משמרת אחת} other {עכשיו יש לך # משמרות}}",
+            "left": "{count, plural, =0 {לא נשארו לך משמרות השבוע} one {נשארה לך משמרת אחת השבוע} other {נשארו לך # משמרות השבוע}}",
+            "nearest": {
+              "moved": "המשמרת שלך ביום {day} עכשיו מ-<ltr>{start}</ltr> עד <ltr>{end}</ltr>",
+              "added": "יש לך משמרת חדשה ביום {day} מ-<ltr>{start}</ltr> עד <ltr>{end}</ltr>",
+              "removed": "כבר אין לך משמרת ביום {day} מ-<ltr>{start}</ltr> עד <ltr>{end}</ltr>",
+              "edited": "יש שינוי במשמרת שלך ביום {day} מ-<ltr>{start}</ltr> עד <ltr>{end}</ltr>"
+            }
           },
           "unfilled": {
             "title": "{count, plural, =0 {בשבוע של {date} התפנו משמרות בסידור} one {משמרת אחת בשבוע של {date} חסרה עובד} other {# משמרות בשבוע של {date} חסרות עובד}}",
