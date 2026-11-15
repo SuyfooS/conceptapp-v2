@@ -8,7 +8,10 @@ import {
   type NotificationEntry,
   type NotificationGroup,
   type NotificationShift,
+  type ShiftChange,
+  saysShiftsLeft,
   unfilledWeekBegun,
+  weekUnderWay,
 } from "@domain/notifications";
 import { shiftStarted } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
@@ -144,6 +147,17 @@ export function InboxView({
         })
       : null;
   /**
+   * The reader's nearest shift a change moved, added, took off them or only
+   * renamed or gave another position.
+   */
+  const changeWords = (near: ShiftChange) =>
+    t.rich(`kinds.schedule.changed.nearest.${near.change}`, {
+      ltr,
+      day: weekday(near.shift.day),
+      start: near.shift.start,
+      end: near.shift.end,
+    });
+  /**
    * The line's shift has begun at the moment the screen is read, so it can
    * no longer be taken or approved, as the database decides.
    */
@@ -179,17 +193,43 @@ export function InboxView({
       case "schedule.changed": {
         const key =
           line.kind === "schedule.published" ? "published" : "changed";
+        const dated = t(`kinds.schedule.${key}.title`, {
+          date: dayMonth(line.startsOn),
+        });
+        if (!line.running) {
+          return {
+            title: dated,
+            shift: null,
+            notes: [t(`kinds.schedule.${key}.body`, { count: line.mine })],
+          };
+        }
+        // Written while the week ran (Orel, 15 November 2026): the nearest
+        // shift that changed, and how many were left. "This week" while it
+        // still is; after it, the week's date. How many were left was
+        // counted when the line was written, so it is said on that day only
+        // (on the business's clock), and never beside a shift under way they
+        // joined with none left to start (`saysShiftsLeft`).
+        const today = dateIn(nowDate, timeZone);
+        const current = weekUnderWay(line.startsOn, today);
+        const left =
+          current &&
+          dateIn(new Date(entry.at), timeZone) === today &&
+          saysShiftsLeft(line);
         return {
-          title: t(`kinds.schedule.${key}.title`, {
-            date: dayMonth(line.startsOn),
-          }),
+          title: current ? t(`kinds.schedule.${key}.titleRunning`) : dated,
           shift: null,
-          notes: [t(`kinds.schedule.${key}.body`, { count: line.mine })],
+          notes: [
+            ...(line.nearest ? [changeWords(line.nearest)] : []),
+            ...(left
+              ? [t(`kinds.schedule.${key}.left`, { count: line.mine })]
+              : []),
+          ],
         };
       }
       // A team change freed shifts (Orel, 14 November 2026): how many, never
-      // who left. Published again, or none left: nothing waits on it now. A
-      // week already under way can't be filled in the app, so it says how.
+      // who left. Counted again by a publish, and settled when none is left:
+      // nothing waits on it then. A week already under way can't be filled in
+      // the app, so it says how.
       case "schedule.unfilled": {
         const date = dayMonth(line.startsOn);
         const count = line.count;
