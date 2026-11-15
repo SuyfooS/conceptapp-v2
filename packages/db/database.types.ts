@@ -2359,39 +2359,45 @@ export type Database = {
       shift_swaps: {
         Row: {
           business_id: string;
+          cancelled_because: string | null;
           created_at: string;
           decided_at: string | null;
           decided_by: string | null;
           id: string;
           note: string | null;
           requested_by: string;
-          shift_id: string;
+          shift: Json;
+          shift_id: string | null;
           status: Database["public"]["Enums"]["swap_status"];
           taken_at: string | null;
           taken_by: string | null;
         };
         Insert: {
           business_id: string;
+          cancelled_because?: string | null;
           created_at?: string;
           decided_at?: string | null;
           decided_by?: string | null;
           id?: string;
           note?: string | null;
           requested_by: string;
-          shift_id: string;
+          shift: Json;
+          shift_id?: string | null;
           status?: Database["public"]["Enums"]["swap_status"];
           taken_at?: string | null;
           taken_by?: string | null;
         };
         Update: {
           business_id?: string;
+          cancelled_because?: string | null;
           created_at?: string;
           decided_at?: string | null;
           decided_by?: string | null;
           id?: string;
           note?: string | null;
           requested_by?: string;
-          shift_id?: string;
+          shift?: Json;
+          shift_id?: string | null;
           status?: Database["public"]["Enums"]["swap_status"];
           taken_at?: string | null;
           taken_by?: string | null;

@@ -424,8 +424,15 @@ export async function sendDemoAvailability(
     from week, public.profiles p where p.phone = ${phone}`;
 }
 
-/** Remove the demo restaurant's saved schedules, back to drafts. */
+/**
+ * Remove the demo restaurant's saved schedules, back to drafts. Its swap
+ * requests go first, as they went with their shifts before
+ * 20261115000200_swap_history.sql kept them: a waiting one may not lose its
+ * shift, and each test starts with none.
+ */
 export async function clearSchedule(): Promise<void> {
+  await sql`delete from public.shift_swaps
+    where business_id = ${DEMO_RESTAURANT}`;
   await sql`delete from public.schedule_shifts
     where business_id = ${DEMO_RESTAURANT}`;
   await sql`update public.schedule_weeks

@@ -129,8 +129,7 @@ saved it) the week is replaced as before, and no ids are sent with it. A clash
 the database finds past the action's own check is with something changed
 meanwhile (`scheduleClashedMeanwhile`). A waiting swap request ends only when
 its shift is deleted, its day or hours change or its asker comes off it
-(cancelled, both told `swap.removed`;
-a deleted shift's requests still go with it); one taken by someone who may no
+(cancelled, both told `swap.removed`); one taken by someone who may no
 longer take it opens again (`swap.reopened`, offered again); every other one
 waits on, offered only to whoever may still take it. `swapsEndedBy` in
 `@domain/swaps` reads the same rule off the builder's screen for the warning
@@ -140,6 +139,19 @@ payloads, drafts and positions); the SQL stays the authority, so a change to
 it changes both. Who builds the schedule is one helper, `private.builds_schedule`.
 `week_in_place.test.sql` covers it.
 
+A swap request outlives its shift (`20261115000200_swap_history.sql`):
+`shift_swaps.shift_id` is `on delete set null`, and `shift_swaps.shift` keeps
+the shift as it was when the request was made (`private.shift_brief`, taken by
+`request_shift_swap` and never rewritten), so approved and declined requests
+stay with who took them and who decided after their shift is published away.
+A request still waiting always has its shift (`shift_swaps_live_shift`): the
+write ends it first, and a delete by hand is refused (23514), which is why
+`clearSchedule` in e2e/db.ts deletes the demo's requests before its shifts; a
+business deleted takes its requests with it. A cancelled request says why,
+`cancelled_because`: `withdrawn` (`cancel_shift_swap`), `schedule`
+(`private.write_week_schedule`) or `team` (`private.leave_staff`). The policy
+is unchanged. `swap_history.test.sql` covers it.
+
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
 `clock.confirm` from `confirm_time_entry`, `clock.code.locked`,
@@ -148,11 +160,13 @@ own business's rows, and so does the team while viewing it as a manager or owner
 but for the pay rows (`wage.*`, `payroll.*`): only pay holders read those, and a
 pay holder who is no manager reads the clock's and the permissions' rows too.
 Publishing a week's schedule logs its first day, the number of shifts, whether it
-was the first time, and how many waiting swap requests the old shifts took with
-them (`activity_log.test.sql`), and, for notifications, whose shifts changed
-and the requests it removed; and, since the week is written in place, the ids of
+was the first time, and how many waiting swap requests it ended
+(`activity_log.test.sql`), and, for notifications, whose shifts changed
+and the requests it ended; and, since the week is written in place, the ids of
 the shifts it kept, edited, added and removed, the requests it opened again, and
-when (`at`).
+when (`at`). A swap's lines name its shift as the request keeps it
+(`shift_swaps.shift`, read by `getBusinessActivity`), so they read the same
+after the shift moves or goes.
 
 Notifications are written from the audit log: a trigger
 (`private.notify_from_log`, which never blocks the write it follows) reads

@@ -2389,7 +2389,7 @@
           "schedule": {
             "publish": "{first, select, true {Published the schedule for the week of {week}} other {Published changes to the schedule for the week of {week}}}",
             "shifts": "{count, plural, =0 {No shifts} one {One shift} other {# shifts}}",
-            "swapsRemoved": "{count, plural, one {One swap request was removed} other {# swap requests were removed}}"
+            "swapsRemoved": "{count, plural, one {One swap request was cancelled} other {# swap requests were cancelled}}"
           },
           "other": "Something else in the app",
           "wording": {

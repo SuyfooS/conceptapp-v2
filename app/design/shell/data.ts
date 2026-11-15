@@ -432,7 +432,12 @@ export const demoActivityLookups: ActivityLookups = {
   swaps: new Map([
     [
       "swap-thu",
-      { shiftId: "shift-thu-evening", requestedBy: "noa", takenBy: "yoav" },
+      {
+        shiftId: "shift-thu-evening",
+        shift: { day: "2026-11-05", name: "ערב", start: "16:00", end: "23:00" },
+        requestedBy: "noa",
+        takenBy: "yoav",
+      },
     ],
   ]),
   departments: new Map([["dep-kitchen", "מטבח"]]),

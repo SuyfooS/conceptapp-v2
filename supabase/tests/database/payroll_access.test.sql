@@ -151,13 +151,16 @@ insert into public.list_schedules (template_id, business_id, days, opens_offset,
   recipient_kind, recipient_user, starts_on)
 values ('77000000-0000-4000-d000-000000000011', '77000000-0000-4000-b000-000000000001',
   '{1}', 480, 540, 'person', '77000000-0000-4000-a000-000000000017', '2026-11-10');
-insert into public.shift_swaps (business_id, shift_id, requested_by)
+-- Each request keeps its shift as it was asked for
+-- (20261115000200_swap_history.sql), as public.request_shift_swap writes it.
+insert into public.shift_swaps (business_id, shift_id, requested_by, shift)
 values ('77000000-0000-4000-b000-000000000001', '77000000-0000-4000-f000-000000000011',
-  '77000000-0000-4000-a000-00000000000c');
-insert into public.shift_swaps (business_id, shift_id, requested_by, status, taken_by, taken_at)
+  '77000000-0000-4000-a000-00000000000c',
+  private.shift_brief('77000000-0000-4000-f000-000000000011'));
+insert into public.shift_swaps (business_id, shift_id, requested_by, status, taken_by, taken_at, shift)
 values ('77000000-0000-4000-b000-000000000001', '77000000-0000-4000-f000-000000000012',
   '77000000-0000-4000-a000-000000000016', 'taken', '77000000-0000-4000-a000-000000000019',
-  '2026-11-09 08:00+00');
+  '2026-11-09 08:00+00', private.shift_brief('77000000-0000-4000-f000-000000000012'));
 
 -- The log: a pay row, a settings row and a clock row.
 insert into public.audit_log (business_id, actor_id, action, details)

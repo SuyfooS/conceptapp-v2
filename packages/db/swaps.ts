@@ -6,7 +6,9 @@ import { createClient } from "./supabase/server";
 /**
  * A business's live shift swaps (open, or taken and waiting for a
  * manager), as the signed-in person may read them (RLS: active members of
- * the business, and "view as").
+ * the business, and "view as"). A live one always has its shift
+ * (`shift_swaps_live_shift`, 20261115000200_swap_history.sql); only a
+ * request no longer waiting outlives its shift.
  */
 export async function getLiveSwaps(businessId: string): Promise<ShiftSwap[]> {
   const supabase = await createClient();
@@ -18,7 +20,7 @@ export async function getLiveSwaps(businessId: string): Promise<ShiftSwap[]> {
     .order("created_at");
   if (error) throw error;
   return data.flatMap((row) =>
-    row.status === "open" || row.status === "taken"
+    (row.status === "open" || row.status === "taken") && row.shift_id
       ? [
           {
             id: row.id,
