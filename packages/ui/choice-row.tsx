@@ -7,6 +7,7 @@ export function ChoiceList({
   legendClassName,
   error,
   className,
+  groupClassName,
   children,
 }: {
   legend: ReactNode;
@@ -15,6 +16,8 @@ export function ChoiceList({
   /** Under the list, in place of nothing: what is wrong with the choice, read out as it appears. */
   error?: ReactNode;
   className?: string;
+  /** The group of rows: `bg-elevated shadow-none` in a sheet, as its other groups. */
+  groupClassName?: string;
   children: ReactNode;
 }) {
   const errorId = useId();
@@ -26,7 +29,12 @@ export function ChoiceList({
       <legend className={cn("mb-3 px-1 font-bold text-lg", legendClassName)}>
         {legend}
       </legend>
-      <div className="overflow-hidden rounded-card bg-surface shadow-card">
+      <div
+        className={cn(
+          "overflow-hidden rounded-card bg-surface shadow-card",
+          groupClassName,
+        )}
+      >
         {children}
       </div>
       {error ? (

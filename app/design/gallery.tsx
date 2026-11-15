@@ -1587,6 +1587,69 @@ function GalleryReadTable() {
         />
       </Card>
       <p className="px-1 text-ink-2 text-sm">{t("dataTableReadHint")}</p>
+      <GalleryControlsTable />
+    </div>
+  );
+}
+
+/**
+ * A table whose cells hold their own controls (`controls`), as the roles
+ * screen's matrix: the keyboard goes from switch to switch, with no stop on
+ * the scroller of its own.
+ */
+function GalleryControlsTable() {
+  const t = useTranslations("design");
+  const columns = ["app", "phone"] as const;
+  const [on, setOn] = useState<Record<string, boolean>>({
+    "p1:app": true,
+    "p1:phone": true,
+    "p2:app": true,
+    "p2:phone": false,
+    "p3:app": false,
+    "p3:phone": false,
+  });
+  const label = (column: (typeof columns)[number]) =>
+    column === "app" ? t("dataTableApp") : t("dataTablePhone");
+  const people = [
+    { key: "p1", name: t("person1") },
+    { key: "p2", name: t("person2") },
+    { key: "p3", name: t("person3") },
+  ];
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      <Card padding="none" className="overflow-hidden">
+        <DataTable
+          caption={t("dataTableControls")}
+          controls
+          columns={[
+            { key: "name", label: t("dataTableName") },
+            ...columns.map((column) => ({ key: column, label: label(column) })),
+          ]}
+          rows={people.map((person) => ({
+            key: person.key,
+            cells: {
+              name: person.name,
+              ...Object.fromEntries(
+                columns.map((column) => {
+                  const key = `${person.key}:${column}`;
+                  return [
+                    column,
+                    <Switch
+                      key={key}
+                      checked={on[key] === true}
+                      aria-label={`${person.name}, ${label(column)}`}
+                      onChange={(value) =>
+                        setOn((now) => ({ ...now, [key]: value }))
+                      }
+                    />,
+                  ];
+                }),
+              ),
+            },
+          }))}
+        />
+      </Card>
+      <p className="px-1 text-ink-2 text-sm">{t("dataTableControlsHint")}</p>
     </div>
   );
 }

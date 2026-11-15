@@ -45,6 +45,12 @@ export type DataTableProps = {
   rowHint?: string;
   /** The row chosen now, marked as current. */
   selected?: string | null;
+  /**
+   * Its cells hold controls of their own (switches, menus, links): the
+   * keyboard reaches the table through them, and a cell scrolls into view as
+   * it takes the focus, so the scroller takes no focus of its own.
+   */
+  controls?: boolean;
   className?: string;
 };
 
@@ -57,9 +63,10 @@ const cellClass = "px-4 py-3 align-middle";
  * never does. The header scrolls with the page: a sideways scroller is its
  * scroll container, which never scrolls down, so a header there can't stick.
  * Rows are at least 44px tall. A table one chooses rows of gets a button
- * filling each first cell. A table that only reads has nothing in it to
- * focus, so its scroller takes the keyboard itself, named by the caption:
- * a wide one still scrolls sideways by the arrow keys.
+ * filling each first cell. One whose cells hold their own controls
+ * (`controls`) is reached through them. A table that only reads has nothing
+ * in it to focus, so its scroller takes the keyboard itself, named by the
+ * caption: a wide one still scrolls sideways by the arrow keys.
  */
 export function DataTable({
   columns,
@@ -68,6 +75,7 @@ export function DataTable({
   onSelect,
   rowHint,
   selected = null,
+  controls = false,
   className,
 }: DataTableProps) {
   const hintId = useId();
@@ -161,8 +169,9 @@ export function DataTable({
     </table>
   );
 
-  // A table one chooses rows of is reached through its row buttons.
-  if (onSelect) {
+  // A table one chooses rows of is reached through its row buttons, and one
+  // whose cells hold controls through those.
+  if (onSelect || controls) {
     return (
       <div className={cn("overflow-x-auto", className)}>
         {table}
