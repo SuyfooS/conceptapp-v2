@@ -186,9 +186,10 @@ shift, moves it in its day or hours or gives it another pattern, raised to
 from the start) and lets the day's list follow the earliest shift of the
 pattern whose list is not late, so a late one never takes it from a later
 shift's on time; a hosted demo's reset ages
-it with its times (`private.seed_demo_lists`). The builder maps the new
-refusals (`shiftStarted`, `past`, `weekOver`) but sends no joins until it
-opens the running week. Every pgTAP file that writes a published week again
+it with its times (`private.seed_demo_lists`). The builder opens the running
+week too (`?week=`): it leaves a begun shift out of both the shifts and the
+basis, sends the people added to it as `joins`, and maps the refusals
+(`shiftStarted`, `shiftEnded`, `past`, `weekOver`). Every pgTAP file that writes a published week again
 passes `at_time`. `running_week.test.sql` covers it.
 
 The audit log is the business's activity log. Only server functions write it,

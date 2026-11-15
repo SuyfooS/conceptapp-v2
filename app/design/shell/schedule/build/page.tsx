@@ -29,6 +29,12 @@ type Props = { searchParams: Promise<{ state?: string }> };
 // manager approves Maya's while the screen is open, so publishing a change to
 // that morning is refused: it comes back as it is now, marked, with the rest
 // of the work kept, and publishing again goes out.
+//
+// This twin is older than the switch between this week and next (R3a), and
+// stays without it: the restaurant's demo has no week under way to switch to.
+// /schedule/build now always shows the switch, with its counts, on the
+// business's own clock; that screen, next week included, is the running twin
+// at /design/shell/schedule/build/running (?week=next for next week).
 export default function ShellScheduleBuild(props: Props) {
   return (
     <Suspense>
@@ -43,6 +49,8 @@ async function Demo({ searchParams }: Props) {
   const common = {
     week: demoWeek,
     team: members,
+    people: members,
+    hasPattern: true,
     answers: teamAnswers,
     positions: demoPositions,
   };

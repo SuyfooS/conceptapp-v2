@@ -116,6 +116,8 @@ function nextWeekBuild(
     })),
     basis: null,
     team: members,
+    people: members,
+    hasPattern: true,
     answers: teamAnswers,
     positions: [],
   };

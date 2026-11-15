@@ -165,6 +165,7 @@ function GalleryBody({
   const t = useTranslations("design");
   const tDays = useTranslations("days");
   const tWeek = useTranslations("app.shifts.week");
+  const tBuild = useTranslations("app.build");
   const tCode = useTranslations("app.clock.code");
   const tClock = useTranslations("app.clock");
   const tMe = useTranslations("app.me");
@@ -597,6 +598,26 @@ function GalleryBody({
             options={[
               { value: "this", label: tWeek("this") },
               { value: "next", label: tWeek("next") },
+            ]}
+            className="self-start"
+          />
+          {/* With a count of what needs action on each, as the builder's
+              switch between this week and next shows it. */}
+          <Segmented
+            label={t("week")}
+            value={week}
+            onChange={setWeek}
+            options={[
+              {
+                value: "this",
+                label: tWeek("this"),
+                badge: { count: 1, label: tBuild("gaps", { count: 1 }) },
+              },
+              {
+                value: "next",
+                label: tWeek("next"),
+                badge: { count: 4, label: tBuild("gaps", { count: 4 }) },
+              },
             ]}
             className="self-start"
           />

@@ -2,8 +2,19 @@
 
 import { cn } from "./cn";
 
+export type SegmentedOption<V extends string> = {
+  value: V;
+  label: string;
+  /**
+   * A count beside the label, and what it means for a screen reader ("2
+   * shifts short"), which joins the label ("This week, 2 shifts short"), as
+   * IconButton's badge does. Nothing shows at 0.
+   */
+  badge?: { count: number; label: string };
+};
+
 export type SegmentedProps<V extends string> = {
-  options: { value: V; label: string }[];
+  options: SegmentedOption<V>[];
   value: V;
   onChange: (value: V) => void;
   /** What the choice is about, for screen readers. */
@@ -46,6 +57,8 @@ export function Segmented<V extends string>({
         ) : null}
         {options.map((option) => {
           const selected = option.value === value;
+          const counted =
+            option.badge && option.badge.count > 0 ? option.badge : null;
           return (
             <button
               key={option.value}
@@ -53,7 +66,7 @@ export function Segmented<V extends string>({
               aria-pressed={selected}
               onClick={() => onChange(option.value)}
               className={cn(
-                "pressable min-h-11 whitespace-nowrap rounded-full px-4 text-base transition-colors duration-150",
+                "pressable inline-flex min-h-11 items-center justify-center gap-1.5 whitespace-nowrap rounded-full px-4 text-base transition-colors duration-150",
                 "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
                 selected
                   ? "font-semibold text-ink"
@@ -61,6 +74,17 @@ export function Segmented<V extends string>({
               )}
             >
               {option.label}
+              {counted ? (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="min-w-5 rounded-full bg-danger px-1.5 text-center font-bold text-danger-ink text-sm leading-5 tabular-nums"
+                  >
+                    {counted.count}
+                  </span>
+                  <span className="sr-only">, {counted.label}</span>
+                </>
+              ) : null}
             </button>
           );
         })}
