@@ -2366,7 +2366,7 @@ export type Database = {
           id: string;
           note: string | null;
           requested_by: string;
-          shift: Json;
+          shift: NonNullable<Json>;
           shift_id: string | null;
           status: Database["public"]["Enums"]["swap_status"];
           taken_at: string | null;
@@ -2381,7 +2381,7 @@ export type Database = {
           id?: string;
           note?: string | null;
           requested_by: string;
-          shift: Json;
+          shift: NonNullable<Json>;
           shift_id?: string | null;
           status?: Database["public"]["Enums"]["swap_status"];
           taken_at?: string | null;
@@ -2396,7 +2396,7 @@ export type Database = {
           id?: string;
           note?: string | null;
           requested_by?: string;
-          shift?: Json;
+          shift?: NonNullable<Json>;
           shift_id?: string | null;
           status?: Database["public"]["Enums"]["swap_status"];
           taken_at?: string | null;
