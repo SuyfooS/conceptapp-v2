@@ -78,7 +78,7 @@ export function Segmented<V extends string>({
                 <>
                   <span
                     aria-hidden="true"
-                    className="min-w-5 rounded-full bg-warning-soft px-1.5 text-center font-semibold text-sm text-warning leading-5 tabular-nums"
+                    className="min-w-5 rounded-full bg-danger px-1.5 text-center font-bold text-danger-ink text-sm leading-5 tabular-nums"
                   >
                     {counted.count}
                   </span>
