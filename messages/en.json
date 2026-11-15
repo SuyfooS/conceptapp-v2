@@ -2923,8 +2923,13 @@
           },
           "late_team": {
             "title": "{name} is late",
-            "settledTitle": "{name} is no longer late",
+            "settledTitle": "{name} is no longer open",
             "note": "It isn't closed yet. It was due by <ltr>{time}</ltr>."
+          },
+          "late_owner": {
+            "title": "{name} is still late",
+            "settledTitle": "{name} is no longer open",
+            "note": "It was due by <ltr>{time}</ltr> and is still open."
           },
           "out_of_range": {
             "title": "A reading out of range in {name}: {label}",
@@ -4458,6 +4463,16 @@
         "tellManagersWhenLate": {
           "label": "Tell managers when a list is late",
           "hint": "Owners, managers and whoever manages lists hear when a list is late."
+        },
+        "tellOwnersAfterMinutes": {
+          "label": "Tell the owners when a list is still late",
+          "hint": "The owners are told when a list that opens by itself at its times is still open this long after it became late.",
+          "options": {
+            "0": "Never",
+            "30": "After half an hour",
+            "60": "After an hour",
+            "120": "After two hours"
+          }
         },
         "tellWhenFinished": {
           "label": "Tell when a list is finished",

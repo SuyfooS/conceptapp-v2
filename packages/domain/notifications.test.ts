@@ -12,6 +12,7 @@ import {
   inInbox,
   isAppPath,
   isNotificationGroup,
+  LIST_TIME_WORDS,
   linkFor,
   NOTIFICATION_GROUPS,
   NOTIFICATION_KIND_KEYS,
@@ -128,6 +129,7 @@ describe("the kinds", () => {
       "clock.overdue",
       "documents.received",
       "documents.to_confirm",
+      "lists.late_owner",
       "lists.late_team",
       "lists.out_of_range",
       "pay.month_due",
@@ -461,6 +463,7 @@ describe("the reminders' lines", () => {
       "lists.due",
       "lists.late",
       "lists.late_team",
+      "lists.late_owner",
       "pay.month_due",
       "push.test",
     ]) {
@@ -881,7 +884,12 @@ describe("buildInbox", () => {
 
   it("reads a list due soon or late, with its due time if it kept it", () => {
     const due = "2026-11-16T07:15:00.000Z";
-    for (const kind of ["lists.due", "lists.late", "lists.late_team"]) {
+    for (const kind of [
+      "lists.due",
+      "lists.late",
+      "lists.late_team",
+      "lists.late_owner",
+    ]) {
       expect(
         lineOf(row(kind, { list: LINE, name: "Opening", due })),
         kind,
@@ -897,6 +905,47 @@ describe("buildInbox", () => {
     }
     // Late, for its managers, leads to the business's day when it lost the list.
     expect(linkFor("lists.late_team")).toBe("/lists/today");
+  });
+
+  it("tells the owners of a list still late, for them alone, asking them to look", () => {
+    // Orel, 15 November 2026: the step after the late line, written by the
+    // minute job (20261115000500_lists_owners_late.sql).
+    expect(NOTIFICATION_KINDS["lists.late_owner"]).toMatchObject({
+      group: "lists",
+      module: "lists",
+      minRole: "owner",
+      needsAction: true,
+      byApp: true,
+    });
+    expect(linkFor("lists.late_owner", { list: LINE })).toBe(`/lists/${LINE}`);
+    expect(linkFor("lists.late_owner", { list: "../pay" })).toBe(
+      "/lists/today",
+    );
+    expect(
+      lineOf(row("lists.late_owner", { list: LINE, name: "Opening" })),
+    ).toMatchObject({
+      group: "lists",
+      line: { kind: "lists.late_owner", name: "Opening", due: null },
+    });
+    // Without the list's name there is nothing to say.
+    expect(lineOf(row("lists.late_owner", { list: LINE }))?.line).toEqual({
+      kind: "other",
+    });
+    // Owners hear of lists in the same group as the rest of the team.
+    expect(groupsFor("owner", ["lists"])).toContain("lists");
+    expect(groupsFor("worker", ["lists"])).toContain("lists");
+  });
+
+  it("reads every line about a list's times with words of its own", () => {
+    expect(Object.keys(LIST_TIME_WORDS).sort()).toEqual([
+      "lists.due",
+      "lists.late",
+      "lists.late_owner",
+      "lists.late_team",
+    ]);
+    for (const [kind, key] of Object.entries(LIST_TIME_WORDS)) {
+      expect(kind, key).toBe(`lists.${key}`);
+    }
   });
 
   it("reads a reading outside its range, with the item's label", () => {
