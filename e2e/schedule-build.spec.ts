@@ -1,11 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { before, buildScreen } from "./build-screen";
+import { before, buildScreen, HOLD_MS } from "./build-screen";
 import {
   clearAvailability,
   clearSchedule,
   decideDemoSwap,
+  demoActivityActions,
   demoRunningWeekClock,
   demoSwaps,
   publishDemoRunningWeek,
@@ -43,6 +44,11 @@ const YOAV = {
 const WAITER = "מלצר/ית";
 
 const tb = he.app.build;
+/**
+ * A test that waits out a publish held for its undo (`HOLD_MS` each) gets
+ * the time for it.
+ */
+const HELD_TEST_MS = 90_000;
 /** Text to find as it is, inside a pattern. */
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /**
@@ -296,6 +302,7 @@ test("a manager changes, adds and removes next week's shifts", async ({
 test("a manager publishes next week's schedule, then publishes changes", async ({
   page,
 }, testInfo) => {
+  test.setTimeout(HELD_TEST_MS);
   const screen = buildScreen(page);
   await signIn(page, MANAGER);
   await page.goto("/schedule/build");
@@ -336,7 +343,7 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   await screen.closeSheet();
   await expect(page.getByText(tb.unpublished)).toBeVisible();
   await expect(page.getByRole("button", { name: tb.submit })).toHaveCount(0);
-  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await screen.publishChanges();
   await expect(page.getByRole("status")).toHaveText(tb.published);
   expect(await scheduleAssignments()).toEqual([]);
   expect(await schedulePublished()).toBe(true);
@@ -348,12 +355,93 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   ).toContainText(tb.entry.subtitlePublished);
 });
 
+// Publishing changes waits `HOLD_MS` for "ביטול" before anything reaches the
+// server (Orel's answer 3 of 15 November 2026, the running-week plan's R3b).
+// Pressed in time, nothing is written and nobody is told: not even the log
+// has a publish. A tab tapped while it waits sends it at once and goes once
+// it worked, asking nothing; "פרסום השינויים ויציאה" never waits at all.
+test("undoing a publish of changes sends nothing", async ({ page }) => {
+  test.setTimeout(HELD_TEST_MS);
+  const screen = buildScreen(page);
+  const publish = page.getByRole("button", { name: tb.publishChanges });
+  const morning = screen.card("בוקר");
+  const home = page.getByRole("link", {
+    name: new RegExp(`^${literal(he.app.nav.home)}(\\s*,|$)`),
+  });
+  const leave = page.getByRole("dialog", { name: tb.leave.title });
+  // On a phone the tab bar shrinks to the current tab once the page has
+  // scrolled; back at the top it shows every tab again.
+  const toTop = () => page.evaluate(() => window.scrollTo({ top: 0 }));
+  // Published: Noa on Sunday morning.
+  await scheduleDemoSunday({ morning: [[NOA.e164, null]], evening: [] }, true);
+  const asPublished = [
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+  ];
+  // The log keeps earlier runs' rows: count the publishes from here on.
+  const allPublishes = () =>
+    demoActivityActions("schedule.publish", new Date(0));
+  const loggedBefore = await allPublishes();
+  const publishesLogged = async () => (await allPublishes()) - loggedBefore;
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(morning).toContainText(NOA.first);
+
+  // Noa off the morning, and publish: it waits, says so with "ביטול", and the
+  // team still sees the week as it was published.
+  await morning.click();
+  await screen.removeButton(NOA.name).click();
+  await screen.closeSheet();
+  await publish.click();
+  await expect(screen.held).toBeVisible();
+  await expect(publish).toBeDisabled();
+  await expect(page.getByText(tb.unpublished)).toBeVisible();
+  // "ביטול" at once, well inside the hold, however slow the runner. The work
+  // is back, still to publish.
+  await screen.undoHeld().click();
+  await expect(page.getByRole("status")).toHaveText(tb.hold.undone);
+  await expect(publish).toBeEnabled();
+  await expect(morning).toContainText(tb.nobody);
+  await expect(page.getByText(tb.unpublished)).toBeVisible();
+  await expectCleanPage(page);
+  // Past the hold: nothing was sent, so nothing was written or logged.
+  await page.waitForTimeout(HOLD_MS + 1_000);
+  expect(await scheduleAssignments()).toEqual(asPublished);
+  expect(await publishesLogged()).toBe(0);
+
+  // Held again, and a tab tapped while it waits: it goes now, and so does
+  // the screen once it worked, with nothing asked.
+  await publish.click();
+  await expect(screen.held).toBeVisible();
+  await toTop();
+  await expect(home).toBeVisible();
+  await home.click();
+  await expect(page).toHaveURL(/\/home$/);
+  await expect(leave).toHaveCount(0);
+  expect(await scheduleAssignments()).toEqual([]);
+  expect(await publishesLogged()).toBe(1);
+
+  // "פרסום השינויים ויציאה" goes at once, the screen being left: well before
+  // any hold would be over.
+  await page.goto("/schedule/build");
+  await morning.click();
+  await screen.addButton(NOA.name).click();
+  await screen.closeSheet();
+  await toTop();
+  await expect(home).toBeVisible();
+  await home.click();
+  await leave.getByRole("button", { name: tb.leave.publish }).click();
+  await expect(page).toHaveURL(/\/home$/, { timeout: HOLD_MS - 1_000 });
+  expect(await scheduleAssignments()).toEqual(asPublished);
+  expect(await publishesLogged()).toBe(2);
+});
+
 // The week is written in place (20261115000100_week_in_place.sql): a shift
 // changed on the screen keeps its id, one nobody touched keeps the swap
 // request on it, and a shift added keeps the id its first publish gave it.
 test("republishing next week keeps a request on a shift nobody touched", async ({
   page,
 }) => {
+  test.setTimeout(HELD_TEST_MS);
   const screen = buildScreen(page);
   const te = tb.editor;
   // Published: Noa on Sunday morning, Yoav on Sunday evening, and Yoav asks
@@ -384,7 +472,7 @@ test("republishing next week keeps a request on a shift nobody touched", async (
   await adding.getByRole("button", { name: te.add }).click();
   await expect(screen.group(tb.groups.assigned)).toContainText(tb.nobody);
   await screen.closeSheet();
-  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await screen.publishChanges();
   await expect(page.getByRole("status")).toHaveText(tb.published);
   expect(await scheduleAssignments()).toEqual([
     { weekday: 0, pattern: "evening", phone: YOAV.e164, position: null },
@@ -406,7 +494,7 @@ test("republishing next week keeps a request on a shift nobody touched", async (
   await screen.card("בוקר").click();
   await screen.addButton(NOA.name).click();
   await screen.closeSheet();
-  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await screen.publishChanges();
   await expect.poll(scheduleAssignments).toEqual([
     { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
     { weekday: 0, pattern: "evening", phone: YOAV.e164, position: null },
@@ -450,6 +538,7 @@ test("a builder drawn before the week was first saved replaces nothing", async (
 test("a swap approved while the builder was open survives", async ({
   page,
 }) => {
+  test.setTimeout(HELD_TEST_MS);
   const screen = buildScreen(page);
   // Yoav gives his Sunday evening away and Noa takes it: it waits for a
   // manager.
@@ -470,7 +559,7 @@ test("a swap approved while the builder was open survives", async ({
   await screen.card("בוקר").click();
   await screen.removeButton(NOA.name).click();
   await screen.closeSheet();
-  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await screen.publishChanges();
   await expect(page.getByRole("status")).toHaveText(tb.published);
 
   // The approval stands, and the screen now shows it.
@@ -495,6 +584,7 @@ test("a shift changed meanwhile comes back marked, and the rest is kept", async 
   page,
   browser,
 }, testInfo) => {
+  test.setTimeout(HELD_TEST_MS);
   const screen = buildScreen(page);
   const publish = page.getByRole("button", { name: tb.publishChanges });
   const warning = page.getByText(heT("app.build.swapsEnd", { count: 1 }));
@@ -562,7 +652,8 @@ test("a shift changed meanwhile comes back marked, and the rest is kept", async 
     { status: "approved", from: YOAV.e164, to: NOA.e164 },
   ]);
 
-  await publish.click();
+  // The publish waits for its undo first, and only then reaches the server.
+  await screen.publishChanges();
   // (Next's route announcer is an empty alert of its own.)
   await expect(
     page.getByRole("alert").filter({
@@ -587,7 +678,7 @@ test("a shift changed meanwhile comes back marked, and the rest is kept", async 
   await expectCleanPage(page);
 
   // Published again: the morning's change goes out, and the approval stands.
-  await publish.click();
+  await screen.publishChanges();
   await expect(page.getByRole("status")).toHaveText(tb.published);
   await expect
     .poll(scheduleAssignments)
@@ -709,6 +800,7 @@ test("a manager fills a freed shift this week", async ({
   page,
   browser,
 }, testInfo) => {
+  test.setTimeout(HELD_TEST_MS);
   const { today, startsOn, sinceStart } = await skipNearTheWeekEdges();
   await publishDemoRunningWeek(NOA.e164, YOAV.e164);
   // The day before, when it is in this week too.
@@ -785,7 +877,7 @@ test("a manager fills a freed shift this week", async ({
     await expect(screen.addOn({ day: weekdayOf(yesterday) })).toHaveCount(0);
   }
 
-  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await screen.publishChanges();
   await expect(page.getByRole("status")).toHaveText(tb.published);
   // Written in place: every shift keeps its id, the morning its person and
   // Yoav, who joined it, and the request on the night nobody touched still

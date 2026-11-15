@@ -31,6 +31,13 @@ export type StatusToastProps = {
    * with the toast.
    */
   onFocusLeave?: () => void;
+  /**
+   * Hears when the toast stops counting for the person (the keyboard on its
+   * action, a mouse over it) and when it goes on: what the way back undoes
+   * can wait as long (`useHeldWrite`'s `pause`), so it never goes while the
+   * way back is still offered.
+   */
+  onWaitingChange?: (waiting: boolean) => void;
 };
 
 /** Whether an element shows its focus: the keyboard, not a tap, put it there. */
@@ -49,6 +56,7 @@ function showsFocus(element: Element): boolean {
  * With an `action`, it carries the way back (an undo) beside its words; it
  * waits while the keyboard is on that button or a mouse over the toast, and
  * goes on counting once they leave, so the way back can be reached in time.
+ * A null message hides it at once, waiting or not: its button with it.
  */
 export function StatusToast({
   message,
@@ -57,6 +65,7 @@ export function StatusToast({
   action,
   focusAction = false,
   onFocusLeave,
+  onWaitingChange,
 }: StatusToastProps) {
   const [text, setText] = useState<string | null>(null);
   const [shown, setShown] = useState(false);
@@ -79,15 +88,19 @@ export function StatusToast({
       setText(message);
       setShown(true);
       setOffer(action ?? null);
+    } else {
+      // Nothing to say, so nothing to wait for: it goes now (below).
+      setPointerWaits(false);
     }
     left.current = message ? duration : 0;
   }, [message, stamp, duration]);
 
   // It leaves when its time is up, unless the keyboard or the pointer is on
-  // it: then it waits, and counts what is left once they go.
+  // it: then it waits, and counts what is left once they go. A null message
+  // waits for nothing: what its way back would undo may be gone already.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new message starts its time again
   useEffect(() => {
-    if (waiting) return;
+    if (waiting && message) return;
     const started = Date.now();
     const stay = left.current;
     const hide = setTimeout(() => setShown(false), stay);
@@ -101,6 +114,14 @@ export function StatusToast({
       left.current = Math.max(0, stay - (Date.now() - started));
     };
   }, [waiting, message, stamp, duration]);
+
+  // Whoever holds what the way back undoes hears whether the toast counts,
+  // and again with each new message, which may come while it is stopped.
+  const stopped = waiting && Boolean(message);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: says where it stands as it changes, not for each new callback
+  useEffect(() => {
+    onWaitingChange?.(stopped);
+  }, [stopped, message, stamp]);
 
   // The way back may be bound again while it shows (the same undo, newer).
   useEffect(() => {
@@ -165,6 +186,8 @@ export function StatusToast({
           // Gone with the toast: it can't be pressed once it is leaving.
           tabIndex={actionable ? undefined : -1}
           onClick={() => {
+            // Leaving, it does nothing: the keyboard may still be on it.
+            if (!actionable) return;
             leaving.current =
               root.current?.contains(document.activeElement) ?? false;
             offer.onClick();

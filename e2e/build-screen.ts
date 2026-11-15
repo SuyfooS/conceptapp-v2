@@ -12,6 +12,12 @@ const sunday = he.app.availability.weekdays.sun;
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
+ * How long publishing changes waits for "ביטול" before anything reaches the
+ * server (`HOLD_MS` in app/(app)/use-held-write.ts).
+ */
+export const HOLD_MS = 8_000;
+
+/**
  * A day of the week on the screen, by its weekday as the screen names it
  * (`he.app.availability.weekdays`), and its date ("17.11") when the week
  * shown could be either of two: next week's Sunday unless it says otherwise.
@@ -26,8 +32,30 @@ export type OnDay = { day?: string; date?: string };
  */
 export function buildScreen(page: Page) {
   const sheet = page.getByRole("dialog");
+  const publishChanges = page.getByRole("button", { name: tb.publishChanges });
+  /** The toast of a publish held for its undo, while it waits. */
+  const held = page.getByRole("status").filter({ hasText: tb.hold.waiting });
   return {
     sheet,
+
+    /** The toast of a publish held for its undo, while it waits. */
+    held,
+
+    /** The toast's "ביטול", which lets a held publish go unsent. */
+    undoHeld: (): Locator =>
+      held.getByRole("button", { name: he.app.manage.undo, exact: true }),
+
+    /**
+     * Presses "פרסום השינויים" and waits out the hold: it waits `HOLD_MS`
+     * for "ביטול" first, and says so, with nothing sent yet. Once the wait
+     * is over the publish goes, and what it answers is the caller's to read.
+     */
+    async publishChanges() {
+      await publishChanges.click();
+      await expect(held).toBeVisible();
+      await expect(publishChanges).toBeDisabled();
+      await expect(held).toHaveCount(0, { timeout: HOLD_MS + 5_000 });
+    },
 
     /**
      * The card of a shift on a day of the week on the screen (`on`): next

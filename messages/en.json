@@ -1030,6 +1030,10 @@
       "published": "The schedule is published. The whole team can see it now.",
       "publishChanges": "Publish the changes",
       "publish": "Publish the schedule",
+      "hold": {
+        "waiting": "The changes will be published in a few seconds.",
+        "undone": "Publishing was cancelled, and nobody was told."
+      },
       "swapsEnd": "{count, plural, one {One swap request will be cancelled} other {# swap requests will be cancelled}}",
       "errors": {
         "noAccess": "Only managers and owners build the schedule.",
