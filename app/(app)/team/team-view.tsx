@@ -1,6 +1,6 @@
 import type { Role } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
-import { canResendInvite, type Team } from "@domain/team";
+import { canCancelInvite, canResendInvite, type Team } from "@domain/team";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
@@ -12,7 +12,15 @@ import { UserPlus } from "lucide-react";
 import Link from "next/link";
 import type { ComponentProps } from "react";
 import { type AppWording, type Translator, translator } from "../wording";
+import {
+  CancelInviteButton,
+  InviteCancels,
+  InviteCancelUndo,
+  UnlessCancelled,
+  WhileAnyInvite,
+} from "./invite-cancel";
 import { ResendLink } from "./resend-link";
+import type { CancelInvite } from "./team-change-types";
 
 type Resend = ComponentProps<typeof ResendLink>["resend"];
 
@@ -33,10 +41,11 @@ type ViewProps = {
  * The Team screen's body: who is in, and who has not joined yet. Phone: what
  * needs action first, then everyone; tablet: the two lists side by side;
  * desktop: everyone in one table. Each invite the viewer may send gets a "new
- * link" button; each member leads to their profile (`peopleHref`/id). A
- * business closed to invites (a demo one, #80) gets no `inviteHref`: no
- * invite, no new links, and a line saying why. Also rendered with mock data
- * on /design/shell/team.
+ * link" button, and "מחיקת ההזמנה", held for its undo (`InviteCancels`);
+ * each member leads to their profile (`peopleHref`/id), where their role is
+ * changed and they are taken off the team. A business closed to invites (a
+ * demo one, #80) gets no `inviteHref`: no invite, no new links, and a line
+ * saying why. Also rendered with mock data on /design/shell/team.
  */
 export function TeamView({
   team,
@@ -44,6 +53,7 @@ export function TeamView({
   inviteHref,
   peopleHref,
   resend,
+  cancel,
   wording,
 }: {
   team: Team;
@@ -54,6 +64,11 @@ export function TeamView({
   /** Where each member's profile lives: `/team`, or the demo's. */
   peopleHref: string;
   resend: Resend;
+  /**
+   * `cancelInviteAction` bound to the business, or the demo's stand-in;
+   * none while viewing as someone, who changes nothing.
+   */
+  cancel?: CancelInvite;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
 }) {
@@ -79,22 +94,24 @@ export function TeamView({
           ) : undefined
         }
       />
-      <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:hidden">
-        {team.invites.length > 0 ? (
-          <>
-            <Invites {...view} />
-            <Members {...view} />
-          </>
-        ) : (
-          <>
-            <Members {...view} />
-            <Invites {...view} />
-          </>
-        )}
-      </div>
-      <div className="hidden xl:block">
-        <Everyone {...view} />
-      </div>
+      <InviteCancels cancel={cancel ?? null}>
+        <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:hidden">
+          {team.invites.length > 0 ? (
+            <>
+              <Invites {...view} />
+              <Members {...view} />
+            </>
+          ) : (
+            <>
+              <Members {...view} />
+              <Invites {...view} />
+            </>
+          )}
+        </div>
+        <div className="hidden xl:block">
+          <Everyone {...view} />
+        </div>
+      </InviteCancels>
     </PageBody>
   );
 }
@@ -111,18 +128,29 @@ function InviteBadge({ t, state }: { t: T; state: Invite["state"] }) {
   );
 }
 
-/** The "new link" button, when the viewer may send this invite. */
-function resendButton(
+/**
+ * What the viewer may do with this invite: a new link, and deleting it, by
+ * the same rule (`canResendInvite`, `canCancelInvite`).
+ */
+function inviteActions(
   { t, viewerRole, resend, invites }: ViewProps,
   invite: Invite,
 ) {
-  return invites && canResendInvite(viewerRole, invite.role) ? (
-    <ResendLink
-      inviteId={invite.id}
-      name={name(t, invite.name)}
-      resend={resend}
-    />
-  ) : null;
+  if (!invites) return null;
+  const who = name(t, invite.name);
+  const resendable = canResendInvite(viewerRole, invite.role);
+  const cancellable = canCancelInvite(viewerRole, invite.role);
+  if (!resendable && !cancellable) return null;
+  return (
+    <div className="flex flex-wrap items-start gap-2">
+      {resendable ? (
+        <ResendLink inviteId={invite.id} name={who} resend={resend} />
+      ) : null}
+      {cancellable ? (
+        <CancelInviteButton inviteId={invite.id} name={who} />
+      ) : null}
+    </div>
+  );
 }
 
 function Members({ t, team, peopleHref }: ViewProps) {
@@ -173,24 +201,28 @@ function Invites(view: ViewProps) {
         </Card>
       ) : (
         <>
-          <PersonList aria-label={t("team.invites.title")}>
-            {team.invites.map((i) => (
-              <PersonRow
-                key={i.id}
-                name={i.name}
-                title={name(t, i.name)}
-                subtitle={
-                  <>
-                    {t(`team.roles.${i.role}`)}
-                    {" · "}
-                    {phone(i.phone)}
-                  </>
-                }
-                trailing={<InviteBadge t={t} state={i.state} />}
-                below={resendButton(view, i)}
-              />
-            ))}
-          </PersonList>
+          <WhileAnyInvite ids={team.invites.map((i) => i.id)}>
+            <PersonList aria-label={t("team.invites.title")}>
+              {team.invites.map((i) => (
+                <UnlessCancelled key={i.id} id={i.id}>
+                  <PersonRow
+                    name={i.name}
+                    title={name(t, i.name)}
+                    subtitle={
+                      <>
+                        {t(`team.roles.${i.role}`)}
+                        {" · "}
+                        {phone(i.phone)}
+                      </>
+                    }
+                    trailing={<InviteBadge t={t} state={i.state} />}
+                    below={inviteActions(view, i)}
+                  />
+                </UnlessCancelled>
+              ))}
+            </PersonList>
+          </WhileAnyInvite>
+          <InviteCancelUndo />
           {note ? <p className="px-1 text-ink-2 text-sm">{note}</p> : null}
         </>
       )}
@@ -240,6 +272,9 @@ function Everyone(view: ViewProps) {
   const note = invitesNote(view);
   return (
     <PageSection title={t("team.everyone")}>
+      {/* Above the table, where the invites are its first rows: with a long
+          team, under it would be out of sight while the undo waits. */}
+      <InviteCancelUndo />
       <div className="overflow-hidden rounded-card bg-surface shadow-card">
         <table className="w-full border-collapse">
           <caption className="sr-only">{t("team.everyone")}</caption>
@@ -266,17 +301,21 @@ function Everyone(view: ViewProps) {
           </thead>
           <tbody>
             {team.invites.map((i) => (
-              <tr key={i.id}>
-                <NameCell person={i.name} label={name(t, i.name)} />
-                <td className={cn(td, "text-ink-2")}>{phone(i.phone)}</td>
-                <td className={td}>{t(`team.roles.${i.role}`)}</td>
-                <td className={td}>
-                  <InviteBadge t={t} state={i.state} />
-                </td>
-                {invites ? (
-                  <td className={cn(td, "w-96")}>{resendButton(view, i)}</td>
-                ) : null}
-              </tr>
+              <UnlessCancelled key={i.id} id={i.id}>
+                <tr>
+                  <NameCell person={i.name} label={name(t, i.name)} />
+                  <td className={cn(td, "text-ink-2")}>{phone(i.phone)}</td>
+                  <td className={td}>{t(`team.roles.${i.role}`)}</td>
+                  <td className={td}>
+                    <InviteBadge t={t} state={i.state} />
+                  </td>
+                  {invites ? (
+                    <td className={cn(td, "w-[28rem]")}>
+                      {inviteActions(view, i)}
+                    </td>
+                  ) : null}
+                </tr>
+              </UnlessCancelled>
             ))}
             {team.members.map((m) => (
               <tr key={m.userId}>

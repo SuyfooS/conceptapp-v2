@@ -568,7 +568,11 @@
     },
     "noBusiness": {
       "title": "Not part of a business yet",
-      "body": "Your account works, but no business has added it yet. A manager at your business can send an invite to this number."
+      "body": "Your account works, but no business has added it yet. A manager at your business can send an invite to this number.",
+      "left": {
+        "title": "No longer on the team of {business}",
+        "body": "Your account still works. If this is a mistake, ask the business for a new invite to this number."
+      }
     },
     "home": {
       "metaTitle": "Today",
@@ -794,6 +798,59 @@
         "youth": "A minor until <ltr>{until}</ltr>",
         "youthHint": "A minor's hours of work and rest differ. Those with access to pay see the other details.",
         "message": "Send a message"
+      },
+      "changes": {
+        "role": "Role",
+        "roleSheet": "{name}'s role",
+        "roleSubmit": "Change the role",
+        "close": "Close",
+        "accountantNote": "{count, plural, =0 {This role sees everyone's hours and pay, with no shifts.} one {This role has no shifts: one shift that hasn't started comes off the schedule and shows as missing.} other {This role has no shifts: # shifts that haven't started come off the schedule and show as missing.}}",
+        "ownerNote": "An owner has every permission in the business, including removing anyone and changing anyone's role. Personal permissions given earlier aren't needed any more, and are cleared.",
+        "clockedInHint": "Once they clock out",
+        "roleChanged": "{name} is now {role}",
+        "roleBack": "{name} is {role} again",
+        "remove": "Remove from the team",
+        "removeHint": "{form, select, other {From now on {name} can't see anything in the business, and gets no message about it. The hours already recorded stay for payroll.}}",
+        "removeShifts": "{count, plural, one {One shift that hasn't started comes off the schedule and shows as missing.} other {# shifts that haven't started come off the schedule and show as missing.}}",
+        "removed": "{form, select, other {{name} was removed from the team}}",
+        "removedTitle": "{name} is no longer on the team",
+        "removedShifts": "{count, plural, =0 {There were no shifts ahead on the schedule.} one {One shift on the schedule now needs someone.} other {# shifts on the schedule now need someone.}}",
+        "removedDrafts": "{count, plural, one {One shift in the draft schedule needs someone too.} other {# shifts in the draft schedule need someone too.}}",
+        "removedSwaps": "{count, plural, one {One swap request on the freed shifts was cancelled.} other {# swap requests on the freed shifts were cancelled.}}",
+        "removedReopened": "{count, plural, one {One shift that was to pass to {name} is open to others again.} other {# shifts that were to pass to {name} are open to others again.}}",
+        "removedKept": "The hours already recorded stay for payroll. To bring them back, send a new invite to the number.",
+        "backToTeam": "To the team list",
+        "toSchedule": "To the schedule",
+        "clockedIn": "{name} is on a shift now, on the clock. Once they clock out, they can be removed from the team.",
+        "clockedInLink": "{name}'s hours",
+        "failures": {
+          "notAllowed": "You can't make this change. Only an owner changes an owner's or an accountant's place.",
+          "gone": "This changed in the meantime, and they're no longer on the team. Reload the screen.",
+          "yourself": "Your own place on the team can't be changed from here.",
+          "lastOwner": "The business needs at least one owner.",
+          "demo": "This is a demo business, and its team stays as it is.",
+          "clockedIn": "Not while a shift is open on the clock. Once they clock out, try again.",
+          "elsewhere": "This role can't be given right now, so the role stays as it was.",
+          "changed": "The role changed in the meantime, so it wasn't changed. The current role shows now.",
+          "notYet": "Changing the team opens shortly. Try again later.",
+          "noAccess": "Only owners and managers change the team.",
+          "viewOnly": "Nothing can be changed while viewing.",
+          "businessChanged": "You moved to another business in the meantime, so nothing changed. Reload the screen.",
+          "invalid": "The change wasn't saved. Try again.",
+          "failed": "The change wasn't saved. Try again."
+        }
+      },
+      "former": {
+        "title": "No longer on the team",
+        "named": "{name} is no longer on the team",
+        "role": "Last role: {role}",
+        "body": "The hours already recorded stay for payroll, and so does the history. To bring them back, send a new invite to the number."
+      },
+      "cancel": {
+        "action": "Delete the invite",
+        "label": "Delete the invite for {name}",
+        "done": "The invite for {name} was deleted",
+        "gone": "The invite is no longer open: it was accepted or deleted in the meantime."
       }
     },
     "availability": {
@@ -977,7 +1034,8 @@
         "invalid": "Something in the schedule does not fit, for example someone on two shifts at the same time. Refresh the screen and try again.",
         "failed": "We could not save. Try again in a moment.",
         "clash": "Someone is on two shifts at the same time, so the schedule was not saved. Take them off one of them or change the hours, then save again.",
-        "published": "The schedule was published meanwhile. Refresh the screen and publish the changes."
+        "published": "The schedule was published meanwhile. Refresh the screen and publish the changes.",
+        "teamChanged": "Someone on the schedule is no longer on the team, so the schedule was not saved. Refresh the screen, and the shifts they left show as missing."
       },
       "entry": {
         "subtitleDraft": "Not saved yet",
@@ -1122,7 +1180,8 @@
           "busy": "You have another shift at the same time.",
           "takenByYou": "You took the shift. Waiting for the manager to approve."
         }
-      }
+      },
+      "former": "Someone no longer on the team"
     },
     "swaps": {
       "title": "Swap approvals",
@@ -2279,7 +2338,21 @@
             "send": "Sent an invite link to {name}",
             "sendNoName": "Sent a team invite link",
             "claim": "Joined the team as {role}",
-            "claimPlain": "Joined the team"
+            "claimPlain": "Joined the team",
+            "cancel": "Deleted the invite of {name}, {role}",
+            "cancelNoName": "Deleted an invite to the team as {role}",
+            "cancelPlain": "Deleted a team invite"
+          },
+          "member": {
+            "remove": "Removed from the team: {person}, {role}",
+            "removeRole": "Removed from the team: {role}",
+            "removePlain": "Removed someone from the team",
+            "role": "{person} is now {role}, instead of {was}",
+            "rolePlain": "Changed a role to {role}, instead of {was}",
+            "roleNone": "Changed a role",
+            "shiftsOff": "{count, plural, one {One shift ahead was} other {# shifts ahead were}} freed in the schedule",
+            "swapsOff": "{count, plural, one {One swap request was cancelled} other {# swap requests were cancelled}}",
+            "swapsReopened": "{count, plural, one {One swap request was opened again} other {# swap requests were opened again}}"
           },
           "view_as": {
             "start": "Viewed the app as {role}",
@@ -2625,7 +2698,7 @@
         },
         "approvals": {
           "name": "Approvals",
-          "hint": "Swaps and hours waiting for your approval, shifts left open, and how many haven't sent availability"
+          "hint": "Swaps and hours waiting for your approval, shifts left open, shifts freed in the schedule, and how many haven't sent availability"
         },
         "team": {
           "name": "The team",
@@ -2667,6 +2740,12 @@
           "changed": {
             "title": "Your shifts changed in the week of {date}",
             "body": "{count, plural, =0 {You now have no shifts this week} one {You now have one shift} other {You now have # shifts}}"
+          },
+          "unfilled": {
+            "title": "{count, plural, =0 {Shifts were freed in the week of {date}} one {One shift in the week of {date} needs someone} other {# shifts in the week of {date} need someone}}",
+            "settledTitle": "{count, plural, one {The shift in the week of {date} no longer waits for you} other {Shifts in the week of {date} no longer wait for you}}",
+            "note": "{count, plural, one {It was freed by a change in the team} other {They were freed by a change in the team}}",
+            "begun": "This week is under way: arrange it with the team directly"
           }
         },
         "swap": {
@@ -2700,6 +2779,10 @@
           },
           "removed": {
             "title": "The request was cancelled because the schedule changed"
+          },
+          "reopened": {
+            "title": "Your request to give the shift away is open again",
+            "note": "The shift stays yours until someone else takes it and a manager approves"
           }
         },
         "clock": {
@@ -4076,6 +4159,12 @@
           "allConfirmed": "No more documents wait for your confirmation"
         }
       }
+    },
+    "departure": {
+      "label": "No longer on the team",
+      "title": "No longer on the team of {business}",
+      "body": "The business now: {current}. If this is a mistake, ask {business} for a new invite.",
+      "seen": "Got it"
     }
   },
   "modules": {

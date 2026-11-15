@@ -901,6 +901,7 @@ export type Database = {
       invites: {
         Row: {
           business_id: string;
+          cancelled_at: string | null;
           claimed_at: string | null;
           claimed_by: string | null;
           created_at: string;
@@ -914,6 +915,7 @@ export type Database = {
         };
         Insert: {
           business_id: string;
+          cancelled_at?: string | null;
           claimed_at?: string | null;
           claimed_by?: string | null;
           created_at?: string;
@@ -927,6 +929,7 @@ export type Database = {
         };
         Update: {
           business_id?: string;
+          cancelled_at?: string | null;
           claimed_at?: string | null;
           claimed_by?: string | null;
           created_at?: string;
@@ -1659,6 +1662,7 @@ export type Database = {
           business_id: string;
           created_at: string;
           id: string;
+          left_at: string | null;
           perms: string[];
           role: Database["public"]["Enums"]["member_role"];
           staff_since: string;
@@ -1670,6 +1674,7 @@ export type Database = {
           business_id: string;
           created_at?: string;
           id?: string;
+          left_at?: string | null;
           perms?: string[];
           role?: Database["public"]["Enums"]["member_role"];
           staff_since?: string;
@@ -1681,6 +1686,7 @@ export type Database = {
           business_id?: string;
           created_at?: string;
           id?: string;
+          left_at?: string | null;
           perms?: string[];
           role?: Database["public"]["Enums"]["member_role"];
           staff_since?: string;
@@ -3076,6 +3082,15 @@ export type Database = {
         Args: { business: string; due_at: string; week_start: string };
         Returns: string;
       };
+      own_departures: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          accent: string;
+          business: string;
+          left_at: string;
+          name: string;
+        }[];
+      };
       own_phone: { Args: Record<PropertyKey, never>; Returns: string };
       pass_list: {
         Args: {
@@ -3130,6 +3145,15 @@ export type Database = {
           reason: string;
         };
         Returns: undefined;
+      };
+      remove_member: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          person: string;
+        };
+        Returns: Json;
       };
       remove_push_subscription: {
         Args: { actor: string; device?: string; push_endpoint?: string };
@@ -3356,6 +3380,17 @@ export type Database = {
         };
         Returns: undefined;
       };
+      set_member_role: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          new_role: Database["public"]["Enums"]["member_role"];
+          person: string;
+          seen_role?: Database["public"]["Enums"]["member_role"];
+        };
+        Returns: Json;
+      };
       set_module_enabled: {
         Args: {
           actor: string;
@@ -3467,6 +3502,10 @@ export type Database = {
           new_token_hash: string;
         };
         Returns: string;
+      };
+      team_invite_cancel: {
+        Args: { actor: string; at_time?: string; invite: string };
+        Returns: undefined;
       };
       team_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };

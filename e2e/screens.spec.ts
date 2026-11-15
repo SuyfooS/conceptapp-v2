@@ -31,6 +31,7 @@ const PAGES = [
   "/design/screens/join-expired",
   "/design/screens/join-claimed",
   "/design/screens/no-business",
+  "/design/screens/no-business?state=left",
   "/design/screens/no-access",
   "/design/screens/error",
   "/design/screens/not-found",

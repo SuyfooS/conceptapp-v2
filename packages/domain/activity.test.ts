@@ -1463,3 +1463,145 @@ describe("parseActivityCursor", () => {
     expect(parseActivityCursor("99999999999999999")).toBeNull();
   });
 });
+
+describe("buildActivity: team changes (Orel, 14 November 2026)", () => {
+  const brief = {
+    week: SHIFT,
+    starts_on: "2026-11-22",
+    day: "2026-11-24",
+    name: "Evening",
+    start: "16:00",
+    end: "23:00",
+  };
+
+  it("reads someone taken off the team, by their role and the shifts freed", () => {
+    expect(
+      lineOf(
+        row("member.remove", {
+          person: LEFT,
+          role: "worker",
+          perms: [],
+          shifts: [brief, brief],
+          drafts: 1,
+          swaps: [],
+        }),
+      ),
+    ).toEqual({
+      action: "member.remove",
+      person: { kind: "former" },
+      role: "worker",
+      shifts: 2,
+      swaps: 0,
+      reopened: 0,
+    });
+    expect(
+      lineOf(row("member.remove", { person: NOA, shifts: "two" })),
+    ).toEqual({
+      action: "member.remove",
+      person: { kind: "member", name: "Noa" },
+      role: null,
+      shifts: 0,
+      swaps: 0,
+      reopened: 0,
+    });
+    expect(lineOf(row("member.remove", { role: "worker" }))).toEqual({
+      action: "other",
+    });
+  });
+
+  // Orel, 15 November 2026: a swap they asked for is cancelled, one they took
+  // from a colleague, still waiting for approval, is open again.
+  it("counts the swaps cancelled and those open again", () => {
+    const swap = {
+      id: SHIFT,
+      requested_by: LEFT,
+      taken_by: NOA,
+      shift: {
+        day: "2026-11-24",
+        name: "Evening",
+        start: "16:00",
+        end: "23:00",
+      },
+    };
+    const back = { id: SHIFT, requested_by: NOA, shift: swap.shift };
+    expect(
+      lineOf(
+        row("member.remove", {
+          person: LEFT,
+          role: "worker",
+          shifts: [brief],
+          drafts: 0,
+          swaps: [swap],
+          reopened: [back, back],
+        }),
+      ),
+    ).toMatchObject({ shifts: 1, swaps: 1, reopened: 2 });
+    expect(
+      lineOf(
+        row("member.role", {
+          person: YOAV,
+          role: "accountant",
+          was: "worker",
+          reopened: [back],
+        }),
+      ),
+    ).toMatchObject({ shifts: 0, swaps: 0, reopened: 1 });
+    // A row whose lists are not lists still reads, with none.
+    expect(
+      lineOf(
+        row("member.remove", {
+          person: LEFT,
+          swaps: 2,
+          reopened: { id: SHIFT },
+        }),
+      ),
+    ).toMatchObject({ swaps: 0, reopened: 0 });
+  });
+
+  it("reads a role changed, with what it was", () => {
+    expect(
+      lineOf(
+        row("member.role", { person: YOAV, role: "manager", was: "worker" }),
+      ),
+    ).toEqual({
+      action: "member.role",
+      person: { kind: "member", name: "Yoav" },
+      role: "manager",
+      was: "worker",
+      shifts: 0,
+      swaps: 0,
+      reopened: 0,
+    });
+    expect(
+      lineOf(
+        row("member.role", {
+          person: YOAV,
+          role: "accountant",
+          was: "chef",
+          shifts: [brief],
+        }),
+      ),
+    ).toMatchObject({ role: "accountant", was: null, shifts: 1 });
+  });
+
+  it("names a cancelled invite from its row, which stays", () => {
+    expect(
+      lineOf(row("invite.cancel", { invite: INVITE, role: "manager" })),
+    ).toEqual({ action: "invite.cancel", name: "Dana", role: "manager" });
+    expect(lineOf(row("invite.cancel", { invite: GONE }))).toEqual({
+      action: "invite.cancel",
+      name: null,
+      role: null,
+    });
+  });
+
+  it("asks for the person and the invite a team change names", () => {
+    const refs = activityRefs([
+      row("member.remove", { person: LEFT, role: "worker" }, NOA),
+      row("member.role", { person: YOAV, role: "manager", was: "worker" }),
+      row("invite.cancel", { invite: INVITE, role: "worker" }),
+    ]);
+    expect(refs.people.sort()).toEqual([NOA, YOAV, LEFT].sort());
+    expect(refs.invites).toEqual([INVITE]);
+  });
+});

@@ -174,11 +174,43 @@ export type ActivityLine =
   /** Typing the clock's code was blocked after too many wrong tries; the actor is who typed. */
   | { action: "clock.code.locked" }
   | {
-      action: "invite.create" | "invite.send";
+      action: "invite.create" | "invite.send" | "invite.cancel";
       name: string | null;
       role: Role | null;
     }
   | { action: "invite.claim"; role: Role | null }
+  | {
+      /**
+       * An owner or manager took someone off the team (Orel, 14 November
+       * 2026). They are almost always former by the time it is read.
+       */
+      action: "member.remove";
+      person: ActivityPerson;
+      /** The role they had. */
+      role: Role | null;
+      /** Their shifts still to start in published weeks, which came off them. */
+      shifts: number;
+      /** Swap requests they made on those shifts, cancelled. */
+      swaps: number;
+      /**
+       * Colleagues' shifts they had taken, waiting for approval, whose
+       * requests are open again (Orel, 15 November 2026).
+       */
+      reopened: number;
+    }
+  | {
+      /** An owner or manager changed someone's role. */
+      action: "member.role";
+      person: ActivityPerson;
+      role: Role | null;
+      /** The role before. */
+      was: Role | null;
+      /** Published shifts that came off them, when they left the staff. */
+      shifts: number;
+      /** Swaps cancelled and swaps open again, as for a removal. */
+      swaps: number;
+      reopened: number;
+    }
   | { action: "view_as.start" | "view_as.end"; role: Role | null }
   | { action: "swap.request" | "swap.cancel"; shift: ActivityShift | null }
   | {
@@ -465,6 +497,24 @@ const schemas = {
   "clock.confirm": z.object({ person: id }),
   "clock.code.locked": z.object({ person: id.optional() }),
   invite: z.object({ invite: id, role: z.unknown().optional() }),
+  // A team change (20261114000100_team_changes.sql): the published shifts
+  // that came off the person, the swaps cancelled and those open again are
+  // arrays, counted here.
+  "member.remove": z.object({
+    person: id,
+    role: z.unknown().optional(),
+    shifts: z.array(z.unknown()).optional().catch(undefined),
+    swaps: z.array(z.unknown()).optional().catch(undefined),
+    reopened: z.array(z.unknown()).optional().catch(undefined),
+  }),
+  "member.role": z.object({
+    person: id,
+    role: z.unknown().optional(),
+    was: z.unknown().optional(),
+    shifts: z.array(z.unknown()).optional().catch(undefined),
+    swaps: z.array(z.unknown()).optional().catch(undefined),
+    reopened: z.array(z.unknown()).optional().catch(undefined),
+  }),
   role: z.object({ role: z.unknown().optional() }),
   "swap.request": z.object({ swap: id, shift: id }),
   swap: z.object({ swap: id }),
@@ -764,7 +814,8 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         ? { action: row.action }
         : other;
     case "invite.create":
-    case "invite.send": {
+    case "invite.send":
+    case "invite.cancel": {
       const details = read(schemas.invite);
       if (!details) return other;
       const invite = lookups.invites.get(details.invite);
@@ -773,6 +824,33 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         name: invite?.name ?? null,
         role: roleOf(details.role) ?? invite?.role ?? null,
       };
+    }
+    case "member.remove": {
+      const details = read(schemas["member.remove"]);
+      return details
+        ? {
+            action: row.action,
+            person: personOf(details.person, lookups),
+            role: roleOf(details.role),
+            shifts: details.shifts?.length ?? 0,
+            swaps: details.swaps?.length ?? 0,
+            reopened: details.reopened?.length ?? 0,
+          }
+        : other;
+    }
+    case "member.role": {
+      const details = read(schemas["member.role"]);
+      return details
+        ? {
+            action: row.action,
+            person: personOf(details.person, lookups),
+            role: roleOf(details.role),
+            was: roleOf(details.was),
+            shifts: details.shifts?.length ?? 0,
+            swaps: details.swaps?.length ?? 0,
+            reopened: details.reopened?.length ?? 0,
+          }
+        : other;
     }
     case "invite.claim":
     case "view_as.start":

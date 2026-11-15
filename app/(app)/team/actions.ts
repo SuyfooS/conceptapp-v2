@@ -2,8 +2,10 @@
 
 import { inviteToTeam, issueTeamInviteLink } from "@db/invites";
 import { clearProfileBio } from "@db/profile";
+import { cancelTeamInvite, removeMember, setMemberRole } from "@db/team";
 import { isUuid } from "@domain/activity";
 import { inviteLink } from "@domain/invites";
+import { ROLES } from "@domain/modules";
 import { type ProfileSaveResult, seenBioOf } from "@domain/profile";
 import {
   canSeeTeam,
@@ -12,8 +14,15 @@ import {
 } from "@domain/team";
 import { canWrite } from "@domain/view-as";
 import { refresh, revalidatePath } from "next/cache";
+import { z } from "zod";
 import { requestOrigin } from "@/app/origin";
+import { pushSoon } from "../../push/server";
 import { currentMember } from "../member";
+import type {
+  InviteCancelResult,
+  MemberChangeResult,
+  TeamChangeActionFailure,
+} from "./team-change-types";
 
 export type TeamFailure =
   | "alreadyMember"
@@ -187,5 +196,161 @@ export async function resendInviteAction(
   } catch (error) {
     console.error("issueTeamInviteLink failed", (error as Error).message);
     return { failure: "failed" };
+  }
+}
+
+/*
+ * Team changes (Orel, 14 November 2026): taking someone off the team,
+ * changing their role, cancelling an invite. Each is bound on its page to the
+ * business the screen was drawn for (payroll P3b, as /manage/access binds
+ * its writes): one held for its undo, or sent from a tab left open, may
+ * arrive after the person switched business, and is refused then
+ * ("businessChanged"), never made in the other. Who may act on whom is the
+ * rule of inviting (`canRemoveMember`, `mayChangeRole`, `canCancelInvite`):
+ * the screens offer only what it allows, and the database checks it again,
+ * with the secret key, for the signed-in person.
+ */
+
+const memberChange = z.object({ business: z.uuid(), person: z.uuid() });
+const roleChange = memberChange.extend({
+  role: z.enum(ROLES),
+  seen: z.enum(ROLES),
+});
+const inviteCancel = z.object({ business: z.uuid(), invite: z.uuid() });
+
+/** The signed-in owner or manager of `business`, or why they may not act. */
+async function changer(
+  business: string,
+): Promise<{ userId: string } | { failure: TeamChangeActionFailure }> {
+  const member = await currentMember();
+  const membership = member?.membership;
+  if (!member || !membership || !canSeeTeam(membership.role)) {
+    return { failure: "noAccess" };
+  }
+  if (membership.business.id !== business) {
+    return { failure: "businessChanged" };
+  }
+  if (!canWrite(member.viewing)) return { failure: "viewOnly" };
+  return { userId: member.userId };
+}
+
+/**
+ * An owner or manager takes someone off the team: their place stays,
+ * inactive, with their hours and history; their shifts still to start come
+ * off them and show as missing, and the schedule's other builders are told
+ * (on the phone too). The person is told nothing. Nothing is revalidated:
+ * any revalidation (`revalidatePath` of any path, or `refresh`) draws the
+ * page the action came from again in its answer, and the person page reads
+ * active people only, so it would turn at once into the page of someone no
+ * longer on the team and lose the card with what came off them, the only
+ * place the one who removed them reads how many shifts now need someone.
+ * The Team screen is drawn afresh when "לרשימת הצוות" (a link) opens it, and
+ * the person page says what happened again when opened afresh.
+ */
+export async function removeMemberAction(
+  business: string,
+  person: string,
+): Promise<MemberChangeResult> {
+  const parsed = memberChange.safeParse({ business, person });
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const actor = await changer(parsed.data.business);
+  if ("failure" in actor) return { ok: false, failure: actor.failure };
+  if (parsed.data.person === actor.userId) {
+    return { ok: false, failure: "yourself" };
+  }
+  try {
+    const result = await removeMember(
+      actor.userId,
+      parsed.data.business,
+      parsed.data.person,
+    );
+    if (!result.ok) return { ok: false, failure: result.error };
+    pushSoon();
+    return { ok: true, left: result.left };
+  } catch (error) {
+    console.error(
+      "removeMember failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return { ok: false, failure: "failed" };
+  }
+}
+
+/**
+ * An owner or manager gives someone another role: `seen`, the role the
+ * screen showed, so one changed meanwhile stays ("changed", and the page
+ * reads it again). Becoming an accountant takes them off the staff as
+ * removing does, and the schedule's builders hear of the shifts it freed.
+ * The page reads the person again.
+ */
+export async function setMemberRoleAction(
+  business: string,
+  person: string,
+  role: string,
+  seen: string,
+): Promise<MemberChangeResult> {
+  const parsed = roleChange.safeParse({ business, person, role, seen });
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const actor = await changer(parsed.data.business);
+  if ("failure" in actor) return { ok: false, failure: actor.failure };
+  if (parsed.data.person === actor.userId) {
+    return { ok: false, failure: "yourself" };
+  }
+  try {
+    const result = await setMemberRole(
+      actor.userId,
+      parsed.data.business,
+      parsed.data.person,
+      parsed.data.role,
+      parsed.data.seen,
+    );
+    if (!result.ok) {
+      if (result.error === "changed") refresh();
+      return { ok: false, failure: result.error };
+    }
+    // Shifts freed, swaps cancelled and swaps open again wrote lines for others.
+    if (result.left.shifts + result.left.swaps + result.left.reopened > 0) {
+      pushSoon();
+    }
+    revalidatePath("/team");
+    refresh();
+    return { ok: true, left: result.left };
+  } catch (error) {
+    console.error(
+      "setMemberRole failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return { ok: false, failure: "failed" };
+  }
+}
+
+/**
+ * An owner or manager cancels an invite nobody claimed, open or expired: its
+ * link stops working at once, and the number may be invited again. The
+ * screen reads its list and counts again, also when it was claimed or
+ * cancelled meanwhile ("gone").
+ */
+export async function cancelInviteAction(
+  business: string,
+  invite: string,
+): Promise<InviteCancelResult> {
+  const parsed = inviteCancel.safeParse({ business, invite });
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const actor = await changer(parsed.data.business);
+  if ("failure" in actor) return { ok: false, failure: actor.failure };
+  try {
+    const result = await cancelTeamInvite(actor.userId, parsed.data.invite);
+    if (!result.ok) {
+      if (result.error === "gone") refresh();
+      return { ok: false, failure: result.error };
+    }
+    refresh();
+    return { ok: true };
+  } catch (error) {
+    console.error(
+      "cancelTeamInvite failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return { ok: false, failure: "failed" };
   }
 }

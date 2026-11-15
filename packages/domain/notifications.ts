@@ -103,6 +103,23 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/schedule/shifts",
   },
+  // Someone left the team or the staff, and their shifts still to start in a
+  // published week came off them (Orel, 14 November 2026;
+  // `private.notify_for_team` in
+  // supabase/migrations/20261114000100_team_changes.sql): to the owners and
+  // managers who build the schedule, how many of that week's shifts still to
+  // start lack someone now, a count and never who left. Publishing the week
+  // again settles it, and so does none being left (filled, or begun). It leads
+  // to the schedule, which leads on to next week's builder; a week already
+  // under way the app can't fill, so its words say to arrange it with the
+  // team directly (`unfilledWeekBegun`). Read, it no longer counts.
+  "schedule.unfilled": {
+    group: "approvals",
+    module: "scheduling",
+    minRole: "manager",
+    needsAction: true,
+    href: "/schedule",
+  },
   "swap.offered": {
     group: "swaps",
     module: "scheduling",
@@ -146,6 +163,19 @@ export const NOTIFICATION_KINDS = {
     href: "/schedule/shifts",
   },
   "swap.removed": {
+    group: "swaps",
+    module: "scheduling",
+    minRole: "worker",
+    needsAction: false,
+    href: "/schedule/shifts",
+  },
+  // The colleague who took the reader's shift left the team or the staff
+  // before a manager approved (Orel, 15 November 2026; `private.notify_for_team`
+  // in supabase/migrations/20261114000100_team_changes.sql): the request is
+  // open again for someone else to take, and the shift stays the reader's
+  // until someone does and a manager approves. It replaces their "taken"
+  // line, and names nobody.
+  "swap.reopened": {
     group: "swaps",
     module: "scheduling",
     minRole: "worker",
@@ -492,6 +522,15 @@ export function isAppPath(url: unknown): url is `/${string}` {
     !url.includes("\\") &&
     [...url].every((char) => char.charCodeAt(0) > 0x1f)
   );
+}
+
+/**
+ * Whether a `schedule.unfilled` line's week is already under way on `today`
+ * (the business's own day, YYYY-MM-DD): its builder opens next week only, so
+ * its freed shifts are arranged with the team directly, and its words say so.
+ */
+export function unfilledWeekBegun(startsOn: string, today: string): boolean {
+  return startsOn <= today;
 }
 
 /** Whether a line asks its reader to do something. */
@@ -1009,6 +1048,14 @@ export type NotificationLine =
       mine: number;
     }
   | {
+      /** Shifts still to start in the week lack someone, since a team change. */
+      kind: "schedule.unfilled";
+      /** The week's first day, YYYY-MM-DD. */
+      startsOn: string;
+      /** How many of its shifts still to start lacked someone then. */
+      count: number;
+    }
+  | {
       kind: "swap.offered" | "swap.cancelled";
       shift: NotificationShift | null;
       from: NotificationPerson;
@@ -1033,6 +1080,11 @@ export type NotificationLine =
       side: SwapSide;
     }
   | { kind: "swap.removed"; shift: NotificationShift | null }
+  | {
+      /** The reader's request is open again: whoever took it left first. */
+      kind: "swap.reopened";
+      shift: NotificationShift | null;
+    }
   | {
       kind: "clock.confirm";
       person: NotificationPerson;
@@ -1207,6 +1259,10 @@ const instant = z
 
 const schemas = {
   week: z.object({ startsOn: z.iso.date(), mine: z.int().min(0) }),
+  unfilled: z.object({
+    startsOn: z.iso.date(),
+    count: z.int().min(0).catch(0),
+  }),
   from: z.object({ from: uuid }),
   by: z.object({ by: uuid }),
   decided: z.object({ from: uuid, to: uuid.nullable().optional() }),
@@ -1331,6 +1387,12 @@ function lineOf(
         ? { kind, startsOn: params.startsOn, mine: params.mine }
         : other;
     }
+    case "schedule.unfilled": {
+      const params = read(schemas.unfilled);
+      return params
+        ? { kind, startsOn: params.startsOn, count: params.count }
+        : other;
+    }
     case "swap.offered":
     case "swap.cancelled": {
       const params = read(schemas.from);
@@ -1366,6 +1428,7 @@ function lineOf(
       return { kind, ...people, side };
     }
     case "swap.removed":
+    case "swap.reopened":
       return { kind, shift: shiftOf() };
     case "clock.confirm": {
       const params = read(schemas.confirm);

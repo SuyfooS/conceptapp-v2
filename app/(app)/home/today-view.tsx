@@ -130,8 +130,11 @@ const allShifts = ({ thisWeek, nextWeek }: PublishedSchedule) => [
   ...thisWeek.shifts,
   ...nextWeek.shifts,
 ];
-const nameIn = (t: T, published: PublishedSchedule, userId: string) =>
-  published.people.find((p) => p.userId === userId)?.name ?? t("shifts.noName");
+/** As `nameOf` on the shift screens: someone who left reads as such. */
+const nameIn = (t: T, published: PublishedSchedule, userId: string) => {
+  const person = published.people.find((p) => p.userId === userId);
+  return person ? (person.name ?? t("shifts.noName")) : t("shifts.former");
+};
 const photoIn = (published: PublishedSchedule, userId: string | null) =>
   published.people.find((p) => p.userId === userId)?.photo ?? null;
 /** How the app writes about them, for an ICU `select`. */

@@ -10,6 +10,8 @@ import { signIn } from "./session";
 const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 const NEW = { name: "לא תישמר", local: "050-000-0931", e164: "+972500000931" };
 const BUSINESS = "מסעדת הדגמה";
+/** The seeded Noa, a worker of the demo restaurant. */
+const NOA_ID = "00000000-0000-4000-a000-000000000003";
 
 const a = he.admin.setup.viewAs;
 const v = he.app.viewAs;
@@ -122,6 +124,21 @@ test("viewing as a manager shows the team but saves nothing", async ({
     page.getByText("נועה כהן").filter({ visible: true }).first(),
   ).toBeVisible();
   await expectCleanPage(page);
+  // No invite to delete, and on a person's page no role to change and no
+  // taking them off the team: viewing changes nothing.
+  await expect(
+    page.getByRole("button", { name: new RegExp(`^${tt.cancel.action}`) }),
+  ).toHaveCount(0);
+  await page.goto(`/team/${NOA_ID}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "נועה כהן" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: tt.changes.remove }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: new RegExp(`^${tt.changes.role}`) }),
+  ).toHaveCount(0);
 
   await page.goto("/team/invite");
   await page.getByLabel(tt.invite.name).fill(NEW.name);
