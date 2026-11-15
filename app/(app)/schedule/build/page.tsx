@@ -1,4 +1,4 @@
-import { builderWeekOf, gapsAhead } from "@domain/running-week";
+import { builderHref, builderWeekOf, gapsAhead } from "@domain/running-week";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
@@ -37,11 +37,6 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   };
 }
 
-const HREF = "/schedule/build";
-
-/** Where each of the builder's weeks opens. */
-const hrefOf = (start: string) => `${HREF}?week=${start}`;
-
 // Owners and managers build the schedule here: next week, or with
 // `?week=<its first day>` the week running now (the running-week plan's R3a).
 // Any other week opens next week, and one already over says so. Workers get
@@ -54,7 +49,7 @@ export default async function ScheduleBuildPage(props: Props) {
     return (
       <EndedWeekView
         running={weeks.thisWeek}
-        runningHref={hrefOf(weeks.thisWeek)}
+        runningHref={builderHref(weeks.thisWeek)}
         wording={wording}
       />
     );
@@ -84,12 +79,12 @@ export default async function ScheduleBuildPage(props: Props) {
         weeks: [
           {
             which: "this",
-            href: hrefOf(weeks.thisWeek),
+            href: builderHref(weeks.thisWeek),
             gaps: gaps(thisWeek),
           },
           {
             which: "next",
-            href: hrefOf(weeks.nextWeek),
+            href: builderHref(weeks.nextWeek),
             gaps: gaps(nextWeek),
           },
         ],

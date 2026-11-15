@@ -627,6 +627,7 @@
         "title": "דורש ממך פעולה",
         "waiting": "מה מחכה לך",
         "calm": "הכול מטופל",
+        "gapsThisWeek": "{count, plural, one {מקום פנוי השבוע} other {מקומות פנויים השבוע}}",
         "gaps": "{count, plural, one {מקום פנוי בשבוע הבא} other {מקומות פנויים בשבוע הבא}}",
         "missing": "{count, plural, =0 {כולם שלחו זמינות} one {עוד לא שלח/ה זמינות} other {עוד לא שלחו זמינות}}",
         "swaps": "{count, plural, one {בקשת החלפה מחכה לאישור} other {בקשות החלפה מחכות לאישור}}",
@@ -655,6 +656,7 @@
         "week": "לכל השבוע",
         "now": "עכשיו",
         "short": "{count, plural, one {חסר עובד אחד} other {חסרים #}}",
+        "fill": "{short}, למילוי בסידור של השבוע",
         "noShifts": "אין היום משמרות בסידור שפורסם. שאר השבוע נמצא ב„לכל השבוע”.",
         "notPublished": "הסידור של השבוע עוד לא פורסם. כשיפורסם, יופיע כאן מי עובד היום."
       },
@@ -1055,7 +1057,8 @@
         "subtitleDraft": "עוד לא נשמר",
         "subtitleSaved": "טיוטה שמורה, עוד לא פורסמה",
         "full": "מאויש",
-        "subtitlePublished": "פורסם לצוות"
+        "subtitlePublished": "פורסם לצוות",
+        "thisWeek": "{count, plural, one {משמרת אחת השבוע חסרה עובד} other {# משמרות השבוע חסרות עובד}}"
       },
       "edit": "עריכת המשמרת {name}",
       "editHint": "שעות, כמה עובדים צריך, הסרה",
@@ -1156,6 +1159,8 @@
         "filledLabel": "{have} מתוך {need} שובצו",
         "places": "{count, plural, one {מקום פנוי אחד} other {# מקומות פנויים}}",
         "allFilled": "כל המשמרות מאוישות",
+        "placesAhead": "{count, plural, one {מקום פנוי אחד בהמשך השבוע} other {# מקומות פנויים בהמשך השבוע}}",
+        "allFilledAhead": "כל המשמרות שעוד לא התחילו מאוישות",
         "missing": "{count, plural, one {חסר עובד אחד} other {חסרים #}}",
         "full": "מלא",
         "noShifts": "אין משמרות ביום הזה. אפשר לבחור יום אחר בשבוע.",
@@ -1197,7 +1202,8 @@
         "next": "השבוע הבא",
         "title": "{week}: הסידור של כל הצוות",
         "publishedAt": "<ltr>{from}–{to}</ltr> · פורסם ב-{date} בשעה <ltr>{time}</ltr>",
-        "notPublished": "הסידור לשבוע של <ltr>{from}–{to}</ltr> עוד לא פורסם."
+        "notPublished": "הסידור לשבוע של <ltr>{from}–{to}</ltr> עוד לא פורסם.",
+        "buildThis": "בניית הסידור של השבוע"
       },
       "day": "יום {day}, {date}",
       "shift": "משמרת {name}, יום {day} {date}",
@@ -2802,7 +2808,7 @@
             "title": "{count, plural, =0 {בשבוע של {date} התפנו משמרות בסידור} one {משמרת אחת בשבוע של {date} חסרה עובד} other {# משמרות בשבוע של {date} חסרות עובד}}",
             "settledTitle": "{count, plural, one {המשמרת בשבוע של {date} כבר לא מחכה לך} other {המשמרות בשבוע של {date} כבר לא מחכות לך}}",
             "note": "{count, plural, one {היא התפנתה בשינוי בצוות} other {הן התפנו בשינוי בצוות}}",
-            "begun": "השבוע כבר רץ: מסדרים את זה ישירות עם הצוות"
+            "begun": "{count, plural, one {אפשר למלא אותה בסידור של השבוע} other {אפשר למלא אותן בסידור של השבוע}}"
           }
         },
         "swap": {

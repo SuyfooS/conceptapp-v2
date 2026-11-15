@@ -97,7 +97,8 @@ export function pushWords(
       };
     }
     // A team change freed shifts: how many, never who left. A week already
-    // under way when the line was written can't be filled in the app.
+    // under way when the line was written is filled in this week's schedule,
+    // which the line opens.
     case "schedule.unfilled": {
       const date = dayMonth(line.startsOn);
       const count = line.count;
@@ -110,7 +111,7 @@ export function pushWords(
         title: t("kinds.schedule.unfilled.title", { count, date }),
         ...body(
           unfilledWeekBegun(line.startsOn, dateIn(new Date(entry.at), timeZone))
-            ? t("kinds.schedule.unfilled.begun")
+            ? t("kinds.schedule.unfilled.begun", { count })
             : t("kinds.schedule.unfilled.note", { count }),
         ),
       };

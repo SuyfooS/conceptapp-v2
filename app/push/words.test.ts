@@ -385,16 +385,26 @@ describe("the freed shifts' words on the phone", () => {
     expect(freed(0).title).toBe("בשבוע של 15.11 התפנו משמרות בסידור");
   });
 
-  it("says a week already under way is arranged with the team directly", () => {
-    // Sunday 15.11 at 09:00 in Israel: the week has begun, and the builder
-    // opens next week only.
+  // The running-week plan's R4: the line opens this week's builder, where
+  // the shifts are filled.
+  it("says a week already under way is filled in this week's schedule", () => {
+    // Sunday 15.11 at 09:00 in Israel: the week has begun.
     expect(freed(1, false, "2026-11-15T07:00:00.000Z").body).toBe(
-      unfilled.begun,
+      "אפשר למלא אותה בסידור של השבוע",
     );
+    expect(freed(3, false, "2026-11-15T07:00:00.000Z")).toEqual({
+      title: "3 משמרות בשבוע של 15.11 חסרות עובד",
+      body: "אפשר למלא אותן בסידור של השבוע",
+    });
+    expect(unfilled.begun).not.toContain("ישירות");
     // Saturday night 14.11, 23:30 in Israel: not yet.
     expect(freed(1, false, "2026-11-14T21:30:00.000Z").body).toBe(
       "היא התפנתה בשינוי בצוות",
     );
+    // Settled, it says only that it no longer waits.
+    expect(freed(1, true, "2026-11-15T07:00:00.000Z")).toEqual({
+      title: "המשמרת בשבוע של 15.11 כבר לא מחכה לך",
+    });
   });
 
   it("names nobody: not who left, not who took them off", () => {

@@ -627,6 +627,7 @@
         "title": "Needs you",
         "waiting": "What's waiting for you",
         "calm": "All taken care of",
+        "gapsThisWeek": "{count, plural, one {open place this week} other {open places this week}}",
         "gaps": "{count, plural, one {open place next week} other {open places next week}}",
         "missing": "{count, plural, =0 {Everyone sent availability} one {has not sent availability} other {have not sent availability}}",
         "swaps": "{count, plural, one {swap request waiting for approval} other {swap requests waiting for approval}}",
@@ -655,6 +656,7 @@
         "week": "The whole week",
         "now": "Now",
         "short": "{count, plural, one {One person short} other {# people short}}",
+        "fill": "{short}, to fill in this week's schedule",
         "noShifts": "No shifts today in the published schedule. The rest of the week is under “The whole week”.",
         "notPublished": "This week's schedule is not published yet. When it is, you will see here who works today."
       },
@@ -1055,7 +1057,8 @@
         "subtitleDraft": "Not saved yet",
         "subtitleSaved": "Draft saved, not published yet",
         "full": "Staffed",
-        "subtitlePublished": "Published to the team"
+        "subtitlePublished": "Published to the team",
+        "thisWeek": "{count, plural, one {One shift this week needs someone} other {# shifts this week need someone}}"
       },
       "edit": "Edit the {name} shift",
       "editHint": "Hours, people needed, removing it",
@@ -1156,6 +1159,8 @@
         "filledLabel": "{have} of {need} placed",
         "places": "{count, plural, one {1 open place} other {# open places}}",
         "allFilled": "All shifts are staffed",
+        "placesAhead": "{count, plural, one {1 open place later this week} other {# open places later this week}}",
+        "allFilledAhead": "All shifts still to start are staffed",
         "missing": "{count, plural, one {1 person missing} other {# missing}}",
         "full": "Full",
         "noShifts": "No shifts on this day. Pick another day of the week.",
@@ -1197,7 +1202,8 @@
         "next": "Next week",
         "title": "{week}: the whole team's schedule",
         "publishedAt": "<ltr>{from}–{to}</ltr> · published on {date} at <ltr>{time}</ltr>",
-        "notPublished": "The schedule for the week of <ltr>{from}–{to}</ltr> is not published yet."
+        "notPublished": "The schedule for the week of <ltr>{from}–{to}</ltr> is not published yet.",
+        "buildThis": "Build this week's schedule"
       },
       "day": "{day}, {date}",
       "shift": "{name} shift, {day} {date}",
@@ -2802,7 +2808,7 @@
             "title": "{count, plural, =0 {Shifts were freed in the week of {date}} one {One shift in the week of {date} needs someone} other {# shifts in the week of {date} need someone}}",
             "settledTitle": "{count, plural, one {The shift in the week of {date} no longer waits for you} other {Shifts in the week of {date} no longer wait for you}}",
             "note": "{count, plural, one {It was freed by a change in the team} other {They were freed by a change in the team}}",
-            "begun": "This week is under way: arrange it with the team directly"
+            "begun": "{count, plural, one {You can fill it in this week's schedule} other {You can fill them in this week's schedule}}"
           }
         },
         "swap": {

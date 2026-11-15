@@ -4,6 +4,13 @@ import type { ModuleNavEntry, Role } from "@domain/modules";
 import { firstNameOf } from "@domain/people";
 import { formArg } from "@domain/profile";
 import {
+  BUILDER_PATH,
+  builderHref,
+  runningFirst,
+  runningGaps,
+  shiftEnded,
+} from "@domain/running-week";
+import {
   type ScheduledShift,
   scheduleGaps,
   shiftsByDay,
@@ -77,9 +84,16 @@ import { RefreshOnReturn } from "./refresh-on-return";
 export type TodaySchedule = {
   published: PublishedSchedule;
   availability: AvailabilityWeek;
-  /** Owners and managers only, like `build`. */
+  /** Owners and managers only, like `build` and `running`. */
   teamAvailability: TeamAvailabilityWeek | null;
+  /** Next week as the manager builds it. */
   build: ScheduleBuildWeek | null;
+  /**
+   * The week running now as the manager builds it, once someone built it
+   * (`currentRunningBuild`): what it still lacks comes first (Orel's answer
+   * 6 of 15 November 2026).
+   */
+  running: ScheduleBuildWeek | null;
 };
 
 export type TodayData = {
@@ -150,6 +164,25 @@ const personIn = (t: T, published: PublishedSchedule, userId: string) => ({
   name: nameIn(t, published, userId),
   photo: photoIn(published, userId),
 });
+
+/**
+ * What the week running now still lacks, in places, and where a manager
+ * builds the schedule: this week's builder while a shift still to start in
+ * it lacks someone, or while it waits to be published (Orel's answer 6 of 15
+ * November 2026: what is nearer first; `runningFirst`), next week's
+ * otherwise.
+ */
+function runningOf(schedule: TodaySchedule, now: string) {
+  const { running, published } = schedule;
+  const at = new Date(now);
+  return {
+    places: runningGaps(running, at, published.timeZone).people,
+    href:
+      running && runningFirst(running, at, published.timeZone)
+        ? builderHref(running.week.start)
+        : BUILDER_PATH,
+  };
+}
 
 /**
  * Today: what is next for the person and what needs them. Each enabled module
@@ -368,7 +401,7 @@ export async function TodayView({
             {listsPart(
               "md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2",
             )}
-            <WhoWorksToday {...view} />
+            <WhoWorksToday {...view} now={data.now} />
             {rest(
               lists || chat || documentsWaiting
                 ? "md:col-span-2"
@@ -456,7 +489,7 @@ function NextShift({
             body: t("home.hero.noShifts.body"),
           };
     const action = manager
-      ? { href: "/schedule/build", label: t("home.hero.build") }
+      ? { href: runningOf(schedule, now).href, label: t("home.hero.build") }
       : anyPublished
         ? { href: "/schedule/shifts", label: t("home.hero.myShifts") }
         : {
@@ -708,8 +741,18 @@ function tileContent(
   t: T,
   tile: TodayTile,
   due: { day: string; time: string },
+  /** This week's builder, where its open places are filled. */
+  running: string,
 ): Omit<TileProps, "className"> {
   switch (tile.key) {
+    case "gapsThisWeek":
+      return {
+        href: running,
+        icon: <CalendarClock />,
+        tone: "warning",
+        value: tile.count,
+        label: t("home.needs.gapsThisWeek", { count: tile.count }),
+      };
     case "gaps":
       return {
         href: "/schedule/build",
@@ -786,6 +829,7 @@ function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
   const { published, availability, build } = schedule;
   const shifts = allShifts(published);
   const teamView = canSeeTeam(role) && schedule.teamAvailability;
+  const running = runningOf(schedule, now);
   const nextWeekPublished = published.nextWeek.publishedAt !== null;
   const dueAt = new Date(availability.dueAt);
   const tiles = todayTiles({
@@ -805,6 +849,7 @@ function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
     ).filter((offer) => offer.state === "available").length,
     team: teamView
       ? {
+          gapsThisWeek: running.places,
           gaps:
             build && build.shifts.length > 0
               ? scheduleGaps(build.shifts).people
@@ -841,14 +886,16 @@ function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
           "-my-3 gap-2.5 py-3",
           "md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0",
           "md:[&>:last-child:nth-child(odd)]:col-span-2",
-          "xl:auto-cols-fr xl:grid-flow-col xl:grid-cols-none xl:[&>:last-child:nth-child(odd)]:col-span-1",
+          // Desktop: as many across as fit at a readable width, wrapping
+          // rather than squeezing (up to five tiles).
+          "xl:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] xl:[&>:last-child:nth-child(odd)]:col-span-1",
           scrolls
             ? "-mx-4 flex snap-x snap-proximity scroll-px-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             : "grid grid-cols-2",
         )}
       >
         {tiles.map((tile) => {
-          const { href, ...content } = tileContent(t, tile, due);
+          const { href, ...content } = tileContent(t, tile, due, running.href);
           return (
             <Tile
               key={tile.key}
@@ -865,9 +912,21 @@ function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
   );
 }
 
-/** Today's published shifts, each a grouped list of who works it. */
-function WhoWorksToday({ t, path, clock, schedule }: ViewProps) {
+/**
+ * Today's published shifts, each a grouped list of who works it. For an
+ * owner or manager, a shift short of someone that has not ended leads to
+ * this week's builder, which opens on today (the running-week plan's R4).
+ */
+function WhoWorksToday({
+  t,
+  path,
+  clock,
+  role,
+  schedule,
+  now,
+}: ViewProps & { now: string }) {
   const { published } = schedule;
+  const manager = canSeeTeam(role);
   const { thisWeek, nextWeek } = published;
   // With nothing published at all the hero says so, and says what to do next.
   if (thisWeek.publishedAt === null && nextWeek.publishedAt === null) {
@@ -906,6 +965,12 @@ function WhoWorksToday({ t, path, clock, schedule }: ViewProps) {
         >
           {today.map((shift) => {
             const short = stillNeeded(shift);
+            const shortWords = t("home.who.short", { count: short });
+            // Someone can still join a shift under way, never one over.
+            const fill =
+              manager &&
+              short > 0 &&
+              !shiftEnded(shift, new Date(now), published.timeZone);
             return (
               <section
                 key={shift.id}
@@ -929,10 +994,22 @@ function WhoWorksToday({ t, path, clock, schedule }: ViewProps) {
                     {shiftPhase(shift, clock) === "now" ? (
                       <Badge tone="success">{t("home.who.now")}</Badge>
                     ) : null}
-                    {short > 0 ? (
-                      <Badge tone="warning">
-                        {t("home.who.short", { count: short })}
-                      </Badge>
+                    {fill ? (
+                      <Link
+                        href={path(builderHref(thisWeek.start))}
+                        aria-label={t("home.who.fill", { short: shortWords })}
+                        className="pressable -my-2.5 flex min-h-11 items-center rounded-full focus-visible:outline-2 focus-visible:outline-accent"
+                      >
+                        <Badge tone="warning">
+                          {shortWords}
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="-me-1 size-4 shrink-0 rtl:-scale-x-100"
+                          />
+                        </Badge>
+                      </Link>
+                    ) : short > 0 ? (
+                      <Badge tone="warning">{shortWords}</Badge>
                     ) : null}
                   </span>
                 </div>
