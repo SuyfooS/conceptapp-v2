@@ -41,6 +41,7 @@ export async function setRolePayAction(
   if (access.businessId !== parsed.data.business) {
     return { ok: false, failure: "businessChanged" };
   }
+  if (!access.inUse) return { ok: false, failure: "notInUse" };
   if (access.viewOnly) return { ok: false, failure: "viewOnly" };
   const result = await setRolePayAccess(
     access.userId,
@@ -67,6 +68,7 @@ export async function setPersonalPayAction(
   if (access.businessId !== parsed.data.business) {
     return { ok: false, failure: "businessChanged" };
   }
+  if (!access.inUse) return { ok: false, failure: "notInUse" };
   if (access.viewOnly) return { ok: false, failure: "viewOnly" };
   const result = await setPersonalPayAccess(
     access.userId,
