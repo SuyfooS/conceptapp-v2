@@ -11,17 +11,24 @@ import {
 } from "@domain/documents";
 import { DEFAULT_LIST_PHOTO_DAYS, LIST_PHOTO_DAYS } from "@domain/list-photos";
 import {
+  ACCOUNTANT_PERMISSIONS,
+  atLeast,
+  holdsPermission,
+  isStaff,
   MODULE_KEYS,
   type ModuleManifest,
   moduleNav,
+  PERMISSION_AREAS,
   ROLES,
+  type Role,
   readModuleSettings,
 } from "@domain/modules";
+import { CORE_PERMISSIONS, permissionsByDefault } from "@domain/permissions";
 import { describeSettings, fieldsFor } from "@domain/settings-form";
 import { describe, expect, it } from "vitest";
 import en from "../messages/en.json";
 import he from "../messages/he.json";
-import { manifestFor, manifests } from "./registry";
+import { manifestFor, manifests, permissions } from "./registry";
 
 describe("module registry", () => {
   it("has one manifest per module key, matching the database enum", () => {
@@ -56,9 +63,106 @@ describe("module registry", () => {
     for (const m of manifests) if (m.homeWidget) expect(m.nav).not.toBeNull();
   });
 
-  it("names each permission once", () => {
-    const keys = manifests.flatMap((m) => m.permissions.map((p) => p.key));
+  it("names each permission once, the core ones included", () => {
+    const keys = permissions.map((p) => p.key);
     expect(new Set(keys).size).toBe(keys.length);
+    expect(keys).toEqual(
+      expect.arrayContaining(CORE_PERMISSIONS.map((p) => p.key)),
+    );
+  });
+
+  it("puts a module's permissions in its own area, and the core ones in the team's or the management page's", () => {
+    // public.permission_keys checks the same (permission_keys_module_area_check).
+    for (const p of permissions) {
+      expect(PERMISSION_AREAS).toContain(p.area);
+      if (p.module !== null) {
+        expect(p.area).toBe(p.module);
+      } else {
+        expect(["team", "manage"]).toContain(p.area);
+        expect(p.key.startsWith(`${p.area}.`)).toBe(true);
+      }
+    }
+  });
+
+  it("requires only a key of the same area that its default roles hold too, in chains that end", () => {
+    const byKey = new Map<string, (typeof permissions)[number]>(
+      permissions.map((p) => [p.key, p]),
+    );
+    const chains = Object.fromEntries(
+      permissions.flatMap((p) => (p.requires ? [[p.key, p.requires]] : [])),
+    );
+    expect(chains).toEqual({
+      "schedule.publish": "schedule.edit",
+      "team.edit": "team.view",
+      "manage.edit": "manage.view",
+    });
+    for (const p of permissions) {
+      const seen: string[] = [p.key];
+      let next: string | null | undefined = p.requires;
+      for (; next; next = byKey.get(next)?.requires) {
+        const needed = byKey.get(next);
+        expect(needed?.area).toBe(p.area);
+        // Else the role would hold the key by default and never use it.
+        expect(needed?.defaultRoles).toEqual(
+          expect.arrayContaining(p.defaultRoles),
+        );
+        expect(seen).not.toContain(next);
+        seen.push(next);
+      }
+    }
+  });
+
+  it("lets owners switch no permission per role yet, and never pay", () => {
+    // Each area's phase turns its keys on once every check in the area reads
+    // them (the roles plan); clock.payroll keeps its own switch.
+    expect(permissions.filter((p) => p.settable)).toEqual([]);
+  });
+
+  it("keeps today's rules while the database can't answer", () => {
+    // permissionsByDefault, which the session falls back on while
+    // public.my_permissions is missing, against the app's rule before the
+    // roles plan's R1 (holdsPermission with its own defaults, over the
+    // permissions given alone): the same for every role, given set and key.
+    const before = (role: Role, given: readonly string[], key: string) => {
+      if (role === "owner") return true;
+      if (!isStaff(role)) return ACCOUNTANT_PERMISSIONS.includes(key);
+      if (given.includes(key)) return true;
+      const declared = manifests
+        .flatMap((m) => m.permissions)
+        .find((p) => p.key === key);
+      return (
+        declared !== undefined &&
+        !declared.byOwner &&
+        atLeast(role, declared.defaultRole)
+      );
+    };
+    const moduleKeys = manifests.flatMap((m) =>
+      m.permissions.map((p) => p.key),
+    );
+    const keys = [...moduleKeys, "billing.manage"];
+    const givenSets = [
+      [],
+      ["schedule.publish"],
+      ["clock.payroll", "lists.manage"],
+      ["billing.manage"],
+    ];
+    for (const role of ROLES) {
+      for (const given of givenSets) {
+        for (const viewing of [false, true]) {
+          const perms = permissionsByDefault(permissions, {
+            role,
+            given,
+            viewing,
+          });
+          for (const key of keys) {
+            expect(
+              holdsPermission({ role, perms }, key),
+              `${role} ${viewing ? "viewing" : ""} [${given}] ${key}`,
+            ).toBe(before(role, viewing ? [] : given, key));
+          }
+        }
+      }
+    }
   });
 
   it("gives lists the default roles their SQL helpers hold", () => {

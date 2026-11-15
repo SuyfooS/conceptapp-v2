@@ -1935,24 +1935,41 @@ export type Database = {
       };
       permission_keys: {
         Row: {
+          area: string;
           by_owner: boolean;
           default_roles: Database["public"]["Enums"]["member_role"][];
           key: string;
-          module_key: Database["public"]["Enums"]["module_key"];
+          module_key: Database["public"]["Enums"]["module_key"] | null;
+          requires: string | null;
+          settable: boolean;
         };
         Insert: {
+          area: string;
           by_owner?: boolean;
           default_roles?: Database["public"]["Enums"]["member_role"][];
           key: string;
-          module_key: Database["public"]["Enums"]["module_key"];
+          module_key?: Database["public"]["Enums"]["module_key"] | null;
+          requires?: string | null;
+          settable?: boolean;
         };
         Update: {
+          area?: string;
           by_owner?: boolean;
           default_roles?: Database["public"]["Enums"]["member_role"][];
           key?: string;
-          module_key?: Database["public"]["Enums"]["module_key"];
+          module_key?: Database["public"]["Enums"]["module_key"] | null;
+          requires?: string | null;
+          settable?: boolean;
         };
-        Relationships: [];
+        Relationships: [
+          {
+            foreignKeyName: "permission_keys_requires_fkey";
+            columns: ["requires"];
+            isOneToOne: false;
+            referencedRelation: "permission_keys";
+            referencedColumns: ["key"];
+          },
+        ];
       };
       platform_staff: {
         Row: {
@@ -2183,6 +2200,7 @@ export type Database = {
       };
       role_permissions: {
         Row: {
+          allowed: boolean;
           business_id: string;
           granted_at: string;
           granted_by: string | null;
@@ -2190,6 +2208,7 @@ export type Database = {
           role: Database["public"]["Enums"]["member_role"];
         };
         Insert: {
+          allowed?: boolean;
           business_id: string;
           granted_at?: string;
           granted_by?: string | null;
@@ -2197,6 +2216,7 @@ export type Database = {
           role: Database["public"]["Enums"]["member_role"];
         };
         Update: {
+          allowed?: boolean;
           business_id?: string;
           granted_at?: string;
           granted_by?: string | null;

@@ -15,8 +15,13 @@ show, gate or configure the module comes from it:
 - `homeWidget`: the module's part of the Today screen, for roles from `minRole`
   up. Until it has a part of its own, as scheduling does, that is one quiet row
   (`modules.<key>.description` under the name)
-- `permissions` (e.g. `schedule.publish`) with the lowest role that holds
-  each by default
+- `permissions` (e.g. `schedule.publish`), each in the module's own `area`,
+  with the lowest role that holds it by default and what it `requires`
+  (`schedule.edit`). With the team's and the management page's
+  (`CORE_PERMISSIONS` in `@domain/permissions`) they are `permissions` here,
+  the rows of `public.permission_keys` (`permissions.db.test.ts`). Who holds
+  what is the database's answer (`public.my_permissions`); the screens ask
+  `holdsPermission` over it and keep no defaults of their own.
 - `settings`: a Zod schema where every field has a default. Read with
   `readModuleSettings` (invalid fields fall back to defaults), written
   through `validateModuleSettings` (invalid input throws).

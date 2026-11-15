@@ -7,7 +7,9 @@ export const manifest = defineManifest({
   requires: [],
   nav: { href: "/storefront", icon: "store", minRole: "manager", order: 40 },
   homeWidget: null,
-  permissions: [{ key: "storefront.edit", defaultRole: "manager" }],
+  permissions: [
+    { key: "storefront.edit", area: "storefront", defaultRole: "manager" },
+  ],
   // Nothing reads these yet: no screen offers them until the module is built.
   settings: z.object({
     /** The public page is visible to everyone. */

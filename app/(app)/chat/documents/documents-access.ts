@@ -1,7 +1,6 @@
 import { documentsAllowed } from "@db/documents";
 import { holdsPermission, isStaff } from "@domain/modules";
 import { isDemoBusiness } from "@domain/passive-sign-in";
-import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../../member";
 import { currentModules } from "../../modules";
@@ -27,16 +26,11 @@ export const documentsAccess = cache(async () => {
   ]);
   const membership = member?.membership;
   if (!member || !membership || !enabled.includes("chat")) return null;
-  const { role, perms, business } = membership;
+  const { role, business } = membership;
   const staff = isStaff(role);
   // The office is who holds pay access (time_clock's clock.payroll), as the
   // database's private.in_office says: owners and accountants always.
-  const office = holdsPermission(
-    manifestFor("time_clock"),
-    role,
-    perms,
-    "clock.payroll",
-  );
+  const office = holdsPermission(membership, "clock.payroll");
   if (!staff && !office) return null;
   return {
     userId: member.userId,
@@ -56,9 +50,7 @@ export const documentsAccess = cache(async () => {
      * Sends documents to people (private.sends_documents): an owner, a holder
      * of chat.send_documents (managers by default), or the office.
      */
-    sends:
-      office ||
-      holdsPermission(manifestFor("chat"), role, perms, "chat.send_documents"),
+    sends: office || holdsPermission(membership, "chat.send_documents"),
   };
 });
 

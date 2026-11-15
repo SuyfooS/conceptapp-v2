@@ -99,8 +99,8 @@ export const listsAccess = cache(async () => {
   if (!member || !membership || !canOpenModule(manifest, enabled, membership)) {
     return null;
   }
-  const { role, perms, business } = membership;
-  const canManage = holdsPermission(manifest, role, perms, "lists.manage");
+  const { role, business } = membership;
+  const canManage = holdsPermission(membership, "lists.manage");
   const viewing = member.viewing !== null;
   const view: ListsView = viewing
     ? canManage
@@ -114,7 +114,7 @@ export const listsAccess = cache(async () => {
     timeZone: business.place.timeZone,
     place: business.place,
     canManage,
-    canSend: canManage || holdsPermission(manifest, role, perms, "lists.send"),
+    canSend: canManage || holdsPermission(membership, "lists.send"),
     viewOnly: !canWrite(member.viewing),
     view,
   };

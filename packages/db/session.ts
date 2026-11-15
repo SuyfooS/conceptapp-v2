@@ -11,6 +11,11 @@ import {
   unreadCounts,
 } from "@domain/notifications";
 import {
+  type PermissionEntry,
+  type PermissionHolder,
+  permissionsByDefault,
+} from "@domain/permissions";
+import {
   type AddressForm,
   addressFormOf,
   type CoverPreset,
@@ -65,12 +70,13 @@ export type CurrentMember = {
     role: MemberRole;
     /**
      * Every permission they hold in the business, as the database says
-     * (`public.my_permissions`): their role's, those given to their role, and
-     * those given to them (`clock.payroll` always for an owner or an
-     * accountant). While viewing as a role, what that role holds by default,
-     * and `clock.payroll` only as an accountant. Before
-     * 20261110000300_payroll_access.sql reaches a project, `memberships.perms`
-     * alone, as before (none while viewing).
+     * (`public.my_permissions`): their role's by default unless the business
+     * decided otherwise for the role, those given to their role, and those
+     * given to them (`clock.payroll` always for an owner or an accountant).
+     * While viewing as a role, what that role holds, and `clock.payroll` only
+     * as an accountant. The screens keep no defaults of their own
+     * (`holdsPermission`), so while the function is missing on a project,
+     * today's rules from the declarations instead (`permissionsByDefault`).
      */
     perms: string[];
     business: MemberBusiness;
@@ -197,9 +203,13 @@ function wordingRows<T>(result: {
  * (`chosenMembership`). Someone on the ConceptApp team with an open view
  * session gets the viewed business and role instead (RLS lets them read it
  * while the session lasts). The business's wording is read alongside, so it
- * costs no extra round.
+ * costs no extra round. `catalogue` is every permission declared
+ * (`permissions` in @modules/registry): today's rules come from it while
+ * `public.my_permissions` is missing.
  */
-export async function getCurrentMember(): Promise<CurrentMember | null> {
+export async function getCurrentMember(
+  catalogue: readonly PermissionEntry[],
+): Promise<CurrentMember | null> {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getClaims();
   const userId = auth?.claims.sub;
@@ -301,7 +311,11 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
       ...person,
       membership: {
         role: view.data.role,
-        perms: await permissionsIn(supabase, viewed.id, []),
+        perms: await permissionsIn(supabase, viewed.id, catalogue, {
+          role: view.data.role,
+          given: [],
+          viewing: true,
+        }),
         business: memberBusiness(viewed, wording),
         since: null,
       },
@@ -346,7 +360,11 @@ export async function getCurrentMember(): Promise<CurrentMember | null> {
             [m.businessId, unreadCounts(unreadRows, m.businessId)] as const,
         ),
     picked
-      ? permissionsIn(supabase, picked.businessId, picked.perms)
+      ? permissionsIn(supabase, picked.businessId, catalogue, {
+          role: picked.role,
+          given: picked.perms,
+          viewing: false,
+        })
       : Promise.resolve([]),
   ]);
   const counted = new Map<string, UnreadCounts>(counts);
@@ -387,8 +405,14 @@ export type OwnPlace = {
   place: {
     businessId: string;
     role: MemberRole;
-    /** The permissions given to them there (`holdsPermission`). */
-    perms: string[];
+    /**
+     * What they hold there, as `CurrentMember`'s `perms` says it
+     * (`public.my_permissions`, for `holdsPermission`), read only when
+     * asked, so a poll that needs none still costs one round. `catalogue` is
+     * every permission declared (`permissions` in @modules/registry), for
+     * today's rules while the function is missing.
+     */
+    permissions: (catalogue: readonly PermissionEntry[]) => Promise<string[]>;
     /** The modules on there. */
     enabled: ModuleRow["key"][];
   } | null;
@@ -402,7 +426,8 @@ export type OwnPlace = {
  * seconds, where `getCurrentMember`'s profile, wording and counts would cost
  * five more. Under the person's own session, which this renews when it has
  * expired (the cookies go out with the answer, as in a route handler they
- * can); null when nobody is signed in.
+ * can); null when nobody is signed in. What they hold there costs one more
+ * read, only when `permissions` asks.
  */
 export async function getOwnPlace(): Promise<OwnPlace | null> {
   const supabase = await createClient();
@@ -450,7 +475,12 @@ export async function getOwnPlace(): Promise<OwnPlace | null> {
       ? {
           businessId: picked.businessId,
           role: picked.role,
-          perms: picked.perms,
+          permissions: (catalogue) =>
+            permissionsIn(supabase, picked.businessId, catalogue, {
+              role: picked.role,
+              given: picked.perms,
+              viewing: false,
+            }),
           enabled: picked.enabled,
         }
       : null,
@@ -476,19 +506,22 @@ async function unreadIn(
 }
 
 /**
- * What the person holds in the business, from `public.my_permissions`; the
- * permissions given to them alone (`given`) while the function is missing.
+ * What the person holds in the business, from `public.my_permissions`. While
+ * the function is missing on a project, today's rules from the declarations
+ * (`permissionsByDefault`: the role's defaults and what was given to them),
+ * since the screens keep no defaults of their own.
  */
 async function permissionsIn(
   supabase: Awaited<ReturnType<typeof createClient>>,
   businessId: string,
-  given: string[],
+  catalogue: readonly PermissionEntry[],
+  holder: PermissionHolder,
 ): Promise<string[]> {
   const { data, error } = await supabase.rpc("my_permissions", {
     business: businessId,
   });
   if (!error) return data ?? [];
-  if (isMissingFunction(error)) return given;
+  if (isMissingFunction(error)) return permissionsByDefault(catalogue, holder);
   throw error;
 }
 

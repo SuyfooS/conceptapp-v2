@@ -9,8 +9,17 @@ export const manifest = defineManifest({
   nav: { href: "/schedule", icon: "calendar", minRole: "worker", order: 10 },
   homeWidget: { minRole: "worker" },
   permissions: [
-    { key: "schedule.edit", defaultRole: "manager" },
-    { key: "schedule.publish", defaultRole: "manager" },
+    // Building the week, and publishing it, which needs building it (a
+    // switch under edit, on by default: Orel, 15 November 2026). Nothing
+    // checks either yet: private.builds_schedule still lets owners and
+    // managers do both, until the roles plan's R3 moves it onto these.
+    { key: "schedule.edit", area: "scheduling", defaultRole: "manager" },
+    {
+      key: "schedule.publish",
+      area: "scheduling",
+      defaultRole: "manager",
+      requires: "schedule.edit",
+    },
   ],
   settings: z.object({
     /** Day the week starts on (0 = Sunday). */

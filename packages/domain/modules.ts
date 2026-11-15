@@ -78,6 +78,58 @@ export const MODULE_ICONS = [
 export type ModuleIcon = (typeof MODULE_ICONS)[number];
 
 /**
+ * Where a permission belongs (roles and permissions, step 4b): each module
+ * that has permissions, by its own key, and the team screen and the
+ * management page, which no module declares (`CORE_PERMISSIONS` in
+ * `@domain/permissions`). The screens draw edit, view or none per area. Same
+ * values as the check on `public.permission_keys.area`.
+ */
+export const PERMISSION_AREAS = [
+  "scheduling",
+  "time_clock",
+  "lists",
+  "chat",
+  "team",
+  "manage",
+  "reservations",
+  "storefront",
+] as const;
+
+export type PermissionArea = (typeof PERMISSION_AREAS)[number];
+
+/** A permission's key: `<area or module>.<action>`. */
+export type PermissionKey = `${string}.${string}`;
+
+/**
+ * A permission as declared, by a module's manifest or by the app's core, with
+ * the lowest role that holds it by default. With `byOwner`, an owner gives it
+ * to a role or a person (the database's `role_permissions` and
+ * `memberships.perms`), and nobody holds it by role alone but owners, and
+ * accountants for what they always hold (`clock.payroll`): such a
+ * permission's `defaultRole` is "owner". `public.permission_keys` holds the
+ * same (`modules/permissions.db.test.ts`).
+ */
+export type PermissionDeclaration = {
+  key: PermissionKey;
+  /** A module's own key is in that module's area. */
+  area: PermissionArea;
+  defaultRole: Role;
+  byOwner?: true;
+  /**
+   * A key this one needs (publishing the schedule needs building it): a role
+   * holds this one by its role only while the person also holds that one. A
+   * key given to a person holds whatever it requires.
+   */
+  requires?: PermissionKey;
+  /**
+   * Owners switch it per role (from the roles plan's R2 on). Each area's
+   * phase sets it once every check in the area reads the key; never with
+   * `byOwner`, which keeps its own switch.
+   */
+  settable?: true;
+};
+
+/**
  * The home tab plus at most this many module tabs fit the phone tab bar. The
  * limit is on what a business has on, not on every module there is: a
  * template that switches on more is refused (`validateTemplate`), and so is
@@ -112,7 +164,7 @@ export type ModuleManifest<
      * and the office is who holds time_clock's `clock.payroll`).
      */
     outsideStaff?: {
-      perm: `${string}.${string}`;
+      perm: PermissionKey;
       href: `/${string}`;
       from?: ModuleKey;
       /** Its own icon, for a tab that leads elsewhere than the module's (chat's documents). */
@@ -125,17 +177,10 @@ export type ModuleManifest<
    */
   homeWidget: { minRole: Role } | null;
   /**
-   * Permissions the module checks, with the lowest role that holds each by
-   * default. With `byOwner`, an owner gives it to a role or a person (the
-   * database's `role_permissions` and `memberships.perms`), and nobody holds it
-   * by role alone but owners, and accountants for what they always hold
-   * (`clock.payroll`): such a permission's `defaultRole` is "owner".
+   * Permissions the module checks, each in the module's own area, with the
+   * lowest role that holds it by default (`PermissionDeclaration`).
    */
-  permissions: readonly {
-    key: `${string}.${string}`;
-    defaultRole: Role;
-    byOwner?: true;
-  }[];
+  permissions: readonly PermissionDeclaration[];
   /** Every field has a default, so `settings.parse({})` gives a full set. */
   settings: Settings;
 };
@@ -335,30 +380,15 @@ export function permissionInUse(
 export const ACCOUNTANT_PERMISSIONS: readonly string[] = ["clock.payroll"];
 
 /**
- * Whether someone holds one of a module's permissions: owners hold them all,
- * an accountant what accountants always hold, and someone on the staff a
- * permission given to them (`perms`) or one whose `defaultRole` they reach,
- * unless an owner gives it (`byOwner`). A key the manifest doesn't declare is
- * held by owners and those given it. The database's helpers say the same
- * (`private.holds_perm`, `private.can_manage_lists` and their kind). Without
- * the staff check an accountant, at a worker's rank, would hold every
- * permission whose default is "worker".
+ * Whether the viewer holds a permission: an owner holds every one, and anyone
+ * else what the database answered (`perms`, from `public.my_permissions`,
+ * which counts their role's defaults, the business's rows for their role,
+ * what each key requires, what they were given and an accountant's own). The
+ * app keeps no defaults of its own, so a business's choice for a role reaches
+ * the screens as it reaches the database (roles plan R1).
  */
-export function holdsPermission(
-  manifest: ModuleManifest,
-  role: Role,
-  perms: readonly string[],
-  key: string,
-): boolean {
-  if (role === "owner") return true;
-  if (!isStaff(role)) return ACCOUNTANT_PERMISSIONS.includes(key);
-  if (perms.includes(key)) return true;
-  const permission = manifest.permissions.find((p) => p.key === key);
-  return (
-    permission !== undefined &&
-    !permission.byOwner &&
-    atLeast(role, permission.defaultRole)
-  );
+export function holdsPermission(viewer: Viewer, key: string): boolean {
+  return viewer.role === "owner" || viewer.perms.includes(key);
 }
 
 /**
