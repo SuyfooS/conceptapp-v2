@@ -919,10 +919,15 @@ select is(
   'and the minute job settles it once every such shift has begun'
 );
 
+-- The change in a statement of its own: a statement sees the database as it
+-- was when it began, so a check in the same one would miss the period the
+-- membership's trigger writes.
+create temporary table back_on_staff on commit drop as
+select public.set_member_role('8e000000-0000-4000-a000-000000000001',
+  '8e000000-0000-4000-b000-000000000001', '8e000000-0000-4000-a000-000000000007',
+  'worker') as result;
 select ok(
-  (public.set_member_role('8e000000-0000-4000-a000-000000000001',
-    '8e000000-0000-4000-b000-000000000001', '8e000000-0000-4000-a000-000000000007',
-    'worker') ->> 'changed') = 'true'
+  (select b.result ->> 'changed' from back_on_staff b) = 'true'
   and exists (
     select 1 from public.employment_periods p
     where p.user_id = '8e000000-0000-4000-a000-000000000007'
