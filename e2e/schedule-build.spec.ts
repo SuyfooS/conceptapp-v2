@@ -527,6 +527,11 @@ test("a shift changed meanwhile comes back marked, and the rest is kept", async 
   await screen.closeSheet();
   await expect(warning).toBeVisible();
   // Leaving asks first, and says it there too, beside publishing on the way.
+  // On a phone the tab bar shrinks to the current tab once the page has
+  // scrolled (the week switch makes the builder taller); back at the top it
+  // shows every tab again.
+  await page.evaluate(() => window.scrollTo({ top: 0 }));
+  await expect(home).toBeVisible();
   await home.click();
   await expect(leave).toContainText(heT("app.build.swapsEnd", { count: 1 }));
   await expect(
