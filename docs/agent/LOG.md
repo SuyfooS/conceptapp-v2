@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-15 · chat · the Biome probes leave the repository
+
+- On chat/boundary-probes over `main` at `e264a8f`. Orel's report: `hebrew-literals.test.ts` ("keeps every Hebrew string in messages/") and `client-values.test.ts` ("no server file imports a value from a client file") failed in about 2–3 of 10 full `vitest run`s on Windows and passed alone (the lists and R4 entries below saw it too). The cause: the Biome case of `boundaries.test.ts` wrote 16 probes `__boundary_probe_N__.ts` into packages/domain, packages/ui, packages/db and modules/probe and deleted them, while the tests that walk those folders ran in other workers: a probe listed, then gone when read (ENOENT).
+- `tooling/boundaries.test.ts`: the probes go into a fresh folder in the OS's temp folder, beside verbatim copies of `biome.json` and `.gitignore` (VCS is on, so Biome won't run without the ignore file); Biome runs from there and the folder is removed after. Override paths are relative to the configuration, so `packages/ui/**` reaches `<probes>/packages/ui` and each case exercises the same rule as before. A new case fails if a `biome.json(c)` appears under packages/ or modules/, which the copy would leave out. Nothing is written into the repository any more, so no scanner changed: none skips a file or tolerates one vanishing.
+- Proven locally (Node 22.23.5): the Biome case fails when an override loses a group (`@db/**` from packages/ui), and the new case fails on a `packages/ui/biome.json`. A stress, the Biome case in a loop beside `hebrew-literals`, `client-values` and `security-headers` run 40 times: 4 of 40 failed on main, both tests from the report, ENOENT on `packages/ui/__boundary_probe_5__.ts`; 0 of 40 with this. Ten full `vitest run`s in a row: all green (2162 passed, 1 skipped), and a watcher on the repository saw no probe file during them (49 events from one run of the old case). `pnpm check` green. Not run: `pnpm build` (no routing or config change).
+- Decided here: Biome's `--stdin-file-path` would need no files at all, but `lint` from stdin prints the source back without diagnostics, so it can't tell a blocked import from an allowed one.
+- Next: nothing.
+
 ## 2026-11-15 · chat · overlaps across the week's edge (X)
 
 - On chat/running-week-edge, over R2b's branch (main at 99d1f7b with R2b, #156, merged in). The running-week plan's phase X: a save or a publish checked that nobody works two shifts at once only inside its week, so next week's first morning could go to someone on the running week's last night, and the running week (open in the builder since R3a) could clash with last week's last night or next week's first day.
