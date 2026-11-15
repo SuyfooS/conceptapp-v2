@@ -25,7 +25,7 @@ import {
   shabbatLimits,
 } from "@domain/availability-form";
 import { canOpenModule, isStaff } from "@domain/modules";
-import { type BuildWeeks, draftAhead } from "@domain/running-week";
+import { type BuildWeeks, draftAhead, weekBuilt } from "@domain/running-week";
 import {
   type ScheduledShift,
   type ShiftAsNow,
@@ -329,6 +329,24 @@ export const currentScheduleBuild = cache(
       })),
       positions: context.positions,
     };
+  },
+);
+
+/**
+ * The week running now as the manager builds it, once someone has built it
+ * (saved or published; `weekBuilt`): what the ways into its builder read
+ * (the running-week plan's R4, Orel's answer 6 of 15 November 2026), the
+ * schedule tab's row and Today's tile and hero, and what the tab's "השבוע"
+ * shows managers while it is a draft, as it does next week's. Null for
+ * anyone else, and while nobody has built it: a week under way that nobody
+ * built is drawn from the shift pattern in the builder alone.
+ */
+export const currentRunningBuild = cache(
+  async (): Promise<ScheduleBuildWeek | null> => {
+    const weeks = await currentBuildWeeks();
+    if (!weeks) return null;
+    const build = await currentScheduleBuild(weeks.thisWeek);
+    return build && weekBuilt(build) ? build : null;
   },
 );
 

@@ -642,6 +642,11 @@ export type RunningWeekClock = {
  * to now and skip near its edges, as the server's clock can't be faked.
  */
 export async function demoRunningWeekClock(): Promise<RunningWeekClock> {
+  return await runningWeekClockOf(DEMO_RESTAURANT);
+}
+
+/** Where the real clock is in a business's week running now. */
+async function runningWeekClockOf(business: string): Promise<RunningWeekClock> {
   const [row] = await sql<RunningWeekClock[]>`
     with business as (
       select now() at time zone b.timezone as local,
@@ -649,7 +654,7 @@ export async function demoRunningWeekClock(): Promise<RunningWeekClock> {
       from public.businesses b
       join public.business_modules m
         on m.business_id = b.id and m.module_key = 'scheduling'
-      where b.id = ${DEMO_RESTAURANT}
+      where b.id = ${business}
     ),
     week as (
       select local,
@@ -665,7 +670,7 @@ export async function demoRunningWeekClock(): Promise<RunningWeekClock> {
       (extract(hour from local) * 60 + extract(minute from local))::int
         as "minuteOfDay"
     from week`;
-  if (!row) throw new Error("The demo restaurant has no scheduling");
+  if (!row) throw new Error("The business has no scheduling");
   return row;
 }
 
@@ -751,6 +756,52 @@ export async function publishDemoRunningWeek(
     from public.profiles p, public.schedule_shifts s
     where p.phone = ${untouched} and s.week_id = ${week.id}
       and s.name = 'לילה'`;
+}
+
+/**
+ * This week's schedule at the demo restaurant saved and not published,
+ * relative to the real clock, through the database functions the app uses,
+ * as its manager, as a draft saved before the week turned stays (the
+ * running-week plan's R4): one shift today, "ערב", starting in an hour for an
+ * hour, with `person` on it, so nothing still to start lacks anyone. Callers
+ * skip near the week's edges and near midnight (`demoRunningWeekClock`). By
+ * phone number.
+ */
+export async function saveDemoRunningWeek(person: string): Promise<void> {
+  const [profile] = await sql<{ id: string }[]>`
+    select id::text from public.profiles where phone = ${person}`;
+  const [week] = await sql<
+    { id: string; today: string; starts: string; ends: string }[]
+  >`
+    with business as (
+      select date_trunc('minute', now() at time zone b.timezone) as local,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    )
+    select public.open_schedule_week(${DEMO_RESTAURANT},
+        local::date - ((extract(dow from local)::int - starts_on + 7) % 7),
+        now() + interval '1 day')::text as id,
+      local::date::text as today,
+      to_char(local + interval '1 hour', 'HH24:MI') as starts,
+      to_char(local + interval '2 hours', 'HH24:MI') as ends
+    from business`;
+  if (!profile || !week) throw new Error("Could not open this week");
+  const manager = "00000000-0000-4000-a000-000000000002";
+  await sql`select public.save_week_schedule(${manager}, ${week.id},
+    ${sql.json([
+      {
+        day: week.today,
+        name: "ערב",
+        start: week.starts,
+        end: week.ends,
+        needed: 1,
+        pattern: "evening",
+        assignees: [{ user: profile.id, position: null }],
+      },
+    ])})`;
 }
 
 export type SavedSwap = {
@@ -3279,6 +3330,96 @@ export async function teamChangesLines(
       and kind = ${kind}
     order by created_at`;
   return rows.map((row) => row.params);
+}
+
+/**
+ * Where the real clock is in the business's week running now: the spec of
+ * the running week seeds it relative to now and skips near its edges.
+ */
+export async function teamChangesRunningWeekClock(): Promise<RunningWeekClock> {
+  return await runningWeekClockOf(TEAM_CHANGES_BUSINESS.id);
+}
+
+/** The week running now as the business's lines name it, and today there. */
+export type TeamChangesRunningWeek = Omit<TeamChangesWeek, "token"> & {
+  /** Today in the business's zone, YYYY-MM-DD. */
+  today: string;
+};
+
+/**
+ * This week at the business, published to the team relative to the real
+ * clock (the running-week plan's R4), through the database functions the
+ * app uses, as its owner: one shift today, "סגירה", starting in an hour for
+ * an hour, with the leaving worker on it, so taking them off the team frees
+ * a place in the week under way. The week's first publish (a week never
+ * published is free, 20261115000300_running_week.sql), and the lines it
+ * wrote go, as `openTeamChangesBusiness`'s do. Callers skip near the week's
+ * edges and near midnight (`teamChangesRunningWeekClock`).
+ */
+export async function publishTeamChangesRunningWeek(): Promise<TeamChangesRunningWeek> {
+  const business = TEAM_CHANGES_BUSINESS;
+  const people = TEAM_CHANGES_PEOPLE;
+  const [week] = await sql<
+    {
+      id: string;
+      starts_on: string;
+      date: string;
+      today: string;
+      starts: string;
+      ends: string;
+    }[]
+  >`
+    with here as (
+      select date_trunc('minute', now() at time zone b.timezone) as local,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${business.id}
+    ),
+    this_week as (
+      select local,
+        local::date - ((extract(dow from local)::int - starts_on + 7) % 7)
+          as starts_on
+      from here
+    )
+    select public.open_schedule_week(${business.id}, starts_on,
+        now() + interval '1 day')::text as id,
+      starts_on::text as starts_on,
+      to_char(starts_on, 'FMDD.FMMM') as date,
+      local::date::text as today,
+      to_char(local + interval '1 hour', 'HH24:MI') as starts,
+      to_char(local + interval '2 hours', 'HH24:MI') as ends
+    from this_week`;
+  if (!week) throw new Error("Could not open this week");
+  await sql`select public.publish_week_schedule(${people.owner.id}, ${week.id},
+    ${sql.json([
+      {
+        day: week.today,
+        name: "סגירה",
+        start: week.starts,
+        end: week.ends,
+        needed: 1,
+        assignees: [{ user: people.leaving.id, position: null }],
+      },
+    ])})`;
+  await sql`delete from public.notifications where business_id = ${business.id}`;
+  return { startsOn: week.starts_on, date: week.date, today: week.today };
+}
+
+/**
+ * Whether someone's line about a week's freed shifts was settled (published
+ * again, or nothing left), or null when they have none for the week.
+ */
+export async function teamChangesUnfilledSettled(
+  userId: string,
+  startsOn: string,
+): Promise<boolean | null> {
+  const [row] = await sql<{ settled: boolean }[]>`
+    select resolved_at is not null as settled from public.notifications
+    where business_id = ${TEAM_CHANGES_BUSINESS.id} and user_id = ${userId}
+      and kind = 'schedule.unfilled' and params ->> 'startsOn' = ${startsOn}`;
+  return row?.settled ?? null;
 }
 
 /** The owner takes the leaving worker off the team, as the app does. */

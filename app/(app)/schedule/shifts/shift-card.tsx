@@ -19,6 +19,7 @@ import {
   assigneePeople,
   firstNames,
   formOf,
+  hasEnded,
   hasStarted,
   ltr,
   nameOf,
@@ -29,7 +30,10 @@ import {
 } from "./shift-text";
 import { SwapButton } from "./swap-button";
 
-/** A shift on the board: published ones have an id, drafts do not yet. */
+/**
+ * A shift on the board: published ones have an id, and so does a draft's
+ * once it was saved (it is written in place).
+ */
 export type BoardShift = ScheduledShift & { id?: string };
 
 /**
@@ -78,7 +82,10 @@ function Bars({ shift }: { shift: BoardShift }) {
   );
 }
 
-/** A manager's read of one shift: how many are missing, or that it is full. */
+/**
+ * A manager's read of one shift: how many are missing, or that it is full.
+ * Not for a shift that is over (`hasEnded`), which takes nobody.
+ */
 export function CoverageBadge({ shift }: { shift: BoardShift }) {
   const t = useTranslations("app.shifts.board");
   const missing = stillNeeded(shift);
@@ -102,7 +109,10 @@ export type ShiftCardProps = {
   manager: boolean;
   swap: SwapAction;
   onOpen: (id: string) => void;
-  /** Where a draft shift leads: the screen that builds it. */
+  /**
+   * Set for a draft's shift: where it leads, the screen that builds its week.
+   * The card then opens no sheet and offers nothing to give away or take.
+   */
   draftHref?: string;
 };
 
@@ -123,7 +133,9 @@ export function ShiftCard({
   const label = shiftLabel(t, shift);
   const people = assigneePeople(t, data, shift);
   const names = people.map((p) => p.name);
-  const { id } = shift;
+  // A draft's shift opens its week's builder, saved with an id or not: only
+  // a published shift has a sheet, and can be given away or taken.
+  const id = draftHref ? undefined : shift.id;
   const mine = shift.assignees.find((a) => a.user === data.userId);
   const role = mine ? positionName(data, mine.position) : null;
   // From its start on, the database refuses to give it away. A request
@@ -160,7 +172,10 @@ export function ShiftCard({
           ) : null}
         </div>
         {manager ? (
-          <CoverageBadge shift={shift} />
+          // A shift that is over takes nobody: nothing to say it lacks.
+          hasEnded(data, shift) ? null : (
+            <CoverageBadge shift={shift} />
+          )
         ) : mine ? (
           <Badge tone="accent" className="shrink-0">
             {t("shifts.yours")}

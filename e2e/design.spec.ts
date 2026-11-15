@@ -25,6 +25,7 @@ const PAGES = [
   "/design/shell/schedule/availability",
   "/design/shell/schedule/build",
   "/design/shell/schedule/build?state=meanwhile",
+  "/design/shell/schedule/build?week=2026-11-01",
   "/design/shell/schedule/build/running",
   "/design/shell/schedule/build/running?week=next",
   "/design/shell/schedule/shifts",
@@ -586,6 +587,30 @@ test("the swaps demo offers only declining once the shift has begun", async ({
   await expect(decision(ap.buttons.decline)).toHaveCount(1);
   // The two taken requests still to come are counted, not the third.
   await expect(main).toContainText(heT("app.swaps.count", { count: 2 }));
+});
+
+// The ways into the week under way on the Today twin (R4) open the
+// restaurant's builder on that week, under its own title, not next week's.
+test("the Today demo's open places this week open this week's builder", async ({
+  page,
+}) => {
+  const thisWeek = "/design/shell/schedule/build?week=2026-11-01";
+  await page.goto("/design/shell");
+  const tile = page
+    .getByRole("main")
+    .locator(`a[href="${thisWeek}"]`)
+    .filter({
+      visible: true,
+      hasText: heT("app.home.needs.gapsThisWeek", { count: 4 }),
+    });
+  await expect(tile).toHaveCount(1);
+  await tile.click();
+  await expect(page).toHaveURL(
+    /\/design\/shell\/schedule\/build\?week=2026-11-01$/,
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.build.titleRunning }),
+  ).toBeVisible();
 });
 
 // A stale screen on the builder's demo (R1b), at every size: Omer gives his

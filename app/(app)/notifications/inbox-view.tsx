@@ -228,8 +228,8 @@ export function InboxView({
       }
       // A team change freed shifts (Orel, 14 November 2026): how many, never
       // who left. Counted again by a publish, and settled when none is left:
-      // nothing waits on it then. A week already under way can't be filled in
-      // the app, so it says how.
+      // nothing waits on it then. A week already under way is filled in this
+      // week's schedule, which the line opens (the running-week plan's R4).
       case "schedule.unfilled": {
         const date = dayMonth(line.startsOn);
         const count = line.count;
@@ -247,7 +247,7 @@ export function InboxView({
               shift: null,
               notes: [
                 unfilledWeekBegun(line.startsOn, dateIn(nowDate, timeZone))
-                  ? t("kinds.schedule.unfilled.begun")
+                  ? t("kinds.schedule.unfilled.begun", { count })
                   : t("kinds.schedule.unfilled.note", { count }),
               ],
             };

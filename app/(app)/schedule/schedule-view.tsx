@@ -1,5 +1,12 @@
 import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import {
+  BUILDER_PATH,
+  boardDraft,
+  builderHref,
+  runningFirst,
+  runningGaps,
+} from "@domain/running-week";
 import { scheduleGaps, scheduleOpening } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
 import { offersFor, toApprove } from "@domain/swaps";
@@ -51,7 +58,13 @@ export type ScheduleViewProps = {
   late: boolean;
   /** Set for owners and managers. */
   team: TeamAvailabilityWeek | null;
+  /** Next week as the manager builds it; set for owners and managers. */
   build: ScheduleBuildWeek | null;
+  /**
+   * The week running now as the manager builds it, once someone built it
+   * (`currentRunningBuild`); null for anyone else, and until then.
+   */
+  running: ScheduleBuildWeek | null;
   swap: SwapAction;
   /** After giving a shift away, once, the offer of notifications on the phone. */
   ask?: PushAskOffer | null;
@@ -68,6 +81,7 @@ export async function ScheduleView({
   late,
   team,
   build,
+  running,
   swap,
   wording,
   ask = null,
@@ -99,17 +113,21 @@ export async function ScheduleView({
       : null;
 
   // Drafts stay with the managers: the rest of the team reads what is out.
-  const draft =
-    build && data.nextWeek.publishedAt === null && build.shifts.length > 0
-      ? build
-      : null;
+  // This week's too, once someone saved it: a draft outlives the week's turn
+  // (the running-week plan's R4), and the builder opens the week under way.
+  const thisDraft = boardDraft(data.thisWeek, running);
+  const draft = boardDraft(data.nextWeek, build);
   const weeks: [BoardWeek, BoardWeek] = [
     {
       key: "this",
       range: rangeOf(data.thisWeek.dates),
       dates: data.thisWeek.dates,
-      state: data.thisWeek.publishedAt ? "published" : "none",
-      shifts: data.thisWeek.shifts,
+      state: data.thisWeek.publishedAt
+        ? "published"
+        : thisDraft
+          ? "draft"
+          : "none",
+      shifts: thisDraft ? thisDraft.shifts : data.thisWeek.shifts,
       shabbat: data.thisWeek.shabbat,
       published: publishedOf(data.thisWeek.publishedAt),
     },
@@ -182,7 +200,7 @@ export async function ScheduleView({
         manager={manager}
         swap={swap}
         ask={ask}
-        draftHref="/schedule/build"
+        draftHref={BUILDER_PATH}
         prompt={
           prompt ? (
             <ListGroup className="bg-accent-soft shadow-none [&_a>span:first-child]:bg-surface [&_a]:hover:bg-transparent">
@@ -194,6 +212,14 @@ export async function ScheduleView({
           team ? (
             <PageSection title={t("shifts.board.manage")}>
               <ListGroup className={groupClass}>
+                {running ? (
+                  <RunningRow
+                    t={t}
+                    running={running}
+                    now={data.now}
+                    timeZone={data.timeZone}
+                  />
+                ) : null}
                 {build ? <BuildRow t={t} build={build} /> : null}
                 <TeamRow t={t} team={team} />
                 {approvalsFirst ? null : approvalsRow}
@@ -298,6 +324,45 @@ function AvailabilityRow({
           </Badge>
         )
       }
+    />
+  );
+}
+
+/**
+ * Owners and managers: this week's schedule, only while a shift still to
+ * start lacks someone or while it waits to be published (Orel's answer 6 of
+ * 15 November 2026: what is nearer goes first; `runningFirst`), leading to
+ * the builder of the week under way.
+ */
+function RunningRow({
+  t,
+  running,
+  now,
+  timeZone,
+}: {
+  t: T;
+  running: ScheduleBuildWeek;
+  /** ISO timestamp: the moment the server read the schedule. */
+  now: string;
+  timeZone: string;
+}) {
+  const at = new Date(now);
+  if (!runningFirst(running, at, timeZone)) return null;
+  const short = runningGaps(running, at, timeZone).shifts;
+  const status = running.publishedAt
+    ? t("build.entry.subtitlePublished")
+    : t("build.entry.subtitleSaved");
+  return (
+    <ListRow
+      href={builderHref(running.week.start)}
+      leading={<CalendarClock />}
+      title={t("build.titleRunning")}
+      subtitle={
+        short > 0
+          ? `${status} · ${t("build.entry.thisWeek", { count: short })}`
+          : status
+      }
+      trailing={short > 0 ? <Badge tone="warning">{short}</Badge> : null}
     />
   );
 }

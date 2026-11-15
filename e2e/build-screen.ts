@@ -24,6 +24,19 @@ export const HOLD_MS = 8_000;
  */
 export type OnDay = { day?: string; date?: string };
 
+const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+
+/** A day by its date (YYYY-MM-DD), named as the builder names it. */
+export function onDate(date: string): OnDay {
+  const [, month, day] = date.split("-").map(Number);
+  return {
+    day: he.app.availability.weekdays[
+      WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()] ?? "sun"
+    ],
+    date: `${day}.${month}`,
+  };
+}
+
 /**
  * The "build the week" screen as a manager uses it, on any of the three
  * layouts: a card per shift, and one sheet where everything about a shift

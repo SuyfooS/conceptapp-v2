@@ -1,3 +1,6 @@
+import { gapsAhead } from "@domain/running-week";
+import { scheduleGaps } from "@domain/schedule";
+import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { buildTeam } from "@domain/team";
 import { Suspense } from "react";
 import { ScheduleBuildView } from "../../../../(app)/schedule/build/schedule-build-view";
@@ -10,6 +13,11 @@ import {
   teamToday,
 } from "../../data";
 import { demoWeek } from "../availability/week";
+import {
+  DEMO_NOON,
+  demoPublished,
+  demoRunningBuild,
+} from "../shifts/published";
 import { demoPublishMeanwhile, demoSaveSchedule } from "./actions";
 import {
   demoBuildShifts,
@@ -19,7 +27,9 @@ import {
   meanwhileSwaps,
 } from "./demo";
 
-type Props = { searchParams: Promise<{ state?: string }> };
+type Props = { searchParams: Promise<{ state?: string; week?: string }> };
+
+const HREF = "/design/shell/schedule/build";
 
 // The real "build the week" screen with the restaurant's shift pattern, one
 // shift added by hand, the demo team and its answers, and a stand-in save.
@@ -32,10 +42,17 @@ type Props = { searchParams: Promise<{ state?: string }> };
 // waits eight seconds for "ביטול" first, as the app's does (R3b).
 //
 // This twin is older than the switch between this week and next (R3a), and
-// stays without it: the restaurant's demo has no week under way to switch to.
-// /schedule/build now always shows the switch, with its counts, on the
-// business's own clock; that screen, next week included, is the running twin
-// at /design/shell/schedule/build/running (?week=next for next week).
+// stays without it. /schedule/build now always shows the switch, with its
+// counts, on the business's own clock; that screen, next week included, is
+// the running twin at /design/shell/schedule/build/running (?week=next for
+// next week).
+//
+// ?week=2026-11-01: the restaurant's week under way, where the ways in on
+// the Today twins lead (R4): published, as Shiran reads it on Tuesday at
+// noon, with its four places still open in what is still to start (this
+// evening, tomorrow morning, Friday and Saturday night). What is over and
+// this morning, under way, lock as on the running twin. The switch's "השבוע
+// הבא" goes back to the twin above.
 export default function ShellScheduleBuild(props: Props) {
   return (
     <Suspense>
@@ -45,8 +62,56 @@ export default function ShellScheduleBuild(props: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state } = await searchParams;
+  const { state, week } = await searchParams;
   const { members } = buildTeam(teamMembers, teamInvites, teamToday);
+  const running =
+    week === demoWeek.start
+      ? demoRunningBuild(demoPublished("shiran", []), members)
+      : null;
+  if (running) {
+    return (
+      <ScheduleBuildView
+        // Another week is another screen, as in the app.
+        key="this"
+        manageHref="/design/shell/manage/scheduling"
+        data={{
+          ...running,
+          // A stand-in for what the database digests of each shift read.
+          basis: Object.fromEntries(
+            running.shifts.map((shift, i) => [
+              shift.id ?? `${i}`,
+              `${i + 1}`.padStart(32, "0"),
+            ]),
+          ),
+        }}
+        swaps={[]}
+        save={demoSaveSchedule}
+        backHref="/design/shell/schedule"
+        wording={baseWording}
+        running={{
+          which: "this",
+          now: DEMO_NOON,
+          clock: true,
+          weeks: [
+            {
+              which: "this",
+              href: `${HREF}?week=${demoWeek.start}`,
+              gaps: gapsAhead(
+                running.shifts,
+                new Date(DEMO_NOON),
+                ISRAEL_TIME_ZONE,
+              ).shifts.length,
+            },
+            {
+              which: "next",
+              href: HREF,
+              gaps: scheduleGaps(demoBuildShifts()).shifts.length,
+            },
+          ],
+        }}
+      />
+    );
+  }
   const common = {
     week: demoWeek,
     team: members,
@@ -58,6 +123,7 @@ async function Demo({ searchParams }: Props) {
   if (state === "meanwhile") {
     return (
       <ScheduleBuildView
+        key="meanwhile"
         manageHref="/design/shell/manage/scheduling"
         data={{
           ...common,
@@ -75,6 +141,7 @@ async function Demo({ searchParams }: Props) {
   }
   return (
     <ScheduleBuildView
+      key="next"
       manageHref="/design/shell/manage/scheduling"
       data={{
         ...common,
