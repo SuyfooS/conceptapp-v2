@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { sql } from "./pg";
 
 export type OpenedBusiness = {
@@ -2896,4 +2896,239 @@ export async function payAccessLines(
     where business_id = ${PAY_ACCESS_BUSINESS.id} and user_id = ${userId}
       and kind = 'access.pay_granted'
     order by created_at`;
+}
+
+/**
+ * A real business of its own for team changes (Orel, 14 November 2026:
+ * removing a person, changing a role, cancelling an invite), since a demo
+ * business keeps its people. An owner, a manager and two workers, their
+ * numbers and ids in no other spec or pgTAP file; the first worker on a
+ * published shift next week, the second on another; one invite nobody has
+ * claimed, with a link the spec knows. Made afresh for each test, through
+ * the database functions the app uses, and gone after with its records.
+ */
+export const TEAM_CHANGES_BUSINESS = {
+  id: "00000000-0000-4000-b000-0000000000e9",
+  slug: "team-changes-e2e",
+  name: "עסק לשינויים בצוות",
+} as const;
+export const TEAM_CHANGES_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000957",
+    name: "אורנה צוות",
+    local: "050-000-0957",
+    e164: "+972500000957",
+  },
+  manager: {
+    id: "00000000-0000-4000-a000-000000000958",
+    name: "מנחם צוות",
+    local: "050-000-0958",
+    e164: "+972500000958",
+  },
+  /** On next week's morning shift; taken off the team. */
+  leaving: {
+    id: "00000000-0000-4000-a000-000000000959",
+    name: "ורד צוות",
+    local: "050-000-0959",
+    e164: "+972500000959",
+  },
+  /** On next week's evening shift; their role changes. */
+  staying: {
+    id: "00000000-0000-4000-a000-000000000960",
+    name: "רועי צוות",
+    local: "050-000-0960",
+    e164: "+972500000960",
+  },
+} as const;
+/** The invite nobody claimed: its number is in no other spec. */
+export const TEAM_CHANGES_INVITE = {
+  name: "ענבל מוזמנת",
+  phone: "+972500000969",
+} as const;
+
+/** Next week as the business's lines name it, and the invite's link. */
+export type TeamChangesWeek = {
+  /** YYYY-MM-DD */
+  startsOn: string;
+  /** "15.11" */
+  date: string;
+  /** The invite's token, for `/join/<token>`. */
+  token: string;
+};
+
+/**
+ * A second real business, where the leaving worker keeps the books (an
+ * accountant takes no place on a staff): someone taken off one team while
+ * another business is open. Made only by the test that needs it.
+ */
+export const TEAM_CHANGES_OTHER = {
+  id: "00000000-0000-4000-b000-0000000000ea",
+  slug: "team-changes-other-e2e",
+  name: "עסק נוסף לשינויים בצוות",
+} as const;
+
+export async function openTeamChangesBusiness(): Promise<TeamChangesWeek> {
+  const business = TEAM_CHANGES_BUSINESS;
+  const people = TEAM_CHANGES_PEOPLE;
+  await closeTeamChangesBusiness();
+  await ensureLogins(Object.values(people));
+  await sql`insert into public.businesses (id, slug, name)
+    values (${business.id}, ${business.slug}, ${business.name})`;
+  await sql`select public.apply_template(${business.id}, 'retail')`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${business.id}, ${people.owner.id}, 'owner'),
+      (${business.id}, ${people.manager.id}, 'manager'),
+      (${business.id}, ${people.leaving.id}, 'worker'),
+      (${business.id}, ${people.staying.id}, 'worker')`;
+
+  const [week] = await sql<{ id: string; starts_on: string; date: string }[]>`
+    with here as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${business.id}
+    ),
+    next_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        + 7 as starts_on
+      from here
+    )
+    select public.open_schedule_week(${business.id}, starts_on,
+        now() + interval '1 day')::text as id,
+      starts_on::text as starts_on,
+      to_char(starts_on, 'FMDD.FMMM') as date
+    from next_week`;
+  if (!week) throw new Error("Could not open next week");
+  await sql`select public.publish_week_schedule(${people.owner.id}, ${week.id},
+    ${sql.json([
+      {
+        day: week.starts_on,
+        name: "בוקר",
+        start: "09:00",
+        end: "15:00",
+        needed: 1,
+        assignees: [{ user: people.leaving.id, position: null }],
+      },
+      {
+        day: week.starts_on,
+        name: "ערב",
+        start: "15:00",
+        end: "21:00",
+        needed: 1,
+        assignees: [{ user: people.staying.id, position: null }],
+      },
+    ])})`;
+  // Publishing told the two workers; the spec starts from no lines.
+  await sql`delete from public.notifications where business_id = ${business.id}`;
+
+  const token = randomBytes(32).toString("base64url");
+  await sql`insert into public.invites
+      (business_id, phone, role, full_name, token_hash, invited_by, expires_at)
+    values (${business.id}, ${TEAM_CHANGES_INVITE.phone}, 'worker',
+      ${TEAM_CHANGES_INVITE.name},
+      ${createHash("sha256").update(token, "utf8").digest("hex")},
+      ${people.owner.id}, now() + interval '14 days')`;
+  return { startsOn: week.starts_on, date: week.date, token };
+}
+
+/**
+ * Both businesses gone with their records, and the business no longer a
+ * demo: `private.demo_businesses` has no foreign key, so a row left behind
+ * would close the next run's business to changes.
+ */
+export async function closeTeamChangesBusiness(): Promise<void> {
+  await sql`delete from private.demo_businesses
+    where business_id = ${TEAM_CHANGES_BUSINESS.id}`;
+  await deleteRealBusiness(TEAM_CHANGES_OTHER.id);
+  await deleteRealBusiness(TEAM_CHANGES_BUSINESS.id);
+}
+
+/** The leaving worker also keeps the books of a second business. */
+export async function openTeamChangesOther(): Promise<void> {
+  const other = TEAM_CHANGES_OTHER;
+  await sql`insert into public.businesses (id, slug, name)
+    values (${other.id}, ${other.slug}, ${other.name})`;
+  await sql`select public.apply_template(${other.id}, 'retail')`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${other.id}, ${TEAM_CHANGES_PEOPLE.leaving.id}, 'accountant')`;
+}
+
+/**
+ * The business becomes a demo closed to invites, as the hosted demos are: it
+ * keeps its people (`closeTeamChangesBusiness` undoes it).
+ */
+export async function closeTeamChangesToInvites(): Promise<void> {
+  await sql`insert into private.demo_businesses (business_id, definition)
+    values (${TEAM_CHANGES_BUSINESS.id}, '{}')`;
+}
+
+/** How many times the log says someone was taken off the team. */
+export async function teamChangesRemovals(userId: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log
+    where business_id = ${TEAM_CHANGES_BUSINESS.id}
+      and action = 'member.remove'
+      and details ->> 'person' = ${userId}`;
+  return row?.count ?? 0;
+}
+
+/** How many lines someone has in the business, of every kind. */
+export async function teamChangesLineCount(userId: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.notifications
+    where business_id = ${TEAM_CHANGES_BUSINESS.id} and user_id = ${userId}`;
+  return row?.count ?? 0;
+}
+
+/** Someone's place in the business, as the database keeps it. */
+export async function teamChangesPlace(userId: string): Promise<{
+  role: string;
+  active: boolean;
+  left: boolean;
+} | null> {
+  const [row] = await sql<{ role: string; active: boolean; left: boolean }[]>`
+    select role::text as role, active, left_at is not null as left
+    from public.memberships
+    where business_id = ${TEAM_CHANGES_BUSINESS.id} and user_id = ${userId}`;
+  return row ?? null;
+}
+
+/** How many shifts someone is on in the business, past and ahead. */
+export async function teamChangesShifts(userId: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count
+    from public.shift_assignments a
+    join public.schedule_shifts s on s.id = a.shift_id
+    where s.business_id = ${TEAM_CHANGES_BUSINESS.id} and a.user_id = ${userId}`;
+  return row?.count ?? 0;
+}
+
+/** Whether the business's invite was cancelled, its row kept. */
+export async function teamChangesInviteCancelled(): Promise<boolean> {
+  const [row] = await sql<{ cancelled: boolean }[]>`
+    select cancelled_at is not null as cancelled from public.invites
+    where business_id = ${TEAM_CHANGES_BUSINESS.id}
+      and phone = ${TEAM_CHANGES_INVITE.phone}`;
+  return row?.cancelled ?? false;
+}
+
+/** What someone was told in the business, of a kind: its params. */
+export async function teamChangesLines(
+  userId: string,
+  kind: string,
+): Promise<Record<string, unknown>[]> {
+  const rows = await sql<{ params: Record<string, unknown> }[]>`
+    select params from public.notifications
+    where business_id = ${TEAM_CHANGES_BUSINESS.id} and user_id = ${userId}
+      and kind = ${kind}
+    order by created_at`;
+  return rows.map((row) => row.params);
+}
+
+/** The owner takes the leaving worker off the team, as the app does. */
+export async function removeTeamChangesWorker(): Promise<void> {
+  await sql`select public.remove_member(${TEAM_CHANGES_PEOPLE.owner.id}::uuid,
+    ${TEAM_CHANGES_BUSINESS.id}::uuid, ${TEAM_CHANGES_PEOPLE.leaving.id}::uuid)`;
 }

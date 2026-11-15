@@ -7,6 +7,7 @@ import {
   type NotificationEntry,
   type NotificationGroup,
   type NotificationShift,
+  unfilledWeekBegun,
 } from "@domain/notifications";
 import { timeIn } from "@domain/shabbat";
 import { addMonths } from "@domain/time-clock-format";
@@ -178,6 +179,31 @@ export function InboxView({
           notes: [t(`kinds.schedule.${key}.body`, { count: line.mine })],
         };
       }
+      // A team change freed shifts (Orel, 14 November 2026): how many, never
+      // who left. Published again, or none left: nothing waits on it now. A
+      // week already under way can't be filled in the app, so it says how.
+      case "schedule.unfilled": {
+        const date = dayMonth(line.startsOn);
+        const count = line.count;
+        return settled
+          ? {
+              title: t("kinds.schedule.unfilled.settledTitle", {
+                count,
+                date,
+              }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t("kinds.schedule.unfilled.title", { count, date }),
+              shift: null,
+              notes: [
+                unfilledWeekBegun(line.startsOn, dateIn(nowDate, timeZone))
+                  ? t("kinds.schedule.unfilled.begun")
+                  : t("kinds.schedule.unfilled.note", { count }),
+              ],
+            };
+      }
       case "swap.offered":
         return {
           title: t("kinds.swap.offered.title", { name: who(line.from) }),
@@ -244,6 +270,14 @@ export function InboxView({
           title: t("kinds.swap.removed.title"),
           shift: shiftWords(line.shift),
           notes: [],
+        };
+      // Whoever took it left the team first (Orel, 15 November 2026): open
+      // again for someone else, and nobody named.
+      case "swap.reopened":
+        return {
+          title: t("kinds.swap.reopened.title"),
+          shift: shiftWords(line.shift),
+          notes: [t("kinds.swap.reopened.note")],
         };
       case "clock.confirm": {
         const at = new Date(line.at);

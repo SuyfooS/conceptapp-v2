@@ -19,6 +19,8 @@ import { currentPlatformRole } from "../(admin)/staff";
 import { signOut } from "../(auth)/actions";
 import { currentBusinesses } from "./businesses";
 import { currentWording } from "./current-wording";
+import { DepartureNotice } from "./departure-notice";
+import { currentDeparture } from "./departures";
 import { currentMember } from "./member";
 import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
@@ -55,40 +57,47 @@ async function Shell({ children }: { children: ReactNode }) {
   if (!member.membership) {
     // The ConceptApp team works in the console, not inside a business.
     if (await currentPlatformRole()) redirect("/admin");
-    return <NoBusinessScreen signOut={signOut} />;
+    // Taken off the team of their last business: which one, said once more
+    // each time, since nothing else of it is theirs to read.
+    const left = await currentDeparture(member);
+    return <NoBusinessScreen signOut={signOut} left={left?.name ?? null} />;
   }
 
   const { business, role, perms } = member.membership;
   const on = enabledModules(manifests, business.modules);
-  const [enabled, wording, businesses, openLists, chats] = await Promise.all([
-    currentModules(),
-    currentWording(),
-    // Someone in more than one business switches from the sidebar too.
-    currentBusinesses(),
-    // The Lists tab carries the open lists the person holds; none while
-    // viewing as someone, who holds none.
-    on.includes("lists") && !member.viewing
-      ? countMyOpenLists(member.userId, business.id).catch((error: Error) => {
-          console.error("counting open lists failed", error.message);
-          return 0;
-        })
-      : 0,
-    // The Chat tab carries the chats with something waiting for the person
-    // (`waitingChats`), drawn here and again when a chat screen sees the
-    // count move; none while viewing as someone, who reads no chat, and none
-    // for someone off the staff, who is in none.
-    on.includes("chat") && !member.viewing && isStaff(role)
-      ? getChatInbox(business.id)
-          .then((rows) => (rows === "notYet" ? 0 : waitingChats(rows)))
-          .catch((error: { code?: string }) => {
-            console.error(
-              "counting chats failed",
-              error.code ?? "without a code",
-            );
+  const [enabled, wording, businesses, openLists, chats, left] =
+    await Promise.all([
+      currentModules(),
+      currentWording(),
+      // Someone in more than one business switches from the sidebar too.
+      currentBusinesses(),
+      // The Lists tab carries the open lists the person holds; none while
+      // viewing as someone, who holds none.
+      on.includes("lists") && !member.viewing
+        ? countMyOpenLists(member.userId, business.id).catch((error: Error) => {
+            console.error("counting open lists failed", error.message);
             return 0;
           })
-      : 0,
-  ]);
+        : 0,
+      // The Chat tab carries the chats with something waiting for the person
+      // (`waitingChats`), drawn here and again when a chat screen sees the
+      // count move; none while viewing as someone, who reads no chat, and none
+      // for someone off the staff, who is in none.
+      on.includes("chat") && !member.viewing && isStaff(role)
+        ? getChatInbox(business.id)
+            .then((rows) => (rows === "notYet" ? 0 : waitingChats(rows)))
+            .catch((error: { code?: string }) => {
+              console.error(
+                "counting chats failed",
+                error.code ?? "without a code",
+              );
+              return 0;
+            })
+        : 0,
+      // Taken off the team of a business, and still in this one: said above
+      // the screen until they say they saw it, whichever was open then.
+      currentDeparture(member),
+    ]);
   // The business's words: its tab names and role names may be its own.
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -147,6 +156,12 @@ async function Shell({ children }: { children: ReactNode }) {
             <ViewAsBanner
               viewing={member.viewing}
               businessName={business.name}
+              wording={wording}
+            />
+          ) : left ? (
+            <DepartureNotice
+              business={left.name}
+              current={business.name}
               wording={wording}
             />
           ) : null}

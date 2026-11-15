@@ -1,5 +1,9 @@
 import "server-only";
-import { BUSINESS_COOKIE, BUSINESS_COOKIE_MAX_AGE } from "@domain/businesses";
+import {
+  BUSINESS_COOKIE,
+  BUSINESS_COOKIE_MAX_AGE,
+  DEPARTURE_SEEN_COOKIE,
+} from "@domain/businesses";
 import { cookies } from "next/headers";
 import { requestOrigin } from "@/app/origin";
 
@@ -31,7 +35,26 @@ export async function rememberBusiness(businessId: string): Promise<void> {
   );
 }
 
-/** Forget the choice, on signing out, so the next person starts afresh. */
+/**
+ * The person said they saw that they are no longer on the team of a business
+ * they left at `leftAt` (`DepartureNotice`): on this device it isn't said
+ * again, nor any departure before it (`departureToTell`). Kept as the
+ * business cookie is.
+ */
+export async function rememberDepartureSeen(leftAt: string): Promise<void> {
+  (await cookies()).set(
+    DEPARTURE_SEEN_COOKIE,
+    leftAt,
+    await businessCookieOptions(),
+  );
+}
+
+/**
+ * Forget the choice, and the departures seen, on signing out, so the next
+ * person starts afresh.
+ */
 export async function forgetBusiness(): Promise<void> {
-  (await cookies()).delete(BUSINESS_COOKIE);
+  const jar = await cookies();
+  jar.delete(BUSINESS_COOKIE);
+  jar.delete(DEPARTURE_SEEN_COOKIE);
 }

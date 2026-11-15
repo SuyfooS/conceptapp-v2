@@ -350,3 +350,111 @@ describe("pay access's words on the phone", () => {
     ).toEqual({ title: pay.settledTitle });
   });
 });
+
+// Shifts freed by a team change (Orel, 14 November 2026): the schedule's
+// builders hear how many of a week's shifts still to start lack someone,
+// never who left (they are nameless to the team by then), and that it no
+// longer waits once the week is published again or nothing is left.
+describe("the freed shifts' words on the phone", () => {
+  const unfilled = he.app.notifications.kinds.schedule.unfilled;
+  // The line is written on Wednesday 11.11 (`entry`'s moment), about the
+  // week of Sunday 15.11, unless it says otherwise.
+  const freed = (count: number, settled = false, at?: string) =>
+    pushWords(
+      {
+        ...entry({ kind: "schedule.unfilled", startsOn: "2026-11-15", count }),
+        ...(at ? { at } : {}),
+        settled,
+        actor: { kind: "member", name: "אורי הדגמה" },
+        group: "approvals",
+        href: "/schedule",
+      },
+      baseWording,
+      "Asia/Jerusalem",
+    );
+
+  it("says how many in which week, and why", () => {
+    expect(freed(2)).toEqual({
+      title: "2 משמרות בשבוע של 15.11 חסרות עובד",
+      body: "הן התפנו בשינוי בצוות",
+    });
+    expect(freed(1)).toEqual({
+      title: "משמרת אחת בשבוע של 15.11 חסרה עובד",
+      body: "היא התפנתה בשינוי בצוות",
+    });
+    expect(freed(0).title).toBe("בשבוע של 15.11 התפנו משמרות בסידור");
+  });
+
+  it("says a week already under way is arranged with the team directly", () => {
+    // Sunday 15.11 at 09:00 in Israel: the week has begun, and the builder
+    // opens next week only.
+    expect(freed(1, false, "2026-11-15T07:00:00.000Z").body).toBe(
+      unfilled.begun,
+    );
+    // Saturday night 14.11, 23:30 in Israel: not yet.
+    expect(freed(1, false, "2026-11-14T21:30:00.000Z").body).toBe(
+      "היא התפנתה בשינוי בצוות",
+    );
+  });
+
+  it("names nobody: not who left, not who took them off", () => {
+    const words = JSON.stringify(freed(3));
+    expect(words).not.toContain("אורי");
+  });
+
+  it("says once settled that it no longer waits", () => {
+    expect(freed(2, true)).toEqual({
+      title: "המשמרות בשבוע של 15.11 כבר לא מחכות לך",
+    });
+    expect(freed(1, true)).toEqual({
+      title: "המשמרת בשבוע של 15.11 כבר לא מחכה לך",
+    });
+  });
+});
+
+// A request open again (Orel, 15 November 2026): whoever took the shift left
+// the team or the staff before a manager approved. The one who asked hears it
+// is open again and still theirs, and never who took it.
+describe("a request open again, on the phone", () => {
+  const reopened = he.app.notifications.kinds.swap.reopened;
+  const shift = {
+    day: "2026-11-26",
+    name: "ערב",
+    start: "16:00",
+    end: "23:00",
+  };
+  const again = (withShift: boolean) =>
+    pushWords(
+      {
+        ...entry({
+          kind: "swap.reopened",
+          shift: withShift ? shift : null,
+        }),
+        actor: { kind: "member", name: "אורי הדגמה" },
+        group: "swaps",
+        href: "/schedule/shifts",
+      },
+      baseWording,
+      "Asia/Jerusalem",
+    );
+
+  it("says it is open again, with the shift, and that it stays theirs", () => {
+    const said = again(true);
+    expect(said.title).toBe(reopened.title);
+    expect(said.body?.split("\n")).toHaveLength(2);
+    expect(said.body).toContain("ערב");
+    expect(said.body).toContain("26.11");
+    expect(said.body?.endsWith(reopened.note)).toBe(true);
+  });
+
+  it("still says so without its shift", () => {
+    expect(again(false)).toEqual({
+      title: reopened.title,
+      body: reopened.note,
+    });
+  });
+
+  it("names nobody: not who took it, not who removed them", () => {
+    expect(JSON.stringify(again(true))).not.toContain("אורי");
+  });
+});

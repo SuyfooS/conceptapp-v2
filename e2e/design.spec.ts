@@ -64,10 +64,14 @@ const PAGES = [
   "/design/shell/today/accountant?state=empty",
   "/design/shell/today/accountant?state=off",
   "/design/shell/today/businesses",
+  "/design/shell/today/businesses?state=left",
   "/design/shell/team",
   "/design/shell/team?state=demo",
   "/design/shell/team/noa",
   "/design/shell/team/maya",
+  "/design/shell/team/noa?state=clocked",
+  "/design/shell/team/noa?state=former",
+  "/design/shell/team/uri?as=manager",
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
@@ -541,6 +545,121 @@ test("the team demo offers no invite in a demo business", async ({ page }) => {
   );
   await expect(
     main.getByRole("button", { name: new RegExp(`^${tt.link.new}`) }),
+  ).toHaveCount(0);
+  // Nor deleting one: a demo business keeps its invites as its people.
+  await expect(
+    main.getByRole("button", { name: new RegExp(`^${tt.cancel.action}`) }),
+  ).toHaveCount(0);
+});
+
+// Team changes on the demo (Orel, 14 November 2026): the owner deletes an
+// invite and takes it back, changes Noa's role and changes it back, and takes
+// her off the team, first with an undo, then for real; the page then says
+// what came off her and leads back to the team. Nothing is stored.
+test("the team demo deletes an invite, changes a role and takes someone off the team, each with an undo", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const tt = he.app.team;
+  const tc = tt.changes;
+  const undo = he.app.manage.undo;
+  const main = page.getByRole("main");
+
+  await page.goto("/design/shell/team");
+  const dana = main
+    .getByRole("button", {
+      name: heT("app.team.cancel.label", { name: "דנה אברהם" }),
+    })
+    .filter({ visible: true });
+  await expect(dana).toHaveCount(1);
+  await dana.click();
+  const deleted = main
+    .getByRole("status")
+    .filter({ hasText: heT("app.team.cancel.done", { name: "דנה אברהם" }) })
+    .filter({ visible: true });
+  await expect(deleted).toBeVisible();
+  await expect(dana).toHaveCount(0);
+  await deleted.getByRole("button", { name: undo }).click();
+  await expect(dana).toHaveCount(1);
+
+  await page.goto("/design/shell/team/noa");
+  const role = main.getByRole("button", { name: new RegExp(`^${tc.role}`) });
+  await expect(role).toContainText(tt.roles.worker);
+  await role.click();
+  await page
+    .getByRole("dialog")
+    .locator('input[name="member-role"][value="manager"]')
+    .check();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: tc.roleSubmit })
+    .click();
+  await expect(role).toContainText(tt.roles.manager);
+  await main
+    .getByRole("status")
+    .filter({
+      hasText: heT("app.team.changes.roleChanged", {
+        name: "נועה כהן",
+        role: tt.roles.manager,
+      }),
+    })
+    .getByRole("button", { name: undo })
+    .click();
+  await expect(role).toContainText(tt.roles.worker);
+
+  const remove = main.getByRole("button", { name: tc.remove });
+  // What it does, said beforehand: three shifts ahead and two in the draft.
+  await expect(
+    main.getByText(heT("app.team.changes.removeShifts", { count: 5 }), {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await remove.click();
+  const removed = main.getByRole("status").filter({
+    hasText: heT("app.team.changes.removed", { name: "נועה כהן", form: "f" }),
+  });
+  await expect(removed).toBeVisible();
+  await expect(remove).toHaveCount(0);
+  await removed.getByRole("button", { name: undo }).click();
+  await expect(remove).toBeVisible();
+
+  await remove.click();
+  await expect(
+    main.getByRole("heading", {
+      name: heT("app.team.changes.removedTitle", { name: "נועה כהן" }),
+    }),
+  ).toBeVisible({ timeout: 20_000 });
+  // And after, the same counts: as many now need someone.
+  await expect(
+    main.getByText(heT("app.team.changes.removedShifts", { count: 3 })),
+  ).toBeVisible();
+  await expect(
+    main.getByText(heT("app.team.changes.removedDrafts", { count: 2 })),
+  ).toBeVisible();
+  // The swap requests it settled: hers cancelled, the one she took open again.
+  await expect(
+    main.getByText(heT("app.team.changes.removedSwaps", { count: 1 })),
+  ).toBeVisible();
+  await expect(
+    main.getByText(
+      heT("app.team.changes.removedReopened", { count: 1, name: "נועה כהן" }),
+    ),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  await main.getByRole("link", { name: tc.backToTeam }).click();
+  await expect(page).toHaveURL(/\/design\/shell\/team$/);
+
+  // On the clock now: not yet, and their hours instead.
+  await page.goto("/design/shell/team/noa?state=clocked");
+  await expect(main.getByRole("button", { name: tc.remove })).toHaveCount(0);
+  await expect(
+    main.getByText(heT("app.team.changes.clockedIn", { name: "נועה" })),
+  ).toBeVisible();
+  // A manager gets nothing on an owner.
+  await page.goto("/design/shell/team/uri?as=manager");
+  await expect(main.getByRole("button", { name: tc.remove })).toHaveCount(0);
+  await expect(
+    main.getByRole("button", { name: new RegExp(`^${tc.role}`) }),
   ).toHaveCount(0);
 });
 

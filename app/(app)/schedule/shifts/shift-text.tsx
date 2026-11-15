@@ -41,11 +41,20 @@ export const timeRange = (
   shift: Pick<ScheduledShift, "start" | "end">,
 ) => t.rich("shifts.time", { start: shift.start, end: shift.end, ltr });
 
+/**
+ * Their name, the words for none, or, for someone no longer on the team (a
+ * past shift keeps them, and nobody reads their name now), "no longer on
+ * the team".
+ */
 export const nameOf = (
   t: AppT,
   data: Pick<ShiftData, "people">,
   userId: string | null,
-) => data.people.find((p) => p.userId === userId)?.name ?? t("shifts.noName");
+) => {
+  const person = data.people.find((p) => p.userId === userId);
+  if (person) return person.name ?? t("shifts.noName");
+  return userId ? t("shifts.former") : t("shifts.noName");
+};
 
 export const photoOf = (
   data: Pick<ShiftData, "people">,

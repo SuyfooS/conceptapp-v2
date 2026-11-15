@@ -64,3 +64,42 @@ export function switcherOrder<T>(
 export function canSwitchBusiness(count: number): boolean {
   return count > 1;
 }
+
+/**
+ * The cookie that remembers, on this device, the latest departure the person
+ * said they saw ("הבנתי"): the moment they were taken off that business's
+ * team (ISO). Kept as long as the business cookie, and forgotten with it on
+ * signing out.
+ */
+export const DEPARTURE_SEEN_COOKIE = "ca_departure_seen";
+
+/** A business the person was taken off the team of, and when. */
+export type DepartureMoment = {
+  businessId: string;
+  /** ISO. */
+  leftAt: string;
+};
+
+/**
+ * Which business the app tells the person they are no longer on the team of
+ * (Orel's decision 3 of 14 November 2026: they are told nothing then, and
+ * next time they open the app it says so). `departures` come the latest
+ * first. With no business open, the latest, every time: it is all the app
+ * has for them. With one open, the earliest they have not said they saw on
+ * this device (`seenUpTo`, the cookie's moment; none, or one that isn't a
+ * moment, and none is seen), whichever business was open when it happened
+ * and whichever device they had then: each is said once, in turn. Null when
+ * there is nothing to tell.
+ */
+export function departureToTell<T extends DepartureMoment>(
+  open: string | null,
+  departures: readonly T[],
+  seenUpTo: string | null | undefined,
+): T | null {
+  if (open === null) return departures[0] ?? null;
+  const seen = seenUpTo ? Date.parse(seenUpTo) : Number.NaN;
+  const unseen = Number.isNaN(seen)
+    ? departures
+    : departures.filter((left) => Date.parse(left.leftAt) > seen);
+  return unseen.at(-1) ?? null;
+}

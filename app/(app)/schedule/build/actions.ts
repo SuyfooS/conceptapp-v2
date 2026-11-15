@@ -2,6 +2,7 @@
 
 import { openWeek } from "@db/availability";
 import { publishWeekSchedule, saveWeekSchedule } from "@db/schedule";
+import { scheduleTeamChanged } from "@db/schedule-errors";
 import { weekSchedule } from "@domain/schedule";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
@@ -15,6 +16,8 @@ export type ScheduleFailure =
   | "weekChanged"
   | "published"
   | "invalid"
+  // Someone on the week left the team or the staff since it was opened.
+  | "teamChanged"
   | "failed";
 
 export type ScheduleState = {
@@ -75,6 +78,7 @@ export async function saveScheduleAction(
       parsed.data,
     );
   } catch (error) {
+    if (scheduleTeamChanged(error)) return { failure: "teamChanged" };
     console.error(`${intent} schedule failed`, (error as Error).message);
     return { failure: "failed" };
   }

@@ -1,9 +1,15 @@
+import { invitesOpen } from "@db/invites";
 import { getTeamYouth } from "@db/payroll-details";
-import { getTeamPerson } from "@db/team";
+import {
+  getFormerMember,
+  getTeamPerson,
+  isClockedIn,
+  shiftsAhead,
+} from "@db/team";
 import { isUuid } from "@domain/activity";
 import { isStaff } from "@domain/modules";
 import { mayClearBio } from "@domain/profile";
-import { canSeeTeam } from "@domain/team";
+import { canRemoveMember, canSeeTeam, invitableRoles } from "@domain/team";
 import { canWrite } from "@domain/view-as";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
@@ -12,8 +18,13 @@ import { chatPaths } from "../../chat/chat-paths";
 import { currentWording } from "../../current-wording";
 import { currentMember } from "../../member";
 import { baseWording, translator } from "../../wording";
-import { clearBioAction } from "../actions";
-import { PersonView } from "./person-view";
+import {
+  clearBioAction,
+  removeMemberAction,
+  setMemberRoleAction,
+} from "../actions";
+import { FormerView } from "./former-view";
+import { type PersonChanges, PersonView } from "./person-view";
 
 export async function generateMetadata(): Promise<Metadata> {
   // Page titles stay in the app's own words.
@@ -23,7 +34,7 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // One colleague's profile, for owners and managers, like the Team screen it
 // is reached from. Workers get the not-found screen; the signed-in person's
-// own profile is /me.
+// own profile is /me. Someone no longer on the team gets a page that says so.
 export default async function TeamPersonPage({
   params,
 }: {
@@ -34,32 +45,70 @@ export default async function TeamPersonPage({
   if (!member || !membership || !canSeeTeam(membership.role)) notFound();
   if (person === member.userId) redirect("/me");
   if (!isUuid(person)) notFound();
-  const [data, youth, wording, chat] = await Promise.all([
-    getTeamPerson(membership.business.id, person),
+  const businessId = membership.business.id;
+  const [data, youth, wording, chat, open] = await Promise.all([
+    getTeamPerson(businessId, person),
     // Who is a minor, and until when: the schedule needs it (payroll P5).
-    getTeamYouth(membership.business.id),
+    getTeamYouth(businessId),
     currentWording(),
     chatAccess(),
+    // A demo business keeps its people, as it takes no invites (#80).
+    invitesOpen(businessId),
   ]);
-  if (!data) notFound();
+  if (!data) {
+    // Taken off the team: their place is kept, and the page says so.
+    const former = await getFormerMember(businessId, person);
+    if (!former) notFound();
+    return <FormerView former={former} teamHref="/team" wording={wording} />;
+  }
   // A message to someone on the staff, from someone in chat; never while
   // viewing as someone, who reads no chat.
   const messageHref =
     chat && !chat.viewing && isStaff(data.role)
       ? chatPaths.withPerson(data.userId)
       : null;
+  // Whoever may invite to their role changes it and takes them off the team
+  // (Orel, 14 November 2026); never while viewing, never in a demo.
+  const mayChange =
+    open &&
+    canWrite(member.viewing) &&
+    canRemoveMember(
+      { userId: member.userId, role: membership.role },
+      { userId: data.userId, role: data.role },
+    );
+  const timeZone = membership.business.place.timeZone;
+  let changes: PersonChanges | null = null;
+  if (mayChange) {
+    const [ahead, clockedIn] = await Promise.all([
+      shiftsAhead(businessId, data.userId, timeZone),
+      isClockedIn(businessId, data.userId),
+    ]);
+    changes = {
+      roles: invitableRoles(membership.role),
+      ahead,
+      clockedIn,
+      clockHref: `/clock/team/${data.userId}`,
+      scheduleHref: "/schedule",
+      // For this business only: a write held past a switch is refused.
+      actions: {
+        remove: removeMemberAction.bind(null, businessId),
+        setRole: setMemberRoleAction.bind(null, businessId),
+      },
+    };
+  }
   return (
     <PersonView
       data={data}
       youthUntil={youth.get(data.userId) ?? null}
-      timeZone={membership.business.place.timeZone}
+      timeZone={timeZone}
       canClear={
         canWrite(member.viewing) && mayClearBio(membership.role, data.role)
       }
       // For this business only: a delete held past a switch is refused.
-      clearBio={clearBioAction.bind(null, membership.business.id)}
+      clearBio={clearBioAction.bind(null, businessId)}
       teamHref="/team"
       messageHref={messageHref}
+      changes={changes}
       wording={wording}
     />
   );

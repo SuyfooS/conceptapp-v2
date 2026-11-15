@@ -1,4 +1,5 @@
-import { atLeast, ROLES, type Role } from "./modules";
+import { instantIn } from "./availability";
+import { atLeast, isStaff, ROLES, type Role } from "./modules";
 import { normalizeIsraeliMobile } from "./phone";
 import type { AddressForm } from "./profile";
 
@@ -110,6 +111,164 @@ export function canResendInvite(role: Role, inviteRole: Role): boolean {
   return invitableRoles(role).includes(inviteRole);
 }
 
+/**
+ * May someone in `role` cancel an invite with `inviteRole`? The same rule as
+ * sending its link (`public.team_invite_cancel`).
+ */
+export function canCancelInvite(role: Role, inviteRole: Role): boolean {
+  return canResendInvite(role, inviteRole);
+}
+
+/** Someone on the team, as the rules for changing it see them. */
+export type TeamPlace = { userId: string; role: Role };
+
+/**
+ * Whoever may invite to a role may take someone off the team from it, and
+ * change someone from it and to it (Orel, 14 November 2026): an owner acts on
+ * everyone, a manager on managers and workers. Never on oneself, which the
+ * person's own profile is for. The database checks the same
+ * (`public.remove_member`, `private.gives_role`), and also that the business
+ * keeps an owner (`leavesNoOwner`).
+ */
+export function canRemoveMember(viewer: TeamPlace, person: TeamPlace): boolean {
+  return (
+    viewer.userId !== person.userId &&
+    invitableRoles(viewer.role).includes(person.role)
+  );
+}
+
+/**
+ * May someone in `viewerRole` change someone's role from `from` to `to`?
+ * Both must be roles they invite to. The same role changes nothing, and is
+ * allowed (`public.set_member_role` returns `changed: false`).
+ */
+export function mayChangeRole(viewerRole: Role, from: Role, to: Role): boolean {
+  const mine = invitableRoles(viewerRole);
+  return mine.includes(from) && mine.includes(to);
+}
+
+/**
+ * The roles the viewer may give the person instead of theirs, in the usual
+ * order; none when they may not change it at all (`canRemoveMember`).
+ */
+export function roleChoices(viewer: TeamPlace, person: TeamPlace): Role[] {
+  if (!canRemoveMember(viewer, person)) return [];
+  return invitableRoles(viewer.role).filter((role) => role !== person.role);
+}
+
+/**
+ * Taking `personId` off the team (`to` null) or giving them `to` would leave
+ * the business with no owner. The screens never offer it: only an owner acts
+ * on an owner, and never on themselves. The database refuses it anyway
+ * (23P01), under a lock, for two owners acting at once.
+ */
+export function leavesNoOwner(
+  members: readonly TeamPlace[],
+  personId: string,
+  to: Role | null,
+): boolean {
+  const owners = members.filter((member) => member.role === "owner");
+  if (!owners.some((owner) => owner.userId === personId)) return false;
+  if (to === "owner") return false;
+  return owners.length <= 1;
+}
+
+/**
+ * Leaving the staff takes someone off their shifts still to start: being
+ * taken off the team, or becoming an accountant (Orel's decision 2 of
+ * 14 November 2026). An accountant joining the staff has none.
+ */
+export function leavesStaff(from: Role, to: Role | null): boolean {
+  return isStaff(from) && (to === null || !isStaff(to));
+}
+
+/**
+ * A role change that changing back can't undo, so the screen holds it for
+ * its undo before writing it, as it holds a removal: leaving the staff takes
+ * the shifts still to start off the person (`leavesStaff`), and becoming an
+ * owner or an accountant clears their personal permissions
+ * (`public.set_member_role`). Between manager and worker, and from an
+ * accountant onto the staff below owner, nothing is lost: the change is
+ * written at once, and its undo is the change back.
+ */
+export function roleChangeClears(from: Role, to: Role): boolean {
+  if (from === to) return false;
+  return leavesStaff(from, to) || (to === "owner" && from !== "accountant");
+}
+
+/**
+ * Why the database refused a team change, as the screens explain it:
+ *
+ *   notAllowed  42501: the viewer may not act on this role, or is no longer
+ *               an owner or manager of the business
+ *   gone        P0002: the person is no longer on the team, or the invite is
+ *               no longer open (claimed, cancelled)
+ *   yourself    22023: one's own place, or no role given
+ *   lastOwner   23P01: the business would have no owner
+ *   demo        55000 with hint `demo`: a demo business keeps its people
+ *   clockedIn   55000 with hint `clocked_in`: clock them out first
+ *   elsewhere   23505: an accountant on another business's staff can't join
+ *               this one's (say it neutrally on the Team screen, #80)
+ *   changed     40001: the role changed since the screen showed it (an undo)
+ *   failed      anything else
+ */
+export const TEAM_CHANGE_FAILURES = [
+  "notAllowed",
+  "gone",
+  "yourself",
+  "lastOwner",
+  "demo",
+  "clockedIn",
+  "elsewhere",
+  "changed",
+  "failed",
+] as const;
+
+export type TeamChangeFailure = (typeof TEAM_CHANGE_FAILURES)[number];
+
+export function teamChangeFailureOf(
+  code: string | undefined,
+  hint?: string | null,
+): TeamChangeFailure {
+  switch (code) {
+    case "42501":
+      return "notAllowed";
+    case "P0002":
+      return "gone";
+    case "22023":
+      return "yourself";
+    case "23P01":
+      return "lastOwner";
+    case "55000":
+      return hint === "demo"
+        ? "demo"
+        : hint === "clocked_in"
+          ? "clockedIn"
+          : "failed";
+    case "23505":
+      return "elsewhere";
+    case "40001":
+      return "changed";
+    default:
+      return "failed";
+  }
+}
+
+/** What came off someone who left the staff, as the database says it. */
+export type LeftCounts = {
+  /** Shifts still to start in published weeks: these now show as missing. */
+  shifts: number;
+  /** Shifts still to start in drafts. */
+  drafts: number;
+  /** Swap requests they made on those shifts, cancelled. */
+  swaps: number;
+  /**
+   * Colleagues' shifts they had taken, waiting for approval: the requests are
+   * open again for someone else (Orel, 15 November 2026).
+   */
+  reopened: number;
+};
+
 /** Same limit as `profiles.full_name` in the database. */
 export const TEAM_NAME_MAX = 80;
 
@@ -159,4 +318,39 @@ export function parseTeamInvite(
     return { ok: false, errors };
   }
   return { ok: true, value: { name, phone, role } };
+}
+
+/** One of someone's shifts, as the person's page counts what lies ahead. */
+export type ShiftAhead = {
+  /** YYYY-MM-DD, the business's own day. */
+  day: string;
+  /** HH:MM, the business's own clock. */
+  start: string;
+  /** In a published week, or a draft. */
+  published: boolean;
+};
+
+/**
+ * How many of someone's shifts have not started at `now`, in published weeks
+ * and in drafts: what taking them off the staff takes off them, as the
+ * database counts it (a shift's start in the business's time zone, later than
+ * the moment). Shifts begun or past stay theirs.
+ */
+export function countShiftsAhead(
+  shifts: readonly ShiftAhead[],
+  timeZone: string,
+  now: Date,
+): Pick<LeftCounts, "shifts" | "drafts"> {
+  let published = 0;
+  let drafts = 0;
+  for (const shift of shifts) {
+    if (
+      instantIn(shift.day, shift.start, timeZone).getTime() <= now.getTime()
+    ) {
+      continue;
+    }
+    if (shift.published) published += 1;
+    else drafts += 1;
+  }
+  return { shifts: published, drafts };
 }

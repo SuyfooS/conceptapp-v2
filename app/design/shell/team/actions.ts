@@ -2,10 +2,17 @@
 
 import { randomBytes } from "node:crypto";
 import { inviteLink } from "@domain/invites";
+import type { Role } from "@domain/modules";
 import type { ProfileSaveResult } from "@domain/profile";
 import { parseTeamInvite } from "@domain/team";
 import { requestOrigin } from "@/app/origin";
 import type { InviteState, ResendState } from "../../../(app)/team/actions";
+import {
+  type InviteCancelResult,
+  type MemberChangeResult,
+  NOTHING_LEFT,
+} from "../../../(app)/team/team-change-types";
+import { shiftsAheadOf, swapsLeftOf } from "../data";
 
 // Stand-ins for the Team screen's actions on the design demo: the same
 // checks, and a link that leads nowhere. Nothing is stored.
@@ -46,5 +53,36 @@ export async function demoClearBioAction(
   _personId: string,
   _seenBio: string,
 ): Promise<ProfileSaveResult> {
+  return { ok: true };
+}
+
+/**
+ * Taking someone off the demo's team: nothing is stored, so they are back on
+ * reload. What came off them is what their page said would
+ * (`shiftsAheadOf`), with the swap requests it settles (`swapsLeftOf`), and
+ * nothing revalidates, as on the real page.
+ */
+export async function demoRemoveMemberAction(
+  personId: string,
+): Promise<MemberChangeResult> {
+  return {
+    ok: true,
+    left: { ...shiftsAheadOf(personId), ...swapsLeftOf(personId) },
+  };
+}
+
+/** Changing a role on the demo: shown at once, back as it was on reload. */
+export async function demoSetMemberRoleAction(
+  _personId: string,
+  _role: Role,
+  _seenRole: Role,
+): Promise<MemberChangeResult> {
+  return { ok: true, left: NOTHING_LEFT };
+}
+
+/** Deleting an invite on the demo: back on reload. */
+export async function demoCancelInviteAction(
+  _inviteId: string,
+): Promise<InviteCancelResult> {
   return { ok: true };
 }

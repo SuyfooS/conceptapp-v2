@@ -308,7 +308,8 @@ function ShiftPeople({
           <ListRow title={tb("nobody")} />
         ) : (
           shift.assignees.map(({ user, position }) => {
-            const name = nameOf.get(user) ?? noName;
+            // Someone no longer on the team, on a builder opened before.
+            const name = nameOf.get(user) ?? t("app.shifts.former");
             const note = noteOf(user);
             const positionName =
               positions.find((p) => p.key === position)?.name ??

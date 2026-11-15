@@ -45,6 +45,64 @@ manager delete a hurtful line, the one they read (`seen`; a line rewritten
 since stays, with 40001), logged as `profile.bio_cleared` without the text.
 From the browser, reads follow the policies and nothing writes a profile.
 
+Changing the team (`20261114000100_team_changes.sql`; Orel, 14 November 2026)
+goes by the rule of inviting: whoever may invite to a role may take someone off
+the team from it and change someone from it and to it, so an owner acts on
+everyone and a manager on managers and workers (`private.gives_role`, the twin
+of `invitableRoles`; never the enum's order), never on oneself (22023), never
+leaving the business without an owner (23P01, under a lock on the business's
+row), never in a demo closed to invites (55000, hint `demo`) and never for
+someone clocked in (55000, hint `clocked_in`). All three are the secret
+key's, for `actor`. `public.remove_member(actor, business, person, at_time)`
+keeps the membership, inactive, with `memberships.left_at` (cleared when the
+row is made active again) and its personal permissions cleared, and keeps every
+record: hours, pay, periods (the trigger closes the open one), past and begun
+shifts, availability, chat, documents, the log. `private.leave_staff` takes the
+person off their shifts still to start in published weeks and drafts (after
+locking the weeks, in `publish_week_schedule`'s order), cancels the live swaps
+they asked for on them, opens again a colleague's swap they took that still
+waits for approval (Orel, 15 November 2026: `status = 'open'`, no taker), and
+takes them out of their departments, open lists and lists' times.
+Their own lines there are read and kept off the phone; the schedule's other
+builders get `schedule.unfilled` (a count per published week, never who;
+settled by publishing the week again, or by the minute job once no shift ahead
+lacks anyone, `private.settle_unfilled` from `private.settle_done_reminders`),
+the other side of a swap cancelled `swap.removed`, and the asker of one open
+again `swap.reopened` (its approval settled, and offered again as a new request
+is, `swap.offered`). `public.set_member_role(actor,
+business, person, new_role, seen_role, at_time)` does the same to someone made
+an accountant (decision 2 for the shifts, where `claim_invite` refuses),
+clears personal permissions for an owner or an accountant, keeps them between
+manager and worker, refuses an accountant on another staff (23505), reads a
+demoted person's lines for a role above theirs, writes nothing for the same
+role, and says 40001 when the role moved from `seen_role` (an undo). Both
+return how many published shifts, draft shifts and swaps came off, and how many
+swaps opened again (`reopened`).
+`public.team_invite_cancel(actor, invite, at_time)` follows
+`team_invite_link`'s rule, and the row stays for the log: `claimed_at` closes
+it for every reader of open invites, `invites.cancelled_at` says why, and a
+fresh hash of no token ends its link. The log rows are `member.remove`,
+`member.role` and `invite.cancel`, with ids, roles, counts and the shifts'
+days and times, never a name. `public.own_departures()` (granted to
+`authenticated` alone, for `auth.uid()`) names the businesses someone was
+taken off, since the policies show them nothing else of those. `@db/team`
+(`removeMember`, `setMemberRole`, `cancelTeamInvite`, `ownDepartures`,
+`shiftsAhead`) calls them, and reads under the manager's session what the
+person's page says first: `isClockedIn` (an open entry refuses the change)
+and `getFormerMember` (the inactive row, for a page that says they left
+instead of "not found"; the name only for a pay holder). A builder opened
+before someone left fails its save with 22023 or 42501, which
+`scheduleTeamChanged` in `@db/schedule-errors` tells apart (by the two
+sentences, pinned in pgTAP). `save_week_schedule` now locks its week first,
+as `publish_week_schedule` does, so a draft saved and a removal take turns
+on it instead of deadlocking or putting the person back on the draft; and
+`request_shift_swap` and `take_shift_swap` lock the actor's membership first
+(for share, where a team change locks it for update), so a request or a take
+under way while someone leaves is either seen and settled by the removal or
+refused after it (42501), never left behind on a shift they are off.
+`team_changes.test.sql` and `team-changes.db.test.ts` (the rule against
+@domain/team) cover it.
+
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
 `clock.confirm` from `confirm_time_entry`, `clock.code.locked`,
@@ -814,7 +872,8 @@ file, never the row: its sender in their first 10 minutes as `taken_back`, the o
 `public.documents_closed`. The lines are `documents.received` (to the office),
 `documents.sent` and `documents.to_confirm` (to each recipient), with `{document, from}`
 only, and the trigger `audit_log_settles_documents` settles `documents.received` for anyone
-whose pay access goes. The log's `document.send`, `document.open`, `document.remove` and
+whose pay access goes (a permission taken back, and since the team changes someone removed
+or given another role). The log's `document.send`, `document.open`, `document.remove` and
 `document.restore` hold ids and codes only and are read by the office alone (the policy
 "managers read the log, pay holders the pay rows", altered here; C1's view policy already
 keeps them from every view). C4's `public.expired_files` and `public.forget_files` are

@@ -13,6 +13,8 @@ import type { TeamInvite, TeamMember } from "@domain/team";
 import { portraits } from "../portraits";
 
 export const business = { name: "מסעדת הדגמה" };
+/** A business the demo's accountant was taken off the team of. */
+export const leftBusiness = { name: "בית הקפה של נועה" };
 export const user = {
   name: "שירן",
   role: "מנהלת משמרת",
@@ -214,6 +216,41 @@ export const teamProfiles: Record<
     youthUntil: "2027-04-15",
   },
 };
+
+/**
+ * Their shifts still to start in the demo, in the published schedule and in
+ * the draft: what their page says comes off them, and then that it did
+ * (/design/shell/team/[person]). Noa has the most; anyone not named has one.
+ */
+export const teamShiftsAhead: Record<
+  string,
+  { shifts: number; drafts: number }
+> = {
+  noa: { shifts: 3, drafts: 2 },
+  yoav: { shifts: 2, drafts: 0 },
+  maya: { shifts: 0, drafts: 0 },
+};
+
+/** Someone's shifts still to start in the demo (`teamShiftsAhead`). */
+export const shiftsAheadOf = (person: string) =>
+  teamShiftsAhead[person] ?? { shifts: 1, drafts: 0 };
+
+/**
+ * The swap requests their removal settles in the demo, said on the card once
+ * they are off the team: Noa asked to give one of her shifts away, which is
+ * cancelled, and took a colleague's, still waiting for approval, which is
+ * open to others again. Anyone not named has none.
+ */
+export const teamSwapsLeft: Record<
+  string,
+  { swaps: number; reopened: number }
+> = {
+  noa: { swaps: 1, reopened: 1 },
+};
+
+/** The swaps someone's removal settles in the demo (`teamSwapsLeft`). */
+export const swapsLeftOf = (person: string) =>
+  teamSwapsLeft[person] ?? { swaps: 0, reopened: 0 };
 
 export const teamInvites: TeamInvite[] = [
   {

@@ -33,6 +33,7 @@ import {
   reachesPhone,
   readNotificationPreferences,
   SWITCHABLE_GROUPS,
+  unfilledWeekBegun,
   unreadCounts,
 } from "./notifications";
 import { MAX_ENTRY_HOURS } from "./time-clock-format";
@@ -128,6 +129,7 @@ describe("the kinds", () => {
       "lists.late_team",
       "lists.out_of_range",
       "pay.month_due",
+      "schedule.unfilled",
       "swap.offered",
       "swap.waiting",
     ]);
@@ -141,6 +143,7 @@ describe("the kinds", () => {
       "team.joined",
       "availability.missing",
       "clock.overdue",
+      "schedule.unfilled",
     ]) {
       expect(
         NOTIFICATION_KINDS[kind as keyof typeof NOTIFICATION_KINDS].minRole,
@@ -1395,5 +1398,71 @@ describe("each person's choices", () => {
     );
     expect(ok({ kind: "quiet" })).toBe(false);
     expect(ok({ kind: "everything", on: false })).toBe(false);
+  });
+});
+
+describe("shifts freed by a team change", () => {
+  it("lead the builders to the schedule, in approvals", () => {
+    expect(linkFor("schedule.unfilled", { week: LINE })).toBe("/schedule");
+    expect(notificationGroupOf("schedule.unfilled")).toBe("approvals");
+    expect(NOTIFICATION_KINDS["schedule.unfilled"].module).toBe("scheduling");
+  });
+
+  it("read the week and how many lack someone, never who left", () => {
+    expect(
+      lineOf(
+        row("schedule.unfilled", {
+          week: LINE,
+          startsOn: "2026-11-22",
+          count: 2,
+        }),
+        MANAGER,
+      )?.line,
+    ).toEqual({ kind: "schedule.unfilled", startsOn: "2026-11-22", count: 2 });
+    expect(
+      lineOf(
+        row("schedule.unfilled", { startsOn: "2026-11-22", count: -3 }),
+        MANAGER,
+      )?.line,
+    ).toEqual({ kind: "schedule.unfilled", startsOn: "2026-11-22", count: 0 });
+    expect(
+      lineOf(row("schedule.unfilled", { count: 2 }), MANAGER)?.line,
+    ).toEqual({ kind: "other" });
+  });
+
+  it("know a week already under way, which the builder no longer opens", () => {
+    expect(unfilledWeekBegun("2026-11-22", "2026-11-21")).toBe(false);
+    expect(unfilledWeekBegun("2026-11-22", "2026-11-22")).toBe(true);
+    expect(unfilledWeekBegun("2026-11-22", "2026-11-28")).toBe(true);
+  });
+});
+
+// Orel, 15 November 2026: the colleague who took the reader's shift left the
+// team or the staff before a manager approved, so the request is open again.
+describe("a request open again", () => {
+  it("leads the one who asked to their shifts, in swaps, asking nothing", () => {
+    expect(linkFor("swap.reopened", { swap: LINE })).toBe("/schedule/shifts");
+    expect(notificationGroupOf("swap.reopened")).toBe("swaps");
+    expect(NOTIFICATION_KINDS["swap.reopened"]).toMatchObject({
+      module: "scheduling",
+      minRole: "worker",
+      needsAction: false,
+    });
+  });
+
+  it("reads its shift, and names nobody", () => {
+    expect(
+      lineOf(row("swap.reopened", { swap: LINE, shift: SHIFT }))?.line,
+    ).toEqual({ kind: "swap.reopened", shift: SHIFT });
+    // A line that lost its shift still reads.
+    expect(lineOf(row("swap.reopened", { swap: LINE }))?.line).toEqual({
+      kind: "swap.reopened",
+      shift: null,
+    });
+    // Whatever else the params hold, no one is read out of them.
+    expect(
+      lineOf(row("swap.reopened", { swap: LINE, shift: SHIFT, by: LEFT }))
+        ?.line,
+    ).not.toHaveProperty("by");
   });
 });

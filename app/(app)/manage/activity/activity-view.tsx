@@ -212,6 +212,26 @@ export function ActivityView({
   /** Why hours were added or corrected, as its own line under the change. */
   const reasonNotes = (note: string | null): ReactNode[] =>
     note ? [t("actions.clock.reason", { note })] : [];
+  /**
+   * What a team change took off someone, a count apiece: the shifts freed,
+   * the swap requests cancelled, and those open again (Orel, 15 November
+   * 2026), as the person page said them to whoever removed them.
+   */
+  const leftNotes = (left: {
+    shifts: number;
+    swaps: number;
+    reopened: number;
+  }): ReactNode[] => [
+    ...(left.shifts > 0
+      ? [t("actions.member.shiftsOff", { count: left.shifts })]
+      : []),
+    ...(left.swaps > 0
+      ? [t("actions.member.swapsOff", { count: left.swaps })]
+      : []),
+    ...(left.reopened > 0
+      ? [t("actions.member.swapsReopened", { count: left.reopened })]
+      : []),
+  ];
 
   /** A module's setting as words, from what its manifest says the field is. */
   function settingChanges(module: string, changes: FieldChange[]): Change[] {
@@ -464,12 +484,59 @@ export function ActivityView({
             ? t("actions.invite.send", { name: line.name })
             : t("actions.invite.sendNoName"),
         );
+      case "invite.cancel":
+        return plain(
+          line.name && line.role
+            ? t("actions.invite.cancel", {
+                name: line.name,
+                role: roleName(line.role),
+              })
+            : line.role
+              ? t("actions.invite.cancelNoName", { role: roleName(line.role) })
+              : t("actions.invite.cancelPlain"),
+        );
       case "invite.claim":
         return plain(
           line.role
             ? t("actions.invite.claim", { role: roleName(line.role) })
             : t("actions.invite.claimPlain"),
         );
+      // A team change (Orel, 14 November 2026). Someone taken off the team is
+      // nameless to the log by then, so their role says who they were; the
+      // shifts that came off them, and the swaps cancelled or open again, are
+      // counts, never which.
+      case "member.remove":
+        return {
+          what:
+            line.person.kind === "member" && line.role
+              ? t("actions.member.remove", {
+                  person: who(line.person),
+                  role: roleName(line.role),
+                })
+              : line.role
+                ? t("actions.member.removeRole", { role: roleName(line.role) })
+                : t("actions.member.removePlain"),
+          notes: leftNotes(line),
+          changes: [],
+        };
+      case "member.role":
+        return {
+          what:
+            line.role && line.was
+              ? line.person.kind === "member"
+                ? t("actions.member.role", {
+                    person: who(line.person),
+                    role: roleName(line.role),
+                    was: roleName(line.was),
+                  })
+                : t("actions.member.rolePlain", {
+                    role: roleName(line.role),
+                    was: roleName(line.was),
+                  })
+              : t("actions.member.roleNone"),
+          notes: leftNotes(line),
+          changes: [],
+        };
       case "view_as.start":
         return plain(
           line.role

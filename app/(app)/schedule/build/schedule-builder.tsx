@@ -347,12 +347,13 @@ export function ScheduleBuilder({
           })}
           shift={row.shift}
           people={row.shift.assignees.map((a) => ({
-            name: nameOf.get(a.user) ?? t("app.team.noName"),
+            // Someone no longer on the team, on a builder opened before.
+            name: nameOf.get(a.user) ?? t("app.shifts.former"),
             photo: photoOf.get(a.user) ?? null,
           }))}
           clashing={row.shift.assignees
             .filter((a) => clashes.has(`${rows.indexOf(row)}:${a.user}`))
-            .map((a) => nameOf.get(a.user) ?? t("app.team.noName"))}
+            .map((a) => nameOf.get(a.user) ?? t("app.shifts.former"))}
           positions={positions}
           density={density}
           onOpen={(event) => openSheet({ kind: "shift", id: row.id }, event)}

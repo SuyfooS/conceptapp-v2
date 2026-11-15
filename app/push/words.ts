@@ -2,11 +2,12 @@ import "server-only";
 import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { numberRange, signed } from "@domain/lists";
-import type {
-  NotificationChat,
-  NotificationEntry,
-  NotificationPerson,
-  NotificationShift,
+import {
+  type NotificationChat,
+  type NotificationEntry,
+  type NotificationPerson,
+  type NotificationShift,
+  unfilledWeekBegun,
 } from "@domain/notifications";
 import type { PushNotice } from "@domain/push";
 import { timeIn } from "@domain/shabbat";
@@ -95,6 +96,25 @@ export function pushWords(
         ...body(t(`kinds.schedule.${key}.body`, { count: line.mine })),
       };
     }
+    // A team change freed shifts: how many, never who left. A week already
+    // under way when the line was written can't be filled in the app.
+    case "schedule.unfilled": {
+      const date = dayMonth(line.startsOn);
+      const count = line.count;
+      if (settled) {
+        return {
+          title: t("kinds.schedule.unfilled.settledTitle", { count, date }),
+        };
+      }
+      return {
+        title: t("kinds.schedule.unfilled.title", { count, date }),
+        ...body(
+          unfilledWeekBegun(line.startsOn, dateIn(new Date(entry.at), timeZone))
+            ? t("kinds.schedule.unfilled.begun")
+            : t("kinds.schedule.unfilled.note", { count }),
+        ),
+      };
+    }
     case "swap.offered":
       return {
         title: t("kinds.swap.offered.title", { name: who(line.from) }),
@@ -155,6 +175,12 @@ export function pushWords(
       return {
         title: t("kinds.swap.removed.title"),
         ...body(shiftWords(line.shift)),
+      };
+    // Whoever took it left first: open again, nobody named.
+    case "swap.reopened":
+      return {
+        title: t("kinds.swap.reopened.title"),
+        ...body(shiftWords(line.shift), t("kinds.swap.reopened.note")),
       };
     case "clock.confirm": {
       const at = new Date(line.at);
