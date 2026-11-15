@@ -1,4 +1,5 @@
 import { dayMonth } from "@domain/availability-form";
+import type { ShiftSwap } from "@domain/swaps";
 import { PageBody, PageHeader } from "@ui/page";
 import { type AppWording, translator } from "../../wording";
 import type { ScheduleBuildWeek } from "../week";
@@ -11,12 +12,15 @@ import { ScheduleBuilder } from "./schedule-builder";
  */
 export function ScheduleBuildView({
   data,
+  swaps,
   save,
   backHref = "/schedule",
   manageHref = "/manage/scheduling",
   wording,
 }: {
   data: ScheduleBuildWeek;
+  /** The week's waiting swap requests, for the warning before publishing. */
+  swaps: ShiftSwap[];
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
   /** Where "back" goes: the schedule's entry, or the demo's. */
   backHref?: string;
@@ -44,6 +48,7 @@ export function ScheduleBuildView({
         publishedAt={data.publishedAt}
         shifts={data.shifts}
         basis={data.basis}
+        swaps={swaps}
         team={data.team}
         answers={data.answers}
         positions={data.positions}

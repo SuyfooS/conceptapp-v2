@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { before, buildScreen } from "./build-screen";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
 import { heT } from "./t";
@@ -23,6 +24,7 @@ const PAGES = [
   "/design/shell/schedule/swaps",
   "/design/shell/schedule/availability",
   "/design/shell/schedule/build",
+  "/design/shell/schedule/build?state=meanwhile",
   "/design/shell/schedule/shifts",
   "/design/shell/schedule/shifts?at=evening",
   "/design/shell/clock",
@@ -582,6 +584,72 @@ test("the swaps demo offers only declining once the shift has begun", async ({
   await expect(decision(ap.buttons.decline)).toHaveCount(1);
   // The two taken requests still to come are counted, not the third.
   await expect(main).toContainText(heT("app.swaps.count", { count: 2 }));
+});
+
+// A stale screen on the builder's demo (R1b), at every size: Omer gives his
+// Sunday evening away, and Maya took Noa's Sunday morning. Taking Itay off the
+// morning ends no request, so nothing is said; taking Omer off the evening
+// ends his, and the line above "פרסום השינויים" says so first. Another
+// manager approved Maya's meanwhile, so the publish is refused: the morning
+// comes back as it is now, marked and named, the evening keeps its change,
+// and publishing again goes out, with its own time on the status line.
+test("the builder demo warns before ending a request, and puts back a shift changed meanwhile", async ({
+  page,
+}) => {
+  const tb = he.app.build;
+  const path = "/design/shell/schedule/build?state=meanwhile";
+  const screen = buildScreen(page);
+  const publish = page.getByRole("button", { name: tb.publishChanges });
+  const warning = page.getByText(heT("app.build.swapsEnd", { count: 1 }));
+  const morning = screen.card("בוקר");
+  const evening = screen.card("ערב");
+  const status = page.getByText(new RegExp(`^${before(tb.publishedAt)}`));
+
+  await page.goto(path);
+  await expect(morning).toContainText("נועה");
+  // Published, with nothing new to send.
+  await expect(publish).toHaveCount(0);
+
+  await morning.click();
+  await screen.removeButton("איתי מזרחי").click();
+  await screen.closeSheet();
+  await expect(publish).toBeVisible();
+  await expect(warning).toHaveCount(0);
+
+  await evening.click();
+  await screen.removeButton("עומר אזולאי").click();
+  await screen.closeSheet();
+  await expect(warning).toBeVisible();
+
+  await publish.click();
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: heT("app.build.moved.changedOne", {
+        name: "בוקר",
+        day: he.app.availability.weekdays.sun,
+      }),
+    }),
+  ).toBeVisible();
+  // The morning as it is now: Maya in Noa's place, and Itay back on it.
+  await expect(morning).toContainText(tb.meanwhile);
+  await expect(morning).toContainText("מאיה");
+  await expect(morning).toContainText("איתי");
+  await expect(morning).not.toContainText("נועה");
+  // The evening keeps its change, and Omer's request would still end.
+  await expect(evening).not.toContainText("עומר");
+  await expect(evening).not.toContainText(tb.meanwhile);
+  await expect(warning).toBeVisible();
+  await expectCleanPage(page, path);
+
+  await publish.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tb.published }),
+  ).toBeVisible();
+  await expect(publish).toHaveCount(0);
+  await expect(morning).not.toContainText(tb.meanwhile);
+  // Published now, not when the demo week was first published (29.10).
+  await expect(status).toBeVisible();
+  await expect(status).not.toContainText("29.10");
 });
 
 // A demo business takes no invites (#80): its Team screen offers none and

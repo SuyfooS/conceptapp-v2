@@ -118,7 +118,8 @@ changed is written in place while it is still as it was read, its id kept and
 only the people who changed taken off or put on; one read and not sent is
 deleted while it is still as it was read; otherwise 40001 with hint `moved` and
 the ids in DETAIL (`movedShifts` in `@db/schedule-errors`), and nothing is
-written. A shift added meanwhile stays, and one deleted meanwhile is skipped
+written: the builder's action then reads those shifts again, and the screen
+puts them back as they are now, marked, with the rest of its work kept. A shift added meanwhile stays, and one deleted meanwhile is skipped
 when sent unchanged. An id must be one the screen read, of the week, sent once
 (22023). Only who this write puts on a shift must be an active member, and the
 overlap check covers everyone on a shift new or moved and everyone put on one.
@@ -131,8 +132,13 @@ its shift is deleted, its day or hours change or its asker comes off it
 (cancelled, both told `swap.removed`;
 a deleted shift's requests still go with it); one taken by someone who may no
 longer take it opens again (`swap.reopened`, offered again); every other one
-waits on, offered only to whoever may still take it. Who builds the schedule is
-one helper, `private.builds_schedule`. `week_in_place.test.sql` covers it.
+waits on, offered only to whoever may still take it. `swapsEndedBy` in
+`@domain/swaps` reads the same rule off the builder's screen for the warning
+before publishing, with unit tests that mirror `week_in_place.test.sql`'s
+cases one for one, all but those with nothing to say about requests (refused
+payloads, drafts and positions); the SQL stays the authority, so a change to
+it changes both. Who builds the schedule is one helper, `private.builds_schedule`.
+`week_in_place.test.sql` covers it.
 
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,

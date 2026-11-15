@@ -1027,6 +1027,7 @@
       "published": "The schedule is published. The whole team can see it now.",
       "publishChanges": "Publish the changes",
       "publish": "Publish the schedule",
+      "swapsEnd": "{count, plural, one {One swap request will be cancelled} other {# swap requests will be cancelled}}",
       "errors": {
         "noAccess": "Only managers and owners build the schedule.",
         "viewOnly": "This is view only, so the schedule was not saved.",
@@ -1053,6 +1054,17 @@
       "removedShift": "The {name} shift on {day} was taken off the schedule.",
       "undoRemove": "Put the shift back",
       "clashBadge": "Someone is on two shifts at once",
+      "meanwhile": "Changed meanwhile",
+      "goneMeanwhile": "Deleted meanwhile",
+      "moved": {
+        "changedOne": "The {name} shift on {day} has changed meanwhile, so the schedule was not saved. It now shows as it is in the schedule, marked as changed.",
+        "changed": "{count, plural, one {A shift you changed has changed meanwhile, so the schedule was not saved. It now shows as it is in the schedule, marked as changed.} other {# shifts you changed have changed meanwhile, so the schedule was not saved. They now show as they are in the schedule, marked as changed.}}",
+        "goneOne": "The {name} shift on {day} was deleted meanwhile, so the schedule was not saved. You can bring it back as a new shift.",
+        "gone": "{count, plural, one {A shift you changed was deleted meanwhile, so the schedule was not saved. You can bring it back as a new shift.} other {# shifts you changed were deleted meanwhile, so the schedule was not saved. You can bring them back as new shifts.}}",
+        "alsoGone": "{count, plural, one {Another shift you changed was deleted meanwhile, and you can bring it back as a new shift.} other {# more shifts you changed were deleted meanwhile, and you can bring them back as new shifts.}}",
+        "rest": "{intent, select, save {The rest of your changes are still here, and you can save again.} other {The rest of your changes are still here, and you can publish again.}}",
+        "nothingElse": "{week, select, published {Nothing else is left to publish. You can make changes again and publish.} other {Nothing else is left to save.}}"
+      },
       "leave": {
         "title": "There are changes that are not saved",
         "body": "If you leave now without saving, the changes to the schedule are lost.",

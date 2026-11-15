@@ -16,7 +16,8 @@ import {
   sendDemoAvailability,
   takenDemoSwap,
 } from "./db";
-import { signIn } from "./session";
+import { secondPage, signIn } from "./session";
+import { heT } from "./t";
 
 // Seeded in supabase/seed.sql: the demo restaurant (restaurant template:
 // from Sunday to Thursday a morning shift 09:00–16:00 for three people and
@@ -24,6 +25,7 @@ import { signIn } from "./session";
 // its manager and two workers. Noa sends 09:00–17:00 for next Sunday;
 // Yoav sends nothing. The template's positions include "מלצר/ית" (waiter).
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
+const OWNER = { local: "050-000-0001", e164: "+972500000001" };
 const NOA = { name: "נועה כהן", first: "נועה", e164: "+972500000003" };
 const YOAV = {
   name: "יואב לוי",
@@ -465,6 +467,115 @@ test("a swap approved while the builder was open survives", async ({
   ]);
   await expect(evening).toContainText(NOA.first);
   await expect(evening).not.toContainText(YOAV.first);
+});
+
+// A stale screen (R1b), with two managers: the owner approves a swap on a
+// shift this manager changed too, while the builder is open. Before
+// publishing, the line above "פרסום השינויים" says that taking Yoav off his
+// evening would end his request, and so does the sheet that asks before
+// leaving, beside its own publish. The publish is refused: the evening comes
+// back as it is now, marked and named, the morning keeps its change, and
+// publishing again sends it.
+test("a shift changed meanwhile comes back marked, and the rest is kept", async ({
+  page,
+  browser,
+}, testInfo) => {
+  const screen = buildScreen(page);
+  const publish = page.getByRole("button", { name: tb.publishChanges });
+  const warning = page.getByText(heT("app.build.swapsEnd", { count: 1 }));
+  const morning = screen.card("בוקר");
+  const evening = screen.card("ערב");
+  const home = page.getByRole("link", {
+    name: new RegExp(`^${literal(he.app.nav.home)}(\\s*,|$)`),
+  });
+  const leave = page.getByRole("dialog", { name: tb.leave.title });
+  // Published: Noa on Sunday morning, Yoav on Sunday evening. Yoav gives his
+  // evening away and Noa takes it: it waits for a manager.
+  await scheduleDemoSunday(
+    { morning: [[NOA.e164, null]], evening: [[YOAV.e164, null]] },
+    true,
+  );
+  await takenDemoSwap("evening", YOAV.e164, NOA.e164);
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(evening).toContainText(YOAV.first);
+
+  // Noa off the morning: the request waits on, so nothing is said.
+  await morning.click();
+  await screen.removeButton(NOA.name).click();
+  await screen.closeSheet();
+  await expect(publish).toBeVisible();
+  await expect(warning).toHaveCount(0);
+  // Yoav off his evening would end the request he made: it says so first.
+  await evening.click();
+  await screen.removeButton(YOAV.name).click();
+  await screen.closeSheet();
+  await expect(warning).toBeVisible();
+  // Leaving asks first, and says it there too, beside publishing on the way.
+  await home.click();
+  await expect(leave).toContainText(heT("app.build.swapsEnd", { count: 1 }));
+  await expect(
+    leave.getByRole("button", { name: tb.leave.publish }),
+  ).toHaveAccessibleDescription(heT("app.build.swapsEnd", { count: 1 }));
+  await leave.getByRole("button", { name: tb.leave.stay }).click();
+  await expect(leave).toHaveCount(0);
+  await expect(page).toHaveURL(/\/schedule\/build$/);
+
+  // The owner approves the request meanwhile, on a phone of their own.
+  const owner = await secondPage(browser, testInfo);
+  await signIn(owner, OWNER);
+  await owner.goto("/schedule/swaps");
+  await owner
+    .getByRole("button", {
+      name: new RegExp(`^${he.app.swaps.buttons.approve}, `),
+    })
+    .filter({ visible: true })
+    .click();
+  await expect(
+    owner.getByText(he.app.swaps.empty).filter({ visible: true }),
+  ).toBeVisible();
+  await owner.context().close();
+  expect(await demoSwaps()).toEqual([
+    { status: "approved", from: YOAV.e164, to: NOA.e164 },
+  ]);
+
+  await publish.click();
+  // (Next's route announcer is an empty alert of its own.)
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: heT("app.build.moved.changedOne", {
+        name: "ערב",
+        day: he.app.availability.weekdays.sun,
+      }),
+    }),
+  ).toBeVisible();
+  // The evening as it is now, with Noa, and marked; the morning keeps its
+  // change. Nothing was written, and no request is left to end.
+  await expect(evening).toContainText(tb.meanwhile);
+  await expect(evening).toContainText(NOA.first);
+  await expect(evening).not.toContainText(YOAV.first);
+  await expect(morning).toContainText(tb.nobody);
+  await expect(morning).not.toContainText(tb.meanwhile);
+  await expect(warning).toHaveCount(0);
+  expect(await scheduleAssignments()).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+    { weekday: 0, pattern: "evening", phone: NOA.e164, position: null },
+  ]);
+  await expectCleanPage(page);
+
+  // Published again: the morning's change goes out, and the approval stands.
+  await publish.click();
+  await expect(page.getByRole("status")).toHaveText(tb.published);
+  await expect
+    .poll(scheduleAssignments)
+    .toEqual([
+      { weekday: 0, pattern: "evening", phone: NOA.e164, position: null },
+    ]);
+  expect(await demoSwaps()).toEqual([
+    { status: "approved", from: YOAV.e164, to: NOA.e164 },
+  ]);
+  await expect(publish).toHaveCount(0);
+  await expect(evening).not.toContainText(tb.meanwhile);
 });
 
 test("a manager is warned before a tab takes unsaved work away", async ({

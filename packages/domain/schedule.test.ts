@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   availableFor,
   builderKey,
+  changedSince,
   coverageOf,
+  dayOfMoved,
   doubleBooked,
   draftWeek,
   overlappingShift,
   positionCounts,
   rangesOn,
   type ScheduledShift,
+  sameShift,
   scheduleGaps,
   scheduleOpening,
   shiftBasis,
@@ -23,6 +26,7 @@ import {
   stillNeeded,
   weekSchedule,
   withKnownPositions,
+  withShiftsAsNow,
 } from "./schedule";
 import { ISRAEL_TIME_ZONE } from "./shabbat";
 
@@ -217,6 +221,278 @@ describe("builderKey", () => {
     expect(builderKey(WEEK, saved, null)).not.toBe(
       builderKey(WEEK, null, saved),
     );
+  });
+});
+
+describe("sameShift", () => {
+  const shift: ScheduledShift = {
+    ...morning,
+    pattern: "morning",
+    assignees: [
+      { user: dana, position: "waiter" },
+      { user: avi, position: null },
+    ],
+  };
+
+  it("reads what the database digests the same: people in any order, a name with spaces, an id in capitals", () => {
+    expect(sameShift(shift, { ...shift })).toBe(true);
+    expect(
+      sameShift(shift, {
+        ...shift,
+        name: " Morning ",
+        assignees: [
+          { user: avi, position: null },
+          { user: dana.toUpperCase(), position: "waiter" },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it("tells every field the screen shows apart", () => {
+    for (const changes of [
+      { day: "2026-11-02" },
+      { name: "Brunch" },
+      { start: "08:00" },
+      { end: "16:00" },
+      { needed: 3 },
+      { pattern: null },
+      { assignees: [{ user: dana, position: "waiter" }] },
+      {
+        assignees: [
+          { user: dana, position: "cook" },
+          { user: avi, position: null },
+        ],
+      },
+    ]) {
+      expect(sameShift(shift, { ...shift, ...changes })).toBe(false);
+    }
+  });
+});
+
+describe("withShiftsAsNow", () => {
+  const id = (n: number) => `65000000-0000-4000-a000-0000000000e${n}`;
+  const at = (
+    n: number,
+    start: string,
+    end: string,
+    people: string[] = [],
+  ): ScheduledShift => ({
+    id: id(n),
+    day: WEEK,
+    name: `Shift ${n}`,
+    start,
+    end,
+    needed: 2,
+    pattern: null,
+    assignees: people.map((user) => ({ user, position: null })),
+  });
+  const seen = "0123456789abcdef0123456789abcdef";
+  const now = (shift: ScheduledShift) => ({
+    ...shift,
+    id: shift.id ?? "",
+    seen,
+  });
+  const screen = {
+    rows: [
+      { id: 0, shift: at(1, "07:00", "15:00") },
+      // A shift added on the screen, not saved yet.
+      {
+        id: 4,
+        shift: { ...at(9, "12:00", "14:00"), id: undefined },
+      },
+      { id: 1, shift: at(2, "16:00", "23:00", [dana]) },
+    ],
+    removed: [{ id: 2, shift: at(3, "18:00", "22:00") }],
+  };
+  const never = () => {
+    throw new Error("No new row expected");
+  };
+
+  it("puts a shift changed meanwhile back as it is now, and keeps the rest of the work", () => {
+    const evening = at(2, "16:00", "23:00", [avi]);
+    const next = withShiftsAsNow(
+      screen,
+      { shifts: [now(evening)], gone: [] },
+      never,
+    );
+    expect(next.rows).toEqual([
+      screen.rows[0],
+      screen.rows[1],
+      // The screen's id stays, with the shift as it is now.
+      { id: 1, shift: evening },
+    ]);
+    expect(next.removed).toEqual(screen.removed);
+  });
+
+  it("moves it within its day when its hours changed meanwhile", () => {
+    const early = at(2, "05:00", "06:00", [dana]);
+    const next = withShiftsAsNow(
+      screen,
+      { shifts: [now(early)], gone: [] },
+      never,
+    );
+    expect(next.rows.map((r) => r.id)).toEqual([1, 0, 4]);
+  });
+
+  it("brings back a shift the screen removed, as it is now", () => {
+    const late = at(3, "18:00", "23:30");
+    const next = withShiftsAsNow(
+      screen,
+      { shifts: [now(late)], gone: [] },
+      never,
+    );
+    expect(next.rows.map((r) => r.id)).toEqual([0, 4, 1, 2]);
+    expect(next.rows[3]).toEqual({ id: 2, shift: late });
+    expect(next.removed).toEqual([]);
+  });
+
+  it("leaves a shift deleted meanwhile among the removed, to bring back as a new one", () => {
+    const next = withShiftsAsNow(screen, { shifts: [], gone: [id(2)] }, never);
+    expect(next.rows.map((r) => r.id)).toEqual([0, 4]);
+    const { id: _, ...evening } = at(2, "16:00", "23:00", [dana]);
+    expect(next.removed).toEqual([
+      screen.removed[0],
+      { id: 1, shift: evening },
+    ]);
+  });
+
+  it("adds a shift the screen does not have under a new id", () => {
+    const other = at(7, "08:00", "09:00");
+    const next = withShiftsAsNow(
+      screen,
+      { shifts: [now(other)], gone: [] },
+      () => 5,
+    );
+    expect(next.rows.map((r) => r.id)).toEqual([0, 5, 4, 1]);
+  });
+});
+
+describe("changedSince", () => {
+  const read: ScheduledShift[] = [
+    { ...morning, id: "a", pattern: "morning", assignees: [] },
+    {
+      ...morning,
+      id: "b",
+      name: "Evening",
+      start: "16:00",
+      end: "23:00",
+      pattern: null,
+      assignees: [{ user: dana, position: null }],
+    },
+  ];
+  const [a, b] = read as [ScheduledShift, ScheduledShift];
+
+  it("finds nothing to send in the week as it was read, in any order", () => {
+    expect(changedSince(read, [b, a])).toBe(false);
+  });
+
+  it("finds a shift changed, one new on the screen, and one read and not sent", () => {
+    expect(changedSince(read, [a, { ...b, needed: 3 }])).toBe(true);
+    const { id: _, ...added } = { ...a, start: "05:00", end: "06:00" };
+    expect(changedSince(read, [...read, added])).toBe(true);
+    expect(changedSince(read, [a])).toBe(true);
+  });
+
+  it("finds a week drawn from the pattern, with nothing read, still to send", () => {
+    const drawn = read.map(({ id: _, ...shift }) => shift);
+    expect(changedSince(drawn, drawn)).toBe(true);
+  });
+
+  // The likeliest stale screen: the one shift changed here was changed
+  // meanwhile too, so putting it back as it is now leaves nothing to send.
+  it("finds nothing left once the only change, refused, is put back as it is now", () => {
+    // Avi was put on the evening meanwhile, in Dana's place.
+    const evening = { ...b, assignees: [{ user: avi, position: null }] };
+    const moved = { shifts: [{ ...evening, id: "b", seen: "now" }], gone: [] };
+    const readNow = [a, evening];
+    const never = () => {
+      throw new Error("No new row expected");
+    };
+    const left = (morningHere: ScheduledShift) =>
+      changedSince(
+        readNow,
+        withShiftsAsNow(
+          {
+            rows: [
+              { id: 0, shift: morningHere },
+              { id: 1, shift: { ...b, needed: 3 } },
+            ],
+            removed: [],
+          },
+          moved,
+          never,
+        ).rows.map((r) => r.shift),
+      );
+    expect(left(a)).toBe(false);
+    // With another change of its own, that one is left.
+    expect(left({ ...a, needed: 1 })).toBe(true);
+  });
+
+  it("finds nothing left once the only shift changed was deleted meanwhile", () => {
+    const next = withShiftsAsNow(
+      {
+        rows: [
+          { id: 0, shift: a },
+          { id: 1, shift: { ...b, needed: 3 } },
+        ],
+        removed: [],
+      },
+      { shifts: [], gone: ["b"] },
+      () => 2,
+    );
+    expect(
+      changedSince(
+        [a],
+        next.rows.map((r) => r.shift),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe("dayOfMoved", () => {
+  const sent = [
+    { id: "tue", day: "2026-11-03" },
+    { id: "thu", day: "2026-11-05" },
+    { day: "2026-11-01" },
+  ];
+
+  it("stays on the day shown while it holds a shift changed meanwhile", () => {
+    expect(
+      dayOfMoved(
+        "2026-11-03",
+        { shifts: [{ day: "2026-11-05" }, { day: "2026-11-03" }], gone: [] },
+        sent,
+      ),
+    ).toBe("2026-11-03");
+  });
+
+  it("goes to the earliest of their days, as they are now", () => {
+    expect(
+      dayOfMoved(
+        "2026-11-01",
+        { shifts: [{ day: "2026-11-06" }, { day: "2026-11-04" }], gone: [] },
+        sent,
+      ),
+    ).toBe("2026-11-04");
+  });
+
+  it("finds a shift deleted meanwhile on its day as it was sent", () => {
+    expect(dayOfMoved("2026-11-01", { shifts: [], gone: ["thu"] }, sent)).toBe(
+      "2026-11-05",
+    );
+    expect(
+      dayOfMoved(
+        "2026-11-05",
+        { shifts: [{ day: "2026-11-02" }], gone: ["thu"] },
+        sent,
+      ),
+    ).toBe("2026-11-05");
+  });
+
+  it("stays put with nothing to show", () => {
+    expect(
+      dayOfMoved("2026-11-02", { shifts: [], gone: ["elsewhere"] }, sent),
+    ).toBe("2026-11-02");
   });
 });
 

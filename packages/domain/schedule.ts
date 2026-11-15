@@ -168,6 +168,160 @@ export function builderKey(
 }
 
 /**
+ * Whether two versions of a shift show the same: its day, name, hours,
+ * people needed and pattern, and the same people in the same positions, in
+ * any order. These are what the database digests of a shift
+ * (`private.shift_digest`, which stays the authority), read off the screen's
+ * own shape, for what the builder tells before it sends the week
+ * (`swapsEndedBy` in ./swaps). Never sent as what was seen.
+ */
+export function sameShift(
+  a: Pick<
+    ScheduledShift,
+    "day" | "name" | "start" | "end" | "needed" | "pattern" | "assignees"
+  >,
+  b: Pick<
+    ScheduledShift,
+    "day" | "name" | "start" | "end" | "needed" | "pattern" | "assignees"
+  >,
+): boolean {
+  const people = (shift: Pick<ScheduledShift, "assignees">) =>
+    shift.assignees
+      .map((p) => `${p.user.toLowerCase()}=${p.position ?? ""}`)
+      .sort()
+      .join(",");
+  return (
+    a.day === b.day &&
+    a.name.trim() === b.name.trim() &&
+    a.start === b.start &&
+    a.end === b.end &&
+    a.needed === b.needed &&
+    (a.pattern ?? null) === (b.pattern ?? null) &&
+    people(a) === people(b)
+  );
+}
+
+/**
+ * A stored shift as it is now, with what is seen of it (`public.week_shifts`):
+ * what the builder puts back after a save or publish was refused because the
+ * shift changed meanwhile (`weekMoved`).
+ */
+export type ShiftAsNow = ScheduledShift & { id: string; seen: string };
+
+/** A shift on the builder's screen, under an id of the screen's own. */
+export type ScreenShift = { id: number; shift: ScheduledShift };
+
+/**
+ * The builder's week after a save or publish was refused because shifts it
+ * changed had changed meanwhile (`weekMoved`, 40001 with hint `moved`):
+ * - each of `now` takes the place of the screen's version of it, as it is now
+ *   and in its place in the day (back among the shifts if the screen had
+ *   removed it), keeping the screen's id, so an open sheet keeps its place;
+ * - each of `gone` (deleted meanwhile) goes among the removed, with its stored
+ *   id dropped, so bringing it back adds it as a new shift;
+ * - everything else stays as it is on the screen, unsaved work included.
+ * A shift of `now` the screen does not have (which it always has: the
+ * database names only shifts the screen read) is added under `nextId()`.
+ */
+export function withShiftsAsNow(
+  screen: { rows: readonly ScreenShift[]; removed: readonly ScreenShift[] },
+  moved: { shifts: readonly ShiftAsNow[]; gone: readonly string[] },
+  nextId: () => number,
+): { rows: ScreenShift[]; removed: ScreenShift[] } {
+  const asNow = new Map<string, ScheduledShift>(
+    moved.shifts.map(({ seen: _, ...shift }) => [shift.id, shift]),
+  );
+  const gone = new Set(moved.gone);
+  const idOf = (row: ScreenShift) => row.shift.id ?? "";
+  const withoutId = ({ id, shift: { id: _, ...shift } }: ScreenShift) => ({
+    id,
+    shift,
+  });
+
+  const back: ScreenShift[] = [];
+  const placed = new Set<string>();
+  for (const row of [...screen.rows, ...screen.removed]) {
+    const shift = asNow.get(idOf(row));
+    if (shift && !placed.has(idOf(row))) {
+      placed.add(idOf(row));
+      back.push({ id: row.id, shift });
+    }
+  }
+  for (const [id, shift] of asNow) {
+    if (!placed.has(id)) back.push({ id: nextId(), shift });
+  }
+
+  let rows = screen.rows.filter(
+    (row) => !asNow.has(idOf(row)) && !gone.has(idOf(row)),
+  );
+  for (const row of back) {
+    const at = shiftSlot(
+      rows.map((r) => r.shift),
+      row.shift,
+    );
+    rows = [...rows.slice(0, at), row, ...rows.slice(at)];
+  }
+  return {
+    rows,
+    removed: [
+      ...screen.removed
+        .filter((row) => !asNow.has(idOf(row)))
+        .map((row) => (gone.has(idOf(row)) ? withoutId(row) : row)),
+      ...screen.rows.filter((row) => gone.has(idOf(row))).map(withoutId),
+    ],
+  };
+}
+
+/**
+ * Whether sending `sent` for a week read as `read` would write anything: a
+ * shift new on the screen, one not as it was read (`sameShift`), or one read
+ * and not sent. After a write refused because shifts changed meanwhile, with
+ * those put back as they are now (`withShiftsAsNow`), it says whether any of
+ * the screen's own work is left to send.
+ */
+export function changedSince(
+  read: readonly ScheduledShift[],
+  sent: readonly ScheduledShift[],
+): boolean {
+  const before = new Map(
+    read.flatMap((shift) => (shift.id ? [[shift.id, shift] as const] : [])),
+  );
+  const kept = new Set<string>();
+  for (const shift of sent) {
+    const was = shift.id ? before.get(shift.id) : undefined;
+    if (!shift.id || !was || !sameShift(was, shift)) return true;
+    kept.add(shift.id);
+  }
+  return [...before.keys()].some((id) => !kept.has(id));
+}
+
+/**
+ * The day a phone shows after a write refused because shifts changed
+ * meanwhile (`weekMoved`): the one on the screen while one of those shifts is
+ * on it, else the earliest of theirs, so what is marked is in sight. A shift
+ * changed meanwhile is on its day as it is now; one deleted meanwhile on its
+ * day as the screen sent it.
+ */
+export function dayOfMoved(
+  current: string,
+  moved: {
+    shifts: readonly Pick<ScheduledShift, "day">[];
+    gone: readonly string[];
+  },
+  sent: readonly Pick<ScheduledShift, "id" | "day">[],
+): string {
+  const days = [
+    ...moved.shifts.map((shift) => shift.day),
+    ...sent
+      .filter(
+        (shift) => shift.id !== undefined && moved.gone.includes(shift.id),
+      )
+      .map((shift) => shift.day),
+  ].sort();
+  return days.includes(current) ? current : (days[0] ?? current);
+}
+
+/**
  * A new week's shifts from the business's shift pattern: every shift on
  * every day it runs, day by day and earliest first, with nobody on it yet.
  */
