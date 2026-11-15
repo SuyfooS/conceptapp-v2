@@ -157,27 +157,49 @@ export async function getLastPayrollExport(
 
 /**
  * The roles the business gives pay access to (`public.role_permissions`), as
- * the signed-in person may read them: its members, and the team viewing it.
+ * the signed-in person may read them: its owners, and the team viewing it as
+ * its owner (20261115000800_roles_setter.sql), as /manage/access is open to.
  */
 export async function getPayRoles(businessId: string): Promise<PayRole[]> {
   return readPayRoles(await createClient(), businessId);
 }
 
+/**
+ * The same, read with the secret key for the console, whose people aren't
+ * members of the business. Callers check that the person is on the team.
+ */
+export async function getPayRolesForTeam(
+  businessId: string,
+): Promise<PayRole[]> {
+  return readPayRoles(createAdminClient(), businessId);
+}
+
+/**
+ * Only the rows that give it (`allowed`): a row may deny a key since the
+ * roles plan's R1 (20261115000700_roles_catalogue.sql). Nothing writes a
+ * denial for pay, whose rows are added and removed, but one must never read
+ * as pay on. Before that migration there is no column, and every row gives.
+ */
 async function readPayRoles(
   supabase: SupabaseClient<Database>,
   businessId: string,
 ): Promise<PayRole[]> {
-  const { data, error } = await supabase
-    .from("role_permissions")
-    .select("role")
-    .eq("business_id", businessId)
-    .eq("perm", PAY_PERMISSION);
+  const rows = (allowedOnly: boolean) => {
+    const query = supabase
+      .from("role_permissions")
+      .select("role")
+      .eq("business_id", businessId)
+      .eq("perm", PAY_PERMISSION);
+    return allowedOnly ? query.eq("allowed", true) : query;
+  };
+  let { data, error } = await rows(true);
+  if (isMissingColumn(error)) ({ data, error } = await rows(false));
   if (error) {
     // Before 20261110000300_payroll_access.sql: no role has it.
     if (error.code === "PGRST205" || error.code === "42P01") return [];
     throw error;
   }
-  return data.flatMap((row) =>
+  return (data ?? []).flatMap((row) =>
     row.role === "manager" || row.role === "worker" ? [row.role] : [],
   );
 }

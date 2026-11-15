@@ -58,4 +58,14 @@ module's own in the manifest, the team screen's and the management page's in
 `permissionsByDefault` gives today's rules from the declarations alone, for a
 project the database can't answer yet.
 
+`role-access.ts` is what "תפקידים והרשאות" draws and writes: edit, view or
+none per area and the switches under edit, each area's permissions
+(`areaPermissions`: its view, its edit, its switches), a role's levels from
+what the database says it holds (`accessFromHeld`), the writes that bring one
+area to a level (`areaWrites`: denials first, each before what it requires,
+then grants, each after it, and a grant whose requirement goes taken back
+unless the default makes it, so an undo leaves no row), whether an area is
+open for changes (`areaOpen`: every one of its keys settable), and the
+matrix from the declarations alone (`matrixByDefault`).
+
 Import as `@domain/<file>`.

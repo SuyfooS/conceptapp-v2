@@ -47,11 +47,14 @@ const shiftLead = withExtra(
 export const demoRoles: RolesData = {
   // Every area: the demo restaurant has each of these modules on, chat
   // included (/design/chat).
+  // Each open for changes, as the screen will be once every area's phase
+  // has moved it (the roles plan's R3 to R8).
   areas: ACCESS_AREAS.map((key) => {
     const module = AREA_MODULE[key];
     return {
       key,
       icon: module ? (manifestFor(module).nav?.icon ?? null) : null,
+      open: true,
     };
   }),
   roles: [

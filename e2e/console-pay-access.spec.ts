@@ -338,3 +338,33 @@ test("where the time clock and chat are off, the console offers no pay access", 
     await owner.context().close();
   }
 });
+
+// Roles and permissions from the console (the roles plan's R2): the
+// business's page leads there beside who sees pay, and the screen draws the
+// business's own managers and workers, every area closed until its phase
+// opens it (R3 to R8), with no role to add yet (R11), clean at each width.
+test("the team sees roles and permissions, each area closed until it opens", async ({
+  page,
+}) => {
+  const r = he.app.manage.roles;
+  await openPayAccessBusiness();
+  await signIn(page, ADMIN, /\/admin$/);
+  await page.goto(BUSINESS);
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(`^${r.title}`) })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`${BUSINESS}/roles$`));
+  await expect(
+    page
+      .getByRole("heading", { level: 1, name: r.title })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  // Back to the business by its name, from the console's own screen.
+  await expect(
+    page.getByRole("link", { name: PAY_ACCESS_BUSINESS.name, exact: true }),
+  ).toHaveAttribute("href", BUSINESS);
+  await expect(shown(page, r.closedAll)).toBeVisible();
+  await expect(page.getByRole("button", { name: r.add })).toHaveCount(0);
+  await expectCleanPage(page);
+});

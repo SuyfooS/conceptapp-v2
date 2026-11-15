@@ -33,6 +33,7 @@ export function RolesDemo({
       data={data}
       actions={demoActions}
       paths={{
+        place: "app",
         manage: "/design/shell/manage",
         access: "/design/shell/manage/access",
         team: "/design/shell/team",

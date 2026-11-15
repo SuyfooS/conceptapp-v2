@@ -1,5 +1,9 @@
 import { getBusinessSetup } from "@db/admin";
-import { consolePayAccess, platformCan } from "@domain/platform";
+import {
+  consolePayAccess,
+  consoleRolesAccess,
+  platformCan,
+} from "@domain/platform";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentPlatformRole } from "../../../staff";
@@ -52,6 +56,11 @@ export default async function BusinessSetupPage({
       addHref={
         platformCan(role, "staff.invite")
           ? `/admin/businesses/${business.slug}/people/new`
+          : null
+      }
+      rolesHref={
+        consoleRolesAccess(role) !== null
+          ? `/admin/businesses/${business.slug}/roles`
           : null
       }
       accessHref={

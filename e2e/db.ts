@@ -1484,7 +1484,7 @@ export async function setShopPayRole(
 export async function shopPayRoles(): Promise<string[]> {
   const rows = await sql<{ role: string }[]>`
     select role::text as role from public.role_permissions
-    where business_id = ${DEMO_SHOP} and perm = 'clock.payroll'
+    where business_id = ${DEMO_SHOP} and perm = 'clock.payroll' and allowed
     order by role`;
   return rows.map((row) => row.role);
 }
@@ -3051,6 +3051,7 @@ export async function payAccessRoles(): Promise<string[]> {
   const rows = await sql<{ role: string }[]>`
     select role::text as role from public.role_permissions
     where business_id = ${PAY_ACCESS_BUSINESS.id} and perm = 'clock.payroll'
+      and allowed
     order by role`;
   return rows.map((row) => row.role);
 }
