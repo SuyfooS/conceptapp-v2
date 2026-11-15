@@ -16,14 +16,19 @@ export const manifest = defineManifest({
   },
   homeWidget: { minRole: "worker" },
   permissions: [
-    { key: "clock.edit", defaultRole: "manager" },
+    { key: "clock.edit", area: "time_clock", defaultRole: "manager" },
     /**
      * Everyone's hours, wages, payroll details and estimates (payroll P2). Owners
      * and accountants always hold it; an owner gives it to managers, workers or
      * one person, and managers start without it (Orel, 9 November 2026). Without
      * it a manager still sees and corrects hours, with no amounts.
      */
-    { key: "clock.payroll", defaultRole: "owner", byOwner: true },
+    {
+      key: "clock.payroll",
+      area: "time_clock",
+      defaultRole: "owner",
+      byOwner: true,
+    },
   ],
   settings: z.object({
     /**

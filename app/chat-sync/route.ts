@@ -24,7 +24,7 @@ import {
   withinHeld,
 } from "@domain/chat-sync";
 import { holdsPermission, isStaff } from "@domain/modules";
-import { manifestFor } from "@modules/registry";
+import { permissions } from "@modules/registry";
 import { sameOriginRequest } from "@/app/origin";
 
 const NO_STORE = { "Cache-Control": "no-store" } as const;
@@ -141,12 +141,6 @@ export async function GET(request: Request): Promise<Response> {
       (stampMoved || query.recheck)
     ) {
       const from = query.from ?? null;
-      const moderates = holdsPermission(
-        manifestFor("chat"),
-        place.role,
-        place.perms,
-        "chat.moderate",
-      );
       const [marked, shownRemoved, pinned] = await Promise.all([
         after && from
           ? getMarkedMessages({
@@ -157,10 +151,22 @@ export async function GET(request: Request): Promise<Response> {
             })
           : Promise.resolve<ChatMessage[]>([]),
         getMessagesById(businessId, conversationId, query.removed ?? []),
-        // A private chat has no announcements.
+        // A private chat has no announcements. In a group, who confirmed one
+        // is counted for its author and the moderators only, as the database
+        // says (a manager's by default included): what they hold is read
+        // here alone, beside the other reads, so most polls cost no more.
         stamp.kind === "direct"
           ? Promise.resolve<PinnedAnnouncement[]>([])
-          : getPinnedState(businessId, conversationId, own.userId, moderates),
+          : place
+              .permissions(permissions)
+              .then((perms) =>
+                getPinnedState(
+                  businessId,
+                  conversationId,
+                  own.userId,
+                  holdsPermission({ role: place.role, perms }, "chat.moderate"),
+                ),
+              ),
       ]);
       const markedHere = withinHeld(marked, from, after);
       if (chatMarks(markedHere, pinned) !== query.marks) {

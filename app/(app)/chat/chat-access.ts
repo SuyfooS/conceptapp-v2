@@ -28,7 +28,7 @@ export const chatAccess = cache(async () => {
   ) {
     return null;
   }
-  const { role, perms, business } = membership;
+  const { role, business } = membership;
   return {
     userId: member.userId,
     businessId: business.id,
@@ -43,9 +43,9 @@ export const chatAccess = cache(async () => {
      */
     demo: isDemoBusiness(business.slug),
     /** Posts announcements in groups (C3). */
-    canAnnounce: holdsPermission(manifest, role, perms, "chat.announce"),
+    canAnnounce: holdsPermission(membership, "chat.announce"),
     /** In every department's group, and removes others' messages in groups (C3). */
-    canModerate: holdsPermission(manifest, role, perms, "chat.moderate"),
+    canModerate: holdsPermission(membership, "chat.moderate"),
   };
 });
 

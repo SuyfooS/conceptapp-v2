@@ -48,12 +48,12 @@ export const manifest = defineManifest({
   permissions: [
     // Post announcements in groups. public.send_chat_message asks
     // private.holds_perm, which holds the same default.
-    { key: "chat.announce", defaultRole: "manager" },
+    { key: "chat.announce", area: "chat", defaultRole: "manager" },
     // Be in every department's group, read all of it, and remove others'
     // messages in groups (private.chat_moderates).
-    { key: "chat.moderate", defaultRole: "manager" },
+    { key: "chat.moderate", area: "chat", defaultRole: "manager" },
     // Send official documents to people (C6; pay holders send them too).
-    { key: "chat.send_documents", defaultRole: "manager" },
+    { key: "chat.send_documents", area: "chat", defaultRole: "manager" },
   ],
   settings: z.object({
     /**

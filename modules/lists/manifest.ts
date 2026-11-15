@@ -20,10 +20,10 @@ export const manifest = defineManifest({
   permissions: [
     // Edit templates and their times, read every list, reopen and cancel any.
     // private.can_manage_lists holds the same default.
-    { key: "lists.manage", defaultRole: "manager" },
+    { key: "lists.manage", area: "lists", defaultRole: "manager" },
     // Send any list to anyone. A department's own orders need neither.
     // private.can_send_lists holds the same default.
-    { key: "lists.send", defaultRole: "manager" },
+    { key: "lists.send", area: "lists", defaultRole: "manager" },
   ],
   settings: z.object({
     /** Remind the people a list is for this long before it is due (0: no reminder). */

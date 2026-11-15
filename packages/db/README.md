@@ -501,22 +501,27 @@ list templates read through `private.is_staff_member` and
 `private.is_viewing_staff`, and `private.holds_list`, `private.sees_list` and
 `private.list_holders` count only the staff, so an accountant, and a view as
 one, reads none of them, while the roster and names stay open.
-Every permission a manifest declares is a row of `public.permission_keys`
-(`default_roles`: the staff roles other than the owner at or above its
-`defaultRole`; `by_owner`: an owner gives it; `modules/permissions.db.test.ts`
-keeps them the same). `clock.payroll` is the one an owner gives: everyone's
-hours, and later wages, details and estimates. Owners and accountants
-(`private.accountant_perms()`) always hold it; managers don't until the owner
-gives it to the role (Orel, 9 November 2026), a row of
+Every permission a manifest declares, and the team screen's and the
+management page's (`CORE_PERMISSIONS` in `@domain/permissions`), is a row of
+`public.permission_keys` (`default_roles`: the staff roles other than the
+owner at or above its `defaultRole`; `by_owner`: an owner gives it;
+`modules/permissions.db.test.ts` keeps them the same). `clock.payroll` is the
+one an owner gives: everyone's hours, and later wages, details and estimates.
+Owners and accountants (`private.accountant_perms()`) always hold it; managers
+don't until the owner gives it to the role (Orel, 9 November 2026), a row of
 `public.role_permissions`; one person gets it in `memberships.perms`.
 `private.holds_perm(business, person, perm_key)` says who holds what (owner;
-accountant for theirs; on the staff, given it, in a role given it, or in a
-default role of one that isn't the owner's to give), `private.has_perm` asks it
-for the caller, and `public.my_permissions(business)` lists the caller's, sorted,
-for the screens (a view: its role's defaults, `clock.payroll` only as an
-accountant). `public.set_role_permission(actor, business, grant_role, perm_key,
-granted)` and `public.set_member_permission(actor, business, person, perm_key,
-granted)` change grants for an owner or the team (secret key), never for
+accountant for theirs; on the staff, given it, or held by their role: the
+role's row of `public.role_permissions` when there is one, granted or denied,
+else a default role of a key that isn't the owner's to give, and only while
+they also hold what the key `requires`), `private.has_perm` asks it for the
+caller, and `public.my_permissions(business)` lists the caller's, sorted, for
+the screens (a view: what its role holds by the same rule,
+`private.role_holds`, and `clock.payroll` only as an accountant); permissions
+by area, below, says more. `public.set_role_permission(actor, business,
+grant_role, perm_key, granted)` and `public.set_member_permission(actor,
+business, person, perm_key, granted)` change grants for an owner or the team
+(secret key), never for
 oneself, an owner or an accountant, each change logged as `permission.grant`
 or `permission.revoke` and a call that changes nothing logging nothing. Pay
 holders and a view as an accountant read every hour and break of the business,
@@ -531,6 +536,42 @@ an accountant only for a month they worked in. The demo
 shop's managers hold pay access (`rolePermissions` in its definition, put back
 by `private.seed_demo_pay`). `payroll_access.test.sql`, `team_invites`,
 `view_as`, `helpers`, `create_business`, `demo_reset` and `rls_enabled` cover it.
+
+Permissions by area (`20261115000700_roles_catalogue.sql`, the roles plan's
+R1; Orel, 15 November 2026), with nothing changed for anyone yet. Every row of
+`public.permission_keys` has its `area` (its module's: scheduling,
+time_clock, lists, chat, reservations, storefront; or team or manage), what it
+`requires` (`schedule.publish` needs `schedule.edit`), and `settable`, whether
+owners switch it per role, off for every key until its area's phase moves the
+area's checks onto it (`clock.payroll` keeps its own switch). The team
+screen's and the management page's keys belong to no module (`module_key`
+null): `team.view`, `team.edit` (needs `team.view`), `manage.view` and
+`manage.edit` (needs `manage.view`), managers' by default, as `CORE_PERMISSIONS`
+in `@domain/permissions` declares them; nothing reads them yet. A row of
+`public.role_permissions` now grants or denies (`allowed`, true by default):
+when there is one it decides, and the key's default roles count only without
+one. Nothing writes a denial yet, and a key an owner gives is still added and
+removed, never denied (`private.refuse_by_owner_denial`, 22023), so
+`getPayRoles` reads the rows as they are. `private.holds_perm` adds the rows'
+answer and what a key requires: on the staff, a key given personally holds as
+before; one the role gives (`private.role_gives`: its row, else its default
+roles) holds only while the person also holds what it requires. A view in
+`public.my_permissions` holds what its role holds by the same rule
+(`private.role_holds`, the role down the chain of what each key requires), a
+key an owner gives only as an accountant. The app keeps no defaults of its own:
+`holdsPermission` is "an owner, or the key is in what the database answered",
+and `getOwnPlace` (chat-sync) reads `my_permissions` too, only when asked
+(`permissions(catalogue)`); while the function is missing on a project,
+today's rules come from the declarations (`permissionsByDefault`).
+`tooling/role-checks.test.ts` fails a migration after this one that writes a
+rule by rank (`has_role(`, `role in ('owner', 'manager')`, `is_viewing(…,
+'manager')`, `members_in(…, '{owner,manager}')` or its array, a line's
+`audience` of `'manager'` in `private.notify`) outside the rules that stay by
+role and those its areas' phases have yet to move, which they take out as they
+do. `roles_catalogue.test.sql` covers it, with the previous `holds_perm`
+frozen and compared for every role, personal key and role row, and a role's
+pay row reaching its members but never a view as the role;
+`payroll_access.test.sql` counts the new keys.
 
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
@@ -1175,13 +1216,16 @@ read as messages/he.json. Console reads and writes are in `@db/wording`;
   since there is no Supabase client in the browser; Secure over https (not
   on the browser tests' http://127.0.0.1); sameSite lax. Signing out ends
   this device's session only (`scope: "local"`).
-- `@db/session`: `getCurrentMember()`, the signed-in person and their
+- `@db/session`: `getCurrentMember(catalogue)`, the signed-in person and their
   business: the one the `ca_business` cookie names when it is one of their
   active memberships, else their place on a staff, else the first they
   joined (`chosenMembership` in `@domain/businesses`), with every business
-  they are in as `businesses` (payroll P3b). `app/(app)/member.ts` wraps it
-  in React `cache()`; the cookie is set only by `app/(app)/business-cookie.ts`
-  (the switch, the door, joining, a line from another business).
+  they are in as `businesses` (payroll P3b), and what they hold there from
+  `public.my_permissions` (today's rules from `catalogue`, every permission
+  declared, while it is missing). `app/(app)/member.ts` wraps it in React
+  `cache()` with `permissions` from `@modules/registry`; the cookie is set
+  only by `app/(app)/business-cookie.ts` (the switch, the door, joining, a
+  line from another business).
 - `@db/supabase/admin`: `createAdminClient()` with `SUPABASE_SECRET_KEY`,
   for server-only writes. Bypasses RLS, so every caller checks who is
   asking first.

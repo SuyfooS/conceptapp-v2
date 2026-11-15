@@ -50,4 +50,12 @@ and marks once, on its first counted shift. It never reads an estimate or an
 amount, so the file is the same with amounts on or off; the app writes the
 cells as XLSX.
 
+Permissions are declared by area (`PermissionDeclaration` in `modules.ts`: a
+module's own in the manifest, the team screen's and the management page's in
+`permissions.ts` as `CORE_PERMISSIONS`), and `declaredPermissions` is what
+`public.permission_keys` holds. Who holds what is the database's answer
+(`public.my_permissions`); `holdsPermission` only reads it, and
+`permissionsByDefault` gives today's rules from the declarations alone, for a
+project the database can't answer yet.
+
 Import as `@domain/<file>`.

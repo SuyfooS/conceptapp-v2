@@ -29,7 +29,9 @@ const schedule = defineManifest({
   requires: [],
   nav: { href: "/schedule", icon: "calendar", minRole: "worker", order: 10 },
   homeWidget: { minRole: "worker" },
-  permissions: [{ key: "schedule.edit", defaultRole: "manager" }],
+  permissions: [
+    { key: "schedule.edit", area: "scheduling", defaultRole: "manager" },
+  ],
   settings: z.object({
     dueTime: z
       .string()
@@ -58,8 +60,13 @@ const reservations = defineManifest({
   nav: null,
   homeWidget: null,
   permissions: [
-    { key: "reservations.edit", defaultRole: "worker" },
-    { key: "clock.payroll", defaultRole: "owner", byOwner: true },
+    { key: "reservations.edit", area: "reservations", defaultRole: "worker" },
+    {
+      key: "clock.payroll",
+      area: "time_clock",
+      defaultRole: "owner",
+      byOwner: true,
+    },
   ],
   settings: z.object({}),
 });
@@ -325,74 +332,34 @@ describe("permissionInUse", () => {
 });
 
 describe("holdsPermission", () => {
-  it("gives a permission to its default role and above, and to whoever has its key", () => {
-    expect(holdsPermission(schedule, "manager", [], "schedule.edit")).toBe(
-      true,
-    );
-    expect(holdsPermission(schedule, "owner", [], "schedule.edit")).toBe(true);
-    expect(holdsPermission(schedule, "worker", [], "schedule.edit")).toBe(
+  it("gives an owner every permission, declared or not", () => {
+    expect(holdsPermission(as("owner"), "schedule.edit")).toBe(true);
+    expect(holdsPermission(as("owner"), "clock.payroll")).toBe(true);
+    expect(holdsPermission(as("owner"), "billing.manage")).toBe(true);
+  });
+
+  it("gives anyone else what the database answered, and nothing by role", () => {
+    // public.my_permissions counts the role's defaults, the business's rows
+    // for the role and what was given; the app adds none of its own, so a
+    // manager the business took schedule.edit from doesn't hold it.
+    expect(holdsPermission(as("manager"), "schedule.edit")).toBe(false);
+    expect(
+      holdsPermission(as("manager", ["schedule.edit"]), "schedule.edit"),
+    ).toBe(true);
+    expect(
+      holdsPermission(as("worker", ["schedule.edit"]), "schedule.edit"),
+    ).toBe(true);
+    expect(holdsPermission(as("worker", ["other.key"]), "schedule.edit")).toBe(
       false,
     );
-    expect(
-      holdsPermission(schedule, "worker", ["schedule.edit"], "schedule.edit"),
-    ).toBe(true);
-    expect(
-      holdsPermission(schedule, "worker", ["other.key"], "schedule.edit"),
-    ).toBe(false);
   });
 
-  it("keeps a key the manifest doesn't declare to owners and those given it", () => {
-    expect(holdsPermission(clock, "owner", [], "clock.edit")).toBe(true);
-    expect(holdsPermission(clock, "manager", [], "clock.edit")).toBe(false);
-    expect(
-      holdsPermission(clock, "manager", ["clock.edit"], "clock.edit"),
-    ).toBe(true);
-  });
-
-  it("gives an accountant what accountants hold and nothing by rank", () => {
-    // At a worker's rank, but off the staff: no worker-default permission.
-    expect(
-      holdsPermission(reservations, "worker", [], "reservations.edit"),
-    ).toBe(true);
-    expect(
-      holdsPermission(reservations, "accountant", [], "reservations.edit"),
-    ).toBe(false);
-    expect(
-      holdsPermission(
-        reservations,
-        "accountant",
-        ["reservations.edit"],
-        "reservations.edit",
-      ),
-    ).toBe(false);
+  it("gives an accountant only what the database answered for them", () => {
     for (const key of ACCOUNTANT_PERMISSIONS) {
-      expect(holdsPermission(reservations, "accountant", [], key)).toBe(true);
+      expect(holdsPermission(as("accountant", [key]), key)).toBe(true);
+      expect(holdsPermission(as("accountant"), key)).toBe(false);
     }
-  });
-
-  it("gives a permission an owner switches only to owners and those given it", () => {
-    expect(holdsPermission(reservations, "owner", [], "clock.payroll")).toBe(
-      true,
-    );
-    expect(holdsPermission(reservations, "manager", [], "clock.payroll")).toBe(
-      false,
-    );
-    expect(
-      holdsPermission(
-        reservations,
-        "manager",
-        ["clock.payroll"],
-        "clock.payroll",
-      ),
-    ).toBe(true);
-    expect(
-      holdsPermission(
-        reservations,
-        "worker",
-        ["clock.payroll"],
-        "clock.payroll",
-      ),
-    ).toBe(true);
+    expect(holdsPermission(as("accountant"), "reservations.edit")).toBe(false);
   });
 });
 
