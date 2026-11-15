@@ -92,6 +92,9 @@ const PAGES = [
   "/design/shell/manage/notifications",
   "/design/shell/manage/departments",
   "/design/shell/manage/access",
+  "/design/shell/manage/roles",
+  // The role the business named, opened first: on a phone, its own screen.
+  "/design/shell/manage/roles?role=shift-lead",
   "/design/shell/lists",
   "/design/shell/lists?sent=list-floor-opening",
   "/design/shell/lists?department=dep-bar",
@@ -2358,6 +2361,113 @@ test("the console's twin leads to who sees pay, and back to the business", async
   await expect(page.getByText(a.personal.nobody)).toHaveCount(0);
   await expect(page.getByText(he.admin.access.nobody)).toHaveCount(0);
   await expect(addMenu).toHaveCount(0);
+});
+
+// Roles and permissions, the owner's screen's twin (roles plan R0; Orel's
+// answers of 15 November 2026): raising workers' lists to edit turns sending
+// lists on with it and offers its undo, which puts both back, and a role
+// added from the sheet joins the roles. A phone opens the role on a screen of
+// its own and goes back to the list; a tablet has the role beside the list,
+// and a computer every role in one table. Nothing is stored.
+test("the roles demo raises workers' lists with sending, undoes it, and adds a role", async ({
+  page,
+}, testInfo) => {
+  const r = he.app.manage.roles;
+  const worker = he.app.team.roles.worker;
+  const lists = he.modules.lists.name;
+  const phone = testInfo.project.name === "phone";
+  const desktop = testInfo.project.name === "desktop";
+  const main = page.getByRole("main");
+  const title = (name: string) =>
+    page.getByRole("heading", { level: 1, name }).filter({ visible: true });
+
+  await page.goto("/design/shell/manage/roles");
+  await expect(title(r.title)).toBeVisible();
+  if (!desktop) {
+    await main
+      .getByRole("button", { name: new RegExp(`^${worker}`) })
+      .filter({ visible: true })
+      .click();
+  }
+  if (phone) {
+    await expect(title(worker)).toBeVisible();
+    // A step in the history, so the phone's own back leads to the roles.
+    await expect(page).toHaveURL(/[?&]role=worker\b/);
+    await expectCleanPage(page);
+  }
+
+  const edit = main
+    .getByRole("switch", {
+      name: heT("app.manage.roles.editLabel", { area: lists, role: worker }),
+    })
+    .filter({ visible: true });
+  const send = main
+    .getByRole("switch", {
+      name: heT("app.manage.roles.extraLabel", {
+        extra: r.extras.lists.send.label,
+        role: worker,
+      }),
+    })
+    .filter({ visible: true });
+  await expect(edit).toHaveAttribute("aria-checked", "false");
+  await expect(send).toHaveAttribute("aria-checked", "false");
+  await expect(send).toBeDisabled();
+
+  await edit.click();
+  await expect(edit).toHaveAttribute("aria-checked", "true");
+  await expect(send).toHaveAttribute("aria-checked", "true");
+  await expect(send).toBeEnabled();
+  const raised = main.getByRole("status").filter({
+    hasText: heT("app.manage.roles.done.editWith", {
+      role: worker,
+      area: lists,
+      extras: r.extras.lists.send.phrase,
+    }),
+  });
+  // By the keyboard: as the toast's button goes, the focus goes back to the
+  // switch that was changed.
+  await raised.getByRole("button", { name: he.app.manage.undo }).press("Enter");
+  await expect(edit).toHaveAttribute("aria-checked", "false");
+  await expect(edit).toBeFocused();
+  await expect(send).toHaveAttribute("aria-checked", "false");
+  await expect(send).toBeDisabled();
+  await expect(
+    main.getByRole("status").filter({ hasText: r.done.undone }),
+  ).toBeVisible();
+
+  if (phone) {
+    // The screen's own way back, then the phone's forward and back.
+    await main.getByRole("button", { name: r.title }).click();
+    await expect(title(r.title)).toBeVisible();
+    await page.goForward();
+    await expect(title(worker)).toBeVisible();
+    await page.goBack();
+    await expect(title(r.title)).toBeVisible();
+    await expect(page).not.toHaveURL(/[?&]role=/);
+  }
+  await main
+    .getByRole("button", { name: r.add })
+    .filter({ visible: true })
+    .click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByRole("textbox", { name: r.addSheet.name }).fill("אחראי בר");
+  await sheet.getByRole("button", { name: r.addSheet.submit }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect(
+    main.getByRole("status").filter({
+      hasText: heT("app.manage.roles.done.added", { name: "אחראי בר" }),
+    }),
+  ).toBeVisible();
+  await expect(
+    desktop
+      ? main
+          .getByRole("columnheader", { name: /^אחראי בר/ })
+          .filter({ visible: true })
+      : main
+          .getByRole("button", { name: /^אחראי בר/ })
+          .filter({ visible: true }),
+  ).toBeVisible();
+  await expectCleanPage(page);
 });
 
 // The inbox's twin has pay access the ConceptApp team gave from the console:

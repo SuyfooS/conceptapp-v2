@@ -9,6 +9,7 @@ import {
   History,
   KeyRound,
   Network,
+  ShieldCheck,
   SlidersHorizontal,
   Users,
 } from "lucide-react";
@@ -30,6 +31,7 @@ export function ManageView({
   shabbatCity,
   departments,
   payAccess = false,
+  roles = false,
   wording,
 }: {
   modules: ModuleKey[];
@@ -42,6 +44,11 @@ export function ManageView({
   departments: readonly string[] | null;
   /** The owner decides who sees pay: the row to it. */
   payAccess?: boolean;
+  /**
+   * The owner decides what each role does: the row to it. Only the design
+   * twin has the screen so far (roles plan R0); the app's comes with R9.
+   */
+  roles?: boolean;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -103,6 +110,14 @@ export function ManageView({
           title={t("team.title")}
           subtitle={t("team.subtitle")}
         />
+        {roles ? (
+          <ListRow
+            href={`${base}/manage/roles`}
+            leading={<ShieldCheck />}
+            title={t("roles.title")}
+            subtitle={t("roles.row")}
+          />
+        ) : null}
         {payAccess ? (
           <ListRow
             href={`${base}/manage/access`}
