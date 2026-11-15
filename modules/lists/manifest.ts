@@ -36,6 +36,19 @@ export const manifest = defineManifest({
       .default(15),
     /** Owners, managers and holders of lists.manage hear when a list is late. */
     tellManagersWhenLate: z.boolean().default(true),
+    /**
+     * A list of a template's times still open this long after it became late:
+     * the owners are told, one line each, but an owner it is for (Orel, 15
+     * November 2026, issue #1; 0: never). The minute job reads it
+     * (private.lists_tick_business in supabase/migrations/
+     * 20261115000500_lists_owners_late.sql), only as a value offered here and
+     * anything else stored as 60; private.list_settings holds the same
+     * default. Owners and managers choose it on /manage/lists.
+     */
+    tellOwnersAfterMinutes: z
+      .union([z.literal(0), z.literal(30), z.literal(60), z.literal(120)])
+      .default(60)
+      .meta({ level: "business" }),
     /** Whoever sent a list, and the department that asked for it, hear when it's finished. */
     tellWhenFinished: z.boolean().default(true),
     /**

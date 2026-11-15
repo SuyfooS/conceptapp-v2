@@ -3,10 +3,12 @@ import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { numberRange, signed } from "@domain/lists";
 import {
+  LIST_TIME_WORDS,
   type NotificationChat,
   type NotificationEntry,
   type NotificationPerson,
   type NotificationShift,
+  saysShiftsLeft,
   unfilledWeekBegun,
 } from "@domain/notifications";
 import type { PushNotice } from "@domain/push";
@@ -89,6 +91,31 @@ export function pushWords(
     case "schedule.published":
     case "schedule.changed": {
       const key = line.kind === "schedule.published" ? "published" : "changed";
+      // Written while the week ran: the nearest shift that changed, then how
+      // many are left, unless it is a shift under way they joined and none
+      // is left to start. A phone gets it within that week, before the shift
+      // it names starts (or ends, once begun), so "this week" holds.
+      if (line.running) {
+        return {
+          title: t(`kinds.schedule.${key}.titleRunning`),
+          ...body(
+            line.nearest
+              ? t.markup(
+                  `kinds.schedule.changed.nearest.${line.nearest.change}`,
+                  {
+                    ltr: isolate,
+                    day: weekday(line.nearest.shift.day),
+                    start: line.nearest.shift.start,
+                    end: line.nearest.shift.end,
+                  },
+                )
+              : null,
+            saysShiftsLeft(line)
+              ? t(`kinds.schedule.${key}.left`, { count: line.mine })
+              : null,
+          ),
+        };
+      }
       return {
         title: t(`kinds.schedule.${key}.title`, {
           date: dayMonth(line.startsOn),
@@ -313,13 +340,9 @@ export function pushWords(
       };
     case "lists.due":
     case "lists.late":
-    case "lists.late_team": {
-      const key =
-        line.kind === "lists.due"
-          ? "due"
-          : line.kind === "lists.late"
-            ? "late"
-            : "late_team";
+    case "lists.late_team":
+    case "lists.late_owner": {
+      const key = LIST_TIME_WORDS[line.kind];
       // Finished or missed: nothing waits on it now.
       if (settled) {
         return {

@@ -26,6 +26,9 @@ export const ROUTINE_ACTIONS = [
   // A scheduled list opening and its reminder: the lists themselves show them.
   "lists.open",
   "lists.due",
+  // A late list's owners told it is still open: the log already says it was
+  // late, and the owners have their line.
+  "lists.late_owner",
   // Someone opened the pay screens: kept for the record, not news.
   "payroll.view",
 ] as const;

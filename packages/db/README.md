@@ -65,8 +65,11 @@ waits for approval (Orel, 15 November 2026: `status = 'open'`, no taker), and
 takes them out of their departments, open lists and lists' times.
 Their own lines there are read and kept off the phone; the schedule's other
 builders get `schedule.unfilled` (a count per published week, never who;
-settled by publishing the week again, or by the minute job once no shift ahead
-lacks anyone, `private.settle_unfilled` from `private.settle_done_reminders`),
+counted again by publishing the week, which settles it when no shift ahead
+lacks anyone and otherwise lowers its count to what is left, never raising it,
+without telling anyone again, and settled by the minute job once none does,
+`private.settle_unfilled` from
+`private.settle_done_reminders`),
 the other side of a swap cancelled `swap.removed`, and the asker of one open
 again `swap.reopened` (its approval settled, and offered again as a new request
 is, `swap.offered`). `public.set_member_role(actor,
@@ -206,7 +209,27 @@ and the requests it ended; and, since the week is written in place, the ids of
 the shifts it kept, edited, added and removed, the requests it opened again, and
 when (`at`). A swap's lines name its shift as the request keeps it
 (`shift_swaps.shift`, read by `getBusinessActivity`), so they read the same
-after the shift moves or goes.
+after the shift moves or goes. A week published again while it runs also logs,
+for each person whose shifts changed, the nearest shift that did (`nearest`:
+its id, 'moved', 'added', 'removed' or 'edited' (a name or position alone,
+named only when nothing else changed), its day, name and hours, when the change
+counts from, and when a push about it is too late), never a name.
+
+The running week's lines (`20261115000400_running_week_notices.sql`, Orel's
+answers 4 and 5 of 15 November 2026): `schedule.published` and
+`schedule.changed` of a week that had begun at the publish's `at` carry
+`running` and count the person's shifts still to start (`private.shifts_ahead`);
+a first publish mid-week tells only those with one; a change names the nearest
+shift it changed (`private.nearest_change`, from `private.week_people` before
+and after, which lists each person's shifts by id), or keeps naming a nearer
+one their unread line names, whose push hasn't gone, while it still holds.
+Such a line reaches the phone only before that shift starts, or ends once begun
+(a join), or for a first publish before the person's first shift still to start
+(`push_before`): quiet hours hold a push as before and it never goes late,
+while the line is in the app at once. Every `schedule.changed` push waits two
+minutes, which choices saved meanwhile keep (`set_notification_preferences`),
+and a publish of the week before then replaces it
+(`running_week_notices.test.sql`).
 
 Notifications are written from the audit log: a trigger
 (`private.notify_from_log`, which never blocks the write it follows) reads
@@ -337,6 +360,19 @@ reminder and of a late list, and its managers of a late list and of a reading
 out of range, with the reading.
 `getListReadings(lists)` reads the number items of some lists with their
 readings, under RLS, for the manager's day (`lists_schedule.test.sql`).
+One more step goes to the owners (`20261115000500_lists_owners_late.sql`;
+Orel, 15 November 2026): a scheduled list still open the lists setting
+`tellOwnersAfterMinutes` after it became late (60 unless the business chose
+30, 120 or 0 for never; another value stored reads as 60; counted from the
+minute of `late_at`) is stamped `lists.owners_told_at` and logged once as
+`lists.late_owner`, after the late lists and never during a closed business's
+Shabbat, never for a list sent once or one opened again by hand after it was
+late (one undone before it was late is told like any other);
+`private.notify_for_lists` tells the business's active owners who don't hold
+it (`lists.late_owner`, audience `owner`) and marks their managers' late line
+of the list read, not settled, so Home counts the list once; finishing,
+cancelling or missing the list settles it (`lists_owners_late.test.sql`). The
+activity log leaves the row out, as it does the reminder.
 
 Lists between departments (L5, `20261110001400_lists_pass.sql`):
 `public.pass_list(actor, list, department, pass_note, at_time)` (secret key)

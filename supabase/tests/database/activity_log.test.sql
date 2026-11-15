@@ -87,9 +87,11 @@ select results_eq(
   -- (notifications.test.sql); what was kept, edited, added and removed, the
   -- requests opened again and the moment, for the week written in place
   -- (week_in_place.test.sql); who joined a shift under way and whether the
-  -- week had begun, for the week under way (running_week.test.sql).
+  -- week had begun, for the week under way (running_week.test.sql); and the
+  -- nearest shift that changed for each person, for its notifications
+  -- (running_week_notices.test.sql).
   $$select actor_id, details - 'changed' - 'removed_swaps' - 'reopened' - 'kept'
-      - 'edited' - 'added' - 'removed' - 'at' - 'joined' - 'running'
+      - 'edited' - 'added' - 'removed' - 'at' - 'joined' - 'running' - 'nearest'
     from public.audit_log
     where business_id = '6c000000-0000-4000-b000-000000000001' and action = 'schedule.publish'$$,
   $$values ('6c000000-0000-4000-a000-00000000000b'::uuid, jsonb_build_object(

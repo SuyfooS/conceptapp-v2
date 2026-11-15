@@ -1418,6 +1418,7 @@ export type Database = {
           occurs_on: string | null;
           opens_at: string;
           origin: string;
+          owners_told_at: string | null;
           recipient_department: string | null;
           recipient_kind: string;
           recipient_role: Database["public"]["Enums"]["member_role"] | null;
@@ -1448,6 +1449,7 @@ export type Database = {
           occurs_on?: string | null;
           opens_at: string;
           origin: string;
+          owners_told_at?: string | null;
           recipient_department?: string | null;
           recipient_kind: string;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
@@ -1478,6 +1480,7 @@ export type Database = {
           occurs_on?: string | null;
           opens_at?: string;
           origin?: string;
+          owners_told_at?: string | null;
           recipient_department?: string | null;
           recipient_kind?: string;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;

@@ -458,3 +458,138 @@ describe("a request open again, on the phone", () => {
     expect(JSON.stringify(again(true))).not.toContain("אורי");
   });
 });
+
+// A list still late a while after its late line (Orel, 15 November 2026): its
+// owners hear it is still open, with its name and when it was due, on the
+// business's clock, and once settled that it is no longer open: true whether
+// it was finished, cancelled or missed, never that it got done.
+describe("a list still late, to its owners, on the phone", () => {
+  const words = he.app.notifications.kinds.lists.late_owner;
+  const name = "פתיחת בוקר";
+  const still = (due: string | null, settled = false) =>
+    pushWords(
+      {
+        ...entry({ kind: "lists.late_owner", name, due }, settled),
+        actor: { kind: "app" },
+        group: "lists",
+        href: "/lists/0b000000-0000-4000-a000-000000000002",
+      },
+      baseWording,
+      "Asia/Jerusalem",
+    );
+
+  it("names the list, and says by when it was due and that it is still open", () => {
+    expect(still("2026-11-16T07:15:00.000Z")).toEqual({
+      title: words.title.replace("{name}", name),
+      body: words.note.replace("<ltr>{time}</ltr>", "\u206609:15\u2069"),
+    });
+  });
+
+  it("still says so without its due time", () => {
+    expect(still(null)).toEqual({ title: words.title.replace("{name}", name) });
+  });
+
+  it("says once settled that it is no longer open, not that it is no longer late", () => {
+    const settled = still("2026-11-16T07:15:00.000Z", true);
+    expect(settled).toEqual({
+      title: words.settledTitle.replace("{name}", name),
+    });
+    // Missed or cancelled settle it too: "no longer late" would read as done.
+    expect(settled.title).not.toContain("באיחור");
+  });
+});
+
+// The running week (Orel, 15 November 2026, answers 4 and 5): a line written
+// while the week ran says "this week", names the nearest shift that changed
+// with its hours now (or that the reader came off it), and how many of their
+// shifts are left; a week still to come reads as before.
+describe("the running week's words on the phone", () => {
+  const schedule = he.app.notifications.kinds.schedule;
+  const shift = {
+    day: "2026-11-17",
+    name: "צהריים",
+    start: "12:00",
+    end: "18:00",
+  };
+  const week = (
+    kind: "schedule.published" | "schedule.changed",
+    mine: number,
+    running: boolean,
+    nearest: { change: "moved" | "added" | "removed" | "edited" } | null = null,
+  ) =>
+    pushWords(
+      {
+        ...entry({
+          kind,
+          startsOn: "2026-11-15",
+          mine,
+          running,
+          nearest: nearest ? { ...nearest, shift } : null,
+        }),
+        actor: { kind: "member", name: "אורי הדגמה" },
+        group: "schedule",
+        href: "/schedule/shifts",
+      },
+      baseWording,
+      "Asia/Jerusalem",
+    );
+
+  it("names the nearest shift that changed, with its hours now, and what is left", () => {
+    expect(week("schedule.changed", 2, true, { change: "moved" })).toEqual({
+      title: schedule.changed.titleRunning,
+      body: "המשמרת שלך ביום שלישי עכשיו מ-⁦12:00⁩ עד ⁦18:00⁩\nנשארו לך 2 משמרות השבוע",
+    });
+    expect(week("schedule.changed", 1, true, { change: "added" }).body).toBe(
+      "יש לך משמרת חדשה ביום שלישי מ-⁦12:00⁩ עד ⁦18:00⁩\nנשארה לך משמרת אחת השבוע",
+    );
+    expect(week("schedule.changed", 0, true, { change: "removed" }).body).toBe(
+      "כבר אין לך משמרת ביום שלישי מ-⁦12:00⁩ עד ⁦18:00⁩\nלא נשארו לך משמרות השבוע",
+    );
+  });
+
+  it("says a change of name or position alone without new hours", () => {
+    expect(week("schedule.changed", 2, true, { change: "edited" }).body).toBe(
+      "יש שינוי במשמרת שלך ביום שלישי מ-⁦12:00⁩ עד ⁦18:00⁩\nנשארו לך 2 משמרות השבוע",
+    );
+  });
+
+  // A shift under way they joined is the only one not counted as still to
+  // start: "none left" would contradict it.
+  it("leaves out what is left beside a shift under way they joined", () => {
+    expect(week("schedule.changed", 0, true, { change: "added" })).toEqual({
+      title: schedule.changed.titleRunning,
+      body: "יש לך משמרת חדשה ביום שלישי מ-⁦12:00⁩ עד ⁦18:00⁩",
+    });
+  });
+
+  it("still says what is left without a shift to name", () => {
+    expect(week("schedule.changed", 3, true)).toEqual({
+      title: schedule.changed.titleRunning,
+      body: "נשארו לך 3 משמרות השבוע",
+    });
+  });
+
+  it("says a week published once it began, and how many shifts are left", () => {
+    expect(week("schedule.published", 1, true)).toEqual({
+      title: schedule.published.titleRunning,
+      body: "נשארה לך משמרת אחת השבוע",
+    });
+  });
+
+  it("says a week still to come as before", () => {
+    expect(week("schedule.changed", 4, false)).toEqual({
+      title: "יש שינוי במשמרות שלך בשבוע של 15.11",
+      body: "עכשיו יש לך 4 משמרות",
+    });
+    expect(week("schedule.published", 1, false)).toEqual({
+      title: "הסידור לשבוע של 15.11 פורסם",
+      body: "יש לך משמרת אחת",
+    });
+  });
+
+  it("names nobody: not who changed it", () => {
+    expect(
+      JSON.stringify(week("schedule.changed", 2, true, { change: "moved" })),
+    ).not.toContain("אורי");
+  });
+});

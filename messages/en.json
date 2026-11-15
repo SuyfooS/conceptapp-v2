@@ -2792,11 +2792,21 @@
         "schedule": {
           "published": {
             "title": "The schedule for the week of {date} is out",
-            "body": "{count, plural, =0 {You have no shifts this week} one {You have one shift} other {You have # shifts}}"
+            "titleRunning": "This week's schedule is out",
+            "body": "{count, plural, =0 {You have no shifts this week} one {You have one shift} other {You have # shifts}}",
+            "left": "{count, plural, =0 {You have no shifts left this week} one {You have one shift left this week} other {You have # shifts left this week}}"
           },
           "changed": {
             "title": "Your shifts changed in the week of {date}",
-            "body": "{count, plural, =0 {You now have no shifts this week} one {You now have one shift} other {You now have # shifts}}"
+            "titleRunning": "Your shifts changed this week",
+            "body": "{count, plural, =0 {You now have no shifts this week} one {You now have one shift} other {You now have # shifts}}",
+            "left": "{count, plural, =0 {You have no shifts left this week} one {You have one shift left this week} other {You have # shifts left this week}}",
+            "nearest": {
+              "moved": "Your shift on {day} is now from <ltr>{start}</ltr> to <ltr>{end}</ltr>",
+              "added": "You have a new shift on {day} from <ltr>{start}</ltr> to <ltr>{end}</ltr>",
+              "removed": "You no longer have the shift on {day} from <ltr>{start}</ltr> to <ltr>{end}</ltr>",
+              "edited": "Your shift on {day} from <ltr>{start}</ltr> to <ltr>{end}</ltr> changed"
+            }
           },
           "unfilled": {
             "title": "{count, plural, =0 {Shifts were freed in the week of {date}} one {One shift in the week of {date} needs someone} other {# shifts in the week of {date} need someone}}",
@@ -2907,8 +2917,13 @@
           },
           "late_team": {
             "title": "{name} is late",
-            "settledTitle": "{name} is no longer late",
+            "settledTitle": "{name} is no longer open",
             "note": "It isn't closed yet. It was due by <ltr>{time}</ltr>."
+          },
+          "late_owner": {
+            "title": "{name} is still late",
+            "settledTitle": "{name} is no longer open",
+            "note": "It was due by <ltr>{time}</ltr> and is still open."
           },
           "out_of_range": {
             "title": "A reading out of range in {name}: {label}",
@@ -4442,6 +4457,16 @@
         "tellManagersWhenLate": {
           "label": "Tell managers when a list is late",
           "hint": "Owners, managers and whoever manages lists hear when a list is late."
+        },
+        "tellOwnersAfterMinutes": {
+          "label": "Tell the owners when a list is still late",
+          "hint": "The owners are told when a list that opens by itself at its times is still open this long after it became late.",
+          "options": {
+            "0": "Never",
+            "30": "After half an hour",
+            "60": "After an hour",
+            "120": "After two hours"
+          }
         },
         "tellWhenFinished": {
           "label": "Tell when a list is finished",
