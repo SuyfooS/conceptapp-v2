@@ -120,12 +120,17 @@ select is(
   'two swap requests are waiting'
 );
 
--- Publishing again with changes removes them, and says so.
+-- Publishing again with nothing read replaces the shifts: it ends the waiting
+-- requests, which stay without their shift (20261115000200_swap_history.sql),
+-- and says so.
 select public.publish_week_schedule('6c000000-0000-4000-a000-00000000000a',
   (select id from ids where name = 'x'), (select shifts from week_x));
-select is_empty(
-  $$select 1 from public.shift_swaps where business_id = '6c000000-0000-4000-b000-000000000001'$$,
-  'publishing again removes the waiting requests with the old shifts'
+select is(
+  (select array_agg(status::text || '/' || cancelled_because || '/' || coalesce(shift_id::text, 'gone')
+     order by status::text)
+   from public.shift_swaps where business_id = '6c000000-0000-4000-b000-000000000001'),
+  array['cancelled/schedule/gone', 'cancelled/schedule/gone'],
+  'publishing again ends the waiting requests with the old shifts, and they stay'
 );
 select results_eq(
   $$select actor_id, details ->> 'first', details ->> 'swaps_removed', details ->> 'shifts'

@@ -3,9 +3,12 @@ import {
   ACTIVITY_PAGE_SIZE,
   type ActivityLookups,
   type ActivityRow,
+  type ActivityShift,
   activityRefs,
+  activityShiftOf,
   ROUTINE_ACTIONS,
 } from "@domain/activity";
+import { isMissingColumn } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createClient } from "./supabase/server";
 
@@ -52,13 +55,7 @@ export async function getBusinessActivity(
   const refs = activityRefs(rows);
 
   const [swaps, invites] = await Promise.all([
-    refs.swaps.length
-      ? supabase
-          .from("shift_swaps")
-          .select("id, shift_id, requested_by, taken_by")
-          .eq("business_id", businessId)
-          .in("id", refs.swaps)
-      : null,
+    refs.swaps.length ? getSwaps(businessId, refs.swaps) : [],
     refs.invites.length
       ? supabase
           .from("invites")
@@ -67,16 +64,16 @@ export async function getBusinessActivity(
           .in("id", refs.invites)
       : null,
   ]);
-  if (swaps?.error) throw swaps.error;
   if (invites?.error) throw invites.error;
 
-  // A swap names its shift and its people only through the request itself.
+  // A swap names its people only through the request itself, and its shift
+  // as the request keeps it; the shift by id only where that isn't there.
   const people = new Set(refs.people);
   const shifts = new Set(refs.shifts);
-  for (const swap of swaps?.data ?? []) {
-    people.add(swap.requested_by);
-    if (swap.taken_by) people.add(swap.taken_by);
-    shifts.add(swap.shift_id);
+  for (const swap of swaps) {
+    people.add(swap.requestedBy);
+    if (swap.takenBy) people.add(swap.takenBy);
+    if (!swap.shift && swap.shiftId) shifts.add(swap.shiftId);
   }
 
   const [members, shiftRows, departments] = await Promise.all([
@@ -143,16 +140,56 @@ export async function getBusinessActivity(
       departments: new Map(
         (departments?.data ?? []).map((row) => [row.id, row.name]),
       ),
-      swaps: new Map(
-        (swaps?.data ?? []).map((row) => [
-          row.id,
-          {
-            shiftId: row.shift_id,
-            requestedBy: row.requested_by,
-            takenBy: row.taken_by,
-          },
-        ]),
-      ),
+      swaps: new Map(swaps.map(({ id, ...swap }) => [id, swap])),
     },
   };
+}
+
+type ActivitySwap = {
+  id: string;
+  shiftId: string | null;
+  shift: ActivityShift | null;
+  requestedBy: string;
+  takenBy: string | null;
+};
+
+/**
+ * The swap requests a page of the log names, under the reader's access, each
+ * with the shift as it was asked for (`shift_swaps.shift`), which outlives the
+ * shift. Until 20261115000200_swap_history.sql reaches the project, without
+ * it: the shift by id, while it is there.
+ */
+async function getSwaps(
+  businessId: string,
+  ids: string[],
+): Promise<ActivitySwap[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("shift_swaps")
+    .select("id, shift_id, shift, requested_by, taken_by")
+    .eq("business_id", businessId)
+    .in("id", ids);
+  if (!error) {
+    return data.map((row) => ({
+      id: row.id,
+      shiftId: row.shift_id,
+      shift: activityShiftOf(row.shift),
+      requestedBy: row.requested_by,
+      takenBy: row.taken_by,
+    }));
+  }
+  if (!isMissingColumn(error)) throw error;
+  const before = await supabase
+    .from("shift_swaps")
+    .select("id, shift_id, requested_by, taken_by")
+    .eq("business_id", businessId)
+    .in("id", ids);
+  if (before.error) throw before.error;
+  return before.data.map((row) => ({
+    id: row.id,
+    shiftId: row.shift_id,
+    shift: null,
+    requestedBy: row.requested_by,
+    takenBy: row.taken_by,
+  }));
 }

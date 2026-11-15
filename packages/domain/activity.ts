@@ -65,15 +65,43 @@ export type ActivityShift = {
   end: string;
 };
 
+const hourMinute = z.string().regex(/^\d{2}:\d{2}$/);
+const shiftBrief = z.object({
+  day: z.iso.date(),
+  name: z.string(),
+  start: hourMinute,
+  end: hourMinute,
+});
+
+/**
+ * A shift as the database keeps it on a swap request (`shift_swaps.shift`,
+ * private.shift_brief: its day, name and hours when the request was made),
+ * or null when it is anything else.
+ */
+export function activityShiftOf(value: unknown): ActivityShift | null {
+  const parsed = shiftBrief.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 /** What rows point at, read with them under the reader's own access. */
 export type ActivityLookups = {
   /** The business's memberships, active or not, by person. */
   members: ReadonlyMap<string, { active: boolean; name: string | null }>;
   invites: ReadonlyMap<string, { name: string | null; role: Role | null }>;
   shifts: ReadonlyMap<string, ActivityShift>;
+  /**
+   * Swap requests by id: their shift while it is there (null once it is
+   * deleted), the shift as it was asked for (null on a project without
+   * 20261115000200_swap_history.sql), and their people.
+   */
   swaps: ReadonlyMap<
     string,
-    { shiftId: string; requestedBy: string; takenBy: string | null }
+    {
+      shiftId: string | null;
+      shift: ActivityShift | null;
+      requestedBy: string;
+      takenBy: string | null;
+    }
   >;
   /** The business's departments, removed ones too, by id: their names. */
   departments: ReadonlyMap<string, string>;
@@ -691,8 +719,13 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     const parsed = schema.safeParse(row.details);
     return parsed.success ? (parsed.data as z.infer<S>) : null;
   };
-  const shiftOf = (shiftId: string | undefined) =>
+  const shiftOf = (shiftId: string | null | undefined) =>
     (shiftId && lookups.shifts.get(shiftId)) || null;
+  // A swap's line names the shift the request was made for, as it was then,
+  // so it reads the same after the shift moves or goes; without the request
+  // to read, the shift the row names, while it is there.
+  const swapShift = (swapId: string, shiftId: string | null | undefined) =>
+    lookups.swaps.get(swapId)?.shift ?? shiftOf(shiftId);
 
   switch (row.action) {
     case "business.create": {
@@ -863,7 +896,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     case "swap.request": {
       const details = read(schemas["swap.request"]);
       return details
-        ? { action: row.action, shift: shiftOf(details.shift) }
+        ? { action: row.action, shift: swapShift(details.swap, details.shift) }
         : other;
     }
     case "swap.take":
@@ -871,7 +904,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       const details = read(schemas.swap);
       if (!details) return other;
       const swap = lookups.swaps.get(details.swap);
-      const shift = shiftOf(swap?.shiftId);
+      const shift = swapShift(details.swap, swap?.shiftId);
       return row.action === "swap.take"
         ? {
             action: row.action,
@@ -886,7 +919,8 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       if (!details) return other;
       return {
         action: row.action,
-        shift: shiftOf(
+        shift: swapShift(
+          details.swap,
           details.shift ?? lookups.swaps.get(details.swap)?.shiftId,
         ),
         from: personOf(details.from, lookups),

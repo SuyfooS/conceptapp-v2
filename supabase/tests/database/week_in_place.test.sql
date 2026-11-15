@@ -892,9 +892,19 @@ select is_empty(
     where s.id in (select i.id from ids i where i.name like 'morning-%' or i.name like 'evening-%')$$,
   'is replaced: none of its shifts is left'
 );
-select is_empty(
-  $$select 1 from public.shift_swaps sw where sw.business_id = '8f000000-0000-4000-b000-000000000001'$$,
-  'and the requests go with them, as before'
+-- Its requests stay without their shifts (20261115000200_swap_history.sql):
+-- the one approved as it was, and every other one cancelled by the schedule,
+-- the three still waiting with them.
+select is(
+  (select array_agg(
+     sw.status::text || '/' || coalesce(sw.cancelled_because, '-') || '/'
+       || coalesce(sw.shift_id::text, 'gone')
+     order by sw.status, sw.id)
+   from public.shift_swaps sw where sw.business_id = '8f000000-0000-4000-b000-000000000001'),
+  array['approved/-/gone', 'cancelled/schedule/gone', 'cancelled/schedule/gone',
+        'cancelled/schedule/gone', 'cancelled/schedule/gone', 'cancelled/schedule/gone',
+        'cancelled/schedule/gone'],
+  'and the requests stay without them, the waiting ones cancelled'
 );
 select is(
   jsonb_build_array(

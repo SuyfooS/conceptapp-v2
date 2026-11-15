@@ -4,6 +4,7 @@ import {
   type ActivityRow,
   activityByDay,
   activityRefs,
+  activityShiftOf,
   breakFitKind,
   buildActivity,
   parseActivityCursor,
@@ -37,7 +38,22 @@ const lookups: ActivityLookups = {
       { day: "2026-11-05", name: "Evening", start: "16:00", end: "23:00" },
     ],
   ]),
-  swaps: new Map([[SWAP, { shiftId: SHIFT, requestedBy: NOA, takenBy: YOAV }]]),
+  swaps: new Map([
+    [
+      SWAP,
+      {
+        shiftId: SHIFT,
+        shift: {
+          day: "2026-11-05",
+          name: "Evening",
+          start: "16:00",
+          end: "23:00",
+        },
+        requestedBy: NOA,
+        takenBy: YOAV,
+      },
+    ],
+  ]),
   departments: new Map([[KITCHEN, "Kitchen"]]),
 };
 
@@ -481,7 +497,97 @@ describe("buildActivity: each action", () => {
     });
   });
 
-  it("reads a swap whose shift was replaced by publishing again", () => {
+  // 20261115000200_swap_history.sql: the request keeps its shift as it was
+  // asked for, which outlives the shift moving or going.
+  it("names a swap's shift as the request keeps it, after the shift moved or went", () => {
+    const asked = {
+      day: "2026-11-06",
+      name: "Morning",
+      start: "07:00",
+      end: "15:00",
+    };
+    const moved: ActivityLookups = {
+      ...lookups,
+      swaps: new Map([
+        [
+          SWAP,
+          { shiftId: SHIFT, shift: asked, requestedBy: NOA, takenBy: YOAV },
+        ],
+        [
+          GONE,
+          { shiftId: null, shift: asked, requestedBy: NOA, takenBy: null },
+        ],
+      ]),
+    };
+    const lineIn = (r: ActivityRow) => buildActivity([r], moved)[0]?.line;
+    // The shift is there with other hours now: the line keeps the old ones.
+    expect(lineIn(row("swap.request", { swap: SWAP, shift: SHIFT }))).toEqual({
+      action: "swap.request",
+      shift: asked,
+    });
+    expect(
+      lineIn(
+        row("swap.approve", { swap: SWAP, shift: SHIFT, from: NOA, to: YOAV }),
+      ),
+    ).toMatchObject({ action: "swap.approve", shift: asked });
+    // The shift is gone: the request still says which it was.
+    expect(lineIn(row("swap.take", { swap: GONE }, YOAV))).toEqual({
+      action: "swap.take",
+      shift: asked,
+      from: { kind: "member", name: "Noa" },
+    });
+    expect(lineIn(row("swap.cancel", { swap: GONE }))).toEqual({
+      action: "swap.cancel",
+      shift: asked,
+    });
+    expect(
+      lineIn(row("swap.decline", { swap: GONE, shift: GONE, from: NOA })),
+    ).toMatchObject({ action: "swap.decline", shift: asked });
+  });
+
+  it("names a swap's shift by id where the request has no snapshot", () => {
+    const before: ActivityLookups = {
+      ...lookups,
+      swaps: new Map([
+        [
+          SWAP,
+          { shiftId: SHIFT, shift: null, requestedBy: NOA, takenBy: YOAV },
+        ],
+      ]),
+    };
+    expect(
+      buildActivity([row("swap.take", { swap: SWAP }, YOAV)], before)[0]?.line,
+    ).toMatchObject({ shift: lookups.shifts.get(SHIFT) });
+  });
+
+  it("reads a swap's shift only when it has the shape of one", () => {
+    expect(
+      activityShiftOf({
+        day: "2026-11-06",
+        name: "Morning",
+        start: "07:00",
+        end: "15:00",
+      }),
+    ).toEqual({
+      day: "2026-11-06",
+      name: "Morning",
+      start: "07:00",
+      end: "15:00",
+    });
+    expect(activityShiftOf(null)).toBeNull();
+    expect(
+      activityShiftOf({
+        day: "Thursday",
+        name: "Morning",
+        start: "7",
+        end: "15",
+      }),
+    ).toBeNull();
+  });
+
+  // Before 20261115000200_swap_history.sql a republish took the request with
+  // its shift, and an account deleted still takes its requests.
+  it("reads a swap whose request and shift are both gone", () => {
     expect(lineOf(row("swap.take", { swap: GONE }, YOAV))).toEqual({
       action: "swap.take",
       shift: null,
