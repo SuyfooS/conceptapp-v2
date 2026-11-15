@@ -28,7 +28,8 @@ type Props = { searchParams: Promise<{ state?: string }> };
 // change that would end a request says so above "פרסום השינויים". Another
 // manager approves Maya's while the screen is open, so publishing a change to
 // that morning is refused: it comes back as it is now, marked, with the rest
-// of the work kept, and publishing again goes out.
+// of the work kept, and publishing again goes out. Each "פרסום השינויים"
+// waits eight seconds for "ביטול" first, as the app's does (R3b).
 //
 // This twin is older than the switch between this week and next (R3a), and
 // stays without it: the restaurant's demo has no week under way to switch to.

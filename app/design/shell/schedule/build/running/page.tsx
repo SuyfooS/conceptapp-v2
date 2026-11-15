@@ -33,7 +33,10 @@ const HREF = "/design/shell/schedule/build/running";
 // shop's pattern and not saved yet, through the question that unsaved work
 // asks first. The stand-in publish refuses a shift that has begun, as the
 // database does; nothing is stored. The demo's clock goes on from 11:20 once
-// a minute, as the app's does from the server's moment.
+// a minute, as the app's does from the server's moment. "פרסום השינויים"
+// waits eight seconds for "ביטול" before the stand-in hears of it (R3b), as
+// the app's does before the server: the held state, its toast with the way
+// back, and "ביטול" letting it go unsent, are this twin's to look at.
 export default function ShellScheduleBuildRunning(props: Props) {
   return (
     <Suspense>

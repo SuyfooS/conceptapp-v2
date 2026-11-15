@@ -47,6 +47,7 @@ import {
   type MouseEvent,
   type ReactNode,
   type RefObject,
+  startTransition,
   useActionState,
   useEffect,
   useId,
@@ -54,8 +55,10 @@ import {
   useRef,
   useState,
 } from "react";
+import { HOLD_MS, useHeldWrite } from "../../use-held-write";
 import type { AvailabilityWeek } from "../week";
 import type { MovedShifts, ScheduleState } from "./actions";
+import { type BuilderSend, publishWaits, sendOf } from "./publish-hold";
 import {
   AddShiftRow,
   type CardDensity,
@@ -195,14 +198,33 @@ function DockLine({
   );
 }
 
-/** Moves focus to the one element matching `selector` that is on the screen. */
-function focusOnScreen(selector: string) {
+/**
+ * Moves focus to the one element matching `selector` that is on the screen,
+ * and says whether there was one.
+ */
+function focusOnScreen(selector: string): boolean {
   for (const el of document.querySelectorAll<HTMLElement>(selector)) {
     if (el.offsetParent !== null) {
       el.focus();
-      return;
+      return true;
     }
   }
+  return false;
+}
+
+/**
+ * Whether the keyboard's focus is still where a closing sheet left it:
+ * nowhere, or on what it went back to. Anything the person, or the toast of a
+ * publish held for "ביטול", moved it to meanwhile keeps it.
+ */
+function focusLeftBySheet(back?: Element | null): boolean {
+  const active = document.activeElement;
+  return (
+    active === null ||
+    active === document.body ||
+    active === back ||
+    !active.isConnected
+  );
 }
 
 /**
@@ -222,6 +244,23 @@ function focusOnScreen(selector: string) {
  * and the dock stays busy until the new reading is on the screen, so a second
  * press never sends the same new shifts twice. Another week is another
  * builder altogether (the view keys it by the week).
+ *
+ * Publishing changes to a week already published, in either week, waits
+ * `HOLD_MS` for "ביטול" before anything reaches the server (Orel's answer 3
+ * of 15 November 2026, `publishWaits`): the form as it was pressed is held
+ * (`useHeldWrite`), the dock stays busy and the work stands as pressed, and a
+ * toast says it goes in a few seconds, with "ביטול", which lets it go unsent
+ * and brings the screen back as it was before the press: nobody was told.
+ * The wait stops with the toast's, while the keyboard is on "ביטול" or a
+ * mouse over it, so the way back is never offered once it would do nothing.
+ * It goes sooner when the page is hidden or the screen is left, as the hook
+ * sends any held write; a way out the screen sees (a tab, the switch to the
+ * other week) sends it at once and goes once it worked, as "פרסום השינויים
+ * ויציאה" does, which itself never waits. Should the clock put back a shift
+ * the held publish changes, it goes unsent, and the rest waits with the line
+ * that says why; should a shift begin that it only adds people to, or leaves
+ * as it was, the form held is made again as the screen now sends it. A
+ * week's first publish and a draft go at once.
  *
  * The builder works on one reading at a time: the week, its shifts and what
  * was seen of them, kept together. A new one from the server replaces it
@@ -289,24 +328,108 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
       : (props.week.dates[0] ?? props.week.start);
   });
 
+  /** What the toast says of a held publish: waiting, or let go unsent. */
+  const [heldNotice, setHeldNotice] = useState<{
+    kind: "waiting" | "undone";
+    stamp: string;
+  } | null>(null);
+
   const [state, action, pending] = useActionState(
-    async (prev: ScheduleState, data: FormData) => {
-      const result = await save(prev, data);
-      const target = leaveTo.current;
-      leaveTo.current = null;
-      if (result.savedAt && target) router.push(target);
-      // Shifts changed (or begun) meanwhile come back: a phone shows a day
-      // with one of them, should the day it shows have none.
-      const moved = result.moved;
-      if (moved) {
-        const shifts = sent.current;
-        setDay((current) => dayOfMoved(current, moved, shifts));
+    async (prev: ScheduleState, payload: BuilderSend) => {
+      const { form, sent: answered } = sendOf(payload);
+      // Whatever the toast said of a held publish is over once one goes.
+      setHeldNotice(null);
+      try {
+        const result = await save(prev, form);
+        const target = leaveTo.current;
+        leaveTo.current = null;
+        if (result.savedAt && target) router.push(target);
+        // Shifts changed (or begun) meanwhile come back: a phone shows a day
+        // with one of them, should the day it shows have none.
+        const moved = result.moved;
+        if (moved) {
+          const shifts = sent.current;
+          setDay((current) => dayOfMoved(current, moved, shifts));
+        }
+        return result;
+      } finally {
+        answered?.();
       }
-      return result;
     },
     initialState,
   );
-  const done = !dirty && !pending;
+
+  // Publishing changes, held for its undo before anything reaches the server
+  // (`publishWaits`). Once the wait is over it goes as the dock's own press
+  // would have, through the same action, and the promise is answered when the
+  // server has: a switch to another business waits for it.
+  const held = useHeldWrite<FormData>(
+    (form) =>
+      new Promise<void>((answered) => {
+        startTransition(() => action({ form, sent: answered }));
+      }),
+  );
+  const holding = held.held !== null;
+  /** How the screen stood before the held publish was pressed, for "ביטול". */
+  const restoreHeld = useRef<(() => void) | null>(null);
+
+  function holdPublish(form: FormData, restore: () => void) {
+    held.hold(form);
+    restoreHeld.current = restore;
+    setHeldNotice({ kind: "waiting", stamp: new Date().toISOString() });
+  }
+
+  /**
+   * "ביטול": the publish goes unsent, and the screen is as it was before the
+   * press, the line of a refused write or of a shift that began included.
+   */
+  function undoPublish() {
+    if (held.release() === null) return;
+    const restore = restoreHeld.current;
+    restoreHeld.current = null;
+    if (restore) restore();
+    else setDirty(true);
+    setHeldNotice({ kind: "undone", stamp: new Date().toISOString() });
+  }
+
+  /**
+   * The clock put back a shift the held publish changes: the form held is
+   * out of date and would be refused, so it goes unsent, and the rest of the
+   * work waits as it now stands, with the line that says why.
+   */
+  function dropHeld() {
+    if (held.release() === null) return;
+    restoreHeld.current = null;
+    setDirty(true);
+    setHeldNotice({ kind: "undone", stamp: new Date().toISOString() });
+  }
+
+  /** The toast's button went with the focus before there was an answer. */
+  const focusAfterAnswer = useRef(false);
+  /**
+   * Where the focus goes as the toast's button goes: to the publish button
+   * when it can be pressed again, else to the line that says where the week
+   * stands. While the publish is still on its way that waits for its answer,
+   * as the dock is busy and, once it worked, the builder starts again.
+   */
+  function focusAfterToast() {
+    if (focusOnScreen('button[value="publish"]:enabled')) return;
+    if (pending || holding) {
+      focusAfterAnswer.current = true;
+      return;
+    }
+    focusOnScreen("[data-builder-status]");
+  }
+  useEffect(() => {
+    if (pending || holding || !focusAfterAnswer.current) return;
+    focusAfterAnswer.current = false;
+    // Unless the person has put it somewhere since.
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    focusAfterToast();
+  });
+
+  const done = !dirty && !pending && !holding;
   // The clock only goes on: to the moment the server answered, when later.
   const now = laterOf(ticking, state.now);
 
@@ -322,6 +445,31 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     setReading(latest);
   }
   const { week } = reading;
+
+  // A publish held says so with its way back for as long as it waits; let
+  // go, that nobody was told; otherwise what the last write did, once done.
+  const toast: { text: string; stamp: string; undo: boolean } | null =
+    holding && heldNotice?.kind === "waiting"
+      ? {
+          text: t("app.build.hold.waiting"),
+          stamp: heldNotice.stamp,
+          undo: true,
+        }
+      : heldNotice?.kind === "undone"
+        ? {
+            text: t("app.build.hold.undone"),
+            stamp: heldNotice.stamp,
+            undo: false,
+          }
+        : state.savedAt && done
+          ? {
+              text: state.published
+                ? t("app.build.published")
+                : t("app.build.saved"),
+              stamp: state.savedAt,
+              undo: false,
+            }
+          : null;
 
   return (
     <div className="flex flex-col gap-5 pb-20 xl:pb-16">
@@ -341,18 +489,33 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         state={state}
         action={action}
         pending={pending}
+        holding={holding}
+        onHold={holdPublish}
+        sendHeld={held.commit}
+        replaceHeld={held.replace}
+        dropHeld={dropHeld}
         leaveTo={leaveTo}
         sent={sent}
       />
       <StatusToast
-        message={
-          state.savedAt && done
-            ? state.published
-              ? t("app.build.published")
-              : t("app.build.saved")
+        message={toast?.text ?? null}
+        stamp={toast?.stamp}
+        // The way back lasts as long as the publish waits for it.
+        duration={toast?.undo ? HOLD_MS : undefined}
+        action={
+          toast?.undo
+            ? { label: t("app.manage.undo"), onClick: undoPublish }
             : null
         }
-        stamp={state.savedAt}
+        // The dock's button went busy with the focus: the way back is next.
+        focusAction={toast?.undo === true}
+        onFocusLeave={focusAfterToast}
+        // While the toast waits for the keyboard or a mouse on "ביטול", the
+        // publish waits too: it never goes with the way back still offered.
+        onWaitingChange={(waiting) => {
+          if (waiting) held.pause();
+          else held.resume();
+        }}
       />
     </div>
   );
@@ -381,6 +544,11 @@ function WeekBuilder({
   state,
   action,
   pending,
+  holding,
+  onHold,
+  sendHeld,
+  replaceHeld,
+  dropHeld,
   leaveTo,
   sent,
 }: Omit<ScheduleBuilderProps, "save"> & {
@@ -394,6 +562,19 @@ function WeekBuilder({
   state: ScheduleState;
   action: (form: FormData) => void;
   pending: boolean;
+  /** A publish pressed waits for its undo: nothing has reached the server. */
+  holding: boolean;
+  /**
+   * Holds a publish, the form as it was pressed, for its undo, with what
+   * brings the screen back as it was before the press.
+   */
+  onHold: (form: FormData, restore: () => void) => void;
+  /** Sends the held publish now. */
+  sendHeld: () => void;
+  /** Holds the publish as the screen now sends it, in the time it has left. */
+  replaceHeld: (form: FormData) => void;
+  /** Lets the held publish go unsent: the clock changed what it holds. */
+  dropHeld: () => void;
   leaveTo: RefObject<string | null>;
   /** Where the form's submit puts the shifts it sends. */
   sent: RefObject<ScheduledShift[]>;
@@ -401,6 +582,8 @@ function WeekBuilder({
   const t = useTranslations();
   const router = useRouter();
   const pathname = usePathname();
+  // A publish on its way, or held for its undo: the work stands as pressed.
+  const busy = pending || holding;
   // Each shift gets an id of its own on this screen, so cards and the open
   // sheet keep their place while shifts are added and removed around them.
   const nextId = useRef(initial.length);
@@ -624,12 +807,15 @@ function WeekBuilder({
     setSheetOpen(false);
     // The card is gone, so focus goes to the way back instead.
     opener.current = null;
-    setTimeout(() => focusOnScreen(`[data-undo="${id}"]`), SHEET_CLOSES_MS);
+    setTimeout(() => {
+      if (focusLeftBySheet()) focusOnScreen(`[data-undo="${id}"]`);
+    }, SHEET_CLOSES_MS);
   }
 
   function undoRemove(row: ShiftRow) {
-    // What is on its way stands as sent: the builder starts again from it.
-    if (pending) return;
+    // What is on its way (or held) stands as sent: the builder starts again
+    // from it.
+    if (busy) return;
     setRemoved(removed.filter((r) => r.id !== row.id));
     // Brought back, a shift deleted meanwhile is a new one.
     if (goneMeanwhile.has(row.id)) {
@@ -657,7 +843,7 @@ function WeekBuilder({
   }
 
   function openSheet(next: SheetView, event: MouseEvent<HTMLElement>) {
-    if (pending) return;
+    if (busy) return;
     opener.current = event.currentTarget;
     setView(next);
     setSheetOpen(true);
@@ -666,8 +852,13 @@ function WeekBuilder({
   function closeSheet() {
     setSheetOpen(false);
     const back = opener.current;
-    // The sheet takes focus with it; give it back where the person was.
-    if (back) setTimeout(() => back.focus(), SHEET_CLOSES_MS);
+    // The sheet takes focus with it; give it back where the person was,
+    // unless they (or the toast of a held publish) moved it on meanwhile.
+    if (back) {
+      setTimeout(() => {
+        if (focusLeftBySheet(back)) back.focus();
+      }, SHEET_CLOSES_MS);
+    }
   }
 
   const moment = (iso: string | null | undefined) =>
@@ -679,7 +870,7 @@ function WeekBuilder({
       : null;
   const savedMoment = moment(savedAt);
   const publishedMoment = moment(lastPublish);
-  const done = !dirty && !pending;
+  const done = !dirty && !busy;
   // A failed save leaves the work where it was: on the screen only. After
   // one refused because shifts changed, began or ended meanwhile, with those
   // put back as they are now, what is left is whatever still differs from
@@ -706,7 +897,17 @@ function WeekBuilder({
     if (dirty && nothingLeft) setDirty(false);
   }, [dirty, nothingLeft, setDirty]);
 
-  const guard = useLeaveGuard(unsaved || pending);
+  const guard = useLeaveGuard(unsaved || busy);
+  // A way out taken while a publish is held (a tab, the switch to the other
+  // week) sends it now and goes once it worked, as "פרסום השינויים ויציאה"
+  // does: the publish was chosen, so nothing is asked, and should it be
+  // refused the screen stays and says why.
+  useEffect(() => {
+    if (!holding || guard.target === null) return;
+    leaveTo.current = guard.target;
+    guard.clear();
+    sendHeld();
+  }, [holding, guard, leaveTo, sendHeld]);
 
   function saveAndLeave() {
     leaveTo.current = guard.target;
@@ -715,6 +916,8 @@ function WeekBuilder({
       publishedMoment ? 'button[value="publish"]' : 'button[value="save"]',
     );
     // A save already on its way goes on to the same place when it is done.
+    // Publishing on the way out goes at once, with no wait for its undo
+    // (`publishWaits`): the screen is being left.
     if (button && !button.disabled) form.current?.requestSubmit(button);
   }
 
@@ -843,8 +1046,9 @@ function WeekBuilder({
       ),
     );
 
+  // A publish held has not gone yet: the team still sees the week as it was.
   const status = publishedMoment
-    ? unsaved
+    ? unsaved || holding
       ? t("app.build.unpublished")
       : t.rich("app.build.publishedAt", { ...publishedMoment, ltr })
     : unsaved
@@ -989,11 +1193,11 @@ function WeekBuilder({
   // A change that touches a shift under way or starting within 12 hours:
   // whoever is on it may hear late, should their quiet hours hold the push
   // (Orel's answer 4), so the manager checks with them directly. It never
-  // says whose.
+  // says whose. It stays while a publish is held, which may still be undone.
   const soon =
     now !== null &&
     !weekOver &&
-    (unsaved || !publishedMoment) &&
+    (unsaved || holding || !publishedMoment) &&
     touchesSoon(published ? read : [], shifts, now, timeZone);
   /** What the button that publishes says before it is pressed, by id. */
   const describedBy = (lines: [string, boolean][]) =>
@@ -1006,6 +1210,27 @@ function WeekBuilder({
       ? lockedWords(lockedBack.kind, [row.shift])
       : null;
   const write = weekWrite(shifts, read, basis, begun);
+  // While a publish is held the clock goes on under it. A shift it changes
+  // that began went back on the screen (`lockedBack`): what it holds would be
+  // refused, so it goes unsent, and the rest waits with the line that says
+  // why. One that only takes more people, or is as it was read, now goes
+  // apart (`weekWrite`): the publish is held again as the screen now sends
+  // it, in the time it has left.
+  const sending = JSON.stringify(write);
+  /** What the held publish sends, as it was last held. */
+  const heldSending = useRef("");
+  useEffect(() => {
+    if (!holding) return;
+    if (lockedBack) {
+      dropHeld();
+      return;
+    }
+    if (sending === heldSending.current || !form.current) return;
+    heldSending.current = sending;
+    const again = new FormData(form.current);
+    again.set("intent", "publish");
+    replaceHeld(again);
+  }, [holding, lockedBack, sending, dropHeld, replaceHeld]);
   // The week on the screen counts as it stands here; the other as read.
   const segments = running
     ? running.weeks.map((option) => {
@@ -1075,7 +1300,15 @@ function WeekBuilder({
             {t("app.build.clashBadge")}
           </Badge>
         ) : null}
-        <p className="min-w-0 text-base text-ink-2">{status}</p>
+        {/* Where the focus goes when the toast's "ביטול" goes with it and
+            there is no publish to press again. */}
+        <p
+          data-builder-status
+          tabIndex={-1}
+          className="min-w-0 text-base text-ink-2 outline-none"
+        >
+          {status}
+        </p>
       </div>
 
       <PhoneWeek
@@ -1105,11 +1338,33 @@ function WeekBuilder({
           }
           sent.current = shifts;
           const submitter = (event.nativeEvent as SubmitEvent).submitter;
-          setIntent(
-            submitter?.getAttribute("value") === "save" ? "save" : "publish",
-          );
+          const pressed =
+            submitter?.getAttribute("value") === "save" ? "save" : "publish";
+          // What the press clears, for "ביטול" to bring back.
+          const before = { dirty, lockedBack, intent };
+          setIntent(pressed);
           setDirty(false);
           setLockedBack(null);
+          // Changes to a published week wait for "ביטול" first: the form as
+          // it stands now is held, and nothing reaches the server until the
+          // wait is over. On the way out it goes at once.
+          if (
+            publishWaits({
+              intent: pressed,
+              published: publishedMoment !== null,
+              leaving: leaveTo.current !== null,
+            })
+          ) {
+            event.preventDefault();
+            const held = new FormData(event.currentTarget);
+            held.set("intent", pressed);
+            heldSending.current = sending;
+            onHold(held, () => {
+              setIntent(before.intent);
+              setDirty(before.dirty);
+              setLockedBack(before.lockedBack);
+            });
+          }
         }}
       >
         <input type="hidden" name="week" value={week.start} />
@@ -1123,8 +1378,9 @@ function WeekBuilder({
         <input type="hidden" name="basis" value={JSON.stringify(write.basis)} />
         <input type="hidden" name="joins" value={JSON.stringify(write.joins)} />
         {/* Once published and with nothing new, there is nothing to send:
-            only what went wrong, should something have. */}
-        {publishedMoment && !unsaved && !pending && !problem ? null : (
+            only what went wrong, should something have. A publish held for
+            its undo keeps the dock, busy, until it has gone. */}
+        {publishedMoment && !unsaved && !busy && !problem ? null : (
           <FloatingDock
             notice={
               problem || warning || soon ? (
@@ -1165,14 +1421,15 @@ function WeekBuilder({
                 {t("app.build.submit")}
               </DockButton>
             ) : null}
-            {!weekOver && (!publishedMoment || unsaved || pending) ? (
+            {!weekOver && (!publishedMoment || unsaved || busy) ? (
               <DockButton
                 type="submit"
                 name="intent"
                 value="publish"
                 icon={<Send aria-hidden="true" className="rtl:-scale-x-100" />}
-                loading={pending && intent === "publish"}
-                disabled={pending}
+                // Held for its undo, it is on its way already.
+                loading={holding || (pending && intent === "publish")}
+                disabled={busy}
                 aria-describedby={describedBy([
                   [warningId, warning !== null],
                   [soonId, soon],
@@ -1209,7 +1466,8 @@ function WeekBuilder({
       />
 
       <Sheet
-        open={guard.target !== null}
+        // Not while a publish is held: the way out sends it instead (above).
+        open={guard.target !== null && !holding}
         onOpenChange={(next) => {
           if (!next) guard.clear();
         }}
