@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  endedShifts,
   movedShifts,
+  pastShifts,
   ScheduleWriteError,
   scheduleClashedMeanwhile,
   scheduleTeamChanged,
+  scheduleWeekOver,
+  startedShifts,
 } from "./schedule-errors";
 
 // `saveWeekSchedule` and `publishWeekSchedule` throw the database's message
@@ -157,5 +161,89 @@ describe("movedShifts", () => {
     ).toBeNull();
     expect(movedShifts(new Error("40001 moved"))).toBeNull();
     expect(movedShifts(null)).toBeNull();
+  });
+});
+
+// 20261115000300_running_week.sql: in a published week, what has begun stays
+// as it was (55006, hint 'started', the ids), people join a shift under way
+// only until it ends (55006, 'ended'), what is put in place starts after now
+// (22023, 'past', each shift's id or null, day and start), and a week wholly
+// over no longer changes (55000, 'over'). running_week.test.sql pins them.
+describe("the week under way", () => {
+  const refused = (code: string, hint: string, details: string | null) =>
+    new ScheduleWriteError("Could not publish the schedule: refused", {
+      code,
+      hint,
+      details,
+    });
+  const ID = "7a000000-0000-4000-a000-0000000000e1";
+
+  it("names the shifts that had begun, or ended", () => {
+    expect(startedShifts(refused("55006", "started", `["${ID}"]`))).toEqual([
+      ID,
+    ]);
+    expect(endedShifts(refused("55006", "ended", `["${ID}"]`))).toEqual([ID]);
+    // Still that refusal when the detail can't be read.
+    expect(startedShifts(refused("55006", "started", null))).toEqual([]);
+    expect(endedShifts(refused("55006", "ended", "not json"))).toEqual([]);
+  });
+
+  it("says which shifts would start before now", () => {
+    expect(
+      pastShifts(
+        refused(
+          "22023",
+          "past",
+          `[{"id": null, "day": "2026-12-08", "start": "09:00"}, {"id": "${ID}", "day": "2026-12-08", "start": "09:30"}]`,
+        ),
+      ),
+    ).toEqual([
+      { id: null, day: "2026-12-08", start: "09:00" },
+      { id: ID, day: "2026-12-08", start: "09:30" },
+    ]);
+    expect(pastShifts(refused("22023", "past", "[]"))).toEqual([]);
+    expect(pastShifts(refused("22023", "past", null))).toEqual([]);
+  });
+
+  it("knows a week that is over", () => {
+    expect(scheduleWeekOver(refused("55000", "over", null))).toBe(true);
+    // A save of a published week: 55000 with no hint.
+    expect(
+      scheduleWeekOver(
+        new ScheduleWriteError(
+          "Could not save the schedule: This week is published; publish the changes instead",
+          { code: "55000" },
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("is nothing for any other refusal", () => {
+    const moved = refused("40001", "moved", `["${ID}"]`);
+    expect([
+      startedShifts(moved),
+      endedShifts(moved),
+      pastShifts(moved),
+      scheduleWeekOver(moved),
+    ]).toEqual([null, null, null, false]);
+    // The hint alone, or the code alone, is not enough.
+    expect(startedShifts(refused("55000", "started", `["${ID}"]`))).toBeNull();
+    expect(startedShifts(refused("55006", "ended", `["${ID}"]`))).toBeNull();
+    expect(endedShifts(refused("55006", "started", `["${ID}"]`))).toBeNull();
+    expect(pastShifts(refused("55006", "past", "[]"))).toBeNull();
+    expect(scheduleWeekOver(refused("55006", "over", null))).toBe(false);
+    expect(startedShifts(new Error("55006 started"))).toBeNull();
+    expect(pastShifts(null)).toBeNull();
+    expect(scheduleWeekOver(undefined)).toBe(false);
+  });
+
+  it("keeps them apart from a clash and from the team", () => {
+    const past = new ScheduleWriteError(
+      "Could not publish the schedule: A new or moved shift must start after now",
+      { code: "22023", hint: "past", details: "[]" },
+    );
+    expect([scheduleClashedMeanwhile(past), scheduleTeamChanged(past)]).toEqual(
+      [false, false],
+    );
   });
 });

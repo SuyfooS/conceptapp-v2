@@ -260,6 +260,11 @@ export type ActivityLine =
       shifts: number;
       first: boolean;
       swapsRemoved: number;
+      /**
+       * The week had begun when it was published
+       * (20261115000300_running_week.sql); false for a row from before.
+       */
+      running: boolean;
     }
   | {
       /** One of the app's sentences, replaced for the business or cleared. */
@@ -557,6 +562,7 @@ const schemas = {
     shifts: z.int().min(0),
     first: z.boolean(),
     swaps_removed: z.int().min(0),
+    running: z.boolean().default(false),
   }),
   "profile.bio_cleared": z.object({ person: id }),
   "wording.change": z.object({
@@ -1169,6 +1175,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             shifts: details.shifts,
             first: details.first,
             swapsRemoved: details.swaps_removed,
+            running: details.running,
           }
         : other;
     }

@@ -620,7 +620,43 @@ describe("buildActivity: each action", () => {
       shifts: 12,
       first: false,
       swapsRemoved: 2,
+      running: false,
     });
+  });
+
+  it("reads a publish of a week under way", () => {
+    expect(
+      lineOf(
+        row("schedule.publish", {
+          week: GONE,
+          starts_on: "2026-11-15",
+          shifts: 9,
+          first: false,
+          swaps_removed: 0,
+          running: true,
+          joined: [{ shift: GONE, user: NOA }],
+        }),
+      ),
+    ).toEqual({
+      action: "schedule.publish",
+      startsOn: "2026-11-15",
+      shifts: 9,
+      first: false,
+      swapsRemoved: 0,
+      running: true,
+    });
+    // A row that says something else of it is not read as a publish.
+    expect(
+      lineOf(
+        row("schedule.publish", {
+          starts_on: "2026-11-15",
+          shifts: 9,
+          first: false,
+          swaps_removed: 0,
+          running: "yes",
+        }),
+      ),
+    ).toEqual({ action: "other" });
   });
 
   it("reads the departments added, removed, renamed or put in order", () => {

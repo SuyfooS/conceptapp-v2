@@ -4,7 +4,8 @@ import { z } from "zod";
  * A save or a publish of a week the database refused
  * (`public.save_week_schedule`, `public.publish_week_schedule`), with what it
  * said: its code, hint and detail as well as its words, so a caller can tell
- * the refusals apart (`scheduleTeamChanged`, `movedShifts`).
+ * the refusals apart (`scheduleTeamChanged`, `movedShifts`, `startedShifts`,
+ * `pastShifts`, `scheduleWeekOver`).
  */
 export class ScheduleWriteError extends Error {
   readonly code: string | null;
@@ -99,4 +100,85 @@ export function movedShifts(error: unknown): string[] | null {
   } catch {
     return [];
   }
+}
+
+/** A refusal of the week under way (20261115000300_running_week.sql), by its code and hint. */
+function refusedAs(error: unknown, code: string, hint: string): boolean {
+  return (
+    error instanceof ScheduleWriteError &&
+    error.code === code &&
+    error.hint === hint
+  );
+}
+
+/** The JSON array of ids a refusal's detail names; empty when it can't be read. */
+function idsIn(detail: string | null): string[] {
+  try {
+    const ids = MovedIds.safeParse(JSON.parse(detail ?? ""));
+    return ids.success ? ids.data : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The shifts that had begun when the save or publish changed them or left
+ * them out (55006 with hint `started`, the ids in its detail): in a published
+ * week a shift that has begun stays as it was (Orel's answer of 15 November
+ * 2026), and nothing was written. The running week's builder (R3a) meets it;
+ * next week's has nothing begun, and gets `weekChanged` before writing when
+ * the week turns while it is open. Null for any other failure.
+ */
+export function startedShifts(error: unknown): string[] | null {
+  return refusedAs(error, "55006", "started")
+    ? idsIn((error as ScheduleWriteError).detail)
+    : null;
+}
+
+/**
+ * The shifts someone was to join after they ended (55006 with hint `ended`,
+ * the ids in its detail): a shift under way takes people (`joins`) only until
+ * it ends. The builder sends no joins before the running week opens on it.
+ * Null for any other failure.
+ */
+export function endedShifts(error: unknown): string[] | null {
+  return refusedAs(error, "55006", "ended")
+    ? idsIn((error as ScheduleWriteError).detail)
+    : null;
+}
+
+const PastEntry = z.object({
+  id: z.string().nullable(),
+  day: z.iso.date(),
+  start: z.string(),
+});
+const PastEntries = z.array(PastEntry).min(1);
+
+export type PastShift = z.infer<typeof PastEntry>;
+
+/**
+ * The shifts that would start at or before the moment of the save or publish
+ * (22023 with hint `past`: in a published week, a new shift, or one still to
+ * start moved, starts after now), each with its id (null for a new one), day
+ * and start as sent. Nothing was written. Null for any other failure.
+ */
+export function pastShifts(error: unknown): PastShift[] | null {
+  if (!refusedAs(error, "22023", "past")) return null;
+  try {
+    const shifts = PastEntries.safeParse(
+      JSON.parse((error as ScheduleWriteError).detail ?? ""),
+    );
+    return shifts.success ? shifts.data : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * The save or publish was for a published week that has wholly ended (55000
+ * with hint `over`: its next week's first midnight and the end of its last
+ * shift have passed): it no longer changes.
+ */
+export function scheduleWeekOver(error: unknown): boolean {
+  return refusedAs(error, "55000", "over");
 }

@@ -591,10 +591,13 @@ export function ActivityView({
         );
       case "schedule.publish":
         return {
-          what: t("actions.schedule.publish", {
-            first: String(line.first),
-            week: shortDate(line.startsOn),
-          }),
+          // A week published once it had begun: changes during the week.
+          what: t(
+            line.running
+              ? "actions.schedule.running"
+              : "actions.schedule.publish",
+            { first: String(line.first), week: shortDate(line.startsOn) },
+          ),
           notes: [
             t("actions.schedule.shifts", { count: line.shifts }),
             ...(line.swapsRemoved > 0

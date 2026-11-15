@@ -86,9 +86,10 @@ select results_eq(
   -- Whose shifts changed and the requests removed are for notifications
   -- (notifications.test.sql); what was kept, edited, added and removed, the
   -- requests opened again and the moment, for the week written in place
-  -- (week_in_place.test.sql).
+  -- (week_in_place.test.sql); who joined a shift under way and whether the
+  -- week had begun, for the week under way (running_week.test.sql).
   $$select actor_id, details - 'changed' - 'removed_swaps' - 'reopened' - 'kept'
-      - 'edited' - 'added' - 'removed' - 'at'
+      - 'edited' - 'added' - 'removed' - 'at' - 'joined' - 'running'
     from public.audit_log
     where business_id = '6c000000-0000-4000-b000-000000000001' and action = 'schedule.publish'$$,
   $$values ('6c000000-0000-4000-a000-00000000000b'::uuid, jsonb_build_object(
@@ -122,9 +123,12 @@ select is(
 
 -- Publishing again with nothing read replaces the shifts: it ends the waiting
 -- requests, which stay without their shift (20261115000200_swap_history.sql),
--- and says so.
+-- and says so. Each publish of the week again passes its moment, before the
+-- week begins, so what has begun (20261115000300_running_week.sql) never
+-- depends on today's date.
 select public.publish_week_schedule('6c000000-0000-4000-a000-00000000000a',
-  (select id from ids where name = 'x'), (select shifts from week_x));
+  (select id from ids where name = 'x'), (select shifts from week_x),
+  at_time => '2026-11-05 10:00+00');
 select is(
   (select array_agg(status::text || '/' || cancelled_because || '/' || coalesce(shift_id::text, 'gone')
      order by status::text)
@@ -145,7 +149,7 @@ select results_eq(
 
 -- Clearing a published week is still publishing: the log says no shifts.
 select public.publish_week_schedule('6c000000-0000-4000-a000-00000000000b',
-  (select id from ids where name = 'x'), '[]');
+  (select id from ids where name = 'x'), '[]', at_time => '2026-11-05 10:00+00');
 select is(
   (select details ->> 'shifts' from public.audit_log
     where business_id = '6c000000-0000-4000-b000-000000000001' and action = 'schedule.publish'
@@ -154,7 +158,8 @@ select is(
   'publishing an empty week is in the log with no shifts'
 );
 select public.publish_week_schedule('6c000000-0000-4000-a000-00000000000b',
-  (select id from ids where name = 'x'), (select shifts from week_x));
+  (select id from ids where name = 'x'), (select shifts from week_x),
+  at_time => '2026-11-05 10:00+00');
 
 -- A refused publish writes nothing.
 select throws_ok(

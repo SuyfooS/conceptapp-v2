@@ -764,7 +764,9 @@ select isnt_empty(
 reset role;
 
 -- Publishing the week again: its builders saw it. The owner 1 is on
--- Saturday now.
+-- Saturday now. Just after the removal, at its own moment: what has begun by
+-- then (Sunday's and Tuesday's mornings, 5 still on them) stays as it was
+-- (20261115000300_running_week.sql).
 select public.publish_week_schedule('8e000000-0000-4000-a000-000000000003',
   (select id from ids where name = 'week'),
   '[{"day": "2026-11-24", "name": "Evening", "start": "16:00", "end": "23:00", "needed": 2,
@@ -774,7 +776,8 @@ select public.publish_week_schedule('8e000000-0000-4000-a000-000000000003',
     {"day": "2026-11-27", "name": "Morning", "start": "07:00", "end": "15:00", "needed": 1,
      "assignees": [{"user": "8e000000-0000-4000-a000-00000000000a"}]},
     {"day": "2026-11-28", "name": "Morning", "start": "07:00", "end": "15:00", "needed": 1,
-     "assignees": [{"user": "8e000000-0000-4000-a000-000000000001"}]}]');
+     "assignees": [{"user": "8e000000-0000-4000-a000-000000000001"}]}]',
+  at_time => '2026-11-24 08:20+00');
 select is(
   (select count(*)::int from public.notifications n
    where n.kind = 'schedule.unfilled' and n.resolved_at is null),
