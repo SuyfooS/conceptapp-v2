@@ -16,7 +16,7 @@
 -- times, so nothing here meets the seeded people or the clock; its slugs
 -- (tchg-…) are its own too.
 begin;
-select plan(96);
+select plan(98);
 set local timezone = 'UTC';
 
 insert into auth.users (id, aud, role, phone)
@@ -766,7 +766,10 @@ reset role;
 -- Publishing the week again: its builders saw it. The owner 1 is on
 -- Saturday now. Just after the removal, at its own moment: what has begun by
 -- then (Sunday's and Tuesday's mornings, 5 still on them) stays as it was
--- (20261115000300_running_week.sql).
+-- (20261115000300_running_week.sql). The builders had read their lines.
+update public.notifications n
+set read_at = '2026-11-24 08:10+00'
+where n.kind = 'schedule.unfilled' and n.resolved_at is null;
 select public.publish_week_schedule('8e000000-0000-4000-a000-000000000003',
   (select id from ids where name = 'week'),
   '[{"day": "2026-11-24", "name": "Evening", "start": "16:00", "end": "23:00", "needed": 2,
@@ -778,11 +781,40 @@ select public.publish_week_schedule('8e000000-0000-4000-a000-000000000003',
     {"day": "2026-11-28", "name": "Morning", "start": "07:00", "end": "15:00", "needed": 1,
      "assignees": [{"user": "8e000000-0000-4000-a000-000000000001"}]}]',
   at_time => '2026-11-24 08:20+00');
+-- Counted again at its moment (20261115000400_running_week_notices.sql):
+-- Tuesday's evening and Wednesday's morning still lack someone.
 select is(
-  (select count(*)::int from public.notifications n
+  (select count(*)::text || '/' || string_agg(distinct n.params ->> 'count', ',')
+      || '/' || bool_and(n.read_at = '2026-11-24 08:10+00')::text
+   from public.notifications n
    where n.kind = 'schedule.unfilled' and n.resolved_at is null),
-  0,
-  'publishing the week again settles its line'
+  '3/2/true',
+  'publishing the week again counts its line again: two shifts ahead still lack someone, and nobody is told again'
+);
+-- A week under way: 6 came off Thursday's evening (the week replaced with
+-- nothing read gives Tuesday's evening a new id, the same shift to them), and
+-- the owner 1 is on Saturday's morning; each hears of that shift, how many of
+-- theirs are left, and on the phone only until it starts.
+select is(
+  (select jsonb_agg(
+      (n.params - 'week') || jsonb_build_object('kind', n.kind, 'until', n.push_before)
+      order by n.user_id)
+   from public.notifications n
+   where n.dedupe_key = 'schedule:' || (select id from ids where name = 'week')
+     and n.user_id in ('8e000000-0000-4000-a000-000000000001', '8e000000-0000-4000-a000-000000000006')),
+  jsonb_build_array(
+    jsonb_build_object('kind', 'schedule.changed', 'startsOn', '2026-11-22', 'mine', 1,
+      'running', true, 'until', '2026-11-28 05:00+00'::timestamptz,
+      'nearest', jsonb_build_object('change', 'added', 'shift', jsonb_build_object(
+        'day', '2026-11-28', 'name', 'Morning', 'start', '07:00', 'end', '15:00'),
+        'from', '2026-11-28 05:00+00'::timestamptz)),
+    jsonb_build_object('kind', 'schedule.changed', 'startsOn', '2026-11-22', 'mine', 1,
+      'running', true, 'until', '2026-11-26 14:00+00'::timestamptz,
+      'nearest', jsonb_build_object('change', 'removed', 'shift', jsonb_build_object(
+        'day', '2026-11-26', 'name', 'Evening', 'start', '16:00', 'end', '23:00'),
+        'from', '2026-11-26 14:00+00'::timestamptz))
+  ),
+  'those whose shifts changed in the week under way hear of the nearest, and how many are left'
 );
 
 ------------------------------------------------------------------------------
@@ -915,6 +947,22 @@ select is(
    where n.kind = 'schedule.unfilled' and n.resolved_at is null),
   3,
   'a week with a shift ahead that lacks someone keeps its line'
+);
+-- Read, and the week published again unchanged on Wednesday at 08:30 in
+-- Israel (nothing sent, nothing read: every shift kept): only Friday's is
+-- still ahead and lacks someone.
+update public.notifications n
+set read_at = '2026-11-25 06:20+00'
+where n.kind = 'schedule.unfilled' and n.resolved_at is null;
+select public.publish_week_schedule('8e000000-0000-4000-a000-000000000003',
+  (select id from ids where name = 'week'), '[]', '{}', '2026-11-25 06:30+00');
+select is(
+  (select count(*)::text || '/' || string_agg(distinct n.params ->> 'count', ',')
+      || '/' || bool_and(n.read_at = '2026-11-25 06:20+00')::text
+   from public.notifications n
+   where n.kind = 'schedule.unfilled' and n.resolved_at is null),
+  '3/1/true',
+  'a publish rewrites the count of what is still ahead, read as it was'
 );
 select private.settle_done_reminders('8e000000-0000-4000-b000-000000000001',
   '2026-11-29', '2026-11-27 06:00+00');
