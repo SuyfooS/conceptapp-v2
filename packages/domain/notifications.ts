@@ -4,6 +4,7 @@ import { addDays, dateIn, instantIn } from "./availability";
 import { type DocumentCategory, isDocumentCategory } from "./documents";
 import { timeOfDay } from "./hours";
 import { atLeast, isStaff, type ModuleKey, type Role } from "./modules";
+import { builderHref } from "./running-week";
 import { timeIn } from "./shabbat";
 import { MAX_ENTRY_HOURS } from "./time-clock-format";
 
@@ -59,10 +60,12 @@ type KindInfo = {
    * `/lists/<params.list>`, "payMonth" the hours for payroll of
    * `params.month`, "conversation" the chat `/chat/<params.conversation>`,
    * "document" the document `/chat/documents/<params.document>` (C7's
-   * screen), "person" the person's hours `/clock/team/<params.person>`, and
-   * `href` is where it leads otherwise.
+   * screen), "person" the person's hours `/clock/team/<params.person>`,
+   * "week" the builder of the week `params.startsOn` names
+   * (`/schedule/build?week=<params.startsOn>`, the running-week plan's R4),
+   * and `href` is where it leads otherwise.
    */
-  to?: "list" | "payMonth" | "conversation" | "document" | "person";
+  to?: "list" | "payMonth" | "conversation" | "document" | "person" | "week";
   /**
    * Shown in the bell and the inbox, and counted there: all but a chat's own
    * lines, which the Chat tab counts instead (as chats with unread messages).
@@ -121,16 +124,17 @@ export const NOTIFICATION_KINDS = {
   // otherwise its count lowered to what is left (never raised: a shift
   // published with nobody on it wasn't freed by the team change) without
   // telling anyone again; and none being left later (filled, or begun)
-  // settles it too. It leads
-  // to the schedule, which leads on to next week's builder; a week already
-  // under way the app can't fill, so its words say to arrange it with the
-  // team directly (`unfilledWeekBegun`). Read, it no longer counts.
+  // settles it too. It opens that week's builder (the running-week plan's
+  // R4): next week's, or the week already under way, whose words say it is
+  // filled there (`unfilledWeekBegun`). A line whose week can't be read
+  // leads to the schedule. Read, it no longer counts.
   "schedule.unfilled": {
     group: "approvals",
     module: "scheduling",
     minRole: "manager",
     needsAction: true,
     href: "/schedule",
+    to: "week",
   },
   "swap.offered": {
     group: "swaps",
@@ -547,6 +551,10 @@ export function linkFor(
       return `/clock/team/${person.data.person.toLowerCase()}`;
     }
   }
+  if (info.to === "week") {
+    const week = z.object({ startsOn: z.iso.date() }).safeParse(params);
+    if (week.success) return builderHref(week.data.startsOn);
+  }
   return info.href;
 }
 
@@ -566,8 +574,8 @@ export function isAppPath(url: unknown): url is `/${string}` {
 
 /**
  * Whether a `schedule.unfilled` line's week is already under way on `today`
- * (the business's own day, YYYY-MM-DD): its builder opens next week only, so
- * its freed shifts are arranged with the team directly, and its words say so.
+ * (the business's own day, YYYY-MM-DD): its freed shifts are filled in this
+ * week's schedule, which the line opens (`linkFor`), and its words say so.
  */
 export function unfilledWeekBegun(startsOn: string, today: string): boolean {
   return startsOn <= today;

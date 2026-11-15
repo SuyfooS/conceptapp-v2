@@ -204,7 +204,13 @@ describe("availabilityStatus", () => {
 });
 
 describe("todayTiles", () => {
-  const team = { gaps: 6, missing: 2, pastDue: false, swaps: 1 };
+  const team = {
+    gapsThisWeek: 0,
+    gaps: 6,
+    missing: 2,
+    pastDue: false,
+    swaps: 1,
+  };
   const keys = (tiles: TodayTile[]) => tiles.map((tile) => tile.key);
 
   it("gives a worker their availability and the shifts they can take", () => {
@@ -301,11 +307,54 @@ describe("todayTiles", () => {
       ),
     ).toEqual(["missing", "swaps"]);
   });
+
+  // Orel's answer 6 of 15 November 2026: what is missing this week first,
+  // then next week.
+  it("leads with this week's open places, only while there are any", () => {
+    const now = { ...team, gapsThisWeek: 3 };
+    expect(
+      todayTiles({ role: "owner", availability: "sent", offers: 0, team: now }),
+    ).toEqual([
+      { key: "gapsThisWeek", count: 3 },
+      { key: "gaps", count: 6 },
+      { key: "missing", count: 2, late: false },
+      { key: "swaps", count: 1 },
+    ]);
+    expect(
+      keys(
+        todayTiles({
+          role: "manager",
+          availability: "due",
+          offers: 0,
+          team: { ...now, gaps: null, missing: null },
+        }),
+      ),
+    ).toEqual(["gapsThisWeek", "swaps", "availability"]);
+    expect(
+      keys(
+        todayTiles({ role: "owner", availability: "sent", offers: 0, team }),
+      ),
+    ).not.toContain("gapsThisWeek");
+  });
+
+  it("never gives a worker this week's open places", () => {
+    expect(
+      keys(
+        todayTiles({
+          role: "worker",
+          availability: "sent",
+          offers: 1,
+          team: null,
+        }),
+      ),
+    ).not.toContain("gapsThisWeek");
+  });
 });
 
 describe("tileNeedsAction", () => {
   it("is true for counts above zero", () => {
     expect(tileNeedsAction({ key: "gaps", count: 1 })).toBe(true);
+    expect(tileNeedsAction({ key: "gapsThisWeek", count: 2 })).toBe(true);
     expect(tileNeedsAction({ key: "swaps", count: 0 })).toBe(false);
   });
 

@@ -2,6 +2,7 @@ import { weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
 import { formArg } from "@domain/profile";
+import { shiftEnded } from "@domain/running-week";
 import { type ScheduledShift, shiftStarted, shiftsOf } from "@domain/schedule";
 import type { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
@@ -95,6 +96,16 @@ export const hasStarted = (
   data: Pick<ShiftData, "now" | "timeZone">,
   shift: Pick<ScheduledShift, "day" | "start">,
 ) => shiftStarted(shift, new Date(data.now), data.timeZone);
+
+/**
+ * Whether a shift is over at the moment the screen was read: it takes nobody
+ * any more, so a manager's card no longer says how many it lacks, as the
+ * builder's muted past cards do not.
+ */
+export const hasEnded = (
+  data: Pick<ShiftData, "now" | "timeZone">,
+  shift: Pick<ScheduledShift, "day" | "start" | "end">,
+) => shiftEnded(shift, new Date(data.now), data.timeZone);
 
 export const firstNames = (names: readonly string[]) =>
   names.map(firstNameOf).join(", ");

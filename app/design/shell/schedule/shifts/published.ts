@@ -190,9 +190,37 @@ export const demoWorkerSchedule = (
   late: false,
   team: null,
   build: null,
+  running: null,
 });
 
-/** The demo's schedule tab as Shiran, the shift manager, with next week's draft. */
+/**
+ * The demo's published week as its manager builds it, for the ways into its
+ * builder: what this week still lacks among its shifts still to start.
+ */
+export function demoRunningBuild(
+  data: PublishedSchedule,
+  team: ScheduleBuildWeek["team"],
+): ScheduleBuildWeek | null {
+  const { thisWeek } = data;
+  if (thisWeek.publishedAt === null) return null;
+  return {
+    week: { ...demoWeek, start: thisWeek.start, dates: thisWeek.dates },
+    savedAt: thisWeek.publishedAt,
+    publishedAt: thisWeek.publishedAt,
+    shifts: thisWeek.shifts,
+    basis: null,
+    team,
+    people: team,
+    hasPattern: true,
+    answers: teamAnswers,
+    positions: demoPositions,
+  };
+}
+
+/**
+ * The demo's schedule tab as Shiran, the shift manager, with next week's
+ * draft, and this week's shifts still to start that lack someone first.
+ */
 export function demoManagerSchedule(
   swaps: ShiftSwap[],
 ): Omit<ScheduleViewProps, "swap"> {
@@ -215,8 +243,9 @@ export function demoManagerSchedule(
     answers: teamAnswers,
     positions: demoPositions,
   };
+  const data = demoPublished("shiran", swaps);
   return {
-    data: demoPublished("shiran", swaps),
+    data,
     week,
     late: false,
     team: {
@@ -224,5 +253,6 @@ export function demoManagerSchedule(
       team: teamAvailability(members, teamAnswers, demoWeek.dueAt),
     },
     build,
+    running: demoRunningBuild(data, members),
   };
 }

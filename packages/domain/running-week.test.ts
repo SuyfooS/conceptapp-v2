@@ -1,16 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   begunShifts,
+  boardDraft,
+  builderHref,
   builderWeekOf,
   draftAhead,
   edgeWeek,
   gapsAhead,
   joinedOn,
   lockBegun,
+  runningFirst,
+  runningGaps,
   shiftEnded,
   shiftJoins,
   shiftStage,
   touchesSoon,
+  weekBuilt,
   weekWrite,
 } from "./running-week";
 import type { ScheduledShift } from "./schedule";
@@ -286,6 +291,157 @@ describe("gapsAhead", () => {
       shifts: [],
       people: 0,
     });
+  });
+});
+
+// The ways into the running week (R4, Orel's answer 6 of 15 November 2026):
+// the board's row counts shifts, Today's tile places, and only for a week
+// someone built.
+describe("runningGaps and weekBuilt", () => {
+  const published = {
+    savedAt: "2026-11-14T18:00:00.000Z",
+    publishedAt: "2026-11-14T18:00:00.000Z",
+    shifts: week,
+  };
+
+  it("counts the shifts still to start lacking someone, and their places", () => {
+    expect(runningGaps(published, NOW, zone)).toEqual({ shifts: 2, people: 2 });
+    // Tuesday's evening needs two more once Roni is off it.
+    expect(
+      runningGaps(
+        {
+          ...published,
+          shifts: [monEvening, { ...tueEvening, assignees: [] }, wedMorning],
+        },
+        NOW,
+        zone,
+      ),
+    ).toEqual({ shifts: 2, people: 3 });
+  });
+
+  it("counts a draft saved and not published, the one that outlives the turn", () => {
+    expect(runningGaps({ ...published, publishedAt: null }, NOW, zone)).toEqual(
+      { shifts: 2, people: 2 },
+    );
+  });
+
+  it("is nothing for a week nobody built, or none at all", () => {
+    const fromPattern = { savedAt: null, publishedAt: null, shifts: week };
+    expect(weekBuilt(fromPattern)).toBe(false);
+    expect(runningGaps(fromPattern, NOW, zone)).toEqual({
+      shifts: 0,
+      people: 0,
+    });
+    expect(weekBuilt(null)).toBe(false);
+    expect(runningGaps(null, NOW, zone)).toEqual({ shifts: 0, people: 0 });
+    expect(weekBuilt(published)).toBe(true);
+    expect(weekBuilt({ ...published, publishedAt: null })).toBe(true);
+  });
+
+  it("is nothing once every shift short of someone has begun", () => {
+    // Wednesday 18 November at 16:00: the last of them began at 08:00.
+    const later = new Date("2026-11-18T14:00:00.000Z");
+    expect(runningGaps(published, later, zone)).toEqual({
+      shifts: 0,
+      people: 0,
+    });
+  });
+});
+
+describe("builderHref", () => {
+  it("names the week it opens", () => {
+    expect(builderHref(WEEKS.thisWeek)).toBe("/schedule/build?week=2026-11-15");
+    expect(builderWeekOf("2026-11-15", WEEKS)).toBe("this");
+  });
+});
+
+// Where Today's hero and the schedule tab's row lead: this week's builder
+// while it lacks someone, or while it waits to be published.
+describe("runningFirst", () => {
+  const saved = "2026-11-14T18:00:00.000Z";
+  const published = { savedAt: saved, publishedAt: saved, shifts: week };
+  // Everything still to start is staffed; Monday's evening, over, is not.
+  const staffed = [
+    monEvening,
+    tueMorning,
+    {
+      ...tueEvening,
+      assignees: [roni, itai].map((user) => ({ user, position: null })),
+    },
+    {
+      ...wedMorning,
+      assignees: [tamar, roni].map((user) => ({ user, position: null })),
+    },
+  ];
+
+  it("leads to a published week while a shift still to start lacks someone", () => {
+    expect(runningFirst(published, NOW, zone)).toBe(true);
+    expect(runningFirst({ ...published, shifts: staffed }, NOW, zone)).toBe(
+      false,
+    );
+  });
+
+  it("leads to a draft saved and not published, fully staffed or not", () => {
+    expect(runningFirst({ ...published, publishedAt: null }, NOW, zone)).toBe(
+      true,
+    );
+    expect(
+      runningFirst(
+        { savedAt: saved, publishedAt: null, shifts: staffed },
+        NOW,
+        zone,
+      ),
+    ).toBe(true);
+    // Saved with nothing in it: nothing waits to be published.
+    expect(
+      runningFirst(
+        { savedAt: saved, publishedAt: null, shifts: [] },
+        NOW,
+        zone,
+      ),
+    ).toBe(false);
+  });
+
+  it("never leads to a week nobody built", () => {
+    expect(
+      runningFirst(
+        { savedAt: null, publishedAt: null, shifts: week },
+        NOW,
+        zone,
+      ),
+    ).toBe(false);
+    expect(runningFirst(null, NOW, zone)).toBe(false);
+  });
+});
+
+// What the schedule tab's "השבוע" and "השבוע הבא" show a manager of a week
+// not yet out (R4: this week's saved draft too), and a worker never.
+describe("boardDraft", () => {
+  const thisWeek = { start: WEEKS.thisWeek, publishedAt: null };
+  const built = { week: { start: WEEKS.thisWeek }, shifts: week };
+
+  it("is the week as it is built while it is not published", () => {
+    expect(boardDraft(thisWeek, built)).toBe(built);
+  });
+
+  it("is nothing once the week is published", () => {
+    expect(
+      boardDraft(
+        { ...thisWeek, publishedAt: "2026-11-14T18:00:00.000Z" },
+        built,
+      ),
+    ).toBeNull();
+  });
+
+  it("is nothing for another week's build, or one with no shifts", () => {
+    expect(
+      boardDraft({ start: WEEKS.nextWeek, publishedAt: null }, built),
+    ).toBeNull();
+    expect(boardDraft(thisWeek, { ...built, shifts: [] })).toBeNull();
+  });
+
+  it("is nothing without a build, as for a worker", () => {
+    expect(boardDraft(thisWeek, null)).toBeNull();
   });
 });
 

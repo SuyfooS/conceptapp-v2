@@ -1459,10 +1459,36 @@ describe("each person's choices", () => {
 });
 
 describe("shifts freed by a team change", () => {
-  it("lead the builders to the schedule, in approvals", () => {
-    expect(linkFor("schedule.unfilled", { week: LINE })).toBe("/schedule");
+  // The running-week plan's R4: the line opens the builder of its week, this
+  // week's as much as next week's, settled or not.
+  it("open their week's builder, in approvals", () => {
+    const line = { week: LINE, startsOn: "2026-11-15", count: 1 };
+    expect(linkFor("schedule.unfilled", line)).toBe(
+      "/schedule/build?week=2026-11-15",
+    );
+    expect(
+      linkFor("schedule.unfilled", { ...line, startsOn: "2026-11-22" }, true),
+    ).toBe("/schedule/build?week=2026-11-22");
+    expect(isAppPath(linkFor("schedule.unfilled", line))).toBe(true);
     expect(notificationGroupOf("schedule.unfilled")).toBe("approvals");
     expect(NOTIFICATION_KINDS["schedule.unfilled"].module).toBe("scheduling");
+  });
+
+  it("lead to the schedule when their week can't be read", () => {
+    expect(linkFor("schedule.unfilled", { week: LINE })).toBe("/schedule");
+    expect(linkFor("schedule.unfilled")).toBe("/schedule");
+    for (const startsOn of [
+      "15.11.2026",
+      "2026-11-15&week=x",
+      "../admin",
+      "",
+      15,
+      null,
+    ]) {
+      expect(linkFor("schedule.unfilled", { startsOn }), String(startsOn)).toBe(
+        "/schedule",
+      );
+    }
   });
 
   it("read the week and how many lack someone, never who left", () => {
@@ -1487,7 +1513,7 @@ describe("shifts freed by a team change", () => {
     ).toEqual({ kind: "other" });
   });
 
-  it("know a week already under way, which the builder no longer opens", () => {
+  it("know a week already under way, filled in this week's schedule", () => {
     expect(unfilledWeekBegun("2026-11-22", "2026-11-21")).toBe(false);
     expect(unfilledWeekBegun("2026-11-22", "2026-11-22")).toBe(true);
     expect(unfilledWeekBegun("2026-11-22", "2026-11-28")).toBe(true);

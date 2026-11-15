@@ -15,6 +15,7 @@ import { currentModules } from "../modules";
 import {
   currentAvailabilityWeek,
   currentPublishedSchedule,
+  currentRunningBuild,
   currentScheduleBuild,
   currentTeamAvailability,
 } from "../schedule/week";
@@ -48,6 +49,7 @@ export default async function HomePage() {
     availability,
     teamAvailability,
     build,
+    running,
     clockLine,
     lists,
     chat,
@@ -62,6 +64,7 @@ export default async function HomePage() {
     currentAvailabilityWeek(),
     currentTeamAvailability(),
     currentScheduleBuild(),
+    currentRunningBuild(),
     currentClockLine(),
     currentListsHome(),
     currentChatHome(),
@@ -88,7 +91,7 @@ export default async function HomePage() {
         clockLine,
         schedule:
           published && availability
-            ? { published, availability, teamAvailability, build }
+            ? { published, availability, teamAvailability, build, running }
             : null,
         team,
         // The bell, while notifications are on and the person is themselves.

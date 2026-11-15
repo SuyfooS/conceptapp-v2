@@ -11,6 +11,7 @@ import {
   demoSwaps,
   publishDemoRunningWeek,
   requestDemoSwap,
+  saveDemoRunningWeek,
   scheduleAssignments,
   scheduleDemoSunday,
   schedulePublished,
@@ -962,6 +963,77 @@ test("switching weeks with unsaved work asks first", async ({ page }) => {
     page.getByRole("heading", { level: 1, name: tb.title }),
   ).toBeVisible();
   await expect(warning).toHaveCount(0);
+});
+
+// The running-week plan's R4: a draft of this week saved before the week
+// turned, not published and with nothing still to start lacking anyone,
+// outlives the turn. Its managers see it on the "השבוע" tab, its cards lead
+// to this week's builder, and Today's hero and "ניהול הסידור" lead there too,
+// since the team is waiting for it to be published; the team sees nothing of
+// it.
+test("this week's saved draft waits for its managers, and the team sees nothing of it", async ({
+  page,
+  browser,
+}, testInfo) => {
+  const { startsOn } = await skipNearTheWeekEdges();
+  await saveDemoRunningWeek(NOA.e164);
+  const thisWeek = `/schedule/build?week=${startsOn}`;
+  const evening = new RegExp(
+    `^${literal(before(he.app.shifts.shift.replace("{name}", "ערב")))}`,
+  );
+
+  await signIn(page, MANAGER);
+  await expect(page).toHaveURL(/\/home$/);
+  // Nothing is out: the hero's way in is this week's builder, not next week's.
+  const hero = page.getByRole("region", {
+    name: he.app.home.hero.businessNext,
+  });
+  await expect(hero).toContainText(he.app.home.hero.notPublished.title);
+  await expect(
+    hero.getByRole("link", { name: he.app.home.hero.build }),
+  ).toHaveAttribute("href", thisWeek);
+
+  // The schedule tab opens on this week's draft, and its card on its builder.
+  await page.goto("/schedule");
+  await expect(
+    page.getByText(he.app.shifts.board.draft).filter({ visible: true }),
+  ).toBeVisible();
+  const card = page
+    .getByRole("region", { name: evening })
+    .filter({ visible: true })
+    .first();
+  await expect(card).toContainText(NOA.first);
+  await expect(card.getByRole("link")).toHaveAttribute("href", thisWeek);
+  // "ניהול הסידור": this week first, saved and waiting to be published.
+  const row = page
+    .getByRole("link", { name: new RegExp(literal(tb.titleRunning)) })
+    .filter({ visible: true });
+  await expect(row).toHaveAttribute("href", thisWeek);
+  await expect(row).toContainText(tb.entry.subtitleSaved);
+  await expectCleanPage(page);
+  await card.getByRole("link").click();
+  await expect(page).toHaveURL(
+    new RegExp(`/schedule/build\\?week=${startsOn}$`),
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
+  ).toBeVisible();
+
+  // A worker reads only what is out: nothing yet.
+  const worker = await secondPage(browser, testInfo);
+  try {
+    await signIn(worker, YOAV);
+    await worker.goto("/schedule");
+    await expect(
+      worker
+        .getByText(he.app.shifts.mine.notPublished)
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+    await expect(worker.getByRole("region", { name: evening })).toHaveCount(0);
+  } finally {
+    await worker.context().close();
+  }
 });
 
 // A link to a week already over (an old line, say) says so and leads to the

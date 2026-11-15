@@ -8,7 +8,8 @@ import {
   WEEKDAY_KEYS,
 } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
-import { coverageOf, scheduleGaps, shiftsByDay } from "@domain/schedule";
+import { gapsAhead } from "@domain/running-week";
+import { coverageOf, shiftsByDay, stillNeeded } from "@domain/schedule";
 import { myRequestFor, offersFor } from "@domain/swaps";
 import { AvatarStack } from "@ui/avatar";
 import { Badge } from "@ui/badge";
@@ -17,6 +18,7 @@ import { cn } from "@ui/cn";
 import { PageHeader } from "@ui/page";
 import { Segmented } from "@ui/segmented";
 import { WeekStrip } from "@ui/week-strip";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 import {
@@ -42,6 +44,7 @@ import {
   dayLabel,
   firstNames,
   formOf,
+  hasEnded,
   ltr,
   nameOf,
   positionName,
@@ -98,6 +101,8 @@ function shabbatNote(week: BoardWeek, date: string) {
  * `manage` and `own` the screens around the schedule. `ask`: after giving a
  * shift away here, once, the offer of notifications on the phone
  * (`currentPushAsk`), under the week's title, as on the person's own shifts.
+ * A manager's draft of either week opens that week's builder: `draftHref`,
+ * with `?week=` its first day.
  */
 export function WeekBoard({
   title,
@@ -118,6 +123,7 @@ export function WeekBoard({
   data: ShiftData;
   manager: boolean;
   swap: SwapAction;
+  /** The builder's path: a draft opens it on its own week. */
   draftHref: string;
   prompt?: ReactNode;
   manage?: ReactNode;
@@ -158,7 +164,31 @@ export function WeekBoard({
   const day = days[week.key] ?? firstDay;
   const byDay = shiftsByDay(week.dates, week.shifts);
   const shifts = byDay.find((d) => d.day === day)?.shifts ?? [];
-  const gaps = scheduleGaps(week.shifts).people;
+  // Places open in the shifts still to start: every count of a running week
+  // leaves out what has begun (the running-week plan).
+  const gaps = gapsAhead(week.shifts, new Date(data.now), data.timeZone).people;
+  // Once the week is under way, the words say they count what is still to
+  // come; and it is only called filled while nothing not yet over lacks
+  // someone, since a shift under way still takes people (Q1), its card says
+  // so, and one that is over says nothing.
+  const underWay = week.key === "this" && (week.dates[0] ?? "") <= data.today;
+  const shortNow = week.shifts.some(
+    (shift) => stillNeeded(shift) > 0 && !hasEnded(data, shift),
+  );
+  const coverage =
+    gaps > 0 ? (
+      <Badge tone="warning">
+        {tb(underWay ? "placesAhead" : "places", { count: gaps })}
+      </Badge>
+    ) : shortNow ? null : (
+      <Badge tone="success">
+        {tb(underWay ? "allFilledAhead" : "allFilled")}
+      </Badge>
+    );
+  // The builder of this week: where its draft leads, and what an empty
+  // "השבוע" offers a manager. A published week's shifts open their sheet.
+  const weekLink = `${draftHref}?week=${week.dates[0] ?? data.today}`;
+  const draftLink = week.state === "draft" ? weekLink : undefined;
   const hasShifts = week.state !== "none";
   const publishedLine = week.published ? (
     <p className="px-1 text-ink-2 text-sm">
@@ -174,16 +204,8 @@ export function WeekBoard({
             eyebrow={week.range}
             title={title}
             subtitle={
-              manager && week.shifts.length > 0 ? (
-                <span className="mt-2 flex">
-                  {gaps > 0 ? (
-                    <Badge tone="warning">
-                      {tb("places", { count: gaps })}
-                    </Badge>
-                  ) : (
-                    <Badge tone="success">{tb("allFilled")}</Badge>
-                  )}
-                </span>
+              manager && week.shifts.length > 0 && coverage ? (
+                <span className="mt-2 flex">{coverage}</span>
               ) : undefined
             }
           />
@@ -264,7 +286,7 @@ export function WeekBoard({
                 manager={manager}
                 swap={swap}
                 onOpen={sheet.show}
-                draftHref={draftHref}
+                draftHref={draftLink}
               />
             )}
             {publishedLine}
@@ -283,6 +305,16 @@ export function WeekBoard({
                   })
                 : t("shifts.mine.notPublished")}
             </CardText>
+            {/* The week under way can be built too (R3a): what to do next,
+                as a plain link, so the screen keeps one main action. */}
+            {manager && week.key === "this" ? (
+              <Link
+                href={weekLink}
+                className="mt-1 inline-flex min-h-11 items-center font-medium text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                {t("shifts.week.buildThis")}
+              </Link>
+            ) : null}
           </Card>
         )}
 
@@ -295,7 +327,7 @@ export function WeekBoard({
               offers={offers}
               manager={manager}
               onOpen={sheet.show}
-              draftHref={draftHref}
+              draftHref={draftLink}
             />
             {publishedLine}
           </div>
@@ -380,7 +412,8 @@ function DayShifts({
   manager: boolean;
   swap: SwapAction;
   onOpen: (id: string) => void;
-  draftHref: string;
+  /** Where a draft's shifts lead: its week's builder. None once published. */
+  draftHref?: string;
 }) {
   const t = useTranslations("app");
   // A worker's first shift of the day leads, as the screen's one strong
@@ -447,7 +480,8 @@ function FullWeek({
   offers: ReturnType<typeof offersFor<WeekScheduleShift>>;
   manager: boolean;
   onOpen: (id: string) => void;
-  draftHref: string;
+  /** Where a draft's shifts lead: its week's builder. None once published. */
+  draftHref?: string;
 }) {
   const t = useTranslations("app");
   const tb = useTranslations("app.shifts.board");
@@ -545,7 +579,8 @@ function WeekShift({
   offers: ReturnType<typeof offersFor<WeekScheduleShift>>;
   manager: boolean;
   onOpen: (id: string) => void;
-  draftHref: string;
+  /** Where a draft's shifts lead: its week's builder. None once published. */
+  draftHref?: string;
 }) {
   const t = useTranslations("app");
   const tb = useTranslations("app.shifts.board");
@@ -555,7 +590,9 @@ function WeekShift({
   const own = shift.assignees.find((a) => a.user === data.userId);
   const mine = own !== undefined;
   const role = positionName(data, own?.position);
-  const { id } = shift;
+  // A draft's shift opens its week's builder, saved with an id or not: only
+  // a published shift has a sheet, and can be given away or taken.
+  const id = draftHref ? undefined : shift.id;
   const canTake = offers.some((o) => o.state === "available");
   const tookIt = offers.some((o) => o.state === "takenByYou");
   const request = id ? myRequestFor(data.swaps, id, data.userId) : null;
@@ -607,7 +644,8 @@ function WeekShift({
         <span className="font-semibold text-sm">{tb("canTake")}</span>
       ) : null}
       {tookIt ? <span className="text-sm">{tb("tookIt")}</span> : null}
-      {manager ? (
+      {/* A shift that is over takes nobody: nothing to say it lacks. */}
+      {manager && !hasEnded(data, shift) ? (
         <div>
           <CoverageBadge shift={shift} />
         </div>

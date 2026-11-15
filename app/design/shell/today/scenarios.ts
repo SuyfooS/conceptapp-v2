@@ -21,10 +21,16 @@ import {
 import { demoListsHome, demoWorkerLists } from "../lists/data";
 import { demoUnread } from "../notifications/data";
 import { demoWeek } from "../schedule/availability/week";
-import { demoPublished, demoRequest } from "../schedule/shifts/published";
+import {
+  demoPublished,
+  demoRequest,
+  demoRunningBuild,
+} from "../schedule/shifts/published";
 
 // The demo restaurant on Tuesday 3 November 2026 at 08:12 in Tel Aviv: this
-// week's schedule is published, and next week's is being built.
+// week's schedule is published, with four places still open in what is still
+// to start (this evening, tomorrow morning, Friday and Saturday night), and
+// next week's is being built. A manager sees this week's first.
 const NOW = "2026-11-03T06:12:00.000Z";
 const NEXT_WEEK = addDays(demoWeek.start, 7);
 
@@ -136,6 +142,7 @@ function scheduleFor(
       availability,
       teamAvailability: null,
       build: null,
+      running: null,
     };
   }
   const { members } = team();
@@ -147,6 +154,7 @@ function scheduleFor(
       team: teamAvailability(members, teamAnswers, availability.dueAt),
     },
     build: nextWeekBuild(availability, fill),
+    running: demoRunningBuild(data, members),
   };
 }
 
@@ -199,7 +207,7 @@ export const todayScenarios = {
       scheduleFor("manager", published("shiran", SWAPS), true, true),
       { now: "2026-11-03T08:30:00.000Z" },
     ),
-  /** Shiran before she sent her own availability: a fourth tile joins. */
+  /** Shiran before she sent her own availability: a fifth tile joins. */
   availabilityMissing: () =>
     today(
       "shiran",

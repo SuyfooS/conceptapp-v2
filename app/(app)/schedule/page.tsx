@@ -7,6 +7,7 @@ import { swapAction } from "./shifts/actions";
 import {
   currentAvailabilityWeek,
   currentPublishedSchedule,
+  currentRunningBuild,
   currentScheduleBuild,
   currentTeamAvailability,
 } from "./week";
@@ -15,13 +16,15 @@ export const generateMetadata = () => moduleMetadata("scheduling");
 
 // The schedule tab: the published week and the person's own shifts first,
 // then the screens around it. Owners and managers also get building the
-// week, the team's answers and approvals, and next week's draft. After
-// giving a shift away here, once, the offer of notifications on the phone.
+// week (this week's first, while it lacks someone), the team's answers and
+// approvals, and each week's draft. After giving a shift away here, once,
+// the offer of notifications on the phone.
 export default async function SchedulePage() {
-  const [week, team, build, data, wording, ask] = await Promise.all([
+  const [week, team, build, running, data, wording, ask] = await Promise.all([
     currentAvailabilityWeek(),
     currentTeamAvailability(),
     currentScheduleBuild(),
+    currentRunningBuild(),
     currentPublishedSchedule(),
     currentWording(),
     currentPushAsk(),
@@ -34,6 +37,7 @@ export default async function SchedulePage() {
       late={new Date(week.dueAt).getTime() < Date.now()}
       team={team}
       build={build}
+      running={running}
       swap={swapAction}
       wording={wording}
       ask={ask}

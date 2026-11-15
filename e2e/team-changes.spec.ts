@@ -1,11 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { buildScreen, onDate } from "./build-screen";
 import {
   closeTeamChangesBusiness,
   closeTeamChangesToInvites,
   openTeamChangesBusiness,
   openTeamChangesOther,
+  publishTeamChangesRunningWeek,
   removeTeamChangesWorker,
   TEAM_CHANGES_BUSINESS,
   TEAM_CHANGES_INVITE,
@@ -17,7 +19,9 @@ import {
   teamChangesLines,
   teamChangesPlace,
   teamChangesRemovals,
+  teamChangesRunningWeekClock,
   teamChangesShifts,
+  teamChangesUnfilledSettled,
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
@@ -455,4 +459,116 @@ test("a demo business closed to invites keeps its people: nothing to change on a
       name: new RegExp(`^${literal(tt.cancel.action)}`),
     }),
   ).toHaveCount(0);
+});
+
+// The running-week plan's R4 (Orel's answer 6 of 15 November 2026: what is
+// missing this week first, then next week): a place freed later today, in a
+// week already published, is filled where the manager is led, this week's
+// builder, which opens on today; published, the line no longer waits. The
+// week is seeded relative to the real clock, which the server's can't be
+// faked to, so this skips within two hours of the business's week start, four
+// hours before its end, and near midnight.
+test("this week's freed place leads to its builder on today, and filled and published, its line settles", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  const clock = await teamChangesRunningWeekClock();
+  test.skip(
+    clock.sinceStart < 120 ||
+      clock.untilEnd < 240 ||
+      clock.minuteOfDay < 90 ||
+      clock.minuteOfDay > 21 * 60 + 30,
+    "too close to the edge of the business's week, or of the day",
+  );
+  const running = await publishTeamChangesRunningWeek();
+  const tb = he.app.build;
+  const unfilled = "app.notifications.kinds.schedule.unfilled";
+  const thisWeek = `/schedule/build?week=${running.startsOn}`;
+  await removeTeamChangesWorker();
+  // A line for each week the person left a place in, how many and never who.
+  const lines = await teamChangesLines(MANAGER.id, "schedule.unfilled");
+  expect(lines).toHaveLength(2);
+  expect(lines).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ startsOn: running.startsOn, count: 1 }),
+      expect.objectContaining({ startsOn: week.startsOn, count: 1 }),
+    ]),
+  );
+
+  await signIn(page, MANAGER);
+  // Today: this week's open place first, then next week's.
+  const builders = page
+    .getByRole("main")
+    .locator('a[href^="/schedule/build"]')
+    .filter({ visible: true });
+  await expect(builders.first()).toHaveAttribute("href", thisWeek);
+  await expect(builders.first()).toContainText(
+    heT("app.home.needs.gapsThisWeek", { count: 1 }),
+  );
+  await expect(builders.nth(1)).toHaveAttribute("href", "/schedule/build");
+  // The schedule tab: a row for this week, above next week's.
+  await page.goto("/schedule");
+  const row = page
+    .getByRole("link", { name: new RegExp(literal(tb.titleRunning)) })
+    .filter({ visible: true });
+  await expect(row).toHaveAttribute("href", thisWeek);
+  await expect(row).toContainText(
+    heT("app.build.entry.thisWeek", { count: 1 }),
+  );
+  await expectCleanPage(page);
+
+  // The line about this week says it is filled in this week's schedule.
+  await page.goto("/notifications");
+  const line = page
+    .getByRole("button", {
+      name: new RegExp(
+        literal(heT(`${unfilled}.title`, { count: 1, date: running.date })),
+      ),
+    })
+    .filter({ visible: true })
+    .first();
+  await expect(line).toContainText(heT(`${unfilled}.begun`, { count: 1 }));
+  await expectCleanPage(page);
+  await line.click();
+  await expect(page).toHaveURL(
+    new RegExp(`/schedule/build\\?week=${running.startsOn}$`),
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
+  ).toBeVisible();
+
+  // A phone shows today, the others the whole week: the place is there.
+  const screen = buildScreen(page);
+  const freed = screen.card("סגירה", onDate(running.today));
+  await expect(freed).toContainText(tb.nobody);
+  await expect(freed).not.toContainText(first(LEAVING.name));
+  await freed.click();
+  await screen.addButton(STAYING.name).click();
+  await screen.closeSheet();
+  await expect(freed).toContainText(first(STAYING.name));
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("team-unfilled-running.png"),
+    fullPage: true,
+  });
+  // It waits out its hold for "ביטול" first (R3b).
+  await screen.publishChanges();
+  await expect(page.getByRole("status")).toHaveText(tb.published);
+  // On this week's shift now, and still on next week's evening.
+  expect(await teamChangesShifts(STAYING.id)).toBe(2);
+
+  // Published again: this week's line no longer waits; next week's still does.
+  await expect
+    .poll(() => teamChangesUnfilledSettled(MANAGER.id, running.startsOn))
+    .toBe(true);
+  expect(await teamChangesUnfilledSettled(MANAGER.id, week.startsOn)).toBe(
+    false,
+  );
+  await page.goto("/notifications");
+  await expect(
+    shown(
+      page,
+      heT(`${unfilled}.settledTitle`, { count: 1, date: running.date }),
+    ),
+  ).toBeVisible();
 });

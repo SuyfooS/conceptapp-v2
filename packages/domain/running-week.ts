@@ -30,6 +30,18 @@ import { MAX_SHIFTS_IN_A_WEEK, type ShiftPattern } from "./staffing";
 /** The builder's two weeks: the one running now and the next. */
 export type BuildWeeks = { thisWeek: string; nextWeek: string };
 
+/** Where the schedule is built: next week, unless `?week=` names this one. */
+export const BUILDER_PATH = "/schedule/build";
+
+/**
+ * The builder of one of its weeks, by the week's first day: what the ways
+ * into a week lead to (the board, Today, a line about the week), so a link
+ * drawn before the week turns still opens the week it was about.
+ */
+export function builderHref(start: string): `/${string}` {
+  return `${BUILDER_PATH}?week=${start}`;
+}
+
 /**
  * Which of the builder's weeks a start names (`?week=` or the form's `week`):
  * this week, next week, a week already over (any date before this week's
@@ -264,6 +276,89 @@ export function gapsAhead<
   return scheduleGaps(
     shifts.filter((shift) => !shiftStarted(shift, now, timeZone)),
   );
+}
+
+/** A week's schedule as the screens around the builder read it. */
+type BuiltWeek = {
+  /** ISO timestamp of the last save, or null while nobody saved it. */
+  savedAt: string | null;
+  /** ISO timestamp of the last publish, or null until it is published. */
+  publishedAt: string | null;
+  shifts: readonly Pick<
+    ScheduledShift,
+    "day" | "start" | "needed" | "assignees"
+  >[];
+};
+
+/**
+ * Whether someone built the week: saved it, or published it. The builder
+ * draws a week nobody saved from the business's shift pattern; the screens
+ * around it show a week under way only once it was built (the running-week
+ * plan's R4), so a business that never scheduled this week is not told its
+ * pattern's places are missing.
+ */
+export function weekBuilt(week: Omit<BuiltWeek, "shifts"> | null): boolean {
+  return week !== null && (week.savedAt !== null || week.publishedAt !== null);
+}
+
+/**
+ * What the week running now still lacks among its shifts still to start,
+ * for the ways into its builder (the running-week plan's R4, Orel's answer 6
+ * of 15 November 2026: Today shows this week's first, then next week's): the
+ * schedule tab's row counts the shifts, Today's tile the places, and the
+ * hero leads to this week's builder while there are any (`runningFirst`).
+ * Nothing for a week nobody built (`weekBuilt`).
+ */
+export function runningGaps(
+  week: BuiltWeek | null,
+  now: Date,
+  timeZone: string,
+): { shifts: number; people: number } {
+  if (!week || !weekBuilt(week)) return { shifts: 0, people: 0 };
+  const { shifts, people } = gapsAhead(week.shifts, now, timeZone);
+  return { shifts: shifts.length, people };
+}
+
+/**
+ * Whether the ways into the builder lead to the week running now rather than
+ * to next week (Orel's answer 6 of 15 November 2026: what is nearer first):
+ * once someone built it, while a shift still to start in it lacks someone
+ * (`runningGaps`), or while it waits to be published with shifts in it, as a
+ * draft saved before the week turned does, fully staffed or not, while the
+ * team sees nothing of it. The schedule tab's row for this week shows on the
+ * same condition, and Today's hero leads there.
+ */
+export function runningFirst(
+  week: BuiltWeek | null,
+  now: Date,
+  timeZone: string,
+): boolean {
+  if (!week || !weekBuilt(week)) return false;
+  if (week.publishedAt === null && week.shifts.length > 0) return true;
+  return runningGaps(week, now, timeZone).people > 0;
+}
+
+/**
+ * The draft the schedule tab shows its managers for one of its weeks: the
+ * week as they build it (`built`), only while the week is not published, for
+ * that same week, and with shifts in it. Anyone else has no `built`, so gets
+ * none and reads only what is out. Next week's is there drawn from the
+ * pattern too; the week running now's once someone saved it
+ * (`currentRunningBuild`), so a draft saved before the week turned stays in
+ * sight (the running-week plan's R4).
+ */
+export function boardDraft<
+  B extends { week: { start: string }; shifts: readonly unknown[] },
+>(
+  week: { start: string; publishedAt: string | null },
+  built: B | null,
+): B | null {
+  return built !== null &&
+    week.publishedAt === null &&
+    built.week.start === week.start &&
+    built.shifts.length > 0
+    ? built
+    : null;
 }
 
 /** How far ahead a change is close enough to check directly (Orel, Q4). */
