@@ -306,6 +306,22 @@ export const NOTIFICATION_KINDS = {
     to: "list",
     byApp: true,
   },
+  // A list of a template's times still open `tellOwnersAfterMinutes` after it
+  // became late (Orel, 15 November 2026; `private.notify_for_lists` in
+  // supabase/migrations/20261115000500_lists_owners_late.sql): to the
+  // business's owners who don't hold it, one line each, for owners alone.
+  // Their `lists.late_team` line of the list is then marked read, so Home
+  // counts the list once. Finishing it, cancelling it or its closing as
+  // missed settles it.
+  "lists.late_owner": {
+    group: "lists",
+    module: "lists",
+    minRole: "owner",
+    needsAction: true,
+    href: "/lists/today",
+    to: "list",
+    byApp: true,
+  },
   "lists.out_of_range": {
     group: "lists",
     module: "lists",
@@ -460,6 +476,18 @@ export const NOTIFICATION_KIND_KEYS = Object.keys(
 export function notificationKindOf(value: unknown): NotificationKind | null {
   return NOTIFICATION_KIND_KEYS.find((kind) => kind === value) ?? null;
 }
+
+/**
+ * The lines about a list's times (lists L4, and the owners' step after them),
+ * each with the key its words have under `kinds.lists`: the inbox and the
+ * phone read them alike.
+ */
+export const LIST_TIME_WORDS = {
+  "lists.due": "due",
+  "lists.late": "late",
+  "lists.late_team": "late_team",
+  "lists.late_owner": "late_owner",
+} as const satisfies Partial<Record<NotificationKind, string>>;
 
 /** Where the inbox itself is, and where an unknown line leads. */
 export const INBOX_PATH = "/notifications";
@@ -1146,7 +1174,12 @@ export type NotificationLine =
       hasNote: boolean;
     }
   | {
-      kind: "lists.due" | "lists.late" | "lists.late_team";
+      kind:
+        | "lists.due"
+        | "lists.late"
+        | "lists.late_team"
+        /** Still open a while after it became late: to its owners. */
+        | "lists.late_owner";
       name: string;
       /** When it is due, as an ISO instant; null when the line lost it. */
       due: string | null;
@@ -1505,7 +1538,8 @@ function lineOf(
     }
     case "lists.due":
     case "lists.late":
-    case "lists.late_team": {
+    case "lists.late_team":
+    case "lists.late_owner": {
       const params = read(schemas.list);
       // Still a line without its due time.
       return params

@@ -866,10 +866,12 @@ describe("buildActivity: each action", () => {
         }),
       ),
     ).toMatchObject({ min: null, max: null, unit: null });
-    // The opening and the reminder are the lists' own news.
+    // The opening and the reminder are the lists' own news, and the owners'
+    // step after a late line is their own line's.
     expect(ROUTINE_ACTIONS).toEqual(
-      expect.arrayContaining(["lists.open", "lists.due"]),
+      expect.arrayContaining(["lists.open", "lists.due", "lists.late_owner"]),
     );
+    expect(ROUTINE_ACTIONS).not.toContain("lists.late");
   });
 
   it("reads a template saved, removed and brought back", () => {
