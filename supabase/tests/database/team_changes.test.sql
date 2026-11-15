@@ -450,9 +450,12 @@ select throws_ok(
     '2026-11-24 08:30+00')$$,
   'P0002', null, 'someone already taken off is not found: two managers removing them at once'
 );
--- A builder opened before the removal still holds them on the draft: the
--- words that say so (scheduleTeamChanged in packages/db/schedule-errors.ts)
--- match this message.
+-- A draft saved with nothing read (as a week drawn from the pattern is) that
+-- still holds them is refused, as is a builder putting them on a shift anew:
+-- the words that say so (scheduleTeamChanged in
+-- packages/db/schedule-errors.ts) match this message. A builder that read the
+-- week sends what it read, and a shift it left alone is kept as it is now,
+-- without them (week_in_place.test.sql).
 select throws_ok(
   format(
     $$select public.save_week_schedule('8e000000-0000-4000-a000-000000000003', %L,

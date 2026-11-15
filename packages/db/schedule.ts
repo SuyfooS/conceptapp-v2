@@ -1,57 +1,122 @@
 import "server-only";
-import { type ScheduledShift, weekSchedule } from "@domain/schedule";
+import {
+  type ScheduledShift,
+  type ShiftBasis,
+  shiftBasis,
+  weekSchedule,
+} from "@domain/schedule";
 import { z } from "zod";
 import type { ScheduleWeek } from "./availability";
+import { isMissingFunction } from "./missing";
+import { ScheduleWriteError } from "./schedule-errors";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
 export type WeekScheduleShift = ScheduledShift & { id: string };
 
 /**
- * Replace a week's draft schedule (`public.save_week_schedule`); refused
- * once the week is published (use `publishWeekSchedule`). Validated here
- * first with the rules the database checks; `positionKeys` are the
- * business's positions from its scheduling settings. Runs with the secret
- * key: callers check the actor is the signed-in manager or owner and not
- * viewing as someone else. Returns the number of shifts saved.
+ * A stored shift as the builder reads it: with what was seen of it
+ * (`private.shift_digest`), to send back as the basis of the next save or
+ * publish. Null until 20261115000100_week_in_place.sql reaches the project.
+ */
+export type StoredShift = WeekScheduleShift & { seen: string | null };
+
+type DatabaseError = {
+  code?: string;
+  hint?: string | null;
+  details?: string | null;
+  message: string;
+};
+
+type WeekWrite = "save_week_schedule" | "publish_week_schedule";
+
+/**
+ * Write a week through `fn`, with what the screen read (`basis`) when it
+ * read a saved week. Without one the week is replaced, as before the week was
+ * written in place, so a project without that migration takes the call too;
+ * a replace has no use for ids, so none is sent with it.
+ */
+async function writeWeek(
+  fn: WeekWrite,
+  actorId: string,
+  week: ScheduleWeek,
+  positionKeys: readonly string[],
+  input: unknown,
+  basis: ShiftBasis | null,
+): Promise<number> {
+  const parsed = weekSchedule(week.startsOn, positionKeys).parse(input);
+  const read = shiftBasis.parse(basis);
+  const shifts = read ? parsed : parsed.map(({ id: _, ...shift }) => shift);
+  const { data, error } = await createAdminClient().rpc(fn, {
+    actor: actorId,
+    week: week.id,
+    shifts,
+    ...(read ? { basis: read } : {}),
+  });
+  if (error) throw writeError(fn, error);
+  return z.int().parse(data);
+}
+
+function writeError(fn: WeekWrite, error: DatabaseError): ScheduleWriteError {
+  const what = fn === "save_week_schedule" ? "save" : "publish";
+  return new ScheduleWriteError(
+    `Could not ${what} the schedule: ${error.message}`,
+    error,
+  );
+}
+
+/**
+ * Save a week's draft schedule (`public.save_week_schedule`); refused once
+ * the week is published (use `publishWeekSchedule`). Validated here first
+ * with the rules the database checks; `positionKeys` are the business's
+ * positions from its scheduling settings. Each shift the screen read carries
+ * its id, and `basis` is what was seen of each (`basisOf`): the database
+ * writes only what changed, and refuses (`movedShifts`) a change to a shift
+ * that changed meanwhile. A null `basis` replaces the week: callers send it
+ * only while nobody has saved the week yet. Runs with the
+ * secret key: callers check the actor is the signed-in manager or owner and
+ * not viewing as someone else. Returns the number of shifts in the week.
+ * Throws a `ScheduleWriteError` with the database's code, hint and detail.
  */
 export async function saveWeekSchedule(
   actorId: string,
   week: ScheduleWeek,
   positionKeys: readonly string[],
   input: unknown,
+  basis: ShiftBasis | null,
 ): Promise<number> {
-  const shifts = weekSchedule(week.startsOn, positionKeys).parse(input);
-  const { data, error } = await createAdminClient().rpc("save_week_schedule", {
-    actor: actorId,
-    week: week.id,
-    shifts,
-  });
-  if (error) throw new Error(`Could not save the schedule: ${error.message}`);
-  return z.int().parse(data);
+  return await writeWeek(
+    "save_week_schedule",
+    actorId,
+    week,
+    positionKeys,
+    input,
+    basis,
+  );
 }
 
 /**
  * Save a week's schedule and publish it to the whole team
  * (`public.publish_week_schedule`): the first time, or again with changes.
- * Same checks and callers as `saveWeekSchedule`. Returns the number of
- * shifts published.
+ * Same checks, basis and callers as `saveWeekSchedule`; a swap request waits
+ * on unless its shift was deleted, moved in day or hours, or lost whoever
+ * asked. Returns the number of shifts published.
  */
 export async function publishWeekSchedule(
   actorId: string,
   week: ScheduleWeek,
   positionKeys: readonly string[],
   input: unknown,
+  basis: ShiftBasis | null,
 ): Promise<number> {
-  const shifts = weekSchedule(week.startsOn, positionKeys).parse(input);
-  const { data, error } = await createAdminClient().rpc(
+  return await writeWeek(
     "publish_week_schedule",
-    { actor: actorId, week: week.id, shifts },
+    actorId,
+    week,
+    positionKeys,
+    input,
+    basis,
   );
-  if (error) {
-    throw new Error(`Could not publish the schedule: ${error.message}`);
-  }
-  return z.int().parse(data);
 }
 
 /** "HH:MM:SS" from Postgres to "HH:MM". */
@@ -134,15 +199,63 @@ export async function getPublishedShifts(
   }));
 }
 
+const StoredRows = z.array(
+  z.object({
+    id: z.string(),
+    day: z.string(),
+    name: z.string(),
+    starts_at: z.string(),
+    ends_at: z.string(),
+    needed: z.int(),
+    pattern_key: z.string().nullable(),
+    assignees: z.array(
+      z.object({ user: z.string(), position: z.string().nullable() }),
+    ),
+    seen: z.string(),
+  }),
+);
+
 /**
  * A week's shifts with the people on each, as the signed-in person may
  * read them (RLS: managers and owners; everyone in the business once the
- * week is published). Day by day, earliest
- * first; the people on a shift by id.
+ * week is published), each with what was seen of it, in one read
+ * (`public.week_shifts`). Day by day, earliest first; the people on a shift
+ * by id. Until 20261115000100_week_in_place.sql reaches the project, the
+ * table as before, with nothing seen.
  */
-export async function getWeekSchedule(
-  weekId: string,
-): Promise<WeekScheduleShift[]> {
+export async function getWeekSchedule(weekId: string): Promise<StoredShift[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("week_shifts", { week: weekId });
+  if (error && !isMissingFunction(error)) throw error;
+  const rows = error
+    ? await weekScheduleBefore(weekId)
+    : StoredRows.parse(data).map((row) => ({
+        id: row.id,
+        day: row.day,
+        name: row.name,
+        start: toMinute(row.starts_at),
+        end: toMinute(row.ends_at),
+        needed: row.needed,
+        pattern: row.pattern_key,
+        assignees: row.assignees,
+        seen: row.seen,
+      }));
+  return rows
+    .map((row) => ({
+      ...row,
+      assignees: [...row.assignees].sort((a, b) =>
+        a.user.localeCompare(b.user),
+      ),
+    }))
+    .sort((a, b) =>
+      `${a.day}${a.start}${a.name}`.localeCompare(
+        `${b.day}${b.start}${b.name}`,
+      ),
+    );
+}
+
+/** The week's shifts from the table, before `public.week_shifts`. */
+async function weekScheduleBefore(weekId: string): Promise<StoredShift[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("schedule_shifts")
@@ -151,22 +264,33 @@ export async function getWeekSchedule(
     )
     .eq("week_id", weekId);
   if (error) throw error;
-  return data
-    .map((row) => ({
-      id: row.id,
-      day: row.day,
-      name: row.name,
-      start: toMinute(row.starts_at),
-      end: toMinute(row.ends_at),
-      needed: row.needed,
-      pattern: row.pattern_key,
-      assignees: row.shift_assignments
-        .map((a) => ({ user: a.user_id, position: a.position_key }))
-        .sort((a, b) => a.user.localeCompare(b.user)),
-    }))
-    .sort((a, b) =>
-      `${a.day}${a.start}${a.name}`.localeCompare(
-        `${b.day}${b.start}${b.name}`,
-      ),
-    );
+  return data.map((row) => ({
+    id: row.id,
+    day: row.day,
+    name: row.name,
+    start: toMinute(row.starts_at),
+    end: toMinute(row.ends_at),
+    needed: row.needed,
+    pattern: row.pattern_key,
+    assignees: row.shift_assignments.map((a) => ({
+      user: a.user_id,
+      position: a.position_key,
+    })),
+    seen: null,
+  }));
+}
+
+/**
+ * What the builder read of a saved week, to send back with it: each shift's
+ * id and what was seen of it. Null when any shift was read without it (a
+ * project without 20261115000100_week_in_place.sql), so the week is replaced
+ * as it was before.
+ */
+export function basisOf(shifts: readonly StoredShift[]): ShiftBasis | null {
+  const basis: ShiftBasis = {};
+  for (const shift of shifts) {
+    if (shift.seen === null) return null;
+    basis[shift.id] = shift.seen;
+  }
+  return basis;
 }

@@ -84,8 +84,12 @@ select is(
 );
 select results_eq(
   -- Whose shifts changed and the requests removed are for notifications
-  -- (notifications.test.sql).
-  $$select actor_id, details - 'changed' - 'removed_swaps' from public.audit_log
+  -- (notifications.test.sql); what was kept, edited, added and removed, the
+  -- requests opened again and the moment, for the week written in place
+  -- (week_in_place.test.sql).
+  $$select actor_id, details - 'changed' - 'removed_swaps' - 'reopened' - 'kept'
+      - 'edited' - 'added' - 'removed' - 'at'
+    from public.audit_log
     where business_id = '6c000000-0000-4000-b000-000000000001' and action = 'schedule.publish'$$,
   $$values ('6c000000-0000-4000-a000-00000000000b'::uuid, jsonb_build_object(
     'week', (select id from ids where name = 'x'),

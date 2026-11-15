@@ -5,10 +5,16 @@ import { before, buildScreen } from "./build-screen";
 import {
   clearAvailability,
   clearSchedule,
+  decideDemoSwap,
+  demoSwaps,
+  requestDemoSwap,
   scheduleAssignments,
+  scheduleDemoSunday,
   schedulePublished,
+  scheduleShiftIds,
   scheduleShifts,
   sendDemoAvailability,
+  takenDemoSwap,
 } from "./db";
 import { signIn } from "./session";
 
@@ -19,7 +25,12 @@ import { signIn } from "./session";
 // Yoav sends nothing. The template's positions include "מלצר/ית" (waiter).
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 const NOA = { name: "נועה כהן", first: "נועה", e164: "+972500000003" };
-const YOAV = { name: "יואב לוי", local: "050-000-0004", e164: "+972500000004" };
+const YOAV = {
+  name: "יואב לוי",
+  first: "יואב",
+  local: "050-000-0004",
+  e164: "+972500000004",
+};
 const WAITER = "מלצר/ית";
 
 const tb = he.app.build;
@@ -318,6 +329,142 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   await expect(
     page.getByRole("link", { name: new RegExp(tb.title) }),
   ).toContainText(tb.entry.subtitlePublished);
+});
+
+// The week is written in place (20261115000100_week_in_place.sql): a shift
+// changed on the screen keeps its id, one nobody touched keeps the swap
+// request on it, and a shift added keeps the id its first publish gave it.
+test("republishing next week keeps a request on a shift nobody touched", async ({
+  page,
+}) => {
+  const screen = buildScreen(page);
+  const te = tb.editor;
+  // Published: Noa on Sunday morning, Yoav on Sunday evening, and Yoav asks
+  // to give his evening away.
+  await scheduleDemoSunday(
+    { morning: [[NOA.e164, null]], evening: [[YOAV.e164, null]] },
+    true,
+  );
+  await requestDemoSwap("evening", YOAV.e164);
+  const waiting = [{ status: "open", from: YOAV.e164, to: null }];
+  expect(await demoSwaps()).toEqual(waiting);
+  const read = await scheduleShiftIds();
+
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+
+  // The morning changes, the evening doesn't: Noa comes off the morning, and
+  // a short shift goes in between, with nobody on it yet.
+  await screen.card("בוקר").click();
+  await screen.removeButton(NOA.name).click();
+  await screen.closeSheet();
+  await screen.addOnSunday().click();
+  const adding = page.getByRole("dialog", { name: tb.addShift });
+  await adding.getByLabel(te.name).fill("אמצע");
+  await adding.getByLabel(te.start).fill("12:00");
+  await adding.getByLabel(te.end).fill("14:00");
+  await adding.getByLabel(te.needed).fill("1");
+  await adding.getByRole("button", { name: te.add }).click();
+  await expect(screen.group(tb.groups.assigned)).toContainText(tb.nobody);
+  await screen.closeSheet();
+  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await expect(page.getByRole("status")).toHaveText(tb.published);
+  expect(await scheduleAssignments()).toEqual([
+    { weekday: 0, pattern: "evening", phone: YOAV.e164, position: null },
+  ]);
+  expect(await demoSwaps()).toEqual(waiting);
+  // The morning was written in place: it keeps its id, as the evening does.
+  const published = await scheduleShiftIds();
+  expect(published.filter((s) => s.name !== "אמצע")).toEqual(read);
+  expect(published.filter((s) => s.name === "אמצע")).toHaveLength(1);
+
+  // The screen starts again from what was published, the new shift with its
+  // id, so a second change goes out as well and the request still waits. (A
+  // screen still on what it read before would send the new shift again as a
+  // new one, and the morning as it first read it, which the database would
+  // leave as it is now.)
+  await expect(
+    page.getByRole("button", { name: tb.publishChanges }),
+  ).toHaveCount(0);
+  await screen.card("בוקר").click();
+  await screen.addButton(NOA.name).click();
+  await screen.closeSheet();
+  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await expect.poll(scheduleAssignments).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+    { weekday: 0, pattern: "evening", phone: YOAV.e164, position: null },
+  ]);
+  await expect(
+    page.getByRole("button", { name: tb.publishChanges }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("alert").filter({ hasText: tb.errors.weekMoved }),
+  ).toHaveCount(0);
+  // The shift added is there once, with the id its first publish gave it.
+  expect(await scheduleShiftIds()).toEqual(published);
+  expect(await demoSwaps()).toEqual(waiting);
+});
+
+// A screen drawn before anyone saved the week sends nothing it read, which
+// replaces the week: once someone has saved it, that is refused instead.
+test("a builder drawn before the week was first saved replaces nothing", async ({
+  page,
+}) => {
+  const screen = buildScreen(page);
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  // Drawn from the shift pattern: nothing is saved yet.
+  await expect(screen.card("בוקר")).toHaveCount(1);
+
+  // Another manager publishes the week meanwhile: Noa on Sunday morning.
+  await scheduleDemoSunday({ morning: [[NOA.e164, null]], evening: [] }, true);
+
+  await page.getByRole("button", { name: tb.publish }).click();
+  // (Next's route announcer is an empty alert of its own.)
+  await expect(
+    page.getByRole("alert").filter({ hasText: tb.errors.weekSaved }),
+  ).toBeVisible();
+  expect(await scheduleShifts()).toHaveLength(2);
+  expect(await scheduleAssignments()).toEqual([
+    { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
+  ]);
+});
+
+test("a swap approved while the builder was open survives", async ({
+  page,
+}) => {
+  const screen = buildScreen(page);
+  // Yoav gives his Sunday evening away and Noa takes it: it waits for a
+  // manager.
+  await scheduleDemoSunday(
+    { morning: [[NOA.e164, null]], evening: [[YOAV.e164, null]] },
+    true,
+  );
+  await takenDemoSwap("evening", YOAV.e164, NOA.e164);
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  const evening = screen.card("ערב");
+  await expect(evening).toContainText(YOAV.first);
+
+  // Another manager approves it while this screen still shows Yoav there.
+  await decideDemoSwap(true);
+
+  // This manager changes only the morning, and publishes.
+  await screen.card("בוקר").click();
+  await screen.removeButton(NOA.name).click();
+  await screen.closeSheet();
+  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await expect(page.getByRole("status")).toHaveText(tb.published);
+
+  // The approval stands, and the screen now shows it.
+  expect(await scheduleAssignments()).toEqual([
+    { weekday: 0, pattern: "evening", phone: NOA.e164, position: null },
+  ]);
+  expect(await demoSwaps()).toEqual([
+    { status: "approved", from: YOAV.e164, to: NOA.e164 },
+  ]);
+  await expect(evening).toContainText(NOA.first);
+  await expect(evening).not.toContainText(YOAV.first);
 });
 
 test("a manager is warned before a tab takes unsaved work away", async ({

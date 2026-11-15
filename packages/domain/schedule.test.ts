@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   availableFor,
+  builderKey,
   coverageOf,
   doubleBooked,
   draftWeek,
@@ -10,6 +11,7 @@ import {
   type ScheduledShift,
   scheduleGaps,
   scheduleOpening,
+  shiftBasis,
   shiftCandidates,
   shiftCoverage,
   shiftDetailsProblem,
@@ -142,6 +144,79 @@ describe("weekSchedule", () => {
         { ...morning, name: "Brunch", assignees: [{ user: avi }] },
       ]),
     ).toEqual([]);
+  });
+
+  it("keeps the id of a stored shift, and refuses the same one twice", () => {
+    const stored = "65000000-0000-4000-a000-0000000000e1";
+    const other = "65000000-0000-4000-a000-0000000000e2";
+    expect(weekSchedule(WEEK, []).parse([{ ...morning, id: stored }])).toEqual([
+      { ...morning, id: stored, pattern: null, assignees: [] },
+    ]);
+    // A new shift has none, and none is added.
+    expect(weekSchedule(WEEK, []).parse([morning])[0]).not.toHaveProperty("id");
+    expect(
+      issues([
+        { ...morning, id: stored },
+        {
+          ...morning,
+          name: "Evening",
+          start: "16:00",
+          end: "23:00",
+          id: other,
+        },
+      ]),
+    ).toEqual([]);
+    // A copy that kept the id of the shift it came from.
+    expect(
+      issues([
+        { ...morning, id: stored },
+        { ...morning, day: "2026-11-02", id: stored },
+      ]),
+    ).toEqual(["The same shift twice"]);
+    expect(issues([{ ...morning, id: "morning" }])).toHaveLength(1);
+  });
+});
+
+describe("shiftBasis", () => {
+  const stored = "65000000-0000-4000-a000-0000000000e1";
+  const seen = "0123456789abcdef0123456789abcdef";
+
+  it("is what was seen of each stored shift, or nothing for a pattern", () => {
+    expect(shiftBasis.parse({ [stored]: seen })).toEqual({ [stored]: seen });
+    expect(shiftBasis.parse({})).toEqual({});
+    expect(shiftBasis.parse(null)).toBeNull();
+  });
+
+  it("takes only ids and the database's digests", () => {
+    expect(shiftBasis.safeParse({ morning: seen }).success).toBe(false);
+    expect(shiftBasis.safeParse({ [stored]: "seen" }).success).toBe(false);
+    expect(shiftBasis.safeParse({ [stored]: 1 }).success).toBe(false);
+    expect(shiftBasis.safeParse([seen]).success).toBe(false);
+  });
+});
+
+describe("builderKey", () => {
+  it("changes with each save and publish the server read, and only then", () => {
+    const saved = "2026-11-12T10:00:00.000Z";
+    const later = "2026-11-12T10:05:00.000Z";
+    const draft = builderKey(WEEK, null, null);
+    expect(builderKey(WEEK, null, null)).toBe(draft);
+    expect(builderKey(WEEK, saved, null)).not.toBe(draft);
+    expect(builderKey(WEEK, later, null)).not.toBe(
+      builderKey(WEEK, saved, null),
+    );
+    // Publishing saves too: both moments change together.
+    expect(builderKey(WEEK, later, later)).not.toBe(
+      builderKey(WEEK, later, null),
+    );
+    // Another week is another screen.
+    expect(builderKey("2026-11-08", saved, null)).not.toBe(
+      builderKey(WEEK, saved, null),
+    );
+    // Neither moment can pass for the other.
+    expect(builderKey(WEEK, saved, null)).not.toBe(
+      builderKey(WEEK, null, saved),
+    );
   });
 });
 

@@ -103,6 +103,37 @@ refused after it (42501), never left behind on a shift they are off.
 `team_changes.test.sql` and `team-changes.db.test.ts` (the rule against
 @domain/team) cover it.
 
+A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
+answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts
+under the reader's policies, each with what was seen of it (`seen`, from
+`private.shift_digest`: its day, name, hours, people needed, pattern and people
+with their positions, through casts, so "07:00" and "07:00:00" agree; a stored
+position the settings no longer have counts as none, as the builder shows it,
+through `private.known_people`), in one statement; `getWeekSchedule` in
+`@db/schedule` reads through it (the table as before on a project without the
+migration). A save or a publish sends it back as
+`basis`, each shift read carrying its `id`: a shift sent as it was read is left
+alone, whatever happened since (a swap approved, someone off the team); one
+changed is written in place while it is still as it was read, its id kept and
+only the people who changed taken off or put on; one read and not sent is
+deleted while it is still as it was read; otherwise 40001 with hint `moved` and
+the ids in DETAIL (`movedShifts` in `@db/schedule-errors`), and nothing is
+written. A shift added meanwhile stays, and one deleted meanwhile is skipped
+when sent unchanged. An id must be one the screen read, of the week, sent once
+(22023). Only who this write puts on a shift must be an active member, and the
+overlap check covers everyone on a shift new or moved and everyone put on one.
+Without a basis (the demo's renewal, the tests' helpers, and a builder drawn
+before the week was first saved, which the action refuses once someone has
+saved it) the week is replaced as before, and no ids are sent with it. A clash
+the database finds past the action's own check is with something changed
+meanwhile (`scheduleClashedMeanwhile`). A waiting swap request ends only when
+its shift is deleted, its day or hours change or its asker comes off it
+(cancelled, both told `swap.removed`;
+a deleted shift's requests still go with it); one taken by someone who may no
+longer take it opens again (`swap.reopened`, offered again); every other one
+waits on, offered only to whoever may still take it. Who builds the schedule is
+one helper, `private.builds_schedule`. `week_in_place.test.sql` covers it.
+
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
 `clock.confirm` from `confirm_time_entry`, `clock.code.locked`,
@@ -113,7 +144,9 @@ pay holder who is no manager reads the clock's and the permissions' rows too.
 Publishing a week's schedule logs its first day, the number of shifts, whether it
 was the first time, and how many waiting swap requests the old shifts took with
 them (`activity_log.test.sql`), and, for notifications, whose shifts changed
-and the requests it removed.
+and the requests it removed; and, since the week is written in place, the ids of
+the shifts it kept, edited, added and removed, the requests it opened again, and
+when (`at`).
 
 Notifications are written from the audit log: a trigger
 (`private.notify_from_log`, which never blocks the write it follows) reads

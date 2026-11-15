@@ -3112,7 +3112,13 @@ export type Database = {
         Returns: undefined;
       };
       publish_week_schedule: {
-        Args: { actor: string; shifts: Json; week: string };
+        Args: {
+          actor: string;
+          at_time?: string;
+          basis?: Json;
+          shifts: Json;
+          week: string;
+        };
         Returns: number;
       };
       punch_code_showing: {
@@ -3246,7 +3252,13 @@ export type Database = {
         Returns: string;
       };
       save_week_schedule: {
-        Args: { actor: string; shifts: Json; week: string };
+        Args: {
+          actor: string;
+          at_time?: string;
+          basis?: Json;
+          shifts: Json;
+          week: string;
+        };
         Returns: number;
       };
       see_chat_notice: {
@@ -3529,6 +3541,7 @@ export type Database = {
         Args: { actor: string; at_time?: string; entry: string };
         Returns: undefined;
       };
+      week_shifts: { Args: { week: string }; Returns: Json };
     };
     Enums: {
       member_role: "owner" | "manager" | "worker" | "accountant";

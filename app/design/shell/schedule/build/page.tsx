@@ -95,6 +95,8 @@ export default function ShellScheduleBuild() {
         savedAt: null,
         publishedAt: null,
         shifts,
+        // Drawn from the pattern: nothing was read, as for a week not saved.
+        basis: null,
         team: members,
         answers: teamAnswers,
         positions: demoPositions,
