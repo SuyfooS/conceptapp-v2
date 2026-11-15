@@ -133,8 +133,22 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # Started once more if its port was still taken, as the e2e job does.
       - name: Start local Postgres, apply migrations and seed
-        run: pnpm exec supabase db start
+        run: |
+          log="$RUNNER_TEMP/db-start.log"
+          if ! pnpm exec supabase db start > "$log" 2>&1; then
+            cat "$log"
+            if ! grep -q "address already in use" "$log"; then
+              exit 1
+            fi
+            echo "::warning::A port the local database needs was still taken; stopping it and starting it once more"
+            pnpm exec supabase stop --no-backup || true
+            sleep 15
+            pnpm exec supabase db start
+          else
+            cat "$log"
+          fi
 
       - name: RLS and isolation tests (pgTAP)
         run: pnpm db:test
@@ -204,12 +218,19 @@ jobs:
       # reached (11 November 2026, a DNS outage on the runners) Chromium is
       # installed alone, on what the runner has, with a warning. Chromium
       # itself must install: that failing still fails the step.
+      # A port the database binds can still be taken on the runner when the
+      # stack starts (15 November 2026, "failed to bind host port
+      # 0.0.0.0:54322/tcp: address already in use", twice in a day). Then it
+      # is stopped and started once more, with a warning; any other failure,
+      # or the same one again, still fails the step.
       - name: Start local Supabase (database, auth, API, storage) and install Chromium
         run: |
           log="$RUNNER_TEMP/supabase-start.log"
-          pnpm exec supabase start \
-            -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
-            > "$log" 2>&1 &
+          start_supabase() {
+            pnpm exec supabase start \
+              -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+          }
+          start_supabase > "$log" 2>&1 &
           supabase=$!
           trap 'echo "::group::supabase start"; cat "$log"; echo "::endgroup::"' EXIT
           if ! pnpm exec playwright install --with-deps chromium; then
@@ -217,7 +238,15 @@ jobs:
             pnpm exec playwright install chromium
           fi
           echo "Chromium ready at $(date -u +%T)"
-          wait "$supabase"
+          if ! wait "$supabase"; then
+            if ! grep -q "address already in use" "$log"; then
+              exit 1
+            fi
+            echo "::warning::A port the local database needs was still taken; stopping the stack and starting it once more"
+            pnpm exec supabase stop --no-backup >> "$log" 2>&1 || true
+            sleep 15
+            start_supabase >> "$log" 2>&1
+          fi
           echo "Supabase ready at $(date -u +%T)"
 
       # The local stack's URL and keys are fixed development values, not
