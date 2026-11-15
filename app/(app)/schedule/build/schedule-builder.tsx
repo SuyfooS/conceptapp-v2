@@ -8,23 +8,28 @@ import {
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import {
   builderKey,
+  changedSince,
+  dayOfMoved,
   doubleBooked,
   type ScheduledShift,
   type ShiftBasis,
   scheduleGaps,
   shiftCoverage,
   shiftSlot,
+  withShiftsAsNow,
 } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
 import type { Position } from "@domain/staffing";
+import { type ShiftSwap, swapsEndedBy } from "@domain/swaps";
 import type { TeamMember } from "@domain/team";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
+import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
-import { Save, Send } from "lucide-react";
+import { Save, Send, TriangleAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -33,11 +38,12 @@ import {
   type ReactNode,
   type RefObject,
   useActionState,
+  useId,
   useRef,
   useState,
 } from "react";
 import type { AvailabilityWeek } from "../week";
-import type { ScheduleState } from "./actions";
+import type { MovedShifts, ScheduleState } from "./actions";
 import {
   AddShiftRow,
   type CardDensity,
@@ -73,6 +79,11 @@ export type ScheduleBuilderProps = {
   shifts: ScheduledShift[];
   /** What was seen of each saved shift, sent back with the week. */
   basis: ShiftBasis | null;
+  /**
+   * The week's waiting swap requests, for the warning before publishing:
+   * how many the changes on the screen would end (`swapsEndedBy`).
+   */
+  swaps: ShiftSwap[];
   /** Where the regular shifts are set, for a week with none. */
   manageHref: string;
   team: Pick<TeamMember, "userId" | "name" | "photo">[];
@@ -92,9 +103,40 @@ type Reading = {
   week: ScheduleBuilderProps["week"];
   shifts: ScheduledShift[];
   basis: ShiftBasis | null;
+  swaps: ShiftSwap[];
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/**
+ * What publishing the changes would end, said before it: above the dock's
+ * button, and in the sheet that asks before leaving, beside its own.
+ */
+function EndingLine({
+  id,
+  inSheet = false,
+  children,
+}: {
+  id: string;
+  inSheet?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <p
+      id={id}
+      className={cn(
+        "flex items-start gap-2 rounded-card px-4 py-3 font-medium text-base text-ink",
+        inSheet ? "bg-elevated shadow-card" : "bg-surface shadow-float",
+      )}
+    >
+      <TriangleAlert
+        aria-hidden="true"
+        className="mt-0.5 size-5 shrink-0 text-warning"
+      />
+      {children}
+    </p>
+  );
+}
 
 /** Moves focus to the one element matching `selector` that is on the screen. */
 function focusOnScreen(selector: string) {
@@ -126,6 +168,16 @@ function focusOnScreen(selector: string) {
  * screen's own write; a refresh that something else asked for while there is
  * work here, or after a write that failed, leaves the work and what it was
  * read from as they were.
+ *
+ * A write refused because shifts it changed had changed meanwhile
+ * (`weekMoved`) comes back with those shifts as they are now: they take the
+ * place of this screen's versions, marked "השתנתה בינתיים", with what is seen
+ * of them now, and everything else stays as it was on the screen, so the
+ * manager looks and publishes again; on a phone the day shown is one of
+ * theirs. With nothing of the screen's own left to send, it says so and
+ * offers no publish. Before publishing, a line above the button (and in the
+ * sheet that asks before leaving) says how many waiting swap requests the
+ * changes would end.
  */
 export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const t = useTranslations();
@@ -134,6 +186,9 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const [dirty, setDirty] = useState(false);
   /** Where to go once the save in progress has worked. */
   const leaveTo = useRef<string | null>(null);
+  /** The shifts the form sent last, as the screen had them. */
+  const sent = useRef<ScheduledShift[]>([]);
+  const [day, setDay] = useState(props.week.dates[0] ?? props.week.start);
 
   const [state, action, pending] = useActionState(
     async (prev: ScheduleState, data: FormData) => {
@@ -141,6 +196,13 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
       const target = leaveTo.current;
       leaveTo.current = null;
       if (result.savedAt && target) router.push(target);
+      // Shifts changed meanwhile come back marked: a phone shows a day with
+      // one of them, should the day it shows have none.
+      const moved = result.failure === "weekMoved" ? result.moved : undefined;
+      if (moved) {
+        const shifts = sent.current;
+        setDay((current) => dayOfMoved(current, moved, shifts));
+      }
       return result;
     },
     initialState,
@@ -152,13 +214,13 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
     week: props.week,
     shifts: props.shifts,
     basis: props.basis,
+    swaps: props.swaps,
   };
   const [reading, setReading] = useState(latest);
   if (reading.key !== latest.key && done && state.failure === undefined) {
     setReading(latest);
   }
   const { week } = reading;
-  const [day, setDay] = useState(week.dates[0] ?? week.start);
 
   return (
     <div className="flex flex-col gap-5 pb-20 xl:pb-16">
@@ -168,6 +230,7 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         week={week}
         shifts={reading.shifts}
         basis={reading.basis}
+        swaps={reading.swaps}
         // A day of the week on the screen, should the week itself change.
         day={week.dates.includes(day) ? day : (week.dates[0] ?? week.start)}
         onDay={setDay}
@@ -177,6 +240,7 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         action={action}
         pending={pending}
         leaveTo={leaveTo}
+        sent={sent}
       />
       <StatusToast
         message={
@@ -198,7 +262,8 @@ function WeekBuilder({
   savedAt,
   publishedAt,
   shifts: initial,
-  basis,
+  basis: firstBasis,
+  swaps: firstSwaps,
   manageHref,
   team,
   answers,
@@ -211,6 +276,7 @@ function WeekBuilder({
   action,
   pending,
   leaveTo,
+  sent,
 }: Omit<ScheduleBuilderProps, "save"> & {
   /** The phone's chosen day, kept as the builder starts again. */
   day: string;
@@ -221,6 +287,8 @@ function WeekBuilder({
   action: (form: FormData) => void;
   pending: boolean;
   leaveTo: RefObject<string | null>;
+  /** Where the form's submit puts the shifts it sends. */
+  sent: RefObject<ScheduledShift[]>;
 }) {
   const t = useTranslations();
   const router = useRouter();
@@ -232,12 +300,44 @@ function WeekBuilder({
   );
   /** Shifts taken off since the last save, each with the way back. */
   const [removed, setRemoved] = useState<ShiftRow[]>([]);
-  // A save that worked takes the ways back with it. (After one the app's
-  // builder starts again anyway; the design demo's stays.)
-  const [handled, setHandled] = useState(state.savedAt);
-  if (state.savedAt !== handled) {
-    setHandled(state.savedAt);
-    if (state.savedAt) setRemoved([]);
+  /** The week's shifts as read: what the changes on the screen are from. */
+  const [read, setRead] = useState(initial);
+  /** What was seen of each shift read, sent back with the week. */
+  const [basis, setBasis] = useState(firstBasis);
+  /** The week's waiting swap requests, as last read. */
+  const [swaps, setSwaps] = useState(firstSwaps);
+  /** Shifts put back as they are now after a write refused (`weekMoved`). */
+  const [marked, setMarked] = useState<ReadonlySet<string>>(new Set());
+  /**
+   * Shifts deleted meanwhile, put among the removed after a write refused
+   * (`weekMoved`): the screen's id of each, with the id it had.
+   */
+  const [goneMeanwhile, setGoneMeanwhile] = useState<
+    ReadonlyMap<number, string>
+  >(new Map());
+  /** The waiting requests that sending the screen as it is would end. */
+  const ending = swapsEndedBy(
+    read,
+    rows.map((r) => r.shift),
+    swaps,
+    basis === null,
+  );
+  // What the last save or publish answered, taken in once. One that worked
+  // takes the ways back and the marks with it, and what it sent is now what
+  // was read. (After one the app's builder starts again anyway; the design
+  // demo's stays.) One refused because shifts changed meanwhile puts them
+  // back as they are now.
+  const [handled, setHandled] = useState(state);
+  if (state !== handled) {
+    setHandled(state);
+    if (state.savedAt) {
+      setRemoved([]);
+      setMarked(new Set());
+      setGoneMeanwhile(new Map());
+      setRead(rows.map((r) => r.shift));
+      setSwaps(swaps.filter((swap) => !ending.includes(swap)));
+    }
+    if (state.moved && basis) putBack(state.moved, basis);
   }
   const [blocked, setBlocked] = useState(false);
   /** The button that sent the form last: save the draft, or publish. */
@@ -262,6 +362,47 @@ function WeekBuilder({
     t(`app.availability.weekdays.${WEEKDAY_KEYS[weekdayOf(date)] ?? "sun"}`);
   const shortDay = (date: string) =>
     t(`days.${WEEKDAY_KEYS[weekdayOf(date)] ?? "sun"}.short`);
+
+  /**
+   * The shifts changed meanwhile, as they are now, in place of this screen's
+   * versions (`withShiftsAsNow`), to be sent next with what is seen of them
+   * now; the rest of the screen as it was.
+   */
+  function putBack(moved: MovedShifts, seen: ShiftBasis) {
+    const next = withShiftsAsNow({ rows, removed }, moved, () => {
+      const id = nextId.current;
+      nextId.current += 1;
+      return id;
+    });
+    const asNow = new Map(
+      moved.shifts.map(({ seen: digest, ...shift }) => [
+        shift.id,
+        { shift, digest },
+      ]),
+    );
+    const stale = (id: string | undefined) =>
+      id !== undefined && (asNow.has(id) || moved.gone.includes(id));
+    const gone = [...rows, ...removed].flatMap((row) =>
+      row.shift.id !== undefined && moved.gone.includes(row.shift.id)
+        ? [[row.id, row.shift.id] as const]
+        : [],
+    );
+    setRows(next.rows);
+    setRemoved(next.removed);
+    setRead([
+      ...read.filter((shift) => !stale(shift.id)),
+      ...[...asNow.values()].map(({ shift }) => shift),
+    ]);
+    setBasis(
+      Object.fromEntries([
+        ...Object.entries(seen).filter(([id]) => !stale(id)),
+        ...[...asNow].map(([id, now]) => [id, now.digest] as const),
+      ]),
+    );
+    setSwaps(moved.swaps);
+    setMarked(new Set([...marked, ...asNow.keys()]));
+    setGoneMeanwhile(new Map([...goneMeanwhile, ...gone]));
+  }
 
   function edited(next: ShiftRow[]) {
     setRows(next);
@@ -294,6 +435,12 @@ function WeekBuilder({
     // What is on its way stands as sent: the builder starts again from it.
     if (pending) return;
     setRemoved(removed.filter((r) => r.id !== row.id));
+    // Brought back, a shift deleted meanwhile is a new one.
+    if (goneMeanwhile.has(row.id)) {
+      setGoneMeanwhile(
+        new Map([...goneMeanwhile].filter(([id]) => id !== row.id)),
+      );
+    }
     const at = shiftSlot(shifts, row.shift);
     edited([...rows.slice(0, at), row, ...rows.slice(at)]);
     setTimeout(() => focusOnScreen(`[data-shift-card="${row.id}"]`));
@@ -335,14 +482,27 @@ function WeekBuilder({
         }
       : null;
   const savedMoment = moment(savedAt);
-  // The design demo stores nothing, so its publish shows through `state`.
+  // The design demo stores nothing and doesn't start again after a publish,
+  // so its own publish shows through `state`: the later of the two is the
+  // last.
+  const ownPublish = state.published ? state.savedAt : undefined;
   const publishedMoment = moment(
-    publishedAt ?? (state.published ? state.savedAt : null),
+    ownPublish &&
+      (publishedAt === null || Date.parse(ownPublish) > Date.parse(publishedAt))
+      ? ownPublish
+      : publishedAt,
   );
   const done = !dirty && !pending;
-  // A failed save leaves the work where it was: on the screen only.
+  // A failed save leaves the work where it was: on the screen only. After
+  // one refused because shifts changed meanwhile, with those put back as
+  // they are now, what is left is whatever still differs from what was read.
   const failed = done && state.failure !== undefined;
-  const unsaved = dirty || failed;
+  const leftOver =
+    failed &&
+    (state.failure !== "weekMoved" ||
+      state.moved === undefined ||
+      changedSince(read, shifts));
+  const unsaved = dirty || leftOver;
 
   const guard = useLeaveGuard(unsaved || pending);
 
@@ -434,6 +594,7 @@ function WeekBuilder({
           key={row.id}
           id={row.id}
           shift={row.shift}
+          meanwhile={goneMeanwhile.has(row.id)}
           weekday={weekday(date)}
           density={density}
           onUndo={() => undoRemove(row)}
@@ -456,6 +617,7 @@ function WeekBuilder({
           clashing={row.shift.assignees
             .filter((a) => clashes.has(`${rows.indexOf(row)}:${a.user}`))
             .map((a) => nameOf.get(a.user) ?? t("app.shifts.former"))}
+          meanwhile={row.shift.id !== undefined && marked.has(row.shift.id)}
           positions={positions}
           density={density}
           onOpen={(event) => openSheet({ kind: "shift", id: row.id }, event)}
@@ -473,10 +635,58 @@ function WeekBuilder({
         ? t.rich("app.build.savedAt", { ...savedMoment, ltr })
         : t("app.build.draft");
 
+  /**
+   * What a write refused because shifts changed meanwhile did, in words: a
+   * single shift by its name and day, more by their count; then whether any
+   * of the screen's own work is left to send.
+   */
+  function movedNotice(moved: MovedShifts) {
+    const changed = moved.shifts.length;
+    const gone = moved.gone.length;
+    const named = (shift: Pick<ScheduledShift, "name" | "day">) => ({
+      name: shift.name,
+      day: weekday(shift.day),
+    });
+    const onlyChanged =
+      changed === 1 && gone === 0 ? moved.shifts[0] : undefined;
+    const onlyGone =
+      changed === 0 && gone === 1
+        ? removed.find((r) => goneMeanwhile.get(r.id) === moved.gone[0])?.shift
+        : undefined;
+    const what = onlyChanged
+      ? [t("app.build.moved.changedOne", named(onlyChanged))]
+      : onlyGone
+        ? [t("app.build.moved.goneOne", named(onlyGone))]
+        : changed > 0 && gone > 0
+          ? [
+              t("app.build.moved.changed", { count: changed }),
+              t("app.build.moved.alsoGone", { count: gone }),
+            ]
+          : changed > 0
+            ? [t("app.build.moved.changed", { count: changed })]
+            : [t("app.build.moved.gone", { count: gone })];
+    return [
+      ...what,
+      changedSince(read, shifts)
+        ? t("app.build.moved.rest", { intent })
+        : t("app.build.moved.nothingElse", {
+            week: publishedMoment ? "published" : "draft",
+          }),
+    ].join(" ");
+  }
+
   const problem = blocked
     ? t("app.build.errors.clash")
-    : failed && state.failure
-      ? t(`app.build.errors.${state.failure}`)
+    : failed && state.failure === "weekMoved" && state.moved
+      ? movedNotice(state.moved)
+      : failed && state.failure
+        ? t(`app.build.errors.${state.failure}`)
+        : null;
+  const warningId = useId();
+  const leaveWarningId = useId();
+  const warning =
+    ending.length > 0
+      ? t("app.build.swapsEnd", { count: ending.length })
       : null;
 
   return (
@@ -541,6 +751,7 @@ function WeekBuilder({
             setBlocked(true);
             return;
           }
+          sent.current = shifts;
           const submitter = (event.nativeEvent as SubmitEvent).submitter;
           setIntent(
             submitter?.getAttribute("value") === "save" ? "save" : "publish",
@@ -551,17 +762,25 @@ function WeekBuilder({
         <input type="hidden" name="week" value={week.start} />
         <input type="hidden" name="shifts" value={JSON.stringify(shifts)} />
         <input type="hidden" name="basis" value={JSON.stringify(basis)} />
-        {/* Once published and with nothing new, there is nothing to send. */}
-        {publishedMoment && !unsaved && !pending ? null : (
+        {/* Once published and with nothing new, there is nothing to send:
+            only what went wrong, should something have. */}
+        {publishedMoment && !unsaved && !pending && !problem ? null : (
           <FloatingDock
             notice={
-              problem ? (
-                <p
-                  role="alert"
-                  className="rounded-card bg-surface px-4 py-3 font-medium text-base text-danger shadow-float"
-                >
-                  {problem}
-                </p>
+              problem || warning ? (
+                <div className="flex flex-col gap-2">
+                  {problem ? (
+                    <p
+                      role="alert"
+                      className="rounded-card bg-surface px-4 py-3 font-medium text-base text-danger shadow-float"
+                    >
+                      {problem}
+                    </p>
+                  ) : null}
+                  {warning ? (
+                    <EndingLine id={warningId}>{warning}</EndingLine>
+                  ) : null}
+                </div>
               ) : null
             }
           >
@@ -580,18 +799,21 @@ function WeekBuilder({
                 {t("app.build.submit")}
               </DockButton>
             ) : null}
-            <DockButton
-              type="submit"
-              name="intent"
-              value="publish"
-              icon={<Send aria-hidden="true" className="rtl:-scale-x-100" />}
-              loading={pending && intent === "publish"}
-              disabled={pending}
-            >
-              {publishedMoment
-                ? t("app.build.publishChanges")
-                : t("app.build.publish")}
-            </DockButton>
+            {!publishedMoment || unsaved || pending ? (
+              <DockButton
+                type="submit"
+                name="intent"
+                value="publish"
+                icon={<Send aria-hidden="true" className="rtl:-scale-x-100" />}
+                loading={pending && intent === "publish"}
+                disabled={pending}
+                aria-describedby={warning ? warningId : undefined}
+              >
+                {publishedMoment
+                  ? t("app.build.publishChanges")
+                  : t("app.build.publish")}
+              </DockButton>
+            ) : null}
           </FloatingDock>
         )}
       </form>
@@ -625,7 +847,19 @@ function WeekBuilder({
               ? t("app.build.leave.bodyPublished")
               : t("app.build.leave.body")}
           </p>
-          <Button size="lg" onClick={saveAndLeave}>
+          {/* Publishing on the way out ends what it would from the dock. */}
+          {publishedMoment && warning ? (
+            <EndingLine id={leaveWarningId} inSheet>
+              {warning}
+            </EndingLine>
+          ) : null}
+          <Button
+            size="lg"
+            onClick={saveAndLeave}
+            aria-describedby={
+              publishedMoment && warning ? leaveWarningId : undefined
+            }
+          >
             {publishedMoment
               ? t("app.build.leave.publish")
               : t("app.build.leave.save")}

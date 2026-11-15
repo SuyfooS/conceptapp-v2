@@ -28,6 +28,7 @@ import { canOpenModule, isStaff } from "@domain/modules";
 import {
   draftWeek,
   type ScheduledShift,
+  type ShiftAsNow,
   type ShiftBasis,
   withKnownPositions,
 } from "@domain/schedule";
@@ -233,6 +234,57 @@ export const currentScheduleBuild = cache(
     };
   },
 );
+
+/** The requests on the given shifts only. */
+const onShifts = (
+  swaps: readonly ShiftSwap[],
+  shifts: readonly Pick<ScheduledShift, "id">[],
+): ShiftSwap[] => {
+  const ids = new Set(shifts.flatMap((s) => (s.id ? [s.id] : [])));
+  return swaps.filter((swap) => ids.has(swap.shiftId));
+};
+
+/**
+ * The waiting swap requests (open, or taken and waiting for a manager) on
+ * the week being built, for the warning before publishing: how many the
+ * changes on the screen would end (`swapsEndedBy`). Only a published week
+ * has any. Read for the builder's page alone, not for the counts that
+ * `currentScheduleBuild` gives Today and the schedule tab.
+ */
+export const currentBuildSwaps = cache(async (): Promise<ShiftSwap[]> => {
+  const [member, build] = await Promise.all([
+    currentMember(),
+    currentScheduleBuild(),
+  ]);
+  const businessId = member?.membership?.business.id;
+  if (!businessId || !build?.publishedAt) return [];
+  return onShifts(await getLiveSwaps(businessId), build.shifts);
+});
+
+/**
+ * A week's shifts as they are now, each with what is seen of it, and the
+ * waiting requests on them: read again, uncached, after a save or publish
+ * was refused because shifts changed meanwhile (`weekMoved`), so the builder
+ * puts those shifts back as they are. A position the business no longer has
+ * shows as none, as everywhere in the builder (`withKnownPositions`).
+ */
+export async function weekAsNow(
+  businessId: string,
+  weekId: string,
+  positionKeys: readonly string[],
+): Promise<{ shifts: ShiftAsNow[]; swaps: ShiftSwap[] }> {
+  const [stored, swaps] = await Promise.all([
+    getWeekSchedule(weekId),
+    getLiveSwaps(businessId),
+  ]);
+  const shifts = withKnownPositions(
+    stored.flatMap(({ seen, ...shift }) =>
+      seen === null ? [] : [{ ...shift, seen }],
+    ),
+    positionKeys,
+  );
+  return { shifts, swaps: onShifts(swaps, shifts) };
+}
 
 export type PublishedWeek = {
   start: string;

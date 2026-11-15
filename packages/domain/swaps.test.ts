@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ScheduledShift } from "./schedule";
 import { ISRAEL_TIME_ZONE } from "./shabbat";
 import {
   approvalsFor,
@@ -7,6 +8,7 @@ import {
   type ShiftSwap,
   shiftsOverlap,
   swapFailureOf,
+  swapsEndedBy,
   toApprove,
 } from "./swaps";
 
@@ -292,5 +294,311 @@ describe("approvalsFor", () => {
     ).toEqual(["1"]);
     // Monday: the day is over, and neither is listed.
     expect(read(new Date("2026-11-08T22:00:00.000Z"))).toEqual([]);
+  });
+});
+
+// The rule the database applies when a week is written
+// (20261115000100_week_in_place.sql, Orel's answer 2), read off the screen for
+// the warning before publishing. Each case is one of week_in_place.test.sql's,
+// in its order and on its week: 3 on Sunday and Wednesday, 4 on Monday and
+// Thursday (with 8), 5 on Tuesday and Friday. The database stays the
+// authority; these keep the two equal.
+describe("swapsEndedBy, as week_in_place.test.sql", () => {
+  const day = (
+    id: string,
+    date: string,
+    name: string,
+    hours: [string, string],
+    needed: number,
+    users: string[],
+  ): ScheduledShift => ({
+    id,
+    day: date,
+    name,
+    start: hours[0],
+    end: hours[1],
+    needed,
+    pattern: null,
+    assignees: users.map((user) => ({ user, position: null })),
+  });
+  const morning: [string, string] = ["07:00", "15:00"];
+  // The week as a builder reads it (pg_temp.screen_of).
+  const read: ScheduledShift[] = [
+    {
+      ...day("morning-22", "2026-11-22", "Morning", morning, 2, []),
+      pattern: "morning",
+      assignees: [{ user: "p3", position: "waiter" }],
+    },
+    day("morning-23", "2026-11-23", "Morning", morning, 2, ["p4"]),
+    day("morning-24", "2026-11-24", "Morning", morning, 1, ["p5"]),
+    day("evening-25", "2026-11-25", "Evening", ["16:00", "23:00"], 1, ["p3"]),
+    day("morning-26", "2026-11-26", "Morning", morning, 2, ["p4", "p8"]),
+    day("morning-27", "2026-11-27", "Morning", morning, 1, ["p5"]),
+  ];
+  const edit = (
+    shifts: readonly ScheduledShift[],
+    id: string,
+    changes: Partial<ScheduledShift>,
+  ) => shifts.map((s) => (s.id === id ? { ...s, ...changes } : s));
+  const without = (shifts: readonly ScheduledShift[], id: string) =>
+    shifts.filter((s) => s.id !== id);
+  const people = (...users: string[]) =>
+    users.map((user) => ({ user, position: null }));
+  const ids = (swaps: readonly ShiftSwap[]) => swaps.map((s) => s.id);
+
+  // 4 asks to give Monday away, 3 Wednesday, 4 Thursday: open. 5 asks to give
+  // Tuesday away and 3 takes it; 5 Friday and 4 takes it.
+  const waiting = [
+    swap("s-mon", "morning-23", "p4"),
+    swap("s-tue", "morning-24", "p5", "p3"),
+    swap("s-wed", "evening-25", "p3"),
+    swap("s-thu", "morning-26", "p4"),
+    swap("s-fri", "morning-27", "p5", "p4"),
+  ];
+
+  it("ends nothing on an unchanged round trip", () => {
+    expect(swapsEndedBy(read, read, waiting)).toEqual([]);
+  });
+
+  // Monday gets 3 as well; Tuesday starts at 08:00; Wednesday loses 3, who
+  // asked; Friday gets 4, who took it, directly. Thursday is sent as it was
+  // read, with 8 on it, though 8 has since been taken off the team.
+  const four = edit(
+    edit(
+      edit(
+        edit(read, "morning-23", { assignees: people("p4", "p3") }),
+        "morning-24",
+        { start: "08:00" },
+      ),
+      "evening-25",
+      { assignees: [] },
+    ),
+    "morning-27",
+    { needed: 2, assignees: people("p5", "p4") },
+  );
+  const ended = ids(swapsEndedBy(read, four, waiting));
+
+  it("leaves the request on an untouched shift waiting", () => {
+    expect(ended).not.toContain("s-thu");
+  });
+
+  it("ends the request on a shift with new hours", () => {
+    expect(ended).toContain("s-tue");
+  });
+
+  it("ends the request of whoever asked, taken off the shift", () => {
+    expect(ended).toContain("s-wed");
+  });
+
+  it("does not end a request whose taker was put on the shift directly: it opens again", () => {
+    expect(ended).not.toContain("s-fri");
+  });
+
+  it("leaves a request waiting when someone else is put on the shift", () => {
+    expect(ended).not.toContain("s-mon");
+  });
+
+  it("counts a change to a shift changed meanwhile as written, ending nothing that keeps its asker", () => {
+    // Thursday sent with 3 needed, from the screen read before 8 came off it:
+    // the database refuses it (40001 'moved'); were it written, 4 would
+    // still be on it, so the request would wait on.
+    expect(
+      swapsEndedBy(read, edit(read, "morning-26", { needed: 3 }), waiting),
+    ).toEqual([]);
+  });
+
+  it("names the requests it ends, and how many", () => {
+    expect(ended).toEqual(["s-tue", "s-wed"]);
+  });
+
+  // The week as published then, read again: Monday's request still open,
+  // Thursday's taken by 3 and about to be approved, Friday's open again.
+  const published = four;
+  const stillWaiting = [
+    swap("s-mon", "morning-23", "p4"),
+    swap("s-thu", "morning-26", "p4", "p3"),
+    swap("s-fri", "morning-27", "p5"),
+  ];
+
+  it("ends nothing for a change to another shift, read before a swap was approved", () => {
+    expect(
+      swapsEndedBy(
+        published,
+        edit(published, "morning-22", { needed: 3 }),
+        stillWaiting,
+      ),
+    ).toEqual([]);
+  });
+
+  it("ends nothing for a change to the shift whose swap was approved, which the database refuses", () => {
+    // 40001 'moved', and the builder puts the shift back; written as the
+    // screen read it, 4 would still be on it.
+    expect(
+      swapsEndedBy(
+        published,
+        edit(published, "morning-26", { needed: 3 }),
+        stillWaiting,
+      ),
+    ).toEqual([]);
+  });
+
+  it("counts the request on a shift removed after its swap was approved, which the database refuses instead", () => {
+    // The database answers 40001 'moved' and the builder puts the shift back;
+    // read as the screen read it, its removal would end the request.
+    expect(
+      ids(
+        swapsEndedBy(published, without(published, "morning-26"), stillWaiting),
+      ),
+    ).toEqual(["s-thu"]);
+  });
+
+  it("ends nothing on a shift added meanwhile, which stays", () => {
+    // The owner adds Saturday; the manager's screen, read before, never saw
+    // it. (The request on it is this test's own, not week_in_place's: one on
+    // a shift the screen did not read is not this write's to end.)
+    expect(
+      swapsEndedBy(published, edit(published, "morning-23", { needed: 3 }), [
+        ...stillWaiting,
+        swap("s-sat", "morning-28", "p5"),
+      ]),
+    ).toEqual([]);
+  });
+
+  // The manager reads the week with Saturday, Monday needing 3 and 3 on
+  // Thursday; the owner deletes Saturday. Monday's and Friday's requests are
+  // still open.
+  const withSaturday = [
+    ...edit(edit(published, "morning-23", { needed: 3 }), "morning-26", {
+      assignees: people("p3"),
+    }),
+    day("morning-28", "2026-11-28", "Morning", morning, 1, ["p5"]),
+  ];
+  const stillOpen = [
+    swap("s-mon", "morning-23", "p4"),
+    swap("s-fri", "morning-27", "p5"),
+  ];
+
+  it("ends nothing for a shift deleted meanwhile and sent as it was read, which is skipped", () => {
+    expect(
+      swapsEndedBy(
+        withSaturday,
+        edit(withSaturday, "morning-23", { needed: 2 }),
+        stillOpen,
+      ),
+    ).toEqual([]);
+  });
+
+  it("ends nothing for a shift deleted meanwhile and sent changed, which the database refuses", () => {
+    expect(
+      swapsEndedBy(
+        withSaturday,
+        edit(withSaturday, "morning-28", { needed: 2 }),
+        stillOpen,
+      ),
+    ).toEqual([]);
+  });
+
+  // 5 takes 4's Monday; then a new brunch puts 5 to work on Monday at the
+  // same time.
+  const brunch = day(
+    "brunch-23",
+    "2026-11-23",
+    "Brunch",
+    ["10:00", "12:00"],
+    1,
+    ["p5"],
+  );
+
+  it("does not end a request whose taker now works at the same time: it opens again", () => {
+    const { id: _, ...added } = brunch;
+    expect(
+      swapsEndedBy(
+        published,
+        [...published, added],
+        [swap("s-mon", "morning-23", "p4", "p5")],
+      ),
+    ).toEqual([]);
+  });
+
+  it("ends the request on a shift read and not sent, which is deleted", () => {
+    // 5 asks to give the brunch away and the owner takes it; the manager then
+    // publishes the week without it.
+    const withBrunch = [...published, brunch];
+    const onBrunch = swap("s-brunch", "brunch-23", "p5", "p1");
+    expect(
+      swapsEndedBy(withBrunch, without(withBrunch, "brunch-23"), [
+        swap("s-mon", "morning-23", "p4"),
+        onBrunch,
+      ]),
+    ).toEqual([onBrunch]);
+  });
+
+  it("ends every request still waiting when the week is replaced, with nothing read", () => {
+    // 3 asks to give Sunday away too; the week is then published with no
+    // basis, two new shifts in place of the six.
+    const open = [
+      swap("s-mon", "morning-23", "p4"),
+      swap("s-fri", "morning-27", "p5"),
+      swap("s-sun", "morning-22", "p3"),
+    ];
+    const replaced = [
+      day("", "2026-11-22", "Morning", morning, 1, ["p3"]),
+      day("", "2026-11-23", "Evening", ["16:00", "23:00"], 1, []),
+    ].map(({ id: _, ...shift }) => shift);
+    expect(swapsEndedBy(published, replaced, open, true)).toEqual(open);
+  });
+});
+
+// The rest of the database's rule, as private.write_week_schedule reads it:
+// only the day, the start, the end and whoever asked can end a request.
+describe("swapsEndedBy", () => {
+  const shift: ScheduledShift = {
+    id: "evening",
+    day: "2026-11-22",
+    name: "Evening",
+    start: "16:00",
+    end: "23:00",
+    needed: 2,
+    pattern: "evening",
+    assignees: [
+      { user: "noa", position: "waiter" },
+      { user: "yoav", position: null },
+    ],
+  };
+  const asked = [swap("1", "evening", "noa")];
+  const ends = (changes: Partial<ScheduledShift>) =>
+    swapsEndedBy([shift], [{ ...shift, ...changes }], asked).length;
+
+  it("ends a request when the shift moves to another day or ends at another time", () => {
+    expect(ends({ day: "2026-11-23" })).toBe(1);
+    expect(ends({ end: "23:30" })).toBe(1);
+  });
+
+  it("keeps it through a new name, people needed, pattern or position", () => {
+    expect(ends({ name: "Late" })).toBe(0);
+    expect(ends({ needed: 3 })).toBe(0);
+    expect(ends({ pattern: null })).toBe(0);
+    expect(
+      ends({
+        assignees: [
+          { user: "noa", position: "bartender" },
+          { user: "yoav", position: null },
+        ],
+      }),
+    ).toBe(0);
+    // Someone else taken off.
+    expect(ends({ assignees: [{ user: "noa", position: "waiter" }] })).toBe(0);
+  });
+
+  it("reads a shift sent as it was read the same, in any order", () => {
+    expect(
+      ends({ name: " Evening ", assignees: [...shift.assignees].reverse() }),
+    ).toBe(0);
+  });
+
+  it("leaves requests on other weeks alone", () => {
+    expect(swapsEndedBy([shift], [], [swap("2", "next-week", "noa")])).toEqual(
+      [],
+    );
   });
 });

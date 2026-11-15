@@ -28,6 +28,26 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 const pressClass =
   "pressable focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
+/** A card's line for what someone else did to its shift meanwhile. */
+function MeanwhileLine({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-1.5 font-semibold text-sm text-warning before:size-1.5 before:shrink-0 before:rounded-full before:bg-current before:content-['']",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 /**
  * One shift at a glance: its name and hours, how full it is, who is on it and
  * what is missing. Tapping it opens the shift's sheet. The hidden line gives
@@ -39,6 +59,7 @@ export function ShiftCard({
   shift,
   people,
   clashing,
+  meanwhile = false,
   positions,
   density,
   onOpen,
@@ -50,6 +71,11 @@ export function ShiftCard({
   people: AvatarPerson[];
   /** Those of them who are on another shift at the same time. */
   clashing: string[];
+  /**
+   * Put back as it is now, after a write refused because it changed
+   * meanwhile: it says so until the week is written.
+   */
+  meanwhile?: boolean;
   positions: Position[];
   density: CardDensity;
   onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
@@ -89,6 +115,9 @@ export function ShiftCard({
         })}
         .{" "}
       </span>
+      {meanwhile ? (
+        <MeanwhileLine className="mb-1.5">{t("meanwhile")}</MeanwhileLine>
+      ) : null}
       <span className="flex items-start justify-between gap-x-2.5">
         <span className="min-w-0">
           <span className={cn("block font-bold", full ? "text-lg" : "text-md")}>
@@ -170,12 +199,18 @@ export function ShiftCard({
 export function RemovedShift({
   id,
   shift,
+  meanwhile = false,
   weekday,
   density,
   onUndo,
 }: {
   id: number;
   shift: ScheduledShift;
+  /**
+   * Deleted meanwhile by someone else, found when a write was refused: it
+   * says so until the week is written, and the way back adds it as new.
+   */
+  meanwhile?: boolean;
   weekday: string;
   density: CardDensity;
   onUndo: () => void;
@@ -188,6 +223,11 @@ export function RemovedShift({
         density === "full" ? "rounded-[28px] p-4" : "rounded-card p-3",
       )}
     >
+      {meanwhile ? (
+        <MeanwhileLine className="basis-full">
+          {t("goneMeanwhile")}
+        </MeanwhileLine>
+      ) : null}
       <span
         className={cn(
           "min-w-0 flex-1 basis-36 text-ink-2",

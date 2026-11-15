@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { dateIn } from "./availability";
 import { minutesOf, rangeMinutes } from "./hours";
-import { type ScheduledShift, shiftStarted } from "./schedule";
+import { type ScheduledShift, sameShift, shiftStarted } from "./schedule";
 
 /**
  * Shift swaps: a worker gives away a shift of a published week, a
@@ -186,6 +186,59 @@ export function approvalsFor<S extends SwappableShift>(
 /** The requests a manager can still approve: their shift has not begun. */
 export const toApprove = <S>(approvals: readonly Approval<S>[]) =>
   approvals.filter((a) => !a.started);
+
+/**
+ * The waiting requests (open, or taken and waiting for a manager) that
+ * sending `sent` for a week the screen read as `read` would end, for the
+ * warning above "פרסום השינויים" (Orel's answer 2 of 15 November 2026). The
+ * database decides (`private.write_week_schedule`,
+ * 20261115000100_week_in_place.sql); this reads its rule off the screen, and
+ * swaps.test.ts mirrors week_in_place.test.sql's cases one for one, all but
+ * those with nothing to say about requests (refused payloads, drafts and
+ * positions):
+ * - a request on a shift read and not sent (deleted) ends;
+ * - one on a shift sent changed ends when its day, start or end changed, or
+ *   whoever asked is no longer on it;
+ * - one on a shift sent as it was read waits on, and so does one on a shift
+ *   changed in any other way: someone else put on it, even its taker (which
+ *   opens it again with no taker rather than ending it);
+ * - one on a shift the screen did not read (another week's, or one another
+ *   manager added meanwhile) is not this write's;
+ * - with nothing read (`replace`: the week sent with no basis), every request
+ *   on a shift read ends, as the week is replaced.
+ * A shift changed both here and meanwhile is refused rather than written
+ * (`weekMoved`), so its request would not end yet; it is counted as if it
+ * would.
+ */
+export function swapsEndedBy<
+  W extends Pick<ShiftSwap, "shiftId" | "requestedBy">,
+>(
+  read: readonly ScheduledShift[],
+  sent: readonly ScheduledShift[],
+  swaps: readonly W[],
+  replace = false,
+): W[] {
+  const byId = (shifts: readonly ScheduledShift[]) =>
+    new Map(
+      shifts.flatMap((shift) => (shift.id ? [[shift.id, shift] as const] : [])),
+    );
+  const before = byId(read);
+  const after = byId(sent);
+  return swaps.filter((swap) => {
+    const was = before.get(swap.shiftId);
+    if (!was) return false;
+    if (replace) return true;
+    const now = after.get(swap.shiftId);
+    if (!now) return true;
+    if (sameShift(was, now)) return false;
+    return (
+      now.day !== was.day ||
+      now.start !== was.start ||
+      now.end !== was.end ||
+      !now.assignees.some((a) => a.user === swap.requestedBy)
+    );
+  });
+}
 
 /** Why the database refused a swap step, for the screen to explain. */
 export type SwapFailure =
