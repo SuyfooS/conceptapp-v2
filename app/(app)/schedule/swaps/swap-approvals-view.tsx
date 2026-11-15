@@ -12,12 +12,17 @@ type DecideAction = (
 ) => Promise<DecideState>;
 type Row = Approval<WeekScheduleShift>;
 
-/** The requests waiting for a manager, from today on, in both weeks. */
+/**
+ * The requests waiting for a manager, from today on, in both weeks, at the
+ * moment the server read them. One whose shift has begun is marked
+ * `started`: it can only be declined.
+ */
 export function pendingApprovals(data: PublishedSchedule): Row[] {
   return approvalsFor(
     data.swaps,
     [...data.thisWeek.shifts, ...data.nextWeek.shifts],
-    data.today,
+    new Date(data.now),
+    data.timeZone,
   );
 }
 

@@ -2,7 +2,7 @@ import { weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { firstNameOf } from "@domain/people";
 import { formArg } from "@domain/profile";
-import { type ScheduledShift, shiftsOf } from "@domain/schedule";
+import { type ScheduledShift, shiftStarted, shiftsOf } from "@domain/schedule";
 import type { useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 import type { PublishedSchedule } from "../week";
@@ -10,7 +10,7 @@ import type { PublishedSchedule } from "../week";
 /** What the shift screens read to show one shift and who is on it. */
 export type ShiftData = Pick<
   PublishedSchedule,
-  "userId" | "today" | "people" | "positions" | "swaps"
+  "userId" | "today" | "now" | "timeZone" | "people" | "positions" | "swaps"
 >;
 
 export type AppT = ReturnType<typeof useTranslations<"app">>;
@@ -85,6 +85,16 @@ export const assigneePeople = (
     name: nameOf(t, data, a.user),
     photo: photoOf(data, a.user),
   }));
+
+/**
+ * Whether a shift has begun at the moment the screen was read, as the
+ * database decides it: from its start on, it is no longer given away or
+ * taken.
+ */
+export const hasStarted = (
+  data: Pick<ShiftData, "now" | "timeZone">,
+  shift: Pick<ScheduledShift, "day" | "start">,
+) => shiftStarted(shift, new Date(data.now), data.timeZone);
 
 export const firstNames = (names: readonly string[]) =>
   names.map(firstNameOf).join(", ");

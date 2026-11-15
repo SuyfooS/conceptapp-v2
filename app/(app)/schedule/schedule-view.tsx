@@ -2,7 +2,7 @@ import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
 import { scheduleGaps, scheduleOpening } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
-import { offersFor } from "@domain/swaps";
+import { offersFor, toApprove } from "@domain/swaps";
 import { Badge } from "@ui/badge";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageSection } from "@ui/page";
@@ -124,7 +124,9 @@ export async function ScheduleView({
     },
   ];
 
-  const approvals = pendingApprovals(data).length;
+  // A request whose shift has begun can only be declined: it waits for no
+  // approval, so it is not counted (it is still listed on the screen).
+  const approvals = toApprove(pendingApprovals(data)).length;
   // The one thing waiting for this person goes first, in the accent.
   const approvalsFirst = manager && approvals > 0;
   const availabilityFirst = !manager && !week.mine;
@@ -144,7 +146,8 @@ export async function ScheduleView({
     data.swaps,
     [...data.thisWeek.shifts, ...data.nextWeek.shifts],
     data.userId,
-    data.today,
+    new Date(data.now),
+    data.timeZone,
   ).filter((o) => o.state === "available").length;
 
   const own = (
@@ -170,6 +173,8 @@ export async function ScheduleView({
         data={{
           userId: data.userId,
           today: data.today,
+          now: data.now,
+          timeZone: data.timeZone,
           people: data.people,
           positions: data.positions,
           swaps: data.swaps,

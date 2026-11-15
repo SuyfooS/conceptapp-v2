@@ -11,6 +11,7 @@ import { type ReactNode, useCallback, useState } from "react";
 import type { SwapState } from "./actions";
 import {
   formOf,
+  hasStarted,
   nameOf,
   photoOf,
   positionName,
@@ -139,7 +140,8 @@ function SheetBody({
   const subject = shiftLabel(t, shift);
   const mine = shift.assignees.some((a) => a.user === data.userId);
   const request = myRequestFor(data.swaps, shift.id, data.userId);
-  const upcoming = shift.day >= data.today;
+  // From its start on, the database refuses to give it away.
+  const upcoming = !hasStarted(data, shift);
   const title = t("shifts.sheet.people");
 
   return (

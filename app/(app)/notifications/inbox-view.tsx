@@ -9,6 +9,7 @@ import {
   type NotificationShift,
   unfilledWeekBegun,
 } from "@domain/notifications";
+import { shiftStarted } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
 import { addMonths } from "@domain/time-clock-format";
 import { dayMonthYear } from "@domain/wages";
@@ -141,6 +142,12 @@ export function InboxView({
           end: shift.end,
         })
       : null;
+  /**
+   * The line's shift has begun at the moment the screen is read, so it can
+   * no longer be taken or approved, as the database decides.
+   */
+  const begun = (shift: NotificationShift | null) =>
+    shift !== null && shiftStarted(shift, nowDate, timeZone);
   /** A moment's weekday and time on the business's clock, in words. */
   const dayAndTime = (at: string) => {
     const instant = new Date(at);
@@ -208,9 +215,10 @@ export function InboxView({
         return {
           title: t("kinds.swap.offered.title", { name: who(line.from) }),
           shift: shiftWords(line.shift),
-          // Taken, withdrawn or gone with the schedule: nothing to take.
+          // Taken, withdrawn, gone with the schedule, or begun (My shifts no
+          // longer offers it): nothing to take.
           notes: [
-            settled
+            settled || begun(line.shift)
               ? t("kinds.swap.offered.settledNote")
               : t("kinds.swap.offered.note"),
           ],
@@ -221,11 +229,14 @@ export function InboxView({
           shift: shiftWords(line.shift),
           notes: [t("kinds.swap.taken.note")],
         };
+      // Once the shift has begun it can't be approved, and the approvals
+      // screen no longer counts it.
       case "swap.waiting":
         return {
-          title: settled
-            ? t("kinds.swap.waiting.settledTitle")
-            : t("kinds.swap.waiting.title"),
+          title:
+            settled || begun(line.shift)
+              ? t("kinds.swap.waiting.settledTitle")
+              : t("kinds.swap.waiting.title"),
           shift: shiftWords(line.shift),
           notes: [
             t("kinds.swap.waiting.people", {

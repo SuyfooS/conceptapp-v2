@@ -119,18 +119,24 @@ const limitsOf = (start: string) =>
 
 const NEXT_WEEK = addDays(demoWeek.start, 7);
 
+/** Tuesday 3 November at 12:00 in Tel Aviv: the morning shift is on. */
+export const DEMO_NOON = "2026-11-03T10:00:00.000Z";
+
 /**
  * The demo restaurant's schedule as `userId` reads it on Tuesday
- * 3 November: this week published, next week not yet.
+ * 3 November, at noon unless `now` says otherwise: this week published,
+ * next week not yet.
  */
 export function demoPublished(
   userId: string,
   swaps: ShiftSwap[],
+  now: string = DEMO_NOON,
 ): PublishedSchedule {
   const start = demoWeek.start;
   return {
     userId,
     today: "2026-11-03",
+    now,
     timeZone: ISRAEL_TIME_ZONE,
     thisWeek: {
       start,

@@ -140,7 +140,13 @@ export function WeekBoard({
       ? w.shifts.flatMap((s) => (s.id ? [{ ...s, id: s.id }] : []))
       : [],
   ) satisfies WeekScheduleShift[];
-  const offers = offersFor(data.swaps, published, data.userId, data.today);
+  const offers = offersFor(
+    data.swaps,
+    published,
+    data.userId,
+    new Date(data.now),
+    data.timeZone,
+  );
 
   const firstDay =
     week.dates.find((d) => d === data.today) ??

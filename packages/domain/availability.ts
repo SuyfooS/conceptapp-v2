@@ -96,16 +96,33 @@ function offsetMinutes(instant: Date, timeZone: string): number {
   return Math.round((wall - instant.getTime()) / 60_000);
 }
 
+const DAY_MS = 86_400_000;
+
 /**
- * The instant a wall-clock time on a date happens in a time zone. A time
- * skipped when the clocks go forward lands just after the change.
+ * The instant a wall-clock time on a date happens in a time zone, as
+ * Postgres's `timestamp at time zone` reads it, in zones east and west of
+ * UTC alike: a time skipped when the clocks go forward lands just after the
+ * change, and one they repeat when they go back is the second of the two.
  */
 export function instantIn(date: string, time: string, timeZone: string): Date {
   const wall = utcOf(date).getTime() + minutesOf(time) * 60_000;
-  let instant = wall - offsetMinutes(new Date(wall), timeZone) * 60_000;
-  // A second pass settles a guess that crossed a clock change.
-  instant = wall - offsetMinutes(new Date(instant), timeZone) * 60_000;
-  return new Date(instant);
+  // The zone's offset a day before and a day after: the same, unless the
+  // clocks change close to this time.
+  const before = offsetMinutes(new Date(wall - DAY_MS), timeZone);
+  const after = offsetMinutes(new Date(wall + DAY_MS), timeZone);
+  const byBefore = wall - before * 60_000;
+  if (before === after) return new Date(byBefore);
+  const byAfter = wall - after * 60_000;
+  // A reading is real when the zone has that offset at that instant. When
+  // only one is, it is the time; when both are (the hour repeats) or
+  // neither is (the hour is skipped), the later instant, as Postgres's
+  // DetermineTimeZoneOffset decides.
+  const beforeReal = offsetMinutes(new Date(byBefore), timeZone) === before;
+  const afterReal = offsetMinutes(new Date(byAfter), timeZone) === after;
+  if (beforeReal !== afterReal) {
+    return new Date(beforeReal ? byBefore : byAfter);
+  }
+  return new Date(Math.max(byBefore, byAfter));
 }
 
 /**

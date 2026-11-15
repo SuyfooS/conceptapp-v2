@@ -55,6 +55,8 @@ export function MyShiftsView({
         data={{
           userId: data.userId,
           today: data.today,
+          now: data.now,
+          timeZone: data.timeZone,
           people: data.people,
           positions: data.positions,
           swaps: data.swaps,
