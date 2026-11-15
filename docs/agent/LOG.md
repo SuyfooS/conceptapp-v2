@@ -31,6 +31,7 @@ what is next, defaults applied.
 - Decided here, not in the plan: only "פרסום השינויים" waits, not a week's first publish nor a draft (Q3 asked about that button; holding the first publish too is one line in `publishWaits`); "פרסום השינויים ויציאה" goes at once; a way out the guard catches during the hold sends the publish now and goes once it worked, instead of leaving it to the hook's send on leaving, whose answer the screen would no longer show (the week switch remounts the builder); while held the dock's button spins as while sending, the screen takes no edits, and the status line stays "unpublished"; the toast's undo takes the keyboard's focus. The hold stops while the toast does (a mouse over it, the keyboard's focus on "ביטול"), so a keyboard user's publish goes once the focus moves on, and a hidden page or leaving still sends it at once.
 - Next: R4 (the ways in, and closing the row), on top of this branch.
 ## 2026-11-15 · chat · the running week's notifications (R2b)
+- Next: R4 (the ways in, and closing the row).
 
 ## 2026-11-15 · chat · a list still late reaches the owners
 
