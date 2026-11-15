@@ -25,6 +25,8 @@ const PAGES = [
   "/design/shell/schedule/availability",
   "/design/shell/schedule/build",
   "/design/shell/schedule/build?state=meanwhile",
+  "/design/shell/schedule/build/running",
+  "/design/shell/schedule/build/running?week=next",
   "/design/shell/schedule/shifts",
   "/design/shell/schedule/shifts?at=evening",
   "/design/shell/clock",
@@ -650,6 +652,101 @@ test("the builder demo warns before ending a request, and puts back a shift chan
   // Published now, not when the demo week was first published (29.10).
   await expect(status).toBeVisible();
   await expect(status).not.toContainText("29.10");
+});
+
+// The running week's twin (R3a), at every size: the shop on Tuesday 17
+// November at 11:20. The morning under way says so and only takes more
+// people; Monday is over, muted, keeps Liya who left, and takes no new shift;
+// the evening freed when she left takes Omer, with the line to check with its
+// people directly, and goes out. Roni's request on Thursday evening, which
+// nothing touches, is not counted. The switch to next week asks first while
+// there is unsaved work.
+test("the running week's demo locks what has begun and fills the freed evening", async ({
+  page,
+}, testInfo) => {
+  const tb = he.app.build;
+  const running = tb.running;
+  const path = "/design/shell/schedule/build/running";
+  const screen = buildScreen(page);
+  const tue = { day: he.app.availability.weekdays.tue, date: "17.11" };
+  const mon = { day: he.app.availability.weekdays.mon, date: "16.11" };
+  const publish = page.getByRole("button", { name: tb.publishChanges });
+  const nextWeek = page.getByRole("button", {
+    name: new RegExp(`^${he.app.shifts.week.next}`),
+  });
+  const warning = page.getByRole("dialog", { name: tb.leave.title });
+
+  await page.goto(path);
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
+  ).toBeVisible();
+  // Published, with nothing new to send.
+  await expect(publish).toHaveCount(0);
+
+  const morning = screen.card("בוקר", tue);
+  await expect(morning).toContainText(running.now);
+  await morning.click();
+  await expect(screen.sheet).toContainText(before(running.begunLine));
+  await expect(screen.removeButton("תמר אברהם")).toHaveCount(0);
+  await expect(
+    screen.sheet.getByRole("button", {
+      name: tb.edit.replace("{name}", "בוקר"),
+    }),
+  ).toHaveCount(0);
+  await expect(screen.addButton("עומר הדגמה")).toBeVisible();
+  await screen.closeSheet();
+
+  // A day that is over takes no new shift; today does.
+  await expect(screen.addOn(mon)).toHaveCount(0);
+  await expect(screen.addOn(tue)).toBeVisible();
+  if (testInfo.project.name !== "phone") {
+    // The phone shows today; the others show Monday, muted, as it was.
+    const over = screen.card("בוקר", mon);
+    await expect(over).toContainText(he.app.shifts.former);
+    await over.click();
+    await expect(screen.sheet).toContainText(
+      `${running.overLine} ${running.clockLine}`,
+    );
+    await expect(
+      screen.sheet.getByRole("button", {
+        name: new RegExp(`^${before(tb.addPerson)}`),
+      }),
+    ).toHaveCount(0);
+    await screen.closeSheet();
+  }
+
+  const evening = screen.card("ערב", tue);
+  await expect(evening).toContainText(heT("app.build.missing", { count: 1 }));
+  await evening.click();
+  await screen.addButton("עומר הדגמה").click();
+  await screen.closeSheet();
+  await expect(evening).toContainText("עומר");
+  await expect(page.getByText(running.soon)).toBeVisible();
+  await expect(
+    page.getByText(heT("app.build.swapsEnd", { count: 1 })),
+  ).toHaveCount(0);
+  await expectCleanPage(page, path);
+
+  // Unsaved work: the switch to next week asks first.
+  await nextWeek.click();
+  await expect(warning).toBeVisible();
+  await warning.getByRole("button", { name: tb.leave.stay }).click();
+  await expect(warning).toHaveCount(0);
+  await expect(evening).toContainText("עומר");
+
+  await publish.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tb.published }),
+  ).toBeVisible();
+  await expect(publish).toHaveCount(0);
+  await expect(screen.card("בוקר", tue)).toContainText(running.now);
+
+  // Nothing unsaved now: the switch just goes.
+  await nextWeek.click();
+  await expect(page).toHaveURL(/\/running\?week=next$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.title }),
+  ).toBeVisible();
 });
 
 // A demo business takes no invites (#80): its Team screen offers none and

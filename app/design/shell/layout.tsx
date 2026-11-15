@@ -14,7 +14,7 @@ import { useTranslations } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { demoSwitcher } from "./businesses";
 import { demoAccountantName } from "./clock/pay/data";
-import { business, totalOpenSlots, user } from "./data";
+import { business, demoBusinesses, totalOpenSlots, user } from "./data";
 import { DemoShell } from "./demo-shell";
 import { demoUnread } from "./notifications/data";
 
@@ -83,6 +83,9 @@ export default function ShellDemoLayout({
   return (
     <DemoShell
       businessName={business.name}
+      shopName={
+        demoBusinesses.find((b) => b.id === "shop")?.name ?? business.name
+      }
       user={{ ...user, href: "/design/shell/me" }}
       nav={nav}
       homeCount={toAct}

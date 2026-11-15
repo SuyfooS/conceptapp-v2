@@ -623,6 +623,136 @@ export async function scheduleDemoToday(
     ${sql.json(shifts)})`;
 }
 
+export type RunningWeekClock = {
+  /** The first day of the week running now, in the restaurant's zone. */
+  startsOn: string;
+  /** Today there. */
+  today: string;
+  /** Minutes since the week's first midnight, by the wall clock. */
+  sinceStart: number;
+  /** Minutes until the next week's first midnight, by the wall clock. */
+  untilEnd: number;
+  /** Minutes since today's midnight, by the wall clock. */
+  minuteOfDay: number;
+};
+
+/**
+ * Where the real clock is in the demo restaurant's week running now (its
+ * own `weekStartsOn` and zone): specs of the running week seed it relative
+ * to now and skip near its edges, as the server's clock can't be faked.
+ */
+export async function demoRunningWeekClock(): Promise<RunningWeekClock> {
+  const [row] = await sql<RunningWeekClock[]>`
+    with business as (
+      select now() at time zone b.timezone as local,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    ),
+    week as (
+      select local,
+        local::date - ((extract(dow from local)::int - starts_on + 7) % 7)
+          as start
+      from business
+    )
+    select start::text as "startsOn", local::date::text as today,
+      floor(extract(epoch from local - start::timestamp) / 60)::int
+        as "sinceStart",
+      floor(extract(epoch from (start + 7)::timestamp - local) / 60)::int
+        as "untilEnd",
+      (extract(hour from local) * 60 + extract(minute from local))::int
+        as "minuteOfDay"
+    from week`;
+  if (!row) throw new Error("The demo restaurant has no scheduling");
+  return row;
+}
+
+/**
+ * This week's schedule at the demo restaurant, published to the team
+ * relative to the real clock, through the database functions the app uses,
+ * as its manager, all of it today (callers skip near midnight and near the
+ * week's edges, `demoRunningWeekClock`): "בוקר" began an hour ago and runs
+ * for another, with `begun` on it (one place still open); "ערב" starts when
+ * it ends, for an hour, with nobody on it (its place freed); "לילה" starts
+ * then too, with `untouched` on it, who asks to give it away. The week's
+ * first publish, so what has begun publishes as it stands (a week never
+ * published is free, 20261115000300_running_week.sql). By phone number.
+ */
+export async function publishDemoRunningWeek(
+  begun: string,
+  untouched: string,
+): Promise<void> {
+  const ids = await sql<{ phone: string; id: string }[]>`
+    select phone, id::text from public.profiles
+    where phone in ${sql([begun, untouched])}`;
+  const id = (phone: string) => ids.find((r) => r.phone === phone)?.id;
+  const [week] = await sql<
+    {
+      id: string;
+      today: string;
+      began: string;
+      turns: string;
+      ends: string;
+    }[]
+  >`
+    with business as (
+      select date_trunc('minute', now() at time zone b.timezone) as local,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${DEMO_RESTAURANT}
+    )
+    select public.open_schedule_week(${DEMO_RESTAURANT},
+        local::date - ((extract(dow from local)::int - starts_on + 7) % 7),
+        now() + interval '1 day')::text as id,
+      local::date::text as today,
+      to_char(local - interval '1 hour', 'HH24:MI') as began,
+      to_char(local + interval '1 hour', 'HH24:MI') as turns,
+      to_char(local + interval '2 hours', 'HH24:MI') as ends
+    from business`;
+  if (!week) throw new Error("Could not open this week");
+  const shifts = [
+    {
+      day: week.today,
+      name: "בוקר",
+      start: week.began,
+      end: week.turns,
+      needed: 2,
+      pattern: "morning",
+      assignees: [{ user: id(begun), position: null }],
+    },
+    {
+      day: week.today,
+      name: "ערב",
+      start: week.turns,
+      end: week.ends,
+      needed: 1,
+      pattern: "evening",
+      assignees: [],
+    },
+    {
+      day: week.today,
+      name: "לילה",
+      start: week.turns,
+      end: week.ends,
+      needed: 1,
+      pattern: null,
+      assignees: [{ user: id(untouched), position: null }],
+    },
+  ];
+  const manager = "00000000-0000-4000-a000-000000000002";
+  await sql`select public.publish_week_schedule(${manager}, ${week.id},
+    ${sql.json(shifts)})`;
+  await sql`
+    select public.request_shift_swap(p.id, s.id)
+    from public.profiles p, public.schedule_shifts s
+    where p.phone = ${untouched} and s.week_id = ${week.id}
+      and s.name = 'לילה'`;
+}
+
 export type SavedSwap = {
   status: string;
   from: string;

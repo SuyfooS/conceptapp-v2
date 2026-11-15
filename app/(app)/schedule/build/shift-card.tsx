@@ -52,11 +52,14 @@ function MeanwhileLine({
  * One shift at a glance: its name and hours, how full it is, who is on it and
  * what is missing. Tapping it opens the shift's sheet. The hidden line gives
  * the whole picture to a screen reader, with the day the card cannot show.
+ * In a published week, a shift that is over is muted, with its people and
+ * nothing of what it lacked; one under way says so in place of its status.
  */
 export function ShiftCard({
   id,
   label,
   shift,
+  stage = null,
   people,
   clashing,
   meanwhile = false,
@@ -67,8 +70,17 @@ export function ShiftCard({
   id: number;
   label: string;
   shift: ScheduledShift;
-  /** Who is on the shift, as their names read everywhere, with their photos. */
-  people: AvatarPerson[];
+  /**
+   * Where a shift of a published week stands once it has begun: under way
+   * ("now") or over. Null for one still to start, or in a week that is free.
+   */
+  stage?: "now" | "over" | null;
+  /**
+   * Who is on the shift, as their names read everywhere, with their photos.
+   * Those no longer on the team (`former`, kept on a shift that has begun)
+   * are said once, in full, by how many they are.
+   */
+  people: (AvatarPerson & { former?: boolean })[];
   /** Those of them who are on another shift at the same time. */
   clashing: string[];
   /**
@@ -82,12 +94,20 @@ export function ShiftCard({
 }) {
   const t = useTranslations("app.build");
   const names = people.map((p) => p.name);
+  const formers = people.filter((p) => p.former).length;
+  const shown = [
+    ...shortNames(people.filter((p) => !p.former).map((p) => p.name)),
+    ...(formers > 0 ? [t("formerCount", { count: formers })] : []),
+  ];
   const missing = stillNeeded(shift);
   const full = density === "full";
   const column = density === "column";
   const inPositions = positionCounts(shift, positions);
+  const over = stage === "over";
   const status =
-    missing > 0 ? (
+    stage === "now" ? (
+      <Badge tone="accent">{t("running.now")}</Badge>
+    ) : over ? null : missing > 0 ? (
       <Badge tone="warning">{t("missing", { count: missing })}</Badge>
     ) : (
       <Badge tone="success">{t("staffed")}</Badge>
@@ -101,14 +121,19 @@ export function ShiftCard({
       onClick={onOpen}
       className={cn(
         pressClass,
-        "flex w-full min-w-0 flex-col items-stretch bg-surface text-start shadow-card",
+        "flex w-full min-w-0 flex-col items-stretch text-start",
+        over ? "bg-surface-2 text-ink-2" : "bg-surface shadow-card",
         full ? "rounded-[28px] p-4" : "rounded-card p-3",
         // Most cards line up across the week's columns.
         column && "min-h-[13.75rem]",
+        column && over && "min-h-0",
       )}
     >
       <span className="sr-only">
         {label}.{" "}
+        {stage
+          ? `${t(stage === "now" ? "running.begunSr" : "running.overSr", { time: shift.start })}. `
+          : null}
         {t("people", {
           assigned: shift.assignees.length,
           needed: shift.needed,
@@ -131,22 +156,26 @@ export function ShiftCard({
         </span>
         {column ? null : status}
       </span>
-      <CoverageBar
-        filled={shift.assignees.length}
-        total={shift.needed}
-        className={full ? "my-3.5" : "my-2.5"}
-      />
-      {column ? <span className="mb-2.5 flex">{status}</span> : null}
+      {over ? (
+        <span aria-hidden="true" className={full ? "h-3.5" : "h-2.5"} />
+      ) : (
+        <CoverageBar
+          filled={shift.assignees.length}
+          total={shift.needed}
+          className={full ? "my-3.5" : "my-2.5"}
+        />
+      )}
+      {column && status ? <span className="mb-2.5 flex">{status}</span> : null}
       <span
         className={cn(
           "flex gap-2.5",
           column ? "flex-col items-start gap-1.5" : "min-h-8 items-center",
         )}
       >
-        {names.length > 0 || missing > 0 ? (
+        {names.length > 0 || (missing > 0 && !over) ? (
           <span className="flex shrink-0">
             <AvatarStack people={people} max={column ? 3 : 4} />
-            {missing > 0 ? (
+            {missing > 0 && !over ? (
               <span
                 aria-hidden="true"
                 className={cn(
@@ -165,7 +194,11 @@ export function ShiftCard({
             full ? "text-base" : "text-sm",
           )}
         >
-          {names.length > 0 ? shortNames(names).join(", ") : t("nobody")}
+          {names.length > 0
+            ? shown.join(", ")
+            : over
+              ? t("running.nobodyPast")
+              : t("nobody")}
           {inPositions.length > 0 ? (
             <span className="flex flex-wrap gap-x-2 text-sm">
               {inPositions.map(({ position, count }) => (
@@ -246,6 +279,24 @@ export function RemovedShift({
         {t("undoRemove")}
       </Button>
     </div>
+  );
+}
+
+/**
+ * In place of the way to add a shift, on a day of a published week that is
+ * over and had none: it takes no new shift.
+ */
+export function PastDayNote({ density }: { density: CardDensity }) {
+  const t = useTranslations("app.build.running");
+  return (
+    <p
+      className={cn(
+        "rounded-card bg-surface-2 text-ink-2",
+        density === "full" ? "px-4 py-4 text-base" : "px-3 py-3 text-sm",
+      )}
+    >
+      {t("noShiftsPast")}
+    </p>
   );
 }
 

@@ -125,9 +125,9 @@ function idsIn(detail: string | null): string[] {
  * The shifts that had begun when the save or publish changed them or left
  * them out (55006 with hint `started`, the ids in its detail): in a published
  * week a shift that has begun stays as it was (Orel's answer of 15 November
- * 2026), and nothing was written. The running week's builder (R3a) meets it;
- * next week's has nothing begun, and gets `weekChanged` before writing when
- * the week turns while it is open. Null for any other failure.
+ * 2026), and nothing was written. The running week's builder (R3a) meets it,
+ * and so does next week's when the week turned while it was open, since the
+ * action then writes the week now running. Null for any other failure.
  */
 export function startedShifts(error: unknown): string[] | null {
   return refusedAs(error, "55006", "started")

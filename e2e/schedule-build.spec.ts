@@ -6,7 +6,9 @@ import {
   clearAvailability,
   clearSchedule,
   decideDemoSwap,
+  demoRunningWeekClock,
   demoSwaps,
+  publishDemoRunningWeek,
   requestDemoSwap,
   scheduleAssignments,
   scheduleDemoSunday,
@@ -26,7 +28,12 @@ import { heT } from "./t";
 // Yoav sends nothing. The template's positions include "מלצר/ית" (waiter).
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 const OWNER = { local: "050-000-0001", e164: "+972500000001" };
-const NOA = { name: "נועה כהן", first: "נועה", e164: "+972500000003" };
+const NOA = {
+  name: "נועה כהן",
+  first: "נועה",
+  local: "050-000-0003",
+  e164: "+972500000003",
+};
 const YOAV = {
   name: "יואב לוי",
   first: "יואב",
@@ -38,6 +45,14 @@ const WAITER = "מלצר/ית";
 const tb = he.app.build;
 /** Text to find as it is, inside a pattern. */
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/**
+ * Next week's builder: /schedule/build, which names its week (`?week=`) once
+ * it is on the screen; any week but `not`, when given.
+ */
+const nextWeekUrl = (not?: string) =>
+  new RegExp(
+    `/schedule/build(\\?week=${not ? `(?!${not})` : ""}\\d{4}-\\d{2}-\\d{2})?$`,
+  );
 // Any form of an ICU plural message, with # as a number.
 const plural = (message: string) =>
   new RegExp(
@@ -84,7 +99,7 @@ test("a manager puts people on next week's shifts", async ({
   await expect(entry).toContainText(plural(tb.gaps));
   await expectCleanPage(page);
   await entry.click();
-  await expect(page).toHaveURL(/\/schedule\/build$/);
+  await expect(page).toHaveURL(nextWeekUrl());
   await expect(
     page.getByRole("heading", { level: 1, name: tb.title }),
   ).toBeVisible();
@@ -512,14 +527,22 @@ test("a shift changed meanwhile comes back marked, and the rest is kept", async 
   await screen.closeSheet();
   await expect(warning).toBeVisible();
   // Leaving asks first, and says it there too, beside publishing on the way.
+  // On a phone the tab bar shrinks to the current tab once the page has
+  // scrolled (the week switch makes the builder taller); back at the top it
+  // shows every tab again.
+  await page.evaluate(() => window.scrollTo({ top: 0 }));
+  await expect(home).toBeVisible();
   await home.click();
   await expect(leave).toContainText(heT("app.build.swapsEnd", { count: 1 }));
   await expect(
     leave.getByRole("button", { name: tb.leave.publish }),
-  ).toHaveAccessibleDescription(heT("app.build.swapsEnd", { count: 1 }));
+  ).toHaveAccessibleDescription(
+    // With the line to check directly too, should next week start soon.
+    new RegExp(literal(heT("app.build.swapsEnd", { count: 1 }))),
+  );
   await leave.getByRole("button", { name: tb.leave.stay }).click();
   await expect(leave).toHaveCount(0);
-  await expect(page).toHaveURL(/\/schedule\/build$/);
+  await expect(page).toHaveURL(nextWeekUrl());
 
   // The owner approves the request meanwhile, on a phone of their own.
   const owner = await secondPage(browser, testInfo);
@@ -605,7 +628,7 @@ test("a manager is warned before a tab takes unsaved work away", async ({
   await placeNoa();
   await home.click();
   await expect(warning).toBeVisible();
-  await expect(page).toHaveURL(/\/schedule\/build$/);
+  await expect(page).toHaveURL(nextWeekUrl());
   await expectCleanPage(page);
   await warning.getByRole("button", { name: tb.leave.stay }).click();
   await expect(warning).toHaveCount(0);
@@ -641,5 +664,236 @@ test("a worker has no schedule building screen", async ({ page }) => {
   await page.goto("/schedule/build");
   await expect(
     page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
+  ).toBeVisible();
+});
+
+// The week running now (R3a) can only be seeded relative to the real clock,
+// since the server's can't be faked: these specs skip within two hours of the
+// restaurant's week start and four hours before its end (its own
+// `weekStartsOn`), and near midnight, so all of the seeded shifts fall today.
+const WEEKDAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+const weekdayOf = (date: string) =>
+  he.app.availability.weekdays[
+    WEEKDAYS[new Date(`${date}T00:00:00Z`).getUTCDay()] ?? "sun"
+  ];
+const dayMonthOf = (date: string) => {
+  const [, month, day] = date.split("-").map(Number);
+  return `${day}.${month}`;
+};
+/** The switch's "this week", not "next week", whatever its count says. */
+const thisWeekButton = (page: Page) =>
+  page.getByRole("button", {
+    name: new RegExp(
+      `^${literal(he.app.shifts.week.this)}(?!\\s*${literal(he.app.shifts.week.next.replace(he.app.shifts.week.this, "").trim())})`,
+    ),
+  });
+
+async function skipNearTheWeekEdges() {
+  const clock = await demoRunningWeekClock();
+  test.skip(
+    clock.sinceStart < 120 ||
+      clock.untilEnd < 240 ||
+      clock.minuteOfDay < 90 ||
+      clock.minuteOfDay > 21 * 60 + 30,
+    "too close to the edge of the restaurant's week, or of the day",
+  );
+  return clock;
+}
+
+// The running-week plan's R3a: in the week running now, the morning under
+// way is locked (its sheet only adds people, and Yoav joins it), the evening
+// freed when someone left is filled and published, the worker sees it, and
+// Yoav's request on the night shift, which nobody touched, still waits.
+// Runs against R2a's database (`joins`), after the rebase onto it.
+test("a manager fills a freed shift this week", async ({
+  page,
+  browser,
+}, testInfo) => {
+  const { today, startsOn, sinceStart } = await skipNearTheWeekEdges();
+  await publishDemoRunningWeek(NOA.e164, YOAV.e164);
+  // The day before, when it is in this week too.
+  const yesterday =
+    sinceStart >= 24 * 60
+      ? new Date(Date.parse(`${today}T00:00:00Z`) - 86_400_000)
+          .toISOString()
+          .slice(0, 10)
+      : null;
+  /** When the morning began, as the database has it. */
+  const morningStart = async () =>
+    (await scheduleShifts()).find((s) => s.name === "בוקר")?.start ?? "00:00";
+  const read = await scheduleShiftIds();
+  const waiting = [{ status: "open", from: YOAV.e164, to: null }];
+  expect(await demoSwaps()).toEqual(waiting);
+  const on = { day: weekdayOf(today), date: dayMonthOf(today) };
+  const screen = buildScreen(page);
+  const running = he.app.build.running;
+
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await thisWeekButton(page).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/schedule/build\\?week=${startsOn}$`),
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
+  ).toBeVisible();
+
+  // The morning has begun: it says so, and its sheet only adds people.
+  const morning = screen.card("בוקר", on);
+  await expect(morning).toContainText(running.now);
+  await morning.click();
+  await expect(screen.sheet).toContainText(before(running.begunLine));
+  await expect(
+    screen.sheet.getByRole("button", {
+      name: tb.edit.replace("{name}", "בוקר"),
+    }),
+  ).toHaveCount(0);
+  await expect(screen.removeButton(NOA.name)).toHaveCount(0);
+  // Yoav fills the morning's other place, and goes as a join: his night
+  // starts as the morning ends.
+  await screen.addButton(YOAV.name).click();
+  await expect(screen.removeButton(YOAV.name)).toBeVisible();
+  await screen.closeSheet();
+  await expect(morning).toContainText(YOAV.first);
+
+  // The freed evening takes Noa, whose morning ends as it starts.
+  const evening = screen.card("ערב", on);
+  await expect(evening).toContainText(tb.nobody);
+  await evening.click();
+  await screen.addButton(NOA.name).click();
+  await screen.closeSheet();
+  await expect(evening).toContainText(NOA.first);
+  // It starts within 12 hours: check with its people directly.
+  await expect(page.getByText(running.soon)).toBeVisible();
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("schedule-build-running.png"),
+    fullPage: true,
+  });
+
+  // Today takes a new shift only from now on; a day that is over takes none.
+  await screen.addOn(on).click();
+  const adding = page.getByRole("dialog", { name: tb.addShift });
+  await adding.getByLabel(tb.editor.name).fill("אמצע");
+  await adding.getByLabel(tb.editor.start).fill(await morningStart());
+  await adding.getByLabel(tb.editor.end).fill("23:59");
+  await adding.getByRole("button", { name: tb.editor.add }).click();
+  await expect(adding.getByRole("alert")).toHaveText(tb.editor.problems.past);
+  await adding.getByRole("button", { name: tb.close }).click();
+  await expect(adding).toHaveCount(0);
+  if (yesterday) {
+    await expect(screen.addOn({ day: weekdayOf(yesterday) })).toHaveCount(0);
+  }
+
+  await page.getByRole("button", { name: tb.publishChanges }).click();
+  await expect(page.getByRole("status")).toHaveText(tb.published);
+  // Written in place: every shift keeps its id, the morning its person and
+  // Yoav, who joined it, and the request on the night nobody touched still
+  // waits.
+  expect(await scheduleShiftIds()).toEqual(read);
+  const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
+  expect(await scheduleAssignments()).toEqual([
+    { weekday, pattern: "morning", phone: NOA.e164, position: null },
+    { weekday, pattern: "morning", phone: YOAV.e164, position: null },
+    { weekday, pattern: "evening", phone: NOA.e164, position: null },
+    { weekday, pattern: null, phone: YOAV.e164, position: null },
+  ]);
+  expect(await demoSwaps()).toEqual(waiting);
+  // The morning stays locked after the builder starts again.
+  await expect(screen.card("בוקר", on)).toContainText(running.now);
+
+  // Noa sees the evening on the team's schedule.
+  const worker = await secondPage(browser, testInfo);
+  try {
+    await signIn(worker, NOA);
+    await worker.goto("/schedule");
+    const hers = worker
+      .getByRole("region", {
+        name: new RegExp(
+          `^${literal(before(he.app.shifts.shift.replace("{name}", "ערב")))}`,
+        ),
+      })
+      .filter({ visible: true })
+      .first();
+    await expect(hers).toContainText(NOA.first);
+  } finally {
+    await worker.context().close();
+  }
+});
+
+// The switch between the weeks goes through the same question as any way out
+// while there is unsaved work (use-leave-guard.ts: the same page with another
+// `?week` is another week's work).
+test("switching weeks with unsaved work asks first", async ({ page }) => {
+  const { startsOn } = await skipNearTheWeekEdges();
+  const screen = buildScreen(page);
+  const warning = page.getByRole("dialog", { name: tb.leave.title });
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.title }),
+  ).toBeVisible();
+
+  await screen.card("בוקר").click();
+  await screen.addButton(NOA.name).click();
+  await screen.closeSheet();
+  await expect(page.getByText(tb.unsaved)).toBeVisible();
+
+  // Held back, and asked. Staying keeps the work and the week.
+  await thisWeekButton(page).click();
+  await expect(warning).toBeVisible();
+  await expect(page).toHaveURL(nextWeekUrl(startsOn));
+  await expectCleanPage(page);
+  await warning.getByRole("button", { name: tb.leave.stay }).click();
+  await expect(warning).toHaveCount(0);
+  await expect(screen.card("בוקר")).toContainText(NOA.first);
+
+  // Leaving without saving goes to this week and saves nothing.
+  await thisWeekButton(page).click();
+  await warning.getByRole("button", { name: tb.leave.discard }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/schedule/build\\?week=${startsOn}$`),
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
+  ).toBeVisible();
+  expect(await scheduleAssignments()).toEqual([]);
+
+  // Nothing unsaved: the switch just goes.
+  await page
+    .getByRole("button", {
+      name: new RegExp(`^${literal(he.app.shifts.week.next)}`),
+    })
+    .click();
+  await expect(page).toHaveURL(/\/schedule\/build\?week=\d{4}-\d{2}-\d{2}$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.title }),
+  ).toBeVisible();
+  await expect(warning).toHaveCount(0);
+});
+
+// A link to a week already over (an old line, say) says so and leads to the
+// week running now.
+test("a week already over says so", async ({ page }) => {
+  const { startsOn } = await skipNearTheWeekEdges();
+  const ended = he.app.build.ended;
+  await signIn(page, MANAGER);
+  const [year, month, day] = startsOn.split("-").map(Number);
+  const lastWeek = new Date(
+    Date.UTC(year ?? 0, (month ?? 1) - 1, (day ?? 1) - 7),
+  )
+    .toISOString()
+    .slice(0, 10);
+  await page.goto(`/schedule/build?week=${lastWeek}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: ended.title }),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  await page.getByRole("link", { name: ended.action }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/schedule/build\\?week=${startsOn}$`),
+  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: tb.titleRunning }),
   ).toBeVisible();
 });

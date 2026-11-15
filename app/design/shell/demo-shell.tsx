@@ -17,6 +17,12 @@ const BUSINESSES_TWINS = [
 ];
 
 /**
+ * The twins built from the demo shop's data rather than the restaurant's
+ * (the running week's builder): the shell names the shop.
+ */
+const SHOP_TWINS = ["/design/shell/schedule/build/running"];
+
+/**
  * The demo's shell. Home carries what needs Shiran in her inbox, as the app's
  * Home does, except while the demo views the business as a role: in the app
  * that count is the signed-in person's own, and a view session has none. On
@@ -31,11 +37,14 @@ export function DemoShell({
   user,
   businesses,
   accountant,
+  shopName,
   ...props
 }: AppShellProps & {
   homeCount: number;
   /** Who the switcher's twins show instead of Shiran, and their tabs. */
   accountant: Pick<AppShellProps, "user" | "nav">;
+  /** The demo shop's name, for the twins built from its data. */
+  shopName: string;
 }) {
   const pathname = usePathname();
   if (BUSINESSES_TWINS.includes(pathname)) {
@@ -55,5 +64,15 @@ export function DemoShell({
       : nav.map((item) =>
           item.href === HOME ? { ...item, count: homeCount } : item,
         );
-  return <AppShell nav={items} user={user} businesses={null} {...props} />;
+  return (
+    <AppShell
+      nav={items}
+      user={user}
+      businesses={null}
+      {...props}
+      businessName={
+        SHOP_TWINS.includes(pathname) ? shopName : props.businessName
+      }
+    />
+  );
 }

@@ -194,7 +194,8 @@ test("before anything is published, a manager is sent to build the week", async 
   await expectCleanPage(page);
 
   await hero.getByRole("link", { name: h.hero.build }).click();
-  await expect(page).toHaveURL(/\/schedule\/build$/);
+  // The builder names its week once it is on the screen.
+  await expect(page).toHaveURL(/\/schedule\/build(\?week=\d{4}-\d{2}-\d{2})?$/);
 });
 
 test("everyone reads who works today", async ({ page }, testInfo) => {
