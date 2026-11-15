@@ -101,6 +101,21 @@ rules.
   with label `orel`. Also answer and close any matching `question` issue, and
   add a line to `docs/agent/LOG.md` with the next merge.
 
+## Reviewers
+
+Four review agents live in `.claude/agents` (Orel, 15 November 2026). Each one
+reads and reports; whoever made the change fixes what holds.
+
+- `design-reviewer`: any screen, `packages/ui` or words a person sees.
+- `database-reviewer`: migrations, SQL, RLS, pgTAP, generated types and the
+  server code that calls them.
+- `security-reviewer`: anything touching sign-in, RLS, a security-definer
+  function, a server action or route, storage, push or cron, or personal data.
+- `business-reviewer`: plans before building, and features before they ship.
+
+Every change gets the ones its files call for before its pull request, and a
+substantive change gets them as separate reviewers, each trying to refute it.
+
 ## The nightly run
 
 1. **Catch up.** Read `docs/agent/LOG.md`, every open issue with label
