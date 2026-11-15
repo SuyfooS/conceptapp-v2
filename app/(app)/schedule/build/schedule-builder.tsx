@@ -213,6 +213,21 @@ function focusOnScreen(selector: string): boolean {
 }
 
 /**
+ * Whether the keyboard's focus is still where a closing sheet left it:
+ * nowhere, or on what it went back to. Anything the person, or the toast of a
+ * publish held for "ביטול", moved it to meanwhile keeps it.
+ */
+function focusLeftBySheet(back?: Element | null): boolean {
+  const active = document.activeElement;
+  return (
+    active === null ||
+    active === document.body ||
+    active === back ||
+    !active.isConnected
+  );
+}
+
+/**
  * The manager builds a week's schedule: next week, or the week running now.
  * Phone: one day at a time under the week strip (on today, in the running
  * week). Tablet: the whole week, a row per day. Desktop: the whole week, a
@@ -792,7 +807,9 @@ function WeekBuilder({
     setSheetOpen(false);
     // The card is gone, so focus goes to the way back instead.
     opener.current = null;
-    setTimeout(() => focusOnScreen(`[data-undo="${id}"]`), SHEET_CLOSES_MS);
+    setTimeout(() => {
+      if (focusLeftBySheet()) focusOnScreen(`[data-undo="${id}"]`);
+    }, SHEET_CLOSES_MS);
   }
 
   function undoRemove(row: ShiftRow) {
@@ -835,8 +852,13 @@ function WeekBuilder({
   function closeSheet() {
     setSheetOpen(false);
     const back = opener.current;
-    // The sheet takes focus with it; give it back where the person was.
-    if (back) setTimeout(() => back.focus(), SHEET_CLOSES_MS);
+    // The sheet takes focus with it; give it back where the person was,
+    // unless they (or the toast of a held publish) moved it on meanwhile.
+    if (back) {
+      setTimeout(() => {
+        if (focusLeftBySheet(back)) back.focus();
+      }, SHEET_CLOSES_MS);
+    }
   }
 
   const moment = (iso: string | null | undefined) =>
