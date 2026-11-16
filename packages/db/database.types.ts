@@ -1796,6 +1796,7 @@ export type Database = {
       notifications: {
         Row: {
           actor_id: string | null;
+          audience_perm: string | null;
           audience_role: Database["public"]["Enums"]["member_role"];
           business_id: string;
           created_at: string;
@@ -1815,6 +1816,7 @@ export type Database = {
         };
         Insert: {
           actor_id?: string | null;
+          audience_perm?: string | null;
           audience_role?: Database["public"]["Enums"]["member_role"];
           business_id: string;
           created_at?: string;
@@ -1834,6 +1836,7 @@ export type Database = {
         };
         Update: {
           actor_id?: string | null;
+          audience_perm?: string | null;
           audience_role?: Database["public"]["Enums"]["member_role"];
           business_id?: string;
           created_at?: string;
@@ -1858,6 +1861,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "notifications_audience_perm_fkey";
+            columns: ["audience_perm"];
+            isOneToOne: false;
+            referencedRelation: "permission_keys";
+            referencedColumns: ["key"];
           },
           {
             foreignKeyName: "notifications_business_id_fkey";

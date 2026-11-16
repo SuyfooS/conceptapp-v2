@@ -66,15 +66,26 @@ function weekLocks(sql: string): string[] {
 }
 
 describe("the locks on a week's row", () => {
-  it("are a save's and a publish's first statement, the weeks either side with their own", () => {
-    for (const name of [
-      "public.save_week_schedule",
-      "public.publish_week_schedule",
-    ]) {
-      expect(firstStatement(body(name))).toBe(
-        "perform private.lock_week_edges(week);",
-      );
-    }
+  it("are a save's first statement and a publish's first lock, the weeks either side with their own", () => {
+    expect(firstStatement(body("public.save_week_schedule"))).toBe(
+      "perform private.lock_week_edges(week);",
+    );
+    // A publish asks who may publish before anything else (the roles plan's
+    // R3, critique 23): its week's business read plainly, and the check, with
+    // no lock and nothing read for update before the helper.
+    const publish = withoutComments(body("public.publish_week_schedule"));
+    const locked = publish.indexOf("perform private.lock_week_edges(week);");
+    const before = publish.slice(0, locked);
+    expect(firstStatement(body("public.publish_week_schedule"))).toMatch(
+      /^select wk\.business_id into week_business\s+from public\.schedule_weeks wk\s+where wk\.id = week;$/,
+    );
+    expect(before).toContain(
+      "private.publishes_schedule(week_business, actor)",
+    );
+    expect(before).not.toMatch(
+      /\bfor (update|share|no key update|key share)\b/,
+    );
+    expect(before).not.toMatch(/\block_week_edges\b/);
   });
 
   it("are taken one at a time in ascending order, the week's own for update and the others for share", () => {

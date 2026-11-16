@@ -6,6 +6,7 @@ import {
   weekdayOf,
 } from "./availability";
 import { minutesOf, rangeMinutes, timeOfDay } from "./hours";
+import { holdsPermission, type Viewer } from "./modules";
 import { calendarDate } from "./shabbat";
 import { MAX_SHIFTS_IN_A_WEEK, type ShiftPattern, shiftsOn } from "./staffing";
 
@@ -736,4 +737,40 @@ export function shiftsByDay<
           a.name.localeCompare(b.name),
       ),
   }));
+}
+
+/**
+ * Whether the viewer builds the schedule: reads its drafts and everyone's
+ * availability, saves the week and decides swaps (Orel's answer 6 of 15
+ * November 2026). It is `schedule.edit` as the database answers it
+ * (`public.my_permissions`): owners always, managers by default, and anyone
+ * whose role an owner raised (the roles plan's R3). The database asks the same
+ * (`private.builds_schedule`), at every read of a draft and every write.
+ */
+export function buildsSchedule(viewer: Viewer): boolean {
+  return holdsPermission(viewer, "schedule.edit");
+}
+
+/**
+ * Whether the viewer publishes the schedule: they build it and hold
+ * `schedule.publish`, a switch under building, on by default (Q3). Someone
+ * who builds without it saves drafts only, and can't change a published week,
+ * which is only ever published again (`private.publishes_schedule`).
+ */
+export function publishesSchedule(viewer: Viewer): boolean {
+  return buildsSchedule(viewer) && holdsPermission(viewer, "schedule.publish");
+}
+
+/**
+ * Whether someone who builds the schedule changes a week: a draft always,
+ * a published week only if they publish too, since it changes only by being
+ * published again (Q3). Otherwise the builder only shows it, and what it
+ * lacks (open places, short shifts) is not theirs to fill: no count or link
+ * sends them there to fill it.
+ */
+export function changesWeek(
+  publishes: boolean,
+  week: { published: boolean },
+): boolean {
+  return publishes || !week.published;
 }

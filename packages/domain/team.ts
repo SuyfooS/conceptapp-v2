@@ -201,6 +201,9 @@ export function roleChangeClears(from: Role, to: Role): boolean {
  *
  *   notAllowed  42501: the viewer may not act on this role, or is no longer
  *               an owner or manager of the business
+ *   beyondHeld  42501 with hint `held`: the new role holds by role a
+ *               permission the manager doesn't (an owner set workers above
+ *               managers; the roles plan's R3), which only an owner gives
  *   gone        P0002: the person is no longer on the team, or the invite is
  *               no longer open (claimed, cancelled)
  *   yourself    22023: one's own place, or no role given
@@ -214,6 +217,7 @@ export function roleChangeClears(from: Role, to: Role): boolean {
  */
 export const TEAM_CHANGE_FAILURES = [
   "notAllowed",
+  "beyondHeld",
   "gone",
   "yourself",
   "lastOwner",
@@ -232,7 +236,7 @@ export function teamChangeFailureOf(
 ): TeamChangeFailure {
   switch (code) {
     case "42501":
-      return "notAllowed";
+      return hint === "held" ? "beyondHeld" : "notAllowed";
     case "P0002":
       return "gone";
     case "22023":

@@ -356,6 +356,7 @@ describe("team changes (Orel, 14 November 2026)", () => {
 
   it("read the database's refusals as the screens explain them", () => {
     expect(teamChangeFailureOf("42501")).toBe("notAllowed");
+    expect(teamChangeFailureOf("42501", "held")).toBe("beyondHeld");
     expect(teamChangeFailureOf("P0002")).toBe("gone");
     expect(teamChangeFailureOf("22023")).toBe("yourself");
     expect(teamChangeFailureOf("23P01")).toBe("lastOwner");

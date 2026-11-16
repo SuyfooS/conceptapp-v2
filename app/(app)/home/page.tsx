@@ -1,5 +1,6 @@
 import { isStaff, moduleWidgets } from "@domain/modules";
 import { profilePhotoSrc } from "@domain/profile-photos";
+import { buildsSchedule, publishesSchedule } from "@domain/schedule";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
 import { currentBusinesses } from "../businesses";
@@ -91,7 +92,15 @@ export default async function HomePage() {
         clockLine,
         schedule:
           published && availability
-            ? { published, availability, teamAvailability, build, running }
+            ? {
+                published,
+                availability,
+                builds: buildsSchedule(membership),
+                publishes: publishesSchedule(membership),
+                teamAvailability,
+                build,
+                running,
+              }
             : null,
         team,
         // The bell, while notifications are on and the person is themselves.

@@ -54,7 +54,7 @@ export default async function NotificationsPage({
       earlier={buildInbox(page.earlier, page.lookups, member.userId)}
       older={page.older}
       olderPage={before !== null}
-      groups={groupsFor(membership.role, enabled)}
+      groups={groupsFor(membership.role, enabled, membership.perms)}
       now={new Date().toISOString()}
       timeZone={membership.business.place.timeZone}
       open={openNotificationAction}

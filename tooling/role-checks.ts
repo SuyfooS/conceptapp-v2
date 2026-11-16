@@ -9,7 +9,9 @@ import { join } from "node:path";
  * rank: `has_role(`, `role in ('owner', 'manager')`, `is_viewing(…,
  * 'manager')`, `members_in(…, '{owner,manager}')` (or its array) and a
  * notification's audience, `notify(…, 'manager')` (its seventh argument or
- * `audience =>`), which the notifications' read policy checks by rank. A new
+ * `audience =>`), which the notifications' read policy checks by rank unless
+ * the line is for those who hold a permission (`holders_of =>`, its
+ * thirteenth argument, from the roles plan's R3), which it checks instead. A new
  * migration may use them only inside a function or policy that `FIXED` or
  * `NOT_YET_MOVED` names: rules that stay by role for good, and those of the
  * areas the plan has yet to move, which shrink as each area's phase moves its
@@ -26,7 +28,7 @@ export const CHECKED_AFTER = "20261115000700";
 /** Rules that stay by role for good, each with why. */
 export const FIXED: Record<string, string> = {
   'policy "people read their own notifications" on public.notifications':
-    "a line's audience is a rank (audience_role) for lines no area addresses; the plan's R3 adds the areas beside it",
+    "a line's audience is a rank (audience_role) for lines no permission addresses (audience_perm, since R3)",
 };
 
 /**
@@ -36,25 +38,9 @@ export const FIXED: Record<string, string> = {
  * newest version, and while one with a rule left isn't named here.
  */
 export const NOT_YET_MOVED: Record<string, string> = {
-  // Scheduling (R3).
-  "private.builds_schedule": "R3: who builds and publishes the week",
-  "public.decide_shift_swap": "R3: who decides a swap (schedule.edit, Q6)",
-  "private.notify_for_team": "R3: schedule.unfilled goes to the builders",
-  "private.renew_demo_schedule":
-    "R3: the demo's week is published by someone who may publish it",
-  'policy "managers read their business\'s shifts" on public.schedule_shifts':
-    "R3: drafts, to the builders",
-  'policy "managers read their business\'s assignments" on public.shift_assignments':
-    "R3: drafts, to the builders",
-  'policy "managers read their business\'s availability" on public.availability_submissions':
-    "R3: everyone's availability, to the builders",
-  "public.team_youth":
-    "R3 and R6: minors' details, to the builders and the team's viewers",
-  // Scheduling (R3), time clock (R4) and team (R6).
-  "private.notify_for":
-    "R3, R4 and R6: swap.waiting, clock.confirm and team.joined, by area",
-  "private.run_business_reminders":
-    "R3 and R4: availability.missing and clock.overdue, by area",
+  // Time clock (R4) and team (R6), beside scheduling's lines, which R3 moved.
+  "private.notify_for": "R4 and R6: clock.confirm and team.joined, by area",
+  "private.run_business_reminders": "R4: clock.overdue, by area",
   // Time clock (R4).
   "private.can_edit_clock": "R4: who corrects and confirms hours",
   "private.seed_demo_hours":
@@ -81,6 +67,8 @@ export const NOT_YET_MOVED: Record<string, string> = {
     "R5: every list, to a view at lists edit",
   // Team (R6).
   "public.team_phones": "R6: everyone's numbers, to the team's viewers",
+  "public.team_youth":
+    "R6: minors' details, to the team's viewers and the schedule's builders (critique 14); only the team screen reads them",
   'policy "managers read their business\'s invites" on public.invites':
     "R6: invites, to the team's viewers",
   'policy "the team reads invites when viewing as a manager" on public.invites':
@@ -182,6 +170,10 @@ const ROLE_IN =
   /\brole\s+in\s*\(\s*'(owner|manager)'(?:::public\.member_role)?\s*,\s*'(owner|manager)'(?:::public\.member_role)?\s*\)/gi;
 /** A named argument of a call, `audience => …` or `audience := …`. */
 const AUDIENCE = /^audience\s*(?:=>|:=)\s*/i;
+/** A line for those who hold a permission, `holders_of => …`. */
+const HOLDERS = /^holders_of\s*(?:=>|:=)\s*/i;
+/** Any named argument of a call. */
+const NAMED = /^[a-z_][a-z0-9_]*\s*(?:=>|:=)/i;
 /** A call, not the function's own name where it is created, dropped or granted. */
 const call = (name: string) =>
   new RegExp(
@@ -222,10 +214,17 @@ function checksIn(code: string): { at: number; check: string }[] {
     }
   }
   // A line's audience (private.notify's seventh argument): the read policy
-  // shows it only to those at that rank or above.
+  // shows it only to those at that rank or above, unless the line is for
+  // those who hold a permission (its thirteenth, `holders_of`), which the
+  // policy asks instead.
   for (const match of code.matchAll(call("notify"))) {
     const at = match.index ?? 0;
     const args = callArguments(code, at + match[0].length - 1);
+    const holders = args.find((arg) => HOLDERS.test(arg));
+    // Named arguments come last: the thirteenth by position is before them.
+    const positional = args.filter((arg) => !NAMED.test(arg));
+    const perm = holders ? holders.replace(HOLDERS, "") : positional[12];
+    if (perm !== undefined && !/^null\b/i.test(perm)) continue;
     const named = args.find((arg) => AUDIENCE.test(arg));
     const audience = named ? named.replace(AUDIENCE, "") : args[6];
     if (MANAGER.test(audience ?? "")) {

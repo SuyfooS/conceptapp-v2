@@ -20,6 +20,7 @@ import {
 import {
   builderKey,
   changedSince,
+  changesWeek,
   dayOfMoved,
   doubleBooked,
   type ScheduledShift,
@@ -126,8 +127,12 @@ export type ScheduleBuilderProps = {
    * how many the changes on the screen would end (`swapsEndedBy`).
    */
   swaps: ShiftSwap[];
-  /** Where the regular shifts are set, for a week with none. */
-  manageHref: string;
+  /**
+   * Where the regular shifts are set, for a week with none; null for someone
+   * who can't open the management page (a worker who builds the schedule):
+   * the empty week then says only what can be done here.
+   */
+  manageHref: string | null;
   /** The business has regular shifts, which a week not saved is drawn from. */
   hasPattern: boolean;
   /** The staff: who can be put on a shift. */
@@ -151,6 +156,13 @@ export type ScheduleBuilderProps = {
    * `intent` says whether to save the draft or publish.
    */
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
+  /**
+   * The person publishes the schedule too (`publishesSchedule`; the roles
+   * plan's R3). Without it there is no publish: a draft is saved, with a line
+   * that says who publishes it, and a published week is only read, with a
+   * line that says why. True unless said otherwise.
+   */
+  publishes?: boolean;
 };
 
 /** What the builder starts from: one reading of the week, kept together. */
@@ -346,6 +358,9 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         const target = leaveTo.current;
         leaveTo.current = null;
         if (result.savedAt && target) router.push(target);
+        // Publishing was taken from the person while the screen was open: it
+        // draws again without "פרסום", as a draft to save or a week to read.
+        if (result.failure === "noPublish") router.refresh();
         // Shifts changed (or begun) meanwhile come back: a phone shows a day
         // with one of them, should the day it shows have none.
         const moved = result.moved;
@@ -545,6 +560,7 @@ function WeekBuilder({
   answers,
   positions,
   running,
+  publishes = true,
   day,
   onDay,
   now,
@@ -636,6 +652,11 @@ function WeekBuilder({
       ? ownPublish
       : publishedAt;
   const published = lastPublish !== null;
+  // Someone who builds without publishing only reads a published week: it
+  // changes only by being published again (the roles plan's R3).
+  const readOnly = !changesWeek(publishes, { published });
+  // In a draft, the dock says who publishes it.
+  const draftOnly = !publishes && !published;
   const { timeZone } = week;
   const today = now ? dateIn(now, timeZone) : null;
   const clockAt = now?.getTime() ?? null;
@@ -972,7 +993,7 @@ function WeekBuilder({
       // In a published week a day that is over keeps what it had, and takes
       // no new shift; in a week never published, nothing is locked.
       muted: over && published,
-      addable: !(over && published),
+      addable: !(over && published) && !readOnly,
       today: date === today,
       shabbatTime: candles
         ? (shabbat?.candleLighting ?? null)
@@ -994,6 +1015,7 @@ function WeekBuilder({
   });
 
   const renderAdd = (date: string, density: CardDensity) => {
+    if (readOnly) return null;
     const alone = itemsOn(date).length === 0;
     if (today !== null && date < today && published) {
       // A day that is over takes nothing new; an empty one says so.
@@ -1181,6 +1203,16 @@ function WeekBuilder({
           ltr,
         });
       }
+      case "published":
+        // Someone who builds without publishing can't publish the changes
+        // instead: the week is theirs only to read now.
+        return t("app.build.errors.published", {
+          publishes: publishes ? "yes" : "no",
+        });
+      case "noPublish":
+        return t("app.build.errors.noPublish", {
+          week: publishedMoment ? "published" : "draft",
+        });
       case "weekOver":
         return (
           <>
@@ -1284,7 +1316,8 @@ function WeekBuilder({
         />
       ) : null}
 
-      {initial.length === 0 ? (
+      {/* A week only read says why on its own card, below. */}
+      {initial.length === 0 && !readOnly ? (
         <Card padding="lg" className="md:max-w-xl">
           <CardText>
             {/* The running week, drawn from the regular shifts still to
@@ -1292,16 +1325,18 @@ function WeekBuilder({
                 is just late. */}
             {running?.which === "this" && firstBasis === null && hasPattern
               ? t("app.build.running.noneLeft")
-              : t.rich("app.build.noPattern", {
-                  manage: (chunks) => (
-                    <Link
-                      href={manageHref}
-                      className="font-medium text-ink underline"
-                    >
-                      {chunks}
-                    </Link>
-                  ),
-                })}
+              : manageHref
+                ? t.rich("app.build.noPattern", {
+                    manage: (chunks) => (
+                      <Link
+                        href={manageHref}
+                        className="font-medium text-ink underline"
+                      >
+                        {chunks}
+                      </Link>
+                    ),
+                  })
+                : t("app.build.noPatternHere")}
           </CardText>
         </Card>
       ) : null}
@@ -1335,6 +1370,12 @@ function WeekBuilder({
           {status}
         </p>
       </div>
+
+      {readOnly ? (
+        <Card padding="lg" className="md:max-w-xl">
+          <CardText>{t("app.build.noPublish.published")}</CardText>
+        </Card>
+      ) : null}
 
       <PhoneWeek
         days={days}
@@ -1408,7 +1449,7 @@ function WeekBuilder({
         {publishedMoment && !unsaved && !busy && !problem ? null : (
           <FloatingDock
             notice={
-              problem || warning || soon ? (
+              problem || warning || soon || draftOnly ? (
                 <div className="flex flex-col gap-2">
                   {problem ? (
                     <p
@@ -1426,19 +1467,25 @@ function WeekBuilder({
                       {t("app.build.running.soon")}
                     </DockLine>
                   ) : null}
+                  {draftOnly ? (
+                    <DockLine icon="info">
+                      {t("app.build.noPublish.draft")}
+                    </DockLine>
+                  ) : null}
                 </div>
               ) : null
             }
           >
             {/* A draft can wait, while there is something to keep. What is
                 published is what the team sees, so it is only published. A
-                week that is over takes neither. */}
+                week that is over takes neither. Without publishing, saving
+                is the screen's main action. */}
             {!weekOver && !publishedMoment && (unsaved || pending) ? (
               <DockButton
                 type="submit"
                 name="intent"
                 value="save"
-                tone="quiet"
+                tone={publishes ? "quiet" : "main"}
                 icon={<Save aria-hidden="true" />}
                 loading={pending && intent === "save"}
                 disabled={pending}
@@ -1446,7 +1493,7 @@ function WeekBuilder({
                 {t("app.build.submit")}
               </DockButton>
             ) : null}
-            {!weekOver && (!publishedMoment || unsaved || busy) ? (
+            {publishes && !weekOver && (!publishedMoment || unsaved || busy) ? (
               <DockButton
                 type="submit"
                 name="intent"
@@ -1481,6 +1528,7 @@ function WeekBuilder({
         positions={positions}
         lockOf={(row) => lockOf(row.shift)}
         lockedNote={lockedNote}
+        readOnlyLine={readOnly ? t("app.build.noPublish.published") : null}
         clock={running?.clock ?? false}
         startsAfter={published ? now : null}
         timeZone={timeZone}

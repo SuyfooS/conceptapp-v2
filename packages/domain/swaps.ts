@@ -188,6 +188,23 @@ export const toApprove = <S>(approvals: readonly Approval<S>[]) =>
   approvals.filter((a) => !a.started);
 
 /**
+ * Whether `decider`, who builds the schedule, decides this request: whoever
+ * publishes it too decides every one; someone who builds without publishing
+ * (the roles plan's R3) decides colleagues' requests only, never one they
+ * asked for or took, since approving it changes a published week, which
+ * they never do on their word alone (`public.decide_shift_swap`).
+ */
+export function decidesSwap(
+  swap: Pick<ShiftSwap, "requestedBy" | "takenBy">,
+  decider: { userId: string; publishes: boolean },
+): boolean {
+  return (
+    decider.publishes ||
+    (swap.requestedBy !== decider.userId && swap.takenBy !== decider.userId)
+  );
+}
+
+/**
  * The waiting requests (open, or taken and waiting for a manager) that
  * sending `sent` for a week the screen read as `read` would end, for the
  * warning above "פרסום השינויים" (Orel's answer 2 of 15 November 2026). The

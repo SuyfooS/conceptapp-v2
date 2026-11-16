@@ -18,6 +18,8 @@ const PAGES = [
   "/design/shell/today/worker",
   "/design/shell/today/not-published",
   "/design/shell/today/worker-not-published",
+  // A worker who builds the schedule without publishing it (roles R3).
+  "/design/shell/today/worker-builds",
   "/design/shell/today/scheduling-off",
   "/design/shell/schedule",
   "/design/shell/schedule/worker",
@@ -26,6 +28,9 @@ const PAGES = [
   "/design/shell/schedule/build",
   "/design/shell/schedule/build?state=meanwhile",
   "/design/shell/schedule/build?week=2026-11-01",
+  // Building without publishing (roles R3): a draft, and a published week read.
+  "/design/shell/schedule/build?publishes=no",
+  "/design/shell/schedule/build?state=meanwhile&publishes=no",
   "/design/shell/schedule/build/running",
   "/design/shell/schedule/build/running?week=next",
   "/design/shell/schedule/shifts",
@@ -187,8 +192,9 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
   "/design/console/businesses/demo-restaurant/access",
   "/design/console/businesses/demo-restaurant/access?state=readOnly",
-  // Roles and permissions from the console (R2): every area closed, then
-  // scheduling open as R3 will open it, and a team role that only reads.
+  // Roles and permissions from the console (R2): scheduling open (R3) and
+  // the rest closed, then every area open as R4 to R8 will open them, and a
+  // team role that only reads.
   "/design/console/businesses/demo-restaurant/roles",
   "/design/console/businesses/demo-restaurant/roles?state=open",
   "/design/console/businesses/demo-restaurant/roles?state=readOnly",

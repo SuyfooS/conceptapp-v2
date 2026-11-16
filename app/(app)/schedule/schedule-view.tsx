@@ -7,7 +7,7 @@ import {
   runningFirst,
   runningGaps,
 } from "@domain/running-week";
-import { scheduleGaps, scheduleOpening } from "@domain/schedule";
+import { changesWeek, scheduleGaps, scheduleOpening } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
 import { offersFor, toApprove } from "@domain/swaps";
 import { Badge } from "@ui/badge";
@@ -65,6 +65,13 @@ export type ScheduleViewProps = {
    * (`currentRunningBuild`); null for anyone else, and until then.
    */
   running: ScheduleBuildWeek | null;
+  /**
+   * The person publishes the schedule too (`publishesSchedule`). Without it
+   * a published week is only read on the builder, so its short shifts are
+   * not counted here, and their own requests aren't theirs to approve. True
+   * unless said otherwise.
+   */
+  publishes?: boolean;
   swap: SwapAction;
   /** After giving a shift away, once, the offer of notifications on the phone. */
   ask?: PushAskOffer | null;
@@ -82,6 +89,7 @@ export async function ScheduleView({
   team,
   build,
   running,
+  publishes = true,
   swap,
   wording,
   ask = null,
@@ -144,7 +152,7 @@ export async function ScheduleView({
 
   // A request whose shift has begun can only be declined: it waits for no
   // approval, so it is not counted (it is still listed on the screen).
-  const approvals = toApprove(pendingApprovals(data)).length;
+  const approvals = toApprove(pendingApprovals(data, publishes)).length;
   // The one thing waiting for this person goes first, in the accent.
   const approvalsFirst = manager && approvals > 0;
   const availabilityFirst = !manager && !week.mine;
@@ -216,11 +224,14 @@ export async function ScheduleView({
                   <RunningRow
                     t={t}
                     running={running}
+                    publishes={publishes}
                     now={data.now}
                     timeZone={data.timeZone}
                   />
                 ) : null}
-                {build ? <BuildRow t={t} build={build} /> : null}
+                {build ? (
+                  <BuildRow t={t} build={build} publishes={publishes} />
+                ) : null}
                 <TeamRow t={t} team={team} />
                 {approvalsFirst ? null : approvalsRow}
               </ListGroup>
@@ -329,24 +340,31 @@ function AvailabilityRow({
 }
 
 /**
- * Owners and managers: this week's schedule, only while a shift still to
- * start lacks someone or while it waits to be published (Orel's answer 6 of
- * 15 November 2026: what is nearer goes first; `runningFirst`), leading to
- * the builder of the week under way.
+ * Whoever builds the schedule: this week's schedule, only while a shift
+ * still to start lacks someone or while it waits to be published (Orel's
+ * answer 6 of 15 November 2026: what is nearer goes first; `runningFirst`),
+ * leading to the builder of the week under way. Once it is published, only
+ * for someone who publishes it: it is the others' only to read
+ * (`changesWeek`), and the board shows it.
  */
 function RunningRow({
   t,
   running,
+  publishes,
   now,
   timeZone,
 }: {
   t: T;
   running: ScheduleBuildWeek;
+  publishes: boolean;
   /** ISO timestamp: the moment the server read the schedule. */
   now: string;
   timeZone: string;
 }) {
   const at = new Date(now);
+  if (!changesWeek(publishes, { published: running.publishedAt !== null })) {
+    return null;
+  }
   if (!runningFirst(running, at, timeZone)) return null;
   const short = runningGaps(running, at, timeZone).shifts;
   const status = running.publishedAt
@@ -367,9 +385,24 @@ function RunningRow({
   );
 }
 
-/** Owners and managers: next week's schedule, and the shifts still short. */
-function BuildRow({ t, build }: { t: T; build: ScheduleBuildWeek }) {
-  const short = scheduleGaps(build.shifts).shifts.length;
+/**
+ * Whoever builds the schedule: next week's schedule, and the shifts still
+ * short while they can fill them (`changesWeek`: once it is published, only
+ * someone who publishes it).
+ */
+function BuildRow({
+  t,
+  build,
+  publishes,
+}: {
+  t: T;
+  build: ScheduleBuildWeek;
+  publishes: boolean;
+}) {
+  const fills = changesWeek(publishes, {
+    published: build.publishedAt !== null,
+  });
+  const short = fills ? scheduleGaps(build.shifts).shifts.length : 0;
   const status = build.publishedAt
     ? t("build.entry.subtitlePublished")
     : build.savedAt
@@ -381,7 +414,7 @@ function BuildRow({ t, build }: { t: T; build: ScheduleBuildWeek }) {
       leading={<CalendarDays />}
       title={t("build.title")}
       subtitle={
-        build.shifts.length === 0
+        build.shifts.length === 0 || !fills
           ? status
           : short > 0
             ? `${status} · ${t("build.gaps", { count: short })}`

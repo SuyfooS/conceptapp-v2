@@ -341,9 +341,10 @@ test("where the time clock and chat are off, the console offers no pay access", 
 
 // Roles and permissions from the console (the roles plan's R2): the
 // business's page leads there beside who sees pay, and the screen draws the
-// business's own managers and workers, every area closed until its phase
-// opens it (R3 to R8), with no role to add yet (R11), clean at each width.
-test("the team sees roles and permissions, each area closed until it opens", async ({
+// business's own managers and workers, scheduling open for changes since R3
+// and every other area closed until its phase opens it (R4 to R8), with no
+// role to add yet (R11), clean at each width.
+test("the team sees roles and permissions, scheduling open and the rest closed until they open", async ({
   page,
 }) => {
   const r = he.app.manage.roles;
@@ -364,7 +365,10 @@ test("the team sees roles and permissions, each area closed until it opens", asy
   await expect(
     page.getByRole("link", { name: PAY_ACCESS_BUSINESS.name, exact: true }),
   ).toHaveAttribute("href", BUSINESS);
-  await expect(shown(page, r.closedAll)).toBeVisible();
+  // Some area is open: the screen says changes save at once, not that none
+  // is open yet.
+  await expect(shown(page, r.savesItself)).toBeVisible();
+  await expect(page.getByText(r.closedAll)).toHaveCount(0);
   await expect(page.getByRole("button", { name: r.add })).toHaveCount(0);
   await expectCleanPage(page);
 });

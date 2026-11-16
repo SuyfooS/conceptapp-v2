@@ -45,7 +45,7 @@ export default async function NotificationSettingsPage() {
   return (
     <NotificationSettingsView
       preferences={preferences}
-      groups={groupsFor(membership.role, enabled)}
+      groups={groupsFor(membership.role, enabled, membership.perms)}
       always={alwaysOnPhone(membership.role, enabled).length > 0}
       device={
         push && allowed === true ? (

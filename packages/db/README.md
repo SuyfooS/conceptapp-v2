@@ -139,7 +139,8 @@ waits on, offered only to whoever may still take it. `swapsEndedBy` in
 before publishing, with unit tests that mirror `week_in_place.test.sql`'s
 cases one for one, all but those with nothing to say about requests (refused
 payloads, drafts and positions); the SQL stays the authority, so a change to
-it changes both. Who builds the schedule is one helper, `private.builds_schedule`.
+it changes both. Who builds the schedule is one helper, `private.builds_schedule`
+(since the roles plan's R3, whoever holds `schedule.edit`; below).
 `week_in_place.test.sql` covers it.
 
 A swap request outlives its shift (`20261115000200_swap_history.sql`):
@@ -272,8 +273,9 @@ per person per thing (`dedupe_key`), replaced and unread again when the same
 thing happens again. Once what a line asks for is handled (a request decided,
 hours confirmed), `private.resolve_notifications` settles its lines for
 everyone: read, with `resolved_at`. People read their own lines while they
-are active members at the line's `audience_role` and its modules are on;
-nobody else reads them,
+are active members at the line's `audience_role` (or, for a line with an
+`audience_perm`, while they hold that permission: the roles plan's R3, below)
+and its modules are on; nobody else reads them,
 the team viewing included. `public.read_notifications(actor, business, ids)`
 marks lines read, with the secret key; `@db/notifications` reads the inbox
 and calls it (`notifications.test.sql`).
@@ -619,6 +621,64 @@ and a grant whose requirement goes taken back, so an undo leaves no row).
 (`allowed`), reading every row on a project without the column.
 `roles_setter.test.sql` covers it, with two keys made settable inside the
 test.
+
+Scheduling by its permissions (`20261115000900_roles_scheduling.sql`, the
+roles plan's R3; Orel's answers of 15 November 2026), the first area open for
+changes: `schedule.edit` and `schedule.publish` are `settable`, and nothing
+changes until an owner or the team switches them (managers hold both by
+default, workers neither, owners always both). The floor is view: the weeks,
+the published shifts and assignments, the swaps and one's own availability
+stay every staff member's, as before. `private.builds_schedule` is
+`private.holds_perm(…, 'schedule.edit')`; saving and publishing
+(`private.write_week_schedule`) and deciding a swap (`public.decide_shift_swap`,
+whose own owner-or-manager check it replaces: whoever builds the schedule
+approves, Q6) ask it. Deciding asks it before the swap is locked (an unknown
+request is still P0002), and a swap's own asker or taker decides it only if
+they publish too (42501): approving it changes a published week. `public.publish_week_schedule` asks
+`private.publishes_schedule` (building and `schedule.publish`) before anything
+else: its week's business read plainly (an unknown week P0002, as the write
+says it), and someone who doesn't publish refused (42501) before
+`private.lock_week_edges` and the reads for update, so they take no lock and
+learn nothing. Someone who builds without publishing saves drafts only: a
+published week is only published again. The demo's renewal publishes as an
+owner first, as before. The draft shifts and assignments and everyone's
+availability are read by those who build (policies renamed "the schedule's
+builders read …"): `business_id in (select private.businesses_holding('schedule.edit'))`,
+the businesses where the signed-in person holds the key as a member, or views
+as a role that holds it by role (or as the owner), asked once per query. A
+notification can be for those who hold a permission
+(`public.notifications.audience_perm`, `private.notify`'s new last argument
+`holders_of`; its old signature is dropped, every call passing fewer
+arguments): written to the recipients who hold it, whatever their rank, read
+only while they do (the read policy asks `private.has_perm` for such a line
+and the rank for every other), its push skipped once they don't
+(`public.claim_due_pushes`), and settled by `public.set_member_role` when
+the new role doesn't hold it. `swap.waiting` and `availability.missing` go to
+`private.members_holding(business, 'schedule.edit')` (a swap's asker left out
+when they don't publish), and `schedule.unfilled`, only ever of a published
+week, to those who publish it (`private.publishes_schedule`, holders of
+`schedule.publish`), with `audience_role` still 'manager' (the lowest role that
+holds the key by default, which nothing decides by any more). The lines of
+the three kinds already in the table were moved to their key by the
+migration, so a manager lowered after it stops reading them too. The workers'
+own lines are as before. Only owners and the team change who holds a
+permission (Q5): `private.role_holds_beyond(business, role, person)` says
+whether a role holds by role a settable key the person doesn't, and
+`public.set_member_role`, `public.team_invite` and `public.team_invite_link`
+refuse a manager such a role (42501, hint 'held': the Team screen says
+`beyondHeld`, an invite its "notAllowed"), which happens only where an owner
+set workers above managers. The app reads the same answer: `buildsSchedule` and
+`publishesSchedule` in `@domain/schedule` over `my_permissions` gate the
+builder, the team's availability, swap approvals and Today's builder parts;
+the builder offers no "פרסום" without `schedule.publish` and says why, and a
+published week opens read only; Today and the schedule tab send such a
+builder to fill no published week (`changesWeek`), and offer them only
+colleagues' requests to decide (`decidesSwap` in `@domain/swaps`). `roles_scheduling.test.sql` covers it with
+one matrix over today's defaults, workers raised (with and without
+publishing) and managers lowered: reads, writes (one's own swap included),
+notices (availability missing too), views, the push skipped, and publishing
+asked before any lock; then, with workers set above managers, a manager
+giving a role, and no line of the three kinds left by rank.
 
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the

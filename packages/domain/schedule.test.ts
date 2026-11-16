@@ -2,13 +2,16 @@ import { describe, expect, it } from "vitest";
 import {
   availableFor,
   builderKey,
+  buildsSchedule,
   changedSince,
+  changesWeek,
   coverageOf,
   dayOfMoved,
   doubleBooked,
   draftWeek,
   overlappingShift,
   positionCounts,
+  publishesSchedule,
   rangesOn,
   type ScheduledShift,
   sameShift,
@@ -1255,5 +1258,47 @@ describe("shiftsByDay", () => {
         [{ day: "2026-11-01", start: "07:00", name: "x" }],
       ),
     ).toEqual([{ day: "2026-11-02", shifts: [] }]);
+  });
+});
+
+describe("who builds and publishes the schedule", () => {
+  it("follows what the database answers, the owner always (the roles plan's R3)", () => {
+    // Today's rules: the database tells managers both, workers neither.
+    const today = [
+      { role: "owner", perms: [] },
+      { role: "manager", perms: ["schedule.edit", "schedule.publish"] },
+      { role: "worker", perms: ["reservations.edit"] },
+    ] as const;
+    expect(today.map((viewer) => buildsSchedule(viewer))).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    expect(today.map((viewer) => publishesSchedule(viewer))).toEqual([
+      true,
+      true,
+      false,
+    ]);
+    // Workers raised to build without publishing, and a manager lowered.
+    expect(buildsSchedule({ role: "worker", perms: ["schedule.edit"] })).toBe(
+      true,
+    );
+    expect(
+      publishesSchedule({ role: "worker", perms: ["schedule.edit"] }),
+    ).toBe(false);
+    expect(buildsSchedule({ role: "manager", perms: [] })).toBe(false);
+  });
+
+  it("never publishes without building, whatever else is held", () => {
+    expect(
+      publishesSchedule({ role: "worker", perms: ["schedule.publish"] }),
+    ).toBe(false);
+  });
+
+  it("changes a draft whoever builds it, and a published week only by publishing (Q3)", () => {
+    expect(changesWeek(true, { published: true })).toBe(true);
+    expect(changesWeek(true, { published: false })).toBe(true);
+    expect(changesWeek(false, { published: false })).toBe(true);
+    expect(changesWeek(false, { published: true })).toBe(false);
   });
 });

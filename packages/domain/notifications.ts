@@ -3,7 +3,14 @@ import { isUuid } from "./activity";
 import { addDays, dateIn, instantIn } from "./availability";
 import { type DocumentCategory, isDocumentCategory } from "./documents";
 import { timeOfDay } from "./hours";
-import { atLeast, isStaff, type ModuleKey, type Role } from "./modules";
+import {
+  atLeast,
+  holdsPermission,
+  isStaff,
+  type ModuleKey,
+  type PermissionKey,
+  type Role,
+} from "./modules";
 import { builderHref } from "./running-week";
 import { timeIn } from "./shabbat";
 import { MAX_ENTRY_HOURS } from "./time-clock-format";
@@ -45,8 +52,15 @@ type KindInfo = {
   group: NotificationGroup | null;
   /** The module the line is about; switching it off hides the line. */
   module: ModuleKey | null;
-  /** The lowest role the line is ever for. */
+  /** The lowest role the line is ever for, by default. */
   minRole: Role;
+  /**
+   * For those who hold this permission rather than for a rank and up (the
+   * line's `audience_perm` in the database, the roles plan's R3): written
+   * only to them and read only while they hold it, whatever their role.
+   * `minRole` is then the lowest role that holds it by default.
+   */
+  perm?: PermissionKey;
   /**
    * The reader has something to do about it (take a shift, approve). The Home
    * tab counts only these, in red and read out as "needs action"; the bell
@@ -132,6 +146,10 @@ export const NOTIFICATION_KINDS = {
     group: "approvals",
     module: "scheduling",
     minRole: "manager",
+    // Those who publish the schedule fill them (the roles plan's R3): only a
+    // published week's shifts are left short, and someone who builds
+    // without publishing only reads a published week.
+    perm: "schedule.publish",
     needsAction: true,
     href: "/schedule",
     to: "week",
@@ -154,6 +172,9 @@ export const NOTIFICATION_KINDS = {
     group: "approvals",
     module: "scheduling",
     minRole: "manager",
+    // Whoever builds the schedule decides a swap (Orel's answer 6 of 15
+    // November 2026).
+    perm: "schedule.edit",
     needsAction: true,
     href: "/schedule/swaps",
   },
@@ -189,7 +210,7 @@ export const NOTIFICATION_KINDS = {
   // before a manager approved (Orel, 15 November 2026; `private.notify_for_team`
   // in supabase/migrations/20261114000100_team_changes.sql): the request is
   // open again for someone else to take, and the shift stays the reader's
-  // until someone does and a manager approves. It replaces their "taken"
+  // until someone does and the swap is approved. It replaces their "taken"
   // line, and names nobody.
   "swap.reopened": {
     group: "swaps",
@@ -235,6 +256,7 @@ export const NOTIFICATION_KINDS = {
     group: "approvals",
     module: "scheduling",
     minRole: "manager",
+    perm: "schedule.edit",
     needsAction: true,
     href: "/schedule/availability/team",
     byApp: true,
@@ -654,19 +676,39 @@ export function unreadCounts(
 }
 
 /**
+ * Whether a kind of line is ever for this person: those who hold its
+ * permission, when it has one and their permissions are known (`perms`, as
+ * the database answers them), and otherwise their role from its lowest one
+ * up.
+ */
+function kindFor(
+  info: KindInfo,
+  role: Role,
+  perms: readonly string[] | undefined,
+): boolean {
+  return info.perm && perms
+    ? holdsPermission({ role, perms }, info.perm)
+    : atLeast(role, info.minRole);
+}
+
+/**
  * The groups of lines a person in this role can get in a business with these
- * modules on, in order: what the inbox says reaches it.
+ * modules on, in order: what the inbox says reaches it. With what they hold
+ * (`perms`), a line for those who hold a permission counts by it: a worker
+ * who builds the schedule gets the approvals, a manager who doesn't, not
+ * theirs.
  */
 export function groupsFor(
   role: Role,
   enabled: readonly ModuleKey[],
+  perms?: readonly string[],
 ): NotificationGroup[] {
   return NOTIFICATION_GROUPS.filter((group) =>
     NOTIFICATION_KIND_KEYS.some((kind) => {
       const info: KindInfo = NOTIFICATION_KINDS[kind];
       return (
         info.group === group &&
-        atLeast(role, info.minRole) &&
+        kindFor(info, role, perms) &&
         !(info.staffOnly && !isStaff(role)) &&
         (info.module === null || enabled.includes(info.module))
       );

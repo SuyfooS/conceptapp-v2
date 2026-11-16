@@ -250,6 +250,31 @@ describe("todayTiles", () => {
     ]);
   });
 
+  it("gives a worker who builds the schedule the team's tiles, their own availability while it is missing and the shifts they can take", () => {
+    // Workers raised to schedule.edit (the roles plan's R3) owe availability
+    // and take colleagues' shifts as any worker does.
+    expect(
+      todayTiles({ role: "worker", availability: "due", offers: 2, team }),
+    ).toEqual([
+      { key: "gaps", count: 6 },
+      { key: "missing", count: 2, late: false },
+      { key: "swaps", count: 1 },
+      { key: "availability", status: "due" },
+      { key: "offers", count: 2 },
+    ]);
+    expect(
+      keys(
+        todayTiles({ role: "worker", availability: "sent", offers: 0, team }),
+      ),
+    ).toEqual(["gaps", "missing", "swaps"]);
+    // A manager's Today stays as it was.
+    expect(
+      keys(
+        todayTiles({ role: "manager", availability: "sent", offers: 2, team }),
+      ),
+    ).toEqual(["gaps", "missing", "swaps"]);
+  });
+
   it("adds a manager's own availability only while it is missing", () => {
     expect(
       keys(

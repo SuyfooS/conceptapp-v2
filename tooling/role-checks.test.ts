@@ -112,6 +112,39 @@ describe("rules by rank in SQL", () => {
     expect(roleChecks(sql)).toEqual([]);
   });
 
+  it("leave out a line for those who hold a permission, which the read policy asks instead (R3)", () => {
+    const sql = [
+      "create function private.tell(b uuid) returns void language plpgsql as $$",
+      "begin",
+      "  perform private.notify(b, private.members_holding(b, 'schedule.edit'::text), 'x'::text,",
+      "    '{}'::jsonb, null::uuid, 'scheduling'::public.module_key, 'manager'::public.member_role,",
+      "    'x:1', at_time => now(), holders_of => 'schedule.edit'::text);",
+      "  perform private.notify(b, '{}'::uuid[], 'y', '{}', null, null, 'manager', null,",
+      "    true, null, now(), '{}', 'schedule.edit');",
+      "  perform private.notify(b, '{}'::uuid[], 'z'::text, audience => 'manager',",
+      "    holders_of => null);",
+      "  perform private.notify(b, '{}'::uuid[], 'w', '{}', null, null, 'manager', 'w:1',",
+      "    realert => false, push_until => null, at_time => now(), leave_out => '{}');",
+      "end;",
+      "$$;",
+    ].join("\n");
+    // A permission named, by name or as the thirteenth by position, isn't a
+    // rule by rank; none, or a null one, still is, whatever named arguments
+    // come after the seventh.
+    expect(roleChecks(sql)).toEqual([
+      {
+        line: 8,
+        check: "notify(…, audience 'manager')",
+        where: "private.tell",
+      },
+      {
+        line: 10,
+        check: "notify(…, audience 'manager')",
+        where: "private.tell",
+      },
+    ]);
+  });
+
   it("are credited to the function they are in, whatever tag quotes its body", () => {
     const sql = [
       "create or replace function private.builds_schedule(b uuid)",
@@ -143,8 +176,8 @@ describe("rules by rank in SQL", () => {
         sql: rule("private.new_gate"),
       },
       {
-        name: "20261116000100_scheduling.sql",
-        sql: rule("private.builds_schedule"),
+        name: "20261116000100_clock.sql",
+        sql: rule("private.can_edit_clock"),
       },
       {
         name: "20261116000200_newer.sql",
@@ -153,16 +186,51 @@ describe("rules by rank in SQL", () => {
           "update public.memberships m set active = true where m.role in ('owner', 'manager');",
         ].join("\n"),
       },
+      // Scheduling moved in R3 and its entries are out: a rule by rank there
+      // counts again.
+      {
+        name: "20261116000300_scheduling.sql",
+        sql: rule("private.builds_schedule"),
+      },
     ];
     expect(violations(migrations)).toEqual([
       "20261116000200_newer.sql:3 has_role( in private.new_gate",
       "20261116000200_newer.sql:5 role in ('owner', 'manager') in top level",
+      "20261116000300_scheduling.sql:3 has_role( in private.builds_schedule",
     ]);
-    // Once the scheduling phase takes builds_schedule out, its rule counts.
+    // Once the clock's phase takes can_edit_clock out, its rule counts too.
     expect(violations(migrations, new Set(["private.new_gate"]))).toEqual([
-      "20261116000100_scheduling.sql:3 has_role( in private.builds_schedule",
+      "20261116000100_clock.sql:3 has_role( in private.can_edit_clock",
       "20261116000200_newer.sql:5 role in ('owner', 'manager') in top level",
+      "20261116000300_scheduling.sql:3 has_role( in private.builds_schedule",
     ]);
+  });
+
+  it("count again where scheduling held one, once R3 moved it", () => {
+    // Each of the rules R3 moved, written by rank again in a later migration,
+    // is a violation: nothing lists them any more.
+    const later = [
+      "private.builds_schedule",
+      "public.decide_shift_swap",
+      "private.notify_for_team",
+      "private.renew_demo_schedule",
+    ].map((name, i) => ({
+      name: `2026111600040${i}_back.sql`,
+      sql: [
+        `create or replace function ${name}(b uuid)`,
+        "returns boolean language sql as $$",
+        "  select exists (select 1 from public.memberships m where m.role in ('owner', 'manager'))",
+        "$$;",
+      ].join("\n"),
+    }));
+    const policy = {
+      name: "20261116000500_back.sql",
+      sql: [
+        `alter policy "the schedule's builders read its shifts" on public.schedule_shifts`,
+        "  using (private.has_role(business_id, 'manager'));",
+      ].join("\n"),
+    };
+    expect(violations([...later, policy])).toHaveLength(later.length + 1);
   });
 
   it("are written in no migration after the guard but where a rule stays by role or waits for its area", () => {
