@@ -452,6 +452,22 @@ const demoRow = (
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
 export const demoActivityRows: ActivityRow[] = [
+  // Roles and permissions (roles R2): the ConceptApp team, from the console,
+  // let workers build the schedule and took publishing from managers.
+  demoRow(135, "2026-11-04T14:40:00+02:00", "team-staff", "role.permission", {
+    role: "manager",
+    perm: "schedule.publish",
+    area: "scheduling",
+    from: true,
+    to: false,
+  }),
+  demoRow(134, "2026-11-04T14:30:00+02:00", "team-staff", "role.permission", {
+    role: "worker",
+    perm: "schedule.edit",
+    area: "scheduling",
+    from: false,
+    to: true,
+  }),
   // Closing a month for payroll (payroll P9): October closed, reopened with
   // its reason, and closed again.
   demoRow(133, "2026-11-04T14:20:00+02:00", "shiran", "payroll.close", {
