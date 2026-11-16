@@ -34,6 +34,7 @@ import {
   templateForSave,
 } from "@domain/lists";
 import { type Role, STAFF_ROLES, type StaffRole } from "@domain/modules";
+import { BASE_ROLES, type NamedRole } from "@domain/role-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "./database.types";
@@ -142,12 +143,45 @@ type ListRow = Pick<
 const LIST_COLUMNS =
   "id, name, status, origin, recipient_kind, recipient_department, recipient_role, from_department, template_id, sent_by, opens_at, due_at, finished_at, finished_by, closed_at, closed_by";
 
-function holderOf(row: ListRow, people: readonly string[]): ListHolder {
+/** A role recipient, with the role the business named on it when there is one. */
+const roleHolder = (role: string | null, named: string | undefined) =>
+  named === undefined
+    ? { kind: "role" as const, role: roleOf(role) }
+    : { kind: "role" as const, role: roleOf(role), namedRole: named };
+
+/**
+ * The role the business named that each row goes to
+ * (`recipient_named_role`, the roles plan's R11d), by the row's id, read
+ * with `query`: only the rows that name one. Read beside the rest, so a
+ * project without 20261115001900_named_roles_lists.sql reads none (none
+ * names one there) and every screen reads as before.
+ */
+async function namedRolesOf(
+  query: PromiseLike<{
+    data: { id: string; recipient_named_role: string | null }[] | null;
+    error: { code?: string; message: string } | null;
+  }>,
+): Promise<Map<string, string>> {
+  const { data, error } = await query;
+  if (isMissingColumn(error)) return new Map();
+  if (error) throw error;
+  return new Map(
+    (data ?? []).flatMap((row): [string, string][] =>
+      row.recipient_named_role ? [[row.id, row.recipient_named_role]] : [],
+    ),
+  );
+}
+
+function holderOf(
+  row: ListRow,
+  people: readonly string[],
+  named?: string,
+): ListHolder {
   switch (row.recipient_kind) {
     case "department":
       return { kind: "department", department: row.recipient_department ?? "" };
     case "role":
-      return { kind: "role", role: roleOf(row.recipient_role) };
+      return roleHolder(row.recipient_role, named);
     case "shift":
       return { kind: "shift", people: [...people] };
     default:
@@ -159,13 +193,14 @@ function summaryOf(
   row: ListRow,
   people: readonly string[],
   progress: ListProgress,
+  named?: string,
 ): ListSummary {
   return {
     id: row.id,
     name: row.name,
     status: oneOf(LIST_STATUSES, row.status, "open"),
     origin: oneOf(LIST_ORIGINS, row.origin, "sent"),
-    holder: holderOf(row, people),
+    holder: holderOf(row, people, named),
     fromDepartment: row.from_department,
     templateId: row.template_id,
     sentBy: row.sent_by,
@@ -181,18 +216,26 @@ function summaryOf(
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
-/** The people and the progress of these lists, read under RLS. */
+/**
+ * The people, the progress and the named roles (`namedRolesOf`) of these
+ * lists, read under RLS.
+ */
 async function partsOf(
   supabase: Supabase,
   ids: readonly string[],
 ): Promise<
-  | { people: Map<string, string[]>; progress: Map<string, ListProgress> }
+  | {
+      people: Map<string, string[]>;
+      progress: Map<string, ListProgress>;
+      named: Map<string, string>;
+    }
   | "notYet"
 > {
   const people = new Map<string, string[]>();
   const items = new Map<string, { required: boolean; done: boolean }[]>();
+  let named = new Map<string, string>();
   if (ids.length > 0) {
-    const [peopleRows, itemRows] = await Promise.all([
+    const [peopleRows, itemRows, namedRows] = await Promise.all([
       supabase
         .from("list_people")
         .select("list_id, user_id")
@@ -201,7 +244,15 @@ async function partsOf(
         .from("list_items")
         .select("list_id, required, done")
         .in("list_id", [...ids]),
+      namedRolesOf(
+        supabase
+          .from("lists")
+          .select("id, recipient_named_role")
+          .in("id", [...ids])
+          .not("recipient_named_role", "is", null),
+      ),
     ]);
+    named = namedRows;
     for (const { error } of [peopleRows, itemRows]) {
       if (error) {
         if (isMissingTable(error)) return "notYet";
@@ -221,7 +272,7 @@ async function partsOf(
   const progress = new Map(
     ids.map((id) => [id, listProgress(items.get(id) ?? [])]),
   );
-  return { people, progress };
+  return { people, progress, named };
 }
 
 async function summaries(
@@ -238,6 +289,7 @@ async function summaries(
       row,
       parts.people.get(row.id) ?? [],
       parts.progress.get(row.id) ?? listProgress([]),
+      parts.named.get(row.id),
     ),
   );
 }
@@ -271,15 +323,16 @@ async function openAndClosed(
 }
 
 /**
- * The lists a person holds now (their people, their departments, their role):
- * every open one, and those that opened in the window and are closed. Not
- * every list they may read: a list manager reads them all. `asked` is the
- * open orders one of their departments asked for that another holds (L5),
- * which they follow from Lists.
+ * The lists a person holds now (their people, their departments, their role,
+ * or the role the business named that they hold, `namedRole`): every open
+ * one, and those that opened in the window and are closed. Not every list
+ * they may read: a list manager reads them all. `asked` is the open orders
+ * one of their departments asked for that another holds (L5), which they
+ * follow from Lists.
  */
 export async function getMyLists(
   businessId: string,
-  person: { userId: string; role: Role },
+  person: { userId: string; role: Role; namedRole?: string | null },
   window: Window,
 ): Promise<{ held: ListSummary[]; asked: ListSummary[] } | "notYet"> {
   const supabase = await createClient();
@@ -402,7 +455,7 @@ export async function getList(
   listId: string,
 ): Promise<ListDetail | null | "notYet"> {
   const supabase = await createClient();
-  const [list, items, people, passes] = await Promise.all([
+  const [list, items, people, passes, named] = await Promise.all([
     supabase
       .from("lists")
       .select(`${LIST_COLUMNS}, note, asks_quantities, shift`)
@@ -415,6 +468,13 @@ export async function getList(
       .select("id, from_department, to_department, passed_by, passed_at, note")
       .eq("list_id", listId)
       .order("passed_at"),
+    namedRolesOf(
+      supabase
+        .from("lists")
+        .select("id, recipient_named_role")
+        .eq("id", listId)
+        .not("recipient_named_role", "is", null),
+    ),
   ]);
   for (const { error } of [list, items, people, passes]) {
     if (error) {
@@ -461,6 +521,7 @@ export async function getList(
       list.data,
       (people.data ?? []).map((row) => row.user_id),
       listProgress(itemList),
+      named.get(list.data.id),
     ),
     note: list.data.note,
     asksQuantities: list.data.asks_quantities,
@@ -489,12 +550,15 @@ type TemplateRow = Pick<
   | "archived_at"
 >;
 
-function templateRecipientOf(row: {
-  recipient_kind: string | null;
-  recipient_department: string | null;
-  recipient_shift: string | null;
-  recipient_role: string | null;
-}): TemplateRecipient | null {
+function templateRecipientOf(
+  row: {
+    recipient_kind: string | null;
+    recipient_department: string | null;
+    recipient_shift: string | null;
+    recipient_role: string | null;
+  },
+  named?: string,
+): TemplateRecipient | null {
   switch (row.recipient_kind) {
     case "department":
       return row.recipient_department
@@ -505,7 +569,7 @@ function templateRecipientOf(row: {
         ? { kind: "shift", shift: row.recipient_shift }
         : null;
     case "role":
-      return { kind: "role", role: roleOf(row.recipient_role) };
+      return roleHolder(row.recipient_role, named);
     default:
       return null;
   }
@@ -521,7 +585,7 @@ async function templatesFrom(
 ): Promise<ListTemplate[] | "notYet"> {
   const ids = rows.map((row) => row.id);
   if (ids.length === 0) return [];
-  const [items, schedules] = await Promise.all([
+  const [items, schedules, namedTemplates, namedSchedules] = await Promise.all([
     supabase
       .from("list_template_items")
       .select(
@@ -536,6 +600,20 @@ async function templatesFrom(
       )
       .in("template_id", ids)
       .order("position"),
+    namedRolesOf(
+      supabase
+        .from("list_templates")
+        .select("id, recipient_named_role")
+        .in("id", ids)
+        .not("recipient_named_role", "is", null),
+    ),
+    namedRolesOf(
+      supabase
+        .from("list_schedules")
+        .select("id, recipient_named_role")
+        .in("template_id", ids)
+        .not("recipient_named_role", "is", null),
+    ),
   ]);
   for (const { error } of [items, schedules]) {
     if (error) {
@@ -565,7 +643,7 @@ async function templatesFrom(
     const recipient: ScheduleRecipient | null =
       row.recipient_kind === "person" && row.recipient_user
         ? { kind: "person", user: row.recipient_user }
-        : templateRecipientOf(row);
+        : templateRecipientOf(row, namedSchedules.get(row.id));
     if (!recipient) continue;
     schedulesOf.set(row.template_id, [
       ...(schedulesOf.get(row.template_id) ?? []),
@@ -588,7 +666,7 @@ async function templatesFrom(
     key: row.key,
     name: row.name,
     note: row.note,
-    recipient: templateRecipientOf(row),
+    recipient: templateRecipientOf(row, namedTemplates.get(row.id)),
     fromDepartment: row.from_department,
     asksQuantities: row.asks_quantities,
     version: row.version,
@@ -663,6 +741,75 @@ export async function getListTemplatesForTeam(
     throw error;
   }
   return templatesFrom(admin, data ?? []);
+}
+
+/** A role the business named, as the lists' screens offer and name it. */
+export type ListRole = NamedRole & { archived: boolean };
+
+const ListRoleRow = z.object({
+  id: z.uuid(),
+  base: z.enum(BASE_ROLES),
+  name: z.string(),
+  name_en: z.string().nullable(),
+  archived_at: z.string().nullable(),
+});
+
+/**
+ * The roles the business named, archived ones too (a list sent before keeps
+ * its name), in their order, read with `supabase`: the lists' screens offer
+ * the live ones next to the built-in roles (the roles plan's R11d). None
+ * until the database sends lists to them
+ * (20261115001900_named_roles_lists.sql: `lists.recipient_named_role`), so
+ * a screen never offers what it can't send.
+ */
+async function readListRoles(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+): Promise<ListRole[]> {
+  const [roles, takes] = await Promise.all([
+    supabase
+      .from("business_roles")
+      .select("id, base, name, name_en, archived_at")
+      .eq("business_id", businessId)
+      .order("sort")
+      .order("created_at"),
+    supabase.from("lists").select("recipient_named_role").limit(0),
+  ]);
+  if (isMissingColumn(takes.error)) return [];
+  if (takes.error) throw takes.error;
+  // PostgREST's and Postgres's "no such table".
+  if (roles.error?.code === "PGRST205" || roles.error?.code === "42P01") {
+    return [];
+  }
+  if (roles.error) throw roles.error;
+  return z
+    .array(ListRoleRow)
+    .parse(roles.data)
+    .map((row) => ({
+      id: row.id,
+      base: row.base,
+      name: row.name,
+      nameEn: row.name_en,
+      archived: row.archived_at !== null,
+    }));
+}
+
+/**
+ * The same, as the business's members read them (RLS: a colleague's role is
+ * no secret), for the lists' screens in the app.
+ */
+export async function getListRoles(businessId: string): Promise<ListRole[]> {
+  return readListRoles(await createClient(), businessId);
+}
+
+/**
+ * The same, for the console's template screens, with the secret key: the
+ * team isn't a member. Callers check first that the person is on the team.
+ */
+export async function getListRolesForTeam(
+  businessId: string,
+): Promise<ListRole[]> {
+  return readListRoles(createAdminClient(), businessId);
 }
 
 /**

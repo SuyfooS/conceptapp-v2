@@ -855,6 +855,24 @@ describe("buildActivity: each action", () => {
       name: "Closing",
       to: { kind: "role", role: "worker" },
     });
+    // To a role the business named (R11d): by its name as it was sent.
+    expect(
+      lineOf(
+        row("lists.send", {
+          name: "Closing",
+          recipient: {
+            kind: "role",
+            role: "worker",
+            named_role: KITCHEN,
+            role_name: "Shift lead",
+          },
+        }),
+      ),
+    ).toEqual({
+      action: "lists.send",
+      name: "Closing",
+      to: { kind: "role", role: "worker", name: "Shift lead" },
+    });
     expect(
       lineOf(
         row("lists.finish", {

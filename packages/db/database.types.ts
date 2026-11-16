@@ -1235,6 +1235,7 @@ export type Database = {
           position: number;
           recipient_department: string | null;
           recipient_kind: string;
+          recipient_named_role: string | null;
           recipient_role: Database["public"]["Enums"]["member_role"] | null;
           recipient_shift: string | null;
           recipient_user: string | null;
@@ -1256,6 +1257,7 @@ export type Database = {
           position?: number;
           recipient_department?: string | null;
           recipient_kind: string;
+          recipient_named_role?: string | null;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
           recipient_shift?: string | null;
           recipient_user?: string | null;
@@ -1277,6 +1279,7 @@ export type Database = {
           position?: number;
           recipient_department?: string | null;
           recipient_kind?: string;
+          recipient_named_role?: string | null;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
           recipient_shift?: string | null;
           recipient_user?: string | null;
@@ -1299,6 +1302,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "departments";
             referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "list_schedules_recipient_named_role_fkey";
+            columns: ["business_id", "recipient_named_role", "recipient_role"];
+            isOneToOne: false;
+            referencedRelation: "business_roles";
+            referencedColumns: ["business_id", "id", "base"];
           },
           {
             foreignKeyName: "list_schedules_template_id_business_id_fkey";
@@ -1377,6 +1387,7 @@ export type Database = {
           position: number;
           recipient_department: string | null;
           recipient_kind: string | null;
+          recipient_named_role: string | null;
           recipient_role: Database["public"]["Enums"]["member_role"] | null;
           recipient_shift: string | null;
           updated_at: string;
@@ -1397,6 +1408,7 @@ export type Database = {
           position?: number;
           recipient_department?: string | null;
           recipient_kind?: string | null;
+          recipient_named_role?: string | null;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
           recipient_shift?: string | null;
           updated_at?: string;
@@ -1417,6 +1429,7 @@ export type Database = {
           position?: number;
           recipient_department?: string | null;
           recipient_kind?: string | null;
+          recipient_named_role?: string | null;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
           recipient_shift?: string | null;
           updated_at?: string;
@@ -1453,6 +1466,13 @@ export type Database = {
             referencedColumns: ["id", "business_id"];
           },
           {
+            foreignKeyName: "list_templates_recipient_named_role_fkey";
+            columns: ["business_id", "recipient_named_role", "recipient_role"];
+            isOneToOne: false;
+            referencedRelation: "business_roles";
+            referencedColumns: ["business_id", "id", "base"];
+          },
+          {
             foreignKeyName: "list_templates_updated_by_fkey";
             columns: ["updated_by"];
             isOneToOne: false;
@@ -1482,6 +1502,7 @@ export type Database = {
           owners_told_at: string | null;
           recipient_department: string | null;
           recipient_kind: string;
+          recipient_named_role: string | null;
           recipient_role: Database["public"]["Enums"]["member_role"] | null;
           reminded_at: string | null;
           reopened_at: string | null;
@@ -1513,6 +1534,7 @@ export type Database = {
           owners_told_at?: string | null;
           recipient_department?: string | null;
           recipient_kind: string;
+          recipient_named_role?: string | null;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
           reminded_at?: string | null;
           reopened_at?: string | null;
@@ -1544,6 +1566,7 @@ export type Database = {
           owners_told_at?: string | null;
           recipient_department?: string | null;
           recipient_kind?: string;
+          recipient_named_role?: string | null;
           recipient_role?: Database["public"]["Enums"]["member_role"] | null;
           reminded_at?: string | null;
           reopened_at?: string | null;
@@ -1590,6 +1613,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "departments";
             referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "lists_recipient_named_role_fkey";
+            columns: ["business_id", "recipient_named_role", "recipient_role"];
+            isOneToOne: false;
+            referencedRelation: "business_roles";
+            referencedColumns: ["business_id", "id", "base"];
           },
           {
             foreignKeyName: "lists_schedule_id_business_id_fkey";

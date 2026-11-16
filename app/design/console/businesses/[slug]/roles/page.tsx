@@ -31,7 +31,9 @@ type Props = {
 // "הוספת תפקיד", its rename and its removal. `?state=open` opens every area,
 // as the screen will be once each phase has opened its own, so every switch
 // changes with its undo; `?state=readOnly` is a team role that only reads
-// businesses. Stand-in actions: nothing reaches a database.
+// businesses; `?state=lists` the shift lead held back from removal by the
+// list that goes to it (R11d), and nothing else. Stand-in actions: nothing
+// reaches a database.
 export default function ConsoleRolesTwin({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -86,7 +88,15 @@ async function Demo({ params, searchParams }: Props) {
     <ConsoleRolesDemo
       data={{
         ...data,
-        roles: [...data.roles, { ...demoShiftLead, people: [], invited: 0 }],
+        roles: [
+          ...data.roles,
+          {
+            ...demoShiftLead,
+            people: [],
+            invited: 0,
+            lists: state === "lists" ? 1 : 0,
+          },
+        ],
       }}
       paths={{
         place: "console",

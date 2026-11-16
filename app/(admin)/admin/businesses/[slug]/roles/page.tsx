@@ -2,6 +2,7 @@ import { getBusinessSetup } from "@db/admin";
 import { getBusinessModulesForTeam } from "@db/module-settings";
 import {
   getRoleInvitesForTeam,
+  getRoleListsForTeam,
   getRoleMatrixForTeam,
   getRolePeopleForTeam,
 } from "@db/roles";
@@ -57,11 +58,12 @@ export default async function TeamRolesPage({
   if (!business) notFound();
   const t = await getTranslations("admin.setup.people");
   // Read with the secret key, only now that they are on the team.
-  const [modules, matrix, people, invites] = await Promise.all([
+  const [modules, matrix, people, invites, lists] = await Promise.all([
     getBusinessModulesForTeam(business.id),
     getRoleMatrixForTeam(business.id, permissions),
     getRolePeopleForTeam(business.id),
     getRoleInvitesForTeam(business.id),
+    getRoleListsForTeam(business.id),
   ]);
   const enabled = enabledModules(manifests, modules);
   const href = `/admin/businesses/${business.slug}`;
@@ -78,8 +80,10 @@ export default async function TeamRolesPage({
           role: person.role,
           namedRole: person.namedRole,
         })),
-        // An open invite to a named role still holds it back (R11b).
+        // An open invite to a named role still holds it back (R11b), and so
+        // does a live template that sends lists to it (R11d).
         invites,
+        lists,
         viewOnly: may !== "change",
         documents: enabled.includes("chat"),
       })}

@@ -196,7 +196,11 @@ export type ActivityRecipient =
   /** The name is null when the department is not known (any more). */
   | { kind: "department"; name: string | null }
   | { kind: "shift" }
-  | { kind: "role"; role: Role | null };
+  /**
+   * A role, or a role the business named on it by its name as the list was
+   * sent (`name`, the roles plan's R11d).
+   */
+  | { kind: "role"; role: Role | null; name?: string };
 
 export type ActivityLine =
   | { action: "business.create"; invites: number }
@@ -700,6 +704,8 @@ const schemas = {
       kind: z.string(),
       id: id.optional(),
       role: z.unknown().optional(),
+      // A role the business named (R11d): its name as the list was sent.
+      role_name: z.string().optional().catch(undefined),
     }),
   }),
   "lists.finish": z.object({
@@ -1133,7 +1139,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     case "lists.send": {
       const details = read(schemas["lists.send"]);
       if (!details) return other;
-      const { kind, id: to, role } = details.recipient;
+      const { kind, id: to, role, role_name: roleName } = details.recipient;
       const recipient: ActivityRecipient | null =
         kind === "person"
           ? { kind, person: personOf(to, lookups) }
@@ -1145,7 +1151,9 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             : kind === "shift"
               ? { kind }
               : kind === "role"
-                ? { kind, role: roleOf(role) }
+                ? roleName
+                  ? { kind, role: roleOf(role), name: roleName }
+                  : { kind, role: roleOf(role) }
                 : null;
       return recipient
         ? { action: row.action, name: details.name, to: recipient }

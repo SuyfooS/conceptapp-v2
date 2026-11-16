@@ -210,16 +210,24 @@ function GiveRole({
  * Someone holds the role, or an open invite waits for it (R11b): it can't
  * be archived, and nobody needs to be sent to the team screen to give it.
  */
-const heldBack = (role: EditableRole) =>
+const givenOut = (role: EditableRole) =>
   role.people.length > 0 || role.invited > 0;
 
+/**
+ * It can't be archived: it is given out (`givenOut`), or a live template
+ * sends lists to it (R11d), as `public.archive_business_role` refuses.
+ */
+const heldBack = (role: EditableRole) => givenOut(role) || role.lists > 0;
+
+type RolesT = ReturnType<typeof useTranslations<"app.manage.roles">>;
+
 /** Under a named role's removal: what it does, or why it can't be done. */
-const archiveWords = (role: EditableRole) =>
-  role.people.length > 0
-    ? ("named.archiveHeld" as const)
-    : role.invited > 0
-      ? ("named.archiveInvited" as const)
-      : ("named.archiveHint" as const);
+function archiveNote(role: EditableRole, t: RolesT): string {
+  if (role.people.length > 0) return t("named.archiveHeld");
+  if (role.invited > 0) return t("named.archiveInvited");
+  if (role.lists > 0) return t("named.archiveLists", { count: role.lists });
+  return t("named.archiveHint");
+}
 
 /**
  * Where a role is given, in the words of where it is drawn: the invites
@@ -683,6 +691,7 @@ export function RolesView({
       nameEn: null,
       people: [],
       invited: 0,
+      lists: 0,
       access: from ? from.access : defaultAccess(input.base),
       start: base ? base.access : defaultAccess(input.base),
       // Pay is the owner's switch on its own screen, never copied.
@@ -752,14 +761,15 @@ export function RolesView({
    * A role the business named off the list, at once, with its undo on the
    * toast (the database keeps it archived, for that). Refused while people
    * hold it, or an open invite waits for it: they need another role first,
-   * and the invite deleting. The control pressed goes with the role (its
-   * card, its column), so the keyboard goes to the undo.
+   * and the invite deleting; and while a live template sends lists to it
+   * (R11d), until they go to someone else. The control pressed goes with the
+   * role (its card, its column), so the keyboard goes to the undo.
    */
   function archive(target: EditableRole) {
     const { archiveRole, restoreRole } = actions;
     if (!archiveRole || target.name === null || disabled) return;
     if (heldBack(target)) {
-      setFailure("held");
+      setFailure(givenOut(target) ? "held" : "lists");
       return;
     }
     const name = roleName(target);
@@ -1018,7 +1028,7 @@ export function RolesView({
               id={`${id}-remove-${headingLevel}`}
               className="px-1 text-ink-2 text-sm"
             >
-              {t(archiveWords(target))}
+              {archiveNote(target, t)}
             </p>
           </div>
         ) : null}
@@ -1651,7 +1661,7 @@ function RolesMatrix({
             {/* What removing does, or why it can't, as a role's card says. */}
             {role.name !== null && onArchive ? (
               <span id={`${id}-${role.key}-remove`} className="max-w-xs">
-                {t(archiveWords(role))}
+                {archiveNote(role, t)}
               </span>
             ) : null}
           </span>

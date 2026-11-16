@@ -375,6 +375,12 @@ export type Colleague = {
   name: string | null;
   /** Their role: someone off the staff (an accountant) takes no shift or list. */
   role: Role;
+  /**
+   * The id of the role the business named that they hold (R11b), built on
+   * `role`, else null: a list to it is theirs (R11d). Null for everyone
+   * before 20261115001500_named_roles.sql reaches a project.
+   */
+  namedRole: string | null;
   /** An image src for their photo (`profilePhotoSrc`), or null. */
   photo: string | null;
   /** How the app writes about them (ICU `select`), or null until they choose. */
@@ -384,7 +390,9 @@ export type Colleague = {
 /**
  * The names, photos and forms of address of a business's active members, as
  * anyone in it may read them (RLS): for the published schedule, which every
- * member reads.
+ * member reads. With each one's role and the role the business named that
+ * they hold (members read both), so the lists' send screen counts who holds
+ * each.
  */
 export async function getColleagues(businessId: string): Promise<Colleague[]> {
   const supabase = await createClient();
@@ -393,6 +401,7 @@ export async function getColleagues(businessId: string): Promise<Colleague[]> {
     userId: row.user_id,
     name: nameOf(row),
     role: row.role,
+    namedRole: row.named_role ?? null,
     photo: profilePhotoSrc(row.profiles?.avatar_path),
     addressForm: addressFormOf(row.profiles?.address_form),
   }));

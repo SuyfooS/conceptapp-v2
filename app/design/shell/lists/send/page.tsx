@@ -12,7 +12,9 @@ type Props = { searchParams: Promise<{ template?: string; state?: string }> };
 // (`?template=new`), its people and this week's shifts. Sending goes back to
 // Lists, which shows the list as just sent. `?state=kitchenGone` is the
 // restaurant after its kitchen was removed: a kitchen template starts with
-// nobody chosen, and says why.
+// nobody chosen, and says why; `?state=roleGone` after it archived its shift
+// leads' role (R11d), which the shift's opening (`?template=t-shift-opening`)
+// usually goes to: the same.
 export default function ShellSendList({ searchParams }: Props) {
   return (
     <Suspense>
@@ -26,7 +28,11 @@ async function Demo({ searchParams }: Props) {
   return (
     <SendForm
       key={state ?? ""}
-      data={demoSendForm(template, state === "kitchenGone")}
+      data={demoSendForm(
+        template,
+        state === "kitchenGone",
+        state === "roleGone",
+      )}
       send={demoSendList}
       paths={{ lists: demoListsPaths.lists }}
       sentToday={

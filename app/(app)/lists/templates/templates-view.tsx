@@ -75,8 +75,13 @@ export function TemplatesView({
         const name = data.shiftNames[recipient.shift];
         return name ? t("to.shift", { name }) : t("to.aShift");
       }
-      case "role":
-        return t("to.role", { role: recipient.role });
+      case "role": {
+        if (recipient.namedRole === undefined) {
+          return t("to.role", { role: recipient.role });
+        }
+        const name = data.roleNames[recipient.namedRole];
+        return name ? t("to.namedRole", { name }) : t("to.aRole");
+      }
       default:
         return t("to.none");
     }

@@ -16,6 +16,8 @@ import {
   type DraftSchedule,
   MAX_LIST_SCHEDULES,
   newScheduleKey,
+  roleChoiceKey,
+  roleRecipientOf,
   type ScheduleRecipient,
   scheduleGone,
   scheduleProblem,
@@ -39,7 +41,7 @@ import { CalendarClock, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { UndoRow } from "../../manage/undo-row";
-import type { EditorTimes } from "../list-types";
+import type { EditorTimes, ListRoleOption } from "../list-types";
 import { clockOf, ltr, useTimeWords } from "./schedule-words";
 
 const DAY_MINUTES = 24 * 60;
@@ -57,6 +59,8 @@ export type SchedulePlacesData = {
   departmentNames: Record<string, string>;
   shifts: { key: string; name: string }[];
   roles: readonly StaffRole[];
+  /** The roles the business named, archived ones too: the live ones offered. */
+  namedRoles: readonly ListRoleOption[];
 };
 
 /**
@@ -115,6 +119,8 @@ function useScheduleWords(times: EditorTimes, places: SchedulePlacesData) {
   const { days, when, shiftName } = useTimeWords(places.shifts);
   const live = places.departments.map((d) => d.id);
   const patterns = places.shifts.map((s) => s.key);
+  const namedRoles = places.namedRoles.filter((r) => !r.archived);
+  const liveRoles = namedRoles.map((r) => r.id);
   const context: OpeningContext = {
     timeZone: times.timeZone,
     shabbat: times.shabbat,
@@ -137,8 +143,13 @@ function useScheduleWords(times: EditorTimes, places: SchedulePlacesData) {
         return patterns.includes(to.shift)
           ? t("to.shift", { name: shiftName(to.shift) })
           : t("to.aShift");
-      case "role":
-        return t("to.role", { role: to.role });
+      case "role": {
+        if (to.namedRole === undefined) {
+          return t("to.role", { role: to.role });
+        }
+        const name = namedRoles.find((r) => r.id === to.namedRole)?.name;
+        return name ? t("to.namedRole", { name }) : t("to.aRole");
+      }
     }
   };
 
@@ -156,12 +167,15 @@ function useScheduleWords(times: EditorTimes, places: SchedulePlacesData) {
     schedule: DraftSchedule,
     saved: ListOpening[] | undefined,
   ): ReactNode => {
-    if (scheduleGone(schedule, live, patterns)) {
+    if (scheduleGone(schedule, live, patterns, liveRoles)) {
       return schedule.shift !== null && !patterns.includes(schedule.shift)
         ? t("next.goneShift")
         : t("next.goneRecipient", {
             kind:
-              schedule.recipient.kind === "department" ? "department" : "shift",
+              schedule.recipient.kind === "department" ||
+              schedule.recipient.kind === "role"
+                ? schedule.recipient.kind
+                : "shift",
           });
     }
     if (!schedule.active) return t("next.paused");
@@ -174,7 +188,19 @@ function useScheduleWords(times: EditorTimes, places: SchedulePlacesData) {
       : t("next.waits", { shift: shiftName(schedule.shift) });
   };
 
-  return { t, when, due, recipient, next, days, live, patterns, shiftName };
+  return {
+    t,
+    when,
+    due,
+    recipient,
+    next,
+    days,
+    live,
+    patterns,
+    namedRoles,
+    liveRoles,
+    shiftName,
+  };
 }
 
 /**
@@ -292,7 +318,7 @@ export function SchedulesEditor({
   useEffect(() => {
     if (fixGone === 0 || readOnly) return;
     const first = schedules.find((schedule) =>
-      scheduleGone(schedule, words.live, words.patterns),
+      scheduleGone(schedule, words.live, words.patterns, words.liveRoles),
     );
     if (first) show(first, false);
   }, [fixGone]);
@@ -310,7 +336,12 @@ export function SchedulesEditor({
           </p>
         ) : null}
         {schedules.map((schedule) => {
-          const gone = scheduleGone(schedule, words.live, words.patterns);
+          const gone = scheduleGone(
+            schedule,
+            words.live,
+            words.patterns,
+            words.liveRoles,
+          );
           const saved =
             schedule.id !== null ? openings[schedule.id] : undefined;
           const subtitle = (
@@ -463,6 +494,7 @@ function ScheduleForm({
     scheduleProblem(draft, {
       departments: words.live,
       shifts: words.patterns,
+      roles: words.liveRoles,
     }) === null;
 
   function chooseKind(kind: ScheduleRecipient["kind"]) {
@@ -495,6 +527,7 @@ function ScheduleForm({
     const found = scheduleProblem(draft, {
       departments: words.live,
       shifts: words.patterns,
+      roles: words.liveRoles,
     });
     if (found) {
       setProblem(found);
@@ -526,7 +559,7 @@ function ScheduleForm({
         : to?.kind === "person"
           ? to.user
           : to?.kind === "role"
-            ? to.role
+            ? roleChoiceKey(to)
             : "";
   // Each menu is named "field: what it shows", from the same options, so a
   // removed shift or department reads as the "choose" on the button.
@@ -534,6 +567,20 @@ function ScheduleForm({
     key: s.key,
     label: s.name,
   }));
+  // The built-in roles, then the roles the business named (R11d), each
+  // only its own people, as the send screen says: an archived one a time
+  // still names reads as the "choose" on the button.
+  const roleOptions = [
+    ...places.roles.map((role) => ({
+      key: role,
+      label: tSend(`roles.${role}`),
+    })),
+    ...words.namedRoles.map((role) => ({
+      key: role.id,
+      label: role.name,
+      hint: tSend("namedRoleHint"),
+    })),
+  ];
   const recipientOptions =
     to?.kind === "department"
       ? places.departments.map((d) => ({ key: d.id, label: d.name }))
@@ -712,15 +759,20 @@ function ScheduleForm({
           <FieldGroup className="bg-elevated">
             <FieldRow label={t("sheet.role")}>
               <ChoiceMenu
-                label={`${t("sheet.role")}: ${tSend(`roles.${to.role}`)}`}
-                value={to.role}
-                options={places.roles.map((role) => ({
-                  key: role,
-                  label: tSend(`roles.${role}`),
-                }))}
+                label={`${t("sheet.role")}: ${shownOf(roleOptions, recipientValue)}`}
+                value={recipientValue}
+                placeholder={t("sheet.choose")}
+                options={roleOptions}
                 onChange={(key) => {
-                  const role = places.roles.find((r) => r === key);
-                  if (role) setTo({ kind: "role", role });
+                  const role = roleRecipientOf(
+                    key,
+                    places.roles,
+                    words.namedRoles,
+                  );
+                  if (role) {
+                    setProblem(null);
+                    setTo(role);
+                  }
                 }}
               />
             </FieldRow>

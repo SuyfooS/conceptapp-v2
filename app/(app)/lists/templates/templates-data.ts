@@ -5,9 +5,11 @@ import {
   scheduleGone,
 } from "@domain/lists";
 import { STAFF_ROLES } from "@domain/modules";
+import { type NamedRole, namedRoleName } from "@domain/role-access";
 import type { ShiftPattern } from "@domain/staffing";
 import type {
   EditorTimes,
+  ListRoleOption,
   TemplateEditorData,
   TemplateRow,
   TemplatesScreenData,
@@ -22,7 +24,7 @@ import type {
 /**
  * A template's row: its items, who it goes to, and its times in short (the
  * first that runs, how many more, and how many point at something gone, by
- * the business's live departments and shift keys).
+ * the business's live departments, shift keys and named roles).
  */
 export function templateRow(
   template: ListTemplate,
@@ -47,22 +49,43 @@ export function templateRow(
           }
         : null,
       gone: template.schedules.filter((s) =>
-        scheduleGone(s, places.departments, places.shifts),
+        scheduleGone(s, places.departments, places.shifts, places.roles),
       ).length,
     },
   };
 }
 
-/** The business's live departments and shift keys, which a time may point at. */
+/**
+ * The roles the business named as the lists' screens offer and name them:
+ * by their names in the reader's language (`locale`), archived ones too.
+ */
+export function listRoleOptions(
+  roles: readonly (NamedRole & { archived: boolean })[],
+  locale: string,
+): ListRoleOption[] {
+  return roles.map((role) => ({
+    id: role.id,
+    base: role.base,
+    name: namedRoleName(role, locale),
+    archived: role.archived,
+  }));
+}
+
+/**
+ * The business's live departments, shift keys and named roles, which a time
+ * may point at.
+ */
 export function placesOf(
   departments: readonly Department[],
   shifts: readonly ShiftPattern[],
+  namedRoles: readonly ListRoleOption[] = [],
 ): SchedulePlaces {
   return {
     departments: departments
       .filter((d) => d.archivedAt === null)
       .map((d) => d.id),
     shifts: shifts.map((s) => s.key),
+    roles: namedRoles.filter((r) => !r.archived).map((r) => r.id),
   };
 }
 
@@ -79,12 +102,15 @@ export function templatesScreen({
   templates,
   departments,
   shifts,
+  namedRoles = [],
   removed,
   readOnly,
 }: {
   templates: readonly ListTemplate[];
   departments: readonly Department[];
   shifts: readonly ShiftPattern[];
+  /** The roles the business named, archived ones too (the roles plan's R11d). */
+  namedRoles?: readonly ListRoleOption[];
   /** `?removed=`: the template just removed in its editor. */
   removed: string | undefined;
   readOnly: boolean;
@@ -94,13 +120,14 @@ export function templatesScreen({
     .filter((t) => t.archivedAt !== null)
     .sort((a, b) => (b.archivedAt ?? "").localeCompare(a.archivedAt ?? ""));
   const just = readOnly ? undefined : gone.find((t) => t.id === removed);
-  const places = placesOf(departments, shifts);
+  const places = placesOf(departments, shifts, namedRoles);
   const row = (template: ListTemplate) => templateRow(template, places);
   return {
     templates: live.map(row),
     removed: readOnly ? [] : gone.map(row),
     ...departmentsOf(departments),
     shiftNames: Object.fromEntries(shifts.map((s) => [s.key, s.name])),
+    roleNames: Object.fromEntries(namedRoles.map((r) => [r.id, r.name])),
     justRemoved: just ? row(just) : null,
     readOnly,
   };
@@ -110,6 +137,7 @@ export function templateEditor({
   template,
   departments,
   shifts,
+  namedRoles = [],
   readOnly,
   changed,
   times,
@@ -118,6 +146,8 @@ export function templateEditor({
   template: ListTemplate | null;
   departments: readonly Department[];
   shifts: readonly ShiftPattern[];
+  /** The roles the business named, archived ones too (the roles plan's R11d). */
+  namedRoles?: readonly ListRoleOption[];
   readOnly: boolean;
   changed: boolean;
   times: EditorTimes;
@@ -129,6 +159,7 @@ export function templateEditor({
     ...departmentsOf(departments),
     shifts: shifts.map((s) => ({ key: s.key, name: s.name })),
     roles: STAFF_ROLES,
+    namedRoles,
     // A removed template is only read: the database saves none.
     readOnly: readOnly || template?.archivedAt != null,
     changed,

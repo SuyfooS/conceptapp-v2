@@ -10,6 +10,8 @@ import {
   itemsForSave,
   listName,
   recipientGone,
+  roleChoiceKey,
+  roleRecipientOf,
   scheduleGone,
   schedulesForSave,
   type TemplateRecipient,
@@ -129,10 +131,17 @@ export function TemplateEditor({
   const { template, readOnly } = data;
   const liveDepartments = data.departments.map((d) => d.id);
   const shiftKeys = data.shifts.map((s) => s.key);
+  // The roles the business named that it may go to: the live ones (R11d).
+  const namedRoles = data.namedRoles.filter((r) => !r.archived);
+  const liveRoles = namedRoles.map((r) => r.id);
   const gone = template
-    ? recipientGone(template.recipient, liveDepartments, shiftKeys)
+    ? recipientGone(template.recipient, liveDepartments, shiftKeys, liveRoles)
     : false;
-  const places = { departments: liveDepartments, shifts: shiftKeys };
+  const places = {
+    departments: liveDepartments,
+    shifts: shiftKeys,
+    roles: liveRoles,
+  };
   // Nothing here changes: a view session, or a removed template.
   const locked = readOnly;
 
@@ -474,7 +483,7 @@ export function TemplateEditor({
     return locked
       ? 0
       : snapshot.schedules.filter((schedule) =>
-          scheduleGone(schedule, liveDepartments, shiftKeys),
+          scheduleGone(schedule, liveDepartments, shiftKeys, liveRoles),
         ).length;
   }
   const held = heldCount(shown);
@@ -544,6 +553,13 @@ export function TemplateEditor({
 
   const departmentName = (id: string) =>
     data.departmentNames[id] ?? t("to.aDepartment");
+  // A role, or a role the business named, by its name (an archived one's
+  // too, when only read); null for a named role it doesn't know.
+  const roleName = (recipient: { role: StaffRole; namedRole?: string }) =>
+    recipient.namedRole === undefined
+      ? ts(`roles.${recipient.role}`)
+      : (data.namedRoles.find((r) => r.id === recipient.namedRole)?.name ??
+        null);
 
   const valuePicker =
     shown.recipient?.kind === "department" ? (
@@ -577,18 +593,25 @@ export function TemplateEditor({
     ) : shown.recipient?.kind === "role" ? (
       <FieldRow label={te("role")}>
         <ChoiceMenu
-          label={`${te("role")}: ${ts(`roles.${shown.recipient.role}`)}`}
-          value={shown.recipient.role}
-          options={data.roles.map((role) => ({
-            key: role,
-            label: ts(`roles.${role}`),
-          }))}
-          onChange={(role) =>
-            change(
-              { recipient: { kind: "role", role: role as StaffRole } },
-              "now",
-            )
-          }
+          label={`${te("role")}: ${roleName(shown.recipient) ?? te("choose")}`}
+          value={roleChoiceKey(shown.recipient)}
+          options={[
+            ...data.roles.map((role) => ({
+              key: role,
+              label: ts(`roles.${role}`),
+            })),
+            // Then the roles the business named, each only its own people,
+            // as the send screen says.
+            ...namedRoles.map((role) => ({
+              key: role.id,
+              label: role.name,
+              hint: ts("namedRoleHint"),
+            })),
+          ]}
+          onChange={(key) => {
+            const recipient = roleRecipientOf(key, data.roles, namedRoles);
+            if (recipient) change({ recipient }, "now");
+          }}
         />
       </FieldRow>
     ) : null;
@@ -601,6 +624,8 @@ export function TemplateEditor({
             s.key === shown.recipient.shift,
         )?.name
       : undefined;
+  const namedName =
+    shown.recipient?.kind === "role" ? roleName(shown.recipient) : null;
   const readOnlyRecipient =
     shown.recipient?.kind === "department"
       ? data.departmentNames[shown.recipient.department]
@@ -613,7 +638,11 @@ export function TemplateEditor({
           ? t("to.shift", { name: shiftName })
           : t("to.aShift")
         : shown.recipient?.kind === "role"
-          ? t("to.role", { role: shown.recipient.role })
+          ? shown.recipient.namedRole === undefined
+            ? t("to.role", { role: shown.recipient.role })
+            : namedName
+              ? t("to.namedRole", { name: namedName })
+              : t("to.aRole")
           : t("to.none");
 
   const sendButton =
@@ -883,6 +912,7 @@ export function TemplateEditor({
               departmentNames: data.departmentNames,
               shifts: data.shifts,
               roles: data.roles,
+              namedRoles: data.namedRoles,
             }}
           />
 

@@ -4,6 +4,7 @@ import {
   getBusinessLists,
   getList,
   getListReadings,
+  getListRoles,
   getListsOn,
   getListTemplate,
   getListTemplates,
@@ -39,12 +40,14 @@ import {
 } from "@domain/modules";
 import { canWrite } from "@domain/view-as";
 import { manifestFor } from "@modules/registry";
+import { getLocale } from "next-intl/server";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
 import {
   type ListLookups,
   type ListReadOnly,
+  type ListRoleOption,
   type ListScreenData,
   type ListsHomeData,
   type ListsTodayData,
@@ -58,6 +61,7 @@ import {
 } from "./list-types";
 import { editorTimes } from "./templates/editor-times";
 import {
+  listRoleOptions,
   placesOf,
   templateEditor,
   templatesScreen,
@@ -122,6 +126,9 @@ export const listsAccess = cache(async () => {
     userId: member.userId,
     businessId: business.id,
     role,
+    // The role the business named that they hold (R11d): a list to it is
+    // theirs, as `private.holds_list` has it.
+    namedRole: membership.namedRole?.id ?? null,
     timeZone: business.place.timeZone,
     place: business.place,
     canManage,
@@ -146,16 +153,34 @@ const currentColleagues = cache((businessId: string) =>
   getColleagues(businessId),
 );
 
+/**
+ * The roles the business named, archived ones too, once per request, by
+ * their names in the reader's language (the roles plan's R11d): the send
+ * screen and the template editor offer the live ones, and a list sent to
+ * one is named by it. None before the database sends lists to them.
+ */
+const currentListRoles = cache(
+  async (businessId: string): Promise<ListRoleOption[]> => {
+    const [roles, locale] = await Promise.all([
+      getListRoles(businessId),
+      getLocale(),
+    ]);
+    return listRoleOptions(roles, locale);
+  },
+);
+
 async function lookupsFor(businessId: string): Promise<ListLookups> {
-  const [departments, colleagues] = await Promise.all([
+  const [departments, colleagues, roles] = await Promise.all([
     currentDepartments(businessId),
     currentColleagues(businessId),
+    currentListRoles(businessId),
   ]);
   return {
     people: Object.fromEntries(
       colleagues.map((c) => [c.userId, { name: c.name, photo: c.photo }]),
     ),
     departments: Object.fromEntries(departments.map((d) => [d.id, d.name])),
+    roles: Object.fromEntries(roles.map((r) => [r.id, r.name])),
   };
 }
 
@@ -221,7 +246,11 @@ export async function currentListsHome(
       // many templates there are.
       access.viewOnly && !access.canManage ? [] : currentTemplates(businessId),
       access.view === "mine"
-        ? getMyLists(businessId, { userId, role: access.role }, window)
+        ? getMyLists(
+            businessId,
+            { userId, role: access.role, namedRole: access.namedRole },
+            window,
+          )
         : null,
       access.canManage ? getBusinessLists(businessId, window) : [],
       sent && isUuid(sent) && !access.viewOnly ? getList(sent) : null,
@@ -352,6 +381,7 @@ export async function currentList(
     userId,
     role: access.role,
     departments: mine,
+    namedRole: access.namedRole,
   });
   // Passing it on (L5): whoever holds it or manages lists, to any other live
   // department, its people counted as `private.list_holders` counts them.
@@ -459,12 +489,14 @@ export async function currentSendForm(
   if (!access || access.viewOnly) return null;
   const { businessId, userId, timeZone } = access;
   const now = new Date();
-  const [templates, departments, colleagues, photosClosed] = await Promise.all([
-    currentTemplates(businessId),
-    currentDepartments(businessId),
-    currentColleagues(businessId),
-    photosClosedIn(businessId),
-  ]);
+  const [templates, departments, colleagues, photosClosed, namedRoles] =
+    await Promise.all([
+      currentTemplates(businessId),
+      currentDepartments(businessId),
+      currentColleagues(businessId),
+      photosClosedIn(businessId),
+      currentListRoles(businessId),
+    ]);
   const offered = sendable(
     templates,
     access,
@@ -525,6 +557,12 @@ export async function currentSendForm(
       .filter((d) => d.archivedAt === null)
       .map((d) => ({ id: d.id, name: d.name })),
     roles: STAFF_ROLES,
+    // Each with who holds it now, as `private.list_holders` counts them.
+    namedRoles: namedRoles.map((r) => ({
+      ...r,
+      people: staff.filter((c) => c.role === r.base && c.namedRole === r.id)
+        .length,
+    })),
     shifts,
     photosClosed,
   };
@@ -619,15 +657,17 @@ export async function currentTemplatesScreen(
 ): Promise<TemplatesScreenData | null> {
   const access = await listsAccess();
   if (!access?.canManage) return null;
-  const [templates, departments, shifts] = await Promise.all([
+  const [templates, departments, shifts, namedRoles] = await Promise.all([
     currentTemplates(access.businessId),
     currentDepartments(access.businessId),
     shiftPatterns(),
+    currentListRoles(access.businessId),
   ]);
   return templatesScreen({
     templates,
     departments,
     shifts,
+    namedRoles,
     removed,
     readOnly: access.viewOnly,
   });
@@ -649,7 +689,7 @@ export async function currentTemplateEditor(
   if (templateId !== null && !isUuid(templateId)) return null;
   if (templateId === null && access.viewOnly) return null;
   const now = new Date();
-  const [template, departments, shifts, times, photosClosed] =
+  const [template, departments, shifts, times, photosClosed, namedRoles] =
     await Promise.all([
       templateId === null
         ? null
@@ -658,6 +698,7 @@ export async function currentTemplateEditor(
       shiftPatterns(),
       templateTimes(access, templateId, now),
       photosClosedIn(access.businessId),
+      currentListRoles(access.businessId),
     ]);
   if (template === "notYet" || (templateId !== null && template === null)) {
     return null;
@@ -668,6 +709,7 @@ export async function currentTemplateEditor(
       template,
       departments,
       shifts,
+      namedRoles,
       readOnly: access.viewOnly,
       changed,
       times,
@@ -699,19 +741,26 @@ export async function currentListsToday(
   const today = dateIn(now, timeZone);
   const week = overviewWeek(today);
   const day = asked && week.includes(asked) ? asked : today;
-  const [settings, lookups, inWeek, current, templates, departments, shifts] =
-    await Promise.all([
-      currentModuleSettings("lists"),
-      lookupsFor(businessId),
-      getListsOn(businessId, daysIn(week[0] ?? today, today, timeZone)),
-      // Today is every list still open, whenever it opened, and today's.
-      day === today
-        ? getBusinessLists(businessId, todayIn(now, timeZone))
-        : null,
-      currentTemplates(businessId),
-      currentDepartments(businessId),
-      shiftPatterns(),
-    ]);
+  const [
+    settings,
+    lookups,
+    inWeek,
+    current,
+    templates,
+    departments,
+    shifts,
+    namedRoles,
+  ] = await Promise.all([
+    currentModuleSettings("lists"),
+    lookupsFor(businessId),
+    getListsOn(businessId, daysIn(week[0] ?? today, today, timeZone)),
+    // Today is every list still open, whenever it opened, and today's.
+    day === today ? getBusinessLists(businessId, todayIn(now, timeZone)) : null,
+    currentTemplates(businessId),
+    currentDepartments(businessId),
+    shiftPatterns(),
+    currentListRoles(businessId),
+  ]);
   const weekLists = inWeek === "notYet" ? [] : inWeek;
   const todays = current === "notYet" ? [] : current;
   const ids = [
@@ -733,7 +782,7 @@ export async function currentListsToday(
     weekLists,
     readings: readings === "notYet" ? [] : readings,
     templates,
-    places: placesOf(departments, shifts),
+    places: placesOf(departments, shifts, namedRoles),
     send:
       access.viewOnly || !access.canSend
         ? null

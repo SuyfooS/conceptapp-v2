@@ -45,6 +45,7 @@ export default async function TeamListTemplatePage({
         template,
         departments: setup.departments,
         shifts: setup.shifts,
+        namedRoles: setup.namedRoles,
         readOnly: false,
         changed: stamp !== "",
         times,

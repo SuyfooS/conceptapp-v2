@@ -1181,6 +1181,52 @@ lead on managers who doesn't build where managers see pay: what each holds
 (the same as someone in it, its base's and its own rules and nothing more)
 and reads (drafts, hours, the log, invites), its rank and no pay.
 
+Lists sent to a named role (`20261115001900_named_roles_lists.sql`, the roles
+plan's R11d). `recipient_named_role` on `public.lists`, `public.list_templates`
+and `public.list_schedules` is the role a list "to a role" goes to, built on
+its `recipient_role` by a foreign key over (business_id, recipient_named_role,
+recipient_role) to the role's (business_id, id, base), only on a role (a
+check), and never an archived one, whoever writes it
+(`private.refuse_archived_recipient_role` on each: 22023, hint `archived`,
+the role's row locked `for key share` so an archive waits); null is the role
+itself, as before. A list to a named role is for exactly the active people on
+the staff holding it (`private.holds_list`, `private.list_holders`, and
+through them `private.sees_list`, the lists' policy, `public.my_open_lists`,
+the writers and every list notification); a list to the role itself still
+reaches everyone in it, those in a role named on it among them, so "to the
+workers" reaches a shift lead built on worker as it always did. A recipient's
+JSON takes `namedRole` beside `role` (`private.list_recipient`: of the
+business, else 22023; live, else 22023 hint `archived`; on that role, else
+22023 hint `base`; only on a role), so `public.send_list` sends to one (its
+`lists.send` row adds `recipient.named_role` and `recipient.role_name`) and
+`public.save_list_template` keeps one on a template's default and on each of
+its times (`private.list_schedule_fields`, which gains `for_named`). The
+minute job (`private.lists_tick_business`) opens a time's list to its named
+role while it is live, and once it was archived (its template archived first,
+then restored) treats it as nobody there: the managers while they run the
+lists, else the owners, never the whole base. `public.pass_list` clears it
+with the role. `public.archive_business_role` is refused while a live template
+goes to the role or a time of one sends to it, on or paused (55000, hint
+`lists`, their count in the detail), after its people and open invites (hint
+`held`); a list already sent stays as it was. `public.set_member_role` settles
+the `list:`, `list.due:` and `list.late:` lines of someone moved off a named
+role, still on the staff, for the lists they no longer see
+(`private.sees_list`), as `public.pass_list` settles a list's former holders'.
+`@db/lists` reads each list's,
+template's and time's named role beside the rest (`namedRolesOf`: none on a
+project before the column, so every screen reads as before; `ListHolder` and
+`TemplateRecipient` gain `namedRole`), takes the person's in `getMyLists`, and
+gives the business's roles, archived ones too, to the lists' screens
+(`getListRoles` under RLS, `getListRolesForTeam` with the secret key; none
+until `lists.recipient_named_role` exists); `@db/roles` says the new refusal
+(`archiveBusinessRole`: `lists`) and counts, for "תפקידים והרשאות", the live
+templates that send lists to each named role, by default or by a time, each
+once (`getRoleListsForOwner`, `getRoleListsForTeam`, with the secret key as
+the matrix; none before the column), so the screen holds the role back
+before it is tried; `@db/team`'s `getColleagues` gives each member's
+`namedRole`, which the send screen counts each role's people by.
+`roles_named_lists.test.sql` covers it (18, ids d4…, numbers 050-087-xxxx).
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for

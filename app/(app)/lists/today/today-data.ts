@@ -187,7 +187,8 @@ export function listsTodayData({
           t.archivedAt === null &&
           t.schedules.some(
             (s) =>
-              s.active && scheduleGone(s, places.departments, places.shifts),
+              s.active &&
+              scheduleGone(s, places.departments, places.shifts, places.roles),
           ),
       )
       .map((t) => ({ id: t.id, name: t.name })),

@@ -207,7 +207,9 @@ export function ActivityView({
       case "shift":
         return t("actions.lists.to.shift");
       case "role":
-        return t("actions.lists.to.role", { role: to.role ?? "other" });
+        return to.name
+          ? t("actions.lists.to.namedRole", { name: to.name })
+          : t("actions.lists.to.role", { role: to.role ?? "other" });
     }
   };
   const moduleWords = (key: string, part: string) => `${key}.${part}` as never;

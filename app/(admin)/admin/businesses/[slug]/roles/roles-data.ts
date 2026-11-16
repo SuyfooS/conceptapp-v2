@@ -24,6 +24,7 @@ export function consoleRolesData({
   enabled,
   people,
   invites,
+  lists,
   viewOnly,
   documents,
 }: {
@@ -33,6 +34,11 @@ export function consoleRolesData({
   people: readonly ConsoleRolePerson[];
   /** The open invites to each named role, by its id (R11b); none by default. */
   invites?: ReadonlyMap<string, number>;
+  /**
+   * The live templates that send lists to each named role, by its id
+   * (R11d); none by default.
+   */
+  lists?: ReadonlyMap<string, number>;
   viewOnly: boolean;
   /** Documents are on (wherever chat is): whoever sees pay reads them too. */
   documents: boolean;
@@ -42,6 +48,7 @@ export function consoleRolesData({
     enabled,
     people: people.map((person) => ({ ...person, photo: null })),
     ...(invites ? { invites } : {}),
+    ...(lists ? { lists } : {}),
     viewOnly,
     documents,
   });

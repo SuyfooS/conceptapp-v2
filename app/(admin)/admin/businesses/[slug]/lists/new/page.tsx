@@ -34,6 +34,7 @@ export default async function TeamNewListTemplatePage({
         template: null,
         departments: setup.departments,
         shifts: setup.shifts,
+        namedRoles: setup.namedRoles,
         readOnly: false,
         changed: false,
         times,

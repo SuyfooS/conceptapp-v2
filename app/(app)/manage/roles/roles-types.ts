@@ -44,6 +44,13 @@ export type EditableRole = {
    * for a manager or a worker, whose invites hold nothing back.
    */
   invited: number;
+  /**
+   * The business's live templates that send lists to a role it named (the
+   * roles plan's R11d): by default, or by a time, on or paused. Each holds
+   * it back from the archive as its people do, until it goes to someone
+   * else. Zero for a manager or a worker.
+   */
+  lists: number;
   access: RoleAccess;
   /**
    * Where it starts (`startingAccess`, the roles plan's R10): for a manager
@@ -96,6 +103,8 @@ export type RolesFailure =
   | "limit"
   /** People hold the role, so it can't go to the archive. */
   | "held"
+  /** Lists of a template, or its times, go to the role (R11d): it can't either. */
+  | "lists"
   | "failed";
 
 export type RolesResult = { ok: true } | { ok: false; failure: RolesFailure };
@@ -134,7 +143,7 @@ export type RolesActions = {
   renameRole?: (role: string, name: string) => Promise<RolesResult>;
   /**
    * Takes a role the business named off the list (refused while people hold
-   * it), and takes back a role just added (its undo).
+   * it, or lists go to it), and takes back a role just added (its undo).
    */
   archiveRole?: (role: string) => Promise<RolesResult>;
   /** Brings an archived role back, with its rules (the archive's undo). */
