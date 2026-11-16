@@ -107,6 +107,21 @@ export const BASE_ROLES = ["manager", "worker"] as const;
 
 export type BaseRole = (typeof BASE_ROLES)[number];
 
+/**
+ * A role the screen changes, as it names it: `"manager"` or `"worker"`, or
+ * the id of a role the business named itself (`public.business_roles`, the
+ * roles plan's R11).
+ */
+export type RoleKey = string;
+
+/** Managers or workers, not a role the business named. */
+export function isBaseRole(key: string): key is BaseRole {
+  return (BASE_ROLES as readonly string[]).includes(key);
+}
+
+/** A role's key as it reaches the server: managers, workers, or a named role's id. */
+const roleKey = z.union([z.enum(BASE_ROLES), z.uuid()]);
+
 function allExtras(on: boolean): Record<AccessExtra, boolean> {
   return Object.fromEntries(
     ACCESS_EXTRA_KEYS.map((extra) => [extra, on]),
@@ -250,7 +265,7 @@ export function changesPermissions(role: Role): boolean {
 }
 
 const areaChange = z.object({
-  role: z.enum(BASE_ROLES),
+  role: roleKey,
   area: z.enum(ACCESS_AREAS),
   access: z.object({
     level: z.enum(ACCESS_LEVELS),
@@ -258,18 +273,18 @@ const areaChange = z.object({
   }),
 });
 
-/** One area of managers or workers, as a change on "תפקידים והרשאות" asks for it. */
+/** One area of a role, as a change on "תפקידים והרשאות" asks for it. */
 export type RoleAreaChange = {
-  role: BaseRole;
+  role: RoleKey;
   area: AccessArea;
   access: AreaAccess;
 };
 
 /**
  * A change of one area as it reaches the server (the owner's screen, or the
- * console's): managers or workers, an area, its level never under the area's
- * floor, and only the area's own switches. Null for anything else, which
- * writes nothing.
+ * console's): managers, workers or a role the business named (by its id), an
+ * area, its level never under the area's floor, and only the area's own
+ * switches. Null for anything else, which writes nothing.
  */
 export function parseRoleAreaChange(input: unknown): RoleAreaChange | null {
   const parsed = areaChange.safeParse(input);
@@ -495,7 +510,28 @@ export type MatrixKey = {
   byOwner: boolean;
 };
 
-/** What a business's managers and workers hold, as the database says. */
+/** A role a business named itself (`public.business_roles`, the roles plan's R11). */
+export type NamedRole = {
+  id: string;
+  /** As the business typed it, in Hebrew. */
+  name: string;
+  /** Its English name, when the business gave one. */
+  nameEn: string | null;
+  /** What it is built on: its rank, and its rules where it has none of its own. */
+  base: BaseRole;
+};
+
+/** A named role with its rules, as the matrix has them. */
+export type NamedRoleRules = NamedRole & {
+  /** Its rule without a row of its own: its base's, never pay. */
+  byDefault: ReadonlySet<string>;
+  /** Its own rule for each key: its row, else its base's (`private.role_gives`). */
+  given: ReadonlySet<string>;
+  /** What it holds by that rule, with what each key requires (`private.role_holds`). */
+  held: ReadonlySet<string>;
+};
+
+/** What a business's managers, workers and named roles hold, as the database says. */
 export type RoleMatrix = {
   keys: MatrixKey[];
   /** The keys whose default roles include each role: its rule without a row. */
@@ -504,14 +540,53 @@ export type RoleMatrix = {
   given: Record<BaseRole, ReadonlySet<string>>;
   /** What each role holds by that rule, with what each key requires (`private.role_holds`). */
   held: Record<BaseRole, ReadonlySet<string>>;
+  /** The business's live named roles, in their order. */
+  named: NamedRoleRules[];
+  /**
+   * The database takes roles a business names (its migration reached it): a
+   * screen offers "הוספת תפקיד" only then.
+   */
+  addsRoles: boolean;
 };
+
+/** One role's rules in a matrix. */
+export type RoleRulesOf = {
+  base: BaseRole;
+  /** The role the business named, or null for managers or workers. */
+  named: NamedRoleRules | null;
+  byDefault: ReadonlySet<string>;
+  given: ReadonlySet<string>;
+  held: ReadonlySet<string>;
+};
+
+/** A role's rules in a matrix, by its key; null for a named role it hasn't (archived, or unknown). */
+export function rulesOf(matrix: RoleMatrix, key: RoleKey): RoleRulesOf | null {
+  if (isBaseRole(key)) {
+    return {
+      base: key,
+      named: null,
+      byDefault: matrix.byDefault[key],
+      given: matrix.given[key],
+      held: matrix.held[key],
+    };
+  }
+  const named = matrix.named.find((role) => role.id === key);
+  if (!named) return null;
+  return {
+    base: named.base,
+    named,
+    byDefault: named.byDefault,
+    given: named.given,
+    held: named.held,
+  };
+}
 
 /**
  * The matrix from the declarations alone, for a project whose database can't
  * answer yet (its function missing until the migration reaches it): each
  * key's default roles, pay for the roles given it (`payRoles`, the
  * business's rows), and nothing settable, so every area shows today's rules,
- * closed.
+ * closed, with no named role and none to add.
  */
 export function matrixByDefault(
   catalogue: readonly PermissionEntry[],
@@ -557,6 +632,8 @@ export function matrixByDefault(
     byDefault: setOf(byDefault),
     given: setOf(gives),
     held: setOf((role, entry) => holds(role, entry.key, [])),
+    named: [],
+    addsRoles: false,
   };
 }
 
@@ -582,4 +659,64 @@ export function checkRoleName(
     return { ok: false, problem: "taken" };
   }
   return { ok: true, name };
+}
+
+/** How many live roles a business may name (`public.create_business_role`). */
+export const ROLE_LIMIT = 20;
+
+const newRole = z.object({
+  name: z.string(),
+  base: z.enum(BASE_ROLES),
+  copyFrom: roleKey,
+});
+
+/** A role to add: its name, what it is built on, and whose permissions it starts with. */
+export type NewRoleInput = { name: string; base: BaseRole; copyFrom: RoleKey };
+
+/**
+ * A role to add as it reaches the server (the owner's "הוספת תפקיד", or the
+ * console's): its name as `checkRoleName` keeps it, none of `taken`, what
+ * it is built on, and the role it copies, managers, workers or one the
+ * business named. Its name's problem, or null for anything else, which adds
+ * nothing.
+ */
+export function parseNewRole(
+  input: unknown,
+  taken: readonly string[],
+):
+  | { ok: true; role: NewRoleInput }
+  | { ok: false; problem: RoleNameProblem | null } {
+  const parsed = newRole.safeParse(input);
+  if (!parsed.success) return { ok: false, problem: null };
+  const name = checkRoleName(parsed.data.name, taken);
+  if (!name.ok) return { ok: false, problem: name.problem };
+  return { ok: true, role: { ...parsed.data, name: name.name } };
+}
+
+const renamed = z.object({ role: z.uuid(), name: z.string() });
+
+/**
+ * A named role's new name as it reaches the server: the role's id and the
+ * name as `checkRoleName` keeps it, none of `taken` (the other roles'
+ * names). Its name's problem, or null for anything else.
+ */
+export function parseRoleRename(
+  input: unknown,
+  taken: readonly string[],
+):
+  | { ok: true; role: string; name: string }
+  | { ok: false; problem: RoleNameProblem | null } {
+  const parsed = renamed.safeParse(input);
+  if (!parsed.success) return { ok: false, problem: null };
+  const name = checkRoleName(parsed.data.name, taken);
+  if (!name.ok) return { ok: false, problem: name.problem };
+  return { ok: true, role: parsed.data.role, name: name.name };
+}
+
+/** A named role's name in a locale: its English one in English, when it has one. */
+export function namedRoleName(
+  role: Pick<NamedRole, "name" | "nameEn">,
+  locale: string,
+): string {
+  return locale.startsWith("en") && role.nameEn ? role.nameEn : role.name;
 }

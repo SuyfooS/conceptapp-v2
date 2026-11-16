@@ -1,18 +1,28 @@
 "use server";
 
-import { setRoleArea } from "@db/roles";
-import { enabledModules } from "@domain/modules";
+import {
+  archiveBusinessRole,
+  createBusinessRole,
+  renameBusinessRole,
+  restoreBusinessRole,
+  setRoleArea,
+} from "@db/roles";
+import { enabledModules, ROLES } from "@domain/modules";
 import {
   type AccessArea,
   type AreaAccess,
   areaShown,
+  parseNewRole,
   parseRoleAreaChange,
+  parseRoleRename,
 } from "@domain/role-access";
 import { manifests } from "@modules/registry";
 import { z } from "zod";
+import { currentWording } from "../../current-wording";
 import { currentMember } from "../../member";
+import { translator } from "../../wording";
 import { rolesAccess } from "./roles";
-import type { RolesFailure, RolesResult } from "./roles-types";
+import type { NewRole, RolesFailure, RolesResult } from "./roles-types";
 
 const businessId = z.uuid();
 
@@ -47,8 +57,8 @@ async function refusal(business: string): Promise<RolesFailure> {
 }
 
 /**
- * The owner puts one area of managers or workers where the screen says (a
- * change, or the undo of one): its level, never under the area's floor, and
+ * The owner puts one area of a role (managers, workers or one the business
+ * named, by its id) where the screen says (a change, or the undo of one): its level, never under the area's floor, and
  * its switches (`parseRoleAreaChange`), in an area the business has
  * (`areaShown`). A view as the owner writes nothing.
  */
@@ -78,4 +88,112 @@ export async function setRoleAreaAction(
     change.area,
     change.access,
   );
+}
+
+/**
+ * The owner of the business the screen was drawn for, able to write: the
+ * session's person first, then the bound business, then not a view.
+ */
+async function writingOwner(
+  business: string,
+): Promise<
+  | { ok: true; userId: string; businessId: string }
+  | { ok: false; failure: RolesFailure }
+> {
+  const owner = await rolesAccess();
+  if (!owner) return { ok: false, failure: await refusal(business) };
+  const id = businessId.safeParse(business);
+  if (!id.success) return { ok: false, failure: "failed" };
+  if (owner.businessId !== id.data) {
+    return { ok: false, failure: "businessChanged" };
+  }
+  if (owner.viewOnly) return { ok: false, failure: "viewOnly" };
+  return { ok: true, userId: owner.userId, businessId: owner.businessId };
+}
+
+/**
+ * The built-in roles' names in the business's words, which a role it names
+ * may not take; the database refuses one another of its roles goes by.
+ */
+async function builtInNames(): Promise<string[]> {
+  const tRoles = translator(await currentWording(), "app.team.roles");
+  return ROLES.map((role) => tRoles(role));
+}
+
+/**
+ * The owner adds a role the business names (the roles plan's R11a; Orel, 15
+ * November 2026, answer 1): its name, what it is built on, and the role whose
+ * permissions it starts with (`parseNewRole`). Its key is its id.
+ */
+export async function addRoleAction(
+  business: string,
+  input: NewRole,
+): Promise<{ ok: true; key: string } | { ok: false; failure: RolesFailure }> {
+  const owner = await writingOwner(business);
+  if (!owner.ok) return owner;
+  const role = parseNewRole(input, await builtInNames());
+  if (!role.ok) {
+    return {
+      ok: false,
+      failure: role.problem === "taken" ? "taken" : "failed",
+    };
+  }
+  const made = await createBusinessRole(
+    owner.userId,
+    owner.businessId,
+    role.role,
+  );
+  return made.ok ? { ok: true, key: made.id } : made;
+}
+
+/** The owner gives one of the business's named roles a new name. */
+export async function renameRoleAction(
+  business: string,
+  role: string,
+  name: string,
+): Promise<RolesResult> {
+  const owner = await writingOwner(business);
+  if (!owner.ok) return owner;
+  const renamed = parseRoleRename({ role, name }, await builtInNames());
+  if (!renamed.ok) {
+    return {
+      ok: false,
+      failure: renamed.problem === "taken" ? "taken" : "failed",
+    };
+  }
+  return renameBusinessRole(
+    owner.userId,
+    owner.businessId,
+    renamed.role,
+    renamed.name,
+  );
+}
+
+const roleId = z.uuid();
+
+/**
+ * The owner archives one of the business's named roles (also the undo of
+ * adding it), refused while people hold it ("held").
+ */
+export async function archiveRoleAction(
+  business: string,
+  role: string,
+): Promise<RolesResult> {
+  const owner = await writingOwner(business);
+  if (!owner.ok) return owner;
+  const id = roleId.safeParse(role);
+  if (!id.success) return { ok: false, failure: "failed" };
+  return archiveBusinessRole(owner.userId, owner.businessId, id.data);
+}
+
+/** The owner brings an archived role back (the undo of archiving it). */
+export async function restoreRoleAction(
+  business: string,
+  role: string,
+): Promise<RolesResult> {
+  const owner = await writingOwner(business);
+  if (!owner.ok) return owner;
+  const id = roleId.safeParse(role);
+  if (!id.success) return { ok: false, failure: "failed" };
+  return restoreBusinessRole(owner.userId, owner.businessId, id.data);
 }

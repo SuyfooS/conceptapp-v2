@@ -383,6 +383,31 @@ export type ActivityLine =
       role: Role | null;
       permission: ActivityRolePermission;
       on: boolean;
+      /**
+       * The role the business named, by its name then, when the switch was
+       * its own (roles R11a); `role` is what it is built on.
+       */
+      named?: string;
+    }
+  | {
+      /**
+       * An owner or the team added a role the business names (roles R11a),
+       * built on a manager or a worker.
+       */
+      action: "role.create";
+      name: string;
+      base: Role | null;
+    }
+  | {
+      /** A role the business named got a new name. */
+      action: "role.rename";
+      from: string;
+      to: string;
+    }
+  | {
+      /** A role the business named went to the archive, or came back. */
+      action: "role.archive" | "role.restore";
+      name: string;
     }
   | {
       action: "lists.reopen";
@@ -663,7 +688,11 @@ const schemas = {
     role: z.unknown(),
     perm: z.string(),
     to: z.boolean(),
+    name: z.string().optional().catch(undefined),
   }),
+  "role.create": z.object({ name: z.string(), base: z.unknown().optional() }),
+  "role.rename": z.object({ from: z.string(), to: z.string() }),
+  "role.named": z.object({ name: z.string() }),
   permission: z.object({
     perm: z.string(),
     role: z.unknown().optional(),
@@ -1104,7 +1133,25 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         role: roleOf(details.role),
         permission: rolePermissionOf(details.perm),
         on: details.to,
+        ...(details.name ? { named: details.name } : {}),
       };
+    }
+    case "role.create": {
+      const details = read(schemas["role.create"]);
+      return details
+        ? { action: row.action, name: details.name, base: roleOf(details.base) }
+        : other;
+    }
+    case "role.rename": {
+      const details = read(schemas["role.rename"]);
+      return details
+        ? { action: row.action, from: details.from, to: details.to }
+        : other;
+    }
+    case "role.archive":
+    case "role.restore": {
+      const details = read(schemas["role.named"]);
+      return details ? { action: row.action, name: details.name } : other;
     }
     case "permission.grant":
     case "permission.revoke": {

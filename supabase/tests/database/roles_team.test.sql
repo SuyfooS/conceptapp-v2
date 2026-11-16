@@ -691,7 +691,7 @@ insert into public.role_permissions (business_id, role, perm, allowed)
 values
   ('97000000-0000-4000-b000-000000000001', 'worker', 'clock.edit', true),
   ('97000000-0000-4000-b000-000000000001', 'manager', 'clock.edit', false)
-on conflict (business_id, role, perm) do update set allowed = excluded.allowed;
+on conflict (business_id, role, named_role, perm) do update set allowed = excluded.allowed;
 set local role service_role;
 insert into ids values ('shift', public.clock_in(pg_temp.p('target'),
   '97000000-0000-4000-b000-000000000001', null, '2026-12-01 06:00+00', null, true));

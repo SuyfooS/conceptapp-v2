@@ -2521,14 +2521,20 @@
             }
           },
           "rolePermission": {
-            "editOn": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו עורכים ב{area}",
-            "editOff": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: ב{area} עכשיו רואים בלי לערוך",
-            "viewOn": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו עם גישה ל{area}",
-            "viewOff": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו בלי גישה ל{area}",
-            "extraOn": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו גם {extra}",
-            "extraOff": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו בלי {extra}",
-            "otherOn": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: הרשאה נוספה",
-            "otherOff": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: הרשאה אחת הוסרה"
+            "editOn": "{role, select, manager {מנהלים} worker {עובדים} named {{name}} other {תפקיד אחר}}: עכשיו עורכים ב{area}",
+            "editOff": "{role, select, manager {מנהלים} worker {עובדים} named {{name}} other {תפקיד אחר}}: ב{area} עכשיו רואים בלי לערוך",
+            "viewOn": "{role, select, manager {מנהלים} worker {עובדים} named {{name}} other {תפקיד אחר}}: עכשיו עם גישה ל{area}",
+            "viewOff": "{role, select, manager {מנהלים} worker {עובדים} named {{name}} other {תפקיד אחר}}: עכשיו בלי גישה ל{area}",
+            "extraOn": "{role, select, manager {מנהלים} worker {עובדים} named {{name}} other {תפקיד אחר}}: עכשיו גם {extra}",
+            "extraOff": "{role, select, manager {מנהלים} worker {עובדים} named {{name}} other {תפקיד אחר}}: עכשיו בלי {extra}",
+            "otherOn": "{role, select, manager {מנהלים} worker {עובדים} named {{name}} other {תפקיד אחר}}: הרשאה נוספה",
+            "otherOff": "{role, select, manager {מנהלים} worker {עובדים} named {{name}} other {תפקיד אחר}}: הרשאה אחת הוסרה"
+          },
+          "role": {
+            "create": "נוסף התפקיד {name}, בנוי על {base, select, manager {מנהל} worker {עובד} other {תפקיד אחר}}",
+            "rename": "התפקיד {from} נקרא עכשיו {to}",
+            "archive": "התפקיד {name} הוסר",
+            "restore": "התפקיד {name} הוחזר"
           },
           "permission": {
             "grant": "{perm, select, payroll {מתן גישה לשעות ולשכר} other {מתן הרשאה}} {to}",
@@ -2763,6 +2769,18 @@
             "taken": "כבר יש תפקיד בשם הזה."
           }
         },
+        "named": {
+          "rename": "שינוי השם",
+          "renameLabel": "שינוי השם, {role}",
+          "archive": "הסרת התפקיד",
+          "archiveLabel": "הסרת התפקיד, {role}",
+          "archiveHint": "התפקיד יורד מהרשימה, ואפשר לבטל מיד אחרי.",
+          "archiveHeld": "יש בתפקיד אנשים, ולכן אי אפשר להסיר אותו. קודם נותנים להם תפקיד אחר."
+        },
+        "renameSheet": {
+          "title": "שינוי שם התפקיד",
+          "submit": "שינוי השם"
+        },
         "done": {
           "edit": "{role}: עכשיו עורכים ב{area}",
           "editWith": "{role}: עכשיו עורכים ב{area}, עם {extras}",
@@ -2773,6 +2791,9 @@
           "extraOff": "{role}: עכשיו בלי {extra}",
           "added": "התפקיד {name} נוסף",
           "addUndone": "התפקיד {name} הוסר",
+          "renamed": "התפקיד נקרא עכשיו {name}",
+          "archived": "התפקיד {name} הוסר",
+          "restored": "התפקיד {name} חזר",
           "undone": "השינוי בוטל"
         },
         "failure": {
@@ -2781,6 +2802,10 @@
           "closed": "התחום הזה עוד לא פתוח לשינויים, ולכן השינוי לא נשמר.",
           "requires": "קודם צריך לתת לתפקיד עריכה בתחום הזה, ולכן השינוי לא נשמר.",
           "businessChanged": "עברת לעסק אחר בינתיים, ולכן השינוי לא נשמר. כדאי לטעון את המסך מחדש.",
+          "gone": "התפקיד הזה כבר לא ברשימה, ולכן השינוי לא נשמר. כדאי לטעון את המסך מחדש.",
+          "taken": "כבר יש תפקיד בשם הזה, ולכן השינוי לא נשמר.",
+          "limit": "בעסק כבר יש <ltr>{max}</ltr> תפקידים בשמות משלו, וזה המקסימום. אפשר להסיר אחד ואז להוסיף.",
+          "held": "יש בתפקיד אנשים, ולכן אי אפשר להסיר אותו. קודם נותנים להם תפקיד אחר.",
           "failed": "השינוי לא נשמר. בדקו את החיבור ונסו שוב."
         }
       },

@@ -378,10 +378,10 @@ select is_empty(
 -- Who may call what
 
 select ok(
-  not has_function_privilege('authenticated', 'private.role_gives(uuid, public.member_role, text)', 'execute')
-  and not has_function_privilege('anon', 'private.role_gives(uuid, public.member_role, text)', 'execute')
-  and not has_function_privilege('authenticated', 'private.role_holds(uuid, public.member_role, text)', 'execute')
-  and not has_function_privilege('anon', 'private.role_holds(uuid, public.member_role, text)', 'execute')
+  not has_function_privilege('authenticated', 'private.role_gives(uuid, public.member_role, text, uuid)', 'execute')
+  and not has_function_privilege('anon', 'private.role_gives(uuid, public.member_role, text, uuid)', 'execute')
+  and not has_function_privilege('authenticated', 'private.role_holds(uuid, public.member_role, text, uuid)', 'execute')
+  and not has_function_privilege('anon', 'private.role_holds(uuid, public.member_role, text, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'private.refuse_by_owner_denial()', 'execute')
   and not has_function_privilege('authenticated', 'private.refuse_requires_cycle()', 'execute')
   and not has_function_privilege('authenticated', 'private.holds_perm(uuid, uuid, text)', 'execute')

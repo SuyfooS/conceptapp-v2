@@ -17,7 +17,9 @@ const demoActions: RolesActions = {
     added += 1;
     return { ok: true, key: `demo-role-${added}` };
   },
-  removeRole: async () => ({ ok: true }),
+  renameRole: async () => ({ ok: true }),
+  archiveRole: async () => ({ ok: true }),
+  restoreRole: async () => ({ ok: true }),
 };
 
 /** The roles screen over the demo's mock rows, with actions that store nothing. */

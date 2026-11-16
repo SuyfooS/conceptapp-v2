@@ -977,6 +977,77 @@ group for moderators outside it (hidden and their pushes skipped once
 lowered), today's rule frozen against the new one for every membership, and
 no chat or documents function or policy asking a rank.
 
+Roles a business names itself (`20261115001500_named_roles.sql`, the roles
+plan's R11a; Orel's answers of 15 November 2026, 1 and 5): an owner or the
+team adds a role with a name of its own, built on a manager or a worker, with
+its own permissions; nobody holds one until R11b gives it, so nothing changes
+for anyone yet. `public.business_roles` holds them: the name (trimmed, its
+spaces single, 1 to 40 characters, one live role a name in a business
+whatever its case: `business_roles_live_name_idx`), an optional English one,
+the base (manager or worker: its rank, and its rules where it has none of its
+own), its place in the list (`sort`), who made it and when, and when it was
+archived. Members and view sessions read them (a colleague's role name is no
+secret); nothing writes them but the functions below, not even the secret
+key. `memberships.named_role` is the one a person holds, always built on
+their role: a foreign key over (business_id, named_role, role) to the role's
+(business_id, id, base), and a trigger (`private.clear_named_role`) leaves it
+behind when the role changes to another base, whoever changes it
+(`public.set_member_role`, `public.claim_invite`), unless the same update
+sets a named role; another (`private.refuse_archived_named_role`) refuses
+putting anyone in an archived role of the business (22023, hint `archived`),
+whoever writes it, locking the role's row as the foreign key's check does so
+an archive under way is waited for. A named role's rules are rows of `public.role_permissions`
+with `named_role` set and `role` its base (the same foreign key, on delete
+cascade); the primary key (business_id, role, perm) can't take the nullable
+column, so a unique index nulls not distinct over (business_id, role,
+named_role, perm) replaced it (`role_permissions_rule_idx`) and
+`set_role_permission`'s upsert names it (the demo's seed and the pay branch say
+`on conflict do nothing`, which needs no target). Someone in a named role
+holds by role what its row decides, else its base's rule (the base's row,
+else the key's default roles), with `requires` and personal grants as
+before (`private.role_gives` and `private.role_holds` take the named role as
+a last, defaulted argument; `private.holds_perm` passes the person's). A
+named role never holds pay by role: `private.role_gives` says no for a key an
+owner gives, `private.refuse_named_role_pay` refuses such a row (22023, hint
+`pay`), and its people are given pay one by one on "מי רואה שכר". A view
+session still views the built-in roles. `public.set_role_permission` and
+`set_role_permissions` take `grant_named` (defaulted, so every caller before
+is unchanged): the role must be live, in the business, on `grant_role` (22023,
+hint `base`; P0002 for one that isn't), never pay; its default is its base's
+rule, so "back to default" removes its row and it follows its base again;
+its `role.permission` log row adds `named_role` and `name`.
+`public.create_business_role(actor, business, base_role, role_name,
+role_name_en, copy_from, copy_role)` (owners and the team,
+`private.check_role_changer`, as `check_permission_giver`) copies its base, the
+other built-in role (`copy_role`) or another live named role (`copy_from`):
+rows only for the keys owners switch where that one's rule differs from the
+base's, so it starts holding exactly what the source holds, never pay. It
+refuses a live name (23505, hint `taken`), a twenty-first live role (54000,
+hint `limit`), a bad name (22023, hint `name` or `name_en`), base or copy;
+a demo business takes them as it takes its rules, its reset deleting them
+with the business. `public.rename_business_role` (an English name of null
+kept, empty removed), `public.archive_business_role` (refused while anyone
+active holds it: 55000, hint `held`, the count as its detail; those who left
+with it lose it, so nobody comes back in an archived role; its rules kept)
+and `public.restore_business_role` (the archive's undo, refused for a name
+taken or the twentieth) complete it; each is logged (`role.create`,
+`role.rename`, `role.archive`, `role.restore`), read as `role.permission` is
+(`private.log_perm`: `manage.view`). `public.role_permission_matrix` adds
+`named_role`, `role_name` and `role_name_en`: managers' and workers' rows as
+before, then each live named role's, its base as `role`, its default its
+base's rule (never pay). `@db/roles` reads them (`RoleMatrix.named`, and
+`addsRoles` while the function has the columns: before the migration nothing
+is added) and the people in each role (`getRolePeopleForOwner` with photos,
+under RLS as "מי רואה שכר" reads them, which already shows a member and a
+view their business's `named_role`; `getRolePeopleForTeam` without, with
+the secret key, as the team is no member; both tolerating a missing column), writes a
+named role's area with its id (`setRoleArea`), and adds, renames, archives
+and restores one (`createBusinessRole`, `renameBusinessRole`,
+`archiveBusinessRole`, `restoreBusinessRole`), the last three only for a role
+of the business the screen was drawn for. `roles_named.test.sql` covers it,
+with R1's resolver frozen and compared before any named role exists, and
+everyone's answers before and after for every membership without one.
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for

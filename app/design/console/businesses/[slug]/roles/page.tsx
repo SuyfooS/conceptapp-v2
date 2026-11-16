@@ -6,6 +6,7 @@ import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 import { consoleRolesData } from "../../../../../(admin)/admin/businesses/[slug]/roles/roles-data";
 import { demoModuleRows } from "../../../../shell/data";
+import { demoShiftLead } from "../../../../shell/manage/roles/data";
 import { consoleAccess, setups } from "../../../data";
 import { ConsoleRolesDemo } from "./demo";
 
@@ -24,7 +25,10 @@ type Props = {
 // declarations: scheduling since R3, the time clock since R4, lists since
 // R5, the team since R6, the management page since R7 and chat since R8,
 // the team and the management page with edit, view and none) and every
-// other area closed, and the way back to the business. `?state=open` opens every area,
+// other area closed, and the way back to the business. The shell twin's
+// "אחראי משמרת" follows managers and workers, a role the business named
+// (R11a) and held by nobody yet, as every one is until R11b gives them, with
+// "הוספת תפקיד", its rename and its removal. `?state=open` opens every area,
 // as the screen will be once each phase has opened its own, so every switch
 // changes with its undo; `?state=readOnly` is a team role that only reads
 // businesses. Stand-in actions: nothing reaches a database.
@@ -67,19 +71,23 @@ async function Demo({ params, searchParams }: Props) {
     "chat" as const,
   ];
   const business = `/design/console/businesses/${slug}`;
+  const data = consoleRolesData({
+    matrix,
+    enabled,
+    people: setup.business.people.flatMap((person) =>
+      person.status === "member"
+        ? [{ name: person.name || t("noName"), role: person.role }]
+        : [],
+    ),
+    viewOnly: state === "readOnly",
+    documents: true,
+  });
   return (
     <ConsoleRolesDemo
-      data={consoleRolesData({
-        matrix,
-        enabled,
-        people: setup.business.people.flatMap((person) =>
-          person.status === "member"
-            ? [{ name: person.name || t("noName"), role: person.role }]
-            : [],
-        ),
-        viewOnly: state === "readOnly",
-        documents: true,
-      })}
+      data={{
+        ...data,
+        roles: [...data.roles, { ...demoShiftLead, people: [] }],
+      }}
       paths={{
         place: "console",
         business,

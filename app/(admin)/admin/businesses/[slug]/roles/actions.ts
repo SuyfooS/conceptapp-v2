@@ -2,18 +2,31 @@
 
 import { getPlatformStaff } from "@db/admin";
 import { getBusinessModulesForTeam } from "@db/module-settings";
-import { setRoleArea } from "@db/roles";
-import { enabledModules } from "@domain/modules";
+import {
+  archiveBusinessRole,
+  createBusinessRole,
+  renameBusinessRole,
+  restoreBusinessRole,
+  setRoleArea,
+} from "@db/roles";
+import { enabledModules, ROLES } from "@domain/modules";
 import { consoleRolesAccess } from "@domain/platform";
 import {
   type AccessArea,
   type AreaAccess,
   areaShown,
+  parseNewRole,
   parseRoleAreaChange,
+  parseRoleRename,
 } from "@domain/role-access";
 import { manifests } from "@modules/registry";
+import { getTranslations } from "next-intl/server";
 import { z } from "zod";
-import type { RolesResult } from "@/app/(app)/manage/roles/roles-types";
+import type {
+  NewRole,
+  RolesFailure,
+  RolesResult,
+} from "@/app/(app)/manage/roles/roles-types";
 
 const businessId = z.uuid();
 
@@ -48,8 +61,9 @@ async function rolesChanger(): Promise<
 }
 
 /**
- * Someone on the team puts one area of managers or workers where the screen
- * says (a change, or the undo of one): its level, never under the area's
+ * Someone on the team puts one area of a role (managers, workers or one the
+ * business named, by its id) where the screen says (a change, or the undo of
+ * one): its level, never under the area's
  * floor, and its switches (`parseRoleAreaChange`). An area not open for
  * changes writes nothing, nor one the business hasn't (`areaShown`).
  */
@@ -76,4 +90,90 @@ export async function setTeamRoleAreaAction(
     change.area,
     change.access,
   );
+}
+
+/**
+ * The built-in roles' names as the console shows them, which a role the
+ * business names may not take; the database refuses one another of its roles
+ * goes by.
+ */
+async function builtInNames(): Promise<string[]> {
+  const tRoles = await getTranslations("app.team.roles");
+  return ROLES.map((role) => tRoles(role));
+}
+
+/**
+ * Someone on the team adds a role the business names (the roles plan's
+ * R11a; Orel, 15 November 2026, answers 1 and 5): its name, what it is built
+ * on, and the role whose permissions it starts with (`parseNewRole`). In a
+ * demo business too, whose reset takes it away. Its key is its id.
+ */
+export async function addTeamRoleAction(
+  business: string,
+  input: NewRole,
+): Promise<{ ok: true; key: string } | { ok: false; failure: RolesFailure }> {
+  const id = businessId.safeParse(business);
+  if (!id.success) return { ok: false, failure: "failed" };
+  const staff = await rolesChanger();
+  if (!staff.ok) return staff;
+  const role = parseNewRole(input, await builtInNames());
+  if (!role.ok) {
+    return {
+      ok: false,
+      failure: role.problem === "taken" ? "taken" : "failed",
+    };
+  }
+  const made = await createBusinessRole(staff.userId, id.data, role.role);
+  return made.ok ? { ok: true, key: made.id } : made;
+}
+
+/** Someone on the team gives one of the business's named roles a new name. */
+export async function renameTeamRoleAction(
+  business: string,
+  role: string,
+  name: string,
+): Promise<RolesResult> {
+  const id = businessId.safeParse(business);
+  if (!id.success) return { ok: false, failure: "failed" };
+  const staff = await rolesChanger();
+  if (!staff.ok) return staff;
+  const renamed = parseRoleRename({ role, name }, await builtInNames());
+  if (!renamed.ok) {
+    return {
+      ok: false,
+      failure: renamed.problem === "taken" ? "taken" : "failed",
+    };
+  }
+  return renameBusinessRole(staff.userId, id.data, renamed.role, renamed.name);
+}
+
+const roleId = z.uuid();
+
+/**
+ * Someone on the team archives one of the business's named roles (also the
+ * undo of adding it), refused while people hold it ("held").
+ */
+export async function archiveTeamRoleAction(
+  business: string,
+  role: string,
+): Promise<RolesResult> {
+  const id = businessId.safeParse(business);
+  const named = roleId.safeParse(role);
+  if (!id.success || !named.success) return { ok: false, failure: "failed" };
+  const staff = await rolesChanger();
+  if (!staff.ok) return staff;
+  return archiveBusinessRole(staff.userId, id.data, named.data);
+}
+
+/** Someone on the team brings an archived role back (the undo of archiving it). */
+export async function restoreTeamRoleAction(
+  business: string,
+  role: string,
+): Promise<RolesResult> {
+  const id = businessId.safeParse(business);
+  const named = roleId.safeParse(role);
+  if (!id.success || !named.success) return { ok: false, failure: "failed" };
+  const staff = await rolesChanger();
+  if (!staff.ok) return staff;
+  return restoreBusinessRole(staff.userId, id.data, named.data);
 }

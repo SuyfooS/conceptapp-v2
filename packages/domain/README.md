@@ -72,7 +72,13 @@ change as the server takes it (`parseRoleAreaChange`: managers or workers,
 a known area never under its floor, only its own switches), the areas a
 business has (`areaShown`: a module's while it is on, team and manage
 always), and where workers hold more than managers (`heldBeyond`, when a
-manager gives no one the worker role).
+manager gives no one the worker role). Roles a business names (R11a): a
+role's key is `manager`, `worker` or a named role's id (`RoleKey`,
+`isBaseRole`), the matrix carries the live ones (`RoleMatrix.named`,
+`addsRoles`) and finds a role's rules by key (`rulesOf`), a new role and a
+new name are parsed as the server takes them (`parseNewRole`,
+`parseRoleRename`, over `checkRoleName`), at most `ROLE_LIMIT` live, and
+`namedRoleName` gives the English name in English when there is one.
 
 `manage-access.ts` is who manages the business on /manage (the roles plan's
 R7): `manageReach` (edit at `manage.edit`, view at `manage.view`, else

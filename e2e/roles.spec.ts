@@ -6,6 +6,7 @@ import {
   openRolesBusiness,
   ROLES_PEOPLE,
   rolesLogActors,
+  rolesNamed,
   rolesRules,
   setRolesPayRole,
 } from "./db";
@@ -15,10 +16,11 @@ import { heT } from "./t";
 // Roles and permissions, the owner's own screen (the roles plan's R9; Orel's
 // answers of 15 November 2026, issue #1): only owners change what each role
 // does, every change saves at once with "ביטול" on its toast, and pay stays
-// on "מי רואה שכר". It runs in a real business of its own (e2e/db.ts), every
-// rule on its default, made afresh for each test and gone after, so nothing
-// here depends on what another spec did to a demo business's rules, at every
-// screen size.
+// on "מי רואה שכר". The owner also adds a role the business names (R11a),
+// which shows with nobody in it and is removed, with its undo. It
+// runs in a real business of its own (e2e/db.ts), every rule on its default,
+// made afresh for each test and gone after, so nothing here depends on what
+// another spec did to a demo business's rules, at every screen size.
 
 const OWNER = ROLES_PEOPLE.owner;
 const MANAGER = ROLES_PEOPLE.manager;
@@ -124,8 +126,10 @@ test("the owner opens roles from the management page, gives workers the lists, a
         .filter({ visible: true }),
     ).toHaveAttribute("href", "/manage");
     await expect(shown(page, r.savesItself)).toBeVisible();
-    // Roles a business names come later (R11).
-    await expect(page.getByRole("button", { name: r.add })).toHaveCount(0);
+    // The owner adds roles the business names (R11a).
+    await expect(
+      page.getByRole("button", { name: r.add }).filter({ visible: true }),
+    ).toBeVisible();
     await expectCleanPage(page);
 
     await openRole(page, roles.worker, testInfo.project.name);
@@ -277,4 +281,119 @@ test("a role that sees pay is told it still reads everyone's hours without the c
   await expect(
     page.getByText(r.payHours).filter({ visible: true }),
   ).toHaveCount(testInfo.project.name === "desktop" ? 1 : 0);
+});
+
+/**
+ * A role on the screen, as each size shows it: its row in the list on a phone
+ * and a tablet, its column's head on a computer.
+ */
+const roleShown = (page: Page, role: string, project: string) =>
+  project === "desktop"
+    ? page
+        .getByRole("main")
+        .getByRole("columnheader", { name: new RegExp(`^${literal(role)}`) })
+        .filter({ visible: true })
+    : page
+        .getByRole("main")
+        .getByRole("button", { name: new RegExp(`^${literal(role)}`) })
+        .filter({ visible: true });
+
+test("the owner adds a role built on workers and copied from them, with nobody in it yet, and removes it", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const project = testInfo.project.name;
+  const name = "אחראי משמרת";
+  const sheet = r.addSheet;
+  await signIn(page, OWNER);
+  await page.goto("/manage/roles");
+  await expect(title(page, r.title)).toBeVisible();
+
+  await page
+    .getByRole("button", { name: r.add })
+    .filter({ visible: true })
+    .click();
+  const dialog = page.getByRole("dialog", { name: sheet.title });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel(sheet.name).fill(name);
+  // Built on a worker, its permissions copied from workers, as the sheet
+  // starts.
+  await expect(
+    dialog.getByRole("radio", {
+      name: new RegExp(`^${literal(roles.worker)}`),
+    }),
+  ).toBeChecked();
+  await expect(
+    dialog.getByRole("button", { name: `${sheet.copy}: ${roles.worker}` }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: sheet.submit }).click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    toast(page, heT("app.manage.roles.done.added", { name })),
+  ).toBeVisible();
+  // As workers are, with no rule of its own, and nobody holds it.
+  await expect
+    .poll(rolesNamed)
+    .toEqual([{ name, base: "worker", archived: false, rules: 0, people: 0 }]);
+
+  const added = roleShown(page, name, project);
+  await expect(added).toBeVisible();
+  await expect(added).toContainText(
+    heT("app.manage.roles.builtOn", { role: roles.worker }),
+  );
+  await expect(added).toContainText(
+    heT("app.manage.roles.people", { count: 0 }),
+  );
+  await expectCleanPage(page);
+
+  // The team screen gives only managers and workers until R11b: the role
+  // nobody holds leads nowhere it can't be given.
+  await openRole(page, name, project);
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: r.emptyRole })
+      .filter({ visible: true }),
+  ).toHaveCount(0);
+
+  // Removed, and back with its undo.
+  if (project === "desktop") {
+    await page
+      .getByRole("main")
+      .getByRole("button", {
+        name: heT("app.manage.roles.named.archiveLabel", { role: name }),
+      })
+      .click();
+  } else {
+    await page
+      .getByRole("main")
+      .getByRole("button", {
+        name: new RegExp(`^${literal(r.named.archive)}`),
+      })
+      .filter({ visible: true })
+      .click();
+  }
+  const archived = heT("app.manage.roles.done.archived", { name });
+  await expect(toast(page, archived)).toBeVisible();
+  await expect(roleShown(page, name, project)).toHaveCount(0);
+  // What was pressed went with the role: the keyboard is on the way back
+  // (on a phone the list's title takes it first, as its screen closes).
+  if (project !== "phone") {
+    await expect(
+      toast(page, archived).getByRole("button", { name: he.app.manage.undo }),
+    ).toBeFocused();
+  }
+  await expect
+    .poll(rolesNamed)
+    .toEqual([{ name, base: "worker", archived: true, rules: 0, people: 0 }]);
+  await toast(page, archived)
+    .getByRole("button", { name: he.app.manage.undo })
+    .click();
+  await expect(
+    toast(page, heT("app.manage.roles.done.restored", { name })),
+  ).toBeVisible();
+  await expect(roleShown(page, name, project)).toBeVisible();
+  await expect
+    .poll(rolesNamed)
+    .toEqual([{ name, base: "worker", archived: false, rules: 0, people: 0 }]);
 });

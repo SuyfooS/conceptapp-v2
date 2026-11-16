@@ -4,7 +4,12 @@ import { rolesData } from "@/app/(app)/manage/roles/roles-data";
 import type { RolesData } from "@/app/(app)/manage/roles/roles-types";
 
 /** Someone active in the business, as the console lists them. */
-export type ConsoleRolePerson = { name: string; role: Role };
+export type ConsoleRolePerson = {
+  name: string;
+  role: Role;
+  /** The role the business named that they hold, else null. */
+  namedRole?: string | null;
+};
 
 /**
  * The console's "תפקידים והרשאות" for a business, from what its database

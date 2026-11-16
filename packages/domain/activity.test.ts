@@ -993,6 +993,62 @@ describe("buildActivity: each action", () => {
     ).toEqual({ action: "other" });
   });
 
+  it("names a role the business named by its name then, on its switches (R11a)", () => {
+    expect(
+      lineOf(
+        row("role.permission", {
+          role: "worker",
+          perm: "schedule.edit",
+          area: "scheduling",
+          from: false,
+          to: true,
+          named_role: "a1000000-0000-4000-a000-0000000000c1",
+          name: "Shift lead",
+        }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: "worker",
+      permission: { kind: "edit", area: "scheduling" },
+      on: true,
+      named: "Shift lead",
+    });
+  });
+
+  it("reads a role the business named added, renamed, archived and back", () => {
+    expect(
+      lineOf(
+        row("role.create", {
+          named_role: "a1000000-0000-4000-a000-0000000000c1",
+          name: "Shift lead",
+          base: "worker",
+          copy_role: "manager",
+        }),
+      ),
+    ).toEqual({ action: "role.create", name: "Shift lead", base: "worker" });
+    expect(
+      lineOf(row("role.create", { name: "Bar lead", base: "boss" })),
+    ).toEqual({ action: "role.create", name: "Bar lead", base: null });
+    expect(
+      lineOf(row("role.rename", { from: "Shift lead", to: "Shift leader" })),
+    ).toEqual({
+      action: "role.rename",
+      from: "Shift lead",
+      to: "Shift leader",
+    });
+    expect(lineOf(row("role.archive", { name: "Shift lead" }))).toEqual({
+      action: "role.archive",
+      name: "Shift lead",
+    });
+    expect(lineOf(row("role.restore", { name: "Shift lead" }))).toEqual({
+      action: "role.restore",
+      name: "Shift lead",
+    });
+    expect(lineOf(row("role.rename", { to: "Shift leader" }))).toEqual({
+      action: "other",
+    });
+  });
+
   it("names every permission the roles screen draws", () => {
     for (const area of ACCESS_AREAS) {
       expect(rolePermissionOf(AREA_EDIT[area])).toEqual({ kind: "edit", area });
