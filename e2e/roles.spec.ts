@@ -5,6 +5,7 @@ import {
   closeRolesBusiness,
   openRolesBusiness,
   ROLES_PEOPLE,
+  rolesLines,
   rolesLogActors,
   rolesNamed,
   rolesPlace,
@@ -174,6 +175,102 @@ test("the owner opens roles from the management page, gives workers the lists, a
     await worker.goto("/lists/templates");
     await expect(worker).toHaveURL(/\/lists\/templates$/);
     await expect(title(worker, he.app.lists.templates.title)).toBeVisible();
+  } finally {
+    await worker.context().close();
+  }
+});
+
+// The roles plan's R10 (Orel, 16 November 2026): a change marks its area
+// "שונה" against where the role started, the role's people hear of it in the
+// app alone, and "חזרה להתחלה" puts every such area back with one toast and
+// its undo; back where it began, the line goes.
+test('a change is marked "שונה" and told to the role\'s people in the app, and "חזרה להתחלה" puts it back', async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.setTimeout(150_000);
+  const project = testInfo.project.name;
+  const lists = he.modules.lists.name;
+  const marks = page
+    .getByRole("main")
+    .getByText(r.changed, { exact: true })
+    .filter({ visible: true });
+  const reset = page
+    .getByRole("main")
+    .getByRole("button", { name: new RegExp(`^${literal(r.reset.action)}`) })
+    .filter({ visible: true });
+  const told = [{ who: WORKER.id, area: "lists", read: false, push: "none" }];
+  const worker = await secondPage(browser, testInfo);
+  try {
+    await signIn(page, OWNER);
+    await page.goto("/manage/roles");
+    await expect(title(page, r.title)).toBeVisible();
+    // On the defaults nothing differs from where it started.
+    await expect(marks).toHaveCount(0);
+    await expect(reset).toHaveCount(0);
+
+    await openRole(page, roles.worker, project);
+    await editSwitch(page, lists, roles.worker).click();
+    await expect(
+      toast(
+        page,
+        heT("app.manage.roles.done.editWith", {
+          role: roles.worker,
+          area: lists,
+          extras: r.extras.lists.send.phrase,
+        }),
+      ),
+    ).toBeVisible();
+    // Workers' lists differ now: marked, with the way back.
+    await expect(marks).toHaveCount(1);
+    await expect(reset).toHaveCount(1);
+    await expect(shown(page, r.reset.hintBase)).toBeVisible();
+    // The worker hears it in the app alone; the manager and the owner don't.
+    await expect.poll(rolesLines).toEqual(told);
+    await signIn(worker, WORKER);
+    await worker.goto("/notifications");
+    await expect(
+      shown(
+        worker,
+        heT("app.notifications.kinds.role.changed.title", {
+          role: roles.worker,
+        }),
+      ),
+    ).toBeVisible();
+    await expect(
+      shown(
+        worker,
+        heT("app.notifications.kinds.role.changed.editWith", {
+          area: lists,
+          extras: r.extras.lists.send.phrase,
+        }),
+      ),
+    ).toBeVisible();
+
+    // Back to the start: one write, one toast, and neither mark nor line left.
+    await reset.click();
+    const back = heT("app.manage.roles.done.reset", { role: roles.worker });
+    await expect(toast(page, back)).toBeVisible();
+    await expect(marks).toHaveCount(0);
+    await expect.poll(rolesRules).toEqual([]);
+    await expect.poll(rolesLines).toEqual([]);
+    // Its control went with what it did: the keyboard is on the way back.
+    await expect(
+      toast(page, back).getByRole("button", { name: he.app.manage.undo }),
+    ).toBeFocused();
+    await expectCleanPage(page);
+
+    // Its undo puts the change back, the line with it.
+    await toast(page, back)
+      .getByRole("button", { name: he.app.manage.undo })
+      .click();
+    await expect(toast(page, r.done.undone)).toBeVisible();
+    await expect(marks).toHaveCount(1);
+    await expect.poll(rolesRules).toEqual([
+      { role: "worker", perm: "lists.manage", allowed: true },
+      { role: "worker", perm: "lists.send", allowed: true },
+    ]);
+    await expect.poll(rolesLines).toEqual(told);
   } finally {
     await worker.context().close();
   }

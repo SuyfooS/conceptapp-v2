@@ -2737,6 +2737,14 @@
           }
         },
         "needsEdit": "Only with edit",
+        "changed": "Changed",
+        "changedAreas": "{count, plural, one {One area changed} other {# areas changed}}",
+        "reset": {
+          "action": "Back to the start",
+          "label": "Back to the start, {role}",
+          "hintBase": "Every area marked \"Changed\" goes back to what every business starts with, and you can undo it right after.",
+          "hintNamed": "Every area marked \"Changed\" goes back to being as it is for {base}, and you can undo it right after."
+        },
         "payHours": "This role sees pay, so even without edit they see everyone's hours on the Hours for payroll screen, without correcting them.",
         "beyond": "Workers now hold more than managers in {areas}, so managers don't invite workers or make anyone a worker. Only an owner does.",
         "closed": "This area isn't open for changes yet.",
@@ -2798,6 +2806,7 @@
           "none": "{role}: no access to {area} now",
           "extraOn": "{role}: now with {extra}",
           "extraOff": "{role}: now without {extra}",
+          "reset": "{role}: everything is back to the start",
           "added": "The role {name} was added",
           "addUndone": "The role {name} was removed",
           "renamed": "The role is now called {name}",
@@ -3222,6 +3231,21 @@
             "title": "A new document from the business",
             "body": "Please confirm you read it",
             "settledNote": "No longer waiting for your confirmation"
+          }
+        },
+        "role": {
+          "changed": {
+            "title": "What the {role} role can do changed",
+            "titleOwn": "What your role can do changed",
+            "edit": "From now on you edit in {area}",
+            "editWith": "From now on you edit in {area}, with {extras}",
+            "view": "From now on you see {area} without editing",
+            "viewWithout": "From now on you see {area} without editing, and without {extras}",
+            "none": "From now on you have no access to {area}",
+            "extraOn": "From now on also {extras}",
+            "extraOff": "From now on without {extras}",
+            "extraBoth": "From now on also {on}, and without {off}",
+            "byTeam": "The ConceptApp team made the change"
           }
         }
       },

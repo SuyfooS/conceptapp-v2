@@ -298,6 +298,43 @@ export function parseRoleAreaChange(input: unknown): RoleAreaChange | null {
   return { role, area, access };
 }
 
+const areaParts = z
+  .array(
+    z.object({
+      area: z.enum(ACCESS_AREAS),
+      access: areaChange.shape.access,
+    }),
+  )
+  .min(1)
+  .max(ACCESS_AREAS.length);
+
+/** Several areas of one role, as "חזרה להתחלה" and its undo write them, in one go. */
+export type RoleAreasChange = {
+  role: RoleKey;
+  parts: { area: AccessArea; access: AreaAccess }[];
+};
+
+/**
+ * A change of several areas of one role as it reaches the server (the roles
+ * plan's R10: "חזרה להתחלה" puts every area of a role that differs from its
+ * start back, and its undo puts them as they were): a role, at least one
+ * area, each area once, each as `parseRoleAreaChange` takes it. Null for
+ * anything else, which writes nothing.
+ */
+export function parseRoleAreasChange(input: unknown): RoleAreasChange | null {
+  const parsed = z.object({ role: roleKey, parts: areaParts }).safeParse(input);
+  if (!parsed.success) return null;
+  const { role } = parsed.data;
+  const parts: RoleAreasChange["parts"] = [];
+  for (const part of parsed.data.parts) {
+    if (parts.some((seen) => seen.area === part.area)) return null;
+    const change = parseRoleAreaChange({ role, ...part });
+    if (!change) return null;
+    parts.push({ area: change.area, access: change.access });
+  }
+  return { role, parts };
+}
+
 /** The areas, of those shown, that a role edits. */
 export function editedAreas(
   access: RoleAccess,
@@ -316,6 +353,41 @@ export function extrasTurned(
     (extra) =>
       holdsExtra(after, extra) === on && holdsExtra(before, extra) !== on,
   );
+}
+
+/** What a change of one area gave and took. */
+export type AreaChange = {
+  /** The level the area moved to, or null when it stayed where it was. */
+  level: AccessLevel | null;
+  /** The switches it now holds and didn't, and holds no more. */
+  on: AccessExtra[];
+  off: AccessExtra[];
+};
+
+/**
+ * What moving one area from `before` to `after` gives and takes, as the
+ * roles screen's toast says it and the line to the role's people does (the
+ * roles plan's R10): its new level, if it moved, and the switches held
+ * (`holdsExtra`: on, at edit) that came and went with it.
+ */
+export function areaChangeOf(
+  area: AccessArea,
+  before: AreaAccess,
+  after: AreaAccess,
+): AreaChange {
+  const holds = (part: AreaAccess, extra: AccessExtra) =>
+    part.level === "edit" && part.extras[extra] === true;
+  const extras = extrasOf(area);
+  return {
+    level: before.level === after.level ? null : after.level,
+    on: extras.filter((extra) => holds(after, extra) && !holds(before, extra)),
+    off: extras.filter((extra) => holds(before, extra) && !holds(after, extra)),
+  };
+}
+
+/** Whether a change gave or took anything. */
+export function changesAnything(change: AreaChange): boolean {
+  return change.level !== null || change.on.length > 0 || change.off.length > 0;
 }
 
 /**
@@ -484,6 +556,93 @@ export function areaWrites(
       return byDepth || a.index - b.index;
     })
     .map(({ grant }) => grant);
+}
+
+/**
+ * The keys a role holds by its starting rule (`byDefault`), with what each
+ * requires, as `private.role_holds` counts them: for managers and workers the
+ * keys' default roles, where every business starts; for a role the business
+ * named its base's rule as it is now (never pay), which it follows wherever
+ * it has no rule of its own.
+ */
+function holdsByDefault(
+  rules: Pick<RoleRules, "byDefault" | "requires">,
+  key: string,
+  seen: readonly string[] = [],
+): boolean {
+  if (seen.includes(key) || !rules.byDefault(key)) return false;
+  const needs = rules.requires(key);
+  return needs === null || holdsByDefault(rules, needs, [...seen, key]);
+}
+
+/**
+ * Where a role starts (the roles plan's R10; Orel, 16 November 2026): what it
+ * holds by its starting rule, drawn as the screen draws what it holds now
+ * (`accessFromHeld`). For managers and workers, the keys' defaults; for a
+ * role the business named, its base's rule.
+ */
+export function startingAccess(
+  rules: Pick<RoleRules, "byDefault" | "requires">,
+): RoleAccess {
+  return accessFromHeld((key) => holdsByDefault(rules, key));
+}
+
+/**
+ * Whether a role's area differs from where it started ("שונה"): its level, or
+ * a switch it holds there. By what the screen draws, not by its rows: a
+ * denial kept under an edit that is off holds nothing either way
+ * (`areaWrites`), so it marks nothing and "חזרה להתחלה" leaves it.
+ */
+export function areaChanged(
+  access: RoleAccess,
+  start: RoleAccess,
+  area: AccessArea,
+): boolean {
+  return changesAnything(
+    areaChangeOf(area, areaAccess(start, area), areaAccess(access, area)),
+  );
+}
+
+/** The areas, of `areas`, where a role differs from where it started, in their order. */
+export function changedAreas(
+  access: RoleAccess,
+  start: RoleAccess,
+  areas: readonly AccessArea[],
+): AccessArea[] {
+  return areas.filter((area) => areaChanged(access, start, area));
+}
+
+/** One area of a role as a write of several areas puts it. */
+export type AreaPart = { area: AccessArea; access: AreaAccess };
+
+/**
+ * "חזרה להתחלה" for a role: each of `areas` that differs from where it
+ * started, as it starts (`forward`, one write of them all), and as it is now
+ * (`back`, the undo's). Empty when nothing differs.
+ */
+export function resetParts(
+  access: RoleAccess,
+  start: RoleAccess,
+  areas: readonly AccessArea[],
+): { forward: AreaPart[]; back: AreaPart[] } {
+  const changed = changedAreas(access, start, areas);
+  return {
+    forward: changed.map((area) => ({ area, access: areaAccess(start, area) })),
+    back: changed.map((area) => ({ area, access: areaAccess(access, area) })),
+  };
+}
+
+/**
+ * The writes that bring several areas of one role to their parts, in one go
+ * (`public.set_role_permissions`): each area's `areaWrites`, area after area.
+ * No key requires one of another area (the catalogue keeps each chain in its
+ * area), so each area's order stands.
+ */
+export function areasWrites(
+  parts: readonly AreaPart[],
+  rules: RoleRules,
+): { perm: PermissionKey; granted: boolean }[] {
+  return parts.flatMap((part) => areaWrites(part.area, part.access, rules));
 }
 
 /**

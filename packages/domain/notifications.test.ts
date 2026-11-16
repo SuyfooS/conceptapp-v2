@@ -1380,14 +1380,19 @@ describe("each person's choices", () => {
     // With the time clock off, nothing about pay comes; the test never counts.
     expect(alwaysOnPhone("owner", ["scheduling", "chat"])).toEqual([]);
     // The settings say "pay always comes": a line in no group that isn't
-    // about pay needs its own words there first.
+    // about pay needs its own words there first. One in the app alone
+    // (R10's role.changed) never comes to the phone at all.
+    const appOnly = (kind: keyof typeof NOTIFICATION_KINDS) =>
+      (NOTIFICATION_KINDS[kind] as { appOnly?: true }).appOnly === true;
     for (const kind of NOTIFICATION_KIND_KEYS) {
       if (kind === "push.test" || notificationGroupOf(kind) !== null) continue;
+      if (appOnly(kind)) continue;
       expect(
         kind.startsWith("pay.") || kind === "access.pay_granted",
         kind,
       ).toBe(true);
     }
+    expect(alwaysOnPhone("worker", ["scheduling", "lists"])).toEqual([]);
   });
 
   it("lets every group be kept off the phone, those that ask to act too", () => {
@@ -1746,5 +1751,153 @@ describe("a request open again", () => {
       lineOf(row("swap.reopened", { swap: LINE, shift: SHIFT, by: LEFT }))
         ?.line,
     ).not.toHaveProperty("by");
+  });
+});
+
+// The roles plan's R10 (Orel, 16 November 2026): the people in a role hear
+// in the app alone what an owner changed in what it does, one line a role
+// and an area, from where the line began to now.
+describe("a role's change", () => {
+  const LEAD = "66666666-6666-4666-8666-666666666666";
+  const lowered = {
+    role: "manager",
+    area: "scheduling",
+    from: { "schedule.edit": true, "schedule.publish": true },
+    to: { "schedule.edit": false, "schedule.publish": false },
+  };
+
+  it("is in the app alone, in no group, asking nothing, for the staff", () => {
+    expect(NOTIFICATION_KINDS["role.changed"]).toMatchObject({
+      group: null,
+      minRole: "worker",
+      needsAction: false,
+      staffOnly: true,
+      appOnly: true,
+    });
+    expect(notificationGroupOf("role.changed")).toBeNull();
+    expect(needsAction("role.changed")).toBe(false);
+    expect(inInbox("role.changed")).toBe(true);
+    // Never said to come to the phone whatever is switched off, nor a group
+    // a settings screen offers.
+    expect(alwaysOnPhone("worker", [])).not.toContain("role.changed");
+    expect(groupsFor("worker", [])).toEqual([]);
+  });
+
+  it("reads what the area gives and takes now, against where it began", () => {
+    expect(lineOf(row("role.changed", lowered))?.line).toEqual({
+      kind: "role.changed",
+      role: { kind: "base", base: "manager" },
+      area: "scheduling",
+      change: { level: "view", on: [], off: ["schedule.publish"] },
+    });
+    // Raised to edit with the switch under it.
+    expect(
+      lineOf(
+        row("role.changed", {
+          role: "worker",
+          area: "lists",
+          from: { "lists.manage": false, "lists.send": false },
+          to: { "lists.manage": true, "lists.send": true },
+        }),
+      )?.line,
+    ).toMatchObject({
+      role: { kind: "base", base: "worker" },
+      change: { level: "edit", on: ["lists.send"], off: [] },
+    });
+    // A switch alone, at the same level; and one on, one off.
+    expect(
+      lineOf(
+        row("role.changed", {
+          role: "manager",
+          area: "chat",
+          from: {
+            "chat.moderate": true,
+            "chat.announce": true,
+            "chat.send_documents": false,
+          },
+          to: {
+            "chat.moderate": true,
+            "chat.announce": false,
+            "chat.send_documents": true,
+          },
+        }),
+      )?.line,
+    ).toMatchObject({
+      change: {
+        level: null,
+        on: ["chat.send_documents"],
+        off: ["chat.announce"],
+      },
+    });
+    // The team screen down to none.
+    expect(
+      lineOf(
+        row("role.changed", {
+          role: "manager",
+          area: "team",
+          from: { "team.view": true, "team.edit": true },
+          to: { "team.view": false, "team.edit": false },
+        }),
+      )?.line,
+    ).toMatchObject({ change: { level: "none", on: [], off: [] } });
+  });
+
+  it("names a role the business named by the name it had, or by none", () => {
+    expect(
+      lineOf(row("role.changed", { ...lowered, role: LEAD, name: "Lead" }))
+        ?.line,
+    ).toMatchObject({ role: { kind: "named", name: "Lead" } });
+    expect(
+      lineOf(row("role.changed", { ...lowered, role: LEAD }))?.line,
+    ).toMatchObject({ role: { kind: "named", name: null } });
+  });
+
+  it("is a plain line when it says nothing changed, or can't be read", () => {
+    for (const params of [
+      { ...lowered, to: lowered.from },
+      { ...lowered, area: "storefront" },
+      { ...lowered, role: "owner" },
+      { ...lowered, from: "edit" },
+      null,
+    ]) {
+      expect(
+        lineOf(row("role.changed", params))?.line,
+        JSON.stringify(params),
+      ).toEqual({ kind: "other" });
+    }
+  });
+
+  it("leads to the area's screen while the reader still reaches it", () => {
+    expect(linkFor("role.changed", lowered)).toBe("/schedule");
+    expect(
+      linkFor("role.changed", {
+        role: "worker",
+        area: "manage",
+        from: { "manage.view": false, "manage.edit": false },
+        to: { "manage.view": true, "manage.edit": false },
+      }),
+    ).toBe("/manage");
+    // The team screen taken away: the inbox, which leads nowhere closed.
+    expect(
+      linkFor("role.changed", {
+        role: "manager",
+        area: "team",
+        from: { "team.view": true, "team.edit": true },
+        to: { "team.view": false, "team.edit": false },
+      }),
+    ).toBe("/notifications");
+    expect(linkFor("role.changed", { area: "../admin" })).toBe(
+      "/notifications",
+    );
+  });
+
+  it("is from whoever changed it, the ConceptApp team from the console", () => {
+    expect(lineOf(row("role.changed", lowered))?.actor).toEqual({
+      kind: "member",
+      name: null,
+    });
+    expect(
+      lineOf(row("role.changed", lowered, { actorId: GONE }))?.actor,
+    ).toEqual({ kind: "team" });
   });
 });

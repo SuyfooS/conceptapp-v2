@@ -9,6 +9,7 @@ import {
   renameRoleAction,
   restoreRoleAction,
   setRoleAreaAction,
+  setRoleAreasAction,
 } from "./actions";
 import { currentRoles } from "./roles";
 import { RolesView } from "./roles-view";
@@ -51,6 +52,7 @@ export default async function RolesPage({
       // a switch to another business is refused there (payroll P3b).
       actions={{
         setArea: setRoleAreaAction.bind(null, business),
+        setAreas: setRoleAreasAction.bind(null, business),
         ...(roles.addsRoles
           ? {
               addRole: addRoleAction.bind(null, business),

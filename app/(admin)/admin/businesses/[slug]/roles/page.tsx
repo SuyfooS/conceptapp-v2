@@ -20,6 +20,7 @@ import {
   renameTeamRoleAction,
   restoreTeamRoleAction,
   setTeamRoleAreaAction,
+  setTeamRoleAreasAction,
 } from "./actions";
 import { consoleRolesData } from "./roles-data";
 
@@ -85,6 +86,7 @@ export default async function TeamRolesPage({
       // Each write names the business the screen is drawn for.
       actions={{
         setArea: setTeamRoleAreaAction.bind(null, business.id),
+        setAreas: setTeamRoleAreasAction.bind(null, business.id),
         ...(matrix.addsRoles
           ? {
               addRole: addTeamRoleAction.bind(null, business.id),

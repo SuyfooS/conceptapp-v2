@@ -32,6 +32,7 @@ import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import { GROUP_ICONS } from "./group-icons";
 import { InboxOpen, InboxRow, ReadAllButton } from "./inbox-row";
+import { roleChangeWords } from "./role-change-words";
 import { NotificationSettingsLink } from "./settings-link";
 
 export type InboxPaths = {
@@ -692,6 +693,24 @@ export function InboxView({
               : t("kinds.documents.to_confirm.body"),
           ],
         };
+      // What the reader's role does in an area changed (the roles plan's
+      // R10): its role, and what the area gives and takes now. From the
+      // console, every shape says it was the ConceptApp team.
+      case "role.changed": {
+        const said = roleChangeWords(line, wording, (items) =>
+          format.list(items, { type: "conjunction" }),
+        );
+        return {
+          title: said.title,
+          shift: null,
+          notes: [
+            said.change,
+            ...(entry.actor.kind === "team"
+              ? [t("kinds.role.changed.byTeam")]
+              : []),
+          ],
+        };
+      }
       case "push.test":
         return {
           title: t("kinds.push.test.title"),

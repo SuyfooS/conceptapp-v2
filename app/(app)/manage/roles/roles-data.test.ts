@@ -137,6 +137,57 @@ describe("roles the business named (R11a)", () => {
     ]);
   });
 
+  it("start where their base is, managers and workers where every business does (R10)", () => {
+    // Managers lowered to view in scheduling: their start is still edit,
+    // and a role built on them starts at their rule as it is now.
+    const lowered = matrix(areaPermissions("scheduling"), []);
+    const base = {
+      ...lowered,
+      given: {
+        ...lowered.given,
+        manager: new Set(
+          [...lowered.given.manager].filter((key) => key !== "schedule.edit"),
+        ),
+      },
+      held: {
+        ...lowered.held,
+        manager: new Set(
+          [...lowered.held.manager].filter(
+            (key) => key !== "schedule.edit" && key !== "schedule.publish",
+          ),
+        ),
+      },
+    };
+    const deputy = {
+      ...lead,
+      base: "manager" as const,
+      // Its base's rule: publishing kept, building not.
+      byDefault: new Set(
+        [...base.given.manager].filter((key) => key !== "clock.payroll"),
+      ),
+      given: new Set(["schedule.edit", "schedule.publish"]),
+      held: new Set(["schedule.edit", "schedule.publish"]),
+    };
+    const data = rolesData({
+      matrix: { ...base, named: [deputy], addsRoles: true },
+      enabled: ["scheduling"],
+      people,
+      viewOnly: false,
+      documents: false,
+    });
+    const [manager, worker, named] = data.roles;
+    expect(manager?.access.levels.scheduling).toBe("view");
+    expect(manager?.start.levels.scheduling).toBe("edit");
+    expect(manager?.start.extras["schedule.publish"]).toBe(true);
+    expect(worker?.start.levels.scheduling).toBe("view");
+    expect(worker?.start.levels.team).toBe("none");
+    // Publishing needs building, which its base no longer does.
+    expect(named?.start.levels.scheduling).toBe("view");
+    expect(named?.start.extras["schedule.publish"]).toBe(false);
+    expect(named?.start.levels.team).toBe("edit");
+    expect(named?.access.levels.scheduling).toBe("edit");
+  });
+
   it("show nobody in them until someone holds them", () => {
     const data = rolesData({
       matrix: { ...matrix([], []), named: [lead], addsRoles: true },

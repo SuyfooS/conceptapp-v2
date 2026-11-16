@@ -2,6 +2,7 @@ import type { ModuleIcon } from "@domain/modules";
 import type {
   AccessArea,
   AreaAccess,
+  AreaPart,
   BaseRole,
   RoleAccess,
 } from "@domain/role-access";
@@ -44,6 +45,13 @@ export type EditableRole = {
    */
   invited: number;
   access: RoleAccess;
+  /**
+   * Where it starts (`startingAccess`, the roles plan's R10): for a manager
+   * or a worker, what every business starts with; for a role the business
+   * named, what its base holds. An area that differs from it is marked
+   * "שונה", and "חזרה להתחלה" puts every such area back.
+   */
+  start: RoleAccess;
   /** Sees everyone's hours and pay, as "מי רואה שכר" sets it. */
   seesPay: boolean;
 };
@@ -106,6 +114,12 @@ export type RolesActions = {
     area: AccessArea,
     access: AreaAccess,
   ) => Promise<RolesResult>;
+  /**
+   * Several areas of a role as they are now, in one write: "חזרה להתחלה"
+   * (each area that differs from where the role started, as it starts), or
+   * its undo (each as it was).
+   */
+  setAreas: (role: string, parts: AreaPart[]) => Promise<RolesResult>;
   /**
    * Adds a role the business names (R11a), its key the new role's id.
    * Without it, and the three below, there is no "הוספת תפקיד", nor a way to

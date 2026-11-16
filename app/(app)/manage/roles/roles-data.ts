@@ -8,6 +8,7 @@ import {
   areaShown,
   BASE_ROLES,
   type RoleMatrix,
+  startingAccess,
 } from "@domain/role-access";
 import { manifestFor } from "@modules/registry";
 import type { RolePerson, RolesData } from "./roles-types";
@@ -32,9 +33,11 @@ export type RolesMember = RolePerson & {
  * (those in a role the business named are in that one); then the business's
  * named roles in their order (R11a), each as it holds it, never pay, which
  * its people are given one by one, with the open invites waiting for it
- * (R11b); and the fixed owners and accountants. The
- * owner's screen (/manage/roles, the roles plan's R9) and the console's (R2,
- * by initials) both draw it.
+ * (R11b); and the fixed owners and accountants. Each role with where it
+ * started (R10, `startingAccess` of its rule without a row: the keys'
+ * defaults for managers and workers, the base's rule for a named role),
+ * which its areas are marked against. The owner's screen (/manage/roles, the
+ * roles plan's R9) and the console's (R2, by initials) both draw it.
  */
 export function rolesData({
   matrix,
@@ -61,6 +64,17 @@ export function rolesData({
   const settable = new Set(
     matrix.keys.filter((key) => key.settable).map((key) => key.perm),
   );
+  const requires = new Map(matrix.keys.map((key) => [key.perm, key.requires]));
+  /**
+   * Where a role starts (R10): what it holds by its rule without a row of
+   * its own, the keys' defaults for managers and workers, its base's rule
+   * for a role the business named.
+   */
+  const startOf = (byDefault: ReadonlySet<string>) =>
+    startingAccess({
+      byDefault: (perm) => byDefault.has(perm),
+      requires: (perm) => requires.get(perm) ?? null,
+    });
   const face = (person: RolesMember): RolePerson => ({
     name: person.name,
     photo: person.photo,
@@ -94,6 +108,7 @@ export function rolesData({
           people: inRole(base),
           invited: 0,
           access: accessFromHeld((perm) => held.has(perm)),
+          start: startOf(matrix.byDefault[base]),
           seesPay: held.has(PAY_PERMISSION),
         };
       }),
@@ -105,6 +120,7 @@ export function rolesData({
         people: inNamed(role.id),
         invited: invites.get(role.id) ?? 0,
         access: accessFromHeld((perm) => role.held.has(perm)),
+        start: startOf(role.byDefault),
         // Never by role: given to each of its people on "מי רואה שכר".
         seesPay: false,
       })),

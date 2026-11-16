@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   rolesAccess: vi.fn(),
   currentMember: vi.fn(),
   setRoleArea: vi.fn(),
+  setRoleAreas: vi.fn(),
   createBusinessRole: vi.fn(),
   renameBusinessRole: vi.fn(),
   archiveBusinessRole: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("../../current-wording", async () => {
 });
 vi.mock("@db/roles", () => ({
   setRoleArea: mocks.setRoleArea,
+  setRoleAreas: mocks.setRoleAreas,
   createBusinessRole: mocks.createBusinessRole,
   renameBusinessRole: mocks.renameBusinessRole,
   archiveBusinessRole: mocks.archiveBusinessRole,
@@ -41,6 +43,7 @@ const {
   renameRoleAction,
   restoreRoleAction,
   setRoleAreaAction,
+  setRoleAreasAction,
 } = await import("./actions");
 
 const SHOP = "11111111-1111-4111-a111-111111111111";
@@ -71,6 +74,7 @@ beforeEach(() => {
   mocks.rolesAccess.mockReset().mockResolvedValue(owner());
   mocks.currentMember.mockReset().mockResolvedValue(member(SHOP, "owner"));
   mocks.setRoleArea.mockReset().mockResolvedValue({ ok: true });
+  mocks.setRoleAreas.mockReset().mockResolvedValue({ ok: true });
   mocks.createBusinessRole
     .mockReset()
     .mockResolvedValue({ ok: true, id: LEAD });
@@ -179,6 +183,65 @@ describe("the owner's change of a role the business named", () => {
       setRoleAreaAction(SHOP, "shift-lead", "lists", listsEdit),
     ).resolves.toEqual({ ok: false, failure: "failed" });
     expect(mocks.setRoleArea).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("the owner's way back to where a role started (R10)", () => {
+  const scheduleView = { level: "view", extras: {} } as const;
+  const teamView = { level: "view", extras: {} } as const;
+
+  it("writes every area it puts back in one go, as the owner", async () => {
+    await expect(
+      setRoleAreasAction(SHOP, "worker", [
+        { area: "lists", access: listsEdit },
+        { area: "team", access: teamView },
+      ]),
+    ).resolves.toEqual({ ok: true });
+    expect(mocks.setRoleAreas).toHaveBeenCalledWith(OWNER, SHOP, "worker", [
+      { area: "lists", access: listsEdit },
+      { area: "team", access: teamView },
+    ]);
+  });
+
+  it("writes nothing when any of its areas is off, or one comes twice", async () => {
+    mocks.rolesAccess.mockResolvedValue(owner(on("scheduling", "time_clock")));
+    await expect(
+      setRoleAreasAction(SHOP, "worker", [
+        { area: "scheduling", access: scheduleView },
+        { area: "lists", access: listsEdit },
+      ]),
+    ).resolves.toEqual({ ok: false, failure: "closed" });
+    mocks.rolesAccess.mockResolvedValue(owner());
+    await expect(
+      setRoleAreasAction(SHOP, "worker", [
+        { area: "lists", access: listsEdit },
+        { area: "lists", access: { level: "view", extras: {} } },
+      ]),
+    ).resolves.toEqual({ ok: false, failure: "failed" });
+    await expect(setRoleAreasAction(SHOP, "worker", [])).resolves.toEqual({
+      ok: false,
+      failure: "failed",
+    });
+    expect(mocks.setRoleAreas).not.toHaveBeenCalled();
+  });
+
+  it("writes nothing for anyone but the owner, in a view, or after a switch", async () => {
+    const parts = [{ area: "lists", access: listsEdit }] as const;
+    mocks.rolesAccess.mockResolvedValue(null);
+    mocks.currentMember.mockResolvedValue(member(SHOP, "manager"));
+    await expect(
+      setRoleAreasAction(SHOP, "worker", [...parts]),
+    ).resolves.toEqual({ ok: false, failure: "noAccess" });
+    mocks.rolesAccess.mockResolvedValue({ ...owner(), viewOnly: true });
+    await expect(
+      setRoleAreasAction(SHOP, "worker", [...parts]),
+    ).resolves.toEqual({ ok: false, failure: "viewOnly" });
+    mocks.rolesAccess.mockResolvedValue({ ...owner(), businessId: OTHER });
+    await expect(setRoleAreasAction(SHOP, LEAD, [...parts])).resolves.toEqual({
+      ok: false,
+      failure: "businessChanged",
+    });
+    expect(mocks.setRoleAreas).not.toHaveBeenCalled();
   });
 });
 

@@ -4,17 +4,23 @@ import {
   ACCESS_AREAS,
   ACCESS_EXTRA_KEYS,
   ACCESS_FLOOR,
+  type AccessArea,
   AREA_EDIT,
   AREA_MODULE,
   AREA_VIEW,
   accessFromHeld,
   areaAccess,
+  areaChanged,
+  areaChangeOf,
   areaGrants,
   areaOfExtra,
   areaOpen,
   areaPermissions,
   areaShown,
+  areasWrites,
   areaWrites,
+  changedAreas,
+  changesAnything,
   changesPermissions,
   checkRoleName,
   defaultAccess,
@@ -33,9 +39,13 @@ import {
   PLACE_AREAS,
   parseNewRole,
   parseRoleAreaChange,
+  parseRoleAreasChange,
   parseRoleRename,
+  type RoleAccess,
   type RoleMatrix,
+  resetParts,
   rulesOf,
+  startingAccess,
   withAreaAccess,
   withExtra,
   withLevel,
@@ -678,5 +688,206 @@ describe("roles a business names (R11a)", () => {
     expect(namedRoleName(role, "he")).toBe("אחראי משמרת");
     expect(namedRoleName(role, "en")).toBe("Shift lead");
     expect(namedRoleName({ ...role, nameEn: null }, "en")).toBe("אחראי משמרת");
+  });
+});
+
+// The roles plan's R10 (Orel, 16 November 2026): an area that differs from
+// where its role started says "שונה", and "חזרה להתחלה" puts every such area
+// back in one write.
+describe("where a role started (R10)", () => {
+  /** What the catalogue requires (`public.permission_keys.requires`). */
+  const REQUIRES: Record<string, string> = {
+    "schedule.publish": "schedule.edit",
+    "lists.send": "lists.manage",
+    "chat.announce": "chat.moderate",
+    "chat.send_documents": "chat.moderate",
+    "team.edit": "team.view",
+    "manage.edit": "manage.view",
+  };
+  const requires = (key: string) => REQUIRES[key] ?? null;
+  /** The keys' default roles: managers every key of the six areas, workers none. */
+  const defaults = {
+    byDefault: {
+      manager: new Set<string>(ACCESS_AREAS.flatMap(areaPermissions)),
+      worker: new Set<string>(),
+    },
+  };
+  const startOf = (byDefault: ReadonlySet<string>) =>
+    startingAccess({ byDefault: (key) => byDefault.has(key), requires });
+
+  it("is where every business starts, for managers and workers", () => {
+    expect(startOf(defaults.byDefault.manager)).toEqual(
+      defaultAccess("manager"),
+    );
+    expect(startOf(defaults.byDefault.worker)).toEqual(defaultAccess("worker"));
+  });
+
+  it("is its base as it is now for a role the business named, with what each key requires", () => {
+    // Its base keeps publishing but no longer builds: publishing needs
+    // building, so it starts without either.
+    const base = new Set(
+      [...defaults.byDefault.manager].filter((key) => key !== "schedule.edit"),
+    );
+    const start = startOf(base);
+    expect(start.levels.scheduling).toBe("view");
+    expect(holdsExtra(start, "schedule.publish")).toBe(false);
+    expect(start.levels.lists).toBe("edit");
+  });
+
+  it("marks only the areas that differ, by what the role holds there", () => {
+    const start = defaultAccess("worker");
+    const raised = withLevel(start, "lists", "edit");
+    expect(areaChanged(raised, start, "lists")).toBe(true);
+    expect(areaChanged(raised, start, "scheduling")).toBe(false);
+    expect(changedAreas(raised, start, ACCESS_AREAS)).toEqual(["lists"]);
+    // A switch alone at the same level is a change too.
+    const manager = defaultAccess("manager");
+    const noPublish = withExtra(manager, "schedule.publish", false);
+    expect(changedAreas(noPublish, manager, ACCESS_AREAS)).toEqual([
+      "scheduling",
+    ]);
+    // A switch that holds nothing (its area isn't at edit) marks nothing.
+    const viewed = withLevel(manager, "scheduling", "view");
+    const stale: RoleAccess = {
+      ...viewed,
+      extras: { ...viewed.extras, "schedule.publish": true },
+    };
+    expect(
+      areaChanged(
+        stale,
+        withLevel(manager, "scheduling", "view"),
+        "scheduling",
+      ),
+    ).toBe(false);
+    expect(changedAreas(manager, manager, ACCESS_AREAS)).toEqual([]);
+  });
+
+  it("puts every changed area back as it starts, and keeps each as it was for the undo", () => {
+    const start = defaultAccess("worker");
+    const now = withLevel(withLevel(start, "lists", "edit"), "team", "view");
+    const { forward, back } = resetParts(now, start, ACCESS_AREAS);
+    expect(forward).toEqual([
+      {
+        area: "lists",
+        access: { level: "view", extras: { "lists.send": false } },
+      },
+      { area: "team", access: { level: "none", extras: {} } },
+    ]);
+    expect(back).toEqual([
+      {
+        area: "lists",
+        access: { level: "edit", extras: { "lists.send": true } },
+      },
+      { area: "team", access: { level: "view", extras: {} } },
+    ]);
+    // Only the areas asked about: a closed one is left as it is.
+    expect(resetParts(now, start, ["scheduling", "team"]).forward).toEqual([
+      { area: "team", access: { level: "none", extras: {} } },
+    ]);
+    expect(resetParts(start, start, ACCESS_AREAS)).toEqual({
+      forward: [],
+      back: [],
+    });
+  });
+
+  it("writes the way back as the areas' own writes, so nothing is refused for what it requires", () => {
+    // Workers raised in lists and the team, by rows of their own.
+    const given = new Set(["lists.manage", "lists.send", "team.view"]);
+    const rules = {
+      given: (key: string) => given.has(key),
+      byDefault: (key: string) => defaults.byDefault.worker.has(key),
+      requires,
+    };
+    const start = defaultAccess("worker");
+    const now = withLevel(withLevel(start, "lists", "edit"), "team", "view");
+    const { forward, back } = resetParts(now, start, ACCESS_AREAS);
+    // Each denial before what it requires: nobody holds a step between.
+    expect(areasWrites(forward, rules)).toEqual([
+      { perm: "lists.send", granted: false },
+      { perm: "lists.manage", granted: false },
+      { perm: "team.view", granted: false },
+    ]);
+    // Its undo, from the rules as the reset leaves them (the defaults):
+    // each grant after what it requires.
+    const after = {
+      ...rules,
+      given: (key: string) => defaults.byDefault.worker.has(key),
+    };
+    expect(areasWrites(back, after)).toEqual([
+      { perm: "lists.manage", granted: true },
+      { perm: "lists.send", granted: true },
+      { perm: "team.view", granted: true },
+    ]);
+  });
+
+  it("is said in words by what moved: the level, and the switches that came and went", () => {
+    const manager = defaultAccess("manager");
+    const part = (access: RoleAccess, area: AccessArea) =>
+      areaAccess(access, area);
+    expect(
+      areaChangeOf(
+        "scheduling",
+        part(manager, "scheduling"),
+        part(withLevel(manager, "scheduling", "view"), "scheduling"),
+      ),
+    ).toEqual({ level: "view", on: [], off: ["schedule.publish"] });
+    expect(
+      areaChangeOf(
+        "chat",
+        part(manager, "chat"),
+        part(withExtra(manager, "chat.announce", false), "chat"),
+      ),
+    ).toEqual({ level: null, on: [], off: ["chat.announce"] });
+    const worker = defaultAccess("worker");
+    expect(
+      areaChangeOf(
+        "team",
+        part(worker, "team"),
+        part(withLevel(worker, "team", "view"), "team"),
+      ),
+    ).toEqual({ level: "view", on: [], off: [] });
+    expect(
+      changesAnything(
+        areaChangeOf("lists", part(worker, "lists"), part(worker, "lists")),
+      ),
+    ).toBe(false);
+  });
+
+  it("takes several areas of one role, each once, each as one area's change", () => {
+    const parts = [
+      {
+        area: "lists",
+        access: { level: "view", extras: { "lists.send": false } },
+      },
+      { area: "team", access: { level: "none", extras: {} } },
+    ];
+    expect(parseRoleAreasChange({ role: "worker", parts })).toEqual({
+      role: "worker",
+      parts,
+    });
+    const LEAD = "a1000000-0000-4000-a000-0000000000c1";
+    expect(parseRoleAreasChange({ role: LEAD, parts })?.role).toBe(LEAD);
+    for (const input of [
+      { role: "worker", parts: [] },
+      { role: "worker", parts: [parts[0], parts[0]] },
+      { role: "owner", parts },
+      // Under the area's floor, or another area's switch.
+      {
+        role: "worker",
+        parts: [{ area: "lists", access: { level: "none", extras: {} } }],
+      },
+      {
+        role: "worker",
+        parts: [
+          {
+            area: "team",
+            access: { level: "edit", extras: { "lists.send": true } },
+          },
+        ],
+      },
+      null,
+    ]) {
+      expect(parseRoleAreasChange(input), JSON.stringify(input)).toBeNull();
+    }
   });
 });

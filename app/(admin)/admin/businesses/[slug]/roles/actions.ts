@@ -8,15 +8,18 @@ import {
   renameBusinessRole,
   restoreBusinessRole,
   setRoleArea,
+  setRoleAreas,
 } from "@db/roles";
 import { enabledModules, ROLES } from "@domain/modules";
 import { consoleRolesAccess } from "@domain/platform";
 import {
   type AccessArea,
   type AreaAccess,
+  type AreaPart,
   areaShown,
   parseNewRole,
   parseRoleAreaChange,
+  parseRoleAreasChange,
   parseRoleRename,
 } from "@domain/role-access";
 import { manifests } from "@modules/registry";
@@ -90,6 +93,32 @@ export async function setTeamRoleAreaAction(
     change.area,
     change.access,
   );
+}
+
+/**
+ * Someone on the team puts several areas of one role where the screen says,
+ * in one write (the roles plan's R10): "חזרה להתחלה", or its undo
+ * (`parseRoleAreasChange`), every one an area the business has.
+ */
+export async function setTeamRoleAreasAction(
+  business: string,
+  role: string,
+  parts: AreaPart[],
+): Promise<RolesResult> {
+  const id = businessId.safeParse(business);
+  const change = parseRoleAreasChange({ role, parts });
+  if (!id.success || !change) return { ok: false, failure: "failed" };
+  const staff = await rolesChanger();
+  if (!staff.ok) return staff;
+  // Read with the secret key, only now that they are on the team.
+  const enabled = enabledModules(
+    manifests,
+    await getBusinessModulesForTeam(id.data),
+  );
+  if (!change.parts.every((part) => areaShown(part.area, enabled))) {
+    return { ok: false, failure: "closed" };
+  }
+  return setRoleAreas(staff.userId, id.data, change.role, change.parts);
 }
 
 /**

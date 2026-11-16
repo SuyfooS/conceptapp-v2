@@ -696,16 +696,20 @@ begin
       and n.kind in ('chat.group', 'chat.announcement')
   ) x;
 
+  -- The line that tells managers their chat changed (R10's role.changed,
+  -- roles_changes.test.sql's) is no line of the groups': not counted here.
   perform pg_temp.sign_in(pg_temp.p('manager'));
   select count(*)::integer into before_lowering from public.notifications n
-  where n.business_id = '99000000-0000-4000-b000-000000000001';
+  where n.business_id = '99000000-0000-4000-b000-000000000001'
+    and n.kind <> 'role.changed';
   perform set_config('role', 'none', true);
 
   perform pg_temp.apply('lowered');
 
   perform pg_temp.sign_in(pg_temp.p('manager'));
   select count(*)::integer into after_lowering from public.notifications n
-  where n.business_id = '99000000-0000-4000-b000-000000000001';
+  where n.business_id = '99000000-0000-4000-b000-000000000001'
+    and n.kind <> 'role.changed';
   perform set_config('role', 'none', true);
 
   perform * from public.claim_due_pushes(200, '2026-11-12 13:00+00');

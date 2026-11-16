@@ -3551,6 +3551,27 @@ export async function rolesPlace(
   return row ?? null;
 }
 
+export type RoleLine = {
+  who: string;
+  area: string;
+  read: boolean;
+  /** What waits for the phone: 'none' for a line in the app alone. */
+  push: string;
+};
+
+/**
+ * The lines that tell a role's people what it does changed (the roles
+ * plan's R10, `role.changed`), by person and area.
+ */
+export async function rolesLines(): Promise<RoleLine[]> {
+  return await sql<RoleLine[]>`
+    select n.user_id::text as who, n.params ->> 'area' as area,
+      n.read_at is not null as read, n.push_state as push
+    from public.notifications n
+    where n.business_id = ${ROLES_BUSINESS.id} and n.kind = 'role.changed'
+    order by n.user_id, n.params ->> 'area'`;
+}
+
 /** Who switched a role's permission in the business, oldest first. */
 export async function rolesLogActors(): Promise<(string | null)[]> {
   const rows = await sql<{ actor: string | null }[]>`

@@ -2558,6 +2558,47 @@ test("the roles demo raises workers' lists with sending, undoes it, and adds a r
   await expectCleanPage(page);
 });
 
+// The roles plan's R10 (Orel, 16 November 2026): the shift lead, built on
+// workers, differs from them in scheduling, lists and the team, each marked
+// "שונה", and "חזרה להתחלה" puts all three back as workers are, with one
+// toast whose undo brings them back. Nothing is stored.
+test("the roles demo marks what differs from where a role started and puts it back", async ({
+  page,
+}) => {
+  const r = he.app.manage.roles;
+  const main = page.getByRole("main");
+  await page.goto("/design/shell/manage/roles?role=shift-lead");
+  const marks = main
+    .getByText(r.changed, { exact: true })
+    .filter({ visible: true });
+  const reset = main
+    .getByRole("button", { name: new RegExp(`^${r.reset.action}`) })
+    .filter({ visible: true });
+  await expect(marks).toHaveCount(3);
+  await expect(reset).toHaveCount(1);
+  await expect(
+    main
+      .getByText(
+        heT("app.manage.roles.reset.hintNamed", {
+          base: he.app.team.roles.worker,
+        }),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  await reset.click();
+  const back = main.getByRole("status").filter({
+    hasText: heT("app.manage.roles.done.reset", { role: "אחראי משמרת" }),
+  });
+  await expect(back).toBeVisible();
+  await expect(marks).toHaveCount(0);
+  await expect(reset).toHaveCount(0);
+  await back.getByRole("button", { name: he.app.manage.undo }).click();
+  await expect(marks).toHaveCount(3);
+});
+
 // The inbox's twin has pay access the ConceptApp team gave from the console:
 // its line says so, and on a computer the "who" cell is the team itself (the
 // line's note names the team too, so the cell alone is checked).
