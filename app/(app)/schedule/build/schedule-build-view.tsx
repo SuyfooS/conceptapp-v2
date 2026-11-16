@@ -22,6 +22,7 @@ export function ScheduleBuildView({
   backHref = "/schedule",
   manageHref = "/manage/scheduling",
   running,
+  publishes = true,
   wording,
 }: {
   data: ScheduleBuildWeek;
@@ -30,14 +31,22 @@ export function ScheduleBuildView({
   save: (prev: ScheduleState, form: FormData) => Promise<ScheduleState>;
   /** Where "back" goes: the schedule's entry, or the demo's. */
   backHref?: string;
-  /** Where the regular shifts are set. */
-  manageHref?: string;
+  /**
+   * Where the regular shifts are set; null for someone who can't open the
+   * management page.
+   */
+  manageHref?: string | null;
   /**
    * Which of the two weeks this is, the moment the server read it, and the
    * switch between them. Without it (the next-week demo) the screen is next
    * week's, with no switch, on the demo's own moment.
    */
   running?: BuilderWeeks;
+  /**
+   * The person publishes the schedule too (`publishesSchedule`): without it
+   * they save drafts, and read a published week. True unless said otherwise.
+   */
+  publishes?: boolean;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -71,6 +80,7 @@ export function ScheduleBuildView({
         positions={data.positions}
         manageHref={manageHref}
         running={running}
+        publishes={publishes}
         save={save}
       />
     </PageBody>

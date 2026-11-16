@@ -134,12 +134,22 @@ function scheduleFor(
   data: PublishedSchedule,
   sent: boolean,
   fill: boolean,
+  {
+    builds = role !== "worker",
+    publishes = builds,
+  }: {
+    /** As the database answers it: owners and managers by default. */
+    builds?: boolean;
+    publishes?: boolean;
+  } = {},
 ): TodaySchedule {
   const availability = availabilityWeek(sent);
-  if (role === "worker") {
+  if (!builds) {
     return {
       published: data,
       availability,
+      builds: false,
+      publishes: false,
       teamAvailability: null,
       build: null,
       running: null,
@@ -149,6 +159,8 @@ function scheduleFor(
   return {
     published: data,
     availability,
+    builds: true,
+    publishes,
     teamAvailability: {
       week: availability,
       team: teamAvailability(members, teamAnswers, availability.dueAt),
@@ -165,9 +177,12 @@ function today(
   {
     modules = DEMO_MODULES,
     now = NOW,
+    perms = [],
   }: {
     modules?: ModuleKey[];
     now?: string;
+    /** What the database answers the person holds. */
+    perms?: string[];
   } = {},
 ): TodayData {
   return {
@@ -177,7 +192,7 @@ function today(
     photo: teamMembers.find((m) => m.userId === userId)?.photo ?? null,
     role,
     businessName: business.name,
-    widgets: moduleWidgets(manifests, modules, { role, perms: [] }),
+    widgets: moduleWidgets(manifests, modules, { role, perms }),
     schedule,
     team: role === "worker" ? null : team(),
     // The bell leads to /design/shell/notifications, a manager's inbox, and
@@ -246,6 +261,33 @@ export const todayScenarios = {
       "noa",
       "worker",
       scheduleFor("worker", notPublished(published("noa", [])), true, false),
+    ),
+  /**
+   * Noa again, in a business whose owner raised workers to build the
+   * schedule without publishing it (the roles plan's R3): next week's open
+   * places, who hasn't sent availability and the one request she decides
+   * (Itay taking Maya's Wednesday morning; the one she took herself isn't
+   * hers to decide). This week is published, so its open places aren't
+   * hers to fill: no tile, and a short shift today has no link. Yoav's
+   * Wednesday evening, which she can take, stays.
+   */
+  workerBuilds: () =>
+    today(
+      "noa",
+      "worker",
+      scheduleFor(
+        "worker",
+        published("noa", [
+          demoRequest("1", "2026-11-06/friday", "noa"),
+          demoRequest("2", "2026-11-04/morning", "maya", "itay"),
+          demoRequest("3", "2026-11-07/saturday-night", "yoav", "noa"),
+          demoRequest("4", "2026-11-04/evening", "yoav"),
+        ]),
+        false,
+        true,
+        { builds: true, publishes: false },
+      ),
+      { perms: ["schedule.edit"] },
     ),
   /** A business with scheduling off: its part of Today disappears. */
   schedulingOff: () =>

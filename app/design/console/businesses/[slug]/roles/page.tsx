@@ -17,16 +17,15 @@ type Props = {
   searchParams: Promise<{ state?: string; role?: string }>;
 };
 
-/** What `?state=open` opens, as the scheduling phase will (the roles plan's R3). */
-const OPENED = new Set(["schedule.edit", "schedule.publish"]);
-
 // Roles and permissions as the team sees them in the console (the roles
-// plan's R2): today's rules for the demo's people, from the declarations as
-// the page reads them before its migration, with pay as "מי רואה שכר" sets
-// it, every area closed, and the way back to the business. `?state=open`
-// opens scheduling, as R3 will, so its switches change with their undo;
-// `?state=readOnly` is a team role that only reads businesses. Stand-in
-// actions: nothing reaches a database.
+// plan's R2): today's rules for the demo's people, from the declarations,
+// with pay as "מי רואה שכר" sets it, the areas open for changes as the
+// database says once its phase has opened them (`settable` in the
+// declarations: scheduling, since R3) and every other area closed, and the
+// way back to the business. `?state=open` opens every area, as the screen
+// will be once each phase has opened its own (R4 to R8), so every switch
+// changes with its undo; `?state=readOnly` is a team role that only reads
+// businesses. Stand-in actions: nothing reaches a database.
 export default function ConsoleRolesTwin({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -45,15 +44,21 @@ async function Demo({ params, searchParams }: Props) {
     permissions,
     BASE_ROLES.filter((base) => pay.includes(base)),
   );
-  const matrix =
-    state === "open"
-      ? {
-          ...byDefault,
-          keys: byDefault.keys.map((key) =>
-            OPENED.has(key.perm) ? { ...key, settable: true } : key,
-          ),
-        }
-      : byDefault;
+  // As the database answers once each phase is in: the keys declared
+  // settable (`matrixByDefault` opens none, as before a migration), or with
+  // `?state=open` every key but the one an owner gives, which keeps its
+  // switch.
+  const declared = new Set<string>(
+    permissions.filter((entry) => entry.settable).map((entry) => entry.key),
+  );
+  const matrix = {
+    ...byDefault,
+    keys: byDefault.keys.map((key) =>
+      (state === "open" ? !key.byOwner : declared.has(key.perm))
+        ? { ...key, settable: true }
+        : key,
+    ),
+  };
   // Chat on too, as the console's "מי רואה שכר" twin has its documents.
   const enabled = [
     ...enabledModules(manifests, demoModuleRows),

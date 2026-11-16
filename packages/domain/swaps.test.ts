@@ -3,6 +3,7 @@ import type { ScheduledShift } from "./schedule";
 import { ISRAEL_TIME_ZONE } from "./shabbat";
 import {
   approvalsFor,
+  decidesSwap,
   myRequestFor,
   offersFor,
   type ShiftSwap,
@@ -294,6 +295,28 @@ describe("approvalsFor", () => {
     ).toEqual(["1"]);
     // Monday: the day is over, and neither is listed.
     expect(read(new Date("2026-11-08T22:00:00.000Z"))).toEqual([]);
+  });
+});
+
+describe("decidesSwap", () => {
+  const taken = swap("1", "eve", "noa", "yoav");
+
+  it("lets whoever publishes the schedule decide every request, their own too", () => {
+    for (const userId of ["shiran", "noa", "yoav"]) {
+      expect(decidesSwap(taken, { userId, publishes: true })).toBe(true);
+    }
+  });
+
+  it("lets someone who builds without publishing decide only colleagues' requests (the roles plan's R3)", () => {
+    // As public.decide_shift_swap refuses them: approving one's own changes
+    // a published week on one's word alone.
+    expect(decidesSwap(taken, { userId: "shiran", publishes: false })).toBe(
+      true,
+    );
+    expect(decidesSwap(taken, { userId: "noa", publishes: false })).toBe(false);
+    expect(decidesSwap(taken, { userId: "yoav", publishes: false })).toBe(
+      false,
+    );
   });
 });
 

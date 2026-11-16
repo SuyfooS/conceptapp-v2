@@ -36,6 +36,9 @@ import { currentBuildWeeks, currentScheduleBuild, weekAsNow } from "../week";
 export type ScheduleFailure =
   | "noAccess"
   | "viewOnly"
+  // Someone who builds the schedule without publishing it (the roles plan's
+  // R3) pressed publish: nothing was sent.
+  | "noPublish"
   | "weekChanged"
   | "published"
   | "invalid"
@@ -118,8 +121,10 @@ const intentOf = (form: FormData) =>
   form.get("intent") === "publish" ? "publish" : "save";
 
 /**
- * Save the week the form names as the signed-in manager or owner, and publish
- * it to the team when the form's `intent` is "publish". The form posts the
+ * Save the week the form names as whoever builds the schedule, and publish it
+ * to the team when the form's `intent` is "publish" and they publish it too
+ * (`publishesSchedule`; otherwise `noPublish`, before anything is sent, as
+ * the database refuses it first). The form posts the
  * shifts as JSON (`shifts`, each one it read with its id), what it read of
  * them (`basis`, null for a week drawn from the pattern, which replaces the
  * week while nobody has saved it, and is refused once someone has:
@@ -159,6 +164,9 @@ export async function saveScheduleAction(
   if (!build) return { failure: "noAccess" };
   const { week, positions } = build;
   const intent = intentOf(form);
+  if (intent === "publish" && !weeks.publishes) {
+    return { failure: "noPublish", now };
+  }
   // Someone published the week since this screen was opened.
   if (intent === "save" && build.publishedAt) return { failure: "published" };
 

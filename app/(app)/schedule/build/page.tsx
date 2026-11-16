@@ -1,7 +1,9 @@
 import { builderHref, builderWeekOf, gapsAhead } from "@domain/running-week";
+import { canSeeTeam } from "@domain/team";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
+import { currentMember } from "../../member";
 import { baseWording, translator } from "../../wording";
 import {
   currentBuildSwaps,
@@ -37,10 +39,12 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   };
 }
 
-// Owners and managers build the schedule here: next week, or with
+// Whoever builds the schedule builds it here (`buildsSchedule`: owners and
+// managers by default, the roles plan's R3): next week, or with
 // `?week=<its first day>` the week running now (the running-week plan's R3a).
-// Any other week opens next week, and one already over says so. Workers get
-// the not-found screen, as on the team availability screen.
+// Any other week opens next week, and one already over says so. Someone who
+// builds without publishing saves drafts and reads a published week. Anyone
+// else gets the not-found screen, as on the team availability screen.
 export default async function ScheduleBuildPage(props: Props) {
   const { weeks, which } = await askedWeek(props);
   if (!weeks) notFound();
@@ -55,13 +59,19 @@ export default async function ScheduleBuildPage(props: Props) {
     );
   }
   const start = which === "this" ? weeks.thisWeek : weeks.nextWeek;
-  const [data, swaps, thisWeek, nextWeek] = await Promise.all([
+  const [data, swaps, thisWeek, nextWeek, member] = await Promise.all([
     currentScheduleBuild(start),
     currentBuildSwaps(start),
     currentScheduleBuild(weeks.thisWeek),
     currentScheduleBuild(weeks.nextWeek),
+    currentMember(),
   ]);
   if (!data) notFound();
+  // The regular shifts are set on the management page, which only those who
+  // see the team open (`manageAccess`): a worker who builds is told only what
+  // they can do here.
+  const role = member?.membership?.role;
+  const manageHref = role && canSeeTeam(role) ? "/manage/scheduling" : null;
   const now = new Date(weeks.now);
   // Shifts still to start lacking someone, in each week.
   const gaps = (build: typeof data | null) =>
@@ -71,6 +81,8 @@ export default async function ScheduleBuildPage(props: Props) {
       data={data}
       swaps={swaps}
       save={saveScheduleAction}
+      manageHref={manageHref}
+      publishes={weeks.publishes}
       wording={wording}
       running={{
         which,

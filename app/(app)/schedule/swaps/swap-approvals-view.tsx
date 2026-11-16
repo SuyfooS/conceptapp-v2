@@ -1,5 +1,5 @@
 import type { WeekScheduleShift } from "@db/schedule";
-import { type Approval, approvalsFor } from "@domain/swaps";
+import { type Approval, approvalsFor, decidesSwap } from "@domain/swaps";
 import { PageBody, PageHeader } from "@ui/page";
 import { type AppWording, translator } from "../../wording";
 import type { PublishedSchedule } from "../week";
@@ -13,17 +13,23 @@ type DecideAction = (
 type Row = Approval<WeekScheduleShift>;
 
 /**
- * The requests waiting for a manager, from today on, in both weeks, at the
- * moment the server read them. One whose shift has begun is marked
- * `started`: it can only be declined.
+ * The requests waiting for the person to decide, from today on, in both
+ * weeks, at the moment the server read them: every one for whoever
+ * publishes the schedule, colleagues' only for someone who builds it without
+ * publishing (`decidesSwap`, as the database refuses the rest). One whose
+ * shift has begun is marked `started`: it can only be declined.
  */
-export function pendingApprovals(data: PublishedSchedule): Row[] {
+export function pendingApprovals(
+  data: PublishedSchedule,
+  publishes = true,
+): Row[] {
+  const decider = { userId: data.userId, publishes };
   return approvalsFor(
     data.swaps,
     [...data.thisWeek.shifts, ...data.nextWeek.shifts],
     new Date(data.now),
     data.timeZone,
-  );
+  ).filter((approval) => decidesSwap(approval.swap, decider));
 }
 
 /**
@@ -36,10 +42,17 @@ export function pendingApprovals(data: PublishedSchedule): Row[] {
 export function SwapApprovalsView({
   data,
   decide,
+  publishes = true,
   wording,
 }: {
   data: PublishedSchedule;
   decide: DecideAction;
+  /**
+   * The person publishes the schedule too (`publishesSchedule`): without it
+   * their own requests, asked or taken, aren't theirs to decide. True unless
+   * said otherwise.
+   */
+  publishes?: boolean;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -53,7 +66,7 @@ export function SwapApprovalsView({
         subtitle={t("swaps.subtitle")}
       />
       <ApprovalsBoard
-        rows={pendingApprovals(data)}
+        rows={pendingApprovals(data, publishes)}
         people={data.people}
         positions={data.positions}
         decide={decide}

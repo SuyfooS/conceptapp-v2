@@ -304,6 +304,27 @@ describe("chat's lines", () => {
     ).toEqual([CHAT]);
   });
 
+  it("follow who builds the schedule for its approvals, once what the person holds is known (R3)", () => {
+    // swap.waiting and availability.missing are for those who hold
+    // schedule.edit, schedule.unfilled (only ever of a published week) for
+    // those who publish it: managers by default.
+    for (const kind of ["swap.waiting", "availability.missing"] as const) {
+      expect(NOTIFICATION_KINDS[kind].perm).toBe("schedule.edit");
+    }
+    expect(NOTIFICATION_KINDS["schedule.unfilled"].perm).toBe(
+      "schedule.publish",
+    );
+    expect(groupsFor("worker", ["scheduling"], ["schedule.edit"])).toContain(
+      "approvals",
+    );
+    expect(groupsFor("worker", ["scheduling"], [])).not.toContain("approvals");
+    // A manager lowered to view keeps none of scheduling's approvals.
+    expect(groupsFor("manager", ["scheduling"], [])).not.toContain("approvals");
+    // An owner holds everything; without what they hold, by role as before.
+    expect(groupsFor("owner", ["scheduling"], [])).toContain("approvals");
+    expect(groupsFor("manager", ["scheduling"])).toContain("approvals");
+  });
+
   it("reach the staff only: an accountant is in no chat, only in documents", () => {
     expect(groupsFor("worker", ["chat"])).toEqual(["chat", "documents"]);
     expect(groupsFor("accountant", ["chat"])).toEqual(["documents"]);

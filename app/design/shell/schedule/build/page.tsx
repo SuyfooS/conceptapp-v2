@@ -27,7 +27,9 @@ import {
   meanwhileSwaps,
 } from "./demo";
 
-type Props = { searchParams: Promise<{ state?: string; week?: string }> };
+type Props = {
+  searchParams: Promise<{ state?: string; week?: string; publishes?: string }>;
+};
 
 const HREF = "/design/shell/schedule/build";
 
@@ -53,6 +55,11 @@ const HREF = "/design/shell/schedule/build";
 // evening, tomorrow morning, Friday and Saturday night). What is over and
 // this morning, under way, lock as on the running twin. The switch's "השבוע
 // הבא" goes back to the twin above.
+//
+// &publishes=no, with any of them: someone who builds the schedule without
+// publishing it (the roles plan's R3). A draft saves, with no "פרסום" and the
+// line that says who publishes it; a published week (?state=meanwhile) is
+// only read, with the line that says why.
 export default function ShellScheduleBuild(props: Props) {
   return (
     <Suspense>
@@ -62,7 +69,8 @@ export default function ShellScheduleBuild(props: Props) {
 }
 
 async function Demo({ searchParams }: Props) {
-  const { state, week } = await searchParams;
+  const { state, week, publishes: publishing } = await searchParams;
+  const publishes = publishing !== "no";
   const { members } = buildTeam(teamMembers, teamInvites, teamToday);
   const running =
     week === demoWeek.start
@@ -87,6 +95,7 @@ async function Demo({ searchParams }: Props) {
         swaps={[]}
         save={demoSaveSchedule}
         backHref="/design/shell/schedule"
+        publishes={publishes}
         wording={baseWording}
         running={{
           which: "this",
@@ -135,6 +144,7 @@ async function Demo({ searchParams }: Props) {
         swaps={meanwhileSwaps}
         save={demoPublishMeanwhile}
         backHref="/design/shell/schedule"
+        publishes={publishes}
         wording={baseWording}
       />
     );
@@ -154,6 +164,7 @@ async function Demo({ searchParams }: Props) {
       swaps={[]}
       save={demoSaveSchedule}
       backHref="/design/shell/schedule"
+      publishes={publishes}
       wording={baseWording}
     />
   );

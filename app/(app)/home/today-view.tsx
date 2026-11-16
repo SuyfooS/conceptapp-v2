@@ -11,6 +11,7 @@ import {
   shiftEnded,
 } from "@domain/running-week";
 import {
+  changesWeek,
   type ScheduledShift,
   scheduleGaps,
   shiftsByDay,
@@ -19,11 +20,12 @@ import {
 import { timeIn } from "@domain/shabbat";
 import {
   approvalsFor,
+  decidesSwap,
   myRequestFor,
   offersFor,
   toApprove,
 } from "@domain/swaps";
-import { canSeeTeam, type Team } from "@domain/team";
+import type { Team } from "@domain/team";
 import {
   availabilityStatus,
   type BusinessClock,
@@ -84,9 +86,21 @@ import { RefreshOnReturn } from "./refresh-on-return";
 export type TodaySchedule = {
   published: PublishedSchedule;
   availability: AvailabilityWeek;
-  /** Owners and managers only, like `build` and `running`. */
+  /**
+   * The person builds the schedule (`buildsSchedule`: owners and managers by
+   * default, whoever an owner raised; the roles plan's R3): the business's
+   * next shift, the requests to decide and the team's tiles are theirs.
+   */
+  builds: boolean;
+  /**
+   * They publish it too (`publishesSchedule`). Without it a published week
+   * is only read on the builder, so nothing here sends them to fill it, and
+   * they decide only colleagues' requests (`decidesSwap`).
+   */
+  publishes: boolean;
+  /** Whoever builds the schedule only, like `build` and `running`. */
   teamAvailability: TeamAvailabilityWeek | null;
-  /** Next week as the manager builds it. */
+  /** Next week as its builder builds it. */
   build: ScheduleBuildWeek | null;
   /**
    * The week running now as the manager builds it, once someone built it
@@ -149,6 +163,24 @@ const allShifts = ({ thisWeek, nextWeek }: PublishedSchedule) => [
   ...thisWeek.shifts,
   ...nextWeek.shifts,
 ];
+/**
+ * The requests the person still approves, by shift time: every one for
+ * whoever publishes the schedule, colleagues' only for someone who builds it
+ * without publishing (`decidesSwap`). One whose shift has begun can't be
+ * approved any more.
+ */
+const approvalsHere = (schedule: TodaySchedule, now: string) => {
+  const { published } = schedule;
+  const decider = { userId: published.userId, publishes: schedule.publishes };
+  return toApprove(
+    approvalsFor(
+      published.swaps,
+      allShifts(published),
+      new Date(now),
+      published.timeZone,
+    ),
+  ).filter((approval) => decidesSwap(approval.swap, decider));
+};
 /** As `nameOf` on the shift screens: someone who left reads as such. */
 const nameIn = (t: T, published: PublishedSchedule, userId: string) => {
   const person = published.people.find((p) => p.userId === userId);
@@ -166,19 +198,24 @@ const personIn = (t: T, published: PublishedSchedule, userId: string) => ({
 });
 
 /**
- * What the week running now still lacks, in places, and where a manager
+ * What the week running now still lacks, in places, and where its builder
  * builds the schedule: this week's builder while a shift still to start in
  * it lacks someone, or while it waits to be published (Orel's answer 6 of 15
  * November 2026: what is nearer first; `runningFirst`), next week's
- * otherwise.
+ * otherwise. Someone who builds without publishing only reads the week once
+ * it is published (`changesWeek`): nothing of it is theirs to fill, so it
+ * lacks nothing for them and they build next week's.
  */
 function runningOf(schedule: TodaySchedule, now: string) {
   const { running, published } = schedule;
   const at = new Date(now);
+  const fills = changesWeek(schedule.publishes, {
+    published: Boolean(running?.publishedAt),
+  });
   return {
-    places: runningGaps(running, at, published.timeZone).people,
+    places: fills ? runningGaps(running, at, published.timeZone).people : 0,
     href:
-      running && runningFirst(running, at, published.timeZone)
+      fills && running && runningFirst(running, at, published.timeZone)
         ? builderHref(running.week.start)
         : BUILDER_PATH,
   };
@@ -436,19 +473,21 @@ export async function TodayView({
   );
 }
 
-/** The hero and, for an owner or manager, the first request floating over it. */
+/**
+ * The hero and, for whoever builds the schedule, the first request floating
+ * over it.
+ */
 function NextShift({
   t,
   path,
   clock,
-  role,
   schedule,
   format,
   now,
 }: ViewProps & { format: Format; now: string }) {
   const { published, availability } = schedule;
   const shifts = allShifts(published);
-  const manager = canSeeTeam(role);
+  const manager = schedule.builds;
   // Last night's shift can still be on in the first hours of the week.
   const ahead = [...published.overnight, ...shifts];
   const own = nextShift(ahead, clock, published.userId);
@@ -456,16 +495,7 @@ function NextShift({
   // look out for: the business's.
   const shift = own ?? (manager ? nextShift(ahead, clock) : null);
   // One whose shift has begun can't be approved any more: not offered here.
-  const request = manager
-    ? toApprove(
-        approvalsFor(
-          published.swaps,
-          shifts,
-          new Date(now),
-          published.timeZone,
-        ),
-      )[0]
-    : null;
+  const request = manager ? approvalsHere(schedule, now)[0] : null;
   const overlap = Boolean(request);
 
   if (!shift) {
@@ -828,7 +858,7 @@ function tileContent(
 function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
   const { published, availability, build } = schedule;
   const shifts = allShifts(published);
-  const teamView = canSeeTeam(role) && schedule.teamAvailability;
+  const teamView = schedule.builds && schedule.teamAvailability;
   const running = runningOf(schedule, now);
   const nextWeekPublished = published.nextWeek.publishedAt !== null;
   const dueAt = new Date(availability.dueAt);
@@ -850,20 +880,19 @@ function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
     team: teamView
       ? {
           gapsThisWeek: running.places,
+          // Next week's open places, while the person can fill them
+          // (`changesWeek`): once it is published, only if they publish.
           gaps:
-            build && build.shifts.length > 0
+            build &&
+            build.shifts.length > 0 &&
+            changesWeek(schedule.publishes, {
+              published: build.publishedAt !== null,
+            })
               ? scheduleGaps(build.shifts).people
               : null,
           missing: nextWeekPublished ? null : teamView.team.counts.missing,
           pastDue: dueAt.getTime() < new Date(now).getTime(),
-          swaps: toApprove(
-            approvalsFor(
-              published.swaps,
-              shifts,
-              new Date(now),
-              published.timeZone,
-            ),
-          ).length,
+          swaps: approvalsHere(schedule, now).length,
         }
       : null,
   });
@@ -887,7 +916,7 @@ function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
           "md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0",
           "md:[&>:last-child:nth-child(odd)]:col-span-2",
           // Desktop: as many across as fit at a readable width, wrapping
-          // rather than squeezing (up to five tiles).
+          // rather than squeezing (up to six tiles).
           "xl:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] xl:[&>:last-child:nth-child(odd)]:col-span-1",
           scrolls
             ? "-mx-4 flex snap-x snap-proximity scroll-px-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -913,20 +942,21 @@ function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
 }
 
 /**
- * Today's published shifts, each a grouped list of who works it. For an
- * owner or manager, a shift short of someone that has not ended leads to
- * this week's builder, which opens on today (the running-week plan's R4).
+ * Today's published shifts, each a grouped list of who works it. For
+ * whoever publishes the schedule, a shift short of someone that has not
+ * ended leads to this week's builder, which opens on today (the running-week
+ * plan's R4); someone who builds without publishing sees it short, with no
+ * link, as the week is theirs only to read.
  */
 function WhoWorksToday({
   t,
   path,
   clock,
-  role,
   schedule,
   now,
 }: ViewProps & { now: string }) {
   const { published } = schedule;
-  const manager = canSeeTeam(role);
+  const manager = schedule.builds;
   const { thisWeek, nextWeek } = published;
   // With nothing published at all the hero says so, and says what to do next.
   if (thisWeek.publishedAt === null && nextWeek.publishedAt === null) {
@@ -966,9 +996,11 @@ function WhoWorksToday({
           {today.map((shift) => {
             const short = stillNeeded(shift);
             const shortWords = t("home.who.short", { count: short });
-            // Someone can still join a shift under way, never one over.
+            // Someone can still join a shift under way, never one over. This
+            // week is published, so only someone who publishes fills it.
             const fill =
               manager &&
+              schedule.publishes &&
               short > 0 &&
               !shiftEnded(shift, new Date(now), published.timeZone);
             return (

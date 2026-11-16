@@ -611,7 +611,7 @@
         "updateAvailability": "Update availability",
         "notPublished": {
           "title": "The schedule is not published yet",
-          "worker": "When the manager publishes it, your next shift appears here.",
+          "worker": "When the schedule is published, your next shift appears here.",
           "manager": "When the schedule is published, the next shift appears here. You can start building it now."
         },
         "noShifts": {
@@ -831,6 +831,7 @@
         "clockedInLink": "{name}'s hours",
         "failures": {
           "notAllowed": "You can't make this change. Only an owner changes an owner's or an accountant's place.",
+          "beyondHeld": "This role holds permissions you don't have, so only an owner gives it. The role stays as it was.",
           "gone": "This changed in the meantime, and they're no longer on the team. Reload the screen.",
           "yourself": "Your own place on the team can't be changed from here.",
           "lastOwner": "The business needs at least one owner.",
@@ -994,6 +995,7 @@
       },
       "noShifts": "No shifts on this day. You can add one here.",
       "noPattern": "This week has no shifts. You can add shifts for this week here. Regular shifts, which every new week starts from, are set in <manage>Running the business</manage>.",
+      "noPatternHere": "This week has no shifts. You can add shifts for this week here.",
       "shift": "{name} shift, {day} {date}",
       "time": "<ltr>{start}–{end}</ltr>",
       "missing": "{count, plural, one {One person missing} other {# missing}}",
@@ -1036,19 +1038,24 @@
       "published": "The schedule is published. The whole team can see it now.",
       "publishChanges": "Publish the changes",
       "publish": "Publish the schedule",
+      "noPublish": {
+        "draft": "You can build the schedule and save a draft. The owners, and whoever may publish, send it to the team.",
+        "published": "This schedule is already published, so here you can only look at it. The owners, and whoever may publish, change it."
+      },
       "hold": {
         "waiting": "The changes will be published in a few seconds.",
         "undone": "Publishing was cancelled, and nobody was told."
       },
       "swapsEnd": "{count, plural, one {One swap request will be cancelled} other {# swap requests will be cancelled}}",
       "errors": {
-        "noAccess": "Only managers and owners build the schedule.",
+        "noAccess": "Only someone who builds the schedule saves and publishes it.",
         "viewOnly": "This is view only, so the schedule was not saved.",
+        "noPublish": "{week, select, published {Publishing is for the owners and whoever may publish, so the changes weren't published. Refresh the screen to see it as published.} other {Publishing is for the owners and whoever may publish, so the schedule wasn't published. You can save it as a draft.}}",
         "weekChanged": "A new week has started. Refresh the screen to build next week's schedule.",
         "invalid": "Something in the schedule does not fit, for example someone on two shifts at the same time. Refresh the screen and try again.",
         "failed": "We could not save. Try again in a moment.",
         "clash": "Someone is on two shifts at the same time, so the schedule was not saved. Take them off one of them or change the hours, then save again.",
-        "published": "The schedule was published meanwhile. Refresh the screen and publish the changes.",
+        "published": "{publishes, select, no {The schedule was published meanwhile, so the draft wasn't saved. From now on the owners, and whoever may publish, change it. Refresh the screen to see it as published.} other {The schedule was published meanwhile. Refresh the screen and publish the changes.}}",
         "teamChanged": "Someone on the schedule is no longer on the team, so the schedule was not saved. Refresh the screen, and the shifts they left show as missing.",
         "weekMoved": "A shift you changed has changed meanwhile, so the schedule was not saved. Refresh the screen to see it as it is now, and change it again.",
         "weekSaved": "The schedule was saved meanwhile on another screen, so the changes here were not saved. Refresh the screen to see it as it is now, and make them again.",
@@ -1151,7 +1158,7 @@
         "count": "{count, plural, one {1 shift} other {# shifts}}",
         "hours": "{hours, plural, =1 {1 hour} =2 {2 hours} other {# hours}}",
         "empty": "You have no shifts in the published schedule. If that looks wrong, talk to your manager.",
-        "notPublished": "The schedule is not published yet. Once your manager publishes it, your shifts appear here.",
+        "notPublished": "The schedule is not published yet. Once it is, your shifts appear here.",
         "line": "{name} · <ltr>{start}–{end}</ltr>",
         "later": "After that"
       },
@@ -1198,10 +1205,10 @@
         "title": "{name}, {day} {date}",
         "people": "On this shift",
         "me": "Me",
-        "give": "The shift is offered to the whole team. It stays yours, and you still need to come in, until someone takes it and the manager approves.",
-        "giveNote": "You can withdraw the request until the manager decides.",
-        "take": "Once the manager approves, the shift moves to you, in the same position. Until then it stays with {name}.",
-        "takeNote": "After you take it, only {name} or the manager can cancel."
+        "give": "The shift is offered to the whole team. It stays yours, and you still need to come in, until someone takes it and the swap is approved.",
+        "giveNote": "You can withdraw the request until it is decided.",
+        "take": "Once the swap is approved, the shift moves to you, in the same position. Until then it stays with {name}.",
+        "takeNote": "After you take it, only {name}, or whoever decides on the swap, can cancel."
       },
       "week": {
         "this": "This week",
@@ -1239,14 +1246,14 @@
           "failed": "Something went wrong. Please try again."
         },
         "open": "You asked to give this shift away. Waiting for someone on the team to take it.",
-        "taken": "{form, select, other {{name} is taking the shift}}. Waiting for the manager to approve.",
+        "taken": "{form, select, other {{name} is taking the shift}}. Waiting for approval.",
         "offers": {
           "title": "Shifts you can take",
           "count": "{count, plural, one {One shift} other {# shifts}}",
           "empty": "Nobody on the team is giving away a shift right now. When someone does, it shows here.",
           "from": "{form, select, other {{name} is giving the shift away}}",
           "busy": "You have another shift at the same time.",
-          "takenByYou": "You took the shift. Waiting for the manager to approve."
+          "takenByYou": "You took the shift. Waiting for approval."
         }
       },
       "former": "Someone no longer on the team"
@@ -1280,7 +1287,7 @@
         "decline": "Decline the request"
       },
       "failures": {
-        "noAccess": "Only managers and owners approve swaps.",
+        "noAccess": "Only someone who builds the schedule approves swaps.",
         "viewOnly": "While viewing as someone else, nothing can be changed.",
         "started": "The shift has already started and cannot be handed over.",
         "closed": "The request is no longer waiting for a decision, or the person who gave it away is no longer on the shift. Try refreshing the screen.",
@@ -2972,7 +2979,7 @@
           },
           "taken": {
             "title": "Your shift was taken: {name}",
-            "note": "Waiting for a manager to approve"
+            "note": "Waiting for approval"
           },
           "waiting": {
             "title": "A swap is waiting for approval",
@@ -2998,7 +3005,7 @@
           },
           "reopened": {
             "title": "Your request to give the shift away is open again",
-            "note": "The shift stays yours until someone else takes it and a manager approves"
+            "note": "The shift stays yours until someone else takes it and the swap is approved"
           }
         },
         "clock": {

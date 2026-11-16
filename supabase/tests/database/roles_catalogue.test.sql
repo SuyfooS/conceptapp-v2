@@ -179,14 +179,14 @@ select set_eq(
     ('lists.manage', 'lists', 'lists', null, false, '{manager}'::text[], false),
     ('lists.send', 'lists', 'lists', null, false, '{manager}'::text[], false),
     ('reservations.edit', 'reservations', 'reservations', null, false, '{manager,worker}'::text[], false),
-    ('schedule.edit', 'scheduling', 'scheduling', null, false, '{manager}'::text[], false),
-    ('schedule.publish', 'scheduling', 'scheduling', 'schedule.edit', false, '{manager}'::text[], false),
+    ('schedule.edit', 'scheduling', 'scheduling', null, true, '{manager}'::text[], false),
+    ('schedule.publish', 'scheduling', 'scheduling', 'schedule.edit', true, '{manager}'::text[], false),
     ('storefront.edit', 'storefront', 'storefront', null, false, '{manager}'::text[], false),
     ('team.view', null, 'team', null, false, '{manager}'::text[], false),
     ('team.edit', null, 'team', 'team.view', false, '{manager}'::text[], false),
     ('manage.view', null, 'manage', null, false, '{manager}'::text[], false),
     ('manage.edit', null, 'manage', 'manage.view', false, '{manager}'::text[], false)$$,
-  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and no switch per role yet'
+  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling, which R3 opened (20261115000900_roles_scheduling.sql)'
 );
 
 select throws_ok(

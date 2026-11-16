@@ -27,6 +27,8 @@ import {
 import { canOpenModule, isStaff } from "@domain/modules";
 import { type BuildWeeks, draftAhead, weekBuilt } from "@domain/running-week";
 import {
+  buildsSchedule,
+  publishesSchedule,
   type ScheduledShift,
   type ShiftAsNow,
   type ShiftBasis,
@@ -36,13 +38,13 @@ import { shabbatPlaceOf } from "@domain/shabbat";
 import { shabbatTimes } from "@domain/shabbat-times";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { ShiftSwap } from "@domain/swaps";
-import { canSeeTeam, type TeamMember } from "@domain/team";
+import type { TeamMember } from "@domain/team";
 import { overnightDay } from "@domain/today";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
-import { currentTeam } from "../team";
+import { currentScheduleTeam } from "../team";
 
 export type AvailabilityWeek = {
   /** The week people answer for: the one after this week. */
@@ -115,9 +117,9 @@ const schedulingContext = cache(async () => {
 
 /**
  * One of the two weeks and every answer the signed-in person may read for it
- * (RLS: their own, or everyone's for a manager or owner), read once per
- * request and week: next week, which people answer for, or the week running
- * now, whose answers were all sent before it began.
+ * (RLS: their own, or everyone's for whoever builds the schedule), read once
+ * per request and week: next week, which people answer for, or the week
+ * running now, whose answers were all sent before it began.
  */
 const weekContext = cache(
   async (
@@ -190,17 +192,18 @@ export type TeamAvailabilityWeek = {
 
 /**
  * Next week's availability for the whole team: who has not sent it and
- * what everyone else sent. Null unless the signed-in person is a manager
- * or owner (or views as one) with scheduling on.
+ * what everyone else sent. Null unless the signed-in person builds the
+ * schedule (`buildsSchedule`, or views as a role that does) with scheduling
+ * on.
  */
 export const currentTeamAvailability = cache(
   async (): Promise<TeamAvailabilityWeek | null> => {
     const member = await currentMember();
-    const role = member?.membership?.role;
-    if (!role || !canSeeTeam(role)) return null;
+    const membership = member?.membership;
+    if (!membership || !buildsSchedule(membership)) return null;
     const [context, team] = await Promise.all([
       availabilityContext(),
-      currentTeam(),
+      currentScheduleTeam(),
     ]);
     if (!context || !team) return null;
     // An accountant is off the staff: they owe no availability.
@@ -254,13 +257,19 @@ export type BuildWeeksNow = BuildWeeks & {
   timeZone: string;
   /** The time clock is on: the hours of a shift that is over are kept there. */
   clock: boolean;
+  /**
+   * The person publishes the schedule too (`publishesSchedule`): without it
+   * they save drafts only, and a published week is theirs to read.
+   */
+  publishes: boolean;
 };
 
 /**
- * The builder's two weeks for the signed-in manager or owner (or someone
- * viewing as one) with scheduling on: the one running now and the next, at
- * the request's moment, with that moment, the business's zone and whether
- * its time clock is on. Null for anyone else.
+ * The builder's two weeks for whoever builds the schedule (`buildsSchedule`,
+ * or someone viewing as a role that does) with scheduling on: the one running
+ * now and the next, at the request's moment, with that moment, the
+ * business's zone, whether its time clock is on and whether they publish.
+ * Null for anyone else.
  */
 export const currentBuildWeeks = cache(
   async (): Promise<BuildWeeksNow | null> => {
@@ -268,24 +277,26 @@ export const currentBuildWeeks = cache(
       currentMember(),
       schedulingContext(),
     ]);
-    const role = member?.membership?.role;
-    if (!role || !canSeeTeam(role) || !scheduling) return null;
+    const membership = member?.membership;
+    if (!membership || !buildsSchedule(membership) || !scheduling) return null;
     return {
       ...scheduling.weeks,
       now: scheduling.now.toISOString(),
       timeZone: scheduling.business.place.timeZone,
       clock: scheduling.enabled.includes("time_clock"),
+      publishes: publishesSchedule(membership),
     };
   },
 );
 
 /**
- * A week's schedule as the manager builds it, next week unless `start`
+ * A week's schedule as its builder builds it, next week unless `start`
  * names the week running now: what was saved, or a draft from the
  * business's shift pattern with nobody on it yet (in the running week only
  * the shifts still to start), and the team with its availability. Null
- * unless the signed-in person is a manager or owner (or views as one) with
- * scheduling on, and for any other week. Memoised per week for the request.
+ * unless the signed-in person builds the schedule (`buildsSchedule`, or
+ * views as a role that does) with scheduling on, and for any other week.
+ * Memoised per week for the request.
  */
 export const currentScheduleBuild = cache(
   async (start?: string): Promise<ScheduleBuildWeek | null> => {
@@ -293,12 +304,15 @@ export const currentScheduleBuild = cache(
       currentMember(),
       schedulingContext(),
     ]);
-    const role = member?.membership?.role;
-    if (!role || !canSeeTeam(role) || !scheduling) return null;
+    const membership = member?.membership;
+    if (!membership || !buildsSchedule(membership) || !scheduling) return null;
     const { weeks, now } = scheduling;
     const at = start ?? weeks.nextWeek;
     if (at !== weeks.thisWeek && at !== weeks.nextWeek) return null;
-    const [context, team] = await Promise.all([weekContext(at), currentTeam()]);
+    const [context, team] = await Promise.all([
+      weekContext(at),
+      currentScheduleTeam(),
+    ]);
     if (!context || !team) return null;
     const { week, open } = context;
     const savedAt = open?.scheduleSavedAt ?? null;
@@ -441,7 +455,7 @@ export type PublishedSchedule = {
 
 /**
  * This week's and next week's schedule as the team reads it: published
- * weeks only (RLS keeps drafts with the managers). For everyone in the
+ * weeks only (RLS keeps drafts with its builders). For everyone in the
  * business with scheduling on; null otherwise.
  */
 export const currentPublishedSchedule = cache(

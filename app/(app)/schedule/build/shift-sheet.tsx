@@ -100,6 +100,7 @@ export function ShiftSheet({
   positions,
   lockOf = () => null,
   lockedNote = () => null,
+  readOnlyLine = null,
   clock = false,
   startsAfter = null,
   timeZone,
@@ -130,6 +131,12 @@ export function ShiftSheet({
    * since it covers the dock's own line.
    */
   lockedNote?: (row: ShiftRow) => ReactNode;
+  /**
+   * The week is only read here (published, by someone who builds it without
+   * publishing it: the roles plan's R3): this line says why, in place of the
+   * shift's own changes, with its people as they are. Null otherwise.
+   */
+  readOnlyLine?: ReactNode;
   /** The time clock is on: a shift that is over has its hours kept there. */
   clock?: boolean;
   /**
@@ -212,7 +219,11 @@ export function ShiftSheet({
   const { shift } = row;
   const locked = lockOf(row);
   const note = locked ? lockedNote(row) : null;
-  const onShift = (fixed: ReadonlySet<string>, readOnly: boolean) => (
+  const onShift = (
+    fixed: ReadonlySet<string>,
+    readOnly: boolean,
+    over = readOnly,
+  ) => (
     <ShiftPeople
       weekStart={weekStart}
       shifts={context.map((r) => r.shift)}
@@ -223,6 +234,7 @@ export function ShiftSheet({
       positions={positions}
       fixed={fixed}
       readOnly={readOnly}
+      over={over}
       onChange={(next) => onChange(row.id, next)}
     />
   );
@@ -244,7 +256,13 @@ export function ShiftSheet({
       })}
       action={{ label: tb("done"), onClick: onClose }}
     >
-      {locked ? (
+      {readOnlyLine ? (
+        // Read only: who is on it, as they are, and why nothing changes.
+        <div className="flex flex-col">
+          <p className="px-3 pt-1 pb-2 text-base text-ink-2">{readOnlyLine}</p>
+          {onShift(new Set(shift.assignees.map((a) => a.user)), true, false)}
+        </div>
+      ) : locked ? (
         // Begun: who is on it stays. Over, nobody joins; under way, people
         // do, and nothing else changes.
         <div className="flex flex-col">
@@ -334,7 +352,8 @@ function SheetSection({
  * Who is on the shift, then everyone who could be, those available first.
  * On a shift that has begun, those already on it (`fixed`) stay as they
  * are, in their positions; on one that is over (`readOnly`) nobody else is
- * offered.
+ * offered, and so on one only read (`over` false: nobody on it is said as of
+ * now, not as of a shift gone by).
  */
 function ShiftPeople({
   weekStart,
@@ -346,6 +365,7 @@ function ShiftPeople({
   positions,
   fixed,
   readOnly,
+  over = readOnly,
   onChange,
 }: {
   weekStart: string;
@@ -359,6 +379,8 @@ function ShiftPeople({
   positions: Position[];
   fixed: ReadonlySet<string>;
   readOnly: boolean;
+  /** The shift is over: who was on it is said as of then. */
+  over?: boolean;
   onChange: (shift: ScheduledShift) => void;
 }) {
   const t = useTranslations();
@@ -441,7 +463,7 @@ function ShiftPeople({
     <>
       <SheetSection title={tb("groups.assigned")}>
         {shift.assignees.length === 0 ? (
-          <ListRow title={readOnly ? tb("running.nobodyPast") : tb("nobody")} />
+          <ListRow title={over ? tb("running.nobodyPast") : tb("nobody")} />
         ) : (
           shift.assignees.map(({ user, position }) => {
             // Someone no longer on the team, on a builder opened before, or
