@@ -1,8 +1,8 @@
 import { getBusinessSetup } from "@db/admin";
 import { getBusinessModulesForTeam } from "@db/module-settings";
-import { getRoleMatrixForTeam } from "@db/roles";
+import { getRoleMatrixForTeam, getRolePeopleForTeam } from "@db/roles";
 import { enabledModules, permissionInUse } from "@domain/modules";
-import { PAY_PERMISSION } from "@domain/payroll-access";
+import { accessOrder, PAY_PERMISSION } from "@domain/payroll-access";
 import { consoleRolesAccess } from "@domain/platform";
 import { manifests, permissions } from "@modules/registry";
 import type { Metadata } from "next";
@@ -10,7 +10,13 @@ import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { RolesView } from "@/app/(app)/manage/roles/roles-view";
 import { currentPlatformStaff } from "../../../../staff";
-import { setTeamRoleAreaAction } from "./actions";
+import {
+  addTeamRoleAction,
+  archiveTeamRoleAction,
+  renameTeamRoleAction,
+  restoreTeamRoleAction,
+  setTeamRoleAreaAction,
+} from "./actions";
 import { consoleRolesData } from "./roles-data";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -29,8 +35,9 @@ export async function generateMetadata(): Promise<Metadata> {
  * sees it, and one that may invite people changes it (`consoleRolesAccess`),
  * in a demo business too, whose reset puts it back. An area changes only
  * once its phase opens it, and says so until then. Pay stays on "מי רואה
- * שכר", which it links to where pay opens something. Roles a business names
- * come with R11. Not found off the team or for an unknown business.
+ * שכר", which it links to where pay opens something. "הוספת תפקיד" adds a role
+ * the business names (R11a), renamed and archived here too, once the
+ * database takes them. Not found off the team or for an unknown business.
  * `?role=worker` opens that role first (on a phone, on its own screen).
  */
 export default async function TeamRolesPage({
@@ -45,9 +52,10 @@ export default async function TeamRolesPage({
   if (!business) notFound();
   const t = await getTranslations("admin.setup.people");
   // Read with the secret key, only now that they are on the team.
-  const [modules, matrix] = await Promise.all([
+  const [modules, matrix, people] = await Promise.all([
     getBusinessModulesForTeam(business.id),
     getRoleMatrixForTeam(business.id, permissions),
+    getRolePeopleForTeam(business.id),
   ]);
   const enabled = enabledModules(manifests, modules);
   const href = `/admin/businesses/${business.slug}`;
@@ -57,17 +65,28 @@ export default async function TeamRolesPage({
       data={consoleRolesData({
         matrix,
         enabled,
-        // Members only: an invite isn't in a role until it is claimed.
-        people: business.people.flatMap((person) =>
-          person.status === "member"
-            ? [{ name: person.name || t("noName"), role: person.role }]
-            : [],
-        ),
+        // Members only: an invite isn't in a role until it is claimed. By
+        // name, as the owner's screen lists them.
+        people: people.sort(accessOrder).map((person) => ({
+          name: person.name || t("noName"),
+          role: person.role,
+          namedRole: person.namedRole,
+        })),
         viewOnly: may !== "change",
         documents: enabled.includes("chat"),
       })}
       // Each write names the business the screen is drawn for.
-      actions={{ setArea: setTeamRoleAreaAction.bind(null, business.id) }}
+      actions={{
+        setArea: setTeamRoleAreaAction.bind(null, business.id),
+        ...(matrix.addsRoles
+          ? {
+              addRole: addTeamRoleAction.bind(null, business.id),
+              renameRole: renameTeamRoleAction.bind(null, business.id),
+              archiveRole: archiveTeamRoleAction.bind(null, business.id),
+              restoreRole: restoreTeamRoleAction.bind(null, business.id),
+            }
+          : {}),
+      }}
       paths={{
         place: "console",
         business: href,

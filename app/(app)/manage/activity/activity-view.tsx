@@ -762,7 +762,9 @@ export function ActivityView({
         );
       case "role.permission": {
         const permission = line.permission;
-        const role = line.role ?? "other";
+        // A role the business named goes by its name (roles R11a).
+        const role = line.named ? "named" : (line.role ?? "other");
+        const name = line.named ?? "";
         const side = line.on ? "On" : "Off";
         switch (permission.kind) {
           case "edit":
@@ -770,6 +772,7 @@ export function ActivityView({
             return plain(
               t(`actions.rolePermission.${permission.kind}${side}`, {
                 role,
+                name,
                 area: editOrView(permission.area)
                   ? moduleName(permission.area)
                   : tAccess(`areas.${permission.area}`),
@@ -780,18 +783,43 @@ export function ActivityView({
             return plain(
               t(`actions.rolePermission.extra${side}`, {
                 role,
+                name,
                 extra: tAccess(`extras.${permission.extra}.phrase`),
               }),
               paths.roles,
             );
           case "other":
             return plain(
-              t(`actions.rolePermission.other${side}`, { role }),
+              t(`actions.rolePermission.other${side}`, { role, name }),
               paths.roles,
             );
         }
         break;
       }
+      case "role.create":
+        return plain(
+          t("actions.role.create", {
+            name: line.name,
+            base: line.base ?? "other",
+          }),
+          paths.roles,
+        );
+      case "role.rename":
+        return plain(
+          t("actions.role.rename", { from: line.from, to: line.to }),
+          paths.roles,
+        );
+      case "role.archive":
+      case "role.restore":
+        return plain(
+          t(
+            line.action === "role.archive"
+              ? "actions.role.archive"
+              : "actions.role.restore",
+            { name: line.name },
+          ),
+          paths.roles,
+        );
       case "permission.grant":
       case "permission.revoke": {
         const perm = line.perm === "clock.payroll" ? "payroll" : "other";

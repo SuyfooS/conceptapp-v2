@@ -13,6 +13,7 @@ import {
 } from "@domain/role-access";
 import { manifestFor } from "@modules/registry";
 import type {
+  EditableRole,
   RolePerson,
   RolesData,
 } from "../../../../(app)/manage/roles/roles-types";
@@ -44,6 +45,21 @@ const shiftLead = withExtra(
   false,
 );
 
+/**
+ * The role the business named, "אחראי משמרת", built on workers, held by two
+ * of its workers here. The console's twin shows it held by nobody, as every
+ * named role is until R11b gives them.
+ */
+export const demoShiftLead: EditableRole = {
+  key: "shift-lead",
+  base: "worker",
+  name: "אחראי משמרת",
+  nameEn: null,
+  people: ["yoav", "itay"].map(person),
+  access: shiftLead,
+  seesPay: false,
+};
+
 export const demoRoles: RolesData = {
   // Every area: the demo restaurant has each of these modules on, chat
   // included (/design/chat).
@@ -62,6 +78,7 @@ export const demoRoles: RolesData = {
       key: "manager",
       base: "manager",
       name: null,
+      nameEn: null,
       people: [person("shiran")],
       access: defaultAccess("manager"),
       // As /design/shell/manage/access shows it: managers on.
@@ -71,18 +88,12 @@ export const demoRoles: RolesData = {
       key: "worker",
       base: "worker",
       name: null,
+      nameEn: null,
       people: ["noa", "maya", "shira", "omer"].map(person),
       access: defaultAccess("worker"),
       seesPay: false,
     },
-    {
-      key: "shift-lead",
-      base: "worker",
-      name: "אחראי משמרת",
-      people: ["yoav", "itay"].map(person),
-      access: shiftLead,
-      seesPay: false,
-    },
+    demoShiftLead,
   ],
   owners: [person("uri")],
   accountants: [{ name: demoAccountantName, photo: null }],

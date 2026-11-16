@@ -25,11 +25,17 @@ import {
   extrasTurned,
   heldBeyond,
   holdsExtra,
+  isBaseRole,
   levelChoices,
   MODULE_AREAS,
   matrixByDefault,
+  namedRoleName,
   PLACE_AREAS,
+  parseNewRole,
   parseRoleAreaChange,
+  parseRoleRename,
+  type RoleMatrix,
+  rulesOf,
   withAreaAccess,
   withExtra,
   withLevel,
@@ -555,5 +561,122 @@ describe("workers above managers", () => {
         "scheduling",
       ]),
     ).toEqual(["scheduling"]);
+  });
+});
+
+describe("roles a business names (R11a)", () => {
+  const LEAD = "a1000000-0000-4000-a000-0000000000c1";
+
+  it("are told from managers and workers by their id", () => {
+    expect(isBaseRole("manager")).toBe(true);
+    expect(isBaseRole("worker")).toBe(true);
+    for (const key of ["owner", "accountant", LEAD]) {
+      expect(isBaseRole(key)).toBe(false);
+    }
+  });
+
+  it("have an area changed by their id, as any role", () => {
+    const change = {
+      role: LEAD,
+      area: "scheduling",
+      access: { level: "edit", extras: { "schedule.publish": false } },
+    };
+    expect(parseRoleAreaChange(change)).toEqual(change);
+  });
+
+  it("start from the declarations with none, and none to add", () => {
+    const matrix = matrixByDefault(declaredPermissions([]), []);
+    expect(matrix.named).toEqual([]);
+    expect(matrix.addsRoles).toBe(false);
+  });
+
+  it("have their rules found by their key, built-in or named", () => {
+    const base = matrixByDefault(declaredPermissions([]), []);
+    const lead = {
+      id: LEAD,
+      name: "Shift lead",
+      nameEn: null,
+      base: "worker" as const,
+      byDefault: new Set<string>(),
+      given: new Set(["schedule.edit"]),
+      held: new Set(["schedule.edit"]),
+    };
+    const matrix: RoleMatrix = { ...base, named: [lead], addsRoles: true };
+    expect(rulesOf(matrix, "manager")).toEqual({
+      base: "manager",
+      named: null,
+      byDefault: base.byDefault.manager,
+      given: base.given.manager,
+      held: base.held.manager,
+    });
+    expect(rulesOf(matrix, LEAD)).toEqual({
+      base: "worker",
+      named: lead,
+      byDefault: lead.byDefault,
+      given: lead.given,
+      held: lead.held,
+    });
+    // Archived, or another business's: nothing to change.
+    expect(rulesOf(matrix, "a1000000-0000-4000-a000-0000000000c9")).toBeNull();
+  });
+
+  it("are added with a name kept tidy, built on a manager or a worker, copying any role", () => {
+    expect(
+      parseNewRole(
+        { name: "  Shift   lead ", base: "worker", copyFrom: "manager" },
+        [],
+      ),
+    ).toEqual({
+      ok: true,
+      role: { name: "Shift lead", base: "worker", copyFrom: "manager" },
+    });
+    expect(
+      parseNewRole({ name: "Bar lead", base: "manager", copyFrom: LEAD }, []),
+    ).toEqual({
+      ok: true,
+      role: { name: "Bar lead", base: "manager", copyFrom: LEAD },
+    });
+    expect(
+      parseNewRole({ name: "Manager", base: "worker", copyFrom: "worker" }, [
+        "manager",
+      ]),
+    ).toEqual({ ok: false, problem: "taken" });
+    expect(
+      parseNewRole({ name: "", base: "worker", copyFrom: "worker" }, []),
+    ).toEqual({ ok: false, problem: "empty" });
+    for (const input of [
+      { name: "Lead", base: "owner", copyFrom: "worker" },
+      { name: "Lead", base: "accountant", copyFrom: "worker" },
+      { name: "Lead", base: "worker", copyFrom: "owner" },
+      { name: "Lead", base: "worker", copyFrom: "shift-lead" },
+      { name: 4, base: "worker", copyFrom: "worker" },
+      null,
+    ]) {
+      expect(parseNewRole(input, [])).toEqual({ ok: false, problem: null });
+    }
+  });
+
+  it("are renamed by their id, to a name no other role goes by", () => {
+    expect(parseRoleRename({ role: LEAD, name: " Shift leader " }, [])).toEqual(
+      { ok: true, role: LEAD, name: "Shift leader" },
+    );
+    expect(
+      parseRoleRename({ role: LEAD, name: "Bar lead" }, ["Bar Lead"]),
+    ).toEqual({ ok: false, problem: "taken" });
+    expect(parseRoleRename({ role: LEAD, name: "א".repeat(41) }, [])).toEqual({
+      ok: false,
+      problem: "long",
+    });
+    expect(parseRoleRename({ role: "worker", name: "Lead" }, [])).toEqual({
+      ok: false,
+      problem: null,
+    });
+  });
+
+  it("go by their English name in English, when they have one", () => {
+    const role = { name: "אחראי משמרת", nameEn: "Shift lead" };
+    expect(namedRoleName(role, "he")).toBe("אחראי משמרת");
+    expect(namedRoleName(role, "en")).toBe("Shift lead");
+    expect(namedRoleName({ ...role, nameEn: null }, "en")).toBe("אחראי משמרת");
   });
 });

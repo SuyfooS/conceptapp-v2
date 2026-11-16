@@ -98,12 +98,12 @@ $$;
 -- Who may call what
 
 select ok(
-  not has_function_privilege('authenticated', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean)', 'execute')
-  and not has_function_privilege('anon', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean)', 'execute')
-  and has_function_privilege('service_role', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean)', 'execute')
-  and not has_function_privilege('authenticated', 'public.set_role_permissions(uuid, uuid, public.member_role, text[], boolean[])', 'execute')
-  and not has_function_privilege('anon', 'public.set_role_permissions(uuid, uuid, public.member_role, text[], boolean[])', 'execute')
-  and has_function_privilege('service_role', 'public.set_role_permissions(uuid, uuid, public.member_role, text[], boolean[])', 'execute')
+  not has_function_privilege('authenticated', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean, uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean, uuid)', 'execute')
+  and has_function_privilege('service_role', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean, uuid)', 'execute')
+  and not has_function_privilege('authenticated', 'public.set_role_permissions(uuid, uuid, public.member_role, text[], boolean[], uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.set_role_permissions(uuid, uuid, public.member_role, text[], boolean[], uuid)', 'execute')
+  and has_function_privilege('service_role', 'public.set_role_permissions(uuid, uuid, public.member_role, text[], boolean[], uuid)', 'execute')
   and not has_function_privilege('authenticated', 'public.set_member_permission(uuid, uuid, uuid, text, boolean)', 'execute')
   and has_function_privilege('service_role', 'public.set_member_permission(uuid, uuid, uuid, text, boolean)', 'execute')
   and not has_function_privilege('authenticated', 'public.role_permission_matrix(uuid)', 'execute')

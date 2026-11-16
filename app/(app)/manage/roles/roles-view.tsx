@@ -18,7 +18,9 @@ import {
   heldBeyond,
   holdsExtra,
   levelChoices,
+  namedRoleName,
   type PlaceArea,
+  ROLE_LIMIT,
   ROLE_NAME_MAX,
   type RoleAccess,
   type RoleNameProblem,
@@ -48,15 +50,17 @@ import {
   ChevronRight,
   Crown,
   IdCard,
+  Pencil,
   Plus,
   SlidersHorizontal,
+  Trash2,
   UserCog,
   UserRound,
   Users,
   Wallet,
 } from "lucide-react";
 import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useFormatter, useLocale, useTranslations } from "next-intl";
 import {
   type FormEvent,
   type ReactNode,
@@ -81,7 +85,16 @@ import type {
 /** How long the way back stays on the toast. */
 const UNDO_MS = 6000;
 
-type Toast = { text: string; stamp: string; undo: (() => void) | null };
+type Toast = {
+  text: string;
+  stamp: string;
+  undo: (() => void) | null;
+  /** What it undoes took the focus with it, so the way back takes it. */
+  focus: boolean;
+};
+
+/** A number in a sentence, read left to right. */
+const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /** An area's own icon: its module's, or the team's and the management page's. */
 function areaIcon(area: RolesArea): ReactNode {
@@ -103,10 +116,17 @@ function useAreaName() {
     editOrView(area) ? tm(`${area}.name`) : t(`areas.${area}`);
 }
 
-/** A role's name: the business's own, or the app's word for a manager or a worker. */
+/**
+ * A role's name: the business's own (in English its English one, when it gave
+ * one), or the app's word for a manager or a worker.
+ */
 function useRoleName() {
   const tRoles = useTranslations("app.team.roles");
-  return (role: EditableRole) => role.name ?? tRoles(role.base);
+  const locale = useLocale();
+  return (role: EditableRole) =>
+    role.name === null
+      ? tRoles(role.base)
+      : namedRoleName({ name: role.name, nameEn: role.nameEn }, locale);
 }
 
 /**
@@ -132,9 +152,14 @@ function usePayWords() {
 const linkClass =
   "inline-flex min-h-11 items-center font-medium text-ink-2 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent";
 
+/** A named role's rename and removal, in its column's head on a computer. */
+const headActionClass = `${linkClass} disabled:no-underline disabled:opacity-50`;
+
 /**
- * For a role nobody holds yet: where it is given, on the team screen (the
- * business's people, in the console), in the words of where it is drawn.
+ * For a manager or a worker nobody holds yet: where it is given, on the team
+ * screen (the business's people, in the console), in the words of where it
+ * is drawn. Never for a role the business named: the team screen gives only
+ * the built-in roles until R11b, so it would lead where it can't be done.
  */
 function GiveRole({
   href,
@@ -175,16 +200,20 @@ const markClass =
  * and pay is given on "מי רואה שכר", so its row leads there. Every change
  * shows at once and saves, with its undo on the toast; "הוספת תפקיד" adds a
  * role the business names, built on a manager or a worker, starting with
- * another role's permissions, and a role nobody holds yet leads to the team
- * screen, where it is given. Phone: the roles, then one role on a screen of
+ * another role's permissions, and a manager or a worker nobody holds yet
+ * leads to the team screen, where it is given (a named role, from R11b).
+ * Phone: the roles, then one role on a screen of
  * its own, a step in the history (`?role=`); tablet: the roles beside the
  * chosen one; desktop: every area against every role in one table, team and
  * manage as a menu in each narrow cell. Over mock data on
  * /design/shell/manage/roles; over the database's answer for the owner
  * (`/manage/roles`, R9) and in the console (`/admin/businesses/[slug]/roles`,
  * R2), where an area changes only once its phase opens it
- * (`RolesArea.open`), and says so until then, and no role is added yet (no
- * `addRole` until R11).
+ * (`RolesArea.open`), and says so until then. A role the business named
+ * (R11a) is renamed and removed from its own card (its column's head, on a
+ * computer), removing refused while people hold it; each with its undo. At
+ * the business's `ROLE_LIMIT` "הוספת תפקיד" is off, and a line says why.
+ * Without `addRole` (a database that doesn't take them yet) none is added.
  */
 export function RolesView({
   data,
@@ -217,6 +246,9 @@ export function RolesView({
   // A phone shows the roles, or one of them on a screen of its own.
   const [phoneOpen, setPhoneOpen] = useState(opening !== undefined);
   const [adding, setAdding] = useState(false);
+  // The named role whose name the sheet changes, kept while it closes.
+  const [renameKey, setRenameKey] = useState<string | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [failure, setFailure] = useState<RolesFailure | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const toasts = useRef(0);
@@ -248,7 +280,7 @@ export function RolesView({
   const failureWords = (what: RolesFailure) =>
     inConsole && (what === "noAccess" || what === "viewOnly")
       ? tConsole(`failure.${what}`)
-      : t(`failure.${what}`);
+      : t.rich(`failure.${what}`, { max: ROLE_LIMIT, ltr });
   const giveLabel = inConsole ? tConsole("emptyRole") : t("emptyRole");
   const chosenRole = roles.find((r) => r.key === chosen) ?? null;
   // A role taken back (the undo of adding it) leaves the first one chosen.
@@ -327,9 +359,14 @@ export function RolesView({
     target?.focus();
   }
 
-  function say(text: string, undo: (() => void) | null = null) {
+  /**
+   * What just happened, on the toast; `focus` when the control pressed went
+   * with what it did (a role removed), so the keyboard lands on the way back
+   * rather than at the top of the page.
+   */
+  function say(text: string, undo: (() => void) | null = null, focus = false) {
     toasts.current += 1;
-    setToast({ text, stamp: String(toasts.current), undo });
+    setToast({ text, stamp: String(toasts.current), undo, focus });
   }
 
   function update(key: string, next: (access: RoleAccess) => RoleAccess) {
@@ -439,6 +476,7 @@ export function RolesView({
       key: result.key,
       base: input.base,
       name: input.name,
+      nameEn: null,
       people: [],
       access: from ? from.access : defaultAccess(input.base),
       // Pay is the owner's switch on its own screen, never copied.
@@ -447,22 +485,112 @@ export function RolesView({
     setRoles((all) => [...all, added]);
     setChosen(added.key);
     setFailure(null);
-    say(t("done.added", { name: input.name }), () => takeBack(added));
+    say(
+      t("done.added", { name: input.name }),
+      actions.archiveRole ? () => takeBack(added) : null,
+    );
     return null;
   }
 
-  /** The undo of adding a role: nobody holds it yet. */
+  /** The undo of adding a role: nobody holds it yet, and it goes to the archive. */
   function takeBack(added: EditableRole) {
-    const { removeRole } = actions;
-    if (!removeRole) return;
+    const { archiveRole } = actions;
+    if (!archiveRole) return;
     const name = added.name ?? "";
     setRoles((all) => all.filter((r) => r.key !== added.key));
     void run(
-      () => removeRole(added.key),
+      () => archiveRole(added.key),
       () => setRoles((all) => [...all, added]),
     ).then((done) => {
       if (done) say(t("done.addUndone", { name }));
     });
+  }
+
+  function setName(key: string, name: string) {
+    setRoles((all) => all.map((r) => (r.key === key ? { ...r, name } : r)));
+  }
+
+  /**
+   * A role the business named with a new name, at once, with its undo on the
+   * toast; or why not, for the sheet to show.
+   */
+  async function rename(
+    target: EditableRole,
+    name: string,
+  ): Promise<RolesFailure | null> {
+    const { renameRole } = actions;
+    const before = target.name;
+    if (!renameRole || before === null) return "failed";
+    let result: RolesResult;
+    try {
+      result = await renameRole(target.key, name);
+    } catch {
+      return "failed";
+    }
+    if (!result.ok) return result.failure;
+    setName(target.key, name);
+    setFailure(null);
+    say(t("done.renamed", { name }), () => {
+      setName(target.key, before);
+      void run(
+        () => renameRole(target.key, before),
+        () => setName(target.key, name),
+      ).then((undone) => {
+        if (undone) say(t("done.undone"));
+      });
+    });
+    return null;
+  }
+
+  /**
+   * A role the business named off the list, at once, with its undo on the
+   * toast (the database keeps it archived, for that). Refused while people
+   * hold it: they need another role first. The control pressed goes with the
+   * role (its card, its column), so the keyboard goes to the undo.
+   */
+  function archive(target: EditableRole) {
+    const { archiveRole, restoreRole } = actions;
+    if (!archiveRole || target.name === null || disabled) return;
+    if (target.people.length > 0) {
+      setFailure("held");
+      return;
+    }
+    const name = roleName(target);
+    const at = roles.findIndex((r) => r.key === target.key);
+    const takeOff = () =>
+      setRoles((all) => all.filter((r) => r.key !== target.key));
+    const putBack = () =>
+      setRoles((all) =>
+        all.some((r) => r.key === target.key)
+          ? all
+          : [...all.slice(0, at), target, ...all.slice(at)],
+      );
+    // On a phone, from its own screen: back to the roles.
+    if (phoneOpen && chosen === target.key) closeOnPhone();
+    takeOff();
+    void run(() => archiveRole(target.key), putBack).then((done) => {
+      if (!done) return;
+      say(
+        t("done.archived", { name }),
+        restoreRole
+          ? () => {
+              putBack();
+              void run(() => restoreRole(target.key), takeOff).then(
+                (undone) => {
+                  if (undone) say(t("done.restored", { name }));
+                },
+              );
+            }
+          : null,
+        true,
+      );
+    });
+  }
+
+  function startRename(target: EditableRole) {
+    if (disabled || target.name === null) return;
+    setRenameKey(target.key);
+    setRenameOpen(true);
   }
 
   /** The address with the role shown first, or with none. */
@@ -603,13 +731,60 @@ export function RolesView({
             />
           </ListGroup>
         ) : null}
+        {target.name !== null && actions.renameRole ? (
+          <ListGroup>
+            <ListRow
+              leading={<Pencil />}
+              title={t("named.rename")}
+              disabled={disabled}
+              onClick={() => startRename(target)}
+            />
+          </ListGroup>
+        ) : null}
+        {/* A removal, as the lists' "הסרת הרשימה": no way on, no chevron. */}
+        {target.name !== null && actions.archiveRole ? (
+          <div className="flex flex-col items-start gap-1">
+            <Button
+              variant="ghost"
+              className="text-danger"
+              disabled={disabled || target.people.length > 0}
+              aria-describedby={`${id}-remove-${headingLevel}`}
+              onClick={() => archive(target)}
+            >
+              <Trash2 aria-hidden="true" />
+              {t("named.archive")}
+            </Button>
+            <p
+              id={`${id}-remove-${headingLevel}`}
+              className="px-1 text-ink-2 text-sm"
+            >
+              {target.people.length > 0
+                ? t("named.archiveHeld")
+                : t("named.archiveHint")}
+            </p>
+          </div>
+        ) : null}
       </div>
     );
   }
 
-  // Roles a business names come in R11: no way to add one without its action.
+  const renaming =
+    roles.find((r) => r.key === renameKey && r.name !== null) ?? null;
+
+  // Roles a business names (R11a): no way to add one without its action,
+  // and none past the business's limit, which a line says before it is
+  // tried (the database refuses the same: 54000).
+  const full =
+    actions.addRole !== undefined &&
+    !disabled &&
+    roles.filter((r) => r.name !== null).length >= ROLE_LIMIT;
+  const fullId = `${id}-full`;
   const addAction = actions.addRole ? (
-    <Button disabled={disabled} onClick={() => setAdding(true)}>
+    <Button
+      disabled={disabled || full}
+      aria-describedby={full ? fullId : undefined}
+      onClick={() => setAdding(true)}
+    >
       <Plus aria-hidden="true" />
       {t("add")}
     </Button>
@@ -638,6 +813,7 @@ export function RolesView({
             ? { label: tManage("undo"), onClick: toast.undo }
             : undefined
         }
+        focusAction={toast?.focus === true}
         onFocusLeave={focusAfterToast}
       />
       {/* The phone's role screen has its own title in place of this one. */}
@@ -674,13 +850,13 @@ export function RolesView({
           />
           {phoneRole.people.length > 0 ? (
             <div className="mt-3">{stack(phoneRole.people, "md")}</div>
-          ) : (
+          ) : phoneRole.name === null ? (
             <GiveRole
               href={paths.team}
               label={giveLabel}
               className="mt-1 self-start text-base"
             />
-          )}
+          ) : null}
         </div>
       ) : null}
 
@@ -693,6 +869,11 @@ export function RolesView({
         {closedAllId ? (
           <span id={closedAllId} className={disabled ? "block" : undefined}>
             {t("closedAll")}
+          </span>
+        ) : null}
+        {full ? (
+          <span id={fullId} className="block">
+            {t.rich("failure.limit", { max: ROLE_LIMIT, ltr })}
           </span>
         ) : null}
       </p>
@@ -724,7 +905,7 @@ export function RolesView({
                   {roleName(role)}
                 </h2>
                 <p className="text-ink-2 text-sm">{about(role)}</p>
-                {role.people.length === 0 ? (
+                {role.people.length === 0 && role.name === null ? (
                   <GiveRole
                     href={paths.team}
                     label={giveLabel}
@@ -757,6 +938,8 @@ export function RolesView({
             teamHref={paths.team}
             giveLabel={giveLabel}
             onChange={change}
+            onRename={actions.renameRole ? startRename : undefined}
+            onArchive={actions.archiveRole ? archive : undefined}
           />
         </div>
         <PageSection title={t("fixed")}>
@@ -795,6 +978,29 @@ export function RolesView({
             onAdd={add}
             onDone={() => setAdding(false)}
           />
+        </Sheet>
+      ) : null}
+
+      {actions.renameRole ? (
+        <Sheet
+          open={renameOpen && renaming !== null}
+          onOpenChange={setRenameOpen}
+          title={t("renameSheet.title")}
+          closeLabel={t("addSheet.close")}
+        >
+          {renaming ? (
+            <RenameRoleForm
+              // Mounted for each role, so it starts with that one's name.
+              key={renaming.key}
+              role={renaming}
+              taken={[
+                ...roles.filter((r) => r.key !== renaming.key).map(roleName),
+                ...ROLES.map((r) => tRoles(r)),
+              ]}
+              onRename={(name) => rename(renaming, name)}
+              onDone={() => setRenameOpen(false)}
+            />
+          ) : null}
         </Sheet>
       ) : null}
     </PageBody>
@@ -1009,6 +1215,8 @@ function RolesMatrix({
   teamHref,
   giveLabel,
   onChange,
+  onRename,
+  onArchive,
 }: {
   data: RolesData;
   roles: EditableRole[];
@@ -1022,6 +1230,10 @@ function RolesMatrix({
   /** What that link says, where the screen is drawn. */
   giveLabel: string;
   onChange: (role: EditableRole, area: AccessArea, next: RoleAccess) => void;
+  /** Opens the sheet that renames a role the business named. */
+  onRename?: (role: EditableRole) => void;
+  /** Takes a role the business named off the list. */
+  onArchive?: (role: EditableRole) => void;
 }) {
   const t = useTranslations("app.manage.roles");
   const tRoles = useTranslations("app.team.roles");
@@ -1049,8 +1261,45 @@ function RolesMatrix({
           {role.name !== null ? (
             <span>{t("builtOn", { role: tRoles(role.base) })}</span>
           ) : null}
-          {role.people.length === 0 ? (
+          {role.people.length === 0 && role.name === null ? (
             <GiveRole href={teamHref} label={giveLabel} />
+          ) : null}
+          {role.name !== null && (onRename || onArchive) ? (
+            <span className="flex flex-wrap gap-x-4">
+              {onRename ? (
+                <button
+                  type="button"
+                  className={headActionClass}
+                  disabled={disabled}
+                  aria-label={t("named.renameLabel", { role: roleName(role) })}
+                  onClick={() => onRename(role)}
+                >
+                  {t("named.rename")}
+                </button>
+              ) : null}
+              {onArchive ? (
+                <button
+                  type="button"
+                  className={cn(headActionClass, "text-danger")}
+                  disabled={disabled || role.people.length > 0}
+                  aria-label={t("named.archiveLabel", {
+                    role: roleName(role),
+                  })}
+                  aria-describedby={`${id}-${role.key}-remove`}
+                  onClick={() => onArchive(role)}
+                >
+                  {t("named.archive")}
+                </button>
+              ) : null}
+            </span>
+          ) : null}
+          {/* What removing does, or why it can't, as a role's card says. */}
+          {role.name !== null && onArchive ? (
+            <span id={`${id}-${role.key}-remove`} className="max-w-xs">
+              {role.people.length > 0
+                ? t("named.archiveHeld")
+                : t("named.archiveHint")}
+            </span>
           ) : null}
         </span>
       ),
@@ -1314,6 +1563,11 @@ function AddRoleForm({
     setBusy(true);
     const failed = await onAdd({ name: checked.name, base, copyFrom: from });
     setBusy(false);
+    if (failed === "taken") {
+      setProblem("taken");
+      field.current?.focus();
+      return;
+    }
     if (failed) {
       setFailure(failed);
       return;
@@ -1378,11 +1632,95 @@ function AddRoleForm({
       </div>
       {failure ? (
         <p role="alert" className="text-center text-base text-danger">
-          {t(`failure.${failure}`)}
+          {t.rich(`failure.${failure}`, { max: ROLE_LIMIT, ltr })}
         </p>
       ) : null}
       <Button type="submit" size="lg" loading={busy} className="w-full">
         {t("addSheet.submit")}
+      </Button>
+    </form>
+  );
+}
+
+/**
+ * The sheet that renames a role the business named: its name, as when it was
+ * added, never one another role goes by.
+ */
+function RenameRoleForm({
+  role,
+  taken,
+  onRename,
+  onDone,
+}: {
+  role: EditableRole;
+  /** The other roles' names, the built-in roles' among them. */
+  taken: string[];
+  onRename: (name: string) => Promise<RolesFailure | null>;
+  onDone: () => void;
+}) {
+  const t = useTranslations("app.manage.roles");
+  const field = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState(role.name ?? "");
+  const [problem, setProblem] = useState<RoleNameProblem | null>(null);
+  const [failure, setFailure] = useState<RolesFailure | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const checked = checkRoleName(name, taken);
+    if (!checked.ok) {
+      setProblem(checked.problem);
+      field.current?.focus();
+      return;
+    }
+    if (checked.name === role.name) {
+      onDone();
+      return;
+    }
+    setBusy(true);
+    const failed = await onRename(checked.name);
+    setBusy(false);
+    if (failed === "taken") {
+      setProblem("taken");
+      field.current?.focus();
+      return;
+    }
+    if (failed) {
+      setFailure(failed);
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <form
+      onSubmit={submit}
+      noValidate
+      className="flex flex-col gap-5 px-2 pt-2 pb-1"
+    >
+      <TextField
+        ref={field}
+        label={t("addSheet.name")}
+        value={name}
+        autoComplete="off"
+        maxLength={ROLE_NAME_MAX}
+        error={
+          problem
+            ? t(`addSheet.problems.${problem}`, { max: ROLE_NAME_MAX })
+            : undefined
+        }
+        onChange={(event) => {
+          setName(event.target.value);
+          setProblem(null);
+        }}
+      />
+      {failure ? (
+        <p role="alert" className="text-center text-base text-danger">
+          {t.rich(`failure.${failure}`, { max: ROLE_LIMIT, ltr })}
+        </p>
+      ) : null}
+      <Button type="submit" size="lg" loading={busy} className="w-full">
+        {t("renameSheet.submit")}
       </Button>
     </form>
   );

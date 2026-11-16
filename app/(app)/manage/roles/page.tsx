@@ -3,7 +3,13 @@ import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
 import { currentMember } from "../../member";
 import { baseWording, translator } from "../../wording";
-import { setRoleAreaAction } from "./actions";
+import {
+  addRoleAction,
+  archiveRoleAction,
+  renameRoleAction,
+  restoreRoleAction,
+  setRoleAreaAction,
+} from "./actions";
 import { currentRoles } from "./roles";
 import { RolesView } from "./roles-view";
 
@@ -21,7 +27,8 @@ export async function generateMetadata(): Promise<Metadata> {
  * people in each role, and pay where it always was, on "מי רואה שכר", which
  * it leads to (critique 20). For owners only, and the team viewing as one,
  * read only; the not-found screen for everyone else, managers included.
- * Roles a business names come with R11: no "הוספת תפקיד" until then.
+ * "הוספת תפקיד" adds a role the business names (R11a), which is then renamed
+ * and archived here, once the database takes them.
  * `?role=worker` opens that role first (on a phone, on its own screen).
  */
 export default async function RolesPage({
@@ -36,13 +43,22 @@ export default async function RolesPage({
   ]);
   if (!roles || !member?.membership) notFound();
   const role = typeof query.role === "string" ? query.role : undefined;
+  const business = member.membership.business.id;
   return (
     <RolesView
       data={roles.data}
       // Each write names the business the screen is drawn for: one sent after
       // a switch to another business is refused there (payroll P3b).
       actions={{
-        setArea: setRoleAreaAction.bind(null, member.membership.business.id),
+        setArea: setRoleAreaAction.bind(null, business),
+        ...(roles.addsRoles
+          ? {
+              addRole: addRoleAction.bind(null, business),
+              renameRole: renameRoleAction.bind(null, business),
+              archiveRole: archiveRoleAction.bind(null, business),
+              restoreRole: restoreRoleAction.bind(null, business),
+            }
+          : {}),
       }}
       paths={{
         place: "app",

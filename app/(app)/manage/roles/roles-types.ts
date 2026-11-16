@@ -33,6 +33,8 @@ export type EditableRole = {
    * worker, named in the business's words (`app.team.roles`).
    */
   name: string | null;
+  /** Its English name, when the business gave one; null otherwise. */
+  nameEn: string | null;
   people: RolePerson[];
   access: RoleAccess;
   /** Sees everyone's hours and pay, as "מי רואה שכר" sets it. */
@@ -71,6 +73,14 @@ export type RolesFailure =
    * (payroll P3b), so the change isn't written in the other one.
    */
   | "businessChanged"
+  /** A role the business named, archived or gone since the screen was drawn. */
+  | "gone"
+  /** Another of the business's roles goes by the name. */
+  | "taken"
+  /** The business has as many roles of its own as it may (`ROLE_LIMIT`). */
+  | "limit"
+  /** People hold the role, so it can't go to the archive. */
+  | "held"
   | "failed";
 
 export type RolesResult = { ok: true } | { ok: false; failure: RolesFailure };
@@ -90,16 +100,24 @@ export type RolesActions = {
     access: AreaAccess,
   ) => Promise<RolesResult>;
   /**
-   * Adds a role the business names (R11). Without it, and `removeRole`,
-   * there is no "הוספת תפקיד": in the console until then.
+   * Adds a role the business names (R11a), its key the new role's id.
+   * Without it, and the three below, there is no "הוספת תפקיד", nor a way to
+   * rename or archive one: before the database takes them.
    */
   addRole?: (
     role: NewRole,
   ) => Promise<
     { ok: true; key: string } | { ok: false; failure: RolesFailure }
   >;
-  /** Takes back a role just added, which nobody holds yet (its undo). */
-  removeRole?: (role: string) => Promise<RolesResult>;
+  /** Gives a role the business named a new name. */
+  renameRole?: (role: string, name: string) => Promise<RolesResult>;
+  /**
+   * Takes a role the business named off the list (refused while people hold
+   * it), and takes back a role just added (its undo).
+   */
+  archiveRole?: (role: string) => Promise<RolesResult>;
+  /** Brings an archived role back, with its rules (the archive's undo). */
+  restoreRole?: (role: string) => Promise<RolesResult>;
 };
 
 /**

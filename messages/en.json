@@ -2521,14 +2521,20 @@
             }
           },
           "rolePermission": {
-            "editOn": "{role, select, manager {The managers} worker {The workers} other {Another role}}: now they edit in {area}",
-            "editOff": "{role, select, manager {The managers} worker {The workers} other {Another role}}: in {area} they now see without editing",
-            "viewOn": "{role, select, manager {The managers} worker {The workers} other {Another role}}: now with access to {area}",
-            "viewOff": "{role, select, manager {The managers} worker {The workers} other {Another role}}: no access to {area} now",
-            "extraOn": "{role, select, manager {The managers} worker {The workers} other {Another role}}: now with {extra}",
-            "extraOff": "{role, select, manager {The managers} worker {The workers} other {Another role}}: now without {extra}",
-            "otherOn": "{role, select, manager {The managers} worker {The workers} other {Another role}}: a permission was given",
-            "otherOff": "{role, select, manager {The managers} worker {The workers} other {Another role}}: a permission was taken away"
+            "editOn": "{role, select, manager {The managers} worker {The workers} named {{name}} other {Another role}}: now they edit in {area}",
+            "editOff": "{role, select, manager {The managers} worker {The workers} named {{name}} other {Another role}}: in {area} they now see without editing",
+            "viewOn": "{role, select, manager {The managers} worker {The workers} named {{name}} other {Another role}}: now with access to {area}",
+            "viewOff": "{role, select, manager {The managers} worker {The workers} named {{name}} other {Another role}}: no access to {area} now",
+            "extraOn": "{role, select, manager {The managers} worker {The workers} named {{name}} other {Another role}}: now with {extra}",
+            "extraOff": "{role, select, manager {The managers} worker {The workers} named {{name}} other {Another role}}: now without {extra}",
+            "otherOn": "{role, select, manager {The managers} worker {The workers} named {{name}} other {Another role}}: a permission was given",
+            "otherOff": "{role, select, manager {The managers} worker {The workers} named {{name}} other {Another role}}: a permission was taken away"
+          },
+          "role": {
+            "create": "The role {name} was added, built on {base, select, manager {a manager} worker {a worker} other {another role}}",
+            "rename": "The role {from} is now called {to}",
+            "archive": "The role {name} was removed",
+            "restore": "The role {name} was brought back"
           },
           "permission": {
             "grant": "{perm, select, payroll {Access to hours and pay given} other {Permission given}} {to}",
@@ -2763,6 +2769,18 @@
             "taken": "There is already a role by this name."
           }
         },
+        "named": {
+          "rename": "Rename",
+          "renameLabel": "Rename, {role}",
+          "archive": "Remove the role",
+          "archiveLabel": "Remove the role, {role}",
+          "archiveHint": "The role leaves the list, and it can be undone right after.",
+          "archiveHeld": "People hold the role, so it can't be removed. First give them another role."
+        },
+        "renameSheet": {
+          "title": "Rename the role",
+          "submit": "Rename"
+        },
         "done": {
           "edit": "{role}: now they edit in {area}",
           "editWith": "{role}: now they edit in {area}, with {extras}",
@@ -2772,7 +2790,10 @@
           "extraOn": "{role}: now with {extra}",
           "extraOff": "{role}: now without {extra}",
           "added": "The role {name} was added",
-          "addUndone": "The role {name} was taken off",
+          "addUndone": "The role {name} was removed",
+          "renamed": "The role is now called {name}",
+          "archived": "The role {name} was removed",
+          "restored": "The role {name} is back",
           "undone": "Undone"
         },
         "failure": {
@@ -2781,6 +2802,10 @@
           "closed": "This area isn't open for changes yet, so the change wasn't saved.",
           "requires": "The role needs edit in this area first, so the change wasn't saved.",
           "businessChanged": "You moved to another business in the meantime, so the change wasn't saved. Reload the screen.",
+          "gone": "This role is no longer on the list, so the change wasn't saved. Reload the screen.",
+          "taken": "There is already a role by this name, so the change wasn't saved.",
+          "limit": "The business already has <ltr>{max}</ltr> roles of its own, the most it can. Remove one, then add.",
+          "held": "People hold the role, so it can't be removed. First give them another role.",
           "failed": "The change wasn't saved. Check the connection and try again."
         }
       },

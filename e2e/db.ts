@@ -3502,13 +3502,37 @@ export type RoleRule = { role: string; perm: string; allowed: boolean };
 /**
  * The business's own rules for its managers and workers, pay apart, by role
  * and key: what the screen's changes wrote (a rule back on its default has
- * no row).
+ * no row). A role the business named has its own (`rolesNamed`).
  */
 export async function rolesRules(): Promise<RoleRule[]> {
   return await sql<RoleRule[]>`
     select role::text as role, perm, allowed from public.role_permissions
     where business_id = ${ROLES_BUSINESS.id} and perm <> 'clock.payroll'
+      and named_role is null
     order by role, perm`;
+}
+
+export type NamedRoleRow = {
+  name: string;
+  base: string;
+  archived: boolean;
+  /** How many rules of its own it has: none while it follows its base. */
+  rules: number;
+  /** How many people hold it. */
+  people: number;
+};
+
+/** The roles the business named itself (the roles plan's R11a), in their order. */
+export async function rolesNamed(): Promise<NamedRoleRow[]> {
+  return await sql<NamedRoleRow[]>`
+    select br.name, br.base::text as base, br.archived_at is not null as archived,
+      (select count(*)::int from public.role_permissions rp
+       where rp.named_role = br.id) as rules,
+      (select count(*)::int from public.memberships m
+       where m.named_role = br.id and m.active) as people
+    from public.business_roles br
+    where br.business_id = ${ROLES_BUSINESS.id}
+    order by br.sort`;
 }
 
 /** Who switched a role's permission in the business, oldest first. */

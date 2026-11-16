@@ -87,3 +87,64 @@ describe("roles and permissions from the database's answer", () => {
     expect(data.areas.map((area) => area.key)).toEqual(["team", "manage"]);
   });
 });
+
+describe("roles the business named (R11a)", () => {
+  const LEAD = "a1000000-0000-4000-a000-0000000000c1";
+  const lead = {
+    id: LEAD,
+    name: "Shift lead",
+    nameEn: "Shift lead (en)",
+    base: "worker" as const,
+    byDefault: new Set<string>(),
+    given: new Set(["schedule.edit", "clock.payroll"]),
+    held: new Set(["schedule.edit", "clock.payroll"]),
+  };
+
+  it("come after managers and workers, as they hold it, never pay, with whoever holds them", () => {
+    const data = rolesData({
+      matrix: { ...matrix([], []), named: [lead], addsRoles: true },
+      enabled: ["scheduling"],
+      people: [
+        ...people,
+        {
+          name: "Yoav",
+          photo: null,
+          role: "worker" as const,
+          namedRole: LEAD,
+        },
+      ],
+      viewOnly: false,
+      documents: false,
+    });
+    expect(data.roles.map((role) => role.key)).toEqual([
+      "manager",
+      "worker",
+      LEAD,
+    ]);
+    const named = data.roles[2];
+    expect(named).toMatchObject({
+      base: "worker",
+      name: "Shift lead",
+      nameEn: "Shift lead (en)",
+      people: [{ name: "Yoav", photo: null }],
+      seesPay: false,
+    });
+    expect(named?.access.levels.scheduling).toBe("edit");
+    // Someone in a named role counts there, not in the role it is built on.
+    expect(data.roles[1]?.people).toEqual([
+      { name: "Noa", photo: "/noa.jpg" },
+      { name: "Maya", photo: null },
+    ]);
+  });
+
+  it("show nobody in them until someone holds them", () => {
+    const data = rolesData({
+      matrix: { ...matrix([], []), named: [lead], addsRoles: true },
+      enabled: [],
+      people,
+      viewOnly: false,
+      documents: false,
+    });
+    expect(data.roles[2]?.people).toEqual([]);
+  });
+});

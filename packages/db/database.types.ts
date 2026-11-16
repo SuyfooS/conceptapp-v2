@@ -167,6 +167,57 @@ export type Database = {
           },
         ];
       };
+      business_roles: {
+        Row: {
+          archived_at: string | null;
+          base: Database["public"]["Enums"]["member_role"];
+          business_id: string;
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          name: string;
+          name_en: string | null;
+          sort: number;
+        };
+        Insert: {
+          archived_at?: string | null;
+          base: Database["public"]["Enums"]["member_role"];
+          business_id: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          name: string;
+          name_en?: string | null;
+          sort?: number;
+        };
+        Update: {
+          archived_at?: string | null;
+          base?: Database["public"]["Enums"]["member_role"];
+          business_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          name?: string;
+          name_en?: string | null;
+          sort?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "business_roles_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "business_roles_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       business_wording: {
         Row: {
           base_sentence: string;
@@ -1666,6 +1717,7 @@ export type Database = {
           created_at: string;
           id: string;
           left_at: string | null;
+          named_role: string | null;
           perms: string[];
           role: Database["public"]["Enums"]["member_role"];
           staff_since: string;
@@ -1678,6 +1730,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           left_at?: string | null;
+          named_role?: string | null;
           perms?: string[];
           role?: Database["public"]["Enums"]["member_role"];
           staff_since?: string;
@@ -1690,6 +1743,7 @@ export type Database = {
           created_at?: string;
           id?: string;
           left_at?: string | null;
+          named_role?: string | null;
           perms?: string[];
           role?: Database["public"]["Enums"]["member_role"];
           staff_since?: string;
@@ -1703,6 +1757,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "businesses";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "memberships_named_role_fkey";
+            columns: ["business_id", "named_role", "role"];
+            isOneToOne: false;
+            referencedRelation: "business_roles";
+            referencedColumns: ["business_id", "id", "base"];
           },
           {
             foreignKeyName: "memberships_user_id_fkey";
@@ -2214,6 +2275,7 @@ export type Database = {
           business_id: string;
           granted_at: string;
           granted_by: string | null;
+          named_role: string | null;
           perm: string;
           role: Database["public"]["Enums"]["member_role"];
         };
@@ -2222,6 +2284,7 @@ export type Database = {
           business_id: string;
           granted_at?: string;
           granted_by?: string | null;
+          named_role?: string | null;
           perm: string;
           role: Database["public"]["Enums"]["member_role"];
         };
@@ -2230,6 +2293,7 @@ export type Database = {
           business_id?: string;
           granted_at?: string;
           granted_by?: string | null;
+          named_role?: string | null;
           perm?: string;
           role?: Database["public"]["Enums"]["member_role"];
         };
@@ -2247,6 +2311,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "role_permissions_named_role_fkey";
+            columns: ["business_id", "named_role", "role"];
+            isOneToOne: false;
+            referencedRelation: "business_roles";
+            referencedColumns: ["business_id", "id", "base"];
           },
           {
             foreignKeyName: "role_permissions_perm_fkey";
@@ -2808,6 +2879,10 @@ export type Database = {
         };
         Returns: string;
       };
+      archive_business_role: {
+        Args: { actor: string; role_id: string };
+        Returns: undefined;
+      };
       archive_list_template: {
         Args: { actor: string; template: string };
         Returns: undefined;
@@ -2978,6 +3053,18 @@ export type Database = {
           slug: string;
           staff?: Json;
           template: string;
+        };
+        Returns: string;
+      };
+      create_business_role: {
+        Args: {
+          actor: string;
+          base_role: Database["public"]["Enums"]["member_role"];
+          business: string;
+          copy_from?: string;
+          copy_role?: Database["public"]["Enums"]["member_role"];
+          role_name: string;
+          role_name_en?: string;
         };
         Returns: string;
       };
@@ -3208,6 +3295,15 @@ export type Database = {
         Args: { actor: string; device?: string; push_endpoint?: string };
         Returns: boolean;
       };
+      rename_business_role: {
+        Args: {
+          actor: string;
+          role_id: string;
+          role_name: string;
+          role_name_en?: string;
+        };
+        Returns: undefined;
+      };
       renew_demo_schedules: {
         Args: Record<PropertyKey, never>;
         Returns: number;
@@ -3262,6 +3358,10 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: number;
       };
+      restore_business_role: {
+        Args: { actor: string; role_id: string };
+        Returns: undefined;
+      };
       restore_chat_message: {
         Args: { actor: string; at_time?: string; message: string };
         Returns: undefined;
@@ -3282,9 +3382,12 @@ export type Database = {
           by_owner: boolean;
           given: boolean;
           held: boolean;
+          named_role: string;
           perm: string;
           requires: string;
           role: Database["public"]["Enums"]["member_role"];
+          role_name: string;
+          role_name_en: string;
           settable: boolean;
         }[];
       };
@@ -3516,6 +3619,7 @@ export type Database = {
         Args: {
           actor: string;
           business: string;
+          grant_named?: string;
           grant_role: Database["public"]["Enums"]["member_role"];
           granted: boolean;
           perm_key: string;
@@ -3526,6 +3630,7 @@ export type Database = {
         Args: {
           actor: string;
           business: string;
+          grant_named?: string;
           grant_role: Database["public"]["Enums"]["member_role"];
           granted: boolean[];
           perm_keys: string[];

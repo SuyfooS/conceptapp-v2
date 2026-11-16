@@ -9,15 +9,76 @@ vi.mock("server-only", () => ({}));
  * each call of `public.set_role_permissions` recorded, refused as the test
  * says. One area's change reads the rules again and writes what differs in
  * one call, denials first and what a key requires before it; the database
- * writes all of it or, refused, none of it.
+ * writes all of it or, refused, none of it. Roles a business names (R11a):
+ * the matrix's rows for each, its rules written with its id, and adding,
+ * renaming, archiving and restoring one, only in the business it is in; and
+ * who is in each role, read under RLS for the owner and with the secret key
+ * for the team.
  */
 type Failure = { code?: string; hint?: string; message: string };
 
 const db = vi.hoisted(() => ({
   matrix: { data: null as unknown, error: null as Failure | null },
-  calls: [] as { perms: string[]; granted: boolean[]; role: string }[],
+  calls: [] as {
+    perms: string[];
+    granted: boolean[];
+    role: string;
+    named?: string;
+  }[],
   refuse: null as ((perms: string[]) => Failure | null) | null,
   payRoles: [] as ("manager" | "worker")[],
+  /** Each call of a role function, by its name. */
+  roleCalls: [] as { fn: string; args: Record<string, unknown> }[],
+  roleResult: { data: null as unknown, error: null as Failure | null },
+  /** The business each role is in, as `public.business_roles` has it. */
+  roles: new Map<string, string>(),
+  /** The active members each read of `public.memberships` gets. */
+  people: [] as unknown[],
+  /** The project has no `named_role` column yet (before R11a's migration). */
+  noNamedColumn: false,
+  /** Each read of the people: by which key, what it selected and narrowed. */
+  peopleReads: [] as {
+    key: "publishable" | "secret";
+    columns: string;
+    filters: Record<string, unknown>;
+  }[],
+}));
+
+/** `public.memberships` as each client reads it: under RLS, or with the secret key. */
+function membershipsQuery(key: "publishable" | "secret") {
+  const read = { key, columns: "", filters: {} as Record<string, unknown> };
+  const answer = () => {
+    db.peopleReads.push(read);
+    if (db.noNamedColumn && read.columns.includes("named_role")) {
+      return { data: null, error: { code: "42703", message: "no column" } };
+    }
+    return { data: db.people, error: null };
+  };
+  const query = {
+    select: (columns: string) => {
+      read.columns = columns;
+      return query;
+    },
+    eq: (column: string, value: unknown) => {
+      read.filters[column] = value;
+      return query;
+    },
+    // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
+    then: (
+      resolve: (value: ReturnType<typeof answer>) => unknown,
+      reject?: (reason: unknown) => unknown,
+    ) => Promise.resolve(answer()).then(resolve, reject),
+  };
+  return query;
+}
+
+vi.mock("./supabase/server", () => ({
+  createClient: async () => ({
+    from: (table: string) => {
+      if (table !== "memberships") throw new Error(`unexpected ${table}`);
+      return membershipsQuery("publishable");
+    },
+  }),
 }));
 
 vi.mock("./supabase/admin", () => ({
@@ -30,10 +91,41 @@ vi.mock("./supabase/admin", () => ({
         // One transaction: refused, nothing of it is written.
         const error = db.refuse?.(perms) ?? null;
         if (!error)
-          db.calls.push({ perms, granted, role: String(args.grant_role) });
+          db.calls.push({
+            perms,
+            granted,
+            role: String(args.grant_role),
+            ...(args.grant_named === undefined
+              ? {}
+              : { named: String(args.grant_named) }),
+          });
         return { data: null, error };
       }
+      if (fn.endsWith("_business_role")) {
+        db.roleCalls.push({ fn, args });
+        return db.roleResult;
+      }
       throw new Error(`unexpected ${fn}`);
+    },
+    from: (table: string) => {
+      if (table === "memberships") return membershipsQuery("secret");
+      if (table !== "business_roles") throw new Error(`unexpected ${table}`);
+      const filters: Record<string, unknown> = {};
+      const query = {
+        select: () => query,
+        eq: (column: string, value: unknown) => {
+          filters[column] = value;
+          return query;
+        },
+        maybeSingle: async () => ({
+          data:
+            db.roles.get(String(filters.id)) === filters.business_id
+              ? { id: filters.id }
+              : null,
+          error: null,
+        }),
+      };
+      return query;
     },
   }),
 }));
@@ -41,11 +133,22 @@ vi.mock("./payroll", () => ({
   getPayRolesForTeam: async () => db.payRoles,
 }));
 
-const { getRoleMatrixForOwner, getRoleMatrixForTeam, setRoleArea } =
-  await import("./roles");
+const {
+  archiveBusinessRole,
+  createBusinessRole,
+  getRoleMatrixForOwner,
+  getRoleMatrixForTeam,
+  getRolePeopleForOwner,
+  getRolePeopleForTeam,
+  renameBusinessRole,
+  restoreBusinessRole,
+  setRoleArea,
+} = await import("./roles");
 
 const ACTOR = "93000000-0000-4000-a000-000000000005";
 const BUSINESS = "93000000-0000-4000-b000-000000000001";
+const OTHER = "93000000-0000-4000-b000-000000000002";
+const LEAD = "93000000-0000-4000-a000-0000000000c1";
 
 type Row = {
   role: "manager" | "worker";
@@ -102,7 +205,47 @@ beforeEach(() => {
   db.calls = [];
   db.refuse = null;
   db.payRoles = [];
+  db.roleCalls = [];
+  db.roleResult = { data: null, error: null };
+  db.roles = new Map([[LEAD, BUSINESS]]);
+  db.people = [];
+  db.noNamedColumn = false;
+  db.peopleReads = [];
 });
+
+/**
+ * A named role's rows as the function answers them after the managers' and
+ * workers': built on workers, by default it holds what they do (none of
+ * these), and by its own rows `given`.
+ */
+function namedRows(given: readonly string[]) {
+  return rows(SCHEDULING)
+    .filter((row) => row.role === "worker")
+    .map((row) => ({
+      ...row,
+      by_default: false,
+      given: given.includes(row.perm),
+      held:
+        given.includes(row.perm) &&
+        (row.requires === null || given.includes(row.requires)),
+      named_role: LEAD,
+      role_name: "Shift lead",
+      role_name_en: null,
+    }));
+}
+
+/** The rows of a project with named roles: every built-in row says it has none. */
+function withNamed(given: readonly string[]) {
+  return [
+    ...rows(SCHEDULING).map((row) => ({
+      ...row,
+      named_role: null,
+      role_name: null,
+      role_name_en: null,
+    })),
+    ...namedRows(given),
+  ];
+}
 
 describe("the console's matrix", () => {
   it("is the database's answer, by role", async () => {
@@ -262,5 +405,227 @@ describe("changing one area of a role", () => {
     expect(result).toEqual({ ok: false, failure });
     expect(db.calls).toEqual([]);
     spy.mockRestore();
+  });
+});
+
+describe("roles a business names (R11a)", () => {
+  it("are in the matrix after managers and workers, each with its rules", async () => {
+    db.matrix = { data: withNamed(["schedule.edit"]), error: null };
+    const matrix = await getRoleMatrixForTeam(BUSINESS, []);
+    expect(matrix.addsRoles).toBe(true);
+    expect(matrix.named).toHaveLength(1);
+    const [lead] = matrix.named;
+    expect(lead).toMatchObject({
+      id: LEAD,
+      name: "Shift lead",
+      nameEn: null,
+      base: "worker",
+    });
+    expect([...(lead?.given ?? [])]).toEqual(["schedule.edit"]);
+    expect([...(lead?.held ?? [])]).toEqual(["schedule.edit"]);
+    // Its rows are its own: the workers' are as before.
+    expect(matrix.held.worker.size).toBe(0);
+    expect(matrix.held.manager.has("schedule.edit")).toBe(true);
+  });
+
+  it("can't be added while the function has no named roles' columns", async () => {
+    const matrix = await getRoleMatrixForTeam(BUSINESS, []);
+    expect(matrix.addsRoles).toBe(false);
+    expect(matrix.named).toEqual([]);
+  });
+
+  it("have their areas written with their id, on their base, against their own default", async () => {
+    db.matrix = { data: withNamed([]), error: null };
+    const result = await setRoleArea(ACTOR, BUSINESS, LEAD, "scheduling", {
+      level: "edit",
+      extras: { "schedule.publish": false },
+    });
+    expect(result).toEqual({ ok: true });
+    expect(db.calls).toEqual([
+      {
+        perms: ["schedule.edit"],
+        granted: [true],
+        role: "worker",
+        named: LEAD,
+      },
+    ]);
+  });
+
+  it("write nothing for one gone from the matrix (archived since)", async () => {
+    db.matrix = { data: withNamed([]), error: null };
+    const gone = "93000000-0000-4000-a000-0000000000c9";
+    await expect(
+      setRoleArea(ACTOR, BUSINESS, gone, "scheduling", {
+        level: "edit",
+        extras: {},
+      }),
+    ).resolves.toEqual({ ok: false, failure: "gone" });
+    db.refuse = () => ({ code: "P0002", message: "No such role" });
+    await expect(
+      setRoleArea(ACTOR, BUSINESS, LEAD, "scheduling", {
+        level: "edit",
+        extras: {},
+      }),
+    ).resolves.toEqual({ ok: false, failure: "gone" });
+    expect(db.calls).toEqual([]);
+  });
+
+  it("are added with the role they copy, built-in or named", async () => {
+    db.roleResult = { data: LEAD, error: null };
+    await expect(
+      createBusinessRole(ACTOR, BUSINESS, {
+        name: "Shift lead",
+        base: "worker",
+        copyFrom: "manager",
+      }),
+    ).resolves.toEqual({ ok: true, id: LEAD });
+    await createBusinessRole(ACTOR, BUSINESS, {
+      name: "Bar lead",
+      base: "manager",
+      copyFrom: LEAD,
+    });
+    expect(db.roleCalls).toEqual([
+      {
+        fn: "create_business_role",
+        args: {
+          actor: ACTOR,
+          business: BUSINESS,
+          base_role: "worker",
+          role_name: "Shift lead",
+          copy_role: "manager",
+        },
+      },
+      {
+        fn: "create_business_role",
+        args: {
+          actor: ACTOR,
+          business: BUSINESS,
+          base_role: "manager",
+          role_name: "Bar lead",
+          copy_from: LEAD,
+        },
+      },
+    ]);
+  });
+
+  it.each([
+    [{ code: "23505", hint: "taken", message: "taken" }, "taken"],
+    [{ code: "54000", hint: "limit", message: "twenty" }, "limit"],
+    [{ code: "42501", message: "no" }, "noAccess"],
+    [{ code: "P0002", message: "gone" }, "gone"],
+    [{ code: "PGRST202", message: "missing" }, "closed"],
+  ] as const)("say %o as %s", async (error, failure) => {
+    db.roleResult = { data: null, error: { ...error } };
+    await expect(
+      createBusinessRole(ACTOR, BUSINESS, {
+        name: "Shift lead",
+        base: "worker",
+        copyFrom: "worker",
+      }),
+    ).resolves.toEqual({ ok: false, failure });
+  });
+
+  it("are renamed, archived and restored in the business they are in", async () => {
+    await expect(
+      renameBusinessRole(ACTOR, BUSINESS, LEAD, "Shift leader"),
+    ).resolves.toEqual({ ok: true });
+    await expect(archiveBusinessRole(ACTOR, BUSINESS, LEAD)).resolves.toEqual({
+      ok: true,
+    });
+    await expect(restoreBusinessRole(ACTOR, BUSINESS, LEAD)).resolves.toEqual({
+      ok: true,
+    });
+    expect(db.roleCalls).toEqual([
+      {
+        fn: "rename_business_role",
+        args: { actor: ACTOR, role_id: LEAD, role_name: "Shift leader" },
+      },
+      { fn: "archive_business_role", args: { actor: ACTOR, role_id: LEAD } },
+      { fn: "restore_business_role", args: { actor: ACTOR, role_id: LEAD } },
+    ]);
+  });
+
+  it("are never changed from another business, even one the actor owns", async () => {
+    await expect(archiveBusinessRole(ACTOR, OTHER, LEAD)).resolves.toEqual({
+      ok: false,
+      failure: "gone",
+    });
+    expect(db.roleCalls).toEqual([]);
+  });
+
+  it("say that people hold one being archived", async () => {
+    db.roleResult = {
+      data: null,
+      error: { code: "55000", hint: "held", message: "People hold the role" },
+    };
+    await expect(archiveBusinessRole(ACTOR, BUSINESS, LEAD)).resolves.toEqual({
+      ok: false,
+      failure: "held",
+    });
+  });
+});
+
+describe("who is in each role (R11a)", () => {
+  const people = [
+    {
+      user_id: ACTOR,
+      role: "worker",
+      named_role: LEAD,
+      profiles: { full_name: " Noa ", avatar_path: "noa/1.jpg" },
+    },
+    {
+      user_id: "93000000-0000-4000-a000-000000000006",
+      role: "manager",
+      named_role: null,
+      profiles: { full_name: "", avatar_path: null },
+    },
+  ];
+
+  it("is read for the owner under RLS, with photos", async () => {
+    db.people = people;
+    await expect(getRolePeopleForOwner(BUSINESS)).resolves.toEqual([
+      {
+        userId: ACTOR,
+        name: "Noa",
+        photo: "/photos/noa/1.jpg",
+        role: "worker",
+        namedRole: LEAD,
+      },
+      {
+        userId: "93000000-0000-4000-a000-000000000006",
+        name: null,
+        photo: null,
+        role: "manager",
+        namedRole: null,
+      },
+    ]);
+    expect(db.peopleReads).toEqual([
+      {
+        key: "publishable",
+        columns: "user_id, role, named_role, profiles (full_name, avatar_path)",
+        filters: { business_id: BUSINESS, active: true },
+      },
+    ]);
+  });
+
+  it("is read for the team with the secret key, by initials", async () => {
+    db.people = people;
+    const read = await getRolePeopleForTeam(BUSINESS);
+    expect(read.map((person) => [person.photo, person.namedRole])).toEqual([
+      [null, LEAD],
+      [null, null],
+    ]);
+    expect(db.peopleReads.map((one) => one.key)).toEqual(["secret"]);
+  });
+
+  it("reads nobody in a named role before its migration", async () => {
+    db.people = people.map(({ named_role: _, ...person }) => person);
+    db.noNamedColumn = true;
+    const read = await getRolePeopleForOwner(BUSINESS);
+    expect(read.map((person) => person.namedRole)).toEqual([null, null]);
+    expect(db.peopleReads.map((one) => one.columns)).toEqual([
+      "user_id, role, named_role, profiles (full_name, avatar_path)",
+      "user_id, role, profiles (full_name, avatar_path)",
+    ]);
   });
 });

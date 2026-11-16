@@ -343,8 +343,8 @@ test("where the time clock and chat are off, the console offers no pay access", 
 // business's page leads there beside who sees pay, and the screen draws the
 // business's own managers and workers, scheduling open for changes since R3,
 // the time clock since R4, lists since R5, the team since R6 (edit, view or
-// none), the management page since R7 and chat since R8, with no role to
-// add yet (R11), clean at each width.
+// none), the management page since R7 and chat since R8, and "הוספת תפקיד"
+// for a role the business names (R11a), clean at each width.
 test("the team sees roles and permissions, every area open: scheduling, the clock, lists, the team, the management page and chat", async ({
   page,
 }) => {
@@ -370,6 +370,8 @@ test("the team sees roles and permissions, every area open: scheduling, the cloc
   // is open yet.
   await expect(shown(page, r.savesItself)).toBeVisible();
   await expect(page.getByText(r.closedAll)).toHaveCount(0);
-  await expect(page.getByRole("button", { name: r.add })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: r.add }).filter({ visible: true }),
+  ).toBeVisible();
   await expectCleanPage(page);
 });

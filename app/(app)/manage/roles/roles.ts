@@ -1,5 +1,4 @@
-import { getAccessPeople } from "@db/payroll";
-import { getRoleMatrixForOwner } from "@db/roles";
+import { getRoleMatrixForOwner, getRolePeopleForOwner } from "@db/roles";
 import { enabledModules } from "@domain/modules";
 import { accessOrder } from "@domain/payroll-access";
 import { changesPermissions } from "@domain/role-access";
@@ -33,19 +32,22 @@ export async function rolesAccess() {
 
 /**
  * What the owner's screen draws: the business's rules as its database
- * answers them (read with the secret key once the session's person is known
- * to be its owner), its active people by role with their photos, as "מי רואה
- * שכר" lists them, and whether pay opens anything there, for the way to it.
+ * answers them, its named roles among them (both read with the secret key
+ * once the session's person is known to be its owner), its active people by
+ * role and named role with their photos (under RLS, as "מי רואה שכר" reads
+ * them), by name as that screen lists them, whether pay opens anything
+ * there, for the way to it, and whether the
+ * database takes roles the business names (`addsRoles`: "הוספת תפקיד").
  * Null for anyone but an owner. `noName` names someone who gave none.
  */
 export async function currentRoles(
   noName: string,
-): Promise<{ data: RolesData; payAccess: boolean } | null> {
+): Promise<{ data: RolesData; payAccess: boolean; addsRoles: boolean } | null> {
   const access = await rolesAccess();
   if (!access) return null;
   const [matrix, people] = await Promise.all([
     getRoleMatrixForOwner(access.businessId, permissions),
-    getAccessPeople(access.businessId),
+    getRolePeopleForOwner(access.businessId),
   ]);
   const enabled = enabledModules(manifests, access.rows);
   return {
@@ -57,11 +59,13 @@ export async function currentRoles(
         name: person.name ?? noName,
         photo: person.photo,
         role: person.role,
+        namedRole: person.namedRole,
       })),
       viewOnly: access.viewOnly,
       // Documents are on wherever chat is (private.documents_on).
       documents: enabled.includes("chat"),
     }),
     payAccess: payAccessInUse(access.rows),
+    addsRoles: matrix.addsRoles,
   };
 }
