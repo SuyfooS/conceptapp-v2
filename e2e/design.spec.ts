@@ -1093,6 +1093,30 @@ test("the activity demo says which breaks a correction changed", async ({
   ).toBeVisible();
 });
 
+// The activity demo names a role's permission as the roles screen does.
+test("the activity demo says which permission a role gained or lost", async ({
+  page,
+}) => {
+  await page.goto("/design/shell/manage/activity");
+  const words = he.app.manage.activity.actions.rolePermission;
+  const roles = he.app.manage.roles;
+  const lines = [
+    heT("app.manage.activity.actions.rolePermission.on", {
+      role: "worker",
+      what: words.what.edit.replace("{area}", he.modules.scheduling.name),
+    }),
+    heT("app.manage.activity.actions.rolePermission.off", {
+      role: "manager",
+      what: roles.extras.schedule.publish.phrase,
+    }),
+  ];
+  for (const line of lines) {
+    await expect(
+      page.getByText(line).filter({ visible: true }).first(),
+    ).toBeVisible();
+  }
+});
+
 // The lists demo sends and takes a sending back, keeps its five minutes to
 // take a finish back after it hydrates, and reads a freezer below zero.
 test("the lists demo sends, takes back, and keeps a finished list as it was", async ({

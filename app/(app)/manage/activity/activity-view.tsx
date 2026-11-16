@@ -18,6 +18,7 @@ import {
   type Role,
   readModuleSettings,
 } from "@domain/modules";
+import { editOrView } from "@domain/role-access";
 import { describeSettings } from "@domain/settings-form";
 import { shabbatCityOf, timeIn } from "@domain/shabbat";
 import { manifests } from "@modules/registry";
@@ -143,6 +144,7 @@ export function ActivityView({
   const tDays = translator(wording, "days");
   const tDetails = translator(wording, "app.manage.business");
   const tManage = translator(wording, "app.manage");
+  const tAccess = translator(wording, "app.manage.roles");
   const tDocuments = translator(wording, "app.chat.documents");
   const format = useFormatter();
   const shekels = useShekels();
@@ -741,6 +743,30 @@ export function ActivityView({
             was: line.was ?? "other",
           }),
         );
+      case "role.permission": {
+        const permission = line.permission;
+        const what = (() => {
+          switch (permission.kind) {
+            case "edit":
+            case "view":
+              return t(`actions.rolePermission.what.${permission.kind}`, {
+                area: editOrView(permission.area)
+                  ? moduleName(permission.area)
+                  : tAccess(`areas.${permission.area}`),
+              });
+            case "extra":
+              return tAccess(`extras.${permission.extra}.phrase`);
+            case "other":
+              return t("actions.rolePermission.what.other");
+          }
+        })();
+        return plain(
+          t(`actions.rolePermission.${line.on ? "on" : "off"}`, {
+            role: line.role ?? "other",
+            what,
+          }),
+        );
+      }
       case "permission.grant":
       case "permission.revoke": {
         const perm = line.perm === "clock.payroll" ? "payroll" : "other";

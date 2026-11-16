@@ -7,6 +7,15 @@ import {
   type DocumentRemoveReason,
 } from "./documents";
 import { ROLES, type Role } from "./modules";
+import {
+  ACCESS_AREAS,
+  ACCESS_EXTRA_KEYS,
+  type AccessArea,
+  type AccessExtra,
+  AREA_EDIT,
+  AREA_VIEW,
+  PLACE_AREAS,
+} from "./role-access";
 import { shabbatCityOf } from "./shabbat";
 
 /**
@@ -158,6 +167,28 @@ export function breakFitKind(breaks: readonly BreakFit[]): BreakFitKind {
 export type ActivityGrantee =
   | { kind: "role"; role: Role | null }
   | { kind: "person"; person: ActivityPerson };
+
+/**
+ * A permission a role's rule switched, as the screen "תפקידים והרשאות" names
+ * it: an area's edit, its view (team and manage), one of the switches under
+ * edit, or a key the screen doesn't draw.
+ */
+export type ActivityRolePermission =
+  | { kind: "edit" | "view"; area: AccessArea }
+  | { kind: "extra"; extra: AccessExtra }
+  | { kind: "other" };
+
+/** Which of an area's permissions a key is, from the key alone. */
+export function rolePermissionOf(perm: string): ActivityRolePermission {
+  for (const area of ACCESS_AREAS) {
+    if (AREA_EDIT[area] === perm) return { kind: "edit", area };
+  }
+  for (const area of PLACE_AREAS) {
+    if (AREA_VIEW[area] === perm) return { kind: "view", area };
+  }
+  const extra = ACCESS_EXTRA_KEYS.find((key) => key === perm);
+  return extra ? { kind: "extra", extra } : { kind: "other" };
+}
 
 /** Who a list went to, as the log says it. */
 export type ActivityRecipient =
@@ -342,6 +373,16 @@ export type ActivityLine =
       /** The permission's key, such as `clock.payroll`. */
       perm: string;
       to: ActivityGrantee;
+    }
+  | {
+      /**
+       * An owner or the team switched a permission for everyone in a role
+       * (roles R2, `public.set_role_permission`): on, or off.
+       */
+      action: "role.permission";
+      role: Role | null;
+      permission: ActivityRolePermission;
+      on: boolean;
     }
   | {
       action: "lists.reopen";
@@ -617,6 +658,11 @@ const schemas = {
     min: z.number().nullable().default(null),
     max: z.number().nullable().default(null),
     unit: z.string().nullable().default(null),
+  }),
+  "role.permission": z.object({
+    role: z.unknown(),
+    perm: z.string(),
+    to: z.boolean(),
   }),
   permission: z.object({
     perm: z.string(),
@@ -1049,6 +1095,16 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
           ? details.was
           : null;
       return { action: row.action, name: details.name, was };
+    }
+    case "role.permission": {
+      const details = read(schemas["role.permission"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        role: roleOf(details.role),
+        permission: rolePermissionOf(details.perm),
+        on: details.to,
+      };
     }
     case "permission.grant":
     case "permission.revoke": {

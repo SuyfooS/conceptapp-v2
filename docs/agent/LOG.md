@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-16 · nightly run · the activity log names a role's permission
+
+- Guessed: no `orel`, `question` or `urgent` issue was open, and the last day session's note (15.11, evening) was R0–R2 merged with R3 next; R3 is a feature with a hosted migration, not a nightly guess. R2's log left one gap: `role.permission` rows showed as "something else" on /manage/activity "until their words come (R3 or R9)". This gives them words, with no database change.
+- `@domain/activity`: the line `role.permission` (role, `permission`, `on` from the row's `to`), and `rolePermissionOf(perm)`, which names a key as the roles screen does: an area's edit (`AREA_EDIT`), its view (`AREA_VIEW`, team and manage), one of the switches under edit (`ACCESS_EXTRA_KEYS`), or other. A row without `to` stays "other".
+- Words `app.manage.activity.actions.rolePermission.on|off|what.*`, in the roles screen's toast shape: "עובדים: עכשיו גם עריכה בסידור", "מנהלים: עכשיו בלי פרסום הסידור"; the area is the module's name in the business's words, or the roles screen's "צוות"/"ניהול העסק"; a switch is its `phrase`. No link: the owner's roles screen comes in R9.
+- The twin /design/shell/manage/activity gets two rows from the ConceptApp team; e2e design.spec.ts checks both lines. Unit tests for the parser and for every key the screen draws.
+- Checked: `pnpm check` (2231 passed), `pnpm build`, Playwright for the activity twin at 390, 820 and 1440 (axe clean, light and dark; 18 passed), screenshots by eye.
+- Restore point: `backup/before-night-2026-11-16` at `c0f098c` (the tag push was cut off). Next: R3, scheduling, in a day session. Defaults applied: none.
+
 ## 2026-11-15 · chat · roles and permissions: the setter and the console's screen (R2)
 
 - On chat/roles-setter over `main` with R0 and R1 merged in locally. The roles plan's R2 (its revised form, with critique items 2, 3, 10, 20, 22 and 25, and R1's security review note 2; item 17 is not done here: a manager who promotes or invites someone as manager, where managers hold pay by role, still passes pay on without the owner (`private.gives_role('manager','manager')`, `set_member_role`, the invite check); the revised plan names no phase for it, and closing it changes what managers can do, which R2 doesn't, so it is proposed for R6, where `gives_role` and the invite checks move, waiting for the orchestrator's or Orel's word and to be written into the plan's R6 then), with Orel's answers of 15 November 2026 on #1: only owners and the ConceptApp team change permissions (Q5), managers can be lowered as well as workers raised (Q4), and a demo changes as its pay does. Still nothing changes for anyone: no key is `settable` until its area's phase (R3 to R8) turns it on.

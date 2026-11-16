@@ -2495,6 +2495,15 @@
               "atMost": "The range: up to <ltr>{range}</ltr>"
             }
           },
+          "rolePermission": {
+            "on": "{role, select, manager {The managers} worker {The workers} other {A role}}: now with {what}",
+            "off": "{role, select, manager {The managers} worker {The workers} other {A role}}: now without {what}",
+            "what": {
+              "edit": "editing in {area}",
+              "view": "viewing {area}",
+              "other": "a permission"
+            }
+          },
           "permission": {
             "grant": "{perm, select, payroll {Access to hours and pay given} other {Permission given}} {to}",
             "revoke": "{perm, select, payroll {Access to hours and pay taken back} other {Permission taken back}} {from}",
