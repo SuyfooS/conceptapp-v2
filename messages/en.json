@@ -2496,13 +2496,14 @@
             }
           },
           "rolePermission": {
-            "on": "{role, select, manager {The managers} worker {The workers} other {A role}}: now with {what}",
-            "off": "{role, select, manager {The managers} worker {The workers} other {A role}}: now without {what}",
-            "what": {
-              "edit": "editing in {area}",
-              "view": "viewing {area}",
-              "other": "a permission"
-            }
+            "editOn": "{role, select, manager {The managers} worker {The workers} other {Another role}}: now they edit in {area}",
+            "editOff": "{role, select, manager {The managers} worker {The workers} other {Another role}}: in {area} they now see without editing",
+            "viewOn": "{role, select, manager {The managers} worker {The workers} other {Another role}}: now with access to {area}",
+            "viewOff": "{role, select, manager {The managers} worker {The workers} other {Another role}}: no access to {area} now",
+            "extraOn": "{role, select, manager {The managers} worker {The workers} other {Another role}}: now with {extra}",
+            "extraOff": "{role, select, manager {The managers} worker {The workers} other {Another role}}: now without {extra}",
+            "otherOn": "{role, select, manager {The managers} worker {The workers} other {Another role}}: a permission was given",
+            "otherOff": "{role, select, manager {The managers} worker {The workers} other {Another role}}: a permission was taken away"
           },
           "permission": {
             "grant": "{perm, select, payroll {Access to hours and pay given} other {Permission given}} {to}",

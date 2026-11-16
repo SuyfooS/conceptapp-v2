@@ -1098,16 +1098,14 @@ test("the activity demo says which permission a role gained or lost", async ({
   page,
 }) => {
   await page.goto("/design/shell/manage/activity");
-  const words = he.app.manage.activity.actions.rolePermission;
-  const roles = he.app.manage.roles;
   const lines = [
-    heT("app.manage.activity.actions.rolePermission.on", {
+    heT("app.manage.activity.actions.rolePermission.editOn", {
       role: "worker",
-      what: words.what.edit.replace("{area}", he.modules.scheduling.name),
+      area: he.modules.scheduling.name,
     }),
-    heT("app.manage.activity.actions.rolePermission.off", {
+    heT("app.manage.activity.actions.rolePermission.extraOff", {
       role: "manager",
-      what: roles.extras.schedule.publish.phrase,
+      extra: he.app.manage.roles.extras.schedule.publish.phrase,
     }),
   ];
   for (const line of lines) {

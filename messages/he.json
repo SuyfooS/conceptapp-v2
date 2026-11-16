@@ -2496,13 +2496,14 @@
             }
           },
           "rolePermission": {
-            "on": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד}}: עכשיו גם {what}",
-            "off": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד}}: עכשיו בלי {what}",
-            "what": {
-              "edit": "עריכה ב{area}",
-              "view": "צפייה ב{area}",
-              "other": "הרשאה"
-            }
+            "editOn": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו עורכים ב{area}",
+            "editOff": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: ב{area} עכשיו רואים בלי לערוך",
+            "viewOn": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו עם גישה ל{area}",
+            "viewOff": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו בלי גישה ל{area}",
+            "extraOn": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו גם {extra}",
+            "extraOff": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: עכשיו בלי {extra}",
+            "otherOn": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: הרשאה נוספה",
+            "otherOff": "{role, select, manager {מנהלים} worker {עובדים} other {תפקיד אחר}}: הרשאה אחת הוסרה"
           },
           "permission": {
             "grant": "{perm, select, payroll {מתן גישה לשעות ולשכר} other {מתן הרשאה}} {to}",

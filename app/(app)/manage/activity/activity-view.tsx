@@ -745,27 +745,30 @@ export function ActivityView({
         );
       case "role.permission": {
         const permission = line.permission;
-        const what = (() => {
-          switch (permission.kind) {
-            case "edit":
-            case "view":
-              return t(`actions.rolePermission.what.${permission.kind}`, {
+        const role = line.role ?? "other";
+        const side = line.on ? "On" : "Off";
+        switch (permission.kind) {
+          case "edit":
+          case "view":
+            return plain(
+              t(`actions.rolePermission.${permission.kind}${side}`, {
+                role,
                 area: editOrView(permission.area)
                   ? moduleName(permission.area)
                   : tAccess(`areas.${permission.area}`),
-              });
-            case "extra":
-              return tAccess(`extras.${permission.extra}.phrase`);
-            case "other":
-              return t("actions.rolePermission.what.other");
-          }
-        })();
-        return plain(
-          t(`actions.rolePermission.${line.on ? "on" : "off"}`, {
-            role: line.role ?? "other",
-            what,
-          }),
-        );
+              }),
+            );
+          case "extra":
+            return plain(
+              t(`actions.rolePermission.extra${side}`, {
+                role,
+                extra: tAccess(`extras.${permission.extra}.phrase`),
+              }),
+            );
+          case "other":
+            return plain(t(`actions.rolePermission.other${side}`, { role }));
+        }
+        break;
       }
       case "permission.grant":
       case "permission.revoke": {
