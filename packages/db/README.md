@@ -25,7 +25,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.viewing_payroll(business)` | is on the ConceptApp team viewing the business as an accountant: the one view that reads pay |
 | `private.reads_pay_of(person)` | holds `clock.payroll`, or views as an accountant, in a business that person is or was in |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
-| `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only) |
+| `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only; a view as a role the business named ranks as its base) |
 | `private.can_manage_lists(business, person)` | (that person) holds `lists.manage` (`private.holds_perm`: an owner always, managers by default, a role an owner raised, or one given it; since R5) |
 | `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or holds `lists.manage` |
 | `private.can_read_list_photo(object_name)` | may read that file of the `list-photos` bucket: an item of a list they see (or view as a role that holds `lists.manage`) points at it, in its business, with lists on |
@@ -34,7 +34,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.is_private_action(action)` | (any user) a log row about chats or documents (`chat.*`, `document.*`), which no view session reads |
 | `private.log_perm(action)` | (any user) the permission a log row is read with besides `manage.view`: its own area's (`clock.edit`, `schedule.edit`, `lists.manage`, `team.view`, `chat.moderate`), `manage.view` for the management page's own families, and null for a family it doesn't name, which no one reads through it (`tooling/log-families.test.ts` makes each family the migrations write name its area) |
 | `private.held_perms()` | the rows (business, permission) of every key they hold as an active member, for a policy's `(business_id, key) in (select …)` |
-| `private.viewed_perms()` | the same for their open view session: what the viewed role holds by role, every key but pay as the owner, pay only as an accountant |
+| `private.viewed_perms()` | the same for their open view session: what the viewed role holds by role (a role the business named: its own rules, else its base's), every key but pay as the owner, pay only as an accountant |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
 audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
@@ -1135,6 +1135,51 @@ several areas of a role in one `set_role_permissions` call ("חזרה להתחל
 its undo; `setRoleArea` is its one-area case). `roles_changes.test.sql` covers
 it (26, ids c4…, numbers 050-084-xxxx), and `roles_chat.test.sql` leaves the
 new line out of its count of a lowered manager's chat lines.
+
+Viewing the app as a role a business named (`20261115001800_named_roles_view.sql`,
+the roles plan's R11c; Orel's answers of 15 and 16 November 2026). A view
+session can be as one: `public.view_sessions.named_role`, built on the
+session's role by the same foreign key as memberships' and invites'
+(business_id, named_role, role) to the role's (business_id, id, base), on
+delete cascade (a role goes only with its business, and a view never falls
+back to its base), and never an archived one
+(`private.refuse_archived_named_role` on the table too: 22023, hint
+`archived`). `public.start_view_session` takes `view_named` (defaulted, so
+today's calls are unchanged): of the business (else P0002), live (else 22023,
+hint `archived`) and on `view_role` (else 22023, hint `base`), checked before
+the open session ends, so a refused start leaves it; its `view_as.start` row
+adds `named_role` and `role_name`, which the activity log says with the base.
+The session's role stays its rank: `private.is_viewing`, `is_viewing_staff`
+and `viewing_payroll` read a view as a named role as one as its base,
+unchanged. What it reads by what it holds asks the named role:
+`public.my_permissions`' view branch, `private.businesses_holding`'s (the
+drafts, everyone's availability, the team's hours, the stations, the lists,
+the invites, the numbers and the rest of R3 to R8's policies) and
+`private.viewed_perms` (the log's view policy) each call
+`private.role_holds(business, v.role, key, v.named_role)`, so a view as a
+named role holds exactly what someone in it holds by role (its own rules,
+else its base's, with `requires`, never pay) and still writes nothing: the
+team member is no member, so every write's own check refuses them.
+`public.end_view_session` is unchanged. `@db/view-as` passes `view_named`
+only when there is one (`startViewing(actor, business, choice)`: a role
+archived since is `roleGone`) and gives the console the business's live
+named roles (`getViewableNamedRoles`, with the secret key, none until
+`view_sessions.named_role` exists); the console's action sends an id no
+longer among them to `roleGone` before it calls (`readViewAsChoice` in
+`@domain/view-as`); `@db/session` reads the open session's
+`named_role` (a project before the column reads none) and its names under the
+policy that lets a view read them, for the banner and the shell
+(`viewing.namedRole`, `membership.namedRole`). `roles_named_view.test.sql`
+covers it (14, ids a3…, numbers 050-083-xxxx): the table's foreign key and
+trigger, the privileges, a built-in view as before (R1's view branch frozen),
+the view as a shift lead (started as the service role, as the app starts it;
+its session and log row, its names read by the team member), every refusal
+by the function (as the service role) and by the table, no write
+through the secret key or the browser, and for a shift lead who builds, a
+clock lead, an office role on the management page and the team, and a floor
+lead on managers who doesn't build where managers see pay: what each holds
+(the same as someone in it, its base's and its own rules and nothing more)
+and reads (drafts, hours, the log, invites), its rank and no pay.
 
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the

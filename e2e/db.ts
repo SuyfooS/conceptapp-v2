@@ -125,6 +125,23 @@ export async function viewAudit(
 }
 
 /**
+ * The name of the role a business named that the person's newest
+ * `view_as.start` was as (the roles plan's R11c), or null for a built-in
+ * role or none.
+ */
+export async function lastViewedRoleName(
+  phone: string,
+): Promise<string | null> {
+  const [row] = await sql<{ name: string | null }[]>`
+    select a.details ->> 'role_name' as name
+    from public.audit_log a join public.profiles p on p.id = a.actor_id
+    where p.phone = ${phone} and a.action = 'view_as.start'
+    order by a.created_at desc, a.id desc
+    limit 1`;
+  return row?.name ?? null;
+}
+
+/**
  * End the person's open view session, so a failed spec never leaves the
  * console's platform admin inside a business for the specs after it.
  */
@@ -1478,6 +1495,36 @@ export async function setShopPayRole(
 ): Promise<void> {
   await sql`select public.set_role_permission(${SHOP_OWNER}, ${DEMO_SHOP},
     ${role}, 'clock.payroll', ${granted})`;
+}
+
+/**
+ * A role the demo shop names itself (the roles plan's R11a), built on
+ * workers, with `perms` switched on for it, through the database functions
+ * its owner's screen uses. Nobody holds it, so the shop's people stay as the
+ * seed has them; `removeShopNamedRole` takes it away after.
+ */
+export async function addShopNamedRole(
+  name: string,
+  perms: readonly string[],
+): Promise<void> {
+  const [role] = await sql<{ id: string }[]>`
+    select public.create_business_role(${SHOP_OWNER}::uuid, ${DEMO_SHOP}::uuid,
+      'worker', ${name}) as id`;
+  if (!role) throw new Error(`Could not add ${name}`);
+  for (const perm of perms) {
+    await sql`select public.set_role_permission(${SHOP_OWNER}::uuid,
+      ${DEMO_SHOP}::uuid, 'worker', ${perm}, true, ${role.id}::uuid)`;
+  }
+}
+
+/**
+ * The demo shop's roles by this name gone, archived or not, with their rules
+ * and any view of the shop as one (a role goes only with its business in the
+ * app; here the spec's own is deleted, so the next run adds it afresh).
+ */
+export async function removeShopNamedRole(name: string): Promise<void> {
+  await sql`delete from public.business_roles
+    where business_id = ${DEMO_SHOP} and name = ${name}`;
 }
 
 /** The roles the demo shop gives pay access to, in order. */

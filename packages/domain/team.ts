@@ -255,6 +255,49 @@ export function namedRolesBeyond(
     .map((n) => ({ role: n.base, namedRole: n.id }));
 }
 
+/**
+ * A role the invite form shows, and why it isn't offered, when it isn't:
+ * `pay`, a built-in role that holds pay (`ownerOnlyRoles`), or `held`, a
+ * named role holding what the viewer doesn't (`namedRolesBeyond`), each an
+ * owner's to give, as the role sheet says them; null for one they give.
+ */
+export type InviteChoice = RoleChoice & { blocked?: "pay" | "held" | null };
+
+/**
+ * The roles the invite form shows the viewer (Orel, 16 November 2026, issue
+ * #1): every role they give by the rank rule, each followed by the
+ * business's named roles built on it, in `named`'s order, those only an
+ * owner gives among them, not offered, with why (`blocked`): a built-in role
+ * among `ownerOnly` (those that hold pay, for a viewer who isn't an owner)
+ * and a named role that holds what they don't. None unless they edit the
+ * team. The offered ones are `invitableRoles`' without `ownerOnly`.
+ */
+export function inviteChoices(
+  viewer: Viewer,
+  named: readonly GivableNamedRole[] = [],
+  ownerOnly: readonly Role[] = [],
+): InviteChoice[] {
+  if (!canEditTeam(viewer)) return [];
+  return ROLES.flatMap((role): InviteChoice[] =>
+    givesRole(viewer.role, role)
+      ? [
+          {
+            role,
+            namedRole: null,
+            blocked: ownerOnly.includes(role) ? "pay" : null,
+          },
+          ...named
+            .filter((n) => n.base === role)
+            .map((n) => ({
+              role,
+              namedRole: n.id,
+              blocked: givesNamedRole(viewer, n) ? null : ("held" as const),
+            })),
+        ]
+      : [],
+  );
+}
+
 /** Whether the viewer edits the team and gives `role` by the rank rule. */
 function givesByRank(viewer: Viewer, role: Role): boolean {
   return canEditTeam(viewer) && givesRole(viewer.role, role);

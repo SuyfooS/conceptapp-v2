@@ -94,6 +94,8 @@ const PAGES = [
   "/design/shell/team/noa?as=manager&state=pay",
   "/design/shell/team/invite?as=editor",
   "/design/shell/team/invite?as=paid",
+  // Every role an owner's, for pay and for what it holds (roles R11c).
+  "/design/shell/team/invite?as=held",
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",

@@ -433,7 +433,6 @@ function RolePicker({
             value={roleChoiceKey(r)}
             checked={sameRoleChoice(draft, r)}
             disabled={blocked(r)}
-            className={blocked(r) ? "opacity-60" : undefined}
             onChange={() => {
               setDraft(r);
               setTried(false);

@@ -249,6 +249,8 @@
     "fieldGroup": "Fields in a list",
     "choices": "One choice out of several",
     "choiceHint": "A short word about this option",
+    "choiceOff": "An option you can't choose right now",
+    "choiceOffHint": "Why goes here, easy to read",
     "personRow": "People in a list",
     "photos": "Profile photos",
     "photosText": "A photo in place of the initials, in the same circle. Without one, or when it doesn't load, the initials stay.",
@@ -769,6 +771,7 @@
         "namedHint": "The business's own role, built on {role}",
         "submit": "Create invite link",
         "ownerOnly": "The roles you could invite to from here see pay, so only an owner invites to them. To add someone to the team, ask an owner.",
+        "ownerOnlyAny": "Only an owner gives the roles you could invite to from here. To add someone to the team, ask an owner.",
         "ready": "{name}'s invite is ready",
         "readyBody": "Send the link on WhatsApp or by SMS. Once {name} signs in through it, they appear in the team.",
         "backToTeam": "Back to the team",
@@ -5021,7 +5024,10 @@
           "worker": "View as worker",
           "accountant": "View as accountant"
         },
-        "failed": "We could not open the view. Try again in a moment."
+        "asNamed": "View as {role}",
+        "namedHint": "The business's own role, built on {role}",
+        "failed": "We could not open the view. Try again in a moment.",
+        "roleGone": "This role was removed in the meantime, so the view did not open. Choose another role."
       },
       "settings": {
         "row": "Business settings",

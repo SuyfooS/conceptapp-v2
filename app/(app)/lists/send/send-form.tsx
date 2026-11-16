@@ -450,6 +450,7 @@ export function SendForm({
                         name="shift"
                         value={s.id}
                         checked={shift === s.id}
+                        // Its hint says nobody is on it; it takes no press.
                         disabled={s.people.length === 0}
                         onChange={() => setShift(s.id)}
                         title={s.name}
@@ -461,11 +462,6 @@ export function SendForm({
                           ltr,
                         })}
                         leading={<CalendarClock />}
-                        // Its hint says nobody is on it; it reads as the
-                        // others do, and takes no press.
-                        className={cn(
-                          s.people.length === 0 && "cursor-default",
-                        )}
                       />
                     ))}
                   </ChoiceList>

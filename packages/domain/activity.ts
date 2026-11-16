@@ -295,7 +295,15 @@ export type ActivityLine =
       swaps: number;
       reopened: number;
     }
-  | { action: "view_as.start" | "view_as.end"; role: Role | null }
+  | {
+      action: "view_as.start" | "view_as.end";
+      role: Role | null;
+      /**
+       * The role the business named that the view was as, by its name then,
+       * built on `role` (the roles plan's R11c); missing for none.
+       */
+      roleName?: string;
+    }
   | { action: "swap.request" | "swap.cancel"; shift: ActivityShift | null }
   | {
       action: "swap.take";
@@ -1027,7 +1035,11 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     case "view_as.end": {
       const details = read(schemas.role);
       return details
-        ? { action: row.action, role: roleOf(details.role) }
+        ? {
+            action: row.action,
+            role: roleOf(details.role),
+            ...namedOf(details.role_name),
+          }
         : other;
     }
     case "swap.request": {

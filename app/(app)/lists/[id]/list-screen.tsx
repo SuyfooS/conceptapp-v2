@@ -1340,7 +1340,6 @@ export function ListScreen({
                   title={target.name}
                   hint={tl("pass.people", { count: target.people })}
                   leading={<Building2 />}
-                  className={cn(target.people === 0 && "cursor-default")}
                 />
               ))}
             </ChoiceList>

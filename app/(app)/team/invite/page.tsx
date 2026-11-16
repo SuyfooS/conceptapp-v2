@@ -1,5 +1,5 @@
 import { invitesOpen } from "@db/invites";
-import { invitableRoles, namedRoleShown } from "@domain/team";
+import { invitableRoles, inviteChoices, namedRoleShown } from "@domain/team";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
@@ -19,10 +19,11 @@ export async function generateMetadata(): Promise<Metadata> {
 // (team.edit, the roles plan's R6), to the roles they give by the rank rule,
 // but for one that holds pay, which only an owner gives: with none left, the
 // screen says so. The business's named roles follow the role each is built
-// on, those the person gives (the roles plan's R11b: an owner any; anyone
-// else one holding nothing they don't, and none holds pay). Not found for
-// anyone else, and in a business closed to invites (a demo one, #80), as the
-// Team screen offers none there.
+// on (the roles plan's R11b: an owner gives any; anyone else one holding
+// nothing they don't, and none holds pay). Those only an owner gives are
+// shown, not offered, with why, as the role sheet shows them (Orel, 16
+// November 2026, #1). Not found for anyone else, and in a business closed
+// to invites (a demo one, #80), as the Team screen offers none there.
 export default async function TeamInvitePage() {
   const membership = (await currentMember())?.membership;
   if (!membership || invitableRoles(membership).length === 0) notFound();
@@ -31,12 +32,9 @@ export default async function TeamInvitePage() {
     currentOwnerOnlyRoles(),
     currentGivableNamedRoles(),
   ]);
-  const roles = invitableRoles(membership, named).filter(
-    (choice) => choice.namedRole !== null || !ownerOnly.includes(choice.role),
-  );
   return (
     <TeamInviteView
-      roles={roles}
+      roles={inviteChoices(membership, named, ownerOnly)}
       // Their names only: what each holds stays here, for the giver's rule.
       namedRoles={named.map(namedRoleShown)}
       teamHref="/team"
