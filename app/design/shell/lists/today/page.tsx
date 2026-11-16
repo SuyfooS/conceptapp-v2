@@ -11,8 +11,10 @@ type Props = { searchParams: Promise<{ day?: string; state?: string }> };
 // lists, the cleaning closed, and the week's readings. `?day=2026-11-01` is
 // Sunday's, with a list nobody did (the history); `?state=empty` a day with
 // nothing; `?state=viewing` the team viewing as a manager, which only reads;
-// `?state=shiftGone` the restaurant after its evening shift was removed from
-// the settings, whose bar closing then opens nothing.
+// `?state=noSend` a role that manages lists without sending them (R5), told
+// who sends, and `?state=emptyNoSend` the same on a day with nothing yet;
+// `?state=shiftGone` the restaurant after its evening shift was
+// removed from the settings, whose bar closing then opens nothing.
 export default function ShellListsToday({ searchParams }: Props) {
   return (
     <Suspense>
@@ -27,7 +29,11 @@ async function Demo({ searchParams }: Props) {
     <ListsTodayView
       data={demoListsToday(
         day,
-        state === "empty" || state === "viewing" || state === "shiftGone"
+        state === "empty" ||
+          state === "viewing" ||
+          state === "shiftGone" ||
+          state === "noSend" ||
+          state === "emptyNoSend"
           ? state
           : undefined,
       )}

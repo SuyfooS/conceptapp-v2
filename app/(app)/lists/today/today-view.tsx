@@ -375,11 +375,14 @@ export function ListsTodayView({
     </span>
   );
   // A view session sends nothing and edits nothing: it only hears what shows.
+  // One who runs the lists without sending them only sets their times.
   const emptyBody = !data.today
     ? t("empty.pastBody")
     : data.viewOnly
       ? t("empty.viewOnlyBody")
-      : t("empty.body");
+      : data.send
+        ? t("empty.body")
+        : t("empty.noSendBody");
 
   return (
     <PageBody className={pageGlowClass}>
@@ -399,6 +402,11 @@ export function ListsTodayView({
         }
         actions={send}
       />
+      {/* Runs the lists without sending them: who does. The screen is
+          every list already, so only that. */}
+      {data.othersSend ? (
+        <p className="px-1 text-ink-2">{tLists("othersSendShort")}</p>
+      ) : null}
 
       <DayPicker
         label={t("pick")}

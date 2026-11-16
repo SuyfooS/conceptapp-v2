@@ -73,21 +73,31 @@ export const listsPaths = {
   today: "/lists/today",
 };
 
-/** The template screens' links inside the app; `back` is named in words. */
-export function templatePaths(backLabel: string): TemplatePaths {
+/**
+ * The template screens' links inside the app; `back` is named in words. The
+ * editor's "send it now" only for whoever sends lists (`sends`, lists.send).
+ */
+export function templatePaths(
+  backLabel: string,
+  sends: boolean,
+): TemplatePaths {
   return {
     list: listsPaths.templates,
     back: { href: listsPaths.lists, label: backLabel },
-    send: listsPaths.send,
+    send: sends ? listsPaths.send : null,
   };
 }
 
 /**
  * The signed-in person and what they may do with lists, when lists are on for
  * their business and their role reaches them. Null otherwise: the screens then
- * do not exist for them. A view session reads as its role would and writes
- * nothing; it holds no list of its own, so as a manager it reads the
- * business's.
+ * do not exist for them. Both come from the database's answer
+ * (`my_permissions`, the roles plan's R5): `canManage` is lists.manage
+ * (templates and their times, every list), `canSend` lists.send, a switch
+ * under it (a role holds it only while it runs the lists); `othersSend` is
+ * one who runs the lists without sending them, told who does. A view session
+ * reads as its role would and writes nothing; it holds no list of its own, so
+ * as a role that runs the lists it reads the business's.
  */
 export const listsAccess = cache(async () => {
   const [member, enabled] = await Promise.all([
@@ -101,6 +111,7 @@ export const listsAccess = cache(async () => {
   }
   const { role, business } = membership;
   const canManage = holdsPermission(membership, "lists.manage");
+  const canSend = holdsPermission(membership, "lists.send");
   const viewing = member.viewing !== null;
   const view: ListsView = viewing
     ? canManage
@@ -114,7 +125,8 @@ export const listsAccess = cache(async () => {
     timeZone: business.place.timeZone,
     place: business.place,
     canManage,
-    canSend: canManage || holdsPermission(membership, "lists.send"),
+    canSend,
+    othersSend: canManage && !canSend && canWrite(member.viewing),
     viewOnly: !canWrite(member.viewing),
     view,
   };
@@ -289,6 +301,7 @@ export async function currentListsHome(
         )
       : null,
     send: access.viewOnly ? null : send,
+    othersSend: access.othersSend,
     // For the undo's five minutes, from the address it came back with; the
     // database takes it back only while nobody has started it
     // (`cancel_unstarted_list`).
@@ -599,7 +612,7 @@ async function templateTimes(
 
 /**
  * The business's templates on their own screen, for whoever manages lists
- * (a view session as a manager only reads). Null for anyone else.
+ * (a view session of a role that does only reads). Null for anyone else.
  */
 export async function currentTemplatesScreen(
   removed?: string,
@@ -622,12 +635,15 @@ export async function currentTemplatesScreen(
 
 /**
  * One template in its editor, or a new one (`templateId` null), for whoever
- * manages lists. Null when they don't, or it isn't theirs to read.
+ * manages lists. Null when they don't, or it isn't theirs to read. `sends`
+ * is whether its "send it now" is theirs, by the rule of `sendable`: every
+ * template for whoever sends lists, else the order of a live department
+ * they are in.
  */
 export async function currentTemplateEditor(
   templateId: string | null,
   changed: boolean,
-): Promise<TemplateEditorData | null> {
+): Promise<(TemplateEditorData & { sends: boolean }) | null> {
   const access = await listsAccess();
   if (!access?.canManage) return null;
   if (templateId !== null && !isUuid(templateId)) return null;
@@ -646,21 +662,30 @@ export async function currentTemplateEditor(
   if (template === "notYet" || (templateId !== null && template === null)) {
     return null;
   }
-  return templateEditor({
-    template,
-    departments,
-    shifts,
-    readOnly: access.viewOnly,
-    changed,
-    times,
-    photosClosed,
-  });
+  const asking = template?.fromDepartment ?? null;
+  return {
+    ...templateEditor({
+      template,
+      departments,
+      shifts,
+      readOnly: access.viewOnly,
+      changed,
+      times,
+      photosClosed,
+    }),
+    sends:
+      access.canSend ||
+      (asking !== null &&
+        departmentsOf(departments, access.userId, { live: true }).includes(
+          asking,
+        )),
+  };
 }
 
 /**
  * The manager's overview of a day (L4), for whoever manages lists (a view
- * session as a manager only reads): today's lists, late first, then open,
- * closed and missed, with the day's readings and the week's, and the times
+ * session of a role that does only reads): today's lists, late first, then
+ * open, closed and missed, with the day's readings and the week's, and the times
  * that open nothing since what they follow is gone; or, for a day of the
  * last week (`asked`), the lists that opened that day. Null for anyone else.
  */
@@ -709,7 +734,11 @@ export async function currentListsToday(
     readings: readings === "notYet" ? [] : readings,
     templates,
     places: placesOf(departments, shifts),
-    send: access.viewOnly ? null : { href: listsPaths.send, only: null },
+    send:
+      access.viewOnly || !access.canSend
+        ? null
+        : { href: listsPaths.send, only: null },
+    othersSend: access.othersSend,
     viewOnly: access.viewOnly,
   });
 }

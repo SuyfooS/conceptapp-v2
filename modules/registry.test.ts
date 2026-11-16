@@ -93,6 +93,7 @@ describe("module registry", () => {
     );
     expect(chains).toEqual({
       "schedule.publish": "schedule.edit",
+      "lists.send": "lists.manage",
       "team.edit": "team.view",
       "manage.edit": "manage.view",
     });
@@ -112,10 +113,10 @@ describe("module registry", () => {
     }
   });
 
-  it("lets owners switch scheduling's, the clock's and the management page's permissions per role, nothing else yet, and never pay", () => {
+  it("lets owners switch scheduling's, the clock's, lists' and the management page's permissions per role, nothing else yet, and never pay", () => {
     // Each area's phase turns its keys on once every check in the area reads
-    // them (the roles plan): scheduling's in R3, the clock's in R4, the
-    // management page's in R7. clock.payroll keeps its own switch.
+    // them (the roles plan): scheduling's in R3, the clock's in R4, lists' in
+    // R5, the management page's in R7. clock.payroll keeps its own switch.
     expect(
       permissions
         .filter((p) => p.settable)
@@ -123,6 +124,8 @@ describe("module registry", () => {
         .sort(),
     ).toEqual([
       "clock.edit",
+      "lists.manage",
+      "lists.send",
       "manage.edit",
       "manage.view",
       "schedule.edit",

@@ -36,7 +36,7 @@ export default async function NewListTemplatePage() {
         save: saveListTemplateAction.bind(null, access.businessId),
         archive: archiveListTemplateAction.bind(null, access.businessId),
       }}
-      paths={templatePaths(t("title"))}
+      paths={templatePaths(t("title"), access.canSend)}
     />
   );
 }

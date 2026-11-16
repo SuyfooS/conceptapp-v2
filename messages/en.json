@@ -2679,7 +2679,7 @@
             "none": "No team screen. Everyone's names are seen by all in the business anyway."
           },
           "manage": {
-            "edit": "They change the business's details, the departments and the settings, and see the activity log of their areas. They change an area's settings only if they also edit that area. For now they also build list templates and set when lists go out by themselves, even without edit access in lists.",
+            "edit": "They change the business's details, the departments and the settings, and see the activity log of their areas. They change an area's settings only if they also edit that area. Whoever they add to a department, themselves included, gets that department's lists.",
             "view": "They see the settings and the activity log of their areas, without changing them.",
             "none": "No management page."
           }
@@ -2696,7 +2696,7 @@
             "send": {
               "label": "Sending lists",
               "phrase": "sending lists",
-              "hint": "They send lists to people, roles and departments. Without it they build templates, and someone else sends."
+              "hint": "They send a list now to people, roles and departments. Without it they still set when templates open by themselves, and the lists go out at those times."
             }
           },
           "chat": {
@@ -3295,16 +3295,18 @@
         "menu": "{label}: {name}"
       },
       "sendOne": "Send {name}",
+      "othersSend": "You can make and change the business's lists, set when they open by themselves and see every list. {own, select, yes {The other lists are sent by the owners and whoever may send lists.} other {Sending a list now is for the owners and whoever may send lists.}}",
+      "othersSendShort": "Sending a list now is for the owners and whoever may send lists.",
       "empty": {
         "title": "Nothing for you right now",
-        "body": "When a manager sends you a list, it shows up here and you get a notification.",
+        "body": "When a list is sent to you, it shows up here and you get a notification.",
         "sender": "You can send a list to a person, a department or a role, and it reaches them with a notification.",
         "businessTitle": "No lists sent in the business today",
         "businessBody": "While viewing, lists can only be read. Lists sent today show up here."
       },
       "viewOnly": {
-        "title": "Viewing as a worker shows no lists",
-        "body": "Lists belong to the people they were sent to. Viewing as a manager shows all of the business's lists."
+        "title": "Viewing as this role shows no lists",
+        "body": "Lists belong to the people they were sent to. Viewing as a role that edits the lists shows all of the business's lists."
       },
       "team": {
         "title": "Today in the business",
@@ -3641,7 +3643,8 @@
         "create": "Make a list",
         "empty": {
           "title": "No lists yet",
-          "body": "Make an opening, closing or cleaning list, then send it from Lists."
+          "body": "Make an opening, closing or cleaning list, then send it from Lists.",
+          "bodyNoSend": "Make an opening, closing or cleaning list, and set when it opens by itself."
         },
         "emptyViewOnly": {
           "title": "The business has no lists yet",
@@ -3757,6 +3760,7 @@
           "title": "No lists today yet",
           "body": "Lists that are sent, and lists that open by themselves at their times, show here. You can send a list now, or give a list its times in its editor.",
           "viewOnlyBody": "Lists that are sent, and lists that open by themselves at their times, show here.",
+          "noSendBody": "Lists that are sent, and lists that open by themselves at their times, show here. You can give a list its times in its editor.",
           "toTemplates": "To the business's lists and their times",
           "pastTitle": "No lists were sent on this day",
           "pastBody": "You can pick another day of the week."
@@ -4629,8 +4633,8 @@
           }
         },
         "tellManagersWhenLate": {
-          "label": "Tell managers when a list is late",
-          "hint": "Owners, managers and whoever manages lists hear when a list is late."
+          "label": "Tell whoever edits the lists when one is late",
+          "hint": "The owners and whoever edits the lists hear when a list is late."
         },
         "tellOwnersAfterMinutes": {
           "label": "Tell the owners when a list is still late",

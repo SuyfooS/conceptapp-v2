@@ -86,8 +86,9 @@ export function TeamToday({
  * Someone in more than one department chooses which one's lists show (L5).
  * Phone: one card under the other, today's closed ones folded. Tablet: now
  * beside closed. Desktop: tables. Whoever manages lists sees the business's
- * day on top; whoever may send one has the main action. Also on
- * /design/shell/lists with mock data.
+ * day on top; whoever may send one has the main action, and one who manages
+ * lists without sending them is told who does. Also on /design/shell/lists
+ * with mock data.
  */
 export function ListsView({
   data,
@@ -181,6 +182,14 @@ export function ListsView({
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader title={t("title")} subtitle={t("subtitle")} actions={send} />
+      {/* Runs the lists without sending them (lists.manage without
+          lists.send): no way to send but a department's own order, and
+          who sends the rest, or every list when there is none. */}
+      {data.othersSend ? (
+        <p className="px-1 text-ink-2">
+          {t("othersSend", { own: data.send ? "yes" : "no" })}
+        </p>
+      ) : null}
 
       {/* Always here, so its word that the sending was taken back outlives
           the list it took back. */}
@@ -243,8 +252,9 @@ export function ListsView({
           className="md:py-12"
         />
       ) : nothing ? (
-        // Viewing as a manager reads the business, which has nothing today:
-        // not the worker's words, and nothing to send while viewing.
+        // Viewing as a role that manages lists reads the business, which
+        // has nothing today: not the worker's words, and nothing to send
+        // while viewing.
         <EmptyState
           headingLevel="h2"
           icon={<ListChecks />}

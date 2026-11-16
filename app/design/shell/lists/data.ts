@@ -442,6 +442,8 @@ const holdersOf = (userId: string, departments: string[]) => (l: ListDetail) =>
  * departments asked for that wait elsewhere, and the business's day;
  * `department` the filter's choice, for someone in more than one; `passed`
  * a department a list was just passed to, as after passing one on.
+ * `manager` is whether they manage lists, and `sends` whether they send
+ * them too (lists.send under lists.manage, the roles plan's R5).
  */
 function homeFor(
   userId: string,
@@ -449,6 +451,7 @@ function homeFor(
   sent: string | undefined,
   department?: string,
   passed?: string,
+  sends = manager,
 ): ListsHomeData {
   const theirs = demoDepartments.filter((d) => d.members.includes(userId));
   const departments = theirs.map((d) => d.id);
@@ -496,11 +499,12 @@ function homeFor(
           }
         : null,
     team: manager ? listsTally(current, now, timing) : null,
-    send: manager
+    send: sends
       ? { href: "/lists/send", only: null }
       : departments.includes("dep-bar")
         ? { href: "/lists/send", only: "הזמנה מהבר למחסן" }
         : null,
+    othersSend: manager && !sends,
     sent: sentList ? summaryOf(sentList) : null,
     passed: demoDepartments.find((d) => d.id === passed)?.name ?? null,
     templates: manager
@@ -521,6 +525,13 @@ export const demoListsHome = (
 ) => homeFor("shiran", true, sent, department, passed);
 /** Noa, a worker in the kitchen. */
 export const demoWorkerLists = () => homeFor("noa", false, undefined);
+/**
+ * Noa once the owner gave workers lists edit without sending (the roles
+ * plan's R5): the business's day and its templates, no way to send, and who
+ * does.
+ */
+export const demoWorkerEditsLists = () =>
+  homeFor("noa", true, undefined, undefined, undefined, false);
 /** A worker with nothing sent to them yet. */
 export const demoEmptyLists = (): ListsHomeData => ({
   ...homeFor("dana", false, undefined),
@@ -544,15 +555,19 @@ export const demoEmptyBusinessLists = (): ListsHomeData => ({
  * The manager's overview as Shiran has it on the demo's Tuesday morning:
  * last night's closing late, the morning's lists, the cleaning closed, and
  * the week's readings; `day` one of the week's days (the history), `empty`
- * a day with nothing, `viewing` the team viewing as a manager, `shiftGone`
+ * a day with nothing, `viewing` the team viewing as a manager, `noSend` a
+ * role that manages lists without sending them (R5), `emptyNoSend` such a
+ * role on a day with nothing, `shiftGone`
  * the restaurant after its evening shift left the settings, so the bar's
  * closing, which follows it, opens nothing.
  */
 export function demoListsToday(
   day?: string,
-  state?: "empty" | "viewing" | "shiftGone",
+  state?: "empty" | "viewing" | "shiftGone" | "noSend" | "emptyNoSend",
 ): ListsTodayData {
-  const all = state === "empty" ? [] : [...demoLists, ...demoEarlierLists];
+  const empty = state === "empty" || state === "emptyNoSend";
+  const noSend = state === "noSend" || state === "emptyNoSend";
+  const all = empty ? [] : [...demoLists, ...demoEarlierLists];
   const lists = all.map(summaryOf);
   const today = dateIn(now, ISRAEL_TIME_ZONE);
   const week = overviewWeek(today);
@@ -595,7 +610,11 @@ export function demoListsToday(
         (s) => state !== "shiftGone" || s.key !== "evening",
       ),
     ),
-    send: state === "viewing" ? null : { href: "/lists/send", only: null },
+    send:
+      state === "viewing" || noSend
+        ? null
+        : { href: "/lists/send", only: null },
+    othersSend: noSend,
     viewOnly: state === "viewing",
   });
 }

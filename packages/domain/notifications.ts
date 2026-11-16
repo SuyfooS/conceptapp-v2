@@ -58,7 +58,8 @@ type KindInfo = {
    * For those who hold this permission rather than for a rank and up (the
    * line's `audience_perm` in the database, the roles plan's R3): written
    * only to them and read only while they hold it, whatever their role.
-   * `minRole` is then the lowest role that holds it by default.
+   * `minRole` is then the lowest role that holds it by default, but worker
+   * on the lists' lines, which were for anyone who ran the lists (R5).
    */
   perm?: PermissionKey;
   /**
@@ -339,12 +340,15 @@ export const NOTIFICATION_KINDS = {
     to: "list",
     byApp: true,
   },
-  // To list managers, whose Lists tab counts only what they hold: these ask
-  // them to look.
+  // To those who run the lists (lists.manage: owners, and managers by
+  // default, the roles plan's R5), whose Lists tab counts only what they
+  // hold: these ask them to look. `minRole` stays worker, as the database
+  // writes it for whoever runs the lists, whatever their role.
   "lists.late_team": {
     group: "lists",
     module: "lists",
     minRole: "worker",
+    perm: "lists.manage",
     needsAction: true,
     href: "/lists/today",
     to: "list",
@@ -366,10 +370,13 @@ export const NOTIFICATION_KINDS = {
     to: "list",
     byApp: true,
   },
+  // A reading outside its range, to those who run the lists, as
+  // `lists.late_team`.
   "lists.out_of_range": {
     group: "lists",
     module: "lists",
     minRole: "worker",
+    perm: "lists.manage",
     needsAction: true,
     href: "/lists/today",
     to: "list",
