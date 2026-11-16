@@ -1,6 +1,7 @@
 "use client";
 
 import type { Role } from "@domain/modules";
+import { namedOnPayRole, type PayRole } from "@domain/payroll-access";
 import type { AddressForm } from "@domain/profile";
 import { type NamedRole, namedRoleName } from "@domain/role-access";
 import {
@@ -74,6 +75,14 @@ export type MemberChangesData = {
    * be refused.
    */
   ownerOnly: Role[];
+  /**
+   * Who sees pay, for an owner where pay access is in use: the roles given
+   * it and whether the person was given it personally. A role the business
+   * named never sees it by role (the roles plan's R11e), so a change to one
+   * built on a role given it, for someone without their own access, says
+   * so before it is made. Null for anyone else.
+   */
+  pay: { roles: readonly PayRole[]; personal: boolean } | null;
   /** Their shifts still to start, in published weeks and in drafts. */
   ahead: Pick<LeftCounts, "shifts" | "drafts">;
   /**
@@ -414,6 +423,13 @@ function RolePicker({
     data.beyond.some((owners) => sameRoleChoice(owners, r));
   const blocked = (r: RoleChoice) =>
     clockBlocked(r) || payBlocked(r) || heldBlocked(r);
+  // A role the business named on a role that sees pay: they would see it
+  // only by their own access, which "מי רואה שכר" gives (R11e).
+  const payOnlyPersonally =
+    data.pay !== null &&
+    !data.pay.personal &&
+    !sameRoleChoice(draft, role) &&
+    namedOnPayRole(draft, data.pay.roles);
 
   async function save() {
     setTried(true);
@@ -462,6 +478,14 @@ function RolePicker({
       ) : draft.role === "owner" && role.role !== "owner" ? (
         <p className="px-2 text-pretty text-base text-ink-2">
           {t("ownerNote")}
+        </p>
+      ) : payOnlyPersonally ? (
+        <p className="px-2 text-pretty text-base text-ink-2">
+          {t("namedPayNote", {
+            role: roleName(draft),
+            base: draft.role,
+            name: data.first,
+          })}
         </p>
       ) : null}
       {tried && failure ? (

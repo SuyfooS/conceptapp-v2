@@ -2,12 +2,15 @@
 
 import {
   canGetPersonalPay,
+  coveredByRole,
   hasPayRoleStaff,
+  namedRolesBesidePay,
   overPayHoldersWarning,
   PAY_ROLES,
   type PayRole,
   payHolderCount,
 } from "@domain/payroll-access";
+import { namedRoleName } from "@domain/role-access";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
@@ -20,7 +23,7 @@ import { PersonAvatar } from "@ui/person-row";
 import { StatusToast } from "@ui/status-toast";
 import { Switch } from "@ui/switch";
 import { TriangleAlert } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { NoteView } from "../../clock/pay/note-view";
 import type { NotePayView } from "../../clock/pay/pay-types";
@@ -75,7 +78,12 @@ function useUndoSlot() {
  * do; it notes no view there (`noted`). There a business may have nobody in
  * it yet, and the screen says nobody sees pay and that whoever joins shows
  * up, and someone on the team who is also in the business can't take away
- * their own access.
+ * their own access. Someone in a role the business named goes by its name,
+ * with the role it is built on, and sees pay only by their own access, even
+ * where that role sees it (the roles plan's R11e): they are offered here,
+ * and while anyone offered is in one on a role that sees pay, a line under
+ * the switches names it, the switch it isn't under, and where to give them
+ * access, said as it appears (a switch turned on, a removal).
  */
 export function AccessView({
   data,
@@ -95,6 +103,8 @@ export function AccessView({
   const t = useTranslations("app.manage.access");
   const tConsole = useTranslations("admin.access");
   const tRoles = useTranslations("app.team.roles");
+  const tTeam = useTranslations("app.team");
+  const locale = useLocale();
   const id = useId();
   // What the screen shows is its own from here: each change shows at once.
   const [roles, setRoles] = useState<PayRole[]>(data.roles);
@@ -141,9 +151,22 @@ export function AccessView({
       ? tConsole("nobody")
       : t("personal.nobody");
   };
-  /** Their role sees pay anyway, with or without their own access. */
-  const roleCovers = (person: AccessPersonRow) =>
-    roles.some((role) => role === person.role);
+  /**
+   * Their role sees pay anyway, with or without their own access: never a
+   * role the business named (`coveredByRole`).
+   */
+  const roleCovers = (person: AccessPersonRow) => coveredByRole(person, roles);
+  /**
+   * Their role as the team's screens name it (the roles plan's R11b): a
+   * role the business named by its name, with the role it is built on.
+   */
+  const roleOf = (person: AccessPersonRow) =>
+    person.namedRole
+      ? tTeam("namedRole", {
+          name: namedRoleName(person.namedRole, locale),
+          role: tRoles(person.role),
+        })
+      : tRoles(person.role);
 
   function say(text: string) {
     setToast({ text, stamp: new Date().toISOString() });
@@ -321,6 +344,10 @@ export function AccessView({
   const personal = people.filter((p) => p.personal);
   const candidates = people.filter((p) => canGetPersonalPay(p, roles, data.me));
   const canAdd = !disabled && candidates.length > 0;
+  // Someone offered who is in a role the business named, on a role that sees
+  // pay: that role's switch isn't theirs, and the lines under it say so, a
+  // line for each such role, while one of its people still waits for access.
+  const besidePay = namedRolesBesidePay(candidates, roles);
 
   const fixed = (key: "owner" | "accountant") => (
     <ListRow
@@ -381,6 +408,25 @@ export function AccessView({
             />
           ) : null}
           <p className="px-1 text-ink-2">{t("count", { count })}</p>
+          {/* Always there, so what appears in it is said: the switch just
+              turned on isn't theirs. Empty, it is out of the flow but still
+              read (not display: none, which a reader would miss). */}
+          <div
+            aria-live="polite"
+            className="flex flex-col gap-1 px-1 text-ink-2 empty:sr-only"
+          >
+            {besidePay.map(({ namedRole, base }) => (
+              <p key={namedRole.id}>
+                {t("namedRoles", {
+                  role: namedRoleName(namedRole, locale),
+                  base,
+                })}
+              </p>
+            ))}
+            {besidePay.length > 0 && canAdd ? (
+              <p>{t("namedRolesAdd", { add: t("personal.add") })}</p>
+            ) : null}
+          </div>
           {/* The office reads the documents people send (chat C7): the same people. */}
           {data.documents ? (
             <div className="flex flex-col gap-1 px-1 text-ink-2">
@@ -411,8 +457,8 @@ export function AccessView({
                   title={nameOf(person)}
                   subtitle={
                     roleCovers(person)
-                      ? `${tRoles(person.role)} · ${t("personal.roleCovers")}`
-                      : tRoles(person.role)
+                      ? `${roleOf(person)} · ${t("personal.roleCovers")}`
+                      : roleOf(person)
                   }
                   trailing={
                     // Nobody changes their own (the database refuses it): in
@@ -463,7 +509,7 @@ export function AccessView({
                   placeholder={t("personal.choose")}
                   options={candidates.map((person) => ({
                     key: person.userId,
-                    label: `${nameOf(person)} · ${tRoles(person.role)}`,
+                    label: `${nameOf(person)} · ${roleOf(person)}`,
                   }))}
                   onChange={add}
                 />

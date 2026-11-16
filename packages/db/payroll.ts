@@ -1,14 +1,17 @@
 import "server-only";
-import { isStaff, type Role } from "@domain/modules";
+import { isStaff, ROLES, type Role } from "@domain/modules";
 import type { OriginalTimes } from "@domain/pay-month";
 import { PAY_PERMISSION, type PayRole } from "@domain/payroll-access";
 import { type AddressForm, addressFormOf } from "@domain/profile";
 import { profilePhotoSrc } from "@domain/profile-photos";
+import type { NamedRole } from "@domain/role-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import type { Database } from "./database.types";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
+import { businessRoleNames } from "./team";
 
 /*
  * Pay access and the pay screens (payroll P3). Reads run under the person's own
@@ -213,13 +216,19 @@ export type AccessPerson = {
   name: string | null;
   photo: string | null;
   role: Role;
+  /**
+   * The role the business named that they hold (the roles plan's R11b), by
+   * its names; null for none. It never gives pay (`coveredByRole`).
+   */
+  namedRole: Pick<NamedRole, "id" | "name" | "nameEn"> | null;
   /** Given pay access to them alone. */
   personal: boolean;
 };
 
 /**
  * The business's active members, each with whether they were given pay access
- * personally (`memberships.perms`), for the access screen.
+ * personally (`memberships.perms`) and the role the business named that they
+ * hold, for the access screen.
  */
 export async function getAccessPeople(
   businessId: string,
@@ -227,23 +236,66 @@ export async function getAccessPeople(
   return readAccessPeople(await createClient(), businessId);
 }
 
+/** An active membership as the access screen reads it. */
+const AccessRow = z.object({
+  user_id: z.string(),
+  role: z.enum(ROLES),
+  /** Missing before 20261115001500_named_roles.sql reaches a project. */
+  named_role: z.uuid().nullable().optional(),
+  perms: z.array(z.string()),
+  profiles: z
+    .object({
+      full_name: z.string().nullable(),
+      avatar_path: z.string().nullable(),
+    })
+    .nullable(),
+});
+
+/**
+ * Read with `supabase`: the owner's session, whose members' rows and the
+ * business's roles RLS shows them (members and views read
+ * `public.business_roles`), or the secret key for the console. The named
+ * role's names come as the team screens read them (`businessRoleNames`).
+ * Before 20261115001500_named_roles.sql nobody holds one, and the people
+ * are read as before.
+ */
 async function readAccessPeople(
   supabase: SupabaseClient<Database>,
   businessId: string,
 ): Promise<AccessPerson[]> {
-  const { data, error } = await supabase
-    .from("memberships")
-    .select("user_id, role, perms, profiles (full_name, avatar_path)")
-    .eq("business_id", businessId)
-    .eq("active", true);
+  const people = (named: boolean) =>
+    supabase
+      .from("memberships")
+      .select(
+        named
+          ? "user_id, role, named_role, perms, profiles (full_name, avatar_path)"
+          : "user_id, role, perms, profiles (full_name, avatar_path)",
+      )
+      .eq("business_id", businessId)
+      .eq("active", true);
+  const [read, roles] = await Promise.all([
+    people(true),
+    businessRoleNames(supabase, businessId),
+  ]);
+  let { data, error } = read;
+  if (isMissingColumn(error)) ({ data, error } = await people(false));
   if (error) throw error;
-  return data.map((row) => ({
-    userId: row.user_id,
-    name: row.profiles?.full_name?.trim() || null,
-    photo: profilePhotoSrc(row.profiles?.avatar_path),
-    role: row.role,
-    personal: isStaff(row.role) && row.perms.includes(PAY_PERMISSION),
-  }));
+  return z
+    .array(AccessRow)
+    .parse(data ?? [])
+    .map((row) => {
+      const named = row.named_role ? roles.get(row.named_role) : undefined;
+      return {
+        userId: row.user_id,
+        name: row.profiles?.full_name?.trim() || null,
+        photo: profilePhotoSrc(row.profiles?.avatar_path),
+        role: row.role,
+        namedRole: named
+          ? { id: named.id, name: named.name, nameEn: named.nameEn }
+          : null,
+        personal: isStaff(row.role) && row.perms.includes(PAY_PERMISSION),
+      };
+    });
 }
 
 /**

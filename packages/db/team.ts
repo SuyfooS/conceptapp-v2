@@ -18,7 +18,9 @@ import {
   type TeamMember,
   teamChangeFailureOf,
 } from "@domain/team";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import type { Database } from "./database.types";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -144,10 +146,12 @@ const BusinessRoleRow = z.object({
 /**
  * Every role the business named, archived ones too (an expired invite may
  * name one), as its members and views read them (RLS: a colleague's role is
- * no secret). None before 20261115001500_named_roles.sql reaches a project.
+ * no secret), or with the secret key for the console ("מי רואה שכר",
+ * `@db/payroll`). None before 20261115001500_named_roles.sql reaches a
+ * project.
  */
-async function businessRoleNames(
-  supabase: Client,
+export async function businessRoleNames(
+  supabase: SupabaseClient<Database>,
   businessId: string,
 ): Promise<BusinessRoleNames> {
   const { data, error } = await supabase

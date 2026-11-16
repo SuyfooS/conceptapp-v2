@@ -18,6 +18,7 @@ import {
   teamMembers,
   teamProfiles,
 } from "../../data";
+import { demoAccess } from "../../manage/access/data";
 import {
   demoClearBioAction,
   demoRemoveMemberAction,
@@ -50,7 +51,9 @@ type Props = {
 // and Itay hold the demo's named role, shown by its name with its base, and
 // the sheet offers it after workers to whoever gives it (the roles plan's
 // R11b): the owner; the manager, who holds less than it, sees it there as
-// the owner's to give.
+// the owner's to give. ?state=pay, as the owner: workers see pay too, so
+// choosing the named role for Noa (built on workers, with no access of her
+// own) says she would see it only by her own access (R11e).
 export default function ShellTeamPerson(props: Props) {
   return (
     <Suspense>
@@ -116,6 +119,20 @@ async function Demo({ params, searchParams }: Props) {
                 viewer,
                 state === "pay" ? ["manager"] : [],
               ),
+              // Who sees pay, the owner's alone: managers, as on the access
+              // demo, and workers too with ?state=pay.
+              pay:
+                viewer.role === "owner"
+                  ? {
+                      roles:
+                        state === "pay"
+                          ? ["manager", "worker"]
+                          : demoAccess.roles,
+                      personal: demoAccess.people.some(
+                        (p) => p.userId === person && p.personal,
+                      ),
+                    }
+                  : null,
               ahead: shiftsAheadOf(person),
               // A worker who edits the team doesn't read the team's hours.
               clockedIn: as === "editor" ? null : state === "clocked",
