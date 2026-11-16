@@ -112,6 +112,8 @@ const PAGES = [
   "/design/shell/lists?department=dep-bar",
   "/design/shell/lists?passed=dep-storeroom",
   "/design/shell/lists/worker",
+  // A worker raised to lists edit without sending (R5): who sends.
+  "/design/shell/lists/worker?state=edits",
   "/design/shell/lists/empty",
   "/design/shell/lists/empty?as=business",
   "/design/shell/lists/list-kitchen-opening",
@@ -127,6 +129,8 @@ const PAGES = [
   "/design/shell/lists/today?day=2026-11-01",
   "/design/shell/lists/today?state=empty",
   "/design/shell/lists/today?state=viewing",
+  "/design/shell/lists/today?state=noSend",
+  "/design/shell/lists/today?state=emptyNoSend",
   "/design/shell/lists/today?state=shiftGone",
   "/design/shell/lists/send",
   "/design/shell/lists/send?template=new",
@@ -199,10 +203,10 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
   "/design/console/businesses/demo-restaurant/access",
   "/design/console/businesses/demo-restaurant/access?state=readOnly",
-  // Roles and permissions from the console (R2): scheduling (R3) and the
-  // time clock (R4) and the management page (R7) open and the rest closed,
-  // then every area open as each phase will open it, and a team role that
-  // only reads.
+  // Roles and permissions from the console (R2): scheduling (R3), the time
+  // clock (R4), lists (R5) and the management page (R7) open and the rest
+  // closed, then every area open as each phase will open it, and a team role
+  // that only reads.
   "/design/console/businesses/demo-restaurant/roles",
   "/design/console/businesses/demo-restaurant/roles?state=open",
   "/design/console/businesses/demo-restaurant/roles?state=readOnly",

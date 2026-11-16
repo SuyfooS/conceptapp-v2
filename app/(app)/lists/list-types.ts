@@ -36,8 +36,8 @@ export type ListsTiming = {
 
 /**
  * Whose lists a screen shows: the person's own, the whole business's (a view
- * session as a manager, which is no one), or none (a view session as a worker:
- * lists belong to the people they were sent to).
+ * session of a role that manages lists, which is no one), or none (a view
+ * session of one that doesn't: lists belong to the people they were sent to).
  */
 export type ListsView = "mine" | "business" | "viewOnly";
 
@@ -76,6 +76,11 @@ export type ListsHomeData = {
   /** The business's day, for those who manage lists. */
   team: ListsTally | null;
   send: SendWay | null;
+  /**
+   * Manages lists without sending them (lists.manage without lists.send, the
+   * roles plan's R5): a line says who sends. False for everyone else.
+   */
+  othersSend: boolean;
   /** A list this person just sent, while it can still be taken back. */
   sent: ListSummary | null;
   /**
@@ -436,6 +441,8 @@ export type ListsTodayData = {
    */
   stopped: { id: string; name: string }[];
   send: SendWay | null;
+  /** Manages lists without sending them: a line says who sends. */
+  othersSend: boolean;
   /** Only reading: a view session. */
   viewOnly: boolean;
 };

@@ -18,12 +18,27 @@ export const manifest = defineManifest({
   nav: { href: "/lists", icon: "list", minRole: "worker", order: 25 },
   homeWidget: { minRole: "worker" },
   permissions: [
-    // Edit templates and their times, read every list, reopen and cancel any.
-    // private.can_manage_lists holds the same default.
-    { key: "lists.manage", area: "lists", defaultRole: "manager" },
-    // Send any list to anyone. A department's own orders need neither.
-    // private.can_send_lists holds the same default.
-    { key: "lists.send", area: "lists", defaultRole: "manager" },
+    // Running the lists: templates and their times, every list, and filling,
+    // reopening and cancelling any of them; and, a switch under it on by
+    // default, sending any list to anyone (Orel, 15 November 2026). Everyone
+    // on the staff fills the lists sent to them or their department without
+    // either (view is the floor), and a department's own orders need
+    // neither. The database asks both (private.can_manage_lists and
+    // private.can_send_lists, the roles plan's R5), and owners and the team
+    // switch them per role.
+    {
+      key: "lists.manage",
+      area: "lists",
+      defaultRole: "manager",
+      settable: true,
+    },
+    {
+      key: "lists.send",
+      area: "lists",
+      defaultRole: "manager",
+      requires: "lists.manage",
+      settable: true,
+    },
   ],
   settings: z.object({
     /** Remind the people a list is for this long before it is due (0: no reminder). */
@@ -34,7 +49,7 @@ export const manifest = defineManifest({
     lateAfterMinutes: z
       .union([z.literal(0), z.literal(15), z.literal(30), z.literal(60)])
       .default(15),
-    /** Owners, managers and holders of lists.manage hear when a list is late. */
+    /** Those who run the lists (lists.manage: owners, and managers by default) hear when a list is late. */
     tellManagersWhenLate: z.boolean().default(true),
     /**
      * A list of a template's times still open this long after it became late:

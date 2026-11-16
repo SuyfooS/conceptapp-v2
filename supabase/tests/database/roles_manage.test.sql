@@ -7,7 +7,7 @@
 -- the log of what manage.view alone opens, and saves nothing, a list's
 -- template included; at edit saves the details, the departments and who is in
 -- them, and a module's settings with that module's own edit, never without
--- it, and, until R5 moves them (critique 4), a list's template without
+-- it, and, since R5 moved them (critique 4), no list's template without
 -- lists.manage; a manager lowered to view still reads and saves nothing, at
 -- none reads no row and still saves a list's template as one who runs the
 -- lists; the log by each row's own area (a
@@ -480,20 +480,22 @@ select ok(
   'the one saved, the other left as it was'
 );
 
--- Critique 4's reach, kept until the lists' phase (R5) moves the templates'
--- writers off private.can_edit_settings: manage.edit saves a list's template
--- (and so the times it opens by itself) without lists.manage.
+-- Critique 4's reach, closed by the lists' phase (R5,
+-- 20261115001200_roles_lists.sql), which put the ConceptApp team alone where
+-- the templates' writers took private.can_edit_settings: manage.edit no
+-- longer saves a list's template (and so the times it opens by itself)
+-- without lists.manage.
 select ok(
   not private.holds_perm('95000000-0000-4000-b000-000000000001', '95000000-0000-4000-a000-000000000003', 'lists.manage')
   and not private.can_manage_lists('95000000-0000-4000-b000-000000000001', '95000000-0000-4000-a000-000000000003'),
   'the worker doesn''t run the lists'
 );
 set local role service_role;
-select lives_ok(
+select throws_ok(
   $$select public.save_list_template('95000000-0000-4000-a000-000000000003',
     '95000000-0000-4000-b000-000000000001',
     '{"name": "Fixture worker list", "items": [{"kind": "check", "label": "A"}]}')$$,
-  'yet saves a list''s template at manage.edit, until R5 (critique 4)'
+  '42501', null, 'nor saves a list''s template at manage.edit alone, since R5 (critique 4)'
 );
 reset role;
 

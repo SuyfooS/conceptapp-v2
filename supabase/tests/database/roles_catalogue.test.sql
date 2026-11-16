@@ -24,7 +24,8 @@ where n <= 17 or n > 100;
 -- team, viewing K as a manager and as a worker.
 -- D, whose rows deny managers chat.moderate, schedule.edit and team.view,
 -- give managers pay (clock.payroll, as the demo shop's do) and give workers
--- schedule.publish and lists.send: 11 owner, 12 a manager, 13 a
+-- schedule.publish, and lists.send with lists.manage, which sending requires
+-- since the lists' phase (R5): 11 owner, 12 a manager, 13 a
 -- manager given schedule.edit, chat.moderate and team.view personally, 14 a
 -- worker given schedule.publish, 15 a worker; 16 and 17 viewing D as a
 -- manager and as a worker.
@@ -59,6 +60,7 @@ values
   ('92000000-0000-4000-b000-000000000002', 'manager', 'team.view', false),
   ('92000000-0000-4000-b000-000000000002', 'manager', 'clock.payroll', true),
   ('92000000-0000-4000-b000-000000000002', 'worker', 'schedule.publish', true),
+  ('92000000-0000-4000-b000-000000000002', 'worker', 'lists.manage', true),
   ('92000000-0000-4000-b000-000000000002', 'worker', 'lists.send', true);
 
 insert into public.platform_staff (user_id, role)
@@ -76,9 +78,10 @@ values
 
 -- The fixture: in each of E1–E4, every role (managers and workers who left
 -- too) with each set of personal keys, one person each (101–220). E1 has no
--- role rows; E2 gives managers pay; E3 gives workers pay, lists.send and
--- chat.moderate, and managers what they hold anyway; E4 gives workers both
--- schedule keys, and managers lists.manage.
+-- role rows; E2 gives managers pay; E3 gives workers pay, lists.send (with
+-- lists.manage, which it requires since R5) and chat.moderate, and managers
+-- what they hold anyway; E4 gives workers both schedule keys, and managers
+-- lists.manage.
 insert into public.memberships (business_id, user_id, role, perms, active)
 select
   b.id,
@@ -111,6 +114,7 @@ insert into public.role_permissions (business_id, role, perm)
 values
   ('92000000-0000-4000-b000-000000000012', 'manager', 'clock.payroll'),
   ('92000000-0000-4000-b000-000000000013', 'worker', 'clock.payroll'),
+  ('92000000-0000-4000-b000-000000000013', 'worker', 'lists.manage'),
   ('92000000-0000-4000-b000-000000000013', 'worker', 'lists.send'),
   ('92000000-0000-4000-b000-000000000013', 'worker', 'chat.moderate'),
   ('92000000-0000-4000-b000-000000000013', 'manager', 'reservations.edit'),
@@ -176,8 +180,8 @@ select set_eq(
     ('chat.send_documents', 'chat', 'chat', null, false, '{manager}'::text[], false),
     ('clock.edit', 'time_clock', 'time_clock', null, true, '{manager}'::text[], false),
     ('clock.payroll', 'time_clock', 'time_clock', null, false, '{}'::text[], true),
-    ('lists.manage', 'lists', 'lists', null, false, '{manager}'::text[], false),
-    ('lists.send', 'lists', 'lists', null, false, '{manager}'::text[], false),
+    ('lists.manage', 'lists', 'lists', null, true, '{manager}'::text[], false),
+    ('lists.send', 'lists', 'lists', 'lists.manage', true, '{manager}'::text[], false),
     ('reservations.edit', 'reservations', 'reservations', null, false, '{manager,worker}'::text[], false),
     ('schedule.edit', 'scheduling', 'scheduling', null, true, '{manager}'::text[], false),
     ('schedule.publish', 'scheduling', 'scheduling', 'schedule.edit', true, '{manager}'::text[], false),
@@ -186,7 +190,7 @@ select set_eq(
     ('team.edit', null, 'team', 'team.view', false, '{manager}'::text[], false),
     ('manage.view', null, 'manage', null, true, '{manager}'::text[], false),
     ('manage.edit', null, 'manage', 'manage.view', true, '{manager}'::text[], false)$$,
-  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4) and on the management page (R7)'
+  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them) and on the management page (R7)'
 );
 
 select throws_ok(
@@ -316,7 +320,7 @@ select is(
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000017');
 select is(
   public.my_permissions('92000000-0000-4000-b000-000000000002'),
-  '{lists.send,reservations.edit}'::text[],
+  '{lists.manage,lists.send,reservations.edit}'::text[],
   'and a view as a worker what the rows give workers, but not a key whose requirement they lack'
 );
 reset role;

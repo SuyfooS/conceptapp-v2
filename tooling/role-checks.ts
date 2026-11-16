@@ -43,22 +43,8 @@ export const FIXED: Record<string, string> = {
  */
 export const NOT_YET_MOVED: Record<string, string> = {
   // Team (R6), beside scheduling's lines and the clock's, which R3 and R4
-  // moved.
+  // moved. Lists moved in R5.
   "private.notify_for": "R6: team.joined, by area",
-  // Lists (R5).
-  "private.can_manage_lists": "R5: who edits templates and every list",
-  "private.can_send_lists": "R5: who sends lists",
-  "private.list_managers": "R5: who hears of late lists",
-  "private.sees_list": "R5: who reads every list",
-  "private.can_read_list_photo": "R5: who reads a list's photos",
-  "private.seed_demo_lists":
-    "R5: the demo's lists are sent by someone who may send them",
-  'policy "members read their business\'s list templates" on public.list_templates':
-    "R5: every template, to the lists' editors",
-  'policy "list managers read the schedules" on public.list_schedules':
-    "R5: the lists' times, to their editors",
-  'policy "people read the lists they see" on public.lists':
-    "R5: every list, to a view at lists edit",
   // Team (R6).
   "public.team_phones": "R6: everyone's numbers, to the team's viewers",
   "public.team_youth":

@@ -213,7 +213,13 @@ export function TemplatesView({
           headingLevel="h2"
           icon={<ClipboardList />}
           title={data.readOnly ? t("emptyViewOnly.title") : t("empty.title")}
-          body={data.readOnly ? t("emptyViewOnly.body") : t("empty.body")}
+          body={
+            data.readOnly
+              ? t("emptyViewOnly.body")
+              : paths.send
+                ? t("empty.body")
+                : t("empty.bodyNoSend")
+          }
           className="md:py-12"
         />
       ) : (

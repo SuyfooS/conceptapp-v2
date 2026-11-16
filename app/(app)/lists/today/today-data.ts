@@ -50,6 +50,7 @@ export function listsTodayData({
   templates,
   places,
   send,
+  othersSend,
   viewOnly,
 }: {
   now: Date;
@@ -66,6 +67,8 @@ export function listsTodayData({
   templates: readonly ListTemplate[];
   places: SchedulePlaces;
   send: SendWay | null;
+  /** Manages lists without sending them: a line says who sends. */
+  othersSend: boolean;
   viewOnly: boolean;
 }): ListsTodayData {
   const today = dateIn(now, timeZone);
@@ -189,6 +192,7 @@ export function listsTodayData({
       )
       .map((t) => ({ id: t.id, name: t.name })),
     send,
+    othersSend,
     viewOnly,
   };
 }

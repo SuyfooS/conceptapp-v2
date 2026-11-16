@@ -36,7 +36,7 @@ export default async function ListTemplatesPage({
     <TemplatesView
       data={data}
       restore={restoreListTemplateAction.bind(null, access.businessId)}
-      paths={templatePaths(t("title"))}
+      paths={templatePaths(t("title"), access.canSend)}
     />
   );
 }

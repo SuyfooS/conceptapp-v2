@@ -26,9 +26,9 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.reads_pay_of(person)` | holds `clock.payroll`, or views as an accountant, in a business that person is or was in |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only) |
-| `private.can_manage_lists(business, person)` | (that person) is an active owner or manager, or holds `lists.manage` |
-| `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or manages lists |
-| `private.can_read_list_photo(object_name)` | may read that file of the `list-photos` bucket: an item of a list they see (or view as a manager) points at it, in its business, with lists on |
+| `private.can_manage_lists(business, person)` | (that person) holds `lists.manage` (`private.holds_perm`: an owner always, managers by default, a role an owner raised, or one given it; since R5) |
+| `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or holds `lists.manage` |
+| `private.can_read_list_photo(object_name)` | may read that file of the `list-photos` bucket: an item of a list they see (or view as a role that holds `lists.manage`) points at it, in its business, with lists on |
 | `private.chat_reads_from(conversation, person)` | (that person) reads the chat, and from when: one of a private chat's two people while on the staff, the active staff in the team's group from when each came onto the staff this time (`memberships.staff_since`, which moves when someone comes back after leaving or from being an accountant), a live department's members on the staff from when each was added or came back, whichever is later, and moderators (`chat.moderate`) all of every group; null for anyone else, with chat off, and for a view session |
 | `private.can_read_chat_file(object_name)` | may read that file of the `chat-files` bucket: a message of the path's conversation and business points at it (its picture or thumbnail), not removed and its file still kept, and they read that message (`private.reads_chat_message`, no branch for owners, the team or a view session); a name of the wrong shape is false, never an error |
 | `private.is_private_action(action)` | (any user) a log row about chats or documents (`chat.*`, `document.*`), which no view session reads |
@@ -697,11 +697,9 @@ role; its callers are unchanged: `set_module_settings`,
 `set_business_details`, `set_departments`, `set_department_members`, and,
 beside `private.can_manage_lists`, the list templates' writers
 (`save_list_template`, `archive_list_template`, `restore_list_template`,
-`next_list_openings`), so until the lists' phase (R5) moves those,
-`manage.edit` still includes the list templates, and with them the times
-that open lists by themselves: a role raised to `manage.edit` saves,
-archives and restores templates without `lists.manage`, as the roles
-screen's hint says. R5 puts the team alone in place of each of their
+`next_list_openings`), which until the lists' phase let a role raised to
+`manage.edit` save, archive and restore templates without `lists.manage`;
+R5 (below) put the team alone in place of each of their
 `or private.can_edit_settings(…)`. `public.set_module_settings`
 also asks, of anyone not on the team, the module's own edit
 (`private.settings_perm`: `schedule.edit`, `clock.edit`, `lists.manage`,
@@ -782,6 +780,71 @@ a clock-out undone; then only an owner
 confirming hours set for oneself, a manager giving a role, the demo's
 corrector, today's rule frozen against the new one for every membership,
 and no line of the two kinds left by rank.
+
+Lists by their permissions (`20261115001200_roles_lists.sql`, the roles
+plan's R5; Orel's answers of 15 November 2026), the third area open for
+changes: `lists.manage` (running the lists: templates and their times, every
+list) and `lists.send` (sending, a switch under it, on by default) are
+`settable`, and `lists.send` now requires `lists.manage`, so a role holds
+it only while it runs the lists (one given to a person holds whatever it
+requires, as `holds_perm` has it). Nothing changes until an owner or the team
+switches them (managers hold both by default, workers neither, owners always
+both). The floor is view: everyone on the staff fills the lists sent to them,
+their department, their shift or their role, sends their department's own
+orders and passes on what they hold, as before.
+`private.can_manage_lists` is `private.holds_perm(…, 'lists.manage')`; its
+callers ask it unchanged (`save_list_template`, `archive_list_template`,
+`restore_list_template`, `next_list_openings`, `set_list_item`,
+`set_list_item_photo`, `finish_list`, `pass_list`, `reopen_list`,
+`cancel_list`). `private.can_send_lists` is `holds_perm(…, 'lists.send')`,
+or a person given `lists.manage` themselves, as before; `send_list` asks it
+unchanged. The four template writers no longer take
+`private.can_edit_settings` (R7's handover, critique 4): the ConceptApp team
+stands alone in its place, so `manage.edit` no longer reaches the templates
+and their times. Every list is read by those who run the lists
+(`private.sees_list`'s branch for them is `holds_perm`); the archived
+templates, the templates' times and every list through the policies'
+`business_id in (select private.businesses_holding('lists.manage'))`,
+members and views alike, asked once per query, where a view needed the
+manager's rank; a list's photos the same (`private.can_read_list_photo`,
+critique 5). Departments stay on the staff's reads, as lists and chat share
+them. A list still late (`lists.late_team`) and a reading out of its range
+(`lists.out_of_range`) go to `private.list_managers` (now
+`lists.manage` holders) as lines for that permission (`holders_of`,
+`audience_role` still 'worker', as written), so R3's rules hold for them:
+read only while their reader holds it, the push skipped once they don't,
+settled by a change of role; the lines already written were moved to the
+key. The owners' late line (`lists.late_owner`) stays theirs by rank. The
+demo's lists are sent by its first manager who may send them, else its
+owner (`private.seed_demo_lists`). A list of a template's times with nobody
+there to take it goes to the managers while their role runs the lists, else
+to the owners (`private.lists_tick_business`), where it went to the
+managers by role, lowered or not. Departments stay at `manage.edit`: whoever
+is in one fills its lists, so the roles screen's hint for it says that
+whoever they add, themselves included, gets that department's lists; and
+the templates' times stay with `lists.manage` (times are edit), so the
+hint for sending says that without it the times still send lists. The app
+reads the same answer: `canManage` and `canSend` in
+app/(app)/lists/lists.ts are `holdsPermission` of each key over
+`my_permissions`, so a worker raised to lists edit sees the templates, the
+business's day and every list, and one without `lists.send` has no
+"שליחת רשימה" (nor "send it now" in the template editor, but on an order
+of a department they are in, as `sendable` has it) and a line that says who
+sends (`othersSend`, the rest when their department's order is theirs);
+`lists.late_team` and `lists.out_of_range` carry `perm: "lists.manage"` in
+`NOTIFICATION_KINDS`.
+`roles_lists.test.sql` covers it with one matrix over today's defaults,
+workers raised with and without sending, managers without sending and
+managers lowered: reads (templates, times, every list, a photo, the lines)
+for members, the accountant, two given a key of their own and views as a
+worker, a manager and an accountant; saving, archiving and restoring a
+template, its openings, sending and cancelling another's send; who is told
+and a demoted manager's line; the push skipped; then the handover (manage
+edit alone refused, the team allowed), sending refused to a role that
+doesn't run the lists, a manager giving a role, a time with nobody there
+(the managers while they run the lists, else the owners), the demo's
+sender, today's rules frozen against the new ones for every membership and
+list, and no line of the two kinds left by rank.
 
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the

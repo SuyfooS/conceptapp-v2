@@ -345,6 +345,19 @@ describe("chat's lines", () => {
     ).not.toContain("approvals");
   });
 
+  it("tell those who run the lists of a list still late and a reading out of range (R5)", () => {
+    // lists.late_team and lists.out_of_range are for those who hold
+    // lists.manage: owners, managers by default, and a worker raised to it;
+    // the owners' own late line stays theirs by rank.
+    for (const kind of ["lists.late_team", "lists.out_of_range"] as const) {
+      expect(NOTIFICATION_KINDS[kind].perm).toBe("lists.manage");
+    }
+    expect(NOTIFICATION_KINDS["lists.late_owner"]).not.toHaveProperty("perm");
+    // Every member of the staff still hears of their own lists.
+    expect(groupsFor("worker", ["lists"], [])).toContain("lists");
+    expect(groupsFor("manager", ["lists"], [])).toContain("lists");
+  });
+
   it("reach the staff only: an accountant is in no chat, only in documents", () => {
     expect(groupsFor("worker", ["chat"])).toEqual(["chat", "documents"]);
     expect(groupsFor("accountant", ["chat"])).toEqual(["documents"]);

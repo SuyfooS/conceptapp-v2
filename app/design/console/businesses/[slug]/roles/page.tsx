@@ -21,9 +21,9 @@ type Props = {
 // plan's R2): today's rules for the demo's people, from the declarations,
 // with pay as "מי רואה שכר" sets it, the areas open for changes as the
 // database says once their phase has opened them (`settable` in the
-// declarations: scheduling since R3, the time clock since R4, and the
-// management page since R7, with edit, view and none) and every other area
-// closed, and the way back to the business. `?state=open` opens every area,
+// declarations: scheduling since R3, the time clock since R4, lists since
+// R5, and the management page since R7, with edit, view and none) and every
+// other area closed, and the way back to the business. `?state=open` opens every area,
 // as the screen will be once each phase has opened its own, so every switch
 // changes with its undo; `?state=readOnly` is a team role that only reads
 // businesses. Stand-in actions: nothing reaches a database.
