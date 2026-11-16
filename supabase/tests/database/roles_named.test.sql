@@ -543,7 +543,7 @@ where m.business_id = 'a1000000-0000-4000-b000-000000000001'
 
 -- The code alone: a foreign key's refusal carries the key in its detail.
 select results_eq(
-  $select left(pg_temp.refusal(c.call), 5)
+  $$select left(pg_temp.refusal(c.call), 5)
     from (values
       (1, $c$update public.memberships set named_role = pg_temp.id('lead') where business_id = 'a1000000-0000-4000-b000-000000000001' and user_id = 'a1000000-0000-4000-a000-000000000002'$c$),
       (2, $c$update public.memberships set named_role = pg_temp.id('lead') where business_id = 'a1000000-0000-4000-b000-000000000001' and user_id = 'a1000000-0000-4000-a000-000000000004'$c$),
