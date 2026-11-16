@@ -3,19 +3,27 @@ import {
   anyItemResult,
   askingGone,
   boundOf,
+  byTime,
   byUrgency,
   type DraftItem,
   type DraftSchedule,
   dayRuns,
+  doneChangeOf,
   draftItemsOf,
   draftSchedulesOf,
   dueAtOf,
   dueTimeFor,
   fromOffsets,
+  HISTORY_FOLD_MINUTES,
   holdsList,
   isOutOfRange,
+  itemHistory,
+  itemLine,
   itemResult,
   itemsForSave,
+  type ListItem,
+  type ListItemChange,
+  type ListReopen,
   type ListTemplate,
   listHref,
   listItemSeed,
@@ -26,6 +34,7 @@ import {
   listTemplateProblem,
   listTemplateSeed,
   listTemplateSeeds,
+  listTimeline,
   moved,
   numberRange,
   ofDepartment,
@@ -56,6 +65,7 @@ import {
   typedItems,
   undoDeadline,
   upcomingShifts,
+  withItemChange,
 } from "./lists";
 
 const KITCHEN = "11111111-1111-4111-8111-111111111111";
@@ -1595,5 +1605,542 @@ describe("between departments (L5)", () => {
         quantities: typed.ok ? typed.counts : null,
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("an item's history (L6a)", () => {
+  const DANA = "66666666-6666-4666-8666-666666666666";
+  const at = (time: string) => `2026-12-03T${time}.000Z`;
+  const anItem = (fields: Partial<ListItem> = {}): ListItem => ({
+    id: ITEM,
+    templateItemId: null,
+    kind: "check",
+    label: "ניקוי משטחי עבודה",
+    hint: null,
+    required: true,
+    unit: null,
+    min: null,
+    max: null,
+    requested: null,
+    given: null,
+    checked: false,
+    reading: null,
+    answer: null,
+    photo: null,
+    photoRemoved: false,
+    comment: null,
+    done: false,
+    doneBy: null,
+    doneAt: null,
+    ...fields,
+  });
+  let ids = 0;
+  const change = (
+    by: string | null,
+    time: string,
+    changed: ListItemChange["changed"],
+    values: Partial<ListItemChange> = {},
+  ): ListItemChange => {
+    ids += 1;
+    return {
+      id: String(ids),
+      itemId: ITEM,
+      by,
+      at: at(time),
+      changed,
+      checked: false,
+      given: null,
+      reading: null,
+      answer: null,
+      comment: null,
+      photo: false,
+      done: false,
+      ...values,
+    };
+  };
+  const partsOf = (item: ListItem, changes: ListItemChange[]) =>
+    itemHistory(item, changes).map((entry) => entry.parts);
+
+  it("compares the first change with an item as it is made, and each with the one before", () => {
+    const fridge = anItem({ kind: "number", unit: "°C" });
+    const changes = [
+      change(NOA, "05:42:00", ["reading"], { reading: 4, done: true }),
+      change(DANA, "09:02:00", ["reading"], { reading: 6, done: true }),
+      change(DANA, "09:20:00", ["comment"], {
+        reading: 6,
+        comment: "הדלת נשארה פתוחה",
+        done: true,
+      }),
+      change(DANA, "10:00:00", ["reading"], {
+        comment: "הדלת נשארה פתוחה",
+      }),
+    ];
+    const history = itemHistory(fridge, changes);
+    expect(history.map(({ by, at }) => ({ by, at }))).toEqual([
+      { by: NOA, at: at("05:42:00") },
+      { by: DANA, at: at("09:02:00") },
+      { by: DANA, at: at("09:20:00") },
+      { by: DANA, at: at("10:00:00") },
+    ]);
+    expect(history.map((entry) => entry.parts)).toEqual([
+      [{ field: "reading", from: null, to: 4 }],
+      [{ field: "reading", from: 4, to: 6 }],
+      [{ field: "comment", from: null, to: "הדלת נשארה פתוחה" }],
+      [{ field: "reading", from: 6, to: null }],
+    ]);
+    // Another item's changes are its own.
+    expect(
+      itemHistory(
+        fridge,
+        changes.map((each) => ({ ...each, itemId: LIST })),
+      ),
+    ).toEqual([]);
+  });
+
+  it("says a tick and its undo, and an order's count instead of its tick", () => {
+    expect(
+      partsOf(anItem(), [
+        change(NOA, "05:00:00", ["checked"], { checked: true, done: true }),
+        change(DANA, "06:15:00", ["checked"]),
+      ]),
+    ).toEqual([
+      [{ field: "checked", on: true }],
+      [{ field: "checked", on: false }],
+    ]);
+    const order = anItem({ requested: 24 });
+    expect(
+      partsOf(order, [
+        change(NOA, "05:00:00", ["checked", "given"], {
+          checked: true,
+          given: 24,
+          done: true,
+        }),
+        change(NOA, "05:10:00", ["given"], {
+          checked: true,
+          given: 20,
+          done: true,
+        }),
+        change(DANA, "06:00:00", ["checked", "given"]),
+      ]),
+    ).toEqual([
+      [{ field: "given", given: 24 }],
+      [{ field: "given", given: 20 }],
+      [{ field: "checked", on: false }],
+    ]);
+  });
+
+  it("says an answer and a comment written, changed and removed", () => {
+    const note = anItem({ kind: "note" });
+    expect(
+      partsOf(note, [
+        change(NOA, "05:00:00", ["answer", "comment"], {
+          answer: "חסר בצל",
+          comment: "הזמנתי",
+          done: true,
+        }),
+        change(DANA, "06:00:00", ["answer", "comment"], {
+          answer: "חסר בצל וגזר",
+          comment: "הזמנתי מחר",
+          done: true,
+        }),
+        change(NOA, "07:00:00", ["answer", "comment"]),
+      ]),
+    ).toEqual([
+      [
+        { field: "answer", from: null, to: "חסר בצל" },
+        { field: "comment", from: null, to: "הזמנתי" },
+      ],
+      [
+        { field: "answer", from: "חסר בצל", to: "חסר בצל וגזר" },
+        { field: "comment", from: "הזמנתי", to: "הזמנתי מחר" },
+      ],
+      [
+        { field: "answer", from: "חסר בצל וגזר", to: null },
+        { field: "comment", from: "הזמנתי מחר", to: null },
+      ],
+    ]);
+  });
+
+  it("says a photo added, replaced and removed, though no photo is kept", () => {
+    expect(
+      partsOf(anItem({ kind: "photo" }), [
+        change(NOA, "05:00:00", ["photo"], { photo: true, done: true }),
+        change(DANA, "06:00:00", ["photo"], { photo: true, done: true }),
+        change(NOA, "07:00:00", ["photo"]),
+      ]),
+    ).toEqual([
+      [{ field: "photo", photo: "added" }],
+      [{ field: "photo", photo: "replaced" }],
+      [{ field: "photo", photo: "removed" }],
+    ]);
+  });
+
+  it("folds one person's changes close together, and drops a run that ends where it began", () => {
+    expect(HISTORY_FOLD_MINUTES).toBe(2);
+    const fridge = anItem({ kind: "number" });
+    const typo = [
+      change(NOA, "05:42:00", ["reading"], { reading: 40, done: true }),
+      change(NOA, "05:43:30", ["reading"], { reading: 4, done: true }),
+      // Within two minutes of the one before it, not of the first.
+      change(NOA, "05:45:00", ["comment"], {
+        reading: 4,
+        comment: "אחרי סחורה",
+        done: true,
+      }),
+    ];
+    expect(itemHistory(fridge, typo)).toEqual([
+      {
+        key: typo[2]?.id,
+        by: NOA,
+        at: at("05:45:00"),
+        parts: [
+          { field: "reading", from: null, to: 4 },
+          { field: "comment", from: null, to: "אחרי סחורה" },
+        ],
+      },
+    ]);
+    // Someone else, or more than two minutes on, is an entry of its own.
+    expect(
+      partsOf(fridge, [
+        change(NOA, "05:42:00", ["reading"], { reading: 4, done: true }),
+        change(DANA, "05:42:30", ["reading"], { reading: 5, done: true }),
+        change(DANA, "05:45:00", ["reading"], { reading: 6, done: true }),
+      ]),
+    ).toHaveLength(3);
+    // Nobody named never folds.
+    expect(
+      partsOf(fridge, [
+        change(null, "05:42:00", ["reading"], { reading: 4, done: true }),
+        change(null, "05:42:30", ["reading"], { reading: 5, done: true }),
+      ]),
+    ).toHaveLength(2);
+    // A tick taken back at once says nothing; the next tick is a tick.
+    expect(
+      partsOf(anItem(), [
+        change(NOA, "05:00:00", ["checked"], { checked: true, done: true }),
+        change(NOA, "05:00:40", ["checked"]),
+        change(DANA, "05:30:00", ["checked"], { checked: true, done: true }),
+      ]),
+    ).toEqual([[{ field: "checked", on: true }]]);
+  });
+
+  it("keeps a run that does the item again with the value it had: it is theirs now", () => {
+    // Someone else takes Noa's tick back and gives it again at once: the
+    // database moves who did it to them, and the story says both.
+    const ticked = anItem({
+      checked: true,
+      done: true,
+      doneBy: DANA,
+      doneAt: at("08:15:00"),
+    });
+    const ticks = itemHistory(ticked, [
+      change(NOA, "07:40:00", ["checked"], { checked: true, done: true }),
+      change(DANA, "08:14:00", ["checked"]),
+      change(DANA, "08:15:00", ["checked"], { checked: true, done: true }),
+    ]);
+    expect(ticks.map(({ by, at, parts }) => ({ by, at, parts }))).toEqual([
+      { by: NOA, at: at("07:40:00"), parts: [{ field: "checked", on: true }] },
+      { by: DANA, at: at("08:15:00"), parts: [{ field: "checked", on: true }] },
+    ]);
+    expect(itemLine(ticked, ticks)).toEqual({
+      kind: "done",
+      by: DANA,
+      at: at("08:15:00"),
+      more: 1,
+    });
+
+    // A reading changed and put back: said as written again, not as 4 to 4.
+    const fridge = anItem({
+      kind: "number",
+      reading: 4,
+      done: true,
+      doneBy: DANA,
+      doneAt: at("08:15:00"),
+    });
+    const readings = itemHistory(fridge, [
+      change(NOA, "07:42:00", ["reading"], { reading: 4, done: true }),
+      change(DANA, "08:14:00", ["reading"], { reading: 5, done: true }),
+      change(DANA, "08:15:00", ["reading"], { reading: 4, done: true }),
+    ]);
+    expect(readings.map(({ by, parts }) => ({ by, parts }))).toEqual([
+      { by: NOA, parts: [{ field: "reading", from: null, to: 4 }] },
+      { by: DANA, parts: [{ field: "reading", from: null, to: 4 }] },
+    ]);
+    expect(itemLine(fridge, readings)).toMatchObject({ by: DANA, more: 1 });
+
+    // An order's count, its value first and a comment of the same run after.
+    const order = anItem({ requested: 20 });
+    expect(
+      partsOf(order, [
+        change(NOA, "07:40:00", ["checked", "given"], {
+          checked: true,
+          given: 20,
+          done: true,
+        }),
+        change(DANA, "08:14:00", ["given"], {
+          checked: true,
+          given: 3,
+          done: true,
+        }),
+        change(DANA, "08:15:00", ["given", "comment"], {
+          checked: true,
+          given: 20,
+          comment: "נספרו שוב",
+          done: true,
+        }),
+      ]),
+    ).toEqual([
+      [{ field: "given", given: 20 }],
+      [
+        { field: "given", given: 20 },
+        { field: "comment", from: null, to: "נספרו שוב" },
+      ],
+    ]);
+
+    // A comment written and taken back still says nothing.
+    expect(
+      partsOf(ticked, [
+        change(NOA, "07:40:00", ["checked"], { checked: true, done: true }),
+        change(DANA, "08:14:00", ["comment"], {
+          checked: true,
+          comment: "רגע",
+          done: true,
+        }),
+        change(DANA, "08:15:00", ["comment"], { checked: true, done: true }),
+      ]),
+    ).toEqual([[{ field: "checked", on: true }]]);
+  });
+
+  it("reads an item done with no changes kept as one entry from who did it, its comment unnamed", () => {
+    const done = anItem({
+      checked: true,
+      comment: "נשאר מעט",
+      done: true,
+      doneBy: NOA,
+      doneAt: at("05:00:00"),
+    });
+    expect(itemHistory(done, [])).toEqual([
+      {
+        key: `done:${ITEM}`,
+        by: NOA,
+        at: at("05:00:00"),
+        parts: [{ field: "checked", on: true }],
+      },
+    ]);
+    expect(itemHistory(anItem({ comment: "נשאר מעט" }), [])).toEqual([]);
+    expect(doneChangeOf(anItem())).toBeNull();
+    // A photo the clean-up removed was still taken.
+    expect(
+      doneChangeOf(
+        anItem({
+          kind: "photo",
+          photoRemoved: true,
+          done: true,
+          doneBy: NOA,
+          doneAt: at("05:00:00"),
+        }),
+      )?.changed,
+    ).toEqual(["photo"]);
+    // As the backfill writes it: a comment changed after it says from what.
+    const backfilled = doneChangeOf(done);
+    expect(backfilled).not.toBeNull();
+    expect(
+      partsOf(done, [
+        ...(backfilled ? [backfilled] : []),
+        change(DANA, "06:00:00", ["comment"], {
+          checked: true,
+          comment: "נגמר",
+          done: true,
+        }),
+      ]),
+    ).toEqual([
+      [{ field: "checked", on: true }],
+      [{ field: "comment", from: "נשאר מעט", to: "נגמר" }],
+    ]);
+  });
+
+  it("adds the screen's own change as the database writes it", () => {
+    const before = anItem({
+      checked: true,
+      done: true,
+      doneBy: NOA,
+      doneAt: at("05:00:00"),
+    });
+    const after = { ...before, comment: "חסר סבון" };
+    const changes = withItemChange([], before, after, {
+      id: "local-1",
+      by: DANA,
+      at: at("06:00:00"),
+    });
+    // Who ticked it stays in its history, before the comment.
+    expect(changes.map((c) => [c.id, c.by, c.changed])).toEqual([
+      [`done:${ITEM}`, NOA, ["checked"]],
+      ["local-1", DANA, ["comment"]],
+    ]);
+    expect(itemHistory(after, changes)).toHaveLength(2);
+    // Nothing changed, nothing added; once it has changes, none stands in.
+    expect(
+      withItemChange(changes, after, after, {
+        id: "local-2",
+        by: DANA,
+        at: at("06:01:00"),
+      }),
+    ).toEqual(changes);
+    const unticked = { ...after, checked: false, done: false };
+    expect(
+      withItemChange(changes, after, unticked, {
+        id: "local-3",
+        by: DANA,
+        at: at("06:10:00"),
+      }).map((c) => c.id),
+    ).toEqual([`done:${ITEM}`, "local-1", "local-3"]);
+    // A photo set or removed is named even when the address shows the same.
+    const photo = anItem({ kind: "photo", photo: "/a.webp", done: true });
+    expect(
+      withItemChange([], photo, photo, {
+        id: "local-4",
+        by: DANA,
+        at: at("06:20:00"),
+        photo: true,
+      }).at(-1)?.changed,
+    ).toEqual(["photo"]);
+  });
+
+  it("says on the line who did it, or what changed last, and how many more", () => {
+    const fridge = anItem({
+      kind: "number",
+      reading: 6,
+      comment: "הדלת נשארה פתוחה",
+      done: true,
+      doneBy: DANA,
+      doneAt: at("09:02:00"),
+    });
+    const entries = itemHistory(fridge, [
+      change(NOA, "05:42:00", ["reading"], { reading: 4, done: true }),
+      change(DANA, "09:02:00", ["reading"], { reading: 6, done: true }),
+      change(DANA, "09:20:00", ["comment"], {
+        reading: 6,
+        comment: "הדלת נשארה פתוחה",
+        done: true,
+      }),
+    ]);
+    expect(itemLine(fridge, entries)).toEqual({
+      kind: "done",
+      by: DANA,
+      at: at("09:02:00"),
+      more: 2,
+    });
+    const once = anItem({
+      checked: true,
+      done: true,
+      doneBy: NOA,
+      doneAt: at("05:00:00"),
+    });
+    expect(itemLine(once, itemHistory(once, []))).toEqual({
+      kind: "done",
+      by: NOA,
+      at: at("05:00:00"),
+      more: 0,
+    });
+    const unticked = anItem();
+    expect(
+      itemLine(
+        unticked,
+        itemHistory(unticked, [
+          change(NOA, "05:00:00", ["checked"], { checked: true, done: true }),
+          change(DANA, "06:15:00", ["checked"]),
+        ]),
+      ),
+    ).toEqual({
+      kind: "changed",
+      by: DANA,
+      at: at("06:15:00"),
+      part: { field: "checked", on: false },
+      more: 1,
+    });
+    expect(itemLine(unticked, [])).toBeNull();
+  });
+});
+
+describe("a list's timeline (L6a)", () => {
+  const SHIRAN = "77777777-7777-4777-8777-777777777777";
+  const DANI = "88888888-8888-4888-8888-888888888888";
+  const at = (time: string) => `2026-12-03T${time}.000Z`;
+  const reopen = (
+    id: string,
+    was: ListReopen["was"],
+    wasBy: string,
+    wasAt: string,
+    reopenedBy: string,
+    reopenedAt: string,
+  ): ListReopen => ({
+    id,
+    was,
+    wasBy,
+    wasAt: at(wasAt),
+    reopenedBy,
+    reopenedAt: at(reopenedAt),
+  });
+  const finished = {
+    status: "finished" as const,
+    finishedAt: at("09:00:00"),
+    finishedBy: DANI,
+    closedAt: null,
+    closedBy: null,
+  };
+
+  it("shows each close a reopen undid, the reopen, and the close now, in time order", () => {
+    expect(
+      listTimeline(finished, [
+        reopen("r1", "finished", NOA, "06:05:00", SHIRAN, "08:00:00"),
+      ]).map(({ kind, by, at }) => ({ kind, by, at })),
+    ).toEqual([
+      { kind: "finished", by: NOA, at: at("06:05:00") },
+      { kind: "reopened", by: SHIRAN, at: at("08:00:00") },
+      { kind: "finished", by: DANI, at: at("09:00:00") },
+    ]);
+    expect(
+      listTimeline({ ...finished, status: "open", finishedAt: null }, [
+        reopen("r1", "cancelled", SHIRAN, "06:05:00", SHIRAN, "07:00:00"),
+      ]).map((event) => event.kind),
+    ).toEqual(["cancelled", "restored"]);
+  });
+
+  it("leaves out the undo: whoever closed it, within their five minutes", () => {
+    expect(
+      listTimeline(finished, [
+        reopen("r1", "finished", NOA, "06:05:00", NOA, "06:09:00"),
+      ]).map((event) => event.key),
+    ).toEqual(["finished"]);
+    // Later, or by someone else, it is a reopen.
+    expect(
+      listTimeline(finished, [
+        reopen("r1", "finished", NOA, "06:05:00", NOA, "06:11:00"),
+        reopen("r2", "finished", NOA, "06:20:00", SHIRAN, "06:21:00"),
+      ]).map((event) => event.key),
+    ).toEqual(["r1:closed", "r1:opened", "r2:closed", "r2:opened", "finished"]);
+  });
+
+  it("ends a missed list with its close, and nothing for an open one", () => {
+    expect(
+      listTimeline(
+        { ...finished, status: "missed", finishedAt: null, closedAt: null },
+        [],
+      ),
+    ).toEqual([{ key: "missed", kind: "missed", by: null, at: null }]);
+    expect(
+      listTimeline({ ...finished, status: "open", finishedAt: null }, []),
+    ).toEqual([]);
+  });
+
+  it("puts entries with no time last, and keeps the order of equal times", () => {
+    expect(
+      byTime([
+        { at: null, n: 1 },
+        { at: at("08:00:00"), n: 2 },
+        { at: at("07:00:00"), n: 3 },
+        { at: at("08:00:00"), n: 4 },
+      ]).map((entry) => entry.n),
+    ).toEqual([3, 2, 4, 1]);
   });
 });

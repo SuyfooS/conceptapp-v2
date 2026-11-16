@@ -1308,6 +1308,60 @@ export async function demoLists(name: string): Promise<DemoList[]> {
     order by l.created_at desc`;
 }
 
+export type DemoListItem = {
+  reading: number | null;
+  comment: string | null;
+  /** Who did it, by their phone. */
+  doneBy: string | null;
+  /** How many rows its history has (L6a). */
+  changes: number;
+};
+
+/**
+ * An item of the demo restaurant's newest list of this name, by its label:
+ * its reading and comment, who did it, and how many changes its history
+ * keeps (`public.list_item_changes`, L6a).
+ */
+export async function demoListItem(
+  name: string,
+  label: string,
+): Promise<DemoListItem | null> {
+  const [row] = await sql<DemoListItem[]>`
+    select i.reading::float8 as reading, i.comment, p.phone as "doneBy",
+      (select count(*)::int from public.list_item_changes c where c.item_id = i.id) as changes
+    from public.list_items i
+    join public.lists l on l.id = i.list_id
+    left join public.profiles p on p.id = i.done_by
+    where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+      and i.label = ${label}
+    order by l.created_at desc
+    limit 1`;
+  return row ?? null;
+}
+
+/**
+ * Someone saves an item of the demo restaurant's newest list of this name,
+ * as their own screen would (`public.set_list_item`, which writes its
+ * history, L6a): a second person's change, for the screen on test to read.
+ * Null clears it.
+ */
+export async function setDemoListItem(
+  phone: string,
+  name: string,
+  label: string,
+  result: { [field: string]: string | number | boolean } | null,
+): Promise<void> {
+  await sql`select public.set_list_item(
+    (select p.id from public.profiles p where p.phone = ${phone}),
+    (select i.id from public.list_items i
+      join public.lists l on l.id = i.list_id
+      where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+        and i.label = ${label}
+      order by l.created_at desc
+      limit 1),
+    ${result === null ? null : sql.json(result)}::jsonb)`;
+}
+
 /** Who is in a demo restaurant department, by its name: their phones. */
 export async function demoDepartmentPhones(name: string): Promise<string[]> {
   const rows = await sql<{ phone: string }[]>`

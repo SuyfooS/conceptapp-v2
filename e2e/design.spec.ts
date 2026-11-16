@@ -143,6 +143,10 @@ const PAGES = [
   "/design/shell/lists/list-weekly-cleaning?state=photo",
   "/design/shell/lists/list-weekly-cleaning?state=demo",
   "/design/shell/lists/list-weekly-cleaning?state=gone",
+  // Each item's story (L6a): a reading changed after another's, a tick
+  // taken back, and a list opened again and closed.
+  "/design/shell/lists/list-kitchen-opening?state=history",
+  "/design/shell/lists/list-weekly-cleaning?state=history",
   // A list to a role the business named (R11d).
   "/design/shell/lists/list-shift-opening",
   "/design/shell/lists/today",
@@ -248,11 +252,15 @@ const PAGES = [
 const OPENS_A_SHEET =
   /^\/design\/chat\/.*[?&]state=(readers|actions|photo|attach|remove)\b/;
 
-async function expectCleanPage(page: Page, path = "") {
+async function expectCleanPage(
+  page: Page,
+  path = "",
+  sheet = OPENS_A_SHEET.test(path),
+) {
   await expect(page).toHaveTitle(/ConceptApp$/);
   // The title can arrive before a demo's streamed part: check the page itself,
-  // or the sheet it opens with, which is checked once it is there.
-  if (OPENS_A_SHEET.test(path)) {
+  // or the sheet it opens with (or a test opened), checked once it is there.
+  if (sheet) {
     await expect(page.getByRole("dialog")).toBeVisible();
   } else {
     await expect(
@@ -1531,6 +1539,80 @@ test("the photo demo takes a photo, removes it and brings it back", async ({
   ).toBeVisible();
   await expect(photo).toHaveCount(0);
 });
+
+// Each item's story on the demo (L6a): the line under the fridge names who
+// changed its reading last (Itay, after Noa's), with how many more changes,
+// and opens the sheet that lists all three with names and times; a tick
+// taken back says so on its line. The sheet is clean in both appearances, and
+// on a computer the readings table's "who" opens the same story.
+for (const colorScheme of ["light", "dark"] as const) {
+  test.describe(`an item's story, ${colorScheme}`, () => {
+    test.use({ colorScheme });
+
+    test("the history demo opens an item's story from its line", async ({
+      page,
+    }, testInfo) => {
+      const h = he.app.lists.list.history;
+      const path = "/design/shell/lists/list-kitchen-opening?state=history";
+      const literal = (text: string) =>
+        text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const storyOf = (label: string) =>
+        new RegExp(
+          `^${literal(heT("app.lists.list.history.open", { label }))}:\\s`,
+        );
+      const main = page.getByRole("main");
+      const sheet = page.getByRole("dialog", { name: h.title });
+
+      await page.goto(path);
+      // Under the item, with its time (the readings table's has none).
+      const fridge = main
+        .getByRole("button", { name: storyOf("מקרר ראשי") })
+        .filter({ visible: true, hasText: "08:02" });
+      await expect(fridge).toHaveCount(1);
+      await expect(fridge).toContainText("איתי מזרחי");
+      await expect(fridge).toContainText(
+        heT("app.lists.list.history.more", { count: 2 }),
+      );
+      const surfaces = main
+        .getByRole("button", { name: storyOf("ניקוי משטחי עבודה") })
+        .filter({ visible: true });
+      await expect(surfaces).toContainText(h.unchecked);
+      await expect(surfaces).toContainText("08:08");
+      await expect(surfaces).toContainText(
+        heT("app.lists.list.history.more", { count: 1 }),
+      );
+
+      await fridge.click();
+      await expect(sheet).toBeVisible();
+      for (const text of [
+        "נועה כהן",
+        "07:42",
+        "איתי מזרחי",
+        "08:02",
+        "08:05",
+        "הדלת נשארה פתוחה",
+      ]) {
+        await expect(sheet).toContainText(text);
+      }
+      await expectCleanPage(page, path, true);
+      await page.keyboard.press("Escape");
+      await expect(sheet).toBeHidden();
+
+      if (testInfo.project.name === "desktop") {
+        const who = main
+          .getByRole("table")
+          .getByRole("button", { name: storyOf("מקרר ראשי") });
+        await expect(who).toContainText("איתי מזרחי");
+        await expect(who).toContainText(
+          heT("app.lists.list.history.more", { count: 2 }),
+        );
+        await who.click();
+        await expect(sheet).toContainText("נועה כהן");
+        await expect(sheet).toContainText("08:05");
+      }
+    });
+  });
+}
 
 // In a demo business, which takes no photos (L6), the template editor keeps a
 // photo item optional, so its list can still be finished: "חובה" is off and

@@ -2,6 +2,7 @@
 
 import {
   Check,
+  ChevronRight,
   ImageOff,
   ImagePlus,
   MessageSquareText,
@@ -28,8 +29,25 @@ export type ChecklistItemProps = {
   /** Said beside an item that may stay empty ("לא חובה"). */
   optionalLabel: string;
   done: boolean;
-  /** Who did it and when ("נועה · 07:42"). */
+  /** Who did it and when ("נועה · 07:42"), when that is all there is to say. */
   doneLine?: ReactNode;
+  /**
+   * What happened to it (L6a), as a row of its own under it that opens the
+   * whole story: who did it and when, or what changed last ("הסימון הוסר ·
+   * דני · 08:15"), and how many more changes there were. In place of
+   * `doneLine`, and there in a list only read too.
+   */
+  history?: {
+    line: ReactNode;
+    /** "עוד 2 שינויים", after the line, when there were more. */
+    more?: ReactNode;
+    /**
+     * Said first to screen readers, with the item in it, in a form that
+     * reads with any label ('מה קרה בפריט "מקרר ראשי"'); ": " follows it.
+     */
+    label: string;
+    onOpen: () => void;
+  } | null;
   /** A comment left on the item. */
   comment?: string | null;
   /** The quiet way to add or change the comment. */
@@ -131,8 +149,10 @@ const rowClass =
  * itself the button. A reading outside its range is said in words, in the
  * warning colour. Who did it and when sits under it. On an order, a ticked
  * check has its count under it, a stepper that says how many were given.
- * Read-only lists show the same without the controls. A checkbox is named by
- * its label alone; the rest of the row describes it.
+ * An item with a story has it in a quiet row of its own at the end, outside
+ * the check's label, so pressing it never ticks. Read-only lists show the
+ * same without the controls. A checkbox is named by its label alone; the
+ * rest of the row describes it.
  */
 export function ChecklistItem({
   kind,
@@ -142,6 +162,7 @@ export function ChecklistItem({
   optionalLabel,
   done,
   doneLine,
+  history,
   comment,
   commentAction,
   readOnly = false,
@@ -158,6 +179,7 @@ export function ChecklistItem({
   const hintId = useId();
   const commentId = useId();
   const doneId = useId();
+  const historyId = useId();
   const title = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span id={labelId} className="font-medium text-md text-ink">
@@ -170,7 +192,7 @@ export function ChecklistItem({
       )}
     </span>
   );
-  const shownDoneLine = done && doneLine ? doneLine : null;
+  const shownDoneLine = done && doneLine && !history ? doneLine : null;
   const below = (
     <>
       {comment ? (
@@ -197,10 +219,30 @@ export function ChecklistItem({
       required ? null : optionalId,
       hint ? hintId : null,
       comment ? commentId : null,
-      shownDoneLine ? doneId : null,
+      shownDoneLine ? doneId : history ? historyId : null,
     ]
       .filter((id) => id !== null)
       .join(" ") || undefined;
+  // The story, under all the rest: a quiet 44px row, past a check's circle.
+  const historyRow = history ? (
+    <div className={cn("-my-2 flex", kind === "check" && "ps-14")}>
+      <button
+        type="button"
+        onClick={history.onOpen}
+        className="pressable -mx-2 flex min-h-11 max-w-full items-center gap-1 rounded-full px-2 text-start text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        <span className="sr-only">{history.label}: </span>
+        <span id={historyId} className="min-w-0">
+          {history.line}
+          {history.more ? <> · {history.more}</> : null}
+        </span>
+        <ChevronRight
+          aria-hidden="true"
+          className="size-4 shrink-0 rtl:-scale-x-100"
+        />
+      </button>
+    </div>
+  ) : null;
   const commentButton =
     commentAction && !readOnly ? (
       <button
@@ -311,10 +353,11 @@ export function ChecklistItem({
         {commentButton}
       </div>
     );
-    return counted ? (
+    return counted || historyRow ? (
       <div className={rowClass}>
         {row}
         {counted}
+        {historyRow}
       </div>
     ) : (
       <div className={cn(rowClass, "flex-row items-center gap-3")}>{row}</div>
@@ -436,6 +479,7 @@ export function ChecklistItem({
       ) : null}
 
       {below}
+      {historyRow}
     </div>
   );
 }
