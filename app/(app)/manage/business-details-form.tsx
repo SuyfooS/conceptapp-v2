@@ -7,6 +7,7 @@ import {
   type BusinessDetails,
   businessDetailProblem,
 } from "@domain/business-details";
+import type { ManageReadOnly } from "@domain/manage-access";
 import {
   DEFAULT_SHABBAT_CITY,
   SHABBAT_CITIES,
@@ -38,14 +39,18 @@ import { TYPING_MS, useDraft } from "./use-draft";
 export function BusinessDetailsForm({
   details,
   save,
-  viewOnly,
+  readOnly,
   showCity,
   cities,
   nested = false,
 }: {
   details: BusinessDetails;
   save: SaveSettings;
-  viewOnly: boolean;
+  /**
+   * Why nothing here saves, said in one line: a view session, or the person
+   * at view on the management page. Null when it saves.
+   */
+  readOnly: ManageReadOnly;
   /** Whether Shabbat times matter here: the business closes on Shabbat, or it's the console. */
   showCity: boolean;
   /** The coming Shabbat in each city. */
@@ -56,6 +61,7 @@ export function BusinessDetailsForm({
   const t = useTranslations("app.manage.business");
   const tm = useTranslations("app.manage");
   const tc = useTranslations("cities");
+  const viewOnly = readOnly !== null;
   // What was changed on this screen; the rest is as the server read it.
   const [changed, setChanged] = useState<Partial<BusinessDetails>>({});
   // What didn't save, per detail. Something typed that failed stays on screen,
@@ -180,7 +186,11 @@ export function BusinessDetailsForm({
           })}
         </Card>
       ) : null}
-      {viewOnly ? <p className="text-ink-2">{tm("viewOnly")}</p> : null}
+      {readOnly ? (
+        <p className="text-ink-2">
+          {readOnly === "viewing" ? tm("viewOnly") : tm("readOnly.manage")}
+        </p>
+      ) : null}
       <div className="grid items-start gap-6 md:grid-cols-2 md:gap-8">
         <div className="md:col-start-1 md:row-start-1">
           <AccentPreview

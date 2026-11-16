@@ -2272,6 +2272,10 @@
       "saved": "Saved",
       "advanced": "Advanced",
       "viewOnly": "Settings can't be changed while viewing.",
+      "readOnly": {
+        "manage": "You can see the management page but not change it. Only owners give permission to change it.",
+        "module": "Only those who also edit {module} change these settings."
+      },
       "undo": "Undo",
       "decrease": "Less: {name}",
       "increase": "More: {name}",
@@ -2338,6 +2342,7 @@
       "activity": {
         "title": "Activity log",
         "subtitle": "Who changed what in the business, and when.",
+        "subtitleAreas": "Who changed what in your areas, and when.",
         "row": "Who changed what in the business, and when",
         "clockNote": "Clocking in and out isn't shown here. It's in <link>the team's hours</link>.",
         "today": "Today",
@@ -2356,6 +2361,7 @@
         "empty": {
           "title": "No activity yet",
           "body": "Every change to the settings, the team and the schedule shows here, with who made it and when.",
+          "bodyAreas": "Every change in your areas shows here, with who made it and when.",
           "action": "Back to running the business"
         },
         "noOlder": {
@@ -2671,8 +2677,8 @@
             "none": "No team screen. Everyone's names are seen by all in the business anyway."
           },
           "manage": {
-            "edit": "They change the settings, the business's details and the departments, and see the activity log.",
-            "view": "They see the settings and the activity log, without changing them.",
+            "edit": "They change the business's details, the departments and the settings, and see the activity log of their areas. They change an area's settings only if they also edit that area. For now they also build list templates and set when lists go out by themselves, even without edit access in lists.",
+            "view": "They see the settings and the activity log of their areas, without changing them.",
             "none": "No management page."
           }
         },

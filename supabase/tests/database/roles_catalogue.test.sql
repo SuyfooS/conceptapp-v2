@@ -184,9 +184,9 @@ select set_eq(
     ('storefront.edit', 'storefront', 'storefront', null, false, '{manager}'::text[], false),
     ('team.view', null, 'team', null, false, '{manager}'::text[], false),
     ('team.edit', null, 'team', 'team.view', false, '{manager}'::text[], false),
-    ('manage.view', null, 'manage', null, false, '{manager}'::text[], false),
-    ('manage.edit', null, 'manage', 'manage.view', false, '{manager}'::text[], false)$$,
-  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling, which R3 opened (20261115000900_roles_scheduling.sql)'
+    ('manage.view', null, 'manage', null, true, '{manager}'::text[], false),
+    ('manage.edit', null, 'manage', 'manage.view', true, '{manager}'::text[], false)$$,
+  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3, 20261115000900_roles_scheduling.sql) and on the management page (R7, 20261115001000_roles_manage.sql)'
 );
 
 select throws_ok(

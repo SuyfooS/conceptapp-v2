@@ -10,7 +10,7 @@ import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
 import { moduleMetadata } from "../../module-screen";
 import { saveModuleSettingsAction } from "../actions";
-import { manageAccess, modulesToManage } from "../manage";
+import { manageAccess, modulesToManage, readOnlyFor } from "../manage";
 import { ModuleSettingsView } from "../module-settings-view";
 
 export async function generateMetadata({
@@ -20,8 +20,10 @@ export async function generateMetadata({
   return key ? moduleMetadata(key) : {};
 }
 
-// One module's settings, drawn from what its manifest declares. A module that
-// is off, or has nothing the business may change, does not exist here.
+// One module's settings, drawn from what its manifest declares, for whoever
+// sees the management page, saved by whoever edits it and the module too. A
+// module that is off, or has nothing the business may change, does not exist
+// here.
 export default async function ManageModulePage({
   params,
 }: PageProps<"/manage/[module]">) {
@@ -50,7 +52,7 @@ export default async function ManageModulePage({
         ) as Record<string, unknown>
       }
       save={saveModuleSettingsAction.bind(null, key)}
-      viewOnly={access.viewOnly}
+      readOnly={readOnlyFor(access, key)}
       backHref="/manage"
       wording={wording}
     />

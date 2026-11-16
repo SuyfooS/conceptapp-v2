@@ -68,4 +68,14 @@ unless the default makes it, so an undo leaves no row), whether an area is
 open for changes (`areaOpen`: every one of its keys settable), and the
 matrix from the declarations alone (`matrixByDefault`).
 
+`manage-access.ts` is who manages the business on /manage (the roles plan's
+R7): `manageReach` (edit at `manage.edit`, view at `manage.view`, else
+none), `settingsPermission` (the module's own edit a module's settings need
+besides it, as the database's `private.settings_perm`), and
+`manageReadOnly`, why a screen there shows without saving: a view session,
+the role at view, or the module's edit missing; and `readsEveryLogArea`,
+whether someone reads every area's rows of the activity log
+(`LOG_AREA_PERMISSIONS`, the areas of the database's `private.log_perm`,
+kept equal by `tooling/log-families.test.ts`).
+
 Import as `@domain/<file>`.

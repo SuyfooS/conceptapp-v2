@@ -73,12 +73,6 @@ export const NOT_YET_MOVED: Record<string, string> = {
     "R6: invites, to the team's viewers",
   'policy "the team reads invites when viewing as a manager" on public.invites':
     "R6: invites, to a view at team view",
-  // The management page (R7).
-  "private.can_edit_settings": "R7: who saves settings",
-  'policy "managers read the log, pay holders the pay rows" on public.audit_log':
-    "R7: the activity log, by each action's own area",
-  'policy "a view reads the log as its role would" on public.audit_log':
-    "R7: the activity log, to a view, by each action's own area",
 };
 
 /** Where a check sits: a function's or a policy's name, or the file's top level. */

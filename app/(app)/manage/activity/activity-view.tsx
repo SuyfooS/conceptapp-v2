@@ -118,6 +118,7 @@ export function ActivityView({
   manageable,
   clockOn,
   listsOn,
+  everyArea,
   paths,
   wording,
 }: {
@@ -133,6 +134,12 @@ export function ActivityView({
   clockOn: boolean;
   /** Lists are on, so the departments have their screen to link to. */
   listsOn: boolean;
+  /**
+   * The reader reads every area's rows (`readsEveryLogArea`), so the words
+   * may promise the settings', the team's and the schedule's changes; else
+   * they speak of the reader's own areas, which are all the log shows them.
+   */
+  everyArea: boolean;
   paths: ActivityPaths;
   /** The business's words. */
   wording: AppWording;
@@ -996,7 +1003,7 @@ export function ActivityView({
       <PageHeader
         back={{ href: paths.manage, label: tManage("title") }}
         title={t("title")}
-        subtitle={t("subtitle")}
+        subtitle={everyArea ? t("subtitle") : t("subtitleAreas")}
       />
 
       {clockOn && lines.length > 0 ? (
@@ -1034,7 +1041,7 @@ export function ActivityView({
             headingLevel="h2"
             icon={<History />}
             title={t("empty.title")}
-            body={t("empty.body")}
+            body={everyArea ? t("empty.body") : t("empty.bodyAreas")}
           >
             <Button asChild variant="secondary">
               <Link href={paths.manage}>{t("empty.action")}</Link>

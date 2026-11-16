@@ -14,8 +14,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-// The business's departments, for its owner and managers (and the team viewing
-// as one), while lists are on: lists are what reads them today.
+// The business's departments, for whoever sees the management page (and the
+// team viewing as a role that does), saved by whoever edits it, while lists
+// are on: lists are what reads them today.
 export default async function ManageDepartmentsPage() {
   const access = await manageAccess();
   if (!access || !listsOn(access.rows)) notFound();
@@ -41,7 +42,7 @@ export default async function ManageDepartmentsPage() {
         }))}
       save={saveDepartmentsAction}
       saveMembers={saveDepartmentMembersAction}
-      viewOnly={access.viewOnly}
+      readOnly={access.readOnly}
       backHref="/manage"
       wording={wording}
     />

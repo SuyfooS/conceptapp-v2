@@ -30,6 +30,7 @@ export default function ShellManageActivity() {
       manageable={modulesToManage(demoModuleRows)}
       clockOn
       listsOn={listsOn(demoModuleRows)}
+      everyArea
       paths={demoActivityPaths}
       wording={baseWording}
     />

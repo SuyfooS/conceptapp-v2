@@ -1,3 +1,4 @@
+import { manageReach } from "@domain/manage-access";
 import { isStaff, moduleWidgets } from "@domain/modules";
 import { profilePhotoSrc } from "@domain/profile-photos";
 import { buildsSchedule, publishesSchedule } from "@domain/schedule";
@@ -103,6 +104,8 @@ export default async function HomePage() {
               }
             : null,
         team,
+        // The management page, for those who hold manage.view.
+        manage: manageReach(membership) !== null,
         // The bell, while notifications are on and the person is themselves.
         bell:
           enabled.includes("notifications") && !member.viewing
