@@ -9,6 +9,7 @@ import {
 } from "./modules";
 import { normalizeIsraeliMobile } from "./phone";
 import type { AddressForm } from "./profile";
+import type { NamedRole } from "./role-access";
 
 /**
  * The Team screen's rules, free of React and the database: who may open
@@ -46,6 +47,11 @@ export type TeamMember = {
   name: string | null;
   phone: string | null;
   role: Role;
+  /**
+   * The role the business named that they hold (the roles plan's R11b),
+   * built on `role`; null or missing for the role itself.
+   */
+  namedRole?: NamedRole | null;
   /** Their photo as an image src the screens can show, or null for initials. */
   photo: string | null;
   /** How the app writes about them, or null until they choose. */
@@ -57,6 +63,11 @@ export type TeamInvite = {
   name: string | null;
   phone: string;
   role: Role;
+  /**
+   * The role the business named that it gives, built on `role`, archived
+   * since or not; null or missing for the role itself.
+   */
+  namedRole?: (NamedRole & { archived?: boolean }) | null;
   /** ISO timestamp. */
   expiresAt: string;
 };
@@ -133,15 +144,120 @@ export function givesRole(giver: Role, role: Role): boolean {
 }
 
 /**
- * The roles the viewer may give someone they invite: none unless they edit
- * the team (`canEditTeam`), then those of the rank rule (`givesRole`). A
- * manager invites managers and workers; an owner also an owner or an
- * accountant. The database checks the same (`public.team_invite`), and also
- * that nobody but an owner gives a role that holds pay (hint `pay`).
+ * A role to give someone: a built-in role (`namedRole` null), or a role the
+ * business named itself (the roles plan's R11b), by its id, built on `role`,
+ * its base, which is then the role they hold by rank.
  */
-export function invitableRoles(viewer: Viewer): Role[] {
+export type RoleChoice = { role: Role; namedRole: string | null };
+
+/**
+ * A role the business named, as the team's screens give it (R11a's
+ * `public.business_roles`, live): its names and base, and the permissions
+ * owners switch per role that it holds by its role (`private.role_holds`),
+ * so whoever else gives it holds them too.
+ */
+export type GivableNamedRole = NamedRole & { holds: readonly string[] };
+
+/**
+ * A named role as a screen draws it: its names and its base, and nothing
+ * else. What it holds stays on the server, for the giver's rule
+ * (`givesNamedRole`): the rules are the owner's to read (the
+ * `public.role_permissions` policy, the roles plan's R8), so they never
+ * reach the browser of someone else who edits the team.
+ */
+export function namedRoleShown(role: NamedRole): NamedRole {
+  return { id: role.id, name: role.name, nameEn: role.nameEn, base: role.base };
+}
+
+/** The same role, and the same named role or none. */
+export function sameRoleChoice(a: RoleChoice, b: RoleChoice): boolean {
+  return a.role === b.role && a.namedRole === b.namedRole;
+}
+
+/**
+ * A choice as a form carries it: the built-in role, or the named role's id
+ * (`roleChoiceOf` reads it back).
+ */
+export function roleChoiceKey(choice: RoleChoice): string {
+  return choice.namedRole ?? choice.role;
+}
+
+/** A form's choice among `choices`, by its key; null for one not among them. */
+export function roleChoiceOf(
+  key: string,
+  choices: readonly RoleChoice[],
+): RoleChoice | null {
+  return choices.find((choice) => roleChoiceKey(choice) === key) ?? null;
+}
+
+/**
+ * Whether the viewer gives `role`, one the business named (Orel's answers
+ * of 15 and 16 November 2026, issue #1): someone who edits the team, for a
+ * role built on one they give by the rank rule (`givesRole`); an owner any
+ * of them; anyone else only one that holds nothing they don't
+ * (`private.role_holds_beyond`, hint `held`). None holds pay (R11a), so none
+ * is an owner's alone for that. The database checks the same
+ * (`public.team_invite`, `public.team_invite_link`, `public.set_member_role`).
+ */
+export function givesNamedRole(
+  viewer: Viewer,
+  role: GivableNamedRole,
+): boolean {
+  if (!canEditTeam(viewer) || !givesRole(viewer.role, role.base)) return false;
+  return (
+    viewer.role === "owner" ||
+    role.holds.every((key) => holdsPermission(viewer, key))
+  );
+}
+
+/**
+ * The roles the viewer may give someone they invite: none unless they edit
+ * the team (`canEditTeam`), then those of the rank rule (`givesRole`), each
+ * followed by the business's named roles built on it that they give
+ * (`givesNamedRole`, from `named`: its live ones). A manager invites
+ * managers and workers; an owner also an owner or an accountant. The
+ * database checks the same (`public.team_invite`), and also that nobody but
+ * an owner gives a role that holds pay (hint `pay`) or more than they hold
+ * (hint `held`).
+ */
+export function invitableRoles(
+  viewer: Viewer,
+  named: readonly GivableNamedRole[] = [],
+): RoleChoice[] {
   if (!canEditTeam(viewer)) return [];
-  return ROLES.filter((role) => givesRole(viewer.role, role));
+  return ROLES.flatMap((role): RoleChoice[] =>
+    givesRole(viewer.role, role)
+      ? [
+          { role, namedRole: null },
+          ...named
+            .filter((n) => n.base === role && givesNamedRole(viewer, n))
+            .map((n) => ({ role, namedRole: n.id })),
+        ]
+      : [],
+  );
+}
+
+/**
+ * The business's named roles the viewer gives by the rank rule of their base
+ * but not by what they hold (`givesNamedRole` refuses each: it holds
+ * something they don't), as choices, in `named`'s order. The role sheet
+ * shows them, not offered, as an owner's to give, as it shows a role that
+ * holds pay. None for an owner, who gives every one, nor for anyone who
+ * doesn't edit the team.
+ */
+export function namedRolesBeyond(
+  viewer: Viewer,
+  named: readonly GivableNamedRole[] = [],
+): RoleChoice[] {
+  if (!canEditTeam(viewer)) return [];
+  return named
+    .filter((n) => givesRole(viewer.role, n.base) && !givesNamedRole(viewer, n))
+    .map((n) => ({ role: n.base, namedRole: n.id }));
+}
+
+/** Whether the viewer edits the team and gives `role` by the rank rule. */
+function givesByRank(viewer: Viewer, role: Role): boolean {
+  return canEditTeam(viewer) && givesRole(viewer.role, role);
 }
 
 /**
@@ -159,21 +275,43 @@ export function ownerOnlyRoles(
   return viewer.role === "owner" ? [] : [...payRoles];
 }
 
-/** May the viewer send a link for an invite with `inviteRole`? */
-export function canResendInvite(viewer: Viewer, inviteRole: Role): boolean {
-  return invitableRoles(viewer).includes(inviteRole);
+/**
+ * May the viewer send a link for an invite to `invite`, its role and named
+ * role? Only to one they would invite to now (`invitableRoles`): a named
+ * role archived since, not among `named`, gets none
+ * (`public.team_invite_link`).
+ */
+export function canResendInvite(
+  viewer: Viewer,
+  invite: RoleChoice,
+  named: readonly GivableNamedRole[] = [],
+): boolean {
+  return invitableRoles(viewer, named).some((choice) =>
+    sameRoleChoice(choice, invite),
+  );
 }
 
 /**
- * May the viewer cancel an invite with `inviteRole`? The same rule as
- * sending its link (`public.team_invite_cancel`).
+ * May the viewer cancel an invite with `inviteRole`, the role it gives (a
+ * named role's base)? Whoever edits the team, by the rank rule, whatever
+ * named role it gives (`public.team_invite_cancel`).
  */
 export function canCancelInvite(viewer: Viewer, inviteRole: Role): boolean {
-  return canResendInvite(viewer, inviteRole);
+  return givesByRank(viewer, inviteRole);
 }
 
 /** Someone on the team, as the rules for changing it see them. */
-export type TeamPlace = { userId: string; role: Role };
+export type TeamPlace = {
+  userId: string;
+  role: Role;
+  /** The id of the role the business named that they hold; null or missing for none. */
+  namedRole?: string | null;
+};
+
+/** Someone's role and named role, as a choice. */
+export function placeChoice(person: TeamPlace): RoleChoice {
+  return { role: person.role, namedRole: person.namedRole ?? null };
+}
 
 /** The one who acts: their place, and what they hold (`Viewer`). */
 export type TeamActor = TeamPlace & Viewer;
@@ -183,34 +321,42 @@ export type TeamActor = TeamPlace & Viewer;
  * change someone from it and to it (Orel, 14 November 2026): someone who
  * edits the team, by the rank rule, so an owner acts on everyone, a manager
  * on managers and workers, and a worker raised to edit the team on workers.
- * Never on oneself, which the person's own profile is for. The database
- * checks the same (`public.remove_member`, `private.gives_role`), and also
- * that the business keeps an owner (`leavesNoOwner`).
+ * Never on oneself, which the person's own profile is for. A named role
+ * counts as its base: whoever acts on workers acts on a shift lead built on
+ * them. The database checks the same (`public.remove_member`,
+ * `private.gives_role`), and also that the business keeps an owner
+ * (`leavesNoOwner`).
  */
 export function canRemoveMember(viewer: TeamActor, person: TeamPlace): boolean {
-  return (
-    viewer.userId !== person.userId &&
-    invitableRoles(viewer).includes(person.role)
-  );
+  return viewer.userId !== person.userId && givesByRank(viewer, person.role);
 }
 
 /**
- * May the viewer change someone's role from `from` to `to`? Both must be
- * roles they invite to. The same role changes nothing, and is allowed
+ * May the viewer change someone's role from `from` to `to`, built-in roles
+ * or the bases of named ones? Both must be roles they invite to by the rank
+ * rule. The same role changes nothing, and is allowed
  * (`public.set_member_role` returns `changed: false`).
  */
 export function mayChangeRole(viewer: Viewer, from: Role, to: Role): boolean {
-  const mine = invitableRoles(viewer);
-  return mine.includes(from) && mine.includes(to);
+  return givesByRank(viewer, from) && givesByRank(viewer, to);
 }
 
 /**
- * The roles the viewer may give the person instead of theirs, in the usual
- * order; none when they may not change it at all (`canRemoveMember`).
+ * The roles the viewer may give the person instead of theirs, built-in and
+ * named (`invitableRoles`, from the business's live named roles `named`), in
+ * the usual order; none when they may not change it at all
+ * (`canRemoveMember`).
  */
-export function roleChoices(viewer: TeamActor, person: TeamPlace): Role[] {
+export function roleChoices(
+  viewer: TeamActor,
+  person: TeamPlace,
+  named: readonly GivableNamedRole[] = [],
+): RoleChoice[] {
   if (!canRemoveMember(viewer, person)) return [];
-  return invitableRoles(viewer).filter((role) => role !== person.role);
+  const now = placeChoice(person);
+  return invitableRoles(viewer, named).filter(
+    (choice) => !sameRoleChoice(choice, now),
+  );
 }
 
 /**
@@ -266,6 +412,8 @@ export function roleChangeClears(from: Role, to: Role): boolean {
  *               the viewer's own role included where it holds pay
  *   gone        P0002: the person is no longer on the team, or the invite is
  *               no longer open (claimed, cancelled)
+ *   roleGone    22023 with hint `archived`: the role the business named was
+ *               removed since the screen was drawn (the roles plan's R11b)
  *   yourself    22023: one's own place, or no role given
  *   lastOwner   23P01: the business would have no owner
  *   demo        55000 with hint `demo`: a demo business keeps its people
@@ -280,6 +428,7 @@ export const TEAM_CHANGE_FAILURES = [
   "beyondHeld",
   "givesPay",
   "gone",
+  "roleGone",
   "yourself",
   "lastOwner",
   "demo",
@@ -305,7 +454,7 @@ export function teamChangeFailureOf(
     case "P0002":
       return "gone";
     case "22023":
-      return "yourself";
+      return hint === "archived" ? "roleGone" : "yourself";
     case "23P01":
       return "lastOwner";
     case "55000":
@@ -341,11 +490,10 @@ export type LeftCounts = {
 /** Same limit as `profiles.full_name` in the database. */
 export const TEAM_NAME_MAX = 80;
 
-export type TeamInviteInput = {
+export type TeamInviteInput = RoleChoice & {
   name: string;
   /** Canonical E.164. */
   phone: string;
-  role: Role;
 };
 
 export type TeamInviteErrors = {
@@ -357,11 +505,14 @@ export type TeamInviteErrors = {
 /**
  * Checks the Team screen's invite form for `actor`: a name, an Israeli
  * mobile (any format; `PhoneField` already submits E.164) and a role they
- * may give (`invitableRoles`).
+ * may give (`invitableRoles`), as its key (`roleChoiceKey`): a built-in
+ * role, or the id of one of `named`, the business's live named roles, which
+ * is then given on its base.
  */
 export function parseTeamInvite(
-  input: Partial<Record<keyof TeamInviteInput, unknown>>,
+  input: Partial<Record<"name" | "phone" | "role", unknown>>,
   actor: Viewer,
+  named: readonly GivableNamedRole[] = [],
 ):
   | { ok: true; value: TeamInviteInput }
   | { ok: false; errors: TeamInviteErrors } {
@@ -369,7 +520,8 @@ export function parseTeamInvite(
   const name = text(input.name).trim().replace(/\s+/g, " ");
   const rawPhone = text(input.phone).trim();
   const phone = normalizeIsraeliMobile(rawPhone);
-  const role = text(input.role) as Role;
+  const key = text(input.role);
+  const choice = key ? roleChoiceOf(key, invitableRoles(actor, named)) : null;
   const errors: TeamInviteErrors = {};
 
   if (!name) errors.name = "required";
@@ -378,15 +530,13 @@ export function parseTeamInvite(
   if (!rawPhone) errors.phone = "required";
   else if (!phone) errors.phone = "invalid";
 
-  if (!role) errors.role = "required";
-  else if (!invitableRoles(actor).includes(role)) {
-    errors.role = "notAllowed";
-  }
+  if (!key) errors.role = "required";
+  else if (!choice) errors.role = "notAllowed";
 
-  if (errors.name || errors.phone || errors.role || !phone) {
+  if (errors.name || errors.phone || errors.role || !phone || !choice) {
     return { ok: false, errors };
   }
-  return { ok: true, value: { name, phone, role } };
+  return { ok: true, value: { name, phone, ...choice } };
 }
 
 /** One of someone's shifts, as the person's page counts what lies ahead. */

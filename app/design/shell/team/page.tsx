@@ -3,13 +3,15 @@ import { buildTeam } from "@domain/team";
 import { Suspense } from "react";
 import { TeamView } from "../../../(app)/team/team-view";
 import { baseWording } from "../../../(app)/wording";
-import { teamInvites, teamMembers, teamToday } from "../data";
+import { demoNamedRole, teamInvites, teamMembers, teamToday } from "../data";
 import { demoCancelInviteAction, demoResendAction } from "./actions";
 
 type Props = { searchParams: Promise<{ state?: string }> };
 
 // The real Team screen with mock people: three members' worth of the demo
-// staff, one open invite and one expired, seen by an owner. Inviting and
+// staff, one open invite and one expired, seen by an owner. Two of the
+// workers hold the demo's named role, and the open invite is to it, each
+// shown by its name with its base (the roles plan's R11b). Inviting and
 // new links use the demo's stand-in actions (./actions), and so does
 // deleting an invite, held for its undo. ?state=demo is a
 // demo business, closed to invites (#80): no invite, no new links, and the
@@ -39,6 +41,7 @@ async function Demo({ searchParams }: Props) {
       peopleHref="/design/shell/team"
       resend={demoResendAction}
       cancel={demoCancelInviteAction}
+      named={[demoNamedRole]}
       wording={baseWording}
     />
   );

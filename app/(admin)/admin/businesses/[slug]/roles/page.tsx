@@ -1,6 +1,10 @@
 import { getBusinessSetup } from "@db/admin";
 import { getBusinessModulesForTeam } from "@db/module-settings";
-import { getRoleMatrixForTeam, getRolePeopleForTeam } from "@db/roles";
+import {
+  getRoleInvitesForTeam,
+  getRoleMatrixForTeam,
+  getRolePeopleForTeam,
+} from "@db/roles";
 import { enabledModules, permissionInUse } from "@domain/modules";
 import { accessOrder, PAY_PERMISSION } from "@domain/payroll-access";
 import { consoleRolesAccess } from "@domain/platform";
@@ -52,10 +56,11 @@ export default async function TeamRolesPage({
   if (!business) notFound();
   const t = await getTranslations("admin.setup.people");
   // Read with the secret key, only now that they are on the team.
-  const [modules, matrix, people] = await Promise.all([
+  const [modules, matrix, people, invites] = await Promise.all([
     getBusinessModulesForTeam(business.id),
     getRoleMatrixForTeam(business.id, permissions),
     getRolePeopleForTeam(business.id),
+    getRoleInvitesForTeam(business.id),
   ]);
   const enabled = enabledModules(manifests, modules);
   const href = `/admin/businesses/${business.slug}`;
@@ -72,6 +77,8 @@ export default async function TeamRolesPage({
           role: person.role,
           namedRole: person.namedRole,
         })),
+        // An open invite to a named role still holds it back (R11b).
+        invites,
         viewOnly: may !== "change",
         documents: enabled.includes("chat"),
       })}

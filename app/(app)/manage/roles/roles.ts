@@ -1,4 +1,8 @@
-import { getRoleMatrixForOwner, getRolePeopleForOwner } from "@db/roles";
+import {
+  getRoleInvitesForOwner,
+  getRoleMatrixForOwner,
+  getRolePeopleForOwner,
+} from "@db/roles";
 import { enabledModules } from "@domain/modules";
 import { accessOrder } from "@domain/payroll-access";
 import { changesPermissions } from "@domain/role-access";
@@ -35,7 +39,8 @@ export async function rolesAccess() {
  * answers them, its named roles among them (both read with the secret key
  * once the session's person is known to be its owner), its active people by
  * role and named role with their photos (under RLS, as "מי רואה שכר" reads
- * them), by name as that screen lists them, whether pay opens anything
+ * them), by name as that screen lists them, the open invites waiting for
+ * each named role (under RLS too), whether pay opens anything
  * there, for the way to it, and whether the
  * database takes roles the business names (`addsRoles`: "הוספת תפקיד").
  * Null for anyone but an owner. `noName` names someone who gave none.
@@ -45,9 +50,11 @@ export async function currentRoles(
 ): Promise<{ data: RolesData; payAccess: boolean; addsRoles: boolean } | null> {
   const access = await rolesAccess();
   if (!access) return null;
-  const [matrix, people] = await Promise.all([
+  const [matrix, people, invites] = await Promise.all([
     getRoleMatrixForOwner(access.businessId, permissions),
     getRolePeopleForOwner(access.businessId),
+    // An open invite to a named role holds it, as its people do (R11b).
+    getRoleInvitesForOwner(access.businessId),
   ]);
   const enabled = enabledModules(manifests, access.rows);
   return {
@@ -61,6 +68,7 @@ export async function currentRoles(
         role: person.role,
         namedRole: person.namedRole,
       })),
+      invites,
       viewOnly: access.viewOnly,
       // Documents are on wherever chat is (private.documents_on).
       documents: enabled.includes("chat"),

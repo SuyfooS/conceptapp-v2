@@ -8,15 +8,24 @@ import {
   canResendInvite,
   canSeeTeam,
   countShiftsAhead,
+  type GivableNamedRole,
+  givesNamedRole,
   givesRole,
   invitableRoles,
   leavesNoOwner,
   leavesStaff,
   mayChangeRole,
+  namedRoleShown,
+  namedRolesBeyond,
   ownerOnlyRoles,
   parseTeamInvite,
+  placeChoice,
+  type RoleChoice,
   roleChangeClears,
+  roleChoiceKey,
+  roleChoiceOf,
   roleChoices,
+  sameRoleChoice,
   TEAM_CHANGE_FAILURES,
   TEAM_NAME_MAX,
   type TeamInvite,
@@ -148,20 +157,57 @@ describe("buildTeam", () => {
   });
 });
 
+/** Built-in roles as choices: no named role. */
+const builtIn = (...roles: Role[]): RoleChoice[] =>
+  roles.map((role) => ({ role, namedRole: null }));
+
+/**
+ * The business's named roles (R11b): a shift lead on workers who builds the
+ * schedule, a bar lead on workers who holds nothing owners switch, and a
+ * floor manager on managers who edits the team.
+ */
+const shiftLead: GivableNamedRole = {
+  id: "lead",
+  name: "אחראי משמרת",
+  nameEn: "Shift lead",
+  base: "worker",
+  holds: ["schedule.edit"],
+};
+const barLead: GivableNamedRole = {
+  id: "bar",
+  name: "אחראי בר",
+  nameEn: null,
+  base: "worker",
+  holds: [],
+};
+const floorManager: GivableNamedRole = {
+  id: "floor",
+  name: "מנהל רצפה",
+  nameEn: null,
+  base: "manager",
+  holds: ["team.edit", "team.view"],
+};
+const named = [shiftLead, barLead, floorManager];
+
+/** A manager as the database answers by default: building the schedule too. */
+const manager: Viewer = {
+  role: "manager",
+  perms: ["schedule.edit", "team.view", "team.edit"],
+};
+
 describe("invitableRoles", () => {
   it("lets owners give any role and managers their own and below", () => {
-    expect(invitableRoles(at("owner"))).toEqual([
-      "owner",
-      "manager",
-      "worker",
-      "accountant",
-    ]);
-    expect(invitableRoles(at("manager"))).toEqual(["manager", "worker"]);
+    expect(invitableRoles(at("owner"))).toEqual(
+      builtIn("owner", "manager", "worker", "accountant"),
+    );
+    expect(invitableRoles(at("manager"))).toEqual(builtIn("manager", "worker"));
     expect(invitableRoles(at("worker"))).toEqual([]);
   });
 
   it("keeps the accountant to owners, though an accountant ranks as a worker", () => {
-    expect(invitableRoles(at("manager"))).not.toContain("accountant");
+    expect(invitableRoles(at("manager")).map((c) => c.role)).not.toContain(
+      "accountant",
+    );
     expect(invitableRoles(at("accountant"))).toEqual([]);
   });
 
@@ -170,13 +216,140 @@ describe("invitableRoles", () => {
     // manager lowered to view, nobody.
     expect(
       invitableRoles({ role: "worker", perms: ["team.view", "team.edit"] }),
-    ).toEqual(["worker"]);
+    ).toEqual(builtIn("worker"));
     expect(invitableRoles({ role: "worker", perms: ["team.view"] })).toEqual(
       [],
     );
     expect(invitableRoles({ role: "manager", perms: ["team.view"] })).toEqual(
       [],
     );
+  });
+
+  it("offer the business's named roles after their base, to whoever gives them (R11b)", () => {
+    // An owner every one of them.
+    expect(invitableRoles(at("owner"), named).map(roleChoiceKey)).toEqual([
+      "owner",
+      "manager",
+      "floor",
+      "worker",
+      "lead",
+      "bar",
+      "accountant",
+    ]);
+    // A manager those holding nothing they don't: here every one.
+    expect(invitableRoles(manager, named)).toEqual([
+      { role: "manager", namedRole: null },
+      { role: "manager", namedRole: "floor" },
+      { role: "worker", namedRole: null },
+      { role: "worker", namedRole: "lead" },
+      { role: "worker", namedRole: "bar" },
+    ]);
+    // A manager who doesn't build the schedule: not the shift lead, who does.
+    expect(invitableRoles(at("manager"), named).map(roleChoiceKey)).toEqual([
+      "manager",
+      "floor",
+      "worker",
+      "bar",
+    ]);
+    // A worker raised to edit the team: by rank, only those on workers.
+    expect(
+      invitableRoles(
+        { role: "worker", perms: ["team.view", "team.edit", "schedule.edit"] },
+        named,
+      ).map(roleChoiceKey),
+    ).toEqual(["worker", "lead", "bar"]);
+    // Nobody who doesn't edit the team.
+    expect(invitableRoles(at("worker"), named)).toEqual([]);
+  });
+});
+
+describe("givesNamedRole", () => {
+  it("is the rank rule of its base, and nothing beyond what the giver holds", () => {
+    expect(givesNamedRole(at("owner"), shiftLead)).toBe(true);
+    expect(givesNamedRole(at("owner"), floorManager)).toBe(true);
+    expect(givesNamedRole(manager, shiftLead)).toBe(true);
+    expect(givesNamedRole(at("manager"), shiftLead)).toBe(false);
+    expect(
+      givesNamedRole(
+        { role: "worker", perms: ["team.view", "team.edit"] },
+        floorManager,
+      ),
+    ).toBe(false);
+    expect(givesNamedRole(at("worker"), barLead)).toBe(false);
+    expect(givesNamedRole(at("accountant"), barLead)).toBe(false);
+  });
+});
+
+describe("namedRolesBeyond", () => {
+  it("are the named roles on a base the viewer gives that hold what they don't", () => {
+    // A manager who doesn't build the schedule: the shift lead, who does.
+    expect(namedRolesBeyond(at("manager"), named)).toEqual([
+      { role: "worker", namedRole: "lead" },
+    ]);
+    // A worker raised to edit the team: the shift lead too, never the floor
+    // manager, whose base they don't give.
+    expect(
+      namedRolesBeyond(
+        { role: "worker", perms: ["team.view", "team.edit"] },
+        named,
+      ),
+    ).toEqual([{ role: "worker", namedRole: "lead" }]);
+    // None for an owner, for a manager who holds it all, or for anyone who
+    // doesn't edit the team.
+    expect(namedRolesBeyond(at("owner"), named)).toEqual([]);
+    expect(namedRolesBeyond(manager, named)).toEqual([]);
+    expect(namedRolesBeyond(at("worker"), named)).toEqual([]);
+  });
+});
+
+describe("namedRoleShown", () => {
+  it("keeps a named role's names and base, and leaves what it holds behind", () => {
+    expect(namedRoleShown(shiftLead)).toEqual({
+      id: "lead",
+      name: "אחראי משמרת",
+      nameEn: "Shift lead",
+      base: "worker",
+    });
+    expect(namedRoleShown(shiftLead)).not.toHaveProperty("holds");
+    expect(
+      namedRoleShown({ ...barLead, archived: true } as GivableNamedRole),
+    ).not.toHaveProperty("archived");
+  });
+});
+
+describe("role choices", () => {
+  it("carry a built-in role by its name and a named one by its id", () => {
+    const choices = invitableRoles(at("owner"), named);
+    expect(roleChoiceKey({ role: "worker", namedRole: null })).toBe("worker");
+    expect(roleChoiceKey({ role: "worker", namedRole: "lead" })).toBe("lead");
+    expect(roleChoiceOf("lead", choices)).toEqual({
+      role: "worker",
+      namedRole: "lead",
+    });
+    expect(roleChoiceOf("manager", choices)).toEqual({
+      role: "manager",
+      namedRole: null,
+    });
+    expect(roleChoiceOf("gone", choices)).toBeNull();
+    expect(
+      sameRoleChoice(
+        { role: "worker", namedRole: "lead" },
+        { role: "worker", namedRole: "lead" },
+      ),
+    ).toBe(true);
+    expect(
+      sameRoleChoice(
+        { role: "worker", namedRole: "lead" },
+        { role: "worker", namedRole: null },
+      ),
+    ).toBe(false);
+    expect(placeChoice({ userId: "p", role: "worker" })).toEqual({
+      role: "worker",
+      namedRole: null,
+    });
+    expect(
+      placeChoice({ userId: "p", role: "worker", namedRole: "bar" }),
+    ).toEqual({ role: "worker", namedRole: "bar" });
   });
 });
 
@@ -200,15 +373,33 @@ describe("givesRole", () => {
 });
 
 describe("canResendInvite", () => {
+  const to = (role: Role, namedRole: string | null = null): RoleChoice => ({
+    role,
+    namedRole,
+  });
+
   it("follows the same rule as inviting", () => {
-    expect(canResendInvite(at("owner"), "owner")).toBe(true);
-    expect(canResendInvite(at("manager"), "worker")).toBe(true);
-    expect(canResendInvite(at("manager"), "manager")).toBe(true);
-    expect(canResendInvite(at("manager"), "owner")).toBe(false);
-    expect(canResendInvite(at("worker"), "worker")).toBe(false);
-    expect(canResendInvite(at("owner"), "accountant")).toBe(true);
-    expect(canResendInvite(at("manager"), "accountant")).toBe(false);
-    expect(canResendInvite(at("accountant"), "worker")).toBe(false);
+    expect(canResendInvite(at("owner"), to("owner"))).toBe(true);
+    expect(canResendInvite(at("manager"), to("worker"))).toBe(true);
+    expect(canResendInvite(at("manager"), to("manager"))).toBe(true);
+    expect(canResendInvite(at("manager"), to("owner"))).toBe(false);
+    expect(canResendInvite(at("worker"), to("worker"))).toBe(false);
+    expect(canResendInvite(at("owner"), to("accountant"))).toBe(true);
+    expect(canResendInvite(at("manager"), to("accountant"))).toBe(false);
+    expect(canResendInvite(at("accountant"), to("worker"))).toBe(false);
+  });
+
+  it("gives an invite to a named role a new link only from whoever gives it now (R11b)", () => {
+    expect(canResendInvite(manager, to("worker", "lead"), named)).toBe(true);
+    expect(canResendInvite(at("manager"), to("worker", "lead"), named)).toBe(
+      false,
+    );
+    // Removed since: among the live ones no more.
+    expect(canResendInvite(at("owner"), to("worker", "gone"), named)).toBe(
+      false,
+    );
+    // Deleting it stays by the rank of its base.
+    expect(canCancelInvite(at("manager"), "worker")).toBe(true);
   });
 });
 
@@ -237,7 +428,36 @@ describe("parseTeamInvite", () => {
       ),
     ).toEqual({
       ok: true,
-      value: { name: "גל לוי", phone: "+972501234567", role: "worker" },
+      value: {
+        name: "גל לוי",
+        phone: "+972501234567",
+        role: "worker",
+        namedRole: null,
+      },
+    });
+  });
+
+  it("takes a named role the inviter gives by its id, on its base (R11b)", () => {
+    const base = { name: "גל", phone: "0501234567" };
+    expect(parseTeamInvite({ ...base, role: "lead" }, manager, named)).toEqual({
+      ok: true,
+      value: {
+        name: "גל",
+        phone: "+972501234567",
+        role: "worker",
+        namedRole: "lead",
+      },
+    });
+    // One they don't give, one not of the business, or none offered.
+    expect(
+      parseTeamInvite({ ...base, role: "lead" }, at("manager"), named),
+    ).toEqual({ ok: false, errors: { role: "notAllowed" } });
+    expect(
+      parseTeamInvite({ ...base, role: "elsewhere" }, at("owner"), named),
+    ).toEqual({ ok: false, errors: { role: "notAllowed" } });
+    expect(parseTeamInvite({ ...base, role: "lead" }, at("owner"))).toEqual({
+      ok: false,
+      errors: { role: "notAllowed" },
     });
   });
 
@@ -289,7 +509,12 @@ describe("parseTeamInvite", () => {
       parseTeamInvite({ ...base, role: "accountant" }, at("owner")),
     ).toEqual({
       ok: true,
-      value: { name: "גל", phone: "+972501234567", role: "accountant" },
+      value: {
+        name: "גל",
+        phone: "+972501234567",
+        role: "accountant",
+        namedRole: null,
+      },
     });
   });
 });
@@ -381,23 +606,36 @@ describe("team changes (Orel, 14 November 2026)", () => {
   });
 
   it("offer the other roles the viewer gives, and none they may not touch", () => {
-    expect(roleChoices(place("o", "owner"), place("p", "worker"))).toEqual([
-      "owner",
-      "manager",
-      "accountant",
-    ]);
-    expect(roleChoices(place("m", "manager"), place("p", "worker"))).toEqual([
-      "manager",
-    ]);
-    expect(roleChoices(place("m", "manager"), place("p", "manager"))).toEqual([
-      "worker",
-    ]);
+    expect(roleChoices(place("o", "owner"), place("p", "worker"))).toEqual(
+      builtIn("owner", "manager", "accountant"),
+    );
+    expect(roleChoices(place("m", "manager"), place("p", "worker"))).toEqual(
+      builtIn("manager"),
+    );
+    expect(roleChoices(place("m", "manager"), place("p", "manager"))).toEqual(
+      builtIn("worker"),
+    );
     expect(roleChoices(place("m", "manager"), place("p", "owner"))).toEqual([]);
     expect(
       roleChoices(place("m", "manager"), place("p", "accountant")),
     ).toEqual([]);
     expect(roleChoices(place("o", "owner"), place("o", "owner"))).toEqual([]);
     expect(roleChoices(place("w", "worker"), place("p", "worker"))).toEqual([]);
+  });
+
+  it("offer named roles too, and the person's base for someone in one (R11b)", () => {
+    const lead = { userId: "p", role: "worker" as const, namedRole: "lead" };
+    expect(
+      roleChoices({ userId: "m", ...manager }, lead, named).map(roleChoiceKey),
+    ).toEqual(["manager", "floor", "worker", "bar"]);
+    expect(
+      roleChoices(place("o", "owner"), place("p", "worker"), named).map(
+        roleChoiceKey,
+      ),
+    ).toEqual(["owner", "manager", "floor", "lead", "bar", "accountant"]);
+    // Someone in a named role the viewer doesn't give is still theirs to
+    // change, by the rank of its base.
+    expect(canRemoveMember(place("m", "manager"), lead)).toBe(true);
   });
 
   it("cancel invites by the rule of sending their link", () => {
@@ -457,6 +695,7 @@ describe("team changes (Orel, 14 November 2026)", () => {
     expect(teamChangeFailureOf("42501", "pay")).toBe("givesPay");
     expect(teamChangeFailureOf("P0002")).toBe("gone");
     expect(teamChangeFailureOf("22023")).toBe("yourself");
+    expect(teamChangeFailureOf("22023", "archived")).toBe("roleGone");
     expect(teamChangeFailureOf("23P01")).toBe("lastOwner");
     expect(teamChangeFailureOf("55000", "demo")).toBe("demo");
     expect(teamChangeFailureOf("55000", "clocked_in")).toBe("clockedIn");

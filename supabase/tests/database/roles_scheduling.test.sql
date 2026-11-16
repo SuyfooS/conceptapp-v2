@@ -590,8 +590,8 @@ select ok(
   and not has_function_privilege('authenticated', 'private.members_holding(uuid, text)', 'execute')
   and not has_function_privilege('anon', 'private.members_holding(uuid, text)', 'execute')
   and not has_function_privilege('authenticated', 'private.builds_schedule(uuid, uuid)', 'execute')
-  and not has_function_privilege('authenticated', 'private.role_holds_beyond(uuid, public.member_role, uuid)', 'execute')
-  and not has_function_privilege('anon', 'private.role_holds_beyond(uuid, public.member_role, uuid)', 'execute')
+  and not has_function_privilege('authenticated', 'private.role_holds_beyond(uuid, public.member_role, uuid, uuid)', 'execute')
+  and not has_function_privilege('anon', 'private.role_holds_beyond(uuid, public.member_role, uuid, uuid)', 'execute')
   and has_function_privilege('authenticated', 'private.businesses_holding(text)', 'execute')
   and not has_function_privilege('anon', 'private.businesses_holding(text)', 'execute')
   and not has_function_privilege('authenticated',

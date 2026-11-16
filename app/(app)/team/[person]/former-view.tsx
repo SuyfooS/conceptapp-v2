@@ -26,6 +26,11 @@ export function FormerView({
   wording: AppWording;
 }) {
   const t = translator(wording, "app.team");
+  const base = t(`roles.${former.role}`);
+  // A role the business named by its name, with its base (R11b).
+  const formerRole = former.namedRole
+    ? t("namedRole", { name: former.namedRole.name, role: base })
+    : base;
   return (
     <PageBody className="max-w-3xl">
       <EmptyState
@@ -35,7 +40,7 @@ export function FormerView({
             ? t("former.named", { name: former.name })
             : t("former.title")
         }
-        body={`${t("former.role", { role: t(`roles.${former.role}`) })}. ${t("former.body")}`}
+        body={`${t("former.role", { role: formerRole })}. ${t("former.body")}`}
       >
         <Button asChild size="lg">
           <Link href={teamHref}>{t("changes.backToTeam")}</Link>

@@ -2,7 +2,15 @@
 
 import type { Role } from "@domain/modules";
 import type { AddressForm } from "@domain/profile";
-import { type LeftCounts, leavesStaff, roleChangeClears } from "@domain/team";
+import { type NamedRole, namedRoleName } from "@domain/role-access";
+import {
+  type LeftCounts,
+  leavesStaff,
+  type RoleChoice,
+  roleChangeClears,
+  roleChoiceKey,
+  sameRoleChoice,
+} from "@domain/team";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
@@ -11,7 +19,7 @@ import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { Clock, UserMinus } from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
   createContext,
   type ReactNode,
@@ -38,12 +46,27 @@ export type MemberChangesData = {
   first: string;
   /** How the app writes about them, for the ICU `select`s. */
   form: AddressForm;
-  role: Role;
+  /** Their role, and the role the business named that they hold, if any. */
+  role: RoleChoice;
   /**
-   * The roles the viewer gives (`invitableRoles`), the person's own among
-   * them: only these can they change the person from and to.
+   * The roles the viewer gives (`invitableRoles`), built-in and named (the
+   * roles plan's R11b): only these can they change the person to. A named
+   * role they hold that the viewer doesn't give is shown too, as theirs,
+   * and a change away from it is held for its undo, as changing back would
+   * be refused.
    */
-  roles: Role[];
+  roles: RoleChoice[];
+  /**
+   * The roles the business named on a role the viewer gives that hold what
+   * they don't (`namedRolesBeyond`): shown in the sheet but not offered, as
+   * an owner's to give, as a role that holds pay is.
+   */
+  beyond: RoleChoice[];
+  /**
+   * The names of the named roles among `roles`, `beyond` and theirs; never
+   * what each holds (`namedRoleShown`).
+   */
+  namedRoles: NamedRole[];
   /**
    * The roles only an owner gives here (`ownerOnlyRoles`: those that hold
    * pay), for a viewer who isn't one: shown in the sheet but not offered,
@@ -67,7 +90,40 @@ export type MemberChangesData = {
 };
 
 /** What is held for its undo: their removal, or a role change that clears. */
-type Held = { kind: "remove" } | { kind: "role"; from: Role; to: Role };
+type Held =
+  | { kind: "remove" }
+  | { kind: "role"; from: RoleChoice; to: RoleChoice };
+
+/**
+ * The roles the sheet shows: those the viewer gives, those named on a role
+ * they give that only an owner gives (`beyond`), and the person's own where
+ * it is neither, each after the roles built on the same one.
+ */
+function shownRoles(data: MemberChangesData): RoleChoice[] {
+  const shown = [...data.roles];
+  for (const choice of [...data.beyond, data.role]) {
+    if (shown.some((given) => sameRoleChoice(given, choice))) continue;
+    const last = shown.findLastIndex((given) => given.role === choice.role);
+    shown.splice(last + 1, 0, choice);
+  }
+  return shown;
+}
+
+/** Whether changing back to `choice` would be refused: an owner's to give. */
+function ownersAlone(data: MemberChangesData, choice: RoleChoice): boolean {
+  if (choice.namedRole === null) return data.ownerOnly.includes(choice.role);
+  return !data.roles.some((given) => sameRoleChoice(given, choice));
+}
+
+/** A role's name on the screen: a named one by its own, else in the business's words. */
+function useRoleName(data: Pick<MemberChangesData, "namedRoles">) {
+  const tRoles = useTranslations("app.team.roles");
+  const locale = useLocale();
+  return (choice: RoleChoice): string => {
+    const named = data.namedRoles.find((role) => role.id === choice.namedRole);
+    return named ? namedRoleName(named, locale) : tRoles(choice.role);
+  };
+}
 
 /**
  * on: on the team as the screen shows them; sending: their removal is on its
@@ -80,7 +136,7 @@ type Undo = { message: string; run: () => void };
 type ChangesValue = {
   data: MemberChangesData;
   /** Their role as the screen shows it, a held change included. */
-  role: Role;
+  role: RoleChoice;
   phase: Phase;
   left: LeftCounts | null;
   failure: TeamChangeActionFailure | null;
@@ -91,7 +147,7 @@ type ChangesValue = {
   /** The undo of a role change, written or held. */
   roleUndo: Undo | null;
   busy: boolean;
-  choose: (to: Role) => Promise<boolean>;
+  choose: (to: RoleChoice) => Promise<boolean>;
   remove: () => void;
   undoRemoval: () => void;
   toast: { text: string; stamp: string } | null;
@@ -111,8 +167,9 @@ const settle = (run: Promise<MemberChangeResult>) =>
  * and leads back to the team. A role change that changing back can't undo
  * (`roleChangeClears`: leaving the staff, or becoming an owner; or, for
  * someone other than an owner, leaving a role that holds pay, which only an
- * owner gives back) is held the same way; any other is written at once, and
- * its undo is the change back.
+ * owner gives back, or a named role that holds more than the viewer, the
+ * roles plan's R11b) is held the same way; any other is written at once,
+ * and its undo is the change back.
  * The parts below read this state; without it they draw nothing.
  */
 export function MemberChangesState({
@@ -125,11 +182,11 @@ export function MemberChangesState({
   children: ReactNode;
 }) {
   const t = useTranslations("app.team.changes");
-  const tRoles = useTranslations("app.team.roles");
+  const roleName = useRoleName(data);
   // The role as the server has it, and as the screen shows it.
   const [seen, setSeen] = useState(data.role);
   const [role, setRole] = useState(data.role);
-  if (data.role !== seen) {
+  if (!sameRoleChoice(data.role, seen)) {
     setSeen(data.role);
     setRole(data.role);
   }
@@ -142,8 +199,6 @@ export function MemberChangesState({
   const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
     null,
   );
-
-  const roleName = (r: Role) => tRoles(r);
 
   function clearUndo() {
     if (undoTimer.current !== null) window.clearTimeout(undoTimer.current);
@@ -191,14 +246,15 @@ export function MemberChangesState({
    * else written now with the change back as its undo. Whether the sheet
    * may close.
    */
-  async function choose(to: Role): Promise<boolean> {
+  async function choose(to: RoleChoice): Promise<boolean> {
     const from = role;
-    if (to === from || busy) return to === from;
+    if (sameRoleChoice(to, from) || busy) return sameRoleChoice(to, from);
     setFailure(null);
     clearUndo();
-    // Changing back to a role that holds pay is an owner's: its undo only
-    // keeps the write from going.
-    if (roleChangeClears(from, to) || data.ownerOnly.includes(from)) {
+    // Changing back to a role that holds pay, or a named role that holds
+    // more than the viewer, is an owner's: its undo only keeps the write
+    // from going.
+    if (roleChangeClears(from.role, to.role) || ownersAlone(data, from)) {
       setRole(to);
       held.hold({ kind: "role", from, to });
       setRoleUndo({
@@ -226,7 +282,7 @@ export function MemberChangesState({
   }
 
   /** The undo of a role change already written: the change back. */
-  async function changeBack(from: Role, to: Role) {
+  async function changeBack(from: RoleChoice, to: RoleChoice) {
     clearUndo();
     setRole(from);
     const result = await settle(actions.setRole(data.personId, from, to));
@@ -294,9 +350,9 @@ export function WhileOnTeam({ children }: { children: ReactNode }) {
 export function MemberRoleRow() {
   const value = use(ChangesContext);
   const t = useTranslations("app.team.changes");
-  const tRoles = useTranslations("app.team.roles");
   const [open, setOpen] = useState(false);
-  if (!value || value.data.roles.length < 2) return null;
+  const roleName = useRoleName(value?.data ?? NO_DATA);
+  if (!value || shownRoles(value.data).length < 2) return null;
   const { role, holding, roleUndo, toast } = value;
   return (
     <div className="flex flex-col gap-2">
@@ -304,7 +360,7 @@ export function MemberRoleRow() {
       <ListGroup>
         <ListRow
           title={t("role")}
-          trailing={<span className="text-ink-2">{tRoles(role)}</span>}
+          trailing={<span className="text-ink-2">{roleName(role)}</span>}
           disabled={holding}
           onClick={() => setOpen(true)}
         />
@@ -319,13 +375,16 @@ export function MemberRoleRow() {
         closeLabel={t("close")}
       >
         {/* Mounted on each opening, so it starts from the role they have. */}
-        <RoleChoice value={value} onDone={() => setOpen(false)} />
+        <RolePicker value={value} onDone={() => setOpen(false)} />
       </Sheet>
     </div>
   );
 }
 
-function RoleChoice({
+/** For the hooks before the state is known: no roles, so nothing is drawn. */
+const NO_DATA: Pick<MemberChangesData, "namedRoles"> = { namedRoles: [] };
+
+function RolePicker({
   value,
   onDone,
 }: {
@@ -335,16 +394,26 @@ function RoleChoice({
   const t = useTranslations("app.team.changes");
   const tRoles = useTranslations("app.team.roles");
   const tHints = useTranslations("app.team.invite.roleHint");
+  const tInvite = useTranslations("app.team.invite");
   const { data, role, busy, failure } = value;
-  const [draft, setDraft] = useState<Role>(role);
+  const roleName = useRoleName(data);
+  const [draft, setDraft] = useState<RoleChoice>(role);
   const [tried, setTried] = useState(false);
   const ahead = data.ahead.shifts + data.ahead.drafts;
   // Off the staff, they could not clock out.
-  const clockBlocked = (r: Role) =>
-    data.clockedIn === true && leavesStaff(role, r);
+  const clockBlocked = (r: RoleChoice) =>
+    data.clockedIn === true && leavesStaff(role.role, r.role);
   // A role that holds pay is an owner's to give (their own one stays theirs).
-  const payBlocked = (r: Role) => r !== role && data.ownerOnly.includes(r);
-  const blocked = (r: Role) => clockBlocked(r) || payBlocked(r);
+  const payBlocked = (r: RoleChoice) =>
+    r.namedRole === null &&
+    !sameRoleChoice(r, role) &&
+    data.ownerOnly.includes(r.role);
+  // So is a named role that holds what the viewer doesn't.
+  const heldBlocked = (r: RoleChoice) =>
+    !sameRoleChoice(r, role) &&
+    data.beyond.some((owners) => sameRoleChoice(owners, r));
+  const blocked = (r: RoleChoice) =>
+    clockBlocked(r) || payBlocked(r) || heldBlocked(r);
 
   async function save() {
     setTried(true);
@@ -357,37 +426,41 @@ function RoleChoice({
         legend={t("roleSheet", { name: data.first })}
         legendClassName="sr-only"
       >
-        {data.roles.map((r) => (
+        {shownRoles(data).map((r) => (
           <ChoiceRow
-            key={r}
+            key={roleChoiceKey(r)}
             name="member-role"
-            value={r}
-            checked={draft === r}
+            value={roleChoiceKey(r)}
+            checked={sameRoleChoice(draft, r)}
             disabled={blocked(r)}
             className={blocked(r) ? "opacity-60" : undefined}
             onChange={() => {
               setDraft(r);
               setTried(false);
             }}
-            title={tRoles(r)}
+            title={roleName(r)}
             hint={
               payBlocked(r)
                 ? t("payHint")
-                : clockBlocked(r)
-                  ? t("clockedInHint")
-                  : tHints(r)
+                : heldBlocked(r)
+                  ? t("heldHint")
+                  : clockBlocked(r)
+                    ? t("clockedInHint")
+                    : r.namedRole
+                      ? tInvite("namedHint", { role: tRoles(r.role) })
+                      : tHints(r.role)
             }
           />
         ))}
       </ChoiceList>
-      {leavesStaff(role, draft) ? (
+      {leavesStaff(role.role, draft.role) ? (
         <p className="px-2 text-pretty text-base text-ink-2">
           {t("accountantNote", { count: ahead })}
           {data.clockedIn === null
             ? ` ${t("clockUnknown", { name: data.first })}`
             : null}
         </p>
-      ) : draft === "owner" && role !== "owner" ? (
+      ) : draft.role === "owner" && role.role !== "owner" ? (
         <p className="px-2 text-pretty text-base text-ink-2">
           {t("ownerNote")}
         </p>
@@ -400,7 +473,7 @@ function RoleChoice({
       <Button
         size="lg"
         loading={busy}
-        disabled={draft === role}
+        disabled={sameRoleChoice(draft, role)}
         onClick={save}
         className="w-full"
       >

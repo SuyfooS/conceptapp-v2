@@ -17,6 +17,7 @@ import {
   type RoleMatrix,
   rulesOf,
 } from "@domain/role-access";
+import type { GivableNamedRole } from "@domain/team";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "./database.types";
@@ -174,13 +175,47 @@ export async function getRoleMatrixForOwner(
   return roleMatrix(businessId, catalogue);
 }
 
+/**
+ * The business's live named roles as the team's screens give them (the
+ * roles plan's R11b): each with the permissions owners switch per role that
+ * it holds by its role, so `givesNamedRole` can say who else gives it, as
+ * `private.role_holds_beyond` does. None until the database gives them
+ * (20261115001600_named_roles_give.sql: `invites.named_role`), so a screen
+ * never offers what it can't write. What a role holds says nothing about any
+ * person: read with the secret key, as the matrix is the service role's.
+ * Callers check first that the session's person edits the business's team
+ * (`canEditTeam`).
+ */
+export async function getGivableNamedRoles(
+  businessId: string,
+): Promise<GivableNamedRole[]> {
+  const matrix = await readMatrix(businessId);
+  if (!matrix || matrix.named.length === 0) return [];
+  const { error } = await createAdminClient()
+    .from("invites")
+    .select("named_role")
+    .limit(0);
+  if (isMissingColumn(error)) return [];
+  if (error) throw error;
+  const settable = new Set(
+    matrix.keys.filter((key) => key.settable).map((key) => key.perm),
+  );
+  return matrix.named.map((role) => ({
+    id: role.id,
+    name: role.name,
+    nameEn: role.nameEn,
+    base: role.base,
+    holds: [...role.held].filter((perm) => settable.has(perm)).sort(),
+  }));
+}
+
 /** Someone active in the business, by their role and the named role they hold. */
 export type RolePeopleRow = {
   userId: string;
   name: string | null;
   photo: string | null;
   role: Role;
-  /** The role the business named that they hold (R11b gives them); null for none. */
+  /** The role the business named that they hold (from R11b); null for none. */
   namedRole: string | null;
 };
 
@@ -256,6 +291,64 @@ export async function getRolePeopleForTeam(
   businessId: string,
 ): Promise<RolePeopleRow[]> {
   return readRolePeople(createAdminClient(), businessId, false);
+}
+
+/** How many open invites name each of a business's named roles, by its id. */
+export type RoleInvites = ReadonlyMap<string, number>;
+
+/**
+ * How many invites nobody claimed, and that haven't expired, name each of
+ * the business's named roles (the roles plan's R11b), read with `supabase`:
+ * an open invite holds a role as a person does, so it can't be archived
+ * (`public.archive_business_role`, 55000 `held`), and the screen says so
+ * before it is tried. None before 20261115001600_named_roles_give.sql
+ * reaches a project, when no invite names one.
+ */
+async function readRoleInvites(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+  now: Date,
+): Promise<RoleInvites> {
+  const { data, error } = await supabase
+    .from("invites")
+    .select("named_role")
+    .eq("business_id", businessId)
+    .is("claimed_at", null)
+    .gt("expires_at", now.toISOString())
+    .not("named_role", "is", null);
+  if (isMissingColumn(error)) return new Map();
+  if (error) throw error;
+  const counts = new Map<string, number>();
+  for (const row of data) {
+    if (row.named_role) {
+      counts.set(row.named_role, (counts.get(row.named_role) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+/**
+ * The same, for the owner's "תפקידים והרשאות", under RLS as the signed-in
+ * person: whoever sees the team reads its invites (an owner always), and
+ * the team viewing the business as its owner reads them too, so no policy is
+ * widened. Callers check first that the session's person is its owner.
+ */
+export async function getRoleInvitesForOwner(
+  businessId: string,
+  now: Date = new Date(),
+): Promise<RoleInvites> {
+  return readRoleInvites(await createClient(), businessId, now);
+}
+
+/**
+ * The same, for the console's, with the secret key: the team isn't a member.
+ * Callers check first that the person is on the ConceptApp team.
+ */
+export async function getRoleInvitesForTeam(
+  businessId: string,
+  now: Date = new Date(),
+): Promise<RoleInvites> {
+  return readRoleInvites(createAdminClient(), businessId, now);
 }
 
 export type RoleWriteFailure =

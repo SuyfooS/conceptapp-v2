@@ -47,8 +47,8 @@ const shiftLead = withExtra(
 
 /**
  * The role the business named, "אחראי משמרת", built on workers, held by two
- * of its workers here. The console's twin shows it held by nobody, as every
- * named role is until R11b gives them.
+ * of its workers here, with Dana's invite to it waiting, as on the team
+ * twin. The console's twin shows it held by nobody and waited for by none.
  */
 export const demoShiftLead: EditableRole = {
   key: "shift-lead",
@@ -56,6 +56,7 @@ export const demoShiftLead: EditableRole = {
   name: "אחראי משמרת",
   nameEn: null,
   people: ["yoav", "itay"].map(person),
+  invited: 1,
   access: shiftLead,
   seesPay: false,
 };
@@ -80,6 +81,7 @@ export const demoRoles: RolesData = {
       name: null,
       nameEn: null,
       people: [person("shiran")],
+      invited: 0,
       access: defaultAccess("manager"),
       // As /design/shell/manage/access shows it: managers on.
       seesPay: true,
@@ -90,6 +92,7 @@ export const demoRoles: RolesData = {
       name: null,
       nameEn: null,
       people: ["noa", "maya", "shira", "omer"].map(person),
+      invited: 0,
       access: defaultAccess("worker"),
       seesPay: false,
     },

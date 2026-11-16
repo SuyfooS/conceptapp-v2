@@ -5,7 +5,11 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../current-wording";
 import { currentMember } from "../member";
-import { currentOwnerOnlyRoles, currentTeam } from "../team";
+import {
+  currentGivableNamedRoles,
+  currentOwnerOnlyRoles,
+  currentTeam,
+} from "../team";
 import { baseWording, translator } from "../wording";
 import { cancelInviteAction, resendInviteAction } from "./actions";
 import { TeamFreshness } from "./team-freshness";
@@ -23,16 +27,19 @@ export async function generateMetadata(): Promise<Metadata> {
 // of their reach. Someone who sees it without editing it reads it, and
 // changes nothing. A business closed to invites (a demo one) offers no
 // invite, no new link and no deleting one (#80). Someone other than an owner
-// gets no new link for an invite to a role that holds pay. Deleting is bound
-// to this business: one held past a switch is refused.
+// gets no new link for an invite to a role that holds pay, nor to a role the
+// business named that they don't give (the roles plan's R11b). Each person
+// and invite with a named role shows it by its name, with its base. Deleting
+// is bound to this business: one held past a switch is refused.
 export default async function TeamPage() {
   const member = await currentMember();
   const membership = member?.membership;
   if (!member || !membership || !canSeeTeam(membership)) notFound();
-  const [team, open, ownerOnly] = await Promise.all([
+  const [team, open, ownerOnly, named] = await Promise.all([
     currentTeam(),
     invitesOpen(membership.business.id),
     currentOwnerOnlyRoles(),
+    currentGivableNamedRoles(),
   ]);
   if (!team) notFound();
   return (
@@ -51,6 +58,7 @@ export default async function TeamPage() {
             : undefined
         }
         ownerOnly={ownerOnly}
+        named={named}
         wording={await currentWording()}
       />
     </>

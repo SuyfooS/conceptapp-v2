@@ -184,7 +184,15 @@ export function ActivityView({
     person.kind === "member"
       ? (person.name ?? t("who.noName"))
       : t(`who.${person.kind}`);
-  const roleName = (role: Role) => tRoles(role);
+  const tTeam = translator(wording, "app.team");
+  /**
+   * A role in the business's words, or a role it named by its name then,
+   * with the role it is built on (the roles plan's R11b).
+   */
+  const roleName = (role: Role, named?: string) =>
+    named
+      ? tTeam("namedRole", { name: named, role: tRoles(role) })
+      : tRoles(role);
   const names = (list: readonly string[]) =>
     format.list(list, { type: "conjunction" });
   /** Who a list went to: "to the kitchen", "to Noa", "to the workers". */
@@ -491,10 +499,12 @@ export function ActivityView({
           line.name && line.role
             ? t("actions.invite.create", {
                 name: line.name,
-                role: roleName(line.role),
+                role: roleName(line.role, line.roleName),
               })
             : line.role
-              ? t("actions.invite.createNoName", { role: roleName(line.role) })
+              ? t("actions.invite.createNoName", {
+                  role: roleName(line.role, line.roleName),
+                })
               : t("actions.invite.createPlain"),
         );
       case "invite.send":
@@ -508,16 +518,20 @@ export function ActivityView({
           line.name && line.role
             ? t("actions.invite.cancel", {
                 name: line.name,
-                role: roleName(line.role),
+                role: roleName(line.role, line.roleName),
               })
             : line.role
-              ? t("actions.invite.cancelNoName", { role: roleName(line.role) })
+              ? t("actions.invite.cancelNoName", {
+                  role: roleName(line.role, line.roleName),
+                })
               : t("actions.invite.cancelPlain"),
         );
       case "invite.claim":
         return plain(
           line.role
-            ? t("actions.invite.claim", { role: roleName(line.role) })
+            ? t("actions.invite.claim", {
+                role: roleName(line.role, line.roleName),
+              })
             : t("actions.invite.claimPlain"),
         );
       // A team change (Orel, 14 November 2026). Someone taken off the team is
@@ -530,10 +544,12 @@ export function ActivityView({
             line.person.kind === "member" && line.role
               ? t("actions.member.remove", {
                   person: who(line.person),
-                  role: roleName(line.role),
+                  role: roleName(line.role, line.roleName),
                 })
               : line.role
-                ? t("actions.member.removeRole", { role: roleName(line.role) })
+                ? t("actions.member.removeRole", {
+                    role: roleName(line.role, line.roleName),
+                  })
                 : t("actions.member.removePlain"),
           notes: leftNotes(line),
           changes: [],
@@ -545,12 +561,12 @@ export function ActivityView({
               ? line.person.kind === "member"
                 ? t("actions.member.role", {
                     person: who(line.person),
-                    role: roleName(line.role),
-                    was: roleName(line.was),
+                    role: roleName(line.role, line.roleName),
+                    was: roleName(line.was, line.wasName),
                   })
                 : t("actions.member.rolePlain", {
-                    role: roleName(line.role),
-                    was: roleName(line.was),
+                    role: roleName(line.role, line.roleName),
+                    was: roleName(line.was, line.wasName),
                   })
               : t("actions.member.roleNone"),
           notes: leftNotes(line),

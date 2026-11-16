@@ -32,7 +32,8 @@ export async function AddPersonView({
         subtitle={t("subtitle", { name })}
       />
       <InviteForm
-        roles={ROLES}
+        // The built-in roles: the console gives no role a business named.
+        roles={ROLES.map((role) => ({ role, namedRole: null }))}
         back={{ href: businessHref, label: t("back", { name }) }}
         defaultRole={defaultRole}
         invite={invite}

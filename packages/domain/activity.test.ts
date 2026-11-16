@@ -463,6 +463,72 @@ describe("buildActivity: each action", () => {
     ).toEqual({ action: "invite.claim", role: "worker" });
   });
 
+  it("reads a role the business named by its name then, on invites, role changes and removals (R11b)", () => {
+    const named = { named_role: INVITE, role_name: "אחראי משמרת" };
+    expect(
+      lineOf(
+        row("invite.create", { invite: INVITE, role: "worker", ...named }),
+      ),
+    ).toEqual({
+      action: "invite.create",
+      name: "Dana",
+      role: "worker",
+      roleName: "אחראי משמרת",
+    });
+    expect(
+      lineOf(row("invite.claim", { invite: INVITE, role: "worker", ...named })),
+    ).toEqual({
+      action: "invite.claim",
+      role: "worker",
+      roleName: "אחראי משמרת",
+    });
+    const change = lineOf(
+      row("member.role", {
+        person: NOA,
+        role: "worker",
+        was: "worker",
+        ...named,
+        was_named: GONE,
+        was_role_name: "אחראי בר",
+      }),
+    );
+    expect(change).toMatchObject({
+      action: "member.role",
+      role: "worker",
+      was: "worker",
+      roleName: "אחראי משמרת",
+      wasName: "אחראי בר",
+    });
+    // Deleting an invite to one, and taking someone in one off the team.
+    expect(
+      lineOf(
+        row("invite.cancel", { invite: INVITE, role: "worker", ...named }),
+      ),
+    ).toEqual({
+      action: "invite.cancel",
+      name: "Dana",
+      role: "worker",
+      roleName: "אחראי משמרת",
+    });
+    expect(
+      lineOf(row("member.remove", { person: NOA, role: "worker", ...named })),
+    ).toMatchObject({
+      action: "member.remove",
+      role: "worker",
+      roleName: "אחראי משמרת",
+    });
+    // A name that isn't one is no name.
+    expect(
+      lineOf(
+        row("invite.create", {
+          invite: INVITE,
+          role: "worker",
+          role_name: 7,
+        }),
+      ),
+    ).toEqual({ action: "invite.create", name: "Dana", role: "worker" });
+  });
+
   it("reads a view by the team, with its role", () => {
     expect(
       lineOf(row("view_as.start", { session: GONE, role: "manager" }, STAFF)),

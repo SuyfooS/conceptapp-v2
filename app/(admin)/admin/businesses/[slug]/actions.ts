@@ -58,7 +58,7 @@ import type { WordingSaveResult } from "./wording/wording-types";
 export type InviteLinkState =
   | {
       link?: undefined;
-      failure?: "failed" | "noPermission" | "demo" | "hasOwner";
+      failure?: "failed" | "noPermission" | "demo" | "hasOwner" | "roleGone";
     }
   | { link: string; failure?: undefined };
 

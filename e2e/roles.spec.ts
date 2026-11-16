@@ -7,6 +7,7 @@ import {
   ROLES_PEOPLE,
   rolesLogActors,
   rolesNamed,
+  rolesPlace,
   rolesRules,
   setRolesPayRole,
 } from "./db";
@@ -17,7 +18,9 @@ import { heT } from "./t";
 // answers of 15 November 2026, issue #1): only owners change what each role
 // does, every change saves at once with "ביטול" on its toast, and pay stays
 // on "מי רואה שכר". The owner also adds a role the business names (R11a),
-// which shows with nobody in it and is removed, with its undo. It
+// which shows with nobody in it and is removed, with its undo, and gives it
+// to a worker from the team screen, where the roles screen then counts them
+// (R11b). It
 // runs in a real business of its own (e2e/db.ts), every rule on its default,
 // made afresh for each test and gone after, so nothing here depends on what
 // another spec did to a demo business's rules, at every screen size.
@@ -346,15 +349,15 @@ test("the owner adds a role built on workers and copied from them, with nobody i
   );
   await expectCleanPage(page);
 
-  // The team screen gives only managers and workers until R11b: the role
-  // nobody holds leads nowhere it can't be given.
+  // Nobody holds it: it leads to the team screen, which gives it (R11b).
   await openRole(page, name, project);
   await expect(
     page
       .getByRole("main")
       .getByRole("link", { name: r.emptyRole })
-      .filter({ visible: true }),
-  ).toHaveCount(0);
+      .filter({ visible: true })
+      .last(),
+  ).toHaveAttribute("href", "/team");
 
   // Removed, and back with its undo.
   if (project === "desktop") {
@@ -396,4 +399,87 @@ test("the owner adds a role built on workers and copied from them, with nobody i
   await expect
     .poll(rolesNamed)
     .toEqual([{ name, base: "worker", archived: false, rules: 0, people: 0 }]);
+});
+
+/** The role row on a person's page, which opens the sheet. */
+const roleRow = (page: Page) =>
+  page.getByRole("button", {
+    name: new RegExp(`^${literal(he.app.team.changes.role)}`),
+  });
+
+test("the owner adds a shift lead on workers, makes a worker one from the team, and the role shows them", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(120_000);
+  const project = testInfo.project.name;
+  const name = "אחראי משמרת";
+  const sheet = r.addSheet;
+  await signIn(page, OWNER);
+  await page.goto("/manage/roles");
+  await expect(title(page, r.title)).toBeVisible();
+  await page
+    .getByRole("button", { name: r.add })
+    .filter({ visible: true })
+    .click();
+  const adding = page.getByRole("dialog", { name: sheet.title });
+  await adding.getByLabel(sheet.name).fill(name);
+  // Built on a worker, from workers' permissions, as the sheet starts.
+  await adding.getByRole("button", { name: sheet.submit }).click();
+  await expect(adding).toBeHidden();
+  await expect
+    .poll(rolesNamed)
+    .toEqual([{ name, base: "worker", archived: false, rules: 0, people: 0 }]);
+
+  // The worker's page offers it in their role's sheet, after workers.
+  await page.goto(`/team/${WORKER.id}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: WORKER.name }),
+  ).toBeVisible();
+  await expect(roleRow(page)).toContainText(roles.worker);
+  await roleRow(page).click();
+  const choosing = page.getByRole("dialog");
+  const lead = choosing.getByRole("radio", {
+    name: new RegExp(`^${literal(name)}`),
+  });
+  await expect(lead).toHaveCount(1);
+  await expect(
+    choosing.getByText(
+      heT("app.team.invite.namedHint", { role: roles.worker }),
+    ),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  await lead.check();
+  await choosing
+    .getByRole("button", { name: he.app.team.changes.roleSubmit })
+    .click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(
+    shown(
+      page,
+      heT("app.team.changes.roleChanged", { name: WORKER.name, role: name }),
+    ),
+  ).toBeVisible();
+  await expect(roleRow(page)).toContainText(name);
+  await expect
+    .poll(() => rolesPlace(WORKER.id))
+    .toEqual({ role: "worker", named: name });
+
+  // The team screen names it, with what it is built on.
+  await page.goto("/team");
+  await expect(
+    shown(page, heT("app.team.namedRole", { name, role: roles.worker })),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  // The roles screen counts them in it, and no longer among the workers.
+  await page.goto("/manage/roles");
+  await expect(roleShown(page, name, project)).toContainText(
+    heT("app.manage.roles.people", { count: 1 }),
+  );
+  await expect
+    .poll(rolesNamed)
+    .toEqual([{ name, base: "worker", archived: false, rules: 0, people: 1 }]);
+  await expect(roleShown(page, roles.worker, project)).toContainText(
+    heT("app.manage.roles.people", { count: 0 }),
+  );
 });

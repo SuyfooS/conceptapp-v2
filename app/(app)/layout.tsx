@@ -63,7 +63,7 @@ async function Shell({ children }: { children: ReactNode }) {
     return <NoBusinessScreen signOut={signOut} left={left?.name ?? null} />;
   }
 
-  const { business, role, perms } = member.membership;
+  const { business, role, perms, namedRole } = member.membership;
   const on = enabledModules(manifests, business.modules);
   const [enabled, wording, businesses, openLists, chats, left] =
     await Promise.all([
@@ -145,7 +145,8 @@ async function Shell({ children }: { children: ReactNode }) {
           businessName={business.name}
           user={{
             name,
-            role: t(`roles.${role}`),
+            // A role the business named by its own name (R11b).
+            role: namedRole?.name ?? t(`roles.${role}`),
             photo: profilePhotoSrc(member.photoPath),
             href: "/me",
           }}

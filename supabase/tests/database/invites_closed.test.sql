@@ -192,7 +192,7 @@ select ok(
 );
 select ok(
   not has_function_privilege('authenticated',
-    'public.team_invite(uuid, uuid, text, text, public.member_role, text)', 'execute')
+    'public.team_invite(uuid, uuid, text, text, public.member_role, text, uuid)', 'execute')
   and not has_function_privilege('authenticated',
     'public.admin_invite(uuid, uuid, text, text, public.member_role, text)', 'execute')
   and not has_function_privilege('authenticated', 'public.team_invite_link(uuid, uuid, text)', 'execute')
@@ -200,7 +200,7 @@ select ok(
   'nor the invite functions'
 );
 select ok(
-  not has_function_privilege('authenticated', 'private.invite_closed(uuid, public.member_role, uuid)', 'execute')
+  not has_function_privilege('authenticated', 'private.invite_closed(uuid, public.member_role, uuid, uuid)', 'execute')
   and not has_function_privilege('anon', 'private.closed_to_invites(uuid)', 'execute'),
   'the private checks are the server functions'' own'
 );

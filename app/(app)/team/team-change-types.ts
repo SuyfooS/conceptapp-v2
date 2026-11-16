@@ -1,5 +1,4 @@
-import type { Role } from "@domain/modules";
-import type { LeftCounts, TeamChangeFailure } from "@domain/team";
+import type { LeftCounts, RoleChoice, TeamChangeFailure } from "@domain/team";
 
 /**
  * Why a team change from the screens was not made: the database's refusal
@@ -33,11 +32,15 @@ export type InviteCancelResult =
  */
 export type MemberChangeActions = {
   remove: (personId: string) => Promise<MemberChangeResult>;
-  /** `seenRole`: the role the screen showed, so a change made meanwhile stays. */
+  /**
+   * `to`: a built-in role, or one the business named on its base (the roles
+   * plan's R11b); `seen`: the role and named role the screen showed, so a
+   * change made meanwhile stays.
+   */
   setRole: (
     personId: string,
-    role: Role,
-    seenRole: Role,
+    to: RoleChoice,
+    seen: RoleChoice,
   ) => Promise<MemberChangeResult>;
 };
 

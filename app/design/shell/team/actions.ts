@@ -2,9 +2,8 @@
 
 import { randomBytes } from "node:crypto";
 import { inviteLink } from "@domain/invites";
-import type { Role } from "@domain/modules";
 import type { ProfileSaveResult } from "@domain/profile";
-import { parseTeamInvite } from "@domain/team";
+import { parseTeamInvite, type RoleChoice } from "@domain/team";
 import { requestOrigin } from "@/app/origin";
 import type { InviteState, ResendState } from "../../../(app)/team/actions";
 import {
@@ -12,7 +11,7 @@ import {
   type MemberChangeResult,
   NOTHING_LEFT,
 } from "../../../(app)/team/team-change-types";
-import { shiftsAheadOf, swapsLeftOf } from "../data";
+import { demoNamedRole, shiftsAheadOf, swapsLeftOf } from "../data";
 
 // Stand-ins for the Team screen's actions on the design demo: the same
 // checks, and a link that leads nowhere. Nothing is stored.
@@ -29,7 +28,9 @@ export async function demoInviteAction(
     phone: String(form.get("phone") ?? ""),
     role: String(form.get("role") ?? ""),
   };
-  const parsed = parseTeamInvite(values, { role: "owner", perms: [] });
+  const parsed = parseTeamInvite(values, { role: "owner", perms: [] }, [
+    demoNamedRole,
+  ]);
   if (!parsed.ok) return { errors: parsed.errors, values };
   return {
     done: {
@@ -74,8 +75,8 @@ export async function demoRemoveMemberAction(
 /** Changing a role on the demo: shown at once, back as it was on reload. */
 export async function demoSetMemberRoleAction(
   _personId: string,
-  _role: Role,
-  _seenRole: Role,
+  _to: RoleChoice,
+  _seen: RoleChoice,
 ): Promise<MemberChangeResult> {
   return { ok: true, left: NOTHING_LEFT };
 }

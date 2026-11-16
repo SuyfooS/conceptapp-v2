@@ -239,8 +239,18 @@ export type ActivityLine =
       action: "invite.create" | "invite.send" | "invite.cancel";
       name: string | null;
       role: Role | null;
+      /**
+       * The role the business named that it gave, by its name then, built
+       * on `role` (the roles plan's R11b); missing for none.
+       */
+      roleName?: string;
     }
-  | { action: "invite.claim"; role: Role | null }
+  | {
+      action: "invite.claim";
+      role: Role | null;
+      /** The role the business named that they joined in, as for an invite. */
+      roleName?: string;
+    }
   | {
       /**
        * An owner or manager took someone off the team (Orel, 14 November
@@ -250,6 +260,11 @@ export type ActivityLine =
       person: ActivityPerson;
       /** The role they had. */
       role: Role | null;
+      /**
+       * The role the business named that they held, by its name then, built
+       * on `role` (the roles plan's R11b); missing for none.
+       */
+      roleName?: string;
       /** Their shifts still to start in published weeks, which came off them. */
       shifts: number;
       /** Swap requests they made on those shifts, cancelled. */
@@ -267,6 +282,13 @@ export type ActivityLine =
       role: Role | null;
       /** The role before. */
       was: Role | null;
+      /**
+       * The role the business named that they were given, and the one they
+       * left, by their names then, each built on `role` and `was` (the roles
+       * plan's R11b); missing for none.
+       */
+      roleName?: string;
+      wasName?: string;
       /** Published shifts that came off them, when they left the staff. */
       shifts: number;
       /** Swaps cancelled and swaps open again, as for a removal. */
@@ -598,13 +620,19 @@ const schemas = {
   }),
   "clock.confirm": z.object({ person: id }),
   "clock.code.locked": z.object({ person: id.optional() }),
-  invite: z.object({ invite: id, role: z.unknown().optional() }),
+  // A role the business named, by its name then (20261115001600_named_roles_give.sql).
+  invite: z.object({
+    invite: id,
+    role: z.unknown().optional(),
+    role_name: z.string().optional().catch(undefined),
+  }),
   // A team change (20261114000100_team_changes.sql): the published shifts
   // that came off the person, the swaps cancelled and those open again are
   // arrays, counted here.
   "member.remove": z.object({
     person: id,
     role: z.unknown().optional(),
+    role_name: z.string().optional().catch(undefined),
     shifts: z.array(z.unknown()).optional().catch(undefined),
     swaps: z.array(z.unknown()).optional().catch(undefined),
     reopened: z.array(z.unknown()).optional().catch(undefined),
@@ -613,11 +641,16 @@ const schemas = {
     person: id,
     role: z.unknown().optional(),
     was: z.unknown().optional(),
+    role_name: z.string().optional().catch(undefined),
+    was_role_name: z.string().optional().catch(undefined),
     shifts: z.array(z.unknown()).optional().catch(undefined),
     swaps: z.array(z.unknown()).optional().catch(undefined),
     reopened: z.array(z.unknown()).optional().catch(undefined),
   }),
-  role: z.object({ role: z.unknown().optional() }),
+  role: z.object({
+    role: z.unknown().optional(),
+    role_name: z.string().optional().catch(undefined),
+  }),
   "swap.request": z.object({ swap: id, shift: id }),
   swap: z.object({ swap: id }),
   "swap.decide": z.object({
@@ -797,6 +830,11 @@ function noteOf(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+/** A role the business named, by its name then, for a line that names one (R11b). */
+function namedOf(name: string | undefined): { roleName?: string } {
+  return name?.trim() ? { roleName: name.trim() } : {};
+}
+
 function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
   const other = { action: "other" } as const;
   const read = <S extends z.ZodType>(schema: S) => {
@@ -940,6 +978,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         action: row.action,
         name: invite?.name ?? null,
         role: roleOf(details.role) ?? invite?.role ?? null,
+        ...namedOf(details.role_name),
       };
     }
     case "member.remove": {
@@ -949,6 +988,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             action: row.action,
             person: personOf(details.person, lookups),
             role: roleOf(details.role),
+            ...namedOf(details.role_name),
             shifts: details.shifts?.length ?? 0,
             swaps: details.swaps?.length ?? 0,
             reopened: details.reopened?.length ?? 0,
@@ -963,13 +1003,26 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             person: personOf(details.person, lookups),
             role: roleOf(details.role),
             was: roleOf(details.was),
+            ...namedOf(details.role_name),
+            ...(details.was_role_name
+              ? { wasName: details.was_role_name }
+              : {}),
             shifts: details.shifts?.length ?? 0,
             swaps: details.swaps?.length ?? 0,
             reopened: details.reopened?.length ?? 0,
           }
         : other;
     }
-    case "invite.claim":
+    case "invite.claim": {
+      const details = read(schemas.role);
+      return details
+        ? {
+            action: row.action,
+            role: roleOf(details.role),
+            ...namedOf(details.role_name),
+          }
+        : other;
+    }
     case "view_as.start":
     case "view_as.end": {
       const details = read(schemas.role);

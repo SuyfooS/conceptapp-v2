@@ -2,6 +2,8 @@ import { mayClearBio } from "@domain/profile";
 import {
   canRemoveMember,
   invitableRoles,
+  namedRoleShown,
+  namedRolesBeyond,
   ownerOnlyRoles,
   type TeamActor,
 } from "@domain/team";
@@ -10,7 +12,12 @@ import { Suspense } from "react";
 import { FormerView } from "../../../../(app)/team/[person]/former-view";
 import { PersonView } from "../../../../(app)/team/[person]/person-view";
 import { baseWording } from "../../../../(app)/wording";
-import { shiftsAheadOf, teamMembers, teamProfiles } from "../../data";
+import {
+  demoNamedRole,
+  shiftsAheadOf,
+  teamMembers,
+  teamProfiles,
+} from "../../data";
 import {
   demoClearBioAction,
   demoRemoveMemberAction,
@@ -39,7 +46,11 @@ type Props = {
 // who reads the profile and changes nothing; ?as=editor: a worker raised to
 // edit it, who doesn't read the team's hours, so the page says a removal
 // waits for clocking out; ?as=manager&state=pay: the manager where managers
-// hold pay, whose role sheet shows "מנהל/ת" as the owner's to give.
+// hold pay, whose role sheet shows "מנהל/ת" as the owner's to give. Yoav
+// and Itay hold the demo's named role, shown by its name with its base, and
+// the sheet offers it after workers to whoever gives it (the roles plan's
+// R11b): the owner; the manager, who holds less than it, sees it there as
+// the owner's to give.
 export default function ShellTeamPerson(props: Props) {
   return (
     <Suspense>
@@ -55,7 +66,12 @@ async function Demo({ params, searchParams }: Props) {
   if (state === "former") {
     return (
       <FormerView
-        former={{ userId: member.userId, name: member.name, role: member.role }}
+        former={{
+          userId: member.userId,
+          name: member.name,
+          role: member.role,
+          namedRole: member.namedRole ?? null,
+        }}
         teamHref="/design/shell/team"
         wording={baseWording}
       />
@@ -89,9 +105,13 @@ async function Demo({ params, searchParams }: Props) {
       clearBio={demoClearBioAction}
       teamHref="/design/shell/team"
       changes={
-        canRemoveMember(viewer, member)
+        canRemoveMember(viewer, { userId: member.userId, role: member.role })
           ? {
-              roles: invitableRoles(viewer),
+              // The demo's named role after workers, for whoever gives it;
+              // shown, not offered, to whoever gives workers and holds less.
+              roles: invitableRoles(viewer, [demoNamedRole]),
+              beyond: namedRolesBeyond(viewer, [demoNamedRole]),
+              namedRoles: [demoNamedRole].map(namedRoleShown),
               ownerOnly: ownerOnlyRoles(
                 viewer,
                 state === "pay" ? ["manager"] : [],

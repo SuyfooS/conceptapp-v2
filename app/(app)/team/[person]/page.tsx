@@ -9,7 +9,13 @@ import {
 import { isUuid } from "@domain/activity";
 import { holdsPermission, isStaff, type Viewer } from "@domain/modules";
 import { mayClearBio } from "@domain/profile";
-import { canRemoveMember, canSeeTeam, invitableRoles } from "@domain/team";
+import {
+  canRemoveMember,
+  canSeeTeam,
+  invitableRoles,
+  namedRoleShown,
+  namedRolesBeyond,
+} from "@domain/team";
 import { canWrite } from "@domain/view-as";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
@@ -17,7 +23,7 @@ import { chatAccess } from "../../chat/chat-access";
 import { chatPaths } from "../../chat/chat-paths";
 import { currentWording } from "../../current-wording";
 import { currentMember } from "../../member";
-import { currentOwnerOnlyRoles } from "../../team";
+import { currentGivableNamedRoles, currentOwnerOnlyRoles } from "../../team";
 import { baseWording, translator } from "../../wording";
 import {
   clearBioAction,
@@ -79,12 +85,16 @@ export default async function TeamPersonPage({
     canWrite(member.viewing) &&
     canRemoveMember(
       { userId: member.userId, role: membership.role, perms: membership.perms },
-      { userId: data.userId, role: data.role },
+      {
+        userId: data.userId,
+        role: data.role,
+        namedRole: data.namedRole?.id ?? null,
+      },
     );
   const timeZone = membership.business.place.timeZone;
   let changes: PersonChanges | null = null;
   if (mayChange) {
-    const [ahead, clockedIn, ownerOnly] = await Promise.all([
+    const [ahead, clockedIn, ownerOnly, named] = await Promise.all([
       shiftsAhead(businessId, data.userId, timeZone),
       // Whether they are on the clock is the clock's to show: asked only of
       // someone who reads the team's hours (clock.edit, or pay). For anyone
@@ -97,9 +107,23 @@ export default async function TeamPersonPage({
       // The roles that hold pay, for someone other than an owner: not
       // offered, and a change away from one held for its undo.
       currentOwnerOnlyRoles(),
+      // The business's named roles: those the viewer gives are offered
+      // after their base (the roles plan's R11b).
+      currentGivableNamedRoles(),
     ]);
     changes = {
-      roles: invitableRoles(membership),
+      roles: invitableRoles(membership, named),
+      // Those on a role the viewer gives that hold what they don't: shown,
+      // not offered, as an owner's to give.
+      beyond: namedRolesBeyond(membership, named),
+      // Their names, and the person's own named role's, which the viewer
+      // may not give; what each holds stays here, for the giver's rule.
+      namedRoles: [
+        ...named,
+        ...(data.namedRole && !named.some((n) => n.id === data.namedRole?.id)
+          ? [data.namedRole]
+          : []),
+      ].map(namedRoleShown),
       ownerOnly,
       ahead,
       clockedIn,

@@ -1,7 +1,9 @@
 import type { Role } from "@domain/modules";
+import type { NamedRole } from "@domain/role-access";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import type { SignOutAction } from "@/app/sign-out-form";
+import { roleLabel } from "../team/role-label";
 import { type AppWording, translator } from "../wording";
 import {
   type AboutLock,
@@ -20,6 +22,12 @@ export type MeData = {
   /** Their photo (`profilePhotoSrc`), or null for initials. */
   photo: string | null;
   role: Role;
+  /**
+   * The role the business named that they hold, built on `role` (the roles
+   * plan's R11b): said by its name, as their colleagues read it. Null or
+   * missing for none.
+   */
+  namedRole?: Pick<NamedRole, "name"> | null;
   /** Whose colour the covers are drawn in. */
   businessName: string;
   /** The business's zone, for the month they joined. */
@@ -65,7 +73,9 @@ export async function MeView({
 }) {
   const t = translator(wording, "app");
   const format = await getFormatter();
-  const role = t(`team.roles.${data.role}`);
+  // A role the business named by its name, with its base, as the team
+  // screen says it of them (R11b).
+  const role = roleLabel(t, data.role, data.namedRole);
   const subtitle = data.since
     ? t("me.since", {
         role,

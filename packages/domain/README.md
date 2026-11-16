@@ -80,6 +80,19 @@ new name are parsed as the server takes them (`parseNewRole`,
 `parseRoleRename`, over `checkRoleName`), at most `ROLE_LIMIT` live, and
 `namedRoleName` gives the English name in English when there is one.
 
+`team.ts` gives them (R11b): a role to give is a `RoleChoice` (a built-in
+role, or a named role's id on its base; `roleChoiceKey`/`roleChoiceOf` as a
+form carries it), and `invitableRoles`, `roleChoices` and `parseTeamInvite`
+take the business's live named roles (`GivableNamedRole`: with the settable
+keys each holds by role) and offer each after its base to whoever gives it
+(`givesNamedRole`: an owner any; anyone else who edits the team one on a role
+they give by rank, holding nothing they don't, as
+`private.role_holds_beyond` says). Removing, cancelling an invite and the
+rank of a change go by the base. `namedRolesBeyond` is those on a base the
+viewer gives that hold what they don't, which the role sheet shows as an
+owner's to give, and `namedRoleShown` strips a named role to its names and
+base before it reaches a browser: what it holds is the owner's to read.
+
 `manage-access.ts` is who manages the business on /manage (the roles plan's
 R7): `manageReach` (edit at `manage.edit`, view at `manage.view`, else
 none), `settingsPermission` (the module's own edit a module's settings need

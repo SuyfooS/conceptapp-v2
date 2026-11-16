@@ -10,6 +10,7 @@ import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
 import { ProfileFrame, profileAvatarRing } from "../../me/profile-frame";
 import { type AppWording, translator } from "../../wording";
+import { roleLabel } from "../role-label";
 import type { MemberChangeActions } from "../team-change-types";
 import { BioLine, BioState, BioUndo, PersonActions } from "./bio-control";
 import {
@@ -27,7 +28,14 @@ import {
  */
 export type PersonChanges = Pick<
   MemberChangesData,
-  "roles" | "ownerOnly" | "ahead" | "clockedIn" | "clockHref" | "scheduleHref"
+  | "roles"
+  | "beyond"
+  | "namedRoles"
+  | "ownerOnly"
+  | "ahead"
+  | "clockedIn"
+  | "clockHref"
+  | "scheduleHref"
 > & { actions: MemberChangeActions };
 
 /**
@@ -83,7 +91,8 @@ export async function PersonView({
   const first = data.name ? firstNameOf(data.name) : name;
   const form = formArg(data.addressForm);
   const subtitle = t("me.since", {
-    role: t(`team.roles.${data.role}`),
+    // A role the business named by its name, with its base (R11b).
+    role: roleLabel(t, data.role, data.namedRole),
     date: format.dateTime(new Date(data.since), {
       month: "long",
       year: "numeric",
@@ -177,9 +186,14 @@ export async function PersonView({
                 name,
                 first,
                 form,
-                role: data.role,
+                role: {
+                  role: data.role,
+                  namedRole: data.namedRole?.id ?? null,
+                },
                 teamHref,
                 roles: changes.roles,
+                beyond: changes.beyond,
+                namedRoles: changes.namedRoles,
                 ownerOnly: changes.ownerOnly,
                 ahead: changes.ahead,
                 clockedIn: changes.clockedIn,

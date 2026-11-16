@@ -1048,6 +1048,64 @@ of the business the screen was drawn for. `roles_named.test.sql` covers it,
 with R1's resolver frozen and compared before any named role exists, and
 everyone's answers before and after for every membership without one.
 
+Giving a named role (`20261115001600_named_roles_give.sql`, the roles plan's
+R11b; Orel's answers of 15 and 16 November 2026: owners and the team change
+permissions, and someone other than an owner never gives a role that holds
+pay, or more than they hold). `public.invites.named_role` is the one an
+invite gives, built on its role by the same foreign key as memberships'
+(business_id, named_role, role), with memberships' two triggers on it too:
+`private.clear_named_role` leaves it behind when the invite's role changes
+to another base, and `private.refuse_archived_named_role` refuses an
+archived one (22023, hint `archived`). `public.team_invite` takes
+`invite_named` (defaulted: today's calls are unchanged; the invite's role is
+its base, 22023 hint `base` for any other); `public.set_member_role` takes
+`new_named` (a role change to a named role sets `role` to its base and
+`named_role`; to a built-in role clears it; another named role of the same
+base, or the base itself, is a change too) and `seen_named`, the named role
+the screen showed with `seen_role` (either changed meanwhile is 40001).
+`public.team_invite_link` takes nothing new: a fresh link is for the invite
+as it is. Each asks of the named role through `private.live_named_role`
+(of the business, else P0002; live, else 22023 hint `archived`; on that
+base, else 22023 hint `base`; its row locked `for key share` so an archive
+waits and then counts what was written), then the giver's rule: an owner
+gives any live one; anyone else who edits the team one whose base passes the
+rank rule (`private.gives_role`), holding by role nothing settable they don't
+(`private.role_holds_beyond(business, r, person, named)`: 42501, hint
+`held`) and never pay (`private.role_holds_pay(business, r, named)`, false
+for any named role, as R11a's trigger keeps it: 42501, hint `pay`). The logs
+name it (`invite.create`/`invite.send`, `invite.claim`, `invite.cancel`,
+`member.role` and `member.remove` add `named_role` and `role_name`, the last
+two from `public.team_invite_cancel` and `public.remove_member`, replaced for
+it; `member.role` adds the one left, `was_named` and `was_role_name`), and
+the activity log says its name with its base.
+`public.claim_invite` puts the person in the invite's named role, on a rejoin
+too, locking the role's row first; `public.invite_by_token` says its id and
+names (`named_role`, `role_name`, `role_name_en`, only for an invite that
+names one, so any other reads as before) for the join screen.
+`public.archive_business_role` counts open invites to the role (unclaimed,
+unexpired) with the people holding it (55000, hint `held`, both in the
+detail). An expired invite to a role archived since is closed
+(`private.invite_closed(business, role, inviter, named)`): the join screen
+reads it as expired, claiming it is P0002, and a fresh link for it, the
+team's (`public.issue_invite_link`) or the business's, is 22023 hint
+`archived` until the role is restored; nor is it closed any more for pay its
+base holds. The console invites to the built-in roles (`public.admin_invite`):
+its fresh invite to a number with an open one clears that one's named role.
+`@db/invites` passes `invite_named` (`inviteToTeam`), reads the names
+(`findInvite`: `namedRole`) and says a console renewal refused for a role
+archived since (`issueInviteLink`: `roleGone`), `@db/team` reads each
+member's and invite's named role with the business's roles under RLS
+(`getTeam`, `getTeamPerson`, `getFormerMember`'s `namedRole`, one role by its
+id with `namedRoleIn`; a project before the columns reads none) and passes
+`new_named`/`seen_named` (`setMemberRole`, each only when set), `@db/session`
+gives the signed-in person's own (`membership.namedRole`, for /me and the
+shell), and `@db/roles`'s `getGivableNamedRoles` gives the team's screens the
+live named roles with the settable keys each holds by role, read with the
+secret key, none until `invites.named_role` exists (the screens strip those
+keys before a browser gets them), and `getRoleInvitesForOwner` /
+`getRoleInvitesForTeam` count the open invites to each, for "תפקידים
+והרשאות". `roles_named_give.test.sql` covers it.
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for

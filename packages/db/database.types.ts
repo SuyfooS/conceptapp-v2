@@ -960,6 +960,7 @@ export type Database = {
           full_name: string | null;
           id: string;
           invited_by: string | null;
+          named_role: string | null;
           phone: string;
           role: Database["public"]["Enums"]["member_role"];
           token_hash: string;
@@ -974,6 +975,7 @@ export type Database = {
           full_name?: string | null;
           id?: string;
           invited_by?: string | null;
+          named_role?: string | null;
           phone: string;
           role?: Database["public"]["Enums"]["member_role"];
           token_hash: string;
@@ -988,6 +990,7 @@ export type Database = {
           full_name?: string | null;
           id?: string;
           invited_by?: string | null;
+          named_role?: string | null;
           phone?: string;
           role?: Database["public"]["Enums"]["member_role"];
           token_hash?: string;
@@ -1013,6 +1016,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "profiles";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "invites_named_role_fkey";
+            columns: ["business_id", "named_role", "role"];
+            isOneToOne: false;
+            referencedRelation: "business_roles";
+            referencedColumns: ["business_id", "id", "base"];
           },
         ];
       };
@@ -3558,8 +3568,10 @@ export type Database = {
           actor: string;
           at_time?: string;
           business: string;
+          new_named?: string;
           new_role: Database["public"]["Enums"]["member_role"];
           person: string;
+          seen_named?: string;
           seen_role?: Database["public"]["Enums"]["member_role"];
         };
         Returns: Json;
@@ -3682,6 +3694,7 @@ export type Database = {
           actor: string;
           business: string;
           invite_name: string;
+          invite_named?: string;
           invite_phone: string;
           invite_role: Database["public"]["Enums"]["member_role"];
           new_token_hash: string;
