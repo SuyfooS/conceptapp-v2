@@ -1,30 +1,21 @@
 "use server";
 
 import { getPlatformStaff } from "@db/admin";
+import { getBusinessModulesForTeam } from "@db/module-settings";
 import { setRoleArea } from "@db/roles";
+import { enabledModules } from "@domain/modules";
 import { consoleRolesAccess } from "@domain/platform";
 import {
-  ACCESS_AREAS,
-  ACCESS_EXTRA_KEYS,
-  ACCESS_FLOOR,
-  ACCESS_LEVELS,
   type AccessArea,
   type AreaAccess,
-  BASE_ROLES,
-  levelAtLeast,
+  areaShown,
+  parseRoleAreaChange,
 } from "@domain/role-access";
+import { manifests } from "@modules/registry";
 import { z } from "zod";
 import type { RolesResult } from "@/app/(app)/manage/roles/roles-types";
 
-const areaChange = z.object({
-  business: z.uuid(),
-  role: z.enum(BASE_ROLES),
-  area: z.enum(ACCESS_AREAS),
-  access: z.object({
-    level: z.enum(ACCESS_LEVELS),
-    extras: z.partialRecord(z.enum(ACCESS_EXTRA_KEYS), z.boolean()),
-  }),
-});
+const businessId = z.uuid();
 
 /*
  * Roles and permissions, from the console (the roles plan's R2; Orel, 15
@@ -36,7 +27,9 @@ const areaChange = z.object({
  * team member as their actor, so the business's log says the ConceptApp team
  * did it, and the database checks again that they are on the team
  * (private.check_permission_giver) and that the area is open
- * (permission_keys.settable).
+ * (permission_keys.settable). An area whose module is off is not on the
+ * screen, and is written no more than it is drawn ("closed"). The owner's own
+ * screen does the same from the app (/manage/roles, R9).
  */
 
 /**
@@ -57,7 +50,8 @@ async function rolesChanger(): Promise<
 /**
  * Someone on the team puts one area of managers or workers where the screen
  * says (a change, or the undo of one): its level, never under the area's
- * floor, and its switches. An area not open for changes writes nothing.
+ * floor, and its switches (`parseRoleAreaChange`). An area not open for
+ * changes writes nothing, nor one the business hasn't (`areaShown`).
  */
 export async function setTeamRoleAreaAction(
   business: string,
@@ -65,17 +59,19 @@ export async function setTeamRoleAreaAction(
   area: AccessArea,
   access: AreaAccess,
 ): Promise<RolesResult> {
-  const parsed = areaChange.safeParse({ business, role, area, access });
-  if (!parsed.success) return { ok: false, failure: "failed" };
-  const change = parsed.data;
-  if (!levelAtLeast(change.access.level, ACCESS_FLOOR[change.area])) {
-    return { ok: false, failure: "failed" };
-  }
+  const id = businessId.safeParse(business);
+  const change = parseRoleAreaChange({ role, area, access });
+  if (!id.success || !change) return { ok: false, failure: "failed" };
   const staff = await rolesChanger();
   if (!staff.ok) return staff;
+  // Read with the secret key, only now that they are on the team.
+  const modules = await getBusinessModulesForTeam(id.data);
+  if (!areaShown(change.area, enabledModules(manifests, modules))) {
+    return { ok: false, failure: "closed" };
+  }
   return setRoleArea(
     staff.userId,
-    change.business,
+    id.data,
     change.role,
     change.area,
     change.access,

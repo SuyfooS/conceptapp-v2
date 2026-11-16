@@ -106,7 +106,8 @@ const PAGES = [
   "/design/shell/manage/scheduling?state=module",
   "/design/shell/manage/business?state=view",
   "/design/shell/manage/departments?state=view",
-  // A manager lowered to team none (roles R6): no team row.
+  // A manager lowered to team none (roles R6): no team row, and none to the
+  // owner's roles and pay.
   "/design/shell/manage?state=noTeam",
   "/design/shell/manage/business",
   "/design/shell/manage/activity",

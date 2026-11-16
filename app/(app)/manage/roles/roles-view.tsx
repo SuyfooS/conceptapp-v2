@@ -15,6 +15,7 @@ import {
   extraOpen,
   extrasOf,
   extrasTurned,
+  heldBeyond,
   holdsExtra,
   levelChoices,
   type PlaceArea,
@@ -179,10 +180,11 @@ const markClass =
  * its own, a step in the history (`?role=`); tablet: the roles beside the
  * chosen one; desktop: every area against every role in one table, team and
  * manage as a menu in each narrow cell. Over mock data on
- * /design/shell/manage/roles; over the database's answer in the console
- * (`/admin/businesses/[slug]/roles`, R2), where an area changes only once
- * its phase opens it (`RolesArea.open`), and says so until then, and no role
- * is added yet (no `addRole`).
+ * /design/shell/manage/roles; over the database's answer for the owner
+ * (`/manage/roles`, R9) and in the console (`/admin/businesses/[slug]/roles`,
+ * R2), where an area changes only once its phase opens it
+ * (`RolesArea.open`), and says so until then, and no role is added yet (no
+ * `addRole` until R11).
  */
 export function RolesView({
   data,
@@ -253,6 +255,24 @@ export function RolesView({
   const role = chosenRole ?? roles[0] ?? null;
   const phoneRole = phoneOpen ? chosenRole : null;
   const areas = data.areas.map((area) => area.key);
+  /**
+   * Where workers hold more than managers, while managers edit the team: a
+   * manager then gives no one the worker role (`heldBeyond`; R6's rule,
+   * private.role_holds_beyond), so the managers' and the workers' areas say
+   * so, as does a line above the table.
+   */
+  const managers = roles.find((r) => r.key === "manager");
+  const workers = roles.find((r) => r.key === "worker");
+  const beyond =
+    managers && workers && managers.access.levels.team === "edit"
+      ? heldBeyond(managers.access, workers.access, areas)
+      : [];
+  const beyondNote =
+    beyond.length > 0
+      ? t("beyond", {
+          areas: format.list(beyond.map(areaName), { type: "conjunction" }),
+        })
+      : null;
 
   // The focus follows the phone's screens: to the role's title as it opens,
   // back to its row in the list as it closes (to the list's title when the
@@ -554,8 +574,14 @@ export function RolesView({
 
   /** One role's areas, a card each, and the way to its pay. */
   function roleAreas(target: EditableRole, headingLevel: 2 | 3) {
+    const between = target.key === "manager" || target.key === "worker";
     return (
       <div className="flex flex-col gap-4">
+        {beyondNote && between ? (
+          <VisibilityNote icon="lock" className="px-1">
+            {beyondNote}
+          </VisibilityNote>
+        ) : null}
         {data.areas.map((area) => (
           <AreaCard
             key={area.key}
@@ -715,17 +741,24 @@ export function RolesView({
 
       {/* Desktop: every area against every role. */}
       <div className="hidden xl:flex xl:flex-col xl:gap-8">
-        <RolesMatrix
-          data={data}
-          roles={roles}
-          disabled={disabled}
-          closedAllId={closedAllId}
-          payHref={paths.access}
-          payLink={tAccess("title")}
-          teamHref={paths.team}
-          giveLabel={giveLabel}
-          onChange={change}
-        />
+        <div className="flex flex-col gap-3">
+          {beyondNote ? (
+            <VisibilityNote icon="lock" className="max-w-2xl px-1">
+              {beyondNote}
+            </VisibilityNote>
+          ) : null}
+          <RolesMatrix
+            data={data}
+            roles={roles}
+            disabled={disabled}
+            closedAllId={closedAllId}
+            payHref={paths.access}
+            payLink={tAccess("title")}
+            teamHref={paths.team}
+            giveLabel={giveLabel}
+            onChange={change}
+          />
+        </div>
         <PageSection title={t("fixed")}>
           <ListGroup className="max-w-2xl">
             <ListRow
@@ -825,7 +858,15 @@ function AreaCard({
         <>
           <FieldRow
             label={t("levels.edit")}
-            hint={<span id={`${id}-edit`}>{t(`editHint.${key}`)}</span>}
+            hint={
+              <span id={`${id}-edit`}>
+                {t(`editHint.${key}`)}
+                {/* Pay reads every hour, at any level of the clock (R4). */}
+                {key === "time_clock" && role.seesPay ? (
+                  <span className="block">{t("payHours")}</span>
+                ) : null}
+              </span>
+            }
             // It follows the card's title, with no line between them.
             className="before:hidden"
           >
@@ -1091,7 +1132,10 @@ function RolesMatrix({
           area: head(area, t(`editHint.${key}`)),
           ...byRole((role) => {
             const level = role.access.levels[key];
-            return (
+            // Pay reads every hour, at any level of the clock (R4).
+            const payHours = key === "time_clock" && role.seesPay;
+            const payId = `${id}-${key}-${role.key}-pay`;
+            const control = (
               <div className="flex items-center gap-3">
                 <Switch
                   checked={level === "edit"}
@@ -1100,7 +1144,10 @@ function RolesMatrix({
                     area: name,
                     role: roleName(role),
                   })}
-                  aria-describedby={described(area, `${id}-${key}`)}
+                  aria-describedby={described(
+                    area,
+                    payHours ? `${id}-${key} ${payId}` : `${id}-${key}`,
+                  )}
                   onChange={(on) =>
                     onChange(
                       role,
@@ -1110,6 +1157,15 @@ function RolesMatrix({
                   }
                 />
                 <span className="text-ink-2">{t(`levels.${level}`)}</span>
+              </div>
+            );
+            if (!payHours) return control;
+            return (
+              <div className="flex flex-col gap-1 py-1">
+                {control}
+                <span id={payId} className="max-w-xs text-ink-2 text-sm">
+                  {t("payHours")}
+                </span>
               </div>
             );
           }),

@@ -13,7 +13,9 @@ import {
   areaOfExtra,
   areaOpen,
   areaPermissions,
+  areaShown,
   areaWrites,
+  changesPermissions,
   checkRoleName,
   defaultAccess,
   editedAreas,
@@ -21,11 +23,13 @@ import {
   extraOpen,
   extrasOf,
   extrasTurned,
+  heldBeyond,
   holdsExtra,
   levelChoices,
   MODULE_AREAS,
   matrixByDefault,
   PLACE_AREAS,
+  parseRoleAreaChange,
   withAreaAccess,
   withExtra,
   withLevel,
@@ -417,5 +421,139 @@ describe("role access from the database", () => {
       "team.edit",
       "team.view",
     ]);
+  });
+});
+
+describe("who changes roles, and what a change may say", () => {
+  it("is the owners' alone in the app", () => {
+    expect(changesPermissions("owner")).toBe(true);
+    for (const role of ["manager", "worker", "accountant"] as const) {
+      expect(changesPermissions(role)).toBe(false);
+    }
+  });
+
+  it("takes one area of managers or workers, with its own switches", () => {
+    const change = {
+      role: "worker",
+      area: "lists",
+      access: { level: "edit", extras: { "lists.send": true } },
+    };
+    expect(parseRoleAreaChange(change)).toEqual(change);
+    expect(
+      parseRoleAreaChange({
+        role: "manager",
+        area: "team",
+        access: { level: "none", extras: {} },
+      }),
+    ).toEqual({
+      role: "manager",
+      area: "team",
+      access: { level: "none", extras: {} },
+    });
+  });
+
+  it("refuses the fixed roles, unknown areas and levels, and other areas' switches", () => {
+    const access = { level: "edit", extras: {} };
+    for (const role of ["owner", "accountant", "shift-lead"]) {
+      expect(parseRoleAreaChange({ role, area: "lists", access })).toBeNull();
+    }
+    expect(
+      parseRoleAreaChange({ role: "worker", area: "reservations", access }),
+    ).toBeNull();
+    expect(
+      parseRoleAreaChange({
+        role: "worker",
+        area: "lists",
+        access: { level: "all", extras: {} },
+      }),
+    ).toBeNull();
+    expect(
+      parseRoleAreaChange({
+        role: "worker",
+        area: "scheduling",
+        access: { level: "edit", extras: { "lists.send": true } },
+      }),
+    ).toBeNull();
+    expect(
+      parseRoleAreaChange({
+        role: "worker",
+        area: "lists",
+        access: { level: "edit", extras: { "lists.later": true } },
+      }),
+    ).toBeNull();
+    expect(parseRoleAreaChange(null)).toBeNull();
+  });
+
+  it("never goes under an area's floor", () => {
+    for (const area of MODULE_AREAS) {
+      expect(
+        parseRoleAreaChange({
+          role: "manager",
+          area,
+          access: { level: "none", extras: {} },
+        }),
+      ).toBeNull();
+    }
+  });
+});
+
+describe("the areas a business has", () => {
+  it("has a module's area while the module is on, and team and manage always", () => {
+    const enabled = ["scheduling", "time_clock"] as const;
+    expect(ACCESS_AREAS.filter((area) => areaShown(area, enabled))).toEqual([
+      "scheduling",
+      "time_clock",
+      "team",
+      "manage",
+    ]);
+    expect(ACCESS_AREAS.filter((area) => areaShown(area, []))).toEqual([
+      "team",
+      "manage",
+    ]);
+  });
+});
+
+describe("workers above managers", () => {
+  const manager = defaultAccess("manager");
+  const worker = defaultAccess("worker");
+
+  it("is never so on the defaults", () => {
+    expect(heldBeyond(manager, worker, ACCESS_AREAS)).toEqual([]);
+    // The other way, managers hold more everywhere workers can go higher.
+    expect(heldBeyond(worker, manager, ACCESS_AREAS)).toEqual(ACCESS_AREAS);
+  });
+
+  it("names each area where workers hold a permission or a switch managers don't", () => {
+    // Managers stop sending lists; workers are raised to run them, sending
+    // with it, and to see the team screen managers were lowered out of.
+    const managers = withLevel(
+      withExtra(manager, "lists.send", false),
+      "team",
+      "none",
+    );
+    const workers = withLevel(
+      withLevel(worker, "lists", "edit"),
+      "team",
+      "view",
+    );
+    expect(heldBeyond(managers, workers, ACCESS_AREAS)).toEqual([
+      "lists",
+      "team",
+    ]);
+    // Only among the areas shown.
+    expect(heldBeyond(managers, workers, ["scheduling", "lists"])).toEqual([
+      "lists",
+    ]);
+  });
+
+  it("counts a switch only while its area is at edit", () => {
+    const managers = withLevel(manager, "scheduling", "view");
+    const workers = withExtra(worker, "schedule.publish", true);
+    expect(heldBeyond(managers, workers, ACCESS_AREAS)).toEqual([]);
+    expect(
+      heldBeyond(managers, withLevel(worker, "scheduling", "edit"), [
+        "scheduling",
+      ]),
+    ).toEqual(["scheduling"]);
   });
 });

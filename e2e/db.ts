@@ -3428,3 +3428,94 @@ export async function removeTeamChangesWorker(): Promise<void> {
   await sql`select public.remove_member(${TEAM_CHANGES_PEOPLE.owner.id}::uuid,
     ${TEAM_CHANGES_BUSINESS.id}::uuid, ${TEAM_CHANGES_PEOPLE.leaving.id}::uuid)`;
 }
+
+/**
+ * Roles and permissions, the owner's own screen (the roles plan's R9): a real
+ * business of its own, from the shop's template (scheduling, the time clock,
+ * lists and chat on), with an owner, a manager and a worker whose ids and
+ * numbers are in no other spec or pgTAP file, every rule on its default, so
+ * no spec's change to a demo business's matrix reaches it, nor its changes
+ * any other spec. Made afresh for each test, through the database functions
+ * the app uses, and gone after with its records.
+ */
+export const ROLES_BUSINESS = {
+  id: "00000000-0000-4000-b000-0000000000eb",
+  slug: "roles-e2e",
+  name: "עסק לתפקידים והרשאות",
+} as const;
+export const ROLES_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000937",
+    name: "רונית תפקידים",
+    local: "050-000-0937",
+    e164: "+972500000937",
+  },
+  manager: {
+    id: "00000000-0000-4000-a000-000000000938",
+    name: "מאיר תפקידים",
+    local: "050-000-0938",
+    e164: "+972500000938",
+  },
+  worker: {
+    id: "00000000-0000-4000-a000-000000000939",
+    name: "נועה תפקידים",
+    local: "050-000-0939",
+    e164: "+972500000939",
+  },
+} as const;
+
+export async function openRolesBusiness(): Promise<void> {
+  const business = ROLES_BUSINESS;
+  const people = Object.values(ROLES_PEOPLE);
+  await closeRolesBusiness();
+  await ensureLogins(people);
+  await sql`delete from public.push_subscriptions
+    where user_id in ${sql(people.map((p) => p.id))}`;
+  await sql`insert into public.businesses (id, slug, name)
+    values (${business.id}, ${business.slug}, ${business.name})`;
+  await sql`select public.apply_template(${business.id}, 'retail')`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${business.id}, ${ROLES_PEOPLE.owner.id}, 'owner'),
+      (${business.id}, ${ROLES_PEOPLE.manager.id}, 'manager'),
+      (${business.id}, ${ROLES_PEOPLE.worker.id}, 'worker')`;
+}
+
+/** Forget the business, when the test is done. */
+export async function closeRolesBusiness(): Promise<void> {
+  await deleteRealBusiness(ROLES_BUSINESS.id);
+}
+
+/**
+ * Whether everyone in a role of the business sees pay, as its owner switches
+ * it on "מי רואה שכר", through the same database function the app uses.
+ */
+export async function setRolesPayRole(
+  role: "manager" | "worker",
+  granted: boolean,
+): Promise<void> {
+  await sql`select public.set_role_permission(${ROLES_PEOPLE.owner.id}::uuid,
+    ${ROLES_BUSINESS.id}::uuid, ${role}, 'clock.payroll', ${granted})`;
+}
+
+export type RoleRule = { role: string; perm: string; allowed: boolean };
+
+/**
+ * The business's own rules for its managers and workers, pay apart, by role
+ * and key: what the screen's changes wrote (a rule back on its default has
+ * no row).
+ */
+export async function rolesRules(): Promise<RoleRule[]> {
+  return await sql<RoleRule[]>`
+    select role::text as role, perm, allowed from public.role_permissions
+    where business_id = ${ROLES_BUSINESS.id} and perm <> 'clock.payroll'
+    order by role, perm`;
+}
+
+/** Who switched a role's permission in the business, oldest first. */
+export async function rolesLogActors(): Promise<(string | null)[]> {
+  const rows = await sql<{ actor: string | null }[]>`
+    select actor_id::text as actor from public.audit_log
+    where business_id = ${ROLES_BUSINESS.id} and action = 'role.permission'
+    order by created_at, id`;
+  return rows.map((row) => row.actor);
+}

@@ -17,13 +17,16 @@ import { getPayRolesForTeam } from "./payroll";
 import { createAdminClient } from "./supabase/admin";
 
 /*
- * Roles and permissions by module (the roles plan's R2). What a business's
- * managers and workers hold, read with the secret key for the console
+ * Roles and permissions by module (the roles plan's R2 and R9). What a
+ * business's managers and workers hold, read with the secret key
  * (`public.role_permission_matrix`), and the per-role switches of one area
  * (`public.set_role_permissions`, each as `public.set_role_permission`),
  * written for `actor`, whom the database checks is an owner of the business
- * or on the ConceptApp team. Callers check first that the person is on the
- * team (`consoleRolesAccess`), as the console's "מי רואה שכר" does.
+ * or on the ConceptApp team. Callers check that person first: the console
+ * that they are on the team (`consoleRolesAccess`), as its "מי רואה שכר"
+ * does; the owner's screen in the app (/manage/roles) that the session's
+ * person is an owner of the business (`changesPermissions`), or the team
+ * viewing it as one, which reads and never writes.
  */
 
 // Generated types lose nullability for function results, so the rows are
@@ -76,18 +79,44 @@ async function readMatrix(businessId: string): Promise<RoleMatrix | null> {
 }
 
 /**
- * What the business's managers and workers hold, for the console's
- * "תפקידים והרשאות": the database's answer, or, before its migration, the
- * declarations' defaults with the business's pay rows, nothing open for
- * changes (`matrixByDefault`).
+ * What the business's managers and workers hold: the database's answer, or,
+ * before its migration, the declarations' defaults with the business's pay
+ * rows, nothing open for changes (`matrixByDefault`). Read with the secret
+ * key, as the function is the service role's alone.
  */
-export async function getRoleMatrixForTeam(
+async function roleMatrix(
   businessId: string,
   catalogue: readonly PermissionEntry[],
 ): Promise<RoleMatrix> {
   const matrix = await readMatrix(businessId);
   if (matrix) return matrix;
   return matrixByDefault(catalogue, await getPayRolesForTeam(businessId));
+}
+
+/**
+ * The matrix for the console's "תפקידים והרשאות". Callers check first that
+ * the person is on the ConceptApp team (`consoleRolesAccess`).
+ */
+export async function getRoleMatrixForTeam(
+  businessId: string,
+  catalogue: readonly PermissionEntry[],
+): Promise<RoleMatrix> {
+  return roleMatrix(businessId, catalogue);
+}
+
+/**
+ * The same, for the owner's own "תפקידים והרשאות" (/manage/roles, the roles
+ * plan's R9): what the business's roles hold says nothing about any person,
+ * and the owner already reads the rules it comes from (the
+ * `public.role_permissions` policy), so no policy is widened for it. Callers
+ * check first, from the session, that the person is an owner of this
+ * business, or the team viewing it as one (`changesPermissions`).
+ */
+export async function getRoleMatrixForOwner(
+  businessId: string,
+  catalogue: readonly PermissionEntry[],
+): Promise<RoleMatrix> {
+  return roleMatrix(businessId, catalogue);
 }
 
 export type RoleWriteFailure = "noAccess" | "closed" | "requires" | "failed";

@@ -2684,7 +2684,7 @@
         },
         "levelHint": {
           "team": {
-            "edit": "They see the team screen, invite people, change roles and take people off the team, up to their own rank. Only an owner gives a role that sees pay.",
+            "edit": "They see the team screen, invite people, change roles and take people off the team. A manager does this for managers and workers, a worker only for workers. Only an owner gives a role that sees pay, or one that holds more than they do.",
             "view": "They see the team screen: phone numbers, young workers' details and invites waiting. No inviting or changing.",
             "none": "No team screen. Everyone's names are seen by all in the business anyway."
           },
@@ -2723,6 +2723,8 @@
           }
         },
         "needsEdit": "Only with edit",
+        "payHours": "This role sees pay, so even without edit they see everyone's hours on the Hours for payroll screen, without correcting them.",
+        "beyond": "Workers now hold more than managers in {areas}, so managers don't invite workers or make anyone a worker. Only an owner does.",
         "closed": "This area isn't open for changes yet.",
         "editLabel": "Edit, {area}, {role}",
         "extraLabel": "{extra}, {role}",
@@ -2778,6 +2780,7 @@
           "viewOnly": "While viewing, permissions can't be changed.",
           "closed": "This area isn't open for changes yet, so the change wasn't saved.",
           "requires": "The role needs edit in this area first, so the change wasn't saved.",
+          "businessChanged": "You moved to another business in the meantime, so the change wasn't saved. Reload the screen.",
           "failed": "The change wasn't saved. Check the connection and try again."
         }
       },
