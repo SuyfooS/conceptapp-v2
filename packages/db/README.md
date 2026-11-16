@@ -1258,6 +1258,43 @@ reset) is skipped, and a failure is a warning, never what stops the change.
 No function is replaced. `lists_department_lines.test.sql` covers it (12, ids
 d5…, numbers 050-088-xxxx).
 
+Each item's history (`20261116000200_list_history.sql`, the L6 plan's L6a;
+Orel, 16 November 2026). `public.list_item_changes` keeps one row per real
+change of a list item, oldest first by (`changed_at`, `id`, an identity): who
+(`changed_by`, on delete set null) and when, which of checked, given, reading,
+answer, comment and photo changed (`changed`), and the item after it, held to
+`list_items`' own checks. Earlier answers and comments stay in the rows
+before (Orel's default on the plan's Q3); `photo` says only whether it had
+one, since a replaced file is deleted at once. A key on `list_items` (`id`,
+`list_id`, `business_id`) keeps each row on an item of its own list and
+business, and the row goes with it (cascade). `public.list_reopens` keeps the
+close each reopen undid (`was`, finished or cancelled, `was_by`, `was_at`) and
+who opened it again and when, as `public.reopen_list` nulls it on the list.
+Both follow their list (the policies "changes follow their list" and "reopens
+follow their list": whoever reads the list, which is the audience of the done
+line) and are select only: nothing writes them but the functions below, not
+even the service role, and `private.refuse_history_change()` before update
+(42501) lets through only its person columns going to null, an account
+deleted; rows go only with their list. `private.record_item_change(item_before,
+item_after, actor, at_time)` writes a row when a field differs (the photo by
+its path). `public.set_list_item` (same signature and grants) writes nothing
+for a save that changes nothing, and moves `done_by` and `done_at` only with
+the item's value (checked, given, reading, answer): a comment alone, or the
+same value again, keeps who did it; clearing nulls them, and a photo item
+keeps them, as before. `public.set_list_item_photo` records each photo set,
+replaced or removed (the daily clean-up none), and `public.reopen_list`
+writes its `list_reopens` row first. `private.backfill_list_item_changes()`
+gave every item already done one row, by `done_by` at `done_at`, naming its
+result's fields, its comment kept but not named. The history tells nobody of
+its own: it adds no log row and no line. A reading a change puts out of its
+range still writes `lists.out_of_range` and tells those who run the lists, as
+before, a second person's change included. `@db/lists` `getList` reads both
+under RLS, the newest 900 rows of each, oldest first (`ListDetail.changes`
+and `.reopens`, each row checked by `@db/list-history`): the API answers at
+most 1000 rows and would drop the newest, so a list changed more than that
+loses only its oldest. None before the migration, so a list still opens.
+`list_history.test.sql` covers it (54, ids b1…, numbers 050-052-xxxx).
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for

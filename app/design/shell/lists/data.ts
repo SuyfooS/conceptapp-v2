@@ -11,6 +11,7 @@ import {
   isOutOfRange,
   type ListDetail,
   type ListItem,
+  type ListItemChange,
   type ListSchedule,
   type ListSummary,
   type ListTemplate,
@@ -126,12 +127,19 @@ const done = (by: string, at: string) => ({
 });
 
 const list = (
-  fields: Omit<ListDetail, "progress" | "passes" | "shift" | "origin"> &
+  fields: Omit<
+    ListDetail,
+    "progress" | "passes" | "shift" | "origin" | "changes" | "reopens"
+  > &
     Partial<Pick<ListDetail, "origin">>,
 ): ListDetail => ({
   origin: "sent",
   shift: null,
   passes: [],
+  // Each item's history (L6a) is in `withHistory`, for `?state=history`;
+  // otherwise an item done reads as done once, by whoever did it.
+  changes: [],
+  reopens: [],
   ...fields,
   progress: listProgress(fields.items),
 });
@@ -482,6 +490,8 @@ const summaryOf = ({
   shift: _shift,
   items: _items,
   passes: _passes,
+  changes: _changes,
+  reopens: _reopens,
   ...summary
 }: ListDetail): ListSummary => summary;
 
@@ -745,21 +755,154 @@ function withPhotoState(list: ListDetail, state: DemoPhotoState): ListDetail {
   };
 }
 
+/** A change of an item on the demo (L6a), with the item as it left it. */
+const change = (
+  id: string,
+  itemId: string,
+  by: string,
+  at: string,
+  changed: ListItemChange["changed"],
+  values: Partial<ListItemChange> = {},
+): ListItemChange => ({
+  id,
+  itemId,
+  by,
+  at,
+  changed,
+  checked: false,
+  given: null,
+  reading: null,
+  answer: null,
+  comment: null,
+  photo: false,
+  done: false,
+  ...values,
+});
+
+const FRIDGE_NOTE = "הדלת נשארה פתוחה, בודקים שוב בעשר";
+
+/**
+ * Each item's story on the demo (L6a, `?state=history`). On the kitchen's
+ * opening, Noa wrote 4°C on the fridge at 07:42, Itay changed it to 6°C at
+ * 08:02 and added a note at 08:05; Noa wrote a note on the preparations
+ * without ticking them; and Omer's tick of the surfaces Itay took back at
+ * 08:08. The weekly cleaning Noa closed at 07:16, Shiran opened it again at
+ * 07:17 for its photo, and Itay took it and closed it at 07:20.
+ */
+function withHistory(list: ListDetail): ListDetail {
+  if (list.id === "list-kitchen-opening") {
+    return {
+      ...list,
+      items: list.items.map((i) =>
+        i.id === "kitchen-fridge"
+          ? {
+              ...i,
+              reading: 6,
+              comment: FRIDGE_NOTE,
+              ...done("itay", "2026-11-03T06:02:00.000Z"),
+            }
+          : i,
+      ),
+      changes: [
+        change(
+          "ch-fridge-1",
+          "kitchen-fridge",
+          "noa",
+          "2026-11-03T05:42:00.000Z",
+          ["reading"],
+          { reading: 4, done: true },
+        ),
+        change(
+          "ch-dates-1",
+          "kitchen-dates",
+          "noa",
+          "2026-11-03T05:47:00.000Z",
+          ["checked"],
+          { checked: true, done: true },
+        ),
+        change(
+          "ch-surfaces-1",
+          "kitchen-surfaces",
+          "omer",
+          "2026-11-03T05:50:00.000Z",
+          ["checked"],
+          { checked: true, done: true },
+        ),
+        change(
+          "ch-preps-1",
+          "kitchen-preps",
+          "noa",
+          "2026-11-03T05:52:00.000Z",
+          ["comment"],
+          { comment: "חסר בצל, הזמנתי" },
+        ),
+        change(
+          "ch-fridge-2",
+          "kitchen-fridge",
+          "itay",
+          "2026-11-03T06:02:00.000Z",
+          ["reading"],
+          { reading: 6, done: true },
+        ),
+        change(
+          "ch-fridge-3",
+          "kitchen-fridge",
+          "itay",
+          "2026-11-03T06:05:00.000Z",
+          ["comment"],
+          { reading: 6, comment: FRIDGE_NOTE, done: true },
+        ),
+        change(
+          "ch-surfaces-2",
+          "kitchen-surfaces",
+          "itay",
+          "2026-11-03T06:08:00.000Z",
+          ["checked"],
+        ),
+      ],
+    };
+  }
+  if (list.id === "list-weekly-cleaning") {
+    return {
+      ...list,
+      finishedBy: "itay",
+      items: list.items.map((i) =>
+        i.id === "weekly-photo"
+          ? { ...i, ...done("itay", "2026-11-03T05:18:00.000Z") }
+          : i,
+      ),
+      reopens: [
+        {
+          id: "reopen-weekly",
+          reopenedBy: "shiran",
+          reopenedAt: "2026-11-03T05:17:00.000Z",
+          was: "finished",
+          wasBy: "noa",
+          wasAt: "2026-11-03T05:16:00.000Z",
+        },
+      ],
+    };
+  }
+  return list;
+}
+
 /**
  * One list on its screen, as Shiran reads it; `finished` just now by her,
  * `passed` the bar's order passed back from the storeroom, `photos` one of
- * its photo states (`DemoPhotoState`).
+ * its photo states (`DemoPhotoState`), `history` with its items' stories
+ * (`withHistory`).
  */
 export function demoListScreen(
   id: string,
   finished: boolean,
   passed = false,
   photos: DemoPhotoState | null = null,
+  history = false,
 ): ListScreenData | null {
   const listed = [...demoLists, ...demoEarlierLists].find((l) => l.id === id);
   if (!listed) return null;
-  const read =
-    passed && listed.fromDepartment !== null ? passedBack(listed) : listed;
+  const told = history ? withHistory(listed) : listed;
+  const read = passed && told.fromDepartment !== null ? passedBack(told) : told;
   const found =
     photos && read.items.some((i) => i.kind === "photo")
       ? withPhotoState(read, photos)

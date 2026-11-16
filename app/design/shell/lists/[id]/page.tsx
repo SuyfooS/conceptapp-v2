@@ -35,7 +35,9 @@ const photoState = (state: string | undefined): DemoPhotoState | null =>
 // the bar, with a note (L5). For a list with a photo item, the weekly
 // cleaning (L6): `?state=photo` as just opened, its photo still to take or
 // choose; `?state=demo` the same in a demo business, which takes none;
-// `?state=gone` as it was, its photo no longer kept.
+// `?state=gone` as it was, its photo no longer kept. `?state=history` (L6a)
+// with its items' stories: the kitchen's opening, whose fridge reading Itay
+// changed after Noa, and the weekly cleaning, opened again and closed.
 export default function ShellList({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -51,6 +53,7 @@ async function Demo({ params, searchParams }: Props) {
     state === "finished",
     state === "passed",
     photoState(state),
+    state === "history",
   );
   if (!data) notFound();
   return (

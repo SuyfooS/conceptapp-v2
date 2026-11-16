@@ -38,6 +38,12 @@ import { BASE_ROLES, type NamedRole } from "@domain/role-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "./database.types";
+import {
+  CHANGE_COLUMNS,
+  changesOf,
+  REOPEN_COLUMNS,
+  reopensOf,
+} from "./list-history";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createAdminClient } from "./supabase/admin";
@@ -450,12 +456,74 @@ async function itemRows(supabase: Supabase, listId: string) {
   };
 }
 
-/** One list with its items and passes, if the person may read it. */
+/**
+ * Rows of a table of each item's history: none where its migration hasn't
+ * reached the project yet.
+ */
+function historyRows<T>(read: {
+  data: T[] | null;
+  error: { code?: string; message: string } | null;
+}): T[] {
+  if (read.error) {
+    if (isMissingTable(read.error)) return [];
+    throw read.error;
+  }
+  return read.data ?? [];
+}
+
+/**
+ * At most this many of a list's changes, and of its reopens, are read: the
+ * newest. The API answers at most 1000 rows (`max_rows` in
+ * supabase/config.toml, as on the hosted project) and would cut the newest
+ * ones silently, so the read asks for fewer, newest first, and a list
+ * changed more often than this (a tick taken back and given again all day)
+ * loses only its oldest changes. An item whose first change read isn't its
+ * first is said from there, as written then.
+ */
+const HISTORY_ROWS = 900;
+
+/**
+ * What happened to a list's items, oldest first (those of one moment, the
+ * demo seed's, as they were made), and the closes its reopens undid (L6a),
+ * under RLS: the newest `HISTORY_ROWS` of each. None where
+ * 20261116000200_list_history.sql hasn't reached the project yet: the list
+ * still opens, with no history.
+ */
+async function historyOf(
+  supabase: Supabase,
+  listId: string,
+): Promise<Pick<ListDetail, "changes" | "reopens">> {
+  const [changes, reopens] = await Promise.all([
+    supabase
+      .from("list_item_changes")
+      .select(CHANGE_COLUMNS)
+      .eq("list_id", listId)
+      .order("changed_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(HISTORY_ROWS),
+    supabase
+      .from("list_reopens")
+      .select(REOPEN_COLUMNS)
+      .eq("list_id", listId)
+      .order("reopened_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(HISTORY_ROWS),
+  ]);
+  return {
+    changes: changesOf(historyRows(changes).reverse()),
+    reopens: reopensOf(historyRows(reopens).reverse()),
+  };
+}
+
+/**
+ * One list with its items, passes and history (L6a: what happened to each
+ * item, and the closes its reopens undid), if the person may read it.
+ */
 export async function getList(
   listId: string,
 ): Promise<ListDetail | null | "notYet"> {
   const supabase = await createClient();
-  const [list, items, people, passes, named] = await Promise.all([
+  const [list, items, people, passes, named, history] = await Promise.all([
     supabase
       .from("lists")
       .select(`${LIST_COLUMNS}, note, asks_quantities, shift`)
@@ -475,6 +543,7 @@ export async function getList(
         .eq("id", listId)
         .not("recipient_named_role", "is", null),
     ),
+    historyOf(supabase, listId),
   ]);
   for (const { error } of [list, items, people, passes]) {
     if (error) {
@@ -528,6 +597,7 @@ export async function getList(
     shift: shift.success ? (shift.data satisfies ListShift) : null,
     items: itemList,
     passes: passList,
+    ...history,
   };
 }
 

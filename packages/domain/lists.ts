@@ -823,6 +823,54 @@ export type ListPass = {
   note: string | null;
 };
 
+/**
+ * The fields an item's history names (L6a): its result's own (a tick, how
+ * many were given, a reading, an answer), its comment and its photo.
+ */
+export const ITEM_FIELDS = [
+  "checked",
+  "given",
+  "reading",
+  "answer",
+  "comment",
+  "photo",
+] as const;
+export type ItemField = (typeof ITEM_FIELDS)[number];
+
+/**
+ * One real change of an item (L6a, `public.list_item_changes`): who made it
+ * and when, which fields it changed, and the item after it. Earlier answers
+ * and comments are in the rows before it; an earlier photo is not kept, only
+ * that there was one.
+ */
+export type ListItemChange = {
+  /** The row's id; the screen's own changes, until it is read again, have theirs. */
+  id: string;
+  itemId: string;
+  by: string | null;
+  at: string;
+  changed: ItemField[];
+  checked: boolean;
+  given: number | null;
+  reading: number | null;
+  answer: string | null;
+  comment: string | null;
+  /** Whether it has a photo. */
+  photo: boolean;
+  done: boolean;
+};
+
+/** A close that a reopen undid (L6a, `public.list_reopens`), and the reopen. */
+export type ListReopen = {
+  id: string;
+  reopenedBy: string | null;
+  reopenedAt: string;
+  /** How it was closed, by whom and when. */
+  was: "finished" | "cancelled";
+  wasBy: string | null;
+  wasAt: string;
+};
+
 /** One list with everything on its screen. */
 export type ListDetail = ListSummary & {
   note: string | null;
@@ -830,6 +878,13 @@ export type ListDetail = ListSummary & {
   shift: ListShift | null;
   items: ListItem[];
   passes: ListPass[];
+  /**
+   * What happened to its items, oldest first (L6a); none before the
+   * migration reaches the project.
+   */
+  changes: ListItemChange[];
+  /** The closes its reopens undid, oldest first (L6a). */
+  reopens: ListReopen[];
 };
 
 export type TemplateItem = {
@@ -887,6 +942,345 @@ export type Reading = {
   doneBy: string | null;
   outOfRange: boolean;
 };
+
+/*
+ * Each item's history (L6a): who ticked, who changed what, and when, read
+ * from its changes (`ListItemChange`), and how a list closed and opened
+ * again (`ListReopen`). Everyone who reads the list reads them.
+ */
+
+/** Within this, one person's changes to one item read as one. */
+export const HISTORY_FOLD_MINUTES = 2;
+
+/** What a change did to one field, as an item's history says it. */
+export type HistoryPart =
+  /** Ticked, or the tick taken back (an order's too). */
+  | { field: "checked"; on: boolean }
+  /** An order's count given; a tick on an order says it this way. */
+  | { field: "given"; given: number }
+  /** A reading written (from null), changed, or cleared (to null). */
+  | { field: "reading"; from: number | null; to: number | null }
+  /** An answer or a comment written, changed or removed. */
+  | { field: "answer" | "comment"; from: string | null; to: string | null }
+  /** Only that there was a photo is kept, so a replaced one is just "replaced". */
+  | { field: "photo"; photo: "added" | "replaced" | "removed" };
+
+/** One entry of an item's history: one person's change, or a run of them. */
+export type HistoryEntry = {
+  /** Its last change's id. */
+  key: string;
+  by: string | null;
+  at: string;
+  /** What changed, its result first and its comment last; never empty. */
+  parts: HistoryPart[];
+};
+
+type ItemValues = Pick<
+  ListItemChange,
+  "checked" | "given" | "reading" | "answer" | "comment" | "photo"
+>;
+
+/**
+ * The fields of an item's value, which move who did it and when
+ * (`set_list_item`); a photo item's photo says itself.
+ */
+const VALUE_FIELDS: ReadonlySet<ItemField> = new Set<ItemField>([
+  "checked",
+  "given",
+  "reading",
+  "answer",
+]);
+
+/** An item as it is made: nothing done, nothing written. */
+const NOTHING_YET: ItemValues = {
+  checked: false,
+  given: null,
+  reading: null,
+  answer: null,
+  comment: null,
+  photo: false,
+};
+
+const valuesOf = (item: ListItem): ItemValues => ({
+  checked: item.checked,
+  given: item.given,
+  reading: item.reading,
+  answer: item.answer,
+  comment: item.comment,
+  // One the clean-up removed was still there.
+  photo: item.photo !== null || item.photoRemoved,
+});
+
+/** What changed from one state of an item to another, among the fields named. */
+function partsBetween(
+  before: ItemValues,
+  after: ItemValues,
+  named: ReadonlySet<ItemField>,
+): HistoryPart[] {
+  const moved = (field: Exclude<ItemField, "photo">) =>
+    named.has(field) && before[field] !== after[field];
+  const parts: HistoryPart[] = [];
+  // On an order, a tick gives a count, and the count says it.
+  const given = moved("given") ? after.given : null;
+  if (given !== null) parts.push({ field: "given", given });
+  if (moved("checked") && !(given !== null && after.checked)) {
+    parts.push({ field: "checked", on: after.checked });
+  }
+  if (moved("reading")) {
+    parts.push({ field: "reading", from: before.reading, to: after.reading });
+  }
+  if (moved("answer")) {
+    parts.push({ field: "answer", from: before.answer, to: after.answer });
+  }
+  if (named.has("photo") && (before.photo || after.photo)) {
+    parts.push({
+      field: "photo",
+      photo: !before.photo ? "added" : after.photo ? "replaced" : "removed",
+    });
+  }
+  if (moved("comment")) {
+    parts.push({ field: "comment", from: before.comment, to: after.comment });
+  }
+  return parts;
+}
+
+/**
+ * The change an item done before its history began stands for, as the
+ * migration's backfill writes it (`private.backfill_list_item_changes`): by
+ * whoever did it, when, naming its result's fields. Its comment is kept but
+ * not named, since who wrote it is unknown. Null for an item not done.
+ */
+export function doneChangeOf(item: ListItem): ListItemChange | null {
+  if (!item.done || item.doneAt === null) return null;
+  const values = valuesOf(item);
+  const changed = ITEM_FIELDS.filter((field) =>
+    field === "comment"
+      ? false
+      : field === "checked" || field === "photo"
+        ? values[field]
+        : values[field] !== null,
+  );
+  if (changed.length === 0) return null;
+  return {
+    id: `done:${item.id}`,
+    itemId: item.id,
+    by: item.doneBy,
+    at: item.doneAt,
+    changed,
+    ...values,
+    done: true,
+  };
+}
+
+/** A change by the same person shortly after the one before it, read as one. */
+function foldsInto(change: ListItemChange, last: ListItemChange): boolean {
+  if (change.by === null || change.by !== last.by) return false;
+  const gap = Date.parse(change.at) - Date.parse(last.at);
+  return gap >= 0 && gap <= HISTORY_FOLD_MINUTES * 60_000;
+}
+
+/**
+ * An item's history, oldest first, from the list's changes (oldest first, as
+ * they are read). Each change is compared with the one before it, the first
+ * with an item as it is made. One person's changes within
+ * `HISTORY_FOLD_MINUTES` of each other are one entry, from the item before
+ * them to the item after them. One that ends where it began says nothing when
+ * it leaves the item undone (a tick taken back at once) or touched only its
+ * comment; one that leaves it done with the value it had (someone else's tick
+ * taken back and given again, a reading changed and put back) made it theirs,
+ * from then (`done_by`, `done_at`), so it says that value as if written then.
+ * An item done with no changes kept (before the migration) is one entry, from
+ * whoever did it (`doneChangeOf`).
+ */
+export function itemHistory(
+  item: ListItem,
+  changes: readonly ListItemChange[],
+): HistoryEntry[] {
+  const own = changes.filter((change) => change.itemId === item.id);
+  const done = own.length === 0 ? doneChangeOf(item) : null;
+  const runs: { from: ItemValues; changes: ListItemChange[] }[] = [];
+  let previous: ItemValues = NOTHING_YET;
+  for (const change of done ? [done] : own) {
+    const run = runs.at(-1);
+    const last = run?.changes.at(-1);
+    if (run && last && foldsInto(change, last)) run.changes.push(change);
+    else runs.push({ from: previous, changes: [change] });
+    previous = change;
+  }
+  return runs.flatMap((run): HistoryEntry[] => {
+    const last = run.changes.at(-1);
+    if (!last) return [];
+    const named = new Set(run.changes.flatMap((change) => change.changed));
+    const parts = partsBetween(run.from, last, named);
+    const valueNamed = new Set(
+      [...named].filter((field) => VALUE_FIELDS.has(field)),
+    );
+    const again =
+      last.done &&
+      valueNamed.size > 0 &&
+      parts.every((part) => part.field === "comment")
+        ? partsBetween(NOTHING_YET, last, valueNamed)
+        : [];
+    const said = [...again, ...parts];
+    return said.length > 0
+      ? [{ key: last.id, by: last.by, at: last.at, parts: said }]
+      : [];
+  });
+}
+
+/**
+ * The history with one more change, made here by `by` at `at`, as the
+ * database writes it: only when a field's value changed, and `photo` when a
+ * photo was set or removed. An item done before its history began first gets
+ * the change it stands for (`doneChangeOf`), so whoever did it stays in it.
+ */
+export function withItemChange(
+  changes: readonly ListItemChange[],
+  before: ListItem,
+  after: ListItem,
+  change: { id: string; by: string; at: string; photo?: boolean },
+): ListItemChange[] {
+  const from = valuesOf(before);
+  const to = valuesOf(after);
+  const changed = ITEM_FIELDS.filter((field) =>
+    field === "photo" ? change.photo === true : from[field] !== to[field],
+  );
+  if (changed.length === 0) return [...changes];
+  const earlier = changes.some((c) => c.itemId === before.id)
+    ? null
+    : doneChangeOf(before);
+  return [
+    ...changes,
+    ...(earlier ? [earlier] : []),
+    {
+      id: change.id,
+      itemId: before.id,
+      by: change.by,
+      at: change.at,
+      changed,
+      ...to,
+      done: after.done,
+    },
+  ];
+}
+
+/**
+ * What the line under an item says (L6a). Done: who did it and when, as
+ * before, with how many other entries its history has (`more`). Not done but
+ * changed: what changed last, by whom and when ("the tick was taken back"),
+ * with the same count. Null when nothing happened to it.
+ */
+export type ItemLine =
+  | { kind: "done"; by: string | null; at: string; more: number }
+  | {
+      kind: "changed";
+      by: string | null;
+      at: string;
+      part: HistoryPart;
+      more: number;
+    };
+
+export function itemLine(
+  item: Pick<ListItem, "done" | "doneBy" | "doneAt">,
+  entries: readonly HistoryEntry[],
+): ItemLine | null {
+  const more = Math.max(0, entries.length - 1);
+  if (item.done && item.doneAt !== null) {
+    return { kind: "done", by: item.doneBy, at: item.doneAt, more };
+  }
+  const last = entries.at(-1);
+  const part = last?.parts[0];
+  if (!last || !part) return null;
+  return { kind: "changed", by: last.by, at: last.at, part, more };
+}
+
+/** A close or a reopen on a list's timeline (L6a). */
+export type ListTimelineEvent = {
+  key: string;
+  /** "reopened" after a finish, "restored" after a cancel. */
+  kind: "finished" | "cancelled" | "reopened" | "restored" | "missed";
+  by: string | null;
+  /** Null only for a list missed with no time kept. */
+  at: string | null;
+};
+
+/** Whoever closed it took it back within their minutes: the undo. */
+function isUndo(reopen: ListReopen): boolean {
+  if (reopen.reopenedBy === null || reopen.reopenedBy !== reopen.wasBy) {
+    return false;
+  }
+  const gap = Date.parse(reopen.reopenedAt) - Date.parse(reopen.wasAt);
+  return gap >= 0 && gap <= REOPEN_MINUTES * 60_000;
+}
+
+/**
+ * How a list closed and opened again, in time order: each close a reopen
+ * undid and the reopen, then how it is closed now. A reopen by whoever
+ * closed it within `REOPEN_MINUTES` is their undo, and neither of its lines
+ * is said.
+ */
+export function listTimeline(
+  list: Pick<
+    ListSummary,
+    "status" | "finishedAt" | "finishedBy" | "closedAt" | "closedBy"
+  >,
+  reopens: readonly ListReopen[],
+): ListTimelineEvent[] {
+  const events: ListTimelineEvent[] = reopens.flatMap(
+    (reopen): ListTimelineEvent[] =>
+      isUndo(reopen)
+        ? []
+        : [
+            {
+              key: `${reopen.id}:closed`,
+              kind: reopen.was,
+              by: reopen.wasBy,
+              at: reopen.wasAt,
+            },
+            {
+              key: `${reopen.id}:opened`,
+              kind: reopen.was === "finished" ? "reopened" : "restored",
+              by: reopen.reopenedBy,
+              at: reopen.reopenedAt,
+            },
+          ],
+  );
+  if (list.status === "finished" && list.finishedAt !== null) {
+    events.push({
+      key: "finished",
+      kind: "finished",
+      by: list.finishedBy,
+      at: list.finishedAt,
+    });
+  }
+  if (list.status === "cancelled" && list.closedAt !== null) {
+    events.push({
+      key: "cancelled",
+      kind: "cancelled",
+      by: list.closedBy,
+      at: list.closedAt,
+    });
+  }
+  if (list.status === "missed") {
+    events.push({ key: "missed", kind: "missed", by: null, at: list.closedAt });
+  }
+  return byTime(events);
+}
+
+/** In time order, those with no time last; the same order for the same time. */
+export function byTime<T extends { at: string | null }>(
+  entries: readonly T[],
+): T[] {
+  const time = (entry: T) => {
+    const at = entry.at === null ? Number.NaN : Date.parse(entry.at);
+    return Number.isNaN(at) ? Number.POSITIVE_INFINITY : at;
+  };
+  return [...entries].sort((a, b) => {
+    const x = time(a);
+    const y = time(b);
+    return x === y ? 0 : x < y ? -1 : 1;
+  });
+}
 
 /*
  * Editing templates and sending lists (L3): the shapes the template editor

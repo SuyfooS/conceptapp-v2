@@ -1026,6 +1026,72 @@ export type Database = {
           },
         ];
       };
+      list_item_changes: {
+        Row: {
+          answer: string | null;
+          business_id: string;
+          changed: string[];
+          changed_at: string;
+          changed_by: string | null;
+          checked: boolean | null;
+          comment: string | null;
+          done: boolean;
+          given: number | null;
+          id: number;
+          item_id: string;
+          list_id: string;
+          photo: boolean;
+          reading: number | null;
+        };
+        Insert: {
+          answer?: string | null;
+          business_id: string;
+          changed: string[];
+          changed_at: string;
+          changed_by?: string | null;
+          checked?: boolean | null;
+          comment?: string | null;
+          done: boolean;
+          given?: number | null;
+          id?: never;
+          item_id: string;
+          list_id: string;
+          photo: boolean;
+          reading?: number | null;
+        };
+        Update: {
+          answer?: string | null;
+          business_id?: string;
+          changed?: string[];
+          changed_at?: string;
+          changed_by?: string | null;
+          checked?: boolean | null;
+          comment?: string | null;
+          done?: boolean;
+          given?: number | null;
+          id?: never;
+          item_id?: string;
+          list_id?: string;
+          photo?: boolean;
+          reading?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_item_changes_changed_by_fkey";
+            columns: ["changed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "list_item_changes_item_id_list_id_business_id_fkey";
+            columns: ["item_id", "list_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "list_items";
+            referencedColumns: ["id", "list_id", "business_id"];
+          },
+        ];
+      };
       list_items: {
         Row: {
           answer: string | null;
@@ -1218,6 +1284,61 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "lists";
             referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      list_reopens: {
+        Row: {
+          business_id: string;
+          id: string;
+          list_id: string;
+          reopened_at: string;
+          reopened_by: string | null;
+          was: string;
+          was_at: string;
+          was_by: string | null;
+        };
+        Insert: {
+          business_id: string;
+          id?: string;
+          list_id: string;
+          reopened_at: string;
+          reopened_by?: string | null;
+          was: string;
+          was_at: string;
+          was_by?: string | null;
+        };
+        Update: {
+          business_id?: string;
+          id?: string;
+          list_id?: string;
+          reopened_at?: string;
+          reopened_by?: string | null;
+          was?: string;
+          was_at?: string;
+          was_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "list_reopens_list_id_business_id_fkey";
+            columns: ["list_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "lists";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "list_reopens_reopened_by_fkey";
+            columns: ["reopened_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "list_reopens_was_by_fkey";
+            columns: ["was_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
           },
         ];
       };

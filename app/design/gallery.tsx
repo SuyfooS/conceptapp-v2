@@ -177,6 +177,79 @@ function GalleryBody({
   const tPay = useTranslations("app.pay");
   const tRoles = useTranslations("app.roles");
   const [ticked, setTicked] = useState(false);
+  // Items with a story (L6a), each as its story left it (they don't tick
+  // here, or their line would no longer match it), and the sheet that tells
+  // the one opened.
+  const [story, setStory] = useState<"ticked" | "unticked" | "fridge" | null>(
+    null,
+  );
+  const stories: Record<
+    "ticked" | "unticked" | "fridge",
+    { label: string; rows: { what: ReactNode; name: string; time: string }[] }
+  > = {
+    ticked: {
+      label: t("checklistCheck"),
+      rows: [
+        {
+          what: tList("history.checked"),
+          name: t("checklistWho"),
+          time: "07:42",
+        },
+        {
+          what: tList("history.unchecked"),
+          name: t("checklistOther"),
+          time: "09:10",
+        },
+        {
+          what: tList("history.checked"),
+          name: t("checklistOther"),
+          time: "11:02",
+        },
+      ],
+    },
+    unticked: {
+      label: t("checklistCheck"),
+      rows: [
+        {
+          what: tList("history.checked"),
+          name: t("checklistOther"),
+          time: "07:50",
+        },
+        {
+          what: tList("history.unchecked"),
+          name: t("checklistWho"),
+          time: "08:15",
+        },
+      ],
+    },
+    fridge: {
+      label: t("checklistNumber"),
+      rows: [
+        {
+          what: tList.rich("history.reading", {
+            value: "4 °C",
+            ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+          }),
+          name: t("checklistWho"),
+          time: "07:42",
+        },
+        {
+          what: tList.rich("history.readingChanged", {
+            from: "4 °C",
+            to: "6 °C",
+            ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+          }),
+          name: t("checklistOther"),
+          time: "11:02",
+        },
+        {
+          what: tList("history.comment", { comment: t("checklistComment") }),
+          name: t("checklistOther"),
+          time: "11:20",
+        },
+      ],
+    },
+  };
   const [ordered, setOrdered] = useState(true);
   const [givenCount, setGivenCount] = useState("20");
   const [fridge, setFridge] = useState("7");
@@ -914,6 +987,47 @@ function GalleryBody({
               check={{ checked: ticked, onToggle: () => setTicked(!ticked) }}
               commentAction={{ label: tList("comment.add"), onClick: () => {} }}
             />
+            {/*
+              With a story (L6a): who did it and how many more changes, in a
+              row of its own under the check, which opens them all.
+            */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistCheck")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              history={{
+                line: tList.rich("doneBy", {
+                  name: t("checklistOther"),
+                  time: "11:02",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+                more: tList("history.more", { count: 2 }),
+                label: tList("history.open", { label: t("checklistCheck") }),
+                onOpen: () => setStory("ticked"),
+              }}
+              commentAction={{ label: tList("comment.add"), onClick: () => {} }}
+            />
+            {/* Taken back: what changed last, by whom and when. */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistCheck")}
+              required
+              optionalLabel={tList("optional")}
+              done={false}
+              history={{
+                line: tList.rich("history.line", {
+                  what: tList("history.unchecked"),
+                  name: t("checklistWho"),
+                  time: "08:15",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+                more: tList("history.more", { count: 1 }),
+                label: tList("history.open", { label: t("checklistCheck") }),
+                onOpen: () => setStory("unticked"),
+              }}
+            />
             {/* An order's check: ticked, how many were given, and how many short. */}
             <ChecklistItem
               kind="check"
@@ -1133,7 +1247,65 @@ function GalleryBody({
                 }),
               }}
             />
+            {/* Read-only with a story: the row still opens it. */}
+            <ChecklistItem
+              kind="number"
+              label={t("checklistNumber")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              comment={t("checklistComment")}
+              history={{
+                line: tList.rich("doneBy", {
+                  name: t("checklistOther"),
+                  time: "11:02",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+                more: tList("history.more", { count: 2 }),
+                label: tList("history.open", { label: t("checklistNumber") }),
+                onOpen: () => setStory("fridge"),
+              }}
+              number={{
+                value: "6",
+                onValueChange: () => {},
+                onCommit: () => {},
+                fieldLabel: tList("readingOf", { label: t("checklistNumber") }),
+                unit: "°C",
+                outOfRange: tList.rich("outOfRange", {
+                  range: "0–5 °C",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+              }}
+            />
           </ListGroup>
+          {/* What a story opens: one row a change, oldest first. */}
+          <Sheet
+            open={story !== null}
+            onOpenChange={(open) => {
+              if (!open) setStory(null);
+            }}
+            title={tList("history.title")}
+            subtitle={story ? stories[story].label : undefined}
+            closeLabel={tList("history.close")}
+            readingLabel={tList("history.title")}
+          >
+            <div className="px-2 pt-1 pb-2">
+              <ListGroup className="bg-elevated">
+                {(story ? stories[story].rows : []).map((row) => (
+                  <ListRow
+                    key={row.time}
+                    title={row.what}
+                    subtitle={tList.rich("doneBy", {
+                      name: row.name,
+                      time: row.time,
+                      ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                    })}
+                  />
+                ))}
+              </ListGroup>
+            </div>
+          </Sheet>
         </Section>
 
         <Section title={t("punchCircle")}>

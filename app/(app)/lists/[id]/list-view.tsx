@@ -1,3 +1,6 @@
+import { dateIn } from "@domain/availability";
+import { dayMonth } from "@domain/availability-form";
+import { byTime, listTimeline } from "@domain/lists";
 import { timeIn } from "@domain/shabbat";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../../wording";
@@ -38,7 +41,15 @@ export function ListView({
   // The same, inside a sentence ("sent to the kitchen").
   const holderTo = holderWords(t, list.holder, lookups, userId, "to");
   const from = fromWords(t, list, lookups);
-  const at = (instant: string) => timeIn(new Date(instant), timeZone);
+  // A time, with its day when that isn't the list's (closed late at night,
+  // opened again the next morning), as the lines under its items say it.
+  const listDay = dateIn(new Date(list.opensAt), timeZone);
+  const at = (instant: string) => {
+    const when = new Date(instant);
+    const day = dateIn(when, timeZone);
+    const time = timeIn(when, timeZone);
+    return day === listDay ? time : `${dayMonth(day)}, ${time}`;
+  };
 
   const readOnly: ReactNode =
     data.readOnly === "finished"
@@ -101,9 +112,33 @@ export function ListView({
             t("card.aDepartment"),
         })
       : null;
-  const timeline: { key: string; text: ReactNode; note?: string | null }[] = [
+  // How it closed and opened again (L6a): each close a reopen undid, the
+  // reopen, and how it is closed now, the undo left out.
+  const closes = listTimeline(list, list.reopens).map((event) => {
+    const values = {
+      name: personName(t, lookups, event.by),
+      time: event.at ? at(event.at) : "",
+      ltr,
+    };
+    return {
+      key: event.key,
+      at: event.at,
+      text:
+        event.kind === "missed"
+          ? t("list.timeline.missed")
+          : t.rich(`list.timeline.${event.kind}`, values),
+    };
+  });
+  // Every entry in time order: sent, passed on, closed and opened again.
+  const timeline: {
+    key: string;
+    at: string | null;
+    text: ReactNode;
+    note?: string | null;
+  }[] = byTime([
     {
       key: "sent",
+      at: list.opensAt,
       text:
         list.origin === "scheduled"
           ? t.rich("list.timeline.opened", { time: at(list.opensAt), ltr })
@@ -135,40 +170,15 @@ export function ListView({
       };
       return {
         key: pass.id,
+        at: pass.passedAt,
         text: from
           ? t.rich("list.timeline.passedFrom", { ...values, from })
           : t.rich("list.timeline.passed", values),
         note: pass.note ? t("list.timeline.note", { note: pass.note }) : null,
       };
     }),
-    ...(list.status === "finished" && list.finishedAt
-      ? [
-          {
-            key: "finished",
-            text: t.rich("list.timeline.finished", {
-              name: personName(t, lookups, list.finishedBy),
-              time: at(list.finishedAt),
-              ltr,
-            }),
-          },
-        ]
-      : []),
-    ...(list.status === "cancelled" && list.closedAt
-      ? [
-          {
-            key: "cancelled",
-            text: t.rich("list.timeline.cancelled", {
-              name: personName(t, lookups, list.closedBy),
-              time: at(list.closedAt),
-              ltr,
-            }),
-          },
-        ]
-      : []),
-    ...(list.status === "missed"
-      ? [{ key: "missed", text: t("list.timeline.missed") }]
-      : []),
-  ];
+    ...closes,
+  ]);
 
   return (
     <ListScreen

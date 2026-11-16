@@ -1,9 +1,16 @@
 "use client";
 
+import { dateIn } from "@domain/availability";
+import { dayMonth } from "@domain/availability-form";
 import {
+  type HistoryEntry,
+  type HistoryPart,
   type ItemResult,
   isOutOfRange,
+  itemHistory,
+  itemLine,
   type ListItem,
+  type ListItemChange,
   listProgress,
   MAX_PASS_NOTE,
   MAX_QUANTITY,
@@ -11,6 +18,7 @@ import {
   parseQuantity,
   parseReading,
   signed,
+  withItemChange,
 } from "@domain/lists";
 import { timeIn } from "@domain/shabbat";
 import { Badge } from "@ui/badge";
@@ -20,7 +28,7 @@ import { ChecklistItem } from "@ui/checklist-item";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
 import { cn } from "@ui/cn";
 import { DockButton, FloatingDock } from "@ui/floating-dock";
-import { ListGroup } from "@ui/list-row";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { encodeListPhoto, PhotoReadError } from "@ui/photo-encode";
@@ -34,6 +42,7 @@ import {
   Building2,
   CheckCheck,
   ChevronDown,
+  ChevronRight,
   RotateCcw,
   RotateCw,
 } from "lucide-react";
@@ -165,10 +174,13 @@ const needsMinus = (item: ListItem) =>
  * business), kept with a way to try again when it didn't get there (no
  * connection, no answer), replaced, or removed with an undo that puts the
  * same photo back; the list waits to be finished while a photo is on its
- * way. Phone: the list and the dock, the
+ * way. Each item keeps its story (L6a): under it, who did it and when, or
+ * what changed last, with how many more changes, which opens the sheet "what
+ * happened to the item", one row a change; a change made here joins it at
+ * once, and goes if it didn't save. Phone: the list and the dock, the
  * timeline folded at the end. Tablet: the items beside the details and the
  * timeline. Desktop: the same, the main action in the header, and the
- * readings as a table.
+ * readings as a table, whose "who" opens an item's story too.
  */
 export function ListScreen({
   data,
@@ -183,9 +195,22 @@ export function ListScreen({
 }) {
   const t = useTranslations("app.lists");
   const tl = useTranslations("app.lists.list");
+  const th = useTranslations("app.lists.list.history");
   const router = useRouter();
   const { list, lookups, userId, timeZone, can } = data;
   const [items, setItems] = useState<ListItem[]>(list.items);
+  // Each item's story (L6a), with the changes made here since it was read,
+  // and the item whose story the sheet tells.
+  const [changes, setChanges] = useState<ListItemChange[]>(list.changes);
+  const [historyFor, setHistoryFor] = useState<string | null>(null);
+  const madeHere = useRef(0);
+  // How far the server's clock is from this device's, so a change made here
+  // carries the time the database will write: a phone whose clock is off,
+  // or the demo's fixed morning, still reads the server's time.
+  const clockOffset = useRef(0);
+  useEffect(() => {
+    clockOffset.current = Date.parse(data.now) - Date.now();
+  }, [data.now]);
   const [drafts, setDrafts] = useState<Record<string, string>>(() =>
     Object.fromEntries(
       list.items.map((item) => [
@@ -312,6 +337,17 @@ export function ListScreen({
     if (reason === "finished" || reason === "noAccess") router.refresh();
   }
 
+  /** Now, by the server's clock (`clockOffset`). */
+  function serverNow(): string {
+    return new Date(Date.now() + clockOffset.current).toISOString();
+  }
+
+  /** An id for a change made here, until the list is read again. */
+  function madeChange(): string {
+    madeHere.current += 1;
+    return `here:${madeHere.current}`;
+  }
+
   /** What an item's result is with this change, for `set_list_item`. */
   function resultOf(item: ListItem, change: ItemChange): ItemResult {
     const next = { ...item, ...change };
@@ -353,20 +389,32 @@ export function ListScreen({
           : item.kind === "note"
             ? next.answer !== null
             : item.done;
-    // The database writes who saved it last, and when, as here; a photo's
-    // comment leaves who took it (`set_list_item`).
+    // As the database has it (`set_list_item`): who did it and when move
+    // only with its value, so a comment alone keeps them, and a photo's
+    // comment leaves who took it; taken back, nobody did it.
+    const at = serverNow();
+    const valueChanged =
+      next.checked !== item.checked ||
+      next.given !== item.given ||
+      next.reading !== item.reading ||
+      next.answer !== item.answer;
     const shown: ListItem =
-      item.kind === "photo"
+      item.kind === "photo" || !valueChanged
         ? next
         : {
             ...next,
             done,
             doneBy: done ? userId : null,
-            doneAt: done ? new Date().toISOString() : null,
+            doneAt: done ? at : null,
           };
     const mine = (latest.current[item.id] ?? 0) + 1;
     latest.current[item.id] = mine;
     setItems((current) => current.map((i) => (i.id === item.id ? shown : i)));
+    // Its story has the change at once, and loses it if it didn't save.
+    const made = madeChange();
+    setChanges((current) =>
+      withItemChange(current, item, shown, { id: made, by: userId, at }),
+    );
     const ordered = item.kind === "check" && list.asksQuantities;
     if (ordered) {
       setGivenDrafts((current) => ({
@@ -381,6 +429,7 @@ export function ListScreen({
       saved = { ok: false, failure: "failed" };
     }
     if (saved.ok) return true;
+    setChanges((current) => current.filter((change) => change.id !== made));
     // A later change to the same item has the last word.
     if (latest.current[item.id] === mine) {
       setItems((current) =>
@@ -514,23 +563,35 @@ export function ListScreen({
     setPhotoPreview(next);
   }
 
-  /** The item as it is now that its photo changed: done by this person, or not. */
+  /**
+   * The item as it is now that its photo changed (saved): done by this
+   * person, or not, and the change in its story.
+   */
   function photoChanged(itemId: string, photo: string | null) {
-    const at = new Date().toISOString();
+    const at = serverNow();
+    const changed = (i: ListItem): ListItem => ({
+      ...i,
+      photo,
+      photoRemoved: false,
+      done: photo !== null,
+      doneBy: photo !== null ? userId : null,
+      doneAt: photo !== null ? at : null,
+    });
+    const before = itemsNow.current.find((i) => i.id === itemId);
     setItems((current) =>
-      current.map((i) =>
-        i.id === itemId
-          ? {
-              ...i,
-              photo,
-              photoRemoved: false,
-              done: photo !== null,
-              doneBy: photo !== null ? userId : null,
-              doneAt: photo !== null ? at : null,
-            }
-          : i,
-      ),
+      current.map((i) => (i.id === itemId ? changed(i) : i)),
     );
+    if (before) {
+      const made = madeChange();
+      setChanges((current) =>
+        withItemChange(current, before, changed(before), {
+          id: made,
+          by: userId,
+          at,
+          photo: true,
+        }),
+      );
+    }
   }
 
   /** What a photo write answers, or "offline"/"failed" when it didn't arrive. */
@@ -821,15 +882,164 @@ export function ListScreen({
     });
   }
 
-  const doneLine = (item: ListItem) =>
-    item.doneAt
-      ? t.rich("list.doneBy", {
-          name:
-            (item.doneBy && lookups.people[item.doneBy]?.name) || t("noName"),
-          time: timeIn(new Date(item.doneAt), timeZone),
-          ltr,
-        })
-      : null;
+  // Each item's story (L6a) -------------------------------------------------
+
+  const histories = new Map(
+    items.map((item) => [item.id, itemHistory(item, changes)]),
+  );
+  const historyOf = (item: ListItem): HistoryEntry[] =>
+    histories.get(item.id) ?? [];
+  const listDay = dateIn(new Date(list.opensAt), timeZone);
+  // Someone no longer among the colleagues left the team; nobody named (an
+  // account deleted) or a colleague with no name has none.
+  const nameOf = (person: string | null) => {
+    const colleague = person === null ? undefined : lookups.people[person];
+    if (person !== null && !colleague) return t("former");
+    return colleague?.name || t("noName");
+  };
+  /** When, as a time, with its day when that isn't the list's. */
+  const whenOf = (at: string) => {
+    const instant = new Date(at);
+    const day = dateIn(instant, timeZone);
+    return {
+      time: timeIn(instant, timeZone),
+      date: day === listDay ? null : dayMonth(day),
+    };
+  };
+  /** "נועה · 07:42". */
+  const whoWhen = (by: string | null, at: string): ReactNode => {
+    const { time, date } = whenOf(at);
+    const name = nameOf(by);
+    return date === null
+      ? tl.rich("doneBy", { name, time, ltr })
+      : tl.rich("doneByOn", { name, time, date, ltr });
+  };
+  /** A reading as the item shows it: its sign, and its unit. */
+  const readingText = (item: ListItem, value: number) =>
+    `${signed(value)}${item.unit ? ` ${item.unit}` : ""}`;
+
+  /** What a change did, as a row of the item's story says it. */
+  function partWords(item: ListItem, part: HistoryPart): ReactNode {
+    switch (part.field) {
+      case "checked":
+        return th(part.on ? "checked" : "unchecked");
+      case "given":
+        return item.requested !== null
+          ? tl("given", { given: part.given, requested: item.requested })
+          : tl("givenOnly", { count: part.given });
+      case "reading":
+        if (part.to === null) return th("readingCleared");
+        return part.from === null
+          ? th.rich("reading", { value: readingText(item, part.to), ltr })
+          : th.rich("readingChanged", {
+              from: readingText(item, part.from),
+              to: readingText(item, part.to),
+              ltr,
+            });
+      case "answer":
+        if (part.to === null) return th("answerCleared");
+        return part.from === null
+          ? th("answer", { answer: part.to })
+          : th("answerChanged", { answer: part.to });
+      case "comment":
+        if (part.to === null) return th("commentRemoved");
+        return part.from === null
+          ? th("comment", { comment: part.to })
+          : th("commentChanged", { comment: part.to });
+      case "photo":
+        return th(
+          part.photo === "added"
+            ? "photo"
+            : part.photo === "replaced"
+              ? "photoReplaced"
+              : "photoRemoved",
+        );
+    }
+  }
+
+  /**
+   * What changed, as the line under an item says it: short, since the item
+   * shows its comment itself. Null for what an item not done can't have
+   * changed last (a reading or an answer written); its line then says only
+   * who and when.
+   */
+  function lineWhat(item: ListItem, part: HistoryPart): string | null {
+    switch (part.field) {
+      case "checked":
+        return th(part.on ? "checked" : "unchecked");
+      case "given":
+        return item.requested !== null
+          ? tl("given", { given: part.given, requested: item.requested })
+          : tl("givenOnly", { count: part.given });
+      case "reading":
+        return part.to === null ? th("readingCleared") : null;
+      case "answer":
+        return part.to === null ? th("answerCleared") : null;
+      case "comment":
+        return part.to === null
+          ? th("commentRemoved")
+          : part.from === null
+            ? th("commentAdded")
+            : th("commentEdited");
+      case "photo":
+        return th(
+          part.photo === "added"
+            ? "photo"
+            : part.photo === "replaced"
+              ? "photoReplaced"
+              : "photoRemoved",
+        );
+    }
+  }
+
+  /**
+   * The line under an item, and how many more changes it has: who did it and
+   * when, or what changed last, by whom and when. Null when nothing happened.
+   */
+  function lineOf(
+    item: ListItem,
+  ): { words: ReactNode; more: number; done: boolean } | null {
+    const line = itemLine(item, historyOf(item));
+    if (!line) return null;
+    const done = line.kind === "done";
+    const what = line.kind === "changed" ? lineWhat(item, line.part) : null;
+    if (what === null) {
+      return { words: whoWhen(line.by, line.at), more: line.more, done };
+    }
+    const { time, date } = whenOf(line.at);
+    const name = nameOf(line.by);
+    return {
+      words:
+        date === null
+          ? th.rich("line", { what, name, time, ltr })
+          : th.rich("lineOn", { what, name, time, date, ltr }),
+      more: line.more,
+      done,
+    };
+  }
+
+  /**
+   * An item's story under it: its done line alone when that is all there is
+   * (done once, as before), else a row that opens the sheet.
+   */
+  function storyOf(item: ListItem) {
+    const line = lineOf(item);
+    if (!line) return { doneLine: null, history: null };
+    const once = line.done && line.more === 0;
+    return {
+      doneLine: once ? line.words : null,
+      history: once
+        ? null
+        : {
+            line: line.words,
+            more: line.more > 0 ? th("more", { count: line.more }) : null,
+            label: th("open", { label: item.label }),
+            onOpen: () => setHistoryFor(item.id),
+          },
+    };
+  }
+
+  const historyItem = items.find((item) => item.id === historyFor) ?? null;
 
   const hintOf = (item: ListItem): ReactNode => {
     const parts: ReactNode[] = [];
@@ -1025,6 +1235,7 @@ export function ListScreen({
                       onToggle: () => toggleMinus(item),
                     }
                   : null;
+                const story = storyOf(item);
                 return (
                   <ChecklistItem
                     key={item.id}
@@ -1034,7 +1245,8 @@ export function ListScreen({
                     required={item.required}
                     optionalLabel={tl("optional")}
                     done={item.done}
-                    doneLine={doneLine(item)}
+                    doneLine={story.doneLine}
+                    history={story.history}
                     comment={item.comment}
                     readOnly={!fill}
                     commentAction={
@@ -1176,8 +1388,12 @@ export function ListScreen({
                   <tbody>
                     {numbers.map((item) => {
                       const range = rangeOf(item);
-                      // Who read it and when: whoever saved it last.
+                      // Who read it and when: whoever gave its reading.
                       const readAt = item.reading !== null ? item.doneAt : null;
+                      const reader = readAt ? nameOf(item.doneBy) : null;
+                      const readWhen = readAt ? whenOf(readAt) : null;
+                      // Its story, when there is more to it than who read it.
+                      const story = storyOf(item).history;
                       return (
                         <tr key={item.id}>
                           <td className="border-line border-t px-4 py-3">
@@ -1208,16 +1424,37 @@ export function ListScreen({
                             {range ? <span dir="ltr">{range.range}</span> : "—"}
                           </td>
                           <td className="border-line border-t px-4 py-3 text-ink-2">
-                            {readAt
-                              ? (item.doneBy &&
-                                  lookups.people[item.doneBy]?.name) ||
-                                t("noName")
-                              : "—"}
+                            {/*
+                              With a story: who read it, or the line under the
+                              item when its reading is gone ("הקריאה נמחקה ·
+                              …"), and how many more changes, the way to it.
+                            */}
+                            {story ? (
+                              <button
+                                type="button"
+                                onClick={story.onOpen}
+                                className="pressable -mx-2 -my-2 inline-flex min-h-11 items-center gap-1 rounded-full px-2 text-start hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
+                              >
+                                <span className="sr-only">{story.label}: </span>
+                                <span>
+                                  {reader ?? story.line}
+                                  {story.more ? <> · {story.more}</> : null}
+                                </span>
+                                <ChevronRight
+                                  aria-hidden="true"
+                                  className="size-4 shrink-0 rtl:-scale-x-100"
+                                />
+                              </button>
+                            ) : (
+                              (reader ?? "—")
+                            )}
                           </td>
                           <td className="border-line border-t px-4 py-3 text-ink-2">
-                            {readAt ? (
+                            {readWhen ? (
                               <span dir="ltr">
-                                {timeIn(new Date(readAt), timeZone)}
+                                {readWhen.date === null
+                                  ? readWhen.time
+                                  : `${readWhen.date}, ${readWhen.time}`}
                               </span>
                             ) : (
                               "—"
@@ -1305,14 +1542,37 @@ export function ListScreen({
         }}
       >
         <div className="px-2 pt-1 pb-2">
+          {/* Its earlier text stays in the item's story (L6a): said here. */}
           <TextArea
             label={tl("comment.label")}
+            hint={tl("comment.kept")}
             value={commentDraft}
             maxLength={200}
             rows={3}
             onChange={(event) => setCommentDraft(event.target.value)}
           />
         </div>
+      </Sheet>
+
+      {/* An item's story (L6a): one row a change, oldest first; only read. */}
+      <Sheet
+        open={historyItem !== null}
+        onOpenChange={(open) => {
+          if (!open) setHistoryFor(null);
+        }}
+        title={th("title")}
+        subtitle={historyItem?.label}
+        closeLabel={th("close")}
+        readingLabel={th("title")}
+      >
+        {historyItem ? (
+          <HistoryRows
+            entries={historyOf(historyItem)}
+            partWords={(part) => partWords(historyItem, part)}
+            whoWhen={whoWhen}
+            photosGone={th("photosGone")}
+          />
+        ) : null}
       </Sheet>
 
       {data.pass ? (
@@ -1374,5 +1634,50 @@ export function ListScreen({
         </Sheet>
       ) : null}
     </PageBody>
+  );
+}
+
+/**
+ * The rows of an item's story, oldest first: what happened, each change on
+ * its own line, and who and when under it; then, when a photo was replaced
+ * or removed, that earlier photos aren't kept.
+ */
+function HistoryRows({
+  entries,
+  partWords,
+  whoWhen,
+  photosGone,
+}: {
+  entries: readonly HistoryEntry[];
+  partWords: (part: HistoryPart) => ReactNode;
+  whoWhen: (by: string | null, at: string) => ReactNode;
+  photosGone: string;
+}) {
+  const photoGone = entries.some((entry) =>
+    entry.parts.some(
+      (part) => part.field === "photo" && part.photo !== "added",
+    ),
+  );
+  return (
+    <div className="flex flex-col gap-3 px-2 pt-1 pb-2">
+      <ListGroup className="bg-elevated">
+        {entries.map((entry) => (
+          <ListRow
+            key={entry.key}
+            title={
+              <span className="flex flex-col gap-0.5">
+                {entry.parts.map((part) => (
+                  <span key={part.field}>{partWords(part)}</span>
+                ))}
+              </span>
+            }
+            subtitle={whoWhen(entry.by, entry.at)}
+          />
+        ))}
+      </ListGroup>
+      {photoGone ? (
+        <p className="px-2 text-ink-2 text-sm">{photosGone}</p>
+      ) : null}
+    </div>
   );
 }
