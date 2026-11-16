@@ -1227,6 +1227,37 @@ before it is tried; `@db/team`'s `getColleagues` gives each member's
 `namedRole`, which the send screen counts each role's people by.
 `roles_named_lists.test.sql` covers it (18, ids d4…, numbers 050-087-xxxx).
 
+Out of a department, out of its lists' lines
+(`20261116000100_lists_department_lines.sql`, R11d's open item). Someone
+still on the staff who is taken out of a department no longer holds its lists
+(`private.holds_list`) and is no longer among those who asked for its orders,
+so their lines of the lists they are no longer among are read, settled and
+off the phone if not sent yet, as `public.pass_list` settles a list's former
+holders (`private.settle_former_list_lines(business, person, at_time)`, for
+someone active on the staff only): the `list:`, `list.due:` and `list.late:`
+lines of a list they no longer hold, and the `list.finished:` line of one
+they neither sent nor are in the department that asked for. By holding, not
+by seeing: whoever runs the lists sees every list but is settled like anyone,
+as by `pass_list`, so the bell agrees with the Lists tab
+(`public.my_open_lists`); R11d's block in `public.set_member_role` still asks
+`private.sees_list`. A trigger on `public.department_members`
+(`department_members_settle_lines`, after delete or an update of
+`department_id` or `user_id`, for each row, through
+`private.settle_lines_off_department`) does it for every writer:
+`public.set_department_members`, which deletes only the people not kept, so
+a re-save settles nothing, and the paths that take someone off the staff,
+which make them inactive or an accountant first, so their lines are put away
+as before (read and off the phone, not settled). The lines of lists they
+still hold stay: another department of theirs, a list to them, to their shift
+or to their role; so does the finished line of a list they sent or a
+department of theirs asked for, and every line for those who run the lists or
+the owners. It is one way: put back in the department, they hold its lists
+again, but a settled line stays settled and a skipped push skipped (the due
+and late lines are never written again). A business being deleted (the demo
+reset) is skipped, and a failure is a warning, never what stops the change.
+No function is replaced. `lists_department_lines.test.sql` covers it (12, ids
+d5…, numbers 050-088-xxxx).
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for
