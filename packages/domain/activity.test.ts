@@ -9,8 +9,10 @@ import {
   buildActivity,
   parseActivityCursor,
   ROUTINE_ACTIONS,
+  rolePermissionOf,
 } from "./activity";
 import { dateIn } from "./availability";
+import { ACCESS_AREAS, ACCESS_EXTRA_KEYS, AREA_EDIT } from "./role-access";
 
 const NOA = "11111111-1111-4111-8111-111111111111";
 const YOAV = "22222222-2222-4222-8222-222222222222";
@@ -925,6 +927,84 @@ describe("buildActivity: each action", () => {
     expect(lineOf(row("permission.grant", { perm: "clock.payroll" }))).toEqual({
       action: "other",
     });
+  });
+
+  it("reads a role's permission switched on or off, by what the screen calls it", () => {
+    expect(
+      lineOf(
+        row("role.permission", {
+          role: "worker",
+          perm: "schedule.edit",
+          area: "scheduling",
+          from: false,
+          to: true,
+        }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: "worker",
+      permission: { kind: "edit", area: "scheduling" },
+      on: true,
+    });
+    expect(
+      lineOf(
+        row("role.permission", {
+          role: "manager",
+          perm: "schedule.publish",
+          area: "scheduling",
+          from: true,
+          to: false,
+        }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: "manager",
+      permission: { kind: "extra", extra: "schedule.publish" },
+      on: false,
+    });
+    expect(
+      lineOf(
+        row("role.permission", {
+          role: "manager",
+          perm: "team.view",
+          area: "team",
+          from: true,
+          to: false,
+        }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: "manager",
+      permission: { kind: "view", area: "team" },
+      on: false,
+    });
+    expect(
+      lineOf(
+        row("role.permission", { role: "boss", perm: "lists.later", to: true }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: null,
+      permission: { kind: "other" },
+      on: true,
+    });
+    expect(
+      lineOf(row("role.permission", { role: "worker", perm: "lists.send" })),
+    ).toEqual({ action: "other" });
+  });
+
+  it("names every permission the roles screen draws", () => {
+    for (const area of ACCESS_AREAS) {
+      expect(rolePermissionOf(AREA_EDIT[area])).toEqual({ kind: "edit", area });
+    }
+    for (const extra of ACCESS_EXTRA_KEYS) {
+      expect(rolePermissionOf(extra)).toEqual({ kind: "extra", extra });
+    }
+    expect(rolePermissionOf("manage.view")).toEqual({
+      kind: "view",
+      area: "manage",
+    });
+    expect(rolePermissionOf("clock.payroll")).toEqual({ kind: "other" });
   });
 
   it("reads a wage set from a day, with what it was and the minimum then", () => {
