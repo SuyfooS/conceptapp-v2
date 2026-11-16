@@ -36,14 +36,17 @@ export type DemoAnnouncement = {
  * (AnnouncementsView), on mock rows. "קראתי" on the pinned one says she
  * did, who confirmed opens the team's demo with them, and "פרסום הודעה
  * מההנהלה" asks for the group and opens its composer as an announcement.
- * Nothing is stored.
+ * Without `announces` (she moderates without announcing) there is no main
+ * action, and a line says who posts them. Nothing is stored.
  */
 export function AnnouncementsDemo({
   announcements,
   groups,
+  announces = true,
 }: {
   announcements: DemoAnnouncement[];
   groups: { id: string; kind: ChatKind; title: string }[];
+  announces?: boolean;
 }) {
   const t = useTranslations("app.chat");
   const [confirmed, setConfirmed] = useState<ReadonlySet<string>>(new Set());
@@ -127,18 +130,25 @@ export function AnnouncementsDemo({
         title={t("announcement.page.title")}
         subtitle={t("announcement.page.subtitle")}
         actions={
-          <Button
-            aria-haspopup="dialog"
-            onClick={(event) => {
-              opener.current = event.currentTarget;
-              setChoosing(true);
-            }}
-          >
-            <Megaphone aria-hidden="true" />
-            {t("announcement.page.publish")}
-          </Button>
+          announces ? (
+            <Button
+              aria-haspopup="dialog"
+              onClick={(event) => {
+                opener.current = event.currentTarget;
+                setChoosing(true);
+              }}
+            >
+              <Megaphone aria-hidden="true" />
+              {t("announcement.page.publish")}
+            </Button>
+          ) : null
         }
       />
+      {announces ? null : (
+        <p className="text-ink-2 md:max-w-2xl">
+          {t("announcement.page.noAnnounce")}
+        </p>
+      )}
       {pinned.length > 0 ? (
         <PageSection title={t("announcement.page.pinnedTitle")}>
           <div className="grid gap-3 xl:grid-cols-2 xl:items-start">

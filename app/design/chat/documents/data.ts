@@ -220,7 +220,13 @@ function readBy(reader: DocumentsDemoReader): {
 /** `/design/chat/documents`: the list, for each reader. */
 export function documentsDemoScreen(
   reader: DocumentsDemoReader,
-  options: { empty?: boolean; notice?: boolean; person?: string | null } = {},
+  options: {
+    empty?: boolean;
+    notice?: boolean;
+    person?: string | null;
+    /** False: Shiran's switch for sending documents turned off (R8). */
+    sends?: boolean;
+  } = {},
 ): DocumentsScreenData {
   const read = readBy(reader);
   const documents = options.empty ? [] : read.documents;
@@ -229,9 +235,10 @@ export function documentsDemoScreen(
     reader: READERS[reader],
     clock: documentsDemoClock,
     mode: reader === "office" ? "office" : "staff",
-    sends: reader !== "staff",
+    sends: reader !== "staff" && (options.sends ?? true),
     documents,
-    sent: reader === "manager" ? read.sent : null,
+    // Outside the office, what each sent, as the app reads it.
+    sent: reader === "office" ? null : read.sent,
     people: documentsDemoPeople,
     // The demo holds every document: its list is counted whole.
     directory:

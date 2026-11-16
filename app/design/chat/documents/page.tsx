@@ -11,7 +11,10 @@ type Props = {
 // people beside the chosen one's documents (`?person=noa`), on a desktop the
 // table with its filters and preview, with the one notice to keep a copy
 // (`?state=seen` once read). `?as=staff` is Noa's "המסמכים שלי", `?as=manager`
-// Shiran's with what she sent ("שלחת"). `?state=empty` has nothing yet.
+// Shiran's with what she sent ("שלחת"), and `?as=manager&state=noSend` hers
+// once her switch for sending documents is off (the roles plan's R8): what
+// she sent still there, and who sends now instead of the way to send.
+// `?state=empty` has nothing yet.
 export default function DocumentsDemoPage({ searchParams }: Props) {
   return (
     <Suspense>
@@ -30,6 +33,7 @@ async function Demo({ searchParams }: Props) {
         empty: state === "empty",
         notice: state !== "seen",
         person: typeof person === "string" ? person : null,
+        sends: state !== "noSend",
       })}
     />
   );

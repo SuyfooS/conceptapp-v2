@@ -168,16 +168,15 @@ create function pg_temp.sign_in(uid uuid) returns void language sql as $$
 $$;
 
 ------------------------------------------------------------------------------
--- The catalogue
+-- The catalogue (chat's own keys, opened by R8, are roles_chat.test.sql's:
+-- each area's phase checks its own)
 
 select set_eq(
   $$select k.key, k.module_key::text, k.area, k.requires, k.settable,
       k.default_roles::text[], k.by_owner
-    from public.permission_keys k$$,
+    from public.permission_keys k
+    where k.area <> 'chat'$$,
   $$values
-    ('chat.announce', 'chat', 'chat', null, false, '{manager}'::text[], false),
-    ('chat.moderate', 'chat', 'chat', null, false, '{manager}'::text[], false),
-    ('chat.send_documents', 'chat', 'chat', null, false, '{manager}'::text[], false),
     ('clock.edit', 'time_clock', 'time_clock', null, true, '{manager}'::text[], false),
     ('clock.payroll', 'time_clock', 'time_clock', null, false, '{}'::text[], true),
     ('lists.manage', 'lists', 'lists', null, true, '{manager}'::text[], false),
@@ -258,9 +257,11 @@ reset role;
 ------------------------------------------------------------------------------
 -- A role's row decides, and what a key requires
 
+-- (Since R8 announcing requires moderating, so the key left alone is the
+-- clock's.)
 select ok(
   not private.holds_perm('92000000-0000-4000-b000-000000000002', '92000000-0000-4000-a000-000000000012', 'chat.moderate')
-  and private.holds_perm('92000000-0000-4000-b000-000000000002', '92000000-0000-4000-a000-000000000012', 'chat.announce'),
+  and private.holds_perm('92000000-0000-4000-b000-000000000002', '92000000-0000-4000-a000-000000000012', 'clock.edit'),
   'a row denying managers a key decides over its default roles, and only for that key'
 );
 select ok(
@@ -301,20 +302,21 @@ select ok(
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000012');
 select is(
   public.my_permissions('92000000-0000-4000-b000-000000000002'),
-  '{chat.announce,chat.send_documents,clock.edit,clock.payroll,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
+  '{clock.edit,clock.payroll,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
   'the screens are told what the manager holds, pay by the role''s row, the denials and what they require counted'
 );
 -- Still them (request.jwt.claims), as the policies ask.
 reset role;
 select ok(
   not private.has_perm('92000000-0000-4000-b000-000000000002', 'chat.moderate')
-  and private.has_perm('92000000-0000-4000-b000-000000000002', 'chat.announce'),
+  and not private.has_perm('92000000-0000-4000-b000-000000000002', 'chat.announce')
+  and private.has_perm('92000000-0000-4000-b000-000000000002', 'clock.edit'),
   'and private.has_perm answers the same for them'
 );
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000016');
 select is(
   public.my_permissions('92000000-0000-4000-b000-000000000002'),
-  '{chat.announce,chat.send_documents,clock.edit,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
+  '{clock.edit,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
   'a view as a manager holds the same but pay: the business''s rows for the role count for it too, while a key an owner gives the role by a row never reaches a view'
 );
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000017');

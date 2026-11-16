@@ -137,7 +137,10 @@ export type MessageAction =
   | "delete"
   /** Management, someone else's, in a group only: "הסרת ההודעה". */
   | "remove"
-  /** An announcement unpinned, pinned again by its author or management. */
+  /**
+   * An announcement unpinned, pinned again by management or by its author
+   * while they announce: it tells the group again.
+   */
   | "pin"
   /** An announcement pinned, unpinned by its author or management. */
   | "unpin";
@@ -146,8 +149,11 @@ export type MessageAction =
  * A message's actions for its reader, in the order the sheet lists them. A
  * removed message has none; a moderator (chat.moderate) removes someone
  * else's only in a group, never in a private chat, whose two people alone
- * remove their own; an announcement is pinned again only where people still
- * write (not in a removed department's group).
+ * remove their own; an announcement is unpinned by its author or a
+ * moderator, and pinned again, which tells the group again, by a moderator
+ * or by its author while they announce (chat.announce, as
+ * public.pin_announcement has it), only where people still write (not in a
+ * removed department's group).
  */
 export function messageActions(
   message: {
@@ -162,6 +168,8 @@ export function messageActions(
     chat: ChatKind;
     /** Holds chat.moderate. */
     moderates: boolean;
+    /** Holds chat.announce. */
+    announces: boolean;
     /** A removed department's group. */
     closed: boolean;
   },
@@ -171,9 +179,12 @@ export function messageActions(
   const group = where.chat !== "direct";
   const actions: MessageAction[] = [];
   if (message.body !== null) actions.push("copy");
-  if (message.kind === "announcement" && group && (own || where.moderates)) {
-    if (message.pinned) actions.push("unpin");
-    else if (!where.closed) actions.push("pin");
+  if (message.kind === "announcement" && group) {
+    if (message.pinned) {
+      if (own || where.moderates) actions.push("unpin");
+    } else if (!where.closed && (where.moderates || (own && where.announces))) {
+      actions.push("pin");
+    }
   }
   if (own) actions.push("delete");
   else if (group && where.moderates) actions.push("remove");

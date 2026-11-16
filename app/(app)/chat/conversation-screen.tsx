@@ -1490,6 +1490,7 @@ export function ConversationScreen(props: Props) {
       readerId: reader,
       chat: kind,
       moderates: props.powers.moderate,
+      announces: props.powers.announce,
       closed: props.closed,
     });
 

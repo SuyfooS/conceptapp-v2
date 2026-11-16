@@ -2,6 +2,7 @@ import { dateIn } from "@domain/availability";
 import { messageTime } from "@domain/chat-days";
 import { PageBody } from "@ui/page";
 import { getTranslations } from "next-intl/server";
+import { Suspense } from "react";
 import { ChatList } from "../chat-list";
 import {
   CHAT_DEMO_READER,
@@ -22,9 +23,24 @@ import { AnnouncementsDemo, type DemoAnnouncement } from "./announcements-demo";
 // (the one accent card), her earlier one in the kitchen's group under it,
 // and her main action, "פרסום הודעה מההנהלה", which asks for the group and
 // opens its composer as an announcement. From tablet up the list stays
-// beside it, its row marked.
-export default async function ChatDemoAnnouncements() {
-  const t = await getTranslations("app.chat");
+// beside it, its row marked. `?announces=no` is Shiran moderating chat
+// without announcing (the roles plan's R8): no main action, and a line says
+// who posts them.
+type Props = { searchParams: Promise<{ announces?: string }> };
+
+export default function ChatDemoAnnouncements({ searchParams }: Props) {
+  return (
+    <Suspense>
+      <Demo searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function Demo({ searchParams }: Props) {
+  const [{ announces }, t] = await Promise.all([
+    searchParams,
+    getTranslations("app.chat"),
+  ]);
   const team = chatDemoConversation("team");
   const pinnedMessage = team?.messages.find(
     (m) => m.id === team.pinned?.message,
@@ -78,7 +94,11 @@ export default async function ChatDemoAnnouncements() {
         <div className={`hidden md:block ${chatPaneClass}`}>
           <ChatList heading="h2" current="announcements" />
         </div>
-        <AnnouncementsDemo announcements={shown} groups={groups} />
+        <AnnouncementsDemo
+          announcements={shown}
+          groups={groups}
+          announces={announces !== "no"}
+        />
       </div>
     </PageBody>
   );

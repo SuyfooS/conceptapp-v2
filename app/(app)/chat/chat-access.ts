@@ -43,9 +43,17 @@ export const chatAccess = cache(async () => {
      * screens say so instead of "only the two of you".
      */
     demo: isDemoBusiness(business.slug),
-    /** Posts announcements in groups (C3). */
+    /**
+     * Posts announcements in groups (C3): chat.announce, as the database
+     * answered (`my_permissions`), which a role holds only while it
+     * moderates too (the roles plan's R8).
+     */
     canAnnounce: holdsPermission(membership, "chat.announce"),
-    /** In every department's group, and removes others' messages in groups (C3). */
+    /**
+     * Chat's edit (chat.moderate): in every department's group with all of
+     * its history, removes others' messages in groups and pins announcements
+     * (C3). Without it, someone keeps their own chats and groups.
+     */
     canModerate: holdsPermission(membership, "chat.moderate"),
     /**
      * Opens a colleague's profile on the team screen from a chat: they see

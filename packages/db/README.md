@@ -912,6 +912,65 @@ manager's invite and an accountant's line, pay never passed on by anyone but
 an owner (an invite sent before included), the clock's lines still R4's, and
 how it is built.
 
+Chat by its permissions (`20261115001400_roles_chat.sql`, the roles plan's
+R8; Orel's answers of 15 November 2026): `chat.moderate`, `chat.announce`
+and `chat.send_documents` are `settable`, and nothing changes until an owner
+or the team switches them (managers hold all three by default, workers none,
+owners always all). Chat already asked its permissions rather than the role:
+the newest version of every chat and documents function and policy asks no
+rank, and no policy is replaced. The floor is view: everyone on
+the staff writes in their own chats and groups, as before. Moderating is
+chat's edit: every department's group with all of every group's history
+(`private.chat_reads_from`, `private.chat_members`), removing others'
+messages in groups, pinning and unpinning others' announcements, who
+confirmed one, the log's `chat.*` rows (R7's `private.log_perm`) and chat's
+settings (R7's `private.settings_perm`); putting a removed message back
+stays with whoever removed it, within its 10 minutes. Announcing and
+sending documents are switches under it: both now `require` `chat.moderate`,
+so a role holds them by its role only while it moderates by its role
+(`private.holds_perm`, `private.role_holds`), and granting one to a role
+that doesn't is refused (22023, hint `requires`); given to a person, each
+holds as before, whatever it requires, and the office (`clock.payroll`)
+sends documents whatever chat says (`private.sends_documents`). Pinning an
+announcement again tells the group again, so its author pins their own
+again only while they hold `chat.announce`, and unpins it whatever they
+hold (`public.pin_announcement`, replaced). A private
+chat stays its two people's alone, and a view session reads no chat, as
+before. No line of chat or documents is for a rank (their lines go to a
+chat's members and to the office), but those in a department's group who
+aren't in the department are there by `chat.moderate` alone, so their
+`chat.group` and `chat.announcement` lines are lines for it
+(`notifications.audience_perm`: read only while they hold it, and its push
+skipped once they don't), as `private.notify_chat` and
+`private.notify_announcement` (replaced) write them and as the lines already
+written were moved for those who moderate. A manager gives nobody a
+role that holds a chat key by role while they don't
+(`private.role_holds_beyond`, R3's, asks every settable key). The demo's
+messages and documents still pick their writers by role
+(`private.seed_demo_chat`, `private.seed_demo_documents`): the reset makes
+the business again before them, so its manager holds all three. The app
+reads the same answer (`chatAccess` and `documentsAccess` over
+`my_permissions`); anyone who doesn't announce has no "פרסום הודעה
+מההנהלה" on /chat/announcements and a line saying who posts them, and reads
+who writes in an announcers-only team group by the rule, not as
+"management"; chat's who-sees words name the owners and whoever runs the
+chat; a sender whose `chat.send_documents` is off keeps "שלחת" on
+/chat/documents. `roles_chat.test.sql` covers it with one
+matrix over today's defaults, workers raised (with and without the two
+switches) and managers lowered: reads (the chats, the team's group and its
+history with a removed message and a pinned announcement, two departments'
+groups, a private chat, who confirmed, the log's chat rows, what each
+holds) for members, the accountant and views as a worker and a manager; the
+writes (removing and putting back, unpinning, announcing, a document to
+people, a group of another department, a private chat, chat's settings,
+the team's group where only announcers write); then the console's matrix,
+the office sending documents when lowered, the switches refused without
+moderating by role, personal grants, giving a role, a lowered author's own
+announcement unpinned but not pinned again, the lines of a department's
+group for moderators outside it (hidden and their pushes skipped once
+lowered), today's rule frozen against the new one for every membership, and
+no chat or documents function or policy asking a rank.
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for
@@ -1174,7 +1233,8 @@ per pair on the staff (`person_a < person_b`, made by the first message). Who is
 one is derived, never synced (`private.chat_reads_from`, above, and
 `private.chat_members` for who a message tells): owners and managers hold
 `chat.moderate` and `chat.announce` by default (`public.permission_keys`, with
-`chat.send_documents` for C6), so they are in every department's group and read
+`chat.send_documents` for C6; since the roles plan's R8 switched per role,
+the two under moderating, above), so they are in every department's group and read
 all of it; someone new reads a group from when they joined it, and a pinned
 announcement whenever; someone who comes back reads it from their return, since
 `public.memberships.staff_since` (its `created_at` at first, set again by the

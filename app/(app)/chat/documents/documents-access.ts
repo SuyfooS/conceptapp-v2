@@ -48,7 +48,9 @@ export const documentsAccess = cache(async () => {
     office,
     /**
      * Sends documents to people (private.sends_documents): an owner, a holder
-     * of chat.send_documents (managers by default), or the office.
+     * of chat.send_documents (managers by default; a role holds it only while
+     * it moderates chat too, the roles plan's R8), or the office, whatever
+     * chat's switches say.
      */
     sends: office || holdsPermission(membership, "chat.send_documents"),
   };

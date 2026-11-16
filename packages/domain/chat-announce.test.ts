@@ -177,6 +177,7 @@ describe("messageActions", () => {
     readerId: ME,
     chat: "team" as const,
     moderates: false,
+    announces: false,
     closed: false,
   };
   const text = {
@@ -219,7 +220,7 @@ describe("messageActions", () => {
     ).toEqual([]);
   });
 
-  it("lets an announcement's author and management unpin it, and pin it again where people write", () => {
+  it("lets an announcement's author and management unpin it, and management pin it again where people write", () => {
     const announcement = {
       ...text,
       authorId: SHIRAN,
@@ -242,6 +243,39 @@ describe("messageActions", () => {
         { ...group, moderates: true, closed: true },
       ),
     ).toEqual(["copy", "remove"]);
+  });
+
+  it("lets its author pin their own again only while they announce, and unpin it whatever they hold", () => {
+    // The roles plan's R8: announcing is a switch an owner turns off, and
+    // pinning again tells the group again (public.pin_announcement).
+    const own = {
+      ...text,
+      authorId: SHIRAN,
+      kind: "announcement" as const,
+      pinned: false,
+    };
+    const shiran = { ...group, readerId: SHIRAN };
+    expect(messageActions(own, { ...shiran, announces: true })).toEqual([
+      "copy",
+      "pin",
+      "delete",
+    ]);
+    expect(messageActions(own, shiran)).toEqual(["copy", "delete"]);
+    expect(messageActions({ ...own, pinned: true }, shiran)).toEqual([
+      "copy",
+      "unpin",
+      "delete",
+    ]);
+    // Moderating without announcing still pins anyone's, their own included.
+    expect(messageActions(own, { ...shiran, moderates: true })).toEqual([
+      "copy",
+      "pin",
+      "delete",
+    ]);
+    // Announcing pins nobody else's.
+    expect(
+      messageActions({ ...own, authorId: URI }, { ...shiran, announces: true }),
+    ).toEqual(["copy"]);
   });
 });
 
