@@ -1,5 +1,6 @@
 import type { Role } from "@domain/modules";
 import type { PayRole } from "@domain/payroll-access";
+import type { NamedRole } from "@domain/role-access";
 
 /** Someone active in the business, as the access screen lists them. */
 export type AccessPersonRow = {
@@ -7,6 +8,12 @@ export type AccessPersonRow = {
   name: string | null;
   photo: string | null;
   role: Role;
+  /**
+   * The role the business named that they hold (the roles plan's R11b),
+   * shown by its name with `role`; null for none. It never gives pay, so
+   * they see it only by their own access (`coveredByRole`, R11e).
+   */
+  namedRole: Pick<NamedRole, "id" | "name" | "nameEn"> | null;
   /** Given pay access to them alone. */
   personal: boolean;
 };

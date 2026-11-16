@@ -827,6 +827,7 @@
         "close": "Close",
         "accountantNote": "{count, plural, =0 {This role sees everyone's hours and pay, with no shifts.} one {This role has no shifts: one shift that hasn't started comes off the schedule and shows as missing.} other {This role has no shifts: # shifts that haven't started come off the schedule and show as missing.}}",
         "ownerNote": "An owner has every permission in the business, including removing anyone and changing anyone's role. Personal permissions given earlier aren't needed any more, and are cleared.",
+        "namedPayNote": "People in {role} don't see the hours and pay through the switch for {base, select, manager {the managers} other {the workers}}. After the change, you can give {name} personal access on “Who sees pay”.",
         "clockedInHint": "Once they clock out",
         "payHint": "Only an owner gives a role that sees pay",
         "heldHint": "Only an owner gives a role that holds permissions you don't",
@@ -2627,6 +2628,8 @@
         },
         "always": "Always",
         "count": "{count, plural, =0 {Nobody sees} one {One person sees} other {# people see}} the hours and pay",
+        "namedRoles": "People in {role} don't see the hours and pay through the switch for {base, select, manager {the managers} other {the workers}}",
+        "namedRolesAdd": "You can give them personal access under “{add}”",
         "overTen": "With more than 10 people seeing pay, the business moves to a medium security level",
         "personal": {
           "empty": "Nobody has personal access. You can add someone, such as a worker who also does the books.",

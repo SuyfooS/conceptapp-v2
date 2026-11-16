@@ -120,6 +120,8 @@ const PAGES = [
   "/design/shell/manage/notifications",
   "/design/shell/manage/departments",
   "/design/shell/manage/access",
+  // Workers see pay too, and the shift lead still only by his own (R11e).
+  "/design/shell/manage/access?state=named",
   "/design/shell/manage/roles",
   // The role the business named, opened first: on a phone, its own screen.
   "/design/shell/manage/roles?role=shift-lead",

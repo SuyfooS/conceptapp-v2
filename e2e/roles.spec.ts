@@ -21,7 +21,8 @@ import { heT } from "./t";
 // on "מי רואה שכר". The owner also adds a role the business names (R11a),
 // which shows with nobody in it and is removed, with its undo, and gives it
 // to a worker from the team screen, where the roles screen then counts them
-// (R11b). It
+// (R11b), and "מי רואה שכר" offers them access of their own even where
+// workers see pay, since a named role never does by role (R11e). It
 // runs in a real business of its own (e2e/db.ts), every rule on its default,
 // made afresh for each test and gone after, so nothing here depends on what
 // another spec did to a demo business's rules, at every screen size.
@@ -31,6 +32,7 @@ const MANAGER = ROLES_PEOPLE.manager;
 const WORKER = ROLES_PEOPLE.worker;
 
 const r = he.app.manage.roles;
+const access = he.app.manage.access;
 const roles = he.app.team.roles;
 const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -504,10 +506,10 @@ const roleRow = (page: Page) =>
     name: new RegExp(`^${literal(he.app.team.changes.role)}`),
   });
 
-test("the owner adds a shift lead on workers, makes a worker one from the team, and the role shows them", async ({
+test("the owner adds a shift lead on workers, makes a worker one from the team, the role shows them, and who sees pay offers them", async ({
   page,
 }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
   const project = testInfo.project.name;
   const name = "אחראי משמרת";
   const sheet = r.addSheet;
@@ -579,4 +581,40 @@ test("the owner adds a shift lead on workers, makes a worker one from the team, 
   await expect(roleShown(page, roles.worker, project)).toContainText(
     heT("app.manage.roles.people", { count: 0 }),
   );
+
+  // Workers see pay, and a role the business named never does by role
+  // (R11e): who sees pay counts the owner alone, says why, and offers the
+  // shift lead personal access, by the role's name.
+  await setRolesPayRole("worker", true);
+  await page.goto("/manage/access");
+  await expect(title(page, access.title)).toBeVisible();
+  await expect(
+    page.getByRole("switch", { name: access.roles.worker }),
+  ).toHaveAttribute("aria-checked", "true");
+  await expect(
+    shown(page, heT("app.manage.access.count", { count: 1 })),
+  ).toBeVisible();
+  await expect(
+    shown(
+      page,
+      heT("app.manage.access.namedRoles", { role: name, base: "worker" }),
+    ),
+  ).toBeVisible();
+  await expect(
+    shown(
+      page,
+      heT("app.manage.access.namedRolesAdd", { add: access.personal.add }),
+    ),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  await page
+    .getByRole("button", {
+      name: `${heT("app.manage.access.personal.addLabel", { add: access.personal.add })}: ${access.personal.choose}`,
+    })
+    .click();
+  await expect(
+    page.getByRole("menuitemradio", {
+      name: `${WORKER.name} · ${heT("app.team.namedRole", { name, role: roles.worker })}`,
+    }),
+  ).toBeVisible();
 });

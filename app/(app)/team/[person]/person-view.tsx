@@ -32,6 +32,7 @@ export type PersonChanges = Pick<
   | "beyond"
   | "namedRoles"
   | "ownerOnly"
+  | "pay"
   | "ahead"
   | "clockedIn"
   | "clockHref"
@@ -195,6 +196,7 @@ export async function PersonView({
                 beyond: changes.beyond,
                 namedRoles: changes.namedRoles,
                 ownerOnly: changes.ownerOnly,
+                pay: changes.pay,
                 ahead: changes.ahead,
                 clockedIn: changes.clockedIn,
                 clockHref: changes.clockHref,

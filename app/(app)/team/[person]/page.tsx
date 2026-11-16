@@ -22,6 +22,7 @@ import { notFound, redirect } from "next/navigation";
 import { chatAccess } from "../../chat/chat-access";
 import { chatPaths } from "../../chat/chat-paths";
 import { currentWording } from "../../current-wording";
+import { currentAccess } from "../../manage/access/access";
 import { currentMember } from "../../member";
 import { currentGivableNamedRoles, currentOwnerOnlyRoles } from "../../team";
 import { baseWording, translator } from "../../wording";
@@ -94,7 +95,7 @@ export default async function TeamPersonPage({
   const timeZone = membership.business.place.timeZone;
   let changes: PersonChanges | null = null;
   if (mayChange) {
-    const [ahead, clockedIn, ownerOnly, named] = await Promise.all([
+    const [ahead, clockedIn, ownerOnly, named, access] = await Promise.all([
       shiftsAhead(businessId, data.userId, timeZone),
       // Whether they are on the clock is the clock's to show: asked only of
       // someone who reads the team's hours (clock.edit, or pay). For anyone
@@ -110,6 +111,10 @@ export default async function TeamPersonPage({
       // The business's named roles: those the viewer gives are offered
       // after their base (the roles plan's R11b).
       currentGivableNamedRoles(),
+      // Who sees pay, for an owner where pay access is in use (null for
+      // anyone else): a named role never sees it by role (R11e), so the
+      // sheet says so before a change to one on a role that does.
+      currentAccess(),
     ]);
     changes = {
       roles: invitableRoles(membership, named),
@@ -125,6 +130,14 @@ export default async function TeamPersonPage({
           : []),
       ].map(namedRoleShown),
       ownerOnly,
+      pay: access
+        ? {
+            roles: access.roles,
+            personal: access.people.some(
+              (p) => p.userId === data.userId && p.personal,
+            ),
+          }
+        : null,
       ahead,
       clockedIn,
       clockHref: `/clock/team/${data.userId}`,

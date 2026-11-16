@@ -300,6 +300,8 @@ export function consoleAccess(slug: string, readOnly: boolean): AccessData {
       name: person.name || null,
       photo: null,
       role: person.role,
+      // Nobody in the console's demo holds a role the business named.
+      namedRole: null,
       personal: access.personal.includes(person.name),
     })),
     // Someone on the ConceptApp team, never in the business.
