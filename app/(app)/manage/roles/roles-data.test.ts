@@ -146,5 +146,26 @@ describe("roles the business named (R11a)", () => {
       documents: false,
     });
     expect(data.roles[2]?.people).toEqual([]);
+    expect(data.roles.map((role) => role.invited)).toEqual([0, 0, 0]);
+  });
+
+  it("count the open invites waiting for each (R11b)", () => {
+    const data = rolesData({
+      matrix: { ...matrix([], []), named: [lead], addsRoles: true },
+      enabled: [],
+      people,
+      invites: new Map([
+        [LEAD, 2],
+        ["another-business-role", 1],
+      ]),
+      viewOnly: false,
+      documents: false,
+    });
+    expect(data.roles.map((role) => [role.key, role.invited])).toEqual([
+      ["manager", 0],
+      ["worker", 0],
+      [LEAD, 2],
+    ]);
+    expect(data.roles[2]?.people).toEqual([]);
   });
 });

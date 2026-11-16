@@ -15,7 +15,11 @@ import type { RolePerson, RolesData } from "./roles-types";
 /** Someone active in the business, by their role, as the screen counts them. */
 export type RolesMember = RolePerson & {
   role: Role;
-  /** The role the business named that they hold (R11b gives them), else null. */
+  /**
+   * The role the business named that they hold (given by an invite or a
+   * change of role on the team screen, R11b), else null: they count in it,
+   * not in its base.
+   */
   namedRole?: string | null;
 };
 
@@ -27,7 +31,8 @@ export type RolesMember = RolePerson & {
  * by role (`accessFromHeld`), pay as its row gives it, and who is in them
  * (those in a role the business named are in that one); then the business's
  * named roles in their order (R11a), each as it holds it, never pay, which
- * its people are given one by one; and the fixed owners and accountants. The
+ * its people are given one by one, with the open invites waiting for it
+ * (R11b); and the fixed owners and accountants. The
  * owner's screen (/manage/roles, the roles plan's R9) and the console's (R2,
  * by initials) both draw it.
  */
@@ -35,6 +40,7 @@ export function rolesData({
   matrix,
   enabled,
   people,
+  invites = new Map(),
   viewOnly,
   documents,
 }: {
@@ -43,6 +49,11 @@ export function rolesData({
   enabled: readonly ModuleKey[];
   /** The business's active members (an invite is in no role until claimed). */
   people: readonly RolesMember[];
+  /**
+   * The open invites to each named role, by its id (R11b): no one is in it
+   * by them, but they hold it, as its people do. None by default.
+   */
+  invites?: ReadonlyMap<string, number>;
   viewOnly: boolean;
   /** Documents are on (wherever chat is): whoever sees pay reads them too. */
   documents: boolean;
@@ -81,6 +92,7 @@ export function rolesData({
           name: null,
           nameEn: null,
           people: inRole(base),
+          invited: 0,
           access: accessFromHeld((perm) => held.has(perm)),
           seesPay: held.has(PAY_PERMISSION),
         };
@@ -91,6 +103,7 @@ export function rolesData({
         name: role.name,
         nameEn: role.nameEn,
         people: inNamed(role.id),
+        invited: invites.get(role.id) ?? 0,
         access: accessFromHeld((perm) => role.held.has(perm)),
         // Never by role: given to each of its people on "מי רואה שכר".
         seesPay: false,

@@ -3535,6 +3535,22 @@ export async function rolesNamed(): Promise<NamedRoleRow[]> {
     order by br.sort`;
 }
 
+/**
+ * Someone's role in the business, and the name of the role the business
+ * named that they hold (the roles plan's R11b), or null; null for someone
+ * not in it.
+ */
+export async function rolesPlace(
+  userId: string,
+): Promise<{ role: string; named: string | null } | null> {
+  const [row] = await sql<{ role: string; named: string | null }[]>`
+    select m.role::text as role, br.name as named
+    from public.memberships m
+    left join public.business_roles br on br.id = m.named_role
+    where m.business_id = ${ROLES_BUSINESS.id} and m.user_id = ${userId}`;
+  return row ?? null;
+}
+
 /** Who switched a role's permission in the business, oldest first. */
 export async function rolesLogActors(): Promise<(string | null)[]> {
   const rows = await sql<{ actor: string | null }[]>`

@@ -21,6 +21,7 @@ import {
   type CoverPreset,
   coverOf,
 } from "@domain/profile";
+import type { NamedRole } from "@domain/role-access";
 import type { BusinessPlace } from "@domain/shabbat";
 import type { ViewSession } from "@domain/view-as";
 import type { Wording } from "@domain/wording";
@@ -29,6 +30,7 @@ import type { Database } from "./database.types";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createClient } from "./supabase/server";
+import { namedRoleIn } from "./team";
 
 export type MemberRole = Database["public"]["Enums"]["member_role"];
 
@@ -82,6 +84,13 @@ export type CurrentMember = {
     business: MemberBusiness;
     /** When they joined it (ISO); null while viewing as a role. */
     since: string | null;
+    /**
+     * The role the business named that they hold there (the roles plan's
+     * R11b), built on `role`, by its names, for what the person reads about
+     * themselves; null for none, and while viewing as a role. What it holds
+     * is `perms` already.
+     */
+    namedRole: NamedRole | null;
   } | null;
   /**
    * Set while someone on the ConceptApp team views a business as a role:
@@ -192,6 +201,42 @@ function wordingRows<T>(result: {
   throw result.error;
 }
 
+type Client = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * Every business the person is active in, oldest first, with the role the
+ * business named that they hold in each (`named_role`, the roles plan's
+ * R11b). Before 20261115001500_named_roles.sql reaches a project the column
+ * is missing, nobody holds one, and the rows are read as before.
+ */
+async function ownMemberships(supabase: Client, userId: string) {
+  const named = await supabase
+    .from("memberships")
+    .select(
+      "role, perms, created_at, named_role, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
+    )
+    .eq("user_id", userId)
+    .eq("active", true)
+    .order("created_at");
+  if (!named.error) return { rows: named.data, error: null };
+  if (!isMissingColumn(named.error)) return { rows: [], error: named.error };
+  const older = await supabase
+    .from("memberships")
+    .select(
+      "role, perms, created_at, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
+    )
+    .eq("user_id", userId)
+    .eq("active", true)
+    .order("created_at");
+  return {
+    rows: (older.data ?? []).map((row) => ({
+      ...row,
+      named_role: null as string | null,
+    })),
+    error: older.error,
+  };
+}
+
 /**
  * Who is signed in and which business they work in, read under RLS. The business
  * comes with its place and its modules, since nearly every screen needs them
@@ -240,14 +285,7 @@ export async function getCurrentMember(
       supabase.rpc("own_phone"),
       // Every business they are active in: one place on a staff at most, and
       // any number as an accountant (20261110000900_several_businesses.sql).
-      supabase
-        .from("memberships")
-        .select(
-          "role, perms, created_at, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
-        )
-        .eq("user_id", userId)
-        .eq("active", true)
-        .order("created_at"),
+      ownMemberships(supabase, userId),
       // At most one is open (a unique index); people off the team have none.
       supabase
         .from("view_sessions")
@@ -318,6 +356,7 @@ export async function getCurrentMember(
         }),
         business: memberBusiness(viewed, wording),
         since: null,
+        namedRole: null,
       },
       viewing: { role: view.data.role, businessSlug: viewed.slug },
       unread: NO_UNREAD,
@@ -327,7 +366,7 @@ export async function getCurrentMember(
 
   // RLS shows a person every business they are in; a row whose business it
   // hides is no place to open.
-  const places = (memberships.data ?? []).flatMap((row) =>
+  const places = memberships.rows.flatMap((row) =>
     row.businesses
       ? [
           {
@@ -335,6 +374,7 @@ export async function getCurrentMember(
             role: row.role,
             since: row.created_at,
             perms: row.perms,
+            namedRole: row.named_role,
             business: memberBusiness(row.businesses, wording),
           },
         ]
@@ -343,8 +383,10 @@ export async function getCurrentMember(
   const picked = chosenMembership(places, chosen);
   // One business: the lines read alongside are all its own. Several: each
   // business's lines read on their own, together and with the permissions,
-  // so one business's lines never crowd out another's count.
-  const [counts, perms] = await Promise.all([
+  // so one business's lines never crowd out another's count. The names of
+  // the role the business named that they hold come with them, for someone
+  // who holds one.
+  const [counts, perms, namedRole] = await Promise.all([
     places.length > 1
       ? Promise.all(
           places.map(
@@ -366,6 +408,9 @@ export async function getCurrentMember(
           viewing: false,
         })
       : Promise.resolve([]),
+    picked
+      ? namedRoleIn(supabase, picked.businessId, picked.namedRole)
+      : Promise.resolve(null),
   ]);
   const counted = new Map<string, UnreadCounts>(counts);
   const unreadOf = (businessId: string) => counted.get(businessId) ?? NO_UNREAD;
@@ -386,6 +431,7 @@ export async function getCurrentMember(
           perms,
           business: picked.business,
           since: picked.since,
+          namedRole,
         }
       : null,
     viewing: null,

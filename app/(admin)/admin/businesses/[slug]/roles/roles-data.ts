@@ -23,6 +23,7 @@ export function consoleRolesData({
   matrix,
   enabled,
   people,
+  invites,
   viewOnly,
   documents,
 }: {
@@ -30,6 +31,8 @@ export function consoleRolesData({
   /** The modules on in the business. */
   enabled: readonly ModuleKey[];
   people: readonly ConsoleRolePerson[];
+  /** The open invites to each named role, by its id (R11b); none by default. */
+  invites?: ReadonlyMap<string, number>;
   viewOnly: boolean;
   /** Documents are on (wherever chat is): whoever sees pay reads them too. */
   documents: boolean;
@@ -38,6 +41,7 @@ export function consoleRolesData({
     matrix,
     enabled,
     people: people.map((person) => ({ ...person, photo: null })),
+    ...(invites ? { invites } : {}),
     viewOnly,
     documents,
   });

@@ -156,10 +156,12 @@ const linkClass =
 const headActionClass = `${linkClass} disabled:no-underline disabled:opacity-50`;
 
 /**
- * For a manager or a worker nobody holds yet: where it is given, on the team
- * screen (the business's people, in the console), in the words of where it
- * is drawn. Never for a role the business named: the team screen gives only
- * the built-in roles until R11b, so it would lead where it can't be done.
+ * For a role nobody holds yet: where it is given, on the team screen (the
+ * business's people, in the console), in the words of where it is drawn.
+ * The team screen gives the roles the business named too (the roles plan's
+ * R11b: invited to, or changed to on a person's page); the console's people
+ * page only managers and workers, so in the console a named role gets none,
+ * as it would lead where it can't be done.
  */
 function GiveRole({
   href,
@@ -175,6 +177,53 @@ function GiveRole({
       {label}
     </Link>
   );
+}
+
+/**
+ * Someone holds the role, or an open invite waits for it (R11b): it can't
+ * be archived, and nobody needs to be sent to the team screen to give it.
+ */
+const heldBack = (role: EditableRole) =>
+  role.people.length > 0 || role.invited > 0;
+
+/** Under a named role's removal: what it does, or why it can't be done. */
+const archiveWords = (role: EditableRole) =>
+  role.people.length > 0
+    ? ("named.archiveHeld" as const)
+    : role.invited > 0
+      ? ("named.archiveInvited" as const)
+      : ("named.archiveHint" as const);
+
+/**
+ * Where a role is given, in the words of where it is drawn: the invites
+ * waiting for it, once some do (R11b; someone is on the way already), else
+ * for a role nobody holds, the way to give it, where it is given there.
+ */
+function GiveOrInvited({
+  role,
+  given,
+  href,
+  label,
+  className,
+}: {
+  role: EditableRole;
+  /** `href` gives the role (`givenThere`). */
+  given: boolean;
+  href: string;
+  label: string;
+  className?: string;
+}) {
+  const t = useTranslations("app.manage.roles");
+  if (role.invited > 0) {
+    return (
+      <span className={cn("text-ink-2", className)}>
+        {t("invited", { count: role.invited })}
+      </span>
+    );
+  }
+  return role.people.length === 0 && given ? (
+    <GiveRole href={href} label={label} className={className} />
+  ) : null;
 }
 
 /** Why an area's choices can't change yet, in one quiet line. */
@@ -282,6 +331,13 @@ export function RolesView({
       ? tConsole(`failure.${what}`)
       : t.rich(`failure.${what}`, { max: ROLE_LIMIT, ltr });
   const giveLabel = inConsole ? tConsole("emptyRole") : t("emptyRole");
+  /**
+   * Whether the role is given where `paths.team` leads: the app's team
+   * screen gives every role here, named ones too (the roles plan's R11b);
+   * the console's people page only managers and workers.
+   */
+  const givenThere = (target: EditableRole) =>
+    !inConsole || target.name === null;
   const chosenRole = roles.find((r) => r.key === chosen) ?? null;
   // A role taken back (the undo of adding it) leaves the first one chosen.
   const role = chosenRole ?? roles[0] ?? null;
@@ -478,6 +534,7 @@ export function RolesView({
       name: input.name,
       nameEn: null,
       people: [],
+      invited: 0,
       access: from ? from.access : defaultAccess(input.base),
       // Pay is the owner's switch on its own screen, never copied.
       seesPay: false,
@@ -545,13 +602,14 @@ export function RolesView({
   /**
    * A role the business named off the list, at once, with its undo on the
    * toast (the database keeps it archived, for that). Refused while people
-   * hold it: they need another role first. The control pressed goes with the
-   * role (its card, its column), so the keyboard goes to the undo.
+   * hold it, or an open invite waits for it: they need another role first,
+   * and the invite deleting. The control pressed goes with the role (its
+   * card, its column), so the keyboard goes to the undo.
    */
   function archive(target: EditableRole) {
     const { archiveRole, restoreRole } = actions;
     if (!archiveRole || target.name === null || disabled) return;
-    if (target.people.length > 0) {
+    if (heldBack(target)) {
       setFailure("held");
       return;
     }
@@ -747,7 +805,7 @@ export function RolesView({
             <Button
               variant="ghost"
               className="text-danger"
-              disabled={disabled || target.people.length > 0}
+              disabled={disabled || heldBack(target)}
               aria-describedby={`${id}-remove-${headingLevel}`}
               onClick={() => archive(target)}
             >
@@ -758,9 +816,7 @@ export function RolesView({
               id={`${id}-remove-${headingLevel}`}
               className="px-1 text-ink-2 text-sm"
             >
-              {target.people.length > 0
-                ? t("named.archiveHeld")
-                : t("named.archiveHint")}
+              {t(archiveWords(target))}
             </p>
           </div>
         ) : null}
@@ -850,13 +906,14 @@ export function RolesView({
           />
           {phoneRole.people.length > 0 ? (
             <div className="mt-3">{stack(phoneRole.people, "md")}</div>
-          ) : phoneRole.name === null ? (
-            <GiveRole
-              href={paths.team}
-              label={giveLabel}
-              className="mt-1 self-start text-base"
-            />
           ) : null}
+          <GiveOrInvited
+            role={phoneRole}
+            given={givenThere(phoneRole)}
+            href={paths.team}
+            label={giveLabel}
+            className="mt-1 self-start text-base"
+          />
         </div>
       ) : null}
 
@@ -905,13 +962,13 @@ export function RolesView({
                   {roleName(role)}
                 </h2>
                 <p className="text-ink-2 text-sm">{about(role)}</p>
-                {role.people.length === 0 && role.name === null ? (
-                  <GiveRole
-                    href={paths.team}
-                    label={giveLabel}
-                    className="self-start text-sm"
-                  />
-                ) : null}
+                <GiveOrInvited
+                  role={role}
+                  given={givenThere(role)}
+                  href={paths.team}
+                  label={giveLabel}
+                  className="self-start text-sm"
+                />
               </div>
               {stack(role.people, "md")}
             </div>
@@ -937,6 +994,7 @@ export function RolesView({
             payLink={tAccess("title")}
             teamHref={paths.team}
             giveLabel={giveLabel}
+            givenThere={givenThere}
             onChange={change}
             onRename={actions.renameRole ? startRename : undefined}
             onArchive={actions.archiveRole ? archive : undefined}
@@ -1214,6 +1272,7 @@ function RolesMatrix({
   payLink,
   teamHref,
   giveLabel,
+  givenThere,
   onChange,
   onRename,
   onArchive,
@@ -1229,6 +1288,8 @@ function RolesMatrix({
   teamHref: string;
   /** What that link says, where the screen is drawn. */
   giveLabel: string;
+  /** Whether `teamHref` gives the role (`givenThere`). */
+  givenThere: (role: EditableRole) => boolean;
   onChange: (role: EditableRole, area: AccessArea, next: RoleAccess) => void;
   /** Opens the sheet that renames a role the business named. */
   onRename?: (role: EditableRole) => void;
@@ -1261,9 +1322,12 @@ function RolesMatrix({
           {role.name !== null ? (
             <span>{t("builtOn", { role: tRoles(role.base) })}</span>
           ) : null}
-          {role.people.length === 0 && role.name === null ? (
-            <GiveRole href={teamHref} label={giveLabel} />
-          ) : null}
+          <GiveOrInvited
+            role={role}
+            given={givenThere(role)}
+            href={teamHref}
+            label={giveLabel}
+          />
           {role.name !== null && (onRename || onArchive) ? (
             <span className="flex flex-wrap gap-x-4">
               {onRename ? (
@@ -1281,7 +1345,7 @@ function RolesMatrix({
                 <button
                   type="button"
                   className={cn(headActionClass, "text-danger")}
-                  disabled={disabled || role.people.length > 0}
+                  disabled={disabled || heldBack(role)}
                   aria-label={t("named.archiveLabel", {
                     role: roleName(role),
                   })}
@@ -1296,9 +1360,7 @@ function RolesMatrix({
           {/* What removing does, or why it can't, as a role's card says. */}
           {role.name !== null && onArchive ? (
             <span id={`${id}-${role.key}-remove`} className="max-w-xs">
-              {role.people.length > 0
-                ? t("named.archiveHeld")
-                : t("named.archiveHint")}
+              {t(archiveWords(role))}
             </span>
           ) : null}
         </span>

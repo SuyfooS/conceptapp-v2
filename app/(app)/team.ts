@@ -1,4 +1,5 @@
 import { getPayRolesForTeam } from "@db/payroll";
+import { getGivableNamedRoles } from "@db/roles";
 import { getTeam } from "@db/team";
 import type { Role } from "@domain/modules";
 import { buildsSchedule } from "@domain/schedule";
@@ -6,6 +7,7 @@ import {
   buildTeam,
   canEditTeam,
   canSeeTeam,
+  type GivableNamedRole,
   ownerOnlyRoles,
   type Team,
 } from "@domain/team";
@@ -62,3 +64,19 @@ export const currentOwnerOnlyRoles = cache(async (): Promise<Role[]> => {
     await getPayRolesForTeam(membership.business.id),
   );
 });
+
+/**
+ * The business's live named roles, for someone who edits the team, once per
+ * request (the roles plan's R11b): the screens offer those the person gives
+ * (`givesNamedRole`, `invitableRoles`). Read with the secret key
+ * (`getGivableNamedRoles`): what each role holds says nothing about anyone.
+ * Empty for anyone who changes nothing on the team, and before the database
+ * gives named roles.
+ */
+export const currentGivableNamedRoles = cache(
+  async (): Promise<GivableNamedRole[]> => {
+    const membership = (await currentMember())?.membership;
+    if (!membership || !canEditTeam(membership)) return [];
+    return getGivableNamedRoles(membership.business.id);
+  },
+);

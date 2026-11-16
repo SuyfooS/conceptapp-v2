@@ -36,6 +36,13 @@ export type EditableRole = {
   /** Its English name, when the business gave one; null otherwise. */
   nameEn: string | null;
   people: RolePerson[];
+  /**
+   * Invites nobody claimed yet, and that haven't expired, to a role the
+   * business named (the roles plan's R11b): each holds it as a person does,
+   * so it can't be archived, and somebody is already on the way to it. Zero
+   * for a manager or a worker, whose invites hold nothing back.
+   */
+  invited: number;
   access: RoleAccess;
   /** Sees everyone's hours and pay, as "מי רואה שכר" sets it. */
   seesPay: boolean;

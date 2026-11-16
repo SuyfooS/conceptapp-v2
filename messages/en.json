@@ -703,6 +703,7 @@
         "worker": "Worker",
         "accountant": "Accountant"
       },
+      "namedRole": "{name} ({role})",
       "state": {
         "member": "On the team",
         "open": "Waiting to join",
@@ -726,6 +727,7 @@
         "emptyReadOnly": "No open invites.",
         "expiredHint": "{count, plural, one {One invite has expired} other {# invites have expired}}. “New link” opens it again for 14 days.",
         "expiredReadOnly": "{count, plural, one {One invite has expired.} other {# invites have expired.}}",
+        "roleGone": "This invite's role was removed, so it gets no new link. You can delete it and invite again to another role.",
         "closed": "This is a demo business, so nobody is invited to it. In a real business, you invite the team from here, with a link.",
         "closedReadOnly": "This is a demo business, so nobody is invited to it."
       },
@@ -742,6 +744,7 @@
           "alreadyMember": "This number is already in the team.",
           "notAllowed": "You cannot invite to this role.",
           "givesPay": "This role sees pay, so only an owner sends a new link for this invite.",
+          "roleGone": "This invite's role was removed meanwhile, so it gets no new link. You can delete it and invite again to another role.",
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create a link. Try again in a moment.",
           "noPermission": "You don't have permission to invite to the team.",
@@ -763,6 +766,7 @@
           "worker": "Usually shifts and the time clock",
           "accountant": "Everyone's hours and pay, no shifts"
         },
+        "namedHint": "The business's own role, built on {role}",
         "submit": "Create invite link",
         "ownerOnly": "The roles you could invite to from here see pay, so only an owner invites to them. To add someone to the team, ask an owner.",
         "ready": "{name}'s invite is ready",
@@ -785,6 +789,7 @@
           "alreadyMember": "This number is already in the team.",
           "notAllowed": "You cannot invite to this role.",
           "givesPay": "This role sees pay, so only an owner invites to it. Reload the screen.",
+          "roleGone": "This role was removed meanwhile, so the invite was not saved. Reload the screen and choose another role.",
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create the invite. Try again in a moment.",
           "noPermission": "You don't have permission to invite to the team.",
@@ -821,6 +826,7 @@
         "ownerNote": "An owner has every permission in the business, including removing anyone and changing anyone's role. Personal permissions given earlier aren't needed any more, and are cleared.",
         "clockedInHint": "Once they clock out",
         "payHint": "Only an owner gives a role that sees pay",
+        "heldHint": "Only an owner gives a role that holds permissions you don't",
         "clockUnknown": "If {name} is on an open shift on the clock, this can be done only after they clock out.",
         "roleChanged": "{name} is now {role}",
         "roleBack": "{name} is {role} again",
@@ -843,6 +849,7 @@
           "beyondHeld": "This role holds permissions you don't have, so only an owner gives it. The role stays as it was.",
           "givesPay": "This role sees pay, so only an owner gives it. The role stays as it was.",
           "gone": "This changed in the meantime, and they're no longer on the team. Reload the screen.",
+          "roleGone": "This role was removed in the meantime, and the role stays as it was. Reload the screen.",
           "yourself": "Your own place on the team can't be changed from here.",
           "lastOwner": "The business needs at least one owner.",
           "demo": "This is a demo business, and its team stays as it is.",
@@ -2662,6 +2669,7 @@
         "people": "{count, plural, =0 {Nobody yet} one {# person} other {# people}}",
         "builtOn": "Built on {role}",
         "emptyRole": "Give people the role on the team screen",
+        "invited": "{count, plural, one {One invite to the role is waiting} other {# invites to the role are waiting}}",
         "summary": {
           "all": "Edits everything",
           "none": "No editing",
@@ -2757,8 +2765,8 @@
           "nameHint": "Such as shift lead or bar lead",
           "base": "Built on",
           "baseHint": {
-            "manager": "Its permissions start as those of {role}, at the rank of {role}: only owners and those at that rank give it.",
-            "worker": "Its permissions start as those of {role}, at the rank of {role}: anyone who edits the team can give it."
+            "manager": "Its permissions start as those of {role}, at the rank of {role}. It is given on the team screen: by owners, and by those at that rank who edit the team, if it holds nothing they don't.",
+            "worker": "Its permissions start as those of {role}, at the rank of {role}. It is given on the team screen: by owners, and by anyone who edits the team, if it holds nothing they don't."
           },
           "copy": "Copy the permissions",
           "copyHint": "The permissions start as the chosen role's, except pay. Each one can be changed after.",
@@ -2775,7 +2783,8 @@
           "archive": "Remove the role",
           "archiveLabel": "Remove the role, {role}",
           "archiveHint": "The role leaves the list, and it can be undone right after.",
-          "archiveHeld": "People hold the role, so it can't be removed. First give them another role."
+          "archiveHeld": "People hold the role, so it can't be removed. First give them another role.",
+          "archiveInvited": "An invite to the role is still waiting, so it can't be removed. First delete the invite on the team screen."
         },
         "renameSheet": {
           "title": "Rename the role",
@@ -2805,7 +2814,7 @@
           "gone": "This role is no longer on the list, so the change wasn't saved. Reload the screen.",
           "taken": "There is already a role by this name, so the change wasn't saved.",
           "limit": "The business already has <ltr>{max}</ltr> roles of its own, the most it can. Remove one, then add.",
-          "held": "People hold the role, so it can't be removed. First give them another role.",
+          "held": "People hold the role, or an invite waits for it, so it can't be removed. First give them another role, or delete the invite on the team screen.",
           "failed": "The change wasn't saved. Check the connection and try again."
         }
       },
@@ -4973,7 +4982,8 @@
           "failed": "Could not create a link. Try again in a moment.",
           "noPermission": "You may not invite people.",
           "demo": "This is a demo business, so nobody is invited to it.",
-          "hasOwner": "The business already has an owner, so this invite no longer works. Another owner is invited by the owner."
+          "hasOwner": "The business already has an owner, so this invite no longer works. Another owner is invited by the owner.",
+          "roleGone": "The role this invite gives was removed from the business, so it can't be renewed. Invite the number again with “Add a person”."
         },
         "renew": "Renew the invite",
         "renewFor": "Renew the invite for {name}"

@@ -97,6 +97,7 @@ export default async function MePage() {
           (member.phone ? displayIsraeliMobile(member.phone) : ""),
         photo: profilePhotoSrc(member.photoPath),
         role: membership.role,
+        namedRole: membership.namedRole,
         businessName: membership.business.name,
         timeZone: membership.business.place.timeZone,
         since: membership.since,

@@ -18,6 +18,7 @@ import { z } from "zod";
 import { requestOrigin } from "@/app/origin";
 import { pushSoon } from "../../push/server";
 import { currentMember } from "../member";
+import { currentGivableNamedRoles } from "../team";
 import type {
   InviteCancelResult,
   MemberChangeResult,
@@ -32,6 +33,8 @@ export type TeamFailure =
   | "notAllowed"
   // The role sees pay, which only an owner gives (the roles plan's R6).
   | "givesPay"
+  // The role the business named was removed meanwhile (R11b).
+  | "roleGone"
   | "notOpen"
   | "demo"
   | "hasOwner"
@@ -84,8 +87,10 @@ async function linkFor(token: string, phone: string): Promise<string> {
 
 /**
  * Someone who edits the team invites someone by phone from the Team screen,
- * to a role they give. The result is a link for them to send on; a number
- * with an unclaimed invite gets that invite refreshed with a new link.
+ * to a role they give: a built-in one, or one the business named that they
+ * give (the roles plan's R11b; the form's role is its id). The result is a
+ * link for them to send on; a number with an unclaimed invite gets that
+ * invite refreshed with a new link.
  */
 export async function inviteAction(
   _prev: InviteState,
@@ -99,7 +104,11 @@ export async function inviteAction(
   const actor = await inviter();
   if ("failure" in actor) return { failure: actor.failure, values };
 
-  const parsed = parseTeamInvite(values, actor.membership);
+  const parsed = parseTeamInvite(
+    values,
+    actor.membership,
+    await currentGivableNamedRoles(),
+  );
   if (!parsed.ok) return { errors: parsed.errors, values };
 
   try {
@@ -215,10 +224,12 @@ export async function resendInviteAction(
  */
 
 const memberChange = z.object({ business: z.uuid(), person: z.uuid() });
-const roleChange = memberChange.extend({
+/** A built-in role, or one the business named, by its id, on its base. */
+const roleChoice = z.object({
   role: z.enum(ROLES),
-  seen: z.enum(ROLES),
+  namedRole: z.uuid().nullable(),
 });
+const roleChange = memberChange.extend({ to: roleChoice, seen: roleChoice });
 const inviteCancel = z.object({ business: z.uuid(), invite: z.uuid() });
 
 /**
@@ -283,19 +294,20 @@ export async function removeMemberAction(
 }
 
 /**
- * Someone who edits the team gives someone another role: `seen`, the role the
- * screen showed, so one changed meanwhile stays ("changed", and the page
- * reads it again). Becoming an accountant takes them off the staff as
+ * Someone who edits the team gives someone another role, built-in or one the
+ * business named (`to`, the roles plan's R11b): `seen`, the role and named
+ * role the screen showed, so one changed meanwhile stays ("changed", and the
+ * page reads it again). Becoming an accountant takes them off the staff as
  * removing does, and the schedule's builders hear of the shifts it freed.
  * The page reads the person again.
  */
 export async function setMemberRoleAction(
   business: string,
   person: string,
-  role: string,
-  seen: string,
+  to: unknown,
+  seen: unknown,
 ): Promise<MemberChangeResult> {
-  const parsed = roleChange.safeParse({ business, person, role, seen });
+  const parsed = roleChange.safeParse({ business, person, to, seen });
   if (!parsed.success) return { ok: false, failure: "invalid" };
   const actor = await changer(parsed.data.business);
   if ("failure" in actor) return { ok: false, failure: actor.failure };
@@ -307,7 +319,7 @@ export async function setMemberRoleAction(
       actor.userId,
       parsed.data.business,
       parsed.data.person,
-      parsed.data.role,
+      parsed.data.to,
       parsed.data.seen,
     );
     if (!result.ok) {

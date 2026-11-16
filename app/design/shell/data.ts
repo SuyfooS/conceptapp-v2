@@ -9,7 +9,7 @@ import type { BusinessDetails } from "@domain/business-details";
 import type { ModuleRow } from "@domain/modules";
 import type { AddressForm, CoverPreset } from "@domain/profile";
 import type { Position, ShiftPattern } from "@domain/staffing";
-import type { TeamInvite, TeamMember } from "@domain/team";
+import type { GivableNamedRole, TeamInvite, TeamMember } from "@domain/team";
 import { portraits } from "../portraits";
 
 export const business = { name: "מסעדת הדגמה" };
@@ -152,6 +152,32 @@ export const totalOpenSlots = days.reduce((n, d) => n + openSlots(d), 0);
 // The Team screen: members and invites as the database returns them.
 export const teamToday = new Date("2026-10-23T09:00:00+03:00");
 
+/**
+ * The role the demo restaurant named itself (the roles plan's R11), as the
+ * team's screens give it: "אחראי משמרת", built on workers, building the
+ * schedule without publishing it, running the lists and seeing the team
+ * (the roles twin's `demoShiftLead`). Yoav and Itay hold it, and Dana is
+ * invited to it.
+ */
+export const demoNamedRole: GivableNamedRole = {
+  id: "shift-lead",
+  name: "אחראי משמרת",
+  nameEn: null,
+  base: "worker",
+  holds: ["lists.manage", "lists.send", "schedule.edit", "team.view"],
+};
+
+const demoNamedRoleNames = {
+  id: demoNamedRole.id,
+  name: demoNamedRole.name,
+  nameEn: demoNamedRole.nameEn,
+  base: demoNamedRole.base,
+};
+
+/** Who holds the demo's named role. */
+const inNamedRole = (id: string) =>
+  id === "yoav" || id === "itay" ? demoNamedRoleNames : null;
+
 export const teamMembers: TeamMember[] = [
   {
     userId: "shiran",
@@ -174,6 +200,7 @@ export const teamMembers: TeamMember[] = [
     name: s.name,
     phone: `+97254123456${i}`,
     role: "worker" as const,
+    namedRole: inNamedRole(s.id),
     photo: photos[s.id] ?? null,
     addressForm: forms[s.id] ?? null,
   })),
@@ -258,6 +285,7 @@ export const teamInvites: TeamInvite[] = [
     name: "דנה אברהם",
     phone: "+972531234567",
     role: "worker",
+    namedRole: demoNamedRoleNames,
     expiresAt: "2026-11-02T09:00:00+02:00",
   },
   {

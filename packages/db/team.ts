@@ -1,6 +1,6 @@
 import "server-only";
 import { dateIn } from "@domain/availability";
-import type { Role } from "@domain/modules";
+import { ROLES, type Role } from "@domain/modules";
 import {
   type AddressForm,
   addressFormOf,
@@ -8,9 +8,11 @@ import {
   coverOf,
 } from "@domain/profile";
 import { profilePhotoSrc } from "@domain/profile-photos";
+import { BASE_ROLES, type NamedRole } from "@domain/role-access";
 import {
   countShiftsAhead,
   type LeftCounts,
+  type RoleChoice,
   type TeamChangeFailure,
   type TeamInvite,
   type TeamMember,
@@ -27,6 +29,8 @@ type Client = Awaited<ReturnType<typeof createClient>>;
 type MemberRow = {
   user_id: string;
   role: Role;
+  /** Missing before 20261115001500_named_roles.sql reaches a project. */
+  named_role?: string | null;
   created_at: string;
   profiles: {
     full_name: string | null;
@@ -36,11 +40,33 @@ type MemberRow = {
 };
 
 /**
- * A business's active members, as the signed-in person may read them (RLS).
- * Before 20261109000400_profile_about.sql reaches a project there is no form
- * of address yet: the members are read as before, and the copy stays neutral.
+ * A business's active members, as the signed-in person may read them (RLS),
+ * with the role the business named that each holds (members read it; the
+ * roles plan's R11b). Before its migration reaches a project nobody holds
+ * one, and the members are read as before.
  */
 async function activeMembers(
+  supabase: Client,
+  businessId: string,
+): Promise<MemberRow[]> {
+  const named = await supabase
+    .from("memberships")
+    .select(
+      "user_id, role, named_role, created_at, profiles (full_name, avatar_path, address_form)",
+    )
+    .eq("business_id", businessId)
+    .eq("active", true);
+  if (!named.error) return named.data;
+  if (!isMissingColumn(named.error)) throw named.error;
+  return membersWithoutNamedRoles(supabase, businessId);
+}
+
+/**
+ * The same, before memberships have a named role. Before
+ * 20261109000400_profile_about.sql reaches a project there is no form of
+ * address yet: the members are read as before, and the copy stays neutral.
+ */
+async function membersWithoutNamedRoles(
   supabase: Client,
   businessId: string,
 ): Promise<MemberRow[]> {
@@ -65,9 +91,128 @@ async function activeMembers(
 const nameOf = (row: Pick<MemberRow, "profiles">) =>
   row.profiles?.full_name?.trim() || null;
 
+/** An invite nobody claimed, as the Team screen reads it. */
+type InviteRow = {
+  id: string;
+  full_name: string | null;
+  phone: string;
+  role: Role;
+  /** Missing before 20261115001600_named_roles_give.sql reaches a project. */
+  named_role?: string | null;
+  expires_at: string;
+};
+
+/**
+ * The business's invites nobody claimed (open or expired), with the role
+ * the business named that each gives (the roles plan's R11b); before its
+ * migration none gives one.
+ */
+async function openInvites(
+  supabase: Client,
+  businessId: string,
+): Promise<InviteRow[]> {
+  const named = await supabase
+    .from("invites")
+    .select("id, full_name, phone, role, named_role, expires_at")
+    .eq("business_id", businessId)
+    .is("claimed_at", null);
+  if (!named.error) return named.data;
+  if (!isMissingColumn(named.error)) throw named.error;
+  const older = await supabase
+    .from("invites")
+    .select("id, full_name, phone, role, expires_at")
+    .eq("business_id", businessId)
+    .is("claimed_at", null);
+  if (older.error) throw older.error;
+  return older.data;
+}
+
+/** A role the business named, live or archived, by its id. */
+export type BusinessRoleNames = ReadonlyMap<
+  string,
+  NamedRole & { archived: boolean }
+>;
+
+const BusinessRoleRow = z.object({
+  id: z.uuid(),
+  base: z.enum(BASE_ROLES),
+  name: z.string(),
+  name_en: z.string().nullable(),
+  archived_at: z.string().nullable(),
+});
+
+/**
+ * Every role the business named, archived ones too (an expired invite may
+ * name one), as its members and views read them (RLS: a colleague's role is
+ * no secret). None before 20261115001500_named_roles.sql reaches a project.
+ */
+async function businessRoleNames(
+  supabase: Client,
+  businessId: string,
+): Promise<BusinessRoleNames> {
+  const { data, error } = await supabase
+    .from("business_roles")
+    .select("id, base, name, name_en, archived_at")
+    .eq("business_id", businessId);
+  // PostgREST's and Postgres's "no such table".
+  if (error?.code === "PGRST205" || error?.code === "42P01") return new Map();
+  if (error) throw error;
+  return new Map(
+    z
+      .array(BusinessRoleRow)
+      .parse(data)
+      .map((row) => [
+        row.id,
+        {
+          id: row.id,
+          base: row.base,
+          name: row.name,
+          nameEn: row.name_en,
+          archived: row.archived_at !== null,
+        },
+      ]),
+  );
+}
+
+/**
+ * One role the business named, by its id, as its members read it (RLS: a
+ * colleague's role is no secret): its names and its base. Null for none,
+ * for one not of the business, and before 20261115001500_named_roles.sql
+ * reaches a project. For a single person's role, where reading all of the
+ * business's (`businessRoleNames`) would be more than needed.
+ */
+export async function namedRoleIn(
+  supabase: Client,
+  businessId: string,
+  id: string | null | undefined,
+): Promise<NamedRole | null> {
+  if (!id) return null;
+  const { data, error } = await supabase
+    .from("business_roles")
+    .select("id, base, name, name_en, archived_at")
+    .eq("business_id", businessId)
+    .eq("id", id)
+    .maybeSingle();
+  // PostgREST's and Postgres's "no such table".
+  if (error?.code === "PGRST205" || error?.code === "42P01") return null;
+  if (error) throw error;
+  if (!data) return null;
+  const row = BusinessRoleRow.parse(data);
+  return { id: row.id, base: row.base, name: row.name, nameEn: row.name_en };
+}
+
+/** The named role a row holds or gives, by `roles`; null for none (or one unknown). */
+function namedOf(
+  roles: BusinessRoleNames,
+  id: string | null | undefined,
+): (NamedRole & { archived: boolean }) | null {
+  return id ? (roles.get(id) ?? null) : null;
+}
+
 /**
  * The people of a business for its Team screen: active members with their
- * profile, and invites nobody has claimed yet (open or expired). Read as
+ * profile, and invites nobody has claimed yet (open or expired), each with
+ * the role the business named that they hold or it gives (R11b). Read as
  * the signed-in person under RLS, so only someone who sees the team
  * (team.view, the roles plan's R6) gets the invites and the numbers
  * (`public.team_phones`; members read each other's names only); callers
@@ -77,30 +222,28 @@ export async function getTeam(
   businessId: string,
 ): Promise<{ members: TeamMember[]; invites: TeamInvite[] }> {
   const supabase = await createClient();
-  const [members, phoneOf, invites] = await Promise.all([
+  const [members, phoneOf, invites, roles] = await Promise.all([
     activeMembers(supabase, businessId),
     teamPhones(supabase, businessId),
-    supabase
-      .from("invites")
-      .select("id, full_name, phone, role, expires_at")
-      .eq("business_id", businessId)
-      .is("claimed_at", null),
+    openInvites(supabase, businessId),
+    businessRoleNames(supabase, businessId),
   ]);
-  if (invites.error) throw invites.error;
   return {
     members: members.map((row) => ({
       userId: row.user_id,
       name: nameOf(row),
       phone: phoneOf.get(row.user_id) ?? null,
       role: row.role,
+      namedRole: namedOf(roles, row.named_role),
       photo: profilePhotoSrc(row.profiles?.avatar_path),
       addressForm: addressFormOf(row.profiles?.address_form),
     })),
-    invites: invites.data.map((row) => ({
+    invites: invites.map((row) => ({
       id: row.id,
       name: row.full_name?.trim() || null,
       phone: row.phone,
       role: row.role,
+      namedRole: namedOf(roles, row.named_role),
       expiresAt: row.expires_at,
     })),
   };
@@ -148,18 +291,20 @@ export type TeamPerson = TeamMember & {
 
 /**
  * One active member of the business with their profile, as whoever sees the
- * team reads them (RLS; callers check `canSeeTeam` first). Null when they
- * are not an active member. Before the profile's H2 migration reaches a
- * project, they have no line and the default cover.
+ * team reads them (RLS; callers check `canSeeTeam` first), with the role
+ * the business named that they hold (R11b). Null when they are not an
+ * active member. Before the profile's H2 migration reaches a project, they
+ * have no line and the default cover.
  */
 export async function getTeamPerson(
   businessId: string,
   personId: string,
 ): Promise<TeamPerson | null> {
   const supabase = await createClient();
-  const [row, phoneOf] = await Promise.all([
+  const [row, phoneOf, roles] = await Promise.all([
     teamPersonRow(supabase, businessId, personId),
     teamPhones(supabase, businessId),
+    businessRoleNames(supabase, businessId),
   ]);
   if (!row) return null;
   return {
@@ -167,6 +312,7 @@ export async function getTeamPerson(
     name: nameOf(row),
     phone: phoneOf.get(row.user_id) ?? null,
     role: row.role,
+    namedRole: namedOf(roles, row.named_role),
     photo: profilePhotoSrc(row.profiles?.avatar_path),
     addressForm: addressFormOf(row.profiles?.address_form),
     bio: row.profiles?.bio ?? null,
@@ -189,6 +335,19 @@ async function teamPersonRow(
   businessId: string,
   personId: string,
 ): Promise<PersonRow | null> {
+  // With the role the business named that they hold, once memberships have
+  // one (20261115001500_named_roles.sql); else as before.
+  const named = await supabase
+    .from("memberships")
+    .select(
+      "user_id, role, named_role, created_at, profiles (full_name, avatar_path, bio, cover, address_form)",
+    )
+    .eq("business_id", businessId)
+    .eq("user_id", personId)
+    .eq("active", true)
+    .maybeSingle();
+  if (!named.error) return named.data;
+  if (!isMissingColumn(named.error)) throw named.error;
   const read = await supabase
     .from("memberships")
     .select(
@@ -306,23 +465,26 @@ export async function removeMember(
 }
 
 /**
- * `actorId` gives `personId` the role `role` (`public.set_member_role`), by
- * the rule of inviting: both their role now and the new one must be roles
- * the actor invites to (`mayChangeRole`, `roleChoices`). `seenRole` is the
- * role the screen showed, for an undo: `changed` when it moved meanwhile.
- * The same role writes nothing (`changed: false`). Becoming an accountant
- * takes them off the staff as removing does (`left` counts what came off,
- * and the builders are told: `pushSoon()` after); becoming an owner or an
- * accountant clears their personal permissions; between manager and worker
- * they stay. Refused as `removeMember` is, and `elsewhere` for an accountant
- * on another business's staff joining this one's (#80: say it neutrally).
+ * `actorId` gives `personId` the role `to` (`public.set_member_role`): a
+ * built-in role, or one the business named on its base (the roles plan's
+ * R11b), by the rule of inviting: both their role now and the new one must
+ * be roles the actor invites to (`mayChangeRole`, `roleChoices`). `seen` is
+ * the role and named role the screen showed, for an undo: `changed` when
+ * either moved meanwhile. The same role and named role write nothing
+ * (`changed: false`). Becoming an accountant takes them off the staff as
+ * removing does (`left` counts what came off, and the builders are told:
+ * `pushSoon()` after); becoming an owner or an accountant clears their
+ * personal permissions; between manager and worker they stay. Refused as
+ * `removeMember` is, `elsewhere` for an accountant on another business's
+ * staff joining this one's (#80: say it neutrally), and `roleGone` for a
+ * named role removed meanwhile.
  */
 export async function setMemberRole(
   actorId: string,
   businessId: string,
   personId: string,
-  role: Role,
-  seenRole?: Role,
+  to: RoleChoice,
+  seen?: RoleChoice,
 ): Promise<
   | { ok: true; changed: boolean; left: LeftCounts }
   | { ok: false; error: TeamChangeError }
@@ -331,8 +493,12 @@ export async function setMemberRole(
     actor: actorId,
     business: businessId,
     person: personId,
-    new_role: role,
-    ...(seenRole ? { seen_role: seenRole } : {}),
+    new_role: to.role,
+    // The named arguments only when there is one: a project before their
+    // migration takes the rest, and none given means none seen.
+    ...(to.namedRole ? { new_named: to.namedRole } : {}),
+    ...(seen ? { seen_role: seen.role } : {}),
+    ...(seen?.namedRole ? { seen_named: seen.namedRole } : {}),
   });
   if (error) return { ok: false, error: teamChangeError(error) };
   const row = LeftCountsRow.extend({ changed: z.boolean() }).parse(data);
@@ -478,31 +644,54 @@ export type FormerMember = {
   name: string | null;
   /** The role they had. */
   role: Role;
+  /**
+   * The role the business named that they had, built on `role` (the roles
+   * plan's R11b), while the business keeps it; null for none.
+   */
+  namedRole: NamedRole | null;
 };
+
+const FormerRow = z.object({
+  user_id: z.string(),
+  role: z.enum(ROLES),
+  named_role: z.uuid().nullable().optional(),
+  profiles: z.object({ full_name: z.string().nullable() }).nullable(),
+});
 
 /**
  * A member of the business who is no longer on its team (their membership
  * kept, inactive), as a member reads it (RLS: the business's
- * memberships); null for someone active, or never in it. For the person's
- * page once they were taken off: it says so instead of "not found".
+ * memberships), with the role the business named that they left in (R11b);
+ * null for someone active, or never in it. For the person's page once they
+ * were taken off: it says so instead of "not found". Before
+ * 20261115001500_named_roles.sql reaches a project, none was named.
  */
 export async function getFormerMember(
   businessId: string,
   personId: string,
 ): Promise<FormerMember | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("memberships")
-    .select("user_id, role, profiles (full_name)")
-    .eq("business_id", businessId)
-    .eq("user_id", personId)
-    .eq("active", false)
-    .maybeSingle();
+  const read = (named: boolean) =>
+    supabase
+      .from("memberships")
+      .select(
+        named
+          ? "user_id, role, named_role, profiles (full_name)"
+          : "user_id, role, profiles (full_name)",
+      )
+      .eq("business_id", businessId)
+      .eq("user_id", personId)
+      .eq("active", false)
+      .maybeSingle();
+  let { data, error } = await read(true);
+  if (isMissingColumn(error)) ({ data, error } = await read(false));
   if (error) throw error;
   if (!data) return null;
+  const row = FormerRow.parse(data);
   return {
-    userId: data.user_id,
-    name: data.profiles?.full_name?.trim() || null,
-    role: data.role,
+    userId: row.user_id,
+    name: row.profiles?.full_name?.trim() || null,
+    role: row.role,
+    namedRole: await namedRoleIn(supabase, businessId, row.named_role),
   };
 }

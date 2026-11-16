@@ -12,8 +12,8 @@ vi.mock("server-only", () => ({}));
  * writes all of it or, refused, none of it. Roles a business names (R11a):
  * the matrix's rows for each, its rules written with its id, and adding,
  * renaming, archiving and restoring one, only in the business it is in; and
- * who is in each role, read under RLS for the owner and with the secret key
- * for the team.
+ * who is in each role, and the open invites to each named role (R11b), read
+ * under RLS for the owner and with the secret key for the team.
  */
 type Failure = { code?: string; hint?: string; message: string };
 
@@ -36,6 +36,17 @@ const db = vi.hoisted(() => ({
   people: [] as unknown[],
   /** The project has no `named_role` column yet (before R11a's migration). */
   noNamedColumn: false,
+  /** The invites have no `named_role` column yet (before R11b's migration). */
+  noInviteNamedColumn: false,
+  /** How many times the invites were asked whether they name roles. */
+  inviteProbes: 0,
+  /** The open invites each read of `public.invites` gets, by their named role. */
+  invites: [] as { named_role: string | null }[],
+  /** Each read of the invites: by which key, and how it was narrowed. */
+  inviteReads: [] as {
+    key: "publishable" | "secret";
+    filters: Record<string, unknown>;
+  }[],
   /** Each read of the people: by which key, what it selected and narrowed. */
   peopleReads: [] as {
     key: "publishable" | "secret";
@@ -72,9 +83,49 @@ function membershipsQuery(key: "publishable" | "secret") {
   return query;
 }
 
+/**
+ * `public.invites` as each client reads it: whether they name roles (a read
+ * of the column, no rows), or the open ones naming each.
+ */
+function invitesQuery(key: "publishable" | "secret") {
+  const read = { key, filters: {} as Record<string, unknown> };
+  const missing = {
+    data: null,
+    error: { code: "42703", message: "no column" },
+  };
+  const answer = () => {
+    db.inviteReads.push(read);
+    return db.noInviteNamedColumn ? missing : { data: db.invites, error: null };
+  };
+  const narrow =
+    (name: string) =>
+    (column: string, ...value: unknown[]) => {
+      read.filters[`${column} ${name}`] = value.length === 1 ? value[0] : value;
+      return query;
+    };
+  const query = {
+    select: () => query,
+    limit: async () => {
+      db.inviteProbes += 1;
+      return db.noInviteNamedColumn ? missing : { data: [], error: null };
+    },
+    eq: narrow("="),
+    is: narrow("is"),
+    gt: narrow(">"),
+    not: narrow("not"),
+    // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
+    then: (
+      resolve: (value: ReturnType<typeof answer>) => unknown,
+      reject?: (reason: unknown) => unknown,
+    ) => Promise.resolve(answer()).then(resolve, reject),
+  };
+  return query;
+}
+
 vi.mock("./supabase/server", () => ({
   createClient: async () => ({
     from: (table: string) => {
+      if (table === "invites") return invitesQuery("publishable");
       if (table !== "memberships") throw new Error(`unexpected ${table}`);
       return membershipsQuery("publishable");
     },
@@ -109,6 +160,7 @@ vi.mock("./supabase/admin", () => ({
     },
     from: (table: string) => {
       if (table === "memberships") return membershipsQuery("secret");
+      if (table === "invites") return invitesQuery("secret");
       if (table !== "business_roles") throw new Error(`unexpected ${table}`);
       const filters: Record<string, unknown> = {};
       const query = {
@@ -136,6 +188,9 @@ vi.mock("./payroll", () => ({
 const {
   archiveBusinessRole,
   createBusinessRole,
+  getGivableNamedRoles,
+  getRoleInvitesForOwner,
+  getRoleInvitesForTeam,
   getRoleMatrixForOwner,
   getRoleMatrixForTeam,
   getRolePeopleForOwner,
@@ -210,6 +265,10 @@ beforeEach(() => {
   db.roles = new Map([[LEAD, BUSINESS]]);
   db.people = [];
   db.noNamedColumn = false;
+  db.noInviteNamedColumn = false;
+  db.inviteProbes = 0;
+  db.invites = [];
+  db.inviteReads = [];
   db.peopleReads = [];
 });
 
@@ -405,6 +464,42 @@ describe("changing one area of a role", () => {
     expect(result).toEqual({ ok: false, failure });
     expect(db.calls).toEqual([]);
     spy.mockRestore();
+  });
+});
+
+describe("named roles the team's screens give (R11b)", () => {
+  it("are the live ones, each with the settable keys it holds by role", async () => {
+    db.matrix = {
+      data: withNamed(["schedule.edit", "schedule.publish", "clock.edit"]),
+      error: null,
+    };
+    expect(await getGivableNamedRoles(BUSINESS)).toEqual([
+      {
+        id: LEAD,
+        name: "Shift lead",
+        nameEn: null,
+        base: "worker",
+        // Not the clock's edit: no owner switches it per role here.
+        holds: ["schedule.edit", "schedule.publish"],
+      },
+    ]);
+    expect(db.inviteProbes).toBe(1);
+  });
+
+  it("are none before the database gives them, nor where the business named none", async () => {
+    db.matrix = { data: withNamed(["schedule.edit"]), error: null };
+    db.noInviteNamedColumn = true;
+    expect(await getGivableNamedRoles(BUSINESS)).toEqual([]);
+    db.matrix = { data: rows(SCHEDULING), error: null };
+    db.inviteProbes = 0;
+    expect(await getGivableNamedRoles(BUSINESS)).toEqual([]);
+    // Nothing to give: the invites aren't asked.
+    expect(db.inviteProbes).toBe(0);
+    db.matrix = {
+      data: null,
+      error: { code: "PGRST202", message: "missing" },
+    };
+    expect(await getGivableNamedRoles(BUSINESS)).toEqual([]);
   });
 });
 
@@ -627,5 +722,46 @@ describe("who is in each role (R11a)", () => {
       "user_id, role, named_role, profiles (full_name, avatar_path)",
       "user_id, role, profiles (full_name, avatar_path)",
     ]);
+  });
+});
+
+describe("open invites to each named role (R11b)", () => {
+  const BAR = "93000000-0000-4000-a000-0000000000c2";
+  const now = new Date("2026-11-16T10:00:00Z");
+
+  it("are counted by role for the owner under RLS, open ones only", async () => {
+    db.invites = [
+      { named_role: LEAD },
+      { named_role: BAR },
+      { named_role: LEAD },
+    ];
+    const counts = await getRoleInvitesForOwner(BUSINESS, now);
+    expect([...counts]).toEqual([
+      [LEAD, 2],
+      [BAR, 1],
+    ]);
+    expect(db.inviteReads).toEqual([
+      {
+        key: "publishable",
+        filters: {
+          "business_id =": BUSINESS,
+          "claimed_at is": null,
+          "expires_at >": now.toISOString(),
+          "named_role not": ["is", null],
+        },
+      },
+    ]);
+  });
+
+  it("are read for the team with the secret key", async () => {
+    db.invites = [{ named_role: LEAD }];
+    const counts = await getRoleInvitesForTeam(BUSINESS, now);
+    expect(counts.get(LEAD)).toBe(1);
+    expect(db.inviteReads.map((one) => one.key)).toEqual(["secret"]);
+  });
+
+  it("are none before invites name roles", async () => {
+    db.noInviteNamedColumn = true;
+    expect((await getRoleInvitesForOwner(BUSINESS, now)).size).toBe(0);
   });
 });

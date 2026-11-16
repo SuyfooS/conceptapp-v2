@@ -732,22 +732,22 @@ select is(
 );
 
 select ok(
-  not has_function_privilege('authenticated', 'private.role_holds_pay(uuid, public.member_role)', 'execute')
-  and not has_function_privilege('anon', 'private.role_holds_pay(uuid, public.member_role)', 'execute')
+  not has_function_privilege('authenticated', 'private.role_holds_pay(uuid, public.member_role, uuid)', 'execute')
+  and not has_function_privilege('anon', 'private.role_holds_pay(uuid, public.member_role, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'private.gives_role(public.member_role, public.member_role)', 'execute')
   and has_function_privilege('authenticated', 'public.team_phones(uuid)', 'execute')
   and not has_function_privilege('anon', 'public.team_phones(uuid)', 'execute')
   and has_function_privilege('authenticated', 'public.team_youth(uuid)', 'execute')
   and not has_function_privilege('anon', 'public.team_youth(uuid)', 'execute')
   and not has_function_privilege('authenticated',
-    'public.team_invite(uuid, uuid, text, text, public.member_role, text)', 'execute')
+    'public.team_invite(uuid, uuid, text, text, public.member_role, text, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'public.team_invite_link(uuid, uuid, text)', 'execute')
   and not has_function_privilege('authenticated',
-    'public.set_member_role(uuid, uuid, uuid, public.member_role, public.member_role, timestamptz)', 'execute')
+    'public.set_member_role(uuid, uuid, uuid, public.member_role, public.member_role, timestamptz, uuid, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'public.remove_member(uuid, uuid, uuid, timestamptz)', 'execute')
   and not has_function_privilege('authenticated', 'public.team_invite_cancel(uuid, uuid, timestamptz)', 'execute')
   and not has_function_privilege('authenticated', 'public.clear_profile_bio(uuid, uuid, uuid, text)', 'execute')
-  and has_function_privilege('service_role', 'public.team_invite(uuid, uuid, text, text, public.member_role, text)', 'execute')
+  and has_function_privilege('service_role', 'public.team_invite(uuid, uuid, text, text, public.member_role, text, uuid)', 'execute')
   and has_function_privilege('service_role', 'public.clear_profile_bio(uuid, uuid, uuid, text)', 'execute')
   and (select p.prosecdef and exists (
          select 1 from unnest(p.proconfig) as c (setting)

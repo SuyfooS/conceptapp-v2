@@ -86,7 +86,7 @@ async function Demo({ params, searchParams }: Props) {
     <ConsoleRolesDemo
       data={{
         ...data,
-        roles: [...data.roles, { ...demoShiftLead, people: [] }],
+        roles: [...data.roles, { ...demoShiftLead, people: [], invited: 0 }],
       }}
       paths={{
         place: "console",

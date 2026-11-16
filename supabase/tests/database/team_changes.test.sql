@@ -215,12 +215,12 @@ create temporary table ids (name text primary key, id uuid) on commit drop;
 select ok(
   not has_function_privilege('authenticated', 'public.remove_member(uuid, uuid, uuid, timestamptz)', 'execute')
   and not has_function_privilege('anon', 'public.remove_member(uuid, uuid, uuid, timestamptz)', 'execute')
-  and not has_function_privilege('authenticated', 'public.set_member_role(uuid, uuid, uuid, public.member_role, public.member_role, timestamptz)', 'execute')
-  and not has_function_privilege('anon', 'public.set_member_role(uuid, uuid, uuid, public.member_role, public.member_role, timestamptz)', 'execute')
+  and not has_function_privilege('authenticated', 'public.set_member_role(uuid, uuid, uuid, public.member_role, public.member_role, timestamptz, uuid, uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.set_member_role(uuid, uuid, uuid, public.member_role, public.member_role, timestamptz, uuid, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'public.team_invite_cancel(uuid, uuid, timestamptz)', 'execute')
   and not has_function_privilege('anon', 'public.team_invite_cancel(uuid, uuid, timestamptz)', 'execute')
   and has_function_privilege('service_role', 'public.remove_member(uuid, uuid, uuid, timestamptz)', 'execute')
-  and has_function_privilege('service_role', 'public.set_member_role(uuid, uuid, uuid, public.member_role, public.member_role, timestamptz)', 'execute')
+  and has_function_privilege('service_role', 'public.set_member_role(uuid, uuid, uuid, public.member_role, public.member_role, timestamptz, uuid, uuid)', 'execute')
   and has_function_privilege('service_role', 'public.team_invite_cancel(uuid, uuid, timestamptz)', 'execute'),
   'only the server removes someone, changes a role or cancels an invite'
 );

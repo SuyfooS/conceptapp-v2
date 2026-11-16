@@ -4,6 +4,7 @@ import {
   canCancelInvite,
   canEditTeam,
   canResendInvite,
+  type GivableNamedRole,
   type Team,
 } from "@domain/team";
 import { Badge } from "@ui/badge";
@@ -25,6 +26,7 @@ import {
   WhileAnyInvite,
 } from "./invite-cancel";
 import { ResendLink } from "./resend-link";
+import { roleLabel } from "./role-label";
 import type { CancelInvite } from "./team-change-types";
 
 type Resend = ComponentProps<typeof ResendLink>["resend"];
@@ -44,6 +46,8 @@ type ViewProps = {
   edits: boolean;
   /** The roles only an owner gives (`ownerOnlyRoles`): no new link for theirs. */
   ownerOnly: readonly Role[];
+  /** The business's live named roles: a new link only for one the viewer gives. */
+  named: readonly GivableNamedRole[];
 };
 
 /**
@@ -59,7 +63,10 @@ type ViewProps = {
  * invite, no new links and no deleting, and a line under the title says
  * so. Someone other than an owner gets no new link for an invite to a role
  * that holds pay (`ownerOnly`), which only an owner gives, and can still
- * delete it. Also rendered with mock data on /design/shell/team.
+ * delete it. A role the business named shows by its name, with the role it
+ * is built on (the roles plan's R11b), and an invite to one gets a new link
+ * only from someone who gives it (`named`), never once it was removed.
+ * Also rendered with mock data on /design/shell/team.
  */
 export function TeamView({
   team,
@@ -69,6 +76,7 @@ export function TeamView({
   resend,
   cancel,
   ownerOnly = [],
+  named = [],
   wording,
 }: {
   team: Team;
@@ -89,6 +97,11 @@ export function TeamView({
    * pay), for a viewer who isn't one; none by default.
    */
   ownerOnly?: readonly Role[];
+  /**
+   * The business's live named roles (`currentGivableNamedRoles`), for a
+   * viewer who edits the team; none by default.
+   */
+  named?: readonly GivableNamedRole[];
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
 }) {
@@ -104,6 +117,7 @@ export function TeamView({
     invites,
     edits,
     ownerOnly,
+    named,
   };
   return (
     <PageBody className={pageGlowClass}>
@@ -161,23 +175,36 @@ function InviteBadge({ t, state }: { t: T; state: Invite["state"] }) {
   );
 }
 
+/** An invite to a role the business named that was removed since: no new link opens it. */
+const roleGone = (invite: Invite) => invite.namedRole?.archived === true;
+
 /**
- * What the viewer may do with this invite: a new link, and deleting it, by
- * the same rule (`canResendInvite`, `canCancelInvite`); a new link for a role
- * that holds pay only from an owner (`ownerOnly`).
+ * What the viewer may do with this invite: a new link, to a role they give
+ * now (`canResendInvite`: a named role among `named`, live), and deleting
+ * it, by the rank rule (`canCancelInvite`); a new link for a role that holds
+ * pay only from an owner (`ownerOnly`; a named role never does). An invite
+ * whose named role was removed since gets none from anyone, so a line says
+ * why and what to do instead, beside its deleting.
  */
 function inviteActions(
-  { t, viewer, resend, invites, ownerOnly }: ViewProps,
+  { t, viewer, resend, invites, ownerOnly, named }: ViewProps,
   invite: Invite,
 ) {
   if (!invites) return null;
   const who = name(t, invite.name);
+  const namedRole = invite.namedRole?.id ?? null;
   const resendable =
-    canResendInvite(viewer, invite.role) && !ownerOnly.includes(invite.role);
+    canResendInvite(viewer, { role: invite.role, namedRole }, named) &&
+    (namedRole !== null || !ownerOnly.includes(invite.role));
   const cancellable = canCancelInvite(viewer, invite.role);
   if (!resendable && !cancellable) return null;
   return (
     <div className="flex flex-wrap items-start gap-2">
+      {roleGone(invite) ? (
+        <p className="basis-full text-pretty text-ink-2 text-sm">
+          {t("team.invites.roleGone")}
+        </p>
+      ) : null}
       {resendable ? (
         <ResendLink inviteId={invite.id} name={who} resend={resend} />
       ) : null}
@@ -201,7 +228,7 @@ function Members({ t, team, peopleHref }: ViewProps) {
             title={name(t, m.name)}
             subtitle={
               <>
-                {t(`team.roles.${m.role}`)}
+                {roleLabel(t, m.role, m.namedRole)}
                 {m.phone ? " · " : null}
                 {phone(m.phone)}
               </>
@@ -216,16 +243,24 @@ function Members({ t, team, peopleHref }: ViewProps) {
 /**
  * The line under the invites: why there are none in a business closed to
  * them, else how many expired, which a new link opens again for whoever
- * sends one.
+ * sends one. For them, those whose named role was removed since are not
+ * counted: no new link opens those, and their own line says so.
  */
 function invitesNote(view: ViewProps): string | null {
   const { t, team, invites, edits } = view;
   if (!invites) return closedNote(view);
-  const { expired } = team.counts;
-  if (expired === 0) return null;
-  return edits
-    ? t("team.invites.expiredHint", { count: expired })
-    : t("team.invites.expiredReadOnly", { count: expired });
+  if (!edits) {
+    const { expired } = team.counts;
+    return expired === 0
+      ? null
+      : t("team.invites.expiredReadOnly", { count: expired });
+  }
+  const expired = team.invites.filter(
+    (i) => i.state === "expired" && !roleGone(i),
+  ).length;
+  return expired === 0
+    ? null
+    : t("team.invites.expiredHint", { count: expired });
 }
 
 /**
@@ -262,7 +297,7 @@ function Invites(view: ViewProps) {
                     title={name(t, i.name)}
                     subtitle={
                       <>
-                        {t(`team.roles.${i.role}`)}
+                        {roleLabel(t, i.role, i.namedRole)}
                         {" · "}
                         {phone(i.phone)}
                       </>
@@ -359,7 +394,7 @@ function Everyone(view: ViewProps) {
                 <tr>
                   <NameCell person={i.name} label={name(t, i.name)} />
                   <td className={cn(td, "text-ink-2")}>{phone(i.phone)}</td>
-                  <td className={td}>{t(`team.roles.${i.role}`)}</td>
+                  <td className={td}>{roleLabel(t, i.role, i.namedRole)}</td>
                   <td className={td}>
                     <InviteBadge t={t} state={i.state} />
                   </td>
@@ -380,7 +415,7 @@ function Everyone(view: ViewProps) {
                   href={`${peopleHref}/${m.userId}`}
                 />
                 <td className={cn(td, "text-ink-2")}>{phone(m.phone)}</td>
-                <td className={td}>{t(`team.roles.${m.role}`)}</td>
+                <td className={td}>{roleLabel(t, m.role, m.namedRole)}</td>
                 <td className={cn(td, "text-ink-2")}>
                   {t("team.state.member")}
                 </td>
