@@ -30,6 +30,7 @@ export default async function ManagePage() {
       team={access.seesTeam ? "/team" : null}
       shabbatCity={shabbatCityState(access.rows, access.details)}
       payAccess={access.grantsPay}
+      roles={access.changesRoles}
       readOnly={access.readOnly === "manage"}
       departments={
         departments === null

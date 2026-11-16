@@ -8,5 +8,6 @@ export const demoActivityPaths: ActivityPaths = {
   clockTeam: "/design/shell/clock/team",
   departments: "/design/shell/manage/departments",
   access: "/design/shell/manage/access",
+  roles: "/design/shell/manage/roles",
   pay: "/design/shell/clock/pay",
 };

@@ -41,7 +41,8 @@ vi.mock("./payroll", () => ({
   getPayRolesForTeam: async () => db.payRoles,
 }));
 
-const { getRoleMatrixForTeam, setRoleArea } = await import("./roles");
+const { getRoleMatrixForOwner, getRoleMatrixForTeam, setRoleArea } =
+  await import("./roles");
 
 const ACTOR = "93000000-0000-4000-a000-000000000005";
 const BUSINESS = "93000000-0000-4000-b000-000000000001";
@@ -146,6 +147,26 @@ describe("the console's matrix", () => {
     await expect(getRoleMatrixForTeam(BUSINESS, [])).rejects.toMatchObject({
       code: "XX000",
     });
+  });
+});
+
+describe("the owner's matrix (R9)", () => {
+  it("is the same answer the console reads", async () => {
+    db.matrix = { data: rows(SCHEDULING, ["schedule.edit"]), error: null };
+    const owner = await getRoleMatrixForOwner(BUSINESS, []);
+    const team = await getRoleMatrixForTeam(BUSINESS, []);
+    expect(owner).toEqual(team);
+    expect([...owner.held.worker]).toEqual(["schedule.edit"]);
+  });
+
+  it("is today's rules while the function is missing", async () => {
+    db.matrix = { data: null, error: { code: "PGRST202", message: "missing" } };
+    const matrix = await getRoleMatrixForOwner(
+      BUSINESS,
+      declaredPermissions([]),
+    );
+    expect(matrix.keys.every((key) => !key.settable)).toBe(true);
+    expect(matrix.held.manager.has("team.edit")).toBe(true);
   });
 });
 

@@ -17,6 +17,7 @@ import {
   type Viewer,
 } from "@domain/modules";
 import { canGrantPay, PAY_PERMISSION } from "@domain/payroll-access";
+import { changesPermissions } from "@domain/role-access";
 import {
   fieldsFor,
   type SettingLevel,
@@ -73,14 +74,20 @@ export async function manageAccess() {
      */
     grantsPay: canGrantPay(membership.role) && payAccessInUse(business.modules),
     /**
+     * What each role does is the owner's to decide (the roles plan's R9;
+     * Orel, 15 November 2026, Q5): the page leads to "תפקידים והרשאות".
+     */
+    changesRoles: changesPermissions(membership.role),
+    /**
      * Whether the page leads to the team screen, which opens by its own rule
      * (`canSeeTeam`: team.view, the roles plan's R6).
      */
     seesTeam: canSeeTeam(membership),
     /**
-     * Whether the person reads the clock's rows of the activity log (they
-     * hold clock.edit, as the log's policy asks), and so its note about
-     * where the punches are.
+     * Whether the person edits the clock (clock.edit, as the log's policy
+     * asks of its clock rows, but of pay holders): only then does the
+     * activity log say where the punches are and lead to the team's hours,
+     * which open for them alone.
      */
     readsClock: holdsPermission(viewer, "clock.edit"),
     /**

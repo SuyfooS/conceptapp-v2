@@ -621,11 +621,17 @@ managers and workers, every key with its `area`, `requires`, `settable`,
 own rule (`given`, `private.role_gives`) and what it holds by it (`held`,
 `private.role_holds`); `@db/roles` reads it for the console
 (`getRoleMatrixForTeam`; before the migration, the declarations' defaults and
-the business's pay rows, nothing open) and writes one area of a role
+the business's pay rows, nothing open) and, the same read, for the owner's
+own screen (`getRoleMatrixForOwner`, /manage/roles, the roles plan's R9),
+once the session's person is known to own the business (or the team views
+it as its owner): it says nothing about any person, and owners already read
+the rows it comes from, so no policy is widened and no function added for
+it. It writes one area of a role
 (`setRoleArea`: the rules read again, and the keys whose rule differs written
 in one call to `set_role_permissions`, in the order `areaWrites` in
 `@domain/role-access` gives: denials first, grants after what they require,
-and a grant whose requirement goes taken back, so an undo leaves no row).
+and a grant whose requirement goes taken back, so an undo leaves no row),
+with the owner or the team member as `actor`, whom the database checks again.
 `getPayRoles` and the console's pay reads count only a row that gives pay
 (`allowed`), reading every row on a project without the column.
 `roles_setter.test.sql` covers it, with two keys made settable inside the

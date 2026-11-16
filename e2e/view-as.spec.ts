@@ -243,7 +243,13 @@ test("viewing as an accountant shows the hours for payroll and nothing else", as
     page.getByRole("button", { name: he.app.pay.details.edit }),
   ).toHaveCount(0);
 
-  for (const path of ["/schedule", "/clock", "/team", "/manage/access"]) {
+  for (const path of [
+    "/schedule",
+    "/clock",
+    "/team",
+    "/manage/access",
+    "/manage/roles",
+  ]) {
     await page.goto(path);
     await expect(
       page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
@@ -273,5 +279,33 @@ test("viewing as the owner reads no pay", async ({ page }) => {
   await expect(
     page.getByRole("switch", { name: he.app.manage.access.roles.manager }),
   ).toBeDisabled();
+  await expectCleanPage(page);
+  // So can what each role does (the roles plan's R9): every switch off.
+  const r = he.app.manage.roles;
+  await page.goto("/manage/roles");
+  await expect(
+    page
+      .getByRole("heading", { level: 1, name: r.title })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(r.failure.viewOnly).filter({ visible: true }),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  // A role's switches: a phone has them on the role's own screen, which the
+  // address opens; a tablet beside the list; a computer in its table.
+  await page.goto("/manage/roles?role=manager");
+  await expect(
+    page.getByText(r.failure.viewOnly).filter({ visible: true }),
+  ).toBeVisible();
+  const switches = page
+    .getByRole("main")
+    .getByRole("switch")
+    .filter({ visible: true });
+  // Some at every width, so the check below reads something.
+  await expect(switches.first()).toBeVisible();
+  for (const control of await switches.all()) {
+    await expect(control).toBeDisabled();
+  }
   await expectCleanPage(page);
 });

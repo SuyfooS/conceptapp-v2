@@ -42,11 +42,21 @@ export type ActivityPaths = {
   /** This screen, for the newest page and the cursor of an older one. */
   self: string;
   business: string;
-  clockTeam: string;
+  /**
+   * The team's hours, where the clock's lines lead: only for whoever opens
+   * them (clock.edit, the roles plan's R4, with the clock on). A pay holder
+   * lowered on the clock still reads those lines, as plain text.
+   */
+  clockTeam?: string;
   /** The business's departments, where their lines lead. */
   departments: string;
   /** Who sees pay, where its lines lead: the owner's alone. */
   access?: string;
+  /**
+   * Roles and permissions, where a role's switched permission leads: the
+   * owner's alone (the roles plan's R9).
+   */
+  roles?: string;
   /** The hours for payroll, where a wage's line leads (only pay holders read it). */
   pay?: string;
 };
@@ -764,6 +774,7 @@ export function ActivityView({
                   ? moduleName(permission.area)
                   : tAccess(`areas.${permission.area}`),
               }),
+              paths.roles,
             );
           case "extra":
             return plain(
@@ -771,9 +782,13 @@ export function ActivityView({
                 role,
                 extra: tAccess(`extras.${permission.extra}.phrase`),
               }),
+              paths.roles,
             );
           case "other":
-            return plain(t(`actions.rolePermission.other${side}`, { role }));
+            return plain(
+              t(`actions.rolePermission.other${side}`, { role }),
+              paths.roles,
+            );
         }
         break;
       }
@@ -983,6 +998,9 @@ export function ActivityView({
             from: () => values.from,
           });
 
+  /** Where the note about the punches leads, for whoever opens it. */
+  const clockTeam = clockOn ? paths.clockTeam : undefined;
+
   const lines = days.map((day) => ({
     ...day,
     title:
@@ -1006,12 +1024,12 @@ export function ActivityView({
         subtitle={everyArea ? t("subtitle") : t("subtitleAreas")}
       />
 
-      {clockOn && lines.length > 0 ? (
+      {clockTeam && lines.length > 0 ? (
         <p className="px-1 text-ink-2 text-sm md:max-w-2xl">
           {t.rich("clockNote", {
             link: (chunks) => (
               <Link
-                href={paths.clockTeam}
+                href={clockTeam}
                 className="font-medium text-ink underline underline-offset-2"
               >
                 {chunks}

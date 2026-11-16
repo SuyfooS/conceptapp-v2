@@ -85,6 +85,7 @@ test("a worker has no way in", async ({ page }) => {
     "/manage/notifications",
     "/manage/business",
     "/manage/activity",
+    "/manage/roles",
   ]) {
     await page.goto(path);
     await expect(

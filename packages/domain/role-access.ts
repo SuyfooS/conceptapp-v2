@@ -1,4 +1,5 @@
-import type { ModuleKey, PermissionKey } from "./modules";
+import { z } from "zod";
+import type { ModuleKey, PermissionKey, Role } from "./modules";
 import type { PermissionEntry } from "./permissions";
 
 /**
@@ -48,6 +49,20 @@ export const AREA_MODULE: Record<AccessArea, ModuleKey | null> = {
   team: null,
   manage: null,
 };
+
+/**
+ * Whether a business has an area, from the modules on in it: the four
+ * modules while they are on, team and manage always. What the screen shows,
+ * and all a change may reach: an area whose module is off is neither drawn
+ * nor written.
+ */
+export function areaShown(
+  area: AccessArea,
+  enabled: readonly ModuleKey[],
+): boolean {
+  const module = AREA_MODULE[area];
+  return module === null || enabled.includes(module);
+}
 
 /** The least a manager or a worker holds in each area (Orel, 15 November 2026, Q2). */
 export const ACCESS_FLOOR: Record<AccessArea, AccessLevel> = {
@@ -225,6 +240,49 @@ export function withAreaAccess(
   return { levels: { ...access.levels, [area]: level }, extras };
 }
 
+/**
+ * Who changes what each role does in the app: the business's owners alone
+ * (Orel, 15 November 2026, Q5, as "מי רואה שכר"), and from the console the
+ * ConceptApp team. A view as the owner reads it and changes nothing.
+ */
+export function changesPermissions(role: Role): boolean {
+  return role === "owner";
+}
+
+const areaChange = z.object({
+  role: z.enum(BASE_ROLES),
+  area: z.enum(ACCESS_AREAS),
+  access: z.object({
+    level: z.enum(ACCESS_LEVELS),
+    extras: z.partialRecord(z.enum(ACCESS_EXTRA_KEYS), z.boolean()),
+  }),
+});
+
+/** One area of managers or workers, as a change on "תפקידים והרשאות" asks for it. */
+export type RoleAreaChange = {
+  role: BaseRole;
+  area: AccessArea;
+  access: AreaAccess;
+};
+
+/**
+ * A change of one area as it reaches the server (the owner's screen, or the
+ * console's): managers or workers, an area, its level never under the area's
+ * floor, and only the area's own switches. Null for anything else, which
+ * writes nothing.
+ */
+export function parseRoleAreaChange(input: unknown): RoleAreaChange | null {
+  const parsed = areaChange.safeParse(input);
+  if (!parsed.success) return null;
+  const { role, area, access } = parsed.data;
+  if (!levelAtLeast(access.level, ACCESS_FLOOR[area])) return null;
+  const own: readonly string[] = extrasOf(area);
+  if (Object.keys(access.extras).some((extra) => !own.includes(extra))) {
+    return null;
+  }
+  return { role, area, access };
+}
+
 /** The areas, of those shown, that a role edits. */
 export function editedAreas(
   access: RoleAccess,
@@ -321,6 +379,31 @@ export function areaGrants(
       perm,
       granted: edit && part.extras[perm as AccessExtra] === true,
     };
+  });
+}
+
+/**
+ * The areas, of those shown, where `below` holds a permission or a switch
+ * that `above` doesn't (`areaGrants`), in their order. For managers above
+ * and workers below: only owners and the team give a role that holds what
+ * its giver doesn't (`private.role_holds_beyond`, hint 'held'), so while
+ * this isn't empty no manager invites a worker or makes someone one. By
+ * default it is empty: managers hold all that workers do.
+ */
+export function heldBeyond(
+  above: RoleAccess,
+  below: RoleAccess,
+  areas: readonly AccessArea[],
+): AccessArea[] {
+  return areas.filter((area) => {
+    const held = new Set(
+      areaGrants(area, areaAccess(above, area))
+        .filter((grant) => grant.granted)
+        .map((grant) => grant.perm),
+    );
+    return areaGrants(area, areaAccess(below, area)).some(
+      (grant) => grant.granted && !held.has(grant.perm),
+    );
   });
 }
 

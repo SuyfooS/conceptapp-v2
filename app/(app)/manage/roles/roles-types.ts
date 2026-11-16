@@ -66,6 +66,11 @@ export type RolesFailure =
   | "closed"
   /** A switch whose area's edit the role lacks (the database refuses it). */
   | "requires"
+  /**
+   * The owner's alone: they switched business since the screen was drawn
+   * (payroll P3b), so the change isn't written in the other one.
+   */
+  | "businessChanged"
   | "failed";
 
 export type RolesResult = { ok: true } | { ok: false; failure: RolesFailure };

@@ -65,8 +65,14 @@ what the database says it holds (`accessFromHeld`), the writes that bring one
 area to a level (`areaWrites`: denials first, each before what it requires,
 then grants, each after it, and a grant whose requirement goes taken back
 unless the default makes it, so an undo leaves no row), whether an area is
-open for changes (`areaOpen`: every one of its keys settable), and the
-matrix from the declarations alone (`matrixByDefault`).
+open for changes (`areaOpen`: every one of its keys settable), the
+matrix from the declarations alone (`matrixByDefault`), who changes it in the
+app (`changesPermissions`: owners, as on "מי רואה שכר"), and one area's
+change as the server takes it (`parseRoleAreaChange`: managers or workers,
+a known area never under its floor, only its own switches), the areas a
+business has (`areaShown`: a module's while it is on, team and manage
+always), and where workers hold more than managers (`heldBeyond`, when a
+manager gives no one the worker role).
 
 `manage-access.ts` is who manages the business on /manage (the roles plan's
 R7): `manageReach` (edit at `manage.edit`, view at `manage.view`, else

@@ -47,10 +47,7 @@ export function ManageView({
   departments: readonly string[] | null;
   /** The owner decides who sees pay: the row to it. */
   payAccess?: boolean;
-  /**
-   * The owner decides what each role does: the row to it. Only the design
-   * twin has the screen so far (roles plan R0); the app's comes with R9.
-   */
+  /** The owner decides what each role does (roles plan R9): the row to it. */
   roles?: boolean;
   /**
    * The person sees the management page without changing it (manage.view
