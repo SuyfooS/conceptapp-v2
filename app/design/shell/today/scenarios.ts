@@ -1,8 +1,9 @@
 import { addDays, teamAvailability, weekDates } from "@domain/availability";
 import { type ModuleKey, moduleWidgets, type Role } from "@domain/modules";
+import { declaredPermissions, permissionsByDefault } from "@domain/permissions";
 import { draftWeek, type ShiftAssignee } from "@domain/schedule";
 import type { ShiftSwap } from "@domain/swaps";
-import { buildTeam } from "@domain/team";
+import { buildTeam, canSeeTeam } from "@domain/team";
 import { manifests } from "@modules/registry";
 import type { TodayData, TodaySchedule } from "../../../(app)/home/today-view";
 import type {
@@ -170,6 +171,15 @@ function scheduleFor(
   };
 }
 
+/** What someone in `role` holds by default, as the database answers it. */
+function byDefault(role: Role): string[] {
+  return permissionsByDefault(declaredPermissions(manifests), {
+    role,
+    given: [],
+    viewing: false,
+  });
+}
+
 function today(
   userId: string,
   role: Role,
@@ -177,11 +187,14 @@ function today(
   {
     modules = DEMO_MODULES,
     now = NOW,
-    perms = [],
+    perms = byDefault(role),
   }: {
     modules?: ModuleKey[];
     now?: string;
-    /** What the database answers the person holds. */
+    /**
+     * What the database answers the person holds: by default, what their
+     * role holds with no business choosing anything for it.
+     */
     perms?: string[];
   } = {},
 ): TodayData {
@@ -194,7 +207,7 @@ function today(
     businessName: business.name,
     widgets: moduleWidgets(manifests, modules, { role, perms }),
     schedule,
-    team: role === "worker" ? null : team(),
+    team: canSeeTeam({ role, perms }) ? team() : null,
     manage: role !== "worker",
     // The bell leads to /design/shell/notifications, a manager's inbox, and
     // counts what it shows. A worker's lines would be other ones, so the
@@ -289,6 +302,21 @@ export const todayScenarios = {
         { builds: true, publishes: false },
       ),
       { perms: ["schedule.edit"] },
+    ),
+  /**
+   * Shiran in a business whose owner lowered managers to team none (the
+   * roles plan's R6): "ניהול העסק" keeps only the management page's row.
+   */
+  managerNoTeam: () =>
+    today(
+      "shiran",
+      "manager",
+      scheduleFor("manager", published("shiran", SWAPS), true, true),
+      {
+        perms: byDefault("manager").filter(
+          (key) => key !== "team.view" && key !== "team.edit",
+        ),
+      },
     ),
   /** A business with scheduling off: its part of Today disappears. */
   schedulingOff: () =>

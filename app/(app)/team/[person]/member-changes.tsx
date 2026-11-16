@@ -44,10 +44,21 @@ export type MemberChangesData = {
    * them: only these can they change the person from and to.
    */
   roles: Role[];
+  /**
+   * The roles only an owner gives here (`ownerOnlyRoles`: those that hold
+   * pay), for a viewer who isn't one: shown in the sheet but not offered,
+   * and a change away from one is held for its undo, as changing back would
+   * be refused.
+   */
+  ownerOnly: Role[];
   /** Their shifts still to start, in published weeks and in drafts. */
   ahead: Pick<LeftCounts, "shifts" | "drafts">;
-  /** On the clock now: they can't leave the team or the staff until they clock out. */
-  clockedIn: boolean;
+  /**
+   * On the clock now: they can't leave the team or the staff until they
+   * clock out. Null when the viewer doesn't read the team's hours: the page
+   * then says so before the change, which the database refuses meanwhile.
+   */
+  clockedIn: boolean | null;
   /** Their hours on the clock, said while they are clocked in. */
   clockHref: string | null;
   /** Where the screen leads once they are off the team. */
@@ -93,13 +104,15 @@ const settle = (run: Promise<MemberChangeResult>) =>
 
 /**
  * Taking someone off the team and changing their role, on their page, for an
- * owner or manager who may (Orel, 14 November 2026: whoever invites to a
+ * editor of the team who may (Orel, 14 November 2026: whoever invites to a
  * role removes from it and changes to it). Removing hides what the page
  * offers at once and holds the write for "ביטול", as the access screen holds
  * a removal (`useHeldWrite`); once written, the page says what came off them
  * and leads back to the team. A role change that changing back can't undo
- * (`roleChangeClears`: leaving the staff, or becoming an owner) is held the
- * same way; any other is written at once, and its undo is the change back.
+ * (`roleChangeClears`: leaving the staff, or becoming an owner; or, for
+ * someone other than an owner, leaving a role that holds pay, which only an
+ * owner gives back) is held the same way; any other is written at once, and
+ * its undo is the change back.
  * The parts below read this state; without it they draw nothing.
  */
 export function MemberChangesState({
@@ -183,7 +196,9 @@ export function MemberChangesState({
     if (to === from || busy) return to === from;
     setFailure(null);
     clearUndo();
-    if (roleChangeClears(from, to)) {
+    // Changing back to a role that holds pay is an owner's: its undo only
+    // keeps the write from going.
+    if (roleChangeClears(from, to) || data.ownerOnly.includes(from)) {
       setRole(to);
       held.hold({ kind: "role", from, to });
       setRoleUndo({
@@ -325,7 +340,11 @@ function RoleChoice({
   const [tried, setTried] = useState(false);
   const ahead = data.ahead.shifts + data.ahead.drafts;
   // Off the staff, they could not clock out.
-  const blocked = (r: Role) => data.clockedIn && leavesStaff(role, r);
+  const clockBlocked = (r: Role) =>
+    data.clockedIn === true && leavesStaff(role, r);
+  // A role that holds pay is an owner's to give (their own one stays theirs).
+  const payBlocked = (r: Role) => r !== role && data.ownerOnly.includes(r);
+  const blocked = (r: Role) => clockBlocked(r) || payBlocked(r);
 
   async function save() {
     setTried(true);
@@ -351,13 +370,22 @@ function RoleChoice({
               setTried(false);
             }}
             title={tRoles(r)}
-            hint={blocked(r) ? t("clockedInHint") : tHints(r)}
+            hint={
+              payBlocked(r)
+                ? t("payHint")
+                : clockBlocked(r)
+                  ? t("clockedInHint")
+                  : tHints(r)
+            }
           />
         ))}
       </ChoiceList>
       {leavesStaff(role, draft) ? (
         <p className="px-2 text-pretty text-base text-ink-2">
           {t("accountantNote", { count: ahead })}
+          {data.clockedIn === null
+            ? ` ${t("clockUnknown", { name: data.first })}`
+            : null}
         </p>
       ) : draft === "owner" && role !== "owner" ? (
         <p className="px-2 text-pretty text-base text-ink-2">
@@ -425,6 +453,10 @@ export function MemberRemoval() {
           <p className="px-1 text-pretty text-ink-2 text-sm">
             {t("removeHint", { name: data.first, form: data.form })}
             {ahead > 0 ? ` ${t("removeShifts", { count: ahead })}` : null}
+            {/* Whether they are on the clock isn't the viewer's to read. */}
+            {data.clockedIn === null
+              ? ` ${t("clockUnknown", { name: data.first })}`
+              : null}
           </p>
         </>
       )}

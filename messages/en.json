@@ -723,10 +723,14 @@
         "title": "Invites",
         "open": "{count, plural, one {One invite waiting} other {# invites waiting}}",
         "empty": "No open invites. To add someone to the team, tap “Invite to the team”.",
+        "emptyReadOnly": "No open invites.",
         "expiredHint": "{count, plural, one {One invite has expired} other {# invites have expired}}. “New link” opens it again for 14 days.",
-        "closed": "This is a demo business, so nobody is invited to it. In a real business, you invite the team from here, with a link."
+        "expiredReadOnly": "{count, plural, one {One invite has expired.} other {# invites have expired.}}",
+        "closed": "This is a demo business, so nobody is invited to it. In a real business, you invite the team from here, with a link.",
+        "closedReadOnly": "This is a demo business, so nobody is invited to it."
       },
       "inviteAction": "Invite to the team",
+      "readOnly": "Here you see the team without changing it. To invite someone or change a role, ask an owner.",
       "link": {
         "new": "New link",
         "newFor": "New link for {name}",
@@ -737,9 +741,10 @@
         "errors": {
           "alreadyMember": "This number is already in the team.",
           "notAllowed": "You cannot invite to this role.",
+          "givesPay": "This role sees pay, so only an owner sends a new link for this invite.",
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create a link. Try again in a moment.",
-          "noPermission": "Only owners and managers can invite to the team.",
+          "noPermission": "You don't have permission to invite to the team.",
           "viewOnly": "This is view only, so no link was made.",
           "demo": "This is a demo business, so nobody is invited to it."
         }
@@ -754,11 +759,12 @@
         "role": "Role",
         "roleHint": {
           "owner": "Everything in the business",
-          "manager": "Schedule and team",
-          "worker": "Shifts and time clock",
+          "manager": "Usually the schedule and the team",
+          "worker": "Usually shifts and the time clock",
           "accountant": "Everyone's hours and pay, no shifts"
         },
         "submit": "Create invite link",
+        "ownerOnly": "The roles you could invite to from here see pay, so only an owner invites to them. To add someone to the team, ask an owner.",
         "ready": "{name}'s invite is ready",
         "readyBody": "Send the link on WhatsApp or by SMS. Once {name} signs in through it, they appear in the team.",
         "backToTeam": "Back to the team",
@@ -778,9 +784,10 @@
           },
           "alreadyMember": "This number is already in the team.",
           "notAllowed": "You cannot invite to this role.",
+          "givesPay": "This role sees pay, so only an owner invites to it. Reload the screen.",
           "notOpen": "This invite was already used. Refresh the screen.",
           "failed": "We could not create the invite. Try again in a moment.",
-          "noPermission": "Only owners and managers can invite to the team.",
+          "noPermission": "You don't have permission to invite to the team.",
           "viewOnly": "This is view only, so the invite was not saved.",
           "elsewhere": "This number is already on another business's team, and a person can be on one business's team only. As the accountant they can join several businesses.",
           "demo": "This is a demo business, so nobody is invited to it.",
@@ -813,6 +820,8 @@
         "accountantNote": "{count, plural, =0 {This role sees everyone's hours and pay, with no shifts.} one {This role has no shifts: one shift that hasn't started comes off the schedule and shows as missing.} other {This role has no shifts: # shifts that haven't started come off the schedule and show as missing.}}",
         "ownerNote": "An owner has every permission in the business, including removing anyone and changing anyone's role. Personal permissions given earlier aren't needed any more, and are cleared.",
         "clockedInHint": "Once they clock out",
+        "payHint": "Only an owner gives a role that sees pay",
+        "clockUnknown": "If {name} is on an open shift on the clock, this can be done only after they clock out.",
         "roleChanged": "{name} is now {role}",
         "roleBack": "{name} is {role} again",
         "remove": "Remove from the team",
@@ -830,8 +839,9 @@
         "clockedIn": "{name} is on a shift now, on the clock. Once they clock out, they can be removed from the team.",
         "clockedInLink": "{name}'s hours",
         "failures": {
-          "notAllowed": "You can't make this change. Only an owner changes an owner's or an accountant's place.",
+          "notAllowed": "You can't make this change. You can change only roles at your level or below, and only an owner changes an owner's or an accountant's place.",
           "beyondHeld": "This role holds permissions you don't have, so only an owner gives it. The role stays as it was.",
+          "givesPay": "This role sees pay, so only an owner gives it. The role stays as it was.",
           "gone": "This changed in the meantime, and they're no longer on the team. Reload the screen.",
           "yourself": "Your own place on the team can't be changed from here.",
           "lastOwner": "The business needs at least one owner.",
@@ -840,7 +850,7 @@
           "elsewhere": "This role can't be given right now, so the role stays as it was.",
           "changed": "The role changed in the meantime, so it wasn't changed. The current role shows now.",
           "notYet": "Changing the team opens shortly. Try again later.",
-          "noAccess": "Only owners and managers change the team.",
+          "noAccess": "You don't have permission to change the team.",
           "viewOnly": "Nothing can be changed while viewing.",
           "businessChanged": "You moved to another business in the meantime, so nothing changed. Reload the screen.",
           "invalid": "The change wasn't saved. Try again.",
@@ -2674,7 +2684,7 @@
         },
         "levelHint": {
           "team": {
-            "edit": "They see the team screen, invite people, change roles and take people off the team, up to their own rank.",
+            "edit": "They see the team screen, invite people, change roles and take people off the team, up to their own rank. Only an owner gives a role that sees pay.",
             "view": "They see the team screen: phone numbers, young workers' details and invites waiting. No inviting or changing.",
             "none": "No team screen. Everyone's names are seen by all in the business anyway."
           },

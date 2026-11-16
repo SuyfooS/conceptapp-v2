@@ -186,11 +186,11 @@ select set_eq(
     ('schedule.edit', 'scheduling', 'scheduling', null, true, '{manager}'::text[], false),
     ('schedule.publish', 'scheduling', 'scheduling', 'schedule.edit', true, '{manager}'::text[], false),
     ('storefront.edit', 'storefront', 'storefront', null, false, '{manager}'::text[], false),
-    ('team.view', null, 'team', null, false, '{manager}'::text[], false),
-    ('team.edit', null, 'team', 'team.view', false, '{manager}'::text[], false),
+    ('team.view', null, 'team', null, true, '{manager}'::text[], false),
+    ('team.edit', null, 'team', 'team.view', true, '{manager}'::text[], false),
     ('manage.view', null, 'manage', null, true, '{manager}'::text[], false),
     ('manage.edit', null, 'manage', 'manage.view', true, '{manager}'::text[], false)$$,
-  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them) and on the management page (R7)'
+  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them), on the team (R6) and on the management page (R7)'
 );
 
 select throws_ok(

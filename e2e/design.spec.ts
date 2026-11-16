@@ -20,6 +20,8 @@ const PAGES = [
   "/design/shell/today/worker-not-published",
   // A worker who builds the schedule without publishing it (roles R3).
   "/design/shell/today/worker-builds",
+  // A manager lowered to team none (roles R6): no team row on Today.
+  "/design/shell/today/no-team",
   "/design/shell/today/scheduling-off",
   "/design/shell/schedule",
   "/design/shell/schedule/worker",
@@ -78,11 +80,20 @@ const PAGES = [
   "/design/shell/today/businesses?state=left",
   "/design/shell/team",
   "/design/shell/team?state=demo",
+  // A worker raised to see the team without editing it (roles R6).
+  "/design/shell/team?state=view",
   "/design/shell/team/noa",
   "/design/shell/team/maya",
   "/design/shell/team/noa?state=clocked",
   "/design/shell/team/noa?state=former",
   "/design/shell/team/uri?as=manager",
+  "/design/shell/team/noa?as=viewer",
+  // A worker raised to edit the team, who doesn't read the hours, and a
+  // manager where managers hold pay (roles R6).
+  "/design/shell/team/noa?as=editor",
+  "/design/shell/team/noa?as=manager&state=pay",
+  "/design/shell/team/invite?as=editor",
+  "/design/shell/team/invite?as=paid",
   "/design/shell/me",
   "/design/shell/me?state=empty",
   "/design/shell/me?state=demo",
@@ -95,6 +106,8 @@ const PAGES = [
   "/design/shell/manage/scheduling?state=module",
   "/design/shell/manage/business?state=view",
   "/design/shell/manage/departments?state=view",
+  // A manager lowered to team none (roles R6): no team row.
+  "/design/shell/manage?state=noTeam",
   "/design/shell/manage/business",
   "/design/shell/manage/activity",
   "/design/shell/manage/activity/empty",
@@ -204,9 +217,9 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/access",
   "/design/console/businesses/demo-restaurant/access?state=readOnly",
   // Roles and permissions from the console (R2): scheduling (R3), the time
-  // clock (R4), lists (R5) and the management page (R7) open and the rest
-  // closed, then every area open as each phase will open it, and a team role
-  // that only reads.
+  // clock (R4), lists (R5), the team (R6) and the management page (R7) open
+  // and the rest closed, then every area open as each phase will open it,
+  // and a team role that only reads.
   "/design/console/businesses/demo-restaurant/roles",
   "/design/console/businesses/demo-restaurant/roles?state=open",
   "/design/console/businesses/demo-restaurant/roles?state=readOnly",

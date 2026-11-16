@@ -9,7 +9,6 @@ import {
   withOwnDrafts,
 } from "@db/chat";
 import type { Department } from "@domain/departments";
-import { canSeeTeam } from "@domain/team";
 import { notFound } from "next/navigation";
 import { currentModuleSettings } from "../modules";
 import type { AppWording } from "../wording";
@@ -176,7 +175,7 @@ export async function ConversationPageView({
       block={block}
       members={byName(members)}
       profileHref={
-        other?.active && canSeeTeam(access.role) ? `/team/${other.id}` : null
+        other?.active && access.seesTeam ? `/team/${other.id}` : null
       }
       businessName={access.businessName}
       fileDays={settings.fileDays}

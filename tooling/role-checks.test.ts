@@ -176,18 +176,14 @@ describe("rules by rank in SQL", () => {
         sql: rule("private.new_gate"),
       },
       {
-        name: "20261116000100_team.sql",
-        sql: rule("public.team_phones"),
-      },
-      {
         name: "20261116000200_newer.sql",
         sql: [
           rule("private.new_gate"),
           "update public.memberships m set active = true where m.role in ('owner', 'manager');",
         ].join("\n"),
       },
-      // Scheduling moved in R3, the clock in R4 and lists in R5, and their
-      // entries are out: a rule by rank there counts again.
+      // Scheduling moved in R3, the clock in R4, lists in R5 and the team in
+      // R6, and their entries are out: a rule by rank there counts again.
       {
         name: "20261116000300_scheduling.sql",
         sql: rule("private.builds_schedule"),
@@ -200,6 +196,10 @@ describe("rules by rank in SQL", () => {
         name: "20261116000320_lists.sql",
         sql: rule("private.can_manage_lists"),
       },
+      {
+        name: "20261116000330_team.sql",
+        sql: rule("public.team_phones"),
+      },
     ];
     expect(violations(migrations)).toEqual([
       "20261116000200_newer.sql:3 has_role( in private.new_gate",
@@ -207,14 +207,65 @@ describe("rules by rank in SQL", () => {
       "20261116000300_scheduling.sql:3 has_role( in private.builds_schedule",
       "20261116000310_clock.sql:3 has_role( in private.can_edit_clock",
       "20261116000320_lists.sql:3 has_role( in private.can_manage_lists",
+      "20261116000330_team.sql:3 has_role( in public.team_phones",
     ]);
-    // Once the team's phase takes team_phones out, its rule counts too.
-    expect(violations(migrations, new Set(["private.new_gate"]))).toEqual([
-      "20261116000100_team.sql:3 has_role( in public.team_phones",
+    // What may still hold one doesn't count, the top level always does.
+    expect(
+      violations(
+        migrations,
+        new Set(["private.new_gate", "public.team_phones"]),
+      ),
+    ).toEqual([
       "20261116000200_newer.sql:5 role in ('owner', 'manager') in top level",
       "20261116000300_scheduling.sql:3 has_role( in private.builds_schedule",
       "20261116000310_clock.sql:3 has_role( in private.can_edit_clock",
       "20261116000320_lists.sql:3 has_role( in private.can_manage_lists",
+    ]);
+  });
+
+  it("count only in the version that runs: one a later migration replaces, drops or rewrites is history", () => {
+    const gate = (name: string, body: string) =>
+      [
+        `create or replace function ${name}(b uuid)`,
+        "returns boolean language sql as $$",
+        `  ${body}`,
+        "$$;",
+      ].join("\n");
+    const byRank = "select private.has_role(b, 'manager')";
+    const policy = (name: string) =>
+      [
+        `alter policy "${name}" on public.invites`,
+        "  using (private.has_role(business_id, 'manager'));",
+      ].join("\n");
+    const migrations = [
+      {
+        name: "20261116000100_first.sql",
+        sql: [
+          gate("private.replaced", byRank),
+          gate("private.dropped", byRank),
+          gate("private.kept", byRank),
+          policy("x"),
+          policy("y"),
+        ].join("\n"),
+      },
+      {
+        name: "20261116000200_later.sql",
+        sql: [
+          gate(
+            "private.replaced",
+            "select private.holds_perm(b, null, 'team.view')",
+          ),
+          "drop function private.dropped(uuid);",
+          `alter policy "x" on public.invites using (true);`,
+          `alter policy "y" on public.invites rename to "z";`,
+        ].join("\n"),
+      },
+    ];
+    // Replaced, dropped and given a new `using`, three are history; the one
+    // kept, and the policy only renamed (under its new name), still run.
+    expect(violations(migrations)).toEqual([
+      "20261116000100_first.sql:11 has_role( in private.kept",
+      '20261116000100_first.sql:16 has_role( in policy "z" on public.invites',
     ]);
   });
 
@@ -385,7 +436,7 @@ describe("rules by rank in SQL", () => {
   it("count again where the clock held one, once R4 moved it", () => {
     // Each of the clock's rules R4 moved, written by rank again in a later
     // migration, is a violation: nothing lists them any more. The notifier
-    // keeps its entry for the team's line (R6).
+    // kept its entry for the team's line until R6 moved that too.
     const later = [
       "private.can_edit_clock",
       "private.seed_demo_hours",
@@ -413,7 +464,7 @@ describe("rules by rank in SQL", () => {
     expect(violations([...later, ...policies])).toHaveLength(
       later.length + policies.length,
     );
-    expect(NOT_YET_MOVED["private.notify_for"]).toMatch(/^R6/);
+    expect(Object.keys(NOT_YET_MOVED)).not.toContain("private.notify_for");
   });
 
   it("count again where lists held one, once R5 moved it", () => {
@@ -452,6 +503,52 @@ describe("rules by rank in SQL", () => {
     expect(
       Object.keys(NOT_YET_MOVED).filter((name) => name.includes("list")),
     ).toEqual([]);
+  });
+
+  it("count again where the team held one, once R6 moved it", () => {
+    // Each of the team's rules R6 moved, written by rank again in a later
+    // migration, is a violation: nothing lists them any more, and the
+    // notifier that tells of someone joining counts a line for managers by
+    // rank again too.
+    const later = ["public.team_phones", "public.team_youth"].map(
+      (name, i) => ({
+        name: `2026111600060${i}_back.sql`,
+        sql: [
+          `create or replace function ${name}(business uuid)`,
+          "returns boolean language sql as $$",
+          "  select private.has_role(business, 'manager') or private.is_viewing(business, 'manager')",
+          "$$;",
+        ].join("\n"),
+      }),
+    );
+    const policy = {
+      name: "20261116000700_back.sql",
+      sql: [
+        `alter policy "the team's viewers read its invites" on public.invites`,
+        "  using (private.has_role(business_id, 'manager'));",
+      ].join("\n"),
+    };
+    const joined = {
+      name: "20261116000800_back.sql",
+      sql: [
+        "create or replace function private.notify_team_joined(b uuid)",
+        "returns void language plpgsql as $$",
+        "begin",
+        "  perform private.notify(b, private.members_in(b, '{owner,manager}'::public.member_role[]),",
+        "    'team.joined', '{}'::jsonb, null, null, 'manager', 'team.joined:x');",
+        "end;",
+        "$$;",
+      ].join("\n"),
+    };
+    expect(violations([...later, policy, joined])).toEqual([
+      "20261116000600_back.sql:3 has_role( in public.team_phones",
+      "20261116000600_back.sql:3 is_viewing(…, 'manager') in public.team_phones",
+      "20261116000601_back.sql:3 has_role( in public.team_youth",
+      "20261116000601_back.sql:3 is_viewing(…, 'manager') in public.team_youth",
+      '20261116000700_back.sql:2 has_role( in policy "the team\'s viewers read its invites" on public.invites',
+      "20261116000800_back.sql:4 notify(…, audience 'manager') in private.notify_team_joined",
+      "20261116000800_back.sql:4 members_in(…, '{owner,manager}') in private.notify_team_joined",
+    ]);
   });
 
   it("are written in no migration after the guard but where a rule stays by role or waits for its area", () => {

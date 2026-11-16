@@ -358,6 +358,18 @@ describe("chat's lines", () => {
     expect(groupsFor("manager", ["lists"], [])).toContain("lists");
   });
 
+  it("tell of someone joining whoever sees the team, once what the person holds is known (R6)", () => {
+    // team.joined is for those who hold team.view: managers by default, a
+    // worker raised to it, not a manager lowered to none.
+    expect(NOTIFICATION_KINDS["team.joined"].perm).toBe("team.view");
+    expect(groupsFor("worker", [], ["team.view"])).toContain("team");
+    expect(groupsFor("worker", [], [])).not.toContain("team");
+    expect(groupsFor("manager", [], [])).not.toContain("team");
+    expect(groupsFor("owner", [], [])).toContain("team");
+    // Without what they hold, by role as before.
+    expect(groupsFor("manager", [])).toContain("team");
+  });
+
   it("reach the staff only: an accountant is in no chat, only in documents", () => {
     expect(groupsFor("worker", ["chat"])).toEqual(["chat", "documents"]);
     expect(groupsFor("accountant", ["chat"])).toEqual(["documents"]);

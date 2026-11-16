@@ -1,5 +1,6 @@
 import { canOpenModule, holdsPermission, isStaff } from "@domain/modules";
 import { isDemoBusiness } from "@domain/passive-sign-in";
+import { canSeeTeam } from "@domain/team";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
@@ -46,6 +47,11 @@ export const chatAccess = cache(async () => {
     canAnnounce: holdsPermission(membership, "chat.announce"),
     /** In every department's group, and removes others' messages in groups (C3). */
     canModerate: holdsPermission(membership, "chat.moderate"),
+    /**
+     * Opens a colleague's profile on the team screen from a chat: they see
+     * the team (team.view, the roles plan's R6).
+     */
+    seesTeam: canSeeTeam(membership),
   };
 });
 

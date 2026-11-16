@@ -4,7 +4,7 @@ import type { LeftCounts, TeamChangeFailure } from "@domain/team";
 /**
  * Why a team change from the screens was not made: the database's refusal
  * (`TeamChangeFailure`), `notYet` before its migration reaches the project,
- * or the screen's own: `noAccess` (no longer an owner or manager here),
+ * or the screen's own: `noAccess` (no longer editing the team here),
  * `viewOnly` (viewing as someone), `businessChanged` (the person switched
  * business since the screen was drawn, payroll P3b) and `invalid`.
  */

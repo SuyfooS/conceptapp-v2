@@ -1,5 +1,4 @@
 import { getConversation } from "@db/chat";
-import { canSeeTeam } from "@domain/team";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../../../current-wording";
 import { moduleMetadata } from "../../../../module-screen";
@@ -93,7 +92,7 @@ export default async function ConversationInfoPage({
         subtitle={subtitle}
         person={other}
         profileHref={
-          other?.active && canSeeTeam(access.role) ? `/team/${other.id}` : null
+          other?.active && access.seesTeam ? `/team/${other.id}` : null
         }
         members={byName(groupMembers(view, people, departments))}
         businessName={access.businessName}

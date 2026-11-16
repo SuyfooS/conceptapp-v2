@@ -19,7 +19,8 @@ export default function ShellViewAs() {
       />
       <TeamView
         team={buildTeam(teamMembers, teamInvites, teamToday)}
-        viewerRole="manager"
+        // A manager, as the database answers by default.
+        viewer={{ role: "manager", perms: ["team.view", "team.edit"] }}
         inviteHref="/design/shell/team/invite"
         peopleHref="/design/shell/team"
         resend={demoResendAction}

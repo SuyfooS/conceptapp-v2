@@ -23,7 +23,9 @@ export function hashInviteToken(token: string): string {
  * number to send it to. Runs with the secret key: callers check the person
  * may invite staff first, and the database checks again that `actorId` is on
  * the team. Refused in a demo business, and for an owner invite nobody may
- * claim any more; throws when the invite was claimed or is unknown.
+ * claim any more; an invite closed only because someone other than an owner
+ * sent it to a role that sees pay becomes the team's, and opens again (the
+ * roles plan's R6). Throws when the invite was claimed or is unknown.
  */
 export async function issueInviteLink(
   actorId: string,
@@ -106,8 +108,10 @@ export type ClaimResult =
  * The signed-in person joins the invite's business with its role, in one
  * transaction (`public.claim_invite`). The database refuses a link that is
  * used, expired or replaced, anyone but the invited number, someone who
- * comes back as an accountant with an open entry or shifts still ahead, and
- * a staff place for someone on another business's staff (23505).
+ * comes back as an accountant with an open entry or shifts still ahead, a
+ * staff place for someone on another business's staff (23505), and, as not
+ * open, an invite to a role that sees pay that neither an owner nor the team
+ * sent (the roles plan's R6).
  */
 export async function claimInvite(
   token: string,
@@ -132,7 +136,13 @@ export type TeamInviteResult =
   | { ok: true; token: string; phone: string }
   | {
       ok: false;
-      error: "alreadyMember" | "notAllowed" | "notOpen" | "demo" | "hasOwner";
+      error:
+        | "alreadyMember"
+        | "notAllowed"
+        | "givesPay"
+        | "notOpen"
+        | "demo"
+        | "hasOwner";
     };
 
 /**
@@ -155,11 +165,14 @@ export async function invitesOpen(businessId: string): Promise<boolean> {
 
 /**
  * The database's refusals, as the screens explain them: a demo business takes
- * no invites, and the console makes no second owner.
+ * no invites, the console makes no second owner, and nobody but an owner
+ * gives a role that sees pay (42501, hint `pay`; the roles plan's R6).
  */
-function teamInviteError(code: string | undefined) {
+function teamInviteError(code: string | undefined, hint?: string | null) {
   if (code === "23505") return "alreadyMember" as const;
-  if (code === "42501") return "notAllowed" as const;
+  if (code === "42501") {
+    return hint === "pay" ? ("givesPay" as const) : ("notAllowed" as const);
+  }
   if (code === "P0002") return "notOpen" as const;
   if (code === "55000") return "demo" as const;
   if (code === "23P01") return "hasOwner" as const;
@@ -167,11 +180,13 @@ function teamInviteError(code: string | undefined) {
 }
 
 /**
- * An owner or manager invites someone to their business from the Team
- * screen (`public.team_invite`): a new invite, or a fresh name, role and
+ * Someone who edits the team invites someone to their business from the
+ * Team screen (`public.team_invite`): a new invite, or a fresh name, role and
  * link for the number's unclaimed one. Returns the token for the link.
  * Runs with the secret key: callers check the role with `parseTeamInvite`
- * first, and the database checks it again against the actor's membership.
+ * first, and the database checks it again against the actor's membership
+ * (team.edit and the rank rule), and that nobody but an owner gives a role
+ * that sees pay (`givesPay`).
  */
 export async function inviteToTeam(
   actorId: string,
@@ -188,7 +203,7 @@ export async function inviteToTeam(
     new_token_hash: hashInviteToken(token),
   });
   if (error) {
-    const known = teamInviteError(error.code);
+    const known = teamInviteError(error.code, error.hint);
     if (known) return { ok: false, error: known };
     throw new Error(`Could not invite: ${error.message}`);
   }
@@ -196,9 +211,11 @@ export async function inviteToTeam(
 }
 
 /**
- * A fresh link for an invite nobody claimed, open or expired, from an
- * owner or manager of its business (`public.team_invite_link`). The old
- * link stops working and the invite gets another 14 days.
+ * A fresh link for an invite nobody claimed, open or expired, from someone
+ * who edits its business's team and gives its role
+ * (`public.team_invite_link`; `givesPay` for a role that sees pay, which
+ * only an owner gives). The old link stops working and the invite gets
+ * another 14 days.
  */
 export async function issueTeamInviteLink(
   actorId: string,
@@ -211,7 +228,7 @@ export async function issueTeamInviteLink(
     new_token_hash: hashInviteToken(token),
   });
   if (error) {
-    const known = teamInviteError(error.code);
+    const known = teamInviteError(error.code, error.hint);
     if (known) return { ok: false, error: known };
     throw new Error(`Could not issue invite link: ${error.message}`);
   }
@@ -241,7 +258,7 @@ export async function inviteFromConsole(
     new_token_hash: hashInviteToken(token),
   });
   if (error) {
-    const known = teamInviteError(error.code);
+    const known = teamInviteError(error.code, error.hint);
     if (known) return { ok: false, error: known };
     throw new Error(`Could not invite: ${error.message}`);
   }

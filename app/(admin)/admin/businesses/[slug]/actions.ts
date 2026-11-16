@@ -118,7 +118,7 @@ export async function addPersonAction(
     return { failure: "noPermission", values };
   }
   // The team may give any role, as an owner may.
-  const parsed = parseTeamInvite(values, "owner");
+  const parsed = parseTeamInvite(values, { role: "owner", perms: [] });
   if (!parsed.ok) return { errors: parsed.errors, values };
 
   try {

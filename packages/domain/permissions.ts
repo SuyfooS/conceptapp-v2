@@ -24,20 +24,21 @@ import {
  * The permissions no module declares: seeing and editing the team screen
  * (`/team`: invites, roles, removals) and the management page (`/manage`).
  * Managers hold them by default and owners always, as both screens opened
- * before the roles plan. The management page reads its two (`manageAccess`
- * opens /manage at view and saves at edit, the database's
+ * before the roles plan. The team screen reads its two (`canSeeTeam` and
+ * `canEditTeam` in @domain/team; the database's team writers, its numbers,
+ * minors and invites ask them: the plan's R6), the management page its two
+ * (`manageAccess` opens /manage at view and saves at edit, the database's
  * `private.can_edit_settings` and the activity log's policies ask them: the
- * plan's R7), and owners switch them per role; the team screen's wait for
- * their phase (R6), which moves its checks onto them (`canSeeTeam` until
- * then).
+ * plan's R7), and owners switch them per role.
  */
 export const CORE_PERMISSIONS = [
-  { key: "team.view", area: "team", defaultRole: "manager" },
+  { key: "team.view", area: "team", defaultRole: "manager", settable: true },
   {
     key: "team.edit",
     area: "team",
     defaultRole: "manager",
     requires: "team.view",
+    settable: true,
   },
   {
     key: "manage.view",

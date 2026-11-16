@@ -29,7 +29,7 @@ export async function demoInviteAction(
     phone: String(form.get("phone") ?? ""),
     role: String(form.get("role") ?? ""),
   };
-  const parsed = parseTeamInvite(values, "owner");
+  const parsed = parseTeamInvite(values, { role: "owner", perms: [] });
   if (!parsed.ok) return { errors: parsed.errors, values };
   return {
     done: {

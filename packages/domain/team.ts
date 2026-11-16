@@ -1,5 +1,12 @@
 import { instantIn } from "./availability";
-import { atLeast, isStaff, ROLES, type Role } from "./modules";
+import {
+  atLeast,
+  holdsPermission,
+  isStaff,
+  ROLES,
+  type Role,
+  type Viewer,
+} from "./modules";
 import { normalizeIsraeliMobile } from "./phone";
 import type { AddressForm } from "./profile";
 
@@ -8,9 +15,29 @@ import type { AddressForm } from "./profile";
  * it, and how the people in a business are grouped and counted.
  */
 
-/** Owners and managers see the team; workers do not. */
-export function canSeeTeam(role: Role): boolean {
-  return atLeast(role, "manager");
+/**
+ * Whether the viewer opens the team screen: everyone in the business with
+ * their numbers, who is a minor, and the invites waiting (`team.view` as the
+ * database answers it, `public.my_permissions`; the roles plan's R6). Owners
+ * always, managers by default, and anyone whose role an owner or the team
+ * raised; a manager lowered to none doesn't. Everyone in the business reads
+ * everyone's name all the same, wherever the app shows one (critique 15).
+ * The database asks the same at every read (`public.team_phones`,
+ * `public.team_youth`, the invites' policy).
+ */
+export function canSeeTeam(viewer: Viewer): boolean {
+  return holdsPermission(viewer, "team.view");
+}
+
+/**
+ * Whether the viewer changes the team: invites, sends a new link, cancels an
+ * invite, takes someone off the team, changes a role and deletes a hurtful
+ * line (`team.edit`, which needs `team.view`). Whom they act on is the rank
+ * rule's (`givesRole`). Someone who sees the team without it reads the
+ * screen and changes nothing. The database checks the same at every write.
+ */
+export function canEditTeam(viewer: Viewer): boolean {
+  return canSeeTeam(viewer) && holdsPermission(viewer, "team.edit");
 }
 
 export type TeamMember = {
@@ -90,60 +117,90 @@ export function buildTeam(
 }
 
 /**
- * The roles only an owner gives: another owner, and an accountant, who sees
- * everyone's hours and pay (Orel, 8 November 2026). The ConceptApp team gives
- * them from the console too.
+ * The rank rule, the one rule by role left on the team (the roles plan's
+ * R6): an owner gives every role; anyone else a role of the staff other than
+ * owner, at or below their own (a manager: managers and workers; a worker
+ * raised to edit the team: workers). Another owner and an accountant, who
+ * sees everyone's hours and pay, are an owner's to give (Orel, 8 November
+ * 2026); the ConceptApp team gives them from the console too. The database
+ * says the same (`private.gives_role`).
  */
-const OWNER_ONLY_ROLES: readonly Role[] = ["owner", "accountant"];
-
-/**
- * The roles an owner or manager may give someone they invite. A manager
- * invites managers and workers; an owner also invites an owner or an
- * accountant. The database checks the same rule (team_invite).
- */
-export function invitableRoles(role: Role): Role[] {
-  if (!canSeeTeam(role)) return [];
-  return ROLES.filter((r) => role === "owner" || !OWNER_ONLY_ROLES.includes(r));
-}
-
-/** May someone in `role` send a link for an invite with `inviteRole`? */
-export function canResendInvite(role: Role, inviteRole: Role): boolean {
-  return invitableRoles(role).includes(inviteRole);
+export function givesRole(giver: Role, role: Role): boolean {
+  if (giver === "owner") return true;
+  return (
+    isStaff(giver) && isStaff(role) && role !== "owner" && atLeast(giver, role)
+  );
 }
 
 /**
- * May someone in `role` cancel an invite with `inviteRole`? The same rule as
+ * The roles the viewer may give someone they invite: none unless they edit
+ * the team (`canEditTeam`), then those of the rank rule (`givesRole`). A
+ * manager invites managers and workers; an owner also an owner or an
+ * accountant. The database checks the same (`public.team_invite`), and also
+ * that nobody but an owner gives a role that holds pay (hint `pay`).
+ */
+export function invitableRoles(viewer: Viewer): Role[] {
+  if (!canEditTeam(viewer)) return [];
+  return ROLES.filter((role) => givesRole(viewer.role, role));
+}
+
+/**
+ * The roles only an owner gives, for this viewer: those that hold pay by
+ * their role in the business (`payRoles`, its rows for `clock.payroll`;
+ * Orel, 8 November 2026, the roles plan's R6). None for an owner. Anyone else
+ * isn't offered them to invite to, change someone to or send a new link for,
+ * and a change away from one is held for its undo, since changing back would
+ * give pay. The database refuses the same (42501, hint `pay`).
+ */
+export function ownerOnlyRoles(
+  viewer: Viewer,
+  payRoles: readonly Role[],
+): Role[] {
+  return viewer.role === "owner" ? [] : [...payRoles];
+}
+
+/** May the viewer send a link for an invite with `inviteRole`? */
+export function canResendInvite(viewer: Viewer, inviteRole: Role): boolean {
+  return invitableRoles(viewer).includes(inviteRole);
+}
+
+/**
+ * May the viewer cancel an invite with `inviteRole`? The same rule as
  * sending its link (`public.team_invite_cancel`).
  */
-export function canCancelInvite(role: Role, inviteRole: Role): boolean {
-  return canResendInvite(role, inviteRole);
+export function canCancelInvite(viewer: Viewer, inviteRole: Role): boolean {
+  return canResendInvite(viewer, inviteRole);
 }
 
 /** Someone on the team, as the rules for changing it see them. */
 export type TeamPlace = { userId: string; role: Role };
 
+/** The one who acts: their place, and what they hold (`Viewer`). */
+export type TeamActor = TeamPlace & Viewer;
+
 /**
  * Whoever may invite to a role may take someone off the team from it, and
- * change someone from it and to it (Orel, 14 November 2026): an owner acts on
- * everyone, a manager on managers and workers. Never on oneself, which the
- * person's own profile is for. The database checks the same
- * (`public.remove_member`, `private.gives_role`), and also that the business
- * keeps an owner (`leavesNoOwner`).
+ * change someone from it and to it (Orel, 14 November 2026): someone who
+ * edits the team, by the rank rule, so an owner acts on everyone, a manager
+ * on managers and workers, and a worker raised to edit the team on workers.
+ * Never on oneself, which the person's own profile is for. The database
+ * checks the same (`public.remove_member`, `private.gives_role`), and also
+ * that the business keeps an owner (`leavesNoOwner`).
  */
-export function canRemoveMember(viewer: TeamPlace, person: TeamPlace): boolean {
+export function canRemoveMember(viewer: TeamActor, person: TeamPlace): boolean {
   return (
     viewer.userId !== person.userId &&
-    invitableRoles(viewer.role).includes(person.role)
+    invitableRoles(viewer).includes(person.role)
   );
 }
 
 /**
- * May someone in `viewerRole` change someone's role from `from` to `to`?
- * Both must be roles they invite to. The same role changes nothing, and is
- * allowed (`public.set_member_role` returns `changed: false`).
+ * May the viewer change someone's role from `from` to `to`? Both must be
+ * roles they invite to. The same role changes nothing, and is allowed
+ * (`public.set_member_role` returns `changed: false`).
  */
-export function mayChangeRole(viewerRole: Role, from: Role, to: Role): boolean {
-  const mine = invitableRoles(viewerRole);
+export function mayChangeRole(viewer: Viewer, from: Role, to: Role): boolean {
+  const mine = invitableRoles(viewer);
   return mine.includes(from) && mine.includes(to);
 }
 
@@ -151,9 +208,9 @@ export function mayChangeRole(viewerRole: Role, from: Role, to: Role): boolean {
  * The roles the viewer may give the person instead of theirs, in the usual
  * order; none when they may not change it at all (`canRemoveMember`).
  */
-export function roleChoices(viewer: TeamPlace, person: TeamPlace): Role[] {
+export function roleChoices(viewer: TeamActor, person: TeamPlace): Role[] {
   if (!canRemoveMember(viewer, person)) return [];
-  return invitableRoles(viewer.role).filter((role) => role !== person.role);
+  return invitableRoles(viewer).filter((role) => role !== person.role);
 }
 
 /**
@@ -199,11 +256,14 @@ export function roleChangeClears(from: Role, to: Role): boolean {
 /**
  * Why the database refused a team change, as the screens explain it:
  *
- *   notAllowed  42501: the viewer may not act on this role, or is no longer
- *               an owner or manager of the business
+ *   notAllowed  42501: the viewer may not act on this role, or no longer
+ *               edits the business's team
  *   beyondHeld  42501 with hint `held`: the new role holds by role a
- *               permission the manager doesn't (an owner set workers above
+ *               permission the viewer doesn't (an owner set workers above
  *               managers; the roles plan's R3), which only an owner gives
+ *   givesPay    42501 with hint `pay`: the new role sees pay, which only an
+ *               owner gives (Orel, 8 November 2026; the roles plan's R6),
+ *               the viewer's own role included where it holds pay
  *   gone        P0002: the person is no longer on the team, or the invite is
  *               no longer open (claimed, cancelled)
  *   yourself    22023: one's own place, or no role given
@@ -218,6 +278,7 @@ export function roleChangeClears(from: Role, to: Role): boolean {
 export const TEAM_CHANGE_FAILURES = [
   "notAllowed",
   "beyondHeld",
+  "givesPay",
   "gone",
   "yourself",
   "lastOwner",
@@ -236,7 +297,11 @@ export function teamChangeFailureOf(
 ): TeamChangeFailure {
   switch (code) {
     case "42501":
-      return hint === "held" ? "beyondHeld" : "notAllowed";
+      return hint === "held"
+        ? "beyondHeld"
+        : hint === "pay"
+          ? "givesPay"
+          : "notAllowed";
     case "P0002":
       return "gone";
     case "22023":
@@ -290,13 +355,13 @@ export type TeamInviteErrors = {
 };
 
 /**
- * Checks the Team screen's invite form for someone in `actorRole`: a name,
- * an Israeli mobile (any format; `PhoneField` already submits E.164) and a
- * role they may give.
+ * Checks the Team screen's invite form for `actor`: a name, an Israeli
+ * mobile (any format; `PhoneField` already submits E.164) and a role they
+ * may give (`invitableRoles`).
  */
 export function parseTeamInvite(
   input: Partial<Record<keyof TeamInviteInput, unknown>>,
-  actorRole: Role,
+  actor: Viewer,
 ):
   | { ok: true; value: TeamInviteInput }
   | { ok: false; errors: TeamInviteErrors } {
@@ -314,7 +379,7 @@ export function parseTeamInvite(
   else if (!phone) errors.phone = "invalid";
 
   if (!role) errors.role = "required";
-  else if (!invitableRoles(actorRole).includes(role)) {
+  else if (!invitableRoles(actor).includes(role)) {
     errors.role = "notAllowed";
   }
 

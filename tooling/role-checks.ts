@@ -42,17 +42,9 @@ export const FIXED: Record<string, string> = {
  * newest version, and while one with a rule left isn't named here.
  */
 export const NOT_YET_MOVED: Record<string, string> = {
-  // Team (R6), beside scheduling's lines and the clock's, which R3 and R4
-  // moved. Lists moved in R5.
-  "private.notify_for": "R6: team.joined, by area",
-  // Team (R6).
-  "public.team_phones": "R6: everyone's numbers, to the team's viewers",
-  "public.team_youth":
-    "R6: minors' details, to the team's viewers and the schedule's builders (critique 14); only the team screen reads them",
-  'policy "managers read their business\'s invites" on public.invites':
-    "R6: invites, to the team's viewers",
-  'policy "the team reads invites when viewing as a manager" on public.invites':
-    "R6: invites, to a view at team view",
+  // None left: scheduling moved in R3, the time clock in R4, lists in R5,
+  // the team (private.notify_for's last line among them) in R6 and the
+  // management page in R7.
 };
 
 /** Where a check sits: a function's or a policy's name, or the file's top level. */

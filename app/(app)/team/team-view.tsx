@@ -1,6 +1,11 @@
-import type { Role } from "@domain/modules";
+import type { Role, Viewer } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
-import { canCancelInvite, canResendInvite, type Team } from "@domain/team";
+import {
+  canCancelInvite,
+  canEditTeam,
+  canResendInvite,
+  type Team,
+} from "@domain/team";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText } from "@ui/card";
@@ -29,12 +34,16 @@ type Invite = Team["invites"][number];
 type ViewProps = {
   t: T;
   team: Team;
-  viewerRole: Role;
+  viewer: Viewer;
   resend: Resend;
   /** A member's own page, under this path. */
   peopleHref: string;
   /** Whether the business takes invites: a demo one doesn't (#80). */
   invites: boolean;
+  /** Whether the viewer changes the team (`canEditTeam`), or only reads it. */
+  edits: boolean;
+  /** The roles only an owner gives (`ownerOnlyRoles`): no new link for theirs. */
+  ownerOnly: readonly Role[];
 };
 
 /**
@@ -45,20 +54,26 @@ type ViewProps = {
  * each member leads to their profile (`peopleHref`/id), where their role is
  * changed and they are taken off the team. A business closed to invites (a
  * demo one, #80) gets no `inviteHref`: no invite, no new links, and a line
- * saying why. Also rendered with mock data on /design/shell/team.
+ * saying why. Someone who sees the team without editing it (team view, the
+ * roles plan's R6) reads all of it, numbers and invites included, with no
+ * invite, no new links and no deleting, and a line under the title says
+ * so. Someone other than an owner gets no new link for an invite to a role
+ * that holds pay (`ownerOnly`), which only an owner gives, and can still
+ * delete it. Also rendered with mock data on /design/shell/team.
  */
 export function TeamView({
   team,
-  viewerRole,
+  viewer,
   inviteHref,
   peopleHref,
   resend,
   cancel,
+  ownerOnly = [],
   wording,
 }: {
   team: Team;
-  /** The signed-in owner or manager. */
-  viewerRole: Role;
+  /** The signed-in person, with what they hold (`my_permissions`). */
+  viewer: Viewer;
   /** The invite form, or nothing when the business takes no invites. */
   inviteHref?: string;
   /** Where each member's profile lives: `/team`, or the demo's. */
@@ -69,12 +84,27 @@ export function TeamView({
    * none while viewing as someone, who changes nothing.
    */
   cancel?: CancelInvite;
+  /**
+   * The roles only an owner gives (`currentOwnerOnlyRoles`: those that hold
+   * pay), for a viewer who isn't one; none by default.
+   */
+  ownerOnly?: readonly Role[];
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
 }) {
   const t = translator(wording, "app");
   const invites = inviteHref !== undefined;
-  const view = { t, team, viewerRole, resend, peopleHref, invites };
+  const edits = canEditTeam(viewer);
+  const view = {
+    t,
+    team,
+    viewer,
+    resend,
+    peopleHref,
+    invites,
+    edits,
+    ownerOnly,
+  };
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
@@ -84,7 +114,7 @@ export function TeamView({
           open: team.counts.open,
         })}
         actions={
-          inviteHref ? (
+          inviteHref && edits ? (
             <Button asChild size="lg">
               <Link href={inviteHref}>
                 <UserPlus aria-hidden="true" />
@@ -94,6 +124,9 @@ export function TeamView({
           ) : undefined
         }
       />
+      {edits ? null : (
+        <p className="text-ink-2 md:max-w-2xl">{t("team.readOnly")}</p>
+      )}
       <InviteCancels cancel={cancel ?? null}>
         <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-8 xl:hidden">
           {team.invites.length > 0 ? (
@@ -130,16 +163,18 @@ function InviteBadge({ t, state }: { t: T; state: Invite["state"] }) {
 
 /**
  * What the viewer may do with this invite: a new link, and deleting it, by
- * the same rule (`canResendInvite`, `canCancelInvite`).
+ * the same rule (`canResendInvite`, `canCancelInvite`); a new link for a role
+ * that holds pay only from an owner (`ownerOnly`).
  */
 function inviteActions(
-  { t, viewerRole, resend, invites }: ViewProps,
+  { t, viewer, resend, invites, ownerOnly }: ViewProps,
   invite: Invite,
 ) {
   if (!invites) return null;
   const who = name(t, invite.name);
-  const resendable = canResendInvite(viewerRole, invite.role);
-  const cancellable = canCancelInvite(viewerRole, invite.role);
+  const resendable =
+    canResendInvite(viewer, invite.role) && !ownerOnly.includes(invite.role);
+  const cancellable = canCancelInvite(viewer, invite.role);
   if (!resendable && !cancellable) return null;
   return (
     <div className="flex flex-wrap items-start gap-2">
@@ -180,12 +215,31 @@ function Members({ t, team, peopleHref }: ViewProps) {
 
 /**
  * The line under the invites: why there are none in a business closed to
- * them, else how many expired, which a new link opens again.
+ * them, else how many expired, which a new link opens again for whoever
+ * sends one.
  */
-function invitesNote({ t, team, invites }: ViewProps): string | null {
-  if (!invites) return t("team.invites.closed");
+function invitesNote(view: ViewProps): string | null {
+  const { t, team, invites, edits } = view;
+  if (!invites) return closedNote(view);
   const { expired } = team.counts;
-  return expired > 0 ? t("team.invites.expiredHint", { count: expired }) : null;
+  if (expired === 0) return null;
+  return edits
+    ? t("team.invites.expiredHint", { count: expired })
+    : t("team.invites.expiredReadOnly", { count: expired });
+}
+
+/**
+ * Why a business closed to invites (a demo one) has none: for whoever edits
+ * the team, where they would invite from in a real one; for anyone else, only
+ * why.
+ */
+function closedNote({ t, edits }: ViewProps): string {
+  return edits ? t("team.invites.closed") : t("team.invites.closedReadOnly");
+}
+
+/** No invite waits: how to invite someone, for whoever may. */
+function noInvites({ t, edits }: ViewProps): string {
+  return edits ? t("team.invites.empty") : t("team.invites.emptyReadOnly");
 }
 
 function Invites(view: ViewProps) {
@@ -195,9 +249,7 @@ function Invites(view: ViewProps) {
     <PageSection title={t("team.invites.title")}>
       {team.invites.length === 0 ? (
         <Card tone="flat" padding="lg">
-          <CardText>
-            {invites ? t("team.invites.empty") : t("team.invites.closed")}
-          </CardText>
+          <CardText>{invites ? noInvites(view) : closedNote(view)}</CardText>
         </Card>
       ) : (
         <>
@@ -268,8 +320,10 @@ function NameCell({
 }
 
 function Everyone(view: ViewProps) {
-  const { t, team, peopleHref, invites } = view;
+  const { t, team, peopleHref, invites, edits } = view;
   const note = invitesNote(view);
+  // The column of new links, for someone who may send them.
+  const links = invites && edits;
   return (
     <PageSection title={t("team.everyone")}>
       {/* Above the table, where the invites are its first rows: with a long
@@ -292,7 +346,7 @@ function Everyone(view: ViewProps) {
               <th scope="col" className={th}>
                 {t("team.columns.status")}
               </th>
-              {invites ? (
+              {links ? (
                 <th scope="col" className={th}>
                   {t("team.columns.link")}
                 </th>
@@ -309,7 +363,7 @@ function Everyone(view: ViewProps) {
                   <td className={td}>
                     <InviteBadge t={t} state={i.state} />
                   </td>
-                  {invites ? (
+                  {links ? (
                     <td className={cn(td, "w-[28rem]")}>
                       {inviteActions(view, i)}
                     </td>
@@ -330,14 +384,14 @@ function Everyone(view: ViewProps) {
                 <td className={cn(td, "text-ink-2")}>
                   {t("team.state.member")}
                 </td>
-                {invites ? <td className={td} /> : null}
+                {links ? <td className={td} /> : null}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
       {invites && team.invites.length === 0 ? (
-        <p className="px-1 text-ink-2 text-sm">{t("team.invites.empty")}</p>
+        <p className="px-1 text-ink-2 text-sm">{noInvites(view)}</p>
       ) : note ? (
         <p className="px-1 text-ink-2 text-sm">{note}</p>
       ) : null}
