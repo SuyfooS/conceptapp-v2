@@ -1,4 +1,4 @@
-import { canSeeTeam } from "@domain/team";
+import { editsClock } from "@domain/time-clock";
 import { currentModuleSettings } from "../../modules";
 import { clockAccess } from "../clock";
 
@@ -15,13 +15,14 @@ export type CodeScreenData = {
 };
 
 /**
- * The code screen for an owner or manager, on their own phone. Null unless the
- * clock is on and the person sees the team: the screen then does not exist for
- * them. The database checks each code it makes again.
+ * The code screen for whoever edits the clock (`editsClock`: clock.edit, the
+ * roles plan's R4), on their own phone. Null unless the clock is on and the
+ * person edits it: the screen then does not exist for them. The database
+ * checks each code it makes again.
  */
 export async function currentCodeScreen(): Promise<CodeScreenData | null> {
   const access = await clockAccess();
-  if (!access || !canSeeTeam(access.role)) return null;
+  if (!access || !editsClock(access)) return null;
   const settings = await currentModuleSettings("time_clock");
   return {
     businessName: access.businessName,

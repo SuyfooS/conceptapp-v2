@@ -9,6 +9,7 @@ import {
   clockStatus,
   confirmRowOf,
   type EntryProof,
+  editsClock,
   entryDate,
   entryMinutes,
   entryOverdue,
@@ -139,12 +140,18 @@ describe("confirming what was made without a code", () => {
     }
   });
 
-  it("lets a manager approve others' entries, and only an owner a manager's own", () => {
+  it("lets whoever edits the clock approve others' entries, and only an owner one set for oneself", () => {
     const plain = { arrival: true, departure: false, ownerOnly: false };
     const self = { arrival: true, departure: false, ownerOnly: true };
-    const manager = { userId: "m", role: "manager" as const };
-    const owner = { userId: "o", role: "owner" as const };
-    const worker = { userId: "w", role: "worker" as const };
+    // As the database answers: managers hold clock.edit by default, owners
+    // hold everything, workers don't (the roles plan's R4).
+    const manager = {
+      userId: "m",
+      role: "manager" as const,
+      perms: ["clock.edit"],
+    };
+    const owner = { userId: "o", role: "owner" as const, perms: [] };
+    const worker = { userId: "w", role: "worker" as const, perms: [] };
     expect(canConfirm(plain, "noa", manager)).toBe(true);
     expect(canConfirm(plain, "m", manager)).toBe(false);
     expect(canConfirm(self, "m", manager)).toBe(false);
@@ -152,6 +159,28 @@ describe("confirming what was made without a code", () => {
     expect(canConfirm(self, "m", owner)).toBe(true);
     expect(canConfirm(plain, "o", owner)).toBe(true);
     expect(canConfirm(plain, "noa", worker)).toBe(false);
+    // A worker raised to edit the clock approves a colleague's, never their
+    // own or one set for oneself; a manager lowered approves none.
+    const raised = { ...worker, perms: ["clock.edit"] };
+    const lowered = { ...manager, perms: [] };
+    expect(canConfirm(plain, "noa", raised)).toBe(true);
+    expect(canConfirm(plain, "w", raised)).toBe(false);
+    expect(canConfirm(self, "noa", raised)).toBe(false);
+    expect(canConfirm(plain, "noa", lowered)).toBe(false);
+  });
+
+  it("edits the clock by clock.edit as the database answers it, owners always", () => {
+    expect(editsClock({ role: "owner", perms: [] })).toBe(true);
+    expect(editsClock({ role: "manager", perms: ["clock.edit"] })).toBe(true);
+    expect(editsClock({ role: "manager", perms: ["clock.payroll"] })).toBe(
+      false,
+    );
+    expect(editsClock({ role: "worker", perms: ["clock.edit"] })).toBe(true);
+    expect(editsClock({ role: "worker", perms: [] })).toBe(false);
+    // Pay is a switch of its own: it reads hours, it doesn't edit them.
+    expect(editsClock({ role: "accountant", perms: ["clock.payroll"] })).toBe(
+      false,
+    );
   });
 
   it("says what an approval row waits for, and which time it names", () => {

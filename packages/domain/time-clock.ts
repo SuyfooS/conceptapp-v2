@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { addDays, dateIn, instantIn } from "./availability";
-import { atLeast, type Role } from "./modules";
+import { holdsPermission, type Viewer } from "./modules";
 import type { PunchProof } from "./punch-code-format";
 import { timeIn } from "./shabbat";
 import {
@@ -300,15 +300,30 @@ export function entryToConfirm(
 }
 
 /**
- * Who may confirm it: any owner or manager but the person, unless an owner;
- * a time someone set for themselves, only an owner.
+ * Whether the viewer edits the clock: reads the team's hours and the stations,
+ * corrects, adds and confirms hours, and shows the punch code. It is
+ * `clock.edit` as the database answers it (`public.my_permissions`): owners
+ * always, managers by default, and anyone whose role an owner raised (the
+ * roles plan's R4; Orel's answers of 15 November 2026). Everyone on the staff
+ * punches and reads their own hours whatever it says (view is the floor). The
+ * database asks the same (`private.can_edit_clock`), at every read of the
+ * team's hours and every write.
+ */
+export function editsClock(viewer: Viewer): boolean {
+  return holdsPermission(viewer, "clock.edit");
+}
+
+/**
+ * Who may confirm it: anyone who edits the clock (`editsClock`) but the
+ * person, unless an owner; a time someone set for themselves, a manager's
+ * correction of their own hours included, only an owner (a fixed rule).
  */
 export function canConfirm(
   toConfirm: ToConfirm,
   entryUserId: string,
-  viewer: { userId: string; role: Role },
+  viewer: Viewer & { userId: string },
 ): boolean {
-  if (!atLeast(viewer.role, "manager")) return false;
+  if (!editsClock(viewer)) return false;
   const owner = viewer.role === "owner";
   if (entryUserId === viewer.userId && !owner) return false;
   return owner || !toConfirm.ownerOnly;

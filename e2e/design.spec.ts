@@ -200,8 +200,9 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/access",
   "/design/console/businesses/demo-restaurant/access?state=readOnly",
   // Roles and permissions from the console (R2): scheduling (R3) and the
-  // management page (R7) open and the rest closed, then every area open as
-  // each phase will open it, and a team role that only reads.
+  // time clock (R4) and the management page (R7) open and the rest closed,
+  // then every area open as each phase will open it, and a team role that
+  // only reads.
   "/design/console/businesses/demo-restaurant/roles",
   "/design/console/businesses/demo-restaurant/roles?state=open",
   "/design/console/businesses/demo-restaurant/roles?state=readOnly",

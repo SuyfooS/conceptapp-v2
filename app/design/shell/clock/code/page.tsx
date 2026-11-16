@@ -15,6 +15,7 @@ export default function ShellClockCode() {
       }}
       issueUrl="/design/shell/clock/code/issue"
       paths={{
+        clock: "/design/shell/clock",
         team: "/design/shell/clock/team",
         settings: "/design/shell/manage/time_clock",
       }}

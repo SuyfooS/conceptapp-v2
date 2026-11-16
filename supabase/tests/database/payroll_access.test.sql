@@ -300,7 +300,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.set_role_permission('77000000-0000-4000-a000-00000000000a',
-    '77000000-0000-4000-b000-000000000001', 'manager', 'clock.edit', false)$$,
+    '77000000-0000-4000-b000-000000000001', 'manager', 'storefront.edit', false)$$,
   '22023', null, 'a permission that follows its role is not switched'
 );
 select throws_ok(

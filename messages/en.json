@@ -1329,7 +1329,7 @@
         "workingSince": "You came in at <ltr>{time}</ltr>",
         "workingUntil": "You came in at <ltr>{time}</ltr>, the shift ends at <ltr>{end}</ltr>",
         "breakSince": "You went on a break at <ltr>{time}</ltr>",
-        "idleScan": "Pressing the circle opens the camera. Point it at the code a manager is showing."
+        "idleScan": "Pressing the circle opens the camera. Point it at the clock's code shown at work."
       },
       "hours": {
         "thisMonth": "This month",
@@ -1346,8 +1346,8 @@
         "break": "On a break",
         "back": "Back to work",
         "undo": "Clock out undone, the shift goes on",
-        "inNone": "Clocked in without a code. A manager will approve it.",
-        "outNone": "Clocked out without a code. A manager will approve it."
+        "inNone": "Clocked in without a code. It waits for approval.",
+        "outNone": "Clocked out without a code. It waits for approval."
       },
       "failure": {
         "code": "Those digits are wrong, or the code has changed. Type the digits shown now.",
@@ -1355,15 +1355,15 @@
         "notIn": "You are not clocked in.",
         "alreadyOnBreak": "You are already on a break.",
         "notOnBreak": "That break has already ended.",
-        "tooLate": "Too long has passed since you left to undo it. A manager can fix it.",
-        "tooLong": "This shift has been open for more than 24 hours. A manager needs to fix it.",
-        "times": "These hours clash with another shift. A manager can fix it.",
+        "tooLate": "Too long has passed since you left to undo it. You can ask whoever approves hours here to fix it.",
+        "tooLong": "This shift has been open for more than 24 hours. Whoever approves hours here needs to fix it.",
+        "times": "These hours clash with another shift. You can ask whoever approves hours here to fix it.",
         "noAccess": "You don't have access to this business's clock.",
         "viewOnly": "In view mode you can't clock in or out.",
         "failed": "That didn't go through. Check your connection and try again.",
         "needsEnd": "An end time is needed too.",
         "codeLocked": "Too many tries with wrong digits, so typing is blocked for a while. You can scan the code, or go ahead without one.",
-        "ownCode": "A code shown on your own phone doesn't count for you. Use a code another manager is showing, or go ahead without one.",
+        "ownCode": "A code shown on your own phone doesn't count for you. Use a code someone else is showing, or go ahead without one.",
         "stationsOnly": "This business shows the code only on its station.",
         "codeNeeded": "This business now needs a code to clock in or out. Press the circle again.",
         "codeScan": "The code didn't work; it may have changed. Scan the code shown now."
@@ -1379,8 +1379,8 @@
         "now": "Now",
         "running": "Still on shift",
         "withBreak": " · {minutes} min break",
-        "byManager": " · recorded by a manager",
-        "addedByManager": "Recorded by a manager",
+        "byManager": " · recorded by hand",
+        "addedByManager": "Recorded by hand",
         "corrected": "Corrected by {name}: {note}",
         "correctedBy": "Corrected by {name}",
         "added": "Recorded by {name}: {note}",
@@ -1464,7 +1464,7 @@
         },
         "sheet": {
           "addTitle": "Add a shift",
-          "addSubtitle": "For someone who forgot to clock in. It's marked as recorded by a manager.",
+          "addSubtitle": "For someone who forgot to clock in. It's marked as recorded by hand.",
           "editTitle": "Fix a shift",
           "editSubtitle": "The earlier times stay in the activity log.",
           "date": "Date",
@@ -1487,8 +1487,8 @@
           "viewOnly": "In view mode you can't change hours.",
           "failed": "The hours weren't saved. Check your connection and try again.",
           "sameTime": "The end is the same as the start. Check the times.",
-          "ownHours": "Another manager or the owner approves your own hours.",
-          "ownerOnly": "Only the owner approves hours a manager recorded for themselves.",
+          "ownHours": "The owner, or someone else who approves hours, approves your own hours.",
+          "ownerOnly": "Only the owner approves hours someone recorded for themselves.",
           "reasonNeeded": "Write why you're changing it, so the record keeps it."
         },
         "done": {
@@ -1497,7 +1497,7 @@
         },
         "confirm": {
           "title": "{count, plural, one {One entry is waiting for approval} other {# entries are waiting for approval}}",
-          "body": "Recorded without a code, or by a manager for themselves. Approve, or open to fix.",
+          "body": "Recorded without a code, or by someone for themselves. Approve, or open to fix.",
           "row": "{what, select, in {In without a code} out {Out without a code} both {In and out without a code} other {Own entry}} on {day}, <ltr>{time}</ltr>",
           "approve": "Approve",
           "fix": "Fix",
@@ -1514,7 +1514,7 @@
       "type": {
         "titleIn": "Clock in with the digits",
         "titleOut": "Clock out with the digits",
-        "subtitle": "The digits under the code a manager is showing",
+        "subtitle": "The digits under the clock's code",
         "label": "The clock code's six digits",
         "card": "No camera? Type the digits",
         "cardHint": "The six digits under the code",
@@ -1524,7 +1524,7 @@
         "open": "Can't? Go ahead without a code",
         "titleIn": "Clock in without a code",
         "titleOut": "Clock out without a code",
-        "body": "The time is saved now, as it is. A manager will see it was without a code and approve it.",
+        "body": "The time is saved now, as it is, and waits for approval since it was without a code.",
         "confirmIn": "Clock in without a code",
         "confirmOut": "Clock out without a code",
         "back": "Back to scanning"
@@ -1536,7 +1536,7 @@
         "sending": "Got it. Recording the time",
         "readIn": "Got it. Clocked in",
         "readOut": "Got it. Clocked out",
-        "notOurs": "That isn't the clock's code. Point at the code a manager is showing.",
+        "notOurs": "That isn't the clock's code. Point at the clock's code shown at work.",
         "denied": "There's no access to the camera. Type the digits under the code, or allow the camera in the browser's settings and press “Try again”.",
         "deniedApp": "There's no access to the camera. Type the digits under the code, or close the app, open it again and allow the camera.",
         "unavailable": "The camera didn't open. Type the digits under the code.",
@@ -1558,7 +1558,9 @@
         "settingOffOwner": "For now nobody needs this code. To ask for it, switch on “Clock in and out with a code” in the clock's settings.",
         "openSettings": "Open the clock's settings",
         "settingOffManager": "For now nobody needs this code. The owner can ask for it in the clock's settings.",
-        "notCounted": "A code shown here doesn't count for you: clock yourself in with another manager's code, or without one.",
+        "notCounted": "A code shown here doesn't count for you: clock yourself in with a code someone else is showing, or without one.",
+        "noAccess": "Showing the clock's code is no longer yours. You still clock in and out on the clock as usual.",
+        "toClock": "To the clock",
         "stationsOnly": "This business shows the code only on its station, not on a phone.",
         "signedOut": "Sign in again to show the code.",
         "signIn": "Sign in",
@@ -4465,7 +4467,7 @@
         },
         "requirePunchCode": {
           "label": "Clock in and out with a code",
-          "hint": "To clock in and out, people scan a code a manager shows on their phone, or type the digits under it. Anyone who can't goes ahead without a code, and a manager approves it. Each shift keeps how it was recorded. Owners need no code."
+          "hint": "To clock in and out, people scan a code shown on the phone of someone who approves hours, or type the digits under it. Anyone who can't goes ahead without a code, and someone who approves hours approves it. Each shift keeps how it was recorded. Owners need no code."
         },
         "workWeek": {
           "label": "Work week",
@@ -4592,7 +4594,7 @@
         },
         "clockOutReminderMinutes": {
           "label": "Reminder to clock out",
-          "hint": "How long after the end of their shift to remind whoever is still clocked in. With no shift in the schedule, after 12 hours. After 24 hours, owners and managers are told either way.",
+          "hint": "How long after the end of their shift to remind whoever is still clocked in. With no shift in the schedule, after 12 hours. After 24 hours, whoever approves hours here is told either way.",
           "options": {
             "0": "No reminder",
             "30": "Half an hour after",

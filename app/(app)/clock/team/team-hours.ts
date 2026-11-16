@@ -1,11 +1,11 @@
 import { getClockPeople, getTimeEntries } from "@db/time-clock";
 import { canSeePay } from "@domain/payroll-access";
 import { timeIn } from "@domain/shabbat";
-import { canSeeTeam } from "@domain/team";
 import {
   attendanceOf,
   atWorkNow,
   confirmRowOf,
+  editsClock,
   entryDate,
   entryOverdue,
   monthMinutes,
@@ -21,10 +21,13 @@ import { currentModuleSettings } from "../../modules";
 import { clockAccess, currentEntriesToConfirm } from "../clock";
 import type { PersonHoursData, TeamHoursData } from "./team-types";
 
-/** The clock's reader, when they are also someone who sees the team. */
+/**
+ * The clock's reader, when they also edit it (`editsClock`: clock.edit, the
+ * roles plan's R4): the team's hours are theirs to read and fix.
+ */
 const teamAccess = cache(async () => {
   const access = await clockAccess();
-  return access && canSeeTeam(access.role) ? access : null;
+  return access && editsClock(access) ? access : null;
 });
 
 const askedMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -37,7 +40,7 @@ function monthFrom(asked: string | undefined, currentMonth: string): string {
     : currentMonth;
 }
 
-/** Everyone's hours in a month. Null when the person doesn't see the team. */
+/** Everyone's hours in a month. Null when the person doesn't edit the clock. */
 export async function currentTeamHours(
   asked: string | undefined,
 ): Promise<TeamHoursData | null> {
@@ -145,8 +148,8 @@ export async function currentTeamHours(
 const personId = z.uuid();
 
 /**
- * One person's shifts in a month. Null when the person asking doesn't see the
- * team, that person was never in the business, or they are off the staff (an
+ * One person's shifts in a month. Null when the person asking doesn't edit the
+ * clock, that person was never in the business, or they are off the staff (an
  * accountant) and have no hours in the month.
  */
 export async function currentPersonHours(

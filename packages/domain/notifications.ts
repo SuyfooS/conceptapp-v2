@@ -223,6 +223,10 @@ export const NOTIFICATION_KINDS = {
     group: "approvals",
     module: "time_clock",
     minRole: "manager",
+    // Whoever edits the clock confirms hours without a code (the roles plan's
+    // R4); hours someone set for themselves are an owner's line, who holds
+    // every permission.
+    perm: "clock.edit",
     needsAction: true,
     // Hours are approved on the team's hours.
     href: "/clock/team",
@@ -274,12 +278,14 @@ export const NOTIFICATION_KINDS = {
     staffOnly: true,
     byApp: true,
   },
-  // Open longer than an entry can be (`entryOverdue`), to owners and
-  // managers, the person too when they are one: a correction settles it.
+  // Open longer than an entry can be (`entryOverdue`), to whoever edits the
+  // clock (owners and managers by default, the roles plan's R4), the person
+  // too when they do: a correction settles it.
   "clock.overdue": {
     group: "approvals",
     module: "time_clock",
     minRole: "manager",
+    perm: "clock.edit",
     needsAction: true,
     href: "/clock/team",
     to: "person",
