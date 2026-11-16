@@ -11,6 +11,17 @@ import {
   type PermissionKey,
   type Role,
 } from "./modules";
+import {
+  ACCESS_AREAS,
+  type AccessArea,
+  type AreaChange,
+  accessFromHeld,
+  areaAccess,
+  areaChangeOf,
+  BASE_ROLES,
+  type BaseRole,
+  changesAnything,
+} from "./role-access";
 import { builderHref } from "./running-week";
 import { timeIn } from "./shabbat";
 import { MAX_ENTRY_HOURS } from "./time-clock-format";
@@ -47,7 +58,8 @@ type KindInfo = {
   /**
    * Null for a line nobody switches off: the lines about pay (the person's
    * own access and wage, and the office's month to close and corrections
-   * after closing it) and the test from the phone switch.
+   * after closing it), the test from the phone switch, and a line in the app
+   * alone (`appOnly`), which has nothing to keep off a phone.
    */
   group: NotificationGroup | null;
   /** The module the line is about; switching it off hides the line. */
@@ -78,9 +90,18 @@ type KindInfo = {
    * screen), "person" the person's hours `/clock/team/<params.person>`,
    * "week" the builder of the week `params.startsOn` names
    * (`/schedule/build?week=<params.startsOn>`, the running-week plan's R4),
-   * and `href` is where it leads otherwise.
+   * "area" the screen of the area `params.area` names (`AREA_HREF`) while
+   * the reader still reaches it (`params.to`), and `href` is where it leads
+   * otherwise.
    */
-  to?: "list" | "payMonth" | "conversation" | "document" | "person" | "week";
+  to?:
+    | "list"
+    | "payMonth"
+    | "conversation"
+    | "document"
+    | "person"
+    | "week"
+    | "area";
   /**
    * Shown in the bell and the inbox, and counted there: all but a chat's own
    * lines, which the Chat tab counts instead (as chats with unread messages).
@@ -104,6 +125,14 @@ type KindInfo = {
    * "someone on the team".
    */
   byApp?: true;
+  /**
+   * In the app alone, never on the phone: the database writes it with
+   * nothing for the phone (`push_state` 'none'), as the reminders' lines in
+   * the app alone. In no group, so no settings screen offers to keep it off
+   * the phone, and it never counts as a line that always comes there
+   * (`alwaysOnPhone`).
+   */
+  appOnly?: true;
 };
 
 export const NOTIFICATION_KINDS = {
@@ -508,6 +537,27 @@ export const NOTIFICATION_KINDS = {
     to: "document",
     staffOnly: true,
   },
+  // What the reader's role does in an area changed (the roles plan's R10;
+  // Orel, 16 November 2026: "האנשים בתפקיד מקבלים התראה באפליקציה בלבד";
+  // `private.notify_role_change` in
+  // supabase/migrations/20261115001700_roles_changes.sql): to the active
+  // people in the role, never its owners, an accountant or whoever changed
+  // it, one line a role and an area, saying what the area gives and takes
+  // now against where the line began. A change undone before they read it
+  // takes the line away; one after they read it starts a line of its own.
+  // In the app alone, so in no group: nothing of it reaches a phone, and
+  // nobody switches it off. It leads to the area's screen while the reader
+  // still reaches it.
+  "role.changed": {
+    group: null,
+    module: null,
+    minRole: "worker",
+    needsAction: false,
+    href: "/notifications",
+    to: "area",
+    staffOnly: true,
+    appOnly: true,
+  },
   // "Send a test notification", from the phone switch: to the person alone.
   "push.test": {
     group: null,
@@ -544,6 +594,16 @@ export const LIST_TIME_WORDS = {
 
 /** Where the inbox itself is, and where an unknown line leads. */
 export const INBOX_PATH = "/notifications";
+
+/** Each area's own screen, where a line about what a role does there leads. */
+export const AREA_HREF: Record<AccessArea, `/${string}`> = {
+  scheduling: "/schedule",
+  time_clock: "/clock",
+  lists: "/lists",
+  chat: "/chat",
+  team: "/team",
+  manage: "/manage",
+};
 
 /**
  * Where opening a line leads: always a path inside the app, chosen from the
@@ -591,6 +651,15 @@ export function linkFor(
   if (info.to === "week") {
     const week = z.object({ startsOn: z.iso.date() }).safeParse(params);
     if (week.success) return builderHref(week.data.startsOn);
+  }
+  if (info.to === "area") {
+    // The area's screen, unless the change took the reader's way there (the
+    // team screen or the management page at none).
+    const change = schemas.roleChange.safeParse(params);
+    if (change.success) {
+      const { area, to } = change.data;
+      if (heldPart(area, to).level !== "none") return AREA_HREF[area];
+    }
   }
   return info.href;
 }
@@ -711,7 +780,8 @@ function kindFor(
  * modules on, in order: what the inbox says reaches it. With what they hold
  * (`perms`), a line for those who hold a permission counts by it: a worker
  * who builds the schedule gets the approvals, a manager who doesn't, not
- * theirs.
+ * theirs. A line in the app alone (`appOnly`) is in no group, so it adds
+ * none.
  */
 export function groupsFor(
   role: Role,
@@ -764,7 +834,8 @@ export function notificationGroupOf(kind: string): NotificationGroup | null {
  * no group, for this role, with their module on. Only the lines about pay
  * (payroll kept each of them out of every group), so a settings screen that
  * finds any says pay always comes. The test from the phone switch, asked for
- * there and then, isn't one.
+ * there and then, isn't one, nor a line in the app alone (`appOnly`), which
+ * never reaches the phone.
  */
 export function alwaysOnPhone(
   role: Role,
@@ -774,6 +845,7 @@ export function alwaysOnPhone(
     const info: KindInfo = NOTIFICATION_KINDS[kind];
     return (
       kind !== "push.test" &&
+      !info.appOnly &&
       info.group === null &&
       atLeast(role, info.minRole) &&
       !(info.staffOnly && !isStaff(role)) &&
@@ -1379,8 +1451,28 @@ export type NotificationLine =
        */
       category: DocumentCategory | null;
     }
+  | {
+      /**
+       * What the reader's role does in an area changed (the roles plan's
+       * R10); the actor changed it: what the area gives and takes now,
+       * against where the line began.
+       */
+      kind: "role.changed";
+      role: NotificationRole;
+      area: AccessArea;
+      change: AreaChange;
+    }
   | { kind: "push.test" }
   | { kind: "other" };
+
+/**
+ * The role a line about a role's permissions names: managers or workers, in
+ * the business's words, or a role the business named, by the name it had
+ * then (null when the line lost it).
+ */
+export type NotificationRole =
+  | { kind: "base"; base: BaseRole }
+  | { kind: "named"; name: string | null };
 
 /** One line of the inbox. Holds no ids but its own, so it can go anywhere. */
 export type NotificationEntry = {
@@ -1474,7 +1566,25 @@ const schemas = {
     document: uuid,
     from: uuid.nullable().catch(null),
   }),
+  // What a role's line holds (`private.notify_role_change`): its role
+  // (managers, workers, or a named role's id, with its name), the area, and
+  // what the role held of the area's keys where the line began and now.
+  roleChange: z.object({
+    role: z.union([z.enum(BASE_ROLES), uuid]),
+    name: z.string().min(1).nullable().optional().catch(null),
+    area: z.enum(ACCESS_AREAS),
+    from: z.record(z.string(), z.boolean()),
+    to: z.record(z.string(), z.boolean()),
+  }),
 };
+
+/** One area as a role held it, from what it held of the area's keys. */
+function heldPart(area: AccessArea, held: Readonly<Record<string, boolean>>) {
+  return areaAccess(
+    accessFromHeld((key) => held[key] === true),
+    area,
+  );
+}
 
 function personOf(
   id: string | null | undefined,
@@ -1759,6 +1869,23 @@ function lineOf(
             category: categoryOf(params.document, lookups),
           }
         : other;
+    }
+    case "role.changed": {
+      const params = read(schemas.roleChange);
+      if (!params) return other;
+      const { area } = params;
+      const change = areaChangeOf(
+        area,
+        heldPart(area, params.from),
+        heldPart(area, params.to),
+      );
+      // A line that says nothing changed is no line of this kind.
+      if (!changesAnything(change)) return other;
+      const role: NotificationRole =
+        params.role === "manager" || params.role === "worker"
+          ? { kind: "base", base: params.role }
+          : { kind: "named", name: params.name ?? null };
+      return { kind, role, area, change };
     }
     case "access.pay_granted":
     case "push.test":

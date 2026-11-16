@@ -15,6 +15,7 @@ import type { PushNotice } from "@domain/push";
 import { timeIn } from "@domain/shabbat";
 import { addMonths } from "@domain/time-clock-format";
 import { dayMonthYear } from "@domain/wages";
+import { roleChangeWords } from "@/app/(app)/notifications/role-change-words";
 import { type AppWording, translator } from "@/app/(app)/wording";
 import { defaultLocale, direction } from "@/i18n/config";
 
@@ -497,6 +498,20 @@ export function pushWords(
             : t("kinds.documents.to_confirm.body"),
         ),
       };
+    // Written in the app alone (the roles plan's R10), so no phone gets
+    // it; its words are the inbox's all the same.
+    case "role.changed": {
+      const said = roleChangeWords(line, wording, (items) =>
+        new Intl.ListFormat(LANG, { type: "conjunction" }).format(items),
+      );
+      return {
+        title: said.title,
+        ...body(
+          said.change,
+          entry.actor.kind === "team" ? t("kinds.role.changed.byTeam") : null,
+        ),
+      };
+    }
     case "push.test":
       return {
         title: t("kinds.push.test.title"),

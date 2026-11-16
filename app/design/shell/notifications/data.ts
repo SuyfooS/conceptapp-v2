@@ -101,8 +101,9 @@ export const demoUnread: NotificationRow[] = [
  * evening starts later now, which replaced the line saying the week was
  * published: one line per week), her own wage set from the first of the
  * month (its day, never the amount), hours someone else confirmed, a swap
- * decided, pay access the ConceptApp team gave her from the console (who was
- * never in the restaurant, so the line says the team), someone joining.
+ * decided, what managers do in lists changed (sending taken away, R10), pay
+ * access the ConceptApp team gave her from the console (who was never in the
+ * restaurant, so the line says the team), someone joining.
  */
 export const demoEarlier: NotificationRow[] = [
   {
@@ -160,6 +161,22 @@ export const demoEarlier: NotificationRow[] = [
     actorId: PEOPLE.uri,
     createdAt: "2026-10-31T17:05:00.000Z",
     readAt: "2026-10-31T17:30:00.000Z",
+    resolvedAt: null,
+  },
+  {
+    // Uri took sending lists from managers (the roles plan's R10): in the
+    // app alone, from where her line began to now.
+    id: "a0000000-0000-4000-8000-000000000013",
+    kind: "role.changed",
+    params: {
+      role: "manager",
+      area: "lists",
+      from: { "lists.manage": true, "lists.send": true },
+      to: { "lists.manage": true, "lists.send": false },
+    },
+    actorId: PEOPLE.uri,
+    createdAt: "2026-10-29T08:15:00.000Z",
+    readAt: "2026-10-29T09:00:00.000Z",
     resolvedAt: null,
   },
   {

@@ -16,6 +16,7 @@ let added = 0;
 // demo again.
 const demoActions: RolesActions = {
   setArea: async () => ({ ok: true }),
+  setAreas: async () => ({ ok: true }),
   addRole: async () => {
     added += 1;
     return { ok: true, key: `demo-role-${added}` };

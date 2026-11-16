@@ -5,9 +5,12 @@ import {
   type AccessArea,
   type AccessExtra,
   type AccessLevel,
+  type AreaPart,
   areaAccess,
+  areaChanged,
   BASE_ROLES,
   type BaseRole,
+  changedAreas,
   checkRoleName,
   defaultAccess,
   editedAreas,
@@ -24,11 +27,13 @@ import {
   ROLE_NAME_MAX,
   type RoleAccess,
   type RoleNameProblem,
+  resetParts,
   withAreaAccess,
   withExtra,
   withLevel,
 } from "@domain/role-access";
 import { AvatarStack } from "@ui/avatar";
+import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
@@ -52,6 +57,7 @@ import {
   IdCard,
   Pencil,
   Plus,
+  RotateCcw,
   SlidersHorizontal,
   Trash2,
   UserCog,
@@ -64,6 +70,7 @@ import { useFormatter, useLocale, useTranslations } from "next-intl";
 import {
   type FormEvent,
   type ReactNode,
+  type RefCallback,
   useEffect,
   useId,
   useRef,
@@ -95,6 +102,26 @@ type Toast = {
 
 /** A number in a sentence, read left to right. */
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
+
+/** The element while it is on the screen and can take the keyboard, else null. */
+function reachable(element: HTMLElement | null): HTMLElement | null {
+  return element?.isConnected &&
+    element.getClientRects().length > 0 &&
+    !element.matches(":disabled")
+    ? element
+    : null;
+}
+
+/** A role's "חזרה להתחלה" in the shape on the screen, of those drawn (`controls`). */
+function shownReset(
+  controls: ReadonlyMap<HTMLElement, string>,
+  key: string,
+): HTMLElement | null {
+  for (const [element, role] of controls) {
+    if (role === key && reachable(element)) return element;
+  }
+  return null;
+}
 
 /** An area's own icon: its module's, or the team's and the management page's. */
 function areaIcon(area: RolesArea): ReactNode {
@@ -263,6 +290,12 @@ const markClass =
  * computer), removing refused while people hold it; each with its undo. At
  * the business's `ROLE_LIMIT` "הוספת תפקיד" is off, and a line says why.
  * Without `addRole` (a database that doesn't take them yet) none is added.
+ * An area that differs from where its role started (R10; Orel, 16 November
+ * 2026: for a manager or a worker what every business starts with, for a
+ * role the business named its base as it is) says "שונה", in its card and
+ * in its cell of the table, and while any does the role has "חזרה להתחלה"
+ * (under its cards, in its column's head): every such area back in one
+ * write, with one toast and its undo.
  */
 export function RolesView({
   data,
@@ -303,6 +336,15 @@ export function RolesView({
   const toasts = useRef(0);
   const phoneHeading = useRef<HTMLHeadingElement>(null);
   const listHeading = useRef<HTMLHeadingElement>(null);
+  /** The tablet's chosen role's name, beside the list. */
+  const chosenHeading = useRef<HTMLHeadingElement>(null);
+  /** Each "חזרה להתחלה" drawn (one a shape), by its role, while it is. */
+  const resetControls = useRef(new Map<HTMLElement, string>());
+  /**
+   * The role whose "חזרה להתחלה" takes the keyboard again as it comes back
+   * (its undo pressed, or its write refused), as the keyboard was on it.
+   */
+  const focusReset = useRef<string | null>(null);
   /** The row that opened the phone's role screen, for the way back. */
   const opener = useRef<HTMLElement | null>(null);
   const focusNext = useRef<"heading" | "opener" | null>(null);
@@ -396,23 +438,64 @@ export function RolesView({
     return () => window.removeEventListener("popstate", onPopState);
   }, []);
 
+  // "חזרה להתחלה" back on the screen after its write was refused, while the
+  // keyboard waited by the role's name: it takes the keyboard again. (Its
+  // undo's way back is the toast's, below, which comes first.)
+  // biome-ignore lint/correctness/useExhaustiveDependencies: it looks once the roles are drawn again
+  useEffect(() => {
+    const waiting = focusReset.current;
+    if (waiting === null) return;
+    focusReset.current = null;
+    shownReset(resetControls.current, waiting)?.focus({ preventScroll: true });
+  }, [roles]);
+
   /**
    * As the toast's button goes with the focus (its undo pressed, or its time
-   * up): back to where the keyboard was, while it is still there to take it,
-   * else to the title shown.
+   * up): to the "חזרה להתחלה" its undo brought back, else back to where the
+   * keyboard was, while it is still there to take it, the page staying where
+   * it is; else to the title shown.
    */
   function focusAfterToast() {
-    const can = (element: HTMLElement | null) =>
-      element?.isConnected &&
-      element.getClientRects().length > 0 &&
-      !element.matches(":disabled")
-        ? element
-        : null;
-    const target =
-      can(lastFocus.current) ??
-      can(phoneHeading.current) ??
-      can(listHeading.current);
-    target?.focus();
+    const waiting = focusReset.current;
+    focusReset.current = null;
+    const kept =
+      (waiting === null ? null : shownReset(resetControls.current, waiting)) ??
+      reachable(lastFocus.current);
+    if (kept) {
+      kept.focus({ preventScroll: true });
+      return;
+    }
+    (
+      reachable(phoneHeading.current) ?? reachable(listHeading.current)
+    )?.focus();
+  }
+
+  /** Keeps each "חזרה להתחלה" drawn by its role, for the keyboard to come back to. */
+  const resetRef =
+    (key: string): RefCallback<HTMLElement> =>
+    (element) => {
+      if (element === null) return undefined;
+      resetControls.current.set(element, key);
+      return () => {
+        resetControls.current.delete(element);
+      };
+    };
+
+  /**
+   * As a role's "חזרה להתחלה" goes with what it put back: the keyboard, on it
+   * or on nothing, waits on the role's name (`anchor`), which stays, the page
+   * staying where it is. There a refusal, the toast's time and its undo find
+   * it.
+   */
+  function holdBy(anchor: HTMLElement | null) {
+    const active = document.activeElement;
+    const free =
+      active === null ||
+      active === document.body ||
+      (active instanceof HTMLElement && resetControls.current.has(active));
+    if (!free || !anchor?.isConnected) return;
+    anchor.focus({ preventScroll: true });
+    lastFocus.current = anchor;
   }
 
   /**
@@ -516,6 +599,68 @@ export function RolesView({
     });
   }
 
+  /**
+   * "חזרה להתחלה" (the roles plan's R10): every open area of the role that
+   * differs from where it started (`resetParts`), back as it starts, in one
+   * write, with one toast whose undo puts each as it was. Its control goes
+   * once nothing differs, so the keyboard goes to the undo, from the role's
+   * name (`anchor`, where it waits meanwhile and goes as the toast goes),
+   * and back to the control as a refusal or the undo brings it back.
+   */
+  function reset(target: EditableRole, anchor: HTMLElement | null) {
+    if (disabled) return;
+    const { forward, back } = resetParts(
+      target.access,
+      target.start,
+      areas.filter(opened),
+    );
+    if (forward.length === 0) return;
+    const put = (parts: readonly AreaPart[]) =>
+      update(target.key, (access) =>
+        parts.reduce(
+          (next, part) => withAreaAccess(next, part.area, part.access),
+          access,
+        ),
+      );
+    holdBy(anchor);
+    put(forward);
+    void run(
+      () => actions.setAreas(target.key, forward),
+      () => {
+        // Refused: the control comes back, and the keyboard still waiting
+        // for it goes back to it.
+        const active = document.activeElement;
+        if (active === anchor || active === document.body) {
+          focusReset.current = target.key;
+        }
+        put(back);
+      },
+    ).then((done) => {
+      if (!done) return;
+      say(
+        t("done.reset", { role: roleName(target) }),
+        () => {
+          // The control comes back with the areas: the keyboard, on the
+          // undo, goes to it.
+          if (document.activeElement?.closest('[role="status"]')) {
+            focusReset.current = target.key;
+          }
+          put(back);
+          void run(
+            () => actions.setAreas(target.key, back),
+            () => {
+              holdBy(anchor);
+              put(forward);
+            },
+          ).then((undone) => {
+            if (undone) say(t("done.undone"));
+          });
+        },
+        true,
+      );
+    });
+  }
+
   /** Adds a role, or says why not, for the sheet to show. */
   async function add(input: NewRole): Promise<RolesFailure | null> {
     const { addRole } = actions;
@@ -528,6 +673,9 @@ export function RolesView({
     }
     if (!result.ok) return result.failure;
     const from = roles.find((r) => r.key === input.copyFrom);
+    // It starts where its base is now (R10), as the database's default for
+    // it is its base's rule.
+    const base = roles.find((r) => r.key === input.base);
     const added: EditableRole = {
       key: result.key,
       base: input.base,
@@ -536,6 +684,7 @@ export function RolesView({
       people: [],
       invited: 0,
       access: from ? from.access : defaultAccess(input.base),
+      start: base ? base.access : defaultAccess(input.base),
       // Pay is the owner's switch on its own screen, never copied.
       seesPay: false,
     };
@@ -704,6 +853,24 @@ export function RolesView({
     return parts.join(" · ");
   }
 
+  /** The open areas where a role differs from where it started: what "חזרה להתחלה" puts back. */
+  const resettable = (target: EditableRole) =>
+    changedAreas(target.access, target.start, areas.filter(opened));
+  /** How many of a role's areas say "שונה", in words beside its name in the list; none, nothing. */
+  const changedWords = (target: EditableRole): string | null => {
+    const count = changedAreas(target.access, target.start, areas).length;
+    return count > 0 ? t("changedAreas", { count }) : null;
+  };
+  /**
+   * Where "חזרה להתחלה" puts a role, in words: for a manager or a worker,
+   * what every business starts with; for a role the business named, as its
+   * base is.
+   */
+  const resetHint = (target: EditableRole) =>
+    target.name === null
+      ? t("reset.hintBase")
+      : t("reset.hintNamed", { base: tRoles(target.base) });
+
   const stack = (list: readonly RolePerson[], size: "sm" | "md" = "sm") =>
     list.length > 0 ? <AvatarStack people={list} size={size} max={3} /> : null;
 
@@ -718,8 +885,9 @@ export function RolesView({
 
   /**
    * The roles, in rank order, the fixed ones at either end. Each says how
-   * many hold it in words; their faces show where there is room for them
-   * (beside the chosen role, and in the table's heads).
+   * many hold it in words, and how many of its areas say "שונה" (R10), as
+   * its column's head does on a computer; their faces show where there is
+   * room for them (beside the chosen role, and in the table's heads).
    */
   function roleList(shape: "phone" | "tablet") {
     return (
@@ -730,20 +898,23 @@ export function RolesView({
             title={tRoles("owner")}
             subtitle={`${people(data.owners)} · ${t("owner")}`}
           />
-          {roles.map((r) => (
-            <ListRow
-              key={r.key}
-              onClick={(event) =>
-                shape === "phone"
-                  ? openOnPhone(r.key, event.currentTarget)
-                  : setChosen(r.key)
-              }
-              current={shape === "tablet" && r.key === role?.key}
-              leading={roleIcon(r)}
-              title={roleName(r)}
-              subtitle={`${about(r)} · ${summary(r.access)}`}
-            />
-          ))}
+          {roles.map((r) => {
+            const changes = changedWords(r);
+            return (
+              <ListRow
+                key={r.key}
+                onClick={(event) =>
+                  shape === "phone"
+                    ? openOnPhone(r.key, event.currentTarget)
+                    : setChosen(r.key)
+                }
+                current={shape === "tablet" && r.key === role?.key}
+                leading={roleIcon(r)}
+                title={roleName(r)}
+                subtitle={`${about(r)} · ${summary(r.access)}${changes ? ` · ${changes}` : ""}`}
+              />
+            );
+          })}
           <ListRow
             {...payLink}
             leading={<Calculator />}
@@ -776,9 +947,40 @@ export function RolesView({
             headingLevel={headingLevel}
             disabled={disabled}
             closedAllId={closedAllId}
+            changed={areaChanged(target.access, target.start, area.key)}
             onChange={(next) => change(target, area.key, next)}
           />
         ))}
+        {/* Back to where it started, while some area differs (R10). */}
+        {resettable(target).length > 0 ? (
+          <div className="flex flex-col items-start gap-1">
+            <Button
+              ref={resetRef(target.key)}
+              variant="secondary"
+              disabled={disabled}
+              aria-describedby={`${id}-reset-${headingLevel}`}
+              // The role's name stays while this goes: on a phone its
+              // screen's title, beside the list its name there.
+              onClick={() =>
+                reset(
+                  target,
+                  headingLevel === 2
+                    ? phoneHeading.current
+                    : chosenHeading.current,
+                )
+              }
+            >
+              <RotateCcw aria-hidden="true" />
+              {t("reset.action")}
+            </Button>
+            <p
+              id={`${id}-reset-${headingLevel}`}
+              className="px-1 text-ink-2 text-sm"
+            >
+              {resetHint(target)}
+            </p>
+          </div>
+        ) : null}
         {paths.access ? (
           <ListGroup>
             <ListRow
@@ -958,7 +1160,12 @@ export function RolesView({
           >
             <div className="flex items-center gap-3 px-1">
               <div className="flex min-w-0 flex-1 flex-col">
-                <h2 id={`${id}-chosen`} className="font-bold text-lg">
+                <h2
+                  ref={chosenHeading}
+                  id={`${id}-chosen`}
+                  tabIndex={-1}
+                  className="font-bold text-lg outline-none"
+                >
                   {roleName(role)}
                 </h2>
                 <p className="text-ink-2 text-sm">{about(role)}</p>
@@ -996,6 +1203,11 @@ export function RolesView({
             giveLabel={giveLabel}
             givenThere={givenThere}
             onChange={change}
+            onReset={reset}
+            resetRef={resetRef}
+            resettable={(target) => resettable(target).length > 0}
+            changedWords={changedWords}
+            resetHint={resetHint}
             onRename={actions.renameRole ? startRename : undefined}
             onArchive={actions.archiveRole ? archive : undefined}
           />
@@ -1078,6 +1290,7 @@ function AreaCard({
   headingLevel,
   disabled,
   closedAllId,
+  changed,
   onChange,
 }: {
   area: RolesArea;
@@ -1087,6 +1300,8 @@ function AreaCard({
   disabled: boolean;
   /** The screen's line that no area is open yet, while none is. */
   closedAllId: string | null;
+  /** It differs from where the role started (R10): marked "שונה". */
+  changed: boolean;
   onChange: (next: RoleAccess) => void;
 }) {
   const t = useTranslations("app.manage.roles");
@@ -1114,6 +1329,11 @@ function AreaCard({
           {areaIcon(area)}
         </span>
         <Heading className="font-semibold text-md">{name}</Heading>
+        {changed ? (
+          <Badge tone="accent" className="ms-auto">
+            {t("changed")}
+          </Badge>
+        ) : null}
       </div>
       {why === closedId ? (
         <ClosedNote id={closedId} className="px-4 pb-2" />
@@ -1201,6 +1421,7 @@ function PlaceLevel({
   label,
   disabled,
   menu = false,
+  mark = null,
   onChange,
 }: {
   area: PlaceArea;
@@ -1208,6 +1429,8 @@ function PlaceLevel({
   label: string;
   disabled: boolean;
   menu?: boolean;
+  /** Beside the control, on its line: "שונה" in the table's cell (R10). */
+  mark?: ReactNode;
   onChange: (next: RoleAccess) => void;
 }) {
   const t = useTranslations("app.manage.roles");
@@ -1250,7 +1473,14 @@ function PlaceLevel({
   }
   return (
     <>
-      {control}
+      {mark ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {control}
+          {mark}
+        </div>
+      ) : (
+        control
+      )}
       <p className="text-ink-2 text-sm">{t(`levelHint.${area}.${level}`)}</p>
     </>
   );
@@ -1274,6 +1504,11 @@ function RolesMatrix({
   giveLabel,
   givenThere,
   onChange,
+  onReset,
+  resetRef,
+  resettable,
+  changedWords,
+  resetHint,
   onRename,
   onArchive,
 }: {
@@ -1291,6 +1526,19 @@ function RolesMatrix({
   /** Whether `teamHref` gives the role (`givenThere`). */
   givenThere: (role: EditableRole) => boolean;
   onChange: (role: EditableRole, area: AccessArea, next: RoleAccess) => void;
+  /**
+   * Puts every area of a role that differs from where it started back (R10),
+   * the keyboard waiting on the role's name in its column's head (`anchor`).
+   */
+  onReset: (role: EditableRole, anchor: HTMLElement | null) => void;
+  /** Keeps a role's "חזרה להתחלה", for the keyboard to come back to. */
+  resetRef: (key: string) => RefCallback<HTMLElement>;
+  /** Some open area of the role differs from where it started. */
+  resettable: (role: EditableRole) => boolean;
+  /** How many of the role's areas say "שונה", in words; none, nothing. */
+  changedWords: (role: EditableRole) => string | null;
+  /** Where "חזרה להתחלה" puts the role, in words. */
+  resetHint: (role: EditableRole) => string;
   /** Opens the sheet that renames a role the business named. */
   onRename?: (role: EditableRole) => void;
   /** Takes a role the business named off the list. */
@@ -1303,69 +1551,113 @@ function RolesMatrix({
   const payWords = usePayWords();
   const id = useId();
   const column = (role: EditableRole) => `role:${role.key}`;
+  /** Each role's name in its column's head, by its role, while it is drawn. */
+  const names = useRef(new Map<string, HTMLElement>());
+  const nameRef =
+    (key: string): RefCallback<HTMLElement> =>
+    (element) => {
+      if (element === null) return undefined;
+      names.current.set(key, element);
+      return () => {
+        names.current.delete(key);
+      };
+    };
 
   const columns: DataColumn[] = [
     { key: "area", label: t("matrix.area") },
-    ...roles.map((role) => ({
-      key: column(role),
-      label: (
-        <span className="flex flex-col items-start gap-1 py-1">
-          <span className="font-semibold text-base text-ink">
-            {roleName(role)}
-          </span>
-          <span className="flex items-center gap-2">
-            {role.people.length > 0 ? (
-              <AvatarStack people={role.people} max={3} />
+    ...roles.map((role) => {
+      const changes = changedWords(role);
+      return {
+        key: column(role),
+        label: (
+          <span className="flex flex-col items-start gap-1 py-1">
+            {/* Where the keyboard waits while its "חזרה להתחלה" goes. */}
+            <span
+              ref={nameRef(role.key)}
+              tabIndex={-1}
+              className="font-semibold text-base text-ink outline-none"
+            >
+              {roleName(role)}
+            </span>
+            <span className="flex items-center gap-2">
+              {role.people.length > 0 ? (
+                <AvatarStack people={role.people} max={3} />
+              ) : null}
+              {t("people", { count: role.people.length })}
+            </span>
+            {role.name !== null ? (
+              <span>{t("builtOn", { role: tRoles(role.base) })}</span>
             ) : null}
-            {t("people", { count: role.people.length })}
-          </span>
-          {role.name !== null ? (
-            <span>{t("builtOn", { role: tRoles(role.base) })}</span>
-          ) : null}
-          <GiveOrInvited
-            role={role}
-            given={givenThere(role)}
-            href={teamHref}
-            label={giveLabel}
-          />
-          {role.name !== null && (onRename || onArchive) ? (
-            <span className="flex flex-wrap gap-x-4">
-              {onRename ? (
+            <GiveOrInvited
+              role={role}
+              given={givenThere(role)}
+              href={teamHref}
+              label={giveLabel}
+            />
+            {/* How many of its areas say "שונה", as its row in the list does. */}
+            {changes ? <span>{changes}</span> : null}
+            {/* Back to where it started, while some area differs (R10). */}
+            {resettable(role) ? (
+              <>
                 <button
+                  ref={resetRef(role.key)}
                   type="button"
                   className={headActionClass}
                   disabled={disabled}
-                  aria-label={t("named.renameLabel", { role: roleName(role) })}
-                  onClick={() => onRename(role)}
+                  aria-label={t("reset.label", { role: roleName(role) })}
+                  aria-describedby={`${id}-${role.key}-reset`}
+                  onClick={() =>
+                    onReset(role, names.current.get(role.key) ?? null)
+                  }
                 >
-                  {t("named.rename")}
+                  {t("reset.action")}
                 </button>
-              ) : null}
-              {onArchive ? (
-                <button
-                  type="button"
-                  className={cn(headActionClass, "text-danger")}
-                  disabled={disabled || heldBack(role)}
-                  aria-label={t("named.archiveLabel", {
-                    role: roleName(role),
-                  })}
-                  aria-describedby={`${id}-${role.key}-remove`}
-                  onClick={() => onArchive(role)}
-                >
-                  {t("named.archive")}
-                </button>
-              ) : null}
-            </span>
-          ) : null}
-          {/* What removing does, or why it can't, as a role's card says. */}
-          {role.name !== null && onArchive ? (
-            <span id={`${id}-${role.key}-remove`} className="max-w-xs">
-              {t(archiveWords(role))}
-            </span>
-          ) : null}
-        </span>
-      ),
-    })),
+                <span id={`${id}-${role.key}-reset`} className="max-w-xs">
+                  {resetHint(role)}
+                </span>
+              </>
+            ) : null}
+            {role.name !== null && (onRename || onArchive) ? (
+              <span className="flex flex-wrap gap-x-4">
+                {onRename ? (
+                  <button
+                    type="button"
+                    className={headActionClass}
+                    disabled={disabled}
+                    aria-label={t("named.renameLabel", {
+                      role: roleName(role),
+                    })}
+                    onClick={() => onRename(role)}
+                  >
+                    {t("named.rename")}
+                  </button>
+                ) : null}
+                {onArchive ? (
+                  <button
+                    type="button"
+                    className={cn(headActionClass, "text-danger")}
+                    disabled={disabled || heldBack(role)}
+                    aria-label={t("named.archiveLabel", {
+                      role: roleName(role),
+                    })}
+                    aria-describedby={`${id}-${role.key}-remove`}
+                    onClick={() => onArchive(role)}
+                  >
+                    {t("named.archive")}
+                  </button>
+                ) : null}
+              </span>
+            ) : null}
+            {/* What removing does, or why it can't, as a role's card says. */}
+            {role.name !== null && onArchive ? (
+              <span id={`${id}-${role.key}-remove`} className="max-w-xs">
+                {t(archiveWords(role))}
+              </span>
+            ) : null}
+          </span>
+        ),
+      };
+    }),
   ];
 
   const closedId = (key: AccessArea) => `${id}-${key}-closed`;
@@ -1411,6 +1703,16 @@ function RolesMatrix({
   const byRole = (cell: (role: EditableRole) => ReactNode) =>
     Object.fromEntries(roles.map((role) => [column(role), cell(role)]));
 
+  /**
+   * "שונה" in a role's cell of an area's first row, where it differs from
+   * its start (R10): on the line of its switch or menu, so each control
+   * stays level with the other roles' in the row.
+   */
+  const changedMark = (role: EditableRole, key: AccessArea) =>
+    areaChanged(role.access, role.start, key) ? (
+      <Badge tone="accent">{t("changed")}</Badge>
+    ) : null;
+
   const rows: DataRow[] = data.areas.flatMap((area): DataRow[] => {
     const key = area.key;
     const name = areaName(key);
@@ -1428,6 +1730,7 @@ function RolesMatrix({
                   label={t("levelLabel", { area: name, role: roleName(role) })}
                   disabled={disabled || !area.open}
                   menu
+                  mark={changedMark(role, key)}
                   onChange={(next) => onChange(role, key, next)}
                 />
               </div>
@@ -1447,7 +1750,7 @@ function RolesMatrix({
             const payHours = key === "time_clock" && role.seesPay;
             const payId = `${id}-${key}-${role.key}-pay`;
             const control = (
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-3">
                 <Switch
                   checked={level === "edit"}
                   disabled={disabled || !area.open}
@@ -1468,15 +1771,18 @@ function RolesMatrix({
                   }
                 />
                 <span className="text-ink-2">{t(`levels.${level}`)}</span>
+                {changedMark(role, key)}
               </div>
             );
             if (!payHours) return control;
             return (
               <div className="flex flex-col gap-1 py-1">
                 {control}
-                <span id={payId} className="max-w-xs text-ink-2 text-sm">
-                  {t("payHours")}
-                </span>
+                {payHours ? (
+                  <span id={payId} className="max-w-xs text-ink-2 text-sm">
+                    {t("payHours")}
+                  </span>
+                ) : null}
               </div>
             );
           }),

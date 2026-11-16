@@ -1106,6 +1106,36 @@ keys before a browser gets them), and `getRoleInvitesForOwner` /
 `getRoleInvitesForTeam` count the open invites to each, for "תפקידים
 והרשאות". `roles_named_give.test.sql` covers it.
 
+Telling a role's people what it does changed (`20261115001700_roles_changes.sql`,
+the roles plan's R10; Orel's answers of 16 November 2026): every
+`role.permission` row of the log (a role's rule for a key changed, from the
+owner's screen or the console) goes through its own trigger,
+`audit_log_notifies_roles`, to `private.notify_role_change`, which tells the
+active members whose rule it changed: for a named role those holding it; for
+a built-in role those in it with no named role, and those in a live named
+role on it with no row of its own for the key (it follows its base there).
+Never an owner or an accountant (in no role the screen changes), nor the
+actor, whom `private.notify` leaves out.
+The line, `role.changed`, is one a person, a role and an area (dedupe
+`role.changed:<manager|worker|named role id>:<area>`), its facts the role, a
+named role's name, the area and what the role held of the area's keys where
+the line began and now (`from`, `to`: `private.area_rules` gives the role's
+rule for each key, `private.role_gives`'s, and `private.area_holds` what it
+holds by them with `requires`, every settable key requiring only one of its
+own area). While it is unread a later change of the same area goes on from
+where it began, so an undo that puts the area back deletes it; a line read
+keeps its place in the inbox (its `dedupe_key` cleared) and the next change
+starts its own; a change that moves nothing the role holds tells nobody. In
+the app alone: written through `private.notify`, then `push_state` 'none'
+(the reminders' lines in the app alone do the same), so no send takes it, and
+in no group (`private.notification_kind_groups`, the latest version with one
+row more), about the area's module. A demo business's people get theirs in the
+app; with notifications off nobody does. `@db/roles`'s `setRoleAreas` writes
+several areas of a role in one `set_role_permissions` call ("חזרה להתחלה" and
+its undo; `setRoleArea` is its one-area case). `roles_changes.test.sql` covers
+it (26, ids c4…, numbers 050-084-xxxx), and `roles_chat.test.sql` leaves the
+new line out of its count of a lowered manager's chat lines.
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for

@@ -6,14 +6,17 @@ import {
   renameBusinessRole,
   restoreBusinessRole,
   setRoleArea,
+  setRoleAreas,
 } from "@db/roles";
 import { enabledModules, ROLES } from "@domain/modules";
 import {
   type AccessArea,
   type AreaAccess,
+  type AreaPart,
   areaShown,
   parseNewRole,
   parseRoleAreaChange,
+  parseRoleAreasChange,
   parseRoleRename,
 } from "@domain/role-access";
 import { manifests } from "@modules/registry";
@@ -91,13 +94,45 @@ export async function setRoleAreaAction(
 }
 
 /**
- * The owner of the business the screen was drawn for, able to write: the
- * session's person first, then the bound business, then not a view.
+ * The owner puts several areas of one role where the screen says, in one
+ * write (the roles plan's R10): "חזרה להתחלה", every area of the role that
+ * differs from where it started, as it starts, or its undo, each as it was
+ * (`parseRoleAreasChange`), every one an area the business has. A view as
+ * the owner writes nothing.
  */
-async function writingOwner(
+export async function setRoleAreasAction(
   business: string,
-): Promise<
-  | { ok: true; userId: string; businessId: string }
+  role: string,
+  parts: AreaPart[],
+): Promise<RolesResult> {
+  const owner = await writingOwner(business);
+  if (!owner.ok) return owner;
+  const change = parseRoleAreasChange({ role, parts });
+  if (!change) return { ok: false, failure: "failed" };
+  const enabled = enabledModules(manifests, owner.rows);
+  if (!change.parts.every((part) => areaShown(part.area, enabled))) {
+    return { ok: false, failure: "closed" };
+  }
+  return setRoleAreas(
+    owner.userId,
+    owner.businessId,
+    change.role,
+    change.parts,
+  );
+}
+
+/**
+ * The owner of the business the screen was drawn for, able to write: the
+ * session's person first, then the bound business, then not a view; with
+ * the business's modules (`rows`), for the areas it has.
+ */
+async function writingOwner(business: string): Promise<
+  | {
+      ok: true;
+      userId: string;
+      businessId: string;
+      rows: NonNullable<Awaited<ReturnType<typeof rolesAccess>>>["rows"];
+    }
   | { ok: false; failure: RolesFailure }
 > {
   const owner = await rolesAccess();
@@ -108,7 +143,12 @@ async function writingOwner(
     return { ok: false, failure: "businessChanged" };
   }
   if (owner.viewOnly) return { ok: false, failure: "viewOnly" };
-  return { ok: true, userId: owner.userId, businessId: owner.businessId };
+  return {
+    ok: true,
+    userId: owner.userId,
+    businessId: owner.businessId,
+    rows: owner.rows,
+  };
 }
 
 /**

@@ -13,6 +13,7 @@ let added = 0;
 // stored, and a reload shows the demo's own roles again.
 const demoActions: RolesActions = {
   setArea: async () => ({ ok: true }),
+  setAreas: async () => ({ ok: true }),
   addRole: async () => {
     added += 1;
     return { ok: true, key: `demo-role-${added}` };

@@ -198,6 +198,7 @@ const {
   renameBusinessRole,
   restoreBusinessRole,
   setRoleArea,
+  setRoleAreas,
 } = await import("./roles");
 
 const ACTOR = "93000000-0000-4000-a000-000000000005";
@@ -500,6 +501,66 @@ describe("named roles the team's screens give (R11b)", () => {
       error: { code: "PGRST202", message: "missing" },
     };
     expect(await getGivableNamedRoles(BUSINESS)).toEqual([]);
+  });
+});
+
+describe("putting a role back where it started (R10)", () => {
+  it("writes every area in one call, each area's own order", async () => {
+    // Workers raised in scheduling (building and publishing) and the clock.
+    db.matrix = {
+      data: rows(
+        [...SCHEDULING, "clock.edit"],
+        ["schedule.edit", "schedule.publish", "clock.edit"],
+      ),
+      error: null,
+    };
+    const result = await setRoleAreas(ACTOR, BUSINESS, "worker", [
+      {
+        area: "scheduling",
+        access: { level: "view", extras: { "schedule.publish": false } },
+      },
+      { area: "time_clock", access: { level: "view", extras: {} } },
+    ]);
+    expect(result).toEqual({ ok: true });
+    // One transaction, so nobody holds a step between.
+    expect(db.calls).toEqual([
+      {
+        perms: ["schedule.publish", "schedule.edit", "clock.edit"],
+        granted: [false, false, false],
+        role: "worker",
+      },
+    ]);
+  });
+
+  it("writes a named role's way back to its base with its id, removing its rows", async () => {
+    db.matrix = { data: withNamed(["schedule.edit"]), error: null };
+    const result = await setRoleAreas(ACTOR, BUSINESS, LEAD, [
+      {
+        area: "scheduling",
+        access: { level: "view", extras: { "schedule.publish": false } },
+      },
+    ]);
+    expect(result).toEqual({ ok: true });
+    expect(db.calls).toEqual([
+      {
+        perms: ["schedule.edit"],
+        granted: [false],
+        role: "worker",
+        named: LEAD,
+      },
+    ]);
+  });
+
+  it("writes nothing while any of its areas is closed", async () => {
+    const result = await setRoleAreas(ACTOR, BUSINESS, "worker", [
+      {
+        area: "scheduling",
+        access: { level: "edit", extras: { "schedule.publish": true } },
+      },
+      { area: "time_clock", access: { level: "edit", extras: {} } },
+    ]);
+    expect(result).toEqual({ ok: false, failure: "closed" });
+    expect(db.calls).toEqual([]);
   });
 });
 

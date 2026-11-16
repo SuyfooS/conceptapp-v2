@@ -5,8 +5,9 @@ import { profilePhotoSrc } from "@domain/profile-photos";
 import {
   type AccessArea,
   type AreaAccess,
+  type AreaPart,
   areaOpen,
-  areaWrites,
+  areasWrites,
   BASE_ROLES,
   isBaseRole,
   type MatrixKey,
@@ -27,9 +28,10 @@ import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
 /*
- * Roles and permissions by module (the roles plan's R2, R9 and R11a). What a
- * business's managers, workers and named roles hold, read with the secret
- * key (`public.role_permission_matrix`), the per-role switches of one area
+ * Roles and permissions by module (the roles plan's R2, R9, R10 and R11a).
+ * What a business's managers, workers and named roles hold, read with the
+ * secret key (`public.role_permission_matrix`), the per-role switches of one
+ * area, or of several at once ("חזרה להתחלה", R10)
  * (`public.set_role_permissions`, each as `public.set_role_permission`), and
  * the roles a business names itself (`public.create_business_role`,
  * `rename_business_role`, `archive_business_role`, `restore_business_role`),
@@ -424,16 +426,35 @@ export async function setRoleArea(
   area: AccessArea,
   part: AreaAccess,
 ): Promise<RoleWriteResult> {
+  return setRoleAreas(actorId, businessId, role, [{ area, access: part }]);
+}
+
+/**
+ * `actor` puts several areas of a role at their parts in one go: "חזרה
+ * להתחלה" on "תפקידים והרשאות" (the roles plan's R10: every area of the role
+ * that differs from where it started, as it starts) and its undo (each as
+ * it was). As `setRoleArea`, area after area (`areasWrites`), in one call,
+ * one transaction, so a refusal of any of them leaves the role as it was;
+ * nothing is written while any of the areas isn't open for changes.
+ */
+export async function setRoleAreas(
+  actorId: string,
+  businessId: string,
+  role: RoleKey,
+  parts: readonly AreaPart[],
+): Promise<RoleWriteResult> {
   const matrix = await readMatrix(businessId);
   if (!matrix) return { ok: false, failure: "closed" };
   const rules = rulesOf(matrix, role);
   if (!rules)
     return { ok: false, failure: isBaseRole(role) ? "closed" : "gone" };
   const keys = new Map(matrix.keys.map((key) => [key.perm, key]));
-  if (!areaOpen(area, (perm) => keys.get(perm)?.settable === true)) {
+  const open = (area: AccessArea) =>
+    areaOpen(area, (perm) => keys.get(perm)?.settable === true);
+  if (!parts.every((part) => open(part.area))) {
     return { ok: false, failure: "closed" };
   }
-  const writes = areaWrites(area, part, {
+  const writes = areasWrites(parts, {
     given: (perm) => rules.given.has(perm),
     byDefault: (perm) => rules.byDefault.has(perm),
     requires: (perm) => keys.get(perm)?.requires ?? null,
