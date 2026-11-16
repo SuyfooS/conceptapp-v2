@@ -2510,7 +2510,8 @@
               "department": "to {name}",
               "departmentUnknown": "to a department",
               "shift": "to a shift's people",
-              "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}"
+              "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}",
+              "namedRole": "to {name}"
             },
             "finish": "Finished the list {name}",
             "finishLate": "Finished the list {name}, late",
@@ -2795,7 +2796,8 @@
           "archiveLabel": "Remove the role, {role}",
           "archiveHint": "The role leaves the list, and it can be undone right after.",
           "archiveHeld": "People hold the role, so it can't be removed. First give them another role.",
-          "archiveInvited": "An invite to the role is still waiting, so it can't be removed. First delete the invite on the team screen."
+          "archiveInvited": "An invite to the role is still waiting, so it can't be removed. First delete the invite on the team screen.",
+          "archiveLists": "{count, plural, one {One list goes to this role, so it can't be removed. First choose who it goes to, in “The business's lists”.} other {# lists go to this role, so it can't be removed. First choose who they go to, in “The business's lists”.}}"
         },
         "renameSheet": {
           "title": "Rename the role",
@@ -2827,6 +2829,7 @@
           "taken": "There is already a role by this name, so the change wasn't saved.",
           "limit": "The business already has <ltr>{max}</ltr> roles of its own, the most it can. Remove one, then add.",
           "held": "People hold the role, or an invite waits for it, so it can't be removed. First give them another role, or delete the invite on the team screen.",
+          "lists": "Lists go to this role, so it can't be removed. First choose who they go to, in “The business's lists”.",
           "failed": "The change wasn't saved. Check the connection and try again."
         }
       },
@@ -3412,7 +3415,8 @@
           "people": "{count, plural, one {For one person} other {For # people}}",
           "shift": "{count, plural, one {For one person on the shift} other {For # people on the shift}}",
           "department": "For {name}",
-          "role": "{role, select, owner {For the owners} manager {For the managers} other {For the workers}}"
+          "role": "{role, select, owner {For the owners} manager {For the managers} other {For the workers}}",
+          "namedRole": "For {name}"
         },
         "to": {
           "you": "to you",
@@ -3420,7 +3424,8 @@
           "people": "{count, plural, one {to one person} other {to # people}}",
           "shift": "{count, plural, one {to one person on the shift} other {to # people on the shift}}",
           "department": "to {name}",
-          "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}"
+          "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}",
+          "namedRole": "to {name}"
         },
         "aDepartment": "a department",
         "from": "Asked for by {name}",
@@ -3588,9 +3593,12 @@
           "manager": "The managers",
           "worker": "The workers"
         },
+        "namedRoleHint": "Only those in this role",
+        "namedRolePeople": "{count, plural, =0 {Nobody holds the role yet} one {Only those in this role · One person} other {Only those in this role · # people}}",
         "fixedTo": "The order goes to {name}.",
         "orderGone": "The department this order goes to was removed, so it can't be sent until another one is chosen for it in the business's lists.",
         "gone": "The department this list usually goes to was removed. Choose who it goes to this time.",
+        "goneRole": "The role this list usually goes to was removed. Choose who it goes to this time.",
         "noDepartments": "The business has no departments yet. Add them under Manage, Departments.",
         "noName": "No name",
         "note": "Note",
@@ -3606,6 +3614,7 @@
           "person": "Send to {name}",
           "department": "Send to {name}",
           "role": "{role, select, owner {Send to the owners} manager {Send to the managers} other {Send to the workers}}",
+          "namedRole": "Send to {name}",
           "shift": "Send to the {name} shift"
         },
         "preview": "How it arrives",
@@ -3734,6 +3743,8 @@
           "shift": "To the {name} shift",
           "aShift": "To a shift that no longer exists",
           "role": "{role, select, owner {To the owners} manager {To the managers} other {To the workers}}",
+          "namedRole": "To {name}",
+          "aRole": "To a removed role",
           "none": "Chosen each time it's sent"
         },
         "from": "Asked for by {name}",
@@ -3792,7 +3803,7 @@
           "shift": "Shift",
           "role": "Role",
           "choose": "Choose",
-          "gone": "{kind, select, department {The department the list went to was removed.} other {The shift the list went to no longer exists.}} Choose who it goes to now.",
+          "gone": "{kind, select, department {The department the list went to was removed.} role {The role the list went to was removed.} other {The shift the list went to no longer exists.}} Choose who it goes to now.",
           "order": "An order of {name}: its people send it, and it goes to the department chosen here.",
           "orderTitle": "An order between departments",
           "asking": "Department that asks",
@@ -3882,7 +3893,9 @@
           "aDepartment": "to a removed department",
           "shift": "to the {name} shift's people",
           "aShift": "to a shift that no longer exists",
-          "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}"
+          "role": "{role, select, owner {to the owners} manager {to the managers} other {to the workers}}",
+          "namedRole": "to {name}",
+          "aRole": "to a removed role"
         },
         "next": {
           "today": "Sent today at <ltr>{time}</ltr>",
@@ -3892,7 +3905,7 @@
           "waits": "Sent once a schedule with a {shift} shift is published.",
           "paused": "Paused: not sent until it is switched on again.",
           "goneShift": "The shift this time follows no longer exists. You can pick another or remove the time.",
-          "goneRecipient": "{kind, select, department {The department this time goes to was removed.} other {The shift this time goes to no longer exists.}} You can pick who it goes to or remove it."
+          "goneRecipient": "{kind, select, department {The department this time goes to was removed.} role {The role this time goes to was removed.} other {The shift this time goes to no longer exists.}} You can pick who it goes to or remove it."
         },
         "shabbat": "On Friday after candle lighting it isn't sent, and on Saturday a time before havdalah is sent at havdalah.",
         "removed": "The time was removed",

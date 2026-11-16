@@ -219,4 +219,34 @@ describe("roles the business named (R11a)", () => {
     ]);
     expect(data.roles[2]?.people).toEqual([]);
   });
+
+  it("count the live templates that send lists to each (R11d)", () => {
+    const none = rolesData({
+      matrix: { ...matrix([], []), named: [lead], addsRoles: true },
+      enabled: [],
+      people,
+      viewOnly: false,
+      documents: false,
+    });
+    expect(none.roles.map((role) => role.lists)).toEqual([0, 0, 0]);
+    const data = rolesData({
+      matrix: { ...matrix([], []), named: [lead], addsRoles: true },
+      enabled: [],
+      people,
+      lists: new Map([
+        [LEAD, 3],
+        ["another-business-role", 1],
+      ]),
+      viewOnly: false,
+      documents: false,
+    });
+    expect(data.roles.map((role) => [role.key, role.lists])).toEqual([
+      ["manager", 0],
+      ["worker", 0],
+      [LEAD, 3],
+    ]);
+    // Nobody holds it for that: they are lists, not people.
+    expect(data.roles[2]?.people).toEqual([]);
+    expect(data.roles[2]?.invited).toBe(0);
+  });
 });

@@ -36,6 +36,8 @@ import {
   quantitiesOf,
   readBound,
   recipientGone,
+  roleChoiceKey,
+  roleRecipientOf,
   type SendShift,
   scheduleGone,
   scheduleInput,
@@ -58,6 +60,8 @@ import {
 
 const KITCHEN = "11111111-1111-4111-8111-111111111111";
 const BAR = "22222222-2222-4222-8222-222222222222";
+// A role the business named: its shift leads, built on workers.
+const LEAD = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const NOA = "33333333-3333-4333-8333-333333333333";
 const ITEM = "44444444-4444-4444-8444-444444444444";
 const LIST = "55555555-5555-4555-8555-555555555555";
@@ -434,6 +438,30 @@ describe("sending", () => {
     expect(template("accountant")).toBe(false);
   });
 
+  it("goes to a role the business named by its id, which a global template never names", () => {
+    const named = { kind: "role", role: "worker", namedRole: LEAD };
+    expect(
+      sendInput.safeParse({ template: LIST, recipient: named }).success,
+    ).toBe(true);
+    expect(
+      sendInput.safeParse({
+        template: LIST,
+        recipient: { ...named, namedRole: "shift-lead" },
+      }).success,
+    ).toBe(false);
+    expect(
+      scheduleInput.safeParse({
+        days: [1],
+        opens: "08:30",
+        dueAfterMinutes: 45,
+        recipient: named,
+      }).success,
+    ).toBe(true);
+    expect(listTemplateSeed.safeParse(seed({ recipient: named })).success).toBe(
+      false,
+    );
+  });
+
   it("names a shift by its id, and a due time with its offset", () => {
     expect(
       sendInput.safeParse({
@@ -615,6 +643,22 @@ describe("listHref and holdsList", () => {
     // A list for the managers is not an owner's to hold, though they read it.
     expect(
       holdsList({ kind: "role", role: "manager" }, { ...noa, role: "owner" }),
+    ).toBe(false);
+  });
+
+  it("gives a list to a named role to exactly its people, and one to the role to everyone in it", () => {
+    const toLeads = { kind: "role", role: "worker", namedRole: LEAD } as const;
+    const lead = { userId: NOA, role: "worker" as const, departments: [] };
+    expect(holdsList(toLeads, { ...lead, namedRole: LEAD })).toBe(true);
+    expect(holdsList(toLeads, lead)).toBe(false);
+    expect(holdsList(toLeads, { ...lead, namedRole: null })).toBe(false);
+    expect(holdsList(toLeads, { ...lead, namedRole: KITCHEN })).toBe(false);
+    // "To the workers" still reaches a shift lead: they are workers.
+    expect(
+      holdsList({ kind: "role", role: "worker" }, { ...lead, namedRole: LEAD }),
+    ).toBe(true);
+    expect(
+      holdsList(toLeads, { ...lead, role: "manager", namedRole: LEAD }),
     ).toBe(false);
   });
 });
@@ -1013,6 +1057,30 @@ describe("the template editor", () => {
     ).toBe(false);
     expect(recipientGone({ kind: "role", role: "worker" }, [], [])).toBe(false);
     expect(recipientGone(null, [], [])).toBe(false);
+    // A role the business named: gone once archived, when the live ones are
+    // known.
+    const toLeads = { kind: "role", role: "worker", namedRole: LEAD } as const;
+    expect(recipientGone(toLeads, [], [], [LEAD])).toBe(false);
+    expect(recipientGone(toLeads, [], [], [])).toBe(true);
+    expect(recipientGone(toLeads, [], [])).toBe(false);
+  });
+
+  it("offers the roles and the business's named roles by one key each", () => {
+    const named = [{ id: LEAD, base: "worker" as const }];
+    expect(roleChoiceKey({ role: "manager" })).toBe("manager");
+    expect(roleChoiceKey({ role: "worker", namedRole: LEAD })).toBe(LEAD);
+    expect(
+      roleRecipientOf("manager", ["owner", "manager", "worker"], named),
+    ).toEqual({ kind: "role", role: "manager" });
+    expect(
+      roleRecipientOf(LEAD, ["owner", "manager", "worker"], named),
+    ).toEqual({
+      kind: "role",
+      role: "worker",
+      namedRole: LEAD,
+    });
+    expect(roleRecipientOf(KITCHEN, ["worker"], named)).toBeNull();
+    expect(roleRecipientOf("accountant", ["worker"], named)).toBeNull();
   });
 
   it("knows an order whose asking department is gone, which holds its saves", () => {
@@ -1070,6 +1138,19 @@ describe("the template editor", () => {
         [],
       ),
     ).toBe(false);
+    // A time to a role the business named that it archived since.
+    const toLeads = {
+      ...schedule,
+      recipient: { kind: "role", role: "worker", namedRole: LEAD } as const,
+    };
+    expect(scheduleGone(toLeads, [], [], [LEAD])).toBe(false);
+    expect(scheduleGone(toLeads, [], [], [])).toBe(true);
+    expect(
+      scheduleProblem(
+        { ...toLeads, key: "k" },
+        { departments: [], shifts: [], roles: [] },
+      ),
+    ).toBe("gone");
   });
 });
 
@@ -1314,6 +1395,7 @@ describe("where a template is sent from the send screen", () => {
       department: KITCHEN,
       shift: null,
       role: null,
+      namedRole: null,
       gone: false,
     });
     expect(sendDefaults(kitchen, shifts, [BAR])).toEqual({
@@ -1321,6 +1403,35 @@ describe("where a template is sent from the send screen", () => {
       department: null,
       shift: null,
       role: null,
+      namedRole: null,
+      gone: true,
+    });
+    // A role the business named while it is live, and nothing chosen once
+    // it was archived.
+    const toLeads = { kind: "role", role: "worker", namedRole: LEAD } as const;
+    expect(sendDefaults(toLeads, shifts, [], [LEAD])).toMatchObject({
+      kind: "role",
+      role: "worker",
+      namedRole: LEAD,
+      gone: false,
+    });
+    expect(sendDefaults(toLeads, shifts, [], [])).toMatchObject({
+      kind: "role",
+      role: null,
+      namedRole: null,
+      gone: true,
+    });
+    // Live but nobody holds it yet: nothing chosen, and nothing gone.
+    expect(sendDefaults(toLeads, shifts, [], [LEAD], [LEAD])).toEqual({
+      kind: "role",
+      department: null,
+      shift: null,
+      role: null,
+      namedRole: null,
+      gone: false,
+    });
+    // Archived and empty: gone, as before.
+    expect(sendDefaults(toLeads, shifts, [], [], [LEAD])).toMatchObject({
       gone: true,
     });
     expect(

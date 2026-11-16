@@ -32,6 +32,7 @@ export default async function TeamListTemplatesPage({
         templates: templates === "notYet" ? [] : templates,
         departments: setup.departments,
         shifts: setup.shifts,
+        namedRoles: setup.namedRoles,
         removed: typeof removed === "string" ? removed : undefined,
         readOnly: false,
       })}

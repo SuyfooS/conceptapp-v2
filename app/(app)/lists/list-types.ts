@@ -19,6 +19,7 @@ import type {
   TemplateRecipient,
 } from "@domain/lists";
 import type { StaffRole } from "@domain/modules";
+import type { BaseRole } from "@domain/role-access";
 
 /** Who and what a list's ids point at, as the reader may see them. */
 export type ListLookups = {
@@ -26,7 +27,33 @@ export type ListLookups = {
   people: Record<string, { name: string | null; photo: string | null }>;
   /** Its departments, removed ones too, by id: their names. */
   departments: Record<string, string>;
+  /**
+   * The roles it named, archived ones too, by id: their names in the
+   * reader's language (the roles plan's R11d).
+   */
+  roles: Record<string, string>;
 };
+
+/**
+ * A role the business named, as the lists' screens offer and name it (the
+ * roles plan's R11d): what it is built on, its name in the reader's
+ * language, and whether it was archived, when it is only named, never
+ * offered.
+ */
+export type ListRoleOption = {
+  id: string;
+  base: BaseRole;
+  name: string;
+  archived: boolean;
+};
+
+/**
+ * A role the business named as the send screen offers it: with how many
+ * active people on the staff hold it now, who alone a list to it reaches
+ * (`private.list_holders`), so one nobody holds yet says so and takes no
+ * list, as a shift nobody is on.
+ */
+export type SendRoleOption = ListRoleOption & { people: number };
 
 /** What the screens need of the lists settings. */
 export type ListsTiming = {
@@ -272,6 +299,11 @@ export type SendFormData = {
   departments: { id: string; name: string }[];
   roles: readonly StaffRole[];
   /**
+   * The roles the business named, offered after `roles` while live, each
+   * with its people now.
+   */
+  namedRoles: readonly SendRoleOption[];
+  /**
    * Published shifts from today to a week ahead that haven't ended, earliest
    * first; null while scheduling is off.
    */
@@ -305,7 +337,7 @@ export type TemplateRow = {
       shift: string | null;
       opensOffset: number;
     } | null;
-    /** How many point at a shift or a department that is gone, and open nothing. */
+    /** How many point at a shift, a department or a named role that is gone. */
     gone: number;
   };
 };
@@ -332,6 +364,8 @@ export type TemplatesScreenData = {
   departmentNames: Record<string, string>;
   /** The scheduling settings' shifts by key: their names. */
   shiftNames: Record<string, string>;
+  /** The roles the business named by id, archived ones too: their names. */
+  roleNames: Record<string, string>;
   /** The template just removed in its editor (`?removed=`), for its undo. */
   justRemoved: TemplateRow | null;
   /** Only reading: a view session. */
@@ -369,6 +403,8 @@ export type TemplateEditorData = {
   /** The scheduling settings' shifts, which a template may go to. */
   shifts: { key: string; name: string }[];
   roles: readonly StaffRole[];
+  /** The roles the business named: the live ones offered after `roles`. */
+  namedRoles: readonly ListRoleOption[];
   /** Only reading: a view session. */
   readOnly: boolean;
   /** Back after a save was refused: what shows is the latest, and says so. */

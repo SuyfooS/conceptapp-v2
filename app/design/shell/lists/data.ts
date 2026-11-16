@@ -26,6 +26,7 @@ import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import {
   type EditorTimes,
   type ListLookups,
+  type ListRoleOption,
   type ListScreenData,
   type ListsHomeData,
   type ListsTiming,
@@ -44,7 +45,7 @@ import {
   overviewWeek,
 } from "../../../(app)/lists/today/today-data";
 import { listPhotos } from "../../list-photos";
-import { demoShiftPatterns, teamMembers } from "../data";
+import { demoNamedRole, demoShiftPatterns, teamMembers } from "../data";
 
 /** Tuesday 3 November 2026, 08:12 in Tel Aviv, as the rest of the demo. */
 export const demoListsNow = "2026-11-03T06:12:00.000Z";
@@ -62,11 +63,35 @@ export const demoDepartments = [
   { id: "dep-storeroom", key: "storeroom", name: "מחסן", members: ["yoav"] },
 ];
 
+/**
+ * The restaurant's own role on the lists' screens (the roles plan's R11d):
+ * its shift leads, built on workers (`demoNamedRole`), which the send screen
+ * and the template editor offer after the built-in roles. `removed` is the
+ * restaurant after it archived the role, which the shift's opening still
+ * names.
+ */
+export const demoListRoles = (removed = false): ListRoleOption[] => [
+  {
+    id: demoNamedRole.id,
+    base: demoNamedRole.base,
+    name: demoNamedRole.name,
+    archived: removed,
+  },
+];
+
+/** A list, a template or a time to the shift leads alone (R11d). */
+const toShiftLeads = {
+  kind: "role",
+  role: "worker",
+  namedRole: demoNamedRole.id,
+} as const;
+
 export const demoListLookups: ListLookups = {
   people: Object.fromEntries(
     teamMembers.map((m) => [m.userId, { name: m.name, photo: m.photo }]),
   ),
   departments: Object.fromEntries(demoDepartments.map((d) => [d.id, d.name])),
+  roles: Object.fromEntries(demoListRoles().map((r) => [r.id, r.name])),
 };
 
 const item = (
@@ -242,6 +267,37 @@ export const demoLists: ListDetail[] = [
         requested: 2,
       }),
       item("order-lemons", { kind: "check", label: "לימונים", requested: 20 }),
+    ],
+  }),
+  list({
+    ...base,
+    id: "list-shift-opening",
+    name: "פתיחת משמרת",
+    origin: "scheduled",
+    templateId: "t-shift-opening",
+    status: "open",
+    holder: toShiftLeads,
+    sentBy: null,
+    opensAt: "2026-11-03T05:45:00.000Z",
+    dueAt: "2026-11-03T07:00:00.000Z",
+    items: [
+      item("shift-till", {
+        kind: "check",
+        templateItemId: "ti-so-till",
+        label: "ספירת הקופה בפתיחה",
+        checked: true,
+        ...done("yoav", "2026-11-03T05:58:00.000Z"),
+      }),
+      item("shift-team", {
+        kind: "check",
+        templateItemId: "ti-so-team",
+        label: "כל מי שבמשמרת הגיע",
+      }),
+      item("shift-briefing", {
+        kind: "check",
+        templateItemId: "ti-so-briefing",
+        label: "תדריך קצר לצוות",
+      }),
     ],
   }),
   list({
@@ -609,6 +665,7 @@ export function demoListsToday(
       demoListShifts.filter(
         (s) => state !== "shiftGone" || s.key !== "evening",
       ),
+      demoListRoles(),
     ),
     send:
       state === "viewing" || noSend
@@ -1004,6 +1061,33 @@ export const demoTemplates: ListTemplate[] = [
     ],
   }),
   template({
+    id: "t-shift-opening",
+    name: "פתיחת משמרת",
+    recipient: toShiftLeads,
+    schedules: [
+      time("ts-so-week", {
+        days: [0, 1, 2, 3, 4, 5],
+        opensOffset: 7 * 60 + 45,
+        dueOffset: 9 * 60,
+        recipient: toShiftLeads,
+      }),
+    ],
+    items: [
+      templateItem("ti-so-till", {
+        kind: "check",
+        label: "ספירת הקופה בפתיחה",
+      }),
+      templateItem("ti-so-team", {
+        kind: "check",
+        label: "כל מי שבמשמרת הגיע",
+      }),
+      templateItem("ti-so-briefing", {
+        kind: "check",
+        label: "תדריך קצר לצוות",
+      }),
+    ],
+  }),
+  template({
     id: "t-cash-check",
     name: "בדיקת קופה לפני המשמרת",
     recipient: { kind: "role", role: "manager" },
@@ -1040,6 +1124,7 @@ export const demoTemplatesScreen = (removed?: string, readOnly = false) =>
     templates: demoTemplates,
     departments: demoDepartments.map((d) => ({ ...d, archivedAt: null })),
     shifts: demoListShifts,
+    namedRoles: demoListRoles(),
     removed,
     readOnly,
   });
@@ -1062,7 +1147,9 @@ export const demoEmptyTemplatesScreen = (readOnly = false) =>
  * `removedShift` a shift the settings no longer have (the evening, which the
  * bar's closing follows: a time that holds the editor's saves).
  * `photosClosed` is a demo business, which takes no photos: a photo item
- * stays optional there.
+ * stays optional there. `removedRole` is the restaurant after it archived
+ * its shift leads' role (R11d), which the shift's opening and its time still
+ * name: chosen again, and a time that holds the editor's saves.
  */
 export function demoTemplateEditor(
   id: string,
@@ -1071,6 +1158,7 @@ export function demoTemplateEditor(
   removedDepartment?: string,
   removedShift?: string,
   photosClosed = false,
+  removedRole = false,
 ) {
   if (id === "new" && readOnly) return null;
   const found = id === "new" ? null : demoTemplates.find((t) => t.id === id);
@@ -1083,6 +1171,7 @@ export function demoTemplateEditor(
         d.id === removedDepartment ? "2026-11-02T15:00:00.000Z" : null,
     })),
     shifts: demoListShifts.filter((s) => s.key !== removedShift),
+    namedRoles: demoListRoles(removedRole),
     readOnly,
     changed,
     times: demoEditorTimes(found, removedShift),
@@ -1166,11 +1255,14 @@ const demoSendShifts: SendShift[] = [
  * The send screen as Shiran has it: the restaurant's templates, a list typed
  * now, and the week's shifts. `initial` is a template's id, or "new".
  * `kitchenGone` is the restaurant after its kitchen was removed, which the
- * kitchen's templates still name.
+ * kitchen's templates still name; `roleGone` after it archived its shift
+ * leads' role (R11d), which the shift's opening still names. The shift
+ * leads' role with who holds it (Yoav and Itay).
  */
 export const demoSendForm = (
   initial?: string,
   kitchenGone = false,
+  roleGone = false,
 ): SendFormData => {
   const live = demoTemplates.filter((t) => t.archivedAt === null);
   return {
@@ -1207,6 +1299,10 @@ export const demoSendForm = (
       .filter((d) => !kitchenGone || d.id !== "dep-kitchen")
       .map((d) => ({ id: d.id, name: d.name })),
     roles: STAFF_ROLES,
+    namedRoles: demoListRoles(roleGone).map((r) => ({
+      ...r,
+      people: teamMembers.filter((m) => m.namedRole?.id === r.id).length,
+    })),
     shifts: demoSendShifts,
     photosClosed: false,
   };

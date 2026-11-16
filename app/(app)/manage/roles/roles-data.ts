@@ -33,7 +33,8 @@ export type RolesMember = RolePerson & {
  * (those in a role the business named are in that one); then the business's
  * named roles in their order (R11a), each as it holds it, never pay, which
  * its people are given one by one, with the open invites waiting for it
- * (R11b); and the fixed owners and accountants. Each role with where it
+ * (R11b), and the live templates that send lists to it (R11d); and the
+ * fixed owners and accountants. Each role with where it
  * started (R10, `startingAccess` of its rule without a row: the keys'
  * defaults for managers and workers, the base's rule for a named role),
  * which its areas are marked against. The owner's screen (/manage/roles, the
@@ -44,6 +45,7 @@ export function rolesData({
   enabled,
   people,
   invites = new Map(),
+  lists = new Map(),
   viewOnly,
   documents,
 }: {
@@ -57,6 +59,11 @@ export function rolesData({
    * by them, but they hold it, as its people do. None by default.
    */
   invites?: ReadonlyMap<string, number>;
+  /**
+   * The live templates that send lists to each named role, by its id
+   * (R11d): they hold it back too. None by default.
+   */
+  lists?: ReadonlyMap<string, number>;
   viewOnly: boolean;
   /** Documents are on (wherever chat is): whoever sees pay reads them too. */
   documents: boolean;
@@ -107,6 +114,7 @@ export function rolesData({
           nameEn: null,
           people: inRole(base),
           invited: 0,
+          lists: 0,
           access: accessFromHeld((perm) => held.has(perm)),
           start: startOf(matrix.byDefault[base]),
           seesPay: held.has(PAY_PERMISSION),
@@ -119,6 +127,7 @@ export function rolesData({
         nameEn: role.nameEn,
         people: inNamed(role.id),
         invited: invites.get(role.id) ?? 0,
+        lists: lists.get(role.id) ?? 0,
         access: accessFromHeld((perm) => role.held.has(perm)),
         start: startOf(role.byDefault),
         // Never by role: given to each of its people on "מי רואה שכר".

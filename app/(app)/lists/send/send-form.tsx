@@ -66,8 +66,11 @@ const usualCounts = (template: SendFormData["templates"][number] | undefined) =>
 /**
  * Sending a list now: which list (a template, or one typed now with its own
  * items), to whom (a person, a department, the people of a published shift
- * or a role), by when if at all, and a note. A template starts where it goes
- * (`sendDefaults`), and says so when its department was removed. A
+ * or a role: the built-in ones, then the live roles the business named, the
+ * roles plan's R11d, each with how many hold it, taking no list while
+ * nobody does), by when if at all, and a note. A template starts where it goes
+ * (`sendDefaults`), and says so when its department was removed or its
+ * named role archived. A
  * department's members send their own order, which goes where the order
  * goes, and can't once that department is gone. The main action names where
  * it goes ("send to the kitchen"). Phone: the form, one part under the other.
@@ -94,12 +97,28 @@ export function SendForm({
   const template = data.templates.find((x) => x.id === source);
   const typed = source === NEW_LIST;
   const liveDepartments = data.departments.map((d) => d.id);
-  const start = sendDefaults(template?.recipient, data.shifts, liveDepartments);
+  // The roles the business named that a list can go to now, and those
+  // among them nobody holds yet, which take none.
+  const namedRoles = data.namedRoles.filter((r) => !r.archived);
+  const liveRoles = namedRoles.map((r) => r.id);
+  const emptyRoles = namedRoles.filter((r) => r.people === 0).map((r) => r.id);
+  /** Where a template starts when nobody chooses (`sendDefaults`). */
+  const defaultsFor = (recipient: Parameters<typeof sendDefaults>[0]) =>
+    sendDefaults(
+      recipient,
+      data.shifts,
+      liveDepartments,
+      liveRoles,
+      emptyRoles,
+    );
+  const start = defaultsFor(template?.recipient);
   const [kind, setKind] = useState<Kind>(start.kind);
   const [person, setPerson] = useState<string | null>(null);
   const [department, setDepartment] = useState<string | null>(start.department);
   const [shift, setShift] = useState<string | null>(start.shift);
   const [role, setRole] = useState<StaffRole | null>(start.role);
+  // A role the business named, built on `role`; null for the role itself.
+  const [namedRole, setNamedRole] = useState<string | null>(start.namedRole);
   const [ownName, setOwnName] = useState("");
   const [ownItems, setOwnItems] = useState<DraftItem[]>([]);
   const [dueDay, setDueDay] = useState<DueDay>("none");
@@ -121,7 +140,8 @@ export function SendForm({
   const [failure, setFailure] = useState<ListFailure | null>(null);
   const [pending, startSend] = useTransition();
 
-  // The template's own department was removed: nothing chosen, and said.
+  // The template's own department was removed, or its named role archived:
+  // nothing chosen, and said.
   const departmentGone = !typed && start.gone;
 
   // An order goes where the order goes, for whoever may only send orders,
@@ -139,15 +159,12 @@ export function SendForm({
     const chosen = data.templates.find((x) => x.id === next);
     setCounts(usualCounts(chosen));
     setWrongCounts(new Set());
-    const defaults = sendDefaults(
-      chosen?.recipient,
-      data.shifts,
-      liveDepartments,
-    );
+    const defaults = defaultsFor(chosen?.recipient);
     setKind(defaults.kind);
     setDepartment(defaults.department);
     setShift(defaults.shift);
     setRole(defaults.role);
+    setNamedRole(defaults.namedRole);
   }
 
   /** Whether the due time chosen has gone by, by this device's clock now. */
@@ -165,6 +182,8 @@ export function SendForm({
     data.people.find((p) => p.userId === key)?.name ?? t("noName");
   const shiftOf = (key: string | null) =>
     data.shifts?.find((s) => s.id === key) ?? null;
+  const namedRoleName = (key: string) =>
+    namedRoles.find((r) => r.id === key)?.name ?? "";
 
   const dayOf = (day: string) => {
     const today = dateIn(new Date(data.now), data.timeZone);
@@ -184,7 +203,9 @@ export function SendForm({
           : kind === "shift" && shift
             ? { kind: "shift", shift }
             : kind === "role" && role
-              ? { kind: "role", role }
+              ? namedRole
+                ? { kind: "role", role, namedRole }
+                : { kind: "role", role }
               : null;
 
   const typedReady =
@@ -202,7 +223,11 @@ export function SendForm({
             })
           : recipient.kind === "shift"
             ? t("submit.shift", { name: shiftOf(recipient.shift)?.name ?? "" })
-            : t("submit.role", { role: recipient.role });
+            : recipient.namedRole
+              ? t("submit.namedRole", {
+                  name: namedRoleName(recipient.namedRole),
+                })
+              : t("submit.role", { role: recipient.role });
 
   function submit() {
     if (!recipient || !typedReady || (!typed && !template)) return;
@@ -379,7 +404,9 @@ export function SendForm({
               <h2 className="px-1 font-bold text-lg">{t("to")}</h2>
               {departmentGone && !recipient ? (
                 <p role="status" className="px-1 font-medium">
-                  {t("gone")}
+                  {template?.recipient?.kind === "role"
+                    ? t("goneRole")
+                    : t("gone")}
                 </p>
               ) : null}
               <Segmented
@@ -475,9 +502,30 @@ export function SendForm({
                       key={r}
                       name="role"
                       value={r}
-                      checked={role === r}
-                      onChange={() => setRole(r)}
+                      checked={role === r && namedRole === null}
+                      onChange={() => {
+                        setRole(r);
+                        setNamedRole(null);
+                      }}
                       title={t(`roles.${r}`)}
+                    />
+                  ))}
+                  {namedRoles.map((r) => (
+                    <ChoiceRow
+                      key={r.id}
+                      name="role"
+                      value={r.id}
+                      checked={namedRole === r.id}
+                      disabled={r.people === 0}
+                      onChange={() => {
+                        setRole(r.base);
+                        setNamedRole(r.id);
+                      }}
+                      title={r.name}
+                      hint={t("namedRolePeople", { count: r.people })}
+                      // Its hint says nobody holds it yet; it reads as the
+                      // others do, and takes no press.
+                      className={cn(r.people === 0 && "cursor-default")}
                     />
                   ))}
                 </ChoiceList>

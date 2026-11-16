@@ -1,21 +1,26 @@
 import "server-only";
 import { getBusinessSetup } from "@db/admin";
 import { getDepartmentsForTeam } from "@db/departments";
-import { getBusinessPlaceForTeam, nextListOpenings } from "@db/lists";
+import {
+  getBusinessPlaceForTeam,
+  getListRolesForTeam,
+  nextListOpenings,
+} from "@db/lists";
 import { getBusinessModulesForTeam } from "@db/module-settings";
 import { enabledModules, readModuleSettings } from "@domain/modules";
 import { platformCan } from "@domain/platform";
 import { manifestFor, manifests } from "@modules/registry";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import type { EditorTimes, TemplatePaths } from "@/app/(app)/lists/list-types";
 import { editorTimes } from "@/app/(app)/lists/templates/editor-times";
+import { listRoleOptions } from "@/app/(app)/lists/templates/templates-data";
 import { closesOnShabbat } from "@/app/(app)/manage/manage";
 import { currentPlatformRole } from "../../../../staff";
 
 /**
  * A business's lists as the team sets them up in the console: its id and
- * name, its departments and the shifts of its scheduling settings, while
- * lists are on for it, and what its times are worked out with (its zone, its
+ * name, its departments, the shifts of its scheduling settings and the roles
+ * it named (the roles plan's R11d), while lists are on for it, and what its times are worked out with (its zone, its
  * Shabbat, its people; the team reads no published shifts). Null when the person may not edit businesses, the
  * business doesn't exist, or lists are off there.
  */
@@ -24,10 +29,12 @@ export async function teamListsSetup(slug: string) {
   if (!platformCan(role, "businesses.edit")) return null;
   const business = await getBusinessSetup(slug);
   if (!business) return null;
-  const [rows, departments, place] = await Promise.all([
+  const [rows, departments, place, roles, locale] = await Promise.all([
     getBusinessModulesForTeam(business.id),
     getDepartmentsForTeam(business.id),
     getBusinessPlaceForTeam(business.id),
+    getListRolesForTeam(business.id),
+    getLocale(),
   ]);
   if (!enabledModules(manifests, rows).includes("lists") || !place) {
     return null;
@@ -40,6 +47,7 @@ export async function teamListsSetup(slug: string) {
     departments: departments === "notYet" ? [] : departments.departments,
     shifts: readModuleSettings(manifestFor("scheduling"), scheduling?.settings)
       .shifts,
+    namedRoles: listRoleOptions(roles, locale),
     /** What a template's times are worked out with, with its next openings. */
     times: async (
       staffId: string,

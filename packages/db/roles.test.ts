@@ -13,7 +13,8 @@ vi.mock("server-only", () => ({}));
  * the matrix's rows for each, its rules written with its id, and adding,
  * renaming, archiving and restoring one, only in the business it is in; and
  * who is in each role, and the open invites to each named role (R11b), read
- * under RLS for the owner and with the secret key for the team.
+ * under RLS for the owner and with the secret key for the team; and the live
+ * templates that send lists to each (R11d), with the secret key for both.
  */
 type Failure = { code?: string; hint?: string; message: string };
 
@@ -53,7 +54,50 @@ const db = vi.hoisted(() => ({
     columns: string;
     filters: Record<string, unknown>;
   }[],
+  /** The lists' templates and times, as their tables have them (R11d). */
+  lists: {
+    list_templates: [] as Record<string, unknown>[],
+    list_schedules: [] as Record<string, unknown>[],
+  },
+  /** The lists' tables have no `recipient_named_role` yet (before R11d's migration). */
+  noListNamedColumn: false,
 }));
+
+/**
+ * A lists table read with the secret key, narrowed as the query asks: `eq`,
+ * `is` null and `not ... is null`.
+ */
+function listsQuery(table: "list_templates" | "list_schedules") {
+  const keep: ((row: Record<string, unknown>) => boolean)[] = [];
+  const answer = () =>
+    db.noListNamedColumn
+      ? { data: null, error: { code: "42703", message: "no column" } }
+      : {
+          data: db.lists[table].filter((row) => keep.every((k) => k(row))),
+          error: null,
+        };
+  const query = {
+    select: () => query,
+    eq: (column: string, value: unknown) => {
+      keep.push((row) => row[column] === value);
+      return query;
+    },
+    is: (column: string, value: null) => {
+      keep.push((row) => (row[column] ?? null) === value);
+      return query;
+    },
+    not: (column: string, _is: "is", value: null) => {
+      keep.push((row) => (row[column] ?? null) !== value);
+      return query;
+    },
+    // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
+    then: (
+      resolve: (value: ReturnType<typeof answer>) => unknown,
+      reject?: (reason: unknown) => unknown,
+    ) => Promise.resolve(answer()).then(resolve, reject),
+  };
+  return query;
+}
 
 /** `public.memberships` as each client reads it: under RLS, or with the secret key. */
 function membershipsQuery(key: "publishable" | "secret") {
@@ -161,6 +205,9 @@ vi.mock("./supabase/admin", () => ({
     from: (table: string) => {
       if (table === "memberships") return membershipsQuery("secret");
       if (table === "invites") return invitesQuery("secret");
+      if (table === "list_templates" || table === "list_schedules") {
+        return listsQuery(table);
+      }
       if (table !== "business_roles") throw new Error(`unexpected ${table}`);
       const filters: Record<string, unknown> = {};
       const query = {
@@ -191,6 +238,8 @@ const {
   getGivableNamedRoles,
   getRoleInvitesForOwner,
   getRoleInvitesForTeam,
+  getRoleListsForOwner,
+  getRoleListsForTeam,
   getRoleMatrixForOwner,
   getRoleMatrixForTeam,
   getRolePeopleForOwner,
@@ -271,6 +320,8 @@ beforeEach(() => {
   db.invites = [];
   db.inviteReads = [];
   db.peopleReads = [];
+  db.lists = { list_templates: [], list_schedules: [] };
+  db.noListNamedColumn = false;
 });
 
 /**
@@ -719,6 +770,17 @@ describe("roles a business names (R11a)", () => {
       failure: "held",
     });
   });
+
+  it("say that lists go to one being archived (R11d)", async () => {
+    db.roleResult = {
+      data: null,
+      error: { code: "55000", hint: "lists", message: "Lists go to the role" },
+    };
+    await expect(archiveBusinessRole(ACTOR, BUSINESS, LEAD)).resolves.toEqual({
+      ok: false,
+      failure: "lists",
+    });
+  });
 });
 
 describe("who is in each role (R11a)", () => {
@@ -824,5 +886,68 @@ describe("open invites to each named role (R11b)", () => {
   it("are none before invites name roles", async () => {
     db.noInviteNamedColumn = true;
     expect((await getRoleInvitesForOwner(BUSINESS, now)).size).toBe(0);
+  });
+});
+
+describe("the live templates that send lists to each named role (R11d)", () => {
+  const BAR = "93000000-0000-4000-a000-0000000000c2";
+  const template = (
+    id: string,
+    named: string | null,
+    fields: Record<string, unknown> = {},
+  ) => ({
+    id,
+    business_id: BUSINESS,
+    recipient_named_role: named,
+    archived_at: null,
+    ...fields,
+  });
+  const time = (
+    templateId: string,
+    named: string | null,
+    fields: Record<string, unknown> = {},
+  ) => ({
+    template_id: templateId,
+    business_id: BUSINESS,
+    recipient_named_role: named,
+    ...fields,
+  });
+
+  it("count each live template once, by default or by its times", async () => {
+    db.lists = {
+      list_templates: [
+        // By default, and by two of its times: one template.
+        template("t-opening", LEAD),
+        // By a time alone, the other time to the bar lead.
+        template("t-closing", null),
+        // To the whole of a base: none.
+        template("t-plain", null),
+        // Archived: it holds nothing back, nor do its times.
+        template("t-old", LEAD, { archived_at: "2026-11-10T10:00:00Z" }),
+        // Another business's.
+        template("t-elsewhere", LEAD, { business_id: OTHER }),
+      ],
+      list_schedules: [
+        time("t-opening", LEAD),
+        time("t-opening", LEAD),
+        time("t-closing", LEAD),
+        time("t-closing", BAR),
+        time("t-closing", null),
+        time("t-old", BAR),
+        time("t-elsewhere", BAR, { business_id: OTHER }),
+      ],
+    };
+    const counts = await getRoleListsForOwner(BUSINESS);
+    expect(Object.fromEntries(counts)).toEqual({ [LEAD]: 2, [BAR]: 1 });
+    expect((await getRoleListsForTeam(BUSINESS)).get(LEAD)).toBe(2);
+  });
+
+  it("are none before lists go to named roles", async () => {
+    db.lists = {
+      list_templates: [template("t-opening", LEAD)],
+      list_schedules: [],
+    };
+    db.noListNamedColumn = true;
+    expect((await getRoleListsForOwner(BUSINESS)).size).toBe(0);
   });
 });

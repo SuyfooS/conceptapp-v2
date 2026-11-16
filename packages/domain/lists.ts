@@ -5,6 +5,7 @@ import { departmentKey } from "./departments";
 import { dayOfWeek, minutesOf, rangeMinutes, timeOfDay } from "./hours";
 import type { ScheduleOpenings } from "./list-openings";
 import { type Role, STAFF_ROLES, type StaffRole } from "./modules";
+import type { BaseRole } from "./role-access";
 import { timeIn } from "./shabbat";
 
 /**
@@ -143,17 +144,29 @@ export const listItemInput = z
   .superRefine(checkItem);
 export type ListItemInput = z.input<typeof listItemInput>;
 
-const roleRecipient = z.strictObject({
+const roleFields = {
   kind: z.literal("role"),
   // A list goes to someone on the staff, never to accountants.
   role: z.enum(STAFF_ROLES),
+};
+
+/**
+ * A role in a business: the role itself, everyone in it (those in a role
+ * named on it among them), or a role the business named on it (`namedRole`,
+ * its id; the roles plan's R11d), exactly the people who hold it. The
+ * database checks that the named role is the business's, live, and built on
+ * `role`.
+ */
+const roleRecipient = z.strictObject({
+  ...roleFields,
+  namedRole: uuid.optional(),
 });
 
-/** A template's default recipient in a global template: by keys. */
+/** A template's default recipient in a global template: by keys, never a named role. */
 export const recipientSeed = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("department"), department: departmentKey }),
   z.strictObject({ kind: z.literal("shift"), shift: shiftKey }),
-  roleRecipient,
+  z.strictObject(roleFields),
 ]);
 export type RecipientSeed = z.output<typeof recipientSeed>;
 
@@ -706,16 +719,25 @@ export type ListHolder =
   /** A person, or the people of a shift when it was sent. */
   | { kind: "person" | "shift"; people: string[] }
   | { kind: "department"; department: string }
-  | { kind: "role"; role: Role };
+  /** A role, or a role the business named on it (`namedRole`, its id). */
+  | { kind: "role"; role: Role; namedRole?: string };
 
 /**
  * Whether the list is for this person now: among its people, in its
- * department, or in its role. What `private.holds_list` says, for lists already
- * read (a list manager reads every list, and holds few).
+ * department, or in its role: a role the business named when the list names
+ * one (`namedRole`: exactly those who hold it), else the whole role, those in
+ * a role named on it among them. What `private.holds_list` says, for lists
+ * already read (a list manager reads every list, and holds few).
  */
 export function holdsList(
   holder: ListHolder,
-  person: { userId: string; role: Role; departments: readonly string[] },
+  person: {
+    userId: string;
+    role: Role;
+    departments: readonly string[];
+    /** The role the business named that they hold, by its id; none for null. */
+    namedRole?: string | null;
+  },
 ): boolean {
   switch (holder.kind) {
     case "person":
@@ -724,7 +746,11 @@ export function holdsList(
     case "department":
       return person.departments.includes(holder.department);
     case "role":
-      return holder.role === person.role;
+      return (
+        holder.role === person.role &&
+        (holder.namedRole === undefined ||
+          holder.namedRole === person.namedRole)
+      );
   }
 }
 
@@ -1213,26 +1239,32 @@ export function schedulesForSave(
 
 /**
  * Whether a time points at something gone: a shift it follows, or a
- * department or a shift it goes to, that the business no longer has. The
- * database takes neither in a save, and a shift that's gone opens nothing.
+ * department, a shift or a role the business named (when its live ones are
+ * given, `liveRoles`) it goes to, that the business no longer has. The
+ * database takes none in a save, and a shift that's gone opens nothing.
  * A person who has left is the database's to refuse.
  */
 export function scheduleGone(
   schedule: Pick<ListSchedule, "shift" | "recipient">,
   liveDepartments: readonly string[],
   shiftKeys: readonly string[],
+  liveRoles?: readonly string[],
 ): boolean {
   return (
     (schedule.shift !== null && !shiftKeys.includes(schedule.shift)) ||
     (schedule.recipient.kind !== "person" &&
-      recipientGone(schedule.recipient, liveDepartments, shiftKeys))
+      recipientGone(schedule.recipient, liveDepartments, shiftKeys, liveRoles))
   );
 }
 
-/** The business's live departments and its scheduling settings' shift keys. */
+/**
+ * The business's live departments, its scheduling settings' shift keys and,
+ * when known, its live named roles' ids (the roles plan's R11d).
+ */
 export type SchedulePlaces = {
   departments: readonly string[];
   shifts: readonly string[];
+  roles?: readonly string[];
 };
 
 /**
@@ -1246,7 +1278,10 @@ export function scheduleProblem(
   schedule: DraftSchedule,
   places?: SchedulePlaces,
 ): "days" | "times" | "gone" | null {
-  if (places && scheduleGone(schedule, places.departments, places.shifts)) {
+  if (
+    places &&
+    scheduleGone(schedule, places.departments, places.shifts, places.roles)
+  ) {
     return "gone";
   }
   const days = schedule.days;
@@ -1286,20 +1321,56 @@ export function moved<T>(list: readonly T[], index: number, by: -1 | 1): T[] {
 }
 
 /**
- * Whether a template's own recipient is gone: a department removed since, or
- * a shift the scheduling settings no longer have. The database takes neither
- * in a save, so the editor asks for another.
+ * Whether a template's own recipient is gone: a department removed since, a
+ * shift the scheduling settings no longer have, or a role the business named
+ * that it archived since (when its live ones are given, `liveRoles`; one
+ * can be archived only while no live template goes to it, so this is a
+ * template restored after it). The database takes none in a save, so the
+ * editor asks for another.
  */
 export function recipientGone(
   recipient: TemplateRecipient | null,
   liveDepartments: readonly string[],
   shiftKeys: readonly string[],
+  liveRoles?: readonly string[],
 ): boolean {
   if (recipient?.kind === "department") {
     return !liveDepartments.includes(recipient.department);
   }
   if (recipient?.kind === "shift") return !shiftKeys.includes(recipient.shift);
+  if (recipient?.kind === "role" && recipient.namedRole !== undefined) {
+    return liveRoles !== undefined && !liveRoles.includes(recipient.namedRole);
+  }
   return false;
+}
+
+/** A role the business named, as the lists' pickers offer it. */
+export type ListNamedRole = { id: string; base: BaseRole };
+
+/**
+ * The key a role recipient goes by in a picker: its named role's id, or the
+ * role itself (`"worker"`), which are never alike.
+ */
+export function roleChoiceKey(recipient: {
+  role: StaffRole;
+  namedRole?: string;
+}): string {
+  return recipient.namedRole ?? recipient.role;
+}
+
+/**
+ * The role recipient a picker's key stands for: one of `roles`, or one of the
+ * business's live named roles (`named`), on its base. Null for anything else.
+ */
+export function roleRecipientOf(
+  key: string,
+  roles: readonly StaffRole[],
+  named: readonly ListNamedRole[],
+): { kind: "role"; role: StaffRole; namedRole?: string } | null {
+  const role = roles.find((r) => r === key);
+  if (role) return { kind: "role", role };
+  const own = named.find((n) => n.id === key);
+  return own ? { kind: "role", role: own.base, namedRole: own.id } : null;
 }
 
 /**
@@ -1509,22 +1580,35 @@ export function dueTimeFor(
 
 /**
  * Where a template sends itself on the send screen when nobody chooses: its
- * department while it is still there, its role, or the next of its shift
- * that has people on it; nothing chosen for a department removed since
- * (`gone`, which the screen says), and anyone else starts at a person.
+ * department while it is still there, its role (a role the business named,
+ * `namedRole`, while it is live: `liveRoles`, its ids, and somebody holds
+ * it), or the next of its shift that has people on it; nothing chosen for a
+ * department removed or a named role archived since (`gone`, which the
+ * screen says), nor for a live named role nobody holds yet (`emptyRoles`,
+ * as a shift nobody is on: the screen says so on its row), and anyone else
+ * starts at a person.
  */
 export function sendDefaults(
   recipient: TemplateRecipient | null | undefined,
   shifts: readonly SendShift[] | null,
   liveDepartments: readonly string[],
+  liveRoles: readonly string[] = [],
+  emptyRoles: readonly string[] = [],
 ): {
   kind: RecipientKind;
   department: string | null;
   shift: string | null;
   role: StaffRole | null;
+  namedRole: string | null;
   gone: boolean;
 } {
-  const none = { department: null, shift: null, role: null, gone: false };
+  const none = {
+    department: null,
+    shift: null,
+    role: null,
+    namedRole: null,
+    gone: false,
+  };
   if (recipient?.kind === "department") {
     const live = liveDepartments.includes(recipient.department);
     return {
@@ -1535,7 +1619,15 @@ export function sendDefaults(
     };
   }
   if (recipient?.kind === "role") {
-    return { ...none, kind: "role", role: recipient.role };
+    const named = recipient.namedRole;
+    if (named === undefined) {
+      return { ...none, kind: "role", role: recipient.role };
+    }
+    if (!liveRoles.includes(named))
+      return { ...none, kind: "role", gone: true };
+    return emptyRoles.includes(named)
+      ? { ...none, kind: "role" }
+      : { ...none, kind: "role", role: recipient.role, namedRole: named };
   }
   if (recipient?.kind === "shift" && shifts !== null) {
     const next = shifts.find(

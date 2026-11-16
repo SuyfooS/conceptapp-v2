@@ -353,6 +353,80 @@ export async function getRoleInvitesForTeam(
   return readRoleInvites(createAdminClient(), businessId, now);
 }
 
+/** How many of a business's live lists go to each of its named roles, by its id. */
+export type RoleLists = ReadonlyMap<string, number>;
+
+/**
+ * How many of the business's live templates send lists to each of its named
+ * roles (the roles plan's R11d): one that goes to it when nobody chooses, or
+ * has a time, on or paused, that sends to it, each counted once. They hold
+ * the role back from the archive as its people do
+ * (`public.archive_business_role`, 55000 `lists`), so the screen says so
+ * before it is tried. Read with the secret key, as the matrix is, so the
+ * count is the database's whether lists are on or not: where a template
+ * goes says nothing about any person, and an owner reads these templates
+ * and times anyway while lists are on. None before
+ * 20261115001900_named_roles_lists.sql reaches a project, when no list goes
+ * to one.
+ */
+async function readRoleLists(businessId: string): Promise<RoleLists> {
+  const admin = createAdminClient();
+  const [templates, times] = await Promise.all([
+    admin
+      .from("list_templates")
+      .select("id, recipient_named_role")
+      .eq("business_id", businessId)
+      .is("archived_at", null),
+    admin
+      .from("list_schedules")
+      .select("template_id, recipient_named_role")
+      .eq("business_id", businessId)
+      .not("recipient_named_role", "is", null),
+  ]);
+  for (const { error } of [templates, times]) {
+    if (isMissingColumn(error)) return new Map();
+    if (error) throw error;
+  }
+  // Each live template's roles: its own, and its times'.
+  const rolesOf = new Map<string, Set<string>>(
+    (templates.data ?? []).map((row) => [
+      row.id,
+      new Set(row.recipient_named_role ? [row.recipient_named_role] : []),
+    ]),
+  );
+  for (const row of times.data ?? []) {
+    if (row.recipient_named_role) {
+      rolesOf.get(row.template_id)?.add(row.recipient_named_role);
+    }
+  }
+  const counts = new Map<string, number>();
+  for (const roles of rolesOf.values()) {
+    for (const role of roles) counts.set(role, (counts.get(role) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * The same, for the owner's "תפקידים והרשאות". Callers check first, from the
+ * session, that the person is an owner of this business, or the team viewing
+ * it as one (`changesPermissions`).
+ */
+export async function getRoleListsForOwner(
+  businessId: string,
+): Promise<RoleLists> {
+  return readRoleLists(businessId);
+}
+
+/**
+ * The same, for the console's. Callers check first that the person is on
+ * the ConceptApp team (`consoleRolesAccess`).
+ */
+export async function getRoleListsForTeam(
+  businessId: string,
+): Promise<RoleLists> {
+  return readRoleLists(businessId);
+}
+
 export type RoleWriteFailure =
   | "noAccess"
   | "closed"
@@ -365,6 +439,11 @@ export type RoleWriteFailure =
   | "limit"
   /** People hold the role: it can't be archived. */
   | "held"
+  /**
+   * A live template, or a time of one, sends lists to the role (the roles
+   * plan's R11d): it can't be archived until they go to someone else.
+   */
+  | "lists"
   | "failed";
 
 export type RoleWriteResult =
@@ -390,7 +469,8 @@ function writeFailure(error: {
 /**
  * Why adding, renaming, archiving or restoring a role was refused: by whom
  * it may be done, a name taken, the business's twenty roles, people in it,
- * a role gone meanwhile, or, before its migration, nothing to do it with.
+ * lists that go to it, a role gone meanwhile, or, before its migration,
+ * nothing to do it with.
  */
 function roleFailure(error: {
   code?: string;
@@ -401,6 +481,7 @@ function roleFailure(error: {
   if (error.code === "23505") return "taken";
   if (error.code === "54000") return "limit";
   if (error.code === "55000" && error.hint === "held") return "held";
+  if (error.code === "55000" && error.hint === "lists") return "lists";
   if (error.code === "P0002") return "gone";
   if (isMissingFunction(error)) return "closed";
   console.error("changing a business's role failed", error.message);
@@ -561,7 +642,10 @@ export async function renameBusinessRole(
   );
 }
 
-/** `actor` archives a named role of the business, which nobody may hold ("held"). */
+/**
+ * `actor` archives a named role of the business, which nobody may hold
+ * ("held") and no live template or time may send lists to ("lists").
+ */
 export async function archiveBusinessRole(
   actorId: string,
   businessId: string,

@@ -71,10 +71,19 @@ export function holderWords(
         ? t("card.to.department", { name })
         : t("card.for.department", { name });
     }
-    case "role":
+    case "role": {
+      // A role the business named, by its name; its base's words if it is
+      // one the reader can't name.
+      const name = holder.namedRole && lookups.roles[holder.namedRole];
+      if (name) {
+        return to
+          ? t("card.to.namedRole", { name })
+          : t("card.for.namedRole", { name });
+      }
       return to
         ? t("card.to.role", { role: holder.role })
         : t("card.for.role", { role: holder.role });
+    }
   }
 }
 

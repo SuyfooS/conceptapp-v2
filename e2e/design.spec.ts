@@ -141,6 +141,8 @@ const PAGES = [
   "/design/shell/lists/list-weekly-cleaning?state=photo",
   "/design/shell/lists/list-weekly-cleaning?state=demo",
   "/design/shell/lists/list-weekly-cleaning?state=gone",
+  // A list to a role the business named (R11d).
+  "/design/shell/lists/list-shift-opening",
   "/design/shell/lists/today",
   "/design/shell/lists/today?day=2026-11-01",
   "/design/shell/lists/today?state=empty",
@@ -153,6 +155,8 @@ const PAGES = [
   "/design/shell/lists/send?template=t-weekly-cleaning",
   "/design/shell/lists/send?template=t-bar-order",
   "/design/shell/lists/send?state=kitchenGone",
+  "/design/shell/lists/send?template=t-shift-opening",
+  "/design/shell/lists/send?template=t-shift-opening&state=roleGone",
   "/design/shell/lists/templates",
   "/design/shell/lists/templates?removed=t-stock-count",
   "/design/shell/lists/templates?state=empty",
@@ -167,6 +171,8 @@ const PAGES = [
   "/design/shell/lists/templates/t-bar-closing?state=shiftGone",
   "/design/shell/lists/templates/t-weekly-cleaning",
   "/design/shell/lists/templates/t-weekly-cleaning?state=demo",
+  "/design/shell/lists/templates/t-shift-opening",
+  "/design/shell/lists/templates/t-shift-opening?state=roleGone",
   "/design/shell/lists/templates/t-stock-count",
   "/design/shell/lists/templates/new",
   "/design/shell/notifications",
@@ -228,6 +234,7 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/roles",
   "/design/console/businesses/demo-restaurant/roles?state=open",
   "/design/console/businesses/demo-restaurant/roles?state=readOnly",
+  "/design/console/businesses/demo-restaurant/roles?state=lists",
   // A business nobody has joined yet: only an invite, and one that ran out.
   "/design/console/businesses/bar-hayam/access",
 ];

@@ -21,8 +21,10 @@ type Props = {
 // `?state=shiftGone` the restaurant after its evening shift left the
 // settings, so the bar's closing, which follows it, holds the saves and says
 // so on top; `?state=demo` a demo business, which takes no photos, so the
-// weekly cleaning's photo item stays optional and its sheet says why. The
-// removed one (t-stock-count) is only read.
+// weekly cleaning's photo item stays optional and its sheet says why;
+// `?state=roleGone` the restaurant after it archived its shift leads' role
+// (R11d), so the shift's opening says the role was removed and its time
+// holds the saves. The removed one (t-stock-count) is only read.
 export default function ShellTemplate({ params, searchParams }: Props) {
   return (
     <Suspense>
@@ -43,6 +45,7 @@ async function Demo({ params, searchParams }: Props) {
     state === "barGone" ? "dep-bar" : undefined,
     state === "shiftGone" ? "evening" : undefined,
     state === "demo",
+    state === "roleGone",
   );
   if (!data) notFound();
   return (
