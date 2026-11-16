@@ -579,8 +579,8 @@ select ok(
 
 select is(
   (select string_agg(k.key, ',' order by k.key) from public.permission_keys k where k.settable),
-  'schedule.edit,schedule.publish',
-  'scheduling is open for changes per role, and nothing else yet'
+  'manage.edit,manage.view,schedule.edit,schedule.publish',
+  'scheduling is open for changes per role, and besides it only the management page (R7)'
 );
 
 select ok(
