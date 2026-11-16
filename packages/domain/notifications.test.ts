@@ -325,6 +325,26 @@ describe("chat's lines", () => {
     expect(groupsFor("manager", ["scheduling"])).toContain("approvals");
   });
 
+  it("follow who edits the clock for its approvals, once what the person holds is known (R4)", () => {
+    // clock.confirm and clock.overdue are for those who hold clock.edit:
+    // managers by default; hours someone set for themselves are an owner's,
+    // who holds everything.
+    for (const kind of ["clock.confirm", "clock.overdue"] as const) {
+      expect(NOTIFICATION_KINDS[kind].perm).toBe("clock.edit");
+    }
+    expect(groupsFor("worker", ["time_clock"], ["clock.edit"])).toContain(
+      "approvals",
+    );
+    expect(groupsFor("worker", ["time_clock"], [])).not.toContain("approvals");
+    // A manager lowered to view keeps none of the clock's approvals.
+    expect(groupsFor("manager", ["time_clock"], [])).not.toContain("approvals");
+    expect(groupsFor("owner", ["time_clock"], [])).toContain("approvals");
+    // Pay alone reads hours and confirms none.
+    expect(
+      groupsFor("accountant", ["time_clock"], ["clock.payroll"]),
+    ).not.toContain("approvals");
+  });
+
   it("reach the staff only: an accountant is in no chat, only in documents", () => {
     expect(groupsFor("worker", ["chat"])).toEqual(["chat", "documents"]);
     expect(groupsFor("accountant", ["chat"])).toEqual(["documents"]);

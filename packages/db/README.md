@@ -732,6 +732,57 @@ row follows. `roles_manage.test.sql` covers it, with an equivalence over the
 seed's rows and a fixture of every family: on today's defaults every member
 and every view as each role reads exactly what the old policies gave.
 
+The time clock by its permission (`20261115001100_roles_clock.sql`, the
+roles plan's R4; Orel's answers of 15 November 2026), the second area open
+for changes: `clock.edit` is `settable`, and nothing changes until an owner
+or the team switches it (managers hold it by default, workers don't, owners
+always do). The floor is view: everyone on the staff punches in and out,
+takes breaks, undoes a clock-out and reads their own hours, as before.
+`private.can_edit_clock` is `private.holds_perm(…, 'clock.edit')`, and its
+callers ask it unchanged: `issue_punch_code`, `punch_code_showing`,
+`approve_station_pairing` and `set_clock_station_stopped` (the code screen
+and the stations), `confirm_time_entry`, `add_time_entry` and
+`correct_time_entry`. What stays the owner's is as it was: an owner needs no
+punch code, and hours someone set for themselves (a manager's correction of
+their own included, `'self'`) only an owner confirms. The team's hours and
+breaks and the stations are read by those who edit the clock (the policies
+renamed "people read their own entries, editors and pay holders all" and "the
+clock's editors read the business's stations", each within a name's 63
+bytes): `business_id in (select
+private.businesses_holding('clock.edit'))`, members by `holds_perm` and views
+by their role's rule or as the owner, asked once per query, where the
+manager's rank, a view's rank and a personal `clock.edit` were three
+branches; one's own hours, pay holders (`clock.payroll`) and a view as an
+accountant read as before, at every level. `clock.confirm` (hours without a
+code) and `clock.overdue` (an entry open too long) go to
+`private.members_holding(business, 'clock.edit')` as lines for that
+permission (`holders_of`, `audience_role` still 'manager'), so R3's rules
+hold for them: read only while their reader holds it, the push skipped once
+they don't, settled by a change of role, or at the next event of their hours
+once the reader no longer holds it (`still_for`); hours someone set for
+themselves stay an owner's line, by rank (critique 24), and a clock-out
+undone turns such a line back into one for `clock.edit` when only an arrival
+without a code waits. The lines already written were
+moved to the key by the migration. The demo's correction
+(`private.seed_demo_hours`) is made by its first manager who edits the
+clock, else its owner. A manager gives nobody a role that holds `clock.edit`
+by role while they don't (`private.role_holds_beyond`, R3's, asks every
+settable key). The app reads the same answer: `editsClock` in
+`@domain/time-clock` over `my_permissions` gates the team's hours and their
+actions, the code screen and its route, the fixes on the pay screens,
+`canConfirm`, and the clock's rows on the clock and on Today; `groupsFor`
+offers the clock's approvals by it. `roles_clock.test.sql` covers it with one
+matrix over today's defaults, workers raised and managers lowered: reads
+(one's own, others' hours and breaks, stations, wages, the lines) for
+members, the accountant and views as a worker, a manager and an accountant;
+the clock's seven writes; who is told, hours set for oneself staying with
+owners, and a demoted manager's line; the push skipped; a lowered manager's
+line settled at the next event of its hours, not by the switch; the line of
+a clock-out undone; then only an owner
+confirming hours set for oneself, a manager giving a role, the demo's
+corrector, today's rule frozen against the new one for every membership,
+and no line of the two kinds left by rank.
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for
@@ -758,7 +809,8 @@ every active member on the staff but the owner works Sunday to Thursday
 09:00–17:00 with a half-hour break (unpaid when the business's breaks are),
 one weekday off by their place, Fridays 08:00–14:00 for workers when
 `fridays`, and the cases on the people they name (`corrected` by the first
-manager with its `clock.correct` row, `evening`, `without_code`, `night`,
+manager, since R4 the first who edits the clock, else the owner, with its
+`clock.correct` row, `evening`, `without_code`, `night`,
 `friday_late`, `saturday_night`), each on its own weekday, in the business's
 time zone, none left open; a plan that fails writes no hours and the reset
 stands. `@db/payroll` reads the pay people (everyone who was ever a member,

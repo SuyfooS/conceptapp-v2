@@ -1,7 +1,6 @@
 import { isStaff } from "@domain/modules";
 import { canSeePay, defaultPayMonth } from "@domain/payroll-access";
-import { canSeeTeam } from "@domain/team";
-import { monthOf } from "@domain/time-clock";
+import { editsClock, monthOf } from "@domain/time-clock";
 import { clockAt } from "@domain/today";
 import { canWrite } from "@domain/view-as";
 import { cache } from "react";
@@ -42,8 +41,11 @@ export const payAccess = cache(async () => {
     viewOnly: !canWrite(member.viewing),
     currentMonth: monthOf(today),
     defaultMonth: defaultPayMonth(today),
-    /** Managers and owners fix and confirm hours on the team's hours. */
-    fixes: canSeeTeam(membership.role),
+    /**
+     * Whoever edits the clock (`editsClock`: clock.edit, the roles plan's R4)
+     * fixes and confirms hours on the team's hours; pay alone doesn't.
+     */
+    fixes: editsClock(membership),
     /**
      * They type a birth date (payroll P5): an owner or the accountant, the
      * circle that will hold the hiring file. Never in a view.
@@ -51,9 +53,10 @@ export const payAccess = cache(async () => {
     birth:
       canWrite(member.viewing) &&
       (membership.role === "owner" || membership.role === "accountant"),
+    // Back to the team's hours for whoever reads them, else to the clock.
     back: !staff
       ? null
-      : canSeeTeam(membership.role)
+      : editsClock(membership)
         ? ("team" as const)
         : ("clock" as const),
   };

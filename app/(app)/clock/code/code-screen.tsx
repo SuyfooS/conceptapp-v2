@@ -35,7 +35,7 @@ type Answer =
   | { kind: "failed" };
 
 /** Where this screen's links go; the demo keeps them inside the demo. */
-export type CodePaths = { team: string; settings: string };
+export type CodePaths = { clock: string; team: string; settings: string };
 
 /**
  * One ask for a code. A signed-out phone gets the door's redirect, which
@@ -76,7 +76,8 @@ async function requestCode(url: string, signal: AbortSignal): Promise<Answer> {
 }
 
 /**
- * The clock's code on an owner's or manager's own phone: a QR, and six digits
+ * The clock's code on the phone of someone who edits the clock (an owner, or
+ * whoever holds clock.edit): a QR, and six digits
  * under it to type, a new code every 20 seconds. Timing runs on the server's
  * times and the phone's own clock since each answer, never its time of day. A
  * code that still works stays through a failed fetch or two, since the team's
@@ -244,11 +245,18 @@ export function CodeScreen({
         <Link href={signInPath}>{t("code.signIn")}</Link>
       </Button>
     </Card>
+  ) : refusal === "noAccess" ? (
+    // Showing the code was taken away while the screen was open (clock.edit,
+    // the roles plan's R4): they still punch, on the clock.
+    <Card className="flex flex-col items-start gap-3">
+      <p className="text-ink">{t("code.noAccess")}</p>
+      <Button asChild variant="secondary">
+        <Link href={paths.clock}>{t("code.toClock")}</Link>
+      </Button>
+    </Card>
   ) : refusal ? (
     <Card>
-      <p className="text-ink">
-        {refusal === "noAccess" ? t("failure.noAccess") : t(`code.${refusal}`)}
-      </p>
+      <p className="text-ink">{t(`code.${refusal}`)}</p>
     </Card>
   ) : !blocked && phase === "offline" ? (
     <Card className="flex flex-col items-start gap-3">
@@ -266,7 +274,12 @@ export function CodeScreen({
   return (
     <PageBody className={pageGlowClass}>
       <PageHeader
-        back={{ href: paths.team, label: t("team.title") }}
+        back={
+          // The team's hours went with the code: back to the clock instead.
+          refusal === "noAccess"
+            ? { href: paths.clock, label: t("team.back") }
+            : { href: paths.team, label: t("team.title") }
+        }
         eyebrow={data.businessName}
         title={t("code.title")}
       />

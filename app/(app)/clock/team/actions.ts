@@ -6,8 +6,7 @@ import {
   confirmTimeEntry,
   correctTimeEntry,
 } from "@db/time-clock";
-import { canSeeTeam } from "@domain/team";
-import { parseEntryTimes, parseReason } from "@domain/time-clock";
+import { editsClock, parseEntryTimes, parseReason } from "@domain/time-clock";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
 import { z } from "zod";
@@ -39,9 +38,10 @@ function failureOf(
 }
 
 /**
- * A manager's change to someone's hours, with why. The database checks the
- * actor again, refuses it without a reason, and keeps the earlier times and
- * the reason in the audit log.
+ * A change to someone's hours by whoever edits the clock (`editsClock`:
+ * clock.edit, the roles plan's R4), with why. The database checks the actor
+ * again, refuses it without a reason, and keeps the earlier times and the
+ * reason in the audit log.
  */
 async function asManager(
   values: EntryValues,
@@ -54,7 +54,7 @@ async function asManager(
 ): Promise<EntryActionResult> {
   const member = await currentMember();
   const membership = member?.membership;
-  if (!member || !membership || !canSeeTeam(membership.role)) {
+  if (!member || !membership || !editsClock(membership)) {
     return { ok: false, failure: "noAccess" };
   }
   if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };
@@ -93,10 +93,10 @@ export async function correctEntryAction(
 }
 
 /**
- * Approve an entry made without a code, or one a manager set for themselves
- * (an owner's to approve). Approved by someone else first is approved all the
- * same. There is nothing to take back: a wrong approval is fixed by correcting
- * the shift.
+ * Approve an entry made without a code, or one someone set for themselves
+ * (an owner's to approve, whoever else edits the clock). Approved by someone
+ * else first is approved all the same. There is nothing to take back: a wrong
+ * approval is fixed by correcting the shift.
  */
 export async function confirmEntryAction(
   entryId: string,
@@ -105,7 +105,7 @@ export async function confirmEntryAction(
   if (!entry.success) return { ok: false, failure: "failed" };
   const member = await currentMember();
   const membership = member?.membership;
-  if (!member || !membership || !canSeeTeam(membership.role)) {
+  if (!member || !membership || !editsClock(membership)) {
     return { ok: false, failure: "noAccess" };
   }
   if (!canWrite(member.viewing)) return { ok: false, failure: "viewOnly" };

@@ -20,7 +20,11 @@ export default async function ClockCodePage() {
     <CodeScreen
       data={data}
       issueUrl="/clock/code/issue"
-      paths={{ team: clockPaths.team, settings: "/manage/time_clock" }}
+      paths={{
+        clock: clockPaths.clock,
+        team: clockPaths.team,
+        settings: "/manage/time_clock",
+      }}
     />
   );
 }

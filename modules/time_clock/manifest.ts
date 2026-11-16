@@ -16,7 +16,17 @@ export const manifest = defineManifest({
   },
   homeWidget: { minRole: "worker" },
   permissions: [
-    { key: "clock.edit", area: "time_clock", defaultRole: "manager" },
+    // Editing the clock: the team's hours, corrections, confirmations, the
+    // punch-code screen and the stations (Orel, 15 November 2026). Everyone
+    // on the staff punches and reads their own hours without it (view is the
+    // floor). The database asks it (private.can_edit_clock, the roles plan's
+    // R4), and owners and the team switch it per role.
+    {
+      key: "clock.edit",
+      area: "time_clock",
+      defaultRole: "manager",
+      settable: true,
+    },
     /**
      * Everyone's hours, wages, payroll details and estimates (payroll P2). Owners
      * and accountants always hold it; an owner gives it to managers, workers or

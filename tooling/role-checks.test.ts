@@ -176,8 +176,8 @@ describe("rules by rank in SQL", () => {
         sql: rule("private.new_gate"),
       },
       {
-        name: "20261116000100_clock.sql",
-        sql: rule("private.can_edit_clock"),
+        name: "20261116000100_lists.sql",
+        sql: rule("private.can_manage_lists"),
       },
       {
         name: "20261116000200_newer.sql",
@@ -186,23 +186,29 @@ describe("rules by rank in SQL", () => {
           "update public.memberships m set active = true where m.role in ('owner', 'manager');",
         ].join("\n"),
       },
-      // Scheduling moved in R3 and its entries are out: a rule by rank there
-      // counts again.
+      // Scheduling moved in R3 and the clock in R4, and their entries are
+      // out: a rule by rank there counts again.
       {
         name: "20261116000300_scheduling.sql",
         sql: rule("private.builds_schedule"),
+      },
+      {
+        name: "20261116000310_clock.sql",
+        sql: rule("private.can_edit_clock"),
       },
     ];
     expect(violations(migrations)).toEqual([
       "20261116000200_newer.sql:3 has_role( in private.new_gate",
       "20261116000200_newer.sql:5 role in ('owner', 'manager') in top level",
       "20261116000300_scheduling.sql:3 has_role( in private.builds_schedule",
+      "20261116000310_clock.sql:3 has_role( in private.can_edit_clock",
     ]);
-    // Once the clock's phase takes can_edit_clock out, its rule counts too.
+    // Once the lists' phase takes can_manage_lists out, its rule counts too.
     expect(violations(migrations, new Set(["private.new_gate"]))).toEqual([
-      "20261116000100_clock.sql:3 has_role( in private.can_edit_clock",
+      "20261116000100_lists.sql:3 has_role( in private.can_manage_lists",
       "20261116000200_newer.sql:5 role in ('owner', 'manager') in top level",
       "20261116000300_scheduling.sql:3 has_role( in private.builds_schedule",
+      "20261116000310_clock.sql:3 has_role( in private.can_edit_clock",
     ]);
   });
 
@@ -231,6 +237,177 @@ describe("rules by rank in SQL", () => {
       ].join("\n"),
     };
     expect(violations([...later, policy])).toHaveLength(later.length + 1);
+  });
+
+  it("count only in the version that runs: one a later migration replaces or drops is history (R4)", () => {
+    const gate = (name: string, body: string) =>
+      [
+        `create or replace function ${name}(b uuid)`,
+        "returns boolean language sql as $$",
+        `  select ${body}`,
+        "$$;",
+      ].join("\n");
+    const byRank = "private.has_role(b, 'manager')";
+    const migrations = [
+      { name: "20261116000800_one.sql", sql: gate("private.gate", byRank) },
+      { name: "20261116000900_two.sql", sql: gate("private.gate", "true") },
+      { name: "20261116000800_drop.sql", sql: gate("private.gone", byRank) },
+      {
+        name: "20261116000900_dropped.sql",
+        sql: "drop function private.gone(uuid);",
+      },
+      {
+        name: "20261116000800_policy.sql",
+        sql: `create policy "p" on public.things for select using (${byRank});`,
+      },
+      {
+        name: "20261116000900_policy.sql",
+        sql: `alter policy "p" on public.things using (true);\nselect ${byRank};`,
+      },
+    ];
+    // Replaced, dropped or altered later: nothing counts but the top level.
+    expect(violations(migrations)).toEqual([
+      "20261116000900_policy.sql:2 has_role( in top level",
+    ]);
+    // Written again by rank, the newest version counts, and only it.
+    expect(
+      violations([
+        ...migrations,
+        { name: "20261116001000_three.sql", sql: gate("private.gate", byRank) },
+      ]),
+    ).toEqual([
+      "20261116000900_policy.sql:2 has_role( in top level",
+      "20261116001000_three.sql:3 has_role( in private.gate",
+    ]);
+  });
+
+  it("follow their function or policy through a rename or a move, and stay where a later statement rewrites nothing of theirs (R4)", () => {
+    const byRank = "private.has_role(b, 'manager')";
+    const gate = (name: string, params: string, body: string) =>
+      [
+        `create or replace function ${name}(${params})`,
+        "returns boolean language sql as $$",
+        `  select ${body}`,
+        "$$;",
+      ].join("\n");
+    const first = {
+      name: "20261116001100_first.sql",
+      sql: [
+        `create policy "p" on public.things for select using (${byRank});`,
+        `create policy "q" on public.things for all using (true) with check (${byRank});`,
+        `create policy "r" on public.things for select using (${byRank});`,
+        gate("private.gate", "b uuid", byRank),
+        gate("private.pair", "b uuid, at_time timestamptz", byRank),
+        gate("private.pair", "b uuid", byRank),
+      ].join("\n"),
+    };
+    const later = {
+      name: "20261116001200_later.sql",
+      sql: [
+        // Renamed: the same policy, its rule along.
+        `alter policy "p" on public.things rename to "p2";`,
+        // Its using rewritten: the rule in its with check still runs.
+        `alter policy "q" on public.things using (false);`,
+        // Its roles only.
+        `alter policy "r" on public.things to authenticated;`,
+        "alter function private.gate(uuid) rename to gate2;",
+        // One of the two replaced, by its input types however written.
+        gate(
+          "private.pair",
+          "business uuid, at_time timestamp with time zone default now()",
+          "true",
+        ),
+      ].join("\n"),
+    };
+    expect(violations([first, later])).toEqual([
+      '20261116001100_first.sql:1 has_role( in policy "p2" on public.things',
+      '20261116001100_first.sql:2 has_role( in policy "q" on public.things',
+      '20261116001100_first.sql:3 has_role( in policy "r" on public.things',
+      "20261116001100_first.sql:6 has_role( in private.gate2",
+      "20261116001100_first.sql:14 has_role( in private.pair",
+    ]);
+    // What lists a renamed one is its name now.
+    expect(
+      violations(
+        [first, later],
+        new Set(['policy "p" on public.things', "private.gate2"]),
+      ),
+    ).toEqual([
+      '20261116001100_first.sql:1 has_role( in policy "p2" on public.things',
+      '20261116001100_first.sql:2 has_role( in policy "q" on public.things',
+      '20261116001100_first.sql:3 has_role( in policy "r" on public.things',
+      "20261116001100_first.sql:14 has_role( in private.pair",
+    ]);
+    const third = {
+      name: "20261116001300_third.sql",
+      sql: [
+        // Every one of the name, with no input types given.
+        "drop function private.pair;",
+        `drop policy "q" on public.things;`,
+        "alter function private.gate2(uuid) set schema public;",
+        `alter policy "p2" on public.things using (true);`,
+      ].join("\n"),
+    };
+    expect(violations([first, later, third])).toEqual([
+      '20261116001100_first.sql:3 has_role( in policy "r" on public.things',
+      "20261116001100_first.sql:6 has_role( in public.gate2",
+    ]);
+  });
+
+  it("know a policy by the name Postgres keeps, its first 63 bytes", () => {
+    const long =
+      "people read their own payroll details, pay holders the business's";
+    const kept = long.slice(0, 63);
+    const created = {
+      name: "20261116001400_long.sql",
+      sql: `create policy "${long}" on public.things for select using (private.has_role(business_id, 'manager'));`,
+    };
+    expect(violations([created])).toEqual([
+      `20261116001400_long.sql:1 has_role( in policy "${kept}" on public.things`,
+    ]);
+    expect(
+      violations([
+        created,
+        {
+          name: "20261116001500_kept.sql",
+          sql: `alter policy "${kept}" on public.things using (true);`,
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("count again where the clock held one, once R4 moved it", () => {
+    // Each of the clock's rules R4 moved, written by rank again in a later
+    // migration, is a violation: nothing lists them any more. The notifier
+    // keeps its entry for the team's line (R6).
+    const later = [
+      "private.can_edit_clock",
+      "private.seed_demo_hours",
+      "private.run_business_reminders",
+    ].map((name, i) => ({
+      name: `2026111600060${i}_back.sql`,
+      sql: [
+        `create or replace function ${name}(b uuid)`,
+        "returns uuid[] language sql as $$",
+        "  select private.members_in(b, '{owner,manager}'::public.member_role[])",
+        "$$;",
+      ].join("\n"),
+    }));
+    const policies = [
+      `alter policy "people read their own entries, editors and pay holders all" on public.time_entries`,
+      `alter policy "breaks are read like the entries they belong to" on public.time_breaks`,
+      `alter policy "the clock's editors read the business's stations" on public.clock_stations`,
+    ].map((statement, i) => ({
+      name: `2026111600070${i}_back.sql`,
+      sql: [
+        statement,
+        "  using (private.is_viewing(business_id, 'manager'));",
+      ].join("\n"),
+    }));
+    expect(violations([...later, ...policies])).toHaveLength(
+      later.length + policies.length,
+    );
+    expect(NOT_YET_MOVED["private.notify_for"]).toMatch(/^R6/);
   });
 
   it("are written in no migration after the guard but where a rule stays by role or waits for its area", () => {

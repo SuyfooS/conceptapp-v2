@@ -174,7 +174,7 @@ select set_eq(
     ('chat.announce', 'chat', 'chat', null, false, '{manager}'::text[], false),
     ('chat.moderate', 'chat', 'chat', null, false, '{manager}'::text[], false),
     ('chat.send_documents', 'chat', 'chat', null, false, '{manager}'::text[], false),
-    ('clock.edit', 'time_clock', 'time_clock', null, false, '{manager}'::text[], false),
+    ('clock.edit', 'time_clock', 'time_clock', null, true, '{manager}'::text[], false),
     ('clock.payroll', 'time_clock', 'time_clock', null, false, '{}'::text[], true),
     ('lists.manage', 'lists', 'lists', null, false, '{manager}'::text[], false),
     ('lists.send', 'lists', 'lists', null, false, '{manager}'::text[], false),
@@ -186,7 +186,7 @@ select set_eq(
     ('team.edit', null, 'team', 'team.view', false, '{manager}'::text[], false),
     ('manage.view', null, 'manage', null, true, '{manager}'::text[], false),
     ('manage.edit', null, 'manage', 'manage.view', true, '{manager}'::text[], false)$$,
-  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3, 20261115000900_roles_scheduling.sql) and on the management page (R7, 20261115001000_roles_manage.sql)'
+  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4) and on the management page (R7)'
 );
 
 select throws_ok(

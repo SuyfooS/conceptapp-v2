@@ -16,12 +16,12 @@ import {
 } from "@domain/payroll-details";
 import { needsPunchCode } from "@domain/punch-code";
 import { timeIn } from "@domain/shabbat";
-import { canSeeTeam } from "@domain/team";
 import {
   addMonths,
   atWorkNow,
   canConfirm,
   clockStatus,
+  editsClock,
   entryMinutes,
   entryOverdue,
   entryToConfirm,
@@ -165,7 +165,9 @@ export async function currentClock(): Promise<ClockData | null> {
   const settings = await currentModuleSettings("time_clock");
   const month = monthOf(clockAt(now, timeZone).date);
   const lastMonth = addMonths(month, -1);
-  const manager = canSeeTeam(role);
+  // The team's hours and the code screen, for whoever edits the clock
+  // (clock.edit, as the database answers it: the roles plan's R4).
+  const edits = editsClock(access);
   const [entries, today, openNow, wages, details, periods] = await Promise.all([
     getTimeEntries(
       businessId,
@@ -174,7 +176,7 @@ export async function currentClock(): Promise<ClockData | null> {
       userId,
     ),
     scheduling ? shiftToday(businessId, userId, timeZone, now) : null,
-    manager ? getTimeEntries(businessId, now, now) : [],
+    edits ? getTimeEntries(businessId, now, now) : [],
     // Their own wages, details and periods only, under their own session.
     getWages(businessId, userId),
     getPayrollDetails(businessId, userId),
@@ -217,9 +219,9 @@ export async function currentClock(): Promise<ClockData | null> {
     punch: {
       required: settings.requirePunchCode,
       needsCode: needsPunchCode(settings, role),
-      canShowCode: manager && settings.codeDisplay !== "station",
+      canShowCode: edits && settings.codeDisplay !== "station",
     },
-    team: manager
+    team: edits
       ? {
           atWork: atWorkNow(
             openNow.filter((entry) => !entryOverdue(entry, now)),
@@ -270,13 +272,13 @@ export async function currentClockHistory(
 /**
  * The entries made without a code, or set by someone for themselves, that the
  * signed-in person may confirm, since the start of last month, oldest first.
- * Empty for anyone who doesn't see the team.
+ * Empty for anyone who doesn't edit the clock (`editsClock`).
  */
 export const currentEntriesToConfirm = cache(
   async (): Promise<{ entry: TimeEntry; toConfirm: ToConfirm }[]> => {
     const access = await clockAccess();
-    if (!access || !canSeeTeam(access.role)) return [];
-    const { businessId, timeZone, userId, role } = access;
+    if (!access || !editsClock(access)) return [];
+    const { businessId, timeZone, userId, role, perms } = access;
     const month = monthOf(clockAt(new Date(), timeZone).date);
     const entries = await getEntriesToConfirm(
       businessId,
@@ -284,7 +286,8 @@ export const currentEntriesToConfirm = cache(
     );
     return entries.flatMap((entry) => {
       const toConfirm = entryToConfirm(entry);
-      return toConfirm && canConfirm(toConfirm, entry.userId, { userId, role })
+      return toConfirm &&
+        canConfirm(toConfirm, entry.userId, { userId, role, perms })
         ? [{ entry, toConfirm }]
         : [];
     });
@@ -297,17 +300,18 @@ export type ClockLine =
   | { kind: "confirm"; count: number };
 
 /**
- * What the clock's row on Today says: shifts a manager has to fix first, then
- * hours waiting for their approval, then where the person stands. Null when
- * there is nothing to say.
+ * What the clock's row on Today says: shifts whoever edits the clock has to
+ * fix first, then hours waiting for their approval, then where the person
+ * stands. Null when there is nothing to say.
  */
 export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
   const access = await clockAccess();
   if (!access) return null;
   const now = new Date();
-  // A manager reads everyone's open entries here, and anyone else their own.
+  // Whoever edits the clock reads everyone's open entries here, and anyone
+  // else their own.
   const open = await getTimeEntries(access.businessId, now, now);
-  const overdue = canSeeTeam(access.role)
+  const overdue = editsClock(access)
     ? open.filter((entry) => entryOverdue(entry, now)).length
     : 0;
   if (overdue > 0) return { kind: "overdue", count: overdue };

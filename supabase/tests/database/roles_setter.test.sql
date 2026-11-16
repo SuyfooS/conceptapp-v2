@@ -394,7 +394,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.set_role_permission('93000000-0000-4000-a000-000000000001',
-    '93000000-0000-4000-b000-000000000001', 'worker', 'clock.edit', true)$$,
+    '93000000-0000-4000-b000-000000000001', 'worker', 'storefront.edit', true)$$,
   '22023', null, 'a key whose area isn''t open for changes yet is refused'
 );
 select throws_ok(
@@ -469,7 +469,7 @@ set local role service_role;
 select is(
   pg_temp.refusal($$select public.set_role_permissions('93000000-0000-4000-a000-000000000001',
     '93000000-0000-4000-b000-000000000001', 'worker',
-    '{schedule.edit,clock.edit}', '{true,true}')$$),
+    '{schedule.edit,storefront.edit}', '{true,true}')$$),
   '22023',
   'a key of the change refused refuses all of it'
 );
