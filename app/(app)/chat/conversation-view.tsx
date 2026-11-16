@@ -31,7 +31,12 @@ export type ConversationBlock =
   | { kind: "closed" }
   /** The other person of a private chat left the team. */
   | { kind: "left"; name: string | null }
-  /** The whole team's group, where only management writes (`teamGroupWho`). */
+  /**
+   * The whole team's group, where only those who announce write
+   * (`teamGroupWho`): owners and holders of chat.announce. Its words name
+   * them so rather than "management", which reads wrong for a manager
+   * lowered or moderating without announcing (the roles plan's R8).
+   */
   | { kind: "announcersOnly" };
 
 /**

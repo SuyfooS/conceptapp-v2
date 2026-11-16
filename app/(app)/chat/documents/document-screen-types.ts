@@ -40,14 +40,18 @@ export type DocumentsScreenData = {
   clock: DocumentClock;
   /** The office (every document) or someone on the staff (their own). */
   mode: "office" | "staff";
-  /** Sends documents to people: a manager who isn't in the office sees "שלחת". */
+  /**
+   * Sends documents to people: outside the office, "שלחת" with the way to
+   * send one. Without it, "שלחת" shows only what they sent before, and says
+   * who sends now.
+   */
   sends: boolean;
   /**
    * Newest first. For the office: the newest 200, every one waiting for the
    * reader, and the chosen person's newest 200.
    */
   documents: DocumentShown[];
-  /** For a sender outside the office: what they sent to people. */
+  /** Outside the office: what they sent to people, sending now or not. */
   sent: DocumentShown[] | null;
   people: DocumentPeople;
   /**

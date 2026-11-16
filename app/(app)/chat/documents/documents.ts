@@ -138,7 +138,8 @@ function merged(
 
 /**
  * The documents' list (`/chat/documents`): for someone on the staff their
- * own, both ways, and for a sender also those they sent ("שלחת"). For the
+ * own, both ways, and those they sent ("שלחת"), which a sender has always
+ * and anyone else once they sent some. For the
  * office the newest 200 of the business, with every one that waits for them
  * and the chosen person's (`?person=`) newest 200 besides, so "מחכה לך" and a
  * person's documents are whole however many there are; its people and the
@@ -159,7 +160,10 @@ export async function currentDocumentsScreen(
       businessId,
       office ? { limit: 200 } : { person: userId, limit: 200 },
     ),
-    access.sends && !office
+    // Outside the office, what they sent whether or not they send now: a
+    // sender whose chat.send_documents was switched off (the roles plan's
+    // R8) still reads theirs and their marks (private.sees_document).
+    !office
       ? getDocuments(businessId, {
           sentBy: userId,
           direction: "to_people",

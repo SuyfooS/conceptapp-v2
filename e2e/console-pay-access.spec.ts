@@ -343,9 +343,9 @@ test("where the time clock and chat are off, the console offers no pay access", 
 // business's page leads there beside who sees pay, and the screen draws the
 // business's own managers and workers, scheduling open for changes since R3,
 // the time clock since R4, lists since R5, the team since R6 (edit, view or
-// none) and the management page since R7, every other area closed until its
-// phase opens it, with no role to add yet (R11), clean at each width.
-test("the team sees roles and permissions, scheduling, the clock, lists, the team and the management page open and the rest closed until they open", async ({
+// none), the management page since R7 and chat since R8, with no role to
+// add yet (R11), clean at each width.
+test("the team sees roles and permissions, every area open: scheduling, the clock, lists, the team, the management page and chat", async ({
   page,
 }) => {
   const r = he.app.manage.roles;

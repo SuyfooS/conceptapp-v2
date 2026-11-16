@@ -45,21 +45,46 @@ export const manifest = defineManifest({
     },
   },
   homeWidget: { minRole: "worker" },
+  // Chat's edit is moderating, and announcing and sending documents are
+  // switches under it, on by default (Orel, 15 November 2026): a role holds
+  // them by its role only while it moderates. View is the floor: everyone on
+  // the staff writes in their own chats and groups without any of them. The
+  // database asks each (private.holds_perm), and owners and the team switch
+  // them per role (the roles plan's R8).
   permissions: [
     // Post announcements in groups. public.send_chat_message asks
     // private.holds_perm, which holds the same default.
-    { key: "chat.announce", area: "chat", defaultRole: "manager" },
-    // Be in every department's group, read all of it, and remove others'
-    // messages in groups (private.chat_moderates).
-    { key: "chat.moderate", area: "chat", defaultRole: "manager" },
-    // Send official documents to people (C6; pay holders send them too).
-    { key: "chat.send_documents", area: "chat", defaultRole: "manager" },
+    {
+      key: "chat.announce",
+      area: "chat",
+      defaultRole: "manager",
+      requires: "chat.moderate",
+      settable: true,
+    },
+    // Be in every department's group, read all of it, remove others'
+    // messages in groups and pin announcements (private.chat_moderates).
+    {
+      key: "chat.moderate",
+      area: "chat",
+      defaultRole: "manager",
+      settable: true,
+    },
+    // Send official documents to people (C6; pay holders send them too,
+    // whatever this says).
+    {
+      key: "chat.send_documents",
+      area: "chat",
+      defaultRole: "manager",
+      requires: "chat.moderate",
+      settable: true,
+    },
   ],
   settings: z.object({
     /**
      * Who writes in the whole team's group: everyone, or management only
      * (announcers, the holders of chat.announce). Orel's default (§17,
-     * question 5): everyone. Owners and managers set it on /manage.
+     * question 5): everyone. Set on /manage by whoever edits the management
+     * page and moderates chat (private.settings_perm).
      */
     teamGroupWho: z.enum(["everyone", "announcers"]).default("everyone"),
     /**

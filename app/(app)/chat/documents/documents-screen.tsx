@@ -116,7 +116,12 @@ export function DocumentsScreen({
   );
 }
 
-/** "המסמכים שלי", and for a sender "שלחת" beside it from tablet up. */
+/**
+ * "המסמכים שלי", and "שלחת" beside it from tablet up: for a sender always,
+ * with the way to send one, and for someone who no longer sends (their
+ * switch turned off, the roles plan's R8) while they sent some, with a line
+ * saying who sends now.
+ */
 function StaffDocuments({
   data,
   paths,
@@ -127,7 +132,8 @@ function StaffDocuments({
   words: DocumentWords;
 }) {
   const t = words.t;
-  const sent = data.sends ? (data.sent ?? []) : null;
+  const sent =
+    data.sends || (data.sent?.length ?? 0) > 0 ? (data.sent ?? []) : null;
   const mine =
     data.documents.length > 0 ? (
       <ListGroup>
@@ -163,14 +169,19 @@ function StaffDocuments({
         <PageSection
           title={t("sent.title")}
           action={
-            <Link
-              href={paths.send("people")}
-              className="-my-2.5 inline-flex min-h-11 items-center font-medium text-ink-2 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
-            >
-              {t("sendToPeople")}
-            </Link>
+            data.sends ? (
+              <Link
+                href={paths.send("people")}
+                className="-my-2.5 inline-flex min-h-11 items-center font-medium text-ink-2 underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
+              >
+                {t("sendToPeople")}
+              </Link>
+            ) : undefined
           }
         >
+          {data.sends ? null : (
+            <p className="px-1 text-ink-2">{t("sent.noSend")}</p>
+          )}
           {sent.length > 0 ? (
             <ListGroup>
               {sent.map((document) => (

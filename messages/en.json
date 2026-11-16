@@ -2680,7 +2680,7 @@
           "scheduling": "Without edit they see the published schedule, send their availability and ask for swaps. With edit they also build the schedule, see everyone's availability and approve swaps.",
           "time_clock": "Without edit they clock in and out and see their own hours. With edit they also see and correct everyone's hours, confirm them and show the punch code.",
           "lists": "Without edit they fill the lists sent to them or their department. With edit they also build templates, set when they open and see every list.",
-          "chat": "Without edit they write in their own chats and groups. With edit they are also in every department's group and read everything written in the groups, from before they joined too, remove others' messages in groups and pin messages from management."
+          "chat": "Without edit they write in their own chats and groups. With edit they are also in every department's group and read everything written in the groups, from before they joined too, remove others' messages in groups, pin messages from management and see who confirmed reading them."
         },
         "levelHint": {
           "team": {
@@ -2718,7 +2718,7 @@
             "send_documents": {
               "label": "Sending documents",
               "phrase": "sending documents",
-              "hint": "They send the team procedures, forms and other documents."
+              "hint": "They send the team procedures, forms and other documents. Whoever sees pay sends documents without this too."
             }
           }
         },
@@ -3944,11 +3944,11 @@
         "failed": "Not sent. Try again",
         "newBelow": "New messages below",
         "privateNote": "Only the two of you see this chat",
-        "teamNote": "Seen by: the whole team from the day they joined, and management, all of it",
-        "departmentNote": "Seen by: the department and management",
+        "teamNote": "Seen by: the whole team from the day they joined, and the owners and whoever runs the chat, all of it",
+        "departmentNote": "Seen by: the department, the owners and whoever runs the chat",
         "left": "<b>{name}</b> is no longer on the team, so you can't write here",
         "closed": "The department was removed. You can read, not write",
-        "announcersOnly": "Only management writes in this group",
+        "announcersOnly": "Only the owners and those allowed to post messages from management write in this group",
         "tooFast": "Too many messages in a minute. Try again in a moment",
         "tooLong": "The message is too long. Up to <ltr>{max}</ltr> characters",
         "emptyGroup": "Write the group's first message here",
@@ -3965,7 +3965,7 @@
       "message": {
         "own": "Your message",
         "removedOwn": "You deleted this message",
-        "removedByManager": "Management removed this message",
+        "removedByManager": "This message was removed from the group",
         "removed": "This message was deleted",
         "fileGone": "The file is no longer kept"
       },
@@ -3973,7 +3973,7 @@
         "label": "Chat details",
         "members": "Who's in the group",
         "departmentMembers": "Who's in the department",
-        "alsoManagement": "Management sees this group too",
+        "alsoManagement": "The owners and whoever runs the chat see this group too",
         "membersCount": "{count, plural, one {# person} other {# people}}",
         "profile": "{name}'s profile",
         "files": "Latest photos and files",
@@ -3984,7 +3984,7 @@
         "title": "Who sees what",
         "private": "Only the two of you see a private chat. Owners and managers don't.",
         "demoPrivate": "In a demo business everyone who comes in sees every chat, private ones too.",
-        "groups": "In groups, everyone in the group and management see the messages. Management can remove a message, and sees who confirmed reading its announcements.",
+        "groups": "In groups, everyone in the group sees the messages, and so do the owners and whoever runs the chat (the managers, unless the owners changed that). Whoever runs the chat can remove a message, and sees who confirmed reading each message from management.",
         "kept": "Photos and files are kept for up to <ltr>{days}</ltr> days, or less when the business's space fills. Messages stay.",
         "demoKept": "In a demo business what is written is deleted after an hour, and whenever the demo is reset.",
         "stored": "{business}'s chats are kept with ConceptApp, on servers in Germany. They aren't end-to-end encrypted.",
@@ -3994,7 +3994,7 @@
         "label": "From management",
         "confirm": "I've read it",
         "confirmed": "You confirmed you read it",
-        "whoSees": "Management sees who confirmed",
+        "whoSees": "Its author, the owners and whoever runs the chat see who confirmed",
         "readBy": "<ltr>{count}</ltr> of <ltr>{total}</ltr> confirmed",
         "readersOpen": "Who confirmed",
         "byline": "{name} · <ltr>{time}</ltr>",
@@ -4013,7 +4013,7 @@
         "inGroup": "In {group}",
         "readers": {
           "title": "Who confirmed",
-          "subtitle": "Only its author and management see this",
+          "subtitle": "Only its author, the owners and whoever runs the chat see this",
           "confirmed": "Confirmed",
           "waiting": "Not yet",
           "none": "Nobody yet",
@@ -4030,6 +4030,7 @@
           "subtitle": "Messages from management in your groups, pinned ones first",
           "back": "All chats",
           "publish": "Post a message from management",
+          "noAnnounce": "Messages from management are posted by the owners and those allowed to post them.",
           "chooseGroup": "Which group?",
           "chooseHint": "It's pinned to the top of the group, and everyone in it is asked to confirm",
           "close": "Close",
@@ -4242,7 +4243,8 @@
         },
         "sent": {
           "title": "You sent",
-          "empty": "You haven't sent documents to people yet"
+          "empty": "You haven't sent documents to people yet",
+          "noSend": "Documents to people are now sent by the owners, whoever sees pay and those allowed to send documents. What you sent stays here."
         },
         "office": {
           "segments": "Which documents",

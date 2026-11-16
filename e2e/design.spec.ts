@@ -183,6 +183,7 @@ const PAGES = [
   "/design/chat/kitchen/info",
   "/design/chat/noa/info",
   "/design/chat/announcements",
+  "/design/chat/announcements?announces=no",
   "/design/chat/floor",
   "/design/chat/kitchen",
   "/design/chat/kitchen?state=photo",
@@ -200,6 +201,7 @@ const PAGES = [
   "/design/chat/documents?as=staff",
   "/design/chat/documents?as=staff&state=empty",
   "/design/chat/documents?as=manager",
+  "/design/chat/documents?as=manager&state=noSend",
   "/design/chat/documents/send",
   "/design/chat/documents/send?to=people",
   "/design/chat/documents/send?state=demo",
@@ -562,6 +564,16 @@ test("the chat demo opens a group's details from its title, and posts as managem
       page.getByRole("button", { name: c.announcement.send, exact: true }),
     ),
   ).toBeVisible();
+
+  // Moderating without announcing (the roles plan's R8): no main action,
+  // and the line says who posts them.
+  await page.goto("/design/chat/announcements?announces=no");
+  await expect(
+    visible(page.getByText(c.announcement.page.noAnnounce)),
+  ).toBeVisible();
+  await expect(
+    visible(page.getByRole("button", { name: c.announcement.page.publish })),
+  ).toHaveCount(0);
 });
 
 // A shift that has begun is no longer given away, as the database refuses
@@ -2243,6 +2255,23 @@ test("the chat demo sends a PDF from the attach sheet, stops one on its way, and
   await expect(log.getByRole("link", { name: /הזמנה לספק/ })).toBeVisible({
     timeout: 10_000,
   });
+});
+
+// A sender whose switch for sending documents is off (the roles plan's R8):
+// what she sent stays under "שלחת", and a line says who sends now instead of
+// the way to send one.
+test("the documents demo keeps what a manager sent once she no longer sends", async ({
+  page,
+}) => {
+  const d = he.app.chat.documents;
+  await page.goto("/design/chat/documents?as=manager&state=noSend");
+  await expect(
+    page.getByRole("heading", { name: d.sent.title, exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(d.sent.noSend)).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: d.sendToPeople, exact: true }),
+  ).toHaveCount(0);
 });
 
 // The documents' mock screens (chat C7): the office's three shapes, one thing

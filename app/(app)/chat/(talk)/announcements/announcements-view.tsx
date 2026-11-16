@@ -47,7 +47,8 @@ export type PublishGroup = {
  * /chat/announcements on screen: the pinned ones, then the earlier ones, each
  * a card with where it was posted; "קראתי" on those waiting for the reader
  * (the first of them the one accent card), and for its author and management
- * who confirmed. Announcers have the main action, which asks for the group.
+ * who confirmed. Announcers have the main action, which asks for the group;
+ * anyone else has none, and a line says who posts them.
  */
 export function AnnouncementsView({
   readerId,
@@ -241,6 +242,13 @@ export function AnnouncementsView({
           ) : null
         }
       />
+      {/* Without announcing (chat.announce, a switch since the roles plan's
+          R8), whoever they are: no main action, and who posts instead. */}
+      {!publishIn ? (
+        <p className="text-ink-2 md:max-w-2xl">
+          {t("announcement.page.noAnnounce")}
+        </p>
+      ) : null}
       {list.length === 0 ? (
         <EmptyState
           headingLevel="h2"

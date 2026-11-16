@@ -569,7 +569,14 @@ export function ConversationDemo({
         pinned: theAnnouncement && pinShown,
         removed,
       },
-      { readerId: reader, chat: kind, moderates, closed: blocked !== null },
+      // The demo's management both moderates and announces.
+      {
+        readerId: reader,
+        chat: kind,
+        moderates,
+        announces: moderates,
+        closed: blocked !== null,
+      },
     );
   }
 

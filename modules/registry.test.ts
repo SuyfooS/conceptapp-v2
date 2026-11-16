@@ -88,8 +88,11 @@ describe("module registry", () => {
     const byKey = new Map<string, (typeof permissions)[number]>(
       permissions.map((p) => [p.key, p]),
     );
+    // Chat's own chains are its test's below (each area's phase checks its own).
     const chains = Object.fromEntries(
-      permissions.flatMap((p) => (p.requires ? [[p.key, p.requires]] : [])),
+      permissions.flatMap((p) =>
+        p.requires && p.area !== "chat" ? [[p.key, p.requires]] : [],
+      ),
     );
     expect(chains).toEqual({
       "schedule.publish": "schedule.edit",
@@ -117,10 +120,10 @@ describe("module registry", () => {
     // Each area's phase turns its keys on once every check in the area reads
     // them (the roles plan): scheduling's in R3, the clock's in R4, lists' in
     // R5, the team's in R6, the management page's in R7. clock.payroll keeps
-    // its own switch.
+    // its own switch. Chat's are its own test's below (R8).
     expect(
       permissions
-        .filter((p) => p.settable)
+        .filter((p) => p.settable && p.area !== "chat")
         .map((p) => p.key)
         .sort(),
     ).toEqual([
@@ -266,6 +269,26 @@ describe("module registry", () => {
       "chat.announce": "manager",
       "chat.moderate": "manager",
       "chat.send_documents": "manager",
+    });
+  });
+
+  it("lets owners switch chat's permissions per role, announcing and sending documents under moderating", () => {
+    // The roles plan's R8 (Orel, 15 November 2026): moderating is chat's
+    // edit, and announcing and sending documents are switches under it, so
+    // a role holds them by its role only while it moderates
+    // (public.permission_keys.requires, private.holds_perm).
+    const chat = permissions.filter((p) => p.area === "chat");
+    expect(
+      Object.fromEntries(
+        chat.map((p) => [
+          p.key,
+          { settable: p.settable, requires: p.requires },
+        ]),
+      ),
+    ).toEqual({
+      "chat.announce": { settable: true, requires: "chat.moderate" },
+      "chat.moderate": { settable: true, requires: null },
+      "chat.send_documents": { settable: true, requires: "chat.moderate" },
     });
   });
 
