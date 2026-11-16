@@ -129,7 +129,10 @@ export type TodayData = {
     | { kind: "confirm"; count: number }
     | null;
   schedule: TodaySchedule | null;
-  /** Owners and managers only. */
+  /**
+   * The team, for whoever sees it (`canSeeTeam`: team.view, the roles plan's
+   * R6; owners and managers by default); null for anyone else.
+   */
   team: Team | null;
   /**
    * Whether the person opens the management page: they hold manage.view

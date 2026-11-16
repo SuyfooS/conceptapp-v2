@@ -85,8 +85,9 @@ export async function getEmploymentPeriods(
 }
 
 /**
- * Who on the business's staff is a minor today, and until when, for its
- * owners and managers (and a view as one): empty for anyone else.
+ * Who on the business's staff is a minor today, and until when, for whoever
+ * sees the team or builds the schedule (team.view, schedule.edit; a view as
+ * a role that holds one by role too): empty for anyone else.
  */
 export async function getTeamYouth(
   businessId: string,

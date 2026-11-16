@@ -1,15 +1,19 @@
 import { describe, expect, it } from "vitest";
+import type { Role, Viewer } from "./modules";
 import {
   buildTeam,
   canCancelInvite,
+  canEditTeam,
   canRemoveMember,
   canResendInvite,
   canSeeTeam,
   countShiftsAhead,
+  givesRole,
   invitableRoles,
   leavesNoOwner,
   leavesStaff,
   mayChangeRole,
+  ownerOnlyRoles,
   parseTeamInvite,
   roleChangeClears,
   roleChoices,
@@ -21,6 +25,21 @@ import {
 } from "./team";
 
 const now = new Date("2026-10-23T10:00:00Z");
+
+/**
+ * Someone in `role` as the database answers by default (the roles plan's R6):
+ * managers see and edit the team, workers neither, an accountant only pay,
+ * and an owner holds everything without a key.
+ */
+const at = (role: Role): Viewer => ({
+  role,
+  perms:
+    role === "manager"
+      ? ["team.view", "team.edit"]
+      : role === "accountant"
+        ? ["clock.payroll"]
+        : [],
+});
 
 const member = (name: string | null, role: TeamMember["role"]): TeamMember => ({
   userId: `u-${name}`,
@@ -45,10 +64,28 @@ const invite = (
 
 describe("canSeeTeam", () => {
   it("lets owners and managers in and keeps workers out", () => {
-    expect(canSeeTeam("owner")).toBe(true);
-    expect(canSeeTeam("manager")).toBe(true);
-    expect(canSeeTeam("worker")).toBe(false);
-    expect(canSeeTeam("accountant")).toBe(false);
+    expect(canSeeTeam(at("owner"))).toBe(true);
+    expect(canSeeTeam(at("manager"))).toBe(true);
+    expect(canSeeTeam(at("worker"))).toBe(false);
+    expect(canSeeTeam(at("accountant"))).toBe(false);
+  });
+
+  it("follow team view and team edit as the database answers them (R6)", () => {
+    // A worker raised to view sees the team and changes nothing; at edit,
+    // changes it; a manager lowered to view only sees it, and to none
+    // doesn't.
+    const raised: Viewer = { role: "worker", perms: ["team.view"] };
+    expect(canSeeTeam(raised)).toBe(true);
+    expect(canEditTeam(raised)).toBe(false);
+    expect(
+      canEditTeam({ role: "worker", perms: ["team.view", "team.edit"] }),
+    ).toBe(true);
+    expect(canEditTeam({ role: "manager", perms: ["team.view"] })).toBe(false);
+    expect(canSeeTeam({ role: "manager", perms: [] })).toBe(false);
+    // Edit without view (a personal grant alone) opens nothing.
+    expect(canEditTeam({ role: "worker", perms: ["team.edit"] })).toBe(false);
+    expect(canEditTeam(at("owner"))).toBe(true);
+    expect(canEditTeam(at("manager"))).toBe(true);
   });
 });
 
@@ -113,32 +150,81 @@ describe("buildTeam", () => {
 
 describe("invitableRoles", () => {
   it("lets owners give any role and managers their own and below", () => {
-    expect(invitableRoles("owner")).toEqual([
+    expect(invitableRoles(at("owner"))).toEqual([
       "owner",
       "manager",
       "worker",
       "accountant",
     ]);
-    expect(invitableRoles("manager")).toEqual(["manager", "worker"]);
-    expect(invitableRoles("worker")).toEqual([]);
+    expect(invitableRoles(at("manager"))).toEqual(["manager", "worker"]);
+    expect(invitableRoles(at("worker"))).toEqual([]);
   });
 
   it("keeps the accountant to owners, though an accountant ranks as a worker", () => {
-    expect(invitableRoles("manager")).not.toContain("accountant");
-    expect(invitableRoles("accountant")).toEqual([]);
+    expect(invitableRoles(at("manager"))).not.toContain("accountant");
+    expect(invitableRoles(at("accountant"))).toEqual([]);
+  });
+
+  it("follow team edit, within the rank rule (R6)", () => {
+    // A worker raised to edit the team invites workers only; at view, and a
+    // manager lowered to view, nobody.
+    expect(
+      invitableRoles({ role: "worker", perms: ["team.view", "team.edit"] }),
+    ).toEqual(["worker"]);
+    expect(invitableRoles({ role: "worker", perms: ["team.view"] })).toEqual(
+      [],
+    );
+    expect(invitableRoles({ role: "manager", perms: ["team.view"] })).toEqual(
+      [],
+    );
+  });
+});
+
+describe("givesRole", () => {
+  it("is the rank rule: an owner every role, anyone else the staff's at or below their own", () => {
+    const roles = ["owner", "manager", "worker", "accountant"] as const;
+    expect(
+      Object.fromEntries(
+        roles.map((giver) => [
+          giver,
+          roles.filter((role) => givesRole(giver, role)),
+        ]),
+      ),
+    ).toEqual({
+      owner: ["owner", "manager", "worker", "accountant"],
+      manager: ["manager", "worker"],
+      worker: ["worker"],
+      accountant: [],
+    });
   });
 });
 
 describe("canResendInvite", () => {
   it("follows the same rule as inviting", () => {
-    expect(canResendInvite("owner", "owner")).toBe(true);
-    expect(canResendInvite("manager", "worker")).toBe(true);
-    expect(canResendInvite("manager", "manager")).toBe(true);
-    expect(canResendInvite("manager", "owner")).toBe(false);
-    expect(canResendInvite("worker", "worker")).toBe(false);
-    expect(canResendInvite("owner", "accountant")).toBe(true);
-    expect(canResendInvite("manager", "accountant")).toBe(false);
-    expect(canResendInvite("accountant", "worker")).toBe(false);
+    expect(canResendInvite(at("owner"), "owner")).toBe(true);
+    expect(canResendInvite(at("manager"), "worker")).toBe(true);
+    expect(canResendInvite(at("manager"), "manager")).toBe(true);
+    expect(canResendInvite(at("manager"), "owner")).toBe(false);
+    expect(canResendInvite(at("worker"), "worker")).toBe(false);
+    expect(canResendInvite(at("owner"), "accountant")).toBe(true);
+    expect(canResendInvite(at("manager"), "accountant")).toBe(false);
+    expect(canResendInvite(at("accountant"), "worker")).toBe(false);
+  });
+});
+
+describe("ownerOnlyRoles", () => {
+  it("leaves the roles that hold pay to an owner (R6)", () => {
+    // Where an owner gave managers pay: an owner gives it, anyone else not.
+    expect(ownerOnlyRoles(at("owner"), ["manager"])).toEqual([]);
+    expect(ownerOnlyRoles(at("manager"), ["manager"])).toEqual(["manager"]);
+    expect(
+      ownerOnlyRoles({ role: "worker", perms: ["team.view", "team.edit"] }, [
+        "manager",
+        "worker",
+      ]),
+    ).toEqual(["manager", "worker"]);
+    // Where no role holds pay, nothing is.
+    expect(ownerOnlyRoles(at("manager"), [])).toEqual([]);
   });
 });
 
@@ -147,7 +233,7 @@ describe("parseTeamInvite", () => {
     expect(
       parseTeamInvite(
         { name: "  גל   לוי ", phone: "050-123-4567", role: "worker" },
-        "manager",
+        at("manager"),
       ),
     ).toEqual({
       ok: true,
@@ -156,7 +242,7 @@ describe("parseTeamInvite", () => {
   });
 
   it("names each missing field", () => {
-    expect(parseTeamInvite({}, "owner")).toEqual({
+    expect(parseTeamInvite({}, at("owner"))).toEqual({
       ok: false,
       errors: { name: "required", phone: "required", role: "required" },
     });
@@ -165,7 +251,7 @@ describe("parseTeamInvite", () => {
   it("rejects a number that is not an Israeli mobile", () => {
     const result = parseTeamInvite(
       { name: "גל", phone: "03-123-4567", role: "worker" },
-      "owner",
+      at("owner"),
     );
     expect(result).toEqual({ ok: false, errors: { phone: "invalid" } });
   });
@@ -177,29 +263,31 @@ describe("parseTeamInvite", () => {
         phone: "0501234567",
         role: "worker",
       },
-      "owner",
+      at("owner"),
     );
     expect(result).toEqual({ ok: false, errors: { name: "tooLong" } });
   });
 
   it("refuses a role above the inviter's own or one that does not exist", () => {
     const base = { name: "גל", phone: "0501234567" };
-    expect(parseTeamInvite({ ...base, role: "owner" }, "manager")).toEqual({
+    expect(parseTeamInvite({ ...base, role: "owner" }, at("manager"))).toEqual({
       ok: false,
       errors: { role: "notAllowed" },
     });
-    expect(parseTeamInvite({ ...base, role: "chef" }, "owner")).toEqual({
+    expect(parseTeamInvite({ ...base, role: "chef" }, at("owner"))).toEqual({
       ok: false,
       errors: { role: "notAllowed" },
     });
-    expect(parseTeamInvite({ ...base, role: "worker" }, "worker")).toEqual({
+    expect(parseTeamInvite({ ...base, role: "worker" }, at("worker"))).toEqual({
       ok: false,
       errors: { role: "notAllowed" },
     });
-    expect(parseTeamInvite({ ...base, role: "accountant" }, "manager")).toEqual(
-      { ok: false, errors: { role: "notAllowed" } },
-    );
-    expect(parseTeamInvite({ ...base, role: "accountant" }, "owner")).toEqual({
+    expect(
+      parseTeamInvite({ ...base, role: "accountant" }, at("manager")),
+    ).toEqual({ ok: false, errors: { role: "notAllowed" } });
+    expect(
+      parseTeamInvite({ ...base, role: "accountant" }, at("owner")),
+    ).toEqual({
       ok: true,
       value: { name: "גל", phone: "+972501234567", role: "accountant" },
     });
@@ -207,9 +295,10 @@ describe("parseTeamInvite", () => {
 });
 
 describe("team changes (Orel, 14 November 2026)", () => {
+  // Someone on the team, with what they hold by default when they act.
   const place = (userId: string, role: TeamMember["role"]) => ({
     userId,
-    role,
+    ...at(role),
   });
   const allRoles = ["owner", "manager", "worker", "accountant"] as const;
 
@@ -242,7 +331,7 @@ describe("team changes (Orel, 14 November 2026)", () => {
         viewer,
         allRoles.flatMap((from) =>
           allRoles
-            .filter((to) => mayChangeRole(viewer, from, to))
+            .filter((to) => mayChangeRole(at(viewer), from, to))
             .map((to) => `${from} -> ${to}`),
         ),
       ]),
@@ -275,12 +364,20 @@ describe("team changes (Orel, 14 November 2026)", () => {
       worker: [],
       accountant: [],
     });
-    expect(mayChangeRole("manager", "worker", "manager")).toBe(true);
-    expect(mayChangeRole("manager", "worker", "accountant")).toBe(false);
-    expect(mayChangeRole("manager", "accountant", "worker")).toBe(false);
-    expect(mayChangeRole("manager", "owner", "worker")).toBe(false);
-    expect(mayChangeRole("owner", "accountant", "worker")).toBe(true);
-    expect(mayChangeRole("accountant", "worker", "worker")).toBe(false);
+    expect(mayChangeRole(at("manager"), "worker", "manager")).toBe(true);
+    expect(mayChangeRole(at("manager"), "worker", "accountant")).toBe(false);
+    expect(mayChangeRole(at("manager"), "accountant", "worker")).toBe(false);
+    expect(mayChangeRole(at("manager"), "owner", "worker")).toBe(false);
+    expect(mayChangeRole(at("owner"), "accountant", "worker")).toBe(true);
+    expect(mayChangeRole(at("accountant"), "worker", "worker")).toBe(false);
+    // A worker raised to edit the team (R6): between workers only.
+    const raised: Viewer = {
+      role: "worker",
+      perms: ["team.view", "team.edit"],
+    };
+    expect(mayChangeRole(raised, "worker", "worker")).toBe(true);
+    expect(mayChangeRole(raised, "worker", "manager")).toBe(false);
+    expect(mayChangeRole(raised, "manager", "worker")).toBe(false);
   });
 
   it("offer the other roles the viewer gives, and none they may not touch", () => {
@@ -307,7 +404,7 @@ describe("team changes (Orel, 14 November 2026)", () => {
     const allowed = Object.fromEntries(
       allRoles.map((viewer) => [
         viewer,
-        allRoles.filter((role) => canCancelInvite(viewer, role)),
+        allRoles.filter((role) => canCancelInvite(at(viewer), role)),
       ]),
     );
     expect(allowed).toEqual({
@@ -357,6 +454,7 @@ describe("team changes (Orel, 14 November 2026)", () => {
   it("read the database's refusals as the screens explain them", () => {
     expect(teamChangeFailureOf("42501")).toBe("notAllowed");
     expect(teamChangeFailureOf("42501", "held")).toBe("beyondHeld");
+    expect(teamChangeFailureOf("42501", "pay")).toBe("givesPay");
     expect(teamChangeFailureOf("P0002")).toBe("gone");
     expect(teamChangeFailureOf("22023")).toBe("yourself");
     expect(teamChangeFailureOf("23P01")).toBe("lastOwner");

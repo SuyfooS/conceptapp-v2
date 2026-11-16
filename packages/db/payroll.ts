@@ -165,8 +165,11 @@ export async function getPayRoles(businessId: string): Promise<PayRole[]> {
 }
 
 /**
- * The same, read with the secret key for the console, whose people aren't
- * members of the business. Callers check that the person is on the team.
+ * The same, read with the secret key: for the console, whose people aren't
+ * members of the business, and for the team screens of someone who edits the
+ * team without being an owner, to offer none of the roles only an owner
+ * gives (`currentOwnerOnlyRoles`, the roles plan's R6). Callers check first
+ * that the person is on the ConceptApp team, or edits the business's team.
  */
 export async function getPayRolesForTeam(
   businessId: string,

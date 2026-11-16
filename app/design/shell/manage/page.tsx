@@ -14,7 +14,8 @@ type Props = { searchParams: Promise<{ state?: string }> };
 // roles screen's twin (roles plan R0), which the app gets with R9.
 // `?state=view` is someone at view here (R7): a worker raised to see the
 // management page without changing it, with the line that says so, and no
-// rows to the team, the roles or pay, which aren't theirs.
+// rows to the team, the roles or pay, which aren't theirs. `?state=noTeam`
+// is a manager lowered to team none (R6), with no row to the team.
 export default function ShellManage({ searchParams }: Props) {
   return (
     <Suspense>
@@ -31,7 +32,7 @@ async function Demo({ searchParams }: Props) {
       modules={modulesToManage(demoModuleRows)}
       base="/design/shell"
       home="/design/shell"
-      team={readOnly ? null : "/design/shell/team"}
+      team={readOnly || state === "noTeam" ? null : "/design/shell/team"}
       shabbatCity={shabbatCityState(demoModuleRows, demoBusinessDetails)}
       departments={demoDepartments.map((d) => d.name)}
       payAccess={!readOnly}

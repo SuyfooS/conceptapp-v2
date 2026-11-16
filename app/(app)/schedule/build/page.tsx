@@ -1,5 +1,5 @@
+import { manageReach } from "@domain/manage-access";
 import { builderHref, builderWeekOf, gapsAhead } from "@domain/running-week";
-import { canSeeTeam } from "@domain/team";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
@@ -67,11 +67,14 @@ export default async function ScheduleBuildPage(props: Props) {
     currentMember(),
   ]);
   if (!data) notFound();
-  // The regular shifts are set on the management page, which only those who
-  // see the team open (`manageAccess`): a worker who builds is told only what
-  // they can do here.
-  const role = member?.membership?.role;
-  const manageHref = role && canSeeTeam(role) ? "/manage/scheduling" : null;
+  // The regular shifts are set on the management page, which opens to those
+  // who hold manage.view (`manageAccess`, R7): anyone else who builds is told
+  // only what they can do here.
+  const membership = member?.membership;
+  const manageHref =
+    membership && manageReach(membership) !== null
+      ? "/manage/scheduling"
+      : null;
   const now = new Date(weeks.now);
   // Shifts still to start lacking someone, in each week.
   const gaps = (build: typeof data | null) =>

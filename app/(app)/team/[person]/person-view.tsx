@@ -27,11 +27,11 @@ import {
  */
 export type PersonChanges = Pick<
   MemberChangesData,
-  "roles" | "ahead" | "clockedIn" | "clockHref" | "scheduleHref"
+  "roles" | "ownerOnly" | "ahead" | "clockedIn" | "clockHref" | "scheduleHref"
 > & { actions: MemberChangeActions };
 
 /**
- * A colleague's profile, `/team/[person]`, as an owner or manager reads it:
+ * A colleague's profile, `/team/[person]`, as whoever sees the team reads it:
  * the same top as their own /me, in their cover and this business's colour,
  * their line about themselves, a way to call them, and a way to delete a line
  * that is hurtful or out of place. Whoever may invite to their role
@@ -180,6 +180,7 @@ export async function PersonView({
                 role: data.role,
                 teamHref,
                 roles: changes.roles,
+                ownerOnly: changes.ownerOnly,
                 ahead: changes.ahead,
                 clockedIn: changes.clockedIn,
                 clockHref: changes.clockHref,

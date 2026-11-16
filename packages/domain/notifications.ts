@@ -236,6 +236,8 @@ export const NOTIFICATION_KINDS = {
     group: "team",
     module: null,
     minRole: "manager",
+    // Those who see the team hear who joined it (the roles plan's R6).
+    perm: "team.view",
     needsAction: false,
     href: "/team",
   },

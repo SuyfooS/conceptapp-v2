@@ -1,4 +1,4 @@
-import { ROLES, type Role } from "@domain/modules";
+import { ROLES, type Role, type Viewer } from "@domain/modules";
 import { canRemoveMember, mayChangeRole } from "@domain/team";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
@@ -8,9 +8,11 @@ import { afterAll, describe, expect, it } from "vitest";
  * database (`public.remove_member`, `public.set_member_role`,
  * `private.gives_role`) and on the screens (`canRemoveMember`,
  * `mayChangeRole` in @domain/team): every role against every role, and every
- * change between them, asked of both. pgTAP can't read TypeScript, so this
- * asks SQL, in one transaction it rolls back, each try in a savepoint of its
- * own. Needs the local database (`pnpm db:start`); run with `pnpm test:db`.
+ * change between them, asked of both, the screens with what each actor holds
+ * as the database answers it (team.edit, the roles plan's R6). pgTAP can't
+ * read TypeScript, so this asks SQL, in one transaction it rolls back, each
+ * try in a savepoint of its own. Needs the local database (`pnpm db:start`);
+ * run with `pnpm test:db`.
  */
 
 const sql = postgres(
@@ -57,6 +59,15 @@ async function team(tx: Tx) {
   }
 }
 
+/** The actor in `role`, with what they hold in the business, as the database answers it. */
+async function actorAs(tx: Tx, role: Role): Promise<Viewer> {
+  const [row] = await tx<{ perms: string[] }[]>`
+    select coalesce(array_agg(k.key order by k.key), '{}') as perms
+    from public.permission_keys k
+    where private.holds_perm(${BUSINESS}, ${ACTORS[role]}, k.key)`;
+  return { role, perms: row?.perms ?? [] };
+}
+
 /** 'ok', or the refusal's code; whatever it did is undone. */
 async function attempt(
   tx: Tx,
@@ -92,6 +103,7 @@ describe("team changes, in the database as on the screens", () => {
   it("remove the same people", async () => {
     await withTeam(async (tx) => {
       for (const actor of ROLES) {
+        const held = await actorAs(tx, actor);
         for (const target of ROLES) {
           const outcome = await attempt(
             tx,
@@ -101,7 +113,7 @@ describe("team changes, in the database as on the screens", () => {
               )`,
           );
           const allowed = canRemoveMember(
-            { userId: ACTORS[actor], role: actor },
+            { userId: ACTORS[actor], ...held },
             { userId: TARGETS[target], role: target },
           );
           expect(outcome, `${actor} removes ${target}`).toBe(
@@ -115,6 +127,7 @@ describe("team changes, in the database as on the screens", () => {
   it("change the same roles", async () => {
     await withTeam(async (tx) => {
       for (const actor of ROLES) {
+        const held = await actorAs(tx, actor);
         for (const from of ROLES) {
           for (const to of ROLES) {
             const outcome = await attempt(
@@ -126,7 +139,7 @@ describe("team changes, in the database as on the screens", () => {
                 )`,
             );
             expect(outcome, `${actor}: ${from} -> ${to}`).toBe(
-              mayChangeRole(actor, from, to) ? "ok" : "42501",
+              mayChangeRole(held, from, to) ? "ok" : "42501",
             );
           }
         }

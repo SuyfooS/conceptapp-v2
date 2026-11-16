@@ -44,8 +44,9 @@ saves its name, colour, address and Shabbat city for whoever holds
 team, and logs what changed. So does a profile (`20261109000400_profile_about.sql`):
 `public.set_own_profile(actor, patch)` changes the signed-in person's own name,
 language, line about themselves, cover and form of address, and
-`public.clear_profile_bio(actor, business, person, seen)` lets an owner or
-manager delete a hurtful line, the one they read (`seen`; a line rewritten
+`public.clear_profile_bio(actor, business, person, seen)` lets whoever edits
+the team (`team.edit`, since the roles plan's R6) delete a hurtful line of
+their own role or one below it, the one they read (`seen`; a line rewritten
 since stays, with 40001), logged as `profile.bio_cleared` without the text.
 From the browser, reads follow the policies and nothing writes a profile.
 
@@ -53,7 +54,8 @@ Changing the team (`20261114000100_team_changes.sql`; Orel, 14 November 2026)
 goes by the rule of inviting: whoever may invite to a role may take someone off
 the team from it and change someone from it and to it, so an owner acts on
 everyone and a manager on managers and workers (`private.gives_role`, the twin
-of `invitableRoles`; never the enum's order), never on oneself (22023), never
+of `invitableRoles`; never the enum's order; since R6 whoever edits the team,
+by rank, below), never on oneself (22023), never
 leaving the business without an owner (23P01, under a lock on the business's
 row), never in a demo closed to invites (55000, hint `demo`) and never for
 someone clocked in (55000, hint `clocked_in`). All three are the secret
@@ -846,6 +848,70 @@ doesn't run the lists, a manager giving a role, a time with nobody there
 sender, today's rules frozen against the new ones for every membership and
 list, and no line of the two kinds left by rank.
 
+The team by its permissions (`20261115001300_roles_team.sql`, the roles
+plan's R6; Orel's answers of 15 November 2026): `team.view` and `team.edit`
+(which needs `team.view`) are `settable`, edit, view or none per role, and
+nothing changes until an owner or the team switches them (managers hold both
+by default, workers neither, owners always both), but for pay (below).
+Every member still reads everyone's name and photo (the memberships and
+profiles policies, through `private.shares_business`, on purpose, critique
+15): team "none" hides the screen, the numbers, the minors and the invites,
+not the names. The invites (one policy now, "the team's viewers read its
+invites", for members and views alike; the view twin is dropped),
+`public.team_phones` and `public.team_youth` (which also answers whoever
+builds the schedule, critique 14) ask `business_id in (select
+private.businesses_holding('team.view'))`, once per query. Inviting and
+inviting again (`public.team_invite`, `public.team_invite_link`), cancelling
+(`public.team_invite_cancel`), removing (`public.remove_member`), changing a
+role (`public.set_member_role`) and clearing a line
+(`public.clear_profile_bio`) ask `private.holds_perm(…, 'team.edit')` of the
+actor where they asked for an owner or a manager. The one rule by role left
+is the rank rule, `private.gives_role(giver, role)`: an owner gives every
+role, anyone else a role of the staff other than owner at or below their own
+(owner 3 > manager 2 > worker 1), so a worker raised to edit the team acts on
+workers; an accountant and an owner stay an owner's to give, and clearing a
+line keeps its rank comparison (an accountant's, at a worker's rank, only from
+above: a manager, an owner). Pay stays the owner's to give (Orel,
+8 November 2026; critique 17): `private.role_holds_pay(business, role)` says
+whether a role holds a key only an owner gives (pay, `clock.payroll`) through
+a row of `public.role_permissions`, and someone other than an owner is refused
+such a role by an invite, a fresh link or a change of role (42501, hint
+'pay': `givesPay` on the Team screen, in an invite and a link too). This one
+changes today's behaviour: where an owner gave managers pay (the demo shop), a
+manager inviting or promoting someone to manager passed pay on, and no longer
+can. Nor does an invite sent before: `private.invite_closed` also closes an
+invite to a role that holds pay that neither an owner nor the ConceptApp team
+sent, so `public.claim_invite` answers P0002 and `public.invite_by_token`
+reads it as expired, until an owner's fresh link (`public.team_invite_link`)
+or the team's (`public.issue_invite_link`, which then makes it the team's)
+opens it again. `team.joined` goes to `private.members_holding(business, 'team.view')`
+with `holders_of` (read while its reader holds the key, its push skipped
+once they don't, settled by a role change; the lines already written were
+moved to the key), `audience_role` still 'manager'. The app reads the same:
+`canSeeTeam` and `canEditTeam` in `@domain/team` over `my_permissions`
+open the team screen, its person pages, its invite page and its actions,
+Today's team row, the management page's team row and chat's profile links;
+`invitableRoles`, `canRemoveMember`, `mayChangeRole`, `roleChoices` and
+`mayClearBio` add the rank rule (`givesRole`). Someone at team view reads
+the screen with a line saying so and changes nothing. Whether someone is on
+the clock stays the clock's (`time_entries`' policy): the person's page asks
+it only of someone who reads the team's hours; anyone else is told the change
+waits for clocking out, and is refused at it while the person is clocked in
+(`clockedIn`). The roles only an owner gives (`ownerOnlyRoles`: those that hold
+pay by a row, read with the secret key by `getPayRolesForTeam`) aren't offered
+to anyone else: not in the invite form, the role sheet or a new link, and a
+change away from one is held for its undo, as changing back would be refused.
+The notifier's clock lines are R4's (`20261115001100_roles_clock.sql`), the
+version this one replaces. `roles_team.test.sql` covers it with one matrix
+over today's defaults, workers raised to team view and edit, managers lowered
+to view and none, and workers who build at team none: reads (invites,
+numbers, minors, names, the joined line), writes within the rank rule, who
+hears of someone joining, views as each role; then today's answers against
+the old rules, the lowered manager's push skipped, a worker at edit kept off a
+manager's invite and an accountant's line, pay never passed on by anyone but
+an owner (an invite sent before included), the clock's lines still R4's, and
+how it is built.
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for
@@ -968,9 +1034,10 @@ refuses a wage before the first period's start once a holder set it (22023
 now keeps the minimum of the person's age band on the wage's first day
 (`private.minimum_wage_for(business, person, on_day)`: under 16, 16, 17 by
 `youth_until`, else the adult hour), so a minor's legal wage isn't logged as
-under the minimum. `public.team_youth(business)` gives the business's owners
-and managers (and a view as one) who on the staff is a minor today and until
-when, with the time clock on, and nobody else anything. The purge deletes
+under the minimum. `public.team_youth(business)` gives whoever sees the team
+or builds the schedule (`team.view`, `schedule.edit`, and a view as a role
+that holds one; since R6) who on the staff is a minor today and until when,
+with the time clock on, and nobody else anything. The purge deletes
 details and periods before the log. `private.seed_demo_pay` ends with
 `private.seed_demo_details`, from a definition's `details` (`{"since": "2026-03-01",
 "numbers": 101, "cases": [{"user_id", "case": "youth" | "no_number" |

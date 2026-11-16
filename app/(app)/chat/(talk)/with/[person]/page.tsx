@@ -1,5 +1,4 @@
 import { isUuid } from "@domain/activity";
-import { canSeeTeam } from "@domain/team";
 import { notFound, redirect } from "next/navigation";
 import { currentWording } from "../../../../current-wording";
 import { moduleMetadata } from "../../../../module-screen";
@@ -80,7 +79,7 @@ export default async function WithPersonPage({
       seenUpTo={null}
       block={null}
       members={[]}
-      profileHref={canSeeTeam(access.role) ? `/team/${other.id}` : null}
+      profileHref={access.seesTeam ? `/team/${other.id}` : null}
       businessName={access.businessName}
       fileDays={settings.fileDays}
       demo={access.demo}

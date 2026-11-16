@@ -74,9 +74,9 @@ export async function manageAccess() {
     grantsPay: canGrantPay(membership.role) && payAccessInUse(business.modules),
     /**
      * Whether the page leads to the team screen, which opens by its own rule
-     * (`currentTeam`; the team's permissions move with the roles plan's R6).
+     * (`canSeeTeam`: team.view, the roles plan's R6).
      */
-    seesTeam: canSeeTeam(membership.role),
+    seesTeam: canSeeTeam(membership),
     /**
      * Whether the person reads the clock's rows of the activity log (they
      * hold clock.edit, as the log's policy asks), and so its note about

@@ -1,3 +1,4 @@
+import type { Viewer } from "@domain/modules";
 import { buildTeam } from "@domain/team";
 import { Suspense } from "react";
 import { TeamView } from "../../../(app)/team/team-view";
@@ -12,7 +13,9 @@ type Props = { searchParams: Promise<{ state?: string }> };
 // new links use the demo's stand-in actions (./actions), and so does
 // deleting an invite, held for its undo. ?state=demo is a
 // demo business, closed to invites (#80): no invite, no new links, and the
-// line that says why.
+// line that says why. ?state=view is a worker raised to see the team without
+// editing it (the roles plan's R6): everything read, no invite, no new
+// links, no deleting, and the line under the title that says so.
 export default function ShellTeam({ searchParams }: Props) {
   return (
     <Suspense>
@@ -24,10 +27,14 @@ export default function ShellTeam({ searchParams }: Props) {
 async function Demo({ searchParams }: Props) {
   const { state } = await searchParams;
   const demo = state === "demo";
+  const viewer: Viewer =
+    state === "view"
+      ? { role: "worker", perms: ["team.view"] }
+      : { role: "owner", perms: [] };
   return (
     <TeamView
       team={buildTeam(teamMembers, demo ? [] : teamInvites, teamToday)}
-      viewerRole="owner"
+      viewer={viewer}
       inviteHref={demo ? undefined : "/design/shell/team/invite"}
       peopleHref="/design/shell/team"
       resend={demoResendAction}

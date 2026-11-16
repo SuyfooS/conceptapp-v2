@@ -68,9 +68,10 @@ const nameOf = (row: Pick<MemberRow, "profiles">) =>
 /**
  * The people of a business for its Team screen: active members with their
  * profile, and invites nobody has claimed yet (open or expired). Read as
- * the signed-in person under RLS, so only a manager or owner of the
- * business gets the invites and the numbers (`public.team_phones`; members
- * read each other's names only); callers check `canSeeTeam` first.
+ * the signed-in person under RLS, so only someone who sees the team
+ * (team.view, the roles plan's R6) gets the invites and the numbers
+ * (`public.team_phones`; members read each other's names only); callers
+ * check `canSeeTeam` first.
  */
 export async function getTeam(
   businessId: string,
@@ -105,7 +106,7 @@ export async function getTeam(
   };
 }
 
-/** The business's numbers by person, for an owner or manager (none for others). */
+/** The business's numbers by person, for whoever sees the team (none for others). */
 async function teamPhones(
   supabase: Client,
   businessId: string,
@@ -136,7 +137,7 @@ async function phonesFromProfiles(
   return data.map((row) => [row.user_id, row.profiles?.phone ?? null]);
 }
 
-/** One member as their profile shows them to an owner or manager. */
+/** One member as their profile shows them to whoever sees the team. */
 export type TeamPerson = TeamMember & {
   /** Their line about themselves, or null. */
   bio: string | null;
@@ -146,8 +147,8 @@ export type TeamPerson = TeamMember & {
 };
 
 /**
- * One active member of the business with their profile, as an owner or
- * manager reads them (RLS; callers check `canSeeTeam` first). Null when they
+ * One active member of the business with their profile, as whoever sees the
+ * team reads them (RLS; callers check `canSeeTeam` first). Null when they
  * are not an active member. Before the profile's H2 migration reaches a
  * project, they have no line and the default cover.
  */
@@ -271,7 +272,7 @@ const LeftCountsRow = z.object({
 });
 
 /**
- * `actorId`, an owner or manager of the business, takes `personId` off its
+ * `actorId`, who edits the business's team, takes `personId` off its
  * team (`public.remove_member`): their membership stays, inactive, and so
  * does their history; their shifts still to start, in published weeks and
  * drafts, come off them and show as missing; the swaps they asked for on
@@ -410,9 +411,10 @@ export async function ownDepartures(): Promise<Departure[]> {
 
 /**
  * How many of a member's shifts have not started yet, in published weeks and
- * in drafts (`countShiftsAhead`), as an owner or manager reads them (RLS):
- * what taking them off the staff would take off them, for the hint before
- * the action. `timeZone` is the business's.
+ * in drafts (`countShiftsAhead`), as the viewer reads them (RLS: drafts for
+ * whoever builds the schedule): what taking them off the staff would take
+ * off them, for the hint before the action; the database counts again.
+ * `timeZone` is the business's.
  */
 export async function shiftsAhead(
   businessId: string,
@@ -444,9 +446,11 @@ export async function shiftsAhead(
 
 /**
  * Whether a member has an entry open on the clock in the business now, as
- * an owner or manager reads the business's hours (RLS). Taking them off the
- * team or the staff is refused until they clock out (`clockedIn`): after it
- * they could not.
+ * whoever reads the business's hours reads it (RLS: the clock's editors and
+ * pay holders). Taking them off the team or the staff is refused until they
+ * clock out (`clockedIn`): after it they could not. The person's page asks it
+ * only of someone who reads the hours; anyone else learns it from the
+ * refusal.
  */
 export async function isClockedIn(
   businessId: string,
@@ -478,7 +482,7 @@ export type FormerMember = {
 
 /**
  * A member of the business who is no longer on its team (their membership
- * kept, inactive), as an owner or manager reads it (RLS: the business's
+ * kept, inactive), as a member reads it (RLS: the business's
  * memberships); null for someone active, or never in it. For the person's
  * page once they were taken off: it says so instead of "not found".
  */
