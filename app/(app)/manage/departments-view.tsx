@@ -1,3 +1,4 @@
+import type { ManageReadOnly } from "@domain/manage-access";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { type AppWording, translator } from "../wording";
@@ -18,7 +19,7 @@ export function DepartmentsView({
   people,
   save,
   saveMembers,
-  viewOnly,
+  readOnly,
   backHref,
   wording,
 }: {
@@ -26,7 +27,11 @@ export function DepartmentsView({
   people: DepartmentPeople;
   save: SaveDepartments;
   saveMembers: SaveDepartmentMembers;
-  viewOnly: boolean;
+  /**
+   * Why nothing here saves, said in one line: a view session, or the person
+   * at view on the management page. Null when it saves.
+   */
+  readOnly: ManageReadOnly;
   backHref: string;
   /** The business's words. */
   wording: AppWording;
@@ -39,11 +44,15 @@ export function DepartmentsView({
         title={t("departments.title")}
         subtitle={t("departments.subtitle")}
       />
-      {viewOnly ? <p className="text-ink-2">{t("viewOnly")}</p> : null}
+      {readOnly ? (
+        <p className="text-ink-2">
+          {readOnly === "viewing" ? t("viewOnly") : t("readOnly.manage")}
+        </p>
+      ) : null}
       <DepartmentsEditor
         departments={departments}
         people={people}
-        disabled={viewOnly}
+        disabled={readOnly !== null}
         save={save}
         saveMembers={saveMembers}
       />

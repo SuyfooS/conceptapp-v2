@@ -24,7 +24,8 @@ const ROUTINE = `(${ROUTINE_ACTIONS.map((action) => `"${action}"`).join(",")})`;
 
 /**
  * A page of a business's activity log, newest first, as the signed-in person
- * may read it: its owners and managers, and the team viewing it as one (RLS).
+ * may read it (RLS): whoever holds manage.view, each row only while they hold
+ * its own area too, and the team viewing it as a role that does.
  * Everything the rows point at is read the same way, so an id from another
  * business finds nothing, and someone who has left keeps no name.
  */

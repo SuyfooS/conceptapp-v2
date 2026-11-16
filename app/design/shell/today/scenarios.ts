@@ -195,6 +195,7 @@ function today(
     widgets: moduleWidgets(manifests, modules, { role, perms }),
     schedule,
     team: role === "worker" ? null : team(),
+    manage: role !== "worker",
     // The bell leads to /design/shell/notifications, a manager's inbox, and
     // counts what it shows. A worker's lines would be other ones, so the
     // demo's workers have no bell.

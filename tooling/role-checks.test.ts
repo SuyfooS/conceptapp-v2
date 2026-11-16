@@ -252,4 +252,32 @@ describe("rules by rank in SQL", () => {
     expect(new Set(listed).size).toBe(listed.length);
     expect([...listed].sort()).toEqual(holding);
   });
+
+  it("count again where the management page held one, once R7 moved it", () => {
+    // Who saves settings and who reads the log, written by rank again in a
+    // later migration: nothing lists them any more.
+    const gate = {
+      name: "20261116000600_back.sql",
+      sql: [
+        "create or replace function private.can_edit_settings(business uuid, person uuid)",
+        "returns boolean language sql as $$",
+        "  select exists (select 1 from public.memberships m where m.role in ('owner', 'manager'))",
+        "$$;",
+      ].join("\n"),
+    };
+    const policies = {
+      name: "20261116000700_back.sql",
+      sql: [
+        'alter policy "members read the log by area, pay holders the pay rows" on public.audit_log',
+        "  using (private.has_role(business_id, 'manager'));",
+        'alter policy "a view reads the log as its role would" on public.audit_log',
+        "  using (private.is_viewing(business_id, 'manager'));",
+      ].join("\n"),
+    };
+    expect(violations([gate, policies])).toEqual([
+      "20261116000600_back.sql:3 role in ('owner', 'manager') in private.can_edit_settings",
+      '20261116000700_back.sql:2 has_role( in policy "members read the log by area, pay holders the pay rows" on public.audit_log',
+      "20261116000700_back.sql:4 is_viewing(…, 'manager') in policy \"a view reads the log as its role would\" on public.audit_log",
+    ]);
+  });
 });

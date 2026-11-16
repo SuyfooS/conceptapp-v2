@@ -93,7 +93,12 @@ describe("declaredPermissions", () => {
       defaultRoles: ["manager"],
       requires: "team.view",
     });
-    expect(catalogue.every((p) => !p.settable)).toBe(true);
+    // Of the fixtures' and the core keys, only the management page's are
+    // switched per role (R7); none of the fixtures says so.
+    expect(catalogue.filter((p) => p.settable).map((p) => p.key)).toEqual([
+      "manage.view",
+      "manage.edit",
+    ]);
   });
 });
 

@@ -12,8 +12,9 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-// The business's name, colour, address and Shabbat city, for its owner and
-// managers. Not a module: every business has these.
+// The business's name, colour, address and Shabbat city, for whoever sees the
+// management page, saved by whoever edits it. Not a module: every business
+// has these.
 export default async function ManageBusinessPage() {
   const access = await manageAccess();
   if (!access) notFound();
@@ -21,7 +22,7 @@ export default async function ManageBusinessPage() {
     <BusinessDetailsView
       details={access.details}
       save={saveBusinessDetailsAction}
-      viewOnly={access.viewOnly}
+      readOnly={access.readOnly}
       showCity={closesOnShabbat(access.rows)}
       cities={shabbatByCity(new Date(), access.timeZone)}
       backHref="/manage"

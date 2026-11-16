@@ -20,12 +20,13 @@ type Props = {
 // Roles and permissions as the team sees them in the console (the roles
 // plan's R2): today's rules for the demo's people, from the declarations,
 // with pay as "מי רואה שכר" sets it, the areas open for changes as the
-// database says once its phase has opened them (`settable` in the
-// declarations: scheduling, since R3) and every other area closed, and the
-// way back to the business. `?state=open` opens every area, as the screen
-// will be once each phase has opened its own (R4 to R8), so every switch
-// changes with its undo; `?state=readOnly` is a team role that only reads
-// businesses. Stand-in actions: nothing reaches a database.
+// database says once their phase has opened them (`settable` in the
+// declarations: scheduling since R3, and the management page since R7,
+// with edit, view and none) and every other area closed, and the way back
+// to the business. `?state=open` opens every area, as the screen will be
+// once each phase has opened its own, so every switch changes with its
+// undo; `?state=readOnly` is a team role that only reads businesses.
+// Stand-in actions: nothing reaches a database.
 export default function ConsoleRolesTwin({ params, searchParams }: Props) {
   return (
     <Suspense>

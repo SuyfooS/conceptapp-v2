@@ -1,6 +1,7 @@
 "use client";
 
 import { WEEKDAY_KEYS } from "@domain/availability-form";
+import type { ManageReadOnly } from "@domain/manage-access";
 import type { ModuleKey } from "@domain/modules";
 import type { SettingField } from "@domain/settings-form";
 import type { Position, ShiftPattern } from "@domain/staffing";
@@ -35,14 +36,20 @@ export function SettingsForm({
   fields,
   values,
   save,
-  viewOnly,
+  readOnly,
 }: {
   module: ModuleKey;
   fields: SettingField[];
   values: Record<string, unknown>;
   save: SaveSettings;
-  viewOnly: boolean;
+  /**
+   * Why nothing here saves, said in one line over the fields: a view
+   * session, the person at view on the management page, or without the
+   * module's own edit. Null when it saves.
+   */
+  readOnly: ManageReadOnly;
 }) {
+  const viewOnly = readOnly !== null;
   const t = useTranslations("app.manage");
   const tm = useTranslations("modules");
   // What this person changed on this screen; the rest is as the server read it.
@@ -125,7 +132,15 @@ export function SettingsForm({
           {tm(words(failure.key, "label"))}: {t(`failed.${failure.reason}`)}
         </Card>
       ) : null}
-      {viewOnly ? <p className="text-ink-2">{t("viewOnly")}</p> : null}
+      {readOnly ? (
+        <p className="text-ink-2">
+          {readOnly === "viewing"
+            ? t("viewOnly")
+            : readOnly === "manage"
+              ? t("readOnly.manage")
+              : t("readOnly.module", { module: tm(`${module}.name`) })}
+        </p>
+      ) : null}
       <div className="grid items-start gap-6 md:grid-cols-2 md:gap-8 xl:grid-cols-3">
         {plain.length > 0 ? (
           <FieldGroup>

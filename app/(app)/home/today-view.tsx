@@ -131,6 +131,11 @@ export type TodayData = {
   schedule: TodaySchedule | null;
   /** Owners and managers only. */
   team: Team | null;
+  /**
+   * Whether the person opens the management page: they hold manage.view
+   * (`manageReach`; owners and managers by default, the roles plan's R7).
+   */
+  manage: boolean;
   /** The bell and how many lines are unread; null when there is none. */
   bell?: { unread: number } | null;
   /** What lists bring to Today; null when they are off or out of reach. */
@@ -302,9 +307,9 @@ export async function TodayView({
       </div>
     ) : null;
 
-  /** The quiet lists at the end: modules with no part of their own yet, the team. */
+  /** The quiet lists at the end: modules with no part of their own yet, the team, the management page. */
   const rest = (className?: string) =>
-    quiet.length > 0 || data.team ? (
+    quiet.length > 0 || data.team || data.manage ? (
       <div className={cn("grid min-w-0 gap-6 md:grid-cols-2", className)}>
         {quiet.length > 0 ? (
           <PageSection title={t("home.modulesTitle")}>
@@ -342,27 +347,33 @@ export async function TodayView({
             </ListGroup>
           </PageSection>
         ) : null}
-        {data.team ? (
+        {data.team || data.manage ? (
           <PageSection title={t("home.manageTitle")}>
             <ListGroup>
-              <ListRow
-                href={path("/team")}
-                leading={<Users />}
-                title={t("team.title")}
-                subtitle={
-                  data.team.counts.open > 0
-                    ? t("team.invites.open", { count: data.team.counts.open })
-                    : t("team.members.count", {
-                        count: data.team.counts.members,
-                      })
-                }
-              />
-              <ListRow
-                href={path("/manage")}
-                leading={<SlidersHorizontal />}
-                title={t("manage.row")}
-                subtitle={t("manage.rowSubtitle")}
-              />
+              {data.team ? (
+                <ListRow
+                  href={path("/team")}
+                  leading={<Users />}
+                  title={t("team.title")}
+                  subtitle={
+                    data.team.counts.open > 0
+                      ? t("team.invites.open", {
+                          count: data.team.counts.open,
+                        })
+                      : t("team.members.count", {
+                          count: data.team.counts.members,
+                        })
+                  }
+                />
+              ) : null}
+              {data.manage ? (
+                <ListRow
+                  href={path("/manage")}
+                  leading={<SlidersHorizontal />}
+                  title={t("manage.row")}
+                  subtitle={t("manage.rowSubtitle")}
+                />
+              ) : null}
             </ListGroup>
           </PageSection>
         ) : null}

@@ -32,11 +32,15 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.chat_reads_from(conversation, person)` | (that person) reads the chat, and from when: one of a private chat's two people while on the staff, the active staff in the team's group from when each came onto the staff this time (`memberships.staff_since`, which moves when someone comes back after leaving or from being an accountant), a live department's members on the staff from when each was added or came back, whichever is later, and moderators (`chat.moderate`) all of every group; null for anyone else, with chat off, and for a view session |
 | `private.can_read_chat_file(object_name)` | may read that file of the `chat-files` bucket: a message of the path's conversation and business points at it (its picture or thumbnail), not removed and its file still kept, and they read that message (`private.reads_chat_message`, no branch for owners, the team or a view session); a name of the wrong shape is false, never an error |
 | `private.is_private_action(action)` | (any user) a log row about chats or documents (`chat.*`, `document.*`), which no view session reads |
+| `private.log_perm(action)` | (any user) the permission a log row is read with besides `manage.view`: its own area's (`clock.edit`, `schedule.edit`, `lists.manage`, `team.view`, `chat.moderate`), `manage.view` for the management page's own families, and null for a family it doesn't name, which no one reads through it (`tooling/log-families.test.ts` makes each family the migrations write name its area) |
+| `private.held_perms()` | the rows (business, permission) of every key they hold as an active member, for a policy's `(business_id, key) in (select …)` |
+| `private.viewed_perms()` | the same for their open view session: what the viewed role holds by role, every key but pay as the owner, pay only as an accountant |
 
 Writes to businesses' structure (memberships, modules, invites, templates,
 audit log) go through server code with `SUPABASE_SECRET_KEY`. So do a
 business's own details: `public.set_business_details(actor, business, patch)`
-saves its name, colour, address and Shabbat city for an owner, a manager or the
+saves its name, colour, address and Shabbat city for whoever holds
+`manage.edit` (owners and managers by default, since the roles plan's R7) or the
 team, and logs what changed. So does a profile (`20261109000400_profile_about.sql`):
 `public.set_own_profile(actor, patch)` changes the signed-in person's own name,
 language, line about themselves, cover and form of address, and
@@ -233,10 +237,12 @@ and `tooling/running-week-edge.test.ts` pins the locks' order.
 The audit log is the business's activity log. Only server functions write it,
 each for its own action (`business.details`, `module.settings`, `clock.correct`,
 `clock.confirm` from `confirm_time_entry`, `clock.code.locked`,
-`schedule.publish`, `swap.approve` and the rest). Owners and managers read their
-own business's rows, and so does the team while viewing it as a manager or owner,
-but for the pay rows (`wage.*`, `payroll.*`): only pay holders read those, and a
-pay holder who is no manager reads the clock's and the permissions' rows too.
+`schedule.publish`, `swap.approve` and the rest). Those who hold `manage.view`
+read their own business's rows, each only while they also hold its own area's
+permission (since the roles plan's R7, below; owners and managers by default,
+as before), and so does the team while viewing it as a role that does, but for
+the pay rows (`wage.*`, `payroll.*`): only pay holders read those, and a pay
+holder reads the clock's and the permissions' rows too.
 Publishing a week's schedule logs its first day, the number of shifts, whether it
 was the first time, and how many waiting swap requests it ended
 (`activity_log.test.sql`), and, for notifications, whose shifts changed
@@ -326,8 +332,9 @@ changes).
 
 Lists (`20261109000600_lists.sql`) work the same way as the rest. A
 business's departments are its own data, read by every member;
-`public.set_departments` and `public.set_department_members` save them for an
-owner, a manager or the team, archiving what is left out. List templates with their items and times, and
+`public.set_departments` and `public.set_department_members` save them for
+whoever holds `manage.edit` (owners and managers by default, since R7) or the
+team, archiving what is left out. List templates with their items and times, and
 the lists sent with their items, people and passes, are read under the
 policies above (the module off closes them) and written only by
 `save_list_template`, `archive_list_template`, `restore_list_template`,
@@ -679,6 +686,51 @@ publishing) and managers lowered: reads, writes (one's own swap included),
 notices (availability missing too), views, the push skipped, and publishing
 asked before any lock; then, with workers set above managers, a manager
 giving a role, and no line of the three kinds left by rank.
+
+The management page by its permissions (`20261115001000_roles_manage.sql`,
+the roles plan's R7; Orel's answers of 15 November 2026): `manage.view` and
+`manage.edit` are settable, so owners and the team put a role at edit, view
+or none there, and nothing changes for anyone until they do.
+`private.can_edit_settings` is the ConceptApp team or whoever holds
+`manage.edit` (`private.holds_perm`), where it was owners and managers by
+role; its callers are unchanged: `set_module_settings`,
+`set_business_details`, `set_departments`, `set_department_members`, and,
+beside `private.can_manage_lists`, the list templates' writers
+(`save_list_template`, `archive_list_template`, `restore_list_template`,
+`next_list_openings`), so until the lists' phase (R5) moves those,
+`manage.edit` still includes the list templates, and with them the times
+that open lists by themselves: a role raised to `manage.edit` saves,
+archives and restores templates without `lists.manage`, as the roles
+screen's hint says. R5 puts the team alone in place of each of their
+`or private.can_edit_settings(…)`. `public.set_module_settings`
+also asks, of anyone not on the team, the module's own edit
+(`private.settings_perm`: `schedule.edit`, `clock.edit`, `lists.manage`,
+`chat.moderate`, none for notifications, reservations and storefront; 42501
+with hint `module` and the permission as its detail); owners hold every key,
+and the fields' levels (owner, team) are as before. The settings, the
+business's details and its departments are read by every member, as before.
+The activity log is read at `manage.view`, each row also by its own area
+(`private.log_perm`): `clock.*` at `clock.edit`; `schedule.*`, `swap.*` and
+`availability.*` at `schedule.edit`; `lists.*` at `lists.manage`; `invite.*`,
+`member.*`, `team.*` and `profile.*` at `team.view`; `chat.*` at
+`chat.moderate`; the management page's own (`module.*`, `business.*`,
+`departments.*`, `wording.*`, `role.permission`, `permission.*`,
+`view_as.*`) at `manage.view` alone; and a family named in none of them by
+no one there (`tooling/log-families.test.ts` fails for a family the
+migrations write that has no place). The pay rows and documents' are the pay holders' alone, exactly as
+before. The members' policy is renamed "members read the log by area, pay
+holders the pay rows"; "a view reads the log as its role would" reads as the
+viewed role holds by role (`private.role_holds`), never `chat.*` or
+`document.*`. Both ask once per query, `(business_id, key) in (select …)`
+over `private.held_perms()` (every key the signed-in person holds, by
+business) and `private.viewed_perms()` (every key their open view holds),
+where they asked `has_role` and `has_perm` per row. On the app's side,
+`manageAccess` opens /manage and its screens at `manage.view`
+(`manageReach` in `@domain/manage-access`) and saves at `manage.edit`, a
+module's settings only with its own edit too (`manageReadOnly`), and Today's
+row follows. `roles_manage.test.sql` covers it, with an equivalence over the
+seed's rows and a fixture of every family: on today's defaults every member
+and every view as each role reads exactly what the old policies gave.
 
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the

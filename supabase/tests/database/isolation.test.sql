@@ -36,10 +36,13 @@ values
   ('20000000-0000-4000-b000-00000000000a', '+972500000201', 'hash-a'),
   ('20000000-0000-4000-b000-00000000000b', '+972500000202', 'hash-b');
 
+-- An action of the management page's own family, which its readers see
+-- (private.log_perm, 20261115001000_roles_manage.sql): one nobody placed is
+-- read by nobody.
 insert into public.audit_log (business_id, action)
 values
-  ('20000000-0000-4000-b000-00000000000a', 'test.a'),
-  ('20000000-0000-4000-b000-00000000000b', 'test.b');
+  ('20000000-0000-4000-b000-00000000000a', 'business.a'),
+  ('20000000-0000-4000-b000-00000000000b', 'business.b');
 
 -- Act as a signed-in user.
 create function pg_temp.sign_in(uid uuid) returns void language sql as $$
@@ -124,7 +127,7 @@ select results_eq(
 );
 select results_eq(
   'select action from public.audit_log',
-  array['test.a'],
+  array['business.a'],
   'manager of A reads the audit log of A only'
 );
 select throws_ok(

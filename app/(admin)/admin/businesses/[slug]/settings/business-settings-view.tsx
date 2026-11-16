@@ -86,7 +86,7 @@ export function BusinessSettingsView({
         <BusinessDetailsForm
           details={details}
           save={saveDetails}
-          viewOnly={false}
+          readOnly={null}
           showCity
           cities={cities}
           nested
@@ -137,7 +137,7 @@ export function BusinessSettingsView({
               fields={module.fields}
               values={module.values}
               save={save.bind(null, module.key)}
-              viewOnly={false}
+              readOnly={null}
             />
           ) : null}
         </PageSection>

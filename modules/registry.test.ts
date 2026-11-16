@@ -112,13 +112,15 @@ describe("module registry", () => {
     }
   });
 
-  it("lets owners switch scheduling's permissions per role, nothing else yet, and never pay", () => {
+  it("lets owners switch scheduling's and the management page's permissions per role, nothing else yet, and never pay", () => {
     // Each area's phase turns its keys on once every check in the area reads
-    // them (the roles plan): scheduling's in R3. clock.payroll keeps its own
-    // switch.
+    // them (the roles plan): scheduling's in R3, the management page's in R7.
+    // clock.payroll keeps its own switch.
     expect(permissions.filter((p) => p.settable).map((p) => p.key)).toEqual([
       "schedule.edit",
       "schedule.publish",
+      "manage.view",
+      "manage.edit",
     ]);
     expect(permissions.find((p) => p.key === "clock.payroll")?.settable).toBe(
       false,

@@ -88,6 +88,13 @@ const PAGES = [
   "/design/shell/me?state=demo",
   "/design/shell/me/businesses",
   "/design/shell/manage",
+  // Someone at view on the management page (roles R7), and a module's
+  // settings without the module's own edit.
+  "/design/shell/manage?state=view",
+  "/design/shell/manage/notifications?state=view",
+  "/design/shell/manage/scheduling?state=module",
+  "/design/shell/manage/business?state=view",
+  "/design/shell/manage/departments?state=view",
   "/design/shell/manage/business",
   "/design/shell/manage/activity",
   "/design/shell/manage/activity/empty",
@@ -192,9 +199,9 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/lists/t-kitchen-opening",
   "/design/console/businesses/demo-restaurant/access",
   "/design/console/businesses/demo-restaurant/access?state=readOnly",
-  // Roles and permissions from the console (R2): scheduling open (R3) and
-  // the rest closed, then every area open as R4 to R8 will open them, and a
-  // team role that only reads.
+  // Roles and permissions from the console (R2): scheduling (R3) and the
+  // management page (R7) open and the rest closed, then every area open as
+  // each phase will open it, and a team role that only reads.
   "/design/console/businesses/demo-restaurant/roles",
   "/design/console/businesses/demo-restaurant/roles?state=open",
   "/design/console/businesses/demo-restaurant/roles?state=readOnly",

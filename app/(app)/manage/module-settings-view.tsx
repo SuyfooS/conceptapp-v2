@@ -1,3 +1,4 @@
+import type { ManageReadOnly } from "@domain/manage-access";
 import type { ModuleKey } from "@domain/modules";
 import type { SettingField } from "@domain/settings-form";
 import { PageBody, PageHeader } from "@ui/page";
@@ -12,7 +13,7 @@ export function ModuleSettingsView({
   fields,
   values,
   save,
-  viewOnly,
+  readOnly,
   backHref,
   wording,
 }: {
@@ -20,7 +21,8 @@ export function ModuleSettingsView({
   fields: SettingField[];
   values: Record<string, unknown>;
   save: SaveSettings;
-  viewOnly: boolean;
+  /** Why nothing here saves, or null when it saves. */
+  readOnly: ManageReadOnly;
   backHref: string;
   /** The business's words. */
   wording: AppWording;
@@ -32,14 +34,14 @@ export function ModuleSettingsView({
       <PageHeader
         back={{ href: backHref, label: t("title") }}
         title={tm(`${module}.name`)}
-        subtitle={t("savesItself")}
+        subtitle={readOnly ? undefined : t("savesItself")}
       />
       <SettingsForm
         module={module}
         fields={fields}
         values={values}
         save={save}
-        viewOnly={viewOnly}
+        readOnly={readOnly}
       />
     </PageBody>
   );

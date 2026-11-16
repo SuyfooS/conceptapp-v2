@@ -23,8 +23,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-// What changed in the business, who changed it and when, for its owner and
-// managers (and the team viewing as one). `?before=` reads an older page.
+// What changed in the business, who changed it and when, for whoever sees the
+// management page (and the team viewing as a role that does), each row only
+// for those who hold its own area too (the database's policies; the roles
+// plan's R7). `?before=` reads an older page.
 export default async function ManageActivityPage({
   searchParams,
 }: {
@@ -53,8 +55,12 @@ export default async function ManageActivityPage({
       older={page.older}
       earlier={before !== null}
       manageable={modulesToManage(access.rows, access.level)}
-      clockOn={enabledModules(manifests, access.rows).includes("time_clock")}
+      clockOn={
+        access.readsClock &&
+        enabledModules(manifests, access.rows).includes("time_clock")
+      }
       listsOn={listsOn(access.rows)}
+      everyArea={access.readsEveryArea}
       paths={{
         manage: "/manage",
         self: "/manage/activity",

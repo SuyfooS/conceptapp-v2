@@ -1,4 +1,5 @@
-import { ACCOUNTANT_PERMISSIONS } from "@domain/modules";
+import { settingsPermission } from "@domain/manage-access";
+import { ACCOUNTANT_PERMISSIONS, MODULE_KEYS } from "@domain/modules";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 import { permissions } from "./registry";
@@ -62,5 +63,20 @@ describe("permissions", () => {
     const [row] = await sql<{ perms: string[] }[]>`
       select private.accountant_perms() as perms`;
     expect(row?.perms).toEqual([...ACCOUNTANT_PERMISSIONS]);
+  });
+
+  it("ask, to save a module's settings, the module's own edit the app asks (R7)", async () => {
+    // public.set_module_settings asks private.settings_perm besides
+    // manage.edit; /manage draws the screen read only by settingsPermission.
+    const rows = await sql<{ module: string; perm: string | null }[]>`
+      select m::text as module, private.settings_perm(m) as perm
+      from unnest(enum_range(null::public.module_key)) as m`;
+    expect(
+      Object.fromEntries(rows.map((row) => [row.module, row.perm])),
+    ).toEqual(
+      Object.fromEntries(
+        MODULE_KEYS.map((module) => [module, settingsPermission(module)]),
+      ),
+    );
   });
 });

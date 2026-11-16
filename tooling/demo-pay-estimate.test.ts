@@ -41,11 +41,28 @@ describe("the pay estimate", () => {
     });
   }
 
+  const dir = "supabase/migrations";
+  const naming = readdirSync(join(root, dir))
+    .filter((file) => read(`${dir}/${file}`).includes("payEstimate"))
+    .sort();
+
   it("is switched on by no migration but the one for the demo", () => {
-    const dir = "supabase/migrations";
-    const naming = readdirSync(join(root, dir))
-      .filter((file) => read(`${dir}/${file}`).includes("payEstimate"))
-      .sort();
-    expect(naming).toEqual(["20261110000700_pay_rules.sql"]);
+    expect(
+      naming.filter((file) =>
+        /"payEstimate"\s*:\s*true/.test(read(`${dir}/${file}`)),
+      ),
+    ).toEqual(["20261110000700_pay_rules.sql"]);
+  });
+
+  it("is switched by the team alone in every migration that names it", () => {
+    // public.set_module_settings is replaced as its gates move (the roles
+    // plan's R7 asks a module's own edit too); each version keeps the pay
+    // estimate the team's.
+    expect(naming[0]).toBe("20261110000700_pay_rules.sql");
+    for (const file of naming) {
+      expect(read(`${dir}/${file}`), file).toContain(
+        "patch ? 'payEstimate' and not on_team",
+      );
+    }
   });
 });
