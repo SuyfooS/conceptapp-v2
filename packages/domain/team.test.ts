@@ -12,6 +12,7 @@ import {
   givesNamedRole,
   givesRole,
   invitableRoles,
+  inviteChoices,
   leavesNoOwner,
   leavesStaff,
   mayChangeRole,
@@ -299,6 +300,61 @@ describe("namedRolesBeyond", () => {
     expect(namedRolesBeyond(at("owner"), named)).toEqual([]);
     expect(namedRolesBeyond(manager, named)).toEqual([]);
     expect(namedRolesBeyond(at("worker"), named)).toEqual([]);
+  });
+});
+
+describe("inviteChoices", () => {
+  it("shows an owner every role, none held back", () => {
+    expect(inviteChoices(at("owner"), named, [])).toEqual(
+      invitableRoles(at("owner"), named).map((choice) => ({
+        ...choice,
+        blocked: null,
+      })),
+    );
+  });
+
+  it("shows a manager the roles only an owner gives, with why (Orel, 16 November 2026)", () => {
+    // Workers see pay here, and the shift lead builds the schedule, which
+    // this manager doesn't: both an owner's, shown in their places.
+    expect(inviteChoices(at("manager"), named, ["worker"])).toEqual([
+      { role: "manager", namedRole: null, blocked: null },
+      { role: "manager", namedRole: "floor", blocked: null },
+      { role: "worker", namedRole: null, blocked: "pay" },
+      { role: "worker", namedRole: "lead", blocked: "held" },
+      { role: "worker", namedRole: "bar", blocked: null },
+    ]);
+    // What it offers is invitableRoles' without the pay roles.
+    expect(
+      inviteChoices(at("manager"), named, ["worker"])
+        .filter((choice) => !choice.blocked)
+        .map(roleChoiceKey),
+    ).toEqual(
+      invitableRoles(at("manager"), named)
+        .filter(
+          (choice) => choice.namedRole !== null || choice.role !== "worker",
+        )
+        .map(roleChoiceKey),
+    );
+  });
+
+  it("shows a worker raised to edit the team only the roles on workers", () => {
+    expect(
+      inviteChoices(
+        { role: "worker", perms: ["team.view", "team.edit"] },
+        named,
+      ),
+    ).toEqual([
+      { role: "worker", namedRole: null, blocked: null },
+      { role: "worker", namedRole: "lead", blocked: "held" },
+      { role: "worker", namedRole: "bar", blocked: null },
+    ]);
+  });
+
+  it("shows nothing to anyone who doesn't edit the team", () => {
+    expect(inviteChoices(at("worker"), named, ["worker"])).toEqual([]);
+    expect(
+      inviteChoices({ role: "manager", perms: ["team.view"] }, named),
+    ).toEqual([]);
   });
 });
 

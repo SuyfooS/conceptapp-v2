@@ -538,6 +538,37 @@ describe("buildActivity: each action", () => {
     ).toEqual({ action: "view_as.end", role: null });
   });
 
+  it("reads a view as a role the business named, by its name then (R11c)", () => {
+    expect(
+      lineOf(
+        row(
+          "view_as.start",
+          {
+            session: GONE,
+            role: "worker",
+            named_role: GONE,
+            role_name: " Shift lead ",
+          },
+          STAFF,
+        ),
+      ),
+    ).toEqual({
+      action: "view_as.start",
+      role: "worker",
+      roleName: "Shift lead",
+    });
+    // A name that isn't one reads as the built-in role.
+    expect(
+      lineOf(
+        row(
+          "view_as.start",
+          { session: GONE, role: "worker", role_name: 3 },
+          STAFF,
+        ),
+      ),
+    ).toEqual({ action: "view_as.start", role: "worker" });
+  });
+
   it("reads swaps through the request and its shift, while they're there", () => {
     const shift = lookups.shifts.get(SHIFT);
     expect(lineOf(row("swap.request", { swap: SWAP, shift: SHIFT }))).toEqual({

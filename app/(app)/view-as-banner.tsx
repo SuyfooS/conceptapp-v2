@@ -6,8 +6,9 @@ import { type AppWording, translator } from "./wording";
 
 /**
  * Above every screen while someone on the ConceptApp team views the
- * business as a role: what they are looking at, that nothing is saved,
- * and the way out.
+ * business as a role: what they are looking at (a role the business named
+ * by its own name, the roles plan's R11c), that nothing is saved, and the
+ * way out.
  */
 export function ViewAsBanner({
   viewing,
@@ -41,7 +42,7 @@ export function ViewAsBanner({
           <div className="flex min-w-0 flex-col">
             <p className="font-semibold text-base">
               {t("title", {
-                role: tr(viewing.role),
+                role: viewing.namedRole?.name ?? tr(viewing.role),
                 business: businessName,
               })}
             </p>

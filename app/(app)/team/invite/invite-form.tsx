@@ -2,7 +2,12 @@
 
 import type { Role } from "@domain/modules";
 import { type NamedRole, namedRoleName } from "@domain/role-access";
-import { type RoleChoice, roleChoiceKey, TEAM_NAME_MAX } from "@domain/team";
+import {
+  type InviteChoice,
+  type RoleChoice,
+  roleChoiceKey,
+  TEAM_NAME_MAX,
+} from "@domain/team";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
@@ -24,10 +29,12 @@ const initial: InviteState = {};
  * on. `roles` are the ones the signed-in person may give, most senior
  * first, each role the business named after the role it is built on (the
  * roles plan's R11b), by its name with its base under it; the default is a
- * worker, the usual case.
+ * worker, the usual case. A role only an owner gives (`blocked`: it holds
+ * pay, or a named role holding more than they do) is shown, not offered,
+ * with why, as the role sheet on a person's page shows it.
  */
 type InviteFormProps = {
-  roles: readonly RoleChoice[];
+  roles: readonly InviteChoice[];
   /** The names of the business's named roles among `roles`; none by default. */
   namedRoles?: readonly NamedRole[];
   /** Where "back" goes once the link is ready: the team, or the console's business. */
@@ -57,6 +64,7 @@ function InviteRound({
   const t = useTranslations("app.team.invite");
   const tr = useTranslations("app.team.roles");
   const tl = useTranslations("app.team.link");
+  const tc = useTranslations("app.team.changes");
   const locale = useLocale();
   const namedOf = (choice: RoleChoice) =>
     namedRoles.find((role) => role.id === choice.namedRole) ?? null;
@@ -102,7 +110,8 @@ function InviteRound({
   }
 
   const errors = state.errors ?? {};
-  const keys = roles.map(roleChoiceKey);
+  // Only a role offered starts chosen.
+  const keys = roles.filter((choice) => !choice.blocked).map(roleChoiceKey);
   // A worker, never "the last role": an owner's list ends with an accountant.
   const defaultRole =
     values?.role ||
@@ -156,12 +165,17 @@ function InviteRound({
               key={key}
               name="role"
               value={key}
-              defaultChecked={key === defaultRole}
+              defaultChecked={!choice.blocked && key === defaultRole}
+              disabled={Boolean(choice.blocked)}
               title={named ? namedRoleName(named, locale) : tr(choice.role)}
               hint={
-                named
-                  ? t("namedHint", { role: tr(choice.role) })
-                  : t(`roleHint.${choice.role}`)
+                choice.blocked === "pay"
+                  ? tc("payHint")
+                  : choice.blocked === "held"
+                    ? tc("heldHint")
+                    : named
+                      ? t("namedHint", { role: tr(choice.role) })
+                      : t(`roleHint.${choice.role}`)
               }
             />
           );

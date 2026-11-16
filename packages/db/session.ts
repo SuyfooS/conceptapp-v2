@@ -75,8 +75,9 @@ export type CurrentMember = {
      * (`public.my_permissions`): their role's by default unless the business
      * decided otherwise for the role, those given to their role, and those
      * given to them (`clock.payroll` always for an owner or an accountant).
-     * While viewing as a role, what that role holds, and `clock.payroll` only
-     * as an accountant. The screens keep no defaults of their own
+     * While viewing as a role, what that role holds (a role the business
+     * named: its own rules, else its base's), and `clock.payroll` only as an
+     * accountant. The screens keep no defaults of their own
      * (`holdsPermission`), so while the function is missing on a project,
      * today's rules from the declarations instead (`permissionsByDefault`).
      */
@@ -87,14 +88,15 @@ export type CurrentMember = {
     /**
      * The role the business named that they hold there (the roles plan's
      * R11b), built on `role`, by its names, for what the person reads about
-     * themselves; null for none, and while viewing as a role. What it holds
-     * is `perms` already.
+     * themselves; while viewing as one (R11c), that one; null for none. What
+     * it holds is `perms` already.
      */
     namedRole: NamedRole | null;
   } | null;
   /**
    * Set while someone on the ConceptApp team views a business as a role:
-   * `membership` is then that business and role, for reading only.
+   * `membership` is then that business and role (a role the business named
+   * on its base, R11c), for reading only.
    */
   viewing: ViewSession | null;
   /**
@@ -238,6 +240,42 @@ async function ownMemberships(supabase: Client, userId: string) {
 }
 
 /**
+ * The person's open view session, if any (at most one is open: a unique
+ * index; people off the team have none), with the business it views and the
+ * role the business named that it views as (`named_role`, the roles plan's
+ * R11c). Before 20261115001800_named_roles_view.sql reaches a project the
+ * column is missing, every view is as a built-in role, and the session is
+ * read as before.
+ */
+async function openView(supabase: Client, userId: string) {
+  const named = await supabase
+    .from("view_sessions")
+    .select(
+      "role, named_role, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
+    )
+    .eq("staff_id", userId)
+    .is("ended_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  if (!isMissingColumn(named.error)) return named;
+  const older = await supabase
+    .from("view_sessions")
+    .select(
+      "role, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
+    )
+    .eq("staff_id", userId)
+    .is("ended_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .maybeSingle();
+  return {
+    ...older,
+    data: older.data
+      ? { ...older.data, named_role: null as string | null }
+      : null,
+  };
+}
+
+/**
  * Who is signed in and which business they work in, read under RLS. The business
  * comes with its place and its modules, since nearly every screen needs them
  * before it can read anything else; separately they cost two more rounds.
@@ -286,16 +324,8 @@ export async function getCurrentMember(
       // Every business they are active in: one place on a staff at most, and
       // any number as an accountant (20261110000900_several_businesses.sql).
       ownMemberships(supabase, userId),
-      // At most one is open (a unique index); people off the team have none.
-      supabase
-        .from("view_sessions")
-        .select(
-          "role, businesses (id, name, accent, slug, address, shabbat_city, timezone, template_key, business_modules (module_key, enabled, settings))",
-        )
-        .eq("staff_id", userId)
-        .is("ended_at", null)
-        .gt("expires_at", new Date().toISOString())
-        .maybeSingle(),
+      // At most one is open, with the role the business named it views as.
+      openView(supabase, userId),
       // Only what RLS lets the person read: their businesses' sentences and
       // their templates', or the viewed business's.
       supabase.from("business_wording").select("business_id, key, sentence"),
@@ -345,20 +375,30 @@ export async function getCurrentMember(
   };
   const viewed = view.data?.businesses;
   if (view.data && viewed) {
+    // What a view as a named role holds is the database's (my_permissions);
+    // its names come with it, under the policy that lets a view read them.
+    const [perms, namedRole] = await Promise.all([
+      permissionsIn(supabase, viewed.id, catalogue, {
+        role: view.data.role,
+        given: [],
+        viewing: true,
+      }),
+      namedRoleIn(supabase, viewed.id, view.data.named_role),
+    ]);
     return {
       ...person,
       membership: {
         role: view.data.role,
-        perms: await permissionsIn(supabase, viewed.id, catalogue, {
-          role: view.data.role,
-          given: [],
-          viewing: true,
-        }),
+        perms,
         business: memberBusiness(viewed, wording),
         since: null,
-        namedRole: null,
+        namedRole,
       },
-      viewing: { role: view.data.role, businessSlug: viewed.slug },
+      viewing: {
+        role: view.data.role,
+        namedRole,
+        businessSlug: viewed.slug,
+      },
       unread: NO_UNREAD,
       businesses: [],
     };

@@ -575,7 +575,9 @@ export function ActivityView({
       case "view_as.start":
         return plain(
           line.role
-            ? t("actions.view_as.start", { role: roleName(line.role) })
+            ? t("actions.view_as.start", {
+                role: roleName(line.role, line.roleName),
+              })
             : t("actions.view_as.startPlain"),
         );
       case "view_as.end":

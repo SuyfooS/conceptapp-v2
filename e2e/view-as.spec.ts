@@ -1,15 +1,25 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { endViewSessions, invitesBySlug, viewAudit } from "./db";
+import {
+  addShopNamedRole,
+  endViewSessions,
+  invitesBySlug,
+  lastViewedRoleName,
+  removeShopNamedRole,
+  viewAudit,
+} from "./db";
 import { signIn } from "./session";
+import { heT } from "./t";
 
 // The seeded platform admin (supabase/seed.sql) opens the demo restaurant
 // as one of its roles from the console, reads it as that role, cannot
-// change anything, and every start and end is in the audit log.
+// change anything, and every start and end is in the audit log. It also
+// opens the demo shop as a role the shop named (the roles plan's R11c).
 const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 const NEW = { name: "לא תישמר", local: "050-000-0931", e164: "+972500000931" };
 const BUSINESS = "מסעדת הדגמה";
+const SHOP = "חנות הדגמה";
 /** The seeded Noa, a worker of the demo restaurant. */
 const NOA_ID = "00000000-0000-4000-a000-000000000003";
 
@@ -308,4 +318,60 @@ test("viewing as the owner reads no pay", async ({ page }) => {
     await expect(control).toBeDisabled();
   }
   await expectCleanPage(page);
+});
+
+// A role the business named (the roles plan's R11c): the team views the demo
+// shop as its shift lead, built on workers, who builds the schedule. The
+// console offers it after workers, by its name; the banner names it; it
+// opens the builder, which workers don't, and not the team, as workers
+// don't; the log names it.
+test("viewing the shop as a role it named reads what that role holds", async ({
+  page,
+}) => {
+  const name = "אחראי משמרת";
+  await removeShopNamedRole(name);
+  await addShopNamedRole(name, ["schedule.edit"]);
+  try {
+    await signIn(page, ADMIN, /\/admin$/);
+    await page.goto("/admin/businesses/demo-shop");
+    await expect(
+      page.getByRole("heading", { level: 2, name: a.title }),
+    ).toBeVisible();
+    const lead = page.getByRole("button", {
+      name: new RegExp(`^${heT("admin.setup.viewAs.asNamed", { role: name })}`),
+    });
+    await expect(lead).toContainText(
+      heT("admin.setup.viewAs.namedHint", {
+        role: he.admin.memberRoles.worker,
+      }),
+    );
+    await expectCleanPage(page);
+    await lead.click();
+    await expect(page).toHaveURL(/\/home$/);
+    const banner = page.getByRole("complementary", { name: v.label });
+    await expect(banner).toContainText(
+      v.title.replace("{role}", name).replace("{business}", SHOP),
+    );
+    await expectCleanPage(page);
+
+    await page.goto("/schedule/build");
+    await expect(
+      page
+        .getByRole("heading", { level: 1, name: he.app.build.title })
+        .filter({ visible: true }),
+    ).toBeVisible();
+    await page.goto("/team");
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
+    ).toBeVisible();
+
+    // The shop's log names the role; stopping goes back to the shop.
+    expect(await lastViewedRoleName(ADMIN.e164)).toBe(name);
+    await page.goto("/home");
+    await banner.getByRole("button", { name: v.end }).click();
+    await expect(page).toHaveURL(/\/admin\/businesses\/demo-shop$/);
+  } finally {
+    await endViewSessions(ADMIN.e164);
+    await removeShopNamedRole(name);
+  }
 });

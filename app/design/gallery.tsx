@@ -70,6 +70,7 @@ import {
   Check,
   Fingerprint,
   ListChecks,
+  Lock,
   Plus,
   Save,
   ScanQrCode,
@@ -850,6 +851,13 @@ function GalleryBody({
               title={t("p2")}
               hint={t("choiceHint")}
               leading={<Users />}
+            />
+            <ChoiceRow
+              name="galleryChoice"
+              disabled
+              title={t("choiceOff")}
+              hint={t("choiceOffHint")}
+              leading={<Lock />}
             />
           </ChoiceList>
         </Section>

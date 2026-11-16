@@ -2784,6 +2784,7 @@ export type Database = {
           ended_at: string | null;
           expires_at: string;
           id: string;
+          named_role: string | null;
           role: Database["public"]["Enums"]["member_role"];
           staff_id: string;
           started_at: string;
@@ -2793,6 +2794,7 @@ export type Database = {
           ended_at?: string | null;
           expires_at?: string;
           id?: string;
+          named_role?: string | null;
           role: Database["public"]["Enums"]["member_role"];
           staff_id: string;
           started_at?: string;
@@ -2802,6 +2804,7 @@ export type Database = {
           ended_at?: string | null;
           expires_at?: string;
           id?: string;
+          named_role?: string | null;
           role?: Database["public"]["Enums"]["member_role"];
           staff_id?: string;
           started_at?: string;
@@ -2813,6 +2816,13 @@ export type Database = {
             isOneToOne: false;
             referencedRelation: "businesses";
             referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "view_sessions_named_role_fkey";
+            columns: ["business_id", "named_role", "role"];
+            isOneToOne: false;
+            referencedRelation: "business_roles";
+            referencedColumns: ["business_id", "id", "base"];
           },
           {
             foreignKeyName: "view_sessions_staff_id_fkey";
@@ -3676,6 +3686,7 @@ export type Database = {
         Args: {
           actor: string;
           business: string;
+          view_named?: string;
           view_role: Database["public"]["Enums"]["member_role"];
         };
         Returns: string;

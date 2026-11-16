@@ -2,9 +2,10 @@ import type { BusinessSetup, SetupPerson } from "@db/admin";
 import { accentTokens } from "@domain/color";
 import type { Role } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
+import { type NamedRole, namedRoleName } from "@domain/role-access";
 import { type SetupItem, setupChecklist, setupRemaining } from "@domain/setup";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
-import { VIEW_AS_ROLES } from "@domain/view-as";
+import { type ViewAsFailure, viewAsChoices, viewAsKey } from "@domain/view-as";
 import { accentProps } from "@ui/accent";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -26,7 +27,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import type { ComponentProps, ReactNode } from "react";
 import { InviteLink } from "./invite-link";
 
@@ -45,6 +46,8 @@ function templateName(t: T, key: string | null) {
  * the people in it. Phone: one column; tablet: the checklist beside the people;
  * desktop: the checklist beside viewing as a role, and the people as a table
  * under them. Also rendered with mock data on /design/console/businesses.
+ * Viewing as a role offers the business's own named roles too, each after
+ * the role it is built on (the roles plan's R11c).
  * Invites that ran out stay on the page, with a way to renew them, so a
  * business whose owner never joined is not stuck. Under the people, roles and
  * permissions and who sees pay, each on its own page.
@@ -53,19 +56,21 @@ export async function BusinessView({
   business,
   listHref,
   created,
-  viewFailed,
+  viewFailure,
   settingsHref,
   wordingHref,
   addHref,
   rolesHref,
   accessHref,
   viewAs,
+  namedRoles = [],
   issue,
 }: {
   business: BusinessSetup;
   listHref: string;
   created: boolean;
-  viewFailed: boolean;
+  /** Why the last view didn't open (`?view=`), or null. */
+  viewFailure: ViewAsFailure | null;
   /** Where this business's settings are, when the person may edit them. */
   settingsHref: string | null;
   /** Where this business's sentences are, when the person may edit them. */
@@ -78,6 +83,8 @@ export async function BusinessView({
   accessHref: string | null;
   /** Bound to this business, when the person may view it as a role. */
   viewAs: ((form: FormData) => Promise<void>) | null;
+  /** The business's live named roles, to view it as too; none by default. */
+  namedRoles?: readonly NamedRole[];
   issue: Issue;
 }) {
   const t = await getTranslations("admin");
@@ -205,7 +212,9 @@ export async function BusinessView({
             <ViewAs
               t={t}
               business={business}
-              failed={viewFailed}
+              failure={viewFailure}
+              namedRoles={namedRoles}
+              locale={await getLocale()}
               viewAs={viewAs}
             />
           </div>
@@ -365,35 +374,42 @@ function ChecklistRow({
   );
 }
 
-// Open the business's app as one of its roles, read only.
+// Open the business's app as one of its roles, read only: the built-in
+// ones, each followed by the business's named roles built on it, by their
+// names with what each is built on (R11c).
 function ViewAs({
   t,
   business,
-  failed,
+  failure,
+  namedRoles,
+  locale,
   viewAs,
 }: {
   t: T;
   business: BusinessSetup;
-  failed: boolean;
+  failure: ViewAsFailure | null;
+  namedRoles: readonly NamedRole[];
+  /** For a named role's English name, where it has one. */
+  locale: string;
   viewAs: (form: FormData) => Promise<void>;
 }) {
   return (
     <PageSection title={t("setup.viewAs.title")}>
-      {failed ? (
+      {failure ? (
         <p role="alert" className="px-1 text-danger text-sm">
-          {t("setup.viewAs.failed")}
+          {t(`setup.viewAs.${failure}`)}
         </p>
       ) : null}
       <form
         action={viewAs}
         className="overflow-hidden rounded-card bg-surface shadow-card"
       >
-        {VIEW_AS_ROLES.map((r) => (
+        {viewAsChoices(namedRoles).map((choice) => (
           <button
-            key={r}
+            key={viewAsKey(choice)}
             type="submit"
             name="role"
-            value={r}
+            value={viewAsKey(choice)}
             className="relative flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-start font-medium transition-colors duration-150 ease-calm not-first:before:absolute not-first:before:end-0 not-first:before:start-[60px] not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-[''] hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent active:bg-surface-3"
           >
             <span
@@ -402,7 +418,24 @@ function ViewAs({
             >
               <Eye />
             </span>
-            <span className="min-w-0 flex-1">{t(`setup.viewAs.as.${r}`)}</span>
+            {choice.namedRole ? (
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span>
+                  {t("setup.viewAs.asNamed", {
+                    role: namedRoleName(choice.namedRole, locale),
+                  })}
+                </span>
+                <span className="font-normal text-ink-2 text-sm">
+                  {t("setup.viewAs.namedHint", {
+                    role: t(`memberRoles.${choice.role}`),
+                  })}
+                </span>
+              </span>
+            ) : (
+              <span className="min-w-0 flex-1">
+                {t(`setup.viewAs.as.${choice.role}`)}
+              </span>
+            )}
             <ChevronRight
               aria-hidden="true"
               className="size-5 shrink-0 text-ink-2 rtl:-scale-x-100"

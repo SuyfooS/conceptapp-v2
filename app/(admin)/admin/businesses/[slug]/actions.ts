@@ -19,7 +19,7 @@ import {
   setModuleEnabled,
   setModuleSettings,
 } from "@db/module-settings";
-import { startViewing } from "@db/view-as";
+import { getViewableNamedRoles, startViewing } from "@db/view-as";
 import { getTemplateSentence, setBusinessWording } from "@db/wording";
 import { checkBusinessDetailsChange } from "@domain/business-details";
 import { departments as departmentsSchema } from "@domain/departments";
@@ -34,7 +34,11 @@ import {
 import { platformCan } from "@domain/platform";
 import { checkSettingsChange } from "@domain/settings-form";
 import { parseTeamInvite } from "@domain/team";
-import { parseViewAsRole } from "@domain/view-as";
+import {
+  parseViewAsRole,
+  readViewAsChoice,
+  type ViewAsFailure,
+} from "@domain/view-as";
 import {
   baseSentence,
   checkSentence,
@@ -148,25 +152,40 @@ export async function addPersonAction(
 }
 
 /**
- * Open the business's app as the role in the form, read only. The session
- * and the audit log entry are written by the database; the app then reads
- * the business as that role until the session ends (two hours at most).
+ * Open the business's app as the role in the form, read only: a built-in
+ * role, or one the business named, by its id among its live ones (the roles
+ * plan's R11c), viewed on its base. The session and the audit log entry are
+ * written by the database; the app then reads the business as that role
+ * until the session ends (two hours at most). A named role archived since
+ * the page was drawn (no longer among the live ones, or refused as the view
+ * starts) says so on the page (`?view=roleGone`), drawn again without it.
  */
 export async function viewAsAction(
   business: { id: string; slug: string },
   form: FormData,
 ): Promise<never> {
   const staff = await getPlatformStaff();
-  const role = parseViewAsRole(form.get("role"));
-  if (!staff || !platformCan(staff.role, "businesses.view_as") || !role) {
-    notFound();
+  if (!staff || !platformCan(staff.role, "businesses.view_as")) notFound();
+  const value = form.get("role");
+  // The business's named roles are read only for a choice that isn't a
+  // built-in role.
+  const choice = readViewAsChoice(
+    value,
+    parseViewAsRole(value) ? [] : await getViewableNamedRoles(business.id),
+  );
+  if (choice === "gone") {
+    redirect(`/admin/businesses/${business.slug}?view=roleGone`);
   }
+  if (!choice) notFound();
+  let failure: ViewAsFailure | null = null;
   try {
-    await startViewing(staff.userId, business.id, role);
+    const started = await startViewing(staff.userId, business.id, choice);
+    if (!started.ok) failure = started.failure;
   } catch (error) {
     console.error("startViewing failed", (error as Error).message);
-    redirect(`/admin/businesses/${business.slug}?view=failed`);
+    failure = "failed";
   }
+  if (failure) redirect(`/admin/businesses/${business.slug}?view=${failure}`);
   redirect("/home");
 }
 

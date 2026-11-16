@@ -22,6 +22,8 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/wording",
   "/design/shell/team/invite",
   "/design/shell/view-as",
+  // As a role the business named (roles R11c): the banner names it.
+  "/design/shell/view-as?as=named",
   "/design/shell/module",
   "/design/shell/unavailable",
   "/design/screens/skeleton",
