@@ -62,6 +62,12 @@ export type CurrentMember = {
    * (`public.member_names`), else their own; their own while viewing.
    */
   name: string | null;
+  /**
+   * Their own name (`profiles.full_name`), the same in every business: for
+   * where ConceptApp itself speaks to them (the console), which no
+   * business's name for them reaches.
+   */
+  ownName: string | null;
   phone: string | null;
   /** The stored photo's path (`profiles.avatar_path`), or null. */
   photoPath: string | null;
@@ -369,6 +375,7 @@ export async function getCurrentMember(
   const person = {
     userId,
     name: own?.full_name ?? null,
+    ownName: own?.full_name ?? null,
     phone: ownPhone,
     photoPath: own?.avatar_path ?? null,
     profile: {

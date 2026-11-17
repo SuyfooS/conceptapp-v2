@@ -28,6 +28,7 @@ import {
   roleChoiceOf,
   roleChoices,
   sameRoleChoice,
+  sameTeamName,
   TEAM_CHANGE_FAILURES,
   TEAM_NAME_MAX,
   type TeamInvite,
@@ -554,6 +555,30 @@ describe("parseTeamName", () => {
       ok: false,
       error: "required",
     });
+  });
+});
+
+describe("sameTeamName", () => {
+  it("is the name shown, however it was stored, until a letter differs", () => {
+    // An own name with a double space, as the sheet opens on it and as typed
+    // without it: no fix to offer.
+    expect(sameTeamName("Pe  Ter", "Pe  Ter")).toBe(true);
+    expect(sameTeamName("Pe Ter", "Pe  Ter")).toBe(true);
+    expect(sameTeamName(" Pe Ter\u0007", "Pe  Ter")).toBe(true);
+    // Decomposed letters are the same name composed.
+    expect(sameTeamName("Noël", "Noël")).toBe(true);
+    expect(sameTeamName("Noël", "Noël")).toBe(true);
+    // A letter that differs is a fix.
+    expect(sameTeamName("Peter", "Pe  Ter")).toBe(false);
+    expect(sameTeamName("Noel", "Noël")).toBe(false);
+  });
+
+  it("is never the same where either is no name", () => {
+    expect(sameTeamName("", "Noa Cohen")).toBe(false);
+    expect(sameTeamName("   ", "Noa Cohen")).toBe(false);
+    expect(sameTeamName("Noa Cohen", null)).toBe(false);
+    expect(sameTeamName("Noa Cohen", "  ")).toBe(false);
+    expect(sameTeamName("", null)).toBe(false);
   });
 });
 

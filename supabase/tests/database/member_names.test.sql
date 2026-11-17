@@ -13,7 +13,7 @@
 -- numbers of its own (9a…, 050-000-92xx) and explicit times, so nothing here
 -- meets the seeded people or the clock; its slugs (mnam-…) are its own too.
 begin;
-select plan(50);
+select plan(53);
 set local timezone = 'UTC';
 
 insert into auth.users (id, aud, role, phone)
@@ -413,15 +413,32 @@ select is(
   'Galit Books',
   'and their own name, which it shows, stays as it was'
 );
+
+-- Y gives them a name of its own, so each business keeps one for them and
+-- what is read of one says nothing of the other.
+set local role service_role;
+select is(
+  public.set_member_name('9a000000-0000-4000-a000-000000000010',
+    '9a000000-0000-4000-b000-000000000002', '9a000000-0000-4000-a000-000000000006',
+    'Galit Y', 'Galit Books', '2026-11-24 09:02+00'),
+  '{"changed": true, "name": "Galit Y"}'::jsonb,
+  'the other business fixes their name too, a name of its own'
+);
+reset role;
 select is(
   pg_temp.names_read('9a000000-0000-4000-a000-000000000010', '9a000000-0000-4000-b000-000000000001'),
   '{}'::text[],
   'another business''s owner reads none of its names'
 );
 select is(
-  pg_temp.names_read('9a000000-0000-4000-a000-000000000006', '9a000000-0000-4000-b000-000000000002'),
+  pg_temp.names_read('9a000000-0000-4000-a000-000000000001', '9a000000-0000-4000-b000-000000000002'),
   '{}'::text[],
-  'nor does the accountant read one in the other business'
+  'nor does its owner read the other business''s'
+);
+select is(
+  pg_temp.names_read('9a000000-0000-4000-a000-000000000006', '9a000000-0000-4000-b000-000000000002'),
+  array['9a000000-0000-4000-a000-000000000006=Galit Y'],
+  'the accountant of both reads in the other business only the name it gave them'
 );
 
 ------------------------------------------------------------------------------
@@ -494,6 +511,14 @@ select is(
     '9a000000-0000-4000-a000-000000000006=Galit X'
   ],
   'so does an owner'
+);
+select is(
+  pg_temp.names_read('9a000000-0000-4000-a000-000000000006', '9a000000-0000-4000-b000-000000000001'),
+  array[
+    '9a000000-0000-4000-a000-000000000004=Noa Levi',
+    '9a000000-0000-4000-a000-000000000006=Galit X'
+  ],
+  'and the accountant, who holds pay, by the names this business gave'
 );
 select is(
   pg_temp.names_read('9a000000-0000-4000-a000-000000000016', '9a000000-0000-4000-b000-000000000001'),

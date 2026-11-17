@@ -573,6 +573,23 @@ export function parseTeamName(
   return { ok: true, name };
 }
 
+/**
+ * Whether `draft` fixes nothing: it is the name `shown` already, both read as
+ * `parseTeamName` keeps them (letters composed, what nobody sees dropped,
+ * spaces collapsed). An own name stored with a double space or with its
+ * letters decomposed is then no change until a letter really differs, where
+ * comparing it as stored would offer a fix nobody can see. False when either
+ * is no name to keep.
+ */
+export function sameTeamName(
+  draft: unknown,
+  shown: string | null | undefined,
+): boolean {
+  const next = parseTeamName(draft);
+  const now = parseTeamName(shown);
+  return next.ok && now.ok && next.name === now.name;
+}
+
 export type TeamInviteInput = RoleChoice & {
   name: string;
   /** Canonical E.164. */

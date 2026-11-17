@@ -1,6 +1,6 @@
 "use client";
 
-import { parseTeamName, TEAM_NAME_MAX } from "@domain/team";
+import { parseTeamName, sameTeamName, TEAM_NAME_MAX } from "@domain/team";
 import { Button } from "@ui/button";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -106,11 +106,12 @@ export function MemberNameState({
 
   /**
    * Writes `to`, a name `parseTeamName` kept, for the one the screen shows,
-   * with the fix back as its undo. Whether the sheet may close.
+   * with the fix back as its undo; nothing when it is that one already
+   * (`sameTeamName`). Whether the sheet may close.
    */
   async function fix(to: string): Promise<boolean> {
     const from = shown;
-    if (to === from) return true;
+    if (sameTeamName(to, from)) return true;
     if (busy) return false;
     setFailure(null);
     clearUndo();
@@ -237,7 +238,9 @@ function NameForm({ value }: { value: NameValue }) {
   const [draft, setDraft] = useState(value.shown ?? "");
   const [error, setError] = useState<"required" | "tooLong" | null>(null);
   const parsed = parseTeamName(draft);
-  const same = parsed.ok && parsed.name === value.shown;
+  // Both as a name is kept: an own name stored with a double space, or with
+  // its letters decomposed, is no fix until a letter really differs.
+  const same = sameTeamName(draft, value.shown);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
