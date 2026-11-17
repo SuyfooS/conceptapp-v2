@@ -351,6 +351,33 @@ export async function clearPunchState(): Promise<void> {
     where business_id = ${DEMO_RESTAURANT}`;
 }
 
+/**
+ * No clock stations at the demo restaurant: their codes go with them, and
+ * the entries that came from one keep no station (on delete set null).
+ */
+export async function clearDemoStations(): Promise<void> {
+  await sql`delete from public.clock_stations
+    where business_id = ${DEMO_RESTAURANT}`;
+}
+
+export type DemoStation = {
+  name: string;
+  stopped: boolean;
+  seen: boolean;
+  createdBy: string | null;
+};
+
+/** The demo restaurant's clock stations, oldest first; `createdBy` by phone. */
+export async function demoStations(): Promise<DemoStation[]> {
+  return await sql<DemoStation[]>`
+    select s.name, s.stopped_at is not null as stopped,
+      s.last_seen_at is not null as seen, p.phone as "createdBy"
+    from public.clock_stations s
+    left join public.profiles p on p.id = s.created_by
+    where s.business_id = ${DEMO_RESTAURANT}
+    order by s.created_at`;
+}
+
 /** How many typed codes the person has had counted at the demo restaurant. */
 export async function demoPunchAttempts(phone: string): Promise<number> {
   const [row] = await sql<{ count: number }[]>`

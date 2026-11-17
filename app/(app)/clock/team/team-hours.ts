@@ -1,8 +1,11 @@
+import { getRunningStations } from "@db/clock-stations";
 import {
   getCancelledEntries,
   getClockPeople,
   getTimeEntries,
 } from "@db/time-clock";
+import { dateIn } from "@domain/availability";
+import { stationSeen } from "@domain/clock-station";
 import { canSeePay } from "@domain/payroll-access";
 import { timeIn } from "@domain/shabbat";
 import {
@@ -23,7 +26,7 @@ import { cache } from "react";
 import { z } from "zod";
 import { currentModuleSettings } from "../../modules";
 import { clockAccess, currentEntriesToConfirm } from "../clock";
-import type { PersonHoursData, TeamHoursData } from "./team-types";
+import type { PersonHoursData, StationRow, TeamHoursData } from "./team-types";
 
 /**
  * The clock's reader, when they also edit it (`editsClock`: clock.edit, the
@@ -56,13 +59,15 @@ export async function currentTeamHours(
   const currentMonth = monthOf(clockAt(now, timeZone).date);
   const month = monthFrom(asked, currentMonth);
   const { from, to } = monthRange(month, timeZone);
-  const [settings, people, entries, openNow, waiting] = await Promise.all([
-    currentModuleSettings("time_clock"),
-    getClockPeople(businessId),
-    getTimeEntries(businessId, from, to),
-    getTimeEntries(businessId, now, now),
-    currentEntriesToConfirm(),
-  ]);
+  const [settings, people, entries, openNow, waiting, running] =
+    await Promise.all([
+      currentModuleSettings("time_clock"),
+      getClockPeople(businessId),
+      getTimeEntries(businessId, from, to),
+      getTimeEntries(businessId, now, now),
+      currentEntriesToConfirm(),
+      getRunningStations(businessId),
+    ]);
 
   const nameOf = (userId: string) =>
     people.find((person) => person.userId === userId)?.name ?? null;
@@ -96,6 +101,26 @@ export async function currentTeamHours(
         (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
         (a.name ?? "").localeCompare(b.name ?? "", "he"),
     );
+
+  // A station shows the code where codes may show on a station, so the line
+  // on leaving one is said there: under those running, or alone where the
+  // business asks for the code. Those running are listed wherever, to stop.
+  const stationRows = running.map((station): StationRow => {
+    const seen = stationSeen(station.lastSeenAt, now);
+    return {
+      id: station.id,
+      name: station.name,
+      seen:
+        seen.kind === "seen"
+          ? {
+              kind: "seen",
+              date: dateIn(new Date(seen.at), timeZone),
+              time: timeIn(new Date(seen.at), timeZone),
+            }
+          : seen,
+    };
+  });
+  const howTo = settings.codeDisplay !== "manager";
 
   // Someone who forgot to leave days ago needs fixing; they aren't at work.
   const current = openNow.filter((entry) => !entryOverdue(entry, now));
@@ -146,6 +171,14 @@ export async function currentTeamHours(
         in: timeIn(new Date(entry.clockIn), timeZone),
       })),
     people: rows,
+    stations:
+      stationRows.length > 0 || (howTo && settings.requirePunchCode)
+        ? {
+            rows: stationRows,
+            howTo,
+            today: clockAt(now, timeZone).date,
+          }
+        : null,
   };
 }
 

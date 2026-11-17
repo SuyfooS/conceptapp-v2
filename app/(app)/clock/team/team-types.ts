@@ -1,3 +1,4 @@
+import type { StationStopResult } from "@domain/clock-station";
 import type {
   Attendance,
   BreakProblem,
@@ -6,6 +7,30 @@ import type {
   EntryProblem,
   ShiftRecord,
 } from "@domain/time-clock";
+
+/** A running clock station, as the team's hours list it. */
+export type StationRow = {
+  id: string;
+  name: string;
+  /** When it last showed a code: the business's day and HH:MM. */
+  seen:
+    | { kind: "showing" }
+    | { kind: "seen"; date: string; time: string }
+    | { kind: "never" };
+};
+
+/** The business's clock stations, for those who edit the clock. */
+export type TeamStations = {
+  /** Running, oldest first. */
+  rows: StationRow[];
+  /**
+   * The line on leaving a device as one: where codes may show on a station
+   * (`codeDisplay` isn't "manager").
+   */
+  howTo: boolean;
+  /** The business's date today, to name another day's "last seen". */
+  today: string;
+};
 
 /**
  * An entry waiting for this viewer's approval, as the confirm card lists it:
@@ -63,6 +88,12 @@ export type TeamHoursData = {
     shifts: number;
     breakMinutes: number;
   }[];
+  /**
+   * The stations running, with the line on leaving a device as one; null
+   * with none running where the business doesn't ask for the code, or shows
+   * it on a manager's phone only.
+   */
+  stations: TeamStations | null;
 };
 
 export type PersonHoursData = {
@@ -172,6 +203,10 @@ export type EntryTarget =
 /** What the team's screen can do. The demo passes a stand-in. */
 export type TeamActions = {
   confirm: (entryId: string) => Promise<EntryActionResult>;
+  /** Stop a clock station at once: it shows no code from its next ask. */
+  stopStation: (stationId: string) => Promise<StationStopResult>;
+  /** The toast's "ביטול": start it again, within two minutes. */
+  restartStation: (stationId: string) => Promise<StationStopResult>;
 };
 
 /** Where this screen's links go; the demo keeps them inside the demo. */

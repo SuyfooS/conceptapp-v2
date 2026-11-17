@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { authCookieOptions, authCookieOptionsFor } from "./cookies";
+import {
+  authCookieOptions,
+  authCookieOptionsFor,
+  isSessionCookie,
+  sessionCookieName,
+} from "./cookies";
 
 const headers = (values: Record<string, string>) => ({
   get: (name: string) => values[name] ?? null,
@@ -51,5 +56,34 @@ describe("authCookieOptionsFor", () => {
       authCookieOptionsFor(headers({ host: "conceptapp-v2.vercel.app" }))
         .secure,
     ).toBe(true);
+  });
+});
+
+describe("the session's cookie", () => {
+  it("is named after the project, as @supabase/ssr names it", () => {
+    expect(sessionCookieName("https://abcdefgh.supabase.co")).toBe(
+      "sb-abcdefgh-auth-token",
+    );
+    // The local stack, as the browser tests run it.
+    expect(sessionCookieName("http://127.0.0.1:54321")).toBe(
+      "sb-127-auth-token",
+    );
+  });
+
+  it("is the session whole or in pieces, never the code verifier or another", () => {
+    const name = "sb-abcdefgh-auth-token";
+    for (const cookie of [name, `${name}.0`, `${name}.1`, `${name}.12`]) {
+      expect(isSessionCookie(cookie, name), cookie).toBe(true);
+    }
+    for (const cookie of [
+      `${name}-code-verifier`,
+      `${name}.01`,
+      `${name}.x`,
+      "sb-other-auth-token",
+      "ca_station",
+      "ca_business",
+    ]) {
+      expect(isSessionCookie(cookie, name), cookie).toBe(false);
+    }
   });
 });
