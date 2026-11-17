@@ -2,7 +2,8 @@
 -- "תיקון שם"): only the server fixes the name a business shows for someone,
 -- by the rule of changing a role (team.edit and the rank rule), never one's
 -- own, never in a demo closed to invites. The name is one line of 1 to 80
--- characters, its spaces collapsed; their own name, or none, keeps no row;
+-- characters, its spaces collapsed, and their own name is read the same way;
+-- their own name, or none, keeps no row;
 -- a name the screen didn't show is refused (40001); the same name writes
 -- nothing. The log keeps the person only, never a name, and tells nobody.
 -- The name is the business's alone: their own name (profiles.full_name) never
@@ -12,7 +13,7 @@
 -- numbers of its own (9a…, 050-000-92xx) and explicit times, so nothing here
 -- meets the seeded people or the clock; its slugs (mnam-…) are its own too.
 begin;
-select plan(47);
+select plan(50);
 set local timezone = 'UTC';
 
 insert into auth.users (id, aud, role, phone)
@@ -287,6 +288,39 @@ select is(
   0,
   'with no row left'
 );
+
+-- Their own name with odd spaces is read as the screens show it, collapsed,
+-- so the name the screen showed for them is never a change meanwhile (40001
+-- on every try). 5's own name is put back to none after.
+update public.profiles set full_name = 'Pe  Ter'
+where id = '9a000000-0000-4000-a000-000000000005';
+set local role service_role;
+select is(
+  array[
+    pg_temp.fix('9a000000-0000-4000-a000-000000000001', '9a000000-0000-4000-a000-000000000005',
+      'Peter', 'Pe  Ter'),
+    pg_temp.fix('9a000000-0000-4000-a000-000000000001', '9a000000-0000-4000-a000-000000000005',
+      'Peter', 'Pe Ter')
+  ],
+  array['ok', 'ok'],
+  'their own name with odd spaces is the name the screen showed, as typed or collapsed'
+);
+select is(
+  public.set_member_name('9a000000-0000-4000-a000-000000000001',
+    '9a000000-0000-4000-b000-000000000001', '9a000000-0000-4000-a000-000000000005',
+    'Pe Ter', 'Pe  Ter', '2026-11-24 08:30+00'),
+  '{"changed": false, "name": "Pe Ter"}'::jsonb,
+  'and that name with its spaces collapsed is their own, which changes nothing'
+);
+reset role;
+select is(
+  (select count(*)::int from public.member_names
+    where business_id = '9a000000-0000-4000-b000-000000000001'),
+  0,
+  'nor keeps a row'
+);
+update public.profiles set full_name = null
+where id = '9a000000-0000-4000-a000-000000000005';
 
 ------------------------------------------------------------------------------
 -- And never
