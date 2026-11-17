@@ -352,7 +352,10 @@ export type OutcomeOnShift = Extract<SwapOutcome, "declined" | "schedule">;
  * away, once it no longer waits: not approved, or cancelled by a change to
  * the schedule that kept them on it. Null while a request of theirs waits on
  * it, and for one they withdrew themselves, one approved (the shift is no
- * longer theirs) or one a change in the team ended.
+ * longer theirs) or one a change in the team ended. It goes by the newest
+ * request on the shift they were part of, on either side: one they took
+ * since (the shift came back to them that way) says it, not an older one of
+ * their own.
  */
 export function outcomeOnShift(
   ended: readonly EndedSwap[],
@@ -363,10 +366,12 @@ export function outcomeOnShift(
   if (myRequestFor(live, shiftId, userId)) return null;
   let last: EndedSwap | null = null;
   for (const swap of ended) {
-    if (swap.shiftId !== shiftId || swap.requestedBy !== userId) continue;
+    if (swap.shiftId !== shiftId) continue;
+    if (swap.requestedBy !== userId && swap.takenBy !== userId) continue;
     if (!last || newer(swap, last)) last = swap;
   }
-  return last?.outcome === "declined" || last?.outcome === "schedule"
+  if (last?.requestedBy !== userId) return null;
+  return last.outcome === "declined" || last.outcome === "schedule"
     ? last.outcome
     : null;
 }

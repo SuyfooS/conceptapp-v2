@@ -1016,6 +1016,23 @@ describe("outcomeOnShift", () => {
     expect(outcomeOnShift(one("declined"), [], "eve", "yoav")).toBeNull();
     expect(outcomeOnShift(one("declined"), [], "mon", "noa")).toBeNull();
   });
+
+  it("goes by a newer request the person took on it, not their own older one", () => {
+    // Noa's request ended with the schedule giving the shift to Yoav; Yoav
+    // then gave it back to her, approved. It came back by her taking it.
+    const swaps = [
+      finished("1", "eve", "noa", null, "schedule", "2026-11-05T10:00Z"),
+      finished("2", "eve", "yoav", "noa", "approved", "2026-11-05T12:00Z"),
+    ];
+    expect(outcomeOnShift(swaps, [], "eve", "noa")).toBeNull();
+    expect(outcomeOnShift([...swaps].reverse(), [], "eve", "noa")).toBeNull();
+    // A request of someone else's she had no part in changes nothing.
+    const others = [
+      ...one("declined"),
+      finished("3", "eve", "maya", "omer", "approved", "2026-11-05T12:00Z"),
+    ];
+    expect(outcomeOnShift(others, [], "eve", "noa")).toBe("declined");
+  });
 });
 
 describe("noLongerWaiting", () => {
