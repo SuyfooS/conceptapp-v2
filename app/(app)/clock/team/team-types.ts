@@ -83,6 +83,18 @@ export type EntryFailure =
   | "ownHours"
   /** Hours someone set for themselves wait for an owner. */
   | "ownerOnly"
+  /** Someone already cancelled the shift: it comes back before it changes. */
+  | "cancelled"
+  /** Someone already brought the shift back. */
+  | "notCancelled"
+  /** Only an owner cancels their own shift, or brings it back. */
+  | "ownShift"
+  /** Bringing it back: a live shift of the person covers those hours now. */
+  | "overlap"
+  /** Cancelling one still open: a break after its first day; its end is fixed first. */
+  | "breaksAfterDay"
+  /** Bringing back one a cancel ended: the person is off the staff now. */
+  | "notOnStaff"
   | "noAccess"
   | "viewOnly"
   | "failed";
@@ -102,7 +114,21 @@ export type EntryValues = {
 export type EntryActions = {
   correct: (entryId: string, values: EntryValues) => Promise<EntryActionResult>;
   add: (personId: string, values: EntryValues) => Promise<EntryActionResult>;
+  /** Cancel a shift, with why: it stays, marked, and counts for nothing. */
+  cancel: (entryId: string, reason: string) => Promise<EntryActionResult>;
+  /** Bring a cancelled shift back as it was; the toast's "ביטול" too. */
+  restore: (entryId: string) => Promise<EntryActionResult>;
 };
+
+/**
+ * What the person's sheet is open on: a shift to add, one to fix, the step
+ * that cancels it, or one cancelled, to bring back.
+ */
+export type EntryTarget =
+  | { kind: "add" }
+  | { kind: "edit"; record: ShiftRecord }
+  | { kind: "cancel"; record: ShiftRecord }
+  | { kind: "cancelled"; record: ShiftRecord };
 
 /** What the team's screen can do. The demo passes a stand-in. */
 export type TeamActions = {

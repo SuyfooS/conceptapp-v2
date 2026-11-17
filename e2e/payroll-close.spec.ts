@@ -2,11 +2,13 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
+  cancelShopShift,
   correctShopShift,
   reopenShopMonth,
   resetDemoShop,
   seededPayMonth,
   shopActivityDetails,
+  shopLineAt,
   shopLines,
   shopPayrollMonth,
 } from "./db";
@@ -17,6 +19,7 @@ import { readWorkbook, sheetCells, unzip } from "./unzip";
 // it: last month's hours for its staff, and its accountant Galit, who closes
 // and reopens. Hours are facts: a shift of the closed month is still
 // corrected, she is told, and the next month's file holds the difference.
+// A shift of it cancelled after the close is the same (the clock plan's PR4).
 // Every visit names the seeded month. The shop goes back to how it starts
 // after the spec, so the specs after it find the seeded month open and
 // uncorrected.
@@ -249,6 +252,64 @@ test("a correction after the close goes through, says its month, tells the accou
         ),
       )
       .toContain("תיקון של רוני");
+  } finally {
+    await reopenShopMonth(month);
+  }
+});
+
+test("a cancel after the close goes through, tells the accountant, and its reason goes into the next file", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "one run is enough");
+  const month = await seededPayMonth();
+  const reason = `e2e: entered by mistake ${Date.now()}`;
+  try {
+    await enterAsAccountant(page);
+    await page.goto(`/clock/pay?month=${month}`);
+    // The button works once the page has hydrated.
+    await page.waitForLoadState("networkidle");
+    await page.getByRole("button", { name: c.action }).click();
+    await expect(
+      page.getByText(closedLine()).filter({ visible: true }),
+    ).toBeVisible();
+
+    // A shift of the closed month is still cancelled, its row in the log
+    // names the month, and Galit is told: her one line for the month is
+    // written again (a line per month, so its count may stay).
+    const told =
+      (await shopLineAt(GALIT.e164, "pay.after_close")) ?? new Date(0);
+    expect(await cancelShopShift(month, reason)).toBe(month);
+    await expect
+      .poll(async () =>
+        (
+          (await shopLineAt(GALIT.e164, "pay.after_close")) ?? new Date(0)
+        ).getTime(),
+      )
+      .toBeGreaterThan(told.getTime());
+
+    // The next month's file has the difference, with the cancel's reason.
+    const [year = 0, index = 1] = month.split("-").map(Number);
+    const next = `${index === 12 ? year + 1 : year}-${String(
+      index === 12 ? 1 : index + 1,
+    ).padStart(2, "0")}`;
+    const response = await page.request.get(`/clock/pay/export?month=${next}`);
+    expect(response.status()).toBe(200);
+    const { sheets, strings } = readWorkbook(unzip(await response.body()));
+    const f = he.app.pay.file.sheets;
+    const differences = sheets.find((sheet) => sheet.name === f.differences);
+    const rows = new Map<string, string[]>();
+    for (const [ref, cell] of sheetCells(differences?.xml ?? "", strings)) {
+      const row = ref.replace(/^[A-Z]+/, "");
+      rows.set(row, [...(rows.get(row) ?? []), cell.value]);
+    }
+    expect(
+      [...rows.values()].some(
+        (cells) =>
+          cells.includes(RONI) &&
+          cells.includes(monthWords(month)) &&
+          cells.some((value) => value.includes(reason)),
+      ),
+    ).toBe(true);
   } finally {
     await reopenShopMonth(month);
   }

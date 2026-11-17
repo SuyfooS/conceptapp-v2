@@ -10,31 +10,50 @@ import { pageGlowClass } from "@ui/page-glow";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
 import { TextField } from "@ui/text-field";
-import { History, Plus } from "lucide-react";
+import { Ban, History, Plus, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useId, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import { RefreshOnReturn } from "../../home/refresh-on-return";
 import { MonthHero } from "../month-hero";
-import { ShiftList } from "../shift-list";
+import { ShiftList, ShiftSummary } from "../shift-list";
 import type {
+  EntryActionResult,
   EntryActions,
   EntryFailure,
+  EntryTarget,
   EntryValues,
   PersonHoursData,
   TeamPaths,
 } from "./team-types";
 
-type Target = { kind: "add" } | { kind: "edit"; record: ShiftRecord };
+/** How long the toast's "ביטול" stays after a cancel, as a removed document's. */
+const UNDO_SHOWN_MS = 10_000;
 
-/** One person's shifts in a month: a manager fixes them and adds what's missing. */
+/** What the toast says, with the way back from a cancel. */
+type Toast = { text: string; stamp: string; undo?: () => void };
+
+/** Still drawn and shown: somewhere the keyboard's focus can go. */
+function shownNow(element: HTMLElement | null): element is HTMLElement {
+  if (!element?.isConnected) return false;
+  return element.getClientRects().length > 0;
+}
+
+/**
+ * One person's shifts in a month: a manager fixes them and adds what's
+ * missing, cancels one entered by mistake (it stays, marked, with "ביטול" in a
+ * toast for 10 seconds) and brings a cancelled one back.
+ */
 export function PersonHoursView({
   data,
   actions,
   paths,
+  opens,
 }: {
   data: PersonHoursData;
   actions: EntryActions;
   paths: TeamPaths;
+  /** Opens with the sheet on this (the design demo's `?state=`). */
+  opens?: EntryTarget;
 }) {
   const t = useTranslations("app.clock.team");
   // The month and the shifts speak the history's words.
@@ -42,21 +61,59 @@ export function PersonHoursView({
   // The sheet stays mounted, closed, so it opens already inside the business's
   // colour; a sheet mounted open moves there on its first change and loses focus.
   const [open, setOpen] = useState(false);
-  const [target, setTarget] = useState<Target>({ kind: "add" });
+  const [target, setTarget] = useState<EntryTarget>({ kind: "add" });
   const [opened, setOpened] = useState(0);
+  // Why the toast's "ביטול" didn't go, said as the cancelled shift opens.
+  const [failed, setFailed] = useState<EntryFailure | null>(null);
+  // Back on the fix from the cancel's step: the focus goes to where it left.
+  const [stepBack, setStepBack] = useState(false);
   const [saving, start] = useTransition();
-  const [toast, setToast] = useState<{ text: string; stamp: string } | null>(
-    null,
-  );
+  const [toast, setToast] = useState<Toast | null>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  /** What opened the sheet: where the focus goes once a toast holding it goes. */
+  const opener = useRef<HTMLElement | null>(null);
   const name = data.person.name ?? t("noName");
   const personHref = `${paths.team}/${data.person.userId}`;
-  const record = target.kind === "edit" ? target.record : null;
+  // The shift as the page has it now: after a write it is read again.
+  const record =
+    target.kind === "add"
+      ? null
+      : (data.records.find((shift) => shift.id === target.record.id) ??
+        target.record);
 
-  function show(next: Target) {
+  function show(next: EntryTarget, failure: EntryFailure | null = null) {
     setTarget(next);
+    setFailed(failure);
+    setStepBack(false);
     setOpened((count) => count + 1);
     setOpen(true);
   }
+
+  /** Opened from the page: what was pressed is kept, to come back to. */
+  function showFromPage(next: EntryTarget) {
+    const active = document.activeElement;
+    opener.current =
+      active instanceof HTMLElement && active !== document.body ? active : null;
+    show(next);
+  }
+
+  /** The way on inside the open sheet: to the cancel's step, and back. */
+  function step(next: EntryTarget) {
+    setStepBack(next.kind === "edit");
+    setTarget(next);
+  }
+
+  /** The focus once the toast that held it goes: what opened the sheet, or the title. */
+  function focusBack() {
+    const back = [opener.current, heading.current].find(shownNow);
+    back?.focus({ preventScroll: true });
+  }
+
+  // The design demo opens on a sheet once the page is drawn, inside its colour.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, as the page opens
+  useEffect(() => {
+    if (opens) show(opens);
+  }, []);
 
   function save(values: EntryValues, onFailure: (f: EntryFailure) => void) {
     start(async () => {
@@ -69,7 +126,7 @@ export function PersonHoursView({
           return;
         }
         setToast({
-          text: t(`done.${target.kind}`),
+          text: t(record ? "done.edit" : "done.add"),
           stamp: new Date().toISOString(),
         });
         setOpen(false);
@@ -79,18 +136,108 @@ export function PersonHoursView({
     });
   }
 
+  /**
+   * Cancel it at once, with "ביטול" in the toast for 10 seconds, rather than
+   * asking first. The sheet's button goes with the sheet, so the keyboard's
+   * focus goes on to that "ביטול".
+   */
+  function cancelShift(
+    shift: ShiftRecord,
+    reason: string,
+    onFailure: (f: EntryFailure) => void,
+  ) {
+    start(async () => {
+      try {
+        const result = await actions.cancel(shift.id, reason);
+        if (!result.ok) {
+          onFailure(result.failure);
+          return;
+        }
+        setOpen(false);
+        setToast({
+          text: t("done.cancel"),
+          stamp: `cancel-${Date.now()}`,
+          undo: () => restoreShift(shift),
+        });
+      } catch {
+        onFailure("failed");
+      }
+    });
+  }
+
+  /**
+   * Bring it back: from its sheet, which says why when it can't, or from the
+   * toast's "ביטול", which then opens the cancelled shift to say why.
+   */
+  function restoreShift(
+    shift: ShiftRecord,
+    onFailure?: (f: EntryFailure) => void,
+  ) {
+    start(async () => {
+      let result: EntryActionResult;
+      try {
+        result = await actions.restore(shift.id);
+      } catch {
+        result = { ok: false, failure: "failed" };
+      }
+      if (result.ok) {
+        setOpen(false);
+        setToast({ text: t("done.restore"), stamp: `restore-${Date.now()}` });
+      } else if (onFailure) {
+        onFailure(result.failure);
+      } else {
+        // The toast's "ביטול" didn't go: the shift, cancelled, says why. The
+        // focus comes back to what opened it before.
+        show({ kind: "cancelled", record: shift }, result.failure);
+      }
+    });
+  }
+
+  const sheetTitle = {
+    add: t("sheet.addTitle"),
+    edit: t("sheet.editTitle"),
+    cancel: t("cancel.title"),
+    cancelled: t("cancelled.title"),
+  }[target.kind];
+  const sheetSubtitle =
+    target.kind === "add"
+      ? t("sheet.addSubtitle")
+      : target.kind === "edit"
+        ? t("sheet.editSubtitle")
+        : undefined;
+
   return (
     <PageBody className={pageGlowClass}>
       <RefreshOnReturn />
-      <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
+      <StatusToast
+        message={toast?.text ?? null}
+        stamp={toast?.stamp}
+        duration={toast?.undo ? UNDO_SHOWN_MS : 4000}
+        action={
+          toast?.undo
+            ? {
+                label: t("done.undo"),
+                onClick: () => {
+                  const undo = toast.undo;
+                  setToast(null);
+                  undo?.();
+                },
+              }
+            : null
+        }
+        // The sheet that held the focus closed with the cancel: on to "ביטול".
+        focusAction={toast?.undo !== undefined}
+        onFocusLeave={focusBack}
+      />
       <PageHeader
         back={{ href: `${paths.team}?month=${data.month}`, label: t("title") }}
         title={name}
+        headingRef={heading}
         actions={
           <Button
             size="lg"
             disabled={data.viewOnly}
-            onClick={() => show({ kind: "add" })}
+            onClick={() => showFromPage({ kind: "add" })}
           >
             <Plus aria-hidden="true" />
             {t("person.add")}
@@ -117,10 +264,16 @@ export function PersonHoursView({
           <ShiftList
             records={data.records}
             t={tHistory}
+            // Viewing only, nothing opens: no fix, no cancel, no way back.
             onEdit={
               data.viewOnly
                 ? undefined
-                : (shift) => show({ kind: "edit", record: shift })
+                : (shift) =>
+                    showFromPage(
+                      shift.cancelled
+                        ? { kind: "cancelled", record: shift }
+                        : { kind: "edit", record: shift },
+                    )
             }
             className="relative z-10 mx-3 -mt-[56px] shadow-float xl:mx-5"
           />
@@ -147,21 +300,45 @@ export function PersonHoursView({
           // A save under way finishes first: its answer belongs on this sheet.
           if (!saving) setOpen(next);
         }}
-        title={t(record ? "sheet.editTitle" : "sheet.addTitle")}
-        subtitle={t(record ? "sheet.editSubtitle" : "sheet.addSubtitle")}
+        title={sheetTitle}
+        subtitle={sheetSubtitle}
         closeLabel={t("sheet.close")}
       >
-        <EntryForm
-          key={opened}
-          record={record}
-          // A new shift starts in the month on screen.
-          date={
-            data.month === data.currentMonth ? data.today : `${data.month}-01`
-          }
-          today={data.today}
-          saving={saving}
-          save={save}
-        />
+        {target.kind === "cancel" && record ? (
+          <CancelForm
+            key={opened}
+            record={record}
+            saving={saving}
+            cancel={(reason, onFailure) =>
+              cancelShift(record, reason, onFailure)
+            }
+            back={() => step({ kind: "edit", record })}
+          />
+        ) : target.kind === "cancelled" && record ? (
+          <CancelledForm
+            key={opened}
+            record={record}
+            failed={failed}
+            saving={saving}
+            restore={(onFailure) => restoreShift(record, onFailure)}
+          />
+        ) : (
+          <EntryForm
+            key={opened}
+            record={record}
+            // A new shift starts in the month on screen.
+            date={
+              data.month === data.currentMonth ? data.today : `${data.month}-01`
+            }
+            today={data.today}
+            saving={saving}
+            save={save}
+            returning={stepBack}
+            toCancel={
+              record ? () => step({ kind: "cancel", record }) : undefined
+            }
+          />
+        )}
       </Sheet>
     </PageBody>
   );
@@ -173,16 +350,23 @@ function EntryForm({
   today,
   saving,
   save,
+  returning,
+  toCancel,
 }: {
   record: ShiftRecord | null;
   date: string;
   today: string;
   saving: boolean;
   save: (values: EntryValues, onFailure: (f: EntryFailure) => void) => void;
+  /** Back from the cancel's step: the focus goes to the button that led there. */
+  returning: boolean;
+  /** A shift that is there: the way to cancel it, beside fixing it. */
+  toCancel?: () => void;
 }) {
   const t = useTranslations("app.clock.team");
   const id = useId();
   const reasonField = useRef<HTMLInputElement>(null);
+  const cancelButton = useRef<HTMLButtonElement>(null);
   // The reason starts empty each time: it says why this change is made.
   const [values, setValues] = useState<EntryValues>({
     date: record?.date ?? date,
@@ -193,6 +377,11 @@ function EntryForm({
   const [failure, setFailure] = useState<EntryFailure | null>(null);
   // Only a shift still running may be left with no end, while it's within limits.
   const canStayOpen = record?.out === null && !record.overdue;
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: once, as it is drawn
+  useEffect(() => {
+    if (returning) cancelButton.current?.focus();
+  }, []);
 
   /** A missing reason is said under its field, which takes the focus. */
   function fail(next: EntryFailure) {
@@ -262,6 +451,153 @@ function EntryForm({
       ) : null}
       <Button size="lg" loading={saving} onClick={submit}>
         {t(record ? "sheet.saveEdit" : "sheet.saveAdd")}
+      </Button>
+      {toCancel ? (
+        // Beside the fix, never the main action: a shift entered by mistake.
+        <Button
+          ref={cancelButton}
+          variant="ghost"
+          disabled={saving}
+          onClick={toCancel}
+          className="text-danger"
+        >
+          <Ban aria-hidden="true" />
+          {t("sheet.cancelShift")}
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The cancel's step: the shift, what a cancel does to it, why (required, as a
+ * correction's), and the danger button. Pressed, it cancels at once; the
+ * toast's "ביטול" brings it back.
+ */
+function CancelForm({
+  record,
+  saving,
+  cancel,
+  back,
+}: {
+  record: ShiftRecord;
+  saving: boolean;
+  cancel: (reason: string, onFailure: (f: EntryFailure) => void) => void;
+  back: () => void;
+}) {
+  const t = useTranslations("app.clock.team");
+  const tHistory = useTranslations("app.clock.history");
+  const reasonField = useRef<HTMLInputElement>(null);
+  const [reason, setReason] = useState("");
+  const [failure, setFailure] = useState<EntryFailure | null>(null);
+
+  // Why is the one thing to write here: it has the focus.
+  useEffect(() => {
+    reasonField.current?.focus({ preventScroll: true });
+  }, []);
+
+  /** A missing reason is said under its field, which takes the focus. */
+  function fail(next: EntryFailure) {
+    setFailure(next);
+    if (next === "reasonNeeded") reasonField.current?.focus();
+  }
+
+  function submit() {
+    if (parseReason(reason) === null) {
+      fail("reasonNeeded");
+      return;
+    }
+    setFailure(null);
+    cancel(reason, fail);
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <ShiftSummary record={record} t={tHistory} className="bg-elevated" />
+      <p className="px-1 text-ink-2 text-sm">
+        {t("cancel.hint")}
+        {/* One still open ends with it: the person can clock in again. */}
+        {record.out === null ? (
+          <span className="block">{t("cancel.openHint")}</span>
+        ) : null}
+      </p>
+      <TextField
+        ref={reasonField}
+        label={t("cancel.reason")}
+        hint={t("sheet.reasonHint")}
+        error={
+          failure === "reasonNeeded" ? t("cancel.reasonNeeded") : undefined
+        }
+        value={reason}
+        maxLength={REASON_MAX}
+        required
+        autoComplete="off"
+        onChange={(event) => {
+          setReason(event.target.value);
+          if (failure === "reasonNeeded") setFailure(null);
+        }}
+      />
+      {failure && failure !== "reasonNeeded" ? (
+        <p role="alert" className="px-1 font-medium text-danger">
+          {t(`failure.${failure}`)}
+        </p>
+      ) : null}
+      <Button variant="danger" size="lg" loading={saving} onClick={submit}>
+        <Ban aria-hidden="true" />
+        {t("cancel.save")}
+      </Button>
+      <Button variant="ghost" disabled={saving} onClick={back}>
+        {t("cancel.back")}
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * A cancelled shift: who cancelled it, when and why, and the way to bring it
+ * back as it was, with no reason (the log keeps who and when).
+ */
+function CancelledForm({
+  record,
+  failed,
+  saving,
+  restore,
+}: {
+  record: ShiftRecord;
+  /** Why it didn't come back from the toast's "ביטול", said as it opens. */
+  failed: EntryFailure | null;
+  saving: boolean;
+  restore: (onFailure: (f: EntryFailure) => void) => void;
+}) {
+  const t = useTranslations("app.clock.team");
+  const tHistory = useTranslations("app.clock.history");
+  const [failure, setFailure] = useState<EntryFailure | null>(failed);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <ShiftSummary record={record} t={tHistory} className="bg-elevated" />
+      <p className="px-1 text-ink-2 text-sm">
+        {t("cancelled.hint")}
+        {/* The cancel ended it: it comes back open. */}
+        {record.cancelled && record.out === null ? (
+          <span className="block">{t("cancelled.openHint")}</span>
+        ) : null}
+      </p>
+      {failure ? (
+        <p role="alert" className="px-1 font-medium text-danger">
+          {t(`failure.${failure}`)}
+        </p>
+      ) : null}
+      <Button
+        size="lg"
+        loading={saving}
+        onClick={() => {
+          setFailure(null);
+          restore(setFailure);
+        }}
+      >
+        <Undo2 aria-hidden="true" className="rtl:-scale-x-100" />
+        {t("cancelled.restore")}
       </Button>
     </div>
   );

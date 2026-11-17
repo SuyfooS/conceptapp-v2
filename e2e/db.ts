@@ -223,6 +223,21 @@ export async function addDemoShift(
   return entry.id;
 }
 
+/**
+ * Takes away one shift a test added at the demo restaurant, with its breaks,
+ * under the purge that names the business, as `clearTimeEntries` does: the
+ * person's other hours stay.
+ */
+export async function removeDemoShift(entryId: string): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.time_breaks
+      where business_id = ${DEMO_RESTAURANT} and entry_id = ${entryId}`;
+    await tx`delete from public.time_entries
+      where business_id = ${DEMO_RESTAURANT} and id = ${entryId}`;
+  });
+}
+
 /** The demo restaurant's manager, Shiran, who cancels and fixes hours below. */
 const DEMO_MANAGER = "00000000-0000-4000-a000-000000000002";
 
@@ -2056,6 +2071,38 @@ export async function correctShopShift(month: string): Promise<string | null> {
   return row?.closed ?? null;
 }
 
+/**
+ * The demo shop's manager cancels a shift of `month` with why, through the
+ * database function the person's page calls (public.cancel_time_entry): Roni's
+ * last one, which `correctShopShift` leaves alone. Returns the log row's
+ * `closed_month`, null when it names none.
+ */
+export async function cancelShopShift(
+  month: string,
+  reason: string,
+): Promise<string | null> {
+  const [entry] = await sql<{ id: string }[]>`
+    select e.id
+    from public.time_entries e
+    join public.businesses b on b.id = e.business_id
+    where e.business_id = ${DEMO_SHOP}
+      and e.user_id = '00000000-0000-4000-a000-000000000012'
+      and e.clock_out is not null
+      and e.cancelled_at is null
+      and to_char(e.clock_in at time zone b.timezone, 'YYYY-MM') = ${month}
+    order by e.clock_in desc
+    limit 1`;
+  if (!entry) throw new Error(`Roni has no shift in ${month}`);
+  await sql`select public.cancel_time_entry(${SHOP_MANAGER}, ${entry.id},
+    ${reason})`;
+  const [row] = await sql<{ closed: string | null }[]>`
+    select details ->> 'closed_month' as closed from public.audit_log
+    where business_id = ${DEMO_SHOP} and action = 'clock.cancel'
+      and details ->> 'entry' = ${entry.id}
+    order by id desc limit 1`;
+  return row?.closed ?? null;
+}
+
 /** How many of the demo shop's lines of `kind` the person has, unread or not. */
 export async function shopLines(phone: string, kind: string): Promise<number> {
   const [row] = await sql<{ count: number }[]>`
@@ -2064,6 +2111,23 @@ export async function shopLines(phone: string, kind: string): Promise<number> {
     where n.business_id = ${DEMO_SHOP} and n.kind = ${kind}
       and p.phone = ${phone}`;
   return row?.count ?? 0;
+}
+
+/**
+ * When the person's newest line of `kind` in the demo shop was written, or
+ * null before any: a line kept once per month (`pay.after_close`) is written
+ * again in its place, so this moves while their count stays.
+ */
+export async function shopLineAt(
+  phone: string,
+  kind: string,
+): Promise<Date | null> {
+  const [row] = await sql<{ at: Date | null }[]>`
+    select max(n.created_at) as at from public.notifications n
+    join public.profiles p on p.id = n.user_id
+    where n.business_id = ${DEMO_SHOP} and n.kind = ${kind}
+      and p.phone = ${phone}`;
+  return row?.at ?? null;
 }
 
 /*

@@ -1,5 +1,6 @@
 import type { ShiftRecord } from "@domain/time-clock";
 import type {
+  EntryTarget,
   PersonHoursData,
   TeamHoursData,
 } from "../../../../(app)/clock/team/team-types";
@@ -11,6 +12,13 @@ const SHIRAN = "shiran";
 const MONTH = "2026-11";
 const TODAY = "2026-11-06";
 const OVERDUE_ENTRY = "68000000-0000-4000-a000-000000000021";
+
+/**
+ * Yoav's evening recorded twice, its copy cancelled (`shift(8, …)` below): it
+ * can't come back over the one left, which the demo's stand-in says as the
+ * app does.
+ */
+export const DEMO_OVERLAPPING_COPY = "68000000-0000-4000-a000-000000000108";
 
 export const demoTeamPaths = {
   clock: "/design/shell/clock",
@@ -269,6 +277,31 @@ export const demoTeamHours: TeamHoursData = {
   ],
   people,
 };
+
+/**
+ * The sheet a demo person's page opens on (`?state=`): `edit` and `cancel` on
+ * their newest shift that ended, fixing it and the step that cancels it, and
+ * `cancelled` on their cancelled one, to bring it back.
+ */
+export function demoPersonSheet(
+  userId: string,
+  state: string | undefined,
+): EntryTarget | undefined {
+  const records = demoPeople.find((row) => row.userId === userId)?.records;
+  const ended = records?.find(
+    (record) => record.cancelled === null && record.out !== null,
+  );
+  const cancelled = records?.find((record) => record.cancelled !== null);
+  switch (state) {
+    case "edit":
+    case "cancel":
+      return ended ? { kind: state, record: ended } : undefined;
+    case "cancelled":
+      return cancelled ? { kind: "cancelled", record: cancelled } : undefined;
+    default:
+      return undefined;
+  }
+}
 
 /** One person's month, from the same shifts as their row in the team list. */
 export function demoPersonHours(userId: string): PersonHoursData | null {

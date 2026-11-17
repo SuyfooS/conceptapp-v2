@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { baseWording, translator } from "../../../wording";
 import { clockPaths } from "../../clock";
-import { addEntryAction, correctEntryAction } from "../actions";
+import {
+  addEntryAction,
+  cancelEntryAction,
+  correctEntryAction,
+  restoreEntryAction,
+} from "../actions";
 import { PersonHoursView } from "../person-view";
 import { currentPersonHours } from "../team-hours";
 
@@ -25,7 +30,12 @@ export default async function ClockPersonPage({
   return (
     <PersonHoursView
       data={data}
-      actions={{ correct: correctEntryAction, add: addEntryAction }}
+      actions={{
+        correct: correctEntryAction,
+        add: addEntryAction,
+        cancel: cancelEntryAction,
+        restore: restoreEntryAction,
+      }}
       paths={clockPaths}
     />
   );

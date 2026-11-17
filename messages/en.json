@@ -1429,6 +1429,8 @@
         "needsFix": "Needs fixing",
         "fix": "Fix",
         "fixShift": "Fix the shift of {day}",
+        "restore": "Bring back",
+        "restoreShift": "Bring back the shift of {day}",
         "withProof": " · {proof}",
         "proof": {
           "scan": "Scanned",
@@ -1501,7 +1503,23 @@
           "reasonHint": "It shows on the person's shifts and in the activity log.",
           "saveEdit": "Save the hours",
           "saveAdd": "Add the shift",
-          "close": "Close"
+          "close": "Close",
+          "cancelShift": "Cancel the shift"
+        },
+        "cancel": {
+          "title": "Cancel the shift",
+          "hint": "The shift stays in the records, marked cancelled, and doesn't count in the hours.",
+          "openHint": "It's still open: cancelling also closes it, so they can clock in again.",
+          "reason": "Why cancel it",
+          "reasonNeeded": "Write why you're cancelling it, so the record keeps it.",
+          "save": "Cancel the shift",
+          "back": "Back to fixing the hours"
+        },
+        "cancelled": {
+          "title": "A cancelled shift",
+          "hint": "Bringing the shift back counts it in the hours again, as it was recorded.",
+          "openHint": "It was still open when it was cancelled, and comes back open.",
+          "restore": "Bring the shift back"
         },
         "failure": {
           "invalid": "A valid date and start time are needed.",
@@ -1514,11 +1532,20 @@
           "sameTime": "The end is the same as the start. Check the times.",
           "ownHours": "The owner, or someone else who approves hours, approves your own hours.",
           "ownerOnly": "Only the owner approves hours someone recorded for themselves.",
-          "reasonNeeded": "Write why you're changing it, so the record keeps it."
+          "reasonNeeded": "Write why you're changing it, so the record keeps it.",
+          "cancelled": "Someone already cancelled this shift.",
+          "notCancelled": "Someone already brought this shift back.",
+          "ownShift": "Only the owner cancels or brings back your own shifts.",
+          "overlap": "Another shift is already recorded for those hours. Cancel or fix it first.",
+          "breaksAfterDay": "The shift has been open for over a day, with a break after its first day. Fix its end time first, then cancel it.",
+          "notOnStaff": "The shift was still open when it was cancelled, and someone no longer on the staff can't go back to it. You can add the hours as a new shift."
         },
         "done": {
           "edit": "Hours saved",
-          "add": "Shift added"
+          "add": "Shift added",
+          "cancel": "Shift cancelled",
+          "restore": "Shift brought back",
+          "undo": "Undo"
         },
         "confirm": {
           "title": "{count, plural, one {One entry is waiting for approval} other {# entries are waiting for approval}}",

@@ -1714,9 +1714,10 @@ everyone (`private.notify_for`) and its `clock.open` and `clock.overdue`
 again, so a confirmation still waiting comes back, unread, to all but whoever
 brought it back, while a reminder stays settled. `private.payroll_tick` counts
 live shifts only. The server role still holds its table privileges on the
-hours (`time_breaks.test.sql` writes a break directly as it). Nothing in the
-app calls the two yet. Covered by `cancelled_shifts.test.sql`, with
-`time_clock.test.sql`, `hours_kept.test.sql` and `demo_reset.test.sql`.
+hours (`time_breaks.test.sql` writes a break directly as it). The person's
+page on the team's hours calls the two (below). Covered by
+`cancelled_shifts.test.sql`, with `time_clock.test.sql`, `hours_kept.test.sql`
+and `demo_reset.test.sql`.
 
 Break edits (`20261117000300_break_edits.sql`, the clock plan's PR2). A
 shift's breaks are fixed one at a time, and a break is marked removed, never
@@ -1779,6 +1780,19 @@ person's pay page (listed under the days), whether the month changed since its
 file, and the reasons beside a closed month's differences in the next file.
 `getCorrections` stays on `clock.correct` rows: a cancel or a break edit moves
 no times of the shift. Covered by `time-clock.test.ts`.
+
+The writes of a cancel (`time-clock.ts`, the clock plan's PR4), with the secret
+key, for the person's page on the team's hours: `cancelTimeEntry(actor, entry,
+note)` and `restoreTimeEntry(actor, entry)`. Their refusals read through
+`@domain/time-clock`'s `clockFailureOf`, which now takes the error's hint too:
+`cancelled` and `notCancelled` (55000 "The shift is cancelled" / "is not
+cancelled"), `breaksAfterDay` and `notOnStaff` (55000, by their hints),
+`ownHours` (42501 "Only an owner cancels or changes your own hours"),
+`reasonNeeded` (22023), `times` for a live shift over the hours of one brought
+back (23P01) and `noAccess` (42501 "Managers and owners only", P0002). The
+clock screen's `punchFailureOf` reads `cancelled` (taking back a clock-out of
+a shift cancelled meanwhile) as `notIn`, as it read before, and the others as
+`failed`. Covered by `@domain/time-clock`'s tests and `e2e/clock-team.spec.ts`.
 
 Chat (`20261111000100_chat_module.sql`, `20261111000200_chat.sql`, chat C1), in
 the database first, with the module off everywhere until C2 (below). `public.chat_conversations`
