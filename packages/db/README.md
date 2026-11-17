@@ -1816,6 +1816,44 @@ removed", which the page counts as brought back), and, as a cancel's,
 them. Covered by `@domain/time-clock`'s tests, `time-clock.test.ts` and
 `e2e/clock-team.spec.ts`.
 
+Clock stations from a signed-in tablet (`clock-stations.ts`, #78 phase 5;
+Orel's lock of 17 November 2026), on the functions of
+`20261108000200_qr_clock.sql` with no migration. `lockStation(actor, business,
+name)` makes a device the business's station: a 32-byte secret
+(`newStationToken`, base64url) whose SHA-256 is the station's `token_hash`
+(`hashStationToken`), paired with `start_station_pairing` and approved at once
+with `approve_station_pairing` (the pairing's QR and digits are never shown:
+the digits' hash is of bytes nobody keeps); it returns the secret for the
+device's cookie (`ca_station`, `@domain/clock-station`). The table of devices
+pairing is shared by every business and refuses everyone at a thousand rows,
+and a pairing the database refuses to approve stays in it for its five
+minutes with nothing to delete it. So ten running (counted with the secret
+key) refuse a lock before it pairs, the caller checks the rest of what the
+database would refuse, and a lock pairs only on one of its business's own
+three hashes (`lockPairingHash`, an HMAC with the server's key, the next on
+23505): however often it is repeated, a business leaves at most three rows
+there. `stationByToken(token)`
+reads the station by its secret (`station_by_token`, stopped or not, or null),
+`issueStationCode(token, business)` a fresh code for it (`issue_station_code`,
+the digits hashed with the station's business as a worker's typed digits are,
+one retry on 23505, stamped with the database's now() as a manager's code),
+and `setStationStopped(actor, station, stopped)` stops one or takes a stop back
+within two minutes (`set_clock_station_stopped`). All four with the secret key.
+`getRunningStations(business)` lists the running ones under the person's session
+(RLS: whoever edits the clock, with the clock on), never their secrets. The
+refusals read through `@domain/clock-station`: `lockFailureOf`
+(`tooManyStations` for 54000 "At most ten stations", `managerOnly` and
+`noAccess` for 42501, `name` for 22023), `stationCodeFailureOf` (`notStation`,
+`stopped`, `clockOff`, `managerOnly`, all 42501 by their words) and
+`stationStopFailureOf` (`gone` P0002, `tooLate` 55000, `noAccess` 42501).
+`hasSessionCookie()` (`supabase/server.ts`) says whether the browser holds any
+piece of a session cookie (`sessionCookieName`, `isSessionCookie` in
+`supabase/cookies.ts`), valid or not: a station never shows codes beside one.
+The activity log reads the names of the stations a stop or a restart names
+(`lookups.stations`, under RLS: anyone else reads the line without the name).
+Covered by `@domain/clock-station`'s, `clock-stations.test.ts`'s and
+`supabase/cookies`'s tests and `e2e/clock-station.spec.ts`.
+
 Chat (`20261111000100_chat_module.sql`, `20261111000200_chat.sql`, chat C1), in
 the database first, with the module off everywhere until C2 (below). `public.chat_conversations`
 holds a business's chats: its team's group (made with the business, by the

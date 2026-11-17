@@ -58,6 +58,7 @@ import {
   ChevronRight,
   Repeat,
   SlidersHorizontal,
+  Tablet,
   Users,
 } from "lucide-react";
 import Link from "next/link";
@@ -69,6 +70,9 @@ import { confirmDocumentAction } from "../chat/documents/actions";
 import type { DocumentsTodayData } from "../chat/documents/document-screen-types";
 import { TodayDocuments } from "../chat/documents/today-documents";
 import { TodayChat } from "../chat/today-chat";
+import { lockDeviceAction } from "../clock/station/actions";
+import { LockStation } from "../clock/station/lock-station";
+import type { LockOffer } from "../clock/station/station-types";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
 import { moduleIcons } from "../module-icons";
@@ -150,6 +154,12 @@ export type TodayData = {
    * and for the office what came that nobody there opened.
    */
   documents?: DocumentsTodayData | null;
+  /**
+   * This device is the business's clock station, unlocked by someone who
+   * edits the clock: the reminder to lock it again (`currentStationReminder`).
+   * Null anywhere else.
+   */
+  station?: LockOffer | null;
 };
 
 type T = Translator<"app">;
@@ -443,6 +453,10 @@ export async function TodayView({
           ) : null}
         </div>
 
+        {data.station?.current ? (
+          <StationReminder offer={data.station} t={t} />
+        ) : null}
+
         {view ? (
           <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:gap-x-8">
             <div className="min-w-0 xl:row-span-2">
@@ -484,6 +498,34 @@ export async function TodayView({
         />
       </PageBody>
     </div>
+  );
+}
+
+/**
+ * On the business's clock station, unlocked: it is the station, and is locked
+ * again when they are done, with the same sheet as the code screen's. Small,
+ * since it is not what Today is for.
+ */
+function StationReminder({ offer, t }: { offer: LockOffer; t: T }) {
+  return (
+    <Card className="flex flex-col gap-3 md:max-w-2xl md:flex-row md:items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5"
+        >
+          <Tablet />
+        </span>
+        <p className="text-ink">{t("clock.station.reminder.body")}</p>
+      </div>
+      <div className="ps-[52px] md:ps-0">
+        <LockStation
+          offer={offer}
+          lock={lockDeviceAction}
+          label={t("clock.station.reminder.lock")}
+        />
+      </div>
+    </Card>
   );
 }
 

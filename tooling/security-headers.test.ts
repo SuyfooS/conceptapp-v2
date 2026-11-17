@@ -205,8 +205,9 @@ describe("Permissions-Policy", () => {
     expect(using(/\bwakeLock\.request\b/)).toContain(
       "packages/ui/use-wake-lock.ts",
     );
+    // The code's card, on the code screen and a clock station alike.
     expect(using(/\brequestFullscreen\b/)).toContain(
-      "app/(app)/clock/code/code-screen.tsx",
+      "app/(app)/clock/code/code-card.tsx",
     );
   });
 

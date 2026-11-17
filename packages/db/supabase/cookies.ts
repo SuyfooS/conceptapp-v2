@@ -30,3 +30,22 @@ export function authCookieOptionsFor(headers: {
     headers.get("x-forwarded-proto"),
   );
 }
+
+/**
+ * The name @supabase/ssr gives a project's session cookie: its storage key,
+ * `sb-<the URL's first label>-auth-token` (supabase-js's default), cut into
+ * `.0`, `.1`… once it is long.
+ */
+export function sessionCookieName(supabaseUrl: string): string {
+  return `sb-${new URL(supabaseUrl).hostname.split(".")[0]}-auth-token`;
+}
+
+/**
+ * Whether a cookie holds the session, or a piece of it, as @supabase/ssr's
+ * own `isChunkLike` reads it. A sign-in's code verifier is no session.
+ */
+export function isSessionCookie(name: string, sessionName: string): boolean {
+  if (name === sessionName) return true;
+  const piece = /^(.*)\.(0|[1-9][0-9]*)$/.exec(name);
+  return piece?.[1] === sessionName;
+}

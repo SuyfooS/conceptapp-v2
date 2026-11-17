@@ -77,7 +77,7 @@ export async function getBusinessActivity(
     if (!swap.shift && swap.shiftId) shifts.add(swap.shiftId);
   }
 
-  const [members, shiftRows, departments] = await Promise.all([
+  const [members, shiftRows, departments, stations] = await Promise.all([
     people.size
       ? supabase
           .from("memberships")
@@ -100,6 +100,15 @@ export async function getBusinessActivity(
           .eq("business_id", businessId)
           .in("id", refs.departments)
       : null,
+    // Stopped ones too, for whoever edits the clock (RLS): anyone else reads
+    // a stop without its name.
+    refs.stations.length
+      ? supabase
+          .from("clock_stations")
+          .select("id, name")
+          .eq("business_id", businessId)
+          .in("id", refs.stations)
+      : null,
   ]);
   if (members?.error) throw members.error;
   if (shiftRows?.error) throw shiftRows.error;
@@ -107,6 +116,7 @@ export async function getBusinessActivity(
   if (departments?.error && !isMissingTable(departments.error)) {
     throw departments.error;
   }
+  if (stations?.error) throw stations.error;
 
   return {
     rows,
@@ -140,6 +150,9 @@ export async function getBusinessActivity(
       ),
       departments: new Map(
         (departments?.data ?? []).map((row) => [row.id, row.name]),
+      ),
+      stations: new Map(
+        (stations?.data ?? []).map((row) => [row.id, row.name]),
       ),
       swaps: new Map(swaps.map(({ id, ...swap }) => [id, swap])),
     },
