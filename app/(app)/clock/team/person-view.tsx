@@ -573,6 +573,13 @@ function EntryForm({
   const [failure, setFailure] = useState<EntryFailure | null>(failed);
   // Only a shift still running may be left with no end, while it's within limits.
   const canStayOpen = record?.out === null && !record.overdue;
+  // Times typed and not saved: a break's save or removal closes the sheet,
+  // so its rows wait until these are saved, rather than lose them.
+  const timesChanged =
+    record !== null &&
+    (values.date !== record.date ||
+      values.in !== (record.in ?? "") ||
+      values.out !== (record.out ?? ""));
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, as it is drawn
   useEffect(() => {
@@ -639,7 +646,8 @@ function EntryForm({
         <BreakRows
           breaks={record.breaks}
           listRef={breakRows}
-          disabled={saving}
+          disabled={saving || timesChanged}
+          note={timesChanged ? t("breaks.saveFirst") : null}
           open={(pause) => toBreak(pause, values)}
         />
       ) : null}
@@ -694,12 +702,15 @@ function BreakRows({
   breaks,
   listRef,
   disabled,
+  note,
   open,
 }: {
   breaks: BreakRecord[];
   /** Its rows, in order, "הוספת הפסקה" last: to give the focus back to. */
   listRef: Ref<HTMLDivElement>;
   disabled: boolean;
+  /** Why its rows wait, said under them. */
+  note: string | null;
   open: (pause: BreakRecord | null) => void;
 }) {
   const t = useTranslations("app.clock.team");
@@ -750,6 +761,7 @@ function BreakRows({
           onClick={() => open(null)}
         />
       </ListGroup>
+      {note ? <p className="px-1 pt-1.5 text-ink-2 text-sm">{note}</p> : null}
     </div>
   );
 }

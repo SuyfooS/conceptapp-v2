@@ -1527,7 +1527,8 @@
           "rowOpen": "From <ltr>{start}</ltr> · {minutes} min",
           "unpaid": "Unpaid",
           "running": "The break hasn't ended yet",
-          "add": "Add a break"
+          "add": "Add a break",
+          "saveFirst": "The shift's times changed and aren't saved yet. Save them first, then fix a break."
         },
         "breakStep": {
           "editTitle": "Fix a break",
@@ -1564,7 +1565,7 @@
           "overlap": "Another shift is already recorded for those hours. Cancel or fix it first.",
           "breaksAfterDay": "The shift has been open for over a day, with a break after its first day. Fix its end time first, then cancel it.",
           "notOnStaff": "The shift was still open when it was cancelled, and someone no longer on the staff can't go back to it. You can add the hours as a new shift.",
-          "breakTimes": "The break needs a start and an end, the end after the start.",
+          "breakTimes": "The break needs a start and an end time.",
           "breakSameTime": "The break starts and ends in the same minute. Check the times.",
           "breakOutside": "The break must be between the shift's start and end.",
           "breakOverlap": "Another break of the shift is already recorded for those times. Fix it first.",

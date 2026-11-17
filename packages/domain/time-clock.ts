@@ -707,10 +707,28 @@ export type BreakProblem =
   | "breakOutside";
 
 /**
+ * Every real moment a wall-clock time on a date is, in a time zone: one, or
+ * two in the hour the clocks repeat when they go back (earliest first). A
+ * time the clocks skip has none, and is read as `instantIn` reads it.
+ */
+function readingsOf(date: string, time: string, timeZone: string): Date[] {
+  const later = instantIn(date, time, timeZone);
+  const real = [-120, -60, -30, 0]
+    .map((minutes) => new Date(later.getTime() + minutes * 60_000))
+    .filter(
+      (moment) =>
+        dateIn(moment, timeZone) === date && timeIn(moment, timeZone) === time,
+    );
+  return real.length > 0 ? real : [later];
+}
+
+/**
  * What a manager typed for a break of `entry`, HH:MM by the business's clock,
  * as instants: the start is the first moment at or after the clock-in with
- * that time, and the end the first after the start, so a break past midnight,
- * or in a night shift, takes no date. It must be inside the shift (up to now
+ * that time (in the hour the clocks repeat, the first of the two), and the
+ * end the first after the start, so a break past midnight, or in a night
+ * shift, takes no date. A start in the clock-in's own minute is the
+ * clock-in itself, as the database has it (to the microsecond). It must be inside the shift (up to now
  * while it is open) and over by now, as private.check_break_fits asks. The
  * database has the last word, and on another break at the same time.
  */
@@ -732,22 +750,21 @@ export function parseBreakTimes(
   // By the minute: a break from the clock-in's own minute starts with it. A
   // time before the clock-in's is on the next day.
   const nextDay = start < timeIn(clockIn, timeZone);
-  const startAt = new Date(
-    Math.max(
-      instantIn(
-        nextDay ? addDays(inDate, 1) : inDate,
-        start,
-        timeZone,
-      ).getTime(),
-      clockIn.getTime(),
-    ),
-  );
+  const fromClockIn = (moment: Date) =>
+    moment.getTime() <= clockIn.getTime() &&
+    clockIn.getTime() - moment.getTime() < 60_000;
+  const startAt = [inDate, addDays(inDate, 1)]
+    .flatMap((date) => readingsOf(date, start, timeZone))
+    .map((moment) => (fromClockIn(moment) ? clockIn : moment))
+    .filter((moment) => moment.getTime() >= clockIn.getTime())
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+  if (startAt === undefined) return { ok: false, problem: "breakOutside" };
   const startDate = dateIn(startAt, timeZone);
-  const endAt = instantIn(
-    end > start ? startDate : addDays(startDate, 1),
-    end,
-    timeZone,
-  );
+  const endAt = [startDate, addDays(startDate, 1)]
+    .flatMap((date) => readingsOf(date, end, timeZone))
+    .filter((moment) => moment.getTime() > startAt.getTime())
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+  if (endAt === undefined) return { ok: false, problem: "breakTimes" };
   if (entry.clockOut !== null) {
     // A shift that ended has, so its breaks are all before now.
     if (endAt.getTime() > Date.parse(entry.clockOut)) {
@@ -764,7 +781,13 @@ export function parseBreakTimes(
           : "future",
     };
   }
-  return { ok: true, start: startAt.toISOString(), end: endAt.toISOString() };
+  return {
+    ok: true,
+    // The clock-in's own string: a Date holds milliseconds, the database
+    // microseconds, and a start a hair before the clock-in is refused.
+    start: startAt === clockIn ? entry.clockIn : startAt.toISOString(),
+    end: endAt.toISOString(),
+  };
 }
 
 /** The longest reason the database keeps for a correction (time_entries.note). */

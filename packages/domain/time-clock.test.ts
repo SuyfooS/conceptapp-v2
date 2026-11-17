@@ -1182,6 +1182,46 @@ describe("parseBreakTimes", () => {
     expect(parse(evening, "23:00", "23:30")).toMatchObject({ ok: true });
   });
 
+  it("keeps a punched clock-in to the microsecond, as the database has it", () => {
+    // A Date holds milliseconds: a start cut to them is before the clock-in.
+    const punched = {
+      ...evening,
+      clockIn: "2026-11-10T14:00:27.512345+00:00",
+    };
+    expect(parse(punched, "16:00", "16:15")).toEqual({
+      ok: true,
+      start: "2026-11-10T14:00:27.512345+00:00",
+      end: "2026-11-10T14:15:00.000Z",
+    });
+  });
+
+  it("takes the first of the hour the clocks repeat when they go back", () => {
+    // Saturday 24 October 2026, 22:00, to Sunday 06:00: at 02:00 the clocks
+    // go back to 01:00, so 01:00 to 02:00 comes twice.
+    const change = {
+      clockIn: "2026-10-24T19:00:00Z",
+      clockOut: "2026-10-25T04:00:00Z",
+    };
+    expect(parse(change, "01:30", "01:45")).toEqual({
+      ok: true,
+      start: "2026-10-24T22:30:00.000Z",
+      end: "2026-10-24T22:45:00.000Z",
+    });
+    // Across the change: 01:50 the first time to 01:10 the second.
+    expect(parse(change, "01:50", "01:10")).toEqual({
+      ok: true,
+      start: "2026-10-24T22:50:00.000Z",
+      end: "2026-10-24T23:10:00.000Z",
+    });
+    // A clock-in in the first of the two hours: a start in it is that hour.
+    const inside = { ...change, clockIn: "2026-10-24T22:10:00Z" };
+    expect(parse(inside, "01:30", "01:40")).toEqual({
+      ok: true,
+      start: "2026-10-24T22:30:00.000Z",
+      end: "2026-10-24T22:40:00.000Z",
+    });
+  });
+
   it("refuses a break outside its shift", () => {
     // Before the clock-in, it can only be the next day, after the clock-out.
     expect(parse(evening, "15:00", "15:30")).toEqual({
