@@ -3,6 +3,7 @@ import { declaredPermissions } from "@domain/permissions";
 import { manifest as chat } from "./chat/manifest";
 import { manifest as lists } from "./lists/manifest";
 import { manifest as notifications } from "./notifications/manifest";
+import { manifest as orderTaking } from "./order_taking/manifest";
 import { manifest as reservations } from "./reservations/manifest";
 import { manifest as scheduling } from "./scheduling/manifest";
 import { manifest as storefront } from "./storefront/manifest";
@@ -21,6 +22,7 @@ export const manifests = [
   notifications,
   lists,
   chat,
+  orderTaking,
 ] as const satisfies readonly ModuleManifest[];
 
 export type Manifests = typeof manifests;

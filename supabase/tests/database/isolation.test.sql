@@ -1,7 +1,7 @@
 -- Tenant isolation: a member of business A never sees business B, and each
 -- role sees only what it should inside its own business.
 begin;
-select plan(36);
+select plan(40);
 
 -- Fixtures: business A (owner, manager, worker) and business B (owner).
 insert into auth.users (id, aud, role, phone)
@@ -313,6 +313,64 @@ select is(
   0,
   'and the owner of B reads none of A''s documents, marks or files'
 );
+
+-- The menu and the places (20261117000500_order_taking_menu.sql), with
+-- taking orders on in both: a category, an item and a place in each.
+reset role;
+insert into public.business_modules (business_id, module_key, enabled)
+values
+  ('20000000-0000-4000-b000-00000000000a', 'order_taking', true),
+  ('20000000-0000-4000-b000-00000000000b', 'order_taking', true);
+insert into public.departments (id, business_id, key, name)
+values
+  ('20000000-0000-4000-d000-00000000000a', '20000000-0000-4000-b000-00000000000a', 'kitchen', 'Kitchen'),
+  ('20000000-0000-4000-d000-00000000000b', '20000000-0000-4000-b000-00000000000b', 'kitchen', 'Kitchen');
+insert into public.menu_categories (id, business_id, name, department_id)
+values
+  ('20000000-0000-4000-e000-00000000000a', '20000000-0000-4000-b000-00000000000a', 'Mains',
+   '20000000-0000-4000-d000-00000000000a'),
+  ('20000000-0000-4000-e000-00000000000b', '20000000-0000-4000-b000-00000000000b', 'Mains',
+   '20000000-0000-4000-d000-00000000000b');
+insert into public.menu_items (business_id, category_id, name, price_agorot)
+values
+  ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-e000-00000000000a', 'Schnitzel', 6200),
+  ('20000000-0000-4000-b000-00000000000b', '20000000-0000-4000-e000-00000000000b', 'Schnitzel', 6200);
+insert into public.order_places (business_id, name)
+values
+  ('20000000-0000-4000-b000-00000000000a', '1'),
+  ('20000000-0000-4000-b000-00000000000b', '1');
+
+-- Whose menu rows the signed-in person reads: each business once.
+create function pg_temp.menu_businesses() returns text language sql as $$
+  select coalesce(string_agg(distinct r.business_id::text, ','), '')
+  from (
+    select c.business_id from public.menu_categories c
+    union all select i.business_id from public.menu_items i
+    union all select p.business_id from public.order_places p
+  ) r
+$$;
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select is(
+  pg_temp.menu_businesses(),
+  '20000000-0000-4000-b000-00000000000a',
+  'worker of A reads the menu and the places of A only'
+);
+select throws_ok(
+  $$update public.menu_items set price_agorot = 1
+    where business_id = '20000000-0000-4000-b000-00000000000a'$$,
+  '42501',
+  null,
+  'and changes no price from the browser'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
+select is(
+  pg_temp.menu_businesses(),
+  '20000000-0000-4000-b000-00000000000b',
+  'the owner of B reads B''s only'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000e');
+select is(pg_temp.menu_businesses(), '', 'an inactive member reads no menu');
 
 select * from finish();
 rollback;

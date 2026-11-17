@@ -6,6 +6,7 @@ import {
   FileText,
   ListChecks,
   MessageCircle,
+  NotebookPen,
   Store,
   UtensilsCrossed,
 } from "lucide-react";
@@ -21,4 +22,5 @@ export const moduleIcons: Record<ModuleIcon, ReactNode> = {
   list: <ListChecks />,
   chat: <MessageCircle />,
   documents: <FileText />,
+  pad: <NotebookPen />,
 };

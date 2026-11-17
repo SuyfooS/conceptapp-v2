@@ -25,6 +25,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.viewing_payroll(business)` | is on the ConceptApp team viewing the business as an accountant: the one view that reads pay |
 | `private.reads_pay_of(person)` | holds `clock.payroll`, or views as an accountant, in a business that person is or was in |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
+| `private.order_taking_on(business)` | (any user) taking orders is switched on for the business (the menu's policies) |
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only; a view as a role the business named ranks as its base) |
 | `private.can_manage_lists(business, person)` | (that person) holds `lists.manage` (`private.holds_perm`: an owner always, managers by default, a role an owner raised, or one given it; since R5) |
 | `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or holds `lists.manage` |
@@ -2151,6 +2152,43 @@ nothing and logs nothing) and `isolation` (the worker's two files no longer coun
 unit tests of both routes and of `documentFileBytes` and `finishDocumentPdf`, and
 `tooling/documents.test.ts` (no policy of the bucket left in the migrations, the function
 dropped after it and named by nothing later, and `open_document`'s rule).
+
+Taking orders, the menu and the places (waiter mode P1, issue #191;
+`20261117000400_order_taking_module.sql` adds the key,
+`20261117000500_order_taking_menu.sql` the rest), with no screen yet and the
+module off in every template and business. `menu_categories` each send their
+items to a department of the business (a composite key, checked at commit as
+the lists' are); `menu_items` keep their price in whole agorot, VAT included
+(0 to 1,000,000), an optional department of their own, "sold out" with who
+and when (`available_by`, `available_changed_at`; `available_station` waits
+for P8's stations), a `version` a save names, and up to five groups of
+choices, checked by `private.valid_option_groups` (`optionGroups` in
+`@domain/order-taking` is its twin): every group's `max` most expensive
+options add at most 100,000, so a line's unit price (`private.unit_agorot`,
+`unitAgorot`) never passes 1,100,000. `order_places` are the business's
+tables or rooms. Categories, items and places are archived, never deleted.
+All three are read under RLS by the staff and a view as a role on it while
+the module is on (`private.order_taking_on`), never by an accountant; and
+`public.order_menu(business, known_version)`, with the person's own session,
+answers the same menu as one JSON, or null when `known_version` is the
+business's version now (`private.menu_versions`, moved by every write: the
+moment in microseconds, or one more, so it never comes back to a number a
+phone holds after a demo reset). Writes are the server's, for `actor`, each
+refused while the module is off (42501, hint `off`): `set_menu_categories`
+and `set_order_places` save the list whole as `set_departments` does,
+`save_menu_item` (40001 behind `known_version`), `archive_menu_item`,
+`restore_menu_item`, `import_menu` (one transaction) and
+`set_menu_item_available`, which someone on the staff in the item's
+department may call too (`private.line_route`, `private.in_department`, never
+an accountant). Those who run the menu hold `order_taking.edit`
+(`private.runs_orders`), managers' by default and settable; its log rows
+(`menu.*`, and the orders' `order.*` to come) are read with it
+(`private.log_perm`). `@db/order-taking` wraps each, its refusals read by
+`@db/menu-failures`. The demo restaurant's sample is
+`private.seed_demo_order_taking`, last in `public.reset_demo_business`.
+Covered by `order_taking_menu.test.sql`, `isolation`, `demo_reset`,
+`rls_enabled`, `roles_catalogue`, `activity_log`, and
+`modules/order_taking/unit-price.db.test.ts`.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

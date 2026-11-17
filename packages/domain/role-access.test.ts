@@ -66,6 +66,7 @@ describe("role access", () => {
       time_clock: "view",
       lists: "view",
       chat: "view",
+      order_taking: "view",
       team: "none",
       manage: "none",
     });
@@ -244,6 +245,7 @@ describe("role access from the database", () => {
       "chat.announce",
       "chat.send_documents",
     ]);
+    expect(areaPermissions("order_taking")).toEqual(["order_taking.edit"]);
     expect(areaPermissions("team")).toEqual(["team.view", "team.edit"]);
     expect(areaPermissions("manage")).toEqual(["manage.view", "manage.edit"]);
     for (const area of ACCESS_AREAS) {
@@ -266,6 +268,7 @@ describe("role access from the database", () => {
       time_clock: "view",
       lists: "view",
       chat: "view",
+      order_taking: "view",
       team: "view",
       manage: "edit",
     });

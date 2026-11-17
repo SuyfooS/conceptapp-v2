@@ -261,7 +261,7 @@ select ok(
 );
 select results_eq(
   $$select w.what, private.log_perm(w.what)
-    from unnest('{clock.in,clock.correct,schedule.publish,swap.approve,availability.missing,lists.send,invite.create,member.role,team.joined,profile.bio_cleared,chat.remove,chat.restore,module.settings,business.details,departments.change,wording.change,role.permission,permission.grant,view_as.start}'::text[])
+    from unnest('{clock.in,clock.correct,schedule.publish,swap.approve,availability.missing,lists.send,invite.create,member.role,team.joined,profile.bio_cleared,chat.remove,chat.restore,menu.item.save,order.line.cancel,module.settings,business.details,departments.change,wording.change,role.permission,permission.grant,view_as.start}'::text[])
       with ordinality as w (what, n)
     order by w.n$$,
   $$values
@@ -272,6 +272,7 @@ select results_eq(
     ('invite.create', 'team.view'), ('member.role', 'team.view'),
     ('team.joined', 'team.view'), ('profile.bio_cleared', 'team.view'),
     ('chat.remove', 'chat.moderate'), ('chat.restore', 'chat.moderate'),
+    ('menu.item.save', 'order_taking.edit'), ('order.line.cancel', 'order_taking.edit'),
     ('module.settings', 'manage.view'), ('business.details', 'manage.view'),
     ('departments.change', 'manage.view'), ('wording.change', 'manage.view'),
     ('role.permission', 'manage.view'), ('permission.grant', 'manage.view'),
@@ -289,7 +290,8 @@ select results_eq(
     order by 1$$,
   $$values
     ('chat'::text, 'chat.moderate'::text), ('lists'::text, 'lists.manage'::text),
-    ('notifications'::text, null::text), ('reservations'::text, null::text),
+    ('notifications'::text, null::text), ('order_taking'::text, 'order_taking.edit'::text),
+    ('reservations'::text, null::text),
     ('scheduling'::text, 'schedule.edit'::text), ('storefront'::text, null::text),
     ('time_clock'::text, 'clock.edit'::text)$$,
   'a module''s settings need its own edit besides manage.edit, where it has an area of its own'

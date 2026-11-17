@@ -4,7 +4,7 @@
 -- viewing it as a manager or owner, but not as a worker, not after the session
 -- ends, and never another business's.
 begin;
-select plan(26);
+select plan(30);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -277,6 +277,36 @@ select public.end_view_session('6c000000-0000-4000-a000-00000000000f');
 reset role;
 select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000f');
 select is_empty($$select 1 from public.audit_log$$, 'an ended view reads none of the log');
+reset role;
+
+-- The menu's rows (20261117000500_order_taking_menu.sql): read by those who
+-- run the menu (private.log_perm, order_taking.edit), owners and managers by
+-- default and a view as a manager; never a worker.
+insert into public.audit_log (business_id, actor_id, action, details)
+values
+  ('6c000000-0000-4000-b000-000000000001', '6c000000-0000-4000-a000-00000000000b', 'menu.item.save',
+   '{"item": "6c000000-0000-4000-c000-000000000001", "name": "Schnitzel", "created": false,
+     "changed": ["price"], "price": {"before": 6200, "after": 6800}}'),
+  ('6c000000-0000-4000-b000-000000000001', '6c000000-0000-4000-a000-00000000000b', 'menu.places',
+   '{"added": 12, "restored": 0, "archived": 0, "changed": 0, "total": 12}');
+create function pg_temp.menu_rows() returns int language sql as $$
+  select count(*)::int from public.audit_log
+  where business_id = '6c000000-0000-4000-b000-000000000001' and action like 'menu.%'
+$$;
+
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000a');
+select is(pg_temp.menu_rows(), 2, 'the owner reads the menu''s rows');
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000b');
+select is(pg_temp.menu_rows(), 2, 'and so does a manager, who runs the menu by default');
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000c');
+select is(pg_temp.menu_rows(), 0, 'a worker reads none of them');
+reset role;
+set local role service_role;
+select public.start_view_session('6c000000-0000-4000-a000-00000000000f',
+  '6c000000-0000-4000-b000-000000000001', 'manager');
+reset role;
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000f');
+select is(pg_temp.menu_rows(), 2, 'and a view as a manager reads them as a manager would');
 reset role;
 
 select * from finish();
