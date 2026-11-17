@@ -10,6 +10,7 @@ import { DetailsCard } from "./details-card";
 import { MethodButton } from "./method-sheet";
 import { NoteView } from "./note-view";
 import {
+  CancelledShifts,
   MissingWage,
   PayDayList,
   PayDayTable,
@@ -47,7 +48,8 @@ import { WageCard } from "./wage-card";
  * month's wage, then the days. Tablet: the same at the start, the days at the
  * end. Desktop: the hero, the wage with the details under it, and the summary
  * side by side; the rates beside what to check; the days as a table with
- * every rate.
+ * every rate. Under the days in every shape, the month's cancelled shifts,
+ * with who cancelled each, when and why: counted nowhere, and in one list.
  */
 export function PersonPayView({
   data,
@@ -260,6 +262,18 @@ export function PersonPayView({
     ) : (
       empty
     );
+  // The month's cancelled shifts, under the days in every shape: who, when
+  // and why, though they count in no total and no file.
+  const cancelled =
+    data.cancelled.length > 0 ? (
+      <PageSection title={t("person.cancelledTitle")}>
+        <p className="px-1 text-ink-2 text-sm">{t("person.cancelledHint")}</p>
+        <CancelledShifts
+          shifts={data.cancelled}
+          th={translator(wording, "app.clock.history")}
+        />
+      </PageSection>
+    ) : null;
 
   return (
     <PageBody className={pageGlowClass}>
@@ -284,6 +298,7 @@ export function PersonPayView({
         {details}
         {monthWage ? <ListGroup>{monthWage}</ListGroup> : null}
         {dayList}
+        {cancelled}
       </div>
 
       {/* Tablet: the month, its rates, what to check, the wage and the
@@ -297,7 +312,10 @@ export function PersonPayView({
           {details}
           <PageSection title={t("person.summary")}>{summary}</PageSection>
         </div>
-        <PageSection title={t("person.daysTitle")}>{dayList}</PageSection>
+        <div className="flex min-w-0 flex-col gap-6">
+          <PageSection title={t("person.daysTitle")}>{dayList}</PageSection>
+          {cancelled}
+        </div>
       </div>
 
       {/* Desktop: the month, the wage and the summary side by side, the rates
@@ -340,6 +358,7 @@ export function PersonPayView({
             empty
           )}
         </PageSection>
+        {cancelled}
       </div>
     </PageBody>
   );

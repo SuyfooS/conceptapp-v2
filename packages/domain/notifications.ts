@@ -255,7 +255,9 @@ export const NOTIFICATION_KINDS = {
     minRole: "manager",
     // Whoever edits the clock confirms hours without a code (the roles plan's
     // R4); hours someone set for themselves are an owner's line, who holds
-    // every permission.
+    // every permission. Confirming settles it, and so does cancelling the
+    // shift, for everyone (20261117000200_cancelled_shifts.sql); bringing it
+    // back makes it wait again for those who confirm it.
     perm: "clock.edit",
     needsAction: true,
     // Hours are approved on the team's hours.
@@ -299,8 +301,9 @@ export const NOTIFICATION_KINDS = {
   },
   // Still clocked in a while after the shift ended (or 12 hours with no
   // shift), to the person: clocking out settles it, and so does a
-  // correction that closes the entry, or its 24 hours passing, when only a
-  // manager can close it (clock.overdue).
+  // correction that closes the entry, cancelling the shift (which ends it,
+  // 20261117000200_cancelled_shifts.sql; bringing it back doesn't ask again),
+  // or its 24 hours passing, when only a manager can close it (clock.overdue).
   "clock.open": {
     group: "clock",
     module: "time_clock",
@@ -312,7 +315,9 @@ export const NOTIFICATION_KINDS = {
   },
   // Open longer than an entry can be (`entryOverdue`), to whoever edits the
   // clock (owners and managers by default, the roles plan's R4), the person
-  // too when they do: a correction settles it.
+  // too when they do: a correction settles it, and so does cancelling the
+  // shift, for one clocked in by mistake. Bringing it back doesn't ask again;
+  // the team's hours still show it overdue.
   "clock.overdue": {
     group: "approvals",
     module: "time_clock",
@@ -435,8 +440,11 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/clock",
   },
-  // A shift of a month closed for payroll was corrected or added (payroll
-  // P9): to the month's closer and the accountants, one line per month. Its
+  // A shift of a month closed for payroll was corrected, added, cancelled or
+  // brought back, or had an unpaid break changed (payroll P9; the clock
+  // plan's PR1 and PR2, `closed_month` on clock.cancel, clock.restore and
+  // clock.break_edit): to the month's closer and the accountants, one line
+  // per month. Its
   // difference goes into the next month's file; nothing to do here. Not about
   // the reader's own pay, yet payroll kept it out of every group, as it did
   // the month to close below: both always reach the phone, and the settings

@@ -1411,6 +1411,8 @@
         "aManager": "מנהל",
         "breakMinutes": "{minutes} דק׳",
         "noBreak": "בלי הפסקה",
+        "cancelled": "בוטלה",
+        "cancelledBy": "בוטלה על ידי {name}, ב-<ltr>{time}</ltr>: {note}",
         "columns": {
           "day": "יום",
           "in": "כניסה",
@@ -1703,6 +1705,8 @@
         "waiting": "מחכות לאישור",
         "open": "עוד פתוחות",
         "daysTitle": "הימים",
+        "cancelledTitle": "משמרות שבוטלו",
+        "cancelledHint": "הן לא נספרות בשעות ולא בקובץ לשכר.",
         "empty": {
           "title": "אין משמרות ב{month}",
           "body": "{form, select, f {כשתחתים כניסה} m {כשיחתים כניסה} other {כשיחתים/תחתים כניסה}}, המשמרות יופיעו כאן. אפשר לעבור לחודש אחר בחיצים שליד שם החודש."
@@ -2435,7 +2439,13 @@
             "breakFit": "{kind, select, removed {הסרת {count, plural, one {הפסקה} other {# הפסקות}}} ended {סגירת {count, plural, one {הפסקה פתוחה} other {# הפסקות פתוחות}}} cut {קיצור {count, plural, one {הפסקה} other {# הפסקות}}} other {שינוי {count, plural, one {הפסקה} other {# הפסקות}}}} בתיקון המשמרת של {person} ב{day}",
             "breakOpen": "מ-<ltr>{in}</ltr>, בלי סוף",
             "break": "הפסקה",
-            "breakRemoved": "הוסרה"
+            "breakRemoved": "הוסרה",
+            "cancel": "ביטול משמרת של {person}: {day}, <ltr>{in}–{out}</ltr>",
+            "cancelOpen": "ביטול משמרת פתוחה של {person}: {day}, מ-<ltr>{in}</ltr>",
+            "restore": "החזרת משמרת שבוטלה של {person}: {day}, <ltr>{in}–{out}</ltr>",
+            "restoreOpen": "החזרת משמרת שבוטלה של {person}: {day}, מ-<ltr>{in}</ltr>, והיא פתוחה שוב",
+            "breakEdit": "{change, select, add {הוספת הפסקה} remove {הסרת הפסקה} restore {החזרת הפסקה שהוסרה} other {תיקון הפסקה}} במשמרת של {person} ב{day}",
+            "breakUnpaid": "ההפסקה לא בתשלום, ולכן השעות השתנו"
           },
           "invite": {
             "create": "הזמנה לצוות: {name}, {role}",

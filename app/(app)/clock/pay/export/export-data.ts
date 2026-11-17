@@ -1,5 +1,6 @@
 import "server-only";
 import { getCorrections } from "@db/payroll";
+import { getCancelledEntries } from "@db/time-clock";
 import { minimumWageTableFrom } from "@domain/minimum-wage";
 import { originalTimes } from "@domain/pay-month";
 import { withoutAmounts } from "@domain/payroll";
@@ -12,7 +13,7 @@ import {
 } from "@domain/payroll-export";
 import { formArg } from "@domain/profile";
 import { DEFAULT_SHABBAT_CITY, shabbatCityOf } from "@domain/shabbat";
-import { addMonths } from "@domain/time-clock";
+import { addMonths, monthRange } from "@domain/time-clock";
 import { currentWording } from "../../../current-wording";
 import { currentMember } from "../../../member";
 import { payAccess } from "../pay-access";
@@ -113,8 +114,8 @@ export async function currentPayrollFile(
  * The month before `month`, when it is closed for payroll (payroll P9): when
  * it closed, whether the engine changed since, and a row per day that
  * changed since, each with its person's name, payroll number and rest day as
- * they are now and the reasons given for its shifts since the close. Null
- * when it isn't closed.
+ * they are now and the reasons given for its shifts since the close: a
+ * correction's or an add's, and a cancel's. Null when it isn't closed.
  */
 async function differencesBefore(
   month: string,
@@ -129,6 +130,16 @@ async function differencesBefore(
   const entries = new Map(
     (reads?.entries ?? []).map((entry) => [entry.id, entry]),
   );
+  // A shift cancelled since is no longer among them, and its day still names
+  // it (the month kept it): its reason is the cancel's. Read only when some
+  // day changed.
+  const range = monthRange(before, timeZone);
+  const cancelled = new Map(
+    (reads
+      ? await getCancelledEntries(reads.access.businessId, range.from, range.to)
+      : []
+    ).map((one) => [one.entry.id, one]),
+  );
   const rows = state.differences.flatMap((person) => {
     const who = reads?.people.find((one) => one.userId === person.userId);
     const own = reads?.details.get(person.userId) ?? DEFAULT_DETAILS;
@@ -138,16 +149,22 @@ async function differencesBefore(
       payrollNumber: own.payrollNumber,
       restDay: own.restDay,
       day,
-      // Why: the reasons of the shifts behind the day, corrected or added
-      // after the month closed.
+      // Why: the reasons of the shifts behind the day, corrected, added or
+      // cancelled after the month closed.
       reasons: [
         ...new Set(
           day.entryIds.flatMap((id) => {
             const entry = entries.get(id);
-            return entry?.note &&
-              entry.editedAt !== null &&
-              Date.parse(entry.editedAt) > closedAt
-              ? [entry.note]
+            if (entry) {
+              return entry.note &&
+                entry.editedAt !== null &&
+                Date.parse(entry.editedAt) > closedAt
+                ? [entry.note]
+                : [];
+            }
+            const gone = cancelled.get(id);
+            return gone && Date.parse(gone.cancelledAt) > closedAt
+              ? [gone.reason]
               : [];
           }),
         ),

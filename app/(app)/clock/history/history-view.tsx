@@ -57,7 +57,11 @@ export function HistoryView({
           hrefFor={(month) => `${paths.history}?month=${month}`}
           minutes={data.minutes}
           countId="history"
-          caption={t("total", { count: data.records.length })}
+          // A cancelled shift is listed, and counts as none.
+          caption={t("total", {
+            count: data.records.filter((shift) => shift.cancelled === null)
+              .length,
+          })}
           t={t}
           overlap={data.records.length > 0}
         />

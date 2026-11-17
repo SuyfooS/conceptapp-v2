@@ -97,6 +97,12 @@ export const timeEntry = z
      * so an `editedAt` later than this means it was corrected since.
      */
     createdAt: z.iso.datetime({ offset: true }).nullable().default(null),
+    /**
+     * When it was last brought back after a cancel
+     * (20261117000200_cancelled_shifts.sql), so a payroll file made before
+     * sees a change. Null for one never cancelled.
+     */
+    restoredAt: z.iso.datetime({ offset: true }).nullable().default(null),
   })
   .refine(
     (e) =>
@@ -107,6 +113,23 @@ export const timeEntry = z
     },
   );
 export type TimeEntry = z.infer<typeof timeEntry>;
+
+/**
+ * A shift someone who edits the clock cancelled instead of deleting it
+ * (20261117000200_cancelled_shifts.sql): kept, with who, when and why, and
+ * counted nowhere. `wasOpen`: it was still open, and the cancel ended it, so
+ * its end is the cancel's and no clock-out. The entry is as it was, so an
+ * earlier correction's reason stays its own.
+ */
+export const cancelledEntry = z.object({
+  entry: timeEntry,
+  cancelledAt: z.iso.datetime({ offset: true }),
+  /** Null once their profile is gone. */
+  cancelledBy: z.string().nullable(),
+  reason: z.string(),
+  wasOpen: z.boolean(),
+});
+export type CancelledEntry = z.infer<typeof cancelledEntry>;
 
 /** The whole minutes an entry counts for. */
 export function entryMinutes(entry: Span, now: Date): number {
@@ -412,12 +435,27 @@ export type ShiftRecord = {
    * for a change from before reasons were asked for. Null when nobody changed it.
    */
   correction: ShiftCorrection | null;
+  /**
+   * Who cancelled it, when and why (20261117000200_cancelled_shifts.sql):
+   * then it counts for nothing (no minutes, no break, never overdue or
+   * waiting) and says so instead. Null for a live shift.
+   */
+  cancelled: ShiftCancel | null;
 };
 
 export type ShiftCorrection = {
   kind: "added" | "corrected";
   by: string | null;
   note: string | null;
+};
+
+export type ShiftCancel = {
+  /** Their name; null when it isn't known to the reader, or they are gone. */
+  by: string | null;
+  /** When, by the business's clock: its date and its time, HH:MM. */
+  date: string;
+  time: string;
+  note: string;
 };
 
 /**
@@ -448,7 +486,11 @@ export function correctionOf(
 
 /**
  * One person's entries of a month as the history shows them, newest first.
- * `nameOf` names whoever corrected an entry.
+ * `nameOf` names whoever corrected or cancelled an entry. `cancelled`, the
+ * person's cancelled shifts (`getCancelledEntries`), take their place among
+ * them, each saying who cancelled it, when and why, and counting for nothing;
+ * one the cancel ended shows no end, since its end was the cancel's. A live
+ * shift at the same moment comes first: the one added in its place.
  */
 export function monthRecords(
   entries: readonly TimeEntry[],
@@ -457,25 +499,77 @@ export function monthRecords(
   now: Date,
   step: 0 | 5 | 15 = 0,
   nameOf: (userId: string) => string | null = () => null,
+  cancelled: readonly CancelledEntry[] = [],
 ): ShiftRecord[] {
-  return entries
-    .filter((entry) => monthOf(entryDate(entry, timeZone)) === month)
-    .sort((a, b) => Date.parse(b.clockIn) - Date.parse(a.clockIn))
-    .map((entry) => ({
-      id: entry.id,
-      date: entryDate(entry, timeZone),
-      in: timeIn(new Date(entry.clockIn), timeZone),
-      out:
-        entry.clockOut === null
-          ? null
-          : timeIn(new Date(entry.clockOut), timeZone),
-      minutes: roundMinutes(entryMinutes(entry, now), step),
-      breakMinutes: breakMinutes(entry, now),
-      byManager: entry.source === "manager",
-      overdue: entryOverdue(entry, now),
-      attendance: attendanceOf(entry),
-      correction: correctionOf(entry, nameOf),
-    }));
+  const inMonth = (entry: TimeEntry) =>
+    monthOf(entryDate(entry, timeZone)) === month;
+  const live = entries
+    .filter(inMonth)
+    .map((entry): [TimeEntry, ShiftRecord] => [
+      entry,
+      {
+        id: entry.id,
+        date: entryDate(entry, timeZone),
+        in: timeIn(new Date(entry.clockIn), timeZone),
+        out:
+          entry.clockOut === null
+            ? null
+            : timeIn(new Date(entry.clockOut), timeZone),
+        minutes: roundMinutes(entryMinutes(entry, now), step),
+        breakMinutes: breakMinutes(entry, now),
+        byManager: entry.source === "manager",
+        overdue: entryOverdue(entry, now),
+        attendance: attendanceOf(entry),
+        correction: correctionOf(entry, nameOf),
+        cancelled: null,
+      },
+    ]);
+  const gone = cancelled
+    .filter((one) => inMonth(one.entry))
+    .map(
+      ({
+        entry,
+        cancelledAt,
+        cancelledBy,
+        reason,
+        wasOpen,
+      }): [TimeEntry, ShiftRecord] => {
+        const at = new Date(cancelledAt);
+        return [
+          entry,
+          {
+            id: entry.id,
+            date: entryDate(entry, timeZone),
+            in: timeIn(new Date(entry.clockIn), timeZone),
+            out:
+              wasOpen || entry.clockOut === null
+                ? null
+                : timeIn(new Date(entry.clockOut), timeZone),
+            minutes: 0,
+            breakMinutes: 0,
+            byManager: entry.source === "manager",
+            overdue: false,
+            attendance: null,
+            // The cancel's line says what happened to it; an earlier
+            // correction stays in the log.
+            correction: null,
+            cancelled: {
+              by: cancelledBy === null ? null : nameOf(cancelledBy),
+              date: dateIn(at, timeZone),
+              time: timeIn(at, timeZone),
+              note: reason,
+            },
+          },
+        ];
+      },
+    );
+  return [...live, ...gone]
+    .sort(
+      ([a, first], [b, second]) =>
+        Date.parse(b.clockIn) - Date.parse(a.clockIn) ||
+        Number(first.cancelled !== null) - Number(second.cancelled !== null),
+    )
+    .map(([, record]) => record);
 }
 
 export type PersonMonth = {

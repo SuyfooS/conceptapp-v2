@@ -483,6 +483,30 @@ const demoRow = (
 const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
 
 export const demoActivityRows: ActivityRow[] = [
+  // A shift recorded by mistake, cancelled with why, and a break pressed by
+  // mistake, removed (the clock plan's PR1 and PR2), as cancel_time_entry and
+  // remove_time_break log them: each leads to Yoav's hours of the month.
+  demoRow(139, "2026-11-04T15:10:00+02:00", "shiran", "clock.cancel", {
+    entry: "entry-yoav-cancelled",
+    person: "yoav",
+    clock_in: "2026-11-03T16:00:00+02:00",
+    clock_out: "2026-11-03T23:00:00+02:00",
+    note: "נרשמה פעמיים בטעות",
+  }),
+  demoRow(138, "2026-11-04T15:05:00+02:00", "shiran", "clock.break_edit", {
+    entry: "entry-yoav-break",
+    person: "yoav",
+    clock_in: "2026-11-02T16:00:00+02:00",
+    break: "break-yoav-3",
+    change: "remove",
+    from: {
+      start: "2026-11-02T19:00:00+02:00",
+      end: "2026-11-02T19:20:00+02:00",
+    },
+    to: null,
+    unpaid: false,
+    note: "ההפסקה נלחצה בטעות",
+  }),
   // A closed list fixed in place (lists L6b-1): Shiran fixed two readings
   // of the kitchen's opening after Noa closed it, one with its comment,
   // which read as one line with each reading from before to after.

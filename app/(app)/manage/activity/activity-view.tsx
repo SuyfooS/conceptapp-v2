@@ -240,9 +240,18 @@ export function ActivityView({
           ltr,
           in: clockTime(times.clockIn),
         });
-  /** Why hours were added or corrected, as its own line under the change. */
+  /** Why hours were added, corrected or cancelled, as its own line under the change. */
   const reasonNotes = (note: string | null): ReactNode[] =>
     note ? [t("actions.clock.reason", { note })] : [];
+  /**
+   * Where a shift's line leads: the person's hours in the month the shift is
+   * in, for whoever opens the team's hours; the team's hours when the row
+   * can't say whose.
+   */
+  const personHours = (personId: string | null, clockIn: string) =>
+    paths.clockTeam && personId
+      ? `${paths.clockTeam}/${personId}?month=${dateIn(new Date(clockIn), timeZone).slice(0, 7)}`
+      : paths.clockTeam;
   /**
    * What a team change took off someone, a count apiece: the shifts freed,
    * the swap requests cancelled, and those open again (Orel, 15 November
@@ -558,6 +567,71 @@ export function ActivityView({
             },
           })),
         };
+      case "clock.cancel": {
+        const values = {
+          ltr,
+          person: who(line.person),
+          day: clockDay(line.times),
+          in: clockTime(line.times.clockIn),
+        };
+        return {
+          what: line.times.clockOut
+            ? t.rich("actions.clock.cancel", {
+                ...values,
+                out: clockTime(line.times.clockOut),
+              })
+            : t.rich("actions.clock.cancelOpen", values),
+          notes: reasonNotes(line.note),
+          changes: [],
+          href: personHours(line.personId, line.times.clockIn),
+        };
+      }
+      case "clock.restore": {
+        const values = {
+          ltr,
+          person: who(line.person),
+          day: clockDay(line.times),
+          in: clockTime(line.times.clockIn),
+        };
+        return {
+          what: line.times.clockOut
+            ? t.rich("actions.clock.restore", {
+                ...values,
+                out: clockTime(line.times.clockOut),
+              })
+            : t.rich("actions.clock.restoreOpen", values),
+          notes: [],
+          changes: [],
+          href: personHours(line.personId, line.times.clockIn),
+        };
+      }
+      case "clock.break_edit": {
+        // Changed: before and after. Removed: before, and that it went.
+        // Added or brought back: its times now.
+        const values = line.from
+          ? {
+              from: breakHours(line.from),
+              to: line.to
+                ? breakHours(line.to)
+                : t("actions.clock.breakRemoved"),
+            }
+          : line.to
+            ? { to: breakHours(line.to) }
+            : undefined;
+        return {
+          what: t("actions.clock.breakEdit", {
+            change: line.change,
+            person: who(line.person),
+            day: clockDay({ clockIn: line.clockIn, clockOut: null }),
+          }),
+          notes: [
+            ...reasonNotes(line.note),
+            ...(line.unpaid ? [t("actions.clock.breakUnpaid")] : []),
+          ],
+          changes: [{ key: "break", label: t("actions.clock.break"), values }],
+          href: personHours(line.personId, line.clockIn),
+        };
+      }
       case "clock.confirm":
         return plain(
           t("actions.clock.confirm", { person: who(line.person) }),

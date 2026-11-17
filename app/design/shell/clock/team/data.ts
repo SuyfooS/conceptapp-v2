@@ -19,6 +19,37 @@ export const demoTeamPaths = {
   pay: "/design/shell/clock/pay",
 };
 
+/**
+ * Noa clocked in by mistake on a day off, and a manager cancelled it while it
+ * was still open: no end of its own, counted for nothing. Her history on the
+ * clock demo shows it too, as she reads it.
+ */
+export const demoCancelledShift: ShiftRecord = {
+  id: "68000000-0000-4000-a000-000000000017",
+  date: "2026-11-03",
+  in: "08:00",
+  out: null,
+  minutes: 0,
+  breakMinutes: 0,
+  byManager: false,
+  overdue: false,
+  attendance: null,
+  correction: null,
+  cancelled: {
+    by: "שירן הדגמה",
+    date: "2026-11-03",
+    time: "08:20",
+    note: "נכנסה בטעות ביום חופש",
+  },
+};
+
+/** Noa's shifts on the clock demo, newest first, with the one cancelled. */
+export const demoNoaRecords: ShiftRecord[] = [
+  ...demoRecords.filter((record) => record.date > demoCancelledShift.date),
+  demoCancelledShift,
+  ...demoRecords.filter((record) => record.date < demoCancelledShift.date),
+];
+
 const shift = (
   id: number,
   date: string,
@@ -33,12 +64,14 @@ const shift = (
   overdue: false,
   attendance: null,
   correction: null,
+  cancelled: null,
   ...more,
 });
 
 /**
  * Each person's shifts this month, newest first. The team list and its totals
- * are summed from these, so a person's page and their row always agree.
+ * are summed from these, so a person's page and their row always agree. A
+ * cancelled shift is listed and counts for nothing, as the app's.
  */
 const demoPeople: {
   userId: string;
@@ -84,6 +117,35 @@ const demoPeople: {
           },
         },
       ),
+      // The same evening recorded twice, the copy cancelled the day after:
+      // kept, with who, when and why, and counted for nothing.
+      shift(
+        8,
+        "2026-11-03",
+        { in: "16:00", out: "23:00", minutes: 0 },
+        {
+          cancelled: {
+            by: "שירן הדגמה",
+            date: "2026-11-04",
+            time: "15:10",
+            note: "נרשמה פעמיים בטעות",
+          },
+        },
+      ),
+      // A break pressed by mistake, removed (the clock plan's PR2): it is
+      // left out of the shift, which reads as corrected, with why.
+      shift(
+        9,
+        "2026-11-02",
+        { in: "16:00", out: "22:30", minutes: 390 },
+        {
+          correction: {
+            kind: "corrected",
+            by: "שירן הדגמה",
+            note: "ההפסקה נלחצה בטעות",
+          },
+        },
+      ),
       shift(
         4,
         "2026-11-01",
@@ -116,8 +178,9 @@ const demoPeople: {
         overdue: true,
         attendance: null,
         correction: null,
+        cancelled: null,
       },
-      ...demoRecords.filter((record) => record.date < "2026-11-04"),
+      ...demoNoaRecords.filter((record) => record.date < "2026-11-04"),
     ],
   },
   {
@@ -145,7 +208,8 @@ const people = demoPeople.map((person) => ({
   name: person.name,
   former: false,
   minutes: sum(person.records, "minutes"),
-  shifts: person.records.length,
+  // A cancelled shift counts as none.
+  shifts: person.records.filter((record) => record.cancelled === null).length,
   breakMinutes: sum(person.records, "breakMinutes"),
 }));
 

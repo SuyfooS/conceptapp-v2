@@ -6,7 +6,7 @@ import {
 } from "@db/payroll";
 import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
 import { getClosedMonths, getPayrollMonthRecord } from "@db/payroll-months";
-import { getTimeEntries } from "@db/time-clock";
+import { getCancelledEntries, getTimeEntries } from "@db/time-clock";
 import { getWages, wagesByPerson } from "@db/wages";
 import { dateIn } from "@domain/availability";
 import { isStaff } from "@domain/modules";
@@ -46,6 +46,7 @@ import {
   entryDate,
   monthOf,
   monthRange,
+  monthRecords,
   type TimeEntry,
 } from "@domain/time-clock";
 import {
@@ -141,15 +142,19 @@ async function originalsOf(businessId: string, entries: readonly TimeEntry[]) {
 
 /**
  * A month's entries, with the clock's settings, everyone who was here, their
- * wages, details and periods (one person's, when `userId` is given).
+ * wages, details and periods (one person's, when `userId` is given). The
+ * month's cancelled shifts come apart (`cancelled`): in no total, and seen
+ * only where the screens say what was cancelled, and whether the month
+ * changed since its file.
  */
 async function monthOfHours(access: PayAccess, month: string, userId?: string) {
   const { from, to } = monthRange(month, access.timeZone);
-  const [settings, people, entries, wages, details, periods] =
+  const [settings, people, entries, cancelled, wages, details, periods] =
     await Promise.all([
       currentModuleSettings("time_clock"),
       getPayPeople(access.businessId),
       getTimeEntries(access.businessId, from, to, userId),
+      getCancelledEntries(access.businessId, from, to, userId),
       getWages(access.businessId, userId),
       getPayrollDetails(access.businessId, userId),
       getEmploymentPeriods(access.businessId, userId),
@@ -158,6 +163,7 @@ async function monthOfHours(access: PayAccess, month: string, userId?: string) {
     settings,
     people,
     entries,
+    cancelled,
     wages: wagesByPerson(wages),
     details,
     periods,
@@ -253,7 +259,7 @@ export async function currentPayMonth(
   );
   const now = new Date();
   const [
-    { settings, people, entries, wages, details },
+    { settings, people, entries, cancelled, wages, details },
     payroll,
     lastExport,
     closedState,
@@ -387,6 +393,8 @@ export async function currentPayMonth(
             [...wages.values()].flat(),
             month,
             lastExport.at,
+            // A shift cancelled since leaves the file out of date too.
+            cancelled,
           ),
         }
       : null,
@@ -474,7 +482,7 @@ export async function currentPayPerson(
   );
   const now = new Date();
   const [
-    { settings, people, entries, wages, details, periods },
+    { settings, people, entries, cancelled, wages, details, periods },
     payroll,
     closed,
   ] = await Promise.all([
@@ -485,7 +493,12 @@ export async function currentPayPerson(
     getClosedMonths(access.businessId),
   ]);
   const person = people.find((row) => row.userId === id.data);
-  if (!person || (!isStaff(person.role) && entries.length === 0)) return null;
+  if (
+    !person ||
+    (!isStaff(person.role) && entries.length === 0 && cancelled.length === 0)
+  ) {
+    return null;
+  }
   const totals =
     payTotals(entries, month, access.timeZone, now).get(person.userId) ??
     NO_PAY_TOTALS;
@@ -507,6 +520,16 @@ export async function currentPayPerson(
     currentMonth: access.currentMonth,
     totals,
     days,
+    // Only the cancelled ones: oldest first, as the days.
+    cancelled: monthRecords(
+      [],
+      month,
+      access.timeZone,
+      now,
+      0,
+      nameOf,
+      cancelled,
+    ).reverse(),
     monthWage: wageOfMonth(
       person,
       wages,

@@ -1,4 +1,8 @@
-import { getClockPeople, getTimeEntries } from "@db/time-clock";
+import {
+  getCancelledEntries,
+  getClockPeople,
+  getTimeEntries,
+} from "@db/time-clock";
 import { canSeePay } from "@domain/payroll-access";
 import { timeIn } from "@domain/shabbat";
 import {
@@ -148,9 +152,12 @@ export async function currentTeamHours(
 const personId = z.uuid();
 
 /**
- * One person's shifts in a month. Null when the person asking doesn't edit the
- * clock, that person was never in the business, or they are off the staff (an
- * accountant) and have no hours in the month.
+ * One person's shifts in a month, with those cancelled among them, each saying
+ * who cancelled it, when and why (they count for nothing). Null when the
+ * person asking doesn't edit the clock, that person was never in the
+ * business, or they are off the staff (an accountant) with no shifts in the
+ * month, live or cancelled: a cancelled shift of someone who left can still
+ * be reached.
  */
 export async function currentPersonHours(
   asked: string,
@@ -166,16 +173,22 @@ export async function currentPersonHours(
   const currentMonth = monthOf(today);
   const month = monthFrom(askedForMonth, currentMonth);
   const { from, to } = monthRange(month, timeZone);
-  const [settings, people, entries] = await Promise.all([
+  const [settings, people, entries, cancelled] = await Promise.all([
     currentModuleSettings("time_clock"),
     getClockPeople(businessId),
     getTimeEntries(businessId, from, to, id.data),
+    getCancelledEntries(businessId, from, to, id.data),
   ]);
   const person = people.find((row) => row.userId === id.data);
-  if (!person || (!person.staff && entries.length === 0)) return null;
+  if (
+    !person ||
+    (!person.staff && entries.length === 0 && cancelled.length === 0)
+  ) {
+    return null;
+  }
 
   const step = settings.roundToMinutes;
-  // Who corrected each shift, for its line.
+  // Who corrected or cancelled each shift, for its line.
   const nameOf = (userId: string) =>
     people.find((row) => row.userId === userId)?.name ?? null;
   return {
@@ -183,7 +196,15 @@ export async function currentPersonHours(
     month,
     currentMonth,
     minutes: monthMinutes(entries, month, timeZone, now, step),
-    records: monthRecords(entries, month, timeZone, now, step, nameOf),
+    records: monthRecords(
+      entries,
+      month,
+      timeZone,
+      now,
+      step,
+      nameOf,
+      cancelled,
+    ),
     today,
     viewOnly,
   };

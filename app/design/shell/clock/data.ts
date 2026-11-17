@@ -19,6 +19,7 @@ export const demoRecords: ShiftRecord[] = [
     overdue: false,
     attendance: null,
     correction: null,
+    cancelled: null,
   },
   {
     id: "68000000-0000-4000-a000-000000000011",
@@ -31,6 +32,7 @@ export const demoRecords: ShiftRecord[] = [
     overdue: false,
     attendance: { how: "typed", pending: false },
     correction: null,
+    cancelled: null,
   },
   {
     id: "68000000-0000-4000-a000-000000000012",
@@ -43,6 +45,7 @@ export const demoRecords: ShiftRecord[] = [
     overdue: false,
     attendance: { how: "none", pending: true },
     correction: null,
+    cancelled: null,
   },
   {
     id: "68000000-0000-4000-a000-000000000013",
@@ -56,6 +59,7 @@ export const demoRecords: ShiftRecord[] = [
     attendance: null,
     // A manager recorded it; who, the reader may not see.
     correction: { kind: "added", by: null, note: null },
+    cancelled: null,
   },
   {
     id: "68000000-0000-4000-a000-000000000014",
@@ -68,6 +72,7 @@ export const demoRecords: ShiftRecord[] = [
     overdue: false,
     attendance: { how: "none", pending: false },
     correction: null,
+    cancelled: null,
   },
 ];
 
@@ -96,6 +101,7 @@ export function demoClock(
     editedBy: null,
     editedAt: null,
     createdAt: at(3.7),
+    restoredAt: null,
   };
   const pause = {
     id: "68000000-0000-4000-a000-000000000002",

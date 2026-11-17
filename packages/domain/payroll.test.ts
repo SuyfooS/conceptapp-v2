@@ -89,6 +89,7 @@ function entry(
     editedBy: null,
     editedAt: null,
     createdAt: null,
+    restoredAt: null,
   };
 }
 

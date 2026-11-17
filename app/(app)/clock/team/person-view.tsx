@@ -105,7 +105,11 @@ export function PersonHoursView({
           hrefFor={(month) => `${personHref}?month=${month}`}
           minutes={data.minutes}
           countId={`person-${data.person.userId}`}
-          caption={t("caption", { count: data.records.length })}
+          // A cancelled shift is listed, and counts as none.
+          caption={t("caption", {
+            count: data.records.filter((shift) => shift.cancelled === null)
+              .length,
+          })}
           t={tHistory}
           overlap={data.records.length > 0}
         />

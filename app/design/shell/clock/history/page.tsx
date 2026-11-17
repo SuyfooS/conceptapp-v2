@@ -1,14 +1,16 @@
 import { Suspense } from "react";
 import { HistoryView } from "../../../../(app)/clock/history/history-view";
 import { baseWording } from "../../../../(app)/wording";
-import { demoRecords } from "../data";
 import { demoOwnPay } from "../pay/data";
+import { demoNoaRecords } from "../team/data";
 
 type Props = { searchParams: Promise<{ state?: string; estimate?: string }> };
 
-// The real history with mock data. ?state=empty shows a month with no shifts:
-// only its empty state, no estimate card. The month's estimate of Noa's pay
-// under it (payroll P7); ?estimate=off is a business that shows none.
+// The real history with mock data, a shift cancelled by a manager among them
+// (it says who, when and why, and counts for nothing). ?state=empty shows a
+// month with no shifts: only its empty state, no estimate card. The month's
+// estimate of Noa's pay under it (payroll P7); ?estimate=off is a business
+// that shows none.
 export default function ShellClockHistory({ searchParams }: Props) {
   return (
     <Suspense>
@@ -19,7 +21,7 @@ export default function ShellClockHistory({ searchParams }: Props) {
 
 async function Demo({ searchParams }: Props) {
   const { state, estimate } = await searchParams;
-  const records = state === "empty" ? [] : demoRecords;
+  const records = state === "empty" ? [] : demoNoaRecords;
   return (
     <HistoryView
       ownPay={demoOwnPay(records, "2026-11", estimate)}
