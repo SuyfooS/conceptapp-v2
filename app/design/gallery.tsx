@@ -624,6 +624,15 @@ function GalleryBody({
           <GalleryFileField />
         </Section>
 
+        {/* Waiter mode's mock screens (S0): its parts are the twin's own
+            until P4 brings them here. */}
+        <Section title={t("orderTakingTitle")}>
+          <p className="text-ink-2">{t("orderTakingText")}</p>
+          <Button asChild variant="secondary" className="w-full">
+            <Link href="/design/order-taking">{t("orderTakingDemo")}</Link>
+          </Button>
+        </Section>
+
         <Section title={t("switcher")}>
           <p className="text-ink-2 text-sm">{t("switcherText")}</p>
           <BusinessList businesses={galleryBusinesses} action={galleryChoose} />

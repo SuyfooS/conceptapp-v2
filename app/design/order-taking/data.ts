@@ -1,0 +1,591 @@
+// Mock rows for the order-taking demo (S0 of waiter mode, issue #191): the
+// demo restaurant's sample menu, its tables and an evening's orders, as
+// Shiran, the shift manager, finds them at 20:42 on a Thursday. They stand
+// in for database rows (dishes, choices, departments, people, a pasted
+// menu), so their Hebrew stays here rather than in messages/; the
+// Hebrew-literal check in tooling/ allows this file.
+
+import { portraits } from "../portraits";
+import { business, user } from "../shell/data";
+import type {
+  Category,
+  Department,
+  DraftLine,
+  Menu,
+  MenuItem,
+  Order,
+  Person,
+  Place,
+  SentLine,
+  Ticket,
+} from "./model";
+
+export const orderDemoBusiness = business.name;
+export const orderDemoUser = user;
+
+/** Thursday 19 November 2026, 20:42 in Tel Aviv: the demo's clock starts here. */
+export const DEMO_START = Date.UTC(2026, 10, 19, 18, 42);
+/** That evening at a time in Tel Aviv (two hours ahead of UTC in November). */
+const at = (hours: number, minutes: number) =>
+  Date.UTC(2026, 10, 19, hours - 2, minutes);
+
+export const READER = "shiran";
+
+/** First names only, as people call each other on the floor. */
+export const orderDemoPeople: Person[] = [
+  { id: "shiran", name: "שירן", photo: portraits.shiran },
+  { id: "yoav", name: "יואב", photo: portraits.yoav },
+  { id: "maya", name: "מאיה", photo: portraits.maya },
+  { id: "noa", name: "נועה", photo: null },
+];
+
+export const orderDemoDepartments: Department[] = [
+  { key: "kitchen", name: "מטבח" },
+  { key: "bar", name: "בר" },
+];
+
+const categories: Category[] = [
+  { id: "starters", name: "ראשונות", department: "kitchen" },
+  { id: "mains", name: "עיקריות", department: "kitchen" },
+  { id: "desserts", name: "קינוחים", department: "kitchen" },
+  { id: "drinks", name: "שתייה", department: "bar" },
+];
+
+const items: MenuItem[] = [
+  {
+    id: "focaccia",
+    categoryId: "starters",
+    name: "פוקאצ'ה",
+    price: 2800,
+    groups: [],
+  },
+  {
+    id: "salad",
+    categoryId: "starters",
+    name: "סלט ירוק",
+    price: 3600,
+    groups: [],
+  },
+  {
+    id: "hummus",
+    categoryId: "starters",
+    name: "חומוס",
+    price: 3200,
+    groups: [],
+  },
+  {
+    id: "schnitzel",
+    categoryId: "mains",
+    name: "שניצל",
+    price: 6200,
+    groups: [
+      {
+        id: "side",
+        name: "תוספת",
+        min: 1,
+        max: 1,
+        options: [
+          { id: "fries", name: "צ'יפס", price: 0 },
+          { id: "mash", name: "פירה", price: 0 },
+          { id: "side-salad", name: "סלט", price: 0 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "burger",
+    categoryId: "mains",
+    name: "המבורגר",
+    price: 6800,
+    groups: [
+      {
+        id: "doneness",
+        name: "מידת עשייה",
+        min: 1,
+        max: 1,
+        options: [
+          { id: "mr", name: "מדיום רייר", price: 0 },
+          { id: "m", name: "מדיום", price: 0 },
+          { id: "mw", name: "מדיום וול", price: 0 },
+          { id: "wd", name: "וול דאן", price: 0 },
+        ],
+      },
+      {
+        id: "extras",
+        name: "תוספות",
+        min: 0,
+        max: 2,
+        options: [
+          { id: "egg", name: "ביצה", price: 600 },
+          { id: "cheese", name: "גבינה", price: 600 },
+        ],
+      },
+    ],
+  },
+  { id: "pasta", categoryId: "mains", name: "פסטה", price: 5600, groups: [] },
+  { id: "fish", categoryId: "mains", name: "דג היום", price: 8400, groups: [] },
+  {
+    id: "malabi",
+    categoryId: "desserts",
+    name: "מלבי",
+    price: 2600,
+    groups: [],
+  },
+  {
+    id: "cake",
+    categoryId: "desserts",
+    name: "עוגת שוקולד",
+    price: 3400,
+    groups: [],
+  },
+  {
+    id: "lemonade",
+    categoryId: "drinks",
+    name: "לימונדה",
+    price: 1600,
+    groups: [],
+  },
+  { id: "water", categoryId: "drinks", name: "מים", price: 1000, groups: [] },
+  {
+    id: "coffee",
+    categoryId: "drinks",
+    name: "קפה",
+    price: 1200,
+    groups: [
+      {
+        id: "size",
+        name: "גודל",
+        min: 1,
+        max: 1,
+        options: [
+          { id: "regular", name: "רגיל", price: 0 },
+          { id: "large", name: "גדול", price: 400 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "beer",
+    categoryId: "drinks",
+    name: "בירה מהחבית",
+    price: 2800,
+    groups: [
+      {
+        id: "beer-size",
+        name: "גודל",
+        min: 1,
+        max: 1,
+        options: [
+          { id: "third", name: "שליש", price: 0 },
+          { id: "half", name: "חצי", price: 800 },
+        ],
+      },
+    ],
+  },
+];
+
+export const orderDemoMenu: Menu = { categories, items };
+
+/** The fish is gone tonight: every phone greys it. */
+export const demoSoldOut = ["fish"];
+
+/** The 8 items ordered most in the last 14 days, as the phone's first screen shows them. */
+export const mostOrdered = [
+  "schnitzel",
+  "burger",
+  "lemonade",
+  "beer",
+  "focaccia",
+  "hummus",
+  "coffee",
+  "salad",
+];
+
+export const orderDemoTables: Place[] = Array.from({ length: 12 }, (_, i) => ({
+  id: `table-${i + 1}`,
+  kind: "table",
+  name: String(i + 1),
+}));
+
+export const demoTakeaways: Place[] = [
+  { id: "takeaway-1", kind: "takeaway", name: "1", label: "חולצה אדומה" },
+];
+
+/** A sent line, as the send copies it from the menu. */
+function line(
+  id: string,
+  itemId: string,
+  qty: number,
+  more: Partial<Pick<SentLine, "choices" | "note" | "allergy" | "unit">> = {},
+): SentLine {
+  const item = items.find((i) => i.id === itemId);
+  const choices = more.choices ?? [];
+  const extra =
+    item?.groups
+      .flatMap((g) => g.options)
+      .filter((o) => choices.includes(o.name))
+      .reduce((sum, o) => sum + o.price, 0) ?? 0;
+  return {
+    id,
+    itemId,
+    name: item?.name ?? itemId,
+    choices,
+    unit: more.unit ?? (item?.price ?? 0) + extra,
+    qty,
+    note: more.note ?? null,
+    allergy: more.allergy ?? null,
+    takenBack: false,
+  };
+}
+
+function ticket(
+  id: string,
+  department: Ticket["department"],
+  state: Ticket["state"],
+  lines: SentLine[],
+  more: Partial<Ticket> = {},
+): Ticket {
+  return {
+    id,
+    department,
+    held: false,
+    state,
+    lines,
+    seen: true,
+    firedAt: null,
+    readyAt: state === "new" ? null : at(20, 40),
+    readyBy: null,
+    ...more,
+  };
+}
+
+/**
+ * The evening at 20:42: table 4 Shiran's, its starters on the kitchen's
+ * screen and its mains held for later; table 7 Yoav's, its drinks ready;
+ * table 9 Yoav's, waiting 20 minutes; table 11 Shiran's, dessert ready;
+ * table 2 Maya's, all served; takeaway 1 in the kitchen.
+ */
+export function demoOrders(): Order[] {
+  return [
+    {
+      id: "order-2",
+      placeId: "table-2",
+      openedBy: "maya",
+      openedAt: at(20, 12),
+      closedAt: null,
+      closedBy: null,
+      rounds: [
+        {
+          id: "round-2a",
+          at: at(20, 14),
+          by: "maya",
+          tickets: [
+            ticket("t-2a-bar", "bar", "served", [line("l1", "lemonade", 2)]),
+          ],
+        },
+        {
+          id: "round-2b",
+          at: at(20, 20),
+          by: "maya",
+          tickets: [
+            ticket("t-2b-kitchen", "kitchen", "served", [
+              line("l2", "hummus", 1),
+              line("l3", "salad", 1),
+            ]),
+          ],
+        },
+      ],
+    },
+    {
+      id: "order-4",
+      placeId: "table-4",
+      openedBy: "shiran",
+      openedAt: at(20, 31),
+      closedAt: null,
+      closedBy: null,
+      rounds: [
+        {
+          id: "round-4a",
+          at: at(20, 36),
+          by: "shiran",
+          tickets: [
+            ticket("t-4a-kitchen", "kitchen", "new", [
+              line("l4", "focaccia", 1),
+              line("l5", "hummus", 1, { note: "בלי שום" }),
+            ]),
+            ticket(
+              "t-4a-held",
+              "kitchen",
+              "new",
+              [
+                line("l6", "schnitzel", 1, { choices: ["פירה"] }),
+                line("l7", "burger", 1, {
+                  choices: ["מדיום", "גבינה"],
+                  allergy: "שומשום",
+                }),
+              ],
+              { held: true },
+            ),
+            ticket("t-4a-bar", "bar", "served", [
+              line("l8", "beer", 2, { choices: ["חצי"] }),
+            ]),
+          ],
+        },
+      ],
+    },
+    {
+      id: "order-7",
+      placeId: "table-7",
+      openedBy: "yoav",
+      openedAt: at(20, 25),
+      closedAt: null,
+      closedBy: null,
+      rounds: [
+        {
+          id: "round-7a",
+          at: at(20, 28),
+          by: "yoav",
+          tickets: [
+            ticket(
+              "t-7a-bar",
+              "bar",
+              "ready",
+              [
+                line("l9", "lemonade", 1),
+                line("l10", "coffee", 1, { choices: ["גדול"] }),
+              ],
+              { readyBy: "yoav" },
+            ),
+            ticket("t-7a-kitchen", "kitchen", "new", [
+              line("l11", "burger", 1, { choices: ["מדיום וול"] }),
+            ]),
+          ],
+        },
+      ],
+    },
+    {
+      id: "order-9",
+      placeId: "table-9",
+      openedBy: "yoav",
+      openedAt: at(20, 18),
+      closedAt: null,
+      closedBy: null,
+      rounds: [
+        {
+          id: "round-9a",
+          at: at(20, 22),
+          by: "yoav",
+          tickets: [
+            ticket("t-9a-kitchen", "kitchen", "new", [
+              line("l12", "pasta", 1),
+              line("l13", "schnitzel", 1, {
+                choices: ["צ'יפס"],
+                note: "רוטב בצד",
+              }),
+            ]),
+          ],
+        },
+      ],
+    },
+    {
+      id: "order-11",
+      placeId: "table-11",
+      openedBy: "shiran",
+      openedAt: at(20, 2),
+      closedAt: null,
+      closedBy: null,
+      rounds: [
+        {
+          id: "round-11a",
+          at: at(20, 5),
+          by: "shiran",
+          tickets: [
+            ticket("t-11a-kitchen", "kitchen", "served", [
+              line("l14", "schnitzel", 2, { choices: ["צ'יפס"] }),
+            ]),
+            ticket("t-11a-bar", "bar", "served", [line("l15", "water", 1)]),
+          ],
+        },
+        {
+          id: "round-11b",
+          at: at(20, 30),
+          by: "shiran",
+          tickets: [
+            ticket(
+              "t-11b-kitchen",
+              "kitchen",
+              "ready",
+              [line("l16", "malabi", 1), line("l17", "cake", 1)],
+              { readyBy: "noa" },
+            ),
+          ],
+        },
+      ],
+    },
+    {
+      id: "order-takeaway-1",
+      placeId: "takeaway-1",
+      openedBy: "shiran",
+      openedAt: at(20, 38),
+      closedAt: null,
+      closedBy: null,
+      rounds: [
+        {
+          id: "round-t1a",
+          at: at(20, 38),
+          by: "shiran",
+          tickets: [
+            ticket("t-t1a-kitchen", "kitchen", "new", [
+              line("l18", "burger", 1, { choices: ["וול דאן"] }),
+            ]),
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+/** Today's closed orders, each with its list for the till. */
+export function demoClosed(): Order[] {
+  return [
+    {
+      id: "order-3",
+      placeId: "table-3",
+      openedBy: "yoav",
+      openedAt: at(19, 5),
+      closedAt: at(20, 10),
+      closedBy: "yoav",
+      rounds: [
+        {
+          id: "round-3a",
+          at: at(19, 8),
+          by: "yoav",
+          tickets: [
+            ticket("t-3a-bar", "bar", "served", [
+              line("l19", "beer", 2, { choices: ["שליש"] }),
+            ]),
+            ticket("t-3a-kitchen", "kitchen", "served", [
+              line("l20", "focaccia", 1),
+              line("l21", "burger", 2, { choices: ["מדיום"] }),
+            ]),
+          ],
+        },
+      ],
+    },
+    {
+      id: "order-5",
+      placeId: "table-5",
+      openedBy: "shiran",
+      openedAt: at(18, 40),
+      closedAt: at(19, 55),
+      closedBy: "shiran",
+      rounds: [
+        {
+          id: "round-5a",
+          at: at(18, 44),
+          by: "shiran",
+          tickets: [
+            ticket("t-5a-kitchen", "kitchen", "served", [
+              line("l22", "pasta", 2),
+              line("l23", "salad", 1),
+            ]),
+          ],
+        },
+      ],
+    },
+  ];
+}
+
+/** The draft of `?state=draft`: a note, an allergy and a main held for later. */
+export function demoDraft(): DraftLine[] {
+  return [
+    {
+      id: "d1",
+      itemId: "salad",
+      qty: 1,
+      choices: [],
+      note: null,
+      allergy: "אגוזים",
+      held: false,
+    },
+    {
+      id: "d2",
+      itemId: "lemonade",
+      qty: 2,
+      choices: [],
+      note: null,
+      allergy: null,
+      held: false,
+    },
+    {
+      id: "d3",
+      itemId: "schnitzel",
+      qty: 1,
+      choices: ["mash"],
+      note: "בלי מלח",
+      allergy: null,
+      held: true,
+    },
+  ];
+}
+
+/** What a waiter just sent, for `?state=sent`: its lines can still be taken back. */
+export function demoJustSent(): Order {
+  return {
+    id: "order-6",
+    placeId: "table-6",
+    openedBy: "shiran",
+    openedAt: DEMO_START,
+    closedAt: null,
+    closedBy: null,
+    rounds: [
+      {
+        id: "round-6a",
+        at: DEMO_START,
+        by: "shiran",
+        tickets: [
+          ticket(
+            "t-6a-kitchen",
+            "kitchen",
+            "new",
+            [line("l24", "focaccia", 1)],
+            {
+              seen: false,
+            },
+          ),
+          ticket("t-6a-bar", "bar", "new", [line("l25", "lemonade", 2)], {
+            seen: false,
+          }),
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * A café's menu as it would be pasted from a website or a WhatsApp message:
+ * categories, prices with and without ₪, two sizes, extras, a repeated
+ * line, a price that isn't clear and a line reversed by a PDF.
+ */
+export const demoPastedMenu = [
+  "ארוחות בוקר",
+  "ארוחת בוקר ישראלית 68",
+  "שקשוקה ₪54",
+  "+ גבינה בולגרית 6",
+  "טוסט גבינות 42.50",
+  "טוסט גבינות 42.50",
+  "שתייה חמה",
+  "קפה הפוך 14/17",
+  "+ חלב שקדים 3",
+  "תה נענע 12",
+  "םח וקוש 15",
+  "עוגת גבינה 3O",
+].join("\n");
+
+/** What an imported size group and extras group are called. */
+export const importWords = {
+  sizes: "גודל",
+  regular: "רגיל",
+  large: "גדול",
+  extras: "תוספות",
+};
