@@ -45,11 +45,13 @@ import {
   firstNames,
   formOf,
   hasEnded,
+  hasStarted,
   ltr,
   nameOf,
   positionName,
   type ShiftData,
   shiftLabel,
+  shiftOutcome,
   timeRange,
 } from "./shifts/shift-text";
 
@@ -596,6 +598,12 @@ function WeekShift({
   const canTake = offers.some((o) => o.state === "available");
   const tookIt = offers.some((o) => o.state === "takenByYou");
   const request = id ? myRequestFor(data.swaps, id, data.userId) : null;
+  // Their last request wasn't approved, or the schedule cancelled it, while
+  // the shift has not begun: in short, as the live request is.
+  const outcome =
+    id && mine && !request && !hasStarted(data, shift)
+      ? shiftOutcome(data, id)
+      : null;
   return (
     <section
       aria-label={label}
@@ -638,6 +646,10 @@ function WeekShift({
                 form: formOf(data, request.takenBy),
               })
             : tb("givingOpen")}
+        </span>
+      ) : outcome ? (
+        <span className="text-sm">
+          {tb(outcome === "declined" ? "givingDeclined" : "givingRemoved")}
         </span>
       ) : null}
       {canTake ? (

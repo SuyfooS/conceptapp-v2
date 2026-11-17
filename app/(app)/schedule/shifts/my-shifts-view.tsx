@@ -5,7 +5,7 @@ import { type AppWording, translator } from "../../wording";
 import type { PublishedSchedule } from "../week";
 import { MyShiftsBoard } from "./my-shifts-board";
 import type { SwapAction } from "./shift-sheet";
-import { upcomingShifts } from "./shift-text";
+import { ownEndedSwaps, upcomingShifts } from "./shift-text";
 
 export { upcomingShifts };
 
@@ -60,6 +60,7 @@ export function MyShiftsView({
           people: data.people,
           positions: data.positions,
           swaps: data.swaps,
+          endedSwaps: ownEndedSwaps(data),
         }}
         swap={swap}
         ask={ask}

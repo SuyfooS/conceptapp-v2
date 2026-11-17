@@ -3,7 +3,12 @@ import { fridayOf, shabbatLimits } from "@domain/availability-form";
 import { draftWeek } from "@domain/schedule";
 import { ISRAEL_TIME_ZONE, ISRAELI_CITIES } from "@domain/shabbat";
 import { shabbatTimes } from "@domain/shabbat-times";
-import type { ShiftSwap } from "@domain/swaps";
+import type {
+  EndedSwap,
+  ShiftSwap,
+  SwapOutcome,
+  SwapShift,
+} from "@domain/swaps";
 import { buildTeam } from "@domain/team";
 import type { ScheduleViewProps } from "../../../../(app)/schedule/schedule-view";
 import type {
@@ -111,6 +116,129 @@ export const demoRequest = (
   status: takenBy ? "taken" : "open",
 });
 
+// The demo week's shifts by id, as the published week names them.
+const demoShifts = new Map(
+  draftWeek(demoWeek.start, demoShiftPatterns).map((s) => [
+    `${s.day}/${s.pattern}`,
+    s,
+  ]),
+);
+
+/** The shift a demo request asked for: the week's own, as it is. */
+function askedFor(id: string): SwapShift {
+  const shift = demoShifts.get(id);
+  if (!shift) throw new Error(`No demo shift ${id}`);
+  return {
+    day: shift.day,
+    name: shift.name,
+    start: shift.start,
+    end: shift.end,
+  };
+}
+
+/**
+ * A demo request that no longer waits, on `shiftId` (null once deleted),
+ * with the shift it asked for: the week's own unless `shift` says otherwise.
+ */
+const demoEnded = (
+  n: string,
+  shiftId: string | null,
+  requestedBy: string,
+  takenBy: string | null,
+  outcome: SwapOutcome,
+  decidedBy: string | null,
+  createdAt: string,
+  shift: SwapShift = askedFor(shiftId ?? ""),
+): EndedSwap => ({
+  id: `00000000-0000-4000-a000-0000000001${n}`,
+  shiftId,
+  shift,
+  requestedBy,
+  takenBy,
+  outcome,
+  decidedBy,
+  createdAt,
+});
+
+/**
+ * What became of the demo's requests that no longer wait, as Noa and
+ * Shiran read them on Tuesday 3 November: Noa's evening tonight, which Maya
+ * took, was declined by Shiran; her Thursday evening asked for when it
+ * started at 17:00, and the schedule cancelled it when it moved to 16:00;
+ * Shira works her Wednesday evening, which Shiran approved; Uri declined
+ * Omer's Wednesday morning, which Noa took; and Yoav cancelled his request
+ * for a Thursday morning shift Noa took, deleted since. Noa's Friday, asked
+ * again (`demoRequest` 1), hides the one she withdrew there, and Monday's
+ * is before today.
+ */
+export const DEMO_ENDED: EndedSwap[] = [
+  demoEnded(
+    "01",
+    "2026-11-03/evening",
+    "noa",
+    "maya",
+    "declined",
+    "shiran",
+    "2026-11-02T09:00:00.000Z",
+  ),
+  demoEnded(
+    "02",
+    "2026-11-05/evening",
+    "noa",
+    null,
+    "schedule",
+    null,
+    "2026-11-01T18:00:00.000Z",
+    { ...askedFor("2026-11-05/evening"), start: "17:00" },
+  ),
+  demoEnded(
+    "03",
+    "2026-11-04/evening",
+    "noa",
+    "shira",
+    "approved",
+    "shiran",
+    "2026-11-01T10:00:00.000Z",
+  ),
+  demoEnded(
+    "04",
+    "2026-11-04/morning",
+    "omer",
+    "noa",
+    "declined",
+    "uri",
+    "2026-11-01T12:00:00.000Z",
+  ),
+  demoEnded(
+    "05",
+    null,
+    "yoav",
+    "noa",
+    "withdrawn",
+    null,
+    "2026-10-31T16:00:00.000Z",
+    { ...askedFor("2026-11-05/morning"), start: "10:00", end: "15:00" },
+  ),
+  demoEnded(
+    "06",
+    "2026-11-06/friday",
+    "noa",
+    null,
+    "withdrawn",
+    null,
+    "2026-10-30T12:00:00.000Z",
+  ),
+  demoEnded(
+    "07",
+    "2026-11-02/morning",
+    "noa",
+    "shira",
+    "approved",
+    "shiran",
+    "2026-10-30T09:00:00.000Z",
+  ),
+];
+
 const limitsOf = (start: string) =>
   shabbatLimits(
     shabbatTimes(ISRAELI_CITIES.telAviv, fridayOf(start)),
@@ -125,12 +253,13 @@ export const DEMO_NOON = "2026-11-03T10:00:00.000Z";
 /**
  * The demo restaurant's schedule as `userId` reads it on Tuesday
  * 3 November, at noon unless `now` says otherwise: this week published,
- * next week not yet.
+ * next week not yet. `endedSwaps`: requests that no longer wait (`DEMO_ENDED`).
  */
 export function demoPublished(
   userId: string,
   swaps: ShiftSwap[],
   now: string = DEMO_NOON,
+  endedSwaps: EndedSwap[] = [],
 ): PublishedSchedule {
   const start = demoWeek.start;
   return {
@@ -171,6 +300,7 @@ export function demoPublished(
     ),
     positions: demoPositions,
     swaps,
+    endedSwaps,
   };
 }
 
@@ -187,8 +317,9 @@ const demoNextWeek = (mine: AvailabilityWeek["mine"]): AvailabilityWeek => ({
 /** The demo's schedule tab as Noa, a worker, who has not sent availability. */
 export const demoWorkerSchedule = (
   swaps: ShiftSwap[],
+  ended: EndedSwap[] = [],
 ): Omit<ScheduleViewProps, "swap"> => ({
-  data: demoPublished("noa", swaps),
+  data: demoPublished("noa", swaps, DEMO_NOON, ended),
   week: demoNextWeek(null),
   late: false,
   team: null,
@@ -226,6 +357,7 @@ export function demoRunningBuild(
  */
 export function demoManagerSchedule(
   swaps: ShiftSwap[],
+  ended: EndedSwap[] = [],
 ): Omit<ScheduleViewProps, "swap"> {
   const { members } = buildTeam(teamMembers, teamInvites, teamToday);
   const week = demoNextWeek(demoWeek.mine);
@@ -246,7 +378,7 @@ export function demoManagerSchedule(
     answers: teamAnswers,
     positions: demoPositions,
   };
-  const data = demoPublished("shiran", swaps);
+  const data = demoPublished("shiran", swaps, DEMO_NOON, ended);
   return {
     data,
     week,

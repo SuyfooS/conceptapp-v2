@@ -1,5 +1,10 @@
 import type { WeekScheduleShift } from "@db/schedule";
-import { type Approval, approvalsFor, decidesSwap } from "@domain/swaps";
+import {
+  type Approval,
+  approvalsFor,
+  decidesSwap,
+  noLongerWaiting,
+} from "@domain/swaps";
 import { PageBody, PageHeader } from "@ui/page";
 import { type AppWording, translator } from "../../wording";
 import type { PublishedSchedule } from "../week";
@@ -33,9 +38,10 @@ export function pendingApprovals(
 }
 
 /**
- * The manager's list of shifts colleagues took, to approve or decline.
- * Phone: one request under the other; tablet: two columns of cards;
- * desktop: one table with the people in columns. `decide` is
+ * The manager's list of shifts colleagues took, to approve or decline, and
+ * under it what no longer waits for a decision, with who decided. Phone: one
+ * request under the other; tablet: two columns of cards; desktop: one table
+ * with the people in columns. `decide` is
  * `decideSwapAction`, or the demo's stand-in. Also rendered with mock
  * data on /design/shell/schedule/swaps.
  */
@@ -67,6 +73,8 @@ export function SwapApprovalsView({
       />
       <ApprovalsBoard
         rows={pendingApprovals(data, publishes)}
+        ended={noLongerWaiting(data.endedSwaps, data.today)}
+        viewer={data.userId}
         people={data.people}
         positions={data.positions}
         decide={decide}

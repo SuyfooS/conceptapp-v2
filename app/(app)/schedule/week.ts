@@ -6,7 +6,7 @@ import {
 } from "@db/availability";
 import { basisOf, getWeekSchedule, type WeekScheduleShift } from "@db/schedule";
 import type { MemberBusiness } from "@db/session";
-import { getLiveSwaps } from "@db/swaps";
+import { getEndedSwaps, getLiveSwaps } from "@db/swaps";
 import { type Colleague, getColleagues } from "@db/team";
 import {
   type AvailabilityAnswer,
@@ -37,7 +37,7 @@ import {
 import { shabbatPlaceOf } from "@domain/shabbat";
 import { shabbatTimes } from "@domain/shabbat-times";
 import type { Position, ShiftPattern } from "@domain/staffing";
-import type { ShiftSwap } from "@domain/swaps";
+import type { EndedSwap, ShiftSwap } from "@domain/swaps";
 import type { TeamMember } from "@domain/team";
 import { overnightDay } from "@domain/today";
 import { manifestFor } from "@modules/registry";
@@ -451,6 +451,11 @@ export type PublishedSchedule = {
   positions: Position[];
   /** Live shift swaps of the business (open, or waiting for a manager). */
   swaps: ShiftSwap[];
+  /**
+   * Requests that no longer wait, on shifts from today on (`getEndedSwaps`):
+   * what became of them, for whoever asked or took one and for the board.
+   */
+  endedSwaps: EndedSwap[];
 };
 
 /**
@@ -502,17 +507,19 @@ export const currentPublishedSchedule = cache(
       };
     };
     const yesterday = overnightDay(today, thisStart);
-    const [thisWeek, nextWeek, overnight, swaps, people] = await Promise.all([
-      published(thisStart),
-      published(addDays(thisStart, 7)),
-      yesterday
-        ? published(addDays(thisStart, -7)).then((week) =>
-            week.shifts.filter((shift) => shift.day === yesterday),
-          )
-        : [],
-      getLiveSwaps(businessId),
-      getColleagues(businessId),
-    ]);
+    const [thisWeek, nextWeek, overnight, swaps, endedSwaps, people] =
+      await Promise.all([
+        published(thisStart),
+        published(addDays(thisStart, 7)),
+        yesterday
+          ? published(addDays(thisStart, -7)).then((week) =>
+              week.shifts.filter((shift) => shift.day === yesterday),
+            )
+          : [],
+        getLiveSwaps(businessId),
+        getEndedSwaps(businessId, today),
+        getColleagues(businessId),
+      ]);
     return {
       userId: member.userId,
       today,
@@ -524,6 +531,7 @@ export const currentPublishedSchedule = cache(
       people,
       positions: settings.positions,
       swaps,
+      endedSwaps,
     };
   },
 );

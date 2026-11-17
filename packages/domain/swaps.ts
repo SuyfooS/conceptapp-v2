@@ -31,6 +31,93 @@ export const shiftSwap = z.object({
 });
 export type ShiftSwap = z.infer<typeof shiftSwap>;
 
+const hourMinute = z.string().regex(/^\d{2}:\d{2}$/);
+
+/**
+ * The shift as a request keeps it (`shift_swaps.shift`, private.shift_brief):
+ * its day, name and hours when it was asked for, never rewritten, so it
+ * outlives the shift.
+ */
+export const swapShift = z.object({
+  day: z.iso.date(),
+  name: z.string(),
+  start: hourMinute,
+  end: hourMinute,
+});
+export type SwapShift = z.infer<typeof swapShift>;
+
+/** Why a cancelled request was cancelled (`shift_swaps.cancelled_because`). */
+export const SWAP_CANCEL_REASONS = ["withdrawn", "schedule", "team"] as const;
+
+/**
+ * How a request that no longer waits ended: approved or declined by whoever
+ * decides, or cancelled, by whoever asked (`withdrawn`), by a change to the
+ * schedule or by a change in the team.
+ */
+export const SWAP_OUTCOMES = [
+  "approved",
+  "declined",
+  ...SWAP_CANCEL_REASONS,
+] as const;
+export type SwapOutcome = (typeof SWAP_OUTCOMES)[number];
+
+/** A request that no longer waits, with the shift it asked for. */
+export type EndedSwap = {
+  id: string;
+  /** Null once the shift was deleted; the request keeps `shift`. */
+  shiftId: string | null;
+  shift: SwapShift;
+  requestedBy: string;
+  /** Kept when it was cancelled after someone took it. */
+  takenBy: string | null;
+  outcome: SwapOutcome;
+  /** Whoever approved or declined it; null for a cancelled one. */
+  decidedBy: string | null;
+  /** ISO, as the database wrote it: orders requests on one shift. */
+  createdAt: string;
+};
+
+const endedSwapRow = z.object({
+  id: z.uuid(),
+  shift_id: z.uuid().nullable(),
+  shift: swapShift,
+  requested_by: z.uuid(),
+  taken_by: z.uuid().nullable(),
+  status: z.enum(SWAP_STATUSES),
+  cancelled_because: z.enum(SWAP_CANCEL_REASONS).nullable(),
+  decided_by: z.uuid().nullable(),
+  created_at: z.string(),
+});
+
+/**
+ * A `shift_swaps` row as read, as a request that ended: approved and
+ * declined by their status, cancelled by why (`cancelled_because`,
+ * 20261115000200_swap_history.sql). Null for one still waiting, a cancelled
+ * one that doesn't say why, or a row whose shift doesn't read.
+ */
+export function endedSwapOf(row: unknown): EndedSwap | null {
+  const parsed = endedSwapRow.safeParse(row);
+  if (!parsed.success) return null;
+  const r = parsed.data;
+  const outcome =
+    r.status === "approved" || r.status === "declined"
+      ? r.status
+      : r.status === "cancelled"
+        ? r.cancelled_because
+        : null;
+  if (!outcome) return null;
+  return {
+    id: r.id,
+    shiftId: r.shift_id,
+    shift: r.shift,
+    requestedBy: r.requested_by,
+    takenBy: r.taken_by,
+    outcome,
+    decidedBy: r.decided_by,
+    createdAt: r.created_at,
+  };
+}
+
 /** A shift with its id, as the published schedule reads it. */
 export type SwappableShift = Pick<
   ScheduledShift,
@@ -67,9 +154,9 @@ export function shiftsOverlap(
 }
 
 /** Shift time order, for lists of requests. */
-const byShiftTime = <S extends SwappableShift>(
-  a: { shift: S },
-  b: { shift: S },
+const byShiftTime = (
+  a: { shift: Pick<ScheduledShift, "day" | "start" | "name"> },
+  b: { shift: Pick<ScheduledShift, "day" | "start" | "name"> },
 ) =>
   `${a.shift.day}${a.shift.start}${a.shift.name}`.localeCompare(
     `${b.shift.day}${b.shift.start}${b.shift.name}`,
@@ -202,6 +289,96 @@ export function decidesSwap(
     decider.publishes ||
     (swap.requestedBy !== decider.userId && swap.takenBy !== decider.userId)
   );
+}
+
+/** Where a request's shift is: its id, or the shift it kept once deleted. */
+const shiftKey = ({ shiftId, shift }: EndedSwap) =>
+  shiftId ?? `${shift.day}|${shift.start}|${shift.end}|${shift.name}`;
+
+const newer = (a: EndedSwap, b: EndedSwap) => a.createdAt > b.createdAt;
+
+/** A request the person was part of that no longer waits, and their side. */
+export type PastRequest = {
+  swap: EndedSwap;
+  /** `from`: they asked to give it away. `to`: they took it. */
+  side: "from" | "to";
+};
+
+/**
+ * What became of the requests `userId` asked for or took, on shifts from
+ * `today` on (by the shift each asked for, which outlives the shift), by
+ * shift time: the newest of theirs on each shift, as an older one on it no
+ * longer says where things stand. A shift on which a request of theirs still
+ * waits (`live`) is left out, since the request says it on the shift.
+ */
+export function pastRequestsFor(
+  ended: readonly EndedSwap[],
+  live: readonly ShiftSwap[],
+  userId: string,
+  today: string,
+): PastRequest[] {
+  const waiting = new Set(
+    live
+      .filter((s) => s.requestedBy === userId || s.takenBy === userId)
+      .map((s) => s.shiftId),
+  );
+  const newest = new Map<string, PastRequest>();
+  for (const swap of ended) {
+    const side =
+      swap.requestedBy === userId
+        ? "from"
+        : swap.takenBy === userId
+          ? "to"
+          : null;
+    if (!side || swap.shift.day < today) continue;
+    if (swap.shiftId !== null && waiting.has(swap.shiftId)) continue;
+    const key = shiftKey(swap);
+    const kept = newest.get(key);
+    if (!kept || newer(swap, kept.swap)) newest.set(key, { swap, side });
+  }
+  return [...newest.values()].sort((a, b) => byShiftTime(a.swap, b.swap));
+}
+
+/** What a person's own shift says about a request of theirs that ended. */
+export type OutcomeOnShift = Extract<SwapOutcome, "declined" | "schedule">;
+
+/**
+ * What the person's own shift says about their newest request to give it
+ * away, once it no longer waits: not approved, or cancelled by a change to
+ * the schedule that kept them on it. Null while a request of theirs waits on
+ * it, and for one they withdrew themselves, one approved (the shift is no
+ * longer theirs) or one a change in the team ended.
+ */
+export function outcomeOnShift(
+  ended: readonly EndedSwap[],
+  live: readonly ShiftSwap[],
+  shiftId: string,
+  userId: string,
+): OutcomeOnShift | null {
+  if (myRequestFor(live, shiftId, userId)) return null;
+  let last: EndedSwap | null = null;
+  for (const swap of ended) {
+    if (swap.shiftId !== shiftId || swap.requestedBy !== userId) continue;
+    if (!last || newer(swap, last)) last = swap;
+  }
+  return last?.outcome === "declined" || last?.outcome === "schedule"
+    ? last.outcome
+    : null;
+}
+
+/**
+ * What whoever decides sees no longer waits for a decision: the requests a
+ * colleague took that were approved, declined or cancelled since, on shifts
+ * from `today` on, by shift time. One cancelled before anyone took it never
+ * waited for them, so it is left out.
+ */
+export function noLongerWaiting(
+  ended: readonly EndedSwap[],
+  today: string,
+): EndedSwap[] {
+  return ended
+    .filter((swap) => swap.takenBy !== null && swap.shift.day >= today)
+    .sort(byShiftTime);
 }
 
 /**

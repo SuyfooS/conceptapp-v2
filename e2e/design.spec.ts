@@ -697,6 +697,84 @@ test("the swaps demo offers only declining once the shift has begun", async ({
   await expect(main).toContainText(heT("app.swaps.count", { count: 2 }));
 });
 
+// What became of Noa's requests that no longer wait (the twins' DEMO_ENDED):
+// tonight's wasn't approved, so her hero says so and still offers it, until
+// it begins; Thursday's the schedule cancelled, in its row; and the list has
+// one row a shift, five of them. Friday's, withdrawn, she asked again, so its
+// live request says where it stands; Monday's is before today.
+test("the shifts demo says what happened to Noa's requests", async ({
+  page,
+}) => {
+  const sw = he.app.shifts.swap;
+  const past = he.app.shifts.past;
+  const evening = heT("app.shifts.shift", {
+    name: "ערב",
+    day: he.app.availability.weekdays.tue,
+    date: "3.11",
+  });
+  const hero = page.getByRole("region", { name: evening, exact: true });
+
+  await page.goto("/design/shell/schedule/shifts");
+  await expect(hero).toContainText(sw.declined);
+  await expect(hero).toContainText(he.app.shifts.hero.giveAgain);
+  await expect(
+    hero.getByRole("button", { name: `${sw.buttons.give}, ${evening}` }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("list", { name: he.app.shifts.mine.title }),
+  ).toContainText(sw.removed);
+  const list = page.getByRole("list", { name: past.title });
+  await expect(list.getByRole("listitem")).toHaveCount(5);
+  await expect(list).toContainText(past.declinedFrom);
+  await expect(list).toContainText(
+    heT("app.shifts.past.approvedFrom", { name: "שירה ביטון" }),
+  );
+  await expect(list).toContainText(
+    heT("app.shifts.past.declinedTo", { name: "עומר אזולאי" }),
+  );
+  await expect(list).toContainText(
+    heT("app.shifts.past.withdrawnTo", { name: "יואב לוי", form: "m" }),
+  );
+  await expect(list).toContainText(past.schedule);
+  await expect(list).not.toContainText(past.withdrawnFrom);
+  await expect(list).not.toContainText("2.11");
+
+  await page.goto("/design/shell/schedule/shifts?at=evening");
+  await expect(hero).toContainText(he.app.shifts.yours);
+  await expect(hero).not.toContainText(sw.declined);
+});
+
+// Under the requests waiting, the four a colleague took that no longer wait,
+// from today on, each saying who decided ("you" for Shiran) or why it was
+// cancelled: cards on phones and tablets, a table on desktops. The count is
+// still the waiting ones'.
+test("the swaps demo lists the requests no longer waiting", async ({
+  page,
+}, testInfo) => {
+  const ap = he.app.swaps;
+  const desktop = testInfo.project.name === "desktop";
+  await page.goto("/design/shell/schedule/swaps");
+  const ended = (
+    desktop
+      ? page.getByRole("table", { name: ap.ended.title })
+      : page.getByRole("list", { name: ap.ended.title })
+  ).filter({ visible: true });
+  await expect(
+    desktop ? ended.locator("tbody tr") : ended.getByRole("listitem"),
+  ).toHaveCount(4);
+  await expect(ended).toContainText(ap.ended.approvedYou);
+  await expect(ended).toContainText(ap.ended.declinedYou);
+  await expect(ended).toContainText(
+    heT("app.swaps.ended.declined", { name: "אורי בן דוד", form: "x" }),
+  );
+  await expect(ended).toContainText(
+    heT("app.swaps.ended.withdrawn", { name: "יואב לוי", form: "m" }),
+  );
+  await expect(page.getByRole("main")).toContainText(
+    heT("app.swaps.count", { count: 2 }),
+  );
+});
+
 // The ways into the week under way on the Today twin (R4) open the
 // restaurant's builder on that week, under its own title, not next week's.
 test("the Today demo's open places this week open this week's builder", async ({
