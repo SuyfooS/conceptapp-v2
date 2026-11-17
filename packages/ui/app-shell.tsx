@@ -49,6 +49,12 @@ export type AppShellProps = {
    * and tablets switch from Home and the profile instead.
    */
   businesses?: { list: BusinessChoice[]; action: ChooseBusiness } | null;
+  /**
+   * The mode the screens are in, when the app draws a mode's own items
+   * (waiter mode): under the business's name in the sidebar, so a desktop
+   * says where it is, as each of the mode's screens does in its eyebrow.
+   */
+  mode?: string;
   children: ReactNode;
 };
 
@@ -360,6 +366,7 @@ export function AppShell({
   user,
   nav,
   businesses,
+  mode,
   children,
 }: AppShellProps) {
   const { pathname, shown, press } = usePressedPath();
@@ -377,6 +384,11 @@ export function AppShell({
               businesses={businesses.list}
               action={businesses.action}
             />
+          ) : mode ? (
+            <span className="flex min-w-0 flex-col">
+              <span className="font-bold text-md">{businessName}</span>
+              <span className="text-ink-2 text-sm">{mode}</span>
+            </span>
           ) : (
             <span className="min-w-0 font-bold text-md">{businessName}</span>
           )}
