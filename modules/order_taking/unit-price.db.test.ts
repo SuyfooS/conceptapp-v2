@@ -15,7 +15,9 @@ import { afterAll, describe, expect, it } from "vitest";
  * (supabase/migrations/20261117000500_order_taking_menu.sql), with the
  * choices a later phase gives it, for every kind of pick: fitting, a
  * required group left out, too many, one twice, one it doesn't have. Needs
- * the local database (`pnpm db:start`); run with `pnpm test:db`.
+ * the local database (`pnpm db:start`); run with `pnpm test:db`. The JSON
+ * goes as text (`::text::jsonb`): a parameter typed jsonb, postgres.js would
+ * encode the string again, and SQL would get a JSON string, not the groups.
  */
 
 const sql = postgres(
@@ -95,7 +97,9 @@ describe("a line's unit price", () => {
     for (const pick of picks) {
       const [row] = await sql<{ agorot: number | null }[]>`
         select private.unit_agorot(
-          ${price}::integer, ${JSON.stringify(groups)}::jsonb, ${JSON.stringify(pick)}::jsonb
+          ${price}::integer,
+          ${JSON.stringify(groups)}::text::jsonb,
+          ${JSON.stringify(pick)}::text::jsonb
         ) as agorot`;
       expect(row?.agorot, JSON.stringify(pick)).toBe(
         unitAgorot({ priceAgorot: price, optionGroups: groups }, pick),
