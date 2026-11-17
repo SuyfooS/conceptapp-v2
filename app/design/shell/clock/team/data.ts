@@ -263,6 +263,8 @@ export const demoStations: TeamStations = {
     { id: "station-office", name: "עמדת שעון 3", seen: { kind: "never" } },
   ],
   howTo: true,
+  // The demo asks for the code (`required` below).
+  shownEmpty: true,
   today: TODAY,
 };
 

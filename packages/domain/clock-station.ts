@@ -41,6 +41,18 @@ export const stationToken = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 /** At most this many running in a business (approve_station_pairing). */
 export const MAX_STATIONS = 10;
 
+/**
+ * Whether the device can be locked now: it is one of the business's running
+ * stations already (locking keeps that one), or fewer than ten run. With ten
+ * running and this device none of them, nothing offers to lock it.
+ */
+export function lockOpen(offer: {
+  current: { name: string } | null;
+  running: readonly string[];
+}): boolean {
+  return offer.current !== null || offer.running.length < MAX_STATIONS;
+}
+
 /** A station's name, as the database takes it: 1 to 40 characters, trimmed. */
 export const STATION_NAME_MAX = 40;
 export const stationName = z.string().trim().min(1).max(STATION_NAME_MAX);

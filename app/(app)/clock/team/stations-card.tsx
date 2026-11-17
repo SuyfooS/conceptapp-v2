@@ -28,7 +28,9 @@ type Toast = { text: string; stamp: string; undo?: () => void };
  * shows the code now or when it last did, and "הפסקת העמדה", which stops it
  * at once, with "ביטול" in the toast to start it again. Under them, or alone
  * where the business asks for the code, how to leave a device as one. The
- * same list on every device.
+ * same list on every device. Always mounted: with none to show it shows
+ * nothing, until a stop from it, after which it stays, its toast, way back
+ * and failure with it, also with its last station stopped.
  */
 export function StationsCard({
   stations,
@@ -49,6 +51,8 @@ export function StationsCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [failure, setFailure] = useState<StationStopFailure | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  /** A station was stopped from here: the list stays, whatever is left in it. */
+  const [kept, setKept] = useState(false);
   /**
    * Stopped here, until the list is read again without them (the demo's
    * stand-in reads nothing again).
@@ -85,6 +89,7 @@ export function StationsCard({
   };
 
   function stopOne(row: StationRow) {
+    setKept(true);
     setBusy(row.id);
     setFailure(null);
     start(async () => {
@@ -123,6 +128,9 @@ export function StationsCard({
       setToast({ text, stamp: `restart-${Date.now()}` });
     });
   }
+
+  // Nothing to show, and no stop made here whose toast would go with it.
+  if (rows.length === 0 && !stations.shownEmpty && !kept) return null;
 
   return (
     <PageSection title={t("title")} headingRef={heading}>
@@ -186,15 +194,23 @@ export function StationsCard({
             ))}
           </ul>
         </Card>
-      ) : null}
-      {stations.howTo ? (
-        rows.length > 0 ? (
-          <p className="px-1 text-ink-2 text-sm md:max-w-2xl">{t("howTo")}</p>
-        ) : (
-          <Card className="md:max-w-2xl">
-            <p className="text-ink-2">{t("howTo")}</p>
-          </Card>
-        )
+      ) : (
+        // None running: how to leave a device as one, or, where codes show
+        // on a manager's phone only, that none can be. A stop that failed on
+        // the last one says so here.
+        <Card className="flex flex-col gap-2 md:max-w-2xl">
+          {failure ? (
+            <p role="alert" className="font-medium text-danger">
+              {t(`failure.${failure}`)}
+            </p>
+          ) : null}
+          <p className="text-ink-2">
+            {t(stations.howTo ? "howTo" : "noneManagerOnly")}
+          </p>
+        </Card>
+      )}
+      {stations.howTo && rows.length > 0 ? (
+        <p className="px-1 text-ink-2 text-sm md:max-w-2xl">{t("howTo")}</p>
       ) : null}
     </PageSection>
   );

@@ -267,14 +267,13 @@ export function TeamHoursView({
         </div>
       </div>
 
-      {data.stations ? (
-        <StationsCard
-          stations={data.stations}
-          stop={actions.stopStation}
-          restart={actions.restartStation}
-          viewOnly={data.viewOnly}
-        />
-      ) : null}
+      {/* Always in place, also showing nothing: a stop's toast lives in it. */}
+      <StationsCard
+        stations={data.stations}
+        stop={actions.stopStation}
+        restart={actions.restartStation}
+        viewOnly={data.viewOnly}
+      />
     </PageBody>
   );
 }

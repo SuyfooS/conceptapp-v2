@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   defaultStationName,
   lockFailureOf,
+  lockOpen,
+  MAX_STATIONS,
   STATION_COOKIE_MAX_AGE,
   STATION_SHOWING_MS,
   stationCodeFailureOf,
@@ -65,6 +67,28 @@ describe("a station's name", () => {
     expect(
       defaultStationName([" Clock station 2 ", "Clock station 3"], nameFor),
     ).toBe("Clock station 4");
+  });
+});
+
+describe("locking a device", () => {
+  const names = (n: number) =>
+    Array.from({ length: n }, (_, i) => `Station ${i + 1}`);
+
+  it("is open below ten running", () => {
+    expect(lockOpen({ current: null, running: [] })).toBe(true);
+    expect(lockOpen({ current: null, running: names(9) })).toBe(true);
+  });
+
+  it("is closed with ten running and this device none of them", () => {
+    expect(MAX_STATIONS).toBe(10);
+    expect(lockOpen({ current: null, running: names(10) })).toBe(false);
+  });
+
+  it("stays open on a device that is one of them: it keeps that station", () => {
+    expect(
+      lockOpen({ current: { name: "Station 3" }, running: names(10) }),
+    ).toBe(true);
+    expect(lockOpen({ current: { name: "Entrance" }, running: [] })).toBe(true);
   });
 });
 

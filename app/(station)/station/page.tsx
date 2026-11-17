@@ -74,6 +74,7 @@ async function Station() {
         accent: station.accent,
         timeZone: station.timeZone,
         name: station.name,
+        // New with each reading: one read again after a refusal asks again.
         now: new Date().toISOString(),
       }}
       codeUrl="/station/code"

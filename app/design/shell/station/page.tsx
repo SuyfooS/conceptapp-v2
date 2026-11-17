@@ -1,3 +1,4 @@
+import { MAX_STATIONS } from "@domain/clock-station";
 import { ACCENT_PRESETS, BRAND } from "@domain/color";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { connection } from "next/server";
@@ -24,8 +25,10 @@ const STATION = demoStations.rows[0]?.name ?? "";
 // stores nothing. `?state=clockOff` and `?state=managerOnly`: running, and
 // refused a code; `?state=new`: a device that isn't a station; `?state=
 // stopped`: one stopped from the team's hours; `?state=signedIn`: a manager
-// signed in on the station, who locks it again; `?state=signedInWorker`:
-// someone signed in who doesn't edit the clock.
+// signed in on the station, who locks it again; `?state=signedInFull`: a
+// manager signed in on a device that is no station, with ten running, so it
+// can't be one; `?state=signedInWorker`: someone signed in who doesn't edit
+// the clock.
 export default function ShellStation({ searchParams }: Props) {
   return (
     <Suspense>
@@ -47,6 +50,22 @@ async function Demo({ searchParams }: Props) {
         <SignedInHere
           lock={{
             offer: { current: { name: STATION }, running: [] },
+            action: demoLockDevice,
+          }}
+          homeHref={HOME}
+        />
+      );
+    case "signedInFull":
+      return (
+        <SignedInHere
+          lock={{
+            offer: {
+              current: null,
+              running: Array.from(
+                { length: MAX_STATIONS },
+                (_, i) => demoStations.rows[i]?.name ?? `${i + 1}`,
+              ),
+            },
             action: demoLockDevice,
           }}
           homeHref={HOME}

@@ -3,15 +3,18 @@ import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import { expectCameraOff, standInCamera } from "./camera";
 import {
+  addDemoStations,
   clearDemoStations,
   clearPunchState,
   clearTimeEntries,
   demoActivityActions,
   demoEntryProofs,
   demoStations,
+  pairingsSince,
   setDemoRequirePunchCode,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { heT } from "./t";
 
 // The clock station (#78 phase 5; Orel's lock of 17 November 2026): whoever
 // shows the clock's code locks the business's tablet on it from /clock/code,
@@ -105,6 +108,9 @@ test("an owner locks the business's tablet on the code, and it shows only the co
   page,
   browser,
 }, testInfo) => {
+  // Two sign-ins of one person (the second waits out the SMS cooldown), two
+  // axe runs and two screenshots.
+  test.setTimeout(60_000);
   // The owner's own phone, signed in too: it stays so.
   const phone = await secondPage(browser, testInfo);
   try {
@@ -194,6 +200,39 @@ test("an owner locks the business's tablet on the code, and it shows only the co
     .toBeGreaterThan(0);
 });
 
+test("with ten stations running a lock is refused before it pairs, and leaves nothing pairing", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await addDemoStations(
+    Array.from({ length: 9 }, (_, i) =>
+      fill(lock.defaultName, { n: String(i + 1) }),
+    ),
+  );
+  await signIn(page, OWNER);
+  await page.goto("/clock/code");
+  // Nine run: a tenth is offered.
+  await page.getByRole("button", { name: lock.open }).click();
+  const sheet = page.getByRole("dialog", { name: lock.title });
+  await expect(sheet.getByLabel(lock.name)).toHaveValue(
+    fill(lock.defaultName, { n: "10" }),
+  );
+
+  // Another device is locked meanwhile, the tenth. The refusal comes before
+  // any pairing starts: the table of devices pairing, which every business
+  // shares, is left as it was.
+  await addDemoStations(["טאבלט המטבח"]);
+  const since = new Date(Date.now() - 2000);
+  await sheet.getByRole("button", { name: lock.submit }).click();
+  await expect(sheet.getByRole("alert")).toHaveText(
+    heT("app.clock.station.lock.failure.tooManyStations", { count: 10 }),
+  );
+  expect(await pairingsSince(since)).toBe(0);
+  expect(await demoStations()).toHaveLength(10);
+  // Nothing was locked: still signed in, on the code screen.
+  await expect(page).toHaveURL(/\/clock\/code$/);
+});
+
 test("only the business's station gets codes, and never beside an account", async ({
   page,
   browser,
@@ -259,6 +298,9 @@ test("a worker clocks in by the station's digits, and the team's hours stop it w
   page,
   browser,
 }, testInfo) => {
+  // Three people sign in, and the station's own asks (every 20 seconds) are
+  // waited for twice.
+  test.setTimeout(120_000);
   await setDemoRequirePunchCode(true);
   const since = new Date(Date.now() - 2000);
   await signIn(page, OWNER);
@@ -296,10 +338,16 @@ test("a worker clocks in by the station's digits, and the team's hours stop it w
       { inProof: "typed", outProof: null, confirmed: false },
     ]);
 
-    // Stopped, and taken back from the toast.
+    // The code no longer asked (the module's default), and the team's hours
+    // read again: its one station is listed all the same.
     const stop = manager.getByRole("button", {
       name: fill(listed.stopLabel, { name: "עמדת הכניסה" }),
     });
+    await setDemoRequirePunchCode(false);
+    await manager.reload();
+    await expect(stop).toBeVisible();
+
+    // Stopped, and taken back from the toast.
     await stop.click();
     const undo = manager
       .getByRole("status")
@@ -309,6 +357,13 @@ test("a worker clocks in by the station's digits, and the team's hours stop it w
     await expect
       .poll(async () => (await demoStations())[0]?.stopped)
       .toBe(true);
+    // The page came back with no station running: the list stays, saying
+    // how to leave one, and the toast's way back with it.
+    await expect(
+      manager.getByRole("heading", { level: 2, name: listed.title }),
+    ).toBeVisible();
+    await expect(manager.getByText(listed.howTo)).toBeVisible();
+    await expect(undo).toBeVisible();
     await undo.click();
     await expect(
       manager.getByText(fill(listed.restarted, { name: "עמדת הכניסה" })),
@@ -328,6 +383,7 @@ test("a worker clocks in by the station's digits, and the team's hours stop it w
       manager.getByText(fill(listed.stopped, { name: "עמדת הכניסה" })),
     ).toBeVisible();
     await expect(stop).toHaveCount(0);
+    await expect(manager.getByText(listed.howTo)).toBeVisible();
     await expect(
       page.getByRole("heading", { level: 1, name: s.stopped.title }),
     ).toBeVisible({ timeout: 30_000 });
@@ -360,6 +416,8 @@ test("a worker clocks in by the station's digits, and the team's hours stop it w
 test("signing in on the station unlocks it, and Home locks it again as the same station", async ({
   page,
 }, testInfo) => {
+  // Two people sign in, an axe run and a screenshot.
+  test.setTimeout(60_000);
   await signIn(page, OWNER);
   await lockDevice(page, "עמדת הכניסה");
 
@@ -390,4 +448,36 @@ test("signing in on the station unlocks it, and Home locks it again as the same 
   ]);
   await page.goto("/home");
   await expect(page).toHaveURL(/\/enter$/);
+});
+
+test("a station told it stopped, by a stop taken back at once, shows the code again without waiting", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await signIn(page, OWNER);
+  await lockDevice(page, "עמדת הכניסה");
+
+  // Its next ask hears "stopped", as one in the second between a stop and its
+  // undo does, while the station runs again by the time the page is read.
+  let told = 0;
+  await page.route(
+    "**/station/code",
+    async (route) => {
+      told += 1;
+      await route.fulfill({
+        status: 409,
+        json: { ok: false, failure: "stopped" },
+      });
+    },
+    { times: 1 },
+  );
+  await page.reload();
+  await expect.poll(() => told).toBe(1);
+  // Read again, the page is still the station: it asks again at once, rather
+  // than waiting a minute on what it was told before.
+  await expect(page.getByRole("img", { name: c.code.qrLabel })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByText(s.checking)).toHaveCount(0);
+  await digitsOn(page);
 });

@@ -15,7 +15,7 @@ import { LogIn } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ReactNode, useEffect } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { CodeCard } from "@/app/(app)/clock/code/code-card";
 import {
   type RotationAnswer,
@@ -30,7 +30,10 @@ export type StationScreenData = {
   timeZone: string;
   /** The station's own name, as whoever locked it named it. */
   name: string;
-  /** The server's time when the page was made, for the date until a code comes. */
+  /**
+   * The server's time when the page was made, for the date until a code
+   * comes; new with each reading, so the screen knows it was read again.
+   */
   now: string;
 };
 
@@ -40,6 +43,13 @@ export type StationScreenData = {
  * themselves.
  */
 const RETRY_REFUSED_MS = 60_000;
+
+/**
+ * A refusal the page says itself reads the page again at most this often:
+ * each reading that is still this screen asks again at once, so a route and a
+ * page that kept disagreeing would otherwise ask and read without a pause.
+ */
+const READ_AGAIN_MS = 10_000;
 
 /** The station route's answer; anything else counts as a failed try. */
 function readStationAnswer(body: unknown): RotationAnswer<StationRefusal> {
@@ -91,14 +101,35 @@ export function StationScreen({
     blocked: false,
     retryRefusedMs: RETRY_REFUSED_MS,
   });
-  const { phase, failures, refusal } = rotation;
+  const { phase, failures, refusal, retry } = rotation;
 
-  // The page says these itself, read again: no code, and no state kept.
+  // The page says these itself, read again: no code, and no state kept. A
+  // page read again that is still this screen (a new `data.now`) says the
+  // refusal may be over, a stop taken back meanwhile: it asks again at once,
+  // rather than a minute later, and the page is read again while it is still
+  // told to leave, at most every `READ_AGAIN_MS`. The screen stays mounted,
+  // so its full screen and its wake lock stay with it.
   const leaving =
     refusal === "stopped" || refusal === "notStation" || refusal === "signedIn";
+  /** The page's reading (`data.now`) the screen was last told to leave on. */
+  const toldOn = useRef<string | null>(null);
+  /** When the page was last read again for a refusal. */
+  const readAgainAt = useRef(0);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new reading of the page asks again, not each render's `retry`
   useEffect(() => {
-    if (leaving) router.refresh();
-  }, [leaving, router]);
+    if (!leaving) {
+      toldOn.current = null;
+      return;
+    }
+    if (toldOn.current !== null && toldOn.current !== data.now) retry();
+    toldOn.current = data.now;
+    const wait = Math.max(0, readAgainAt.current + READ_AGAIN_MS - Date.now());
+    const timer = setTimeout(() => {
+      readAgainAt.current = Date.now();
+      router.refresh();
+    }, wait);
+    return () => clearTimeout(timer);
+  }, [leaving, data.now, router]);
 
   // The date by the database's time once a code came with it, so a wrong
   // clock on the device changes nothing, and it turns over at midnight.

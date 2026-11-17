@@ -47,13 +47,14 @@ const PAGES = [
   "/design/shell/clock/code",
   // The clock station (#78 phase 5): running, refused a code while running,
   // a device that isn't one, one stopped, and someone signed in on it who
-  // locks it again or doesn't.
+  // locks it again, can't with ten running, or doesn't.
   "/design/shell/station",
   "/design/shell/station?state=clockOff",
   "/design/shell/station?state=managerOnly",
   "/design/shell/station?state=new",
   "/design/shell/station?state=stopped",
   "/design/shell/station?state=signedIn",
+  "/design/shell/station?state=signedInFull",
   "/design/shell/station?state=signedInWorker",
   "/design/shell/clock/history",
   "/design/shell/clock/history?state=empty",
@@ -1183,6 +1184,23 @@ test("the station demo locks the device on the code, and the team's hours stop a
   await expect(
     page.getByRole("navigation", { name: he.ui.appShell.mainNav }),
   ).toHaveCount(0);
+
+  // Signed in on a device that is no station, with ten running: it says why
+  // it can't be one, offers nothing it can't do, and home is the way on.
+  const signedIn = he.station.signedIn;
+  await page.goto("/design/shell/station?state=signedInFull");
+  await expect(
+    page.getByText(heT("app.clock.station.lock.full", { count: 10 })),
+  ).toBeVisible();
+  await expect(page.getByText(signedIn.lockNew)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: signedIn.lock })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("link", { name: signedIn.home })).toBeVisible();
+  // Where it can be locked, it says so, and locking is the main action.
+  await page.goto("/design/shell/station?state=signedIn");
+  await expect(page.getByText(signedIn.lockAgain)).toBeVisible();
+  await expect(page.getByRole("button", { name: signedIn.lock })).toBeVisible();
 
   await page.goto("/design/shell/clock/team");
   const name = "טאבלט המטבח";

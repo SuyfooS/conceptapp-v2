@@ -28,6 +28,12 @@ export type TeamStations = {
    * (`codeDisplay` isn't "manager").
    */
   howTo: boolean;
+  /**
+   * With none running, the list says how to leave a device as one: where the
+   * business asks for the code too. Otherwise it shows nothing then, until a
+   * station is stopped from it, whose toast and way back stay with the list.
+   */
+  shownEmpty: boolean;
   /** The business's date today, to name another day's "last seen". */
   today: string;
 };
@@ -89,11 +95,11 @@ export type TeamHoursData = {
     breakMinutes: number;
   }[];
   /**
-   * The stations running, with the line on leaving a device as one; null
-   * with none running where the business doesn't ask for the code, or shows
-   * it on a manager's phone only.
+   * The stations running, with the line on leaving a device as one. Always
+   * there, also with none to show, so stopping the last one keeps its toast
+   * and its "ביטול" when the page is read again.
    */
-  stations: TeamStations | null;
+  stations: TeamStations;
 };
 
 export type PersonHoursData = {

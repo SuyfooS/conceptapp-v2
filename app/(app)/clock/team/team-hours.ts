@@ -171,14 +171,14 @@ export async function currentTeamHours(
         in: timeIn(new Date(entry.clockIn), timeZone),
       })),
     people: rows,
-    stations:
-      stationRows.length > 0 || (howTo && settings.requirePunchCode)
-        ? {
-            rows: stationRows,
-            howTo,
-            today: clockAt(now, timeZone).date,
-          }
-        : null,
+    // Always, so the list (and a stop's toast in it) stays when the page is
+    // read again with its last station stopped.
+    stations: {
+      rows: stationRows,
+      howTo,
+      shownEmpty: howTo && settings.requirePunchCode,
+      today: clockAt(now, timeZone).date,
+    },
   };
 }
 

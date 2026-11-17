@@ -1644,6 +1644,7 @@
           "restarted": "The station “{name}” shows the code again",
           "undo": "Undo",
           "howTo": "To leave a tablet at the business as a clock station: sign in on it, open “Clock code” and press “Lock this device on the code”.",
+          "noneManagerOnly": "No clock stations are running. This business shows the code on a manager's phone only, so no stations are added.",
           "failure": {
             "gone": "This station no longer exists.",
             "tooLate": "More than two minutes passed, so the station stays stopped. To bring it back, lock the device again from the clock code.",

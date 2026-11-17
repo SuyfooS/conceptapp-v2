@@ -367,6 +367,31 @@ export type DemoStation = {
   createdBy: string | null;
 };
 
+/**
+ * Running stations of the demo restaurant, as other devices locked them: by
+ * name, each with a secret nobody holds.
+ */
+export async function addDemoStations(names: readonly string[]): Promise<void> {
+  for (const name of names) {
+    const tokenHash = createHash("sha256")
+      .update(randomBytes(32))
+      .digest("hex");
+    await sql`insert into public.clock_stations (business_id, name, token_hash)
+      values (${DEMO_RESTAURANT}, ${name}, ${tokenHash})`;
+  }
+}
+
+/**
+ * How many devices began pairing since `since`, in every business: the
+ * table start_station_pairing shares between them all.
+ */
+export async function pairingsSince(since: Date): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from private.station_pairings
+    where created_at >= ${since}`;
+  return row?.count ?? 0;
+}
+
 /** The demo restaurant's clock stations, oldest first; `createdBy` by phone. */
 export async function demoStations(): Promise<DemoStation[]> {
   return await sql<DemoStation[]>`

@@ -1,8 +1,9 @@
 import "server-only";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import {
   type LockFailure,
   lockFailureOf,
+  MAX_STATIONS,
   type StationRefusal,
   type StationStopFailure,
   stationCodeFailureOf,
@@ -10,6 +11,7 @@ import {
 } from "@domain/clock-station";
 import { PUNCH_CODE_TTL_SECONDS } from "@domain/time-clock";
 import { z } from "zod";
+import { punchKey } from "./punch-key";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 import {
@@ -47,14 +49,42 @@ export function hashStationToken(token: string): string {
 const unkeptHash = () =>
   createHash("sha256").update(randomBytes(32)).digest("hex");
 
+/** How many of a business's locks can be pairing at once (`lockPairingHash`). */
+export const LOCK_PAIRING_SLOTS = 3;
+
+/**
+ * The pairings a business's locks go through: a few hashes of its own (`slot`
+ * 0 to 2), each an HMAC with the server's key, so nobody else can make them.
+ * The table of devices pairing is shared by every business and refuses
+ * everyone once it holds a thousand (start_station_pairing); a pairing the
+ * database then refuses to approve stays in it for its five minutes, and
+ * nothing here can delete it. On its own few hashes, a business's locks leave
+ * at most three such rows however often they are repeated, so no business
+ * fills the table for the others. A lock whose slot is taken (23505: another
+ * lock pairing now, or one left over) takes the next.
+ */
+export function lockPairingHash(
+  businessId: string,
+  slot: number,
+  key: Buffer = punchKey(),
+): string {
+  return createHmac("sha256", key)
+    .update(`station-lock:${businessId}:${slot}`, "utf8")
+    .digest("hex");
+}
+
 /**
  * Whoever edits the clock makes the device they are on a station of their
  * business, named `name`, and gets its secret, for the device's cookie. The
  * database's pairing is for a device that asks on its own and is approved
  * from a phone: here the same server asks and approves at once, so its QR
- * and digits are never shown, and their hashes are of bytes nobody keeps.
- * Refused with ten running (`tooManyStations`), or where codes are shown on
- * a manager's phone only (`managerOnly`).
+ * and digits are never shown (the digits' hash is of bytes nobody keeps; the
+ * pairing is one of the business's own, `lockPairingHash`). Ten running
+ * refuse it before any pairing starts (`tooManyStations`), as the caller's
+ * checks refuse what the database would (who edits the clock, where codes may
+ * show on a station, the name), so a refused lock leaves nothing pairing. The
+ * database refuses it all the same where codes are shown on a manager's
+ * phone only (`managerOnly`), and with ten running reached meanwhile.
  */
 export async function lockStation(
   actorId: string,
@@ -62,22 +92,37 @@ export async function lockStation(
   name: string,
 ): Promise<StationResult<{ token: string; stationId: string }, LockFailure>> {
   const admin = createAdminClient();
+  const running = await admin
+    .from("clock_stations")
+    .select("id", { count: "exact", head: true })
+    .eq("business_id", businessId)
+    .is("stopped_at", null);
+  if (running.error) return lockRefusal(running.error);
+  if ((running.count ?? 0) >= MAX_STATIONS) {
+    return { ok: false, failure: "tooManyStations" };
+  }
+
   const token = newStationToken();
-  const pairing = unkeptHash();
-  const started = await admin.rpc("start_station_pairing", {
-    pairing_hash: pairing,
-    short_hash: unkeptHash(),
-    token_hash: hashStationToken(token),
-  });
-  if (started.error) return lockRefusal(started.error);
-  const { data, error } = await admin.rpc("approve_station_pairing", {
-    actor: actorId,
-    business: businessId,
-    name,
-    pairing_hash: pairing,
-  });
-  if (error) return lockRefusal(error);
-  return { ok: true, value: { token, stationId: data } };
+  for (let slot = 0; ; slot += 1) {
+    const pairing = lockPairingHash(businessId, slot);
+    const started = await admin.rpc("start_station_pairing", {
+      pairing_hash: pairing,
+      short_hash: unkeptHash(),
+      token_hash: hashStationToken(token),
+    });
+    if (started.error?.code === "23505" && slot < LOCK_PAIRING_SLOTS - 1) {
+      continue;
+    }
+    if (started.error) return lockRefusal(started.error);
+    const { data, error } = await admin.rpc("approve_station_pairing", {
+      actor: actorId,
+      business: businessId,
+      name,
+      pairing_hash: pairing,
+    });
+    if (error) return lockRefusal(error);
+    return { ok: true, value: { token, stationId: data } };
+  }
 }
 
 type RpcError = { code?: string; message: string };

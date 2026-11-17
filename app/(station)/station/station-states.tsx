@@ -1,3 +1,4 @@
+import { lockOpen } from "@domain/clock-station";
 import { Button } from "@ui/button";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -46,7 +47,9 @@ export function StoppedStation({ signInHref }: { signInHref: string }) {
 /**
  * Someone is signed in on this device, valid session or not: a station never
  * shows codes beside an account. Whoever edits the clock locks it (again)
- * from here, keeping the station it is; anyone else goes home.
+ * from here, keeping the station it is; anyone else goes home. With ten
+ * stations running and this device none of them, the lock's line says why
+ * it can't be one, and home is the way on.
  */
 export function SignedInHere({
   lock,
@@ -56,12 +59,13 @@ export function SignedInHere({
   homeHref: string;
 }) {
   const t = useTranslations("station.signedIn");
+  const locks = lock !== null && lockOpen(lock.offer);
   return (
     <AuthScreen title={t("title")}>
       <div className="flex flex-col gap-6 px-1">
         <p className="text-ink-2 text-md">
           {t("body")}
-          {lock ? (
+          {locks ? (
             <span className="mt-2 block">
               {t(lock.offer.current ? "lockAgain" : "lockNew")}
             </span>
@@ -76,7 +80,7 @@ export function SignedInHere({
               label={t("lock")}
             />
           ) : null}
-          <Button asChild size="lg" variant={lock ? "ghost" : "primary"}>
+          <Button asChild size="lg" variant={locks ? "ghost" : "primary"}>
             <Link href={homeHref}>{t("home")}</Link>
           </Button>
         </div>

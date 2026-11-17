@@ -3,6 +3,7 @@
 import {
   defaultStationName,
   type LockFailure,
+  lockOpen,
   MAX_STATIONS,
   STATION_NAME_MAX,
 } from "@domain/clock-station";
@@ -44,7 +45,7 @@ export function LockStation({
   const [failure, setFailure] = useState<LockFailure | null>(null);
   const [pending, start] = useTransition();
 
-  if (!offer.current && offer.running.length >= MAX_STATIONS) {
+  if (!lockOpen(offer)) {
     return (
       <p className="text-ink-2 text-sm">{t("full", { count: MAX_STATIONS })}</p>
     );
