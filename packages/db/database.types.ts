@@ -2841,6 +2841,10 @@ export type Database = {
       time_entries: {
         Row: {
           business_id: string;
+          cancel_reason: string | null;
+          cancelled_at: string | null;
+          cancelled_by: string | null;
+          cancelled_open: boolean;
           clock_in: string;
           clock_out: string | null;
           confirmed_at: string | null;
@@ -2854,11 +2858,16 @@ export type Database = {
           note: string | null;
           out_proof: string | null;
           out_station: string | null;
+          restored_at: string | null;
           source: Database["public"]["Enums"]["time_entry_source"];
           user_id: string;
         };
         Insert: {
           business_id: string;
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          cancelled_open?: boolean;
           clock_in: string;
           clock_out?: string | null;
           confirmed_at?: string | null;
@@ -2872,11 +2881,16 @@ export type Database = {
           note?: string | null;
           out_proof?: string | null;
           out_station?: string | null;
+          restored_at?: string | null;
           source?: Database["public"]["Enums"]["time_entry_source"];
           user_id: string;
         };
         Update: {
           business_id?: string;
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          cancelled_open?: boolean;
           clock_in?: string;
           clock_out?: string | null;
           confirmed_at?: string | null;
@@ -2890,6 +2904,7 @@ export type Database = {
           note?: string | null;
           out_proof?: string | null;
           out_station?: string | null;
+          restored_at?: string | null;
           source?: Database["public"]["Enums"]["time_entry_source"];
           user_id?: string;
         };
@@ -2899,6 +2914,13 @@ export type Database = {
             columns: ["business_id"];
             isOneToOne: false;
             referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_entries_cancelled_by_fkey";
+            columns: ["cancelled_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
           {
@@ -3073,6 +3095,10 @@ export type Database = {
       };
       cancel_shift_swap: {
         Args: { actor: string; swap: string };
+        Returns: undefined;
+      };
+      cancel_time_entry: {
+        Args: { actor: string; at_time?: string; entry: string; note: string };
         Returns: undefined;
       };
       cancel_unstarted_list: {
@@ -3565,6 +3591,10 @@ export type Database = {
       };
       restore_list_template: {
         Args: { actor: string; template: string };
+        Returns: undefined;
+      };
+      restore_time_entry: {
+        Args: { actor: string; at_time?: string; entry: string };
         Returns: undefined;
       };
       role_permission_matrix: {

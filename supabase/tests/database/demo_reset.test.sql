@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(39);
+select plan(40);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -291,6 +291,12 @@ values ('6d000000-0000-4000-e000-000000000001', '6d000000-0000-4000-b000-0000000
 insert into public.audit_log (business_id, actor_id, action, details)
 values ('6d000000-0000-4000-b000-000000000001', '6d000000-0000-4000-a000-00000000000b',
   'business.details', '{"from": {}, "to": {"name": "Changed"}}');
+-- A cancelled shift (20261117000200_cancelled_shifts.sql), kept like any other.
+insert into public.time_entries (id, business_id, user_id, clock_in, clock_out,
+  cancelled_at, cancelled_by, cancel_reason)
+values ('6d000000-0000-4000-e000-000000000002', '6d000000-0000-4000-b000-000000000001',
+  '6d000000-0000-4000-a000-00000000000d', '2027-02-15 06:00+00', '2027-02-15 07:00+00',
+  '2027-02-15 08:00+00', '6d000000-0000-4000-a000-00000000000b', 'Wrong person');
 
 set local role service_role;
 select lives_ok(
@@ -298,6 +304,12 @@ select lives_ok(
   'the reset goes through with hours, breaks and log rows in the business'
 );
 reset role;
+select is(
+  (select count(*)::integer from public.time_entries
+   where id = '6d000000-0000-4000-e000-000000000002'),
+  0,
+  'a cancelled shift goes with them'
+);
 select is(
   (select count(*)::integer from public.time_entries
    where business_id = '6d000000-0000-4000-b000-000000000001')

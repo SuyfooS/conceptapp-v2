@@ -4,9 +4,10 @@
 -- breaks, which the log keeps. Deleting a person or a business with hours fails;
 -- someone who only acted can still go, their log rows kept without them. The log
 -- changes only that way. Corrections and added shifts need a reason, which the
--- log keeps. Every call passes the time so the test does not depend on today.
+-- log keeps. A cancelled shift is kept the same. Every call passes the time so
+-- the test does not depend on today.
 begin;
-select plan(38);
+select plan(40);
 
 -- Before anything sets them: a session that never named the settings reads
 -- them as NULL, which the guard must treat as "no".
@@ -222,6 +223,25 @@ select is(
   'with one, the shift and its log row keep it'
 );
 reset role;
+
+------------------------------------------------------------------------------
+-- A cancel is no delete (20261117000200_cancelled_shifts.sql)
+
+set local role service_role;
+select public.cancel_time_entry('76000000-0000-4000-a000-00000000000b',
+  (select id from ids where name = 'added'), 'Wrong day', '2026-11-04 08:05+00');
+reset role;
+select is(
+  (select count(*)::integer || '/' || min(e.cancel_reason) || '/' || min(e.cancelled_by::text)
+   from public.time_entries e where e.id = (select id from ids where name = 'added')),
+  '1/Wrong day/76000000-0000-4000-a000-00000000000b',
+  'a cancelled shift stays, with who cancelled it and why'
+);
+select throws_ok(
+  format($$delete from public.time_entries where id = %L$$, (select id from ids where name = 'added')),
+  '42501', 'Hours are kept: nothing deletes them',
+  'and nothing deletes it either'
+);
 
 ------------------------------------------------------------------------------
 -- A correction's trims of breaks are logged
