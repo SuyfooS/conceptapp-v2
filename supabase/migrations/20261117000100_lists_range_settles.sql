@@ -26,9 +26,11 @@
 --               line: unread, open, on the phone again, and its params the
 --               new facts, without the mark. notify leaves out whoever read
 --               it outside, so the mark is taken off every line of the item
---               there too: someone who runs the lists and read it outside
---               themselves keeps their settled line, which no longer says
---               the reading is back.
+--               there too, and their own line takes the new reading: someone
+--               who runs the lists and read it outside themselves keeps
+--               their line read or settled, saying the reading as it is now.
+--               Back inside again, every line of the item is settled and
+--               marked, theirs too (keeping when it settled).
 --   nothing     no new log row or key: the item's history already says
 --   more        who read it again (list_item_changes), and a fix's
 --               lists.fix row what it was and what it is. Lines left open
@@ -253,9 +255,21 @@ begin
         'unit', it.unit
       )
     );
-    -- The line no longer says the reading is back in range. private.notify
-    -- realerts it with new facts for those it tells, but leaves out whoever
-    -- read it outside, so their own settled line loses the mark here.
+    -- No line of the item says the reading is back in range now, and each
+    -- has the reading. private.notify realerts the line with new facts for
+    -- those it tells, but leaves out whoever read it outside: their own line
+    -- (of an earlier reading) stays as it is, read or settled, and only loses
+    -- the mark and takes the reading here.
+    update public.notifications n
+    set params = (n.params - 'backInRange') || jsonb_build_object(
+      'reading', new_reading,
+      'min', it.min_value,
+      'max', it.max_value,
+      'unit', it.unit
+    )
+    where n.business_id = l.business_id
+      and n.dedupe_key = 'list.range:' || it.id
+      and n.user_id = actor;
     update public.notifications n
     set params = n.params - 'backInRange'
     where n.business_id = l.business_id
@@ -266,10 +280,12 @@ begin
   -- Back inside its range: the line about it is settled for everyone it
   -- reached, as private.resolve_notifications settles a line (read, an
   -- earlier read kept, and off the phone if not sent yet), and marked
-  -- backInRange, so the inbox says why (Orel, 17 November 2026). Filling or
-  -- fixing alike. A reading emptied leaves the line; one outside again opens
-  -- it again (private.notify realerts it with new facts) and takes the mark
-  -- off every line of the item (above).
+  -- backInRange, so the inbox says why (Orel, 17 November 2026). A line
+  -- already settled without the mark (theirs who read it outside, above)
+  -- takes the mark and keeps when it settled. Filling or fixing alike. A
+  -- reading emptied leaves the line; one outside again opens it again
+  -- (private.notify realerts it with new facts) and takes the mark off every
+  -- line of the item (above).
   if it.kind = 'number'
     and (it.min_value is not null or it.max_value is not null)
     and new_reading is not null
@@ -278,12 +294,12 @@ begin
     and (it.max_value is null or new_reading <= it.max_value) then
     update public.notifications n
     set read_at = coalesce(n.read_at, at_time),
-      resolved_at = at_time,
+      resolved_at = coalesce(n.resolved_at, at_time),
       push_state = case when n.push_state = 'queued' then 'skipped' else n.push_state end,
       params = n.params || jsonb_build_object('backInRange', true)
     where n.business_id = l.business_id
       and n.dedupe_key = 'list.range:' || it.id
-      and n.resolved_at is null;
+      and (n.resolved_at is null or not (n.params ? 'backInRange'));
   end if;
 
   select jsonb_build_object(

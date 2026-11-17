@@ -1410,11 +1410,12 @@ outside. A reading emptied leaves the line; one outside again writes
 `lists.out_of_range` as before and `private.notify` realerts the line with
 new params, without the mark; since notify leaves out whoever read it
 outside, the same step takes the mark off every line of the item, so the
-settled line of someone who runs the lists and read it outside themselves no
-longer says it is back. The inbox's title is `outOfRangeTitle`
+line of someone who runs the lists and read it outside themselves no longer
+says it is back, and takes the new reading; back inside, every line of the
+item is settled and marked, theirs too, keeping when it settled. The inbox's title is `outOfRangeTitle`
 (`app/(app)/notifications/range-words.ts`, with its test). Lines left open before it stay until the next
 new reading inside the range. No new log row or key.
-`lists_range_settles.test.sql` covers it (16, ids b4…, numbers
+`lists_range_settles.test.sql` covers it (17, ids b4…, numbers
 050-055-xxxx, times on 11 January 2027).
 
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
