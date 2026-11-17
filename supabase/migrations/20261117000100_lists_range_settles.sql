@@ -7,19 +7,30 @@
 --
 --   settles     private.write_list_item, which set_list_item and
 --               fix_list_item run, settles the item's line when a reading
---               it saves is new and inside the item's range
---               (private.resolve_notifications): read, settled, and its
---               push skipped if still queued, for everyone it reached.
---               Filling an open list and fixing a closed one alike.
+--               it saves is new and inside the item's range, as
+--               private.resolve_notifications settles a line (read, an
+--               earlier read kept, settled, and its push skipped if still
+--               queued), for everyone it reached. Filling an open list and
+--               fixing a closed one alike.
+--   why         the line keeps backInRange: true in its params, so the
+--               inbox says the reading is back in range
+--               (kinds.lists.out_of_range.settledTitle). Nothing else
+--               settles these lines today (a role change only reads them,
+--               20261115001900_named_roles_lists.sql); one settled another
+--               way some day, without the mark, reads as it did.
 --   stays       a reading emptied leaves the line: taking a number away
 --               says nothing about the fridge. An item with no range has no
 --               line, so nothing is looked for.
 --   again       a reading outside again writes lists.out_of_range as before
 --               (it was inside), and private.notify realerts the settled
---               line: unread, open, and on the phone again.
---   nothing     no new log row, key or word: the item's history already
---   more        says who read it again (list_item_changes), and a fix's
---               lists.fix row what it was and what it is.
+--               line: unread, open, on the phone again, and its params the
+--               new facts, without the mark.
+--   nothing     no new log row or key: the item's history already says
+--   more        who read it again (list_item_changes), and a fix's
+--               lists.fix row what it was and what it is. Lines left open
+--               before this stay as they are (as
+--               20261116000100_lists_department_lines.sql did): the next
+--               new reading inside the range settles them.
 --
 -- The rest of the body is 20261116000400_lists_fix_switch.sql's, unchanged.
 
@@ -241,16 +252,25 @@ begin
   end if;
 
   -- Back inside its range: the line about it is settled for everyone it
-  -- reached, read, and off the phone if not sent yet (Orel, 17 November
-  -- 2026). Filling or fixing alike. A reading emptied leaves the line, and
-  -- one outside again opens it again (private.notify realerts).
+  -- reached, as private.resolve_notifications settles a line (read, an
+  -- earlier read kept, and off the phone if not sent yet), and marked
+  -- backInRange, so the inbox says why (Orel, 17 November 2026). Filling or
+  -- fixing alike. A reading emptied leaves the line; one outside again opens
+  -- it again (private.notify realerts it with new facts, without the mark).
   if it.kind = 'number'
     and (it.min_value is not null or it.max_value is not null)
     and new_reading is not null
     and new_reading is distinct from it.reading
     and (it.min_value is null or new_reading >= it.min_value)
     and (it.max_value is null or new_reading <= it.max_value) then
-    perform private.resolve_notifications(l.business_id, 'list.range:' || it.id, at_time);
+    update public.notifications n
+    set read_at = coalesce(n.read_at, at_time),
+      resolved_at = at_time,
+      push_state = case when n.push_state = 'queued' then 'skipped' else n.push_state end,
+      params = n.params || jsonb_build_object('backInRange', true)
+    where n.business_id = l.business_id
+      and n.dedupe_key = 'list.range:' || it.id
+      and n.resolved_at is null;
   end if;
 
   select jsonb_build_object(

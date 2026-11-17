@@ -1398,14 +1398,20 @@ b3…, numbers 050-054-xxxx, times on 14 to 21 December 2026).
 A reading back inside its range settles the line about it
 (`20261117000100_lists_range_settles.sql`; Orel, 17 November 2026, the third
 question left from L6). `private.write_list_item` (replaced from L6b-2's body
-with only this) settles the item's `list.range:<item>` line
-(`private.resolve_notifications`) when the reading it saves is new and inside
-the item's range, filling an open list or fixing a closed one alike: read
-(an earlier read kept), settled, and its push skipped while still queued, for
-everyone it reached. A reading emptied leaves the line; one outside again
-writes `lists.out_of_range` as before and `private.notify` realerts the
-line. No new log row, key or word. `lists_range_settles.test.sql` covers it
-(13, ids b4…, numbers 050-055-xxxx, times on 11 January 2027).
+with only this) settles the item's `list.range:<item>` line when the
+reading it saves is new and inside the item's range, filling an open list or
+fixing a closed one alike, as `private.resolve_notifications` settles a line
+(read, an earlier read kept, settled, and its push skipped while still
+queued), for everyone it reached, and marks it `backInRange: true` in its
+params. `@domain/notifications` reads the mark as the line's `backInRange`,
+and the inbox then says the reading is back in range
+(`kinds.lists.out_of_range.settledTitle`) instead of the reading that was
+outside. A reading emptied leaves the line; one outside again writes
+`lists.out_of_range` as before and `private.notify` realerts the line with
+new params, without the mark. Lines left open before it stay until the next
+new reading inside the range. No new log row or key.
+`lists_range_settles.test.sql` covers it (16, ids b4…, numbers
+050-055-xxxx, times on 11 January 2027).
 
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the

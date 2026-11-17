@@ -3193,6 +3193,8 @@
           "out_of_range": {
             "title": "A reading out of range in {name}: {label}",
             "titleNoLabel": "A reading out of range in {name}",
+            "settledTitle": "The reading of {label} in {name} is back in range",
+            "settledTitleNoLabel": "The reading in {name} is back in range",
             "note": "The reading: <ltr>{reading}</ltr>. {kind, select, between {The range: between <ltr>{range}</ltr>} atLeast {The range: at least <ltr>{range}</ltr>} other {The range: at most <ltr>{range}</ltr>}}."
           }
         },

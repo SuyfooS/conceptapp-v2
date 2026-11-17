@@ -517,6 +517,22 @@ export function InboxView({
             };
       }
       case "lists.out_of_range": {
+        // Read again inside its range: nothing waits on it now, and the
+        // reading that was outside is no news.
+        if (settled && line.backInRange) {
+          return {
+            title: line.label
+              ? t("kinds.lists.out_of_range.settledTitle", {
+                  name: line.name,
+                  label: line.label,
+                })
+              : t("kinds.lists.out_of_range.settledTitleNoLabel", {
+                  name: line.name,
+                }),
+            shift: null,
+            notes: [],
+          };
+        }
         // The reading and its range, with a real minus sign, when it kept them.
         const range = line.reading ? numberRange(line.reading) : null;
         return {

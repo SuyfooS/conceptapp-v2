@@ -3193,6 +3193,8 @@
           "out_of_range": {
             "title": "קריאה מחוץ לטווח ב{name}: {label}",
             "titleNoLabel": "קריאה מחוץ לטווח ב{name}",
+            "settledTitle": "הקריאה של {label} ב{name} חזרה לטווח",
+            "settledTitleNoLabel": "הקריאה ב{name} חזרה לטווח",
             "note": "הקריאה: <ltr>{reading}</ltr>. {kind, select, between {הטווח: בין <ltr>{range}</ltr>} atLeast {הטווח: לפחות <ltr>{range}</ltr>} other {הטווח: עד <ltr>{range}</ltr>}}."
           }
         },

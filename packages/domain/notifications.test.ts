@@ -1071,6 +1071,52 @@ describe("buildInbox", () => {
     });
   });
 
+  it("reads a reading outside its range settled by one back inside it", () => {
+    const facts = {
+      list: LINE,
+      name: "Opening",
+      item: LINE,
+      label: "Fridge",
+      reading: 7,
+      min: 0,
+      max: 5,
+      unit: "°C",
+    };
+    // As the database writes it, and as it settles it (backInRange).
+    expect(lineOf(row("lists.out_of_range", facts), MANAGER)).toMatchObject({
+      settled: false,
+      line: { backInRange: false },
+    });
+    expect(
+      lineOf(
+        row(
+          "lists.out_of_range",
+          { ...facts, backInRange: true },
+          {
+            readAt: "2026-11-09T10:05:00+00:00",
+            resolvedAt: "2026-11-09T10:05:00+00:00",
+          },
+        ),
+        MANAGER,
+      ),
+    ).toMatchObject({
+      settled: true,
+      href: `/lists/${LINE}`,
+      line: {
+        kind: "lists.out_of_range",
+        backInRange: true,
+        reading: { value: 7 },
+      },
+    });
+    // Anything but true is no mark.
+    expect(
+      lineOf(
+        row("lists.out_of_range", { ...facts, backInRange: "yes" }),
+        MANAGER,
+      ),
+    ).toMatchObject({ line: { backInRange: false } });
+  });
+
   it("reads someone joining", () => {
     expect(
       lineOf(row("team.joined", { person: NOA }, { actorId: NOA }), MANAGER),

@@ -3,13 +3,14 @@
 -- has told those who run the lists (lists.out_of_range, 'list.range:<item>'),
 -- a new reading inside the range, filled or fixed, settles that line for
 -- everyone it reached: read (an earlier read kept), settled, and its push
--- skipped while still queued. A reading emptied leaves the line; one outside
--- again opens it again, unread and queued for the phone. Only that item's
--- line moves, and nothing new is logged. Fixed ids (b4…), numbers
+-- skipped while still queued, marked backInRange for the inbox's words. A
+-- reading emptied leaves the line; one outside again opens it again, unread,
+-- queued for the phone and without the mark. Both edges of a range are
+-- inside it. Only that item's line moves, and nothing new is logged. Fixed ids (b4…), numbers
 -- (050-055-xxxx) and times (11 January 2027), so nothing here meets the seed
 -- or another test, or the real clock.
 begin;
-select plan(13);
+select plan(16);
 
 -- A: 1 owner, 2 manager, 3 and 4 workers in the kitchen. 1 and 2 have a
 -- phone for pushes.
@@ -66,12 +67,14 @@ create function pg_temp.hm(at_time timestamptz) returns text language sql as $$
   select to_char(at_time at time zone 'UTC', 'HH24:MI')
 $$;
 -- Person `n`'s line about the morning list's item: open, or settled and
--- when; read or not; and its push. Or 'none'.
+-- when; read or not; its push; and 'back' when it is marked backInRange. Or
+-- 'none'.
 create function pg_temp.line(n integer, item_label text) returns text language sql as $$
   select coalesce((
     select case when l.resolved_at is null then 'open' else 'settled ' || pg_temp.hm(l.resolved_at) end
       || ' ' || case when l.read_at is null then 'unread' else 'read ' || pg_temp.hm(l.read_at) end
       || ' ' || l.push_state
+      || case when l.params -> 'backInRange' = 'true'::jsonb then ' back' else '' end
     from public.notifications l
     where l.business_id = pg_temp.a() and l.user_id = pg_temp.p(n)
       and l.dedupe_key = 'list.range:' || pg_temp.item_of('morning', item_label)::text
@@ -119,7 +122,7 @@ select is(
 select pg_temp.reads('Fridge', 4, '2027-01-11 06:12+00');
 select is(
   pg_temp.lines('Fridge'),
-  '1: settled 06:12 read 06:12 skipped | 2: settled 06:12 read 06:12 skipped',
+  '1: settled 06:12 read 06:12 skipped back | 2: settled 06:12 read 06:12 skipped back',
   'read again inside its range, the line is settled for everyone it reached, read, and off the phone'
 );
 
@@ -143,7 +146,7 @@ select is(
 select pg_temp.reads('Fridge', 3, '2027-01-11 06:18+00');
 select is(
   pg_temp.lines('Fridge'),
-  '1: settled 06:18 read 06:18 skipped | 2: settled 06:18 read 06:15 skipped',
+  '1: settled 06:18 read 06:18 skipped back | 2: settled 06:18 read 06:15 skipped back',
   'a reading inside its range after an empty one settles it, keeping when it was read'
 );
 
@@ -152,15 +155,36 @@ select pg_temp.reads('Freezer', -12, '2027-01-11 06:21+00');
 select is(
   pg_temp.lines('Freezer') || ' || ' || pg_temp.lines('Fridge'),
   '1: open unread queued | 2: open unread queued'
-    || ' || 1: settled 06:18 read 06:18 skipped | 2: settled 06:18 read 06:15 skipped',
+    || ' || 1: settled 06:18 read 06:18 skipped back | 2: settled 06:18 read 06:15 skipped back',
   'a range with a top alone: still above it is still open, and another item''s line doesn''t move'
 );
 
 select pg_temp.reads('Freezer', -15, '2027-01-11 06:22+00');
 select is(
   pg_temp.lines('Freezer'),
-  '1: settled 06:22 read 06:22 skipped | 2: settled 06:22 read 06:22 skipped',
+  '1: settled 06:22 read 06:22 skipped back | 2: settled 06:22 read 06:22 skipped back',
   'its edge is inside the range'
+);
+
+select pg_temp.reads('Fridge', -3, '2027-01-11 06:24+00');
+select is(
+  pg_temp.lines('Fridge'),
+  '1: open unread queued | 2: open unread queued',
+  'below its bottom, it is open again, without the mark'
+);
+
+select pg_temp.reads('Fridge', -1, '2027-01-11 06:25+00');
+select is(
+  pg_temp.lines('Fridge'),
+  '1: open unread queued | 2: open unread queued',
+  'still below it, it stays open'
+);
+
+select pg_temp.reads('Fridge', 0, '2027-01-11 06:26+00');
+select is(
+  pg_temp.lines('Fridge'),
+  '1: settled 06:26 read 06:26 skipped back | 2: settled 06:26 read 06:26 skipped back',
+  'and its bottom edge is inside the range'
 );
 
 select pg_temp.reads('Count', 500, '2027-01-11 06:23+00');
@@ -172,7 +196,7 @@ select is(
 
 select is(
   pg_temp.logged(),
-  'lists.send,lists.out_of_range,lists.out_of_range,lists.out_of_range',
+  'lists.send,lists.out_of_range,lists.out_of_range,lists.out_of_range,lists.out_of_range',
   'settling writes nothing to the log: each time outside is one lists.out_of_range, as before'
 );
 
@@ -182,7 +206,7 @@ select is(
 select public.finish_list(pg_temp.p(3), pg_temp.id('morning'), '2027-01-11 06:30+00');
 select is(
   pg_temp.lines('Fridge'),
-  '1: settled 06:18 read 06:18 skipped | 2: settled 06:18 read 06:15 skipped',
+  '1: settled 06:26 read 06:26 skipped back | 2: settled 06:26 read 06:26 skipped back',
   'finishing the list moves no line about a reading'
 );
 
@@ -190,7 +214,7 @@ select public.fix_list_item(pg_temp.p(2), pg_temp.item_of('morning', 'Fridge'),
   '{"reading": 7}', '2027-01-11 07:00+00');
 select is(
   pg_temp.lines('Fridge'),
-  '1: open unread queued | 2: settled 06:18 read 06:15 skipped',
+  '1: open unread queued | 2: settled 06:26 read 06:26 skipped back',
   'a fix outside its range opens the owner''s line again, and the fixer is not told'
 );
 
@@ -198,13 +222,13 @@ select public.fix_list_item(pg_temp.p(1), pg_temp.item_of('morning', 'Fridge'),
   '{"reading": 2}', '2027-01-11 07:05+00');
 select is(
   pg_temp.lines('Fridge'),
-  '1: settled 07:05 read 07:05 skipped | 2: settled 06:18 read 06:15 skipped',
+  '1: settled 07:05 read 07:05 skipped back | 2: settled 06:26 read 06:26 skipped back',
   'a fix back inside it settles the line, the fixer''s own too, and leaves a settled one as it was'
 );
 
 select is(
   pg_temp.logged(),
-  'lists.send,lists.out_of_range,lists.out_of_range,lists.out_of_range,lists.finish,'
+  'lists.send,lists.out_of_range,lists.out_of_range,lists.out_of_range,lists.out_of_range,lists.finish,'
     || 'lists.fix,lists.out_of_range,lists.fix',
   'the fixes log as they did: what each changed, and the reading outside once'
 );

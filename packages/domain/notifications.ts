@@ -1395,6 +1395,11 @@ export type NotificationLine =
         max: number | null;
         unit: string | null;
       } | null;
+      /**
+       * Settled by a reading of the item back inside its range (the line
+       * keeps the reading that was outside).
+       */
+      backInRange: boolean;
     }
   /** Pay access, given to the reader alone; the actor gave it. */
   | { kind: "access.pay_granted" }
@@ -1552,6 +1557,7 @@ const schemas = {
     max: z.number().nullable().default(null),
     unit: z.string().nullable().default(null),
   }),
+  backInRange: z.object({ backInRange: z.boolean().catch(false) }),
   since: z.object({ since: z.iso.date() }),
   month: z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) }),
   counts: z.object({
@@ -1814,6 +1820,7 @@ function lineOf(
                   unit: reading.unit,
                 }
               : null,
+            backInRange: read(schemas.backInRange)?.backInRange ?? false,
           }
         : other;
     }
