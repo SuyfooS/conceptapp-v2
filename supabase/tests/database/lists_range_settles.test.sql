@@ -6,8 +6,8 @@
 -- skipped while still queued, marked backInRange for the inbox's words. A
 -- reading emptied leaves the line; one outside again opens it again, unread,
 -- queued for the phone and without the mark, and takes the mark off the line
--- of whoever read it outside too (they aren't told), which takes the reading;
--- back inside, that line is marked again. Both edges of a range are inside
+-- of whoever read it outside too (they aren't told), which stays the reading it
+-- was about; back inside, that line is marked again. Both edges of a range are inside
 -- it. Only that item's line moves, and nothing new is logged.
 -- Fixed ids (b4…), numbers (050-055-xxxx) and times (11 January 2027), so
 -- nothing here meets the seed or another test, or the real clock.
@@ -220,11 +220,12 @@ select is(
   'a fix outside its range opens the owner''s line again; the fixer is not told, and their own line no longer says the reading is back'
 );
 select is(
-  (select l.params ->> 'reading' from public.notifications l
+  (select (l.params ->> 'reading') || ' by ' || right(l.actor_id::text, 1)
+   from public.notifications l
    where l.user_id = pg_temp.p(2)
      and l.dedupe_key = 'list.range:' || pg_temp.item_of('morning', 'Fridge')::text),
-  '7',
-  'and it says the reading as it is now'
+  '-3 by 3',
+  'and it stays the reading it was about, with whoever read it'
 );
 
 select public.fix_list_item(pg_temp.p(1), pg_temp.item_of('morning', 'Fridge'),

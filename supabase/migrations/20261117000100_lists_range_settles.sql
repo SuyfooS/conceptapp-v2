@@ -26,11 +26,11 @@
 --               line: unread, open, on the phone again, and its params the
 --               new facts, without the mark. notify leaves out whoever read
 --               it outside, so the mark is taken off every line of the item
---               there too, and their own line takes the new reading: someone
---               who runs the lists and read it outside themselves keeps
---               their line read or settled, saying the reading as it is now.
---               Back inside again, every line of the item is settled and
---               marked, theirs too (keeping when it settled).
+--               there too: someone who runs the lists and read it outside
+--               themselves keeps their line as it was (an earlier reading,
+--               with its reader and time), read or settled, without the
+--               mark. Back inside again, every line of the item is settled
+--               and marked, theirs too, keeping when it settled.
 --   nothing     no new log row or key: the item's history already says
 --   more        who read it again (list_item_changes), and a fix's
 --               lists.fix row what it was and what it is. Lines left open
@@ -255,21 +255,11 @@ begin
         'unit', it.unit
       )
     );
-    -- No line of the item says the reading is back in range now, and each
-    -- has the reading. private.notify realerts the line with new facts for
-    -- those it tells, but leaves out whoever read it outside: their own line
-    -- (of an earlier reading) stays as it is, read or settled, and only loses
-    -- the mark and takes the reading here.
-    update public.notifications n
-    set params = (n.params - 'backInRange') || jsonb_build_object(
-      'reading', new_reading,
-      'min', it.min_value,
-      'max', it.max_value,
-      'unit', it.unit
-    )
-    where n.business_id = l.business_id
-      and n.dedupe_key = 'list.range:' || it.id
-      and n.user_id = actor;
+    -- No line of the item says the reading is back in range now.
+    -- private.notify realerts the line with new facts for those it tells,
+    -- but leaves out whoever read it outside: their own line stays the one it
+    -- was, an earlier reading with its reader and time, read or settled, and
+    -- only loses the mark here.
     update public.notifications n
     set params = n.params - 'backInRange'
     where n.business_id = l.business_id
