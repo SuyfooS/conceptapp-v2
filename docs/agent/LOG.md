@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-17 · nightly · lists: the timeline's reopen lines tested against the database
+
+- Guessed (no work from Orel, no open question): a finishing touch on L6a, merged last night. Its screens checked here on the twins (`/design/shell/lists/list-kitchen-opening?state=history`, `list-weekly-cleaning?state=history`) at 390, 820 and 1440, light and dark, with the item's sheet open: axe clean, no horizontal scroll, no console errors. The one thing with no end-to-end test was the list's timeline read from `public.list_reopens` (pgTAP covers the table, unit tests `listTimeline`, but nothing read it through `getList` on a real database).
+- e2e: `closeDemoList(phone, name, "cancel" | "reopen", at)` in `e2e/db.ts` (`public.cancel_list` and `public.reopen_list` at a chosen moment, as the person's own screen would), and a test in `e2e/lists-history.spec.ts` at 390, 820 and 1440: Shiran cancels the opening list and Uri brings it back, then Shiran cancels it again and takes it back within a minute; Noa reads "בוטלה על ידי שירן הדגמה" and "הוחזרה על ידי אורי הדגמה אחרי שבוטלה" once each, Shiran's undo leaves no line, and the page is axe clean. No app change.
+- Not done (the brief keeps `packages/ui` for Orel's day sessions): at 390 a history row whose words wrap, like "הסימון הוסר · איתי מזרחי · 08:08 · עוד שינוי אחד", breaks inside "עוד שינוי אחד" and its chevron sits apart from the words. Worth a look in a day session.
+- Checked locally: `pnpm check` (147 files, 2434 tests), `pnpm build`. The new test runs in CI only (no Docker here).
+- Restore point: branch `backup/before-night-2026-11-17` at 61c391b (the tag push was refused).
+- Next: L6b-1, fixing a closed list in place, with Orel by day. Defaults applied: none.
+
 ## 2026-11-16 · chat · lists: each item's history (L6a)
 
 - On chat/lists-item-history on main (cb7118a). Orel chose on 16 November 2026 to build each list item's history first: who ticked, who changed what, and when. The L6 plan's L6a; fixing a closed list (L6b-1, then the switch L6b-2) comes after it, and nothing here blocks it. Defaults on Orel's open questions, applied until he answers at the end: the history keeps the earlier text of answers and comments; earlier photos are not kept; everyone who reads the list reads its items' history; nobody is notified of history.

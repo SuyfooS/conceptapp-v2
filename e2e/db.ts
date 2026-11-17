@@ -1362,6 +1362,33 @@ export async function setDemoListItem(
     ${result === null ? null : sql.json(result)}::jsonb)`;
 }
 
+/**
+ * Someone cancels the demo restaurant's newest list of this name, or opens it
+ * again, at a chosen moment, as their own screen would (`public.cancel_list`,
+ * `public.reopen_list`, which keeps the close it undid in
+ * `public.list_reopens`, L6a): a list's timeline for the screen on test.
+ */
+export async function closeDemoList(
+  phone: string,
+  name: string,
+  how: "cancel" | "reopen",
+  at: Date,
+): Promise<void> {
+  const [row] = await sql<{ actor: string; list: string }[]>`
+    select
+      (select p.id from public.profiles p where p.phone = ${phone}) as actor,
+      (select l.id from public.lists l
+        where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+        order by l.created_at desc
+        limit 1) as list`;
+  if (!row?.actor || !row.list) throw new Error(`No list ${name} for ${phone}`);
+  if (how === "cancel") {
+    await sql`select public.cancel_list(${row.actor}::uuid, ${row.list}::uuid, ${at}::timestamptz)`;
+  } else {
+    await sql`select public.reopen_list(${row.actor}::uuid, ${row.list}::uuid, ${at}::timestamptz)`;
+  }
+}
+
 /** Who is in a demo restaurant department, by its name: their phones. */
 export async function demoDepartmentPhones(name: string): Promise<string[]> {
   const rows = await sql<{ phone: string }[]>`
