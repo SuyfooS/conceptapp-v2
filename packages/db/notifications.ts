@@ -14,6 +14,7 @@ import {
   notificationRefs,
   PHONE_ONLY_KINDS,
 } from "@domain/notifications";
+import { memberNames, nameIn } from "./member-names";
 import { isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -122,7 +123,7 @@ export async function getInbox(
 
 /**
  * The names the rows point at, read under the reader's own access: people,
- * and the groups chat lines name (a group the reader no longer reads, and its
+ * by the business's name for them, and the groups chat lines name (a group the reader no longer reads, and its
  * department's name, stay unknown). For the inbox alone (`documents`), the
  * categories of the documents lines name, read from the documents themselves
  * under the same session (RLS: only a document the reader still reads, so
@@ -139,7 +140,7 @@ async function lookupsFor(
   const people = notificationRefs(rows);
   const chatIds = notificationChats(rows);
   const documentIds = read.documents ? notificationDocuments(rows) : [];
-  const [members, chats, documents] = await Promise.all([
+  const [members, names, chats, documents] = await Promise.all([
     people.length
       ? supabase
           .from("memberships")
@@ -147,6 +148,7 @@ async function lookupsFor(
           .eq("business_id", businessId)
           .in("user_id", people)
       : null,
+    memberNames(supabase, businessId, people),
     chatIds.length
       ? supabase
           .from("chat_conversations")
@@ -193,7 +195,7 @@ async function lookupsFor(
         row.user_id,
         {
           active: row.active,
-          name: row.profiles?.full_name?.trim() || null,
+          name: nameIn(names, row.user_id, row.profiles?.full_name),
         },
       ]),
     ),

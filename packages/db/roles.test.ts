@@ -12,8 +12,9 @@ vi.mock("server-only", () => ({}));
  * writes all of it or, refused, none of it. Roles a business names (R11a):
  * the matrix's rows for each, its rules written with its id, and adding,
  * renaming, archiving and restoring one, only in the business it is in; and
- * who is in each role, and the open invites to each named role (R11b), read
- * under RLS for the owner and with the secret key for the team; and the live
+ * who is in each role (by the business's name for each, else their own), and
+ * the open invites to each named role (R11b), read under RLS for the owner
+ * and with the secret key for the team; and the live
  * templates that send lists to each (R11d), with the secret key for both.
  */
 type Failure = { code?: string; hint?: string; message: string };
@@ -61,7 +62,34 @@ const db = vi.hoisted(() => ({
   },
   /** The lists' tables have no `recipient_named_role` yet (before R11d's migration). */
   noListNamedColumn: false,
+  /** The names the business gave its people (`public.member_names`). */
+  names: [] as { user_id: string; name: string }[],
+  /** The project has no `member_names` yet (before its migration). */
+  noNames: false,
+  /** Each read of the names: by which key. */
+  nameReads: [] as ("publishable" | "secret")[],
 }));
+
+/** The names the business gave its people, as each client reads them. */
+function namesQuery(key: "publishable" | "secret") {
+  const answer = () => {
+    db.nameReads.push(key);
+    return db.noNames
+      ? { data: null, error: { code: "PGRST205", message: "no table" } }
+      : { data: db.names, error: null };
+  };
+  const query = {
+    select: () => query,
+    eq: () => query,
+    in: () => query,
+    // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
+    then: (
+      resolve: (value: ReturnType<typeof answer>) => unknown,
+      reject?: (reason: unknown) => unknown,
+    ) => Promise.resolve(answer()).then(resolve, reject),
+  };
+  return query;
+}
 
 /**
  * A lists table read with the secret key, narrowed as the query asks: `eq`,
@@ -170,6 +198,7 @@ vi.mock("./supabase/server", () => ({
   createClient: async () => ({
     from: (table: string) => {
       if (table === "invites") return invitesQuery("publishable");
+      if (table === "member_names") return namesQuery("publishable");
       if (table !== "memberships") throw new Error(`unexpected ${table}`);
       return membershipsQuery("publishable");
     },
@@ -205,6 +234,7 @@ vi.mock("./supabase/admin", () => ({
     from: (table: string) => {
       if (table === "memberships") return membershipsQuery("secret");
       if (table === "invites") return invitesQuery("secret");
+      if (table === "member_names") return namesQuery("secret");
       if (table === "list_templates" || table === "list_schedules") {
         return listsQuery(table);
       }
@@ -322,6 +352,9 @@ beforeEach(() => {
   db.peopleReads = [];
   db.lists = { list_templates: [], list_schedules: [] };
   db.noListNamedColumn = false;
+  db.names = [];
+  db.noNames = false;
+  db.nameReads = [];
 });
 
 /**
@@ -845,6 +878,20 @@ describe("who is in each role (R11a)", () => {
       "user_id, role, named_role, profiles (full_name, avatar_path)",
       "user_id, role, profiles (full_name, avatar_path)",
     ]);
+  });
+
+  it("names each by the business's name for them, read with the same key", async () => {
+    db.people = people;
+    db.names = [{ user_id: ACTOR, name: "Noa Levi" }];
+    const owner = await getRolePeopleForOwner(BUSINESS);
+    expect(owner.map((person) => person.name)).toEqual(["Noa Levi", null]);
+    const team = await getRolePeopleForTeam(BUSINESS);
+    expect(team.map((person) => person.name)).toEqual(["Noa Levi", null]);
+    expect(db.nameReads).toEqual(["publishable", "secret"]);
+    // Before its migration, by their own names.
+    db.noNames = true;
+    const before = await getRolePeopleForOwner(BUSINESS);
+    expect(before.map((person) => person.name)).toEqual(["Noa", null]);
   });
 });
 

@@ -742,6 +742,9 @@ export function ActivityView({
           notes: leftNotes(line),
           changes: [],
         };
+      case "member.name":
+        // Never the name, old or new: the reader sees who it is now.
+        return plain(t("actions.member.name", { person: who(line.person) }));
       case "view_as.start":
         return plain(
           line.role

@@ -43,7 +43,10 @@ export function canEditTeam(viewer: Viewer): boolean {
 
 export type TeamMember = {
   userId: string;
-  /** Null when nobody wrote one down. */
+  /**
+   * The name the business shows: its own for them (`public.member_names`),
+   * else theirs; null when nobody wrote one down.
+   */
   name: string | null;
   phone: string | null;
   role: Role;
@@ -372,9 +375,10 @@ export type TeamActor = TeamPlace & Viewer;
  * on managers and workers, and a worker raised to edit the team on workers.
  * Never on oneself, which the person's own profile is for. A named role
  * counts as its base: whoever acts on workers acts on a shift lead built on
- * them. The database checks the same (`public.remove_member`,
- * `private.gives_role`), and also that the business keeps an owner
- * (`leavesNoOwner`).
+ * them. The same people fix the name the business shows for them, its own
+ * for them in this business only (`public.set_member_name`). The database
+ * checks the same (`public.remove_member`, `private.gives_role`), and also
+ * that the business keeps an owner (`leavesNoOwner`).
  */
 export function canRemoveMember(viewer: TeamActor, person: TeamPlace): boolean {
   return viewer.userId !== person.userId && givesByRank(viewer, person.role);
@@ -463,6 +467,8 @@ export function roleChangeClears(from: Role, to: Role): boolean {
  *               no longer open (claimed, cancelled)
  *   roleGone    22023 with hint `archived`: the role the business named was
  *               removed since the screen was drawn (the roles plan's R11b)
+ *   badName     22023 with hint `name`: not a name the business can keep
+ *               (one line, 1 to 80 characters)
  *   yourself    22023: one's own place, or no role given
  *   lastOwner   23P01: the business would have no owner
  *   demo        55000 with hint `demo`: a demo business keeps its people
@@ -478,6 +484,7 @@ export const TEAM_CHANGE_FAILURES = [
   "givesPay",
   "gone",
   "roleGone",
+  "badName",
   "yourself",
   "lastOwner",
   "demo",
@@ -503,7 +510,11 @@ export function teamChangeFailureOf(
     case "P0002":
       return "gone";
     case "22023":
-      return hint === "archived" ? "roleGone" : "yourself";
+      return hint === "archived"
+        ? "roleGone"
+        : hint === "name"
+          ? "badName"
+          : "yourself";
     case "23P01":
       return "lastOwner";
     case "55000":
@@ -536,8 +547,31 @@ export type LeftCounts = {
   reopened: number;
 };
 
-/** Same limit as `profiles.full_name` in the database. */
+/**
+ * Same limit as `profiles.full_name` and `member_names.name` in the
+ * database, in characters as Postgres counts them (code points).
+ */
 export const TEAM_NAME_MAX = 80;
+
+/**
+ * A person's name as the team keeps it, an invite's or the one the business
+ * gives them (`public.set_member_name`): one line, spaces collapsed, 1 to
+ * `TEAM_NAME_MAX` characters. Control characters other than spaces are
+ * dropped rather than refused: a pasted name may carry one nobody sees. A
+ * maqaf or a dash stays as typed (a name is no sentence to tidy).
+ */
+export function parseTeamName(
+  value: unknown,
+): { ok: true; name: string } | { ok: false; error: "required" | "tooLong" } {
+  const name = (typeof value === "string" ? value : "")
+    .normalize("NFC")
+    .replace(/[^\P{Cc}\s]/gu, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!name) return { ok: false, error: "required" };
+  if ([...name].length > TEAM_NAME_MAX) return { ok: false, error: "tooLong" };
+  return { ok: true, name };
+}
 
 export type TeamInviteInput = RoleChoice & {
   name: string;
@@ -566,15 +600,14 @@ export function parseTeamInvite(
   | { ok: true; value: TeamInviteInput }
   | { ok: false; errors: TeamInviteErrors } {
   const text = (v: unknown) => (typeof v === "string" ? v : "");
-  const name = text(input.name).trim().replace(/\s+/g, " ");
+  const name = parseTeamName(input.name);
   const rawPhone = text(input.phone).trim();
   const phone = normalizeIsraeliMobile(rawPhone);
   const key = text(input.role);
   const choice = key ? roleChoiceOf(key, invitableRoles(actor, named)) : null;
   const errors: TeamInviteErrors = {};
 
-  if (!name) errors.name = "required";
-  else if (name.length > TEAM_NAME_MAX) errors.name = "tooLong";
+  if (!name.ok) errors.name = name.error;
 
   if (!rawPhone) errors.phone = "required";
   else if (!phone) errors.phone = "invalid";
@@ -582,10 +615,10 @@ export function parseTeamInvite(
   if (!key) errors.role = "required";
   else if (!choice) errors.role = "notAllowed";
 
-  if (errors.name || errors.phone || errors.role || !phone || !choice) {
+  if (!name.ok || errors.phone || errors.role || !phone || !choice) {
     return { ok: false, errors };
   }
-  return { ok: true, value: { name, phone, ...choice } };
+  return { ok: true, value: { name: name.name, phone, ...choice } };
 }
 
 /** One of someone's shifts, as the person's page counts what lies ahead. */

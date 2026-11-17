@@ -8,6 +8,7 @@ import type { NamedRole } from "@domain/role-access";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "./database.types";
+import { memberNames, nameIn } from "./member-names";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -47,18 +48,22 @@ type PersonRow = {
 
 /**
  * Everyone who was ever a member of the business, active or not, with their
- * name, photo and form of address, as the signed-in person may read them.
- * Callers keep the staff and those with hours (`isStaff`): someone who worked
- * here before becoming an accountant still has hours to pay.
+ * name, photo and form of address, as the signed-in person may read them,
+ * each by the business's name for them. Callers keep the staff and those
+ * with hours (`isStaff`): someone who worked here before becoming an
+ * accountant still has hours to pay.
  */
 export async function getPayPeople(businessId: string): Promise<PayPerson[]> {
   const supabase = await createClient();
-  const read = await supabase
-    .from("memberships")
-    .select(
-      "user_id, role, active, profiles (full_name, avatar_path, address_form)",
-    )
-    .eq("business_id", businessId);
+  const [read, names] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select(
+        "user_id, role, active, profiles (full_name, avatar_path, address_form)",
+      )
+      .eq("business_id", businessId),
+    memberNames(supabase, businessId),
+  ]);
   let rows: PersonRow[];
   if (!read.error) {
     rows = read.data;
@@ -74,7 +79,7 @@ export async function getPayPeople(businessId: string): Promise<PayPerson[]> {
   }
   return rows.map((row) => ({
     userId: row.user_id,
-    name: row.profiles?.full_name?.trim() || null,
+    name: nameIn(names, row.user_id, row.profiles?.full_name),
     photo: profilePhotoSrc(row.profiles?.avatar_path),
     addressForm: addressFormOf(row.profiles?.address_form),
     role: row.role,
@@ -255,9 +260,10 @@ const AccessRow = z.object({
  * Read with `supabase`: the owner's session, whose members' rows and the
  * business's roles RLS shows them (members and views read
  * `public.business_roles`), or the secret key for the console. The named
- * role's names come as the team screens read them (`businessRoleNames`).
- * Before 20261115001500_named_roles.sql nobody holds one, and the people
- * are read as before.
+ * role's names come as the team screens read them (`businessRoleNames`),
+ * and each person by the business's name for them (`memberNames`). Before
+ * 20261115001500_named_roles.sql nobody holds one, and the people are read
+ * as before.
  */
 async function readAccessPeople(
   supabase: SupabaseClient<Database>,
@@ -273,9 +279,10 @@ async function readAccessPeople(
       )
       .eq("business_id", businessId)
       .eq("active", true);
-  const [read, roles] = await Promise.all([
+  const [read, roles, names] = await Promise.all([
     people(true),
     businessRoleNames(supabase, businessId),
+    memberNames(supabase, businessId),
   ]);
   let { data, error } = read;
   if (isMissingColumn(error)) ({ data, error } = await people(false));
@@ -287,7 +294,7 @@ async function readAccessPeople(
       const named = row.named_role ? roles.get(row.named_role) : undefined;
       return {
         userId: row.user_id,
-        name: row.profiles?.full_name?.trim() || null,
+        name: nameIn(names, row.user_id, row.profiles?.full_name),
         photo: profilePhotoSrc(row.profiles?.avatar_path),
         role: row.role,
         namedRole: named

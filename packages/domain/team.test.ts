@@ -20,6 +20,7 @@ import {
   namedRolesBeyond,
   ownerOnlyRoles,
   parseTeamInvite,
+  parseTeamName,
   placeChoice,
   type RoleChoice,
   roleChangeClears,
@@ -505,6 +506,57 @@ describe("ownerOnlyRoles", () => {
   });
 });
 
+describe("parseTeamName", () => {
+  it("keeps one line, its spaces collapsed", () => {
+    expect(parseTeamName(" נועה   כהן ")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    expect(parseTeamName("נועה\n\tכהן")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    // A maqaf and a dash stay as typed.
+    expect(parseTeamName("ורד צוות-לוי")).toEqual({
+      ok: true,
+      name: "ורד צוות-לוי",
+    });
+    expect(parseTeamName("בן־ציון")).toEqual({ ok: true, name: "בן־ציון" });
+  });
+
+  it("asks for a name when there is none", () => {
+    for (const value of ["", "   ", "\n", undefined, null, 5, {}]) {
+      expect(parseTeamName(value)).toEqual({ ok: false, error: "required" });
+    }
+  });
+
+  it("counts characters as the database does, up to the limit", () => {
+    expect(parseTeamName("א".repeat(TEAM_NAME_MAX))).toEqual({
+      ok: true,
+      name: "א".repeat(TEAM_NAME_MAX),
+    });
+    expect(parseTeamName("א".repeat(TEAM_NAME_MAX + 1))).toEqual({
+      ok: false,
+      error: "tooLong",
+    });
+    // An emoji is one character, though two in UTF-16.
+    const emoji = `${"א".repeat(TEAM_NAME_MAX - 1)}🙂`;
+    expect(parseTeamName(emoji)).toEqual({ ok: true, name: emoji });
+  });
+
+  it("drops what nobody sees and composes letters", () => {
+    expect(parseTeamName("נועה\u0000 כהן\u0007")).toEqual({
+      ok: true,
+      name: "נועה כהן",
+    });
+    expect(parseTeamName("Noël")).toEqual({ ok: true, name: "Noël" });
+    expect(parseTeamName("\u0001\u0002")).toEqual({
+      ok: false,
+      error: "required",
+    });
+  });
+});
+
 describe("parseTeamInvite", () => {
   it("accepts a name, a mobile in any format and an allowed role", () => {
     expect(
@@ -782,6 +834,7 @@ describe("team changes (Orel, 14 November 2026)", () => {
     expect(teamChangeFailureOf("P0002")).toBe("gone");
     expect(teamChangeFailureOf("22023")).toBe("yourself");
     expect(teamChangeFailureOf("22023", "archived")).toBe("roleGone");
+    expect(teamChangeFailureOf("22023", "name")).toBe("badName");
     expect(teamChangeFailureOf("23P01")).toBe("lastOwner");
     expect(teamChangeFailureOf("55000", "demo")).toBe("demo");
     expect(teamChangeFailureOf("55000", "clocked_in")).toBe("clockedIn");

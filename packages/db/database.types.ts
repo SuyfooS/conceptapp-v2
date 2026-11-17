@@ -1781,6 +1781,35 @@ export type Database = {
           },
         ];
       };
+      member_names: {
+        Row: {
+          business_id: string;
+          name: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          business_id: string;
+          name: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          business_id?: string;
+          name?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "member_names_business_id_user_id_fkey";
+            columns: ["business_id", "user_id"];
+            isOneToOne: true;
+            referencedRelation: "memberships";
+            referencedColumns: ["business_id", "user_id"];
+          },
+        ];
+      };
       member_payroll_details: {
         Row: {
           business_id: string;
@@ -3813,6 +3842,17 @@ export type Database = {
           new_path?: string;
         };
         Returns: string;
+      };
+      set_member_name: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          new_name?: string;
+          person: string;
+          seen_name?: string;
+        };
+        Returns: Json;
       };
       set_member_permission: {
         Args: {

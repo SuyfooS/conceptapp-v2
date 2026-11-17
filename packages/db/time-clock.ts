@@ -15,6 +15,7 @@ import {
   timeEntry,
 } from "@domain/time-clock";
 import type { Database } from "./database.types";
+import { memberNames, nameIn } from "./member-names";
 import { allPages } from "./pages";
 import { punchKey } from "./punch-key";
 import { createAdminClient } from "./supabase/admin";
@@ -418,20 +419,24 @@ export type ClockPerson = {
 /**
  * Everyone who is or was in the business, for the hours of the month: someone
  * who has left still has hours to pay, and so does someone who worked here and
- * came back as an accountant. Each caller decides who to list by `staff`.
+ * came back as an accountant. Each caller decides who to list by `staff`. Each
+ * by the business's name for them.
  */
 export async function getClockPeople(
   businessId: string,
 ): Promise<ClockPerson[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("memberships")
-    .select("user_id, role, active, profiles (full_name)")
-    .eq("business_id", businessId);
+  const [{ data, error }, names] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select("user_id, role, active, profiles (full_name)")
+      .eq("business_id", businessId),
+    memberNames(supabase, businessId),
+  ]);
   if (error) throw error;
   return data.map((row) => ({
     userId: row.user_id,
-    name: row.profiles?.full_name?.trim() || null,
+    name: nameIn(names, row.user_id, row.profiles?.full_name),
     active: row.active,
     staff: isStaff(row.role),
   }));

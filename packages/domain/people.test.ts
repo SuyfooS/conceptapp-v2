@@ -1,5 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { avatarHue, firstNameOf, initialsOf, shortNames } from "./people";
+import {
+  avatarHue,
+  firstNameOf,
+  initialsOf,
+  shortNames,
+  shownName,
+} from "./people";
+
+describe("shownName", () => {
+  it("is the business's name for someone, else their own", () => {
+    expect(shownName("נועה כהן-לוי", "נועה כהן")).toBe("נועה כהן-לוי");
+    expect(shownName(null, "  נועה כהן ")).toBe("נועה כהן");
+    expect(shownName(undefined, "נועה כהן")).toBe("נועה כהן");
+    expect(shownName("   ", "נועה כהן")).toBe("נועה כהן");
+  });
+
+  it("is null when neither is written", () => {
+    expect(shownName(null, null)).toBe(null);
+    expect(shownName(undefined, "  ")).toBe(null);
+  });
+});
 
 describe("firstNameOf", () => {
   it("takes the first word, whatever the spacing", () => {
