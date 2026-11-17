@@ -169,7 +169,10 @@ begin
     -- lost by that end, and bringing the shift back couldn't return it, so
     -- the shift's end is corrected first (correct_time_entry, which logs
     -- what that does to its breaks). With nothing ending at or after the
-    -- end, the only break ending there is the one this cancel ends.
+    -- end, the only break ending there is the one this cancel ends. Its
+    -- breaks are locked first, so a break ended at this moment
+    -- (public.end_break, which locks the break) is seen ended, or refused.
+    perform 1 from public.time_breaks b where b.entry_id = entry for update;
     if exists (
       select 1 from public.time_breaks b
       where b.entry_id = entry
@@ -263,7 +266,12 @@ begin
     -- Open again only for someone on the staff now: whoever left it, or
     -- moved off it, is never at work (remove_member, set_member_role and
     -- claim_invite refuse while someone is clocked in), and couldn't clock
-    -- out.
+    -- out. Their membership is held first, so a removal or a change of role
+    -- at this moment (which lock it before asking whether they are at work)
+    -- either comes first and is seen here, or waits and sees the shift open.
+    perform 1 from public.memberships m
+    where m.business_id = e.business_id and m.user_id = e.user_id
+    for share;
     if not exists (
       select 1 from public.memberships m
       where m.business_id = e.business_id
