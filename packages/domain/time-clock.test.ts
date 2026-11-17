@@ -1370,6 +1370,31 @@ describe("parseBreakTimes", () => {
       start: "2026-10-24T23:20:00.000Z",
       end: second.endedAt,
     });
+    // And one from the first 01:30 to 02:30, its start changed to 01:20: the
+    // first 01:20, ten minutes earlier, not the second.
+    const first = {
+      id: "s",
+      startedAt: "2026-10-24T22:30:00Z",
+      endedAt: "2026-10-25T00:30:00Z",
+      unpaid: true,
+    };
+    expect(
+      parseBreakTimes(
+        {
+          clockIn: "2026-10-24T19:00:00Z",
+          clockOut: "2026-10-25T04:00:00Z",
+          breaks: [first],
+        },
+        { start: "01:20", end: "02:30" },
+        TZ,
+        now,
+        "s",
+      ),
+    ).toEqual({
+      ok: true,
+      start: "2026-10-24T22:20:00.000Z",
+      end: first.endedAt,
+    });
   });
 
   it("refuses a break outside its shift", () => {

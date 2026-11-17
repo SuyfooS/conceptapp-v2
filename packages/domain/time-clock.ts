@@ -725,8 +725,9 @@ function readingsOf(date: string, time: string, timeZone: string): Date[] {
 /**
  * What a manager typed for a break of `entry`, HH:MM by the business's clock,
  * as instants: the start is the first moment at or after the clock-in with
- * that time (in the hour the clocks repeat, the first of the two), and the
- * end the first after the start, so a break past midnight, or in a night
+ * that time (in the hour the clocks repeat, the first of the two; for a break
+ * being changed, the one nearest its start as it was), and the end the first
+ * after the start, so a break past midnight, or in a night
  * shift, takes no date. A start in the clock-in's own minute is the
  * clock-in itself, as the database has it (to the microsecond), and one in
  * the minute another of its breaks ended starts where that one ended. A
@@ -809,13 +810,17 @@ export function parseBreakTimes(
       .map(startOf)
       .filter(({ at }) => at.getTime() >= clockIn.getTime())
       .sort((a, b) => a.at.getTime() - b.at.getTime());
-    // With its end kept, the start is the last reading before that end, on
-    // the same side of a change of the clocks; else the first.
-    const beforeEnd =
-      keptEnd !== null
-        ? readings.filter(({ at }) => at.getTime() < Date.parse(keptEnd))
-        : [];
-    const chosen = beforeEnd.at(-1) ?? readings[0];
+    // A changed break's new start is the reading nearest the one it had, so
+    // in the hour the clocks repeat it stays on that side of the change; a
+    // new break's is the first.
+    const was = kept ? Date.parse(kept.startedAt) : null;
+    const chosen =
+      was === null
+        ? readings[0]
+        : [...readings].sort(
+            (a, b) =>
+              Math.abs(a.at.getTime() - was) - Math.abs(b.at.getTime() - was),
+          )[0];
     startAt = chosen?.at;
     startText = chosen?.text ?? null;
   }
