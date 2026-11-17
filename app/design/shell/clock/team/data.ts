@@ -3,6 +3,7 @@ import type {
   EntryTarget,
   PersonHoursData,
   TeamHoursData,
+  TeamStations,
 } from "../../../../(app)/clock/team/team-types";
 import { demoRecords } from "../data";
 
@@ -246,6 +247,27 @@ const people = demoPeople.map((person) => ({
   breakMinutes: sum(person.records, "breakMinutes"),
 }));
 
+/**
+ * The demo's clock stations (#78 phase 5): the entrance's tablet showing
+ * the code now, the kitchen's last seen last night, and one locked but not
+ * showing a code yet. The station's twin (/design/shell/station) is the first.
+ */
+export const demoStations: TeamStations = {
+  rows: [
+    { id: "station-entrance", name: "עמדת הכניסה", seen: { kind: "showing" } },
+    {
+      id: "station-kitchen",
+      name: "טאבלט המטבח",
+      seen: { kind: "seen", date: "2026-11-05", time: "23:12" },
+    },
+    { id: "station-office", name: "עמדת שעון 3", seen: { kind: "never" } },
+  ],
+  howTo: true,
+  // The demo asks for the code (`required` below).
+  shownEmpty: true,
+  today: TODAY,
+};
+
 export const demoTeamHours: TeamHoursData = {
   month: MONTH,
   currentMonth: MONTH,
@@ -301,6 +323,7 @@ export const demoTeamHours: TeamHoursData = {
     },
   ],
   people,
+  stations: demoStations,
 };
 
 /**

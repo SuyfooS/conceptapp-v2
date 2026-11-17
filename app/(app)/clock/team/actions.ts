@@ -1,5 +1,6 @@
 "use server";
 
+import { setStationStopped } from "@db/clock-stations";
 import {
   addTimeBreak,
   addTimeEntry,
@@ -13,6 +14,7 @@ import {
   restoreTimeBreak,
   restoreTimeEntry,
 } from "@db/time-clock";
+import type { StationStopResult } from "@domain/clock-station";
 import {
   editsClock,
   parseBreakTimes,
@@ -380,4 +382,41 @@ export async function restoreBreakAction(
   // Its own clash is with a live break that took its time meanwhile (23P01),
   // and its shift corrected so it no longer fits (22023).
   return afterBreakEdit(result);
+}
+
+/**
+ * Stop a clock station or start it again, by whoever edits the clock: the
+ * database checks they edit the station's business, and takes a stop back
+ * within two minutes only.
+ */
+async function stationStopped(
+  stationId: string,
+  stopped: boolean,
+): Promise<StationStopResult> {
+  const station = z.uuid().safeParse(stationId);
+  if (!station.success) return { ok: false, failure: "gone" };
+  const editor = await clockEditor();
+  if (!editor.ok) {
+    return {
+      ok: false,
+      failure: editor.failure === "viewOnly" ? "viewOnly" : "noAccess",
+    };
+  }
+  const result = await setStationStopped(editor.actorId, station.data, stopped);
+  refresh();
+  return result.ok ? { ok: true } : result;
+}
+
+/** Stop a station at once: it shows no code from its next ask (every 20 seconds). */
+export async function stopStationAction(
+  stationId: string,
+): Promise<StationStopResult> {
+  return stationStopped(stationId, true);
+}
+
+/** The toast's "ביטול": the station shows the code again, within two minutes. */
+export async function restartStationAction(
+  stationId: string,
+): Promise<StationStopResult> {
+  return stationStopped(stationId, false);
 }

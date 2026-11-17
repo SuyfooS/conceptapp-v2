@@ -61,8 +61,8 @@ export const manifest = defineManifest({
     /**
      * Where the code is shown: a clock station left at the business, a
      * manager's phone, or both. The database refuses codes from the other.
-     * Hidden until the station screens exist: with no station to pair,
-     * "station only" would block everyone.
+     * Hidden: stations exist now (/station), but "station only" would block
+     * every business that hasn't locked a tablet yet, so the team sets it.
      */
     codeDisplay: z
       .enum(["station", "manager", "both"])
