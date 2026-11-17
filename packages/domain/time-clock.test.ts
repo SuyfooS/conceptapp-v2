@@ -286,9 +286,18 @@ describe("what a punch can answer", () => {
       "ownerOnly",
       "nothingToConfirm",
       "reasonNeeded",
+      "notCancelled",
+      "breaksAfterDay",
+      "notOnStaff",
     ] as const) {
       expect(punchFailureOf(refusal, "typed")).toBe("failed");
     }
+  });
+
+  it("reads taking back a clock-out of a shift cancelled meanwhile as not clocked in", () => {
+    // undo_clock_out refuses it (20261117000200_cancelled_shifts.sql), as it
+    // read before a cancel had words; the screen, read again, shows why.
+    expect(punchFailureOf("cancelled", null)).toBe("notIn");
   });
 });
 
@@ -1099,6 +1108,57 @@ describe("clockFailureOf, for breaks", () => {
     expect(clockFailureOf("55000", "Too late to take it back")).toBe("tooLate");
     expect(clockFailureOf("22023", "An entry that ended needs an end")).toBe(
       "needsEnd",
+    );
+  });
+});
+
+describe("clockFailureOf, for cancelling and bringing back", () => {
+  it("names each refusal of 20261117000200_cancelled_shifts.sql", () => {
+    expect(clockFailureOf("P0002", "Unknown entry")).toBe("noAccess");
+    expect(clockFailureOf("42501", "Managers and owners only")).toBe(
+      "noAccess",
+    );
+    expect(
+      clockFailureOf(
+        "42501",
+        "Only an owner cancels or changes your own hours",
+      ),
+    ).toBe("ownHours");
+    expect(clockFailureOf("55000", "The shift is cancelled")).toBe("cancelled");
+    expect(clockFailureOf("55000", "The shift is not cancelled")).toBe(
+      "notCancelled",
+    );
+    expect(clockFailureOf("22023", "A cancel needs its reason")).toBe(
+      "reasonNeeded",
+    );
+    expect(
+      clockFailureOf(
+        "55000",
+        "The shift has breaks after its first day",
+        "breaks_after_day",
+      ),
+    ).toBe("breaksAfterDay");
+    expect(
+      clockFailureOf(
+        "55000",
+        "The person is no longer on the staff",
+        "not_on_staff",
+      ),
+    ).toBe("notOnStaff");
+    // Bringing one back over a live shift of the same person.
+    expect(
+      clockFailureOf(
+        "23P01",
+        'conflicting key value violates exclusion constraint "time_entries_no_overlap"',
+      ),
+    ).toBe("times");
+  });
+
+  it("keeps the clock's own refusals as they were", () => {
+    expect(clockFailureOf("55000", "Not clocked in")).toBe("notIn");
+    expect(clockFailureOf("55000", "Not clocked out")).toBe("notIn");
+    expect(clockFailureOf("55000", "Too late to take it back", null)).toBe(
+      "tooLate",
     );
   });
 });

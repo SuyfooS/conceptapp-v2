@@ -190,7 +190,8 @@ test("a cancelled shift counts nowhere, and reads as cancelled with who, when an
     });
 
     // Her page: the month counts the shift left, and the cancelled one says
-    // who, when and why, instead of its hours. It can't be pressed yet.
+    // who, when and why, instead of its hours. (Pressing it, to bring it
+    // back, is clock-team.spec.ts's.)
     await page.goto(`/clock/team/${NOA.id}?month=${month}`);
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(NOA.name);
     await expect(heroTotal(page)).toHaveText("2:00");
@@ -204,9 +205,6 @@ test("a cancelled shift counts nowhere, and reads as cancelled with who, when an
         .getByText(c.history.cancelled, { exact: true })
         .filter({ visible: true }),
     ).toHaveCount(1);
-    await expect(
-      page.getByRole("main").getByRole("button").filter({ hasText: reason }),
-    ).toHaveCount(0);
     await expectCleanPage(page);
     await page.screenshot({
       path: testInfo.outputPath("person-cancelled.png"),

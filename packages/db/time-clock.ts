@@ -60,11 +60,11 @@ export type ClockResult<T = undefined> =
   | { ok: true; value: T }
   | { ok: false; failure: ClockFailure };
 
-type RpcError = { code?: string; message: string };
+type RpcError = { code?: string; message: string; hint?: string | null };
 
 /** A refusal as the screen says it. Only the message is logged: it holds no hash. */
 function refusal(error: RpcError): { ok: false; failure: ClockFailure } {
-  const failure = clockFailureOf(error.code, error.message);
+  const failure = clockFailureOf(error.code, error.message, error.hint);
   if (failure === "failed") console.error("time clock failed", error.message);
   return { ok: false, failure };
 }
@@ -285,6 +285,39 @@ export const correctTimeEntry = (
       // Left out (SQL null) keeps the entry open.
       new_clock_out: times.clockOut ?? undefined,
       note: times.note,
+    }),
+  );
+
+/**
+ * Whoever edits the clock cancels a shift entered by mistake, with why
+ * (`note`, which the database requires, keeps on the entry and logs as
+ * `clock.cancel`): it stays, marked with who, when and why, and counts
+ * nowhere. One still open is ended by it, so the person can clock in again.
+ * Their own shift only an owner cancels.
+ */
+export const cancelTimeEntry = (
+  actorId: string,
+  entryId: string,
+  note: string,
+) =>
+  call(() =>
+    createAdminClient().rpc("cancel_time_entry", {
+      actor: actorId,
+      entry: entryId,
+      note,
+    }),
+  );
+
+/**
+ * Whoever edits the clock brings a cancelled shift back as it was, with no
+ * reason (logged as `clock.restore`); one the cancel ended opens again. A live
+ * shift of the same person over those hours refuses it (`times`).
+ */
+export const restoreTimeEntry = (actorId: string, entryId: string) =>
+  call(() =>
+    createAdminClient().rpc("restore_time_entry", {
+      actor: actorId,
+      entry: entryId,
     }),
   );
 

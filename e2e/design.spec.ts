@@ -51,6 +51,13 @@ const PAGES = [
   "/design/shell/clock/team",
   "/design/shell/clock/team/noa",
   "/design/shell/clock/team/yoav",
+  // A shift being fixed with "ביטול המשמרת" under it, the step that cancels
+  // it, and a cancelled one to bring back (the clock plan's PR4); Noa's was
+  // still open when it was cancelled.
+  "/design/shell/clock/team/yoav?state=edit",
+  "/design/shell/clock/team/yoav?state=cancel",
+  "/design/shell/clock/team/yoav?state=cancelled",
+  "/design/shell/clock/team/noa?state=cancelled",
   "/design/shell/clock/pay",
   "/design/shell/clock/pay?person=yoav",
   "/design/shell/clock/pay?show=noWage",
@@ -260,10 +267,11 @@ const PAGES = [
 
 // The chat demo's states that open with a sheet (who confirmed, a message's
 // actions, a picture shown whole, the attach sheet, a document's removal
-// with its reasons): the sheet hides the page behind it from the
-// accessibility tree. Lists' `?state=photo` opens none.
+// with its reasons), and a person's hours on the clock demo open on a shift:
+// the sheet hides the page behind it from the accessibility tree. Lists'
+// `?state=photo` opens none.
 const OPENS_A_SHEET =
-  /^\/design\/chat\/.*[?&]state=(readers|actions|photo|attach|remove)\b/;
+  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled))\b/;
 
 async function expectCleanPage(
   page: Page,
@@ -1073,8 +1081,9 @@ test("a person's hours in the demo match their row in the team list", async ({
 });
 
 // A cancelled shift (the clock plan's PR3) in every shape: "בוטלה" instead of
-// its hours, who cancelled it, when and why, and no way to press it yet; the
-// worker reads the same in her history, and the pay demo lists it apart.
+// its hours, and who cancelled it, when and why; the worker reads the same in
+// her history, where it can't be pressed (a manager's opens it, below), and
+// the pay demo lists it apart.
 test("the clock demo lists a cancelled shift with who, when and why", async ({
   page,
 }) => {
@@ -1109,9 +1118,11 @@ test("the clock demo lists a cancelled shift with who, when and why", async ({
         .getByText(he.app.clock.history.cancelled, { exact: true })
         .filter({ visible: true }),
     ).toHaveCount(1);
-    await expect(
-      main.getByRole("button").filter({ hasText: line }),
-    ).toHaveCount(0);
+    if (path.endsWith("/history")) {
+      await expect(
+        main.getByRole("button").filter({ hasText: line }),
+      ).toHaveCount(0);
+    }
   }
   await page.goto("/design/shell/clock/pay/noa");
   await expect(
@@ -1127,6 +1138,82 @@ test("the clock demo lists a cancelled shift with who, when and why", async ({
       )
       .filter({ visible: true })
       .first(),
+  ).toBeVisible();
+});
+
+// Cancelling and bringing back (the clock plan's PR4), on the demo's
+// stand-ins: "ביטול המשמרת" sits under fixing a shift; its step asks why,
+// cancels at once and offers "ביטול" in the toast rather than asking first. A
+// cancelled shift opens from its row on every shape, with "החזרת המשמרת":
+// Yoav's copy can't come back over the evening left, Noa's comes back open.
+test("the clock demo cancels a shift with a way back, and brings one back", async ({
+  page,
+}, testInfo) => {
+  const team = he.app.clock.team;
+  const desktop = testInfo.project.name === "desktop";
+
+  await page.goto("/design/shell/clock/team/yoav?state=edit");
+  const edit = page.getByRole("dialog", { name: team.sheet.editTitle });
+  await edit.getByRole("button", { name: team.sheet.cancelShift }).click();
+  const cancel = page.getByRole("dialog", { name: team.cancel.title });
+  await expect(cancel.getByText(team.cancel.hint)).toBeVisible();
+  const reason = cancel.getByLabel(team.cancel.reason);
+  await expect(reason).toBeFocused();
+
+  // Without why, nothing goes: the field says so, and has the focus.
+  await cancel.getByRole("button", { name: team.cancel.save }).click();
+  await expect(cancel.getByText(team.cancel.reasonNeeded)).toBeVisible();
+  await expect(reason).toBeFocused();
+  await expectCleanPage(page, "", true);
+
+  // Back to fixing it, the focus where it left, and on again.
+  await cancel.getByRole("button", { name: team.cancel.back }).click();
+  await expect(
+    edit.getByRole("button", { name: team.sheet.cancelShift }),
+  ).toBeFocused();
+  await edit.getByRole("button", { name: team.sheet.cancelShift }).click();
+  await cancel.getByLabel(team.cancel.reason).fill("נרשמה פעמיים");
+  await cancel.getByRole("button", { name: team.cancel.save }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  const toast = page.getByRole("status").filter({ hasText: team.done.cancel });
+  const undo = toast.getByRole("button", { name: team.done.undo });
+  await expect(undo).toBeVisible();
+  await undo.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: team.done.restore }),
+  ).toBeVisible();
+
+  // A cancelled shift opens from its row: the whole row on phones and
+  // tablets, its "החזרה" on desktop.
+  await page.goto("/design/shell/clock/team/yoav");
+  const main = page.getByRole("main");
+  const line = heT.markup("app.clock.history.cancelledBy", {
+    ltr: (chunks: string) => chunks,
+    name: "שירן הדגמה",
+    time: "4.11, 15:10",
+    note: "נרשמה פעמיים בטעות",
+  });
+  await (desktop
+    ? main.getByRole("button", {
+        name: new RegExp(before(he.app.clock.history.restoreShift)),
+      })
+    : main.getByRole("button").filter({ hasText: line })
+  )
+    .filter({ visible: true })
+    .click();
+  const cancelled = page.getByRole("dialog", { name: team.cancelled.title });
+  await expect(cancelled.getByText(line)).toBeVisible();
+  await cancelled.getByRole("button", { name: team.cancelled.restore }).click();
+  await expect(cancelled.getByRole("alert")).toHaveText(team.failure.overlap);
+  await expectCleanPage(page, "", true);
+
+  // Noa's was still open when it was cancelled: it comes back open.
+  await page.goto("/design/shell/clock/team/noa?state=cancelled");
+  await expect(cancelled.getByText(team.cancelled.openHint)).toBeVisible();
+  await cancelled.getByRole("button", { name: team.cancelled.restore }).click();
+  await expect(cancelled).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: team.done.restore }),
   ).toBeVisible();
 });
 

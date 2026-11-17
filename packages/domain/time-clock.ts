@@ -703,12 +703,26 @@ export type ClockFailure =
   | "times"
   /** Adding or correcting: the reason is missing. */
   | "reasonNeeded"
-  /** Confirming: someone else confirms a person's own hours. */
+  /**
+   * Confirming: someone else confirms a person's own hours. Cancelling or
+   * bringing back: only an owner does it to their own shift.
+   */
   | "ownHours"
   /** Confirming: a time someone set for themselves waits for an owner. */
   | "ownerOnly"
   /** Confirming: nothing on the entry waits for it. */
   | "nothingToConfirm"
+  /** The shift is cancelled: it is brought back before anything else changes it. */
+  | "cancelled"
+  /** Bringing back: the shift isn't cancelled (any more). */
+  | "notCancelled"
+  /**
+   * Cancelling a shift still open: a break of it starts or ends after its
+   * first day, where the cancel would end it, so its end is fixed first.
+   */
+  | "breaksAfterDay"
+  /** Bringing back one a cancel ended: the person is off the staff now. */
+  | "notOnStaff"
   | "noAccess"
   | "failed";
 
@@ -720,7 +734,14 @@ export type ClockFailure =
 export type PunchFailure =
   | Exclude<
       ClockFailure,
-      "ownHours" | "ownerOnly" | "nothingToConfirm" | "reasonNeeded"
+      | "ownHours"
+      | "ownerOnly"
+      | "nothingToConfirm"
+      | "reasonNeeded"
+      | "cancelled"
+      | "notCancelled"
+      | "breaksAfterDay"
+      | "notOnStaff"
     >
   | "codeNeeded";
 
@@ -737,7 +758,15 @@ export function punchFailureOf(
     case "ownerOnly":
     case "nothingToConfirm":
     case "reasonNeeded":
+    case "notCancelled":
+    case "breaksAfterDay":
+    case "notOnStaff":
       return "failed";
+    case "cancelled":
+      // Taking a clock-out back from a shift a manager cancelled meanwhile:
+      // it reads as it did before a cancel had words of its own (not clocked
+      // in), and the screen, read again, shows the shift cancelled.
+      return "notIn";
     case "code":
       // The owner switched codes on after the page loaded: no digits were
       // wrong, the press had none.
@@ -747,10 +776,14 @@ export function punchFailureOf(
   }
 }
 
-/** Maps an error from the clock functions to what the screen says. */
+/**
+ * Maps an error from the clock functions to what the screen says: by its
+ * code, its words and, where the database gives one, its hint.
+ */
 export function clockFailureOf(
   code: string | undefined,
   message = "",
+  hint: string | null = null,
 ): ClockFailure {
   switch (code) {
     case "28000":
@@ -760,6 +793,11 @@ export function clockFailureOf(
       if (/already clocked in/i.test(message)) return "alreadyIn";
       return /already on a break/i.test(message) ? "alreadyOnBreak" : "times";
     case "55000":
+      // Cancelling and bringing back (20261117000200_cancelled_shifts.sql).
+      if (hint === "breaks_after_day") return "breaksAfterDay";
+      if (hint === "not_on_staff") return "notOnStaff";
+      if (/is not cancelled/i.test(message)) return "notCancelled";
+      if (/is cancelled/i.test(message)) return "cancelled";
       if (/24 hours/i.test(message)) return "tooLong";
       if (/not on a break/i.test(message)) return "notOnBreak";
       if (/needs confirming/i.test(message)) return "nothingToConfirm";
