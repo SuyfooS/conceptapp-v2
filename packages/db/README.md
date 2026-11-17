@@ -1672,6 +1672,46 @@ under the person's session, and closes and reopens (`closePayrollMonth`,
 `reopenPayrollMonth`, refusals by `closeFailureOf` in `@domain/payroll-close`).
 Covered by `payroll_months.test.sql`, with `rls_enabled.test.sql`.
 
+Cancelled shifts (`20261117000200_cancelled_shifts.sql`, the clock plan's PR1).
+A wrong shift is marked cancelled, never deleted: `time_entries` keeps
+`cancelled_at`, `cancelled_by` (`on delete set null`, its time kept, as
+`confirmed_by`), `cancel_reason` (1 to 200 characters, trimmed, set with
+`cancelled_at` and only with it), `cancelled_open` and `restored_at`, and its
+breaks stay. A cancelled shift always has an end (a check), so every reader of
+`clock_out is null` (the punches, the breaks, the team's guards, the
+reminders) is right as it was. `time_entries_no_overlap`, the same name, holds
+for live shifts only (`where cancelled_at is null`): the right shift goes over
+a cancelled one. `public.cancel_time_entry(actor, entry, note, at_time)` and
+`public.restore_time_entry(actor, entry, at_time)`, with the secret key for
+`actor`: someone who edits the clock (`private.can_edit_clock`, 42501
+"Managers and owners only"), never their own shift unless they are an owner
+(42501 "Only an owner cancels or changes your own hours", which reads as
+`ownHours`), P0002 for an unknown entry. A cancel needs a reason (22023 "A
+cancel needs its reason") and a shift not cancelled already (55000 "The shift
+is cancelled"); one still open is ended by it, at `at_time` or a day after it
+began, whichever is first (`out_proof` 'manager', `cancelled_open`), under
+`ca.correcting`, so a break it ends or cuts writes `clock.break_fit` as a
+correction's does. It logs `clock.cancel` `{entry, person, clock_in,
+clock_out (null when open), ended_at (when open), note}`. A restore takes a
+cancelled shift (55000 "The shift is not cancelled" otherwise) and no reason,
+opens again one the cancel ended, with the break it ended (as
+`undo_clock_out`), sets `restored_at`, and is refused by the constraint
+(23P01) over a live shift of the same person, an open one included; it logs
+`clock.restore` `{entry, person, clock_in, clock_out, reopened}`. Both add
+`closed_month` when the shift's day by the business's clock is in a closed
+month, and then tell its closer and the accountants (`pay.after_close`,
+`private.notify_for_payroll` and its trigger). `correct_time_entry`,
+`confirm_time_entry` and `undo_clock_out` refuse a cancelled shift (55000 "The
+shift is cancelled"). A cancel settles the shift's `clock.confirm` for
+everyone (`private.notify_for`) and its `clock.open` and `clock.overdue`
+(`private.resolve_reminders_for`); a restore goes through `notify_for`'s rule
+again, so a confirmation still waiting comes back, unread, to all but whoever
+brought it back, while a reminder stays settled. `private.payroll_tick` counts
+live shifts only. The server role still holds its table privileges on the
+hours (`time_breaks.test.sql` writes a break directly as it). Nothing in the
+app calls the two yet. Covered by `cancelled_shifts.test.sql`, with
+`time_clock.test.sql`, `hours_kept.test.sql` and `demo_reset.test.sql`.
+
 Chat (`20261111000100_chat_module.sql`, `20261111000200_chat.sql`, chat C1), in
 the database first, with the module off everywhere until C2 (below). `public.chat_conversations`
 holds a business's chats: its team's group (made with the business, by the
