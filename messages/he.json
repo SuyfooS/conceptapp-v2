@@ -394,7 +394,473 @@
     "fileFieldText": "הקובץ של מסמך: צילום, תמונה מהטלפון או PDF, עם התצוגה שלו ומה שקורה בדרך.",
     "fileFieldPhoto": "עם תמונה",
     "fileFieldPdf": "עם PDF בדרך",
-    "fileFieldPdfName": "תלוש נובמבר.pdf"
+    "fileFieldPdfName": "תלוש נובמבר.pdf",
+    "orderTaking": {
+      "metaTitle": "דמו מצב מלצרות",
+      "mode": "מצב מלצרות",
+      "leave": "חזרה לאפליקציה",
+      "nav": {
+        "places": "שולחנות",
+        "mine": "ההזמנות שלי",
+        "prep": "הכנה",
+        "menu": "תפריט"
+      },
+      "place": {
+        "table": "שולחן {name}",
+        "takeaway": "לקחת {number}",
+        "newTakeaway": "לקחת · הזמנה חדשה",
+        "tableWord": "שולחן",
+        "takeawayWord": "לקחת",
+        "newShort": "חדשה"
+      },
+      "age": {
+        "ago": "{count, plural, =0 {עכשיו} one {לפני דקה} other {לפני # דק׳}}"
+      },
+      "sheet": {
+        "close": "סגירה"
+      },
+      "index": {
+        "back": "מערכת העיצוב",
+        "eyebrow": "מסכים לדוגמה, עם נתונים לדוגמה",
+        "title": "מצב מלצרות",
+        "subtitle": "קבלת הזמנות מהטלפון ושליחה למטבח ולבר. מה שנלחץ כאן נשמר רק בדף הזה, וטעינה מחדש מתחילה את הערב מההתחלה.",
+        "test": {
+          "label": "הבדיקה מול הפנקס",
+          "title": "שש מנות, שתיים עם בחירה, הערה אחת ואלרגיה אחת",
+          "body": "המלצר הכי פחות טכני במקום מקבל את אותה הזמנה כאן ובפנקס, בלי עזרה, ומודדים כמה זמן כל אחת לוקחת.",
+          "action": "פתיחת השולחנות"
+        },
+        "sections": {
+          "waiter": "המלצר",
+          "prep": "ההכנה והקופה",
+          "menu": "התפריט"
+        },
+        "screens": {
+          "floor": {
+            "title": "השולחנות",
+            "text": "שניים מוכנים להגשה, אחד מחכה 20 דק׳, והזמנה לקחת"
+          },
+          "quiet": {
+            "title": "תחילת הערב",
+            "text": "כל השולחנות פנויים. מכאן מתחילים את הבדיקה"
+          },
+          "free": {
+            "title": "שולחן פנוי",
+            "text": "לחיצה אחת מוסיפה מנה, וחיפוש מוצא כל מנה"
+          },
+          "draft": {
+            "title": "טיוטה עם הערה, אלרגיה והמתנה",
+            "text": "סלט עם אלרגיה, ושניצל עם הערה שמחכה לעיקריות"
+          },
+          "choice": {
+            "title": "חלון הבחירות",
+            "text": "המבורגר: מידת עשייה שחובה לבחור, ותוספות"
+          },
+          "sent": {
+            "title": "אחרי השליחה",
+            "text": "החזרה מהשליחה עד 2 דקות, והמטבח והבר כבר רואים"
+          },
+          "open": {
+            "title": "שולחן פתוח",
+            "text": "סבב שנשלח, עיקריות שמחכות לקריאה, ו\"הוגש\""
+          },
+          "tillItem": {
+            "title": "לקופה, לפי פריט",
+            "text": "שולחן 4: כל מנה עם הכמות והמחיר, בלי סכום"
+          },
+          "tillRound": {
+            "title": "לקופה, לפי סבב",
+            "text": "מי שלח מה ומתי, כדי לחלק בין הסועדים"
+          },
+          "tillClosed": {
+            "title": "שולחן שנסגר היום",
+            "text": "שולחן 3, עם פתיחה מחדש"
+          },
+          "mine": {
+            "title": "ההזמנות שלי",
+            "text": "מה ששירן שלחה, המוכן קודם"
+          },
+          "mineEmpty": {
+            "title": "ההזמנות שלי, לפני ששולחים",
+            "text": "מה שהמסך אומר כשעוד לא נשלח כלום"
+          },
+          "prep": {
+            "title": "הכנה בטלפון",
+            "text": "המטבח והבר, ו\"מוכן\" בלחיצה אחת"
+          },
+          "prepEmpty": {
+            "title": "הכנה בלי הזמנות פתוחות",
+            "text": "מה שהמסך אומר כשהכול יצא"
+          },
+          "kitchen": {
+            "title": "מסך המטבח",
+            "text": "טאבלט נעול, שנפתח בלחיצה שמפעילה את הצליל"
+          },
+          "kitchenOpen": {
+            "title": "מסך המטבח, פתוח",
+            "text": "ההזמנות בטורים, מהוותיקה, עם \"מוכן\" גדול"
+          },
+          "kitchenOffline": {
+            "title": "מסך המטבח בלי חיבור",
+            "text": "מה שהמסך אומר כשהחיבור נופל"
+          },
+          "kitchenEmpty": {
+            "title": "מסך המטבח בלי הזמנות",
+            "text": "מה שהמסך אומר כשאין מה להכין"
+          },
+          "counter": {
+            "title": "מסך הקופה",
+            "text": "השולחנות הפתוחים ומה שנסגר היום, לפי פריט ולפי סבב"
+          },
+          "menu": {
+            "title": "התפריט",
+            "text": "מחיר, מנה חדשה, ו\"נגמר\" לדג היום"
+          },
+          "noMenu": {
+            "title": "עסק בלי תפריט",
+            "text": "מה שהמסך אומר לפני שיש מנות"
+          },
+          "import": {
+            "title": "העתקת תפריט",
+            "text": "תפריט של בית קפה בהדבקה, עם שני גדלים, תוספות ושורות לבדיקה"
+          }
+        },
+        "note": "כל המחירים כאן לדוגמה. אין חשבון, אין קבלה ואין תשלום: את מה שמופיע \"לקופה\" מקישים בקופה של העסק."
+      },
+      "floor": {
+        "title": "שולחנות",
+        "takeaway": "פתיחת הזמנה לקחת",
+        "tables": "השולחנות",
+        "takeaways": "לקחת",
+        "status": {
+          "ready": "{count, plural, one {שולחן אחד מוכן להגשה} other {# מוכנים להגשה}}",
+          "late": "{count, plural, one {אחד מחכה} other {# מחכים}}",
+          "open": "{count, plural, one {אחד פתוח} other {# פתוחים}}",
+          "free": "כל השולחנות פנויים"
+        },
+        "state": {
+          "free": "פנוי",
+          "draft": "{count, plural, one {פריט אחד בטיוטה} other {# פריטים בטיוטה}}",
+          "open": "{count, plural, =0 {נשלח עכשיו} one {נשלח לפני דקה} other {נשלח לפני # דק׳}}",
+          "ready": "מוכן להגשה",
+          "late": "מחכה {count} דק׳"
+        },
+        "readyTitle": "מוכן להגשה",
+        "readyEmpty": "אין כרגע מה להגיש. מה שהמטבח או הבר מסמנים כמוכן מופיע כאן.",
+        "readyCard": "{place} · {department}",
+        "closedTitle": "נסגרו היום",
+        "closedEmpty": "עוד לא נסגר שולחן היום.",
+        "closedRow": "נסגר ב-<ltr>{time}</ltr> · {name}",
+        "table": {
+          "title": "ההזמנות הפתוחות",
+          "place": "מקום",
+          "by": "מי פתח",
+          "lastSent": "נשלח לאחרונה",
+          "state": "מצב",
+          "last": "<ltr>{time}</ltr> · {ago}",
+          "open": "פתוח",
+          "hint": "פתיחת ההזמנה"
+        }
+      },
+      "order": {
+        "free": "פנוי · בוחרים מנות ושולחים",
+        "opened": "נפתח ב-<ltr>{time}</ltr> · {name}",
+        "serve": "הוגש",
+        "floorList": "השולחנות",
+        "label": "לקריאה ללקוח",
+        "labelHint": "למשל שם פרטי או צבע החולצה. נמחק יומיים אחרי הסגירה.",
+        "view": {
+          "label": "מה רואים",
+          "add": "הוספת מנות",
+          "order": "ההזמנה",
+          "unsent": "{count, plural, one {פריט אחד עוד לא נשלח} other {# פריטים עוד לא נשלחו}}"
+        },
+        "noPlace": {
+          "title": "המקום הזה לא נמצא",
+          "body": "אולי ההזמנה שלו נסגרה. חוזרים לשולחנות ובוחרים משם.",
+          "back": "חזרה לשולחנות"
+        }
+      },
+      "picker": {
+        "title": "הוספת מנות",
+        "search": "חיפוש בתפריט",
+        "searchPlaceholder": "חיפוש מנה",
+        "found": "מה שנמצא",
+        "nothingFound": "אין מנה שמתחילה ב-{query}",
+        "most": "הכי מוזמנים",
+        "categories": "קטגוריות",
+        "withChoices": "עם בחירות",
+        "soldOut": "נגמר",
+        "inDraft": "בטיוטה",
+        "added": "{count, plural, one {נוסף לטיוטה: {name}} other {נוסף לטיוטה: {name}, # בטיוטה}}",
+        "noMenu": {
+          "title": "עוד אין תפריט",
+          "body": "מוסיפים מנות, או מעתיקים תפריט קיים בהדבקה.",
+          "import": "העתקת תפריט"
+        }
+      },
+      "draft": {
+        "title": "לשליחה",
+        "empty": "עוד לא נבחרו מנות. מה שנבחר מהתפריט מופיע כאן, ונשלח בלחיצה אחת.",
+        "goes": "לאן זה הולך: {routes}",
+        "qty": "כמה: {name}",
+        "less": "אחד פחות: {name}",
+        "more": "אחד יותר: {name}",
+        "note": "הערה",
+        "allergy": "אלרגיה",
+        "hold": "לחכות עם זה",
+        "forItem": ", {name}",
+        "heldBadge": "יחכה לקריאה",
+        "remove": "הסרה מהטיוטה: {name}"
+      },
+      "send": {
+        "label": "שליחת ההזמנה",
+        "count": "{count, plural, one {פריט אחד} two {שני פריטים} other {# פריטים}}",
+        "route": "{department} · {count}"
+      },
+      "line": {
+        "qtyName": "<ltr>{qty}</ltr> × {name}",
+        "note": "הערה: {note}",
+        "allergy": "אלרגיה: {allergy}",
+        "takenBack": "בוטל"
+      },
+      "note": {
+        "noteTitle": "הערה · {name}",
+        "allergyTitle": "אלרגיה · {name}",
+        "noteLabel": "הערה למטבח",
+        "notePlaceholder": "למשל: בלי בצל. בלי שמות של לקוחות",
+        "noteHint": "מופיעה על ההזמנה, בתיבה מודגשת.",
+        "allergyLabel": "ממה להיזהר",
+        "allergyPlaceholder": "למשל: בוטנים",
+        "allergyHint": "המטבח רואה את זה באדום, עם המילה אלרגיה.",
+        "allergyMissing": "כותבים ממה להיזהר, כדי שהמטבח יידע.",
+        "saveNote": "שמירת ההערה",
+        "saveAllergy": "שמירת האלרגיה",
+        "removeNote": "הסרת ההערה",
+        "removeAllergy": "הסרת האלרגיה"
+      },
+      "choice": {
+        "required": "חובה לבחור",
+        "optional": "לא חובה",
+        "extra": "<ltr>+{price}</ltr>",
+        "qty": "כמה",
+        "missing": "כדי להוסיף בוחרים: {groups}",
+        "add": "{count, plural, one {הוספה} other {הוספה של #}}"
+      },
+      "rounds": {
+        "title": "מה שנשלח",
+        "round": "סבב {n} · <ltr>{time}</ltr> · {name}",
+        "till": "לקופה",
+        "takeBack": "החזרה מהשליחה",
+        "fire": "להוציא"
+      },
+      "ticketState": {
+        "held": "מחכה לקריאה",
+        "sent": "נשלח",
+        "onScreen": "על המסך · {department}",
+        "ready": "מוכן · {department}",
+        "served": "הוגש"
+      },
+      "ticket": {
+        "label": "{place} · {department}",
+        "from": "{name} · {department}",
+        "ready": "מוכן"
+      },
+      "till": {
+        "title": "לקופה · {place}",
+        "byItem": "לפי פריט",
+        "byRound": "לפי סבב",
+        "view": "איך להציג",
+        "note": "המחירים לפי התפריט. זו לא קבלה ולא חשבונית, ואת התשלום רושמים בקופה של העסק.",
+        "round": "סבב {n} · <ltr>{time}</ltr> · {name}",
+        "roundLabel": "סבב {n}",
+        "roundEmpty": "מה שנשלח בסבב הזה הוחזר.",
+        "empty": "עוד אין כאן מה להקיש.",
+        "qty": "כמות",
+        "unit": "מחיר ליחידה",
+        "closeTable": "סגירת השולחן",
+        "closeOrder": "סגירת ההזמנה",
+        "reopen": "פתיחה מחדש",
+        "refusedHeld": "יש מנות שמחכות לקריאה. מוציאים אותן או מבטלים, ואז סוגרים.",
+        "taken": "המקום תפוס עכשיו. פותחים מחדש כשהוא פנוי.",
+        "closedAt": "נסגר ב-<ltr>{time}</ltr> · {name}",
+        "noOrder": {
+          "title": "ההזמנה הזאת לא נמצאה",
+          "body": "חוזרים לשולחנות ובוחרים אותה משם."
+        }
+      },
+      "mine": {
+        "title": "ההזמנות שלי",
+        "status": "{ready, plural, =0 {אין מה להגיש} one {אחת מוכנה להגשה} other {# מוכנות להגשה}} · {making, plural, =0 {אין בהכנה} other {# בהכנה}}",
+        "ready": "מוכן להגשה",
+        "making": "בהכנה",
+        "readyEmpty": "מה שנשלח ומוכן מופיע כאן.",
+        "makingEmpty": "אין כרגע הזמנות בהכנה.",
+        "served": "הוגשו",
+        "cardTitle": "{place} · {department}",
+        "sentAt": "נשלח ב-<ltr>{time}</ltr> · {ago}",
+        "tableTitle": "מה שעוד להגיש",
+        "columns": {
+          "place": "מקום",
+          "department": "מחלקה",
+          "items": "מה",
+          "sent": "נשלח",
+          "state": "מצב",
+          "serve": "הגשה"
+        },
+        "empty": {
+          "title": "עוד לא נשלחו הזמנות",
+          "body": "מה ששולחים מהשולחנות מופיע כאן, והמוכן קודם.",
+          "action": "מעבר לשולחנות"
+        }
+      },
+      "prep": {
+        "title": "הכנה",
+        "department": "מחלקה",
+        "status": "{count, plural, one {אחת פתוחה} other {# פתוחות}} · הוותיקה מחכה {minutes} דק׳",
+        "nothingOpen": "אין הזמנות פתוחות",
+        "openCount": "{count, plural, one {אחת פתוחה} other {# פתוחות}}",
+        "listLabel": "הזמנות · {department}",
+        "empty": {
+          "title": "אין הזמנות פתוחות",
+          "body": "הזמנה חדשה מופיעה כאן ברגע שהיא נשלחת."
+        },
+        "recent": "מוכנים לאחרונה",
+        "readyAt": "סומן מוכן ב-<ltr>{time}</ltr> · {name}",
+        "putBack": "החזרה להכנה",
+        "devices": "מסך במטבח או בקופה",
+        "lockKitchen": "נעילת המכשיר כמסך מטבח",
+        "lockKitchenHint": "הטאבלט מציג את ההזמנות למטבח, בלי החשבון של אף אחד. בדוגמה זה פותח את המסך.",
+        "lockTill": "נעילת המכשיר כקופה",
+        "lockTillHint": "הטאבלט בדלפק מציג מה להקיש בקופה, בלי החשבון של אף אחד. בדוגמה זה פותח את המסך."
+      },
+      "station": {
+        "kitchenEyebrow": "{business} · מסך מטבח",
+        "openKitchen": "פתיחת המטבח",
+        "openHint": "הלחיצה מפעילה את הצליל ומשאירה את המסך דולק. מכאן כל הזמנה חדשה מצלצלת.",
+        "online": "מחובר",
+        "offlineBadge": "אין חיבור",
+        "offline": "אין חיבור. הזמנות חדשות לא מגיעות למסך הזה. מוסרים בעל פה עד שהחיבור חוזר.",
+        "soundOn": "הצליל פועל",
+        "soundLocked": "הקשה להפעלת הצליל",
+        "empty": {
+          "title": "אין הזמנות פתוחות",
+          "body": "הזמנה חדשה תופיע כאן עם צליל."
+        },
+        "readyAt": "סומן מוכן ב-<ltr>{time}</ltr>",
+        "screen": "מסך המטבח",
+        "demoNote": "בדוגמה המסך לא ננעל.",
+        "backToPhone": "חזרה לטלפון של שירן",
+        "tillEyebrow": "{business} · קופה",
+        "tillTitle": "קופה",
+        "tillStatus": "{open, plural, =0 {אין שולחנות פתוחים} one {אחד פתוח} other {# פתוחים}} · {closed, plural, =0 {עוד לא נסגר שולחן} one {אחד נסגר היום} other {# נסגרו היום}}",
+        "openTitle": "פתוחים",
+        "openEmpty": "אין כרגע שולחנות פתוחים.",
+        "chooseTitle": "בוחרים שולחן",
+        "chooseBody": "מה להקיש בקופה מופיע כאן, לפי פריט או לפי סבב, בלי סכום.",
+        "backToPlaces": "לכל השולחנות",
+        "newOrder": "הזמנה חדשה: {place}"
+      },
+      "menu": {
+        "title": "תפריט",
+        "status": "{soldOut, plural, =0 {הכול זמין} one {מנה אחת נגמרה} other {# מנות נגמרו}} · {items, plural, one {מנה אחת בתפריט} other {# מנות בתפריט}}",
+        "add": "הוספת מנה",
+        "import": "העתקת תפריט",
+        "categories": "קטגוריות",
+        "categoryLine": "{department} · {count, plural, one {מנה אחת} other {# מנות}}",
+        "choices": "{count, plural, one {בחירה אחת} other {# בחירות}}",
+        "soldOutFor": "נגמר: {name}",
+        "priceFor": "מחיר: {name}",
+        "priceUnclear": "המחיר לא ברור. כותבים מספר, למשל 62 או 42.50.",
+        "columns": {
+          "name": "מנה",
+          "category": "קטגוריה",
+          "department": "מחלקה",
+          "price": "מחיר",
+          "soldOut": "נגמר"
+        },
+        "sheet": {
+          "newTitle": "מנה חדשה",
+          "name": "שם המנה",
+          "nameMissing": "כותבים את שם המנה, עד 60 תווים.",
+          "price": "מחיר",
+          "priceHint": "המחיר כמו בתפריט, כולל מע״מ",
+          "category": "קטגוריה",
+          "choices": "בחירות: {groups}",
+          "add": "הוספת המנה",
+          "save": "שמירת המנה"
+        }
+      },
+      "import": {
+        "title": "העתקת תפריט",
+        "subtitle": "מדביקים את התפריט כמו שהוא: מהאתר, מקובץ PDF, מוואטסאפ או מהקופה.",
+        "paste": "התפריט",
+        "hint": "שורה עם מחיר בסוף היא מנה. שורה בלי מחיר היא קטגוריה לשורות שאחריה. שני מחירים עם / הם שני גדלים, ושורה שמתחילה ב-+ היא תוספת למנה שמעליה.",
+        "preview": "מה ייכנס",
+        "counts": "{items, plural, one {מנה אחת} other {# מנות}} · {categories, plural, one {קטגוריה אחת} other {# קטגוריות}} · {problems, plural, =0 {הכול ברור} one {שורה אחת לבדיקה} other {# שורות לבדיקה}}",
+        "unreverse": "היפוך השורות",
+        "department": "מחלקה · {category}",
+        "action": "{count, plural, one {יבוא מנה אחת} other {יבוא # מנות}}",
+        "done": "{count, plural, one {מנה אחת נוספה לתפריט} other {# מנות נוספו לתפריט}}",
+        "toMenu": "לתפריט",
+        "line": {
+          "category": "קטגוריה",
+          "item": "מנה · <ltr>{price}</ltr>",
+          "sizes": "שני מחירים: בודקים את שמות הגדלים · רגיל <ltr>{regular}</ltr> · גדול <ltr>{large}</ltr>",
+          "extra": "תוספת למנה שמעליה · <ltr>+{price}</ltr>"
+        },
+        "problem": {
+          "noPrice": "אין מחיר",
+          "unclear": "מחיר לא ברור",
+          "long": "שם ארוך מדי",
+          "duplicate": "כפול",
+          "reversed": "שורה הפוכה",
+          "noItem": "תוספת בלי מנה מעליה",
+          "noCategory": "אין קטגוריה מעל השורה"
+        }
+      },
+      "toast": {
+        "undo": "ביטול",
+        "sent": "ההזמנה של {place} נשלחה",
+        "served": "{place} · {department}: הוגש",
+        "ready": "{place} · {department}: מוכן",
+        "removed": "הוסר מהטיוטה: {name}",
+        "noteRemoved": "ההערה הוסרה: {name}",
+        "allergyRemoved": "האלרגיה הוסרה: {name}",
+        "fired": "יצא להכנה · {department}",
+        "takenBack": "הוחזר מהשליחה: {name}",
+        "closed": "{place} נסגר",
+        "reopened": "{place} נפתח מחדש",
+        "putBack": "חזר להכנה: {place}",
+        "soldOut": "סומן שנגמר: {name}",
+        "available": "חזר לתפריט: {name}",
+        "price": "המחיר עודכן: {name}",
+        "itemAdded": "נוסף לתפריט: {name}",
+        "itemSaved": "נשמר: {name}"
+      }
+    },
+    "orderTakingTitle": "מצב מלצרות",
+    "orderTakingText": "קבלת הזמנות מהטלפון ושליחה למטבח ולבר: השולחנות, ההזמנה, מסך המטבח והקופה, עם נתונים לדוגמה.",
+    "orderTakingDemo": "לדמו של מצב המלצרות",
+    "orderParts": {
+      "text": "שולחן בכל אחד מהמצבים שלו, הזמנה במסך ההכנה עם הבחירות, ההערה והאלרגיה, מה להקיש בקופה, ומנות שמוסיפים בלחיצה אחת.",
+      "tiles": "שולחנות",
+      "tickets": "הזמנות להכנה",
+      "till": "לקופה",
+      "items": "מנות להוספה",
+      "waiter": "יואב",
+      "kitchen": "מטבח",
+      "burger": "המבורגר",
+      "medium": "מדיום",
+      "cheese": "גבינה",
+      "sesame": "שומשום",
+      "hummus": "חומוס",
+      "noGarlic": "בלי שום",
+      "fish": "דג היום",
+      "schnitzel": "שניצל",
+      "mash": "פירה",
+      "lemonade": "לימונדה"
+    }
   },
   "shell": {
     "metaTitle": "דמו פריסה",

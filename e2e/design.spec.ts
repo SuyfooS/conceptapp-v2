@@ -281,15 +281,41 @@ const PAGES = [
   "/design/console/businesses/demo-restaurant/roles?state=lists",
   // A business nobody has joined yet: only an invite, and one that ran out.
   "/design/console/businesses/bar-hayam/access",
+  // Waiter mode's mock screens (S0, #191): each screen and state the twin's
+  // list names, the stations outside the mode's shell included.
+  "/design/order-taking",
+  "/design/order-taking/floor",
+  "/design/order-taking/floor?state=quiet",
+  "/design/order-taking/floor/order?place=table-6",
+  "/design/order-taking/floor/order?place=table-6&state=draft",
+  "/design/order-taking/floor/order?place=table-6&state=choice",
+  "/design/order-taking/floor/order?place=table-6&state=sent",
+  "/design/order-taking/floor/order?place=table-4",
+  "/design/order-taking/floor/till?order=order-4",
+  "/design/order-taking/floor/till?order=order-4&state=byRound",
+  "/design/order-taking/floor/till?order=order-3",
+  "/design/order-taking/mine",
+  "/design/order-taking/mine?state=nothingSent",
+  "/design/order-taking/prep",
+  "/design/order-taking/prep?state=nothingOpen",
+  "/design/order-taking/station/prep",
+  "/design/order-taking/station/prep?state=open",
+  "/design/order-taking/station/prep?state=offline",
+  "/design/order-taking/station/prep?state=nothingOpen",
+  "/design/order-taking/station/till",
+  "/design/order-taking/menu",
+  "/design/order-taking/menu?state=noMenu",
+  "/design/order-taking/menu/import",
 ];
 
 // The chat demo's states that open with a sheet (who confirmed, a message's
 // actions, a picture shown whole, the attach sheet, a document's removal
-// with its reasons), and a person's hours on the clock demo open on a shift:
-// the sheet hides the page behind it from the accessibility tree. Lists'
-// `?state=photo` opens none.
+// with its reasons), a person's hours on the clock demo open on a shift,
+// and waiter mode's order opens on an item's choices: the sheet hides the
+// page behind it from the accessibility tree. Lists' `?state=photo` opens
+// none.
 const OPENS_A_SHEET =
-  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak))\b/;
+  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak)|order-taking\/.*[?&]state=choice)\b/;
 
 async function expectCleanPage(
   page: Page,
@@ -3402,4 +3428,217 @@ test("the inbox twin says the ConceptApp team gave pay access", async ({
       page.getByRole("row").filter({ hasText: byTeam }).getByRole("rowheader"),
     ).toHaveText(n.who.team);
   }
+});
+
+/** Text to find as it is, inside a pattern. */
+const asIs = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Goes to another screen of a demo through the tab bar, as a thumb would.
+ * A long screen scrolled down shrinks the phone's bar to its current tab:
+ * at the top it is full size again, each tab one tap away.
+ */
+async function throughTabBar(page: Page, name: string) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page.locator("nav[data-tab-compact]")).toHaveCount(0);
+  await page
+    .getByRole("navigation", { name: he.ui.appShell.mainNav })
+    .filter({ visible: true })
+    // The name, and a count after it when the tab has one ("..., 2").
+    .getByRole("link", { name: new RegExp(`^${asIs(name)}(\\s*,|$)`) })
+    .click();
+}
+
+// Waiter mode's twin (S0, #191) as a waiter times it on a phone: a free
+// table opens on its items, two taps add two, one sends them, and the
+// kitchen's part is on the prep screen. Marked ready there, it comes back
+// ready on the floor, is served from the order with its undo, and the
+// order's list for the till has both items and no total. One page, so the
+// store in memory carries it all.
+test("the waiter mode demo sends to the prep screen and comes back ready", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "the walk is timed on a phone");
+  const o = he.design.orderTaking;
+  const shown = (locator: Locator) => locator.filter({ visible: true });
+  const table6 = heT("design.orderTaking.place.table", { name: "6" });
+  // The tile shows "שולחן" small above its large "6": its name starts so.
+  const tile6 = new RegExp(`^${o.place.tableWord}\\s*6(?!\\d)`);
+  const kitchen = "מטבח";
+
+  await page.goto("/design/order-taking/floor");
+  await expect(
+    page.getByRole("heading", { level: 1, name: o.floor.title }),
+  ).toBeVisible();
+  await shown(page.getByRole("link", { name: tile6 })).click();
+  await expect(page).toHaveURL(/place=table-6$/);
+  await expect(
+    page.getByRole("heading", { level: 1, name: table6 }),
+  ).toBeVisible();
+
+  await shown(page.getByRole("button", { name: /^לימונדה/ }))
+    .first()
+    .click();
+  await shown(page.getByRole("button", { name: /^פוקאצ'ה/ }))
+    .first()
+    .click();
+  const send = shown(
+    page.getByRole("button", { name: new RegExp(`^${o.send.label}`) }),
+  );
+  await expect(send).toHaveCount(1);
+  await send.click();
+  await expect(
+    page.getByText(heT("design.orderTaking.toast.sent", { place: table6 })),
+  ).toBeVisible();
+  // The round is on the order now, its kitchen part not yet on a screen.
+  await expect(
+    shown(page.getByRole("heading", { level: 3 })).filter({
+      hasText: new RegExp(`^${o.rounds.round.split(" ")[0]} 1`),
+    }),
+  ).toBeVisible();
+  await expect(
+    shown(page.getByText(o.ticketState.sent, { exact: true })),
+  ).toHaveCount(2);
+
+  await throughTabBar(page, o.nav.prep);
+  await expect(page).toHaveURL(/\/design\/order-taking\/prep$/);
+  const ticket = page.getByRole("article", {
+    name: heT("design.orderTaking.ticket.label", {
+      place: table6,
+      department: kitchen,
+    }),
+  });
+  await expect(ticket).toBeVisible();
+  await expect(ticket.getByText(/פוקאצ'ה/)).toBeVisible();
+  await ticket.getByRole("button", { name: o.ticket.ready }).click();
+  await expect(
+    page.getByText(
+      heT("design.orderTaking.toast.ready", {
+        place: table6,
+        department: kitchen,
+      }),
+    ),
+  ).toBeVisible();
+  await expect(ticket).toHaveCount(0);
+
+  // Table 6's ticket is the newest, far down the list: the page scrolled to
+  // it, and the bar shrank.
+  await throughTabBar(page, o.nav.places);
+  const tile = shown(page.getByRole("link", { name: tile6 }));
+  await expect(tile).toContainText(o.floor.state.ready);
+  await tile.click();
+  await shown(
+    page.getByRole("button", {
+      name: new RegExp(`^${o.order.serve}.*${kitchen}`),
+    }),
+  ).click();
+  const served = heT("design.orderTaking.toast.served", {
+    place: table6,
+    department: kitchen,
+  });
+  await expect(page.getByText(served)).toBeVisible();
+  await page.getByRole("button", { name: o.toast.undo }).click();
+  await expect(page.getByText(served)).toHaveCount(0);
+
+  await shown(page.getByRole("link", { name: o.rounds.till })).click();
+  await expect(page).toHaveURL(/\/floor\/till\?order=/);
+  await expect(shown(page.getByText(o.till.note))).toBeVisible();
+  const list = shown(page.getByRole("list", { name: o.till.byItem }));
+  await expect(list.getByText("לימונדה")).toBeVisible();
+  await expect(list.getByText("פוקאצ'ה")).toBeVisible();
+  await expectCleanPage(page);
+});
+
+// The twin's list of screens opens each one afresh in the state its row
+// names, whatever the last row left: the store above the screens lives on
+// between them, and only a link with a state starts it again.
+test("the waiter mode demo's list opens each row in its own state", async ({
+  page,
+}) => {
+  const o = he.design.orderTaking;
+  const row = (title: string) =>
+    page.getByRole("link", { name: new RegExp(`^${asIs(title)}`) });
+  const shownText = (text: string) =>
+    page.getByText(text, { exact: true }).filter({ visible: true });
+
+  await page.goto("/design/order-taking");
+  await row(o.index.screens.quiet.title).click();
+  await expect(page).toHaveURL(/\/floor$/);
+  await expect(shownText(o.floor.status.free)).toBeVisible();
+
+  // Back on the list, the evening as it is: two ready to serve, not quiet.
+  await page.goBack();
+  await row(o.index.screens.floor.title).click();
+  await expect(page).toHaveURL(/\/floor$/);
+  await expect(
+    page
+      .getByText(heT("design.orderTaking.floor.status.ready", { count: 2 }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(shownText(o.floor.status.free)).toHaveCount(0);
+
+  // After a business with no menu, the menu has its items again.
+  await page.goBack();
+  await row(o.index.screens.noMenu.title).click();
+  await expect(shownText(o.picker.noMenu.title)).toBeVisible();
+  await page.goBack();
+  await row(o.index.screens.menu.title).click();
+  await expect(page).toHaveURL(/\/menu$/);
+  await expect(shownText(o.picker.noMenu.title)).toHaveCount(0);
+
+  // After the quiet evening, table 4's list for the till is there.
+  await page.goBack();
+  await row(o.index.screens.quiet.title).click();
+  await expect(page).toHaveURL(/\/floor$/);
+  await page.goBack();
+  await row(o.index.screens.tillItem.title).click();
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: heT("design.orderTaking.till.title", {
+        place: heT("design.orderTaking.place.table", { name: "4" }),
+      }),
+    }),
+  ).toBeVisible();
+});
+
+// The kitchen's screen opened offline stays offline once the state comes
+// off the address, so the check of every page sees its banner.
+test("the waiter mode demo's kitchen screen stays offline", async ({
+  page,
+}) => {
+  const o = he.design.orderTaking;
+  await page.goto("/design/order-taking/station/prep?state=offline");
+  await expect(page).toHaveURL(/\/station\/prep$/);
+  // The page's own alert, not the router's announcer.
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    o.station.offline,
+  );
+  await expect(
+    page.getByText(o.station.offlineBadge, { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(o.station.online, { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+// The desktop's table of what Shiran still has to serve reads each line as
+// the phone's cards do: table 4's held mains carry the burger's allergy,
+// and its starters their note.
+test("the waiter mode demo's desktop table shows each line's allergy", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "the table is the desktop's");
+  const o = he.design.orderTaking;
+  await page.goto("/design/order-taking/mine");
+  const table = page.getByRole("table", { name: o.mine.tableTitle });
+  await expect(table).toBeVisible();
+  await expect(
+    table.getByText(
+      heT("design.orderTaking.line.allergy", { allergy: "שומשום" }),
+    ),
+  ).toBeVisible();
+  await expect(
+    table.getByText(heT("design.orderTaking.line.note", { note: "בלי שום" })),
+  ).toBeVisible();
 });
