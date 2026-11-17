@@ -3,6 +3,13 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-17 · chat · lists: a reading back inside its range settles its line
+
+- On chat/lists-range-settles on main (684962a: L6b-2 merged as #184 and migrated). Orel answered the L6 questions at the end of the run: the third, "סגירת ההתראה כשתיקון מחזיר לטווח", yes; the rest as applied (a fix keeps the list closed, one day by default, a replaced photo removed, a named role on workers following workers, the history keeping earlier text, "מי שכבר לא בצוות", the 2-minute fold, a manager out of a department not getting its lines back, pay access by a named role a note only).
+- Migration `20261117000100_lists_range_settles.sql`: `private.write_list_item` replaced from L6b-2's body (diffed: one block more) settles `list.range:<item>` through `private.resolve_notifications` when a new reading is inside the item's range, for set_list_item and fix_list_item alike. An emptied reading leaves the line; outside again realerts it (`private.notify`). No new log row, key or word; the domain's kind comment says it.
+- Tests: `lists_range_settles.test.sql` (13).
+- Next: chat, by #1's order.
+
 ## 2026-11-17 · chat · lists: the switch "תיקון רשימות שנסגרו" for any role (L6b-2)
 
 - On chat/lists-fix-switch on main (541aab0: L6b-1 merged as #183 and migrated). The L6 plan's L6b-2, the answer to Orel's question of 16 November 2026: a role like "עובד בכיר" gets the warehouse and kitchen lists every day, shared so one person's fill closes them for all, and fixes them afterwards, with who changed what in view. Defaults on Orel's open questions, applied until he answers at the end: a fix keeps the list closed (Q1); someone given the switch fixes a list that reaches them for `fixHours` after it closed, an owner-level lists setting of 2, 12, 24 or 72 hours, 24 by default, while those who run the lists fix at any time (Q2); the history keeps earlier text (Q3). The switch never reopens a list: that stays the finisher's five minutes, or lists.manage.

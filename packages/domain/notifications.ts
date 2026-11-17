@@ -402,7 +402,8 @@ export const NOTIFICATION_KINDS = {
     byApp: true,
   },
   // A reading outside its range, to those who run the lists, as
-  // `lists.late_team`.
+  // `lists.late_team`. Settled once a reading of the item is back inside it
+  // (Orel, 17 November 2026), and open again if it leaves again.
   "lists.out_of_range": {
     group: "lists",
     module: "lists",
