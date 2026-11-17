@@ -639,6 +639,26 @@ export function ActivityView({
         );
       case "clock.code.locked":
         return plain(t("actions.clock.codeLocked"));
+      // The stations are listed on the team's hours, where they are stopped.
+      case "clock.station.add":
+        return plain(
+          t("actions.clock.stationAdd", { name: line.name }),
+          paths.clockTeam,
+        );
+      case "clock.station.stop":
+        return plain(
+          line.name
+            ? t("actions.clock.stationStop", { name: line.name })
+            : t("actions.clock.stationStopPlain"),
+          paths.clockTeam,
+        );
+      case "clock.station.restart":
+        return plain(
+          line.name
+            ? t("actions.clock.stationRestart", { name: line.name })
+            : t("actions.clock.stationRestartPlain"),
+          paths.clockTeam,
+        );
       case "profile.bio_cleared":
         // Never the line itself: the log keeps who and when only.
         return plain(

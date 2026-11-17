@@ -63,6 +63,14 @@ describe("proxy", () => {
     }
   });
 
+  it("refreshes a session left on a clock station, without guarding it", () => {
+    // /station is for a device with nobody signed in, so never PRIVATE; in
+    // the matcher, a session left on it is renewed and seen as one, and no
+    // code shows beside it.
+    expect(source).toContain('"/station/:path*"');
+    expect(source).not.toContain('"/station",');
+  });
+
   it("guards the admin console", () => {
     expect(source).toContain(`"/admin",`);
     expect(source).toContain(`"/admin/:path*"`);

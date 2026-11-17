@@ -22,6 +22,9 @@ const BUSINESSES_TWINS = [
  */
 const SHOP_TWINS = ["/design/shell/schedule/build/running"];
 
+/** The clock station's twin: outside the frame, as /station is outside the app's. */
+const STATION_TWIN = "/design/shell/station";
+
 /**
  * The demo's shell. Home carries what needs Shiran in her inbox, as the app's
  * Home does, except while the demo views the business as a role: in the app
@@ -29,7 +32,7 @@ const SHOP_TWINS = ["/design/shell/schedule/build/running"];
  * the switcher's twins the shell is the demo's accountant's: her name and
  * role at the foot of the sidebar, an accountant's tabs (Home and the hours
  * for pay, nothing of the staff's), and the business's name as a menu of
- * her businesses.
+ * her businesses. The clock station's twin has no shell at all.
  */
 export function DemoShell({
   homeCount,
@@ -47,6 +50,7 @@ export function DemoShell({
   shopName: string;
 }) {
   const pathname = usePathname();
+  if (pathname === STATION_TWIN) return props.children;
   if (BUSINESSES_TWINS.includes(pathname)) {
     return (
       <AppShell

@@ -45,6 +45,17 @@ const PAGES = [
   "/design/shell/clock?code=on",
   "/design/shell/clock?state=working&code=on",
   "/design/shell/clock/code",
+  // The clock station (#78 phase 5): running, refused a code while running,
+  // a device that isn't one, one stopped, and someone signed in on it who
+  // locks it again, can't with ten running, or doesn't.
+  "/design/shell/station",
+  "/design/shell/station?state=clockOff",
+  "/design/shell/station?state=managerOnly",
+  "/design/shell/station?state=new",
+  "/design/shell/station?state=stopped",
+  "/design/shell/station?state=signedIn",
+  "/design/shell/station?state=signedInFull",
+  "/design/shell/station?state=signedInWorker",
   "/design/shell/clock/history",
   "/design/shell/clock/history?state=empty",
   "/design/shell/clock/history?estimate=off",
@@ -1144,6 +1155,78 @@ test("the clock demo lists a cancelled shift with who, when and why", async ({
       .filter({ visible: true })
       .first(),
   ).toBeVisible();
+});
+
+// The clock station (#78 phase 5) on its twins: the code screen locks the
+// device into a station, which shows the code with nobody's name and no
+// frame, and the team's hours stop a station at once with "ביטול".
+test("the station demo locks the device on the code, and the team's hours stop a station with a way back", async ({
+  page,
+}) => {
+  const lock = he.app.clock.station.lock;
+  const listed = he.app.clock.team.stations;
+
+  await page.goto("/design/shell/clock/code");
+  await page.getByRole("button", { name: lock.open }).click();
+  const sheet = page.getByRole("dialog", { name: lock.title });
+  // Three run in the demo, the third called "עמדת שעון 3": the next is 4.
+  await expect(sheet.getByLabel(lock.name)).toHaveValue(
+    lock.defaultName.replace("{n}", "4"),
+  );
+  await expectCleanPage(page, "", true);
+  await sheet.getByRole("button", { name: lock.submit }).click();
+  await expect(page).toHaveURL(/\/design\/shell\/station$/);
+  await expect(
+    page.getByRole("img", { name: he.app.clock.code.qrLabel }),
+  ).toBeVisible();
+  await expect(page.getByText(/^\d{3} \d{3}$/)).toBeVisible();
+  // No frame: nobody is signed in on a station to have one.
+  await expect(
+    page.getByRole("navigation", { name: he.ui.appShell.mainNav }),
+  ).toHaveCount(0);
+
+  // Signed in on a device that is no station, with ten running: it says why
+  // it can't be one, offers nothing it can't do, and home is the way on.
+  const signedIn = he.station.signedIn;
+  await page.goto("/design/shell/station?state=signedInFull");
+  await expect(
+    page.getByText(heT("app.clock.station.lock.full", { count: 10 })),
+  ).toBeVisible();
+  await expect(page.getByText(signedIn.lockNew)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: signedIn.lock })).toHaveCount(
+    0,
+  );
+  await expect(page.getByRole("link", { name: signedIn.home })).toBeVisible();
+  // Where it can be locked, it says so, and locking is the main action.
+  await page.goto("/design/shell/station?state=signedIn");
+  await expect(page.getByText(signedIn.lockAgain)).toBeVisible();
+  await expect(page.getByRole("button", { name: signedIn.lock })).toBeVisible();
+
+  await page.goto("/design/shell/clock/team");
+  const name = "טאבלט המטבח";
+  // Each says whether it shows the code now, or when it last did.
+  const stations = page
+    .getByRole("main")
+    .locator("section")
+    .filter({ has: page.getByRole("heading", { name: listed.title }) });
+  await expect(stations.getByText(listed.showing)).toBeVisible();
+  await expect(stations.getByText("23:12")).toBeVisible();
+  await expect(stations.getByText(listed.never)).toBeVisible();
+  const stop = page.getByRole("button", {
+    name: listed.stopLabel.replace("{name}", name),
+  });
+  await stop.click();
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: listed.stopped.replace("{name}", name) })
+    .getByRole("button", { name: listed.undo });
+  await expect(undo).toBeVisible();
+  await expect(stop).toHaveCount(0);
+  await undo.click();
+  await expect(
+    page.getByText(listed.restarted.replace("{name}", name)),
+  ).toBeVisible();
+  await expect(stop).toBeVisible();
 });
 
 // Cancelling and bringing back (the clock plan's PR4), on the demo's

@@ -25,6 +25,7 @@ const SWAP = "88888888-8888-4888-8888-888888888888";
 const GONE = "99999999-9999-4999-8999-999999999999";
 const KITCHEN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const LIST = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const STATION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const lookups: ActivityLookups = {
   members: new Map([
@@ -57,6 +58,7 @@ const lookups: ActivityLookups = {
     ],
   ]),
   departments: new Map([[KITCHEN, "Kitchen"]]),
+  stations: new Map([[STATION, "Entrance"]]),
 };
 
 let nextId = 1000;
@@ -666,6 +668,42 @@ describe("buildActivity: each action", () => {
     });
     for (const details of [{ person: 5 }, "x", null]) {
       expect(lineOf(row("clock.code.locked", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("reads a clock station left, by its name, and stopped or started again by the station's", () => {
+    expect(
+      lineOf(
+        row("clock.station.add", { station: STATION, name: " Entrance " }),
+      ),
+    ).toEqual({ action: "clock.station.add", name: "Entrance" });
+    for (const action of ["clock.station.stop", "clock.station.restart"]) {
+      expect(lineOf(row(action, { station: STATION }))).toEqual({
+        action,
+        name: "Entrance",
+      });
+      expect(lineOf(row(action, { station: STATION.toUpperCase() }))).toEqual({
+        action,
+        name: "Entrance",
+      });
+      // Not one the reader may read (the clock off, or not theirs to edit).
+      expect(lineOf(row(action, { station: GONE }))).toEqual({
+        action,
+        name: null,
+      });
+      for (const details of [{}, { station: 5 }, "x", null]) {
+        expect(lineOf(row(action, details))).toEqual({ action: "other" });
+      }
+    }
+    for (const details of [
+      { station: STATION },
+      { station: STATION, name: "  " },
+      { station: STATION, name: 5 },
+      null,
+    ]) {
+      expect(lineOf(row("clock.station.add", details))).toEqual({
         action: "other",
       });
     }
@@ -2298,6 +2336,7 @@ describe("activityRefs", () => {
       shifts: [SHIFT],
       swaps: [SWAP],
       departments: [KITCHEN, GONE],
+      stations: [],
     });
   });
 
@@ -2313,7 +2352,19 @@ describe("activityRefs", () => {
       shifts: [],
       swaps: [],
       departments: [],
+      stations: [],
     });
+  });
+
+  it("looks up the station a stop or a restart names, and none an add keeps by name", () => {
+    expect(
+      activityRefs([
+        row("clock.station.add", { station: SHIFT, name: "Entrance" }, NOA),
+        row("clock.station.stop", { station: STATION }, YOAV),
+        row("clock.station.restart", { station: STATION.toUpperCase() }, YOAV),
+        row("clock.station.stop", { station: "not an id" }, YOAV),
+      ]).stations,
+    ).toEqual([STATION]);
   });
 });
 

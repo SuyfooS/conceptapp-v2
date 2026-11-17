@@ -117,6 +117,11 @@ export type ActivityLookups = {
   >;
   /** The business's departments, removed ones too, by id: their names. */
   departments: ReadonlyMap<string, string>;
+  /**
+   * The business's clock stations, stopped ones too, by id: their names, as
+   * the reader may read them (whoever edits the clock, with the clock on).
+   */
+  stations: ReadonlyMap<string, string>;
 };
 
 export const DETAIL_KEYS = [
@@ -285,6 +290,19 @@ export type ActivityLine =
   | { action: "clock.confirm"; person: ActivityPerson }
   /** Typing the clock's code was blocked after too many wrong tries; the actor is who typed. */
   | { action: "clock.code.locked" }
+  /**
+   * Someone who edits the clock left the device they were on as a clock
+   * station (#78 phase 5), by the name they gave it.
+   */
+  | { action: "clock.station.add"; name: string }
+  /**
+   * A station stopped, or started again in the two minutes after; its name
+   * where the reader may read the station, else null.
+   */
+  | {
+      action: "clock.station.stop" | "clock.station.restart";
+      name: string | null;
+    }
   | {
       action: "invite.create" | "invite.send" | "invite.cancel";
       name: string | null;
@@ -814,6 +832,10 @@ const schemas = {
   }),
   "clock.confirm": z.object({ person: id }),
   "clock.code.locked": z.object({ person: id.optional() }),
+  // 20261108000200_qr_clock.sql: the add keeps the name, a stop or restart
+  // the station alone.
+  "clock.station.add": z.object({ station: id, name: z.string() }),
+  "clock.station.stop": z.object({ station: id }),
   // A role the business named, by its name then (20261115001600_named_roles_give.sql).
   invite: z.object({
     invite: id,
@@ -1298,6 +1320,22 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       return read(schemas["clock.code.locked"])
         ? { action: row.action }
         : other;
+    case "clock.station.add": {
+      const details = read(schemas["clock.station.add"]);
+      return details?.name.trim()
+        ? { action: row.action, name: details.name.trim() }
+        : other;
+    }
+    case "clock.station.stop":
+    case "clock.station.restart": {
+      const details = read(schemas["clock.station.stop"]);
+      return details
+        ? {
+            action: row.action,
+            name: lookups.stations.get(details.station.toLowerCase()) ?? null,
+          }
+        : other;
+    }
     case "invite.create":
     case "invite.send":
     case "invite.cancel": {
@@ -1737,6 +1775,7 @@ export function activityRefs(rows: readonly ActivityRow[]) {
   const shifts = new Set<string>();
   const swaps = new Set<string>();
   const departments = new Set<string>();
+  const stations = new Set<string>();
   const add = (set: Set<string>, value: unknown) => {
     if (isUuid(value)) set.add(value.toLowerCase());
   };
@@ -1767,6 +1806,12 @@ export function activityRefs(rows: readonly ActivityRow[]) {
       add(people, details.data.author);
       add(departments, details.data.department);
     }
+    if (
+      row.action === "clock.station.stop" ||
+      row.action === "clock.station.restart"
+    ) {
+      add(stations, details.data.station);
+    }
     if (row.action === "lists.send") {
       const recipient = fields.safeParse(details.data.recipient);
       if (recipient.success) {
@@ -1782,6 +1827,7 @@ export function activityRefs(rows: readonly ActivityRow[]) {
     shifts: [...shifts],
     swaps: [...swaps],
     departments: [...departments],
+    stations: [...stations],
   };
 }
 

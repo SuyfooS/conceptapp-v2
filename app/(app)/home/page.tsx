@@ -9,6 +9,7 @@ import { currentChatHome } from "../chat/chat";
 import { currentDocumentsHome } from "../chat/documents/documents";
 import { currentClockLine } from "../clock/clock";
 import { currentPayHome } from "../clock/pay/pay";
+import { currentStationReminder } from "../clock/station/station";
 import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
 import { currentListsHome } from "../lists/lists";
@@ -58,6 +59,7 @@ export default async function HomePage() {
     documents,
     wording,
     businesses,
+    lock,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -73,6 +75,7 @@ export default async function HomePage() {
     currentDocumentsHome(),
     currentWording(),
     currentBusinesses(),
+    currentStationReminder(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -114,6 +117,8 @@ export default async function HomePage() {
         lists,
         chat,
         documents,
+        // This device is the business's clock station, unlocked: lock it again.
+        station: lock,
       }}
     />
   );

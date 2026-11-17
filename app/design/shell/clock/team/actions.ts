@@ -1,6 +1,7 @@
 "use server";
 
 import { addDays, instantIn } from "@domain/availability";
+import type { StationStopResult } from "@domain/clock-station";
 import {
   parseBreakTimes,
   parseEntryTimes,
@@ -172,5 +173,19 @@ export async function demoRemoveBreak(
 export async function demoRestoreBreak(
   _breakId: string,
 ): Promise<EntryActionResult> {
+  return { ok: true };
+}
+
+/** Stopping a station stores nothing: the demo's list is the same on the next visit. */
+export async function demoStopStation(
+  _stationId: string,
+): Promise<StationStopResult> {
+  return { ok: true };
+}
+
+/** The toast's "ביטול": it shows the code again, as within the app's two minutes. */
+export async function demoRestartStation(
+  _stationId: string,
+): Promise<StationStopResult> {
   return { ok: true };
 }

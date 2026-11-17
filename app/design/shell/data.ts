@@ -469,6 +469,10 @@ export const demoActivityLookups: ActivityLookups = {
     ],
   ]),
   departments: new Map([["dep-kitchen", "מטבח"]]),
+  stations: new Map([
+    ["station-entrance", "עמדת הכניסה"],
+    ["station-kitchen", "טאבלט המטבח"],
+  ]),
 };
 
 const demoRow = (
@@ -483,6 +487,16 @@ const demoRow = (
 const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
 
 export const demoActivityRows: ActivityRow[] = [
+  // The entrance's tablet locked into the clock station from the code
+  // screen, and the kitchen's stopped from the team's hours (#78 phase 5),
+  // as approve_station_pairing and set_clock_station_stopped log them.
+  demoRow(141, "2026-11-04T15:30:00+02:00", "shiran", "clock.station.stop", {
+    station: "station-kitchen",
+  }),
+  demoRow(140, "2026-11-04T15:20:00+02:00", "shiran", "clock.station.add", {
+    station: "station-entrance",
+    name: "עמדת הכניסה",
+  }),
   // A shift recorded by mistake, cancelled with why, and a break pressed by
   // mistake, removed (the clock plan's PR1 and PR2), as cancel_time_entry and
   // remove_time_break log them: each leads to Yoav's hours of the month.

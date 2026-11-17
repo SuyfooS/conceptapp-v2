@@ -9,6 +9,7 @@ import { type NextRequest, NextResponse } from "next/server";
  * chat, the official documents' files and the admin console
  * (tooling/proxy.test.ts keeps both lists in step).
  * Everything else is public; chat's sync (/chat-sync) stays out on purpose.
+ * The clock station (/station) is public too, and in the matcher only.
  */
 const HOME = "/home";
 export const PRIVATE = [
@@ -77,6 +78,10 @@ export const config = {
     "/chat-files/:path*",
     "/document-files/:path*",
     "/admin/:path*",
+    // Public, and refreshed all the same: a session left on a clock station
+    // is renewed here and counted as one, never read as nobody (PRIVATE
+    // leaves it out, so a device with nobody signed in reaches it).
+    "/station/:path*",
     "/sign-in",
     "/enter",
   ],

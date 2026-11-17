@@ -562,6 +562,43 @@
       }
     }
   },
+  "station": {
+    "metaTitle": "Clock station",
+    "loading": "Loading the clock station",
+    "how": "Open ConceptApp on your phone, press the circle on the clock and point it at the code.",
+    "name": "Station: {name}",
+    "signIn": "Sign in to an account",
+    "checking": "Checking the station",
+    "offline": "No internet connection, so no code. Meanwhile, clock in on the phone without a code.",
+    "awakeOff": "The screen may turn off. To keep the code showing, lengthen the screen timeout in the device's settings.",
+    "refused": {
+      "clockOff": "The clock isn't on at this business right now, so there's no code.",
+      "managerOnly": "This business shows the code on a manager's phone only."
+    },
+    "notStation": {
+      "title": "This device isn't a clock station yet",
+      "body": "To leave it at the business as a clock station: sign in on it as an owner or a manager, open “Clock code” and press “Lock this device on the code”.",
+      "signIn": "Sign in"
+    },
+    "stopped": {
+      "title": "This device no longer shows the clock code",
+      "body": "An owner or a manager can lock it again from the clock code.",
+      "signIn": "Sign in"
+    },
+    "signedIn": {
+      "title": "This device is signed in to an account",
+      "body": "While someone is signed in here, the device doesn't show the clock code.",
+      "lockAgain": "When you're done, lock it again, and it shows the code again.",
+      "lockNew": "You can leave it now as the business's clock station.",
+      "lock": "Lock the device",
+      "home": "Go home"
+    },
+    "manifest": {
+      "name": "ConceptApp · Clock station",
+      "shortName": "Clock station",
+      "description": "The business's clock code, for clocking in and out."
+    }
+  },
   "app": {
     "loading": "Loading",
     "signOut": "Sign out",
@@ -1594,6 +1631,27 @@
           "approveLabel": "Approve {name}'s hours",
           "fixLabel": "Fix {name}'s hours",
           "done": "Hours approved"
+        },
+        "stations": {
+          "title": "Clock stations",
+          "showing": "Showing the code now",
+          "seenToday": "Last seen at <ltr>{time}</ltr>",
+          "seenOn": "Last seen on {day}, <ltr>{time}</ltr>",
+          "never": "Hasn't shown a code yet",
+          "stop": "Stop the station",
+          "stopLabel": "Stop the station {name}",
+          "stopped": "The station “{name}” was stopped",
+          "restarted": "The station “{name}” shows the code again",
+          "undo": "Undo",
+          "howTo": "To leave a tablet at the business as a clock station: sign in on it, open “Clock code” and press “Lock this device on the code”.",
+          "noneManagerOnly": "No clock stations are running. This business shows the code on a manager's phone only, so no stations are added.",
+          "failure": {
+            "gone": "This station no longer exists.",
+            "tooLate": "More than two minutes passed, so the station stays stopped. To bring it back, lock the device again from the clock code.",
+            "noAccess": "Clock stations are no longer yours to manage.",
+            "viewOnly": "No station is stopped in view mode.",
+            "failed": "That didn't work. You can try again."
+          }
         }
       },
       "breakNote": "A break needs no code. Leaving the shift needs a code again.",
@@ -1658,6 +1716,36 @@
         "fullScreen": "Full screen",
         "exitFullScreen": "Exit full screen",
         "viewOnly": "No code is shown in view-only mode."
+      },
+      "station": {
+        "lock": {
+          "hint": "A tablet left at the business can show the code by itself, without your account.",
+          "open": "Lock this device on the code",
+          "title": "Leave this device as a clock station",
+          "onlyCode": "The device will show only the clock code, without your account.",
+          "signInAgain": "To use your account here again, you sign in again with a code sent to your phone.",
+          "ownPhone": "On your own phone you stay signed in.",
+          "name": "Station name",
+          "nameHint": "This is how it shows in the team's hours.",
+          "defaultName": "Clock station {n}",
+          "same": "This device is already the clock station “{name}”, and it will show the code again.",
+          "submit": "Lock the device",
+          "close": "Close",
+          "full": "The business already runs {count, plural, one {one clock station} other {# clock stations}}, the most it can. To add one, stop one of them in the team's hours.",
+          "failure": {
+            "tooManyStations": "The business already runs {count, plural, one {one clock station} other {# clock stations}}. To add one, stop one of them in the team's hours.",
+            "managerOnly": "This business shows the code on a manager's phone only, so it has no clock stations.",
+            "name": "The station needs a name, up to 40 characters.",
+            "busy": "We couldn't lock the device just now. You can try again in a few minutes.",
+            "noAccess": "Locking a device on the code is no longer yours to do.",
+            "viewOnly": "No device is locked in view mode.",
+            "failed": "We couldn't lock the device. You can try again."
+          }
+        },
+        "reminder": {
+          "body": "This device is the business's clock station. When you're done, lock it again.",
+          "lock": "Lock the device"
+        }
       },
       "ownWage": {
         "title": "Your hourly wage: <ltr>{amount}</ltr>",
@@ -2501,6 +2589,11 @@
             "hours": "Hours",
             "confirm": "Approved {person}'s hours",
             "codeLocked": "Typing the clock code was blocked after wrong tries",
+            "stationAdd": "Left a device as a clock station: {name}",
+            "stationStop": "Stopped the clock station “{name}”",
+            "stationStopPlain": "Stopped a clock station",
+            "stationRestart": "Brought back the clock station “{name}” after it was stopped",
+            "stationRestartPlain": "Brought back a stopped clock station",
             "reason": "Reason: {note}",
             "breakFit": "{kind, select, removed {Removed {count, plural, one {a break} other {# breaks}}} ended {Ended {count, plural, one {an open break} other {# open breaks}}} cut {Shortened {count, plural, one {a break} other {# breaks}}} other {Changed {count, plural, one {a break} other {# breaks}}}} when fixing {person}'s shift on {day}",
             "breakOpen": "from <ltr>{in}</ltr>, not ended",
