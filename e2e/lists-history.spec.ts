@@ -2,6 +2,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
+  closeDemoList,
   demoListItem,
   endViewSessions,
   resetDemoLists,
@@ -20,6 +21,7 @@ import { heT } from "./t";
 // keeps who ticked first; the team viewing the business reads the same story.
 const NOA = { local: "050-000-0003", e164: "+972500000003" };
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
+const OWNER = { local: "050-000-0001", e164: "+972500000001" };
 const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 
 const OPENING = "פתיחת מטבח";
@@ -27,6 +29,7 @@ const FRIDGE = "מקרר ראשי";
 const DATES = "בדיקת תאריכים ותוויות";
 const NOA_NAME = "נועה כהן";
 const SHIRAN_NAME = "שירן הדגמה";
+const URI_NAME = "אורי הדגמה";
 const NOTE = "הדלת נשארה פתוחה";
 
 const l = he.app.lists;
@@ -212,5 +215,38 @@ test("the team viewing as a manager reads an item's story", async ({
   const sheet = storySheet(page);
   await expect(sheet).toContainText(NOA_NAME);
   await expect(sheet).toContainText(SHIRAN_NAME);
+  await expectCleanPage(page);
+});
+
+test("a list's timeline keeps the close a reopen undid, and leaves out an undo", async ({
+  page,
+}) => {
+  // Shiran cancels the opening list and Uri brings it back; then Shiran
+  // cancels it again and takes it back herself within the undo's minutes.
+  const start = Date.now();
+  const at = (minutes: number) => new Date(start + minutes * 60_000);
+  await closeDemoList(MANAGER.e164, OPENING, "cancel", at(1));
+  await closeDemoList(OWNER.e164, OPENING, "reopen", at(2));
+  await closeDemoList(MANAGER.e164, OPENING, "cancel", at(3));
+  await closeDemoList(MANAGER.e164, OPENING, "reopen", at(4));
+
+  await signIn(page, NOA);
+  await openOpening(page);
+  // On a phone the timeline is folded at the end.
+  const fold = page
+    .locator("summary")
+    .filter({ hasText: l.list.timeline.title })
+    .filter({ visible: true });
+  if ((await fold.count()) > 0) await fold.click();
+
+  // Each line up to its time.
+  const line = (text: string, name: string) =>
+    page
+      .getByText(fill(text.split(", ב-")[0] ?? text, { name }))
+      .filter({ visible: true });
+  await expect(line(l.list.timeline.cancelled, SHIRAN_NAME)).toHaveCount(1);
+  await expect(line(l.list.timeline.restored, URI_NAME)).toHaveCount(1);
+  // The undo says neither its cancel nor its bringing back.
+  await expect(line(l.list.timeline.restored, SHIRAN_NAME)).toHaveCount(0);
   await expectCleanPage(page);
 });
