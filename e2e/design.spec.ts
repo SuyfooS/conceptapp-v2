@@ -125,6 +125,10 @@ const PAGES = [
   "/design/shell/manage/roles",
   // The role the business named, opened first: on a phone, its own screen.
   "/design/shell/manage/roles?role=shift-lead",
+  // Orel's case (L6b-2): "עובד בכיר" on workers, lists at view with fixing
+  // closed lists on, also opened first.
+  "/design/shell/manage/roles?state=senior",
+  "/design/shell/manage/roles?state=senior&role=senior",
   "/design/shell/lists",
   "/design/shell/lists?sent=list-floor-opening",
   "/design/shell/lists?department=dep-bar",
@@ -132,6 +136,8 @@ const PAGES = [
   "/design/shell/lists/worker",
   // A worker raised to lists edit without sending (R5): who sends.
   "/design/shell/lists/worker?state=edits",
+  // Given fixing closed lists (L6b-2): yesterday's list still to fix.
+  "/design/shell/lists/worker?state=fixable",
   "/design/shell/lists/empty",
   "/design/shell/lists/empty?as=business",
   "/design/shell/lists/list-kitchen-opening",
@@ -152,6 +158,8 @@ const PAGES = [
   "/design/shell/lists/list-kitchen-opening?state=fix",
   "/design/shell/lists/list-kitchen-opening?state=fixed",
   "/design/shell/lists/today?state=fixed",
+  // The same close for someone given fixing closed lists (L6b-2), for a day.
+  "/design/shell/lists/list-kitchen-opening?state=fix-worker",
   // A list to a role the business named (R11d).
   "/design/shell/lists/list-shift-opening",
   "/design/shell/lists/today",
@@ -1726,6 +1734,198 @@ test("the fix demo fixes a closed list in place and marks what was fixed", async
       .filter({ visible: true })
       .first(),
   ).toBeVisible();
+});
+
+// Fixing closed lists at view (L6b-2), for Omer of the kitchen, in "עובד
+// בכיר": the hero says until when, a day after Noa closed it; being fixed,
+// the card has no way to open it again for everyone, and a required reading
+// refused empty says to ask whoever runs the lists. His fix is his.
+test("the fix demo for a role given fixing closed lists fixes for a day, never opening it for everyone", async ({
+  page,
+}) => {
+  const l = he.app.lists.list;
+  const main = page.getByRole("main");
+  const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const plain = (text: string, values: Record<string, string>) =>
+    Object.entries(values).reduce(
+      (out, [key, value]) => out.replaceAll(`{${key}}`, value),
+      text.replaceAll(/<\/?ltr>/g, ""),
+    );
+  const path = "/design/shell/lists/list-kitchen-opening?state=fix-worker";
+
+  await page.goto(path);
+  const hero = main.getByRole("region", { name: l.progressLabel });
+  await expect(hero).toContainText("נועה כהן");
+  await expect(hero).toContainText(
+    plain(l.fix.untilOn, { date: "4.11", time: "08:05" }),
+  );
+  await expect(
+    main.getByRole("button", { name: l.reopen, exact: true }),
+  ).toHaveCount(0);
+  await expectCleanPage(page, path);
+
+  await main.getByRole("button", { name: l.fix.action }).click();
+  const card = main.getByRole("region", { name: l.fix.title });
+  await expect(card).toContainText("נועה כהן");
+  await expect(card.getByRole("button", { name: l.fix.reopenAll })).toHaveCount(
+    0,
+  );
+  const freezer = main.getByLabel(l.readingOf.replace("{label}", "מקפיא"));
+  await freezer.fill("");
+  await freezer.press("Enter");
+  await expect(
+    page.getByRole("status").filter({ hasText: l.failed.keepRequiredAsk }),
+  ).toBeVisible();
+  await expect(freezer).toHaveValue("12");
+  await freezer.fill("19");
+  await freezer.press("Enter");
+  const story = main
+    .getByRole("button", {
+      name: new RegExp(
+        `^${literal(heT("app.lists.list.history.open", { label: "מקפיא" }))}:\\s`,
+      ),
+    })
+    .filter({ visible: true })
+    .first();
+  await expect(story).toContainText(l.fix.item);
+  await expect(story).toContainText("עומר אזולאי");
+  await expectCleanPage(page, path);
+});
+
+// "עוד אפשר לתקן" (L6b-2): Noa, given fixing closed lists, has yesterday's
+// opening, which she closed, after today's closed lists, while its day
+// lasts; without it there is no such section.
+test("the lists demo keeps yesterday's closed list to fix for whoever may", async ({
+  page,
+}) => {
+  const main = page.getByRole("main");
+  const title = heT("app.lists.fixable.title", { count: 1 });
+  // Yesterday's opening, apart from this morning's of the same name.
+  const yesterday = main
+    .locator('a[href$="/lists/list-kitchen-opening-mon"]')
+    .filter({ visible: true });
+  await page.goto("/design/shell/lists/worker?state=fixable");
+  await expect(
+    main
+      .getByRole("heading", { level: 2, name: title })
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    main.getByText(he.app.lists.fixable.hint).filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(yesterday).toHaveCount(1);
+  // It says the day it closed, beside today's of the same name, and until
+  // when it can be fixed, this morning.
+  const plain = (text: string, values: Record<string, string>) =>
+    Object.entries(values).reduce(
+      (out, [key, value]) => out.replaceAll(`{${key}}`, value),
+      text.replaceAll(/<\/?ltr>/g, ""),
+    );
+  await expect(
+    main
+      .getByText(
+        plain(he.app.lists.card.finishedByOn, {
+          date: "2.11",
+          time: "08:20",
+          name: "נועה כהן",
+        }),
+      )
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await expect(
+    main
+      .getByText(plain(he.app.lists.list.fix.until, { time: "08:20" }))
+      .filter({ visible: true }),
+  ).toHaveCount(1);
+  await page.goto("/design/shell/lists/worker");
+  await expect(
+    main.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(main.getByText(title)).toHaveCount(0);
+  await expect(yesterday).toHaveCount(0);
+});
+
+// Orel's case on the roles twin (L6b-2): "עובד בכיר" keeps lists at view
+// with "תיקון רשימות שנסגרו" on, marked "שונה" against workers. The switch
+// changes at view, with its own toast and undo; raising lists to edit holds
+// it, on and locked, "כלול בעריכה", and says only what raising always said.
+// Nothing is stored.
+test("the roles demo gives a senior role fixing closed lists at view, which edit covers", async ({
+  page,
+}, testInfo) => {
+  const r = he.app.manage.roles;
+  const lists = he.modules.lists.name;
+  const senior = "עובד בכיר";
+  const main = page.getByRole("main");
+  const fix = (role: string) =>
+    main
+      .getByRole("switch", {
+        name: heT("app.manage.roles.extraLabel", {
+          extra: r.extras.lists.fix.label,
+          role,
+        }),
+      })
+      .filter({ visible: true });
+  const edit = main
+    .getByRole("switch", {
+      name: heT("app.manage.roles.editLabel", { area: lists, role: senior }),
+    })
+    .filter({ visible: true });
+  const covered = main
+    .getByText(r.coveredByEdit, { exact: true })
+    .filter({ visible: true });
+  const toast = (text: string) =>
+    main.getByRole("status").filter({ hasText: text });
+
+  const path = "/design/shell/manage/roles?state=senior&role=senior";
+  await page.goto(path);
+  await expect(edit).toHaveAttribute("aria-checked", "false");
+  await expect(fix(senior)).toHaveAttribute("aria-checked", "true");
+  await expect(fix(senior)).toBeEnabled();
+  if (testInfo.project.name === "desktop") {
+    // Workers start without it, live at view; managers hold it with edit.
+    await expect(fix(he.app.team.roles.worker)).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await expect(fix(he.app.team.roles.worker)).toBeEnabled();
+    await expect(fix(he.app.team.roles.manager)).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    await expect(fix(he.app.team.roles.manager)).toBeDisabled();
+  }
+  await expectCleanPage(page, path);
+
+  await fix(senior).click();
+  await expect(fix(senior)).toHaveAttribute("aria-checked", "false");
+  const off = toast(
+    heT("app.manage.roles.done.extraOff", {
+      role: senior,
+      extra: r.extras.lists.fix.phrase,
+    }),
+  );
+  await expect(off).toBeVisible();
+  await off.getByRole("button", { name: he.app.manage.undo }).click();
+  await expect(toast(r.done.undone)).toBeVisible();
+  await expect(fix(senior)).toHaveAttribute("aria-checked", "true");
+
+  const coveredBefore = await covered.count();
+  await edit.click();
+  await expect(edit).toHaveAttribute("aria-checked", "true");
+  await expect(fix(senior)).toHaveAttribute("aria-checked", "true");
+  await expect(fix(senior)).toBeDisabled();
+  await expect(covered).toHaveCount(coveredBefore + 1);
+  await expect(
+    toast(
+      heT("app.manage.roles.done.editWith", {
+        role: senior,
+        area: lists,
+        extras: r.extras.lists.send.phrase,
+      }),
+    ),
+  ).toBeVisible();
+  await expectCleanPage(page, path);
 });
 
 // In a demo business, which takes no photos (L6), the template editor keeps a

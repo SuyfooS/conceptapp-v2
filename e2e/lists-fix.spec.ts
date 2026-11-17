@@ -3,6 +3,7 @@ import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
   backdateDemoListFinish,
+  backdateDemoListOpening,
   demoListClose,
   demoListItem,
   demoLists,
@@ -11,6 +12,7 @@ import {
   reopenDemoList,
   resetDemoLists,
   setDemoListItem,
+  setDemoWorkersFix,
 } from "./db";
 import { signIn } from "./session";
 import { heT } from "./t";
@@ -271,4 +273,125 @@ test("a list opened again while it was being fixed is filled from there", async 
     logged: 0,
   });
   expect((await demoListItem(OPENING, FRIDGE))?.reading).toBe(30);
+});
+
+// The switch "תיקון רשימות שנסגרו" (L6b-2), on the same list: the demo
+// restaurant's workers given it (as an owner would on /manage/roles; the
+// roles spec drives that screen), Noa fixes the opening she closed, which
+// reaches her, until the business's day after the close (fixHours, 24 by
+// default), and never opens it again for everyone. Off again after each.
+test.describe("fixing closed lists at view", () => {
+  test.afterEach(async () => {
+    await setDemoWorkersFix(false);
+  });
+
+  test("a worker given it fixes yesterday's list from 'עוד אפשר לתקן', and asks to have a required item done again", async ({
+    page,
+  }) => {
+    await setDemoWorkersFix(true);
+    const id = await closedByNoa();
+    // It opened yesterday and closed ten minutes ago: no longer today's.
+    await backdateDemoListOpening(OPENING, 24);
+
+    await signIn(page, NOA);
+    await page.goto("/lists");
+    const main = page.getByRole("main");
+    await expect(
+      main
+        .getByRole("heading", {
+          level: 2,
+          name: heT("app.lists.fixable.title", { count: 1 }),
+        })
+        .filter({ visible: true }),
+    ).toHaveCount(1);
+    // Its card, or its row, says until when.
+    await expect(
+      main.getByText(opening(l.list.fix.until)).filter({ visible: true }),
+    ).toHaveCount(1);
+    await expectCleanPage(page);
+    await main
+      .locator(`a[href="/lists/${id}"]`)
+      .filter({ visible: true })
+      .first()
+      .click();
+    await expect(
+      page.getByRole("heading", { level: 1, name: OPENING }),
+    ).toBeVisible();
+
+    // Until when, a day after the close; no way to open it for everyone.
+    const hero = main.getByRole("region", { name: l.list.progressLabel });
+    await expect(hero).toContainText(NOA_NAME);
+    await expect(hero).toContainText(opening(l.list.fix.until));
+    await expect(visible(page, l.list.reopen)).toHaveCount(0);
+    await visible(page, l.list.fix.action).click();
+    const card = main.getByRole("region", { name: l.list.fix.title });
+    await expect(card).toContainText(NOA_NAME);
+    await expect(
+      card.getByRole("button", { name: l.list.fix.reopenAll }),
+    ).toHaveCount(0);
+    await expectCleanPage(page);
+
+    // A required reading emptied: ask whoever runs the lists.
+    const fridge = page.getByLabel(fill(l.list.readingOf, { label: FRIDGE }));
+    await fridge.fill("");
+    await fridge.press("Enter");
+    await expect(
+      page
+        .getByRole("status")
+        .filter({ hasText: l.list.failed.keepRequiredAsk }),
+    ).toBeVisible();
+    await expect(fridge).toHaveValue("30");
+
+    await fridge.fill("3");
+    await fridge.press("Enter");
+    await expect
+      .poll(async () => (await demoListItem(OPENING, FRIDGE))?.reading)
+      .toBe(3);
+    await visible(page, l.list.fix.done).click();
+    await expect(
+      page.getByRole("status").filter({ hasText: l.list.fix.saved }),
+    ).toBeVisible();
+    await expect(storyOf(page, FRIDGE).first()).toContainText(l.list.fix.item);
+    await expect(storyOf(page, FRIDGE).first()).toContainText(NOA_NAME);
+    expect(await demoListClose(OPENING)).toMatchObject({
+      status: "finished",
+      finishedBy: NOA.e164,
+      fixed: true,
+      fixes: 1,
+      logged: 1,
+    });
+  });
+
+  test("past the window there is no way to fix, and the list leaves 'עוד אפשר לתקן'", async ({
+    page,
+  }, testInfo) => {
+    test.skip(testInfo.project.name !== "tablet", "one run is enough");
+    await setDemoWorkersFix(true);
+    const id = await closedByNoa();
+    // Opened yesterday and closed 25 hours ago: past the day.
+    await backdateDemoListOpening(OPENING, 26);
+    await backdateDemoListFinish(OPENING, 25 * 60);
+
+    await signIn(page, NOA);
+    await page.goto(`/lists/${id}`);
+    const main = page.getByRole("main");
+    const hero = main.getByRole("region", { name: l.list.progressLabel });
+    await expect(hero).toContainText(NOA_NAME);
+    await expect(hero).not.toContainText(opening(l.list.fix.until));
+    // It says when the time ended, and who still fixes it.
+    await expect(hero).toContainText(opening(l.list.fix.over));
+    await expect(visible(page, l.list.fix.action)).toHaveCount(0);
+    await page.goto("/lists");
+    await expect(
+      page.getByRole("heading", { level: 1, name: l.title }),
+    ).toBeVisible();
+    await expect(
+      main.getByText(heT("app.lists.fixable.title", { count: 1 })),
+    ).toHaveCount(0);
+    // The database says why: the time is over.
+    await expect(
+      fixDemoListItem(NOA.e164, OPENING, FRIDGE, { reading: 3 }),
+    ).rejects.toThrow(/time to fix the list is over/);
+    expect((await demoListItem(OPENING, FRIDGE))?.reading).toBe(30);
+  });
 });

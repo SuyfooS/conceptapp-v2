@@ -118,6 +118,32 @@ describe("a role's change in words", () => {
     );
   });
 
+  // L6b-2: fixing closed lists, at view, in the roles screen's words.
+  it("says fixing closed lists on and off at view, and the lists' edit as before", () => {
+    const senior = { kind: "named" as const, name: "עובד בכיר" };
+    const on = say(
+      line("lists", { level: null, on: ["lists.fix"], off: [] }, senior),
+    );
+    expect(on).toEqual({
+      title: "ההרשאות בתפקיד עובד בכיר השתנו",
+      change: "מעכשיו גם תיקון רשימות שנסגרו",
+    });
+    expect(on.change).toBe(
+      fill(words.extraOn, { extras: roles.extras.lists.fix.phrase }),
+    );
+    expect(
+      say(line("lists", { level: null, on: [], off: ["lists.fix"] }, senior))
+        .change,
+    ).toBe("מעכשיו בלי תיקון רשימות שנסגרו");
+    // Raising and lowering the lists say what they said before.
+    expect(
+      say(line("lists", { level: "edit", on: ["lists.send"], off: [] })).change,
+    ).toBe("מעכשיו עורכים ברשימות, עם שליחת רשימות");
+    expect(
+      say(line("lists", { level: "view", on: [], off: ["lists.send"] })).change,
+    ).toBe("מעכשיו ברשימות רואים בלי לערוך, ובלי שליחת רשימות");
+  });
+
   it("names a role the business named, or the reader's own when the line lost it", () => {
     const edit: RoleLine["change"] = { level: "edit", on: [], off: [] };
     expect(

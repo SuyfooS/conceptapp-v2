@@ -82,7 +82,9 @@ export function TeamToday({
 
 /**
  * Lists: what is for the person now, most urgent first, the orders their
- * departments asked for that wait in another one, and what closed today.
+ * departments asked for that wait in another one, what closed today, and,
+ * for someone given "תיקון רשימות שנסגרו" (L6b-2), the lists of earlier days
+ * they may still fix, only when there are some.
  * Someone in more than one department chooses which one's lists show (L5).
  * Phone: one card under the other, today's closed ones folded. Tablet: now
  * beside closed. Desktop: tables. Whoever manages lists sees the business's
@@ -129,6 +131,7 @@ export function ListsView({
     data.open.length === 0 &&
     data.closed.length === 0 &&
     data.asked.length === 0 &&
+    data.fixable.length === 0 &&
     chosen === null;
 
   const cards = (lists: readonly ListSummary[]) => (
@@ -159,6 +162,32 @@ export function ListsView({
       <PageSection title={askedTitle}>
         <p className="-mt-1 px-1 text-ink-2 text-sm">{t("askedHint")}</p>
         {cards(data.asked)}
+      </PageSection>
+    ) : null;
+  // Lists of earlier days still to fix (L6b-2), after today's closed ones:
+  // the same cards on a phone and a tablet, a table on a computer, each
+  // saying until when.
+  const fixableTitle = t("fixable.title", { count: data.fixable.length });
+  const fixableHint = (
+    <p className="-mt-1 px-1 text-ink-2 text-sm">{t("fixable.hint")}</p>
+  );
+  const fixableUntil = Object.fromEntries(
+    data.fixable.map(({ list, until }) => [list.id, until]),
+  );
+  const fixable =
+    data.fixable.length > 0 ? (
+      <PageSection title={fixableTitle}>
+        {fixableHint}
+        <div className="flex flex-col gap-3">
+          {data.fixable.map(({ list, until }) => (
+            <ListCard
+              key={list.id}
+              list={list}
+              shown={shown}
+              fixUntil={until}
+            />
+          ))}
+        </div>
       </PageSection>
     ) : null;
   const filter = data.filter ? (
@@ -295,6 +324,7 @@ export function ListsView({
                 {data.closed.length > 0 ? cards(data.closed) : noneClosed}
               </div>
             </details>
+            {fixable}
           </div>
 
           {/* Tablet: what's open, and what waits elsewhere, beside what
@@ -306,11 +336,14 @@ export function ListsView({
               </PageSection>
               {asked}
             </div>
-            <PageSection
-              title={t("closedToday", { count: data.closed.length })}
-            >
-              {data.closed.length > 0 ? cards(data.closed) : noneClosed}
-            </PageSection>
+            <div className="flex min-w-0 flex-col gap-6">
+              <PageSection
+                title={t("closedToday", { count: data.closed.length })}
+              >
+                {data.closed.length > 0 ? cards(data.closed) : noneClosed}
+              </PageSection>
+              {fixable}
+            </div>
           </div>
 
           {/* Desktop: the full picture, as tables. */}
@@ -347,6 +380,17 @@ export function ListsView({
                 noneClosed
               )}
             </PageSection>
+            {data.fixable.length > 0 ? (
+              <PageSection title={fixableTitle}>
+                {fixableHint}
+                <ListTable
+                  lists={data.fixable.map(({ list }) => list)}
+                  shown={shown}
+                  caption={fixableTitle}
+                  fixUntil={fixableUntil}
+                />
+              </PageSection>
+            ) : null}
           </div>
         </>
       )}

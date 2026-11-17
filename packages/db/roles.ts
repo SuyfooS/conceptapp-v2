@@ -498,7 +498,9 @@ function roleFailure(error: {
  * between. A named role's rule without a row of its own is its base's
  * (`byDefault`), so putting a key back on it removes the row. An area not
  * open for changes writes nothing ("closed"), and one already so writes
- * nothing either; a named role archived meanwhile, nothing ("gone").
+ * nothing either; a named role archived meanwhile, nothing ("gone"). A
+ * switch the matrix doesn't list yet (its migration hasn't reached the
+ * project) neither closes its area (`areaOpen`) nor is written.
  */
 export async function setRoleArea(
   actorId: string,
@@ -530,15 +532,16 @@ export async function setRoleAreas(
   if (!rules)
     return { ok: false, failure: isBaseRole(role) ? "closed" : "gone" };
   const keys = new Map(matrix.keys.map((key) => [key.perm, key]));
-  const open = (area: AccessArea) =>
-    areaOpen(area, (perm) => keys.get(perm)?.settable === true);
-  if (!parts.every((part) => open(part.area))) {
+  if (!parts.every((part) => areaOpen(part.area, matrix.keys))) {
     return { ok: false, failure: "closed" };
   }
   const writes = areasWrites(parts, {
     given: (perm) => rules.given.has(perm),
     byDefault: (perm) => rules.byDefault.has(perm),
     requires: (perm) => keys.get(perm)?.requires ?? null,
+    // A switch the app has before its migration reaches the project: never
+    // written, as the screen doesn't draw it (`knownExtras`).
+    known: (perm) => keys.has(perm),
   });
   if (writes.length === 0) return { ok: true };
   const { error } = await createAdminClient().rpc("set_role_permissions", {

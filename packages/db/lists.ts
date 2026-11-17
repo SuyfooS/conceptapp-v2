@@ -348,38 +348,66 @@ async function openAndClosed(
  * one, and those that opened in the window and are closed. Not every list
  * they may read: a list manager reads them all. `asked` is the open orders
  * one of their departments asked for that another holds (L5), which they
- * follow from Lists.
+ * follow from Lists. With `fixableSince` (L6b-2: someone given "תיקון
+ * רשימות שנסגרו", the start of the business's window for it), also
+ * `fixable`: the finished lists they hold that opened before the window and
+ * were finished since then, the latest close first; the caller counts each
+ * one's own window (`fixDeadline`).
  */
 export async function getMyLists(
   businessId: string,
   person: { userId: string; role: Role; namedRole?: string | null },
   window: Window,
-): Promise<{ held: ListSummary[]; asked: ListSummary[] } | "notYet"> {
+  fixableSince: string | null = null,
+): Promise<
+  | { held: ListSummary[]; asked: ListSummary[]; fixable: ListSummary[] }
+  | "notYet"
+> {
   const supabase = await createClient();
-  const [[open, closed], departments] = await Promise.all([
+  const [[open, closed], departments, earlier] = await Promise.all([
     openAndClosed(supabase, businessId, window),
     supabase
       .from("department_members")
       .select("department_id")
       .eq("business_id", businessId)
       .eq("user_id", person.userId),
+    fixableSince === null
+      ? null
+      : supabase
+          .from("lists")
+          .select(LIST_COLUMNS)
+          .eq("business_id", businessId)
+          .eq("status", "finished")
+          .gte("finished_at", fixableSince)
+          .lt("opens_at", window.from)
+          .order("finished_at", { ascending: false }),
   ]);
-  for (const { error } of [open, closed, departments]) {
+  for (const { error } of [
+    open,
+    closed,
+    departments,
+    ...(earlier ? [earlier] : []),
+  ]) {
     if (error) {
       if (isMissingTable(error)) return "notYet";
       throw error;
     }
   }
+  const before = earlier?.data ?? [];
   const all = await summaries(supabase, [
     ...(open.data ?? []),
     ...(closed.data ?? []),
+    ...before,
   ]);
   if (all === "notYet") return all;
   const mine = {
     ...person,
     departments: (departments.data ?? []).map((row) => row.department_id),
   };
-  const held = all.filter((list) => holdsList(list.holder, mine));
+  const earlierIds = new Set(before.map((row) => row.id));
+  const theirs = all.filter((list) => holdsList(list.holder, mine));
+  const held = theirs.filter((list) => !earlierIds.has(list.id));
+  const fixable = theirs.filter((list) => earlierIds.has(list.id));
   const asked = all.filter(
     (list) =>
       list.status === "open" &&
@@ -387,7 +415,7 @@ export async function getMyLists(
       mine.departments.includes(list.fromDepartment) &&
       !holdsList(list.holder, mine),
   );
-  return { held, asked };
+  return { held, asked, fixable };
 }
 
 /**

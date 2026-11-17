@@ -2748,6 +2748,11 @@
               "label": "Sending lists",
               "phrase": "sending lists",
               "hint": "They send a list now to people, roles and departments. Without it they still set when templates open by themselves, and the lists go out at those times."
+            },
+            "fix": {
+              "label": "Fixing closed lists",
+              "phrase": "fixing closed lists",
+              "hint": "Even without editing: they fix a list that reached them after it closed, up to the time in the lists settings (a day, unless you changed it). The list stays closed, and every fix is saved with the name and the time."
             }
           },
           "chat": {
@@ -2764,6 +2769,7 @@
           }
         },
         "needsEdit": "Only with edit",
+        "coveredByEdit": "Included in edit",
         "changed": "Changed",
         "changedAreas": "{count, plural, one {One area changed} other {# areas changed}}",
         "reset": {
@@ -3386,6 +3392,10 @@
       "noneOpen": "Nothing is open for you right now.",
       "noneOpenBusiness": "No list is open in the business right now.",
       "noneClosed": "No list has closed today yet.",
+      "fixable": {
+        "title": "{count, plural, one {One closed list can still be fixed} other {# closed lists can still be fixed}}",
+        "hint": "Lists of earlier days that reached you. Each says until when."
+      },
       "asked": "{count, plural, one {One order waits in another department} other {# orders wait in other departments}}",
       "askedHint": "Orders your departments asked for, until they come back or are finished.",
       "noneOpenDepartment": "No open lists in this department right now.",
@@ -3461,6 +3471,7 @@
         "open": "Open",
         "progress": "{done} of {total}",
         "finishedBy": "Finished at <ltr>{time}</ltr> by {name}",
+        "finishedByOn": "Finished at <ltr>{date}, {time}</ltr> by {name}",
         "finished": "Finished",
         "fixed": "Fixed at <ltr>{time}</ltr>",
         "fixedOn": "Fixed at <ltr>{date}, {time}</ltr>",
@@ -3486,7 +3497,11 @@
           "done": "Finish fixing",
           "saved": "The fix was saved",
           "item": "Fixed after the close",
-          "badge": "After the close"
+          "badge": "After the close",
+          "until": "You can fix it until <ltr>{time}</ltr>",
+          "untilOn": "You can fix it until <ltr>{date}, {time}</ltr>",
+          "over": "The time to fix it ended at <ltr>{time}</ltr>. Whoever edits the lists can still fix it.",
+          "overOn": "The time to fix it ended at <ltr>{date}, {time}</ltr>. Whoever edits the lists can still fix it."
         },
         "optional": "Optional",
         "doneBy": "{name} · <ltr>{time}</ltr>",
@@ -3641,7 +3656,9 @@
           "failed": "Not saved. Check the connection and try again.",
           "businessChanged": "You switched business meanwhile, so the change wasn't saved. Load the screen again.",
           "keepRequired": "A required item of a closed list can be changed, but not undone or emptied. To have it done again: Open it again for everyone.",
-          "reopened": "The list was opened again meanwhile, so the change wasn't saved. You can fill it as usual now."
+          "keepRequiredAsk": "A required item of a closed list can be changed, but not undone or emptied. To have it done again, ask whoever edits the lists to open it again.",
+          "reopened": "The list was opened again meanwhile, so the change wasn't saved. You can fill it as usual now.",
+          "fixOver": "The time to fix this list is over. Whoever edits the lists can still fix it."
         }
       },
       "send": {
@@ -4808,6 +4825,16 @@
         "tellWhenFinished": {
           "label": "Tell when a list is finished",
           "hint": "Whoever sent a list, and the department that asked for it, hear when it's finished."
+        },
+        "fixHours": {
+          "label": "How long a closed list can be fixed",
+          "hint": "For roles given \"Fixing closed lists\" on Roles and permissions. Whoever edits the lists fixes them at any time.",
+          "options": {
+            "2": "Two hours",
+            "12": "12 hours",
+            "24": "A day",
+            "72": "3 days"
+          }
         },
         "photoDays": {
           "label": "How long photos are kept",

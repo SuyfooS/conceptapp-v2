@@ -709,6 +709,51 @@ export function undoDeadline(
     : new Date(until).toISOString();
 }
 
+/**
+ * The hours after a list closed that someone given "תיקון רשימות שנסגרו"
+ * (lists.fix, L6b-2) may still fix it, as the lists' `fixHours` setting
+ * offers them; anything else counts as `DEFAULT_FIX_HOURS`, as
+ * `private.list_fix_hours` reads it.
+ */
+export const FIX_HOURS = [2, 12, 24, 72] as const;
+export const DEFAULT_FIX_HOURS = 24;
+
+/** The window as `private.list_fix_hours` reads the setting. */
+export function fixWindowHours(stored: unknown): number {
+  return (FIX_HOURS as readonly unknown[]).includes(stored)
+    ? (stored as number)
+    : DEFAULT_FIX_HOURS;
+}
+
+/**
+ * Whether this person may fix a list in place now, and until when (L6b-2),
+ * as `private.can_fix_list` decides it: a finished list, by someone who runs
+ * the lists (`canManage`, lists.manage) at any time, `until` null; or by
+ * someone given lists.fix (`canFix`) for a list that reaches them now
+ * (`holds`, `private.holds_list`) until `fixHours` after it closed, that
+ * moment included, `until` then. Past it, they may not, and `ended` says
+ * when their window ended, so the screen says why (`fixOver`). Missed,
+ * cancelled and open lists never; a finish with no time ends no window, so
+ * it isn't theirs either.
+ */
+export function fixDeadline(
+  list: Pick<ListSummary, "status" | "finishedAt">,
+  who: { canManage: boolean; canFix: boolean; holds: boolean },
+  fixHours: number,
+  now: Date,
+): { can: boolean; until: string | null; ended: string | null } {
+  const no = { can: false, until: null, ended: null };
+  if (list.status !== "finished") return no;
+  if (who.canManage) return { can: true, until: null, ended: null };
+  if (!who.canFix || !who.holds || list.finishedAt === null) return no;
+  const until =
+    Date.parse(list.finishedAt) + fixWindowHours(fixHours) * 3_600_000;
+  if (Number.isNaN(until)) return no;
+  const at = new Date(until).toISOString();
+  if (now.getTime() > until) return { can: false, until: null, ended: at };
+  return { can: true, until: at, ended: null };
+}
+
 /** A list's screen. */
 export function listHref(id: string): `/${string}` {
   return isUuid(id) ? `/lists/${id.toLowerCase()}` : "/lists";

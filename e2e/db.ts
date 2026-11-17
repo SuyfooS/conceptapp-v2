@@ -1426,6 +1426,43 @@ export async function backdateDemoListFinish(
 }
 
 /**
+ * The demo restaurant's newest list of this name, opened (and due) `hours`
+ * earlier (L6b-2): a list of an earlier day, for "עוד אפשר לתקן". Its finish
+ * stays where it is (`backdateDemoListFinish` moves it).
+ */
+export async function backdateDemoListOpening(
+  name: string,
+  hours: number,
+): Promise<void> {
+  await sql`
+    update public.lists l
+    set opens_at = l.opens_at - make_interval(hours => ${hours}),
+      due_at = l.due_at - make_interval(hours => ${hours})
+    where l.id = (
+      select x.id from public.lists x
+      where x.business_id = ${DEMO_RESTAURANT} and x.name = ${name}
+      order by x.created_at desc
+      limit 1)`;
+}
+
+/**
+ * The demo restaurant's workers given "תיקון רשימות שנסגרו" (lists.fix,
+ * L6b-2), or back on its default, without it. Written as the demo's seed
+ * writes its rules, with no line to anyone and no row in the log, so the
+ * lists specs leave the roles screen's own story alone; the off is the
+ * cleanup.
+ */
+export async function setDemoWorkersFix(on: boolean): Promise<void> {
+  await sql`delete from public.role_permissions
+    where business_id = ${DEMO_RESTAURANT} and role = 'worker'
+      and perm = 'lists.fix' and named_role is null`;
+  if (on) {
+    await sql`insert into public.role_permissions (business_id, role, perm, allowed)
+      values (${DEMO_RESTAURANT}, 'worker', 'lists.fix', true)`;
+  }
+}
+
+/**
  * Someone fixes an item of the demo restaurant's newest finished list of
  * this name in place, as their own screen would (`public.fix_list_item`,
  * L6b-1).
@@ -3814,6 +3851,94 @@ export async function rolesLines(): Promise<RoleLine[]> {
     from public.notifications n
     where n.business_id = ${ROLES_BUSINESS.id} and n.kind = 'role.changed'
     order by n.user_id, n.params ->> 'area'`;
+}
+
+/**
+ * Orel's case (L6b-2; 16 November 2026): someone in a role the business
+ * names on workers ("עובד בכיר"), whose id and number are in no other spec
+ * or pgTAP file. Not one of `ROLES_PEOPLE`, so the other tests' business has
+ * the three of them alone; `addRolesSenior` brings them in.
+ */
+export const ROLES_SENIOR = {
+  id: "00000000-0000-4000-a000-000000000940",
+  name: "דני תפקידים",
+  local: "050-000-0940",
+  e164: "+972500000940",
+} as const;
+
+/**
+ * A role the business names on workers, made through the database function
+ * the owner's screen uses, with no rule of its own (as workers are), and
+ * `ROLES_SENIOR` in it, as the team screen leaves someone given it.
+ */
+export async function addRolesSenior(name: string): Promise<void> {
+  await ensureLogins([ROLES_SENIOR]);
+  const [role] = await sql<{ id: string }[]>`
+    select public.create_business_role(${ROLES_PEOPLE.owner.id}::uuid,
+      ${ROLES_BUSINESS.id}::uuid, 'worker', ${name}) as id`;
+  if (!role) throw new Error(`Could not add ${name}`);
+  await sql`insert into public.memberships (business_id, user_id, role, named_role)
+    values (${ROLES_BUSINESS.id}, ${ROLES_SENIOR.id}, 'worker', ${role.id})`;
+}
+
+/**
+ * A list typed now and sent by the owner to every worker by their role (so
+ * to a role the business named on them too), with one reading, which
+ * `finisher` gives and closes it with, as their own screen would; its finish
+ * moved back `minutes`, past the five minutes to take it back. Its id.
+ */
+export async function rolesClosedList(
+  name: string,
+  label: string,
+  reading: number,
+  finisher: string,
+  minutes: number,
+): Promise<string> {
+  const list = {
+    name,
+    items: [{ kind: "number", label, unit: "°C", min: 0, max: 5 }],
+    recipient: { kind: "role", role: "worker" },
+  };
+  const [row] = await sql<{ id: string | null }[]>`
+    select public.send_list(${ROLES_PEOPLE.owner.id}::uuid,
+      ${ROLES_BUSINESS.id}::uuid, ${sql.json(list)}::jsonb) as id`;
+  if (!row?.id) throw new Error(`No list ${name} was sent`);
+  await sql`select public.set_list_item(${finisher}::uuid,
+    (select i.id from public.list_items i where i.list_id = ${row.id}
+      order by i.position limit 1),
+    ${sql.json({ reading })}::jsonb)`;
+  await sql`select public.finish_list(${finisher}::uuid, ${row.id}::uuid)`;
+  await sql`update public.lists
+    set finished_at = finished_at - make_interval(mins => ${minutes})
+    where id = ${row.id}`;
+  return row.id;
+}
+
+export type RolesList = {
+  status: string;
+  finishedBy: string | null;
+  /** Its first item's reading. */
+  reading: number | null;
+  /** Its history's rows marked fixed (L6b-1). */
+  fixes: number;
+  /** Who made the last of them. */
+  fixedBy: string | null;
+};
+
+/** One of the business's lists: how it is closed, and its fixes. */
+export async function rolesList(id: string): Promise<RolesList | null> {
+  const [row] = await sql<RolesList[]>`
+    select l.status, l.finished_by::text as "finishedBy",
+      (select i.reading::float8 from public.list_items i
+        where i.list_id = l.id order by i.position limit 1) as reading,
+      (select count(*)::int from public.list_item_changes c
+        where c.list_id = l.id and c.fixed) as fixes,
+      (select c.changed_by::text from public.list_item_changes c
+        where c.list_id = l.id and c.fixed
+        order by c.changed_at desc, c.id desc limit 1) as "fixedBy"
+    from public.lists l
+    where l.id = ${id} and l.business_id = ${ROLES_BUSINESS.id}`;
+  return row ?? null;
 }
 
 /** Who switched a role's permission in the business, oldest first. */

@@ -47,6 +47,43 @@ describe("roles and permissions from the database's answer", () => {
     expect(data.areas[2]?.icon).toBeNull();
   });
 
+  it("draws the switches the database lists, and leaves lists open without one it doesn't yet (L6b-2)", () => {
+    const all = matrix(areaPermissions("lists"), []);
+    const shape = (data: ReturnType<typeof rolesData>) =>
+      data.areas.map((area) => [area.key, area.open, area.extras]);
+    const draw = (m: typeof all) =>
+      rolesData({
+        matrix: m,
+        enabled: ["lists"],
+        people,
+        viewOnly: false,
+        documents: false,
+      });
+    expect(shape(draw(all))[0]).toEqual([
+      "lists",
+      true,
+      ["lists.send", "lists.fix"],
+    ]);
+    // Before its migration: no row for it, and lists still open.
+    const before = {
+      ...all,
+      keys: all.keys.filter((key) => key.perm !== "lists.fix"),
+    };
+    expect(shape(draw(before))[0]).toEqual(["lists", true, ["lists.send"]]);
+    // Listed but not settable closes the area, as any key.
+    const unsettable = {
+      ...all,
+      keys: all.keys.map((key) =>
+        key.perm === "lists.fix" ? { ...key, settable: false } : key,
+      ),
+    };
+    expect(shape(draw(unsettable))[0]).toEqual([
+      "lists",
+      false,
+      ["lists.send", "lists.fix"],
+    ]);
+  });
+
   it("draws managers and workers as they hold it, and pay as its row gives it", () => {
     const data = rolesData({
       matrix: matrix([], ["manager"]),

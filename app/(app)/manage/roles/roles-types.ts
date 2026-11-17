@@ -1,6 +1,7 @@
 import type { ModuleIcon } from "@domain/modules";
 import type {
   AccessArea,
+  AccessExtra,
   AreaAccess,
   AreaPart,
   BaseRole,
@@ -22,6 +23,12 @@ export type RolesArea = {
    * and says so.
    */
   open: boolean;
+  /**
+   * Its switches the database knows (`knownExtras`), in their order: the
+   * rows the screen draws under the area. A switch the app has before its
+   * migration reaches the project is left out until it does.
+   */
+  extras: AccessExtra[];
 };
 
 /** A role the owner changes: a manager, a worker, or one the business named. */

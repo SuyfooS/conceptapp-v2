@@ -7,6 +7,7 @@ import {
   areaOpen,
   areaShown,
   BASE_ROLES,
+  knownExtras,
   type RoleMatrix,
   startingAccess,
 } from "@domain/role-access";
@@ -28,7 +29,8 @@ export type RolesMember = RolePerson & {
  * "תפקידים והרשאות" for a business, from what its database answers
  * (`RoleMatrix`): the areas it has (the four modules while they are on, team
  * and manage always), each open for changes once every permission of the
- * area is settable (`areaOpen`); managers and workers, each as they hold it
+ * area is settable (`areaOpen`), with the switches the database lists
+ * (`knownExtras`); managers and workers, each as they hold it
  * by role (`accessFromHeld`), pay as its row gives it, and who is in them
  * (those in a role the business named are in that one); then the business's
  * named roles in their order (R11a), each as it holds it, never pay, which
@@ -68,9 +70,6 @@ export function rolesData({
   /** Documents are on (wherever chat is): whoever sees pay reads them too. */
   documents: boolean;
 }): RolesData {
-  const settable = new Set(
-    matrix.keys.filter((key) => key.settable).map((key) => key.perm),
-  );
   const requires = new Map(matrix.keys.map((key) => [key.perm, key.requires]));
   /**
    * Where a role starts (R10): what it holds by its rule without a row of
@@ -100,7 +99,8 @@ export function rolesData({
         {
           key,
           icon: module ? (manifestFor(module).nav?.icon ?? null) : null,
-          open: areaOpen(key, (perm) => settable.has(perm)),
+          open: areaOpen(key, matrix.keys),
+          extras: knownExtras(key, matrix.keys),
         },
       ];
     }),

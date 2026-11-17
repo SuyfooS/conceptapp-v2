@@ -8,6 +8,7 @@ import {
   type AreaPart,
   areaAccess,
   areaChanged,
+  areaOfExtra,
   BASE_ROLES,
   type BaseRole,
   changedAreas,
@@ -15,8 +16,8 @@ import {
   defaultAccess,
   editedAreas,
   editOrView,
+  extraLevel,
   extraOpen,
-  extrasOf,
   extrasTurned,
   heldBeyond,
   holdsExtra,
@@ -1288,11 +1289,29 @@ export function RolesView({
 }
 
 /**
+ * Why a switch can't change now, in the roles screen's words: one under edit
+ * waits for edit ("זמין רק עם עריכה"); one that works at view (L6b-2) is
+ * held while edit is on, which covers it ("כלול בעריכה").
+ */
+function closedWhy(
+  access: RoleAccess,
+  extra: AccessExtra,
+): "needsEdit" | "coveredByEdit" {
+  return extraLevel(extra) === "view" &&
+    access.levels[areaOfExtra(extra)] === "edit"
+    ? "coveredByEdit"
+    : "needsEdit";
+}
+
+/**
  * One area of a role, in a card: in a module, "עריכה" on or off with what
- * each gives, and the switches under it, off and closed while it is off; in
- * team and manage, edit, view or none, with what the chosen one means. An
- * area not open for changes yet shows the same, every control off, and says
- * so under its name, unless no area is open, which the screen says once.
+ * each gives, and the switches under it, off and closed while it is off,
+ * then one that works at view (L6b-2), changed while edit is off and on and
+ * locked while it is on ("כלול בעריכה"), each that the database lists
+ * (`area.extras`); in team and manage, edit, view or none, with what the
+ * chosen one means. An area not open for changes yet shows the same, every
+ * control off, and says so under its name, unless no area is open, which
+ * the screen says once.
  */
 function AreaCard({
   area,
@@ -1374,19 +1393,22 @@ function AreaCard({
               }
             />
           </FieldRow>
-          {extrasOf(key).map((extra) => {
+          {area.extras.map((extra) => {
             const open = extraOpen(access, extra);
             const hintId = `${id}-${extra}`;
             return (
               <FieldRow
                 key={extra}
                 label={t(`extras.${extra}.label`)}
-                // What it does, always, and while it is closed, why.
+                // What it does, always, and while it is closed, why: edit
+                // is off, or (a switch at view) edit covers it.
                 hint={
                   <span id={hintId}>
                     {t(`extras.${extra}.hint`)}
                     {open ? null : (
-                      <span className="block">{t("needsEdit")}</span>
+                      <span className="block">
+                        {t(closedWhy(access, extra))}
+                      </span>
                     )}
                   </span>
                 }
@@ -1498,10 +1520,12 @@ function PlaceLevel({
 
 /**
  * The desktop's full picture: a row for each area's edit, one for each switch
- * under it, one for team and one for manage, and pay at the foot (where it
- * opens something), against a column for each role, with what each row gives
- * beside its name, and, for an area not open for changes yet, that it isn't
- * (unless no area is open, which the screen says once).
+ * under it, one for a switch that works at view (L6b-2), its cells locked on
+ * where edit is on ("כלול בעריכה"), one for team and one for manage, and
+ * pay at the foot (where it opens something), against a column for each
+ * role, with what each row gives beside its name, and, for an area not open
+ * for changes yet, that it isn't (unless no area is open, which the screen
+ * says once).
  */
 function RolesMatrix({
   data,
@@ -1798,11 +1822,19 @@ function RolesMatrix({
           }),
         },
       },
-      ...extrasOf(key).map((extra) => ({
+      // Each switch the database lists: one under edit indented beneath it,
+      // one that works at view (L6b-2) level with the area, since it doesn't
+      // hang off edit.
+      ...area.extras.map((extra) => ({
         key: extra,
         cells: {
           area: (
-            <span className="flex min-w-56 max-w-sm flex-col gap-0.5 py-1 ps-12">
+            <span
+              className={cn(
+                "flex min-w-56 max-w-sm flex-col gap-0.5 py-1",
+                extraLevel(extra) === "edit" && "ps-12",
+              )}
+            >
               <span className="font-medium">{t(`extras.${extra}.label`)}</span>
               <span
                 id={`${id}-${extra}`}
@@ -1836,7 +1868,7 @@ function RolesMatrix({
                 />
                 {open ? null : (
                   <span id={needsId} className="text-ink-2 text-sm">
-                    {t("needsEdit")}
+                    {t(closedWhy(role.access, extra))}
                   </span>
                 )}
               </div>

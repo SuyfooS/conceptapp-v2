@@ -20,6 +20,8 @@ import { addDays, dateIn, instantIn } from "@domain/availability";
 import { type Department, departmentsOf } from "@domain/departments";
 import {
   byUrgency,
+  FIX_HOURS,
+  fixDeadline,
   holdsList,
   type ListSummary,
   type ListTemplate,
@@ -98,8 +100,10 @@ export function templatePaths(
  * do not exist for them. Both come from the database's answer
  * (`my_permissions`, the roles plan's R5): `canManage` is lists.manage
  * (templates and their times, every list), `canSend` lists.send, a switch
- * under it (a role holds it only while it runs the lists); `othersSend` is
- * one who runs the lists without sending them, told who does. A view session
+ * under it (a role holds it only while it runs the lists), `canFix`
+ * lists.fix ("תיקון רשימות שנסגרו", L6b-2: a list that reaches them, for a
+ * while after it closed); `othersSend` is one who runs the lists without
+ * sending them, told who does. A view session
  * reads as its role would and writes nothing; it holds no list of its own, so
  * as a role that runs the lists it reads the business's.
  */
@@ -116,6 +120,7 @@ export const listsAccess = cache(async () => {
   const { role, business } = membership;
   const canManage = holdsPermission(membership, "lists.manage");
   const canSend = holdsPermission(membership, "lists.send");
+  const canFix = holdsPermission(membership, "lists.fix");
   const viewing = member.viewing !== null;
   const view: ListsView = viewing
     ? canManage
@@ -133,6 +138,7 @@ export const listsAccess = cache(async () => {
     place: business.place,
     canManage,
     canSend,
+    canFix,
     othersSend: canManage && !canSend && canWrite(member.viewing),
     viewOnly: !canWrite(member.viewing),
     view,
@@ -221,7 +227,8 @@ async function currentTemplates(businessId: string): Promise<ListTemplate[]> {
 
 /**
  * Lists and the part of it Today shows: the open lists the person holds, most
- * urgent first, those closed today, the orders their departments asked for
+ * urgent first, those closed today, those of earlier days they may still fix
+ * (L6b-2, for someone given lists.fix), the orders their departments asked for
  * that wait elsewhere, the business's day for those who manage lists, and how
  * to send one. `sent` is a list they just sent, from the address, while it can
  * still be taken back; `department` the department filter's choice (L5), for
@@ -237,6 +244,13 @@ export async function currentListsHome(
   const { businessId, userId, timeZone } = access;
   const now = new Date();
   const window = todayIn(now, timeZone);
+  // Someone given "תיקון רשימות שנסגרו" who doesn't run the lists (L6b-2):
+  // the lists that closed within the longest window the setting offers, read
+  // beside the rest, each then held to the business's own (`fixDeadline`).
+  const fixes = access.view === "mine" && access.canFix && !access.canManage;
+  const fixableSince = fixes
+    ? new Date(now.getTime() - Math.max(...FIX_HOURS) * 3_600_000).toISOString()
+    : null;
   const [settings, departments, lookups, templates, own, business, justSent] =
     await Promise.all([
       currentModuleSettings("lists"),
@@ -250,6 +264,7 @@ export async function currentListsHome(
             businessId,
             { userId, role: access.role, namedRole: access.namedRole },
             window,
+            fixableSince,
           )
         : null,
       access.canManage ? getBusinessLists(businessId, window) : [],
@@ -312,6 +327,21 @@ export async function currentListsHome(
           kept(list),
       )
       .sort((a, b) => Date.parse(b.opensAt) - Date.parse(a.opensAt)),
+    // "עוד אפשר לתקן" (L6b-2): those that opened before today, while their
+    // window lasts, the latest close first, each with until when.
+    fixable:
+      own === null || own === "notYet"
+        ? []
+        : own.fixable.flatMap((list) => {
+            if (!kept(list)) return [];
+            const { until } = fixDeadline(
+              list,
+              { canManage: false, canFix: true, holds: true },
+              settings.fixHours,
+              now,
+            );
+            return until === null ? [] : [{ list, until }];
+          }),
     asked: byUrgency(
       own === null || own === "notYet" ? [] : own.asked.filter(kept),
       now,
@@ -420,6 +450,18 @@ export async function currentList(
   // The undo is whoever closed it, for five minutes; it is not `can.reopen`,
   // which outlasts them.
   const undoUntil = access.viewOnly ? null : undoDeadline(list, userId, now);
+  // Fixing it in place, as `private.can_fix_list` has it: whoever runs the
+  // lists at any time (L6b-1), and someone given "תיקון רשימות שנסגרו" for a
+  // list that reaches them now, until the business's window ends (L6b-2),
+  // and once it ended, when.
+  const fix = access.viewOnly
+    ? { can: false, until: null, ended: null }
+    : fixDeadline(
+        list,
+        { canManage: access.canManage, canFix: access.canFix, holds },
+        settings.fixHours,
+        now,
+      );
   return {
     now: now.toISOString(),
     timeZone,
@@ -433,11 +475,11 @@ export async function currentList(
     can: {
       fill: open && !access.viewOnly && (holds || access.canManage),
       reopen: !access.viewOnly && closed && access.canManage,
-      // A finished list, in place, by whoever runs the lists, as
-      // `private.can_fix_list` has it (L6b-1); missed and cancelled ones
-      // never.
-      fix: !access.viewOnly && list.status === "finished" && access.canManage,
+      // A finished list, in place (`fix`); missed and cancelled ones never.
+      fix: fix.can,
     },
+    fixUntil: fix.until,
+    fixEndedAt: fix.ended,
     readOnly,
     undoUntil,
     pass: targets.length > 0 ? { targets, stays } : null,

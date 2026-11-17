@@ -8,6 +8,8 @@ import { dateIn } from "@domain/availability";
 import { nextOpenings } from "@domain/list-openings";
 import {
   byUrgency,
+  DEFAULT_FIX_HOURS,
+  fixDeadline,
   isOutOfRange,
   type ListDetail,
   type ListItem,
@@ -558,6 +560,7 @@ function homeFor(
       timing,
     ),
     closed: mine.filter((l) => l.status !== "open"),
+    fixable: [],
     asked: byUrgency(asked, now, timing),
     filter:
       theirs.length > 1
@@ -600,6 +603,26 @@ export const demoWorkerLists = () => homeFor("noa", false, undefined);
  */
 export const demoWorkerEditsLists = () =>
   homeFor("noa", true, undefined, undefined, undefined, false);
+/**
+ * Noa in "עובד בכיר", given "תיקון רשימות שנסגרו" (L6b-2, the roles twin's
+ * `demoSenior`): yesterday's kitchen opening, which she closed at 08:20,
+ * under "עוד אפשר לתקן" until 08:20 this morning, a day after.
+ */
+export const demoWorkerFixesLists = (): ListsHomeData => ({
+  ...homeFor("noa", false, undefined),
+  fixable: demoEarlierLists
+    .filter((l) => l.id === "list-kitchen-opening-mon")
+    .flatMap((l) => {
+      const list = summaryOf(l);
+      const { until } = fixDeadline(
+        list,
+        { canManage: false, canFix: true, holds: true },
+        DEFAULT_FIX_HOURS,
+        now,
+      );
+      return until === null ? [] : [{ list, until }];
+    }),
+});
 /** A worker with nothing sent to them yet. */
 export const demoEmptyLists = (): ListsHomeData => ({
   ...homeFor("dana", false, undefined),
@@ -907,11 +930,16 @@ function withHistory(list: ListDetail): ListDetail {
  * opening as Noa closed it at 08:05, her freezer reading of −12°C out of its
  * range, for Shiran, who runs the lists, to fix; `fixed` the same once
  * Shiran fixed it to −19°C at 08:10. The list stays Noa's close; the
- * reading stays hers too, its fix Shiran's.
+ * reading stays hers too, its fix Shiran's. `fix-worker` (L6b-2) the same
+ * close for Omer of the kitchen, in "עובד בכיר" with "תיקון רשימות שנסגרו":
+ * he fixes it until 08:05 tomorrow, a day after it closed, and doesn't open
+ * it again for everyone.
  */
-export type DemoFixState = "fix" | "fixed";
+export type DemoFixState = "fix" | "fixed" | "fix-worker";
 
 const CLOSED_AT = "2026-11-03T06:05:00.000Z";
+/** The day the business gives "תיקון רשימות שנסגרו" (`fixHours` 24). */
+const FIX_UNTIL = "2026-11-04T06:05:00.000Z";
 const FIXED_AT = "2026-11-03T06:10:00.000Z";
 
 function withFix(list: ListDetail, state: DemoFixState): ListDetail {
@@ -976,7 +1004,8 @@ function withFix(list: ListDetail, state: DemoFixState): ListDetail {
  * One list on its screen, as Shiran reads it; `finished` just now by her,
  * `passed` the bar's order passed back from the storeroom, `photos` one of
  * its photo states (`DemoPhotoState`), `history` with its items' stories
- * (`withHistory`), `fix` closed and to be fixed, or fixed (`withFix`).
+ * (`withHistory`), `fix` closed and to be fixed, or fixed (`withFix`);
+ * `fix-worker` as Omer reads it, who may fix it for a day (L6b-2).
  */
 export function demoListScreen(
   id: string,
@@ -1014,6 +1043,25 @@ export function demoListScreen(
         ),
       }
     : found;
+  // Omer, given "תיקון רשימות שנסגרו" (L6b-2): his kitchen's list, fixed
+  // until a day after it closed, never opened again by him.
+  if (fix === "fix-worker" && shown.status === "finished") {
+    return {
+      now: demoListsNow,
+      timeZone: ISRAEL_TIME_ZONE,
+      timing,
+      lookups: demoListLookups,
+      userId: "omer",
+      list: { ...shown, progress: listProgress(shown.items) },
+      can: { fill: false, reopen: false, fix: true },
+      fixUntil: FIX_UNTIL,
+      fixEndedAt: null,
+      readOnly: "finished",
+      undoUntil: null,
+      pass: null,
+      photos: { taking: "yes" },
+    };
+  }
   return {
     now: demoListsNow,
     timeZone: ISRAEL_TIME_ZONE,
@@ -1029,6 +1077,9 @@ export function demoListScreen(
       reopen: shown.status === "finished" || shown.status === "cancelled",
       fix: shown.status === "finished",
     },
+    // She runs the lists: no end to fixing.
+    fixUntil: null,
+    fixEndedAt: null,
     readOnly: shown.status === "open" ? null : "finished",
     undoUntil: finished
       ? new Date(Date.parse(finishedAt) + 5 * 60_000).toISOString()

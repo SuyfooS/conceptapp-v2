@@ -63,6 +63,29 @@ describe("an item's save refused", () => {
     ).toBe("left");
   });
 
+  // L6b-2 (20261116000400_lists_fix_switch.sql): someone given "תיקון
+  // רשימות שנסגרו" past the business's window.
+  it("says the time to fix is over, apart from any other refusal", () => {
+    const over = {
+      code: "42501",
+      message: "The time to fix the list is over",
+      hint: "fix_window",
+    };
+    expect(itemFailureOf(over, true)).toBe("fixOver");
+    expect(itemFailureOf(over, true, "a list photo write")).toBe("fixOver");
+    // Anyone else refused a fix is refused as before.
+    expect(itemFailureOf({ code: "42501", message: "" }, true)).toBe(
+      "noAccess",
+    );
+    expect(
+      itemFailureOf({ code: "42501", message: "", hint: null }, true),
+    ).toBe("noAccess");
+    // The hint belongs to 42501 alone.
+    expect(
+      itemFailureOf({ code: "55000", message: "", hint: "fix_window" }, true),
+    ).toBe("reopened");
+  });
+
   it("waits for the fix's own functions before its migration", () => {
     expect(itemFailureOf({ code: "PGRST202", message: "" }, true)).toBe(
       "notYet",
