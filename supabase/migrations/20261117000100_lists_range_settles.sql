@@ -28,8 +28,8 @@
 --               it outside, so the mark is taken off every line of the item
 --               there too: someone who runs the lists and read it outside
 --               themselves keeps their line as it was (an earlier reading,
---               with its reader and time), read or settled, without the
---               mark. Back inside again, every line of the item is settled
+--               with its reader and time), open, read or settled, without
+--               the mark. Back inside again, every line of the item is settled
 --               and marked, theirs too, keeping when it settled.
 --   nothing     no new log row or key: the item's history already says
 --   more        who read it again (list_item_changes), and a fix's
@@ -258,8 +258,8 @@ begin
     -- No line of the item says the reading is back in range now.
     -- private.notify realerts the line with new facts for those it tells,
     -- but leaves out whoever read it outside: their own line stays the one it
-    -- was, an earlier reading with its reader and time, read or settled, and
-    -- only loses the mark here.
+    -- was, an earlier reading with its reader and time, open, read or settled,
+    -- and only loses the mark here.
     update public.notifications n
     set params = n.params - 'backInRange'
     where n.business_id = l.business_id
