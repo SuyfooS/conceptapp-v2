@@ -22,6 +22,7 @@ import {
   monthRange,
   monthRecords,
   openEntryOf,
+  parseBreakTimes,
   parseEntryTimes,
   parseReason,
   punchFailureOf,
@@ -289,6 +290,12 @@ describe("what a punch can answer", () => {
       "notCancelled",
       "breaksAfterDay",
       "notOnStaff",
+      "breakOutside",
+      "breakTimes",
+      "breakOverlap",
+      "breakOpen",
+      "breakGone",
+      "notRemoved",
     ] as const) {
       expect(punchFailureOf(refusal, "typed")).toBe("failed");
     }
@@ -892,6 +899,8 @@ describe("months", () => {
         time: "18:30",
         note: "Recorded by mistake",
       },
+      // Its break counts for nothing either, and isn't offered to fix.
+      breaks: [],
     });
     expect(records[1]).toMatchObject({ minutes: 480, cancelled: null });
     expect(records[2]).toMatchObject({
@@ -922,6 +931,68 @@ describe("months", () => {
       },
     ]);
     expect(records.map((r) => r.id)).toEqual([live.id, GONE]);
+  });
+
+  it("lists a shift's breaks, earliest first, with their times and minutes", () => {
+    const pause = (
+      id: string,
+      startedAt: string,
+      endedAt: string | null,
+      unpaid: boolean,
+    ) => ({
+      id: `68000000-0000-4000-a000-00000000009${id}`,
+      startedAt,
+      endedAt,
+      unpaid,
+    });
+    const shift = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000001",
+      userId: "u1",
+      clockIn: "2026-11-10T14:00:00Z",
+      clockOut: "2026-11-10T23:30:00Z",
+      source: "punch",
+      breaks: [
+        // Past midnight by the business's clock.
+        pause("2", "2026-11-10T22:10:00Z", "2026-11-10T22:25:00Z", false),
+        pause("1", "2026-11-10T17:00:00Z", "2026-11-10T17:30:00Z", true),
+      ],
+    });
+    // Still running: up to now.
+    const open = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000002",
+      userId: "u1",
+      clockIn: "2026-11-20T06:00:00Z",
+      clockOut: null,
+      source: "punch",
+      breaks: [pause("3", "2026-11-20T11:48:30Z", null, true)],
+    });
+    const [today, evening] = monthRecords([shift, open], "2026-11", TZ, now);
+    expect(evening?.breaks).toEqual([
+      {
+        id: "68000000-0000-4000-a000-000000000091",
+        start: "19:00",
+        end: "19:30",
+        minutes: 30,
+        unpaid: true,
+      },
+      {
+        id: "68000000-0000-4000-a000-000000000092",
+        start: "00:10",
+        end: "00:25",
+        minutes: 15,
+        unpaid: false,
+      },
+    ]);
+    expect(evening?.breakMinutes).toBe(45);
+    expect(today?.breaks).toEqual([
+      {
+        id: "68000000-0000-4000-a000-000000000093",
+        start: "13:48",
+        end: null,
+        minutes: 11,
+        unpaid: true,
+      },
+    ]);
   });
 });
 
@@ -1059,6 +1130,331 @@ describe("parseEntryTimes", () => {
   });
 });
 
+describe("parseBreakTimes", () => {
+  const now = new Date("2026-11-20T12:00:00Z");
+  // 16:00 to 23:30 by the business's clock.
+  const evening = {
+    clockIn: "2026-11-10T14:00:00Z",
+    clockOut: "2026-11-10T21:30:00Z",
+  };
+  // 22:00 to 06:00 the morning after.
+  const night = {
+    clockIn: "2026-11-10T20:00:00Z",
+    clockOut: "2026-11-11T04:00:00Z",
+  };
+  const parse = (
+    entry: { clockIn: string; clockOut: string | null },
+    start: string,
+    end: string,
+    at = now,
+  ) => parseBreakTimes(entry, { start, end }, TZ, at);
+
+  it("reads the times on the shift's day, in the business's time zone", () => {
+    expect(parse(evening, "19:00", "19:30")).toEqual({
+      ok: true,
+      start: "2026-11-10T17:00:00.000Z",
+      end: "2026-11-10T17:30:00.000Z",
+    });
+  });
+
+  it("needs no date for a break past midnight", () => {
+    // Across midnight, and wholly after it, in a night shift.
+    expect(parse(night, "23:50", "00:20")).toEqual({
+      ok: true,
+      start: "2026-11-10T21:50:00.000Z",
+      end: "2026-11-10T22:20:00.000Z",
+    });
+    expect(parse(night, "02:00", "02:30")).toEqual({
+      ok: true,
+      start: "2026-11-11T00:00:00.000Z",
+      end: "2026-11-11T00:30:00.000Z",
+    });
+  });
+
+  it("starts a break from the clock-in's own minute with the clock-in", () => {
+    const late = { ...evening, clockIn: "2026-11-10T14:00:27.500Z" };
+    expect(parse(late, "16:00", "16:15")).toEqual({
+      ok: true,
+      start: "2026-11-10T14:00:27.500Z",
+      end: "2026-11-10T14:15:00.000Z",
+    });
+    // And may end at the clock-out's.
+    expect(parse(evening, "23:00", "23:30")).toMatchObject({ ok: true });
+  });
+
+  it("keeps a punched clock-in to the microsecond, as the database has it", () => {
+    // A Date holds milliseconds: a start cut to them is before the clock-in.
+    const punched = {
+      ...evening,
+      clockIn: "2026-11-10T14:00:27.512345+00:00",
+    };
+    expect(parse(punched, "16:00", "16:15")).toEqual({
+      ok: true,
+      start: "2026-11-10T14:00:27.512345+00:00",
+      end: "2026-11-10T14:15:00.000Z",
+    });
+  });
+
+  it("takes the first of the hour the clocks repeat when they go back", () => {
+    // Saturday 24 October 2026, 22:00, to Sunday 06:00: at 02:00 the clocks
+    // go back to 01:00, so 01:00 to 02:00 comes twice.
+    const change = {
+      clockIn: "2026-10-24T19:00:00Z",
+      clockOut: "2026-10-25T04:00:00Z",
+    };
+    expect(parse(change, "01:30", "01:45")).toEqual({
+      ok: true,
+      start: "2026-10-24T22:30:00.000Z",
+      end: "2026-10-24T22:45:00.000Z",
+    });
+    // Across the change: 01:50 the first time to 01:10 the second.
+    expect(parse(change, "01:50", "01:10")).toEqual({
+      ok: true,
+      start: "2026-10-24T22:50:00.000Z",
+      end: "2026-10-24T23:10:00.000Z",
+    });
+    // A clock-in in the first of the two hours: a start in it is that hour.
+    const inside = { ...change, clockIn: "2026-10-24T22:10:00Z" };
+    expect(parse(inside, "01:30", "01:40")).toEqual({
+      ok: true,
+      start: "2026-10-24T22:30:00.000Z",
+      end: "2026-10-24T22:40:00.000Z",
+    });
+  });
+
+  it("keeps a changed break's time left as it shows, as stored", () => {
+    // A break in the second 01:30 to 01:45 of the night the clocks go back.
+    const second = {
+      id: "b1",
+      startedAt: "2026-10-24T23:30:05.111111Z",
+      endedAt: "2026-10-24T23:45:10.222222Z",
+      unpaid: true,
+    };
+    const change = {
+      clockIn: "2026-10-24T19:00:00.123456Z",
+      clockOut: "2026-10-25T04:00:00.654321Z",
+      breaks: [second],
+    };
+    const keep = (start: string, end: string) =>
+      parseBreakTimes(change, { start, end }, TZ, now, "b1");
+    // Saved as it is: nothing moves.
+    expect(keep("01:30", "01:45")).toEqual({
+      ok: true,
+      start: second.startedAt,
+      end: second.endedAt,
+    });
+    // Only its end changed: the start stays in the second hour, and so does
+    // an end in it; 02:10 comes once, 40 minutes after.
+    expect(keep("01:30", "01:50")).toEqual({
+      ok: true,
+      start: second.startedAt,
+      end: "2026-10-24T23:50:00.000Z",
+    });
+    expect(keep("01:30", "02:10")).toEqual({
+      ok: true,
+      start: second.startedAt,
+      end: "2026-10-25T00:10:00.000Z",
+    });
+  });
+
+  it("starts a break typed in the minute another ended where that one ended", () => {
+    // Ended at 13:30:20 and pressed again at 13:30:27: both show 13:30.
+    const first = {
+      id: "a",
+      startedAt: "2026-11-10T11:00:12.3Z",
+      endedAt: "2026-11-10T11:30:20.456789Z",
+      unpaid: false,
+    };
+    const next = {
+      id: "b",
+      startedAt: "2026-11-10T11:30:27.111111Z",
+      endedAt: "2026-11-10T11:45:10Z",
+      unpaid: false,
+    };
+    const day = {
+      clockIn: "2026-11-10T08:00:00.5Z",
+      clockOut: "2026-11-10T16:00:00.5Z",
+    };
+    // The second one changed at its end only: its start stays where it was.
+    expect(
+      parseBreakTimes(
+        { ...day, breaks: [first, next] },
+        { start: "13:30", end: "13:50" },
+        TZ,
+        now,
+        "b",
+      ),
+    ).toEqual({
+      ok: true,
+      start: next.startedAt,
+      end: "2026-11-10T11:50:00.000Z",
+    });
+    // A new one from 13:30: from the first one's end.
+    expect(
+      parseBreakTimes(
+        { ...day, breaks: [first] },
+        { start: "13:30", end: "13:40" },
+        TZ,
+        now,
+      ),
+    ).toEqual({
+      ok: true,
+      start: first.endedAt,
+      end: "2026-11-10T11:40:00.000Z",
+    });
+    // Two ended in that minute (one pressed by mistake): after the later.
+    const quick = {
+      id: "q",
+      startedAt: "2026-11-10T11:30:27.111111Z",
+      endedAt: "2026-11-10T11:30:45Z",
+      unpaid: false,
+    };
+    expect(
+      parseBreakTimes(
+        { ...day, breaks: [first, quick] },
+        { start: "13:30", end: "13:40" },
+        TZ,
+        now,
+      ),
+    ).toMatchObject({ ok: true, start: quick.endedAt });
+  });
+
+  it("starts after a break that ended in the clock-in's own minute", () => {
+    const pressed = {
+      id: "a",
+      startedAt: "2026-11-16T06:00:15.2Z",
+      endedAt: "2026-11-16T06:00:30.3Z",
+      unpaid: false,
+    };
+    expect(
+      parseBreakTimes(
+        {
+          clockIn: "2026-11-16T06:00:10.123456Z",
+          clockOut: "2026-11-16T14:00:00Z",
+          breaks: [pressed],
+        },
+        { start: "08:00", end: "08:30" },
+        TZ,
+        now,
+      ),
+    ).toEqual({
+      ok: true,
+      start: pressed.endedAt,
+      end: "2026-11-16T06:30:00.000Z",
+    });
+  });
+
+  it("reads a changed start by the end it keeps, in the hour the clocks repeat", () => {
+    // In the second 01:10 to 01:40, its start changed to 01:20: the second
+    // 01:20, not an hour earlier.
+    const second = {
+      id: "b2",
+      startedAt: "2026-10-24T23:10:00Z",
+      endedAt: "2026-10-24T23:40:00Z",
+      unpaid: true,
+    };
+    expect(
+      parseBreakTimes(
+        {
+          clockIn: "2026-10-24T19:00:00Z",
+          clockOut: "2026-10-25T04:00:00Z",
+          breaks: [second],
+        },
+        { start: "01:20", end: "01:40" },
+        TZ,
+        now,
+        "b2",
+      ),
+    ).toEqual({
+      ok: true,
+      start: "2026-10-24T23:20:00.000Z",
+      end: second.endedAt,
+    });
+    // And one from the first 01:30 to 02:30, its start changed to 01:20: the
+    // first 01:20, ten minutes earlier, not the second.
+    const first = {
+      id: "s",
+      startedAt: "2026-10-24T22:30:00Z",
+      endedAt: "2026-10-25T00:30:00Z",
+      unpaid: true,
+    };
+    expect(
+      parseBreakTimes(
+        {
+          clockIn: "2026-10-24T19:00:00Z",
+          clockOut: "2026-10-25T04:00:00Z",
+          breaks: [first],
+        },
+        { start: "01:20", end: "02:30" },
+        TZ,
+        now,
+        "s",
+      ),
+    ).toEqual({
+      ok: true,
+      start: "2026-10-24T22:20:00.000Z",
+      end: first.endedAt,
+    });
+  });
+
+  it("refuses a break outside its shift", () => {
+    // Before the clock-in, it can only be the next day, after the clock-out.
+    expect(parse(evening, "15:00", "15:30")).toEqual({
+      ok: false,
+      problem: "breakOutside",
+    });
+    expect(parse(evening, "23:00", "23:45")).toEqual({
+      ok: false,
+      problem: "breakOutside",
+    });
+    expect(parse(night, "06:00", "06:30")).toEqual({
+      ok: false,
+      problem: "breakOutside",
+    });
+  });
+
+  it("refuses a break that hasn't ended yet in a shift still open", () => {
+    const open = { clockIn: "2026-11-20T06:00:00Z", clockOut: null };
+    expect(parse(open, "13:00", "13:30")).toMatchObject({ ok: true });
+    // 14:00 is now.
+    expect(parse(open, "13:30", "14:30")).toEqual({
+      ok: false,
+      problem: "future",
+    });
+    expect(parse(open, "15:00", "15:30")).toEqual({
+      ok: false,
+      problem: "future",
+    });
+    // Before the clock-in: the next day, which is not a break of it.
+    expect(parse(open, "07:00", "07:30")).toEqual({
+      ok: false,
+      problem: "breakOutside",
+    });
+  });
+
+  it("refuses the same minute twice, and what is not a time", () => {
+    expect(parse(evening, "19:00", "19:00")).toEqual({
+      ok: false,
+      problem: "breakSameTime",
+    });
+    for (const [start, end] of [
+      ["", "19:30"],
+      ["19:00", ""],
+      ["7pm", "19:30"],
+      ["24:00", "00:30"],
+    ] as const) {
+      expect(parse(evening, start, end), `${start}–${end}`).toEqual({
+        ok: false,
+        problem: "breakTimes",
+      });
+    }
+    expect(parseBreakTimes(evening, null, TZ, now)).toEqual({
+      ok: false,
+      problem: "breakTimes",
+    });
+  });
+});
+
 describe("undoableEntry", () => {
   const row = (clockOut: string | null) => ({
     clockOut,
@@ -1152,6 +1548,51 @@ describe("clockFailureOf, for cancelling and bringing back", () => {
         'conflicting key value violates exclusion constraint "time_entries_no_overlap"',
       ),
     ).toBe("times");
+  });
+
+  it("names each refusal of 20261117000300_break_edits.sql", () => {
+    expect(
+      clockFailureOf(
+        "22023",
+        "A break must be inside its shift",
+        "break_outside",
+      ),
+    ).toBe("breakOutside");
+    for (const message of [
+      "A break needs its start and end",
+      "A break must end after it starts",
+      "A break cannot be in the future",
+    ]) {
+      expect(clockFailureOf("22023", message), message).toBe("breakTimes");
+    }
+    expect(clockFailureOf("22023", "A break edit needs its reason")).toBe(
+      "reasonNeeded",
+    );
+    expect(
+      clockFailureOf(
+        "23P01",
+        'conflicting key value violates exclusion constraint "time_breaks_no_overlap"',
+      ),
+    ).toBe("breakOverlap");
+    expect(
+      clockFailureOf("55000", "The break has not ended", "break_open"),
+    ).toBe("breakOpen");
+    expect(
+      clockFailureOf("55000", "Too late to bring it back", "too_late"),
+    ).toBe("tooLate");
+    expect(clockFailureOf("55000", "The break is removed")).toBe("breakGone");
+    expect(clockFailureOf("55000", "The break is not removed")).toBe(
+      "notRemoved",
+    );
+    expect(clockFailureOf("55000", "The shift is cancelled")).toBe("cancelled");
+    expect(clockFailureOf("P0002", "Unknown break")).toBe("breakGone");
+    expect(clockFailureOf("P0002", "Unknown entry")).toBe("noAccess");
+    expect(
+      clockFailureOf(
+        "42501",
+        "Only an owner cancels or changes your own hours",
+      ),
+    ).toBe("ownHours");
   });
 
   it("keeps the clock's own refusals as they were", () => {

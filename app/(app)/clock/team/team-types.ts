@@ -1,5 +1,7 @@
 import type {
   Attendance,
+  BreakProblem,
+  BreakRecord,
   ConfirmRow,
   EntryProblem,
   ShiftRecord,
@@ -71,11 +73,14 @@ export type PersonHoursData = {
   records: ShiftRecord[];
   /** The business's date today, to start a new shift from. */
   today: string;
+  /** A break added now comes off the hours (the clock's `unpaidBreaks`). */
+  unpaidBreaks: boolean;
   viewOnly: boolean;
 };
 
 export type EntryFailure =
   | EntryProblem
+  | BreakProblem
   | "times"
   /** Why the hours change is missing: the database keeps one for each. */
   | "reasonNeeded"
@@ -95,6 +100,16 @@ export type EntryFailure =
   | "breaksAfterDay"
   /** Bringing back one a cancel ended: the person is off the staff now. */
   | "notOnStaff"
+  /** A break edit: another break of the shift covers that time. */
+  | "breakOverlap"
+  /** A break edit: the break is still running. */
+  | "breakOpen"
+  /** A break edit: the break was removed, or cut away, meanwhile. */
+  | "breakGone"
+  /** Only an owner edits the breaks of their own shift. */
+  | "ownBreaks"
+  /** Taking a removed break back: its ten minutes passed. */
+  | "tooLate"
   | "noAccess"
   | "viewOnly"
   | "failed";
@@ -102,6 +117,13 @@ export type EntryFailure =
 export type EntryActionResult =
   | { ok: true }
   | { ok: false; failure: EntryFailure };
+
+/** What was typed for a break, HH:MM, with why it changes. */
+export type BreakValues = {
+  start: string;
+  end: string;
+  reason: string;
+};
 
 /** What was typed for a shift, as the form holds it, with why it changes. */
 export type EntryValues = {
@@ -118,17 +140,34 @@ export type EntryActions = {
   cancel: (entryId: string, reason: string) => Promise<EntryActionResult>;
   /** Bring a cancelled shift back as it was; the toast's "ביטול" too. */
   restore: (entryId: string) => Promise<EntryActionResult>;
+  /** Add a break the shift is missing, with why. */
+  addBreak: (
+    entryId: string,
+    values: BreakValues,
+  ) => Promise<EntryActionResult>;
+  /** Change the times of one of the shift's breaks that ended, with why. */
+  changeBreak: (
+    entryId: string,
+    breakId: string,
+    values: BreakValues,
+  ) => Promise<EntryActionResult>;
+  /** Remove a break pressed by mistake, with why: it is marked, and kept. */
+  removeBreak: (breakId: string, reason: string) => Promise<EntryActionResult>;
+  /** Take a removal back: the toast's "ביטול", within ten minutes. */
+  restoreBreak: (breakId: string) => Promise<EntryActionResult>;
 };
 
 /**
  * What the person's sheet is open on: a shift to add, one to fix, the step
- * that cancels it, or one cancelled, to bring back.
+ * that cancels it, one cancelled, to bring back, or the step that fixes one
+ * of its breaks (`pause`), or adds one (null).
  */
 export type EntryTarget =
   | { kind: "add" }
   | { kind: "edit"; record: ShiftRecord }
   | { kind: "cancel"; record: ShiftRecord }
-  | { kind: "cancelled"; record: ShiftRecord };
+  | { kind: "cancelled"; record: ShiftRecord }
+  | { kind: "break"; record: ShiftRecord; pause: BreakRecord | null };
 
 /** What the team's screen can do. The demo passes a stand-in. */
 export type TeamActions = {

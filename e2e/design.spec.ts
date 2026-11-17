@@ -58,6 +58,11 @@ const PAGES = [
   "/design/shell/clock/team/yoav?state=cancel",
   "/design/shell/clock/team/yoav?state=cancelled",
   "/design/shell/clock/team/noa?state=cancelled",
+  // Fixing a break (the clock plan's PR5): one that ended, adding one, and a
+  // shift whose break still runs.
+  "/design/shell/clock/team/yoav?state=break",
+  "/design/shell/clock/team/yoav?state=addBreak",
+  "/design/shell/clock/team/yoav?state=openBreak",
   "/design/shell/clock/pay",
   "/design/shell/clock/pay?person=yoav",
   "/design/shell/clock/pay?show=noWage",
@@ -271,7 +276,7 @@ const PAGES = [
 // the sheet hides the page behind it from the accessibility tree. Lists'
 // `?state=photo` opens none.
 const OPENS_A_SHEET =
-  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled))\b/;
+  /^\/design\/(chat\/.*[?&]state=(readers|actions|photo|attach|remove)|shell\/clock\/team\/[^?]+[?&]state=(edit|cancel|cancelled|break|addBreak|openBreak))\b/;
 
 async function expectCleanPage(
   page: Page,
@@ -1215,6 +1220,71 @@ test("the clock demo cancels a shift with a way back, and brings one back", asyn
   await expect(
     page.getByRole("status").filter({ hasText: team.done.restore }),
   ).toBeVisible();
+});
+
+// Fixing breaks (the clock plan's PR5), on the demo's stand-ins: under the
+// shift's times, a row for each break and "הוספת הפסקה"; a break's step
+// refuses one over another break or outside the shift, in words, goes back
+// with the focus on its row, saves, and removes at once with "ביטול" in the
+// toast. A break still running opens nothing.
+test("the clock demo fixes a shift's breaks, with a way back from a removal", async ({
+  page,
+}) => {
+  const team = he.app.clock.team;
+  await page.goto("/design/shell/clock/team/yoav?state=edit");
+  const edit = page.getByRole("dialog", { name: team.sheet.editTitle });
+  const breaks = edit.getByRole("group", { name: team.breaks.title });
+  // Yoav's two breaks of that evening, and the way to add one.
+  await expect(breaks.getByRole("button")).toHaveCount(3);
+  const first = breaks.getByRole("button", { name: /18:30–18:45/ });
+  await expect(first).toContainText(team.breaks.unpaid);
+  await first.click();
+  const step = page.getByRole("dialog", { name: team.breakStep.editTitle });
+  const start = step.getByLabel(team.breakStep.start);
+  await expect(start).toBeFocused();
+  await expect(start).toHaveValue("18:30");
+
+  // Over his other break, then before the shift began: refused in words.
+  await step.getByLabel(team.breakStep.end).fill("21:05");
+  await step.getByLabel(team.sheet.reason).fill("ההפסקה נמשכה יותר");
+  await step.getByRole("button", { name: team.breakStep.save }).click();
+  await expect(step.getByRole("alert")).toHaveText(team.failure.breakOverlap);
+  await start.fill("15:00");
+  await step.getByLabel(team.breakStep.end).fill("15:20");
+  await step.getByRole("button", { name: team.breakStep.save }).click();
+  await expect(step.getByRole("alert")).toHaveText(team.failure.breakOutside);
+  await expectCleanPage(page, "", true);
+
+  // Back to fixing the shift, the focus on the break's row; then saved.
+  await step.getByRole("button", { name: team.breakStep.back }).click();
+  await expect(first).toBeFocused();
+  await first.click();
+  await step.getByLabel(team.breakStep.end).fill("18:50");
+  await step.getByLabel(team.sheet.reason).fill("ההפסקה נמשכה יותר");
+  await step.getByRole("button", { name: team.breakStep.save }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: team.done.changeBreak }),
+  ).toBeVisible();
+
+  // Removed at once, with "ביטול" in the toast, which brings it back.
+  await page.goto("/design/shell/clock/team/yoav?state=break");
+  await step.getByLabel(team.sheet.reason).fill("נלחצה בטעות");
+  await step.getByRole("button", { name: team.breakStep.remove }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: team.done.removeBreak })
+    .getByRole("button", { name: team.done.undo });
+  await undo.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: team.done.restoreBreak }),
+  ).toBeVisible();
+
+  // His break of today still runs: shown, and nothing to press but adding.
+  await page.goto("/design/shell/clock/team/yoav?state=openBreak");
+  await expect(breaks.getByText(team.breaks.running)).toBeVisible();
+  await expect(breaks.getByRole("button")).toHaveCount(1);
 });
 
 // The switcher's twins (payroll P3b): the demo's accountant keeps the books of

@@ -845,6 +845,7 @@ const cancelledShifts: Record<string, ShiftRecord[]> = {
         time: "09:40",
         note: "נרשמה בטעות, נועה לא עבדה ביום שישי",
       },
+      breaks: [],
     },
   ],
 };

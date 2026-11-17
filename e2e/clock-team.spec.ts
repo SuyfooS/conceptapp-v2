@@ -11,8 +11,11 @@ import {
   endViewSessions,
   removeDemoShift,
   setDemoRequirePunchCode,
+  setDemoUnpaidBreaks,
+  startDemoBreak,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { heT } from "./t";
 
 // Seeded in supabase/seed.sql: the demo restaurant, its manager and a worker.
 // The worker's hours are written straight to the database, as if they had
@@ -157,6 +160,8 @@ async function expectCleanPage(page: Page) {
 async function startClean() {
   await clearTimeEntries(NOA.e164);
   await setDemoRequirePunchCode(false);
+  // Breaks paid, as the seed has them, whatever a spec here set.
+  await setDemoUnpaidBreaks(false);
   await clearPunchState();
   // A spec that failed while viewing as the manager leaves no view open.
   await endViewSessions(ADMIN.e164);
@@ -676,5 +681,236 @@ test("viewing as a manager, a cancelled shift reads and nothing opens", async ({
       ),
     }),
   ).toHaveCount(0);
+  await expectCleanPage(page);
+});
+
+// Editing breaks (the clock plan's PR5): one at a time, from fixing the
+// shift, each with why; the shift then reads as corrected, the log keeps each
+// change, and the month's total follows a break that comes off the hours.
+
+/** A time `minutes` after the 10th's shift (`addDemoShift`) began, by the business's clock. */
+const intoShift = (minutes: number) =>
+  clockTime(new Date(shiftStart(10).getTime() + minutes * 60_000));
+
+/** The shift's breaks, under its times in the sheet that fixes it. */
+const breakRows = (sheet: Locator) =>
+  sheet.getByRole("group", { name: t.breaks.title });
+
+/** A break's row by its times, `from` and `to` minutes into the shift. */
+const breakRow = (sheet: Locator, from: number, to: number) =>
+  breakRows(sheet).getByRole("button", {
+    name: new RegExp(literal(`${intoShift(from)}–${intoShift(to)}`)),
+  });
+
+/** A line of the log about a break of Noa's: how it starts, before the day. */
+const breakLogLine = (change: "add" | "change" | "remove" | "restore") =>
+  heT("app.manage.activity.actions.clock.breakEdit", {
+    change,
+    person: NOA.name,
+    day: "DAY",
+  }).split("DAY")[0] ?? "";
+
+test("a manager fixes a shift's breaks: changes one's end, adds one forgotten, and the total follows", async ({
+  page,
+}, testInfo) => {
+  // The sheet checked at each step, and four writes tried.
+  test.setTimeout(90_000);
+  const desktop = testInfo.project.name === "desktop";
+  const month = lastMonth();
+  // Eight hours on the 10th, with an unpaid half hour ten minutes in; a new
+  // break comes off the hours too.
+  await addDemoShift(NOA.e164, { monthsAgo: 1, minutes: 480, unpaidBreak: 30 });
+  await setDemoUnpaidBreaks(true);
+  await signIn(page, MANAGER);
+  await page.goto(`/clock/team/${NOA.id}?month=${month}`);
+  await expect(heroTotal(page)).toHaveText("7:30");
+  const main = page.getByRole("main");
+
+  // Under the shift's times: its break, unpaid, and the way to add one.
+  await shiftOpener(page, endsAt(10, 480), desktop).click();
+  const edit = page.getByRole("dialog", { name: t.sheet.editTitle });
+  await expect(breakRow(edit, 10, 40)).toContainText(t.breaks.unpaid);
+  await expect(
+    breakRows(edit).getByRole("button", { name: t.breaks.add }),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  // Its end, a quarter of an hour in: never without why.
+  const since = new Date();
+  await breakRow(edit, 10, 40).click();
+  const step = page.getByRole("dialog", { name: t.breakStep.editTitle });
+  await expect(step.getByLabel(t.breakStep.start)).toHaveValue(intoShift(10));
+  await expect(step.getByLabel(t.breakStep.end)).toHaveValue(intoShift(40));
+  await expect(step.getByText(t.breakStep.unpaid)).toBeVisible();
+  await expectCleanPage(page);
+  await step.getByLabel(t.breakStep.end).fill(intoShift(25));
+  await step.getByRole("button", { name: t.breakStep.save }).click();
+  await expect(step.getByLabel(t.sheet.reason)).toBeFocused();
+  await expect(step.getByText(t.failure.reasonNeeded)).toBeVisible();
+  expect(await demoActivityActions("clock.break_edit", since)).toBe(0);
+  const shorter = `חזרה מוקדם מההפסקה ${Date.now()}`;
+  await step.getByLabel(t.sheet.reason).fill(shorter);
+  await step.getByRole("button", { name: t.breakStep.save }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: t.done.changeBreak }),
+  ).toBeVisible();
+  // A quarter of an hour less off her hours; the shift reads as corrected.
+  await expect(heroTotal(page)).toHaveText("7:45");
+  await expect(
+    main
+      .getByText(
+        filled(c.history.corrected, { name: MANAGER.name, note: shorter }),
+      )
+      .filter({ visible: true }),
+  ).toBeVisible();
+  expect(await demoActivityActions("clock.break_edit", since)).toBe(1);
+
+  // A break she forgot to press, added. Outside the shift, and over the one
+  // there, it is refused in words, with nothing written.
+  await shiftOpener(page, endsAt(10, 480), desktop).click();
+  await expect(breakRow(edit, 10, 25)).toBeVisible();
+  await breakRows(edit).getByRole("button", { name: t.breaks.add }).click();
+  const add = page.getByRole("dialog", { name: t.breakStep.addTitle });
+  await expect(add.getByText(t.breakStep.newUnpaid)).toBeVisible();
+  const forgot = `שכחה לרשום הפסקה ${Date.now()}`;
+  await add.getByLabel(t.sheet.reason).fill(forgot);
+  const refused = new Date();
+  // An hour before she came in: only the day after, when she wasn't there.
+  await add.getByLabel(t.breakStep.start).fill(intoShift(-60));
+  await add.getByLabel(t.breakStep.end).fill(intoShift(-30));
+  await add.getByRole("button", { name: t.breakStep.saveAdd }).click();
+  await expect(add.getByRole("alert")).toHaveText(t.failure.breakOutside);
+  await add.getByLabel(t.breakStep.start).fill(intoShift(15));
+  await add.getByLabel(t.breakStep.end).fill(intoShift(20));
+  await add.getByRole("button", { name: t.breakStep.saveAdd }).click();
+  await expect(add.getByRole("alert")).toHaveText(t.failure.breakOverlap);
+  expect(await demoActivityActions("clock.break_edit", refused)).toBe(0);
+  await expectCleanPage(page);
+
+  // Four hours in, half an hour: it comes off her hours, as the setting says.
+  await add.getByLabel(t.breakStep.start).fill(intoShift(240));
+  await add.getByLabel(t.breakStep.end).fill(intoShift(270));
+  await add.getByRole("button", { name: t.breakStep.saveAdd }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  await expect(
+    page.getByRole("status").filter({ hasText: t.done.addBreak }),
+  ).toBeVisible();
+  await expect(heroTotal(page)).toHaveText("7:15");
+  expect(await demoActivityActions("clock.break_edit", since)).toBe(2);
+  await shiftOpener(page, endsAt(10, 480), desktop).click();
+  await expect(breakRow(edit, 240, 270)).toContainText(t.breaks.unpaid);
+  await edit.getByRole("button", { name: t.sheet.close }).click();
+  await expect(edit).toBeHidden();
+
+  // The log keeps both, each with why, and leads to her hours.
+  await page.goto("/manage/activity");
+  for (const [change, note] of [
+    ["change", shorter],
+    ["add", forgot],
+  ] as const) {
+    await expect(
+      page
+        .getByRole("main")
+        .getByText(breakLogLine(change))
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+    await expect(
+      page
+        .getByRole("main")
+        .getByText(
+          filled(he.app.manage.activity.actions.clock.reason, { note }),
+        )
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+  }
+  await expectCleanPage(page);
+
+  // And Noa reads the fix in her own history, with why.
+  await page.context().clearCookies();
+  await signIn(page, NOA);
+  await page.goto(`/clock/history?month=${month}`);
+  await expect(heroTotal(page)).toHaveText("7:15");
+  await expect(
+    page
+      .getByRole("main")
+      .getByText(
+        filled(c.history.corrected, { name: MANAGER.name, note: forgot }),
+      )
+      .filter({ visible: true }),
+  ).toBeVisible();
+});
+
+test("a break pressed by mistake is removed at once, and the toast's undo brings it back", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const desktop = testInfo.project.name === "desktop";
+  const month = lastMonth();
+  await addDemoShift(NOA.e164, { monthsAgo: 1, minutes: 480, unpaidBreak: 30 });
+  await signIn(page, MANAGER);
+  await page.goto(`/clock/team/${NOA.id}?month=${month}`);
+  await expect(heroTotal(page)).toHaveText("7:30");
+
+  await shiftOpener(page, endsAt(10, 480), desktop).click();
+  const edit = page.getByRole("dialog", { name: t.sheet.editTitle });
+  await breakRow(edit, 10, 40).click();
+  const step = page.getByRole("dialog", { name: t.breakStep.editTitle });
+
+  // Without why, it stays.
+  const since = new Date();
+  await step.getByRole("button", { name: t.breakStep.remove }).click();
+  await expect(step.getByText(t.failure.reasonNeeded)).toBeVisible();
+  await expect(step.getByLabel(t.sheet.reason)).toBeFocused();
+  expect(await demoActivityActions("clock.break_edit", since)).toBe(0);
+
+  await step.getByLabel(t.sheet.reason).fill(`נלחצה בטעות ${Date.now()}`);
+  await step.getByRole("button", { name: t.breakStep.remove }).click();
+  await expect(page.getByRole("dialog")).toBeHidden();
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: t.done.removeBreak })
+    .getByRole("button", { name: t.done.undo });
+  await expect(undo).toBeVisible();
+  // Removed, it no longer comes off her hours.
+  await expect(heroTotal(page)).toHaveText("8:00");
+  await undo.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: t.done.restoreBreak }),
+  ).toBeVisible();
+  await expect(heroTotal(page)).toHaveText("7:30");
+  // Both are in the log: the removal, with why, and bringing it back.
+  expect(await demoActivityActions("clock.break_edit", since)).toBe(2);
+  await expectCleanPage(page);
+
+  // Back in the shift as it was.
+  await shiftOpener(page, endsAt(10, 480), desktop).click();
+  await expect(breakRow(edit, 10, 40)).toBeVisible();
+  await expectCleanPage(page);
+});
+
+test("a break still running is shown, and only adding one opens", async ({
+  page,
+}, testInfo) => {
+  const desktop = testInfo.project.name === "desktop";
+  // At work for two hours, on a break for the last ten minutes.
+  const clockIn = new Date(Date.now() - 2 * 3_600_000);
+  await addOpenDemoEntry(NOA.e164, 2);
+  await startDemoBreak(NOA.e164, 10);
+  const month = new Intl.DateTimeFormat("en-CA", { timeZone: TZ })
+    .format(clockIn)
+    .slice(0, 7);
+  await signIn(page, MANAGER);
+  await page.goto(`/clock/team/${NOA.id}?month=${month}`);
+  await shiftOpener(page, new RegExp(literal(c.history.now)), desktop).click();
+  const edit = page.getByRole("dialog", { name: t.sheet.editTitle });
+  await expect(breakRows(edit).getByText(t.breaks.running)).toBeVisible();
+  // It ends with her, a clock-out or a fix of the shift's end: no row to press.
+  await expect(breakRows(edit).getByRole("button")).toHaveCount(1);
+  await expect(breakRows(edit).getByRole("button")).toHaveAccessibleName(
+    t.breaks.add,
+  );
   await expectCleanPage(page);
 });

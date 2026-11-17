@@ -283,6 +283,27 @@ export async function removeDemoBreak(
 }
 
 /**
+ * The person's open shift at the demo restaurant goes on an unpaid break
+ * `minutesAgo` minutes ago, still running, as if they had pressed it.
+ */
+export async function startDemoBreak(
+  phone: string,
+  minutesAgo: number,
+): Promise<void> {
+  const rows = await sql`
+    insert into public.time_breaks
+      (entry_id, business_id, user_id, started_at, unpaid)
+    select e.id, e.business_id, e.user_id,
+      ${new Date(Date.now() - minutesAgo * 60_000)}::timestamptz, true
+    from public.time_entries e
+    join public.profiles p on p.id = e.user_id
+    where e.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
+      and e.clock_out is null and e.cancelled_at is null
+    returning id`;
+  if (rows.length !== 1) throw new Error(`${phone} has no open shift`);
+}
+
+/**
  * How many shifts the demo restaurant's newest file for payroll of `month`
  * listed, as its log row says (`payroll.export`), or null before any.
  */

@@ -441,6 +441,25 @@ export type ShiftRecord = {
    * waiting) and says so instead. Null for a live shift.
    */
   cancelled: ShiftCancel | null;
+  /**
+   * Its breaks, earliest first, for whoever edits the clock to fix one at a
+   * time (20261117000300_break_edits.sql). Live ones only: a removed break
+   * counts nowhere. None for a cancelled shift, which counts for nothing.
+   */
+  breaks: BreakRecord[];
+};
+
+/** One break of a shift, as the person's page lists it. */
+export type BreakRecord = {
+  id: string;
+  /** By the business's clock, HH:MM. */
+  start: string;
+  /** Null while it is still running. */
+  end: string | null;
+  /** Whole minutes, up to now while it runs, paid or not. */
+  minutes: number;
+  /** It came off the hours: what the business's setting said when it began. */
+  unpaid: boolean;
 };
 
 export type ShiftCorrection = {
@@ -484,6 +503,27 @@ export function correctionOf(
   };
 }
 
+/** An entry's breaks as its record lists them, earliest first. */
+function breakRecordsOf(
+  entry: TimeEntry,
+  timeZone: string,
+  now: Date,
+): BreakRecord[] {
+  const end = countedEnd(entry, now);
+  return [...entry.breaks]
+    .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
+    .map((pause) => ({
+      id: pause.id,
+      start: timeIn(new Date(pause.startedAt), timeZone),
+      end:
+        pause.endedAt === null
+          ? null
+          : timeIn(new Date(pause.endedAt), timeZone),
+      minutes: Math.floor(breakMs(pause, end) / 60_000),
+      unpaid: pause.unpaid,
+    }));
+}
+
 /**
  * One person's entries of a month as the history shows them, newest first.
  * `nameOf` names whoever corrected or cancelled an entry. `cancelled`, the
@@ -522,6 +562,7 @@ export function monthRecords(
         attendance: attendanceOf(entry),
         correction: correctionOf(entry, nameOf),
         cancelled: null,
+        breaks: breakRecordsOf(entry, timeZone, now),
       },
     ]);
   const gone = cancelled
@@ -559,6 +600,9 @@ export function monthRecords(
               time: timeIn(at, timeZone),
               note: reason,
             },
+            // Nothing of it counts, so none of its breaks is fixed: the
+            // shift comes back first.
+            breaks: [],
           },
         ];
       },
@@ -648,6 +692,176 @@ export function parseEntryTimes(
   };
 }
 
+const breakTimes = z.object({ start: clockTime, end: clockTime });
+export type BreakTimes = z.infer<typeof breakTimes>;
+
+/**
+ * What can be wrong with a break's typed times: one missing or not a time,
+ * the same minute twice, an end not yet come, or a break that isn't inside
+ * its shift.
+ */
+export type BreakProblem =
+  | "breakTimes"
+  | "breakSameTime"
+  | "future"
+  | "breakOutside";
+
+/**
+ * Every real moment a wall-clock time on a date is, in a time zone: one, or
+ * two in the hour the clocks repeat when they go back (earliest first). A
+ * time the clocks skip has none, and is read as `instantIn` reads it.
+ */
+function readingsOf(date: string, time: string, timeZone: string): Date[] {
+  const later = instantIn(date, time, timeZone);
+  const real = [-120, -60, -30, 0]
+    .map((minutes) => new Date(later.getTime() + minutes * 60_000))
+    .filter(
+      (moment) =>
+        dateIn(moment, timeZone) === date && timeIn(moment, timeZone) === time,
+    );
+  return real.length > 0 ? real : [later];
+}
+
+/**
+ * What a manager typed for a break of `entry`, HH:MM by the business's clock,
+ * as instants: the start is the first moment at or after the clock-in with
+ * that time (in the hour the clocks repeat, the first of the two; for a break
+ * being changed, the one nearest its start as it was), and the end the first
+ * after the start, so a break past midnight, or in a night
+ * shift, takes no date. A start in the clock-in's own minute is the
+ * clock-in itself, as the database has it (to the microsecond), and one in
+ * the minute another of its breaks ended starts where that one ended. A
+ * break being changed (`keep`, its id) keeps a time left as it shows, as
+ * stored: by the minute it would move, and in the hour the clocks repeat it
+ * could be read in the other of the two. It must be inside the shift (up to now
+ * while it is open) and over by now, as private.check_break_fits asks. The
+ * database has the last word, and on another break at the same time.
+ */
+export function parseBreakTimes(
+  entry: Pick<TimeEntry, "clockIn" | "clockOut"> & {
+    breaks?: TimeEntry["breaks"];
+  },
+  input: unknown,
+  timeZone: string,
+  now: Date,
+  keep?: string,
+):
+  | { ok: true; start: string; end: string }
+  | { ok: false; problem: BreakProblem } {
+  const parsed = breakTimes.safeParse(input);
+  if (!parsed.success) return { ok: false, problem: "breakTimes" };
+  const { start, end } = parsed.data;
+  const breaks = entry.breaks ?? [];
+  const kept = keep ? breaks.find((pause) => pause.id === keep) : undefined;
+  const shown = (instant: string) => timeIn(new Date(instant), timeZone);
+  const keptStart = kept && start === shown(kept.startedAt);
+  const keptEnd =
+    kept?.endedAt != null && end === shown(kept.endedAt) ? kept.endedAt : null;
+  if (start === end && !(keptStart && keptEnd !== null)) {
+    return { ok: false, problem: "breakSameTime" };
+  }
+
+  const clockIn = new Date(entry.clockIn);
+  const inDate = dateIn(clockIn, timeZone);
+  // By the minute: a break from the clock-in's own minute starts with it. A
+  // time before the clock-in's is on the next day.
+  const nextDay = start < timeIn(clockIn, timeZone);
+  const fromClockIn = (moment: Date) =>
+    moment.getTime() <= clockIn.getTime() &&
+    clockIn.getTime() - moment.getTime() < 60_000;
+  // Where other breaks ended in that minute: the last of those ends, as
+  // stored.
+  const endedIn = (moment: Date) =>
+    breaks
+      .filter(
+        (pause): pause is typeof pause & { endedAt: string } =>
+          pause.id !== keep &&
+          pause.endedAt !== null &&
+          Date.parse(pause.endedAt) >= moment.getTime() &&
+          Date.parse(pause.endedAt) - moment.getTime() < 60_000,
+      )
+      .map((pause) => pause.endedAt)
+      .sort((a, b) => Date.parse(a) - Date.parse(b))
+      .at(-1) ?? null;
+  // A reading of the start: the minute itself, or what in it comes later and
+  // the break follows (the clock-in, another break's end), as stored.
+  const startOf = (moment: Date): { at: Date; text: string | null } => {
+    let at = moment;
+    let text: string | null = null;
+    if (fromClockIn(moment)) {
+      at = clockIn;
+      text = entry.clockIn;
+    }
+    const ended = endedIn(moment);
+    if (ended !== null && Date.parse(ended) >= at.getTime()) {
+      at = new Date(ended);
+      text = ended;
+    }
+    return { at, text };
+  };
+  let startText: string | null = null;
+  let startAt: Date | undefined;
+  if (keptStart && kept) {
+    startText = kept.startedAt;
+    startAt = new Date(kept.startedAt);
+  } else {
+    const readings = [inDate, addDays(inDate, 1)]
+      .flatMap((date) => readingsOf(date, start, timeZone))
+      .map(startOf)
+      .filter(({ at }) => at.getTime() >= clockIn.getTime())
+      .sort((a, b) => a.at.getTime() - b.at.getTime());
+    // A changed break's new start is the reading nearest the one it had, so
+    // in the hour the clocks repeat it stays on that side of the change; a
+    // new break's is the first.
+    const was = kept ? Date.parse(kept.startedAt) : null;
+    const chosen =
+      was === null
+        ? readings[0]
+        : [...readings].sort(
+            (a, b) =>
+              Math.abs(a.at.getTime() - was) - Math.abs(b.at.getTime() - was),
+          )[0];
+    startAt = chosen?.at;
+    startText = chosen?.text ?? null;
+  }
+  if (startAt === undefined) return { ok: false, problem: "breakOutside" };
+  const from = startAt;
+  const startDate = dateIn(from, timeZone);
+  const endText =
+    keptEnd !== null && Date.parse(keptEnd) > from.getTime() ? keptEnd : null;
+  const endAt =
+    endText !== null
+      ? new Date(endText)
+      : [startDate, addDays(startDate, 1)]
+          .flatMap((date) => readingsOf(date, end, timeZone))
+          .filter((moment) => moment.getTime() > from.getTime())
+          .sort((a, b) => a.getTime() - b.getTime())[0];
+  if (endAt === undefined) return { ok: false, problem: "breakTimes" };
+  if (entry.clockOut !== null) {
+    // A shift that ended has, so its breaks are all before now.
+    if (endAt.getTime() > Date.parse(entry.clockOut)) {
+      return { ok: false, problem: "breakOutside" };
+    }
+  } else if (endAt.getTime() > now.getTime()) {
+    // Still open: an end still to come, unless the start, taken to the next
+    // day, can only have been meant before the clock-in.
+    return {
+      ok: false,
+      problem:
+        nextDay && startAt.getTime() > now.getTime()
+          ? "breakOutside"
+          : "future",
+    };
+  }
+  return {
+    ok: true,
+    // Stored strings as they are: a Date holds milliseconds, the database
+    // microseconds, and a start a hair before what it follows is refused.
+    start: startText ?? startAt.toISOString(),
+    end: endText ?? endAt.toISOString(),
+  };
+}
+
 /** The longest reason the database keeps for a correction (time_entries.note). */
 export const REASON_MAX = 200;
 
@@ -704,8 +918,9 @@ export type ClockFailure =
   /** Adding or correcting: the reason is missing. */
   | "reasonNeeded"
   /**
-   * Confirming: someone else confirms a person's own hours. Cancelling or
-   * bringing back: only an owner does it to their own shift.
+   * Confirming: someone else confirms a person's own hours. Cancelling,
+   * bringing back or editing a break: only an owner does it to their own
+   * shift.
    */
   | "ownHours"
   /** Confirming: a time someone set for themselves waits for an owner. */
@@ -723,6 +938,24 @@ export type ClockFailure =
   | "breaksAfterDay"
   /** Bringing back one a cancel ended: the person is off the staff now. */
   | "notOnStaff"
+  /** A break edit: the break isn't inside its shift. */
+  | "breakOutside"
+  /**
+   * A break edit: its times are missing, or the end isn't after the start
+   * (the screen's own check comes first).
+   */
+  | "breakTimes"
+  /** A break edit: another break of the shift covers that time. */
+  | "breakOverlap"
+  /** A break edit: the break is still running; it ends first. */
+  | "breakOpen"
+  /**
+   * A break edit: the break isn't there any more, removed by someone else or
+   * cut away by a correction of the shift meanwhile.
+   */
+  | "breakGone"
+  /** Taking a removal back: the break is already back. */
+  | "notRemoved"
   | "noAccess"
   | "failed";
 
@@ -742,6 +975,12 @@ export type PunchFailure =
       | "notCancelled"
       | "breaksAfterDay"
       | "notOnStaff"
+      | "breakOutside"
+      | "breakTimes"
+      | "breakOverlap"
+      | "breakOpen"
+      | "breakGone"
+      | "notRemoved"
     >
   | "codeNeeded";
 
@@ -761,6 +1000,13 @@ export function punchFailureOf(
     case "notCancelled":
     case "breaksAfterDay":
     case "notOnStaff":
+    // A manager's break edits: a punch never meets them.
+    case "breakOutside":
+    case "breakTimes":
+    case "breakOverlap":
+    case "breakOpen":
+    case "breakGone":
+    case "notRemoved":
       return "failed";
     case "cancelled":
       // Taking a clock-out back from a shift a manager cancelled meanwhile:
@@ -791,11 +1037,19 @@ export function clockFailureOf(
       return /yourself/i.test(message) ? "ownCode" : "code";
     case "23P01":
       if (/already clocked in/i.test(message)) return "alreadyIn";
-      return /already on a break/i.test(message) ? "alreadyOnBreak" : "times";
+      if (/already on a break/i.test(message)) return "alreadyOnBreak";
+      // A break edit over another live break of the shift: the constraint's.
+      return /time_breaks_no_overlap/.test(message) ? "breakOverlap" : "times";
     case "55000":
       // Cancelling and bringing back (20261117000200_cancelled_shifts.sql).
       if (hint === "breaks_after_day") return "breaksAfterDay";
       if (hint === "not_on_staff") return "notOnStaff";
+      // Editing a break, and taking a removal back
+      // (20261117000300_break_edits.sql).
+      if (hint === "break_open") return "breakOpen";
+      if (hint === "too_late") return "tooLate";
+      if (/break is not removed/i.test(message)) return "notRemoved";
+      if (/break is removed/i.test(message)) return "breakGone";
       if (/is not cancelled/i.test(message)) return "notCancelled";
       if (/is cancelled/i.test(message)) return "cancelled";
       if (/24 hours/i.test(message)) return "tooLong";
@@ -804,6 +1058,9 @@ export function clockFailureOf(
       return /too late/i.test(message) ? "tooLate" : "notIn";
     case "22023":
       if (/reason/i.test(message)) return "reasonNeeded";
+      if (hint === "break_outside") return "breakOutside";
+      // private.check_break_fits's other refusals.
+      if (/^a break/i.test(message)) return "breakTimes";
       return /needs an end/i.test(message) ? "needsEnd" : "times";
     case "42501":
       if (/stations only/i.test(message)) return "stationsOnly";
@@ -811,7 +1068,8 @@ export function clockFailureOf(
       if (/only an owner/i.test(message)) return "ownerOnly";
       return "noAccess";
     case "P0002":
-      return "noAccess";
+      // A break cut away by a correction of its shift meanwhile.
+      return /unknown break/i.test(message) ? "breakGone" : "noAccess";
     default:
       return "failed";
   }

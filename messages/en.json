@@ -1521,6 +1521,32 @@
           "openHint": "It was still open when it was cancelled, and comes back open.",
           "restore": "Bring the shift back"
         },
+        "breaks": {
+          "title": "Breaks",
+          "row": "<ltr>{start}–{end}</ltr> · {minutes} min",
+          "rowOpen": "From <ltr>{start}</ltr> · {minutes} min",
+          "unpaid": "Unpaid",
+          "running": "The break hasn't ended yet",
+          "add": "Add a break",
+          "saveFirst": "The shift's times changed and aren't saved yet. Save them first, then fix a break."
+        },
+        "breakStep": {
+          "editTitle": "Fix a break",
+          "addTitle": "Add a break",
+          "editSubtitle": "The earlier times stay in the activity log.",
+          "addSubtitle": "For a break the clock didn't record.",
+          "start": "Start",
+          "end": "End",
+          "hint": "The break must be within the shift's hours. An end before the start counts as the next day.",
+          "unpaid": "The break is unpaid, so it comes off the hours.",
+          "paid": "The break is paid, so it doesn't change the hours.",
+          "newUnpaid": "By the clock's settings, a new break is unpaid, so it comes off the hours.",
+          "newPaid": "By the clock's settings, a new break is paid, so it doesn't change the hours.",
+          "save": "Save the break",
+          "saveAdd": "Add the break",
+          "remove": "Remove the break",
+          "back": "Back to fixing the hours"
+        },
         "failure": {
           "invalid": "A valid date and start time are needed.",
           "needsEnd": "An end time is needed too.",
@@ -1538,13 +1564,25 @@
           "ownShift": "Only the owner cancels or brings back your own shifts.",
           "overlap": "Another shift is already recorded for those hours. Cancel or fix it first.",
           "breaksAfterDay": "The shift has been open for over a day, with a break after its first day. Fix its end time first, then cancel it.",
-          "notOnStaff": "The shift was still open when it was cancelled, and someone no longer on the staff can't go back to it. You can add the hours as a new shift."
+          "notOnStaff": "The shift was still open when it was cancelled, and someone no longer on the staff can't go back to it. You can add the hours as a new shift.",
+          "breakTimes": "The break needs a start and an end time.",
+          "breakSameTime": "The break starts and ends in the same minute. Check the times.",
+          "breakOutside": "The break must be between the shift's start and end.",
+          "breakOverlap": "Another break of the shift is already recorded for those times. Fix it first.",
+          "breakOpen": "The break hasn't ended yet. It ends when the person comes back or leaves, or when the shift's end is fixed.",
+          "breakGone": "The break is no longer in the shift: someone removed it or fixed the hours meanwhile.",
+          "ownBreaks": "Only the owner fixes the breaks of your own shifts.",
+          "tooLate": "The break can no longer be brought back. You can add it again."
         },
         "done": {
           "edit": "Hours saved",
           "add": "Shift added",
           "cancel": "Shift cancelled",
           "restore": "Shift brought back",
+          "changeBreak": "Break saved",
+          "addBreak": "Break added",
+          "removeBreak": "Break removed",
+          "restoreBreak": "Break brought back",
           "undo": "Undo"
         },
         "confirm": {

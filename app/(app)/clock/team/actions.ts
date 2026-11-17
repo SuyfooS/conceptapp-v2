@@ -1,20 +1,31 @@
 "use server";
 
 import {
+  addTimeBreak,
   addTimeEntry,
   type ClockResult,
   cancelTimeEntry,
+  changeTimeBreak,
   confirmTimeEntry,
   correctTimeEntry,
+  getTimeEntry,
+  removeTimeBreak,
+  restoreTimeBreak,
   restoreTimeEntry,
 } from "@db/time-clock";
-import { editsClock, parseEntryTimes, parseReason } from "@domain/time-clock";
+import {
+  editsClock,
+  parseBreakTimes,
+  parseEntryTimes,
+  parseReason,
+} from "@domain/time-clock";
 import { canWrite } from "@domain/view-as";
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { pushSoon } from "../../../push/server";
 import { currentMember } from "../../member";
 import type {
+  BreakValues,
   EntryActionResult,
   EntryFailure,
   EntryValues,
@@ -220,4 +231,153 @@ export async function restoreEntryAction(
     ok: false,
     failure: result.failure === "times" ? "overlap" : failureOf(result),
   };
+}
+
+/** What the database's refusal of a break edit means on this screen. */
+function breakFailureOf(
+  result: Extract<ClockResult<unknown>, { ok: false }>,
+): EntryFailure {
+  switch (result.failure) {
+    case "breakOutside":
+    case "breakTimes":
+    case "breakOverlap":
+    case "breakOpen":
+    case "breakGone":
+    case "tooLate":
+    case "cancelled":
+    case "reasonNeeded":
+    case "noAccess":
+      return result.failure;
+    // Only an owner edits the breaks of their own shift.
+    case "ownHours":
+      return "ownBreaks";
+    default:
+      return "failed";
+  }
+}
+
+/** After a break edit: the shift reads as corrected, its total follows. */
+function afterBreakEdit(result: ClockResult<unknown>): EntryActionResult {
+  // An unpaid break of a closed month tells its closer and the accountants.
+  if (result.ok) pushSoon();
+  refresh();
+  return result.ok
+    ? { ok: true }
+    : { ok: false, failure: breakFailureOf(result) };
+}
+
+/**
+ * A break's typed times as instants of the shift they belong to, read as the
+ * editor may read it, and why it changes. The database checks them again.
+ */
+async function breakTimesOf(
+  entryId: string,
+  values: BreakValues,
+  /** The break being changed: a time left as it shows stays as stored. */
+  keep?: string,
+): Promise<
+  | {
+      ok: true;
+      actorId: string;
+      times: { start: string; end: string; note: string };
+    }
+  | { ok: false; failure: EntryFailure }
+> {
+  const entry = z.uuid().safeParse(entryId);
+  if (!entry.success) return { ok: false, failure: "failed" };
+  const editor = await clockEditor();
+  if (!editor.ok) return editor;
+  const shift = await getTimeEntry(editor.businessId, entry.data);
+  if (!shift) return { ok: false, failure: "noAccess" };
+
+  const times = parseBreakTimes(
+    shift,
+    values,
+    editor.timeZone,
+    new Date(),
+    keep,
+  );
+  if (!times.ok) return { ok: false, failure: times.problem };
+  // After the times, so the form says what's wrong with them first.
+  const note = parseReason(values.reason);
+  if (note === null) return { ok: false, failure: "reasonNeeded" };
+  return {
+    ok: true,
+    actorId: editor.actorId,
+    times: { start: times.start, end: times.end, note },
+  };
+}
+
+/**
+ * Add a break the shift is missing, with why: paid or not by the business's
+ * setting now. Its times are read against the shift, so a break past midnight
+ * takes no date.
+ */
+export async function addBreakAction(
+  entryId: string,
+  values: BreakValues,
+): Promise<EntryActionResult> {
+  const typed = await breakTimesOf(entryId, values);
+  if (!typed.ok) return typed;
+  return afterBreakEdit(
+    await addTimeBreak(typed.actorId, entryId, typed.times),
+  );
+}
+
+/**
+ * Change the times of a break that ended, with why; it stays paid or not as
+ * it was. A break still running isn't changed: it ends first.
+ */
+export async function changeBreakAction(
+  entryId: string,
+  breakId: string,
+  values: BreakValues,
+): Promise<EntryActionResult> {
+  const pause = z.uuid().safeParse(breakId);
+  if (!pause.success) return { ok: false, failure: "failed" };
+  const typed = await breakTimesOf(entryId, values, pause.data);
+  if (!typed.ok) return typed;
+  return afterBreakEdit(
+    await changeTimeBreak(typed.actorId, pause.data, typed.times),
+  );
+}
+
+/**
+ * Remove a break pressed by mistake, with why, at once: it is marked removed
+ * and kept, and counts nowhere. The toast's "ביטול" takes it back.
+ */
+export async function removeBreakAction(
+  breakId: string,
+  reason: string,
+): Promise<EntryActionResult> {
+  const pause = z.uuid().safeParse(breakId);
+  if (!pause.success) return { ok: false, failure: "failed" };
+  const editor = await clockEditor();
+  if (!editor.ok) return editor;
+  const note = parseReason(reason);
+  if (note === null) return { ok: false, failure: "reasonNeeded" };
+  return afterBreakEdit(
+    await removeTimeBreak(editor.actorId, pause.data, note),
+  );
+}
+
+/**
+ * Take a removal back, with no reason: only whoever removed it, within ten
+ * minutes (the database's). Already back counts as back.
+ */
+export async function restoreBreakAction(
+  breakId: string,
+): Promise<EntryActionResult> {
+  const pause = z.uuid().safeParse(breakId);
+  if (!pause.success) return { ok: false, failure: "failed" };
+  const editor = await clockEditor();
+  if (!editor.ok) return editor;
+  const result = await restoreTimeBreak(editor.actorId, pause.data);
+  if (!result.ok && result.failure === "notRemoved") {
+    refresh();
+    return { ok: true };
+  }
+  // Its own clash is with a live break that took its time meanwhile (23P01),
+  // and its shift corrected so it no longer fits (22023).
+  return afterBreakEdit(result);
 }

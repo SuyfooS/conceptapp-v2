@@ -3,9 +3,13 @@ import { notFound } from "next/navigation";
 import { baseWording, translator } from "../../../wording";
 import { clockPaths } from "../../clock";
 import {
+  addBreakAction,
   addEntryAction,
   cancelEntryAction,
+  changeBreakAction,
   correctEntryAction,
+  removeBreakAction,
+  restoreBreakAction,
   restoreEntryAction,
 } from "../actions";
 import { PersonHoursView } from "../person-view";
@@ -35,6 +39,10 @@ export default async function ClockPersonPage({
         add: addEntryAction,
         cancel: cancelEntryAction,
         restore: restoreEntryAction,
+        addBreak: addBreakAction,
+        changeBreak: changeBreakAction,
+        removeBreak: removeBreakAction,
+        restoreBreak: restoreBreakAction,
       }}
       paths={clockPaths}
     />

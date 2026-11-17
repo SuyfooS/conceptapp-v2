@@ -1758,7 +1758,7 @@ closed month, which then tells its closer and the accountants
 break keeps its times: `private.fit_breaks_to_entry` moves, cuts and deletes
 live breaks only, `undo_clock_out` and `restore_time_entry` open live ones
 again only, and `cancel_time_entry`'s `breaks_after_day` asks about live ones
-only. Nothing in the app calls the four yet. Covered by
+only. The person's page on the team's hours calls the four (below). Covered by
 `break_edits.test.sql`, with `time_breaks.test.sql`, `hours_kept.test.sql` and
 `demo_reset.test.sql`.
 
@@ -1793,6 +1793,28 @@ back (23P01) and `noAccess` (42501 "Managers and owners only", P0002). The
 clock screen's `punchFailureOf` reads `cancelled` (taking back a clock-out of
 a shift cancelled meanwhile) as `notIn`, as it read before, and the others as
 `failed`. Covered by `@domain/time-clock`'s tests and `e2e/clock-team.spec.ts`.
+
+The writes of a break edit (`time-clock.ts`, the clock plan's PR5), with the
+secret key, for the same page: `addTimeBreak(actor, entry, {start, end,
+note})`, which returns the new break's id, `changeTimeBreak(actor, break,
+{start, end, note})`, `removeTimeBreak(actor, break, note)` and
+`restoreTimeBreak(actor, break)`, the times as instants. `getTimeEntry(business,
+entry)` reads one shift with its live breaks under the person's session
+(RLS, cancelled or not; null when they may read none), for
+`@domain/time-clock`'s `parseBreakTimes` to read the typed HH:MM against:
+the start the first moment at or after the clock-in with that time, the end
+the first after the start, so a break past midnight takes no date. The
+refusals read through `clockFailureOf`: `breakOutside` (22023, hint
+`break_outside`), `breakTimes` (`check_break_fits`'s other 22023s),
+`breakOverlap` (23P01 on `time_breaks_no_overlap`; another 23P01 stays
+`times`), `breakOpen` (55000, hint `break_open`), `tooLate` (55000, hint
+`too_late`), `breakGone` (55000 "The break is removed", or P0002 "Unknown
+break": cut away by a correction), `notRemoved` (55000 "The break is not
+removed", which the page counts as brought back), and, as a cancel's,
+`cancelled`, `ownHours`, `reasonNeeded` and `noAccess`. The clock screen's
+`punchFailureOf` reads the six new kinds as `failed`: a punch never meets
+them. Covered by `@domain/time-clock`'s tests, `time-clock.test.ts` and
+`e2e/clock-team.spec.ts`.
 
 Chat (`20261111000100_chat_module.sql`, `20261111000200_chat.sql`, chat C1), in
 the database first, with the module off everywhere until C2 (below). `public.chat_conversations`
