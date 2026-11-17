@@ -441,6 +441,25 @@ export type ShiftRecord = {
    * waiting) and says so instead. Null for a live shift.
    */
   cancelled: ShiftCancel | null;
+  /**
+   * Its breaks, earliest first, for whoever edits the clock to fix one at a
+   * time (20261117000300_break_edits.sql). Live ones only: a removed break
+   * counts nowhere. None for a cancelled shift, which counts for nothing.
+   */
+  breaks: BreakRecord[];
+};
+
+/** One break of a shift, as the person's page lists it. */
+export type BreakRecord = {
+  id: string;
+  /** By the business's clock, HH:MM. */
+  start: string;
+  /** Null while it is still running. */
+  end: string | null;
+  /** Whole minutes, up to now while it runs, paid or not. */
+  minutes: number;
+  /** It came off the hours: what the business's setting said when it began. */
+  unpaid: boolean;
 };
 
 export type ShiftCorrection = {
@@ -484,6 +503,27 @@ export function correctionOf(
   };
 }
 
+/** An entry's breaks as its record lists them, earliest first. */
+function breakRecordsOf(
+  entry: TimeEntry,
+  timeZone: string,
+  now: Date,
+): BreakRecord[] {
+  const end = countedEnd(entry, now);
+  return [...entry.breaks]
+    .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt))
+    .map((pause) => ({
+      id: pause.id,
+      start: timeIn(new Date(pause.startedAt), timeZone),
+      end:
+        pause.endedAt === null
+          ? null
+          : timeIn(new Date(pause.endedAt), timeZone),
+      minutes: Math.floor(breakMs(pause, end) / 60_000),
+      unpaid: pause.unpaid,
+    }));
+}
+
 /**
  * One person's entries of a month as the history shows them, newest first.
  * `nameOf` names whoever corrected or cancelled an entry. `cancelled`, the
@@ -522,6 +562,7 @@ export function monthRecords(
         attendance: attendanceOf(entry),
         correction: correctionOf(entry, nameOf),
         cancelled: null,
+        breaks: breakRecordsOf(entry, timeZone, now),
       },
     ]);
   const gone = cancelled
@@ -559,6 +600,9 @@ export function monthRecords(
               time: timeIn(at, timeZone),
               note: reason,
             },
+            // Nothing of it counts, so none of its breaks is fixed: the
+            // shift comes back first.
+            breaks: [],
           },
         ];
       },
@@ -648,6 +692,81 @@ export function parseEntryTimes(
   };
 }
 
+const breakTimes = z.object({ start: clockTime, end: clockTime });
+export type BreakTimes = z.infer<typeof breakTimes>;
+
+/**
+ * What can be wrong with a break's typed times: one missing or not a time,
+ * the same minute twice, an end not yet come, or a break that isn't inside
+ * its shift.
+ */
+export type BreakProblem =
+  | "breakTimes"
+  | "breakSameTime"
+  | "future"
+  | "breakOutside";
+
+/**
+ * What a manager typed for a break of `entry`, HH:MM by the business's clock,
+ * as instants: the start is the first moment at or after the clock-in with
+ * that time, and the end the first after the start, so a break past midnight,
+ * or in a night shift, takes no date. It must be inside the shift (up to now
+ * while it is open) and over by now, as private.check_break_fits asks. The
+ * database has the last word, and on another break at the same time.
+ */
+export function parseBreakTimes(
+  entry: Pick<TimeEntry, "clockIn" | "clockOut">,
+  input: unknown,
+  timeZone: string,
+  now: Date,
+):
+  | { ok: true; start: string; end: string }
+  | { ok: false; problem: BreakProblem } {
+  const parsed = breakTimes.safeParse(input);
+  if (!parsed.success) return { ok: false, problem: "breakTimes" };
+  const { start, end } = parsed.data;
+  if (start === end) return { ok: false, problem: "breakSameTime" };
+
+  const clockIn = new Date(entry.clockIn);
+  const inDate = dateIn(clockIn, timeZone);
+  // By the minute: a break from the clock-in's own minute starts with it. A
+  // time before the clock-in's is on the next day.
+  const nextDay = start < timeIn(clockIn, timeZone);
+  const startAt = new Date(
+    Math.max(
+      instantIn(
+        nextDay ? addDays(inDate, 1) : inDate,
+        start,
+        timeZone,
+      ).getTime(),
+      clockIn.getTime(),
+    ),
+  );
+  const startDate = dateIn(startAt, timeZone);
+  const endAt = instantIn(
+    end > start ? startDate : addDays(startDate, 1),
+    end,
+    timeZone,
+  );
+  if (entry.clockOut !== null) {
+    // A shift that ended has, so its breaks are all before now.
+    if (endAt.getTime() > Date.parse(entry.clockOut)) {
+      return { ok: false, problem: "breakOutside" };
+    }
+  } else if (endAt.getTime() > now.getTime()) {
+    // Still open: an end still to come, unless the start, taken to the next
+    // day, can only have been meant before the clock-in.
+    return {
+      ok: false,
+      problem:
+        nextDay && startAt.getTime() > now.getTime()
+          ? "breakOutside"
+          : "future",
+    };
+  }
+  return { ok: true, start: startAt.toISOString(), end: endAt.toISOString() };
+}
+
 /** The longest reason the database keeps for a correction (time_entries.note). */
 export const REASON_MAX = 200;
 
@@ -704,8 +823,9 @@ export type ClockFailure =
   /** Adding or correcting: the reason is missing. */
   | "reasonNeeded"
   /**
-   * Confirming: someone else confirms a person's own hours. Cancelling or
-   * bringing back: only an owner does it to their own shift.
+   * Confirming: someone else confirms a person's own hours. Cancelling,
+   * bringing back or editing a break: only an owner does it to their own
+   * shift.
    */
   | "ownHours"
   /** Confirming: a time someone set for themselves waits for an owner. */
@@ -723,6 +843,24 @@ export type ClockFailure =
   | "breaksAfterDay"
   /** Bringing back one a cancel ended: the person is off the staff now. */
   | "notOnStaff"
+  /** A break edit: the break isn't inside its shift. */
+  | "breakOutside"
+  /**
+   * A break edit: its times are missing, or the end isn't after the start
+   * (the screen's own check comes first).
+   */
+  | "breakTimes"
+  /** A break edit: another break of the shift covers that time. */
+  | "breakOverlap"
+  /** A break edit: the break is still running; it ends first. */
+  | "breakOpen"
+  /**
+   * A break edit: the break isn't there any more, removed by someone else or
+   * cut away by a correction of the shift meanwhile.
+   */
+  | "breakGone"
+  /** Taking a removal back: the break is already back. */
+  | "notRemoved"
   | "noAccess"
   | "failed";
 
@@ -742,6 +880,12 @@ export type PunchFailure =
       | "notCancelled"
       | "breaksAfterDay"
       | "notOnStaff"
+      | "breakOutside"
+      | "breakTimes"
+      | "breakOverlap"
+      | "breakOpen"
+      | "breakGone"
+      | "notRemoved"
     >
   | "codeNeeded";
 
@@ -761,6 +905,13 @@ export function punchFailureOf(
     case "notCancelled":
     case "breaksAfterDay":
     case "notOnStaff":
+    // A manager's break edits: a punch never meets them.
+    case "breakOutside":
+    case "breakTimes":
+    case "breakOverlap":
+    case "breakOpen":
+    case "breakGone":
+    case "notRemoved":
       return "failed";
     case "cancelled":
       // Taking a clock-out back from a shift a manager cancelled meanwhile:
@@ -791,11 +942,19 @@ export function clockFailureOf(
       return /yourself/i.test(message) ? "ownCode" : "code";
     case "23P01":
       if (/already clocked in/i.test(message)) return "alreadyIn";
-      return /already on a break/i.test(message) ? "alreadyOnBreak" : "times";
+      if (/already on a break/i.test(message)) return "alreadyOnBreak";
+      // A break edit over another live break of the shift: the constraint's.
+      return /time_breaks_no_overlap/.test(message) ? "breakOverlap" : "times";
     case "55000":
       // Cancelling and bringing back (20261117000200_cancelled_shifts.sql).
       if (hint === "breaks_after_day") return "breaksAfterDay";
       if (hint === "not_on_staff") return "notOnStaff";
+      // Editing a break, and taking a removal back
+      // (20261117000300_break_edits.sql).
+      if (hint === "break_open") return "breakOpen";
+      if (hint === "too_late") return "tooLate";
+      if (/break is not removed/i.test(message)) return "notRemoved";
+      if (/break is removed/i.test(message)) return "breakGone";
       if (/is not cancelled/i.test(message)) return "notCancelled";
       if (/is cancelled/i.test(message)) return "cancelled";
       if (/24 hours/i.test(message)) return "tooLong";
@@ -804,6 +963,9 @@ export function clockFailureOf(
       return /too late/i.test(message) ? "tooLate" : "notIn";
     case "22023":
       if (/reason/i.test(message)) return "reasonNeeded";
+      if (hint === "break_outside") return "breakOutside";
+      // private.check_break_fits's other refusals.
+      if (/^a break/i.test(message)) return "breakTimes";
       return /needs an end/i.test(message) ? "needsEnd" : "times";
     case "42501":
       if (/stations only/i.test(message)) return "stationsOnly";
@@ -811,7 +973,8 @@ export function clockFailureOf(
       if (/only an owner/i.test(message)) return "ownerOnly";
       return "noAccess";
     case "P0002":
-      return "noAccess";
+      // A break cut away by a correction of its shift meanwhile.
+      return /unknown break/i.test(message) ? "breakGone" : "noAccess";
     default:
       return "failed";
   }

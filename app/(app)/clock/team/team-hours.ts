@@ -206,6 +206,7 @@ export async function currentPersonHours(
       cancelled,
     ),
     today,
+    unpaidBreaks: settings.unpaidBreaks,
     viewOnly,
   };
 }

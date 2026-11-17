@@ -322,6 +322,80 @@ export const restoreTimeEntry = (actorId: string, entryId: string) =>
   );
 
 /**
+ * Whoever edits the clock adds a break the shift is missing, with why (`note`,
+ * which the database requires, keeps on the shift and logs as
+ * `clock.break_edit`): paid or not by the business's setting now. Its times
+ * must be inside the shift and over (`breakOutside`, `breakTimes`), clear of
+ * its other breaks (`breakOverlap`). Their own shift only an owner edits.
+ * Returns the new break's id.
+ */
+export const addTimeBreak = (
+  actorId: string,
+  entryId: string,
+  times: { start: string; end: string; note: string },
+) =>
+  call(() =>
+    createAdminClient().rpc("add_time_break", {
+      actor: actorId,
+      entry: entryId,
+      new_start: times.start,
+      new_end: times.end,
+      note: times.note,
+    }),
+  );
+
+/**
+ * Whoever edits the clock changes the times of a break that ended, with why,
+ * as `addTimeBreak`; it stays paid or not as it was. A break still running is
+ * refused (`breakOpen`), and one removed meanwhile (`breakGone`).
+ */
+export const changeTimeBreak = (
+  actorId: string,
+  breakId: string,
+  times: { start: string; end: string; note: string },
+) =>
+  call(() =>
+    createAdminClient().rpc("change_time_break", {
+      actor: actorId,
+      time_break: breakId,
+      new_start: times.start,
+      new_end: times.end,
+      note: times.note,
+    }),
+  );
+
+/**
+ * Whoever edits the clock removes a break that ended, with why: it is marked
+ * removed and keeps its times, and counts nowhere. Refused as
+ * `changeTimeBreak`.
+ */
+export const removeTimeBreak = (
+  actorId: string,
+  breakId: string,
+  note: string,
+) =>
+  call(() =>
+    createAdminClient().rpc("remove_time_break", {
+      actor: actorId,
+      time_break: breakId,
+      note,
+    }),
+  );
+
+/**
+ * Whoever removed a break takes it back, within ten minutes and with no
+ * reason (`tooLate` after, or for anyone else; `notRemoved` when it is back
+ * already), while it still fits its shift beside the live breaks.
+ */
+export const restoreTimeBreak = (actorId: string, breakId: string) =>
+  call(() =>
+    createAdminClient().rpc("restore_time_break", {
+      actor: actorId,
+      time_break: breakId,
+    }),
+  );
+
+/**
  * A manager confirms an entry made without a code, or an owner one someone
  * set for themselves: what waits on it, up to now. Logged as `clock.confirm`.
  */
@@ -459,6 +533,26 @@ export async function getTimeEntries(
     return query.order("clock_in").order("id").range(first, last);
   });
   return rows.map(entryOf);
+}
+
+/**
+ * One of a business's shifts with its live breaks, as the signed-in person
+ * may read it (RLS, as `getTimeEntries`), cancelled or not; null when there is
+ * none they may read. What a break's typed times are read against.
+ */
+export async function getTimeEntry(
+  businessId: string,
+  entryId: string,
+): Promise<TimeEntry | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("time_entries")
+    .select(ENTRY_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("id", entryId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? entryOf(data) : null;
 }
 
 /**

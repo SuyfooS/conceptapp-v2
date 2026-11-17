@@ -1,4 +1,4 @@
-import type { ShiftRecord } from "@domain/time-clock";
+import type { BreakRecord, ShiftRecord } from "@domain/time-clock";
 import type {
   EntryTarget,
   PersonHoursData,
@@ -49,6 +49,7 @@ export const demoCancelledShift: ShiftRecord = {
     time: "08:20",
     note: "נכנסה בטעות ביום חופש",
   },
+  breaks: [],
 };
 
 /** Noa's shifts on the clock demo, newest first, with the one cancelled. */
@@ -73,7 +74,20 @@ const shift = (
   attendance: null,
   correction: null,
   cancelled: null,
+  breaks: [],
   ...more,
+});
+
+/** A break of a demo shift, its id from the shift's and its place in it. */
+const pause = (
+  shiftId: number,
+  index: number,
+  times: Omit<BreakRecord, "id" | "unpaid">,
+): BreakRecord => ({
+  id: `68000000-0000-4000-a000-00000000b${String(shiftId).padStart(2, "0")}${index}`,
+  ...times,
+  // The demo's breaks come off the hours, as its setting says.
+  unpaid: true,
 });
 
 /**
@@ -90,12 +104,17 @@ const demoPeople: {
     userId: YOAV,
     name: "יואב לוי",
     records: [
-      // At work now, on a break, clocked in without a code: it waits.
+      // At work now, on a break, clocked in without a code: it waits. The
+      // break still running is shown and opens nothing.
       shift(
         1,
         TODAY,
         { in: "09:14", out: null, minutes: 166 },
-        { attendance: { how: "none", pending: true } },
+        {
+          attendance: { how: "none", pending: true },
+          breakMinutes: 20,
+          breaks: [pause(1, 1, { start: "11:40", end: null, minutes: 20 })],
+        },
       ),
       // Corrected, recorded by a manager and corrected since, and recorded
       // by a manager: each with who and why.
@@ -105,6 +124,11 @@ const demoPeople: {
         { in: "16:00", out: "23:30", minutes: 420 },
         {
           breakMinutes: 30,
+          // Two breaks, each fixed on its own (`?state=break`).
+          breaks: [
+            pause(2, 1, { start: "18:30", end: "18:45", minutes: 15 }),
+            pause(2, 2, { start: "21:00", end: "21:15", minutes: 15 }),
+          ],
           correction: {
             kind: "corrected",
             by: "שירן הדגמה",
@@ -187,6 +211,7 @@ const demoPeople: {
         attendance: null,
         correction: null,
         cancelled: null,
+        breaks: [],
       },
       ...demoNoaRecords.filter((record) => record.date < "2026-11-04"),
     ],
@@ -280,27 +305,54 @@ export const demoTeamHours: TeamHoursData = {
 
 /**
  * The sheet a demo person's page opens on (`?state=`): `edit` and `cancel` on
- * their newest shift that ended, fixing it and the step that cancels it, and
- * `cancelled` on their cancelled one, to bring it back.
+ * their newest shift that ended, fixing it (with its breaks) and the step
+ * that cancels it; `cancelled` on their cancelled one, to bring it back;
+ * `break` the step that fixes the first break of their newest shift with one
+ * that ended, `addBreak` the step that adds one to their newest shift that
+ * ended, and `openBreak` fixing the shift whose break still runs.
  */
 export function demoPersonSheet(
   userId: string,
   state: string | undefined,
 ): EntryTarget | undefined {
   const records = demoPeople.find((row) => row.userId === userId)?.records;
-  const ended = records?.find(
-    (record) => record.cancelled === null && record.out !== null,
-  );
+  const live = records?.filter((record) => record.cancelled === null) ?? [];
+  const ended = live.find((record) => record.out !== null);
   const cancelled = records?.find((record) => record.cancelled !== null);
+  const withBreak = live.find((record) =>
+    record.breaks.some((one) => one.end !== null),
+  );
+  const running = live.find((record) =>
+    record.breaks.some((one) => one.end === null),
+  );
   switch (state) {
     case "edit":
     case "cancel":
       return ended ? { kind: state, record: ended } : undefined;
     case "cancelled":
       return cancelled ? { kind: "cancelled", record: cancelled } : undefined;
+    case "break": {
+      const first = withBreak?.breaks.find((one) => one.end !== null);
+      return withBreak && first
+        ? { kind: "break", record: withBreak, pause: first }
+        : undefined;
+    }
+    case "addBreak":
+      return ended ? { kind: "break", record: ended, pause: null } : undefined;
+    case "openBreak":
+      return running ? { kind: "edit", record: running } : undefined;
     default:
       return undefined;
   }
+}
+
+/** A demo shift by its id, for the stand-ins to check what was typed against. */
+export function demoShiftOf(entryId: string): ShiftRecord | undefined {
+  for (const person of demoPeople) {
+    const found = person.records.find((record) => record.id === entryId);
+    if (found) return found;
+  }
+  return undefined;
 }
 
 /** One person's month, from the same shifts as their row in the team list. */
@@ -314,6 +366,8 @@ export function demoPersonHours(userId: string): PersonHoursData | null {
     minutes: sum(person.records, "minutes"),
     records: person.records,
     today: TODAY,
+    // The demo restaurant's breaks come off the hours.
+    unpaidBreaks: true,
     viewOnly: false,
   };
 }

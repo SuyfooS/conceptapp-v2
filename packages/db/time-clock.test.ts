@@ -39,6 +39,10 @@ vi.mock("./supabase/server", () => ({
           const end = Math.min(last + 1, first + 1000);
           return { data: served.rows.slice(first, end), error: null };
         },
+        maybeSingle: async () => ({
+          data: served.rows[0] ?? null,
+          error: null,
+        }),
       };
       return query;
     },
@@ -49,6 +53,7 @@ const {
   entryOf,
   getCancelledEntries,
   getTimeEntries,
+  getTimeEntry,
   hashPunchCode,
   hashShortCode,
   newPunchCode,
@@ -210,6 +215,41 @@ describe("live and cancelled shifts", () => {
       "00000000-0000-4000-8000-0000000000b1",
     ]);
     expect(entry.restoredAt).toBe("2026-11-12T08:00:00+00:00");
+  });
+
+  it("reads one shift of the business, cancelled or not, for its breaks' times", async () => {
+    read();
+    served.rows = [
+      entryRow({
+        cancelled_at: "2026-11-11T06:00:00+00:00",
+        time_breaks: [
+          {
+            id: "00000000-0000-4000-8000-0000000000b1",
+            started_at: "2026-11-10T09:00:00+00:00",
+            ended_at: "2026-11-10T09:30:00+00:00",
+            unpaid: false,
+            removed_at: "2026-11-11T08:00:00+00:00",
+          },
+        ],
+      }),
+    ];
+    const entry = await getTimeEntry(
+      BUSINESS,
+      "00000000-0000-4000-8000-000000000001",
+    );
+    expect(served.filters).toEqual([
+      ["eq", "business_id", BUSINESS],
+      ["eq", "id", "00000000-0000-4000-8000-000000000001"],
+    ]);
+    expect(entry).toMatchObject({
+      clockIn: "2026-11-10T06:00:00+00:00",
+      clockOut: "2026-11-10T14:00:00+00:00",
+      breaks: [],
+    });
+    read();
+    expect(
+      await getTimeEntry(OTHER, "00000000-0000-4000-8000-000000000001"),
+    ).toBeNull();
   });
 
   it("reads live shifts only for every sum", async () => {

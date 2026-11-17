@@ -1,22 +1,37 @@
 "use client";
 
-import { parseReason, REASON_MAX, type ShiftRecord } from "@domain/time-clock";
+import {
+  type BreakRecord,
+  parseReason,
+  REASON_MAX,
+  type ShiftRecord,
+} from "@domain/time-clock";
 import { Button } from "@ui/button";
+import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
-import { ListGroup } from "@ui/list-row";
+import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { Sheet } from "@ui/sheet";
 import { StatusToast } from "@ui/status-toast";
-import { TextField } from "@ui/text-field";
-import { Ban, History, Plus, Undo2 } from "lucide-react";
+import { ltrInputClass, TextField } from "@ui/text-field";
+import { Ban, History, Plus, Trash2, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useId, useRef, useState, useTransition } from "react";
+import {
+  type ReactNode,
+  type Ref,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { RefreshOnReturn } from "../../home/refresh-on-return";
 import { MonthHero } from "../month-hero";
 import { ShiftList, ShiftSummary } from "../shift-list";
 import type {
+  BreakValues,
   EntryActionResult,
   EntryActions,
   EntryFailure,
@@ -26,11 +41,22 @@ import type {
   TeamPaths,
 } from "./team-types";
 
-/** How long the toast's "ביטול" stays after a cancel, as a removed document's. */
+/**
+ * How long the toast's "ביטול" stays after a cancel or a break removed, as a
+ * removed document's.
+ */
 const UNDO_SHOWN_MS = 10_000;
 
-/** What the toast says, with the way back from a cancel. */
+/** What the toast says, with the way back from a cancel or a removal. */
 type Toast = { text: string; stamp: string; undo?: () => void };
+
+/**
+ * Back on the fix from a step: what led there, for the focus to go back to
+ * ("ביטול המשמרת", or a break's row, null for "הוספת הפסקה").
+ */
+type StepBack = "cancel" | { breakId: string | null };
+
+const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 
 /** Still drawn and shown: somewhere the keyboard's focus can go. */
 function shownNow(element: HTMLElement | null): element is HTMLElement {
@@ -41,7 +67,9 @@ function shownNow(element: HTMLElement | null): element is HTMLElement {
 /**
  * One person's shifts in a month: a manager fixes them and adds what's
  * missing, cancels one entered by mistake (it stays, marked, with "ביטול" in a
- * toast for 10 seconds) and brings a cancelled one back.
+ * toast for 10 seconds) and brings a cancelled one back, and fixes a shift's
+ * breaks one at a time: changes one, adds one forgotten, removes one pressed
+ * by mistake (with "ביטול" in the toast too).
  */
 export function PersonHoursView({
   data,
@@ -63,11 +91,12 @@ export function PersonHoursView({
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState<EntryTarget>({ kind: "add" });
   const [opened, setOpened] = useState(0);
-  // Why the toast's "ביטול" didn't go, said as the cancelled shift opens.
+  // Why the toast's "ביטול" didn't go, said as the cancelled shift opens, or
+  // the shift whose break was removed.
   const [failed, setFailed] = useState<EntryFailure | null>(null);
-  // Back on the fix from the cancel's step: the focus goes to where it left,
-  // and the fix is as it was typed.
-  const [stepBack, setStepBack] = useState(false);
+  // Back on the fix from the cancel's or a break's step: the focus goes to
+  // where it left, and the fix is as it was typed.
+  const [stepBack, setStepBack] = useState<StepBack | null>(null);
   const [draft, setDraft] = useState<EntryValues | null>(null);
   const [saving, start] = useTransition();
   // The toast's "ביטול" runs on its own, so a sheet opened meanwhile isn't held.
@@ -89,11 +118,17 @@ export function PersonHoursView({
       ? null
       : (data.records.find((shift) => shift.id === target.record.id) ??
         target.record);
+  // The break as the page has it now, the same way.
+  const pause =
+    target.kind === "break" && target.pause
+      ? (record?.breaks.find((one) => one.id === target.pause?.id) ??
+        target.pause)
+      : null;
 
   function show(next: EntryTarget, failure: EntryFailure | null = null) {
     setTarget(next);
     setFailed(failure);
-    setStepBack(false);
+    setStepBack(null);
     setDraft(null);
     setOpened((count) => count + 1);
     setOpen(true);
@@ -107,9 +142,13 @@ export function PersonHoursView({
     show(next);
   }
 
-  /** The way on inside the open sheet: to the cancel's step, and back. */
-  function step(next: EntryTarget) {
-    setStepBack(next.kind === "edit");
+  /**
+   * The way on inside the open sheet: to the cancel's or a break's step, and
+   * back to the fix (`from`: what led away from it).
+   */
+  function step(next: EntryTarget, from: StepBack | null = null) {
+    setStepBack(next.kind === "edit" ? from : null);
+    setFailed(null);
     setTarget(next);
   }
 
@@ -211,18 +250,106 @@ export function PersonHoursView({
     });
   }
 
+  /** A break's new times, or a break added, with why: the sheet closes. */
+  function saveBreak(
+    shift: ShiftRecord,
+    edited: BreakRecord | null,
+    values: BreakValues,
+    onFailure: (f: EntryFailure) => void,
+  ) {
+    start(async () => {
+      try {
+        const result = edited
+          ? await actions.changeBreak(shift.id, edited.id, values)
+          : await actions.addBreak(shift.id, values);
+        if (!result.ok) {
+          onFailure(result.failure);
+          return;
+        }
+        setToast({
+          text: t(edited ? "done.changeBreak" : "done.addBreak"),
+          stamp: new Date().toISOString(),
+        });
+        setOpen(false);
+      } catch {
+        onFailure("failed");
+      }
+    });
+  }
+
+  /**
+   * Remove a break pressed by mistake at once, with "ביטול" in the toast for
+   * 10 seconds (the database takes it back for ten minutes), as a cancel.
+   */
+  function removeBreak(
+    shift: ShiftRecord,
+    removed: BreakRecord,
+    reason: string,
+    onFailure: (f: EntryFailure) => void,
+  ) {
+    start(async () => {
+      try {
+        const result = await actions.removeBreak(removed.id, reason);
+        if (!result.ok) {
+          onFailure(result.failure);
+          return;
+        }
+        setOpen(false);
+        setToast({
+          text: t("done.removeBreak"),
+          stamp: `remove-break-${Date.now()}`,
+          undo: () => restoreBreak(shift, removed),
+        });
+      } catch {
+        onFailure("failed");
+      }
+    });
+  }
+
+  /**
+   * The toast's "ביטול" after a break removed, on its own as a shift's: when
+   * it can't, the shift opens saying why, or the toast says it over a sheet
+   * opened meanwhile.
+   */
+  function restoreBreak(shift: ShiftRecord, removed: BreakRecord) {
+    startUndo(async () => {
+      let result: EntryActionResult;
+      try {
+        result = await actions.restoreBreak(removed.id);
+      } catch {
+        result = { ok: false, failure: "failed" };
+      }
+      if (result.ok) {
+        setToast({
+          text: t("done.restoreBreak"),
+          stamp: `restore-break-${Date.now()}`,
+        });
+      } else if (!sheetOpen.current) {
+        show({ kind: "edit", record: shift }, result.failure);
+      } else {
+        setToast({
+          text: t(`failure.${result.failure}`),
+          stamp: `undo-${Date.now()}`,
+        });
+      }
+    });
+  }
+
   const sheetTitle = {
     add: t("sheet.addTitle"),
     edit: t("sheet.editTitle"),
     cancel: t("cancel.title"),
     cancelled: t("cancelled.title"),
+    break: t(pause ? "breakStep.editTitle" : "breakStep.addTitle"),
   }[target.kind];
   const sheetSubtitle =
     target.kind === "add"
       ? t("sheet.addSubtitle")
       : target.kind === "edit"
         ? t("sheet.editSubtitle")
-        : undefined;
+        : target.kind === "break"
+          ? t(pause ? "breakStep.editSubtitle" : "breakStep.addSubtitle")
+          : undefined;
 
   return (
     <PageBody className={pageGlowClass}>
@@ -330,7 +457,27 @@ export function PersonHoursView({
             cancel={(reason, onFailure) =>
               cancelShift(record, reason, onFailure)
             }
-            back={() => step({ kind: "edit", record })}
+            back={() => step({ kind: "edit", record }, "cancel")}
+          />
+        ) : target.kind === "break" && record ? (
+          <BreakForm
+            key={`${opened}-${pause?.id ?? "new"}`}
+            record={record}
+            pause={pause}
+            unpaidBreaks={data.unpaidBreaks}
+            saving={saving}
+            save={(values, onFailure) =>
+              saveBreak(record, pause, values, onFailure)
+            }
+            remove={
+              pause
+                ? (reason, onFailure) =>
+                    removeBreak(record, pause, reason, onFailure)
+                : undefined
+            }
+            back={() =>
+              step({ kind: "edit", record }, { breakId: pause?.id ?? null })
+            }
           />
         ) : target.kind === "cancelled" && record ? (
           <CancelledForm
@@ -351,6 +498,7 @@ export function PersonHoursView({
             today={data.today}
             saving={saving}
             save={save}
+            failed={failed}
             returning={stepBack}
             initial={stepBack ? draft : null}
             toCancel={
@@ -358,6 +506,14 @@ export function PersonHoursView({
                 ? (values) => {
                     setDraft(values);
                     step({ kind: "cancel", record });
+                  }
+                : undefined
+            }
+            toBreak={
+              record
+                ? (chosen, values) => {
+                    setDraft(values);
+                    step({ kind: "break", record, pause: chosen });
                   }
                 : undefined
             }
@@ -374,26 +530,36 @@ function EntryForm({
   today,
   saving,
   save,
+  failed,
   returning,
   initial,
   toCancel,
+  toBreak,
 }: {
   record: ShiftRecord | null;
   date: string;
   today: string;
   saving: boolean;
   save: (values: EntryValues, onFailure: (f: EntryFailure) => void) => void;
-  /** Back from the cancel's step: the focus goes to the button that led there. */
-  returning: boolean;
-  /** The fix as it was typed before the cancel's step, back from it. */
+  /** Why the toast's "ביטול" of a break removed didn't go, said as it opens. */
+  failed: EntryFailure | null;
+  /** Back from a step: the focus goes to what led there. */
+  returning: StepBack | null;
+  /** The fix as it was typed before a step, back from it. */
   initial: EntryValues | null;
   /** A shift that is there: the way to cancel it, beside fixing it, with the fix as typed. */
   toCancel?: (values: EntryValues) => void;
+  /**
+   * A shift that is there: the way to fix one of its breaks, or to add one
+   * (null), with the fix as typed.
+   */
+  toBreak?: (pause: BreakRecord | null, values: EntryValues) => void;
 }) {
   const t = useTranslations("app.clock.team");
   const id = useId();
   const reasonField = useRef<HTMLInputElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
+  const breakRows = useRef<HTMLDivElement>(null);
   // The reason starts empty each time it opens: it says why this change is
   // made. Back from the cancel's step, the fix is as it was typed.
   const [values, setValues] = useState<EntryValues>(
@@ -404,13 +570,24 @@ function EntryForm({
       reason: "",
     },
   );
-  const [failure, setFailure] = useState<EntryFailure | null>(null);
+  const [failure, setFailure] = useState<EntryFailure | null>(failed);
   // Only a shift still running may be left with no end, while it's within limits.
   const canStayOpen = record?.out === null && !record.overdue;
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, as it is drawn
   useEffect(() => {
-    if (returning) cancelButton.current?.focus();
+    if (returning === "cancel") {
+      cancelButton.current?.focus();
+    } else if (returning && record) {
+      // A break's row, or "הוספת הפסקה" after them all.
+      const { breakId } = returning;
+      const index =
+        breakId === null
+          ? record.breaks.length
+          : record.breaks.findIndex((pause) => pause.id === breakId);
+      const row = breakRows.current?.children.item(index);
+      if (row instanceof HTMLElement) row.focus();
+    }
   }, []);
 
   /** A missing reason is said under its field, which takes the focus. */
@@ -458,6 +635,14 @@ function EntryForm({
       <p className="px-1 text-ink-2 text-sm">
         {canStayOpen ? t("sheet.openHint") : t("sheet.nextDayHint")}
       </p>
+      {record && toBreak ? (
+        <BreakRows
+          breaks={record.breaks}
+          listRef={breakRows}
+          disabled={saving}
+          open={(pause) => toBreak(pause, values)}
+        />
+      ) : null}
       <TextField
         ref={reasonField}
         label={t("sheet.reason")}
@@ -495,6 +680,231 @@ function EntryForm({
           {t("sheet.cancelShift")}
         </Button>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * A shift's breaks under its times, one row each: "13:00–13:30 · 30 דק׳",
+ * "לא בתשלום" under one that came off the hours. One that ended opens its
+ * step; one still running is shown and opens nothing (it ends with the
+ * person, a clock-out or a fix of the shift's end). Then "הוספת הפסקה".
+ */
+function BreakRows({
+  breaks,
+  listRef,
+  disabled,
+  open,
+}: {
+  breaks: BreakRecord[];
+  /** Its rows, in order, "הוספת הפסקה" last: to give the focus back to. */
+  listRef: Ref<HTMLDivElement>;
+  disabled: boolean;
+  open: (pause: BreakRecord | null) => void;
+}) {
+  const t = useTranslations("app.clock.team");
+  const id = useId();
+  return (
+    // biome-ignore lint/a11y/useSemanticElements: a fieldset would style and announce these rows as a form
+    <div role="group" aria-labelledby={id} className="flex flex-col">
+      <h3 id={id} className="px-3 pt-1 pb-1.5 font-semibold text-ink-2 text-sm">
+        {t("breaks.title")}
+      </h3>
+      <ListGroup ref={listRef} className="bg-elevated">
+        {breaks.map((pause) => {
+          const title =
+            pause.end === null
+              ? t.rich("breaks.rowOpen", {
+                  ltr,
+                  start: pause.start,
+                  minutes: pause.minutes,
+                })
+              : t.rich("breaks.row", {
+                  ltr,
+                  start: pause.start,
+                  end: pause.end,
+                  minutes: pause.minutes,
+                });
+          const subtitle = [
+            pause.end === null ? t("breaks.running") : null,
+            pause.unpaid ? t("breaks.unpaid") : null,
+          ]
+            .filter((line) => line !== null)
+            .join(" · ");
+          return pause.end === null ? (
+            <ListRow key={pause.id} title={title} subtitle={subtitle} />
+          ) : (
+            <ListRow
+              key={pause.id}
+              title={title}
+              subtitle={subtitle || undefined}
+              disabled={disabled}
+              onClick={() => open(pause)}
+            />
+          );
+        })}
+        <ListRow
+          leading={<Plus aria-hidden="true" />}
+          title={t("breaks.add")}
+          disabled={disabled}
+          onClick={() => open(null)}
+        />
+      </ListGroup>
+    </div>
+  );
+}
+
+/**
+ * A break's step: the shift, the break's start and end (HH:MM, one past
+ * midnight takes no date), whether it comes off the hours, why (required, as
+ * a correction's), and "שמירת ההפסקה" ("הוספת ההפסקה" for a new one). One
+ * that is there can be removed instead, with the same why, at once: the
+ * toast's "ביטול" brings it back.
+ */
+function BreakForm({
+  record,
+  pause,
+  unpaidBreaks,
+  saving,
+  save,
+  remove,
+  back,
+}: {
+  record: ShiftRecord;
+  /** Null: adding one. */
+  pause: BreakRecord | null;
+  /** A break added now comes off the hours. */
+  unpaidBreaks: boolean;
+  saving: boolean;
+  save: (values: BreakValues, onFailure: (f: EntryFailure) => void) => void;
+  remove?: (reason: string, onFailure: (f: EntryFailure) => void) => void;
+  back: () => void;
+}) {
+  const t = useTranslations("app.clock.team");
+  const tHistory = useTranslations("app.clock.history");
+  const id = useId();
+  const startField = useRef<HTMLInputElement>(null);
+  const reasonField = useRef<HTMLInputElement>(null);
+  const [values, setValues] = useState<BreakValues>({
+    start: pause?.start ?? "",
+    end: pause?.end ?? "",
+    reason: "",
+  });
+  const [failure, setFailure] = useState<EntryFailure | null>(null);
+  // Which of the two is under way, for its spinner.
+  const [removing, setRemoving] = useState(false);
+
+  // The times are what this step is about: the first has the focus.
+  useEffect(() => {
+    startField.current?.focus({ preventScroll: true });
+  }, []);
+
+  /** A missing reason is said under its field, which takes the focus. */
+  function fail(next: EntryFailure) {
+    setFailure(next);
+    if (next === "reasonNeeded") reasonField.current?.focus();
+  }
+
+  /** Why is asked for whichever way it goes, saved or removed. */
+  function withReason(run: () => void) {
+    if (parseReason(values.reason) === null) {
+      fail("reasonNeeded");
+      return;
+    }
+    setFailure(null);
+    run();
+  }
+
+  function submit() {
+    if (values.start === "" || values.end === "") {
+      fail("breakTimes");
+      return;
+    }
+    setRemoving(false);
+    withReason(() => save(values, fail));
+  }
+
+  const field = (key: "start" | "end") => (
+    <FieldRow label={t(`breakStep.${key}`)} htmlFor={`${id}-${key}`}>
+      <input
+        id={`${id}-${key}`}
+        ref={key === "start" ? startField : undefined}
+        type="time"
+        dir="ltr"
+        value={values[key]}
+        onChange={(event) =>
+          setValues({ ...values, [key]: event.target.value })
+        }
+        className={cn(rowPillInputClass, ltrInputClass)}
+      />
+    </FieldRow>
+  );
+
+  // Whether it comes off the hours stays as it was recorded; a new one
+  // follows the setting now.
+  const paid = pause
+    ? t(pause.unpaid ? "breakStep.unpaid" : "breakStep.paid")
+    : t(unpaidBreaks ? "breakStep.newUnpaid" : "breakStep.newPaid");
+
+  return (
+    <div className="flex flex-col gap-3">
+      <ShiftSummary record={record} t={tHistory} className="bg-elevated" />
+      <ListGroup className="bg-elevated">
+        {field("start")}
+        {field("end")}
+      </ListGroup>
+      <p className="px-1 text-ink-2 text-sm">
+        {t("breakStep.hint")}
+        <span className="block">{paid}</span>
+      </p>
+      <TextField
+        ref={reasonField}
+        label={t("sheet.reason")}
+        hint={t("sheet.reasonHint")}
+        error={
+          failure === "reasonNeeded" ? t("failure.reasonNeeded") : undefined
+        }
+        value={values.reason}
+        maxLength={REASON_MAX}
+        required
+        autoComplete="off"
+        onChange={(event) => {
+          setValues({ ...values, reason: event.target.value });
+          if (failure === "reasonNeeded") setFailure(null);
+        }}
+      />
+      {failure && failure !== "reasonNeeded" ? (
+        <p role="alert" className="px-1 font-medium text-danger">
+          {t(`failure.${failure}`)}
+        </p>
+      ) : null}
+      <Button
+        size="lg"
+        loading={saving && !removing}
+        disabled={saving}
+        onClick={submit}
+      >
+        {t(pause ? "breakStep.save" : "breakStep.saveAdd")}
+      </Button>
+      {remove ? (
+        // Beside saving it, never the main action: a break pressed by mistake.
+        <Button
+          variant="ghost"
+          loading={saving && removing}
+          disabled={saving}
+          onClick={() => {
+            setRemoving(true);
+            withReason(() => remove(values.reason, fail));
+          }}
+          className="text-danger"
+        >
+          <Trash2 aria-hidden="true" />
+          {t("breakStep.remove")}
+        </Button>
+      ) : null}
+      <Button variant="ghost" disabled={saving} onClick={back}>
+        {t("breakStep.back")}
+      </Button>
     </div>
   );
 }

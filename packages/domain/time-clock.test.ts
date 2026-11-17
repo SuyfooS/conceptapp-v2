@@ -22,6 +22,7 @@ import {
   monthRange,
   monthRecords,
   openEntryOf,
+  parseBreakTimes,
   parseEntryTimes,
   parseReason,
   punchFailureOf,
@@ -289,6 +290,12 @@ describe("what a punch can answer", () => {
       "notCancelled",
       "breaksAfterDay",
       "notOnStaff",
+      "breakOutside",
+      "breakTimes",
+      "breakOverlap",
+      "breakOpen",
+      "breakGone",
+      "notRemoved",
     ] as const) {
       expect(punchFailureOf(refusal, "typed")).toBe("failed");
     }
@@ -892,6 +899,8 @@ describe("months", () => {
         time: "18:30",
         note: "Recorded by mistake",
       },
+      // Its break counts for nothing either, and isn't offered to fix.
+      breaks: [],
     });
     expect(records[1]).toMatchObject({ minutes: 480, cancelled: null });
     expect(records[2]).toMatchObject({
@@ -922,6 +931,68 @@ describe("months", () => {
       },
     ]);
     expect(records.map((r) => r.id)).toEqual([live.id, GONE]);
+  });
+
+  it("lists a shift's breaks, earliest first, with their times and minutes", () => {
+    const pause = (
+      id: string,
+      startedAt: string,
+      endedAt: string | null,
+      unpaid: boolean,
+    ) => ({
+      id: `68000000-0000-4000-a000-00000000009${id}`,
+      startedAt,
+      endedAt,
+      unpaid,
+    });
+    const shift = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000001",
+      userId: "u1",
+      clockIn: "2026-11-10T14:00:00Z",
+      clockOut: "2026-11-10T23:30:00Z",
+      source: "punch",
+      breaks: [
+        // Past midnight by the business's clock.
+        pause("2", "2026-11-10T22:10:00Z", "2026-11-10T22:25:00Z", false),
+        pause("1", "2026-11-10T17:00:00Z", "2026-11-10T17:30:00Z", true),
+      ],
+    });
+    // Still running: up to now.
+    const open = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000002",
+      userId: "u1",
+      clockIn: "2026-11-20T06:00:00Z",
+      clockOut: null,
+      source: "punch",
+      breaks: [pause("3", "2026-11-20T11:48:30Z", null, true)],
+    });
+    const [today, evening] = monthRecords([shift, open], "2026-11", TZ, now);
+    expect(evening?.breaks).toEqual([
+      {
+        id: "68000000-0000-4000-a000-000000000091",
+        start: "19:00",
+        end: "19:30",
+        minutes: 30,
+        unpaid: true,
+      },
+      {
+        id: "68000000-0000-4000-a000-000000000092",
+        start: "00:10",
+        end: "00:25",
+        minutes: 15,
+        unpaid: false,
+      },
+    ]);
+    expect(evening?.breakMinutes).toBe(45);
+    expect(today?.breaks).toEqual([
+      {
+        id: "68000000-0000-4000-a000-000000000093",
+        start: "13:48",
+        end: null,
+        minutes: 11,
+        unpaid: true,
+      },
+    ]);
   });
 });
 
@@ -1059,6 +1130,116 @@ describe("parseEntryTimes", () => {
   });
 });
 
+describe("parseBreakTimes", () => {
+  const now = new Date("2026-11-20T12:00:00Z");
+  // 16:00 to 23:30 by the business's clock.
+  const evening = {
+    clockIn: "2026-11-10T14:00:00Z",
+    clockOut: "2026-11-10T21:30:00Z",
+  };
+  // 22:00 to 06:00 the morning after.
+  const night = {
+    clockIn: "2026-11-10T20:00:00Z",
+    clockOut: "2026-11-11T04:00:00Z",
+  };
+  const parse = (
+    entry: { clockIn: string; clockOut: string | null },
+    start: string,
+    end: string,
+    at = now,
+  ) => parseBreakTimes(entry, { start, end }, TZ, at);
+
+  it("reads the times on the shift's day, in the business's time zone", () => {
+    expect(parse(evening, "19:00", "19:30")).toEqual({
+      ok: true,
+      start: "2026-11-10T17:00:00.000Z",
+      end: "2026-11-10T17:30:00.000Z",
+    });
+  });
+
+  it("needs no date for a break past midnight", () => {
+    // Across midnight, and wholly after it, in a night shift.
+    expect(parse(night, "23:50", "00:20")).toEqual({
+      ok: true,
+      start: "2026-11-10T21:50:00.000Z",
+      end: "2026-11-10T22:20:00.000Z",
+    });
+    expect(parse(night, "02:00", "02:30")).toEqual({
+      ok: true,
+      start: "2026-11-11T00:00:00.000Z",
+      end: "2026-11-11T00:30:00.000Z",
+    });
+  });
+
+  it("starts a break from the clock-in's own minute with the clock-in", () => {
+    const late = { ...evening, clockIn: "2026-11-10T14:00:27.500Z" };
+    expect(parse(late, "16:00", "16:15")).toEqual({
+      ok: true,
+      start: "2026-11-10T14:00:27.500Z",
+      end: "2026-11-10T14:15:00.000Z",
+    });
+    // And may end at the clock-out's.
+    expect(parse(evening, "23:00", "23:30")).toMatchObject({ ok: true });
+  });
+
+  it("refuses a break outside its shift", () => {
+    // Before the clock-in, it can only be the next day, after the clock-out.
+    expect(parse(evening, "15:00", "15:30")).toEqual({
+      ok: false,
+      problem: "breakOutside",
+    });
+    expect(parse(evening, "23:00", "23:45")).toEqual({
+      ok: false,
+      problem: "breakOutside",
+    });
+    expect(parse(night, "06:00", "06:30")).toEqual({
+      ok: false,
+      problem: "breakOutside",
+    });
+  });
+
+  it("refuses a break that hasn't ended yet in a shift still open", () => {
+    const open = { clockIn: "2026-11-20T06:00:00Z", clockOut: null };
+    expect(parse(open, "13:00", "13:30")).toMatchObject({ ok: true });
+    // 14:00 is now.
+    expect(parse(open, "13:30", "14:30")).toEqual({
+      ok: false,
+      problem: "future",
+    });
+    expect(parse(open, "15:00", "15:30")).toEqual({
+      ok: false,
+      problem: "future",
+    });
+    // Before the clock-in: the next day, which is not a break of it.
+    expect(parse(open, "07:00", "07:30")).toEqual({
+      ok: false,
+      problem: "breakOutside",
+    });
+  });
+
+  it("refuses the same minute twice, and what is not a time", () => {
+    expect(parse(evening, "19:00", "19:00")).toEqual({
+      ok: false,
+      problem: "breakSameTime",
+    });
+    for (const [start, end] of [
+      ["", "19:30"],
+      ["19:00", ""],
+      ["7pm", "19:30"],
+      ["24:00", "00:30"],
+    ] as const) {
+      expect(parse(evening, start, end), `${start}–${end}`).toEqual({
+        ok: false,
+        problem: "breakTimes",
+      });
+    }
+    expect(parseBreakTimes(evening, null, TZ, now)).toEqual({
+      ok: false,
+      problem: "breakTimes",
+    });
+  });
+});
+
 describe("undoableEntry", () => {
   const row = (clockOut: string | null) => ({
     clockOut,
@@ -1152,6 +1333,51 @@ describe("clockFailureOf, for cancelling and bringing back", () => {
         'conflicting key value violates exclusion constraint "time_entries_no_overlap"',
       ),
     ).toBe("times");
+  });
+
+  it("names each refusal of 20261117000300_break_edits.sql", () => {
+    expect(
+      clockFailureOf(
+        "22023",
+        "A break must be inside its shift",
+        "break_outside",
+      ),
+    ).toBe("breakOutside");
+    for (const message of [
+      "A break needs its start and end",
+      "A break must end after it starts",
+      "A break cannot be in the future",
+    ]) {
+      expect(clockFailureOf("22023", message), message).toBe("breakTimes");
+    }
+    expect(clockFailureOf("22023", "A break edit needs its reason")).toBe(
+      "reasonNeeded",
+    );
+    expect(
+      clockFailureOf(
+        "23P01",
+        'conflicting key value violates exclusion constraint "time_breaks_no_overlap"',
+      ),
+    ).toBe("breakOverlap");
+    expect(
+      clockFailureOf("55000", "The break has not ended", "break_open"),
+    ).toBe("breakOpen");
+    expect(
+      clockFailureOf("55000", "Too late to bring it back", "too_late"),
+    ).toBe("tooLate");
+    expect(clockFailureOf("55000", "The break is removed")).toBe("breakGone");
+    expect(clockFailureOf("55000", "The break is not removed")).toBe(
+      "notRemoved",
+    );
+    expect(clockFailureOf("55000", "The shift is cancelled")).toBe("cancelled");
+    expect(clockFailureOf("P0002", "Unknown break")).toBe("breakGone");
+    expect(clockFailureOf("P0002", "Unknown entry")).toBe("noAccess");
+    expect(
+      clockFailureOf(
+        "42501",
+        "Only an owner cancels or changes your own hours",
+      ),
+    ).toBe("ownHours");
   });
 
   it("keeps the clock's own refusals as they were", () => {
