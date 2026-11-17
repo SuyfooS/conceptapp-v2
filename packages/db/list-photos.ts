@@ -10,7 +10,11 @@ import {
   listPhotoSrc,
 } from "@domain/list-photos";
 import { sniffPhotoType } from "@domain/profile-photos";
-import type { ListFailure } from "./lists";
+import {
+  type DatabaseRefusal,
+  type ItemFailure,
+  itemFailureOf,
+} from "./list-failures";
 import { isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -25,10 +29,12 @@ import { createClient } from "./supabase/server";
  * the file it replaced is removed after, and a file nothing points at is
  * removed again. The bucket takes nothing from the browser, and its policy lets
  * a reader read only the photos of lists they see. A demo business takes no
- * photos (`list_photos_closed`), and the database refuses one too.
+ * photos (`list_photos_closed`), and the database refuses one too. A fix of
+ * a finished list (L6b-1) points through `public.fix_list_item_photo`
+ * instead, by the same rules otherwise.
  */
 
-export type ListPhotoFailure = ListFailure | ListPhotoProblem | "demo";
+export type ListPhotoFailure = ItemFailure | ListPhotoProblem | "demo";
 
 export type ListPhotoWrite =
   | { ok: true; photo: string | null }
@@ -58,23 +64,9 @@ export async function listPhotosAllowed(
   return data ? "demo" : "yes";
 }
 
-function failureOf(error: {
-  code?: string;
-  message: string;
-}): ListFailure | "demo" {
-  if (isMissingFunction(error)) return "notYet";
-  switch (error.code) {
-    case "42501":
-    case "P0002":
-      return "noAccess";
-    case "22023":
-      return "invalid";
-    case "55000":
-      return "finished";
-    default:
-      console.error("a list photo write failed", error.message);
-      return "failed";
-  }
+/** Why the database refused a photo write; `fixing` a fix's reasons too. */
+function failureOf(error: DatabaseRefusal, fixing: boolean): ItemFailure {
+  return itemFailureOf(error, fixing, "a list photo write");
 }
 
 /**
@@ -99,20 +91,25 @@ async function photoItem(
   return { listId: data.list_id };
 }
 
-/** Points the item at `path` (or at none), and removes the file it had. */
+/**
+ * Points the item at `path` (or at none), and removes the file it had; a
+ * fix of a finished list (`fixing`) through `public.fix_list_item_photo`.
+ */
 async function pointAt(
   actorId: string,
   itemId: string,
   path: string | null,
-): Promise<
-  { ok: true } | { ok: false; error: { code?: string; message: string } }
-> {
+  fixing: boolean,
+): Promise<{ ok: true } | { ok: false; error: DatabaseRefusal }> {
   const admin = createAdminClient();
-  const { data, error } = await admin.rpc("set_list_item_photo", {
-    actor: actorId,
-    item: itemId,
-    ...(path ? { new_path: path } : {}),
-  });
+  const { data, error } = await admin.rpc(
+    fixing ? "fix_list_item_photo" : "set_list_item_photo",
+    {
+      actor: actorId,
+      item: itemId,
+      ...(path ? { new_path: path } : {}),
+    },
+  );
   if (error) return { ok: false, error };
   if (data && isListPhotoPath(data)) {
     const removed = await admin.storage.from(LIST_PHOTO_BUCKET).remove([data]);
@@ -129,12 +126,14 @@ async function pointAt(
  * or WebP by its bytes, at most 400 KB, nothing from the camera inside, a
  * still picture of at most 1280 px), uploaded into its list's folder, pointed
  * at, and the photo it replaced removed. Returns where the app shows it.
+ * `fixing` sets it on an item of a finished list, in place (L6b-1).
  */
 export async function setListItemPhoto(
   actorId: string,
   businessId: string,
   itemId: string,
   file: Blob,
+  fixing = false,
 ): Promise<ListPhotoWrite> {
   const allowed = await listPhotosAllowed(businessId);
   if (allowed !== "yes") return { ok: false, failure: allowed };
@@ -162,15 +161,16 @@ export async function setListItemPhoto(
     return { ok: false, failure: "failed" };
   }
 
-  const pointed = await pointAt(actorId, itemId, path);
+  const pointed = await pointAt(actorId, itemId, path, fixing);
   if (!pointed.ok) {
     // Nothing points at it: it goes.
     await storage.remove([path]);
-    const failure = failureOf(pointed.error);
-    // The database's own demo rule (55000, as a closed list's): which one it
-    // was is the business's to say.
+    const failure = failureOf(pointed.error, fixing);
+    // The database's own demo rule (55000, as a closed list's, or as a
+    // list opened again while it was fixed): which one it was is the
+    // business's to say.
     if (
-      failure === "finished" &&
+      (failure === "finished" || failure === "reopened") &&
       (await listPhotosAllowed(businessId)) === "demo"
     ) {
       return { ok: false, failure: "demo" };
@@ -183,17 +183,21 @@ export async function setListItemPhoto(
 /**
  * Removes a photo item's photo: the item is no longer done, and the file
  * goes. The screen read the photo's bytes first, for its undo, which sets
- * them again as a new photo.
+ * them again as a new photo. `fixing` removes it from an item of a finished
+ * list (L6b-1), never a required one's ("keepRequired").
  */
 export async function removeListItemPhoto(
   actorId: string,
   businessId: string,
   itemId: string,
+  fixing = false,
 ): Promise<ListPhotoWrite> {
   const item = await photoItem(businessId, itemId);
   if (!item) return { ok: false, failure: "noAccess" };
-  const pointed = await pointAt(actorId, itemId, null);
-  if (!pointed.ok) return { ok: false, failure: failureOf(pointed.error) };
+  const pointed = await pointAt(actorId, itemId, null, fixing);
+  if (!pointed.ok) {
+    return { ok: false, failure: failureOf(pointed.error, fixing) };
+  }
   return { ok: true, photo: null };
 }
 

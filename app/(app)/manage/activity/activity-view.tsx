@@ -1,12 +1,14 @@
 import {
   type ActivityDay,
   type ActivityEntry,
+  type ActivityListFix,
   type ActivityPerson,
   type ActivityRecipient,
   type ActivityShift,
   breakFitKind,
   type ClockTimes,
   type FieldChange,
+  type ListFixValues,
 } from "@domain/activity";
 import { dateIn } from "@domain/availability";
 import { WEEKDAY_KEYS } from "@domain/availability-form";
@@ -354,6 +356,78 @@ export function ActivityView({
       return typeof value === "string" ? value : t("noAddress");
     }
     return typeof value === "string" ? value : "—";
+  }
+
+  /** A fixed item's value as its list shows it (L6b-1). */
+  function fixValue(
+    item: ActivityListFix,
+    field: "checked" | "given" | "reading",
+    values: ListFixValues,
+  ): ReactNode {
+    switch (field) {
+      case "checked":
+        return values.checked
+          ? t("actions.lists.fixValue.checked")
+          : t("actions.lists.fixValue.unchecked");
+      case "given":
+        return values.given === null ? (
+          t("actions.lists.fixValue.empty")
+        ) : (
+          <span dir="ltr">{values.given}</span>
+        );
+      case "reading":
+        return values.reading === null ? (
+          t("actions.lists.fixValue.empty")
+        ) : (
+          <span dir="ltr">
+            {`${signed(values.reading)}${item.unit ? ` ${item.unit}` : ""}`}
+          </span>
+        );
+    }
+  }
+
+  /**
+   * What a fix changed in one item (L6b-1), as the log's changes: its value
+   * before and after (an order's count, else its reading, else its tick),
+   * then that its answer, comment or photo changed. `named` puts the item's
+   * name on each, for a line of several items.
+   */
+  function fixChanges(
+    item: ActivityListFix,
+    key: string,
+    named: boolean,
+  ): Change[] {
+    const field = item.fields.includes("given")
+      ? "given"
+      : item.fields.includes("reading")
+        ? "reading"
+        : item.fields.includes("checked")
+          ? "checked"
+          : null;
+    const value: Change[] = field
+      ? [
+          {
+            key: `${key}:${field}`,
+            label: named ? item.label : t(`actions.lists.fixField.${field}`),
+            values: {
+              from: fixValue(item, field, item.from),
+              to: fixValue(item, field, item.to),
+            },
+          },
+        ]
+      : [];
+    const others = (["answer", "comment", "photo"] as const)
+      .filter((other) => item.fields.includes(other))
+      .map((other) => {
+        const what = t(`actions.lists.fixOther.${other}`);
+        return {
+          key: `${key}:${other}`,
+          label: named
+            ? t("actions.lists.fixOtherOf", { label: item.label, what })
+            : what,
+        };
+      });
+    return [...value, ...others];
   }
 
   function describe(entry: ActivityEntry): Described {
@@ -780,6 +854,25 @@ export function ActivityView({
             was: line.was ?? "other",
           }),
         );
+      case "lists.fix": {
+        // One item names it in the line, and each change by its field;
+        // several name each item. A value from before and after, as hours
+        // corrected show them; an answer, a comment or a photo only that it
+        // changed, since the log keeps no text.
+        const one = line.items.length === 1 ? line.items[0] : undefined;
+        return {
+          what: one
+            ? t("actions.lists.fix", { name: line.name, label: one.label })
+            : t("actions.lists.fixMany", {
+                name: line.name,
+                count: line.items.length,
+              }),
+          notes: [],
+          changes: line.items.flatMap((item, index) =>
+            fixChanges(item, `${index}`, one === undefined),
+          ),
+        };
+      }
       case "role.permission": {
         const permission = line.permission;
         // A role the business named goes by its name (roles R11a).

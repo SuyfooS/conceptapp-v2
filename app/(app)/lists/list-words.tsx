@@ -1,6 +1,7 @@
 import { dateIn } from "@domain/availability";
 import { dayMonth } from "@domain/availability-form";
 import {
+  fixedAfterClose,
   type ListHolder,
   type ListStatus,
   type ListSummary,
@@ -170,10 +171,15 @@ export function openedWords(
   return date === null ? time : `${date}, ${time}`;
 }
 
-/** How a closed list ended: who finished it and when, missed, cancelled. */
+/**
+ * How a closed list ended: who finished it and when, missed, cancelled. A
+ * list fixed after it was finished (L6b-1) says when, after who closed it,
+ * with the day when the fix wasn't on the day it closed: "נסגרה ב-08:05 על
+ * ידי נועה · תוקנה ב-14:20".
+ */
 export function closedWords(
   t: T,
-  list: Pick<ListSummary, "status" | "finishedAt" | "finishedBy">,
+  list: Pick<ListSummary, "status" | "finishedAt" | "finishedBy" | "fixedAt">,
   lookups: ListLookups,
   timeZone: string,
 ): ReactNode {
@@ -183,13 +189,26 @@ export function closedWords(
   };
   if (list.status === "open") return null;
   if (list.status !== "finished") return ended[list.status];
-  return list.finishedAt
-    ? t.rich("card.finishedBy", {
-        time: timeIn(new Date(list.finishedAt), timeZone),
-        name: personName(t, lookups, list.finishedBy),
-        ltr,
-      })
-    : t("card.finished");
+  if (!list.finishedAt) return t("card.finished");
+  const finished = new Date(list.finishedAt);
+  const closed = t.rich("card.finishedBy", {
+    time: timeIn(finished, timeZone),
+    name: personName(t, lookups, list.finishedBy),
+    ltr,
+  });
+  if (!list.fixedAt || !fixedAfterClose(list.fixedAt, list)) return closed;
+  const fixed = new Date(list.fixedAt);
+  const time = timeIn(fixed, timeZone);
+  const day = dateIn(fixed, timeZone);
+  return (
+    <>
+      {closed}
+      {" · "}
+      {day === dateIn(finished, timeZone)
+        ? t.rich("card.fixed", { time, ltr })
+        : t.rich("card.fixedOn", { time, date: dayMonth(day), ltr })}
+    </>
+  );
 }
 
 /** "3 of 6". */

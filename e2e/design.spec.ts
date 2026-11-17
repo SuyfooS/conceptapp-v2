@@ -147,6 +147,11 @@ const PAGES = [
   // taken back, and a list opened again and closed.
   "/design/shell/lists/list-kitchen-opening?state=history",
   "/design/shell/lists/list-weekly-cleaning?state=history",
+  // A closed list fixed in place (L6b-1): being fixed, with its card, and
+  // fixed, with its marks, also on the manager's day.
+  "/design/shell/lists/list-kitchen-opening?state=fix",
+  "/design/shell/lists/list-kitchen-opening?state=fixed",
+  "/design/shell/lists/today?state=fixed",
   // A list to a role the business named (R11d).
   "/design/shell/lists/list-shift-opening",
   "/design/shell/lists/today",
@@ -1215,6 +1220,10 @@ test("the lists demo sends, takes back, and keeps a finished list as it was", as
   await expect(page.getByRole("button", { name: l.list.reopen })).toHaveCount(
     0,
   );
+  // Nor a fix (L6b-1) while her own five minutes last.
+  await expect(
+    page.getByRole("button", { name: l.list.fix.action }),
+  ).toHaveCount(0);
   await expect(
     page.getByLabel(l.list.readingOf.replace("{label}", "מקפיא")),
   ).toHaveValue("-19");
@@ -1613,6 +1622,111 @@ for (const colorScheme of ["light", "dark"] as const) {
     });
   });
 }
+
+// Fixing a closed list on the demo (L6b-1): Shiran, who runs the lists, has
+// "תיקון הרשימה" where opening it again was; being fixed, the list says it
+// stays closed, keeps a required tick, refuses to empty a required reading
+// and saves a new one at once as a fix; "סיום התיקון" says it was saved.
+// Fixed, the list says so after who closed it, the item names its fixer
+// with the mark the sheet repeats, and the manager's day says it too.
+test("the fix demo fixes a closed list in place and marks what was fixed", async ({
+  page,
+}) => {
+  const l = he.app.lists.list;
+  const main = page.getByRole("main");
+  const literal = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const plain = (text: string, values: Record<string, string>) =>
+    Object.entries(values).reduce(
+      (out, [key, value]) => out.replaceAll(`{${key}}`, value),
+      text.replaceAll(/<\/?ltr>/g, ""),
+    );
+
+  await page.goto("/design/shell/lists/list-weekly-cleaning");
+  await expect(main.getByRole("button", { name: l.fix.action })).toBeVisible();
+  await expect(
+    main.getByRole("button", { name: l.reopen, exact: true }),
+  ).toHaveCount(0);
+
+  await page.goto("/design/shell/lists/list-kitchen-opening?state=fix");
+  const card = main.getByRole("region", { name: l.fix.title });
+  await expect(card).toContainText("נועה כהן");
+  await expect(
+    card.getByRole("button", { name: l.fix.reopenAll }),
+  ).toBeVisible();
+  // A required tick taken back stays ticked, and says why.
+  const surfaces = main.getByRole("checkbox", { name: "ניקוי משטחי עבודה" });
+  await expect(surfaces).toBeChecked();
+  await surfaces.click();
+  await expect(
+    page.getByRole("status").filter({ hasText: l.failed.keepRequired }),
+  ).toBeVisible();
+  await expect(surfaces).toBeChecked();
+  const freezer = main.getByLabel(l.readingOf.replace("{label}", "מקפיא"));
+  await freezer.fill("");
+  await freezer.press("Enter");
+  await expect(
+    page.getByRole("status").filter({ hasText: l.failed.keepRequired }),
+  ).toBeVisible();
+  await expect(freezer).toHaveValue("12");
+  await freezer.fill("19");
+  await freezer.press("Enter");
+  const story = main
+    .getByRole("button", {
+      name: new RegExp(
+        `^${literal(heT("app.lists.list.history.open", { label: "מקפיא" }))}:\\s`,
+      ),
+    })
+    .filter({ visible: true })
+    .first();
+  await expect(story).toContainText(l.fix.item);
+  await page
+    .getByRole("button", { name: l.fix.done })
+    .filter({ visible: true })
+    .click();
+  await expect(
+    page.getByRole("status").filter({ hasText: l.fix.saved }),
+  ).toBeVisible();
+  await expect(card).toHaveCount(0);
+  // The keyboard is back where the fix began.
+  await expect(main.getByRole("button", { name: l.fix.action })).toBeFocused();
+
+  await page.goto("/design/shell/lists/list-kitchen-opening?state=fixed");
+  const hero = main.getByRole("region", { name: l.progressLabel });
+  await expect(hero).toContainText("נועה כהן");
+  await expect(hero).toContainText(
+    plain(he.app.lists.card.fixed, { time: "08:10" }),
+  );
+  const fixed = main
+    .getByRole("button", {
+      name: new RegExp(
+        `^${literal(heT("app.lists.list.history.open", { label: "מקפיא" }))}:\\s`,
+      ),
+    })
+    .filter({ visible: true, hasText: "08:10" });
+  await expect(fixed).toHaveCount(1);
+  await expect(fixed).toContainText(l.fix.item);
+  await expect(fixed).toContainText("שירן");
+  await fixed.click();
+  const sheet = page.getByRole("dialog", { name: l.history.title });
+  await expect(sheet).toContainText(l.fix.badge);
+  await expect(sheet).toContainText("נועה כהן");
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  await page.goto("/design/shell/lists/today?state=fixed");
+  await expect(
+    main
+      .getByText(plain(he.app.lists.card.fixed, { time: "08:10" }))
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    main
+      .getByText(new RegExp(`·\\s${literal(l.readings.fixed)}$`))
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+});
 
 // In a demo business, which takes no photos (L6), the template editor keeps a
 // photo item optional, so its list can still be finished: "חובה" is off and

@@ -479,7 +479,35 @@ const demoRow = (
   details: unknown,
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
+/** The list a run of fixes names, by an id the log folds them by (L6b-1). */
+const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
+
 export const demoActivityRows: ActivityRow[] = [
+  // A closed list fixed in place (lists L6b-1): Shiran fixed two readings
+  // of the kitchen's opening after Noa closed it, one with its comment,
+  // which read as one line with each reading from before to after.
+  demoRow(137, "2026-11-04T14:56:00+02:00", "shiran", "lists.fix", {
+    list: DEMO_FIXED_LIST,
+    name: "פתיחת מטבח",
+    item: "00000000-0000-4000-8000-00000000f1a3",
+    label: "מקרר ראשי",
+    kind: "number",
+    unit: "°C",
+    changed: ["reading", "comment"],
+    from: { checked: null, given: null, reading: 7 },
+    to: { checked: null, given: null, reading: 4 },
+  }),
+  demoRow(136, "2026-11-04T14:52:00+02:00", "shiran", "lists.fix", {
+    list: DEMO_FIXED_LIST,
+    name: "פתיחת מטבח",
+    item: "00000000-0000-4000-8000-00000000f1a2",
+    label: "מקפיא",
+    kind: "number",
+    unit: "°C",
+    changed: ["reading"],
+    from: { checked: null, given: null, reading: -12 },
+    to: { checked: null, given: null, reading: -19 },
+  }),
   // Roles and permissions (roles R2): the ConceptApp team, from the console,
   // let workers build the schedule and took publishing from managers.
   demoRow(135, "2026-11-04T14:40:00+02:00", "team-staff", "role.permission", {

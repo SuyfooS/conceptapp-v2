@@ -1,6 +1,6 @@
 import { dateIn } from "@domain/availability";
 import { dayMonth } from "@domain/availability-form";
-import { byTime, listTimeline } from "@domain/lists";
+import { byTime, fixRuns, listTimeline } from "@domain/lists";
 import { timeIn } from "@domain/shabbat";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../../wording";
@@ -14,25 +14,29 @@ import {
   ltr,
   personName,
 } from "../list-words";
-import { ListScreen } from "./list-screen";
+import { ListScreenFrame } from "./list-screen";
 
 /**
  * One list, in the business's words: who it is for and who asked, by when,
- * why it is only read here, its details and what happened to it. The filling
- * itself is the client's (ListScreen). Also on /design/shell/lists with mock
- * data.
+ * why it is only read here, its details and what happened to it, its fixes
+ * after a close among them (L6b-1). The filling and the fixing themselves are
+ * the client's (ListScreen). Also on /design/shell/lists with mock data,
+ * where `fixing` opens it being fixed.
  */
 export function ListView({
   data,
   actions,
   backHref,
   wording,
+  fixing = false,
 }: {
   data: ListScreenData;
   actions: ListActions;
   backHref: string;
   /** The business's words. */
   wording: AppWording;
+  /** Opens a list it may fix (`can.fix`) being fixed: the demo's twin. */
+  fixing?: boolean;
 }) {
   const t = translator(wording, "app.lists");
   const { list, lookups, userId, timeZone } = data;
@@ -112,6 +116,17 @@ export function ListView({
             t("card.aDepartment"),
         })
       : null;
+  // Its fixes after a close (L6b-1): one line per person's run of them.
+  const fixes = fixRuns(list.changes).map((run) => ({
+    key: run.key,
+    at: run.at,
+    text: t.rich("list.timeline.fixed", {
+      count: run.items,
+      name: personName(t, lookups, run.by),
+      time: at(run.at),
+      ltr,
+    }),
+  }));
   // How it closed and opened again (L6a): each close a reopen undid, the
   // reopen, and how it is closed now, the undo left out.
   const closes = listTimeline(list, list.reopens).map((event) => {
@@ -178,13 +193,16 @@ export function ListView({
       };
     }),
     ...closes,
+    ...fixes,
   ]);
 
   return (
-    <ListScreen
-      // A list that finished, opened again or closed starts the screen anew.
+    <ListScreenFrame
+      // A list that finished, opened again, closed or was fixed (L6b-1)
+      // starts the screen anew; what it said on the way stays (the frame's).
       // One passed on keeps it, with the word that it went.
-      key={`${list.id}:${list.status}:${list.finishedAt ?? ""}`}
+      screenKey={`${list.id}:${list.status}:${list.finishedAt ?? ""}:${list.fixedAt ?? ""}`}
+      fixing={fixing}
       data={data}
       actions={actions}
       backHref={backHref}

@@ -1295,6 +1295,49 @@ most 1000 rows and would drop the newest, so a list changed more than that
 loses only its oldest. None before the migration, so a list still opens.
 `list_history.test.sql` covers it (54, ids b1…, numbers 050-052-xxxx).
 
+Fixing a closed list in place (`20261116000300_lists_fix.sql`, the L6 plan's
+L6b-1; Orel, 16 November 2026). A finished list is fixed where it is: it
+stays finished, and `finished_by`, `finished_at`, `late_at` and the
+`lists.finish` row with its `late` flag don't change; there is no
+`lists.sent` again and nothing left open. Missed and cancelled lists are
+never fixed. A fix has functions of its own, `public.fix_list_item(actor,
+item, result, at_time)` and `public.fix_list_item_photo(actor, item,
+new_path, at_time)`, the server's alone, while `public.set_list_item` and
+`set_list_item_photo` keep their signatures and grants and still refuse a
+finished list (55000), so an out-of-date screen never turns a tick into a
+fix. Both pairs are now `language sql` wrappers over one body each,
+`private.write_list_item` and `private.write_list_item_photo` (L6a's bodies,
+moved, with a `fixing` flag; not fixing, every rule is as it was). Fixing:
+first what filling asks, holding the list or running the lists (42501), so
+nobody else learns from a fix whether a list is finished; then a finished
+list (55000 otherwise, which the app reads as "opened again meanwhile"); then
+those `private.can_fix_list(l, actor, at_time)` allows
+(42501): for now whoever runs the lists, at any time, the one place L6b-2
+widens to a role's switch and window. A required item is changed or noted,
+never emptied (23514, hint `required`), and a required photo replaced,
+never removed. While the item stays done, `done_by` and `done_at` stay
+(readings over time are counted by `done_at`); one a fix makes done is the
+fixer's, and one it empties is nobody's. The fix is marked three ways: `list_item_changes.fixed`
+(`private.record_item_change` sets it for a change to a finished list),
+`list_items.fixed_at` and `lists.fixed_at`; an item or a list reads as fixed
+while its `fixed_at` is after the list's `finished_at`, so a reopen and a new
+finish clear the mark without touching the column. Each fix logs one
+`lists.fix` row (the list, its name, the item, its label, kind and unit,
+which fields changed, and `from` and `to` of checked, given and reading; no
+text) and tells nobody (`private.notify_for_lists` has no arm for it); a fix
+that puts a reading out of its range still logs `lists.out_of_range` and
+tells those who run the lists. A fix that changes nothing writes nothing.
+`@db/lists` `setListItem(…, {fixing})` and `@db/list-photos`
+`setListItemPhoto`/`removeListItemPhoto(…, fixing)` call the fix functions,
+and `@db/list-failures` (`listFailureOf`, `itemFailureOf`) reads 23514 with
+hint `required` as "keepRequired" and a fix's 55000 as "reopened". The
+three new columns are read beside the rest (`fixed_at` of lists through
+their own small query, of items through `itemRows`' fallback, `fixed` of
+changes through a second read without it), so the app reads none fixed
+before the migration, and a fix before it says the lists aren't ready yet
+("notYet"). `lists_fix.test.sql` covers it (47, ids b2…, numbers
+050-053-xxxx).
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for

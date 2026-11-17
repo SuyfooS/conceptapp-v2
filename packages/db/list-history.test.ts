@@ -52,9 +52,17 @@ describe("an item's changes", () => {
         comment: null,
         photo: false,
         done: true,
+        fixed: false,
       },
     ]);
     expect(changesOf([{ ...changeRow, checked: true }])[0]?.checked).toBe(true);
+  });
+
+  it("say a fix after the close, and read none before its migration (L6b-1)", () => {
+    expect(changesOf([{ ...changeRow, fixed: true }])[0]?.fixed).toBe(true);
+    expect(changesOf([{ ...changeRow, fixed: false }])[0]?.fixed).toBe(false);
+    // Read without the column: no change was a fix.
+    expect(changesOf([changeRow])[0]?.fixed).toBe(false);
   });
 
   it("leave out a field they don't know, and a row that doesn't read", () => {

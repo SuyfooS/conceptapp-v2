@@ -3,6 +3,7 @@
 import { dateIn } from "@domain/availability";
 import { dayMonth } from "@domain/availability-form";
 import {
+  fixedAfterClose,
   type HistoryEntry,
   type HistoryPart,
   type ItemResult,
@@ -40,9 +41,11 @@ import {
   AlarmClock,
   ArrowLeftRight,
   Building2,
+  Check,
   CheckCheck,
   ChevronDown,
   ChevronRight,
+  Pencil,
   RotateCcw,
   RotateCw,
 } from "lucide-react";
@@ -51,6 +54,7 @@ import { useTranslations } from "next-intl";
 import {
   type ReactNode,
   useEffect,
+  useId,
   useRef,
   useState,
   useTransition,
@@ -58,6 +62,7 @@ import {
 import { UndoRow } from "../../manage/undo-row";
 import { TYPING_MS } from "../../manage/use-draft";
 import type {
+  ItemFailure,
   ListActionResult,
   ListActions,
   ListFailure,
@@ -181,23 +186,98 @@ const needsMinus = (item: ListItem) =>
  * timeline folded at the end. Tablet: the items beside the details and the
  * timeline. Desktop: the same, the main action in the header, and the
  * readings as a table, whose "who" opens an item's story too.
+ *
+ * A finished list, for those it lets (`can.fix`, L6b-1), is fixed in place:
+ * "תיקון הרשימה" in the header, once the finisher's undo is gone, puts the
+ * screen in fix mode. The list stays closed; an accent card says so, with
+ * "פתיחה מחדש לכולם" in it for whoever runs the lists. Every change saves
+ * at once as a fix, the fixer's, and changing it back is its undo: the
+ * history keeps both. A required item is changed or noted, never emptied: a
+ * required tick taken back or a required reading or answer emptied stays as
+ * it was and the screen says why, with the way to have it done again; a
+ * required photo is replaced, not removed. "סיום התיקון", the main action
+ * (the dock below the desktop, the header on it), saves what is still typed,
+ * and once every change saved, leaves fix mode, back on "תיקון הרשימה", and
+ * reads the list again, saying the fix was saved. A change that didn't save
+ * keeps the screen where its words put it.
  */
-export function ListScreen({
-  data,
-  actions,
-  backHref,
-  words,
-}: {
+type ListScreenProps = {
   data: ListScreenData;
   actions: ListActions;
   backHref: string;
   words: ListScreenWords;
+  /** Opens the list being fixed, when it may be (the demo's twin). */
+  fixing?: boolean;
+};
+
+/**
+ * The list's screen, with what it says while it starts anew (`screenKey`
+ * changes: finished, opened again, fixed): a fix saved, or why a change
+ * didn't, which the screen itself would lose with its state; and, after a
+ * fix saved, the keyboard's place on "תיקון הרשימה" of the screen read again.
+ */
+export function ListScreenFrame({
+  screenKey,
+  ...props
+}: ListScreenProps & { screenKey: string }) {
+  const [notice, setNotice] = useState<{ text: string; stamp: number } | null>(
+    null,
+  );
+  const refocusFix = useRef(false);
+  return (
+    <>
+      <StatusToast
+        message={notice?.text ?? null}
+        stamp={notice ? String(notice.stamp) : undefined}
+      />
+      <ListScreen
+        key={screenKey}
+        {...props}
+        notify={(text) => setNotice({ text, stamp: Date.now() })}
+        refocusFix={refocusFix}
+      />
+    </>
+  );
+}
+
+function ListScreen({
+  data,
+  actions,
+  backHref,
+  words,
+  fixing: startFixing = false,
+  notify,
+  refocusFix,
+}: ListScreenProps & {
+  /** Says something that outlasts the screen (`ListScreenFrame`). */
+  notify: (text: string) => void;
+  /**
+   * Set when a fix saved and the list is read again (`ListScreenFrame`): the
+   * screen that starts then puts the keyboard on "תיקון הרשימה".
+   */
+  refocusFix: { current: boolean };
 }) {
   const t = useTranslations("app.lists");
   const tl = useTranslations("app.lists.list");
   const th = useTranslations("app.lists.list.history");
   const router = useRouter();
   const { list, lookups, userId, timeZone, can } = data;
+  // Fixing a finished list in place (L6b-1): the screen's own state. How
+  // many changes it saved, for "התיקון נשמר", the saves on their way, which
+  // "סיום התיקון" waits for, and how many changes were refused, so it stays
+  // when one was on the way out.
+  const [fixing, setFixing] = useState(startFixing && can.fix);
+  const fixedHere = useRef(0);
+  const saving = useRef(new Set<Promise<boolean>>());
+  const refused = useRef(0);
+  const [ending, startEnding] = useTransition();
+  const fixTitleId = useId();
+  const reopenHintId = useId();
+  const fixTitle = useRef<HTMLHeadingElement>(null);
+  const focusFixCard = useRef(false);
+  // "תיקון הרשימה", where the keyboard goes back when a fix ends.
+  const fixButton = useRef<HTMLButtonElement>(null);
+  const focusFixButton = useRef(false);
   const [items, setItems] = useState<ListItem[]>(list.items);
   // Each item's story (L6a), with the changes made here since it was read,
   // and the item whose story the sheet tells.
@@ -236,7 +316,7 @@ export function ListScreen({
     ),
   );
   const [failure, setFailure] = useState<{
-    reason: ListFailure;
+    reason: ItemFailure;
     stamp: number;
   } | null>(null);
   const [commentFor, setCommentFor] = useState<string | null>(null);
@@ -297,15 +377,20 @@ export function ListScreen({
     [],
   );
 
-  // The newest items and counts typed, for a count saved after its timer.
+  // The newest items and counts typed, for a count saved after its timer,
+  // and whether it is being fixed (L6b-1), for one saved on the way out.
   const itemsNow = useRef(items);
   const givenNow = useRef(givenDrafts);
+  const fixingNow = useRef(fixing);
   useEffect(() => {
     itemsNow.current = items;
   }, [items]);
   useEffect(() => {
     givenNow.current = givenDrafts;
   }, [givenDrafts]);
+  useEffect(() => {
+    fixingNow.current = fixing;
+  }, [fixing]);
 
   // Leaving with a count still waiting saves it on the way out.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only on leaving, with the newest counts (read from refs)
@@ -329,13 +414,63 @@ export function ListScreen({
   }, [data.undoUntil, data.now]);
 
   const progress = listProgress(items);
-  const fill = can.fill;
+  // Its items take changes while it is filled, or fixed (L6b-1).
+  const fill = can.fill || fixing;
 
-  function fail(reason: ListFailure) {
+  function fail(reason: ItemFailure) {
+    refused.current += 1;
+    // Closed meanwhile, opened again while it was fixed, or moved on
+    // elsewhere: show where it really stands, and say why from the frame,
+    // since the screen starts anew.
+    if (
+      reason === "finished" ||
+      reason === "noAccess" ||
+      reason === "reopened"
+    ) {
+      // A fix ends with it: the list is filled now, or no longer theirs.
+      setFixing(false);
+      notify(tl(`failed.${reason}`));
+      router.refresh();
+      return;
+    }
     setFailure({ reason, stamp: Date.now() });
-    // Closed meanwhile, or moved on elsewhere: show where it really stands.
-    if (reason === "finished" || reason === "noAccess") router.refresh();
   }
+
+  /** A save on its way, for "סיום התיקון" to wait for. */
+  function track(run: Promise<boolean>): Promise<boolean> {
+    saving.current.add(run);
+    void run.finally(() => saving.current.delete(run));
+    return run;
+  }
+
+  /**
+   * Into fix mode (L6b-1): nothing changes until something is saved. The
+   * button pressed goes, so the focus goes to the card that says what this
+   * is.
+   */
+  function startFix() {
+    fixedHere.current = 0;
+    focusFixCard.current = true;
+    setFailure(null);
+    setFixing(true);
+  }
+  // Out of it, the keyboard goes back to "תיקון הרשימה", whose place it took.
+  useEffect(() => {
+    if (fixing && focusFixCard.current) {
+      focusFixCard.current = false;
+      fixTitle.current?.focus();
+    }
+    if (!fixing && focusFixButton.current) {
+      focusFixButton.current = false;
+      fixButton.current?.focus();
+    }
+  }, [fixing]);
+  // Read again after a fix saved: the screen starts anew, back there too.
+  useEffect(() => {
+    if (!refocusFix.current) return;
+    refocusFix.current = false;
+    fixButton.current?.focus();
+  }, [refocusFix]);
 
   /** Now, by the server's clock (`clockOffset`). */
   function serverNow(): string {
@@ -367,7 +502,31 @@ export function ListScreen({
   }
 
   /** Shows the change at once, saves it, and puts it back if it didn't save. */
-  async function save(item: ListItem, change: ItemChange): Promise<boolean> {
+  function save(item: ListItem, change: ItemChange): Promise<boolean> {
+    return track(saveNow(item, change));
+  }
+
+  /** Puts the fields of an item back as it is, after a change that didn't go. */
+  function putBack(item: ListItem) {
+    setDrafts((current) => ({
+      ...current,
+      [item.id]:
+        item.kind === "number"
+          ? typed(item.reading, minus[item.id] ?? false)
+          : (item.answer ?? ""),
+    }));
+    if (item.kind === "check" && list.asksQuantities) {
+      setGivenDrafts((current) => ({
+        ...current,
+        [item.id]: countText(item.given),
+      }));
+    }
+  }
+
+  async function saveNow(item: ListItem, change: ItemChange): Promise<boolean> {
+    // A fix of the finished list (L6b-1), as this change began; read from
+    // the ref, so a count saved on the way out is a fix too.
+    const fix = fixingNow.current;
     const before = item;
     // On an order, a tick gives what was asked for, and taking it back
     // gives none, as the database has it.
@@ -389,31 +548,46 @@ export function ListScreen({
           : item.kind === "note"
             ? next.answer !== null
             : item.done;
-    // As the database has it (`set_list_item`): who did it and when move
-    // only with its value, so a comment alone keeps them, and a photo's
-    // comment leaves who took it; taken back, nobody did it.
+    // A required item of a finished list is changed, never emptied: the
+    // database refuses it (23514), so it isn't sent, and says why.
+    if (fix && item.required && !done) {
+      putBack(item);
+      fail("keepRequired");
+      return false;
+    }
+    // As the database has it (`set_list_item`, `fix_list_item`): who did it
+    // and when move only with its value, so a comment alone keeps them, and
+    // a photo's comment leaves who took it; taken back, nobody did it. A fix
+    // keeps them while the item stays done; the fix has its own time.
     const at = serverNow();
     const valueChanged =
       next.checked !== item.checked ||
       next.given !== item.given ||
       next.reading !== item.reading ||
       next.answer !== item.answer;
-    const shown: ListItem =
+    const kept = fix && item.done && done;
+    const changed: ListItem =
       item.kind === "photo" || !valueChanged
         ? next
         : {
             ...next,
             done,
-            doneBy: done ? userId : null,
-            doneAt: done ? at : null,
+            doneBy: done ? (kept ? item.doneBy : userId) : null,
+            doneAt: done ? (kept ? item.doneAt : at) : null,
           };
+    const shown: ListItem = fix ? { ...changed, fixedAt: at } : changed;
     const mine = (latest.current[item.id] ?? 0) + 1;
     latest.current[item.id] = mine;
     setItems((current) => current.map((i) => (i.id === item.id ? shown : i)));
     // Its story has the change at once, and loses it if it didn't save.
     const made = madeChange();
     setChanges((current) =>
-      withItemChange(current, item, shown, { id: made, by: userId, at }),
+      withItemChange(current, item, shown, {
+        id: made,
+        by: userId,
+        at,
+        fixed: fix,
+      }),
     );
     const ordered = item.kind === "check" && list.asksQuantities;
     if (ordered) {
@@ -422,32 +596,23 @@ export function ListScreen({
         [item.id]: countText(next.given),
       }));
     }
-    let saved: ListActionResult<unknown>;
+    let saved: ListActionResult<unknown, ItemFailure>;
     try {
-      saved = await actions.setItem(item.id, result);
+      saved = await actions.setItem(item.id, result, fix);
     } catch {
       saved = { ok: false, failure: "failed" };
     }
-    if (saved.ok) return true;
+    if (saved.ok) {
+      if (fix) fixedHere.current += 1;
+      return true;
+    }
     setChanges((current) => current.filter((change) => change.id !== made));
     // A later change to the same item has the last word.
     if (latest.current[item.id] === mine) {
       setItems((current) =>
         current.map((i) => (i.id === item.id ? before : i)),
       );
-      setDrafts((current) => ({
-        ...current,
-        [item.id]:
-          item.kind === "number"
-            ? typed(before.reading, minus[item.id] ?? false)
-            : (before.answer ?? ""),
-      }));
-      if (ordered) {
-        setGivenDrafts((current) => ({
-          ...current,
-          [item.id]: countText(before.given),
-        }));
-      }
+      putBack(before);
     }
     fail(saved.failure);
     return false;
@@ -565,18 +730,24 @@ export function ListScreen({
 
   /**
    * The item as it is now that its photo changed (saved): done by this
-   * person, or not, and the change in its story.
+   * person, or not, and the change in its story. A fix (`fix`, L6b-1) keeps
+   * who took it and when while it has one, and has its own time.
    */
-  function photoChanged(itemId: string, photo: string | null) {
+  function photoChanged(itemId: string, photo: string | null, fix: boolean) {
     const at = serverNow();
-    const changed = (i: ListItem): ListItem => ({
-      ...i,
-      photo,
-      photoRemoved: false,
-      done: photo !== null,
-      doneBy: photo !== null ? userId : null,
-      doneAt: photo !== null ? at : null,
-    });
+    if (fix) fixedHere.current += 1;
+    const changed = (i: ListItem): ListItem => {
+      const kept = fix && i.done && photo !== null;
+      return {
+        ...i,
+        photo,
+        photoRemoved: false,
+        done: photo !== null,
+        doneBy: photo !== null ? (kept ? i.doneBy : userId) : null,
+        doneAt: photo !== null ? (kept ? i.doneAt : at) : null,
+        fixedAt: fix ? at : i.fixedAt,
+      };
+    };
     const before = itemsNow.current.find((i) => i.id === itemId);
     setItems((current) =>
       current.map((i) => (i.id === itemId ? changed(i) : i)),
@@ -589,6 +760,7 @@ export function ListScreen({
           by: userId,
           at,
           photo: true,
+          fixed: fix,
         }),
       );
     }
@@ -662,9 +834,10 @@ export function ListScreen({
     blob: Blob,
     current: () => boolean,
   ) {
+    const fix = fixing;
     busyWith(itemId, "saving");
     const result = await photoAnswer(() =>
-      actions.setPhoto(itemId, photoForm(blob)),
+      actions.setPhoto(itemId, photoForm(blob), fix),
     );
     if (!current()) return;
     busyWith(itemId, null);
@@ -675,13 +848,18 @@ export function ListScreen({
         return;
       }
       previewFor(itemId, null);
+      // Opened again while it was fixed: filled from here, as the frame says.
+      if (failure === "reopened") {
+        fail(failure);
+        return;
+      }
       problemFor(itemId, failure);
       // Closed meanwhile, or no longer theirs: show where it really stands.
       if (failure === "finished" || failure === "noAccess") router.refresh();
       return;
     }
     previewFor(itemId, null);
-    photoChanged(itemId, result.value.photo);
+    photoChanged(itemId, result.value.photo, fix);
     setPhotoSaved(Date.now());
   }
 
@@ -715,34 +893,43 @@ export function ListScreen({
       problemFor(item.id, offline() ? "removeOffline" : "removeFailed");
       return;
     }
-    const result = await photoAnswer(() => actions.removePhoto(item.id));
+    const fix = fixing;
+    const result = await photoAnswer(() => actions.removePhoto(item.id, fix));
     busyWith(item.id, null);
     if (!result.ok) {
+      if (result.failure === "reopened") {
+        fail(result.failure);
+        return;
+      }
       problemFor(item.id, removeProblem(result.failure));
       if (result.failure === "finished" || result.failure === "noAccess") {
         router.refresh();
       }
       return;
     }
-    photoChanged(item.id, null);
+    photoChanged(item.id, null, fix);
     setPhotoUndo({ itemId: item.id, bytes: kept, failed: false });
   }
 
   async function bringPhotoBack() {
     const undo = photoUndo;
     if (!undo || photoUndoing) return;
+    const fix = fixing;
     setPhotoUndoing(true);
     const result = await photoAnswer(() =>
-      actions.setPhoto(undo.itemId, photoForm(undo.bytes)),
+      actions.setPhoto(undo.itemId, photoForm(undo.bytes), fix),
     );
     setPhotoUndoing(false);
     if (result.ok) {
       setPhotoUndo(null);
-      photoChanged(undo.itemId, result.value.photo);
+      photoChanged(undo.itemId, result.value.photo, fix);
       setPhotoSaved(Date.now());
     } else if (result.failure === "failed" || result.failure === "offline") {
       // It didn't get there: the row stays, saying so, and "ביטול" tries again.
       setPhotoUndo({ ...undo, failed: true });
+    } else if (result.failure === "reopened") {
+      setPhotoUndo(null);
+      fail(result.failure);
     } else {
       // Refused for good (closed meanwhile, a demo): the row goes and says why.
       setPhotoUndo(null);
@@ -781,9 +968,10 @@ export function ListScreen({
           }
         : null,
       // A photo that didn't get there isn't stored: it is tried again, or
-      // replaced, rather than removed.
+      // replaced, rather than removed. A required one of a closed list is
+      // replaced, never removed (L6b-1).
       remove:
-        fill && !waiting
+        fill && !waiting && !(fixing && item.required)
           ? {
               label: tl("photo.remove"),
               onRemove: () => void removePhoto(item),
@@ -842,6 +1030,45 @@ export function ListScreen({
         result = { ok: false, failure: "failed" };
       }
       if (!result.ok) fail(result.failure);
+    });
+  }
+
+  /**
+   * "סיום התיקון" (L6b-1): a count still waiting and a number or a note
+   * typed but not yet left are saved first, then it waits for every save on
+   * its way. When one of them was refused, the screen stays where its words
+   * put it: still fixing, filled now, or no longer theirs (`fail`), and
+   * nothing says the fix was saved. Otherwise it leaves fix mode, the
+   * keyboard back on "תיקון הרשימה", and, when something was saved, reads
+   * the list again (its close's words, its timeline) and says so.
+   */
+  function finishFix() {
+    if (photosBusy) return;
+    startEnding(async () => {
+      const refusedBefore = refused.current;
+      for (const itemId of Object.keys(givenTimers.current)) {
+        commitGiven(itemId);
+      }
+      for (const item of items) {
+        if (item.kind === "number") commitNumber(item);
+        if (item.kind === "note") commitNote(item);
+      }
+      const saved = await Promise.all([...saving.current]);
+      if (
+        !fixingNow.current ||
+        refused.current !== refusedBefore ||
+        saved.some((ok) => !ok)
+      ) {
+        return;
+      }
+      focusFixButton.current = true;
+      setFixing(false);
+      if (fixedHere.current > 0) {
+        fixedHere.current = 0;
+        refocusFix.current = true;
+        notify(tl("fix.saved"));
+        router.refresh();
+      }
     });
   }
 
@@ -994,15 +1221,22 @@ export function ListScreen({
 
   /**
    * The line under an item, and how many more changes it has: who did it and
-   * when, or what changed last, by whom and when. Null when nothing happened.
+   * when, or what changed last, by whom and when; fixed after its list
+   * closed (L6b-1), "תוקן אחרי הסגירה", by whom and when. Null when nothing
+   * happened.
    */
   function lineOf(
     item: ListItem,
   ): { words: ReactNode; more: number; done: boolean } | null {
-    const line = itemLine(item, historyOf(item));
+    const line = itemLine(item, historyOf(item), list);
     if (!line) return null;
     const done = line.kind === "done";
-    const what = line.kind === "changed" ? lineWhat(item, line.part) : null;
+    const what =
+      line.kind === "changed"
+        ? lineWhat(item, line.part)
+        : line.kind === "fixed"
+          ? tl("fix.item")
+          : null;
     if (what === null) {
       return { words: whoWhen(line.by, line.at), more: line.more, done };
     }
@@ -1062,6 +1296,31 @@ export function ListScreen({
       {tl("finish")}
     </Button>
   );
+
+  // The fix's main action (L6b-1): in the header on a desktop.
+  const finishFixButton = (
+    <Button
+      size="lg"
+      loading={ending}
+      disabled={photosBusy}
+      onClick={finishFix}
+    >
+      <Check aria-hidden="true" />
+      {tl("fix.done")}
+    </Button>
+  );
+
+  // Who closed it and when, as the fix's card says it.
+  const closedBy = list.finishedAt
+    ? (() => {
+        const { time, date } = whenOf(list.finishedAt);
+        return tl.rich("fix.body", {
+          name: nameOf(list.finishedBy),
+          time: date === null ? time : `${date}, ${time}`,
+          ltr,
+        });
+      })()
+    : null;
 
   const leftWords =
     progress.requiredLeft > 0
@@ -1139,8 +1398,22 @@ export function ListScreen({
         title={list.name}
         subtitle={words.holder}
         actions={
-          fill ? (
+          can.fill ? (
             <div className="hidden xl:flex">{finishButton()}</div>
+          ) : fixing ? (
+            <div className="hidden xl:flex">{finishFixButton}</div>
+          ) : can.fix && !undoShown ? (
+            // A finished list is fixed in place (L6b-1); opening it again
+            // for everyone is inside the fix's card.
+            <Button
+              ref={fixButton}
+              variant="secondary"
+              size="lg"
+              onClick={startFix}
+            >
+              <Pencil aria-hidden="true" />
+              {tl("fix.action")}
+            </Button>
           ) : can.reopen && !undoShown ? (
             <Button
               variant="secondary"
@@ -1155,7 +1428,7 @@ export function ListScreen({
         }
       />
 
-      {undoShown && list.status !== "open" ? (
+      {undoShown && list.status !== "open" && !fixing ? (
         <UndoRow
           message={
             list.status === "cancelled" ? tl("cancelled") : tl("finished")
@@ -1163,6 +1436,41 @@ export function ListScreen({
           onUndo={reopen}
           pending={finishing}
         />
+      ) : null}
+
+      {/* Fixing a closed list (L6b-1): the screen's one accent card. */}
+      {fixing ? (
+        <section aria-labelledby={fixTitleId}>
+          <Card tone="accent" padding="lg" className="flex flex-col gap-2">
+            <h2
+              ref={fixTitle}
+              id={fixTitleId}
+              tabIndex={-1}
+              className="font-bold text-ink text-lg outline-none"
+            >
+              {tl("fix.title")}
+            </h2>
+            {closedBy ? <p className="text-base text-ink">{closedBy}</p> : null}
+            {can.reopen ? (
+              <div className="mt-1 flex flex-col items-start gap-1">
+                <Button
+                  variant="ghost"
+                  loading={finishing}
+                  disabled={ending}
+                  onClick={reopen}
+                  aria-describedby={reopenHintId}
+                  className="-ms-3"
+                >
+                  <RotateCcw aria-hidden="true" />
+                  {tl("fix.reopenAll")}
+                </Button>
+                <p id={reopenHintId} className="text-ink text-sm">
+                  {tl("fix.reopenHint")}
+                </p>
+              </div>
+            ) : null}
+          </Card>
+        </section>
       ) : null}
 
       <div className="grid items-start gap-6 md:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:gap-8">
@@ -1263,6 +1571,9 @@ export function ListScreen({
                       item.kind === "check"
                         ? {
                             checked: item.done,
+                            // Taking back a required tick while a closed
+                            // list is fixed (L6b-1) keeps it ticked and
+                            // says why (`saveNow`, "keepRequired").
                             onToggle: () =>
                               void save(item, { checked: !item.done }),
                           }
@@ -1415,6 +1726,13 @@ export function ListScreen({
                                 {item.unit ? ` ${item.unit}` : ""}
                               </span>
                             )}
+                            {/* Fixed after the list closed (L6b-1). */}
+                            {fixedAfterClose(item.fixedAt, list) ? (
+                              <span className="text-ink-2">
+                                {" · "}
+                                {tl("readings.fixed")}
+                              </span>
+                            ) : null}
                           </td>
                           <td
                             className={cn(
@@ -1506,7 +1824,7 @@ export function ListScreen({
         </aside>
       </div>
 
-      {fill ? (
+      {can.fill ? (
         <div className="xl:hidden">
           <div aria-hidden="true" className="h-36" />
           <FloatingDock
@@ -1523,6 +1841,30 @@ export function ListScreen({
               onClick={finish}
             >
               {tl("finish")}
+            </DockButton>
+          </FloatingDock>
+        </div>
+      ) : fixing ? (
+        // The fix's main action below the desktop (L6b-1), saying why it
+        // waits while a photo is on its way, as filling does.
+        <div className="xl:hidden">
+          <div aria-hidden="true" className={photosBusy ? "h-36" : "h-28"} />
+          <FloatingDock
+            notice={
+              photosBusy ? (
+                <p className="glass mx-auto w-fit rounded-[22px] px-4 py-2 text-center font-medium text-base">
+                  {tl("photoStillSaving")}
+                </p>
+              ) : undefined
+            }
+          >
+            <DockButton
+              icon={<Check />}
+              loading={ending}
+              disabled={photosBusy}
+              onClick={finishFix}
+            >
+              {tl("fix.done")}
             </DockButton>
           </FloatingDock>
         </div>
@@ -1571,6 +1913,7 @@ export function ListScreen({
             partWords={(part) => partWords(historyItem, part)}
             whoWhen={whoWhen}
             photosGone={th("photosGone")}
+            fixedBadge={tl("fix.badge")}
           />
         ) : null}
       </Sheet>
@@ -1639,19 +1982,22 @@ export function ListScreen({
 
 /**
  * The rows of an item's story, oldest first: what happened, each change on
- * its own line, and who and when under it; then, when a photo was replaced
- * or removed, that earlier photos aren't kept.
+ * its own line, and who and when under it, a fix after the close marked
+ * "אחרי הסגירה" (L6b-1); then, when a photo was replaced or removed, that
+ * earlier photos aren't kept.
  */
 function HistoryRows({
   entries,
   partWords,
   whoWhen,
   photosGone,
+  fixedBadge,
 }: {
   entries: readonly HistoryEntry[];
   partWords: (part: HistoryPart) => ReactNode;
   whoWhen: (by: string | null, at: string) => ReactNode;
   photosGone: string;
+  fixedBadge: string;
 }) {
   const photoGone = entries.some((entry) =>
     entry.parts.some(
@@ -1672,6 +2018,9 @@ function HistoryRows({
               </span>
             }
             subtitle={whoWhen(entry.by, entry.at)}
+            trailing={
+              entry.fixed ? <Badge tone="accent">{fixedBadge}</Badge> : null
+            }
           />
         ))}
       </ListGroup>

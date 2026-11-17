@@ -2525,6 +2525,24 @@
             "passedFrom": "It was with {from}",
             "passNote": "With a note",
             "reopen": "{was, select, cancelled {Brought back the list {name} after it was cancelled} other {Opened the list {name} again}}",
+            "fix": "Fixed {label} in the list {name} after it closed",
+            "fixMany": "{count, plural, one {One fix} other {# fixes}} in the list {name} after it closed",
+            "fixField": {
+              "checked": "Ticked",
+              "given": "How many were given",
+              "reading": "Reading"
+            },
+            "fixValue": {
+              "checked": "Ticked",
+              "unchecked": "Not ticked",
+              "empty": "Empty"
+            },
+            "fixOther": {
+              "answer": "The answer changed",
+              "comment": "The comment changed",
+              "photo": "The photo changed"
+            },
+            "fixOtherOf": "{label}: {what}",
             "late": "{name} was late",
             "missed": "{name} was not done",
             "outOfRange": "A reading out of range in {name}: {label}, <ltr>{reading}</ltr>",
@@ -2702,7 +2720,7 @@
         "editHint": {
           "scheduling": "Without edit they see the published schedule, send their availability and ask for swaps. With edit they also build the schedule, see everyone's availability and approve swaps.",
           "time_clock": "Without edit they clock in and out and see their own hours. With edit they also see and correct everyone's hours, confirm them and show the punch code.",
-          "lists": "Without edit they fill the lists sent to them or their department. With edit they also build templates, set when they open and see every list.",
+          "lists": "Without edit they fill the lists sent to them or their department. With edit they also build templates, set when they open, see every list and fix lists after they closed.",
           "chat": "Without edit they write in their own chats and groups. With edit they are also in every department's group and read everything written in the groups, from before they joined too, remove others' messages in groups, pin messages from management and see who confirmed reading them."
         },
         "levelHint": {
@@ -3444,6 +3462,8 @@
         "progress": "{done} of {total}",
         "finishedBy": "Finished at <ltr>{time}</ltr> by {name}",
         "finished": "Finished",
+        "fixed": "Fixed at <ltr>{time}</ltr>",
+        "fixedOn": "Fixed at <ltr>{date}, {time}</ltr>",
         "missed": "Not done",
         "cancelled": "Cancelled"
       },
@@ -3457,6 +3477,17 @@
         "finished": "The list is finished",
         "cancelled": "The list was cancelled",
         "reopen": "Open it again",
+        "fix": {
+          "action": "Fix the list",
+          "title": "Fixing a closed list",
+          "body": "The list stays closed, as {name} closed it at <ltr>{time}</ltr>. Each change saves at once with your name, and everyone who sees the list sees it. A required item can be changed, but not undone or emptied.",
+          "reopenAll": "Open it again for everyone",
+          "reopenHint": "The list is open again for everyone it is for, they are told about it again, and it has to be closed again.",
+          "done": "Finish fixing",
+          "saved": "The fix was saved",
+          "item": "Fixed after the close",
+          "badge": "After the close"
+        },
         "optional": "Optional",
         "doneBy": "{name} · <ltr>{time}</ltr>",
         "doneByOn": "{name} · <ltr>{date}, {time}</ltr>",
@@ -3587,6 +3618,7 @@
           "cancelled": "Cancelled by {name}, at <ltr>{time}</ltr>",
           "reopened": "Reopened by {name}, at <ltr>{time}</ltr>",
           "restored": "Brought back by {name} after it was cancelled, at <ltr>{time}</ltr>",
+          "fixed": "{count, plural, one {One item fixed} other {# items fixed}} after the close, by {name}, at <ltr>{time}</ltr>",
           "missed": "Not done in time"
         },
         "readings": {
@@ -3595,7 +3627,8 @@
           "reading": "Reading",
           "range": "Range",
           "who": "Who",
-          "when": "When"
+          "when": "When",
+          "fixed": "Fixed"
         },
         "failed": {
           "noAccess": "This list isn't yours any more.",
@@ -3606,7 +3639,9 @@
           "left": "Some required items are still left.",
           "notYet": "Lists aren't ready here yet. Try again in a few minutes.",
           "failed": "Not saved. Check the connection and try again.",
-          "businessChanged": "You switched business meanwhile, so the change wasn't saved. Load the screen again."
+          "businessChanged": "You switched business meanwhile, so the change wasn't saved. Load the screen again.",
+          "keepRequired": "A required item of a closed list can be changed, but not undone or emptied. To have it done again: Open it again for everyone.",
+          "reopened": "The list was opened again meanwhile, so the change wasn't saved. You can fill it as usual now."
         }
       },
       "send": {

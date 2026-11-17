@@ -117,6 +117,7 @@ const item = (
   done: false,
   doneBy: null,
   doneAt: null,
+  fixedAt: null,
   ...fields,
 });
 
@@ -153,6 +154,7 @@ const base = {
   finishedBy: null,
   closedAt: null,
   closedBy: null,
+  fixedAt: null,
 } as const;
 
 export const demoLists: ListDetail[] = [
@@ -625,15 +627,27 @@ export const demoEmptyBusinessLists = (): ListsHomeData => ({
  * role that manages lists without sending them (R5), `emptyNoSend` such a
  * role on a day with nothing, `shiftGone`
  * the restaurant after its evening shift left the settings, so the bar's
- * closing, which follows it, opens nothing.
+ * closing, which follows it, opens nothing; `fixed` the morning once Noa
+ * closed the kitchen's opening and Shiran fixed its freezer reading after
+ * the close (L6b-1, `withFix`).
  */
 export function demoListsToday(
   day?: string,
-  state?: "empty" | "viewing" | "shiftGone" | "noSend" | "emptyNoSend",
+  state?:
+    | "empty"
+    | "viewing"
+    | "shiftGone"
+    | "noSend"
+    | "emptyNoSend"
+    | "fixed",
 ): ListsTodayData {
   const empty = state === "empty" || state === "emptyNoSend";
   const noSend = state === "noSend" || state === "emptyNoSend";
-  const all = empty ? [] : [...demoLists, ...demoEarlierLists];
+  const all = empty
+    ? []
+    : [...demoLists, ...demoEarlierLists].map((l) =>
+        state === "fixed" ? withFix(l, "fixed") : l,
+      );
   const lists = all.map(summaryOf);
   const today = dateIn(now, ISRAEL_TIME_ZONE);
   const week = overviewWeek(today);
@@ -651,6 +665,7 @@ export function demoListsToday(
         reading: i.reading,
         doneAt: i.doneAt,
         doneBy: i.doneBy,
+        fixedAt: i.fixedAt,
         outOfRange: isOutOfRange(i),
       })),
   );
@@ -776,6 +791,7 @@ const change = (
   comment: null,
   photo: false,
   done: false,
+  fixed: false,
   ...values,
 });
 
@@ -887,10 +903,80 @@ function withHistory(list: ListDetail): ListDetail {
 }
 
 /**
+ * A closed list fixed in place on the demo (L6b-1): `fix` the kitchen's
+ * opening as Noa closed it at 08:05, her freezer reading of −12°C out of its
+ * range, for Shiran, who runs the lists, to fix; `fixed` the same once
+ * Shiran fixed it to −19°C at 08:10. The list stays Noa's close; the
+ * reading stays hers too, its fix Shiran's.
+ */
+export type DemoFixState = "fix" | "fixed";
+
+const CLOSED_AT = "2026-11-03T06:05:00.000Z";
+const FIXED_AT = "2026-11-03T06:10:00.000Z";
+
+function withFix(list: ListDetail, state: DemoFixState): ListDetail {
+  if (list.id !== "list-kitchen-opening") return list;
+  const fixed = state === "fixed";
+  const items = list.items.map((i): ListItem => {
+    switch (i.id) {
+      case "kitchen-freezer":
+        return {
+          ...i,
+          reading: fixed ? -19 : -12,
+          ...done("noa", "2026-11-03T05:44:00.000Z"),
+          fixedAt: fixed ? FIXED_AT : null,
+        };
+      case "kitchen-preps":
+        return {
+          ...i,
+          checked: true,
+          ...done("noa", "2026-11-03T05:58:00.000Z"),
+        };
+      case "kitchen-surfaces":
+        return {
+          ...i,
+          checked: true,
+          ...done("noa", "2026-11-03T06:01:00.000Z"),
+        };
+      default:
+        return i;
+    }
+  });
+  return {
+    ...list,
+    status: "finished",
+    finishedAt: CLOSED_AT,
+    finishedBy: "noa",
+    fixedAt: fixed ? FIXED_AT : null,
+    items,
+    changes: fixed
+      ? [
+          change(
+            "ch-freezer-1",
+            "kitchen-freezer",
+            "noa",
+            "2026-11-03T05:44:00.000Z",
+            ["reading"],
+            { reading: -12, done: true },
+          ),
+          change(
+            "ch-freezer-2",
+            "kitchen-freezer",
+            "shiran",
+            FIXED_AT,
+            ["reading"],
+            { reading: -19, done: true, fixed: true },
+          ),
+        ]
+      : [],
+  };
+}
+
+/**
  * One list on its screen, as Shiran reads it; `finished` just now by her,
  * `passed` the bar's order passed back from the storeroom, `photos` one of
  * its photo states (`DemoPhotoState`), `history` with its items' stories
- * (`withHistory`).
+ * (`withHistory`), `fix` closed and to be fixed, or fixed (`withFix`).
  */
 export function demoListScreen(
   id: string,
@@ -898,10 +984,12 @@ export function demoListScreen(
   passed = false,
   photos: DemoPhotoState | null = null,
   history = false,
+  fix: DemoFixState | null = null,
 ): ListScreenData | null {
   const listed = [...demoLists, ...demoEarlierLists].find((l) => l.id === id);
   if (!listed) return null;
-  const told = history ? withHistory(listed) : listed;
+  const fixedOrNot = fix ? withFix(listed, fix) : listed;
+  const told = history ? withHistory(fixedOrNot) : fixedOrNot;
   const read = passed && told.fromDepartment !== null ? passedBack(told) : told;
   const found =
     photos && read.items.some((i) => i.kind === "photo")
@@ -934,10 +1022,12 @@ export function demoListScreen(
     userId: "shiran",
     list: { ...shown, progress: listProgress(shown.items) },
     // Shiran manages lists: she opens a closed one again whenever, besides
-    // her own five minutes to take a finish back.
+    // her own five minutes to take a finish back, and fixes a finished one
+    // in place (L6b-1).
     can: {
       fill: shown.status === "open",
       reopen: shown.status === "finished" || shown.status === "cancelled",
+      fix: shown.status === "finished",
     },
     readOnly: shown.status === "open" ? null : "finished",
     undoUntil: finished

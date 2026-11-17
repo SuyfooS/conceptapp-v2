@@ -449,6 +449,17 @@ export type ActivityLine =
       was: "finished" | "cancelled" | null;
     }
   | {
+      /**
+       * Items of a finished list fixed in place after it closed (lists
+       * L6b-1): one, or one person's run of them on the list, each item once
+       * from where it began to where it ended. No text: the list is the
+       * record.
+       */
+      action: "lists.fix";
+      name: string;
+      items: ActivityListFix[];
+    }
+  | {
       /** A pay holder set someone's hourly wage from a day (payroll P4). */
       action: "wage.set";
       person: ActivityPerson;
@@ -546,6 +557,36 @@ export type ActivityLine =
   | { action: "document.restore" }
   | { action: "other" };
 
+/** The fields of a list item a fix names (lists L6b-1), in order. */
+export const LIST_FIX_FIELDS = [
+  "checked",
+  "given",
+  "reading",
+  "answer",
+  "comment",
+  "photo",
+] as const;
+export type ListFixField = (typeof LIST_FIX_FIELDS)[number];
+
+/** An item's value a fix's row keeps, before and after: never its text. */
+export type ListFixValues = {
+  checked: boolean;
+  given: number | null;
+  reading: number | null;
+};
+
+/** One item a fix changed (lists L6b-1). */
+export type ActivityListFix = {
+  label: string;
+  /** The item's kind, or null when the row doesn't say. */
+  kind: "check" | "number" | "note" | "photo" | null;
+  unit: string | null;
+  /** What changed, in `LIST_FIX_FIELDS`' order. */
+  fields: ListFixField[];
+  from: ListFixValues;
+  to: ListFixValues;
+};
+
 /** A chat's group, as the log names it. */
 export type ActivityChatGroup =
   | { kind: "team" }
@@ -601,6 +642,22 @@ const instant = z
 const fields = z.record(z.string(), z.unknown());
 const times = z.object({ clock_in: instant, clock_out: instant.nullable() });
 const span = z.object({ start: instant, end: instant.nullable() });
+const fixValues = z.object({
+  checked: z.boolean().nullable().catch(null),
+  given: z.number().nullable().catch(null),
+  reading: z.number().nullable().catch(null),
+});
+const noValues: ListFixValues = { checked: false, given: null, reading: null };
+const fixValuesOf = (
+  values: z.infer<typeof fixValues> | undefined,
+): ListFixValues =>
+  values
+    ? {
+        checked: values.checked === true,
+        given: values.given,
+        reading: values.reading,
+      }
+    : noValues;
 
 const schemas = {
   "business.create": z.object({ invites: z.int().min(0).optional() }),
@@ -730,6 +787,19 @@ const schemas = {
     min: z.number().nullable().default(null),
     max: z.number().nullable().default(null),
     unit: z.string().nullable().default(null),
+  }),
+  // A fix of a finished list (20261116000300_lists_fix.sql): `checked` is
+  // true or null, as list_items keeps it.
+  "lists.fix": z.object({
+    list: id,
+    name: z.string(),
+    item: id.optional(),
+    label: z.string(),
+    kind: z.enum(["check", "number", "note", "photo"]).nullable().catch(null),
+    unit: z.string().nullable().catch(null),
+    changed: z.array(z.unknown()).catch([]),
+    from: fixValues.optional().catch(undefined),
+    to: fixValues.optional().catch(undefined),
   }),
   "role.permission": z.object({
     role: z.unknown(),
@@ -1198,6 +1268,24 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
           : null;
       return { action: row.action, name: details.name, was };
     }
+    case "lists.fix": {
+      const details = read(schemas["lists.fix"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        name: details.name,
+        items: [
+          {
+            label: details.label,
+            kind: details.kind,
+            unit: details.unit,
+            fields: knownFields(details.changed, LIST_FIX_FIELDS),
+            from: fixValuesOf(details.from),
+            to: fixValuesOf(details.to),
+          },
+        ],
+      };
+    }
     case "role.permission": {
       const details = read(schemas["role.permission"]);
       if (!details) return other;
@@ -1422,7 +1510,25 @@ type Parsed = ActivityEntry & {
   actorId: string | null;
   /** When the run of edits this line stands for began. */
   since: string;
+  /**
+   * A fix's list, and each of its items' ids beside the line's items (lists
+   * L6b-1): what a run folds by, never shown.
+   */
+  fix?: { list: string; items: (string | null)[] };
 };
+
+/** The ids a fix's row names (lists L6b-1), for folding a run of them. */
+function fixRefsOf(row: ActivityRow): Parsed["fix"] {
+  if (row.action !== "lists.fix") return undefined;
+  const details = fields.safeParse(row.details);
+  if (!details.success) return undefined;
+  const { list, item } = details.data;
+  if (!isUuid(list)) return undefined;
+  return {
+    list: list.toLowerCase(),
+    items: [isUuid(item) ? item.toLowerCase() : null],
+  };
+}
 
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
@@ -1438,11 +1544,56 @@ function foldsInto(newer: Parsed, older: Parsed): boolean {
   if (a.action === "lists.template.save") {
     return b.action === "lists.template.save" && a.name === b.name;
   }
+  // One person's fixes of one list (lists L6b-1).
+  if (a.action === "lists.fix") {
+    return (
+      b.action === "lists.fix" &&
+      newer.fix !== undefined &&
+      newer.fix.list === older.fix?.list
+    );
+  }
   return (
     a.action === "module.settings" &&
     b.action === "module.settings" &&
     a.module === b.module
   );
+}
+
+/**
+ * A run of fixes as one line (lists L6b-1): the older one's items first, as
+ * they were fixed, and an item fixed again once, from where it began to
+ * where it ended, with every field either named.
+ */
+function foldFixes(
+  newer: Parsed,
+  older: Parsed,
+  a: Extract<ActivityLine, { action: "lists.fix" }>,
+  b: Extract<ActivityLine, { action: "lists.fix" }>,
+): Parsed {
+  const items = [...b.items];
+  const ids = [...(older.fix?.items ?? b.items.map(() => null))];
+  a.items.forEach((item, index) => {
+    const id = newer.fix?.items[index] ?? null;
+    const at = id === null ? -1 : ids.indexOf(id);
+    const was = at >= 0 ? items[at] : undefined;
+    if (!was) {
+      items.push(item);
+      ids.push(id);
+      return;
+    }
+    items[at] = {
+      ...item,
+      fields: LIST_FIX_FIELDS.filter(
+        (field) => was.fields.includes(field) || item.fields.includes(field),
+      ),
+      from: was.from,
+    };
+  });
+  return {
+    ...newer,
+    line: { ...a, items },
+    fix: newer.fix ? { list: newer.fix.list, items: ids } : undefined,
+  };
 }
 
 /** The changes of two edits as one: the older one's before, the newer one's after. */
@@ -1483,8 +1634,18 @@ function fold(newer: Parsed, older: Parsed): Parsed {
   ) {
     return { ...newer, line: { ...a, created: a.created || b.created } };
   }
+  if (a.action === "lists.fix" && b.action === "lists.fix") {
+    return foldFixes(newer, older, a, b);
+  }
   return newer;
 }
+
+/** The fields a fix's row keeps the values of, before and after. */
+const FIX_VALUE_FIELDS: readonly ListFixField[] = [
+  "checked",
+  "given",
+  "reading",
+];
 
 /** Each module's settings as they are when a business never set them, by module. */
 export type SettingDefaults = ReadonlyMap<
@@ -1512,6 +1673,17 @@ function withoutNoChange(
     const changes = line.changes.filter((c) => !same(before(c), c.to));
     return changes.length ? { ...entry, line: { ...line, changes } } : null;
   }
+  // A fix that put a value back where it began (lists L6b-1). A fix of an
+  // answer, a comment or a photo has no value kept, so it always says so.
+  if (line.action === "lists.fix") {
+    const items = line.items.filter(
+      (item) =>
+        item.fields.length === 0 ||
+        !item.fields.every((field) => FIX_VALUE_FIELDS.includes(field)) ||
+        !same(item.from, item.to),
+    );
+    return items.length ? { ...entry, line: { ...line, items } } : null;
+  }
   return entry;
 }
 
@@ -1536,6 +1708,7 @@ export function buildActivity(
       line: lineOf(row, lookups),
       actorId: row.actorId,
       since: row.createdAt,
+      fix: fixRefsOf(row),
     };
     const last = lines.at(-1);
     if (last && foldsInto(last, entry)) {

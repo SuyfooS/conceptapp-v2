@@ -1036,6 +1036,7 @@ export type Database = {
           checked: boolean | null;
           comment: string | null;
           done: boolean;
+          fixed: boolean;
           given: number | null;
           id: number;
           item_id: string;
@@ -1052,6 +1053,7 @@ export type Database = {
           checked?: boolean | null;
           comment?: string | null;
           done: boolean;
+          fixed?: boolean;
           given?: number | null;
           id?: never;
           item_id: string;
@@ -1068,6 +1070,7 @@ export type Database = {
           checked?: boolean | null;
           comment?: string | null;
           done?: boolean;
+          fixed?: boolean;
           given?: number | null;
           id?: never;
           item_id?: string;
@@ -1101,6 +1104,7 @@ export type Database = {
           done: boolean;
           done_at: string | null;
           done_by: string | null;
+          fixed_at: string | null;
           given: number | null;
           hint: string | null;
           id: string;
@@ -1126,6 +1130,7 @@ export type Database = {
           done?: boolean;
           done_at?: string | null;
           done_by?: string | null;
+          fixed_at?: string | null;
           given?: number | null;
           hint?: string | null;
           id?: string;
@@ -1151,6 +1156,7 @@ export type Database = {
           done?: boolean;
           done_at?: string | null;
           done_by?: string | null;
+          fixed_at?: string | null;
           given?: number | null;
           hint?: string | null;
           id?: string;
@@ -1612,6 +1618,7 @@ export type Database = {
           due_at: string | null;
           finished_at: string | null;
           finished_by: string | null;
+          fixed_at: string | null;
           from_department: string | null;
           id: string;
           late_at: string | null;
@@ -1644,6 +1651,7 @@ export type Database = {
           due_at?: string | null;
           finished_at?: string | null;
           finished_by?: string | null;
+          fixed_at?: string | null;
           from_department?: string | null;
           id?: string;
           late_at?: string | null;
@@ -1676,6 +1684,7 @@ export type Database = {
           due_at?: string | null;
           finished_at?: string | null;
           finished_by?: string | null;
+          fixed_at?: string | null;
           from_department?: string | null;
           id?: string;
           late_at?: string | null;
@@ -3284,6 +3293,19 @@ export type Database = {
       finish_pushes: {
         Args: { at_time?: string; outcomes: Json };
         Returns: undefined;
+      };
+      fix_list_item: {
+        Args: { actor: string; at_time?: string; item: string; result: Json };
+        Returns: Json;
+      };
+      fix_list_item_photo: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          item: string;
+          new_path?: string;
+        };
+        Returns: string;
       };
       forget_auth_attempt: {
         Args: { at_time: string; caller: string; kind: string; phone: string };

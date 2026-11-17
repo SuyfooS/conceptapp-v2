@@ -1,0 +1,71 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { itemFailureOf, listFailureOf } from "./list-failures";
+
+/**
+ * What the screens say when the database refuses a lists write, a fix of a
+ * closed list's too (L6b-1, 20261116000300_lists_fix.sql).
+ */
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+describe("a lists write refused", () => {
+  it("reads each code the database raises", () => {
+    expect(listFailureOf({ code: "42501", message: "" })).toBe("noAccess");
+    expect(listFailureOf({ code: "P0002", message: "" })).toBe("noAccess");
+    expect(listFailureOf({ code: "22023", message: "" })).toBe("invalid");
+    expect(listFailureOf({ code: "23514", message: "" })).toBe("left");
+    expect(listFailureOf({ code: "40001", message: "" })).toBe("changed");
+    expect(listFailureOf({ code: "55000", message: "" })).toBe("finished");
+  });
+
+  it("waits for a function the project doesn't have yet", () => {
+    expect(listFailureOf({ code: "PGRST202", message: "" })).toBe("notYet");
+    expect(listFailureOf({ code: "42883", message: "" })).toBe("notYet");
+  });
+
+  it("logs anything else, without what was written", () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(listFailureOf({ code: "XX000", message: "boom" }, "a fix")).toBe(
+      "failed",
+    );
+    expect(logged).toHaveBeenCalledWith("a fix failed", "boom");
+  });
+});
+
+describe("an item's save refused", () => {
+  it("is as any lists write while filling", () => {
+    expect(itemFailureOf({ code: "55000", message: "" }, false)).toBe(
+      "finished",
+    );
+    expect(itemFailureOf({ code: "42501", message: "" }, false)).toBe(
+      "noAccess",
+    );
+  });
+
+  it("says the list opened again when a fix finds it open", () => {
+    expect(itemFailureOf({ code: "55000", message: "" }, true)).toBe(
+      "reopened",
+    );
+  });
+
+  it("keeps a required item of a closed list from being emptied", () => {
+    const required = {
+      code: "23514",
+      message: "A required item of a finished list is changed, never emptied",
+      hint: "required",
+    };
+    expect(itemFailureOf(required, true)).toBe("keepRequired");
+    // Another 23514 is the list's required items, as before.
+    expect(itemFailureOf({ code: "23514", message: "" }, true)).toBe("left");
+    expect(
+      itemFailureOf({ code: "23514", message: "", hint: null }, false),
+    ).toBe("left");
+  });
+
+  it("waits for the fix's own functions before its migration", () => {
+    expect(itemFailureOf({ code: "PGRST202", message: "" }, true)).toBe(
+      "notYet",
+    );
+  });
+});
