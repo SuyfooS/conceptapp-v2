@@ -1338,6 +1338,63 @@ before the migration, and a fix before it says the lists aren't ready yet
 ("notYet"). `lists_fix.test.sql` covers it (47, ids b2…, numbers
 050-053-xxxx).
 
+The switch "תיקון רשימות שנסגרו" for any role (`20261116000400_lists_fix_switch.sql`,
+the L6 plan's L6b-2; Orel, 16 November 2026: can a role like "עובד בכיר"
+fix the shared lists that reach it, after one person closed them for all).
+A new key, `lists.fix`, in the lists area: managers by default, settable
+in the same statement (a key of an area that owners can't switch would
+close the whole area on the roles screen), and `requires` null, since edit
+covers it, not the chain: the roles screen draws it held at edit and grants
+it with a raise to edit, and `private.can_fix_list` lets `lists.manage`
+fix at any time. It is the first key that works at
+view: whatever reads the catalogue takes it by itself
+(`role_permission_matrix`, `set_role_permission(s)`, `my_permissions`,
+`role_holds_beyond`, R10's area rules and lines). A new lists setting,
+`fixHours` (owner level, as the punch code is; 2, 12, 24 or 72 hours, 24 by
+default), in `private.list_settings` (replaced from
+`20261115000500_lists_owners_late.sql` with only that) and read by the new
+`private.list_fix_hours(business)`: a value the manifest offers, compared
+as jsonb as the tick reads `tellOwnersAfterMinutes`, so a stored `"12"`
+reads as 24 and `72.0` as 72, as `readModuleSettings` reads them.
+`private.can_fix_list` (same parameters) now lets, besides whoever runs the
+lists at any time, someone who holds `lists.fix` (`private.holds_perm`: a
+named role's rule, its base's, the key's default or a grant of their own)
+fix a finished list that reaches them now (`private.holds_list`) until
+`fixHours` after it closed, that moment included. A list passed to another
+department leaves its former holders; seeing every list stays edit's.
+`private.write_list_item` and `write_list_item_photo` are replaced from
+L6b-1's bodies with one refusal more: a fix refused to someone who holds
+`lists.fix` and the list is refused for the time alone, 42501 with hint
+`fix_window`, which `@db/list-failures` reads as "fixOver" ("הזמן לתקן את
+הרשימה הזאת נגמר"); anyone else is refused as before, with no hint.
+`lists.fix` never reopens a list: reopening is as it was (the finisher
+within five minutes, or `lists.manage`). Every `lists.manage` rule set before this gets a `lists.fix` rule of the
+same value from the migration's `private.backfill_lists_fix()` (run once,
+revoked from everyone), as the roles screen writes a raise or a lower now,
+so fixing follows the role's own lists level: a base role where that
+differs from the key's default (managers lowered are denied it, workers
+raised given it), a named role always, whatever its base. Straight into the
+rules, as the seed writes them: no role's holding changes, so nothing is
+logged and nobody is told. `private.backfill_lists_fix_lines()` completes
+the R10 lists lines still open that were written without the key (each
+side's `lists.fix` is its `lists.manage`), so a role put back where its
+line began still takes the line away. `private.role_holds_beyond` (replaced
+from `20261115001600_named_roles_give.sql`) counts a giver who runs the
+lists as fixing closed ones.
+That covers managers lowered while Vercel had the key and the database
+didn't (`setRoleAreas` left `lists.fix` out) too. `private.area_holds`
+(R10, replaced from `20261115001700_roles_changes.sql`) counts `lists.fix`
+held while `lists.manage` is, as the roles screen draws it ("כלול
+בעריכה"), so switching it beside edit, for the role or for the base of a
+named role at edit, tells nobody instead of leaving a line that says
+nothing. No rule by rank, no new log family. `@db/lists`
+`getMyLists(…, fixableSince)` also reads the finished lists a person holds
+that opened before today and closed within the business's window, for "עוד אפשר לתקן" on
+`/lists`. `@db/roles` `setRoleAreas` asks `areaOpen` with the matrix's
+keys and never writes a key the matrix doesn't list, so the roles screen
+stays open before Migrate. `lists_fix_switch.test.sql` covers it (40, ids
+b3…, numbers 050-054-xxxx, times on 14 to 21 December 2026).
+
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).
 `public.note_payroll_access(business, pay_month, view_kind)` notes that the
 caller opened a pay screen (`view_kind`: month, person or access; 22023 for

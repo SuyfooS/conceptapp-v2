@@ -139,6 +139,16 @@ export type ListScreenWords = {
   due: { tone: "neutral" | "warning"; label: ReactNode } | null;
   /** Why it is only read here, or null when it is being filled. */
   readOnly: ReactNode;
+  /**
+   * Until when someone given "תיקון רשימות שנסגרו" may still fix it
+   * (L6b-2, `fixUntil`), or null.
+   */
+  fixUntil: ReactNode;
+  /**
+   * When their window ended, or ends, and who still fixes it (L6b-2,
+   * `fixEndedAt`, else `fixUntil`), or null: said once it is over.
+   */
+  fixOver: ReactNode;
   details: { key: string; label: string; value: ReactNode }[];
   /** What happened, in order; a pass carries the note that came with it. */
   timeline: { key: string; text: ReactNode; note?: string | null }[];
@@ -200,6 +210,17 @@ const needsMinus = (item: ListItem) =>
  * and once every change saved, leaves fix mode, back on "תיקון הרשימה", and
  * reads the list again, saying the fix was saved. A change that didn't save
  * keeps the screen where its words put it.
+ *
+ * Someone given "תיקון רשימות שנסגרו" (L6b-2) fixes a list that reaches them
+ * the same way, until the business's window ends (`fixUntil`), which the
+ * hero says while "תיקון הרשימה" is there, and in fix mode: "אפשר לתקן עד
+ * …". They don't open it again for everyone: the card has no "פתיחה מחדש
+ * לכולם", and a required item they would empty says to ask whoever edits
+ * the lists to open it again. When the window ends while the screen is
+ * open, "תיקון הרשימה" goes and the hero says when it ended and who still
+ * fixes it, as it does when the screen opens after (`fixEndedAt`); a fix
+ * sent after it is refused ("fixOver"), which ends fix mode and reads the
+ * list again.
  */
 type ListScreenProps = {
   data: ListScreenData;
@@ -323,6 +344,8 @@ function ListScreen({
   const [commentDraft, setCommentDraft] = useState("");
   const [finishing, startFinish] = useTransition();
   const [undoShown, setUndoShown] = useState(data.undoUntil !== null);
+  // Someone given lists.fix (L6b-2): whether their window is still open.
+  const [fixOpen, setFixOpen] = useState(true);
   const latest = useRef<Record<string, number>>({});
   // An order's counts given, as typed, and the save each waits for after the
   // last tap of its stepper.
@@ -413,23 +436,79 @@ function ListScreen({
     return () => clearTimeout(timer);
   }, [data.undoUntil, data.now]);
 
+  // The window of someone given lists.fix ends too (L6b-2): its line and
+  // "תיקון הרשימה" go. Being fixed by then, the next change is refused
+  // ("fixOver") and says why. Its end is put on this device's clock once
+  // per payload, from the server's (`now`), so a screen shown again from an
+  // old payload (back and forward, a route kept hidden) keeps the end it
+  // had, and it is checked again whenever the screen is shown, since a
+  // phone asleep holds its timers.
+  const fixEnd = useRef<{ payload: string; at: number } | null>(null);
+  useEffect(() => {
+    if (!data.fixUntil) return;
+    const payload = `${data.now} ${data.fixUntil}`;
+    let measured = fixEnd.current;
+    if (measured?.payload !== payload) {
+      measured = {
+        payload,
+        at: Date.now() + (Date.parse(data.fixUntil) - Date.parse(data.now)),
+      };
+      fixEnd.current = measured;
+    }
+    const end = measured.at;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      clearTimeout(timer);
+      const left = end - Date.now();
+      setFixOpen(left > 0);
+      // A timer holds up to about 24 days; the longest window is three.
+      if (left > 0) timer = setTimeout(check, Math.min(left, 2_147_483_647));
+    };
+    const onShow = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    check();
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", check);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("pageshow", check);
+    };
+  }, [data.fixUntil, data.now]);
+
   const progress = listProgress(items);
   // Its items take changes while it is filled, or fixed (L6b-1).
   const fill = can.fill || fixing;
 
+  /**
+   * Why a change didn't happen, in words. A required item a fix would empty
+   * says how to have it done again: "פתיחה מחדש לכולם" for whoever may,
+   * and otherwise (someone given lists.fix, L6b-2) to ask whoever runs the
+   * lists.
+   */
+  const failedWords = (reason: ItemFailure): string =>
+    reason === "keepRequired" && !can.reopen
+      ? tl("failed.keepRequiredAsk")
+      : tl(`failed.${reason}`);
+
   function fail(reason: ItemFailure) {
     refused.current += 1;
-    // Closed meanwhile, opened again while it was fixed, or moved on
-    // elsewhere: show where it really stands, and say why from the frame,
+    // Closed meanwhile, opened again while it was fixed, moved on
+    // elsewhere, past the window to fix it, or no longer theirs to fix
+    // (L6b-2): show where it really stands, and say why from the frame,
     // since the screen starts anew.
     if (
       reason === "finished" ||
       reason === "noAccess" ||
-      reason === "reopened"
+      reason === "reopened" ||
+      reason === "fixOver" ||
+      reason === "fixNoAccess"
     ) {
-      // A fix ends with it: the list is filled now, or no longer theirs.
+      // A fix ends with it: the list is filled now, or no longer theirs to
+      // fix.
       setFixing(false);
-      notify(tl(`failed.${reason}`));
+      notify(failedWords(reason));
       router.refresh();
       return;
     }
@@ -848,8 +927,13 @@ function ListScreen({
         return;
       }
       previewFor(itemId, null);
-      // Opened again while it was fixed: filled from here, as the frame says.
-      if (failure === "reopened") {
+      // Opened again while it was fixed, past the window to fix it, or no
+      // longer theirs to fix (L6b-2): from here, as the frame says.
+      if (
+        failure === "reopened" ||
+        failure === "fixOver" ||
+        failure === "fixNoAccess"
+      ) {
         fail(failure);
         return;
       }
@@ -897,7 +981,11 @@ function ListScreen({
     const result = await photoAnswer(() => actions.removePhoto(item.id, fix));
     busyWith(item.id, null);
     if (!result.ok) {
-      if (result.failure === "reopened") {
+      if (
+        result.failure === "reopened" ||
+        result.failure === "fixOver" ||
+        result.failure === "fixNoAccess"
+      ) {
         fail(result.failure);
         return;
       }
@@ -927,7 +1015,11 @@ function ListScreen({
     } else if (result.failure === "failed" || result.failure === "offline") {
       // It didn't get there: the row stays, saying so, and "ביטול" tries again.
       setPhotoUndo({ ...undo, failed: true });
-    } else if (result.failure === "reopened") {
+    } else if (
+      result.failure === "reopened" ||
+      result.failure === "fixOver" ||
+      result.failure === "fixNoAccess"
+    ) {
       setPhotoUndo(null);
       fail(result.failure);
     } else {
@@ -940,7 +1032,7 @@ function ListScreen({
   const photoWords = (problem: PhotoProblem): string =>
     isPhotoWord(problem)
       ? tl(`photo.failures.${problem}`)
-      : tl(`failed.${problem}`);
+      : failedWords(problem);
 
   /** A photo item's part, as this person may fill it or only read it. */
   const photoOf = (item: ListItem) => {
@@ -1382,7 +1474,7 @@ function ListScreen({
   return (
     <PageBody className={pageGlowClass}>
       <StatusToast
-        message={failure ? tl(`failed.${failure.reason}`) : null}
+        message={failure ? failedWords(failure.reason) : null}
         stamp={failure ? String(failure.stamp) : undefined}
       />
       <StatusToast
@@ -1402,9 +1494,9 @@ function ListScreen({
             <div className="hidden xl:flex">{finishButton()}</div>
           ) : fixing ? (
             <div className="hidden xl:flex">{finishFixButton}</div>
-          ) : can.fix && !undoShown ? (
+          ) : can.fix && fixOpen && !undoShown ? (
             // A finished list is fixed in place (L6b-1); opening it again
-            // for everyone is inside the fix's card.
+            // for everyone is inside the fix's card, for whoever may.
             <Button
               ref={fixButton}
               variant="secondary"
@@ -1503,6 +1595,15 @@ function ListScreen({
                 <span className="text-base">
                   {list.status === "open" ? leftWords : words.readOnly}
                 </span>
+                {/* Someone given lists.fix (L6b-2): until when they may,
+                    while "תיקון הרשימה" is there or they fix it; once their
+                    time is over, when it ended and who still fixes it. */}
+                {data.fixEndedAt !== null ||
+                (data.fixUntil !== null && !fixOpen) ? (
+                  <span className="text-base">{words.fixOver}</span>
+                ) : words.fixUntil && can.fix && !undoShown ? (
+                  <span className="text-base">{words.fixUntil}</span>
+                ) : null}
                 {words.due ? (
                   // Near or late, a clock says so beside the words, which
                   // carry it; warning colours don't read on the accent.

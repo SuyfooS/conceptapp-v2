@@ -1,11 +1,14 @@
 import {
   ACCESS_AREAS,
+  AREA_EDIT,
   AREA_MODULE,
   accessFromHeld,
   areaPermissions,
   defaultAccess,
+  extraLevel,
   extrasOf,
   matrixByDefault,
+  VIEW_EXTRAS,
 } from "@domain/role-access";
 import { describe, expect, it } from "vitest";
 import { manifestFor, permissions } from "./registry";
@@ -43,6 +46,22 @@ describe("role access areas", () => {
         expect(entry?.byOwner).toBe(false);
       }
     }
+  });
+
+  // A switch under edit requires the area's edit in the catalogue, so the
+  // database holds it only with the edit; one at view (L6b-2) requires
+  // nothing, so a role holds it at view, and edit covers it on the screen
+  // (stored as granted at edit) rather than through the chain.
+  it("chain each switch under edit to its area's edit, and none at view", () => {
+    for (const area of ACCESS_AREAS) {
+      for (const extra of extrasOf(area)) {
+        const entry = permissions.find((p) => p.key === extra);
+        expect(entry?.requires, extra).toBe(
+          extraLevel(extra) === "view" ? null : AREA_EDIT[area],
+        );
+      }
+    }
+    expect(VIEW_EXTRAS).toEqual(["lists.fix"]);
   });
 
   it("draw today's rules from the declarations' defaults", () => {

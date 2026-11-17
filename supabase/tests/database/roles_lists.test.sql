@@ -890,8 +890,8 @@ select is(
   (select string_agg(k.key || ':' || k.settable::text || ':' || coalesce(k.requires, 'none'), ','
      order by k.key)
    from public.permission_keys k where k.area = 'lists'),
-  'lists.manage:true:none,lists.send:true:lists.manage',
-  'lists are open for changes per role, sending under running them'
+  'lists.fix:true:none,lists.manage:true:none,lists.send:true:lists.manage',
+  'lists are open for changes per role, sending under running them, and fixing a closed list (L6b-2) under nothing'
 );
 
 select ok(

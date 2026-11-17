@@ -195,8 +195,10 @@ export function roleChoiceOf(
  * of 15 and 16 November 2026, issue #1): someone who edits the team, for a
  * role built on one they give by the rank rule (`givesRole`); an owner any
  * of them; anyone else only one that holds nothing they don't
- * (`private.role_holds_beyond`, hint `held`). None holds pay (R11a), so none
- * is an owner's alone for that. The database checks the same
+ * (`private.role_holds_beyond`, hint `held`), where running the lists
+ * (lists.manage) counts as fixing closed ones (lists.fix), as
+ * `private.can_fix_list` lets it. None holds pay (R11a), so none is an
+ * owner's alone for that. The database checks the same
  * (`public.team_invite`, `public.team_invite_link`, `public.set_member_role`).
  */
 export function givesNamedRole(
@@ -206,7 +208,11 @@ export function givesNamedRole(
   if (!canEditTeam(viewer) || !givesRole(viewer.role, role.base)) return false;
   return (
     viewer.role === "owner" ||
-    role.holds.every((key) => holdsPermission(viewer, key))
+    role.holds.every(
+      (key) =>
+        holdsPermission(viewer, key) ||
+        (key === "lists.fix" && holdsPermission(viewer, "lists.manage")),
+    )
   );
 }
 

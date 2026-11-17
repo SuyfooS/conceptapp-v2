@@ -119,8 +119,10 @@ describe("module registry", () => {
   it("lets owners switch scheduling's, the clock's, lists', the team's and the management page's permissions per role, nothing else yet, and never pay", () => {
     // Each area's phase turns its keys on once every check in the area reads
     // them (the roles plan): scheduling's in R3, the clock's in R4, lists' in
-    // R5, the team's in R6, the management page's in R7. clock.payroll keeps
-    // its own switch. Chat's are its own test's below (R8).
+    // R5, the team's in R6, the management page's in R7. lists.fix came
+    // settable (L6b-2), so lists stays open on the roles screen.
+    // clock.payroll keeps its own switch. Chat's are its own test's below
+    // (R8).
     expect(
       permissions
         .filter((p) => p.settable && p.area !== "chat")
@@ -128,6 +130,7 @@ describe("module registry", () => {
         .sort(),
     ).toEqual([
       "clock.edit",
+      "lists.fix",
       "lists.manage",
       "lists.send",
       "manage.edit",
@@ -190,15 +193,63 @@ describe("module registry", () => {
   });
 
   it("gives lists the default roles their SQL helpers hold", () => {
-    // private.can_manage_lists and private.can_send_lists let managers (and
-    // owners) in without the permission; a change here changes them too.
+    // private.can_manage_lists, private.can_send_lists and
+    // private.can_fix_list let managers (and owners) in without the
+    // permission; a change here changes them too.
     const roles = Object.fromEntries(
       manifestFor("lists").permissions.map((p) => [p.key, p.defaultRole]),
     );
     expect(roles).toEqual({
       "lists.manage": "manager",
       "lists.send": "manager",
+      "lists.fix": "manager",
     });
+  });
+
+  it("lets someone given lists.fix fix a list without running them, at view", () => {
+    // L6b-2: the first switch at view. It requires nothing, so a role holds
+    // it by its own rule, and owners switch it per role from the start.
+    const fix = permissions.find((p) => p.key === "lists.fix");
+    expect(fix).toMatchObject({
+      module: "lists",
+      area: "lists",
+      requires: null,
+      settable: true,
+      byOwner: false,
+      defaultRoles: ["manager"],
+    });
+  });
+
+  it("lets owners choose how long a closed list can be fixed, a day at first", () => {
+    // L6b-2, Orel's default on Q2. private.list_fix_hours reads only these
+    // values, anything else stored as 24, and private.list_settings holds the
+    // same default (20261116000400_lists_fix_switch.sql).
+    const manifest = manifestFor("lists");
+    const field = describeSettings(manifest.settings).find(
+      (f) => f.key === "fixHours",
+    );
+    expect(field?.level).toBe("owner");
+    expect(field?.kind === "choice" ? field.options : null).toEqual([
+      2, 12, 24, 72,
+    ]);
+    expect(manifest.settings.parse({}).fixHours).toBe(24);
+    // Owners on /manage/lists and the team in the console; not the business's
+    // other editors.
+    for (const level of ["owner", "team"] as const) {
+      expect(
+        fieldsFor(manifest.settings, level).map((f) => f.key),
+        level,
+      ).toContain("fixHours");
+    }
+    expect(
+      fieldsFor(manifest.settings, "business").map((f) => f.key),
+    ).not.toContain("fixHours");
+    // A value not offered reads as the default, the others stay.
+    expect(
+      readModuleSettings(manifest, { fixHours: 48, lateAfterMinutes: 30 }),
+    ).toMatchObject({ fixHours: 24, lateAfterMinutes: 30 });
+    expect(readModuleSettings(manifest, { fixHours: 2 }).fixHours).toBe(2);
+    expect(readModuleSettings(manifest, { fixHours: "12" }).fixHours).toBe(24);
   });
 
   it("leaves how long lists' photos are kept to the team, 90 days at first", () => {

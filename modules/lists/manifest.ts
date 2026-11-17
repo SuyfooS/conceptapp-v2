@@ -19,13 +19,13 @@ export const manifest = defineManifest({
   homeWidget: { minRole: "worker" },
   permissions: [
     // Running the lists: templates and their times, every list, and filling,
-    // reopening and cancelling any of them; and, a switch under it on by
-    // default, sending any list to anyone (Orel, 15 November 2026). Everyone
-    // on the staff fills the lists sent to them or their department without
-    // either (view is the floor), and a department's own orders need
-    // neither. The database asks both (private.can_manage_lists and
-    // private.can_send_lists, the roles plan's R5), and owners and the team
-    // switch them per role.
+    // reopening, cancelling and fixing any of them at any time; and, a
+    // switch under it on by default, sending any list to anyone (Orel, 15
+    // November 2026). Everyone on the staff fills the lists sent to them or
+    // their department without either (view is the floor), and a
+    // department's own orders need neither. The database asks both
+    // (private.can_manage_lists and private.can_send_lists, the roles plan's
+    // R5), and owners and the team switch them per role.
     {
       key: "lists.manage",
       area: "lists",
@@ -37,6 +37,20 @@ export const manifest = defineManifest({
       area: "lists",
       defaultRole: "manager",
       requires: "lists.manage",
+      settable: true,
+    },
+    // Fixing a closed list (L6b-2; Orel, 16 November 2026), the first switch
+    // that works at view: someone who doesn't edit the lists fixes one that
+    // reaches them, until `fixHours` after it closed. It stays closed, and
+    // every change keeps who made it and when. It requires nothing, since
+    // edit holds it through the roles screen (granted with a raise to
+    // edit), not through the chain. Managers by default; workers and a named role
+    // on them start without it. The database asks it in private.can_fix_list
+    // (supabase/migrations/20261116000400_lists_fix_switch.sql).
+    {
+      key: "lists.fix",
+      area: "lists",
+      defaultRole: "manager",
       settable: true,
     },
   ],
@@ -66,6 +80,20 @@ export const manifest = defineManifest({
       .meta({ level: "business" }),
     /** Whoever sent a list, and the department that asked for it, hear when it's finished. */
     tellWhenFinished: z.boolean().default(true),
+    /**
+     * How many hours after a list closed someone given lists.fix ('תיקון
+     * רשימות שנסגרו') may still fix it (L6b-2; Orel's default on Q2: a
+     * day). Those who run the lists (lists.manage) fix at any time. Owners
+     * and the team choose it, as the punch code (`level: "owner"`).
+     * private.list_fix_hours (supabase/migrations/
+     * 20261116000400_lists_fix_switch.sql) reads only a value offered here,
+     * anything else stored as 24; private.list_settings holds the same
+     * default.
+     */
+    fixHours: z
+      .union([z.literal(2), z.literal(12), z.literal(24), z.literal(72)])
+      .default(24)
+      .meta({ level: "owner" }),
     /**
      * How many days a list's photos are kept, from when each was taken (L6;
      * Orel's default on #1: 90). Then the app's daily clean-up removes the

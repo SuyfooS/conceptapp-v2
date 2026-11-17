@@ -279,6 +279,36 @@ describe("givesNamedRole", () => {
     expect(givesNamedRole(at("worker"), barLead)).toBe(false);
     expect(givesNamedRole(at("accountant"), barLead)).toBe(false);
   });
+
+  it("counts running the lists as fixing closed ones (L6b-2)", () => {
+    const senior: GivableNamedRole = {
+      id: "senior",
+      name: "Senior",
+      nameEn: null,
+      base: "worker",
+      holds: ["lists.fix"],
+    };
+    // A manager who runs the lists, whose own rule for fixing is off.
+    expect(
+      givesNamedRole(
+        { role: "manager", perms: ["team.view", "team.edit", "lists.manage"] },
+        senior,
+      ),
+    ).toBe(true);
+    // A manager lowered on lists, without fixing: only an owner gives it.
+    expect(
+      givesNamedRole(
+        { role: "manager", perms: ["team.view", "team.edit"] },
+        senior,
+      ),
+    ).toBe(false);
+    expect(
+      givesNamedRole(
+        { role: "manager", perms: ["team.view", "team.edit", "lists.fix"] },
+        senior,
+      ),
+    ).toBe(true);
+  });
 });
 
 describe("namedRolesBeyond", () => {

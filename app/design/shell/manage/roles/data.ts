@@ -8,6 +8,7 @@ import {
   ACCESS_AREAS,
   AREA_MODULE,
   defaultAccess,
+  extrasOf,
   withExtra,
   withLevel,
 } from "@domain/role-access";
@@ -67,6 +68,29 @@ export const demoShiftLead: EditableRole = {
   seesPay: false,
 };
 
+/**
+ * Orel's case (L6b-2; 16 November 2026): "עובד בכיר", built on workers,
+ * for the kitchen's Noa and Omer. Lists stay at view, so they fill what is
+ * sent to them and no more, with "תיקון רשימות שנסגרו" on: one of them
+ * closes the kitchen's list for both, and either fixes it for a while after
+ * (the lists' twins `?state=fix-worker` and `/lists/worker?state=fixable`).
+ * It starts as workers are (R10), so its lists are marked "שונה". On the
+ * roles twin with `?state=senior` only, so the twin's other roles read as
+ * before.
+ */
+export const demoSenior: EditableRole = {
+  key: "senior",
+  base: "worker",
+  name: "עובד בכיר",
+  nameEn: null,
+  people: ["noa", "omer"].map(person),
+  invited: 0,
+  lists: 0,
+  access: withExtra(defaultAccess("worker"), "lists.fix", true),
+  start: defaultAccess("worker"),
+  seesPay: false,
+};
+
 export const demoRoles: RolesData = {
   // Every area: the demo restaurant has each of these modules on, chat
   // included (/design/chat).
@@ -78,6 +102,8 @@ export const demoRoles: RolesData = {
       key,
       icon: module ? (manifestFor(module).nav?.icon ?? null) : null,
       open: true,
+      // Every switch, as the database knows each once its migration is in.
+      extras: [...extrasOf(key)],
     };
   }),
   roles: [
@@ -113,4 +139,20 @@ export const demoRoles: RolesData = {
   viewOnly: false,
   // Chat is on, so documents are (as /design/shell/manage/access says).
   documents: true,
+};
+
+/**
+ * The same, with "עובד בכיר" after the shift lead (`?state=senior`), its
+ * two people no longer among the workers.
+ */
+export const demoRolesWithSenior: RolesData = {
+  ...demoRoles,
+  roles: [
+    ...demoRoles.roles.map((role) =>
+      role.key === "worker"
+        ? { ...role, people: ["maya", "shira"].map(person) }
+        : role,
+    ),
+    demoSenior,
+  ],
 };

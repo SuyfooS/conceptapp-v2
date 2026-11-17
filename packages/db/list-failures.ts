@@ -27,9 +27,19 @@ export type ListFailure =
  * Why an item's save was refused, a fix's reasons too (L6b-1,
  * 20261116000300_lists_fix.sql): a required item of a finished list is
  * changed, never emptied (23514, hint 'required'), and a list opened again
- * while it was being fixed is filled, not fixed (55000 from a fix).
+ * while it was being fixed is filled, not fixed (55000 from a fix); and
+ * (L6b-2, 20261116000400_lists_fix_switch.sql) someone given "תיקון רשימות
+ * שנסגרו" is past the business's window for it (42501, hint 'fix_window'),
+ * and a fix refused otherwise as not theirs (42501 without the hint, or
+ * P0002) is one they can no longer make: they lost the switch or running
+ * the lists, the list moved away, or they left the business.
  */
-export type ItemFailure = ListFailure | "keepRequired" | "reopened";
+export type ItemFailure =
+  | ListFailure
+  | "keepRequired"
+  | "reopened"
+  | "fixOver"
+  | "fixNoAccess";
 
 /** What the database says when it refuses, as supabase-js passes it on. */
 export type DatabaseRefusal = {
@@ -70,8 +80,11 @@ export function listFailureOf(
  * The same for an item's save or photo. `fixing` is a fix of a finished list
  * (`public.fix_list_item`, `fix_list_item_photo`): there, 55000 says the list
  * was opened again meanwhile ("reopened"). 23514 with hint 'required' is a
- * required item a fix would empty ("keepRequired"); a fix before its
- * migration is "notYet", like any missing function.
+ * required item a fix would empty ("keepRequired"), and 42501 with hint
+ * 'fix_window' a fix by someone given lists.fix once the business's window
+ * after the close is over ("fixOver"). A fix refused as not theirs
+ * otherwise is "fixNoAccess", since the list may well still reach them; a
+ * fix before its migration is "notYet", like any missing function.
  */
 export function itemFailureOf(
   error: DatabaseRefusal,
@@ -81,6 +94,9 @@ export function itemFailureOf(
   if (error.code === "23514" && error.hint === "required") {
     return "keepRequired";
   }
+  if (error.code === "42501" && error.hint === "fix_window") return "fixOver";
   const failure = listFailureOf(error, what);
-  return fixing && failure === "finished" ? "reopened" : failure;
+  if (!fixing) return failure;
+  if (failure === "finished") return "reopened";
+  return failure === "noAccess" ? "fixNoAccess" : failure;
 }

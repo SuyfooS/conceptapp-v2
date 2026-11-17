@@ -329,8 +329,8 @@ select pg_temp.set_rule('worker', 'lists.manage', true, pg_temp.id('bar-role'));
 select is(
   pg_temp.lines('lists') || ' | ' || pg_temp.said('barlead', 'lists'),
   'barlead:bar-role/lists | '
-    || '{"lists.send": false, "lists.manage": false} > {"lists.send": false, "lists.manage": true}',
-  'a named role''s change tells those who hold it, never the role it is built on'
+    || '{"lists.fix": false, "lists.send": false, "lists.manage": false} > {"lists.fix": true, "lists.send": false, "lists.manage": true}',
+  'a named role''s change tells those who hold it, never the role it is built on (fixing closed lists comes with running them)'
 );
 
 -- Then workers, sending included, in one write. "Bar lead" read theirs
@@ -350,8 +350,8 @@ select is(
   pg_temp.lines('lists') || ' | ' || pg_temp.said('barlead', 'lists') || ' | '
     || pg_temp.said('worker', 'lists'),
   'barlead:bar-role/lists,barlead:bar-role/lists+read+kept,colleague:worker/lists,worker:worker/lists | '
-    || '{"lists.send": false, "lists.manage": true} > {"lists.send": true, "lists.manage": true} | '
-    || '{"lists.send": false, "lists.manage": false} > {"lists.send": true, "lists.manage": true}',
+    || '{"lists.fix": true, "lists.send": false, "lists.manage": true} > {"lists.fix": true, "lists.send": true, "lists.manage": true} | '
+    || '{"lists.fix": false, "lists.send": false, "lists.manage": false} > {"lists.fix": true, "lists.send": true, "lists.manage": true}',
   'workers hear their change once; "Bar lead", with its own rule to run them, hears only the sending it follows workers in'
 );
 

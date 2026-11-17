@@ -179,6 +179,7 @@ select set_eq(
   $$values
     ('clock.edit', 'time_clock', 'time_clock', null, true, '{manager}'::text[], false),
     ('clock.payroll', 'time_clock', 'time_clock', null, false, '{}'::text[], true),
+    ('lists.fix', 'lists', 'lists', null, true, '{manager}'::text[], false),
     ('lists.manage', 'lists', 'lists', null, true, '{manager}'::text[], false),
     ('lists.send', 'lists', 'lists', 'lists.manage', true, '{manager}'::text[], false),
     ('reservations.edit', 'reservations', 'reservations', null, false, '{manager,worker}'::text[], false),
@@ -189,7 +190,7 @@ select set_eq(
     ('team.edit', null, 'team', 'team.view', true, '{manager}'::text[], false),
     ('manage.view', null, 'manage', null, true, '{manager}'::text[], false),
     ('manage.edit', null, 'manage', 'manage.view', true, '{manager}'::text[], false)$$,
-  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them), on the team (R6) and on the management page (R7)'
+  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them, and fixing a closed list requiring nothing since L6b-2), on the team (R6) and on the management page (R7)'
 );
 
 select throws_ok(
@@ -302,7 +303,7 @@ select ok(
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000012');
 select is(
   public.my_permissions('92000000-0000-4000-b000-000000000002'),
-  '{clock.edit,clock.payroll,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
+  '{clock.edit,clock.payroll,lists.fix,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
   'the screens are told what the manager holds, pay by the role''s row, the denials and what they require counted'
 );
 -- Still them (request.jwt.claims), as the policies ask.
@@ -316,7 +317,7 @@ select ok(
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000016');
 select is(
   public.my_permissions('92000000-0000-4000-b000-000000000002'),
-  '{clock.edit,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
+  '{clock.edit,lists.fix,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
   'a view as a manager holds the same but pay: the business''s rows for the role count for it too, while a key an owner gives the role by a row never reaches a view'
 );
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000017');
@@ -365,7 +366,7 @@ select is_empty(
   $$
     select m.business_id, m.user_id, k.key
     from public.memberships m
-    cross join unnest('{chat.announce,chat.moderate,chat.send_documents,clock.edit,clock.payroll,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit,billing.manage,people.files,schedule}'::text[]) as k (key)
+    cross join unnest('{chat.announce,chat.moderate,chat.send_documents,clock.edit,clock.payroll,lists.fix,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit,billing.manage,people.files,schedule}'::text[]) as k (key)
     where m.business_id in ('92000000-0000-4000-b000-000000000011', '92000000-0000-4000-b000-000000000012',
         '92000000-0000-4000-b000-000000000013', '92000000-0000-4000-b000-000000000014')
       and pg_temp.old_holds_perm(m.business_id, m.user_id, k.key)

@@ -75,15 +75,16 @@ export const ACCESS_FLOOR: Record<AccessArea, AccessLevel> = {
 };
 
 /**
- * The switches under edit, each one a permission its module declares, on by
- * default whenever the area is raised to edit (Q3). Someone who builds the
- * schedule without publishing can't change a published week: every change
- * there is a publish.
+ * The switches of each area, each one a permission its module declares, on
+ * by default whenever the area is raised to edit (Q3). Most sit under edit
+ * and work only there: someone who builds the schedule without publishing
+ * can't change a published week, since every change there is a publish.
+ * Those in `VIEW_EXTRAS` work at view instead, and edit covers them.
  */
 export const ACCESS_EXTRAS = {
   scheduling: ["schedule.publish"],
   time_clock: [],
-  lists: ["lists.send"],
+  lists: ["lists.send", "lists.fix"],
   chat: ["chat.announce", "chat.send_documents"],
   team: [],
   manage: [],
@@ -95,6 +96,57 @@ export type AccessExtra = (typeof ACCESS_EXTRAS)[AccessArea][number];
 export const ACCESS_EXTRA_KEYS: readonly AccessExtra[] = ACCESS_AREAS.flatMap(
   (area): readonly AccessExtra[] => ACCESS_EXTRAS[area],
 );
+
+/**
+ * The switches that work at view (L6b-2; Orel, 16 November 2026): a role
+ * that doesn't edit the area is given one on its own, and edit covers it,
+ * so at edit it is held, on and locked ("כלול בעריכה"). Each sits in a
+ * module's area, whose least is view, and requires nothing (the catalogue's
+ * `requires` is null): edit holds it through this screen, which grants it
+ * with a raise to edit (`withLevel`) and keeps its rule as it is while
+ * there (`areaGrants`), not through the chain. "תיקון רשימות שנסגרו" fixes a
+ * closed list that reaches the role, within the business's `fixHours`.
+ */
+export const VIEW_EXTRAS = [
+  "lists.fix",
+] as const satisfies readonly AccessExtra[];
+
+/** Where a switch works: under edit, or at view (`VIEW_EXTRAS`). */
+export function extraLevel(extra: AccessExtra): "view" | "edit" {
+  return (VIEW_EXTRAS as readonly AccessExtra[]).includes(extra)
+    ? "view"
+    : "edit";
+}
+
+/** A switch can change at its own level of its area: a view switch at view, any other at edit. */
+function openAt(level: AccessLevel, extra: AccessExtra): boolean {
+  return level === extraLevel(extra);
+}
+
+/**
+ * A switch, `on` or not, is held at this level of its area: at edit while
+ * it is on, or always for a view switch, which edit covers; at view a view
+ * switch while it is on; nothing at none.
+ */
+function heldAt(level: AccessLevel, extra: AccessExtra, on: boolean): boolean {
+  if (level === "edit") return on || extraLevel(extra) === "view";
+  return level === "view" && extraLevel(extra) === "view" && on;
+}
+
+/**
+ * A switch, `on` or not, as the role's rule keeps it at this level of its
+ * area: at edit as it is, a view switch too (edit covers it, so its own rule
+ * stays as the database has it: a role raised before the key came keeps no
+ * row, and an undo, a switch under edit or "חזרה להתחלה" write only what
+ * differs); at view a view switch as it is; nothing at none.
+ */
+function storedAt(
+  level: AccessLevel,
+  extra: AccessExtra,
+  on: boolean,
+): boolean {
+  return on && (level === "edit" || openAt(level, extra));
+}
 
 /** What one role may do. */
 export type RoleAccess = {
@@ -169,7 +221,7 @@ export function editOrView(area: AccessArea): area is ModuleArea {
   return (MODULE_AREAS as readonly AccessArea[]).includes(area);
 }
 
-/** The switches under an area's edit. */
+/** An area's switches: those under its edit, and those at its view. */
 export function extrasOf(area: AccessArea): readonly AccessExtra[] {
   return ACCESS_EXTRAS[area];
 }
@@ -183,20 +235,37 @@ export function areaOfExtra(extra: AccessExtra): AccessArea {
   return area;
 }
 
-/** A switch can change only while its area is at edit; otherwise it is off. */
+/**
+ * Whether a switch can change: one under edit only while its area is at
+ * edit, otherwise it is off; one at view only while its area is at view,
+ * since at edit it is on and locked.
+ */
 export function extraOpen(access: RoleAccess, extra: AccessExtra): boolean {
-  return access.levels[areaOfExtra(extra)] === "edit";
+  return openAt(access.levels[areaOfExtra(extra)], extra);
 }
 
-/** Whether the role holds a switch: on, and its area at edit. */
+/**
+ * Whether the role holds a switch: one under edit while it is on and its
+ * area at edit; one at view while its area is at edit, or while it is on.
+ */
 export function holdsExtra(access: RoleAccess, extra: AccessExtra): boolean {
-  return extraOpen(access, extra) && access.extras[extra];
+  return heldAt(access.levels[areaOfExtra(extra)], extra, access.extras[extra]);
 }
 
 /**
  * The role with an area at a level. Raising it to edit turns its switches
- * on, their default there; leaving edit turns them off. A level under the
- * area's floor changes nothing.
+ * on, their default there; leaving edit turns them off, a view switch's
+ * too (edit covered it), so a role raised and lowered again is back where
+ * it was unless one was on at view. A level under the area's floor changes
+ * nothing.
+ *
+ * So a base role at edit keeps a view switch's rule granted, and a role
+ * named on it that has none of its own follows that. A named role given the
+ * switch at view while its base is at edit is given what its base's rule
+ * already says, so the database keeps no row for it
+ * (`public.set_role_permission`), and the base's later lowering takes it
+ * from the named role too, which its people are told. The L6 plan accepts
+ * this, beside the raise and lower that ends with the switch off.
  */
 export function withLevel(
   access: RoleAccess,
@@ -214,7 +283,11 @@ export function withLevel(
   return { levels: { ...access.levels, [area]: level }, extras };
 }
 
-/** The role with a switch on or off; nothing changes while its area isn't at edit. */
+/**
+ * The role with a switch on or off; nothing changes while it isn't open
+ * (`extraOpen`): one under edit while its area isn't at edit, one at view
+ * while its area is.
+ */
 export function withExtra(
   access: RoleAccess,
   extra: AccessExtra,
@@ -239,7 +312,12 @@ export function areaAccess(access: RoleAccess, area: AccessArea): AreaAccess {
   };
 }
 
-/** The role with one area as it was (an undo), its floor kept and other areas' switches left alone. */
+/**
+ * The role with one area as it was (an undo), its floor kept and other
+ * areas' switches left alone: each switch as the rule keeps it there
+ * (`storedAt`: at edit as it was, a view switch too, which edit holds
+ * whatever its rule; at view a view switch as it was, one under edit off).
+ */
 export function withAreaAccess(
   access: RoleAccess,
   area: AccessArea,
@@ -250,7 +328,7 @@ export function withAreaAccess(
     : ACCESS_FLOOR[area];
   const extras = { ...access.extras };
   for (const extra of extrasOf(area)) {
-    extras[extra] = level === "edit" && part.extras[extra] === true;
+    extras[extra] = storedAt(level, extra, part.extras[extra] === true);
   }
   return { levels: { ...access.levels, [area]: level }, extras };
 }
@@ -343,16 +421,26 @@ export function editedAreas(
   return areas.filter((area) => access.levels[area] === "edit");
 }
 
-/** The switches that came on or went off between two states of a role. */
+/**
+ * The switches that came on (`on`) or went off between two states of a
+ * role, area by area as `areaChangeOf` names them, so the roles screen's
+ * toast says what the line to the role's people says (R10), "שונה" marks
+ * and "חזרה להתחלה" puts back: a switch at view is named only where
+ * neither side is at edit, whose own words cover it.
+ */
 export function extrasTurned(
   before: RoleAccess,
   after: RoleAccess,
   on: boolean,
 ): AccessExtra[] {
-  return ACCESS_EXTRA_KEYS.filter(
-    (extra) =>
-      holdsExtra(after, extra) === on && holdsExtra(before, extra) !== on,
-  );
+  return ACCESS_AREAS.flatMap((area) => {
+    const change = areaChangeOf(
+      area,
+      areaAccess(before, area),
+      areaAccess(after, area),
+    );
+    return on ? change.on : change.off;
+  });
 }
 
 /** What a change of one area gave and took. */
@@ -368,7 +456,10 @@ export type AreaChange = {
  * What moving one area from `before` to `after` gives and takes, as the
  * roles screen's toast says it and the line to the role's people does (the
  * roles plan's R10): its new level, if it moved, and the switches held
- * (`holdsExtra`: on, at edit) that came and went with it.
+ * (`holdsExtra`) that came and went with it. A switch at view is named only
+ * while neither side is at edit: edit covers it, so raising to edit or
+ * leaving it says the level and the switches under edit, as before there
+ * was one.
  */
 export function areaChangeOf(
   area: AccessArea,
@@ -376,8 +467,11 @@ export function areaChangeOf(
   after: AreaAccess,
 ): AreaChange {
   const holds = (part: AreaAccess, extra: AccessExtra) =>
-    part.level === "edit" && part.extras[extra] === true;
-  const extras = extrasOf(area);
+    heldAt(part.level, extra, part.extras[extra] === true);
+  const atEdit = before.level === "edit" || after.level === "edit";
+  const extras = extrasOf(area).filter(
+    (extra) => extraLevel(extra) === "edit" || !atEdit,
+  );
   return {
     level: before.level === after.level ? null : after.level,
     on: extras.filter((extra) => holds(after, extra) && !holds(before, extra)),
@@ -449,33 +543,45 @@ export function accessFromHeld(held: (key: string) => boolean): RoleAccess {
 
 /**
  * What one area at `part` gives the role, key by key, in `areaPermissions`
- * order: the view at view or above, the edit at edit, and a switch at edit
- * while it is on.
+ * order: the view at view or above, the edit at edit, a switch under edit
+ * at edit while it is on, and one at view while it is on, at view or at
+ * edit (`storedAt`). Raising the area to edit turns a view switch on
+ * (`withLevel`), so a raise writes it as granted and a lower takes it, and
+ * a role raised and lowered again leaves no row; whatever else is written at
+ * edit (an undo, a switch under edit, "חזרה להתחלה") keeps its rule as it
+ * is, so it never adds a row or a line of its own.
  */
 export function areaGrants(
   area: AccessArea,
   part: AreaAccess,
 ): { perm: PermissionKey; granted: boolean }[] {
-  const edit = part.level === "edit";
   return areaPermissions(area).map((perm) => {
-    if (perm === AREA_EDIT[area]) return { perm, granted: edit };
+    if (perm === AREA_EDIT[area]) {
+      return { perm, granted: part.level === "edit" };
+    }
     if (isPlaceArea(area) && perm === AREA_VIEW[area]) {
       return { perm, granted: levelAtLeast(part.level, "view") };
     }
+    const extra = perm as AccessExtra;
     return {
       perm,
-      granted: edit && part.extras[perm as AccessExtra] === true,
+      granted: storedAt(part.level, extra, part.extras[extra] === true),
     };
   });
 }
 
 /**
  * The areas, of those shown, where `below` holds a permission or a switch
- * that `above` doesn't (`areaGrants`), in their order. For managers above
- * and workers below: only owners and the team give a role that holds what
- * its giver doesn't (`private.role_holds_beyond`, hint 'held'), so while
- * this isn't empty no manager invites a worker or makes someone one. By
- * default it is empty: managers hold all that workers do.
+ * that `above` doesn't, in their order, as `private.role_holds_beyond`
+ * counts them: `below` by the rules as the database keeps them
+ * (`areaGrants`, as `private.role_holds` reads them), and `above` by those
+ * and by a switch at view that edit covers (`holdsExtra`), as running the
+ * lists covers fixing them, so a giver at edit whose own rule for the switch
+ * is off (raised before the key came) still holds it. For managers above and
+ * workers below: only owners and the team give a role that holds what its
+ * giver doesn't (`private.role_holds_beyond`, hint 'held'), so while this
+ * isn't empty no manager invites a worker or makes someone one. By default
+ * it is empty: managers hold all that workers do.
  */
 export function heldBeyond(
   above: RoleAccess,
@@ -483,11 +589,16 @@ export function heldBeyond(
   areas: readonly AccessArea[],
 ): AccessArea[] {
   return areas.filter((area) => {
-    const held = new Set(
+    const held = new Set<PermissionKey>(
       areaGrants(area, areaAccess(above, area))
         .filter((grant) => grant.granted)
         .map((grant) => grant.perm),
     );
+    for (const extra of extrasOf(area)) {
+      if (extraLevel(extra) === "view" && holdsExtra(above, extra)) {
+        held.add(extra);
+      }
+    }
     return areaGrants(area, areaAccess(below, area)).some(
       (grant) => grant.granted && !held.has(grant.perm),
     );
@@ -502,6 +613,13 @@ export type RoleRules = {
   byDefault: (key: string) => boolean;
   /** The key it needs (`public.permission_keys.requires`), or null. */
   requires: (key: string) => string | null;
+  /**
+   * The database lists the key (`public.role_permission_matrix`): one it
+   * doesn't yet, a switch whose migration hasn't reached the project, is
+   * never written (the deploy guard, as `areaOpen` leaves it out). Every
+   * key when left out.
+   */
+  known?: (key: string) => boolean;
 };
 
 /**
@@ -513,14 +631,16 @@ export type RoleRules = {
  * after. A key whose requirement this leaves off holds nothing either way:
  * it keeps a denial or its default as it is, and loses only a grant its
  * default doesn't make, so the rows stay few and an undo (the writes for
- * the area as it was) leaves none behind.
+ * the area as it was) leaves none behind. A key the database doesn't list
+ * yet (`rules.known`) is left out.
  */
 export function areaWrites(
   area: AccessArea,
   part: AreaAccess,
   rules: RoleRules,
 ): { perm: PermissionKey; granted: boolean }[] {
-  const grants = areaGrants(area, part);
+  const known = rules.known ?? (() => true);
+  const grants = areaGrants(area, part).filter(({ perm }) => known(perm));
   const target = new Map<string, boolean>(
     grants.map(({ perm, granted }) => [perm, granted]),
   );
@@ -646,16 +766,40 @@ export function areasWrites(
 }
 
 /**
+ * An area's switches that the database lists (`public.role_permission_matrix`),
+ * in their order: the ones the roles screen draws and a change writes. The
+ * app reaches a project before its migrations do (Vercel deploys before
+ * Migrate runs), so a switch added in code is left out until its key is in
+ * the database.
+ */
+export function knownExtras(
+  area: AccessArea,
+  keys: readonly Pick<MatrixKey, "perm">[],
+): AccessExtra[] {
+  const listed = new Set(keys.map((key) => key.perm));
+  return extrasOf(area).filter((extra) => listed.has(extra));
+}
+
+/**
  * Whether an area's choices change: owners switch each of its permissions per
- * role (`public.permission_keys.settable`), which its phase turns on once
- * every check in the area reads them. Until then the screen shows the area
- * as it is, closed.
+ * role (`public.permission_keys.settable`, the matrix's `keys`), which its
+ * phase turns on once every check in the area reads them. Until then the
+ * screen shows the area as it is, closed. A switch the database doesn't list
+ * yet is left out (`knownExtras`), so it never closes its area before its
+ * migration; the area's edit and view are always asked.
  */
 export function areaOpen(
   area: AccessArea,
-  settable: (key: string) => boolean,
+  keys: readonly Pick<MatrixKey, "perm" | "settable">[],
 ): boolean {
-  return areaPermissions(area).every(settable);
+  const settable = new Set(
+    keys.filter((key) => key.settable).map((key) => key.perm),
+  );
+  const extras: readonly string[] = extrasOf(area);
+  const known: readonly string[] = knownExtras(area, keys);
+  return areaPermissions(area)
+    .filter((perm) => !extras.includes(perm) || known.includes(perm))
+    .every((perm) => settable.has(perm));
 }
 
 /** One permission as the console's matrix has it (`public.role_permission_matrix`). */

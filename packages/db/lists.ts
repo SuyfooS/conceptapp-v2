@@ -54,6 +54,7 @@ import {
 } from "./list-history";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
+import { allPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -227,7 +228,10 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * The people, the progress, the named roles (`namedRolesOf`) and the last
- * fixes (`fixedTimesOf`) of these lists, read under RLS.
+ * fixes (`fixedTimesOf`) of these lists, read under RLS. Their items are
+ * read page by page (`allPages`): a day's lists, with the closed ones still
+ * to fix (L6b-2), can pass PostgREST's `max_rows`, past which a read is cut
+ * short without an error and the counts would come out wrong.
  */
 async function partsOf(
   supabase: Supabase,
@@ -251,10 +255,19 @@ async function partsOf(
         .from("list_people")
         .select("list_id, user_id")
         .in("list_id", [...ids]),
-      supabase
-        .from("list_items")
-        .select("list_id, required, done")
-        .in("list_id", [...ids]),
+      allPages((first, last) =>
+        supabase
+          .from("list_items")
+          .select("list_id, required, done")
+          .in("list_id", [...ids])
+          .order("list_id")
+          .order("id")
+          .range(first, last),
+      ).then(
+        (data) => ({ data, error: null }),
+        // As the other reads answer: a missing table is "notYet".
+        (error: unknown) => ({ data: null, error: error as { code?: string } }),
+      ),
       namedRolesOf(
         supabase
           .from("lists")
@@ -348,38 +361,67 @@ async function openAndClosed(
  * one, and those that opened in the window and are closed. Not every list
  * they may read: a list manager reads them all. `asked` is the open orders
  * one of their departments asked for that another holds (L5), which they
- * follow from Lists.
+ * follow from Lists. With `fixableSince` (L6b-2: someone given "תיקון
+ * רשימות שנסגרו", the start of the business's own window for it, now less
+ * its `fixHours`), also `fixable`: the finished lists they hold that opened
+ * before `window` and were finished since `fixableSince`, the latest close
+ * first; the caller still holds each one to its window to the moment
+ * (`fixDeadline`).
  */
 export async function getMyLists(
   businessId: string,
   person: { userId: string; role: Role; namedRole?: string | null },
   window: Window,
-): Promise<{ held: ListSummary[]; asked: ListSummary[] } | "notYet"> {
+  fixableSince: string | null = null,
+): Promise<
+  | { held: ListSummary[]; asked: ListSummary[]; fixable: ListSummary[] }
+  | "notYet"
+> {
   const supabase = await createClient();
-  const [[open, closed], departments] = await Promise.all([
+  const [[open, closed], departments, earlier] = await Promise.all([
     openAndClosed(supabase, businessId, window),
     supabase
       .from("department_members")
       .select("department_id")
       .eq("business_id", businessId)
       .eq("user_id", person.userId),
+    fixableSince === null
+      ? null
+      : supabase
+          .from("lists")
+          .select(LIST_COLUMNS)
+          .eq("business_id", businessId)
+          .eq("status", "finished")
+          .gte("finished_at", fixableSince)
+          .lt("opens_at", window.from)
+          .order("finished_at", { ascending: false }),
   ]);
-  for (const { error } of [open, closed, departments]) {
+  for (const { error } of [
+    open,
+    closed,
+    departments,
+    ...(earlier ? [earlier] : []),
+  ]) {
     if (error) {
       if (isMissingTable(error)) return "notYet";
       throw error;
     }
   }
+  const before = earlier?.data ?? [];
   const all = await summaries(supabase, [
     ...(open.data ?? []),
     ...(closed.data ?? []),
+    ...before,
   ]);
   if (all === "notYet") return all;
   const mine = {
     ...person,
     departments: (departments.data ?? []).map((row) => row.department_id),
   };
-  const held = all.filter((list) => holdsList(list.holder, mine));
+  const earlierIds = new Set(before.map((row) => row.id));
+  const theirs = all.filter((list) => holdsList(list.holder, mine));
+  const held = theirs.filter((list) => !earlierIds.has(list.id));
+  const fixable = theirs.filter((list) => earlierIds.has(list.id));
   const asked = all.filter(
     (list) =>
       list.status === "open" &&
@@ -387,7 +429,7 @@ export async function getMyLists(
       mine.departments.includes(list.fromDepartment) &&
       !holdsList(list.holder, mine),
   );
-  return { held, asked };
+  return { held, asked, fixable };
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   boundOf,
   byTime,
   byUrgency,
+  DEFAULT_FIX_HOURS,
   type DraftItem,
   type DraftSchedule,
   dayRuns,
@@ -13,9 +14,12 @@ import {
   draftSchedulesOf,
   dueAtOf,
   dueTimeFor,
+  FIX_HOURS,
   FIX_RUN_MINUTES,
+  fixDeadline,
   fixedAfterClose,
   fixRuns,
+  fixWindowHours,
   fromOffsets,
   HISTORY_FOLD_MINUTES,
   holdsList,
@@ -763,6 +767,109 @@ describe("undoDeadline", () => {
         new Date("2026-11-10T08:01:00.000Z"),
       ),
     ).toBeNull();
+  });
+});
+
+// L6b-2: who fixes a finished list, and until when, as private.can_fix_list
+// (20261116000400_lists_fix_switch.sql) decides it.
+describe("fixDeadline", () => {
+  const closed = {
+    status: "finished" as const,
+    finishedAt: "2026-12-14T08:00:00.000Z",
+  };
+  const holder = { canManage: false, canFix: true, holds: true };
+  const at = (iso: string) => new Date(iso);
+
+  it("lets a holder given lists.fix fix until the window ends, that moment included", () => {
+    expect(fixDeadline(closed, holder, 24, at("2026-12-14T09:00:00Z"))).toEqual(
+      { can: true, until: "2026-12-15T08:00:00.000Z", ended: null },
+    );
+    expect(
+      fixDeadline(closed, holder, 24, at("2026-12-15T08:00:00.000Z")),
+    ).toEqual({ can: true, until: "2026-12-15T08:00:00.000Z", ended: null });
+    // A millisecond later it ended, and says when, so the screen says why.
+    expect(
+      fixDeadline(closed, holder, 24, at("2026-12-15T08:00:00.001Z")),
+    ).toEqual({ can: false, until: null, ended: "2026-12-15T08:00:00.000Z" });
+    expect(
+      fixDeadline(closed, holder, 2, at("2026-12-21T08:00:00Z")).ended,
+    ).toBe("2026-12-14T10:00:00.000Z");
+  });
+
+  it("counts each window the setting offers, and anything else as a day", () => {
+    expect(FIX_HOURS).toEqual([2, 12, 24, 72]);
+    expect(DEFAULT_FIX_HOURS).toBe(24);
+    const now = at("2026-12-14T08:30:00Z");
+    expect(fixDeadline(closed, holder, 2, now).until).toBe(
+      "2026-12-14T10:00:00.000Z",
+    );
+    expect(fixDeadline(closed, holder, 12, now).until).toBe(
+      "2026-12-14T20:00:00.000Z",
+    );
+    expect(fixDeadline(closed, holder, 72, now).until).toBe(
+      "2026-12-17T08:00:00.000Z",
+    );
+    for (const odd of [48, 2.5, 0, -2, Number.NaN]) {
+      expect(fixDeadline(closed, holder, odd, now).until).toBe(
+        "2026-12-15T08:00:00.000Z",
+      );
+    }
+    expect(
+      [2, 12, 24, 72, 48, "12", null, undefined].map(fixWindowHours),
+    ).toEqual([2, 12, 24, 72, 24, 24, 24, 24]);
+    // Two hours is two hours: three later is past it.
+    expect(fixDeadline(closed, holder, 2, at("2026-12-14T11:00:00Z")).can).toBe(
+      false,
+    );
+  });
+
+  it("lets those who run the lists fix at any time, with no window", () => {
+    const manager = { canManage: true, canFix: false, holds: false };
+    expect(fixDeadline(closed, manager, 2, at("2026-12-21T08:00:00Z"))).toEqual(
+      { can: true, until: null, ended: null },
+    );
+    // Running the lists wins over the switch and its window.
+    expect(
+      fixDeadline(
+        closed,
+        { ...holder, canManage: true },
+        2,
+        at("2026-12-21T08:00:00Z"),
+      ),
+    ).toEqual({ can: true, until: null, ended: null });
+  });
+
+  it("needs both the switch and the list, at any time, and has no end to say without them", () => {
+    const no = { can: false, until: null, ended: null };
+    for (const now of [
+      at("2026-12-14T09:00:00Z"),
+      at("2026-12-21T09:00:00Z"),
+    ]) {
+      expect(
+        fixDeadline(closed, { ...holder, canFix: false }, 24, now),
+      ).toEqual(no);
+      expect(fixDeadline(closed, { ...holder, holds: false }, 24, now)).toEqual(
+        no,
+      );
+    }
+  });
+
+  it("never fixes an open, missed or cancelled list, or a finish with no time", () => {
+    const now = at("2026-12-14T09:00:00Z");
+    const manager = { canManage: true, canFix: true, holds: true };
+    for (const status of ["open", "missed", "cancelled"] as const) {
+      expect(fixDeadline({ ...closed, status }, manager, 24, now)).toEqual({
+        can: false,
+        until: null,
+        ended: null,
+      });
+    }
+    expect(
+      fixDeadline({ ...closed, finishedAt: null }, holder, 24, now),
+    ).toEqual({ can: false, until: null, ended: null });
+    expect(
+      fixDeadline({ ...closed, finishedAt: null }, manager, 24, now),
+    ).toEqual({ can: true, until: null, ended: null });
   });
 });
 

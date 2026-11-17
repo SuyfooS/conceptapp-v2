@@ -29,7 +29,7 @@ type Props = {
 const PHOTO_STATES: readonly DemoPhotoState[] = ["photo", "demo", "gone"];
 const photoState = (state: string | undefined): DemoPhotoState | null =>
   PHOTO_STATES.find((each) => each === state) ?? null;
-const FIX_STATES: readonly DemoFixState[] = ["fix", "fixed"];
+const FIX_STATES: readonly DemoFixState[] = ["fix", "fixed", "fix-worker"];
 const fixState = (state: string | undefined): DemoFixState | null =>
   FIX_STATES.find((each) => each === state) ?? null;
 
@@ -44,7 +44,10 @@ const fixState = (state: string | undefined): DemoFixState | null =>
 // changed after Noa, and the weekly cleaning, opened again and closed. On
 // the kitchen's opening (L6b-1), `?state=fix` as Noa closed it at 08:05,
 // being fixed by Shiran, who runs the lists, past Noa's five minutes;
-// `?state=fixed` once Shiran fixed its freezer reading at 08:10.
+// `?state=fixed` once Shiran fixed its freezer reading at 08:10;
+// `?state=fix-worker` (L6b-2) the same close as Omer of the kitchen reads
+// it, in "עובד בכיר" with "תיקון רשימות שנסגרו": he may fix it until 08:05
+// tomorrow, and doesn't open it again for everyone.
 export default function ShellList({ params, searchParams }: Props) {
   return (
     <Suspense>

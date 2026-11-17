@@ -2,10 +2,14 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
 import {
+  addRolesSenior,
   closeRolesBusiness,
   openRolesBusiness,
   ROLES_PEOPLE,
+  ROLES_SENIOR,
+  rolesClosedList,
   rolesLines,
+  rolesList,
   rolesLogActors,
   rolesNamed,
   rolesPlace,
@@ -30,6 +34,7 @@ import { heT } from "./t";
 const OWNER = ROLES_PEOPLE.owner;
 const MANAGER = ROLES_PEOPLE.manager;
 const WORKER = ROLES_PEOPLE.worker;
+const SENIOR = ROLES_SENIOR;
 
 const r = he.app.manage.roles;
 const access = he.app.manage.access;
@@ -165,12 +170,15 @@ test("the owner opens roles from the management page, gives workers the lists, a
         }),
       ),
     ).toBeVisible();
+    // Fixing closed lists (L6b-2) is granted with a raise to edit, which
+    // covers it, so lowering lists again leaves no row.
     await expect.poll(rolesRules).toEqual([
+      { role: "worker", perm: "lists.fix", allowed: true },
       { role: "worker", perm: "lists.manage", allowed: true },
       { role: "worker", perm: "lists.send", allowed: true },
     ]);
     // The log names the owner who switched it.
-    await expect.poll(rolesLogActors).toEqual([OWNER.id, OWNER.id]);
+    await expect.poll(rolesLogActors).toEqual([OWNER.id, OWNER.id, OWNER.id]);
     await expectCleanPage(page);
 
     // The worker now runs the lists: their templates open.
@@ -269,6 +277,7 @@ test('a change is marked "שונה" and told to the role\'s people in the app, a
     await expect(toast(page, r.done.undone)).toBeVisible();
     await expect(marks).toHaveCount(1);
     await expect.poll(rolesRules).toEqual([
+      { role: "worker", perm: "lists.fix", allowed: true },
       { role: "worker", perm: "lists.manage", allowed: true },
       { role: "worker", perm: "lists.send", allowed: true },
     ]);
@@ -617,4 +626,177 @@ test("the owner adds a shift lead on workers, makes a worker one from the team, 
       name: `${WORKER.name} · ${heT("app.team.namedRole", { name, role: roles.worker })}`,
     }),
   ).toBeVisible();
+});
+
+/** "תיקון הרשימה", wherever the list's screen shows it. */
+const fixButton = (page: Page) =>
+  page
+    .getByRole("button", { name: he.app.lists.list.fix.action, exact: true })
+    .filter({ visible: true });
+
+/** A sentence's words before its first tag or value, as the screen starts it. */
+const opening = (text: string) => text.split(/[<{]/)[0] ?? text;
+
+// Orel's case (L6b-2; 16 November 2026): "עובד בכיר", a role the business
+// named on workers, keeps lists at view and is given "תיקון רשימות שנסגרו"
+// on its own. A list to every worker, which a plain worker closes for all,
+// the senior fixes afterwards, with who fixed it in view of everyone it is
+// for; the worker has no way to fix it. The toast and the line to the
+// role's people say the switch alone. Switched off, the senior's way goes;
+// with lists' edit on, the switch is held, on and locked, "כלול בעריכה".
+test("a role given fixing closed lists at view fixes a list a worker closed, and edit covers it", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.setTimeout(180_000);
+  const project = testInfo.project.name;
+  const lists = he.modules.lists.name;
+  const l = he.app.lists.list;
+  const name = "עובד בכיר";
+  const listName = "פתיחת מטבח";
+  const label = "מקרר";
+  await addRolesSenior(name);
+  // The worker closes it with 30°C, ten minutes back.
+  const id = await rolesClosedList(listName, label, 30, WORKER.id, 10);
+  const fix = extraSwitch(page, r.extras.lists.fix.label, name);
+  const named = (rules: number) => [
+    { name, base: "worker", archived: false, rules, people: 1 },
+  ];
+  const senior = await secondPage(browser, testInfo);
+  const worker = await secondPage(browser, testInfo);
+  try {
+    // As workers are: the list is the senior's to read, not to fix.
+    await signIn(senior, SENIOR);
+    await senior.goto(`/lists/${id}`);
+    await expect(title(senior, listName)).toBeVisible();
+    await expect(fixButton(senior)).toHaveCount(0);
+
+    await signIn(page, OWNER);
+    await page.goto("/manage/roles");
+    await expect(title(page, r.title)).toBeVisible();
+    await openRole(page, name, project);
+    await expect(editSwitch(page, lists, name)).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    await expect(fix).toHaveAttribute("aria-checked", "false");
+    await expect(fix).toBeEnabled();
+    await fix.click();
+    await expect(fix).toHaveAttribute("aria-checked", "true");
+    await expect(
+      toast(
+        page,
+        heT("app.manage.roles.done.extraOn", {
+          role: name,
+          extra: r.extras.lists.fix.phrase,
+        }),
+      ),
+    ).toBeVisible();
+    // One rule of its own, and its person hears of it in the app alone.
+    await expect.poll(rolesNamed).toEqual(named(1));
+    await expect
+      .poll(rolesLines)
+      .toEqual([{ who: SENIOR.id, area: "lists", read: false, push: "none" }]);
+    await expectCleanPage(page);
+
+    // The senior fixes the reading the worker closed with, for a day.
+    await senior.goto(`/lists/${id}`);
+    const hero = senior
+      .getByRole("main")
+      .getByRole("region", { name: l.progressLabel });
+    await expect(hero).toContainText(WORKER.name);
+    await expect(hero).toContainText(opening(l.fix.until));
+    await fixButton(senior).click();
+    const card = senior
+      .getByRole("main")
+      .getByRole("region", { name: l.fix.title });
+    await expect(card).toContainText(WORKER.name);
+    await expect(
+      card.getByRole("button", { name: l.fix.reopenAll }),
+    ).toHaveCount(0);
+    const reading = senior.getByLabel(
+      heT("app.lists.list.readingOf", { label }),
+    );
+    await reading.fill("3");
+    await reading.press("Enter");
+    await expect.poll(async () => (await rolesList(id))?.reading).toBe(3);
+    await senior
+      .getByRole("button", { name: l.fix.done, exact: true })
+      .filter({ visible: true })
+      .click();
+    await expect(
+      senior.getByRole("status").filter({ hasText: l.fix.saved }),
+    ).toBeVisible();
+    await expectCleanPage(senior);
+    // Still the worker's close, the fix the senior's.
+    expect(await rolesList(id)).toEqual({
+      status: "finished",
+      finishedBy: WORKER.id,
+      reading: 3,
+      fixes: 1,
+      fixedBy: SENIOR.id,
+    });
+
+    // The worker reads who fixed it, with no way to fix.
+    await signIn(worker, WORKER);
+    await worker.goto(`/lists/${id}`);
+    await expect(
+      worker.getByRole("main").getByRole("region", { name: l.progressLabel }),
+    ).toContainText(opening(he.app.lists.card.fixed));
+    await expect(fixButton(worker)).toHaveCount(0);
+    await expect(
+      worker
+        .getByRole("main")
+        .getByText(l.fix.item)
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+    await expect(
+      worker
+        .getByRole("main")
+        .getByText(SENIOR.name)
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+
+    // Switched off: the role is as workers are again, and the senior's way
+    // goes.
+    await fix.click();
+    await expect(fix).toHaveAttribute("aria-checked", "false");
+    await expect(
+      toast(
+        page,
+        heT("app.manage.roles.done.extraOff", {
+          role: name,
+          extra: r.extras.lists.fix.phrase,
+        }),
+      ),
+    ).toBeVisible();
+    await expect.poll(rolesNamed).toEqual(named(0));
+    await senior.goto(`/lists/${id}`);
+    await expect(title(senior, listName)).toBeVisible();
+    await expect(fixButton(senior)).toHaveCount(0);
+
+    // With lists' edit on, edit covers it: on, locked, and said; the toast
+    // says what raising lists always said.
+    await editSwitch(page, lists, name).click();
+    await expect(
+      toast(
+        page,
+        heT("app.manage.roles.done.editWith", {
+          role: name,
+          area: lists,
+          extras: r.extras.lists.send.phrase,
+        }),
+      ),
+    ).toBeVisible();
+    await expect(fix).toHaveAttribute("aria-checked", "true");
+    await expect(fix).toBeDisabled();
+    await expect(shown(page, r.coveredByEdit)).toBeVisible();
+    await expect.poll(rolesNamed).toEqual(named(3));
+    await expectCleanPage(page);
+  } finally {
+    await senior.context().close();
+    await worker.context().close();
+  }
 });

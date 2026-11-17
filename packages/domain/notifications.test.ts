@@ -1842,6 +1842,64 @@ describe("a role's change", () => {
     ).toMatchObject({ change: { level: "none", on: [], off: [] } });
   });
 
+  // L6b-2: lists' keys now carry fixing closed lists, the first switch at
+  // view. It is named only while the area stays at view; edit covers it,
+  // so raising and lowering say what they said before it came.
+  it("reads fixing closed lists at view, and leaves it to edit's words beside edit", () => {
+    const keys = (manage: boolean, send: boolean, fix: boolean) => ({
+      "lists.fix": fix,
+      "lists.manage": manage,
+      "lists.send": send,
+    });
+    const change = (
+      from: Record<string, boolean>,
+      to: Record<string, boolean>,
+      role: string = LEAD,
+    ) =>
+      lineOf(
+        row("role.changed", {
+          role,
+          name: "עובד בכיר",
+          area: "lists",
+          from,
+          to,
+        }),
+      )?.line;
+    expect(change(keys(false, false, false), keys(false, false, true))).toEqual(
+      {
+        kind: "role.changed",
+        role: { kind: "named", name: "עובד בכיר" },
+        area: "lists",
+        change: { level: null, on: ["lists.fix"], off: [] },
+      },
+    );
+    expect(
+      change(keys(false, false, true), keys(false, false, false)),
+    ).toMatchObject({ change: { level: null, on: [], off: ["lists.fix"] } });
+    // Raised and lowered: as before, sending alone.
+    for (const fix of [true, false]) {
+      expect(
+        change(keys(false, false, fix), keys(true, true, true), "worker"),
+      ).toMatchObject({
+        role: { kind: "base", base: "worker" },
+        change: { level: "edit", on: ["lists.send"], off: [] },
+      });
+      expect(
+        change(keys(true, true, true), keys(false, false, fix), "manager"),
+      ).toMatchObject({
+        change: { level: "view", on: [], off: ["lists.send"] },
+      });
+    }
+    // At edit, its row alone changes nothing the role holds. The database
+    // writes no such line (private.area_holds counts it held while the role
+    // runs the lists, 20261116000400_lists_fix_switch.sql); one that said
+    // only that would be no line of this kind, which the inbox would still
+    // count and show as "עדכון חדש".
+    expect(change(keys(true, true, true), keys(true, true, false))).toEqual({
+      kind: "other",
+    });
+  });
+
   it("names a role the business named by the name it had, or by none", () => {
     expect(
       lineOf(row("role.changed", { ...lowered, role: LEAD, name: "Lead" }))

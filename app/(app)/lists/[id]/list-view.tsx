@@ -9,6 +9,8 @@ import {
   closedWords,
   dueChip,
   dueWords,
+  fixOverWords,
+  fixUntilWords,
   fromWords,
   holderWords,
   ltr,
@@ -19,9 +21,10 @@ import { ListScreenFrame } from "./list-screen";
 /**
  * One list, in the business's words: who it is for and who asked, by when,
  * why it is only read here, its details and what happened to it, its fixes
- * after a close among them (L6b-1). The filling and the fixing themselves are
- * the client's (ListScreen). Also on /design/shell/lists with mock data,
- * where `fixing` opens it being fixed.
+ * after a close among them (L6b-1), and until when someone given "תיקון
+ * רשימות שנסגרו" may still fix it, or when that ended (L6b-2). The filling
+ * and the fixing themselves are the client's (ListScreen). Also on
+ * /design/shell/lists with mock data, where `fixing` opens it being fixed.
  */
 export function ListView({
   data,
@@ -57,7 +60,7 @@ export function ListView({
 
   const readOnly: ReactNode =
     data.readOnly === "finished"
-      ? closedWords(t, list, lookups, timeZone)
+      ? closedWords(t, list, lookups, timeZone, now)
       : data.readOnly === "missed"
         ? t("list.readOnly.missed")
         : data.readOnly === "cancelled"
@@ -195,6 +198,9 @@ export function ListView({
     ...closes,
     ...fixes,
   ]);
+  // When the window of someone given "תיקון רשימות שנסגרו" ends or ended
+  // (L6b-2): on the server's clock, or when the screen's timer reaches it.
+  const fixEnd = data.fixEndedAt ?? data.fixUntil;
 
   return (
     <ListScreenFrame
@@ -210,6 +216,12 @@ export function ListView({
         holder,
         due: dueChip(t, list, now, timeZone, data.timing),
         readOnly,
+        // Someone given "תיקון רשימות שנסגרו" (L6b-2): until when they may,
+        // and once that is over, when it ended and who still fixes it.
+        fixUntil: data.fixUntil
+          ? fixUntilWords(t, data.fixUntil, now, timeZone)
+          : null,
+        fixOver: fixEnd ? fixOverWords(t, fixEnd, now, timeZone) : null,
         details,
         timeline,
       }}

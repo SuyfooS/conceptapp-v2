@@ -90,6 +90,14 @@ export type ListsHomeData = {
   /** Closed lists that opened today, newest first. */
   closed: ListSummary[];
   /**
+   * Finished lists that opened before today and the person may still fix
+   * (L6b-2): someone given "תיקון רשימות שנסגרו" who doesn't run the lists,
+   * the lists that reach them within the business's `fixHours` after they
+   * closed, the latest close first, each with until when (`until`, as
+   * `fixDeadline` has it). Empty for everyone else.
+   */
+  fixable: FixableList[];
+  /**
    * Open orders one of the person's departments asked for, held by another
    * (L5), most urgent first: they follow them from here.
    */
@@ -121,6 +129,9 @@ export type ListsHomeData = {
    */
   templates: number | null;
 };
+
+/** A closed list someone given "תיקון רשימות שנסגרו" may still fix, and until when (L6b-2). */
+export type FixableList = { list: ListSummary; until: string };
 
 /** The department filter on Lists. */
 export type DepartmentFilterData = {
@@ -167,12 +178,25 @@ export type ListScreenData = {
     reopen: boolean;
     /**
      * Fixing it in place once it is finished (L6b-1), as
-     * `private.can_fix_list` allows: for now whoever runs the lists, at any
-     * time, never in a view session. It stays finished, and keeps who
-     * closed it and when.
+     * `private.can_fix_list` allows (`fixDeadline`): whoever runs the lists
+     * at any time, and (L6b-2) someone given "תיקון רשימות שנסגרו" for a
+     * list that reaches them, until `fixUntil`; never in a view session. It
+     * stays finished, and keeps who closed it and when.
      */
     fix: boolean;
   };
+  /**
+   * Until when this person may still fix it (L6b-2): someone given lists.fix
+   * for a list that reaches them, the business's `fixHours` after it closed.
+   * Null when there is no such end: they run the lists, or may not fix it.
+   */
+  fixUntil: string | null;
+  /**
+   * When that window ended, for someone given lists.fix who holds the list
+   * but whose time to fix it is over (L6b-2), so the screen says why there
+   * is no "תיקון הרשימה" and who still fixes it. Null otherwise.
+   */
+  fixEndedAt: string | null;
   readOnly: ListReadOnly | null;
   /**
    * Until when this person may take their finish or cancel back (the undo),
@@ -230,9 +254,17 @@ export type ListFailure =
  * Why an item's save didn't happen: a list's reasons, and a fix's (L6b-1):
  * a required item of a closed list is changed, never emptied
  * ("keepRequired"), and a list opened again meanwhile is filled, not fixed
- * ("reopened").
+ * ("reopened"); and (L6b-2) the business's window for someone given "תיקון
+ * רשימות שנסגרו" is over ("fixOver"), or the database no longer lets them
+ * fix it at all ("fixNoAccess": the switch or running the lists taken away,
+ * the list moved away), while the list may still reach them.
  */
-export type ItemFailure = ListFailure | "keepRequired" | "reopened";
+export type ItemFailure =
+  | ListFailure
+  | "keepRequired"
+  | "reopened"
+  | "fixOver"
+  | "fixNoAccess";
 
 /** A write's answer; `F` is why it can be refused (an item's, with a fix's). */
 export type ListActionResult<T = null, F extends string = ListFailure> =

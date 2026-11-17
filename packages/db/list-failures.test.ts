@@ -63,6 +63,53 @@ describe("an item's save refused", () => {
     ).toBe("left");
   });
 
+  // L6b-2 (20261116000400_lists_fix_switch.sql): someone given "תיקון
+  // רשימות שנסגרו" past the business's window.
+  it("says the time to fix is over, apart from any other refusal", () => {
+    const over = {
+      code: "42501",
+      message: "The time to fix the list is over",
+      hint: "fix_window",
+    };
+    expect(itemFailureOf(over, true)).toBe("fixOver");
+    expect(itemFailureOf(over, true, "a list photo write")).toBe("fixOver");
+    // Refused otherwise, a fix is one they can no longer make.
+    expect(itemFailureOf({ code: "42501", message: "" }, true)).toBe(
+      "fixNoAccess",
+    );
+    expect(
+      itemFailureOf({ code: "42501", message: "", hint: null }, true),
+    ).toBe("fixNoAccess");
+    // The hint belongs to 42501 alone.
+    expect(
+      itemFailureOf({ code: "55000", message: "", hint: "fix_window" }, true),
+    ).toBe("reopened");
+  });
+
+  it("says a fix refused as not theirs is one they can no longer make", () => {
+    // The switch or running the lists taken away, the list moved to another
+    // department (42501 without the hint), or they left the business (P0002).
+    expect(itemFailureOf({ code: "42501", message: "" }, true)).toBe(
+      "fixNoAccess",
+    );
+    expect(itemFailureOf({ code: "P0002", message: "" }, true)).toBe(
+      "fixNoAccess",
+    );
+    expect(
+      itemFailureOf({ code: "42501", message: "" }, true, "a list photo write"),
+    ).toBe("fixNoAccess");
+    // Filling, the list is no longer theirs, as before.
+    expect(itemFailureOf({ code: "42501", message: "" }, false)).toBe(
+      "noAccess",
+    );
+    expect(itemFailureOf({ code: "P0002", message: "" }, false)).toBe(
+      "noAccess",
+    );
+    // Any other refusal of a fix stays what it is.
+    expect(itemFailureOf({ code: "40001", message: "" }, true)).toBe("changed");
+    expect(itemFailureOf({ code: "22023", message: "" }, true)).toBe("invalid");
+  });
+
   it("waits for the fix's own functions before its migration", () => {
     expect(itemFailureOf({ code: "PGRST202", message: "" }, true)).toBe(
       "notYet",
