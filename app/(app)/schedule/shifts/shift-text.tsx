@@ -155,7 +155,11 @@ export const outcomeLine = (t: AppT, outcome: OutcomeOnShift) =>
  * What became of a request the person asked for or took, as "מה קרה
  * לבקשות שלך" says it: whoever asked hears who took it, whoever took it
  * hears who asked, and a change to the schedule or the team names nobody.
- * Who decided is the business's, so it isn't said here.
+ * Who decided is the business's, so it isn't said here. Always what
+ * happened, in the past, and never who has the shift now: a request that
+ * was decided stays as it was while its shift is deleted, changed or given
+ * away again (`private.write_week_schedule` ends only waiting ones), so
+ * "the shift stays yours" would turn false without the row changing.
  */
 export function pastRequestLine(
   t: AppT,
@@ -168,11 +172,9 @@ export function pastRequestLine(
     case "approved":
       return side === "from"
         ? t("shifts.past.approvedFrom", { name })
-        : t("shifts.past.approvedTo");
+        : t("shifts.past.approvedTo", { name });
     case "declined":
-      return side === "from"
-        ? t("shifts.past.declinedFrom")
-        : t("shifts.past.declinedTo", { name });
+      return t("shifts.past.declined", { name });
     case "withdrawn":
       return side === "from"
         ? t("shifts.past.withdrawnFrom")
@@ -183,6 +185,15 @@ export function pastRequestLine(
       return t("shifts.past.team");
   }
 }
+
+/**
+ * What a row of "מה קרה לבקשות שלך" adds about its shift: that it was
+ * taken off the schedule since (`shiftId` null; the row keeps the shift the
+ * request asked for), so the row isn't read as about a shift still there.
+ * Nothing while the shift is in the schedule.
+ */
+export const pastRequestNote = (t: AppT, { swap }: PastRequest) =>
+  swap.shiftId === null ? t("shifts.past.gone") : null;
 
 /**
  * What became of a request that no longer waits, for whoever decides them:

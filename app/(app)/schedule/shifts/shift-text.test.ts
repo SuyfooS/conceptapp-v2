@@ -1,5 +1,13 @@
-import type { EndedSwap, PastRequest, SwapOutcome } from "@domain/swaps";
+import {
+  type EndedSwap,
+  type PastRequest,
+  SWAP_OUTCOMES,
+  type SwapOutcome,
+} from "@domain/swaps";
+import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
+import en from "@/messages/en.json";
+import he from "@/messages/he.json";
 import {
   type AppT,
   endedRequestLine,
@@ -7,6 +15,7 @@ import {
   outcomeLine,
   ownEndedSwaps,
   pastRequestLine,
+  pastRequestNote,
   type ShiftData,
 } from "./shift-text";
 
@@ -77,11 +86,13 @@ describe("ownEndedSwaps", () => {
 });
 
 // "מה קרה לבקשות שלך", read by each of the two.
+const request = (
+  outcome: SwapOutcome,
+  side: "from" | "to",
+  shiftId: string | null = "eve",
+): PastRequest => ({ swap: { ...ended(outcome), shiftId }, side });
+
 describe("pastRequestLine", () => {
-  const request = (outcome: SwapOutcome, side: "from" | "to"): PastRequest => ({
-    swap: ended(outcome),
-    side,
-  });
   const line = (outcome: SwapOutcome, side: "from" | "to") =>
     pastRequestLine(t, { people }, request(outcome, side));
 
@@ -89,10 +100,14 @@ describe("pastRequestLine", () => {
     expect(line("approved", "from")).toBe(
       '«shifts.past.approvedFrom» {"name":"יואב לוי"}',
     );
-    expect(line("approved", "to")).toBe("«shifts.past.approvedTo»");
-    expect(line("declined", "from")).toBe("«shifts.past.declinedFrom»");
+    expect(line("approved", "to")).toBe(
+      '«shifts.past.approvedTo» {"name":"נועה כהן"}',
+    );
+    expect(line("declined", "from")).toBe(
+      '«shifts.past.declined» {"name":"יואב לוי"}',
+    );
     expect(line("declined", "to")).toBe(
-      '«shifts.past.declinedTo» {"name":"נועה כהן"}',
+      '«shifts.past.declined» {"name":"נועה כהן"}',
     );
     expect(line("withdrawn", "from")).toBe("«shifts.past.withdrawnFrom»");
     expect(line("withdrawn", "to")).toBe(
@@ -114,6 +129,70 @@ describe("pastRequestLine", () => {
       }
     }
   });
+});
+
+describe("pastRequestNote", () => {
+  it("says the shift was taken off the schedule, and nothing while it is there", () => {
+    for (const outcome of SWAP_OUTCOMES) {
+      expect(pastRequestNote(t, request(outcome, "from", null))).toBe(
+        "«shifts.past.gone»",
+      );
+      expect(pastRequestNote(t, request(outcome, "to"))).toBeNull();
+    }
+  });
+});
+
+/** What a line would hold if the words had failed: a key's path or an ICU argument. */
+const NOT_WORDS = /^app\.|[{}]/;
+
+const translators = [
+  ["he", createTranslator({ locale: "he", messages: he, namespace: "app" })],
+  ["en", createTranslator({ locale: "en", messages: en, namespace: "app" })],
+] as unknown as [string, AppT][];
+
+// The list is read long after a request ended, when its shift may have been
+// deleted, changed or given away again since: a decided request stays as it
+// was (private.write_week_schedule ends only waiting ones). So in the app's
+// own words each row says what happened then, with whom, and never whose the
+// shift is now (the review of 17 November 2026: "המשמרת נשארת של נועה" on
+// Yoav's list once Maya had it).
+describe("pastRequestLine, in the app's words", () => {
+  const [, real] = translators[0] as [string, AppT];
+  const line = (outcome: SwapOutcome, side: "from" | "to") =>
+    pastRequestLine(real, { people }, request(outcome, side));
+
+  it("says what was decided and with whom, in the past", () => {
+    expect(line("approved", "from")).toBe(
+      "ההחלפה עם יואב לוי אושרה. מסרת את המשמרת",
+    );
+    expect(line("approved", "to")).toBe(
+      "ההחלפה עם נועה כהן אושרה. קיבלת את המשמרת",
+    );
+    expect(line("declined", "from")).toBe("ההחלפה עם יואב לוי לא אושרה");
+    expect(line("declined", "to")).toBe("ההחלפה עם נועה כהן לא אושרה");
+    expect(pastRequestNote(real, request("declined", "from", null))).toBe(
+      "המשמרת הוסרה מהסידור",
+    );
+  });
+
+  for (const [language, words] of translators) {
+    it(`never says whose the shift is now, in ${language}`, () => {
+      for (const outcome of SWAP_OUTCOMES) {
+        for (const side of ["from", "to"] as const) {
+          const said = [
+            pastRequestLine(words, { people }, request(outcome, side)),
+            pastRequestNote(words, request(outcome, side, null)) ?? "",
+          ];
+          for (const text of said) {
+            expect(text, `${outcome} ${side}`).not.toMatch(NOT_WORDS);
+            expect(text, `${outcome} ${side}`).not.toMatch(
+              /נשאר|במקומך|אליך|stays|stay with|your place|yours now/,
+            );
+          }
+        }
+      }
+    });
+  }
 });
 
 // "כבר לא מחכות להחלטה", for whoever decides.

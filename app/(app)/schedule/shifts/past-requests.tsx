@@ -6,15 +6,22 @@ import { PageSection } from "@ui/page";
 import { useTranslations } from "next-intl";
 import { DayTile } from "./day-tile";
 import { personRow } from "./shift-sheet";
-import { dayLabel, ltr, pastRequestLine, type ShiftData } from "./shift-text";
+import {
+  dayLabel,
+  ltr,
+  pastRequestLine,
+  pastRequestNote,
+  type ShiftData,
+} from "./shift-text";
 
 /**
  * "מה קרה לבקשות שלך": what became of the requests the person asked for or
  * took that no longer wait, on shifts from today on, the newest on each
  * shift (`pastRequestsFor`), with the shift each asked for, which outlives
- * the shift. The same rows on every device. Statuses only, so nothing to
- * press: giving a shift away again is on the shift itself. Nothing when
- * there are none.
+ * the shift: each says what happened, never who has the shift now, and one
+ * whose shift was taken off the schedule since says so. The same rows on
+ * every device. Statuses only, so nothing to press: giving a shift away
+ * again is on the shift itself. Nothing when there are none.
  */
 export function PastRequests({ data }: { data: ShiftData }) {
   const t = useTranslations("app");
@@ -34,6 +41,7 @@ export function PastRequests({ data }: { data: ShiftData }) {
       >
         {past.map((item) => {
           const { shift } = item.swap;
+          const note = pastRequestNote(t, item);
           return (
             <li
               key={item.swap.id}
@@ -61,6 +69,9 @@ export function PastRequests({ data }: { data: ShiftData }) {
                     ltr,
                   })}
                 </span>
+                {note ? (
+                  <span className="text-ink-2 text-sm">{note}</span>
+                ) : null}
               </div>
             </li>
           );

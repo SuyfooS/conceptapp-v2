@@ -838,6 +838,43 @@ describe("pastRequestsFor", () => {
     expect(past.map((p) => p.swap.id)).toEqual(["again"]);
   });
 
+  it("keeps each one's own once the shift was given away again, or deleted", () => {
+    // Noa's request Yoav took was declined; she offered it again, and Maya
+    // took it and was approved. A decided request stays as it was, so the
+    // screen says it in the past (shift-text's pastRequestLine).
+    const swaps = [
+      finished(
+        "declined",
+        "eve",
+        "noa",
+        "yoav",
+        "declined",
+        "2026-11-05T10:00Z",
+      ),
+      finished(
+        "approved",
+        "eve",
+        "noa",
+        "maya",
+        "approved",
+        "2026-11-05T12:00Z",
+      ),
+    ];
+    const read = (userId: string, ended: EndedSwap[] = swaps) =>
+      pastRequestsFor(ended, [], userId, TODAY).map((p) => [
+        p.swap.id,
+        p.side,
+        p.swap.shiftId,
+      ]);
+    expect(read("yoav")).toEqual([["declined", "to", "eve"]]);
+    expect(read("noa")).toEqual([["approved", "from", "eve"]]);
+    expect(read("maya")).toEqual([["approved", "to", "eve"]]);
+    // Then the shift was deleted: the rows stay, by the shift they kept.
+    const deleted = swaps.map((s) => ({ ...s, shiftId: null }));
+    expect(read("yoav", deleted)).toEqual([["declined", "to", null]]);
+    expect(read("noa", deleted)).toEqual([["approved", "from", null]]);
+  });
+
   it("leaves out a shift on which a request of theirs waits, not one where it doesn't", () => {
     const swaps = [
       finished(

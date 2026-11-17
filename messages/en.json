@@ -1224,14 +1224,14 @@
       },
       "past": {
         "title": "What happened to your requests",
-        "approvedFrom": "Swap approved. {name} takes your place",
-        "approvedTo": "Swap approved. The shift is yours now",
-        "declinedFrom": "Swap not approved. The shift stays yours",
-        "declinedTo": "Swap not approved. The shift stays with {name}",
+        "approvedFrom": "The swap with {name} was approved. You gave the shift away",
+        "approvedTo": "The swap with {name} was approved. You got the shift",
+        "declined": "The swap with {name} was not approved",
         "withdrawnFrom": "You cancelled the request",
         "withdrawnTo": "{form, select, other {{name} cancelled the request}}",
         "schedule": "Cancelled because the schedule changed",
-        "team": "Cancelled after a change in the team"
+        "team": "Cancelled after a change in the team",
+        "gone": "The shift was taken off the schedule"
       },
       "board": {
         "pickWeek": "Pick a week",

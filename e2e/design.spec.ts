@@ -700,8 +700,10 @@ test("the swaps demo offers only declining once the shift has begun", async ({
 // What became of Noa's requests that no longer wait (the twins' DEMO_ENDED):
 // tonight's wasn't approved, so her hero says so and still offers it, until
 // it begins; Thursday's the schedule cancelled, in its row; and the list has
-// one row a shift, five of them. Friday's, withdrawn, she asked again, so its
-// live request says where it stands; Monday's is before today.
+// one row a shift, five of them, each saying what happened and with whom, and
+// Yoav's Thursday morning, deleted since, that its shift was taken off.
+// Friday's, withdrawn, she asked again, so its live request says where it
+// stands; Monday's is before today.
 test("the shifts demo says what happened to Noa's requests", async ({
   page,
 }) => {
@@ -725,14 +727,18 @@ test("the shifts demo says what happened to Noa's requests", async ({
   ).toContainText(sw.removed);
   const list = page.getByRole("list", { name: past.title });
   await expect(list.getByRole("listitem")).toHaveCount(5);
-  await expect(list).toContainText(past.declinedFrom);
+  await expect(list).toContainText(
+    heT("app.shifts.past.declined", { name: "מאיה פרץ" }),
+  );
   await expect(list).toContainText(
     heT("app.shifts.past.approvedFrom", { name: "שירה ביטון" }),
   );
   await expect(list).toContainText(
-    heT("app.shifts.past.declinedTo", { name: "עומר אזולאי" }),
+    heT("app.shifts.past.declined", { name: "עומר אזולאי" }),
   );
-  await expect(list).toContainText(
+  const gone = list.getByRole("listitem").filter({ hasText: past.gone });
+  await expect(gone).toHaveCount(1);
+  await expect(gone).toContainText(
     heT("app.shifts.past.withdrawnTo", { name: "יואב לוי", form: "m" }),
   );
   await expect(list).toContainText(past.schedule);

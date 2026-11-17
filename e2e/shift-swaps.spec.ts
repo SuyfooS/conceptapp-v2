@@ -166,19 +166,19 @@ test("a worker gives a shift away, a colleague takes it, the worker cancels", as
 
 // A declined request no longer vanishes (the roadmap's known issue 7): the
 // worker who asked reads it on her shift, which she can offer again, and on
-// Home; the colleague who took it reads that it stays hers; and the manager
-// still sees it, with who decided, once nothing waits.
+// Home; the colleague who took it reads that it wasn't approved; and the
+// manager still sees it, with who decided, once nothing waits. Once the week
+// is replaced, the request stays as it was decided: the list still says what
+// happened, never whose the shift is now, and that its shift was taken off.
 test("a declined request says so to the worker who asked and to the colleague who took it, and stays on the manager's board", async ({
   page,
   browser,
 }, testInfo) => {
-  await scheduleDemoSunday(
-    {
-      morning: [[YOAV.e164, "bartender"]],
-      evening: [[NOA.e164, "waiter"]],
-    },
-    true,
-  );
+  const sunday: Parameters<typeof scheduleDemoSunday>[0] = {
+    morning: [[YOAV.e164, "bartender"]],
+    evening: [[NOA.e164, "waiter"]],
+  };
+  await scheduleDemoSunday(sunday, true);
   await takenDemoSwap("evening", NOA.e164, YOAV.e164);
   await decideDemoSwap(false);
   expect(await demoSwaps()).toEqual([
@@ -189,7 +189,10 @@ test("a declined request says so to the worker who asked and to the colleague wh
   await page.goto("/schedule/shifts");
   await expect(shown(page, sw.declined)).toBeVisible();
   await expect(button(page, sw.buttons.give)).toBeVisible();
-  await expect(pastList(page)).toContainText(past.declinedFrom);
+  await expect(pastList(page)).toContainText(
+    heT("app.shifts.past.declined", { name: YOAV.name }),
+  );
+  await expect(pastList(page)).not.toContainText(past.gone);
   await expectCleanPage(page);
   await page.screenshot({
     path: testInfo.outputPath("swap-declined.png"),
@@ -200,7 +203,7 @@ test("a declined request says so to the worker who asked and to the colleague wh
 
   const yoav = await as(browser, page, YOAV);
   await expect(pastList(yoav)).toContainText(
-    heT("app.shifts.past.declinedTo", { name: NOA.name }),
+    heT("app.shifts.past.declined", { name: NOA.name }),
   );
   await expect(button(yoav, sw.buttons.take)).toHaveCount(0);
   await expectCleanPage(yoav);
@@ -218,6 +221,21 @@ test("a declined request says so to the worker who asked and to the colleague wh
     fullPage: true,
   });
   await manager.context().close();
+
+  // Published again with nothing read: the week is replaced, her evening
+  // with it, and a decided request is not the write's to end.
+  await scheduleDemoSunday(sunday, true);
+  expect(await demoSwaps()).toEqual([
+    { status: "declined", from: NOA.e164, to: YOAV.e164 },
+  ]);
+  await page.goto("/schedule/shifts");
+  const row = pastList(page)
+    .getByRole("listitem")
+    .filter({ hasText: heT("app.shifts.past.declined", { name: YOAV.name }) });
+  await expect(row).toContainText(past.gone);
+  await expect(shown(page, sw.declined)).toHaveCount(0);
+  await expect(button(page, sw.buttons.give)).toBeVisible();
+  await expectCleanPage(page);
 });
 
 test("a manager approves a taken request and the colleague takes the shift", async ({
@@ -314,6 +332,7 @@ test("a request the schedule ended says why", async ({ page }) => {
   await signIn(page, NOA);
   await page.goto("/schedule/shifts");
   await expect(pastList(page)).toContainText(past.schedule);
+  await expect(pastList(page)).toContainText(past.gone);
   await expect(shown(page, sw.removed)).toHaveCount(0);
   await expect(button(page, sw.buttons.give)).toBeVisible();
   await expectCleanPage(page);

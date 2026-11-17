@@ -309,7 +309,12 @@ export type PastRequest = {
  * `today` on (by the shift each asked for, which outlives the shift), by
  * shift time: the newest of theirs on each shift, as an older one on it no
  * longer says where things stand. A shift on which a request of theirs still
- * waits (`live`) is left out, since the request says it on the shift.
+ * waits (`live`) is left out, since the request says it on the shift. Each
+ * is what happened then, not where the shift is now: a decided request stays
+ * as it was while its shift is deleted, changed or given away again by
+ * someone else, so the screen says it in the past (`pastRequestLine`), and a
+ * deleted shift's, kept by the shift it asked for, says the shift was taken
+ * off.
  */
 export function pastRequestsFor(
   ended: readonly EndedSwap[],
