@@ -1430,7 +1430,7 @@
         "fix": "תיקון",
         "fixShift": "תיקון המשמרת של {day}",
         "restore": "החזרה",
-        "restoreShift": "החזרת המשמרת של {day}",
+        "restoreShift": "החזרה: המשמרת של {day}",
         "withProof": " · {proof}",
         "proof": {
           "scan": "בסריקה",

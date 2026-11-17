@@ -65,9 +65,18 @@ export function PersonHoursView({
   const [opened, setOpened] = useState(0);
   // Why the toast's "ביטול" didn't go, said as the cancelled shift opens.
   const [failed, setFailed] = useState<EntryFailure | null>(null);
-  // Back on the fix from the cancel's step: the focus goes to where it left.
+  // Back on the fix from the cancel's step: the focus goes to where it left,
+  // and the fix is as it was typed.
   const [stepBack, setStepBack] = useState(false);
+  const [draft, setDraft] = useState<EntryValues | null>(null);
   const [saving, start] = useTransition();
+  // The toast's "ביטול" runs on its own, so a sheet opened meanwhile isn't held.
+  const [, startUndo] = useTransition();
+  // Whether a sheet is open as a write comes back (the state, read late).
+  const sheetOpen = useRef(false);
+  useEffect(() => {
+    sheetOpen.current = open;
+  }, [open]);
   const [toast, setToast] = useState<Toast | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   /** What opened the sheet: where the focus goes once a toast holding it goes. */
@@ -85,6 +94,7 @@ export function PersonHoursView({
     setTarget(next);
     setFailed(failure);
     setStepBack(false);
+    setDraft(null);
     setOpened((count) => count + 1);
     setOpen(true);
   }
@@ -173,7 +183,7 @@ export function PersonHoursView({
     shift: ShiftRecord,
     onFailure?: (f: EntryFailure) => void,
   ) {
-    start(async () => {
+    (onFailure ? start : startUndo)(async () => {
       let result: EntryActionResult;
       try {
         result = await actions.restore(shift.id);
@@ -181,14 +191,22 @@ export function PersonHoursView({
         result = { ok: false, failure: "failed" };
       }
       if (result.ok) {
-        setOpen(false);
+        // From its sheet, the sheet closes; from the toast there was none,
+        // and one opened meanwhile stays as it is.
+        if (onFailure) setOpen(false);
         setToast({ text: t("done.restore"), stamp: `restore-${Date.now()}` });
       } else if (onFailure) {
         onFailure(result.failure);
-      } else {
+      } else if (!sheetOpen.current) {
         // The toast's "ביטול" didn't go: the shift, cancelled, says why. The
         // focus comes back to what opened it before.
         show({ kind: "cancelled", record: shift }, result.failure);
+      } else {
+        // A sheet opened meanwhile keeps what is typed in it: the toast says it.
+        setToast({
+          text: t(`failure.${result.failure}`),
+          stamp: `undo-${Date.now()}`,
+        });
       }
     });
   }
@@ -334,8 +352,14 @@ export function PersonHoursView({
             saving={saving}
             save={save}
             returning={stepBack}
+            initial={stepBack ? draft : null}
             toCancel={
-              record ? () => step({ kind: "cancel", record }) : undefined
+              record
+                ? (values) => {
+                    setDraft(values);
+                    step({ kind: "cancel", record });
+                  }
+                : undefined
             }
           />
         )}
@@ -351,6 +375,7 @@ function EntryForm({
   saving,
   save,
   returning,
+  initial,
   toCancel,
 }: {
   record: ShiftRecord | null;
@@ -360,20 +385,25 @@ function EntryForm({
   save: (values: EntryValues, onFailure: (f: EntryFailure) => void) => void;
   /** Back from the cancel's step: the focus goes to the button that led there. */
   returning: boolean;
-  /** A shift that is there: the way to cancel it, beside fixing it. */
-  toCancel?: () => void;
+  /** The fix as it was typed before the cancel's step, back from it. */
+  initial: EntryValues | null;
+  /** A shift that is there: the way to cancel it, beside fixing it, with the fix as typed. */
+  toCancel?: (values: EntryValues) => void;
 }) {
   const t = useTranslations("app.clock.team");
   const id = useId();
   const reasonField = useRef<HTMLInputElement>(null);
   const cancelButton = useRef<HTMLButtonElement>(null);
-  // The reason starts empty each time: it says why this change is made.
-  const [values, setValues] = useState<EntryValues>({
-    date: record?.date ?? date,
-    in: record?.in ?? "",
-    out: record?.out ?? "",
-    reason: "",
-  });
+  // The reason starts empty each time it opens: it says why this change is
+  // made. Back from the cancel's step, the fix is as it was typed.
+  const [values, setValues] = useState<EntryValues>(
+    initial ?? {
+      date: record?.date ?? date,
+      in: record?.in ?? "",
+      out: record?.out ?? "",
+      reason: "",
+    },
+  );
   const [failure, setFailure] = useState<EntryFailure | null>(null);
   // Only a shift still running may be left with no end, while it's within limits.
   const canStayOpen = record?.out === null && !record.overdue;
@@ -458,7 +488,7 @@ function EntryForm({
           ref={cancelButton}
           variant="ghost"
           disabled={saving}
-          onClick={toCancel}
+          onClick={() => toCancel(values)}
           className="text-danger"
         >
           <Ban aria-hidden="true" />

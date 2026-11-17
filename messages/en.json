@@ -1430,7 +1430,7 @@
         "fix": "Fix",
         "fixShift": "Fix the shift of {day}",
         "restore": "Bring back",
-        "restoreShift": "Bring back the shift of {day}",
+        "restoreShift": "Bring back: the shift of {day}",
         "withProof": " · {proof}",
         "proof": {
           "scan": "Scanned",
