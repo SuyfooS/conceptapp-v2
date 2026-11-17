@@ -182,6 +182,8 @@ function TillDetail({
   const { say, toast } = useUndoToast();
   const heading = useRef<HTMLHeadingElement>(null);
   const [view, setView] = useState<"item" | "round">("item");
+  // A refused close shows only while held courses still wait: a screen kept
+  // hidden and shown again may meet the order fired or closed meanwhile.
   const [refused, setRefused] = useState(false);
   const closed = order.closedAt !== null;
   const taken = closed && Boolean(openOrderOf(data, order.placeId));
@@ -240,7 +242,7 @@ function TillDetail({
         ]}
       />
       <TillView order={order} view={view} large />
-      {refused ? (
+      {refused && !closed && hasHeld(order) ? (
         <p role="alert" className="font-semibold text-danger text-lg">
           {t("till.refusedHeld")}
         </p>

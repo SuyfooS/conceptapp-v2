@@ -36,7 +36,7 @@ import {
 /**
  * The floor (§3.2 step 2, §11): every table and open takeaway as a tile
  * with its one state, a status line under the title ("2 מוכנים להגשה · 1
- * מחכה · 6 פתוחים"), and "קבלת הזמנה לקחת" as the main action. Phone:
+ * מחכה · 6 פתוחים"), and "פתיחת הזמנה לקחת" as the main action. Phone:
  * three tiles a row, then today's closed orders. Tablet: the tiles beside
  * what is ready to serve, each served with one tap. Desktop: the same,
  * with a table of the open orders under the tiles. One shared floor:

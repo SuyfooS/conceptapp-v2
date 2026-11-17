@@ -67,6 +67,8 @@ function Till({ order, opened }: { order: Order; opened: string | null }) {
   const [view, setView] = useState<"item" | "round">(
     opened === "byRound" ? "round" : "item",
   );
+  // A refused close shows only while held courses still wait: a screen kept
+  // hidden and shown again may meet the order fired or closed meanwhile.
   const [refused, setRefused] = useState(false);
   const place = placeById(data, order.placeId);
   const title = place ? placeTitle(t, place) : "";
@@ -133,7 +135,7 @@ function Till({ order, opened }: { order: Order; opened: string | null }) {
           )
         }
       />
-      {refused ? (
+      {refused && !closed && hasHeld(order) ? (
         <p role="alert" className="font-medium text-danger md:max-w-2xl">
           {t("till.refusedHeld")}
         </p>
