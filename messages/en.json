@@ -3658,7 +3658,8 @@
           "keepRequired": "A required item of a closed list can be changed, but not undone or emptied. To have it done again: Open it again for everyone.",
           "keepRequiredAsk": "A required item of a closed list can be changed, but not undone or emptied. To have it done again, ask whoever edits the lists to open it again.",
           "reopened": "The list was opened again meanwhile, so the change wasn't saved. You can fill it as usual now.",
-          "fixOver": "The time to fix this list is over. Whoever edits the lists can still fix it."
+          "fixOver": "The time to fix this list is over. Whoever edits the lists can still fix it.",
+          "fixNoAccess": "You can no longer fix this list."
         }
       },
       "send": {

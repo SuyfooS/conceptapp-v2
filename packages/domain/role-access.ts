@@ -572,12 +572,16 @@ export function areaGrants(
 
 /**
  * The areas, of those shown, where `below` holds a permission or a switch
- * that `above` doesn't (`areaGrants`, so by the rules as the database keeps
- * them, as `private.role_holds_beyond` counts them), in their order. For
- * managers above and workers below: only owners and the team give a role
- * that holds what its giver doesn't (`private.role_holds_beyond`, hint
- * 'held'), so while this isn't empty no manager invites a worker or makes
- * someone one. By default it is empty: managers hold all that workers do.
+ * that `above` doesn't, in their order, as `private.role_holds_beyond`
+ * counts them: `below` by the rules as the database keeps them
+ * (`areaGrants`, as `private.role_holds` reads them), and `above` by those
+ * and by a switch at view that edit covers (`holdsExtra`), as running the
+ * lists covers fixing them, so a giver at edit whose own rule for the switch
+ * is off (raised before the key came) still holds it. For managers above and
+ * workers below: only owners and the team give a role that holds what its
+ * giver doesn't (`private.role_holds_beyond`, hint 'held'), so while this
+ * isn't empty no manager invites a worker or makes someone one. By default
+ * it is empty: managers hold all that workers do.
  */
 export function heldBeyond(
   above: RoleAccess,
@@ -585,11 +589,16 @@ export function heldBeyond(
   areas: readonly AccessArea[],
 ): AccessArea[] {
   return areas.filter((area) => {
-    const held = new Set(
+    const held = new Set<PermissionKey>(
       areaGrants(area, areaAccess(above, area))
         .filter((grant) => grant.granted)
         .map((grant) => grant.perm),
     );
+    for (const extra of extrasOf(area)) {
+      if (extraLevel(extra) === "view" && holdsExtra(above, extra)) {
+        held.add(extra);
+      }
+    }
     return areaGrants(area, areaAccess(below, area)).some(
       (grant) => grant.granted && !held.has(grant.perm),
     );

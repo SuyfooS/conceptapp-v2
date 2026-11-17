@@ -1368,14 +1368,19 @@ L6b-1's bodies with one refusal more: a fix refused to someone who holds
 `fix_window`, which `@db/list-failures` reads as "fixOver" ("הזמן לתקן את
 הרשימה הזאת נגמר"); anyone else is refused as before, with no hint.
 `lists.fix` never reopens a list: reopening is as it was (the finisher
-within five minutes, or `lists.manage`). A role on managers lowered on
-lists before this (a `lists.manage` denial) would hold `lists.fix` by the
-key's default, so the migration's `private.backfill_lists_fix_denials()`
-(run once, revoked from everyone) writes it the denial the roles screen
-writes when it lowers one now: base managers a row of their own, and a role
-named on managers with a `lists.manage` denial of its own a row where its
-base would still give the key. Straight into the rules, as the seed writes
-them: no role's holding changes, so nothing is logged and nobody is told.
+within five minutes, or `lists.manage`). Every `lists.manage` rule set before this gets a `lists.fix` rule of the
+same value from the migration's `private.backfill_lists_fix()` (run once,
+revoked from everyone), as the roles screen writes a raise or a lower now,
+so fixing follows the role's own lists level: a base role where that
+differs from the key's default (managers lowered are denied it, workers
+raised given it), a named role always, whatever its base. Straight into the
+rules, as the seed writes them: no role's holding changes, so nothing is
+logged and nobody is told. `private.backfill_lists_fix_lines()` completes
+the R10 lists lines still open that were written without the key (each
+side's `lists.fix` is its `lists.manage`), so a role put back where its
+line began still takes the line away. `private.role_holds_beyond` (replaced
+from `20261115001600_named_roles_give.sql`) counts a giver who runs the
+lists as fixing closed ones.
 That covers managers lowered while Vercel had the key and the database
 didn't (`setRoleAreas` left `lists.fix` out) too. `private.area_holds`
 (R10, replaced from `20261115001700_roles_changes.sql`) counts `lists.fix`
@@ -1384,10 +1389,10 @@ held while `lists.manage` is, as the roles screen draws it ("כלול
 named role at edit, tells nobody instead of leaving a line that says
 nothing. No rule by rank, no new log family. `@db/lists`
 `getMyLists(…, fixableSince)` also reads the finished lists a person holds
-that opened before the window and closed since then, for "עוד אפשר לתקן" on
+that opened before today and closed within the business's window, for "עוד אפשר לתקן" on
 `/lists`. `@db/roles` `setRoleAreas` asks `areaOpen` with the matrix's
 keys and never writes a key the matrix doesn't list, so the roles screen
-stays open before Migrate. `lists_fix_switch.test.sql` covers it (37, ids
+stays open before Migrate. `lists_fix_switch.test.sql` covers it (40, ids
 b3…, numbers 050-054-xxxx, times on 14 to 21 December 2026).
 
 The pay screens (`20261110000400_payroll_screens.sql`, payroll P3).

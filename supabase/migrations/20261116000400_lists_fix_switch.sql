@@ -20,29 +20,48 @@
 --               and private.can_fix_list lets lists.manage fix at any time.
 --               Whatever reads the catalogue takes it by itself:
 --               public.role_permission_matrix, set_role_permission(s),
---               my_permissions, private.held_perms, viewed_perms,
---               role_holds_beyond, and R10's area_rules and
---               notify_role_change. Workers start without it, and a role the
---               business named follows its base until it has a rule of its
---               own.
---   lowered     a role on managers that the business lowered on lists
---               before this (a lists.manage denial) gets lists.fix denied
---               too, the rule the roles screen writes when it lowers one
---               now: leaving edit turns every switch of the area off. Else
---               the key's default would give those managers a fix the owner
---               never gave. Base managers lowered get a denial of their own;
---               a role named on managers with a lists.manage denial of its
---               own gets one where its base would still give the key (a
---               named role keeps a row only where it differs from its base,
---               as public.set_role_permission keeps them). Straight into the
---               rules, as the seed writes them: no role's holding changes,
---               so nothing goes to the log and nobody is told.
+--               my_permissions, private.held_perms, viewed_perms, and R10's
+--               area_rules and notify_role_change. Workers start without it,
+--               and a role the business named follows its base until it has
+--               a rule of its own.
+--   earlier     every rule a business set for the lists before this gets a
+--               rule for the key as the roles screen writes one now, where
+--               fixing follows the role's own level of the lists: leaving
+--               edit turns every switch of the area off, and a raise to
+--               edit turns them on. Base managers lowered (a lists.manage
+--               denial) are denied it, else the key's default would give
+--               them a fix the owner never gave; base workers raised (a
+--               lists.manage grant) are given it, so a role named on them
+--               and lowered later is written a denial of its own, and
+--               lowering and raising them again never hands it fixing. A
+--               role named on either with a lists.manage rule of its own
+--               gets the same rule for the key, whatever its base, so its
+--               fixing follows its own level and never its base's (a row
+--               the same as its base's rule only stops it following it).
+--               Straight into the rules, as the seed writes them: what each
+--               role holds stays as it was (at edit lists.manage already
+--               fixes, and the new rules at view are denials), so nothing
+--               goes to the log and nobody is told.
 --   R10         a role's line counts lists.fix as held while the role runs
 --               the lists (private.area_holds), as the roles screen draws it
 --               ("כלול בעריכה", @domain/role-access): switching the key for
 --               a role at edit, or for the base of a named role at edit,
 --               changes nothing the role holds, so it tells nobody rather
---               than leave a line that says nothing.
+--               than leave a line that says nothing. A line about the lists
+--               from before this that a change still goes on from (unread,
+--               unsettled, with its dedupe key) gets the key on each side,
+--               held where that side ran the lists, as nobody fixed at view
+--               then. Without it, private.notify_role_change would take the
+--               key from just before the change, where it follows running
+--               the lists as they stood then, and a role put back where its
+--               line began would keep a line about a switch it never had.
+--               Lines already read or settled are never gone on from, and
+--               read the same either way: they stay as they were.
+--   giving      someone who runs the lists counts as fixing them when they
+--               invite to a role or move someone into one
+--               (private.role_holds_beyond), as private.can_fix_list lets
+--               them fix at any time: a role given lists.fix at view is
+--               never beyond them.
 --   the window  fixHours, a setting of the lists module (owner level, as
 --               the punch code is): how long after a list closed someone
 --               given lists.fix may still fix it, 2, 12, 24 or 72 hours, 24
@@ -75,10 +94,14 @@
 -- private.write_list_item_photo (20261116000300_lists_fix.sql's), with the
 -- window and its hint; private.area_holds
 -- (20261115001700_roles_changes.sql's), with lists.fix held under
--- lists.manage. Each keeps its signature, so its grants stay; revoked again
--- all the same. Their callers are unchanged: public.set_list_item,
--- set_list_item_photo, fix_list_item and fix_list_item_photo, the lists'
--- other readers of private.list_settings, and private.notify_role_change.
+-- lists.manage; private.role_holds_beyond
+-- (20261115001600_named_roles_give.sql's), with a giver who runs the lists
+-- counted as fixing them. Each keeps its signature, so its grants stay;
+-- revoked again all the same. Their callers are unchanged:
+-- public.set_list_item, set_list_item_photo, fix_list_item and
+-- fix_list_item_photo, the lists' other readers of private.list_settings,
+-- private.notify_role_change, and public.team_invite, team_invite_link and
+-- set_member_role.
 -- No rule by rank (tooling/role-checks.ts), and no new family in the log.
 
 ------------------------------------------------------------------------------
@@ -89,18 +112,35 @@
 insert into public.permission_keys (key, module_key, area, default_roles, by_owner, requires, settable)
 values ('lists.fix', 'lists', 'lists', '{manager}'::public.member_role[], false, null, true);
 
--- Managers lowered on lists before the key came (a lists.manage denial, base
--- or named) are denied it as well, as the roles screen denies it when it
--- lowers them now: base managers by a row of their own, first; then each
--- role named on managers with a lists.manage denial of its own, where its
--- base would still give the key (private.role_gives), so a named role keeps
--- a row only where it differs from its base. A role named on managers with
--- no denial of its own follows its base, lowered or not. A rule already
--- there for the key is left as it is. Straight into the rules, as the seed
--- writes them: what each role holds stays as it was, so nothing is logged
--- and nobody is told. Run once below, by this migration; later the roles
--- screen writes the key with the area. Returns how many it added.
-create function private.backfill_lists_fix_denials()
+-- Each rule for running the lists (lists.manage) set before the key came
+-- gets a rule for it beside, as the roles screen writes one now, where
+-- fixing follows the role's own level of the lists (leaving edit turns
+-- every switch of the area off, a raise to edit turns them on):
+--   a base role    with a lists.manage rule of its own that isn't the key's
+--                  default for it: managers lowered are denied the key,
+--                  else its default would give them a fix the owner never
+--                  gave; workers raised are given it, so a role named on
+--                  workers and lowered later is written a denial of its own
+--                  (the roles screen writes a named role's rule only where
+--                  it differs from its base's), and lowering workers and
+--                  raising them again never hands that role fixing. One that
+--                  is the default (managers at edit, workers at view) needs
+--                  none.
+--   a named role   with a lists.manage rule of its own: the same rule for
+--                  the key, whatever its base's, so its fixing follows its
+--                  own level of the lists and never its base's. A row the
+--                  same as its base's rule only stops it following it there.
+-- A rule already there for the key is left as it is. None of this changes
+-- what any role holds: at edit lists.manage already fixes, at any time
+-- (private.can_fix_list), and counts as fixing on a role's line
+-- (private.area_holds, below); at view the new rules are denials, and nobody
+-- fixed at view before the key came. So straight into the rules, as the seed
+-- writes them, with who set the lists.manage rule: nothing is logged and
+-- nobody is told (public.role_permissions has no trigger but the checks
+-- that refuse pay, which isn't this key). Run once below, by this
+-- migration; later the roles screen writes the key with the area. Returns
+-- how many it added.
+create function private.backfill_lists_fix()
 returns integer
 language plpgsql
 security definer
@@ -108,50 +148,34 @@ set search_path = ''
 as $$
 declare
   added integer;
-  added_named integer;
 begin
   insert into public.role_permissions (business_id, role, named_role, perm, allowed, granted_by)
-  select rp.business_id, rp.role, null, 'lists.fix', false, rp.granted_by
+  select rp.business_id, rp.role, rp.named_role, 'lists.fix', rp.allowed, rp.granted_by
   from public.role_permissions rp
-  where rp.perm = 'lists.manage'
-    and not rp.allowed
-    and rp.role = 'manager'
-    and rp.named_role is null
+  cross join public.permission_keys k
+  where k.key = 'lists.fix'
+    and rp.perm = 'lists.manage'
+    and rp.role in ('manager', 'worker')
+    and (
+      rp.named_role is not null
+      or rp.allowed is distinct from (rp.role = any (k.default_roles))
+    )
     and not exists (
       select 1
       from public.role_permissions f
       where f.business_id = rp.business_id
         and f.role = rp.role
-        and f.named_role is null
+        and f.named_role is not distinct from rp.named_role
         and f.perm = 'lists.fix'
     )
   on conflict do nothing;
   get diagnostics added = row_count;
 
-  insert into public.role_permissions (business_id, role, named_role, perm, allowed, granted_by)
-  select rp.business_id, rp.role, rp.named_role, 'lists.fix', false, rp.granted_by
-  from public.role_permissions rp
-  where rp.perm = 'lists.manage'
-    and not rp.allowed
-    and rp.role = 'manager'
-    and rp.named_role is not null
-    and not exists (
-      select 1
-      from public.role_permissions f
-      where f.business_id = rp.business_id
-        and f.role = rp.role
-        and f.named_role = rp.named_role
-        and f.perm = 'lists.fix'
-    )
-    and private.role_gives(rp.business_id, rp.role, 'lists.fix'::text, rp.named_role)
-  on conflict do nothing;
-  get diagnostics added_named = row_count;
-
-  return added + added_named;
+  return added;
 end;
 $$;
 
-select private.backfill_lists_fix_denials();
+select private.backfill_lists_fix();
 
 ------------------------------------------------------------------------------
 -- 2. The window
@@ -650,6 +674,118 @@ as $$
   from jsonb_each(rules) as given (key, value)
 $$;
 
+-- The lines about the lists written before the key came that a change of
+-- the role still goes on from (private.notify_role_change: unread,
+-- unsettled, found by their dedupe key) get the key on each side that lacks
+-- it: held where that side ran the lists, as private.area_holds now counts
+-- it, and not otherwise, as nobody fixed at view then. A line goes on from
+-- where it began, with a key it lacks taken from just before the change,
+-- where the key now follows running the lists as they stood then; with the
+-- key there, a role put back where its line began takes the line away, as
+-- before. Lines already read or settled are never gone on from (the next
+-- change clears their dedupe key and begins a line of its own, with the
+-- key) and read the same either way (areaChangeOf: at edit the switch is
+-- included, at view a key a side lacks is off): they stay as they were.
+-- Only `params` changes: no trigger reads an update of a line, and nothing
+-- goes to a phone. Run once below, by this migration. Returns how many
+-- lines it completed.
+create function private.backfill_lists_fix_lines()
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  completed integer;
+begin
+  update public.notifications n
+  set params = n.params
+    || (
+      case
+        when jsonb_typeof(n.params -> 'from') = 'object'
+          and not ((n.params -> 'from') ? 'lists.fix')
+          then jsonb_build_object(
+            'from',
+            (n.params -> 'from') || jsonb_build_object(
+              'lists.fix',
+              coalesce((n.params #> '{from,lists.manage}') = 'true'::jsonb, false)
+            )
+          )
+        else '{}'::jsonb
+      end
+    )
+    || (
+      case
+        when jsonb_typeof(n.params -> 'to') = 'object'
+          and not ((n.params -> 'to') ? 'lists.fix')
+          then jsonb_build_object(
+            'to',
+            (n.params -> 'to') || jsonb_build_object(
+              'lists.fix',
+              coalesce((n.params #> '{to,lists.manage}') = 'true'::jsonb, false)
+            )
+          )
+        else '{}'::jsonb
+      end
+    )
+  where n.kind = 'role.changed'
+    and n.params ->> 'area' = 'lists'
+    and n.dedupe_key is not null
+    and n.read_at is null
+    and n.resolved_at is null
+    and (
+      (
+        jsonb_typeof(n.params -> 'from') = 'object'
+        and not ((n.params -> 'from') ? 'lists.fix')
+      )
+      or (
+        jsonb_typeof(n.params -> 'to') = 'object'
+        and not ((n.params -> 'to') ? 'lists.fix')
+      )
+    );
+  get diagnostics completed = row_count;
+
+  return completed;
+end;
+$$;
+
+select private.backfill_lists_fix_lines();
+
+------------------------------------------------------------------------------
+-- 6. Who a giver is beyond
+
+-- 20261115001600_named_roles_give.sql's, with one rule more: a giver who
+-- runs the lists (lists.manage) counts as fixing closed lists (lists.fix),
+-- as private.can_fix_list lets them fix at any time and the roles screen
+-- draws it at edit ("כלול בעריכה"), so a role given the switch at view is
+-- never beyond them for it. Its callers, public.team_invite,
+-- public.team_invite_link and public.set_member_role, are unchanged.
+create or replace function private.role_holds_beyond(
+  business uuid,
+  r public.member_role,
+  person uuid,
+  named uuid default null
+)
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select exists (
+    select 1
+    from public.permission_keys k
+    where k.settable
+      and private.role_holds(business, r, k.key, named)
+      and not private.holds_perm(business, person, k.key)
+      -- Fixing closed lists, which running them covers.
+      and not (
+        k.key = 'lists.fix'
+        and private.holds_perm(business, person, 'lists.manage'::text)
+      )
+  )
+$$;
+
 ------------------------------------------------------------------------------
 -- Who may call what
 
@@ -657,7 +793,9 @@ $$;
 -- owner, for nobody else.
 revoke execute on function private.list_fix_hours(uuid)
   from public, anon, authenticated, service_role;
-revoke execute on function private.backfill_lists_fix_denials()
+revoke execute on function private.backfill_lists_fix()
+  from public, anon, authenticated, service_role;
+revoke execute on function private.backfill_lists_fix_lines()
   from public, anon, authenticated, service_role;
 
 -- Replaced in place, the same signatures: their grants stay as their first
@@ -670,4 +808,6 @@ revoke execute on function private.write_list_item(uuid, uuid, jsonb, timestampt
 revoke execute on function private.write_list_item_photo(uuid, uuid, text, timestamptz, boolean)
   from public, anon, authenticated, service_role;
 revoke execute on function private.area_holds(jsonb)
+  from public, anon, authenticated;
+revoke execute on function private.role_holds_beyond(uuid, public.member_role, uuid, uuid)
   from public, anon, authenticated;

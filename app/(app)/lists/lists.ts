@@ -20,8 +20,8 @@ import { addDays, dateIn, instantIn } from "@domain/availability";
 import { type Department, departmentsOf } from "@domain/departments";
 import {
   byUrgency,
-  FIX_HOURS,
   fixDeadline,
+  fixWindowHours,
   holdsList,
   type ListSummary,
   type ListTemplate,
@@ -244,16 +244,20 @@ export async function currentListsHome(
   const { businessId, userId, timeZone } = access;
   const now = new Date();
   const window = todayIn(now, timeZone);
+  // The settings come with the member, which `listsAccess` already read, so
+  // they cost no round trip of their own.
+  const settings = await currentModuleSettings("lists");
   // Someone given "תיקון רשימות שנסגרו" who doesn't run the lists (L6b-2):
-  // the lists that closed within the longest window the setting offers, read
-  // beside the rest, each then held to the business's own (`fixDeadline`).
+  // the lists that closed within the business's own window, read beside the
+  // rest, each then held to it to the moment (`fixDeadline`).
   const fixes = access.view === "mine" && access.canFix && !access.canManage;
   const fixableSince = fixes
-    ? new Date(now.getTime() - Math.max(...FIX_HOURS) * 3_600_000).toISOString()
+    ? new Date(
+        now.getTime() - fixWindowHours(settings.fixHours) * 3_600_000,
+      ).toISOString()
     : null;
-  const [settings, departments, lookups, templates, own, business, justSent] =
+  const [departments, lookups, templates, own, business, justSent] =
     await Promise.all([
-      currentModuleSettings("lists"),
       currentDepartments(businessId),
       lookupsFor(businessId),
       // What to send, and for list managers (a view session's too) how

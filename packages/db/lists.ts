@@ -54,6 +54,7 @@ import {
 } from "./list-history";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
+import { allPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -227,7 +228,10 @@ type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * The people, the progress, the named roles (`namedRolesOf`) and the last
- * fixes (`fixedTimesOf`) of these lists, read under RLS.
+ * fixes (`fixedTimesOf`) of these lists, read under RLS. Their items are
+ * read page by page (`allPages`): a day's lists, with the closed ones still
+ * to fix (L6b-2), can pass PostgREST's `max_rows`, past which a read is cut
+ * short without an error and the counts would come out wrong.
  */
 async function partsOf(
   supabase: Supabase,
@@ -251,10 +255,19 @@ async function partsOf(
         .from("list_people")
         .select("list_id, user_id")
         .in("list_id", [...ids]),
-      supabase
-        .from("list_items")
-        .select("list_id, required, done")
-        .in("list_id", [...ids]),
+      allPages((first, last) =>
+        supabase
+          .from("list_items")
+          .select("list_id, required, done")
+          .in("list_id", [...ids])
+          .order("list_id")
+          .order("id")
+          .range(first, last),
+      ).then(
+        (data) => ({ data, error: null }),
+        // As the other reads answer: a missing table is "notYet".
+        (error: unknown) => ({ data: null, error: error as { code?: string } }),
+      ),
       namedRolesOf(
         supabase
           .from("lists")
@@ -349,10 +362,11 @@ async function openAndClosed(
  * they may read: a list manager reads them all. `asked` is the open orders
  * one of their departments asked for that another holds (L5), which they
  * follow from Lists. With `fixableSince` (L6b-2: someone given "תיקון
- * רשימות שנסגרו", the start of the business's window for it), also
- * `fixable`: the finished lists they hold that opened before the window and
- * were finished since then, the latest close first; the caller counts each
- * one's own window (`fixDeadline`).
+ * רשימות שנסגרו", the start of the business's own window for it, now less
+ * its `fixHours`), also `fixable`: the finished lists they hold that opened
+ * before `window` and were finished since `fixableSince`, the latest close
+ * first; the caller still holds each one to its window to the moment
+ * (`fixDeadline`).
  */
 export async function getMyLists(
   businessId: string,

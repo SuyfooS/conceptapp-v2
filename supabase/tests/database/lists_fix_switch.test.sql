@@ -12,12 +12,18 @@
 -- own holds, and switching it off stops it. Those who run the lists still fix
 -- at any time; lists.fix never reopens a list. A role's line (R10) counts
 -- the key as held while the role runs the lists, so switching it beside edit
--- tells nobody. Managers lowered on lists before the key came are denied it
--- by the migration's backfill, base and named, with nothing logged. Fixed
--- ids (b3…), numbers (050-054-xxxx) and times (14 to 21 December 2026), so
--- nothing here meets the seed or another test, or the real clock.
+-- tells nobody. Rules for the lists set before the key came get one for it
+-- by the migration's backfill, following the role's own level of the lists
+-- (managers lowered denied it, workers raised given it, a named role the
+-- same as its own lists.manage), with nothing logged, so raising or
+-- lowering a base later never moves a named role's fixing; lines about the
+-- lists from before, still going on, get the key on each side, so a role
+-- put back where its line began takes the line away. Someone who runs the
+-- lists is never beyond a role given the switch at view. Fixed ids (b3…),
+-- numbers (050-054-xxxx) and times (14 to 21 December 2026), so nothing
+-- here meets the seed or another test, or the real clock.
 begin;
-select plan(37);
+select plan(40);
 
 -- A: 1 owner, 2 manager, 3 and 4 workers in 'Senior worker' (a role A names
 -- on workers; 3 in the kitchen, 4 in the bar), 5 a worker in the kitchen, 6 a
@@ -25,11 +31,14 @@ select plan(37);
 -- kitchen in 'Kitchen hand' (a second role A names on workers), 8 the
 -- accountant. B: 9, its owner. C, with notifications on: 10 its owner, 11 a
 -- worker in 'Lead' (a role C names on workers), 12 a manager, 13 a manager
--- in 'Deputy' (a role C names on managers).
+-- in 'Deputy' (a role C names on managers). D, with notifications on: 14
+-- its owner, 15 a worker in 'Junior' (a role D names on workers), 16 a
+-- worker, 17 a manager, 18 a manager in 'Shift lead' (a role D names on
+-- managers).
 insert into auth.users (id, aud, role, phone)
 select ('b3000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
   'authenticated', 'authenticated', '97250054' || lpad(n::text, 4, '0')
-from generate_series(1, 13) as n;
+from generate_series(1, 18) as n;
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('b3000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -43,6 +52,9 @@ $$;
 create function pg_temp.c() returns uuid language sql as $$
   select 'b3000000-0000-4000-b000-000000000003'::uuid
 $$;
+create function pg_temp.d() returns uuid language sql as $$
+  select 'b3000000-0000-4000-b000-000000000004'::uuid
+$$;
 create function pg_temp.kitchen() returns uuid language sql as $$
   select 'b3000000-0000-4000-c000-000000000001'::uuid
 $$;
@@ -54,7 +66,8 @@ insert into public.businesses (id, slug, name)
 values
   (pg_temp.a(), 'lists-fix-switch-a', 'Lists fix switch A'),
   (pg_temp.b(), 'lists-fix-switch-b', 'Lists fix switch B'),
-  (pg_temp.c(), 'lists-fix-switch-c', 'Lists fix switch C');
+  (pg_temp.c(), 'lists-fix-switch-c', 'Lists fix switch C'),
+  (pg_temp.d(), 'lists-fix-switch-d', 'Lists fix switch D');
 
 insert into public.memberships (business_id, user_id, role, perms, active)
 select pg_temp.a(), pg_temp.p(n),
@@ -68,16 +81,23 @@ values
   (pg_temp.c(), pg_temp.p(10), 'owner', '{}', true),
   (pg_temp.c(), pg_temp.p(11), 'worker', '{}', true),
   (pg_temp.c(), pg_temp.p(12), 'manager', '{}', true),
-  (pg_temp.c(), pg_temp.p(13), 'manager', '{}', true);
+  (pg_temp.c(), pg_temp.p(13), 'manager', '{}', true),
+  (pg_temp.d(), pg_temp.p(14), 'owner', '{}', true),
+  (pg_temp.d(), pg_temp.p(15), 'worker', '{}', true),
+  (pg_temp.d(), pg_temp.p(16), 'worker', '{}', true),
+  (pg_temp.d(), pg_temp.p(17), 'manager', '{}', true),
+  (pg_temp.d(), pg_temp.p(18), 'manager', '{}', true);
 
 -- Lists on, and in A and B nobody told (no notifications module): this is
--- about who fixes. C tells a role's people when it changes.
+-- about who fixes. C and D tell a role's people when it changes.
 insert into public.business_modules (business_id, module_key, enabled, settings)
 values
   (pg_temp.a(), 'lists', true, '{}'),
   (pg_temp.b(), 'lists', true, '{}'),
   (pg_temp.c(), 'lists', true, '{}'),
-  (pg_temp.c(), 'notifications', true, '{}');
+  (pg_temp.c(), 'notifications', true, '{}'),
+  (pg_temp.d(), 'lists', true, '{}'),
+  (pg_temp.d(), 'notifications', true, '{}');
 
 insert into public.departments (id, business_id, key, name)
 values
@@ -185,6 +205,32 @@ begin
   return (extract(epoch from private.list_fix_hours(pg_temp.a())) / 3600)::integer::text;
 end;
 $$;
+-- Person `n`'s lines about a role's lists (R10): read or not, and what each
+-- says the role held where it began and holds now; or 'none'.
+create function pg_temp.lists_lines(n integer) returns text language sql as $$
+  select coalesce(string_agg(
+    case when l.read_at is null then 'unread ' else 'read ' end
+      || (l.params -> 'from')::text || ' > ' || (l.params -> 'to')::text,
+    ' ; ' order by l.params::text), 'none')
+  from public.notifications l
+  where l.user_id = pg_temp.p(n) and l.kind = 'role.changed' and l.params ->> 'area' = 'lists'
+$$;
+-- A line about a role's lists from before the key came, as
+-- private.notify_role_change wrote it then (no lists.fix on either side),
+-- for person `n` about `role_key` (manager, worker or a named role's id),
+-- read at `read_time` or unread.
+create function pg_temp.old_line(n integer, business uuid, role_key text, role_name text,
+  was jsonb, now_held jsonb, read_time timestamptz default null)
+returns void language sql as $$
+  insert into public.notifications (business_id, user_id, kind, source_module, audience_role,
+    params, actor_id, dedupe_key, read_at)
+  select business, pg_temp.p(n), 'role.changed', 'lists'::public.module_key,
+    'worker'::public.member_role,
+    jsonb_build_object('role', role_key, 'area', 'lists', 'from', was, 'to', now_held)
+      || case when role_name is null then '{}'::jsonb else jsonb_build_object('name', role_name) end,
+    (select m.user_id from public.memberships m where m.business_id = business and m.role = 'owner'),
+    'role.changed:' || role_key || ':lists', read_time
+$$;
 
 -- A's two named roles, from their bases (no rule of their own), and who
 -- holds them.
@@ -291,7 +337,8 @@ select ok(
       'private.can_fix_list(public.lists, uuid, timestamptz)',
       'private.write_list_item(uuid, uuid, jsonb, timestamptz, boolean)',
       'private.write_list_item_photo(uuid, uuid, text, timestamptz, boolean)',
-      'private.backfill_lists_fix_denials()'
+      'private.backfill_lists_fix()',
+      'private.backfill_lists_fix_lines()'
     ]) as f (signature)
     where has_function_privilege('authenticated', f.signature, 'execute')
       or has_function_privilege('anon', f.signature, 'execute')
@@ -301,17 +348,22 @@ select ok(
   and not has_function_privilege('anon', 'private.list_settings(uuid)', 'execute')
   and not has_function_privilege('authenticated', 'private.area_holds(jsonb)', 'execute')
   and not has_function_privilege('anon', 'private.area_holds(jsonb)', 'execute')
+  and not has_function_privilege('authenticated',
+    'private.role_holds_beyond(uuid, public.member_role, uuid, uuid)', 'execute')
+  and not has_function_privilege('anon',
+    'private.role_holds_beyond(uuid, public.member_role, uuid, uuid)', 'execute')
   and (select count(*)::int from pg_proc p
        join pg_namespace ns on ns.oid = p.pronamespace
        where ns.nspname = 'private'
          and p.proname in ('list_fix_hours', 'list_settings', 'can_fix_list', 'write_list_item',
-           'write_list_item_photo', 'backfill_lists_fix_denials', 'area_holds')
+           'write_list_item_photo', 'backfill_lists_fix', 'backfill_lists_fix_lines', 'area_holds',
+           'role_holds_beyond')
          and p.prosecdef
          and exists (
            select 1 from unnest(p.proconfig) as c (setting)
            where c.setting in ('search_path=""', 'search_path=')
-         )) = 7,
-  'the window, the rules under a fix, the backfill and a role''s line about the lists run inside the database alone, as their owner with an empty search path'
+         )) = 9,
+  'the window, the rules under a fix, the backfills, a role''s line about the lists and who a giver is beyond run inside the database alone, as their owner with an empty search path'
 );
 
 ------------------------------------------------------------------------------
@@ -509,16 +561,180 @@ select is(
 );
 
 ------------------------------------------------------------------------------
--- A role's line, beside edit
+-- Rules set before the key came
 
--- C's two named roles, from their bases, and who holds them.
+-- C's two named roles and D's, from their bases (no rule of their own), and
+-- who holds them.
 insert into ids values
   ('lead', public.create_business_role(pg_temp.p(10), pg_temp.c(), 'worker', 'Lead')),
-  ('deputy', public.create_business_role(pg_temp.p(10), pg_temp.c(), 'manager', 'Deputy'));
+  ('deputy', public.create_business_role(pg_temp.p(10), pg_temp.c(), 'manager', 'Deputy')),
+  ('junior', public.create_business_role(pg_temp.p(14), pg_temp.d(), 'worker', 'Junior')),
+  ('shift lead', public.create_business_role(pg_temp.p(14), pg_temp.d(), 'manager', 'Shift lead'));
 update public.memberships m set named_role = pg_temp.id('lead')
 where m.business_id = pg_temp.c() and m.user_id = pg_temp.p(11);
 update public.memberships m set named_role = pg_temp.id('deputy')
 where m.business_id = pg_temp.c() and m.user_id = pg_temp.p(13);
+update public.memberships m set named_role = pg_temp.id('junior')
+where m.business_id = pg_temp.d() and m.user_id = pg_temp.p(15);
+update public.memberships m set named_role = pg_temp.id('shift lead')
+where m.business_id = pg_temp.d() and m.user_id = pg_temp.p(18);
+
+-- C's owner sends a list to the manager and one to the deputy, and each
+-- closes theirs.
+insert into ids values ('manager list', public.send_list(pg_temp.p(10), pg_temp.c(),
+  jsonb_build_object(
+    'name', 'Manager list',
+    'recipient', jsonb_build_object('kind', 'person', 'user', pg_temp.p(12)),
+    'items', '[{"kind": "check", "label": "Spare", "required": false}]'::jsonb),
+  '2026-12-14 05:00+00'));
+insert into ids values ('deputy list', public.send_list(pg_temp.p(10), pg_temp.c(),
+  jsonb_build_object(
+    'name', 'Deputy list',
+    'recipient', jsonb_build_object('kind', 'person', 'user', pg_temp.p(13)),
+    'items', '[{"kind": "check", "label": "Spare", "required": false}]'::jsonb),
+  '2026-12-14 05:00+00'));
+select public.finish_list(pg_temp.p(12), pg_temp.id('manager list'), '2026-12-14 06:00+00');
+select public.finish_list(pg_temp.p(13), pg_temp.id('deputy list'), '2026-12-14 06:00+00');
+
+-- In an earlier release, straight into the rules as the app wrote them
+-- then, with no rule for lists.fix: C lowered 'Deputy' on lists while
+-- managers ran them, then managers too; D raised workers to run and send
+-- the lists, then lowered 'Junior' on them (its sending follows workers,
+-- under its running them).
+insert into public.role_permissions (business_id, role, named_role, perm, allowed, granted_by)
+values
+  (pg_temp.c(), 'manager', pg_temp.id('deputy'), 'lists.manage', false, pg_temp.p(10)),
+  (pg_temp.c(), 'manager', null, 'lists.manage', false, pg_temp.p(10)),
+  (pg_temp.d(), 'worker', null, 'lists.manage', true, pg_temp.p(14)),
+  (pg_temp.d(), 'worker', null, 'lists.send', true, pg_temp.p(14)),
+  (pg_temp.d(), 'worker', pg_temp.id('junior'), 'lists.manage', false, pg_temp.p(14));
+-- And the lines R10 wrote about them then, with no lists.fix either:
+-- managers' lowering, still unread; the deputy's own, read since; workers'
+-- raising, still unread. ('Junior' followed workers up, and its own
+-- lowering took it back where it began: no line.)
+select pg_temp.old_line(12, pg_temp.c(), 'manager', null,
+  '{"lists.manage": true, "lists.send": true}', '{"lists.manage": false, "lists.send": false}');
+select pg_temp.old_line(13, pg_temp.c(), pg_temp.id('deputy')::text, 'Deputy',
+  '{"lists.manage": true, "lists.send": true}', '{"lists.manage": false, "lists.send": false}',
+  '2026-12-14 04:00+00');
+select pg_temp.old_line(16, pg_temp.d(), 'worker', null,
+  '{"lists.manage": false, "lists.send": false}', '{"lists.manage": true, "lists.send": true}');
+
+select is(
+  private.holds_perm(pg_temp.c(), pg_temp.p(13), 'lists.fix')::text
+    || ' ' || private.holds_perm(pg_temp.c(), pg_temp.p(12), 'lists.fix')::text,
+  'true true',
+  'without the backfill, the deputy and managers, lowered on lists, would hold lists.fix by the key''s default'
+);
+select is(
+  private.backfill_lists_fix(),
+  4,
+  'the backfill writes a rule for lists.fix beside each of those four rules for running the lists'
+);
+select is(
+  private.backfill_lists_fix_lines(),
+  2,
+  'and completes the two lines a change still goes on from'
+);
+select is(
+  (select string_agg(right(rp.business_id::text, 1) || ':' || rp.role::text || ':'
+       || coalesce(br.name, '-') || ':' || rp.allowed::text,
+     ',' order by rp.business_id, br.name nulls first)
+   from public.role_permissions rp
+   left join public.business_roles br on br.id = rp.named_role
+   where rp.business_id in (pg_temp.c(), pg_temp.d()) and rp.perm = 'lists.fix')
+    || ' | ' || private.role_holds(pg_temp.c(), 'manager', 'lists.fix')::text
+    || ' ' || private.role_holds(pg_temp.c(), 'manager', 'lists.fix', pg_temp.id('deputy'))::text
+    || ' ' || private.role_holds(pg_temp.d(), 'worker', 'lists.fix')::text
+    || ' ' || private.role_holds(pg_temp.d(), 'worker', 'lists.fix', pg_temp.id('junior'))::text
+    || ' | ' || (select count(*)::text from public.audit_log a
+                 where a.business_id in (pg_temp.c(), pg_temp.d()) and a.action = 'role.permission'),
+  '3:manager:-:false,3:manager:Deputy:false,4:worker:-:true,4:worker:Junior:false | false false true false | 0',
+  'each rule follows the role''s own level of the lists: managers and the deputy, lowered, are denied it, workers, raised, given it, and the junior, lowered on them, denied it of its own; nothing went to the log'
+);
+select is(
+  pg_temp.lists_lines(12) || ' | ' || pg_temp.lists_lines(13) || ' | ' || pg_temp.lists_lines(16),
+  'unread {"lists.fix": true, "lists.send": true, "lists.manage": true} > {"lists.fix": false, "lists.send": false, "lists.manage": false} | '
+    || 'read {"lists.send": true, "lists.manage": true} > {"lists.send": false, "lists.manage": false} | '
+    || 'unread {"lists.fix": false, "lists.send": false, "lists.manage": false} > {"lists.fix": true, "lists.send": true, "lists.manage": true}',
+  'each side of a line still going on holds fixing where it ran the lists, and a line already read stays as it was'
+);
+select is(
+  private.backfill_lists_fix()::text || ' ' || private.backfill_lists_fix_lines()::text,
+  '0 0',
+  'and nothing twice'
+);
+select is(
+  pg_temp.check_fix(13, 'deputy list', 'Spare', true, '2026-12-14 07:00+00')
+    || ' ' || pg_temp.check_fix(12, 'manager list', 'Spare', true, '2026-12-14 07:00+00'),
+  '42501/- 42501/-',
+  'so neither the deputy nor a manager fixes the list they hold'
+);
+
+-- C's owner raises managers on lists again, as the roles screen writes it
+-- (sending, at its default, writes nothing). 'Deputy' stays lowered by its
+-- own rule.
+select public.set_role_permissions(pg_temp.p(10), pg_temp.c(), 'manager',
+  '{lists.manage,lists.fix,lists.send}'::text[], '{true,true,true}'::boolean[]);
+select is(
+  private.role_holds(pg_temp.c(), 'manager', 'lists.fix', pg_temp.id('deputy'))::text
+    || ' ' || private.holds_perm(pg_temp.c(), pg_temp.p(13), 'lists.fix')::text
+    || ' ' || private.role_holds(pg_temp.c(), 'manager', 'lists.fix')::text
+    || ' | ' || pg_temp.lists_lines(13)
+    || ' | ' || pg_temp.lists_lines(12),
+  'false false true | read {"lists.send": true, "lists.manage": true} > {"lists.send": false, "lists.manage": false} | none',
+  'raising managers again gives the deputy, lowered on its own, no fixing and tells its people nothing; managers, back where their line began, have none'
+);
+
+-- D's owner lowers workers on lists, as the roles screen writes it.
+select public.set_role_permissions(pg_temp.p(14), pg_temp.d(), 'worker',
+  '{lists.send,lists.manage,lists.fix}'::text[], '{false,false,false}'::boolean[]);
+select is(
+  pg_temp.lists_lines(16) || ' | ' || pg_temp.lists_lines(15),
+  'none | none',
+  'workers put back where their line from before the key began have none, and the junior, lowered on its own, is told nothing'
+);
+
+-- Then raises them again.
+select public.set_role_permissions(pg_temp.p(14), pg_temp.d(), 'worker',
+  '{lists.manage,lists.fix,lists.send}'::text[], '{true,true,true}'::boolean[]);
+select is(
+  private.role_holds(pg_temp.d(), 'worker', 'lists.fix', pg_temp.id('junior'))::text
+    || ' ' || private.holds_perm(pg_temp.d(), pg_temp.p(15), 'lists.fix')::text
+    || ' ' || private.role_holds(pg_temp.d(), 'worker', 'lists.fix')::text
+    || ' | ' || pg_temp.lists_lines(15),
+  'false false true | none',
+  'and raising workers again gives the junior no fixing either, and tells it nothing'
+);
+
+------------------------------------------------------------------------------
+-- Who a giver is beyond
+
+-- D's owner lowers workers to view, keeping the switch on. 'Shift lead'
+-- runs the lists by rules of its own while it follows managers, lowered on
+-- lists, for fixing (straight into the rules: however a role comes to it,
+-- running the lists is what counts).
+select public.set_role_permissions(pg_temp.p(14), pg_temp.d(), 'worker',
+  '{lists.send,lists.manage}'::text[], '{false,false}'::boolean[]);
+insert into public.role_permissions (business_id, role, named_role, perm, allowed, granted_by)
+values
+  (pg_temp.d(), 'manager', null, 'lists.manage', false, pg_temp.p(14)),
+  (pg_temp.d(), 'manager', null, 'lists.fix', false, pg_temp.p(14)),
+  (pg_temp.d(), 'manager', pg_temp.id('shift lead'), 'lists.manage', true, pg_temp.p(14)),
+  (pg_temp.d(), 'manager', pg_temp.id('shift lead'), 'lists.send', true, pg_temp.p(14));
+select is(
+  private.role_holds_beyond(pg_temp.d(), 'worker', pg_temp.p(18))::text
+    || ' ' || private.role_holds_beyond(pg_temp.d(), 'worker', pg_temp.p(17))::text
+    || ' | ' || private.role_holds(pg_temp.d(), 'worker', 'lists.fix')::text
+    || ' ' || private.role_holds(pg_temp.d(), 'worker', 'lists.manage')::text
+    || ' ' || private.holds_perm(pg_temp.d(), pg_temp.p(18), 'lists.fix')::text
+    || ' ' || private.holds_perm(pg_temp.d(), pg_temp.p(18), 'lists.manage')::text,
+  'false true | true false false true',
+  'workers given fixing at view are not beyond someone who runs the lists, whatever their rule for fixing, and still beyond a manager lowered on lists'
+);
+
+------------------------------------------------------------------------------
+-- A role's line, beside edit
 
 select is(
   private.area_holds('{"lists.fix": false, "lists.manage": true, "lists.send": false}'::jsonb)::text
@@ -545,83 +761,6 @@ select is(
   0,
   'the switch turned for the base of a named role that runs the lists tells its people nothing: their role holds it as before'
 );
-
-------------------------------------------------------------------------------
--- Managers lowered on lists before the key came
-
--- C's owner sends a list to the manager and one to the deputy, and each
--- closes theirs. 'Deputy' was lowered on lists in an earlier release: a
--- lists.manage denial of its own, and no rule for lists.fix (straight into
--- the rules, as the app wrote them then).
-insert into ids values ('manager list', public.send_list(pg_temp.p(10), pg_temp.c(),
-  jsonb_build_object(
-    'name', 'Manager list',
-    'recipient', jsonb_build_object('kind', 'person', 'user', pg_temp.p(12)),
-    'items', '[{"kind": "check", "label": "Spare", "required": false}]'::jsonb),
-  '2026-12-14 05:00+00'));
-insert into ids values ('deputy list', public.send_list(pg_temp.p(10), pg_temp.c(),
-  jsonb_build_object(
-    'name', 'Deputy list',
-    'recipient', jsonb_build_object('kind', 'person', 'user', pg_temp.p(13)),
-    'items', '[{"kind": "check", "label": "Spare", "required": false}]'::jsonb),
-  '2026-12-14 05:00+00'));
-select public.finish_list(pg_temp.p(12), pg_temp.id('manager list'), '2026-12-14 06:00+00');
-select public.finish_list(pg_temp.p(13), pg_temp.id('deputy list'), '2026-12-14 06:00+00');
-insert into public.role_permissions (business_id, role, named_role, perm, allowed, granted_by)
-values (pg_temp.c(), 'manager', pg_temp.id('deputy'), 'lists.manage', false, pg_temp.p(10));
-
-select is(
-  private.holds_perm(pg_temp.c(), pg_temp.p(13), 'lists.fix')::text,
-  'true',
-  'without the backfill, a role named on managers and lowered on lists would hold lists.fix by the key''s default'
-);
-select is(private.backfill_lists_fix_denials(), 1, 'the backfill denies it to that role');
-select is(
-  private.holds_perm(pg_temp.c(), pg_temp.p(13), 'lists.fix')::text
-    || ' ' || private.holds_perm(pg_temp.c(), pg_temp.p(12), 'lists.fix')::text
-    || ' ' || pg_temp.check_fix(13, 'deputy list', 'Spare', true, '2026-12-14 07:00+00'),
-  'false true 42501/-',
-  'so the deputy doesn''t fix the list they hold, and managers, not lowered, still hold the key'
-);
-
--- Then managers themselves, lowered on lists in an earlier release.
-insert into public.role_permissions (business_id, role, named_role, perm, allowed, granted_by)
-values (pg_temp.c(), 'manager', null, 'lists.manage', false, pg_temp.p(10));
-select is(
-  private.holds_perm(pg_temp.c(), pg_temp.p(12), 'lists.fix')::text,
-  'true',
-  'without the backfill, managers lowered on lists would hold lists.fix by the key''s default'
-);
-select is(
-  private.backfill_lists_fix_denials(),
-  1,
-  'the backfill denies it to managers, and adds nothing for the deputy, who has their own'
-);
-select is(
-  private.holds_perm(pg_temp.c(), pg_temp.p(12), 'lists.fix')::text
-    || ' ' || private.holds_perm(pg_temp.c(), pg_temp.p(13), 'lists.fix')::text
-    || ' ' || pg_temp.check_fix(12, 'manager list', 'Spare', true, '2026-12-14 07:00+00'),
-  'false false 42501/-',
-  'so a manager doesn''t fix the list they hold either'
-);
-select is(
-  (select string_agg(rp.role::text || ':' || coalesce(br.name, '-') || ':' || rp.allowed::text,
-     ',' order by br.name nulls first)
-   from public.role_permissions rp
-   left join public.business_roles br on br.id = rp.named_role
-   where rp.business_id = pg_temp.c() and rp.perm = 'lists.fix')
-    || ' | ' || private.role_holds(pg_temp.c(), 'manager', 'lists.fix')::text
-    || ' ' || private.role_holds(pg_temp.c(), 'manager', 'lists.fix', pg_temp.id('deputy'))::text
-    || ' | ' || (select count(*)::text from public.audit_log a
-                 where a.business_id = pg_temp.c() and a.action = 'role.permission'
-                   and a.details ->> 'role' = 'manager')
-    || ' ' || (select count(*)::text from public.notifications n
-               where n.business_id = pg_temp.c() and n.kind = 'role.changed'
-                 and n.user_id in (pg_temp.p(12), pg_temp.p(13))),
-  'manager:-:false,manager:Deputy:false | false false | 0 0',
-  'each is a denial of the role''s own, the roles screen draws it off, and nothing went to the log or to anyone'
-);
-select is(private.backfill_lists_fix_denials(), 0, 'and nothing twice');
 
 select * from finish();
 rollback;

@@ -436,18 +436,45 @@ function ListScreen({
     return () => clearTimeout(timer);
   }, [data.undoUntil, data.now]);
 
-  // The window of someone given lists.fix ends the same way (L6b-2): its
-  // line and "תיקון הרשימה" go. Being fixed by then, the next change is
-  // refused ("fixOver") and says why.
+  // The window of someone given lists.fix ends too (L6b-2): its line and
+  // "תיקון הרשימה" go. Being fixed by then, the next change is refused
+  // ("fixOver") and says why. Its end is put on this device's clock once
+  // per payload, from the server's (`now`), so a screen shown again from an
+  // old payload (back and forward, a route kept hidden) keeps the end it
+  // had, and it is checked again whenever the screen is shown, since a
+  // phone asleep holds its timers.
+  const fixEnd = useRef<{ payload: string; at: number } | null>(null);
   useEffect(() => {
     if (!data.fixUntil) return;
-    const left = Date.parse(data.fixUntil) - Date.parse(data.now);
-    // A timer holds up to about 24 days; the longest window is three.
-    const timer = setTimeout(
-      () => setFixOpen(false),
-      Math.min(Math.max(0, left), 2_147_483_647),
-    );
-    return () => clearTimeout(timer);
+    const payload = `${data.now} ${data.fixUntil}`;
+    let measured = fixEnd.current;
+    if (measured?.payload !== payload) {
+      measured = {
+        payload,
+        at: Date.now() + (Date.parse(data.fixUntil) - Date.parse(data.now)),
+      };
+      fixEnd.current = measured;
+    }
+    const end = measured.at;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const check = () => {
+      clearTimeout(timer);
+      const left = end - Date.now();
+      setFixOpen(left > 0);
+      // A timer holds up to about 24 days; the longest window is three.
+      if (left > 0) timer = setTimeout(check, Math.min(left, 2_147_483_647));
+    };
+    const onShow = () => {
+      if (document.visibilityState === "visible") check();
+    };
+    check();
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", check);
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("pageshow", check);
+    };
   }, [data.fixUntil, data.now]);
 
   const progress = listProgress(items);
@@ -468,15 +495,18 @@ function ListScreen({
   function fail(reason: ItemFailure) {
     refused.current += 1;
     // Closed meanwhile, opened again while it was fixed, moved on
-    // elsewhere, or past the window to fix it (L6b-2): show where it really
-    // stands, and say why from the frame, since the screen starts anew.
+    // elsewhere, past the window to fix it, or no longer theirs to fix
+    // (L6b-2): show where it really stands, and say why from the frame,
+    // since the screen starts anew.
     if (
       reason === "finished" ||
       reason === "noAccess" ||
       reason === "reopened" ||
-      reason === "fixOver"
+      reason === "fixOver" ||
+      reason === "fixNoAccess"
     ) {
-      // A fix ends with it: the list is filled now, or no longer theirs.
+      // A fix ends with it: the list is filled now, or no longer theirs to
+      // fix.
       setFixing(false);
       notify(failedWords(reason));
       router.refresh();
@@ -897,9 +927,13 @@ function ListScreen({
         return;
       }
       previewFor(itemId, null);
-      // Opened again while it was fixed, or past the window to fix it
-      // (L6b-2): from here, as the frame says.
-      if (failure === "reopened" || failure === "fixOver") {
+      // Opened again while it was fixed, past the window to fix it, or no
+      // longer theirs to fix (L6b-2): from here, as the frame says.
+      if (
+        failure === "reopened" ||
+        failure === "fixOver" ||
+        failure === "fixNoAccess"
+      ) {
         fail(failure);
         return;
       }
@@ -947,7 +981,11 @@ function ListScreen({
     const result = await photoAnswer(() => actions.removePhoto(item.id, fix));
     busyWith(item.id, null);
     if (!result.ok) {
-      if (result.failure === "reopened" || result.failure === "fixOver") {
+      if (
+        result.failure === "reopened" ||
+        result.failure === "fixOver" ||
+        result.failure === "fixNoAccess"
+      ) {
         fail(result.failure);
         return;
       }
@@ -977,7 +1015,11 @@ function ListScreen({
     } else if (result.failure === "failed" || result.failure === "offline") {
       // It didn't get there: the row stays, saying so, and "ביטול" tries again.
       setPhotoUndo({ ...undo, failed: true });
-    } else if (result.failure === "reopened" || result.failure === "fixOver") {
+    } else if (
+      result.failure === "reopened" ||
+      result.failure === "fixOver" ||
+      result.failure === "fixNoAccess"
+    ) {
       setPhotoUndo(null);
       fail(result.failure);
     } else {

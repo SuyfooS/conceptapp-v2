@@ -1322,6 +1322,31 @@ describe("a switch at view (L6b-2)", () => {
     expect(heldBeyond(managers, senior, ["scheduling", "team"])).toEqual([]);
   });
 
+  it("is held by managers at edit whose own rule for it is off, as private.role_holds_beyond counts it", () => {
+    // Raised to edit before the key came: no row for it, and edit covers it.
+    const raisedBefore: RoleAccess = {
+      ...manager,
+      extras: { ...manager.extras, "lists.fix": false },
+    };
+    expect(heldBeyond(raisedBefore, senior, ACCESS_AREAS)).toEqual([]);
+    expect(heldBeyond(raisedBefore, worker, ACCESS_AREAS)).toEqual([]);
+    // Workers at edit hold it by their rows: the raise writes it.
+    expect(
+      heldBeyond(raisedBefore, withLevel(worker, "lists", "edit"), ["lists"]),
+    ).toEqual([]);
+    // At view without it, managers still don't hold it.
+    const lowered: RoleAccess = {
+      ...raisedBefore,
+      levels: { ...raisedBefore.levels, lists: "view" },
+      extras: { ...raisedBefore.extras, "lists.send": false },
+    };
+    expect(heldBeyond(lowered, senior, ACCESS_AREAS)).toEqual(["lists"]);
+    expect(heldBeyond(lowered, worker, ACCESS_AREAS)).toEqual([]);
+    expect(
+      heldBeyond(withExtra(lowered, "lists.fix", true), senior, ACCESS_AREAS),
+    ).toEqual([]);
+  });
+
   it("is drawn from what the database says a role holds", () => {
     expect(accessFromHeld((key) => key === "lists.fix")).toEqual(senior);
     // Raised before it came: no row, and edit covers it.

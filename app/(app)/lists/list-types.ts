@@ -255,9 +255,16 @@ export type ListFailure =
  * a required item of a closed list is changed, never emptied
  * ("keepRequired"), and a list opened again meanwhile is filled, not fixed
  * ("reopened"); and (L6b-2) the business's window for someone given "תיקון
- * רשימות שנסגרו" is over ("fixOver").
+ * רשימות שנסגרו" is over ("fixOver"), or the database no longer lets them
+ * fix it at all ("fixNoAccess": the switch or running the lists taken away,
+ * the list moved away), while the list may still reach them.
  */
-export type ItemFailure = ListFailure | "keepRequired" | "reopened" | "fixOver";
+export type ItemFailure =
+  | ListFailure
+  | "keepRequired"
+  | "reopened"
+  | "fixOver"
+  | "fixNoAccess";
 
 /** A write's answer; `F` is why it can be refused (an item's, with a fix's). */
 export type ListActionResult<T = null, F extends string = ListFailure> =
