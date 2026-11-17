@@ -3,10 +3,11 @@
 -- when it began; leaving ends an open break, and a manager's correction keeps
 -- breaks inside the entry. A person can take back leaving for two minutes. No
 -- punch code is asked for unless the business turned it on. People read their
--- own breaks, managers the business's, other businesses nothing. Every call
--- passes the time so the test does not depend on today.
+-- own breaks, managers the business's, other businesses nothing. A removed
+-- break has ended and makes way for live ones. Every call passes the time so
+-- the test does not depend on today.
 begin;
-select plan(39);
+select plan(43);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -269,6 +270,41 @@ select lives_ok(
     '2026-11-11 06:30+00', '2026-11-11 14:30+00', 'The day before', '2026-11-12 20:02+00')$$,
     (select id from ids where name = 'c2')),
   'a shift moves to another date, with its breaks kept'
+);
+-- A removed break (20261117000300_break_edits.sql) has always ended, names
+-- who removed it only with when, and makes way: only live breaks never
+-- overlap, so two still can't be open at once (above).
+select throws_ok(
+  format($$insert into public.time_breaks (entry_id, business_id, user_id, started_at, unpaid,
+      removed_at, removed_by)
+    values (%L, '69000000-0000-4000-b000-000000000001', '69000000-0000-4000-a000-00000000000d',
+      '2026-11-11 12:00+00', true, '2026-11-12 20:03+00', '69000000-0000-4000-a000-00000000000b')$$,
+    (select id from ids where name = 'c2')),
+  '23514', null, 'a removed break has always ended'
+);
+select throws_ok(
+  format($$insert into public.time_breaks (entry_id, business_id, user_id, started_at, ended_at,
+      unpaid, removed_by)
+    values (%L, '69000000-0000-4000-b000-000000000001', '69000000-0000-4000-a000-00000000000d',
+      '2026-11-11 12:00+00', '2026-11-11 12:30+00', true, '69000000-0000-4000-a000-00000000000b')$$,
+    (select id from ids where name = 'c2')),
+  '23514', null, 'and only a removed break names who removed it'
+);
+select lives_ok(
+  format($$insert into public.time_breaks (entry_id, business_id, user_id, started_at, ended_at,
+      unpaid, removed_at, removed_by)
+    values (%L, '69000000-0000-4000-b000-000000000001', '69000000-0000-4000-a000-00000000000d',
+      '2026-11-11 10:40+00', '2026-11-11 11:05+00', true, '2026-11-12 20:03+00',
+      '69000000-0000-4000-a000-00000000000b')$$,
+    (select id from ids where name = 'c2')),
+  'a removed break may share its time with a live one'
+);
+select throws_ok(
+  format($$insert into public.time_breaks (entry_id, business_id, user_id, started_at, ended_at, unpaid)
+    values (%L, '69000000-0000-4000-b000-000000000001', '69000000-0000-4000-a000-00000000000d',
+      '2026-11-11 10:45+00', '2026-11-11 11:05+00', true)$$,
+    (select id from ids where name = 'c2')),
+  '23P01', null, 'while two live ones still never do'
 );
 -- Hours are kept (20261110000100_hours_kept.sql): only a purge that names the
 -- business deletes them, breaks first, since an entry with breaks can't go.

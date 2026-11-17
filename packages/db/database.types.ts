@@ -2790,6 +2790,8 @@ export type Database = {
           ended_at: string | null;
           entry_id: string;
           id: string;
+          removed_at: string | null;
+          removed_by: string | null;
           started_at: string;
           unpaid: boolean;
           user_id: string;
@@ -2800,6 +2802,8 @@ export type Database = {
           ended_at?: string | null;
           entry_id: string;
           id?: string;
+          removed_at?: string | null;
+          removed_by?: string | null;
           started_at: string;
           unpaid: boolean;
           user_id: string;
@@ -2810,6 +2814,8 @@ export type Database = {
           ended_at?: string | null;
           entry_id?: string;
           id?: string;
+          removed_at?: string | null;
+          removed_by?: string | null;
           started_at?: string;
           unpaid?: boolean;
           user_id?: string;
@@ -2827,6 +2833,13 @@ export type Database = {
             columns: ["entry_id"];
             isOneToOne: false;
             referencedRelation: "time_entries";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "time_breaks_removed_by_fkey";
+            columns: ["removed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
           {
@@ -3020,6 +3033,17 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
+      add_time_break: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          entry: string;
+          new_end: string;
+          new_start: string;
+          note: string;
+        };
+        Returns: string;
+      };
       add_time_entry: {
         Args: {
           actor: string;
@@ -3103,6 +3127,17 @@ export type Database = {
       };
       cancel_unstarted_list: {
         Args: { actor: string; at_time?: string; list: string };
+        Returns: undefined;
+      };
+      change_time_break: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          new_end: string;
+          new_start: string;
+          note: string;
+          time_break: string;
+        };
         Returns: undefined;
       };
       chat_files_closed: { Args: { business: string }; Returns: boolean };
@@ -3514,6 +3549,15 @@ export type Database = {
         Args: { actor: string; device?: string; push_endpoint?: string };
         Returns: boolean;
       };
+      remove_time_break: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          note: string;
+          time_break: string;
+        };
+        Returns: undefined;
+      };
       rename_business_role: {
         Args: {
           actor: string;
@@ -3591,6 +3635,10 @@ export type Database = {
       };
       restore_list_template: {
         Args: { actor: string; template: string };
+        Returns: undefined;
+      };
+      restore_time_break: {
+        Args: { actor: string; at_time?: string; time_break: string };
         Returns: undefined;
       };
       restore_time_entry: {

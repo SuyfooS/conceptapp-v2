@@ -4,10 +4,10 @@
 -- breaks, which the log keeps. Deleting a person or a business with hours fails;
 -- someone who only acted can still go, their log rows kept without them. The log
 -- changes only that way. Corrections and added shifts need a reason, which the
--- log keeps. A cancelled shift is kept the same. Every call passes the time so
--- the test does not depend on today.
+-- log keeps. A cancelled shift is kept the same, and so is a removed break.
+-- Every call passes the time so the test does not depend on today.
 begin;
-select plan(40);
+select plan(42);
 
 -- Before anything sets them: a session that never named the settings reads
 -- them as NULL, which the guard must treat as "no".
@@ -349,6 +349,27 @@ select is(
    where e.id = (select id from ids where name = 'punched')),
   'true/true',
   'with the shift and its break open again'
+);
+
+------------------------------------------------------------------------------
+-- A removed break is no delete (20261117000300_break_edits.sql)
+
+-- c's first break of 5 November, 10:30–11:00 since the shift moved.
+set local role service_role;
+select public.remove_time_break('76000000-0000-4000-a000-00000000000b',
+  '76000000-0000-4000-e000-0000000000b5', 'Pressed by mistake', '2026-11-06 09:00+00');
+reset role;
+select is(
+  (select count(*)::integer || '/' || min(to_char(b.started_at at time zone 'UTC', 'HH24:MI'))
+     || '-' || min(to_char(b.ended_at at time zone 'UTC', 'HH24:MI')) || '/' || min(b.removed_by::text)
+   from public.time_breaks b where b.id = '76000000-0000-4000-e000-0000000000b5'),
+  '1/10:30-11:00/76000000-0000-4000-a000-00000000000b',
+  'a removed break stays, with its times and who removed it'
+);
+select throws_ok(
+  $$delete from public.time_breaks where id = '76000000-0000-4000-e000-0000000000b5'$$,
+  '42501', 'Breaks are kept: nothing deletes them',
+  'and nothing deletes it either'
 );
 
 ------------------------------------------------------------------------------

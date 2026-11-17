@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(40);
+select plan(41);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -297,6 +297,13 @@ insert into public.time_entries (id, business_id, user_id, clock_in, clock_out,
 values ('6d000000-0000-4000-e000-000000000002', '6d000000-0000-4000-b000-000000000001',
   '6d000000-0000-4000-a000-00000000000d', '2027-02-15 06:00+00', '2027-02-15 07:00+00',
   '2027-02-15 08:00+00', '6d000000-0000-4000-a000-00000000000b', 'Wrong person');
+-- A removed break of it (20261117000300_break_edits.sql), kept the same.
+insert into public.time_breaks (id, entry_id, business_id, user_id, started_at, ended_at, unpaid,
+  removed_at, removed_by)
+values ('6d000000-0000-4000-e000-0000000000b2', '6d000000-0000-4000-e000-000000000002',
+  '6d000000-0000-4000-b000-000000000001', '6d000000-0000-4000-a000-00000000000d',
+  '2027-02-15 06:15+00', '2027-02-15 06:30+00', true,
+  '2027-02-15 07:30+00', '6d000000-0000-4000-a000-00000000000b');
 
 set local role service_role;
 select lives_ok(
@@ -309,6 +316,12 @@ select is(
    where id = '6d000000-0000-4000-e000-000000000002'),
   0,
   'a cancelled shift goes with them'
+);
+select is(
+  (select count(*)::integer from public.time_breaks
+   where id = '6d000000-0000-4000-e000-0000000000b2'),
+  0,
+  'and a removed break'
 );
 select is(
   (select count(*)::integer from public.time_entries

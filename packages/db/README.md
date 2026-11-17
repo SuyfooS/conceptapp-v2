@@ -1718,6 +1718,49 @@ hours (`time_breaks.test.sql` writes a break directly as it). Nothing in the
 app calls the two yet. Covered by `cancelled_shifts.test.sql`, with
 `time_clock.test.sql`, `hours_kept.test.sql` and `demo_reset.test.sql`.
 
+Break edits (`20261117000300_break_edits.sql`, the clock plan's PR2). A
+shift's breaks are fixed one at a time, and a break is marked removed, never
+deleted: `time_breaks` keeps `removed_at` and `removed_by` (`on delete set
+null`, its time kept, as `confirmed_by`), and a removed break has always ended
+(a check), so whatever looks for an open break (`start_break`, `end_break`, a
+clock-out's fit) never meets one. `time_breaks_no_overlap`, the same name and
+still deferrable, holds for live breaks only (`where removed_at is null`): the
+right break goes over a removed one. `public.add_time_break(actor, entry,
+new_start, new_end, note, at_time)`, which returns the new break's id,
+`public.change_time_break(actor, time_break, new_start, new_end, note,
+at_time)` and `public.remove_time_break(actor, time_break, note, at_time)`,
+with the secret key for `actor`, take the access of a cancel (42501 "Managers
+and owners only"; 42501 "Only an owner cancels or changes your own hours";
+P0002 "Unknown entry" or "Unknown break"), never a cancelled shift (55000 "The
+shift is cancelled") and always a reason (22023 "A break edit needs its
+reason"). `private.check_break_fits` asks for both times (22023 "A break needs
+its start and end"), the end after the start ("A break must end after it
+starts"), nothing in the future ("A break cannot be in the future") and a
+break inside its shift, up to now while it is open ("A break must be inside
+its shift", hint `break_outside`); a live break over another is the
+constraint's (23P01). A break still running is neither changed nor removed
+(55000 "The break has not ended", hint `break_open`), nor is a removed one
+(55000 "The break is removed"). A new break is paid or not by the setting now,
+as `start_break`'s; a changed one keeps its `unpaid`.
+`public.restore_time_break(actor, time_break, at_time)` takes a removal back,
+with no reason: a removed break (55000 "The break is not removed" otherwise),
+by whoever removed it, within ten minutes (55000 "Too late to bring it back",
+hint `too_late`), as it was, and only while it still fits its shift (22023)
+beside the live breaks (23P01). Each locks the shift, then the break, and
+stamps the shift's `edited_by`, `edited_at` and `note` (a restore,
+`edited_at` only), so it reads as corrected and `undo_clock_out` refuses it.
+Each logs `clock.break_edit` `{entry, person, clock_in, break, change (add,
+change, remove or restore), from, to (each {start, end} or null), unpaid,
+note (but a restore's)}`, with `closed_month` only for an unpaid break of a
+closed month, which then tells its closer and the accountants
+(`pay.after_close`, `private.notify_for_payroll` and its trigger). A removed
+break keeps its times: `private.fit_breaks_to_entry` moves, cuts and deletes
+live breaks only, `undo_clock_out` and `restore_time_entry` open live ones
+again only, and `cancel_time_entry`'s `breaks_after_day` asks about live ones
+only. Nothing in the app calls the four yet. Covered by
+`break_edits.test.sql`, with `time_breaks.test.sql`, `hours_kept.test.sql` and
+`demo_reset.test.sql`.
+
 Chat (`20261111000100_chat_module.sql`, `20261111000200_chat.sql`, chat C1), in
 the database first, with the module off everywhere until C2 (below). `public.chat_conversations`
 holds a business's chats: its team's group (made with the business, by the
