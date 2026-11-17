@@ -32,6 +32,7 @@ import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
 import { GROUP_ICONS } from "./group-icons";
 import { InboxOpen, InboxRow, ReadAllButton } from "./inbox-row";
+import { outOfRangeTitle } from "./range-words";
 import { roleChangeWords } from "./role-change-words";
 import { NotificationSettingsLink } from "./settings-link";
 
@@ -517,31 +518,14 @@ export function InboxView({
             };
       }
       case "lists.out_of_range": {
+        const said = outOfRangeTitle(line, settled, wording);
         // Read again inside its range: nothing waits on it now, and the
         // reading that was outside is no news.
-        if (settled && line.backInRange) {
-          return {
-            title: line.label
-              ? t("kinds.lists.out_of_range.settledTitle", {
-                  name: line.name,
-                  label: line.label,
-                })
-              : t("kinds.lists.out_of_range.settledTitleNoLabel", {
-                  name: line.name,
-                }),
-            shift: null,
-            notes: [],
-          };
-        }
+        if (said.back) return { title: said.title, shift: null, notes: [] };
         // The reading and its range, with a real minus sign, when it kept them.
         const range = line.reading ? numberRange(line.reading) : null;
         return {
-          title: line.label
-            ? t("kinds.lists.out_of_range.title", {
-                name: line.name,
-                label: line.label,
-              })
-            : t("kinds.lists.out_of_range.titleNoLabel", { name: line.name }),
+          title: said.title,
           shift: null,
           notes:
             line.reading && range

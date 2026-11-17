@@ -24,7 +24,11 @@
 --   again       a reading outside again writes lists.out_of_range as before
 --               (it was inside), and private.notify realerts the settled
 --               line: unread, open, on the phone again, and its params the
---               new facts, without the mark.
+--               new facts, without the mark. notify leaves out whoever read
+--               it outside, so the mark is taken off every line of the item
+--               there too: someone who runs the lists and read it outside
+--               themselves keeps their settled line, which no longer says
+--               the reading is back.
 --   nothing     no new log row or key: the item's history already says
 --   more        who read it again (list_item_changes), and a fix's
 --               lists.fix row what it was and what it is. Lines left open
@@ -249,6 +253,14 @@ begin
         'unit', it.unit
       )
     );
+    -- The line no longer says the reading is back in range. private.notify
+    -- realerts it with new facts for those it tells, but leaves out whoever
+    -- read it outside, so their own settled line loses the mark here.
+    update public.notifications n
+    set params = n.params - 'backInRange'
+    where n.business_id = l.business_id
+      and n.dedupe_key = 'list.range:' || it.id
+      and n.params ? 'backInRange';
   end if;
 
   -- Back inside its range: the line about it is settled for everyone it
@@ -256,7 +268,8 @@ begin
   -- earlier read kept, and off the phone if not sent yet), and marked
   -- backInRange, so the inbox says why (Orel, 17 November 2026). Filling or
   -- fixing alike. A reading emptied leaves the line; one outside again opens
-  -- it again (private.notify realerts it with new facts, without the mark).
+  -- it again (private.notify realerts it with new facts) and takes the mark
+  -- off every line of the item (above).
   if it.kind = 'number'
     and (it.min_value is not null or it.max_value is not null)
     and new_reading is not null

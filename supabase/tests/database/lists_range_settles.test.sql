@@ -5,10 +5,11 @@
 -- everyone it reached: read (an earlier read kept), settled, and its push
 -- skipped while still queued, marked backInRange for the inbox's words. A
 -- reading emptied leaves the line; one outside again opens it again, unread,
--- queued for the phone and without the mark. Both edges of a range are
--- inside it. Only that item's line moves, and nothing new is logged. Fixed ids (b4…), numbers
--- (050-055-xxxx) and times (11 January 2027), so nothing here meets the seed
--- or another test, or the real clock.
+-- queued for the phone and without the mark, and takes the mark off the line
+-- of whoever read it outside too (they aren't told). Both edges of a range
+-- are inside it. Only that item's line moves, and nothing new is logged.
+-- Fixed ids (b4…), numbers (050-055-xxxx) and times (11 January 2027), so
+-- nothing here meets the seed or another test, or the real clock.
 begin;
 select plan(16);
 
@@ -214,15 +215,15 @@ select public.fix_list_item(pg_temp.p(2), pg_temp.item_of('morning', 'Fridge'),
   '{"reading": 7}', '2027-01-11 07:00+00');
 select is(
   pg_temp.lines('Fridge'),
-  '1: open unread queued | 2: settled 06:26 read 06:26 skipped back',
-  'a fix outside its range opens the owner''s line again, and the fixer is not told'
+  '1: open unread queued | 2: settled 06:26 read 06:26 skipped',
+  'a fix outside its range opens the owner''s line again; the fixer is not told, and their own line no longer says the reading is back'
 );
 
 select public.fix_list_item(pg_temp.p(1), pg_temp.item_of('morning', 'Fridge'),
   '{"reading": 2}', '2027-01-11 07:05+00');
 select is(
   pg_temp.lines('Fridge'),
-  '1: settled 07:05 read 07:05 skipped back | 2: settled 06:26 read 06:26 skipped back',
+  '1: settled 07:05 read 07:05 skipped back | 2: settled 06:26 read 06:26 skipped',
   'a fix back inside it settles the line, the fixer''s own too, and leaves a settled one as it was'
 );
 
