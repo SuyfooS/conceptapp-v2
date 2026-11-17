@@ -6,7 +6,9 @@
 -- reads it. A cancelled shift makes way for the right one, which it then
 -- can't come back over. An open one is ended by its cancel (a day after it
 -- began at most, its break cut there and logged), the person clocks in
--- again, and it comes back open with its break once nothing else is open.
+-- again, and it comes back open with its break once nothing else is open,
+-- only while they are on the staff. One with a break after its first day is
+-- corrected first.
 -- Corrections, confirmations and taking a clock-out back refuse a cancelled
 -- shift. The log keeps each cancel and restore, one in a closed month tells
 -- its closer and the accountants, the shift's lines settle and its
@@ -14,7 +16,7 @@
 -- Fixed ids (b5…), numbers (050-056-xxxx) and times (February 2027), so
 -- nothing here meets the seed or another test, or the real clock.
 begin;
-select plan(45);
+select plan(49);
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('b5000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -373,7 +375,7 @@ select is(
 );
 
 ------------------------------------------------------------------------------
--- A shift left open more than a day (3)
+-- A shift left open more than a day (7)
 
 -- 3 clocks in on 6 February at 06:00, goes on a break 23.5 hours later and
 -- never clocks out. The line to those who edit the clock is written as the
@@ -416,6 +418,59 @@ select is(
   'p1 settled read, p2 settled read',
   'its line to those who edit the clock settles'
 );
+
+-- The manager takes the cancel back at once: the shift is as it was.
+set local role service_role;
+select public.restore_time_entry(pg_temp.p(2), pg_temp.id('long'), '2027-02-07 09:01+00');
+reset role;
+select is(
+  pg_temp.state('long'),
+  '06 06:00-open out:- live restored 07 09:01 breaks:07 05:30-open',
+  'brought back, it is open again with the break the cancel ended, as it was'
+);
+
+-- 3 ends that break at 09:03, after the shift's first day. A cancel would
+-- cut it there, and so is refused until the shift's end is corrected; the
+-- manager corrects it, and then cancels it.
+set local role service_role;
+select public.end_break(pg_temp.p(3), pg_temp.a(), '2027-02-07 09:03+00');
+select throws_ok(
+  $$select public.cancel_time_entry(pg_temp.p(2), pg_temp.id('long'), 'Never came in',
+    '2027-02-07 09:05+00')$$,
+  '55000', 'The shift has breaks after its first day',
+  'a shift with a break after its first day is not cancelled while open: its end is corrected first'
+);
+select public.correct_time_entry(pg_temp.p(2), pg_temp.id('long'),
+  '2027-02-06 06:00+00', '2027-02-07 06:00+00', 'Forgot to clock out', '2027-02-07 09:06+00');
+select public.cancel_time_entry(pg_temp.p(2), pg_temp.id('long'), 'Never came in',
+  '2027-02-07 09:07+00');
+reset role;
+select is(
+  pg_temp.state('long'),
+  '06 06:00-07 06:00 out:manager cancelled 07 09:07 by p2: Never came in breaks:07 05:30-07 06:00',
+  'corrected, then cancelled: closed, its break as the correction left it'
+);
+
+-- 3 clocks in again on 12 February and the manager cancels it at once; 3
+-- then leaves the staff. A shift the cancel ended doesn't come back open
+-- for someone who left: they are never at work.
+set local role service_role;
+insert into ids values ('late',
+  public.clock_in(pg_temp.p(3), pg_temp.a(), null, '2027-02-12 06:00+00', null, true));
+select public.cancel_time_entry(pg_temp.p(2), pg_temp.id('late'), 'Clocked in by mistake',
+  '2027-02-12 06:10+00');
+reset role;
+update public.memberships m set active = false
+where m.business_id = pg_temp.a() and m.user_id = pg_temp.p(3);
+set local role service_role;
+select throws_ok(
+  $$select public.restore_time_entry(pg_temp.p(2), pg_temp.id('late'), '2027-02-12 07:00+00')$$,
+  '55000', 'The person is no longer on the staff',
+  'a shift the cancel ended comes back open only for someone on the staff'
+);
+reset role;
+update public.memberships m set active = true
+where m.business_id = pg_temp.a() and m.user_id = pg_temp.p(3);
 
 ------------------------------------------------------------------------------
 -- A shift of a closed month (6)
@@ -472,7 +527,7 @@ select is(
 
 -- 7, B's owner, cancels B's only shift of February. On 2 March, A's February
 -- holds three live shifts: the owner's, the right one and 5's, open again
--- and waiting; the other five are cancelled.
+-- and waiting; the others are cancelled.
 set local role service_role;
 select public.cancel_time_entry(pg_temp.p(7), pg_temp.id('b7'), 'Test shift',
   '2027-02-11 09:00+00');

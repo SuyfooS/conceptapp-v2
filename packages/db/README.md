@@ -1691,11 +1691,17 @@ cancel needs its reason") and a shift not cancelled already (55000 "The shift
 is cancelled"); one still open is ended by it, at `at_time` or a day after it
 began, whichever is first (`out_proof` 'manager', `cancelled_open`), under
 `ca.correcting`, so a break it ends or cuts writes `clock.break_fit` as a
-correction's does. It logs `clock.cancel` `{entry, person, clock_in,
+correction's does. A shift still open with a break starting, or ending, at
+or after that end (a break after its first day) is refused (55000 "The shift
+has breaks after its first day", hint `breaks_after_day`): its end is
+corrected first, so a cancel never cuts or loses a break it can't give back.
+It logs `clock.cancel` `{entry, person, clock_in,
 clock_out (null when open), ended_at (when open), note}`. A restore takes a
 cancelled shift (55000 "The shift is not cancelled" otherwise) and no reason,
-opens again one the cancel ended, with the break it ended (as
-`undo_clock_out`), sets `restored_at`, and is refused by the constraint
+opens again one the cancel ended, with the break it ended (the only one ending
+at the cancel's end), only for someone on the staff now (55000 "The person
+is no longer on the staff", hint `not_on_staff`: whoever left is never at
+work), sets `restored_at`, and is refused by the constraint
 (23P01) over a live shift of the same person, an open one included; it logs
 `clock.restore` `{entry, person, clock_in, clock_out, reopened}`. Both add
 `closed_month` when the shift's day by the business's clock is in a closed

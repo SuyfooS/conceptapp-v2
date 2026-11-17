@@ -19,6 +19,10 @@
 --               whether someone is at work (`clock_out is null`: clock_in,
 --               clock_out, the breaks, the team's guards, the reminders) is
 --               right without a change, and the person can clock in again.
+--               One with a break starting or ending at or after that end (a
+--               break after its first day) is refused (55000, hint
+--               'breaks_after_day'): its end is corrected first, so a cancel
+--               never cuts or loses a break that a restore couldn't give back.
 --   overlap     time_entries_no_overlap, the same name, counts live shifts
 --               only: the right shift can be added over a cancelled one.
 --               Bringing one back over a live one of the same person is then
@@ -35,8 +39,10 @@
 --               business's clock is in a closed month, as a correction is.
 --   restoring   public.restore_time_entry(actor, entry, at_time): the same
 --               rules, a cancelled shift (55000 otherwise) and no reason. One
---               the cancel ended is open again, with the break it ended, as
---               undo_clock_out reopens them. restored_at keeps when. Logged
+--               the cancel ended is open again, with the break it ended (the
+--               only one ending at the cancel's end), and only for someone on
+--               the staff now (55000, hint 'not_on_staff'): whoever left it
+--               is never at work. restored_at keeps when. Logged
 --               clock.restore {entry, person, clock_in, clock_out, reopened},
 --               with closed_month as above.
 --   guards      correct_time_entry, confirm_time_entry and undo_clock_out
@@ -158,6 +164,21 @@ begin
     ended := least(at_time, e.clock_in + interval '24 hours');
     perform private.check_entry_times(e.clock_in, ended, at_time);
 
+    -- A shift left open past its first day ends where that day does. A
+    -- break taken after it (a break has no day's limit) would be cut or
+    -- lost by that end, and bringing the shift back couldn't return it, so
+    -- the shift's end is corrected first (correct_time_entry, which logs
+    -- what that does to its breaks). With nothing ending at or after the
+    -- end, the only break ending there is the one this cancel ends.
+    if exists (
+      select 1 from public.time_breaks b
+      where b.entry_id = entry
+        and (b.started_at >= ended or b.ended_at >= ended)
+    ) then
+      raise exception 'The shift has breaks after its first day'
+        using errcode = '55000', hint = 'breaks_after_day';
+    end if;
+
     perform set_config('ca.correcting', actor::text, true);
     update public.time_entries
     set clock_out = ended,
@@ -239,6 +260,21 @@ begin
   end if;
 
   if e.cancelled_open then
+    -- Open again only for someone on the staff now: whoever left it, or
+    -- moved off it, is never at work (remove_member, set_member_role and
+    -- claim_invite refuse while someone is clocked in), and couldn't clock
+    -- out.
+    if not exists (
+      select 1 from public.memberships m
+      where m.business_id = e.business_id
+        and m.user_id = e.user_id
+        and m.active
+        and private.is_staff_role(m.role)
+    ) then
+      raise exception 'The person is no longer on the staff'
+        using errcode = '55000', hint = 'not_on_staff';
+    end if;
+
     update public.time_entries
     set clock_out = null,
       out_proof = null,
@@ -249,8 +285,10 @@ begin
       restored_at = at_time
     where id = entry;
 
-    -- The break the cancel ended is open again. It can't overlap another:
-    -- nothing in the entry starts after the cancel's end.
+    -- The break the cancel ended is open again: the only one ending at the
+    -- cancel's end, since the cancel refuses a shift with a break ending at
+    -- or after it, or starting after it. It can't overlap another, and
+    -- nothing changes a cancelled shift's breaks meanwhile.
     update public.time_breaks b
     set ended_at = null
     where b.entry_id = entry and b.ended_at = e.clock_out;
