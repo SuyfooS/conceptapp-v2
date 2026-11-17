@@ -133,6 +133,8 @@ function Readings({
                       })}
                     </>
                   ) : null}
+                  {/* Fixed after its list closed (L6b-1). */}
+                  {r.fixed ? <> · {tl("readings.fixed")}</> : null}
                 </>
               }
             />
@@ -143,17 +145,22 @@ function Readings({
   );
 }
 
-/** The week's readings: phone and tablet a card per item, desktop a table. */
+/**
+ * The week's readings: phone and tablet a card per item, desktop a table. A
+ * reading fixed after its list closed (L6b-1) says so under it.
+ */
 function WeekReadingsView({
   rows,
   week,
   t,
+  tl,
   dayName,
   wide,
 }: {
   rows: readonly WeekReadings[];
   week: readonly string[];
   t: T;
+  tl: Translator<"app.lists.list">;
   dayName: (day: string) => string;
   wide: boolean;
 }) {
@@ -161,11 +168,18 @@ function WeekReadingsView({
   const cell = (row: WeekReadings, day: string) => {
     const value = row.days[day];
     return value ? (
-      <span
-        dir="ltr"
-        className={cn(value.outOfRange && "font-semibold text-warning")}
-      >
-        {readingText(value.reading, row.unit)}
+      // Each line as wide as its words, at the cell's start, so the reading
+      // reads left to right where it always stood.
+      <span className="flex flex-col items-start">
+        <span
+          dir="ltr"
+          className={cn(value.outOfRange && "font-semibold text-warning")}
+        >
+          {readingText(value.reading, row.unit)}
+        </span>
+        {value.fixed ? (
+          <span className="text-ink-2 text-sm">{tl("readings.fixed")}</span>
+        ) : null}
       </span>
     ) : (
       <span className="text-ink-2">
@@ -332,6 +346,7 @@ export function ListsTodayView({
       rows={data.weekReadings}
       week={data.week}
       t={t}
+      tl={tl}
       dayName={dayName}
       wide={wide}
     />

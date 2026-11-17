@@ -2,6 +2,7 @@ import type { ListReading } from "@db/lists";
 import { addDays, dateIn } from "@domain/availability";
 import {
   byUrgency,
+  fixedAfterClose,
   type ListSummary,
   type ListTemplate,
   listState,
@@ -105,6 +106,8 @@ export function listsTodayData({
               doneAt: r.doneAt,
               doneBy: r.doneBy,
               outOfRange: r.outOfRange,
+              // Fixed after its list closed (L6b-1), while the list says so.
+              fixed: fixedAfterClose(r.fixedAt, list),
             },
           ];
     })
@@ -129,8 +132,12 @@ export function listsTodayData({
       max: r.max,
       days: Object.fromEntries(week.map((d) => [d, null])),
     };
-    // The last reading of a day stands for it.
-    row.days[dayOf(list)] = { reading: r.reading, outOfRange: r.outOfRange };
+    // The last reading of a day stands for it, fixed or not (L6b-1).
+    row.days[dayOf(list)] = {
+      reading: r.reading,
+      outOfRange: r.outOfRange,
+      fixed: fixedAfterClose(r.fixedAt, list),
+    };
     rows.set(key, row);
   }
 

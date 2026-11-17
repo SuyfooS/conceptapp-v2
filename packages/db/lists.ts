@@ -39,7 +39,15 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "./database.types";
 import {
+  type DatabaseRefusal,
+  type ItemFailure,
+  itemFailureOf,
+  type ListFailure,
+  listFailureOf,
+} from "./list-failures";
+import {
   CHANGE_COLUMNS,
+  CHANGE_COLUMNS_BEFORE_FIX,
   changesOf,
   REOPEN_COLUMNS,
   reopensOf,
@@ -59,27 +67,15 @@ import { createClient } from "./supabase/server";
  * migration hasn't reached yet ("notYet").
  */
 
-/** Why a write was refused, for the screens' words. */
-export type ListFailure =
-  /** Not theirs to do (42501), or nothing of theirs (P0002). */
-  | "noAccess"
-  /** A shape the database won't keep (22023). */
-  | "invalid"
-  /** Required items are left (23514). */
-  | "left"
-  /** Changed since it was read (40001). */
-  | "changed"
-  /** Closed: finished, cancelled, missed, or a removed template (55000). */
-  | "finished"
-  /** The migration isn't on this project yet. */
-  | "notYet"
-  | "failed";
+/** Why a write was refused, for the screens' words (@db/list-failures). */
+export type { ItemFailure, ListFailure } from "./list-failures";
 
-export type ListWrite<T> =
+/** A write's answer; `F` is why it can be refused (an item's, with a fix's). */
+export type ListWrite<T, F extends string = ListFailure> =
   | { ok: true; value: T }
   | {
       ok: false;
-      failure: ListFailure;
+      failure: F;
       /**
        * A template the database did save before what came after failed: its
        * id, so an editor that was making it takes it and never makes it
@@ -88,27 +84,10 @@ export type ListWrite<T> =
       saved?: string;
     };
 
-function failureOf(error: { code?: string; message: string }): ListFailure {
-  if (isMissingFunction(error)) return "notYet";
-  switch (error.code) {
-    case "42501":
-    case "P0002":
-      return "noAccess";
-    case "22023":
-      return "invalid";
-    case "23514":
-      return "left";
-    case "40001":
-      return "changed";
-    case "55000":
-      return "finished";
-    default:
-      console.error("a lists write failed", error.message);
-      return "failed";
-  }
-}
+const failureOf = (error: DatabaseRefusal) => listFailureOf(error);
 
-const refused = (failure: ListFailure) => ({ ok: false, failure }) as const;
+const refused = <F extends string>(failure: F) =>
+  ({ ok: false, failure }) as const;
 
 /** `at_time` for a write, when the caller says when it happened. */
 const atTime = (at?: Date) => (at ? { at_time: at.toISOString() } : {});
@@ -178,6 +157,28 @@ async function namedRolesOf(
   );
 }
 
+/**
+ * When each list was last fixed after it closed (`lists.fixed_at`, L6b-1),
+ * by the row's id, read with `query`: only the rows fixed. Read beside the
+ * rest, so a project without 20261116000300_lists_fix.sql reads none (none
+ * was fixed there) and every screen reads as before.
+ */
+async function fixedTimesOf(
+  query: PromiseLike<{
+    data: { id: string; fixed_at: string | null }[] | null;
+    error: { code?: string; message: string } | null;
+  }>,
+): Promise<Map<string, string>> {
+  const { data, error } = await query;
+  if (isMissingColumn(error)) return new Map();
+  if (error) throw error;
+  return new Map(
+    (data ?? []).flatMap((row): [string, string][] =>
+      row.fixed_at ? [[row.id, row.fixed_at]] : [],
+    ),
+  );
+}
+
 function holderOf(
   row: ListRow,
   people: readonly string[],
@@ -200,6 +201,7 @@ function summaryOf(
   people: readonly string[],
   progress: ListProgress,
   named?: string,
+  fixedAt?: string,
 ): ListSummary {
   return {
     id: row.id,
@@ -216,6 +218,7 @@ function summaryOf(
     finishedBy: row.finished_by,
     closedAt: row.closed_at,
     closedBy: row.closed_by,
+    fixedAt: fixedAt ?? null,
     progress,
   };
 }
@@ -223,8 +226,8 @@ function summaryOf(
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 /**
- * The people, the progress and the named roles (`namedRolesOf`) of these
- * lists, read under RLS.
+ * The people, the progress, the named roles (`namedRolesOf`) and the last
+ * fixes (`fixedTimesOf`) of these lists, read under RLS.
  */
 async function partsOf(
   supabase: Supabase,
@@ -234,14 +237,16 @@ async function partsOf(
       people: Map<string, string[]>;
       progress: Map<string, ListProgress>;
       named: Map<string, string>;
+      fixed: Map<string, string>;
     }
   | "notYet"
 > {
   const people = new Map<string, string[]>();
   const items = new Map<string, { required: boolean; done: boolean }[]>();
   let named = new Map<string, string>();
+  let fixed = new Map<string, string>();
   if (ids.length > 0) {
-    const [peopleRows, itemRows, namedRows] = await Promise.all([
+    const [peopleRows, itemRows, namedRows, fixedRows] = await Promise.all([
       supabase
         .from("list_people")
         .select("list_id, user_id")
@@ -257,8 +262,16 @@ async function partsOf(
           .in("id", [...ids])
           .not("recipient_named_role", "is", null),
       ),
+      fixedTimesOf(
+        supabase
+          .from("lists")
+          .select("id, fixed_at")
+          .in("id", [...ids])
+          .not("fixed_at", "is", null),
+      ),
     ]);
     named = namedRows;
+    fixed = fixedRows;
     for (const { error } of [peopleRows, itemRows]) {
       if (error) {
         if (isMissingTable(error)) return "notYet";
@@ -278,7 +291,7 @@ async function partsOf(
   const progress = new Map(
     ids.map((id) => [id, listProgress(items.get(id) ?? [])]),
   );
-  return { people, progress, named };
+  return { people, progress, named, fixed };
 }
 
 async function summaries(
@@ -296,6 +309,7 @@ async function summaries(
       parts.people.get(row.id) ?? [],
       parts.progress.get(row.id) ?? listProgress([]),
       parts.named.get(row.id),
+      parts.fixed.get(row.id),
     ),
   );
 }
@@ -431,17 +445,30 @@ const ITEM_COLUMNS =
   "id, template_item_id, kind, label, hint, required, unit, min_value, max_value, requested, given, checked, reading, answer, photo_path, comment, done, done_by, done_at";
 
 /**
- * A list's items in order, under RLS. When the photos' migration
- * (20261110001500_list_photos.sql) isn't on the project yet, read without
- * when a photo was removed: none was.
+ * A list's items in order, under RLS. When the fixes' migration
+ * (20261116000300_lists_fix.sql) isn't on the project yet, read without when
+ * each was last fixed: none was; when the photos' migration
+ * (20261110001500_list_photos.sql) isn't either, without when a photo was
+ * removed: none was.
  */
 async function itemRows(supabase: Supabase, listId: string) {
+  const withFixed = await supabase
+    .from("list_items")
+    .select(`${ITEM_COLUMNS}, photo_removed_at, fixed_at`)
+    .eq("list_id", listId)
+    .order("position");
+  if (!isMissingColumn(withFixed.error)) return withFixed;
   const withRemoved = await supabase
     .from("list_items")
     .select(`${ITEM_COLUMNS}, photo_removed_at`)
     .eq("list_id", listId)
     .order("position");
-  if (!isMissingColumn(withRemoved.error)) return withRemoved;
+  if (!isMissingColumn(withRemoved.error)) {
+    return {
+      ...withRemoved,
+      data: (withRemoved.data ?? []).map((row) => ({ ...row, fixed_at: null })),
+    };
+  }
   const without = await supabase
     .from("list_items")
     .select(ITEM_COLUMNS)
@@ -452,6 +479,7 @@ async function itemRows(supabase: Supabase, listId: string) {
     data: (without.data ?? []).map((row) => ({
       ...row,
       photo_removed_at: null,
+      fixed_at: null,
     })),
   };
 }
@@ -483,6 +511,36 @@ function historyRows<T>(read: {
 const HISTORY_ROWS = 900;
 
 /**
+ * A list's item changes, newest first, the newest `HISTORY_ROWS`, under RLS:
+ * with whether each was a fix after the close (L6b-1), or, where
+ * 20261116000300_lists_fix.sql hasn't reached the project yet, without (none
+ * was).
+ */
+async function changeRows(
+  supabase: Supabase,
+  listId: string,
+): Promise<{
+  data: unknown[] | null;
+  error: { code?: string; message: string } | null;
+}> {
+  const withFixed = await supabase
+    .from("list_item_changes")
+    .select(CHANGE_COLUMNS)
+    .eq("list_id", listId)
+    .order("changed_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(HISTORY_ROWS);
+  if (!isMissingColumn(withFixed.error)) return withFixed;
+  return await supabase
+    .from("list_item_changes")
+    .select(CHANGE_COLUMNS_BEFORE_FIX)
+    .eq("list_id", listId)
+    .order("changed_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(HISTORY_ROWS);
+}
+
+/**
  * What happened to a list's items, oldest first (those of one moment, the
  * demo seed's, as they were made), and the closes its reopens undid (L6a),
  * under RLS: the newest `HISTORY_ROWS` of each. None where
@@ -494,13 +552,7 @@ async function historyOf(
   listId: string,
 ): Promise<Pick<ListDetail, "changes" | "reopens">> {
   const [changes, reopens] = await Promise.all([
-    supabase
-      .from("list_item_changes")
-      .select(CHANGE_COLUMNS)
-      .eq("list_id", listId)
-      .order("changed_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(HISTORY_ROWS),
+    changeRows(supabase, listId),
     supabase
       .from("list_reopens")
       .select(REOPEN_COLUMNS)
@@ -517,34 +569,45 @@ async function historyOf(
 
 /**
  * One list with its items, passes and history (L6a: what happened to each
- * item, and the closes its reopens undid), if the person may read it.
+ * item, and the closes its reopens undid), and when it and each item were
+ * last fixed after the close (L6b-1), if the person may read it.
  */
 export async function getList(
   listId: string,
 ): Promise<ListDetail | null | "notYet"> {
   const supabase = await createClient();
-  const [list, items, people, passes, named, history] = await Promise.all([
-    supabase
-      .from("lists")
-      .select(`${LIST_COLUMNS}, note, asks_quantities, shift`)
-      .eq("id", listId)
-      .maybeSingle(),
-    itemRows(supabase, listId),
-    supabase.from("list_people").select("user_id").eq("list_id", listId),
-    supabase
-      .from("list_passes")
-      .select("id, from_department, to_department, passed_by, passed_at, note")
-      .eq("list_id", listId)
-      .order("passed_at"),
-    namedRolesOf(
+  const [list, items, people, passes, named, fixed, history] =
+    await Promise.all([
       supabase
         .from("lists")
-        .select("id, recipient_named_role")
+        .select(`${LIST_COLUMNS}, note, asks_quantities, shift`)
         .eq("id", listId)
-        .not("recipient_named_role", "is", null),
-    ),
-    historyOf(supabase, listId),
-  ]);
+        .maybeSingle(),
+      itemRows(supabase, listId),
+      supabase.from("list_people").select("user_id").eq("list_id", listId),
+      supabase
+        .from("list_passes")
+        .select(
+          "id, from_department, to_department, passed_by, passed_at, note",
+        )
+        .eq("list_id", listId)
+        .order("passed_at"),
+      namedRolesOf(
+        supabase
+          .from("lists")
+          .select("id, recipient_named_role")
+          .eq("id", listId)
+          .not("recipient_named_role", "is", null),
+      ),
+      fixedTimesOf(
+        supabase
+          .from("lists")
+          .select("id, fixed_at")
+          .eq("id", listId)
+          .not("fixed_at", "is", null),
+      ),
+      historyOf(supabase, listId),
+    ]);
   for (const { error } of [list, items, people, passes]) {
     if (error) {
       if (isMissingTable(error)) return "notYet";
@@ -575,6 +638,7 @@ export async function getList(
     done: row.done,
     doneBy: row.done_by,
     doneAt: row.done_at,
+    fixedAt: row.fixed_at,
   }));
   const passList: ListPass[] = (passes.data ?? []).map((row) => ({
     id: row.id,
@@ -591,6 +655,7 @@ export async function getList(
       (people.data ?? []).map((row) => row.user_id),
       listProgress(itemList),
       named.get(list.data.id),
+      fixed.get(list.data.id),
     ),
     note: list.data.note,
     asksQuantities: list.data.asks_quantities,
@@ -1002,27 +1067,44 @@ export type ListReading = {
   reading: number | null;
   doneAt: string | null;
   doneBy: string | null;
+  /** When it was last fixed after its list closed (L6b-1), or null. */
+  fixedAt: string | null;
   outOfRange: boolean;
 };
+
+const READING_COLUMNS =
+  "id, list_id, template_item_id, label, unit, min_value, max_value, reading, done_at, done_by";
 
 /**
  * The number items of these lists, in each list's order, with their readings:
  * the manager's overview of a day and its week. Under RLS, which lets the
- * reader see the items of the lists they read.
+ * reader see the items of the lists they read. Where
+ * 20261116000300_lists_fix.sql hasn't reached the project yet, none was
+ * fixed.
  */
 export async function getListReadings(
   listIds: readonly string[],
 ): Promise<ListReading[] | "notYet"> {
   if (listIds.length === 0) return [];
   const supabase = await createClient();
-  const { data, error } = await supabase
+  const withFixed = await supabase
     .from("list_items")
-    .select(
-      "id, list_id, template_item_id, label, unit, min_value, max_value, reading, done_at, done_by",
-    )
+    .select(`${READING_COLUMNS}, fixed_at`)
     .in("list_id", [...listIds])
     .eq("kind", "number")
     .order("position");
+  const { data, error } = !isMissingColumn(withFixed.error)
+    ? withFixed
+    : await supabase
+        .from("list_items")
+        .select(READING_COLUMNS)
+        .in("list_id", [...listIds])
+        .eq("kind", "number")
+        .order("position")
+        .then((read) => ({
+          ...read,
+          data: (read.data ?? []).map((row) => ({ ...row, fixed_at: null })),
+        }));
   if (error) {
     if (isMissingTable(error)) return "notYet";
     throw error;
@@ -1038,6 +1120,7 @@ export async function getListReadings(
     reading: row.reading,
     doneAt: row.done_at,
     doneBy: row.done_by,
+    fixedAt: row.fixed_at,
     outOfRange: isOutOfRange({
       reading: row.reading,
       min: row.min_value,
@@ -1247,21 +1330,33 @@ export async function sendList(
 /**
  * Fills an item, or clears it with null (`public.set_list_item`). Callers check
  * the result against the item's kind first (`itemResult`). Returns the list's
- * progress.
+ * progress. `fixing` fixes an item of a finished list in place instead
+ * (`public.fix_list_item`, L6b-1): the list stays finished, the change is the
+ * actor's and marked fixed; "keepRequired" for a required item it would
+ * empty, "reopened" once the list was opened again meanwhile, and "notYet"
+ * before 20261116000300_lists_fix.sql reaches the project.
  */
 export async function setListItem(
   actorId: string,
   itemId: string,
   result: ItemResult,
-  at?: Date,
-): Promise<ListWrite<ListProgress>> {
-  const { data, error } = await createAdminClient().rpc("set_list_item", {
-    actor: actorId,
-    item: itemId,
-    result: result as Json,
-    ...atTime(at),
-  });
-  if (error) return refused(failureOf(error));
+  options: { fixing?: boolean; at?: Date } = {},
+): Promise<ListWrite<ListProgress, ItemFailure>> {
+  const fixing = options.fixing === true;
+  const { data, error } = await createAdminClient().rpc(
+    fixing ? "fix_list_item" : "set_list_item",
+    {
+      actor: actorId,
+      item: itemId,
+      result: result as Json,
+      ...atTime(options.at),
+    },
+  );
+  if (error) {
+    return refused(
+      itemFailureOf(error, fixing, fixing ? "a list fix" : "a lists write"),
+    );
+  }
   const progress = listProgressSchema.safeParse(data);
   return progress.success
     ? { ok: true, value: progress.data }

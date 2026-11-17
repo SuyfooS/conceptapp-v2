@@ -28,7 +28,11 @@ import {
 import { refresh } from "next/cache";
 import { z } from "zod";
 import { pushSoon } from "../../push/server";
-import type { ListActionResult, ListPhotoResult } from "./list-types";
+import type {
+  ItemFailure,
+  ListActionResult,
+  ListPhotoResult,
+} from "./list-types";
 import { listsAccess } from "./lists";
 
 /**
@@ -39,12 +43,14 @@ import { listsAccess } from "./lists";
  * P3b): the business the app opens is one cookie for the whole browser, so a
  * save or a send from a tab left open may arrive after the person switched
  * business, and is refused then ("businessChanged"), never written in the
- * other one.
+ * other one. `F` is why the write itself can be refused.
  */
-async function asMember<T>(
-  run: (actorId: string, businessId: string) => Promise<ListWrite<T>>,
+async function asMember<T, F extends string>(
+  run: (actorId: string, businessId: string) => Promise<ListWrite<T, F>>,
   after: { refresh: boolean; tells: boolean; business?: unknown },
-): Promise<ListActionResult<T>> {
+): Promise<
+  ListActionResult<T, F | "noAccess" | "businessChanged" | "viewOnly">
+> {
   const access = await listsAccess();
   if (!access) return { ok: false, failure: "noAccess" };
   if ("business" in after && after.business !== access.businessId) {
@@ -60,24 +66,31 @@ async function asMember<T>(
 const listId = z.uuid();
 const templateId = z.uuid();
 const seen = z.int().min(1).nullable();
+/** A fix of a finished list (L6b-1), or a fill: said, never guessed. */
+const fixingOf = z.boolean().optional().default(false);
 
 /**
  * Fills an item, or clears it with null (the undo). The screen keeps what it
  * shows and takes the list's progress back, so nothing is read again.
+ * `fixing` fixes an item of a finished list in place instead (L6b-1): the
+ * database lets only those it allows (`private.can_fix_list`), keeps the
+ * list closed and tells nobody, so nothing goes to the phones.
  */
 export async function setListItemAction(
   itemId: unknown,
   result: unknown,
-): Promise<ListActionResult<ListProgress>> {
+  fixing?: unknown,
+): Promise<ListActionResult<ListProgress, ItemFailure>> {
   const item = z.uuid().safeParse(itemId);
   const parsed = anyItemResult.safeParse(result);
-  if (!item.success || !parsed.success) {
+  const fix = fixingOf.safeParse(fixing);
+  if (!item.success || !parsed.success || !fix.success) {
     return { ok: false, failure: "invalid" };
   }
-  return asMember((actor) => setListItem(actor, item.data, parsed.data), {
-    refresh: false,
-    tells: false,
-  });
+  return asMember(
+    (actor) => setListItem(actor, item.data, parsed.data, { fixing: fix.data }),
+    { refresh: false, tells: false },
+  );
 }
 
 /** Finishes a list once every required item is done. */
@@ -156,31 +169,39 @@ async function photoWrite(
 /**
  * Sets a photo item's photo (L6), as the screen re-encoded it (`photo` in the
  * form). The server checks the file again, stores it and removes the one it
- * replaced. Bound on the page to the business it was drawn for.
+ * replaced. Bound on the page to the business it was drawn for. `fixing`
+ * sets it on an item of a finished list in place (L6b-1).
  */
 export async function setListPhotoAction(
   business: string,
   itemId: unknown,
   form: FormData,
+  fixing?: unknown,
 ): Promise<ListPhotoResult> {
   const item = z.uuid().safeParse(itemId);
-  if (!item.success) return { ok: false, failure: "invalid" };
+  const fix = fixingOf.safeParse(fixing);
+  if (!item.success || !fix.success) return { ok: false, failure: "invalid" };
   const photo = form instanceof FormData ? form.get("photo") : null;
   if (!(photo instanceof Blob)) return { ok: false, failure: "empty" };
   return photoWrite(business, (actor, id) =>
-    setListItemPhoto(actor, id, item.data, photo),
+    setListItemPhoto(actor, id, item.data, photo, fix.data),
   );
 }
 
-/** Removes a photo item's photo; the screen kept its bytes for the undo. */
+/**
+ * Removes a photo item's photo; the screen kept its bytes for the undo.
+ * `fixing` removes it from an item of a finished list (L6b-1).
+ */
 export async function removeListPhotoAction(
   business: string,
   itemId: unknown,
+  fixing?: unknown,
 ): Promise<ListPhotoResult> {
   const item = z.uuid().safeParse(itemId);
-  if (!item.success) return { ok: false, failure: "invalid" };
+  const fix = fixingOf.safeParse(fixing);
+  if (!item.success || !fix.success) return { ok: false, failure: "invalid" };
   return photoWrite(business, (actor, id) =>
-    removeListItemPhoto(actor, id, item.data),
+    removeListItemPhoto(actor, id, item.data, fix.data),
   );
 }
 

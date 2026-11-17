@@ -779,6 +779,12 @@ export type ListSummary = {
   finishedBy: string | null;
   closedAt: string | null;
   closedBy: string | null;
+  /**
+   * When an item of it was last fixed after it was finished (L6b-1), or
+   * null: it reads as fixed while this is after `finishedAt`
+   * (`fixedAfterClose`), so a reopen and a new finish clear the mark.
+   */
+  fixedAt: string | null;
   progress: ListProgress;
 };
 
@@ -812,6 +818,11 @@ export type ListItem = {
   done: boolean;
   doneBy: string | null;
   doneAt: string | null;
+  /**
+   * When it was last fixed after its list was finished (L6b-1), or null. A
+   * fix keeps who did it and when while it stays done; this says the fix.
+   */
+  fixedAt: string | null;
 };
 
 export type ListPass = {
@@ -858,6 +869,8 @@ export type ListItemChange = {
   /** Whether it has a photo. */
   photo: boolean;
   done: boolean;
+  /** A fix of the finished list, after its close (L6b-1). */
+  fixed: boolean;
 };
 
 /** A close that a reopen undid (L6a, `public.list_reopens`), and the reopen. */
@@ -973,6 +986,8 @@ export type HistoryEntry = {
   at: string;
   /** What changed, its result first and its comment last; never empty. */
   parts: HistoryPart[];
+  /** A fix after the list closed (L6b-1): its sheet marks it. */
+  fixed: boolean;
 };
 
 type ItemValues = Pick<
@@ -1069,12 +1084,17 @@ export function doneChangeOf(item: ListItem): ListItemChange | null {
     changed,
     ...values,
     done: true,
+    fixed: false,
   };
 }
 
-/** A change by the same person shortly after the one before it, read as one. */
+/**
+ * A change by the same person shortly after the one before it, read as one;
+ * a fix after the close never with a change before it (L6b-1).
+ */
 function foldsInto(change: ListItemChange, last: ListItemChange): boolean {
   if (change.by === null || change.by !== last.by) return false;
+  if (change.fixed !== last.fixed) return false;
   const gap = Date.parse(change.at) - Date.parse(last.at);
   return gap >= 0 && gap <= HISTORY_FOLD_MINUTES * 60_000;
 }
@@ -1123,7 +1143,15 @@ export function itemHistory(
         : [];
     const said = [...again, ...parts];
     return said.length > 0
-      ? [{ key: last.id, by: last.by, at: last.at, parts: said }]
+      ? [
+          {
+            key: last.id,
+            by: last.by,
+            at: last.at,
+            parts: said,
+            fixed: last.fixed,
+          },
+        ]
       : [];
   });
 }
@@ -1131,14 +1159,21 @@ export function itemHistory(
 /**
  * The history with one more change, made here by `by` at `at`, as the
  * database writes it: only when a field's value changed, and `photo` when a
- * photo was set or removed. An item done before its history began first gets
- * the change it stands for (`doneChangeOf`), so whoever did it stays in it.
+ * photo was set or removed, and `fixed` for a fix of the finished list
+ * (L6b-1). An item done before its history began first gets the change it
+ * stands for (`doneChangeOf`), so whoever did it stays in it.
  */
 export function withItemChange(
   changes: readonly ListItemChange[],
   before: ListItem,
   after: ListItem,
-  change: { id: string; by: string; at: string; photo?: boolean },
+  change: {
+    id: string;
+    by: string;
+    at: string;
+    photo?: boolean;
+    fixed?: boolean;
+  },
 ): ListItemChange[] {
   const from = valuesOf(before);
   const to = valuesOf(after);
@@ -1160,18 +1195,38 @@ export function withItemChange(
       changed,
       ...to,
       done: after.done,
+      fixed: change.fixed === true,
     },
   ];
+}
+
+/**
+ * Whether a list, or one of its items, reads as fixed after its close
+ * (L6b-1): it is finished, and its last fix (`fixedAt`) came after the
+ * finish. A reopen and a new finish clear the mark without touching the
+ * column, as the database has it.
+ */
+export function fixedAfterClose(
+  fixedAt: string | null,
+  list: Pick<ListSummary, "status" | "finishedAt">,
+): boolean {
+  if (fixedAt === null || list.status !== "finished") return false;
+  if (list.finishedAt === null) return false;
+  const fixed = Date.parse(fixedAt);
+  const finished = Date.parse(list.finishedAt);
+  return !Number.isNaN(fixed) && !Number.isNaN(finished) && fixed > finished;
 }
 
 /**
  * What the line under an item says (L6a). Done: who did it and when, as
  * before, with how many other entries its history has (`more`). Not done but
  * changed: what changed last, by whom and when ("the tick was taken back"),
- * with the same count. Null when nothing happened to it.
+ * with the same count. Fixed after its list closed (L6b-1): who fixed it and
+ * when, before who did it, since a fix keeps that. Null when nothing
+ * happened to it.
  */
 export type ItemLine =
-  | { kind: "done"; by: string | null; at: string; more: number }
+  | { kind: "done" | "fixed"; by: string | null; at: string; more: number }
   | {
       kind: "changed";
       by: string | null;
@@ -1180,18 +1235,89 @@ export type ItemLine =
       more: number;
     };
 
+/**
+ * The line under an item, from its history; `list` says whether it reads as
+ * fixed after the close (`fixedAfterClose`), its last entry a fix.
+ */
 export function itemLine(
-  item: Pick<ListItem, "done" | "doneBy" | "doneAt">,
+  item: Pick<ListItem, "done" | "doneBy" | "doneAt"> &
+    Partial<Pick<ListItem, "fixedAt">>,
   entries: readonly HistoryEntry[],
+  list?: Pick<ListSummary, "status" | "finishedAt">,
 ): ItemLine | null {
   const more = Math.max(0, entries.length - 1);
+  const last = entries.at(-1);
+  if (list && last?.fixed && fixedAfterClose(item.fixedAt ?? null, list)) {
+    return { kind: "fixed", by: last.by, at: last.at, more };
+  }
   if (item.done && item.doneAt !== null) {
     return { kind: "done", by: item.doneBy, at: item.doneAt, more };
   }
-  const last = entries.at(-1);
   const part = last?.parts[0];
   if (!last || !part) return null;
   return { kind: "changed", by: last.by, at: last.at, part, more };
+}
+
+/** Within this, one person's fixes of a list read as one on its timeline. */
+export const FIX_RUN_MINUTES = 10;
+
+/**
+ * One person's fixes of a finished list (L6b-1), each within
+ * `FIX_RUN_MINUTES` of the one before: who, when the last one was, and how
+ * many items they changed.
+ */
+export type FixRun = {
+  key: string;
+  by: string | null;
+  at: string;
+  items: number;
+};
+
+/**
+ * A list's fixes after its close as its timeline says them, in time order:
+ * one run per person's fixes within `FIX_RUN_MINUTES` of each other, however
+ * the others' fall between them. Fixes a later reopen came after stay: they
+ * happened.
+ */
+export function fixRuns(changes: readonly ListItemChange[]): FixRun[] {
+  const time = (change: ListItemChange) => Date.parse(change.at);
+  const fixes = changes.filter(
+    (change) => change.fixed && !Number.isNaN(time(change)),
+  );
+  const people = [...new Set(fixes.map((change) => change.by))];
+  const runs = people.flatMap((by) => {
+    const theirs = fixes
+      .filter((change) => change.by === by)
+      .sort((a, b) => time(a) - time(b));
+    const grouped: ListItemChange[][] = [];
+    for (const change of theirs) {
+      const run = grouped.at(-1);
+      const last = run?.at(-1);
+      if (
+        run &&
+        last &&
+        time(change) - time(last) <= FIX_RUN_MINUTES * 60_000
+      ) {
+        run.push(change);
+      } else {
+        grouped.push([change]);
+      }
+    }
+    return grouped.flatMap((run): FixRun[] => {
+      const [first] = run;
+      const last = run.at(-1);
+      if (!first || !last) return [];
+      return [
+        {
+          key: `fixed:${first.id}`,
+          by,
+          at: last.at,
+          items: new Set(run.map((change) => change.itemId)).size,
+        },
+      ];
+    });
+  });
+  return byTime(runs);
 }
 
 /** A close or a reopen on a list's timeline (L6a). */

@@ -991,6 +991,67 @@ describe("buildActivity: each action", () => {
     expect(ROUTINE_ACTIONS).not.toContain("lists.late");
   });
 
+  it("reads a fix of a closed list, with what each value was and is, never its text (L6b-1)", () => {
+    expect(
+      lineOf(
+        row("lists.fix", {
+          list: LIST,
+          name: "Bar order",
+          item: LIST,
+          label: "Lemons",
+          kind: "check",
+          unit: null,
+          changed: ["given", "comment", "fixed"],
+          from: { checked: true, given: 20, reading: null },
+          to: { checked: true, given: 18, reading: null },
+        }),
+      ),
+    ).toEqual({
+      action: "lists.fix",
+      name: "Bar order",
+      items: [
+        {
+          label: "Lemons",
+          kind: "check",
+          unit: null,
+          // A field it doesn't know is left out.
+          fields: ["given", "comment"],
+          from: { checked: true, given: 20, reading: null },
+          to: { checked: true, given: 18, reading: null },
+        },
+      ],
+    });
+    // An unticked check is null in the row; a kind it doesn't know, none.
+    expect(
+      lineOf(
+        row("lists.fix", {
+          list: LIST,
+          name: "Opening",
+          label: "Gas",
+          kind: "dial",
+          changed: ["checked"],
+          from: { checked: null, given: null, reading: null },
+          to: { checked: true, given: null, reading: null },
+        }),
+      ),
+    ).toMatchObject({
+      items: [
+        {
+          kind: null,
+          unit: null,
+          from: { checked: false },
+          to: { checked: true },
+        },
+      ],
+    });
+    // Without its list or its label, a plain line; and it is news, not
+    // routine.
+    expect(lineOf(row("lists.fix", { name: "Opening", label: "Gas" }))).toEqual(
+      { action: "other" },
+    );
+    expect(ROUTINE_ACTIONS).not.toContain("lists.fix");
+  });
+
   it("reads a template saved, removed and brought back", () => {
     expect(
       lineOf(
@@ -1736,6 +1797,115 @@ describe("buildActivity: a run of edits reads as one", () => {
         lookups,
       ),
     ).toHaveLength(2);
+  });
+
+  it("folds one person's fixes of one list, each item once from where it began (L6b-1)", () => {
+    const FRIDGE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const FREEZER = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const OTHER_LIST = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const fix = (
+      minute: number,
+      item: string,
+      label: string,
+      from: number | null,
+      to: number | null,
+      extra: { list?: string; actor?: string; changed?: string[] } = {},
+    ) =>
+      row(
+        "lists.fix",
+        {
+          list: extra.list ?? LIST,
+          name: "Opening",
+          item,
+          label,
+          kind: "number",
+          unit: "°C",
+          changed: extra.changed ?? ["reading"],
+          from: { checked: null, given: null, reading: from },
+          to: { checked: null, given: null, reading: to },
+        },
+        extra.actor ?? NOA,
+        `2026-11-04T14:${String(minute).padStart(2, "0")}:00+00:00`,
+      );
+    const reading = (value: number | null) => ({
+      checked: false,
+      given: null,
+      reading: value,
+    });
+    // Newest first, as the log reads: the freezer twice, the fridge once.
+    const [line, ...rest] = buildActivity(
+      [
+        fix(26, FREEZER, "Freezer", -20, -19),
+        fix(24, FRIDGE, "Fridge", 7, 4),
+        fix(20, FREEZER, "Freezer", -12, -20),
+      ],
+      lookups,
+    );
+    expect(rest).toEqual([]);
+    expect(line?.line).toEqual({
+      action: "lists.fix",
+      name: "Opening",
+      items: [
+        {
+          label: "Freezer",
+          kind: "number",
+          unit: "°C",
+          fields: ["reading"],
+          from: reading(-12),
+          to: reading(-19),
+        },
+        {
+          label: "Fridge",
+          kind: "number",
+          unit: "°C",
+          fields: ["reading"],
+          from: reading(7),
+          to: reading(4),
+        },
+      ],
+    });
+    // Another list, someone else, or more than ten minutes apart: lines of
+    // their own.
+    expect(
+      buildActivity(
+        [
+          fix(24, FRIDGE, "Fridge", 7, 4, { list: OTHER_LIST }),
+          fix(20, FREEZER, "Freezer", -12, -20),
+        ],
+        lookups,
+      ),
+    ).toHaveLength(2);
+    expect(
+      buildActivity(
+        [
+          fix(24, FRIDGE, "Fridge", 7, 4, { actor: YOAV }),
+          fix(20, FREEZER, "Freezer", -12, -20),
+        ],
+        lookups,
+      ),
+    ).toHaveLength(2);
+    expect(
+      buildActivity(
+        [
+          fix(45, FRIDGE, "Fridge", 7, 4),
+          fix(20, FREEZER, "Freezer", -12, -20),
+        ],
+        lookups,
+      ),
+    ).toHaveLength(2);
+    // A reading fixed and put back says nothing; a comment always says so.
+    expect(
+      buildActivity(
+        [fix(22, FRIDGE, "Fridge", 4, 7), fix(20, FRIDGE, "Fridge", 7, 4)],
+        lookups,
+      ),
+    ).toEqual([]);
+    expect(
+      buildActivity(
+        [fix(20, FRIDGE, "Fridge", 7, 7, { changed: ["comment"] })],
+        lookups,
+      ),
+    ).toHaveLength(1);
   });
 });
 

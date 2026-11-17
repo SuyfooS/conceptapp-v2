@@ -13,8 +13,15 @@ import { z } from "zod";
  * leaves the rest of the history as it is.
  */
 
-/** What `getList` selects of each, in the order it reads them. */
+/**
+ * What `getList` selects of each, in the order it reads them: a change with
+ * whether it was a fix after the close (L6b-1), or, where
+ * 20261116000300_lists_fix.sql hasn't reached the project yet, without
+ * (`CHANGE_COLUMNS_BEFORE_FIX`: none was).
+ */
 export const CHANGE_COLUMNS =
+  "id, item_id, changed_by, changed_at, changed, checked, given, reading, answer, comment, photo, done, fixed";
+export const CHANGE_COLUMNS_BEFORE_FIX =
   "id, item_id, changed_by, changed_at, changed, checked, given, reading, answer, comment, photo, done";
 export const REOPEN_COLUMNS =
   "id, reopened_by, reopened_at, was, was_by, was_at";
@@ -37,6 +44,8 @@ const changeRow = z.object({
   comment: z.string().nullable(),
   photo: z.boolean(),
   done: z.boolean(),
+  // Read without it before its migration: no change was a fix.
+  fixed: z.boolean().default(false),
 });
 
 const reopenRow = z.object({
@@ -81,6 +90,7 @@ export function changesOf(rows: readonly unknown[]): ListItemChange[] {
       comment: row.comment,
       photo: row.photo,
       done: row.done,
+      fixed: row.fixed,
     }),
     "change",
   );

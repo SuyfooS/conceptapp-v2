@@ -14,7 +14,9 @@ type Props = { searchParams: Promise<{ day?: string; state?: string }> };
 // `?state=noSend` a role that manages lists without sending them (R5), told
 // who sends, and `?state=emptyNoSend` the same on a day with nothing yet;
 // `?state=shiftGone` the restaurant after its evening shift was
-// removed from the settings, whose bar closing then opens nothing.
+// removed from the settings, whose bar closing then opens nothing;
+// `?state=fixed` once Noa closed the kitchen's opening and Shiran fixed its
+// freezer reading after the close (L6b-1): "תוקנה" and "תוקן".
 export default function ShellListsToday({ searchParams }: Props) {
   return (
     <Suspense>
@@ -33,7 +35,8 @@ async function Demo({ searchParams }: Props) {
           state === "viewing" ||
           state === "shiftGone" ||
           state === "noSend" ||
-          state === "emptyNoSend"
+          state === "emptyNoSend" ||
+          state === "fixed"
           ? state
           : undefined,
       )}

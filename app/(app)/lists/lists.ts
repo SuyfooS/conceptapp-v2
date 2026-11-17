@@ -433,6 +433,10 @@ export async function currentList(
     can: {
       fill: open && !access.viewOnly && (holds || access.canManage),
       reopen: !access.viewOnly && closed && access.canManage,
+      // A finished list, in place, by whoever runs the lists, as
+      // `private.can_fix_list` has it (L6b-1); missed and cancelled ones
+      // never.
+      fix: !access.viewOnly && list.status === "finished" && access.canManage,
     },
     readOnly,
     undoUntil,

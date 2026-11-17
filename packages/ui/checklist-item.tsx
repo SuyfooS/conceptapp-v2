@@ -224,22 +224,40 @@ export function ChecklistItem({
       .filter((id) => id !== null)
       .join(" ") || undefined;
   // The story, under all the rest: a quiet 44px row, past a check's circle.
+  // When it wraps on a phone, "· עוד 2 שינויים" and the chevron go to the next
+  // line whole, and the chevron stays at the end of the words (a word joiner
+  // holds it to the last one), never apart from them.
+  const chevron = (
+    <ChevronRight
+      aria-hidden="true"
+      className="ms-1 inline size-4 align-[-0.2em] rtl:-scale-x-100"
+    />
+  );
   const historyRow = history ? (
     <div className={cn("-my-2 flex", kind === "check" && "ps-14")}>
       <button
         type="button"
         onClick={history.onOpen}
-        className="pressable -mx-2 flex min-h-11 max-w-full items-center gap-1 rounded-full px-2 text-start text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
+        className="pressable -mx-2 flex min-h-11 max-w-full items-center rounded-full px-2 text-start text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
       >
         <span className="sr-only">{history.label}: </span>
         <span id={historyId} className="min-w-0">
           {history.line}
-          {history.more ? <> · {history.more}</> : null}
+          {history.more ? (
+            <>
+              {" "}
+              <span className="whitespace-nowrap">
+                · {history.more}
+                {chevron}
+              </span>
+            </>
+          ) : (
+            <span className="whitespace-nowrap">
+              {"⁠"}
+              {chevron}
+            </span>
+          )}
         </span>
-        <ChevronRight
-          aria-hidden="true"
-          className="size-4 shrink-0 rtl:-scale-x-100"
-        />
       </button>
     </div>
   ) : null;

@@ -165,6 +165,13 @@ export type ListScreenData = {
      * manager's. Whoever closed it has `undoUntil` instead.
      */
     reopen: boolean;
+    /**
+     * Fixing it in place once it is finished (L6b-1), as
+     * `private.can_fix_list` allows: for now whoever runs the lists, at any
+     * time, never in a view session. It stays finished, and keeps who
+     * closed it and when.
+     */
+    fix: boolean;
   };
   readOnly: ListReadOnly | null;
   /**
@@ -186,9 +193,12 @@ export type ListPhotosData = {
   taking: "yes" | "demo" | "notYet";
 };
 
-/** Why a photo didn't save or go: a list's reasons, the file's, and a demo's. */
+/**
+ * Why a photo didn't save or go: an item's reasons (a fix's too), the
+ * file's, and a demo's.
+ */
 export type ListPhotoFailure =
-  | ListFailure
+  | ItemFailure
   | "demo"
   | "empty"
   | "tooBig"
@@ -216,11 +226,20 @@ export type ListFailure =
   | "businessChanged"
   | "failed";
 
-export type ListActionResult<T = null> =
+/**
+ * Why an item's save didn't happen: a list's reasons, and a fix's (L6b-1):
+ * a required item of a closed list is changed, never emptied
+ * ("keepRequired"), and a list opened again meanwhile is filled, not fixed
+ * ("reopened").
+ */
+export type ItemFailure = ListFailure | "keepRequired" | "reopened";
+
+/** A write's answer; `F` is why it can be refused (an item's, with a fix's). */
+export type ListActionResult<T = null, F extends string = ListFailure> =
   | { ok: true; value: T }
   | {
       ok: false;
-      failure: ListFailure;
+      failure: F;
       /**
        * A new template the database did save before what came after failed:
        * its id, which the editor takes instead of making it again.
@@ -228,12 +247,17 @@ export type ListActionResult<T = null> =
       saved?: string;
     };
 
-/** What the list's screen asks the server to do. The demo passes stand-ins. */
+/**
+ * What the list's screen asks the server to do. The demo passes stand-ins.
+ * `fixing` is a fix of a finished list in place (L6b-1), through the
+ * database's own fix functions, never a fill.
+ */
 export type ListActions = {
   setItem: (
     itemId: string,
     result: ItemResult,
-  ) => Promise<ListActionResult<ListProgress>>;
+    fixing?: boolean,
+  ) => Promise<ListActionResult<ListProgress, ItemFailure>>;
   finish: (listId: string) => Promise<ListActionResult>;
   reopen: (listId: string) => Promise<ListActionResult>;
   /** Passes it to another department, with a note (blank for none). */
@@ -246,9 +270,13 @@ export type ListActions = {
    * Sets a photo item's photo (L6), as the browser re-encoded it: the form
    * carries it as `photo`. The undo of a removal sets the kept bytes again.
    */
-  setPhoto: (itemId: string, form: FormData) => Promise<ListPhotoResult>;
+  setPhoto: (
+    itemId: string,
+    form: FormData,
+    fixing?: boolean,
+  ) => Promise<ListPhotoResult>;
   /** Removes a photo item's photo; the item is no longer done. */
-  removePhoto: (itemId: string) => Promise<ListPhotoResult>;
+  removePhoto: (itemId: string, fixing?: boolean) => Promise<ListPhotoResult>;
 };
 
 /** An item as a preview of a list shows it. */
@@ -429,6 +457,8 @@ export type DayReading = {
   doneAt: string | null;
   doneBy: string | null;
   outOfRange: boolean;
+  /** Fixed after its list closed (L6b-1): the row says so. */
+  fixed: boolean;
 };
 
 /** One number item of a template across the week, a reading a day. */
@@ -440,8 +470,14 @@ export type WeekReadings = {
   unit: string | null;
   min: number | null;
   max: number | null;
-  /** By day, "YYYY-MM-DD": the day's reading, or null when there was none. */
-  days: Record<string, { reading: number; outOfRange: boolean } | null>;
+  /**
+   * By day, "YYYY-MM-DD": the day's reading, or null when there was none;
+   * `fixed` while it was fixed after its list closed (L6b-1).
+   */
+  days: Record<
+    string,
+    { reading: number; outOfRange: boolean; fixed: boolean } | null
+  >;
 };
 
 /** The manager's overview of a day (L4): today's lists, or a past day's. */

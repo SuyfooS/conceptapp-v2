@@ -1389,6 +1389,122 @@ export async function closeDemoList(
   }
 }
 
+/**
+ * Someone finishes the demo restaurant's newest list of this name, as their
+ * own screen would (`public.finish_list`): its required items done first.
+ */
+export async function finishDemoList(
+  phone: string,
+  name: string,
+): Promise<void> {
+  await sql`select public.finish_list(
+    (select p.id from public.profiles p where p.phone = ${phone}),
+    (select l.id from public.lists l
+      where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+      order by l.created_at desc
+      limit 1))`;
+}
+
+/**
+ * The finish of the demo restaurant's newest list of this name, moved back
+ * `minutes` (L6b-1): past the five minutes its finisher has to take it back,
+ * so a screen reads it as closed for good. Only the finish moves.
+ */
+export async function backdateDemoListFinish(
+  name: string,
+  minutes: number,
+): Promise<void> {
+  await sql`
+    update public.lists l
+    set finished_at = l.finished_at - make_interval(mins => ${minutes})
+    where l.id = (
+      select x.id from public.lists x
+      where x.business_id = ${DEMO_RESTAURANT} and x.name = ${name}
+      order by x.created_at desc
+      limit 1)
+      and l.status = 'finished'`;
+}
+
+/**
+ * Someone fixes an item of the demo restaurant's newest finished list of
+ * this name in place, as their own screen would (`public.fix_list_item`,
+ * L6b-1).
+ */
+export async function fixDemoListItem(
+  phone: string,
+  name: string,
+  label: string,
+  result: { [field: string]: string | number | boolean },
+): Promise<void> {
+  await sql`select public.fix_list_item(
+    (select p.id from public.profiles p where p.phone = ${phone}),
+    (select i.id from public.list_items i
+      join public.lists l on l.id = i.list_id
+      where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+        and i.label = ${label}
+      order by l.created_at desc
+      limit 1),
+    ${sql.json(result)}::jsonb)`;
+}
+
+/**
+ * Someone who runs the lists opens the demo restaurant's newest list of this
+ * name again for everyone (`public.reopen_list`), from another screen.
+ */
+export async function reopenDemoList(
+  phone: string,
+  name: string,
+): Promise<void> {
+  await sql`select public.reopen_list(
+    (select p.id from public.profiles p where p.phone = ${phone}),
+    (select l.id from public.lists l
+      where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+      order by l.created_at desc
+      limit 1))`;
+}
+
+export type DemoListClose = {
+  status: string;
+  /** Who finished it, by their phone. */
+  finishedBy: string | null;
+  /** Its last fix is after its finish (L6b-1). */
+  fixed: boolean;
+  /** Its history's rows marked fixed. */
+  fixes: number;
+  /** Its `lists.fix` rows in the log. */
+  logged: number;
+  /** The lines the lists wrote about it, any kind, to anyone. */
+  lines: number;
+};
+
+/**
+ * How the demo restaurant's newest list of this name is closed, and what a
+ * fix of it left (L6b-1): who finished it, whether it reads as fixed, its
+ * fixed history rows and log rows, and every line written about it.
+ */
+export async function demoListClose(
+  name: string,
+): Promise<DemoListClose | null> {
+  const [row] = await sql<DemoListClose[]>`
+    select l.status,
+      '+' || ltrim(p.phone, '+') as "finishedBy",
+      coalesce(l.fixed_at > l.finished_at, false) as fixed,
+      (select count(*)::int from public.list_item_changes c
+        where c.list_id = l.id and c.fixed) as fixes,
+      (select count(*)::int from public.audit_log a
+        where a.business_id = l.business_id and a.action = 'lists.fix'
+          and a.details ->> 'list' = l.id::text) as logged,
+      (select count(*)::int from public.notifications n
+        where n.business_id = l.business_id and n.kind like 'lists.%'
+          and n.params ->> 'name' = l.name) as lines
+    from public.lists l
+    left join public.profiles p on p.id = l.finished_by
+    where l.business_id = ${DEMO_RESTAURANT} and l.name = ${name}
+    order by l.created_at desc
+    limit 1`;
+  return row ?? null;
+}
+
 /** Who is in a demo restaurant department, by its name: their phones. */
 export async function demoDepartmentPhones(name: string): Promise<string[]> {
   const rows = await sql<{ phone: string }[]>`

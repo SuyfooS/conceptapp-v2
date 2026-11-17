@@ -13,6 +13,9 @@ import {
   draftSchedulesOf,
   dueAtOf,
   dueTimeFor,
+  FIX_RUN_MINUTES,
+  fixedAfterClose,
+  fixRuns,
   fromOffsets,
   HISTORY_FOLD_MINUTES,
   holdsList,
@@ -1632,6 +1635,7 @@ describe("an item's history (L6a)", () => {
     done: false,
     doneBy: null,
     doneAt: null,
+    fixedAt: null,
     ...fields,
   });
   let ids = 0;
@@ -1655,6 +1659,7 @@ describe("an item's history (L6a)", () => {
       comment: null,
       photo: false,
       done: false,
+      fixed: false,
       ...values,
     };
   };
@@ -1797,6 +1802,7 @@ describe("an item's history (L6a)", () => {
           { field: "reading", from: null, to: 4 },
           { field: "comment", from: null, to: "אחרי סחורה" },
         ],
+        fixed: false,
       },
     ]);
     // Someone else, or more than two minutes on, is an entry of its own.
@@ -1925,6 +1931,7 @@ describe("an item's history (L6a)", () => {
         by: NOA,
         at: at("05:00:00"),
         parts: [{ field: "checked", on: true }],
+        fixed: false,
       },
     ]);
     expect(itemHistory(anItem({ comment: "נשאר מעט" }), [])).toEqual([]);
@@ -2142,5 +2149,189 @@ describe("a list's timeline (L6a)", () => {
         { at: at("08:00:00"), n: 4 },
       ]).map((entry) => entry.n),
     ).toEqual([3, 2, 4, 1]);
+  });
+});
+
+describe("a closed list fixed in place (L6b-1)", () => {
+  const SHIRAN = "77777777-7777-4777-8777-777777777777";
+  const OTHER = "99999999-9999-4999-8999-999999999999";
+  const at = (time: string) => `2026-12-10T${time}.000Z`;
+  const finished = {
+    status: "finished" as const,
+    finishedAt: at("06:05:00"),
+  };
+  const freezer = (fields: Partial<ListItem> = {}): ListItem => ({
+    id: ITEM,
+    templateItemId: null,
+    kind: "number",
+    label: "מקפיא",
+    hint: null,
+    required: true,
+    unit: "°C",
+    min: -25,
+    max: -18,
+    requested: null,
+    given: null,
+    checked: false,
+    reading: -19,
+    answer: null,
+    photo: null,
+    photoRemoved: false,
+    comment: null,
+    done: true,
+    doneBy: NOA,
+    doneAt: at("05:44:00"),
+    fixedAt: at("14:20:00"),
+    ...fields,
+  });
+  let ids = 0;
+  const change = (
+    by: string | null,
+    time: string,
+    values: Partial<ListItemChange> = {},
+  ): ListItemChange => {
+    ids += 1;
+    return {
+      id: String(ids),
+      itemId: ITEM,
+      by,
+      at: at(time),
+      changed: ["reading"],
+      checked: false,
+      given: null,
+      reading: -19,
+      answer: null,
+      comment: null,
+      photo: false,
+      done: true,
+      fixed: false,
+      ...values,
+    };
+  };
+
+  it("reads as fixed while its last fix is after the finish", () => {
+    expect(fixedAfterClose(at("14:20:00"), finished)).toBe(true);
+    expect(fixedAfterClose(null, finished)).toBe(false);
+    // Opened again and finished after the fix: the mark is gone, the column
+    // still says it.
+    expect(
+      fixedAfterClose(at("14:20:00"), {
+        ...finished,
+        finishedAt: at("15:00:00"),
+      }),
+    ).toBe(false);
+    expect(
+      fixedAfterClose(at("14:20:00"), { status: "open", finishedAt: null }),
+    ).toBe(false);
+    expect(fixedAfterClose("not a time", finished)).toBe(false);
+  });
+
+  it("marks a fix in the item's story, and never folds it with what came before", () => {
+    const history = itemHistory(freezer(), [
+      change(NOA, "06:04:00", { reading: -12 }),
+      // The same person a minute and a half on, as a fix: its own entry.
+      change(NOA, "06:05:30", { reading: -19, fixed: true }),
+    ]);
+    expect(
+      history.map(({ by, fixed, parts }) => ({ by, fixed, parts })),
+    ).toEqual([
+      {
+        by: NOA,
+        fixed: false,
+        parts: [{ field: "reading", from: null, to: -12 }],
+      },
+      {
+        by: NOA,
+        fixed: true,
+        parts: [{ field: "reading", from: -12, to: -19 }],
+      },
+    ]);
+    // One person's fixes close together are one entry, still a fix.
+    expect(
+      itemHistory(freezer(), [
+        change(NOA, "05:44:00", { reading: -12 }),
+        change(SHIRAN, "14:19:00", { reading: -20, fixed: true }),
+        change(SHIRAN, "14:20:00", { reading: -19, fixed: true }),
+      ]).map(({ by, fixed, parts }) => ({ by, fixed, parts })),
+    ).toEqual([
+      {
+        by: NOA,
+        fixed: false,
+        parts: [{ field: "reading", from: null, to: -12 }],
+      },
+      {
+        by: SHIRAN,
+        fixed: true,
+        parts: [{ field: "reading", from: -12, to: -19 }],
+      },
+    ]);
+  });
+
+  it("says on the line who fixed it and when, while the list reads as fixed", () => {
+    const entries = itemHistory(freezer(), [
+      change(NOA, "05:44:00", { reading: -12 }),
+      change(SHIRAN, "14:20:00", { reading: -19, fixed: true }),
+    ]);
+    expect(itemLine(freezer(), entries, finished)).toEqual({
+      kind: "fixed",
+      by: SHIRAN,
+      at: at("14:20:00"),
+      more: 1,
+    });
+    // Without the list, or once a new finish came after it: who did it.
+    expect(itemLine(freezer(), entries)).toMatchObject({
+      kind: "done",
+      by: NOA,
+    });
+    expect(
+      itemLine(freezer(), entries, { ...finished, finishedAt: at("15:00:00") }),
+    ).toMatchObject({ kind: "done", by: NOA });
+  });
+
+  it("adds a fix made on the screen as the database marks it", () => {
+    const before = freezer({ reading: -12, fixedAt: null });
+    const after = freezer();
+    const changes = withItemChange([], before, after, {
+      id: "here:1",
+      by: SHIRAN,
+      at: at("14:20:00"),
+      fixed: true,
+    });
+    expect(changes.map((c) => [c.id, c.fixed])).toEqual([
+      [`done:${ITEM}`, false],
+      ["here:1", true],
+    ]);
+    expect(
+      withItemChange([], before, after, {
+        id: "here:2",
+        by: SHIRAN,
+        at: at("14:20:00"),
+      }).at(-1)?.fixed,
+    ).toBe(false);
+  });
+
+  it("puts one line on the timeline per person's run of fixes within ten minutes", () => {
+    expect(FIX_RUN_MINUTES).toBe(10);
+    const other = (by: string, time: string, item: string) => ({
+      ...change(by, time, { fixed: true }),
+      itemId: item,
+    });
+    const runs = fixRuns([
+      change(NOA, "05:44:00"),
+      other(SHIRAN, "14:20:00", "a"),
+      other(OTHER, "14:21:00", "c"),
+      other(SHIRAN, "14:24:00", "b"),
+      // The same item again, in the same run, counts once.
+      other(SHIRAN, "14:30:00", "b"),
+      // More than ten minutes after her last: a run of its own.
+      other(SHIRAN, "14:41:00", "a"),
+    ]);
+    expect(runs.map(({ by, at, items }) => ({ by, at, items }))).toEqual([
+      { by: OTHER, at: at("14:21:00"), items: 1 },
+      { by: SHIRAN, at: at("14:30:00"), items: 2 },
+      { by: SHIRAN, at: at("14:41:00"), items: 1 },
+    ]);
+    expect(new Set(runs.map((run) => run.key)).size).toBe(3);
+    expect(fixRuns([change(NOA, "05:44:00")])).toEqual([]);
   });
 });
