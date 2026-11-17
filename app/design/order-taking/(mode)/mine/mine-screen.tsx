@@ -43,8 +43,10 @@ function sentBy(t: OrderT, data: DemoData): Sent[] {
 
 /**
  * "ההזמנות שלי" (§3.2 step 6): what Shiran sent, ready to serve first, each
- * served with one tap. Phone: one list, ready first. Tablet: what is still
- * being made beside what is ready. Desktop: one table. No sum of money.
+ * served with one tap. Phone: one list, ready first. Tablet: what is ready
+ * at the start, beside what is still being made, in the order they read.
+ * Desktop: one table, each ticket with its lines as the cards show them
+ * (choices, note, allergy). No sum of money.
  */
 export function MineScreen() {
   const { t } = useOrderWords();
@@ -120,11 +122,13 @@ export function MineScreen() {
   return (
     <PageBody className={pageGlowClass}>
       {header}
+      {/* Ready first on every shape: the page reads, and the keyboard
+          goes, from it to what is still being made. */}
       <div className="grid gap-6 md:grid-cols-2 md:items-start md:gap-6 xl:hidden">
-        <PageSection title={t("mine.ready")} className="md:order-2">
+        <PageSection title={t("mine.ready")}>
           {cards(ready, t("mine.readyEmpty"))}
         </PageSection>
-        <PageSection title={t("mine.making")} className="md:order-1">
+        <PageSection title={t("mine.making")}>
           {cards(making, t("mine.makingEmpty"))}
         </PageSection>
       </div>
@@ -247,11 +251,15 @@ function MineTable({
                 </Link>
               ),
               department: departmentName(s.ticket.department),
-              items: liveLines(s.ticket)
-                .map((line) =>
-                  line.qty > 1 ? `${line.qty} × ${line.name}` : line.name,
-                )
-                .join(", "),
+              // The same lines as the cards: how many, the choices, the
+              // note and the allergy, so the desktop misses nothing.
+              items: (
+                <ul className="flex min-w-48 flex-col divide-y divide-line">
+                  {liveLines(s.ticket).map((line) => (
+                    <SentLineView key={line.id} t={t} line={line} />
+                  ))}
+                </ul>
+              ),
               sent: t.rich("mine.sentAt", {
                 time: time(s.round.at),
                 ago: ago(t, s.round.at, now),

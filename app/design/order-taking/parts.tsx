@@ -4,15 +4,22 @@ import { messageTime } from "@domain/chat-days";
 import { formatShekels, moneyLocale } from "@domain/money";
 import { ISRAEL_TIME_ZONE } from "@domain/shabbat";
 import { Badge } from "@ui/badge";
-import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
+import { type PlaceTileTone, PlaceTile as UiPlaceTile } from "@ui/place-tile";
 import { StatusToast } from "@ui/status-toast";
-import { Check, Clock, Hourglass, Info, TriangleAlert } from "lucide-react";
+import { OrderLine, type TicketAge, TicketCard } from "@ui/ticket-card";
+import { TillList } from "@ui/till-list";
+import { Info } from "lucide-react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import { type ReactNode, useRef, useState } from "react";
-import { orderDemoDepartments, orderDemoPeople, orderDemoTables } from "./data";
-import type { DemoData } from "./demo-store";
+import {
+  orderDemoDepartments,
+  orderDemoPeople,
+  orderDemoTables,
+  READER,
+  READER_DEPARTMENTS,
+} from "./data";
 import {
   type DepartmentKey,
   LATE_AFTER_MINUTES,
@@ -27,14 +34,17 @@ import {
   type SentLine,
   type Ticket,
   type TillItem,
+  takeawaysOnFloor,
   ticketSince,
   tillByItem,
 } from "./model";
+import type { DemoData } from "./scenario";
 
 /*
  * The parts the order-taking demo's screens share: where each screen is,
- * the words for places, people and times, and the twin's stand-ins for the
- * components P4 brings to packages/ui (PlaceTile, TicketCard, TillList).
+ * the words for places, people and times, and the twin's data put into
+ * words for the components in packages/ui that draw it (PlaceTile,
+ * TicketCard and OrderLine, TillList, MenuItemRow), which /design shows.
  */
 
 const BASE = "/design/order-taking";
@@ -109,6 +119,13 @@ export const placeById = (data: DemoData, id: string | null) =>
 export const openOrderOf = (data: DemoData, placeId: string) =>
   data.orders.find((order) => order.placeId === placeId);
 
+/** The takeaways on the floor: open, or new with a draft; a closed one is gone. */
+export const floorTakeaways = (data: DemoData) =>
+  takeawaysOnFloor(data.takeaways, data.orders, data.drafts);
+
+/** Who looks at the demo: Shiran, a manager in the bar. */
+export const viewer = { id: READER, departments: READER_DEPARTMENTS };
+
 /** "שולחן 4", "לקחת 2", or a takeaway still being taken. */
 export function placeTitle(t: OrderT, place: Place): string {
   if (place.kind === "table")
@@ -123,11 +140,29 @@ export function ago(t: OrderT, at: number, now: number): string {
   return t("age.ago", { count: minutesSince(at, now) });
 }
 
+/** A place's one state, in words: its tile, its row in a list. */
+export function placeStateWords(
+  t: OrderT,
+  status: PlaceStatus,
+  draft = 0,
+): string {
+  switch (status.kind) {
+    case "ready":
+      return t("floor.state.ready");
+    case "late":
+      return t("floor.state.late", { count: status.minutes });
+    case "open":
+      return t("floor.state.open", { count: status.minutes });
+    default:
+      return draft > 0
+        ? t("floor.state.draft", { count: draft })
+        : t("floor.state.free");
+  }
+}
+
 /**
- * A place on the floor: its name large, and its one state in words as well
- * as colour. A free one is a flat fill; an open one lifts; one ready to
- * serve takes the business's tint, and one waiting past the late mark says
- * so in warning.
+ * A place on the floor, as `PlaceTile` draws it: its kind above its name,
+ * its one state in words, and who opened it.
  */
 export function PlaceTile({
   t,
@@ -146,83 +181,24 @@ export function PlaceTile({
   draft: number;
   href: string;
 }) {
-  const line =
-    status.kind === "ready"
-      ? t("floor.state.ready")
-      : status.kind === "late"
-        ? t("floor.state.late", { count: status.minutes })
-        : status.kind === "open"
-          ? t("floor.state.open", { count: status.minutes })
-          : draft > 0
-            ? t("floor.state.draft", { count: draft })
-            : t("floor.state.free");
-  const mark =
-    status.kind === "ready" ? (
-      <Check />
-    ) : status.kind === "late" ? (
-      <TriangleAlert />
-    ) : status.kind === "open" ? (
-      <Clock />
-    ) : null;
+  const tone: PlaceTileTone =
+    status.kind === "free" ? (draft > 0 ? "draft" : "free") : status.kind;
   return (
-    <Link
+    <UiPlaceTile
       href={href}
-      className={cn(
-        "pressable flex min-h-[88px] w-full min-w-0 flex-col justify-between gap-1 rounded-card p-3 text-start",
-        "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
-        status.kind === "free"
-          ? "bg-surface-2"
-          : status.kind === "ready"
-            ? "bg-accent-soft"
-            : "bg-surface shadow-card",
-      )}
-    >
-      <span className="flex items-start justify-between gap-2">
-        <span className="font-bold text-2xl leading-none">
-          <span className="sr-only">
-            {place.kind === "table"
-              ? t("place.tableWord")
-              : t("place.takeawayWord")}{" "}
-          </span>
-          {place.kind === "takeaway" && place.name === null
-            ? t("place.newShort")
-            : place.name}
-        </span>
-        {mark ? (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "grid size-7 shrink-0 place-items-center rounded-full [&_svg]:size-4 [&_svg]:stroke-[2.2]",
-              status.kind === "ready"
-                ? "bg-accent text-accent-ink"
-                : status.kind === "late"
-                  ? "bg-warning-soft text-warning"
-                  : "bg-surface-2 text-ink-2",
-            )}
-          >
-            {mark}
-          </span>
-        ) : null}
-      </span>
-      <span className="flex flex-col">
-        <span
-          className={cn(
-            "font-semibold text-sm",
-            status.kind === "late"
-              ? "text-warning"
-              : status.kind === "free" && draft === 0
-                ? "text-ink-2"
-                : "text-ink",
-          )}
-        >
-          {line}
-        </span>
-        {by ? <span className="text-ink-2 text-sm">{by}</span> : null}
-        {place.label ? (
-          <span className="text-ink-2 text-sm">{place.label}</span>
-        ) : null}
-      </span>
-    </Link>
+      kind={
+        place.kind === "table" ? t("place.tableWord") : t("place.takeawayWord")
+      }
+      name={
+        place.kind === "takeaway" && place.name === null
+          ? t("place.newShort")
+          : (place.name ?? "")
+      }
+      state={placeStateWords(t, status, draft)}
+      tone={tone}
+      by={by}
+      label={place.label}
+    />
   );
 }
 
@@ -249,9 +225,9 @@ export function TicketStateBadge({ t, ticket }: { t: OrderT; ticket: Ticket }) {
 }
 
 /**
- * A sent line as the kitchen and the waiter read it: how many and what,
- * the choices under it, a note in a warning box and an allergy in danger
- * with its word, never colour alone. One taken back is struck through.
+ * A sent line as the kitchen and the waiter read it (`OrderLine`): how
+ * many and what, the choices under it, a note and an allergy. One taken
+ * back is struck through.
  */
 export function SentLineView({
   t,
@@ -266,85 +242,33 @@ export function SentLineView({
   trailing?: ReactNode;
 }) {
   return (
-    <li className="flex flex-col gap-1.5 py-2.5 first:pt-0 last:pb-0">
-      <div className="flex items-start gap-3">
-        <span
-          className={cn(
-            "flex min-w-0 flex-1 flex-col",
-            line.takenBack && "text-danger",
-          )}
-        >
-          <span
-            className={cn(
-              "font-semibold",
-              large ? "text-lg" : "text-md",
-              line.takenBack && "line-through",
-            )}
-          >
-            {t.rich("line.qtyName", {
-              qty: line.qty,
-              name: line.name,
-              ltr,
-            })}
-          </span>
-          {line.choices.length > 0 ? (
-            <span
-              className={cn(
-                line.takenBack ? "line-through" : "text-ink-2",
-                large ? "text-md" : "text-base",
-              )}
-            >
-              {line.choices.join(" · ")}
-            </span>
-          ) : null}
-          {line.takenBack ? (
-            <span className="font-semibold text-sm">{t("line.takenBack")}</span>
-          ) : null}
-        </span>
-        {trailing}
-      </div>
-      {line.allergy && !line.takenBack ? (
-        <p
-          className={cn(
-            "flex items-start gap-1.5 font-semibold text-danger",
-            large ? "text-md" : "text-base",
-          )}
-        >
-          <TriangleAlert
-            aria-hidden="true"
-            className="mt-0.5 size-4 shrink-0"
-          />
-          {t("line.allergy", { allergy: line.allergy })}
-        </p>
-      ) : null}
-      {line.note && !line.takenBack ? (
-        <p
-          className={cn(
-            "rounded-control bg-warning-soft px-3 py-1.5 text-ink",
-            large ? "text-md" : "text-base",
-          )}
-        >
-          {t("line.note", { note: line.note })}
-        </p>
-      ) : null}
-    </li>
+    <OrderLine
+      title={t.rich("line.qtyName", { qty: line.qty, name: line.name, ltr })}
+      choices={line.choices}
+      note={line.note ? t("line.note", { note: line.note }) : null}
+      allergy={
+        line.allergy ? t("line.allergy", { allergy: line.allergy }) : null
+      }
+      takenBack={line.takenBack ? t("line.takenBack") : null}
+      large={large}
+      trailing={trailing}
+    />
   );
 }
 
-/** The age band of a ticket still new: warning past the late mark, danger past twice it. */
-function ageTone(minutes: number) {
-  if (minutes >= LATE_AFTER_MINUTES * 2) return "text-danger";
-  if (minutes >= LATE_AFTER_MINUTES) return "text-warning";
-  return "text-ink-2";
+/** The age band of a ticket still new: late past the late mark, overdue past twice it. */
+function ageTone(minutes: number): TicketAge {
+  if (minutes >= LATE_AFTER_MINUTES * 2) return "overdue";
+  if (minutes >= LATE_AFTER_MINUTES) return "late";
+  return "calm";
 }
 
 /**
- * A ticket on a prep screen: the place large, its age in words, who sent
- * it, its lines, and one full-width "מוכן" at the foot. A held block is
- * greyed, headed "מחכה לקריאה", with no "מוכן". No prices: they are noise
- * to a cook.
+ * A ticket on a prep screen, as `TicketCard` draws it: the place, its age,
+ * who sent it and its lines. A held block is greyed, headed "מחכה לקריאה",
+ * with no "מוכן".
  */
-export function TicketCard({
+export function TicketView({
   t,
   ticket,
   round,
@@ -362,64 +286,21 @@ export function TicketCard({
   onReady?: () => void;
 }) {
   const minutes = minutesSince(ticketSince(ticket, round), now);
-  const held = ticket.held;
+  const department = departmentName(ticket.department);
   return (
-    <article
-      aria-label={t("ticket.label", {
-        place,
-        department: departmentName(ticket.department),
-      })}
-      className={cn(
-        "flex flex-col gap-3 rounded-card p-4",
-        held ? "bg-surface-2" : "bg-surface shadow-card",
-      )}
+    <TicketCard
+      title={place}
+      label={t("ticket.label", { place, department })}
+      from={t("ticket.from", { name: personName(round.by), department })}
+      age={{ text: t("age.ago", { count: minutes }), tone: ageTone(minutes) }}
+      held={ticket.held ? t("ticketState.held") : null}
+      large={large}
+      ready={onReady ? { label: t("ticket.ready"), onClick: onReady } : null}
     >
-      <header className="flex items-start justify-between gap-3">
-        <span className="flex min-w-0 flex-col">
-          <span className="font-bold text-2xl">{place}</span>
-          <span className="text-ink-2 text-sm">
-            {t("ticket.from", {
-              name: personName(round.by),
-              department: departmentName(ticket.department),
-            })}
-          </span>
-        </span>
-        {held ? (
-          <span className="flex shrink-0 items-center gap-1.5 font-semibold text-base text-ink-2">
-            <Hourglass aria-hidden="true" className="size-4" />
-            {t("ticketState.held")}
-          </span>
-        ) : (
-          <span
-            className={cn(
-              "shrink-0 font-semibold",
-              large ? "text-md" : "text-base",
-              ageTone(minutes),
-            )}
-          >
-            {t("age.ago", { count: minutes })}
-          </span>
-        )}
-      </header>
-      <ul className="flex flex-col divide-y divide-line">
-        {ticket.lines.map((line) => (
-          <SentLineView key={line.id} t={t} line={line} large={large} />
-        ))}
-      </ul>
-      {!held && onReady ? (
-        // One on every ticket, so not in the accent, which is for a
-        // screen's one main action.
-        <Button
-          size="lg"
-          variant="secondary"
-          onClick={onReady}
-          className={cn("w-full", large && "min-h-16 text-lg")}
-        >
-          <Check aria-hidden="true" />
-          {t("ticket.ready")}
-        </Button>
-      ) : null}
-    </article>
+      {ticket.lines.map((line) => (
+        <SentLineView key={line.id} t={t} line={line} large={large} />
+      ))}
+    </TicketCard>
   );
 }
 
@@ -437,50 +318,68 @@ export function ticketsOf(data: DemoData) {
 }
 
 /**
- * What the till rings up, in one of two views: by item, each line with how
- * many, the choices and the unit price; or by round, each with its time and
- * sender. No total: the register adds it up.
+ * What the till rings up, in one of two views, each a `TillList`: by
+ * item, each line with how many, the choices and the unit price; or by
+ * round, each with its time and sender. No total: the register adds it up.
  */
-export function TillList({
+export function TillView({
   order,
   view,
   headingLevel = 3,
+  large = false,
 }: {
   order: Order;
   view: "item" | "round";
   /** The rounds' headings: 2 straight under the page's title. */
   headingLevel?: 2 | 3;
+  /** The till's tablet at the counter, read from a step away. */
+  large?: boolean;
 }) {
   const Heading = headingLevel === 2 ? "h2" : "h3";
   const { t, time } = useOrderWords();
-  const rows = tillByItem(order);
+  const list = (label: string, rows: TillItem[], empty: string) => (
+    <TillList
+      label={label}
+      rows={rows.map((row) => ({
+        key: row.key,
+        qty: row.qty,
+        name: row.name,
+        choices: row.choices,
+        price: <Price agorot={row.unit} />,
+      }))}
+      empty={empty}
+      qtyLabel={t("till.qty")}
+      priceLabel={t("till.unit")}
+      large={large}
+    />
+  );
   if (view === "item") {
-    return (
-      <TillRows label={t("till.byItem")} rows={rows} empty={t("till.empty")} />
-    );
+    return list(t("till.byItem"), tillByItem(order), t("till.empty"));
   }
   return (
     <div className="flex flex-col gap-4">
-      {order.rounds.map((round, index) => {
-        const lines = roundLines(round);
-        return (
-          <section key={round.id} className="flex flex-col gap-2">
-            <Heading className="px-1 font-semibold text-base text-ink-2">
-              {t.rich("till.round", {
-                n: index + 1,
-                time: time(round.at),
-                name: personName(round.by),
-                ltr,
-              })}
-            </Heading>
-            <TillRows
-              label={t("till.roundLabel", { n: index + 1 })}
-              rows={lines.map((line) => tillRow(line))}
-              empty={t("till.roundEmpty")}
-            />
-          </section>
-        );
-      })}
+      {order.rounds.map((round, index) => (
+        <section key={round.id} className="flex flex-col gap-2">
+          <Heading
+            className={cn(
+              "px-1 font-semibold text-ink-2",
+              large ? "text-md" : "text-base",
+            )}
+          >
+            {t.rich("till.round", {
+              n: index + 1,
+              time: time(round.at),
+              name: personName(round.by),
+              ltr,
+            })}
+          </Heading>
+          {list(
+            t("till.roundLabel", { n: index + 1 }),
+            roundLines(round).map(tillRow),
+            t("till.roundEmpty"),
+          )}
+        </section>
+      ))}
     </div>
   );
 }
@@ -492,58 +391,6 @@ const tillRow = (line: SentLine): TillItem => ({
   unit: line.unit,
   qty: line.qty,
 });
-
-function TillRows({
-  label,
-  rows,
-  empty,
-}: {
-  label: string;
-  rows: TillItem[];
-  empty: string;
-}) {
-  const { t } = useOrderWords();
-  if (rows.length === 0) {
-    return (
-      <p className="rounded-card bg-surface px-4 py-4 text-ink-2 shadow-card">
-        {empty}
-      </p>
-    );
-  }
-  return (
-    <ul
-      aria-label={label}
-      className="overflow-hidden rounded-card bg-surface shadow-card"
-    >
-      {rows.map((row) => (
-        <li
-          key={row.key}
-          className="relative flex min-h-14 items-center gap-3 px-4 py-2.5 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']"
-        >
-          <span
-            dir="ltr"
-            className="grid min-w-9 shrink-0 place-items-center rounded-full bg-surface-2 px-2 py-1 font-bold text-base tabular-nums"
-          >
-            <span className="sr-only">{t("till.qty")} </span>
-            {row.qty}
-          </span>
-          <span className="flex min-w-0 flex-1 flex-col">
-            <span className="font-medium">{row.name}</span>
-            {row.choices.length > 0 ? (
-              <span className="text-ink-2 text-sm">
-                {row.choices.join(" · ")}
-              </span>
-            ) : null}
-          </span>
-          <span className="shrink-0 text-ink-2">
-            <span className="sr-only">{t("till.unit")} </span>
-            <Price agorot={row.unit} />
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
 
 /** The live lines' count, for "3 פריטים". */
 export const linesCount = (ticket: Ticket) =>

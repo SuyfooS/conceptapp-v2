@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useId, useRef, useState } from "react";
 import { saveItem, setSoldOut } from "../../changes";
 import { useOrderDemo } from "../../demo-store";
+import { newId } from "../../ids";
 import type { Category, MenuItem } from "../../model";
 import {
   departmentName,
@@ -298,13 +299,19 @@ function MenuTable({
           return {
             key: item.id,
             cells: {
+              // Its choices under the name, as the phone's and tablet's rows say.
               name: (
                 <button
                   type="button"
                   onClick={() => onEdit(item)}
-                  className="flex min-h-11 items-center rounded-control text-start font-medium underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+                  className="flex min-h-11 flex-col items-start justify-center rounded-control text-start underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-accent"
                 >
-                  {item.name}
+                  <span className="font-medium">{item.name}</span>
+                  {item.groups.length > 0 ? (
+                    <span className="text-ink-2 text-sm">
+                      {t("menu.choices", { count: item.groups.length })}
+                    </span>
+                  ) : null}
                 </button>
               ),
               category: category?.name ?? "",
@@ -416,7 +423,7 @@ function ItemForm({
     }
     onSaved(
       {
-        id: item?.id ?? crypto.randomUUID(),
+        id: item?.id ?? newId(),
         categoryId: category,
         name: words,
         price: agorot,

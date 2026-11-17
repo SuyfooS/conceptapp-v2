@@ -21,7 +21,8 @@ export type PasteProblem =
   | "long"
   | "duplicate"
   | "reversed"
-  | "noItem";
+  | "noItem"
+  | "noCategory";
 
 export type PastedLine = {
   /** Its number in the paste, from 1. */
@@ -113,9 +114,11 @@ export function readPaste(paste: string): PastedLine[] {
           ? "long"
           : extra && !lastItem
             ? "noItem"
-            : !extra && seen.has(`${category}|${name}`)
-              ? "duplicate"
-              : null;
+            : !extra && category === null
+              ? "noCategory"
+              : !extra && seen.has(`${category}|${name}`)
+                ? "duplicate"
+                : null;
     const row: PastedLine = {
       ...base,
       category,
@@ -225,6 +228,13 @@ export function imported(
   return out;
 }
 
-/** How many items an import writes. */
+/**
+ * How many items an import writes: the lines `imported` keeps, so the
+ * preview, the button and what is added never disagree. An item needs a
+ * category above it, or it is a line to fix (`noCategory`).
+ */
 export const importCount = (lines: readonly PastedLine[]) =>
-  lines.filter((line) => line.kind === "item").length;
+  lines.filter(
+    (line) =>
+      line.kind === "item" && line.price !== null && line.category !== null,
+  ).length;

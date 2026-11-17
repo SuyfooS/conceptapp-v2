@@ -9,46 +9,57 @@ import { useTranslations } from "next-intl";
 
 const BASE = "/design/order-taking";
 
-/** Every screen of S0 and its states, in the order a service runs. */
+/**
+ * Every screen of S0 and its states, in the order a service runs. Each
+ * link names its state, the plain ones `service` (the evening at 20:42):
+ * the store above the screens opens afresh only for a link with a state,
+ * and one without would show what the last link or the walk left.
+ */
 const SECTIONS = [
   {
     key: "waiter",
     screens: [
-      { key: "floor", href: `${BASE}/floor` },
+      { key: "floor", href: `${BASE}/floor?state=service` },
       { key: "quiet", href: `${BASE}/floor?state=quiet` },
-      { key: "free", href: `${BASE}/floor/order?place=table-6` },
+      { key: "free", href: `${BASE}/floor/order?place=table-6&state=service` },
       { key: "draft", href: `${BASE}/floor/order?place=table-6&state=draft` },
       { key: "choice", href: `${BASE}/floor/order?place=table-6&state=choice` },
       { key: "sent", href: `${BASE}/floor/order?place=table-6&state=sent` },
-      { key: "open", href: `${BASE}/floor/order?place=table-4` },
-      { key: "tillItem", href: `${BASE}/floor/till?order=order-4` },
+      { key: "open", href: `${BASE}/floor/order?place=table-4&state=service` },
+      {
+        key: "tillItem",
+        href: `${BASE}/floor/till?order=order-4&state=service`,
+      },
       {
         key: "tillRound",
         href: `${BASE}/floor/till?order=order-4&state=byRound`,
       },
-      { key: "tillClosed", href: `${BASE}/floor/till?order=order-3` },
-      { key: "mine", href: `${BASE}/mine` },
+      {
+        key: "tillClosed",
+        href: `${BASE}/floor/till?order=order-3&state=service`,
+      },
+      { key: "mine", href: `${BASE}/mine?state=service` },
       { key: "mineEmpty", href: `${BASE}/mine?state=nothingSent` },
     ],
   },
   {
     key: "prep",
     screens: [
-      { key: "prep", href: `${BASE}/prep` },
+      { key: "prep", href: `${BASE}/prep?state=service` },
       { key: "prepEmpty", href: `${BASE}/prep?state=nothingOpen` },
-      { key: "kitchen", href: `${BASE}/station/prep` },
+      { key: "kitchen", href: `${BASE}/station/prep?state=service` },
       { key: "kitchenOpen", href: `${BASE}/station/prep?state=open` },
       { key: "kitchenOffline", href: `${BASE}/station/prep?state=offline` },
       { key: "kitchenEmpty", href: `${BASE}/station/prep?state=nothingOpen` },
-      { key: "counter", href: `${BASE}/station/till` },
+      { key: "counter", href: `${BASE}/station/till?state=service` },
     ],
   },
   {
     key: "menu",
     screens: [
-      { key: "menu", href: `${BASE}/menu` },
+      { key: "menu", href: `${BASE}/menu?state=service` },
       { key: "noMenu", href: `${BASE}/menu?state=noMenu` },
-      { key: "import", href: `${BASE}/menu/import` },
+      { key: "import", href: `${BASE}/menu/import?state=service` },
     ],
   },
 ] as const;

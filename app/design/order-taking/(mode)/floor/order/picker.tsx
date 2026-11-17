@@ -1,12 +1,12 @@
 "use client";
 
-import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { cn } from "@ui/cn";
 import { EmptyState } from "@ui/empty-state";
+import { MenuItemList, MenuItemRow } from "@ui/menu-item-row";
 import { PageSection } from "@ui/page";
 import { fieldInputClass } from "@ui/text-field";
-import { BookOpen, Plus, Search } from "lucide-react";
+import { BookOpen, Search } from "lucide-react";
 import Link from "next/link";
 import { useId, useState } from "react";
 import { mostOrdered } from "../../../data";
@@ -15,9 +15,6 @@ import { type MenuItem, nameMatches } from "../../../model";
 import { Price, paths, useOrderWords } from "../../../parts";
 
 type Section = { id: string; name: string; items: MenuItem[] };
-
-/** A grouped list's card, as ListGroup draws it, for a list of item rows. */
-const listClass = "overflow-hidden rounded-card bg-surface shadow-card";
 
 /**
  * Adding items (§3.2 step 3): one tap adds an item without choices, and
@@ -44,12 +41,20 @@ export function Picker({
     draft
       .filter((line) => line.itemId === itemId)
       .reduce((sum, line) => sum + line.qty, 0);
+  // The whole row adds it; one with choices says so, and opens its sheet.
   const row = (item: MenuItem) => (
-    <ItemRow
+    <MenuItemRow
       key={item.id}
-      item={item}
+      name={item.name}
+      detail={
+        <>
+          <Price agorot={item.price} />
+          {item.groups.length > 0 ? ` · ${t("picker.withChoices")}` : null}
+        </>
+      }
       count={inDraft(item.id)}
-      soldOut={data.soldOut.includes(item.id)}
+      countLabel={t("picker.inDraft")}
+      soldOut={data.soldOut.includes(item.id) ? t("picker.soldOut") : null}
       onPick={() => onPick(item)}
     />
   );
@@ -116,9 +121,9 @@ export function Picker({
       </div>
       {found ? (
         found.length ? (
-          <ul aria-label={t("picker.found")} className={listClass}>
+          <MenuItemList aria-label={t("picker.found")}>
             {found.map(row)}
-          </ul>
+          </MenuItemList>
         ) : (
           <p role="status" className="px-1 text-ink-2">
             {t("picker.nothingFound", { query: query.trim() })}
@@ -130,9 +135,9 @@ export function Picker({
           <div className="flex flex-col gap-6 md:hidden">
             {sections.map((section) => (
               <PageSection key={section.id} title={section.name} level={3}>
-                <ul aria-label={section.name} className={listClass}>
+                <MenuItemList aria-label={section.name}>
                   {section.items.map(row)}
-                </ul>
+                </MenuItemList>
               </PageSection>
             ))}
           </div>
@@ -161,68 +166,13 @@ export function Picker({
               ))}
             </nav>
             {chosen ? (
-              <ul aria-label={chosen.name} className={listClass}>
+              <MenuItemList aria-label={chosen.name}>
                 {chosen.items.map(row)}
-              </ul>
+              </MenuItemList>
             ) : null}
           </div>
         </>
       )}
     </section>
-  );
-}
-
-/**
- * An item to add: its name, its price, and how many of it the draft holds.
- * The whole row adds it; one with choices says so, and opens its sheet.
- */
-function ItemRow({
-  item,
-  count,
-  soldOut,
-  onPick,
-}: {
-  item: MenuItem;
-  count: number;
-  soldOut: boolean;
-  onPick: () => void;
-}) {
-  const { t } = useOrderWords();
-  return (
-    <li className="relative not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']">
-      <button
-        type="button"
-        disabled={soldOut}
-        onClick={onPick}
-        className={cn(
-          "flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-start",
-          "focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent",
-          soldOut
-            ? "opacity-50"
-            : "transition-colors duration-150 ease-calm hover:bg-surface-2 active:bg-surface-3",
-        )}
-      >
-        <span className="flex min-w-0 flex-1 flex-col">
-          <span className="font-medium">{item.name}</span>
-          <span className="text-ink-2 text-sm">
-            <Price agorot={item.price} />
-            {item.groups.length > 0 ? ` · ${t("picker.withChoices")}` : null}
-          </span>
-        </span>
-        {soldOut ? (
-          <Badge>{t("picker.soldOut")}</Badge>
-        ) : (
-          <>
-            {count > 0 ? (
-              <span className="grid min-w-8 place-items-center rounded-full bg-accent-soft px-2 py-1 font-bold text-base tabular-nums">
-                {count}
-                <span className="sr-only"> {t("picker.inDraft")}</span>
-              </span>
-            ) : null}
-            <Plus aria-hidden="true" className="size-6 shrink-0 text-accent" />
-          </>
-        )}
-      </button>
-    </li>
   );
 }

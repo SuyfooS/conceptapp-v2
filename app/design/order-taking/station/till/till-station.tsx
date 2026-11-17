@@ -24,8 +24,8 @@ import {
   placeById,
   placeTitle,
   StationFoot,
-  TillList,
   TillNote,
+  TillView,
   useOrderWords,
   useUndoToast,
 } from "../../parts";
@@ -33,9 +33,10 @@ import {
 /**
  * The counter's tablet, locked as the till (§4.10), with nobody's account
  * on it: the open places and today's closed orders, each with its list for
- * the register by item or by round, and no total. It closes an order and
- * opens one again. Phone: the places, then the one chosen on its own.
- * Tablet and desktop: the places beside the list chosen.
+ * the register by item or by round, and no total, all in large type to
+ * read from a step away. It closes an order and opens one again. Phone:
+ * the places, then the one chosen on its own. Tablet and desktop: the
+ * places beside the list chosen.
  */
 export function TillStation() {
   const { t } = useOrderWords();
@@ -137,21 +138,26 @@ function PlacesList({
                 key={order.id}
                 onClick={() => onChoose(order.id)}
                 current={order.id === chosen}
-                title={named(order)}
+                // Large, as the station reads.
+                title={
+                  <span className="font-semibold text-lg">{named(order)}</span>
+                }
                 subtitle={
-                  order.closedAt !== null
-                    ? t.rich("floor.closedRow", {
-                        time: time(order.closedAt),
-                        name: closerName(t, order),
-                        ltr,
-                      })
-                    : status.kind === "ready"
-                      ? t("floor.state.ready")
-                      : t.rich("order.opened", {
-                          time: time(order.openedAt),
-                          name: personName(order.openedBy),
+                  <span className="text-base">
+                    {order.closedAt !== null
+                      ? t.rich("floor.closedRow", {
+                          time: time(order.closedAt),
+                          name: closerName(t, order),
                           ltr,
                         })
+                      : status.kind === "ready"
+                        ? t("floor.state.ready")
+                        : t.rich("order.opened", {
+                            time: time(order.openedAt),
+                            name: personName(order.openedBy),
+                            ltr,
+                          })}
+                  </span>
                 }
               />
             );
@@ -191,6 +197,8 @@ function TillDetail({
       setRefused(true);
       return;
     }
+    // Closed now: what refused it before no longer holds.
+    setRefused(false);
     update((d) => closeOrder(d, order.placeId, "station", now));
     say(
       t("toast.closed", { place: name }),
@@ -216,7 +224,7 @@ function TillDetail({
         ref={heading}
         id={`${order.id}-title`}
         tabIndex={-1}
-        className="font-bold text-xl outline-none"
+        className="font-bold text-2xl outline-none"
       >
         {t("till.title", { place: name })}
       </h2>
@@ -231,13 +239,13 @@ function TillDetail({
           { value: "round", label: t("till.byRound") },
         ]}
       />
-      <TillList order={order} view={view} />
+      <TillView order={order} view={view} large />
       {refused ? (
-        <p role="alert" className="font-medium text-danger">
+        <p role="alert" className="font-semibold text-danger text-lg">
           {t("till.refusedHeld")}
         </p>
       ) : null}
-      {taken ? <p className="text-ink-2">{t("till.taken")}</p> : null}
+      {taken ? <p className="text-ink-2 text-lg">{t("till.taken")}</p> : null}
       {closed ? (
         <Button
           size="lg"

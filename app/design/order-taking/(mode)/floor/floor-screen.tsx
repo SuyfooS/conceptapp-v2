@@ -12,11 +12,13 @@ import { useRef } from "react";
 import { changeTicket, newTakeaway } from "../../changes";
 import { orderDemoTables } from "../../data";
 import { useOrderDemo } from "../../demo-store";
+import { newId } from "../../ids";
 import { draftCount, placeStatus, type Ticket } from "../../model";
 import {
   ago,
   closerName,
   departmentName,
+  floorTakeaways,
   ltr,
   type OrderT,
   openOrderOf,
@@ -58,13 +60,9 @@ export function FloorScreen() {
       };
     });
   const tables = tiles(orderDemoTables);
-  // A takeaway shows once sent, or while its draft has something in it.
-  const takeaways = tiles(
-    data.takeaways.filter(
-      (place) =>
-        place.name !== null || (data.drafts[place.id]?.length ?? 0) > 0,
-    ),
-  );
+  // A takeaway shows while open, or new while its draft has something in
+  // it; a closed one leaves the floor, its list under today's closed.
+  const takeaways = tiles(floorTakeaways(data));
   const all = [...tables, ...takeaways];
   const ready = all.filter((tile) => tile.status.kind === "ready").length;
   const late = all.filter((tile) => tile.status.kind === "late").length;
@@ -76,7 +74,7 @@ export function FloorScreen() {
   ].filter(Boolean);
 
   function takeaway() {
-    const placeId = `takeaway-${crypto.randomUUID()}`;
+    const placeId = `takeaway-${newId()}`;
     update((d) => newTakeaway(d, placeId));
     router.push(paths.order(placeId));
   }

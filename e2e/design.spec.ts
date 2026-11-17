@@ -3267,6 +3267,25 @@ test("the inbox twin says the ConceptApp team gave pay access", async ({
   }
 });
 
+/** Text to find as it is, inside a pattern. */
+const asIs = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Goes to another screen of a demo through the tab bar, as a thumb would.
+ * A long screen scrolled down shrinks the phone's bar to its current tab:
+ * at the top it is full size again, each tab one tap away.
+ */
+async function throughTabBar(page: Page, name: string) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(page.locator("nav[data-tab-compact]")).toHaveCount(0);
+  await page
+    .getByRole("navigation", { name: he.ui.appShell.mainNav })
+    .filter({ visible: true })
+    // The name, and a count after it when the tab has one ("..., 2").
+    .getByRole("link", { name: new RegExp(`^${asIs(name)}(\\s*,|$)`) })
+    .click();
+}
+
 // Waiter mode's twin (S0, #191) as a waiter times it on a phone: a free
 // table opens on its items, two taps add two, one sends them, and the
 // kitchen's part is on the prep screen. Marked ready there, it comes back
@@ -3280,7 +3299,7 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
   const o = he.design.orderTaking;
   const shown = (locator: Locator) => locator.filter({ visible: true });
   const table6 = heT("design.orderTaking.place.table", { name: "6" });
-  // The tile says "שולחן" to a screen reader only, before its large "6".
+  // The tile shows "שולחן" small above its large "6": its name starts so.
   const tile6 = new RegExp(`^${o.place.tableWord}\\s*6(?!\\d)`);
   const kitchen = "מטבח";
 
@@ -3318,9 +3337,7 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
     shown(page.getByText(o.ticketState.sent, { exact: true })),
   ).toHaveCount(2);
 
-  await shown(
-    page.getByRole("link", { name: o.nav.prep, exact: true }),
-  ).click();
+  await throughTabBar(page, o.nav.prep);
   await expect(page).toHaveURL(/\/design\/order-taking\/prep$/);
   const ticket = page.getByRole("article", {
     name: heT("design.orderTaking.ticket.label", {
@@ -3341,9 +3358,9 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
   ).toBeVisible();
   await expect(ticket).toHaveCount(0);
 
-  await shown(
-    page.getByRole("link", { name: o.nav.places, exact: true }),
-  ).click();
+  // Table 6's ticket is the newest, far down the list: the page scrolled to
+  // it, and the bar shrank.
+  await throughTabBar(page, o.nav.places);
   const tile = shown(page.getByRole("link", { name: tile6 }));
   await expect(tile).toContainText(o.floor.state.ready);
   await tile.click();
@@ -3367,4 +3384,98 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
   await expect(list.getByText("לימונדה")).toBeVisible();
   await expect(list.getByText("פוקאצ'ה")).toBeVisible();
   await expectCleanPage(page);
+});
+
+// The twin's list of screens opens each one afresh in the state its row
+// names, whatever the last row left: the store above the screens lives on
+// between them, and only a link with a state starts it again.
+test("the waiter mode demo's list opens each row in its own state", async ({
+  page,
+}) => {
+  const o = he.design.orderTaking;
+  const row = (title: string) =>
+    page.getByRole("link", { name: new RegExp(`^${asIs(title)}`) });
+  const shownText = (text: string) =>
+    page.getByText(text, { exact: true }).filter({ visible: true });
+
+  await page.goto("/design/order-taking");
+  await row(o.index.screens.quiet.title).click();
+  await expect(page).toHaveURL(/\/floor$/);
+  await expect(shownText(o.floor.status.free)).toBeVisible();
+
+  // Back on the list, the evening as it is: two ready to serve, not quiet.
+  await page.goBack();
+  await row(o.index.screens.floor.title).click();
+  await expect(page).toHaveURL(/\/floor$/);
+  await expect(
+    page
+      .getByText(heT("design.orderTaking.floor.status.ready", { count: 2 }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(shownText(o.floor.status.free)).toHaveCount(0);
+
+  // After a business with no menu, the menu has its items again.
+  await page.goBack();
+  await row(o.index.screens.noMenu.title).click();
+  await expect(shownText(o.picker.noMenu.title)).toBeVisible();
+  await page.goBack();
+  await row(o.index.screens.menu.title).click();
+  await expect(page).toHaveURL(/\/menu$/);
+  await expect(shownText(o.picker.noMenu.title)).toHaveCount(0);
+
+  // After the quiet evening, table 4's list for the till is there.
+  await page.goBack();
+  await row(o.index.screens.quiet.title).click();
+  await expect(page).toHaveURL(/\/floor$/);
+  await page.goBack();
+  await row(o.index.screens.tillItem.title).click();
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: heT("design.orderTaking.till.title", {
+        place: heT("design.orderTaking.place.table", { name: "4" }),
+      }),
+    }),
+  ).toBeVisible();
+});
+
+// The kitchen's screen opened offline stays offline once the state comes
+// off the address, so the check of every page sees its banner.
+test("the waiter mode demo's kitchen screen stays offline", async ({
+  page,
+}) => {
+  const o = he.design.orderTaking;
+  await page.goto("/design/order-taking/station/prep?state=offline");
+  await expect(page).toHaveURL(/\/station\/prep$/);
+  // The page's own alert, not the router's announcer.
+  await expect(page.getByRole("main").getByRole("alert")).toContainText(
+    o.station.offline,
+  );
+  await expect(
+    page.getByText(o.station.offlineBadge, { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(o.station.online, { exact: true })).toHaveCount(
+    0,
+  );
+});
+
+// The desktop's table of what Shiran still has to serve reads each line as
+// the phone's cards do: table 4's held mains carry the burger's allergy,
+// and its starters their note.
+test("the waiter mode demo's desktop table shows each line's allergy", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop", "the table is the desktop's");
+  const o = he.design.orderTaking;
+  await page.goto("/design/order-taking/mine");
+  const table = page.getByRole("table", { name: o.mine.tableTitle });
+  await expect(table).toBeVisible();
+  await expect(
+    table.getByText(
+      heT("design.orderTaking.line.allergy", { allergy: "שומשום" }),
+    ),
+  ).toBeVisible();
+  await expect(
+    table.getByText(heT("design.orderTaking.line.note", { note: "בלי שום" })),
+  ).toBeVisible();
 });

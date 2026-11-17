@@ -85,6 +85,7 @@ import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
 import { GalleryChat } from "./gallery-chat";
 import { GalleryFileField } from "./gallery-documents";
+import { GalleryOrderTaking } from "./gallery-order-taking";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
@@ -624,10 +625,10 @@ function GalleryBody({
           <GalleryFileField />
         </Section>
 
-        {/* Waiter mode's mock screens (S0): its parts are the twin's own
-            until P4 brings them here. */}
+        {/* Waiter mode (S0): its parts, and its mock screens. */}
         <Section title={t("orderTakingTitle")}>
           <p className="text-ink-2">{t("orderTakingText")}</p>
+          <GalleryOrderTaking />
           <Button asChild variant="secondary" className="w-full">
             <Link href="/design/order-taking">{t("orderTakingDemo")}</Link>
           </Button>

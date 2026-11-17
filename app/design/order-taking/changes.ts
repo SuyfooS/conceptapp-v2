@@ -1,4 +1,4 @@
-import type { DemoData } from "./demo-store";
+import { newId as id } from "./ids";
 import {
   chosenOptions,
   type DepartmentKey,
@@ -12,13 +12,12 @@ import {
   unitPrice,
 } from "./model";
 import type { Imported } from "./paste";
+import type { DemoData } from "./scenario";
 
 // What the demo's screens change, each as data in and data out, so a
 // screen keeps what it needs for its undo before it asks. The send's split
 // and the close's settling follow the design's §3.2 and §6.3, roughly, for
 // the look only: P3 does them in one database function.
-
-const id = () => crypto.randomUUID();
 
 const draftOf = (data: DemoData, placeId: string) => data.drafts[placeId] ?? [];
 

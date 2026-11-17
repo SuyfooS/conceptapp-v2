@@ -232,7 +232,8 @@ export function DraftPanel({
 /**
  * A line's note or allergy, in a sheet. An allergy needs its words, which
  * the kitchen sees in danger with the word "אלרגיה"; a note is for how to
- * make it, never a customer's name.
+ * make it, never a customer's name. Saved, the screen hears what it is now
+ * (null when taken off), to offer the way back.
  */
 export function NoteSheet({
   placeId,
@@ -243,7 +244,11 @@ export function NoteSheet({
   placeId: string;
   target: { line: DraftLine; kind: "note" | "allergy" } | null;
   onClose: () => void;
-  onSaved: (text: string) => void;
+  onSaved: (
+    line: DraftLine,
+    kind: "note" | "allergy",
+    text: string | null,
+  ) => void;
 }) {
   const { t } = useOrderWords();
   const { data } = useOrderDemo();
@@ -285,7 +290,11 @@ function NoteForm({
   placeId: string;
   line: DraftLine;
   kind: "note" | "allergy";
-  onSaved: (text: string) => void;
+  onSaved: (
+    line: DraftLine,
+    kind: "note" | "allergy",
+    text: string | null,
+  ) => void;
 }) {
   const { t } = useOrderWords();
   const { update } = useOrderDemo();
@@ -317,7 +326,7 @@ function NoteForm({
         kind === "note" ? { note: kept } : { allergy: kept },
       ),
     );
-    onSaved(words);
+    onSaved(line, kind, kept);
   }
 
   return (

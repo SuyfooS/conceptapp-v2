@@ -10,6 +10,7 @@ import { business, user } from "../shell/data";
 import type {
   Category,
   Department,
+  DepartmentKey,
   DraftLine,
   Menu,
   MenuItem,
@@ -30,6 +31,8 @@ const at = (hours: number, minutes: number) =>
   Date.UTC(2026, 10, 19, hours - 2, minutes);
 
 export const READER = "shiran";
+/** Shiran is a manager in the bar: she takes nothing back from the bar's tickets. */
+export const READER_DEPARTMENTS: readonly DepartmentKey[] = ["bar"];
 
 /** First names only, as people call each other on the floor. */
 export const orderDemoPeople: Person[] = [

@@ -592,7 +592,7 @@
         "withChoices": "עם בחירות",
         "soldOut": "נגמר",
         "inDraft": "בטיוטה",
-        "added": "נוסף לטיוטה: {name}",
+        "added": "{count, plural, one {נוסף לטיוטה: {name}} other {נוסף לטיוטה: {name}, # בטיוטה}}",
         "noMenu": {
           "title": "עוד אין תפריט",
           "body": "מוסיפים מנות, או מעתיקים תפריט קיים בהדבקה.",
@@ -815,7 +815,8 @@
           "long": "שם ארוך מדי",
           "duplicate": "כפול",
           "reversed": "שורה הפוכה",
-          "noItem": "תוספת בלי מנה מעליה"
+          "noItem": "תוספת בלי מנה מעליה",
+          "noCategory": "אין קטגוריה מעל השורה"
         }
       },
       "toast": {
@@ -824,6 +825,8 @@
         "served": "{place} · {department}: הוגש",
         "ready": "{place} · {department}: מוכן",
         "removed": "הוסר מהטיוטה: {name}",
+        "noteRemoved": "ההערה הוסרה: {name}",
+        "allergyRemoved": "האלרגיה הוסרה: {name}",
         "fired": "יצא להכנה · {department}",
         "takenBack": "הוחזר מהשליחה: {name}",
         "closed": "{place} נסגר",
@@ -838,7 +841,26 @@
     },
     "orderTakingTitle": "מצב מלצרות",
     "orderTakingText": "קבלת הזמנות מהטלפון ושליחה למטבח ולבר: השולחנות, ההזמנה, מסך המטבח והקופה, עם נתונים לדוגמה.",
-    "orderTakingDemo": "לדמו של מצב המלצרות"
+    "orderTakingDemo": "לדמו של מצב המלצרות",
+    "orderParts": {
+      "text": "שולחן בכל אחד מהמצבים שלו, הזמנה במסך ההכנה עם הבחירות, ההערה והאלרגיה, מה להקיש בקופה, ומנות שמוסיפים בלחיצה אחת.",
+      "tiles": "שולחנות",
+      "tickets": "הזמנות להכנה",
+      "till": "לקופה",
+      "items": "מנות להוספה",
+      "waiter": "יואב",
+      "kitchen": "מטבח",
+      "burger": "המבורגר",
+      "medium": "מדיום",
+      "cheese": "גבינה",
+      "sesame": "שומשום",
+      "hummus": "חומוס",
+      "noGarlic": "בלי שום",
+      "fish": "דג היום",
+      "schnitzel": "שניצל",
+      "mash": "פירה",
+      "lemonade": "לימונדה"
+    }
   },
   "shell": {
     "metaTitle": "דמו פריסה",

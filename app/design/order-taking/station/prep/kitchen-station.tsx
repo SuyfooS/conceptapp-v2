@@ -21,7 +21,7 @@ import {
   prepStatus,
   recentlyReady,
   StationFoot,
-  TicketCard,
+  TicketView,
   toMake,
   useOrderWords,
   useUndoToast,
@@ -62,9 +62,11 @@ export function KitchenStation() {
   const [open, setOpen] = useState(
     opened === "open" || opened === "offline" || opened === "nothingOpen",
   );
+  // Read once, as the screen is first drawn: the state then comes off the
+  // address, and the screen stays offline until it opens afresh.
+  const [offline] = useState(opened === "offline");
   const [sound, setSound] = useState(false);
   const [news, setNews] = useState("");
-  const offline = opened === "offline";
   useWakeLock(open);
   const department = "kitchen";
   const tickets = toMake(data, department);
@@ -95,9 +97,14 @@ export function KitchenStation() {
     update((d) => markSeen(d, arrived));
   }, [open, offline, unseen, update]);
 
+  // Hidden (Next keeps the page for going back) or gone, the sound stops
+  // with it. Shown again, the screen says the sound is off and offers its
+  // button, rather than saying it is on with nothing to play it.
   useEffect(
     () => () => {
       void audio.current?.close();
+      audio.current = null;
+      setSound(false);
     },
     [],
   );
@@ -178,7 +185,10 @@ export function KitchenStation() {
         eyebrow={t("station.kitchenEyebrow", { business: orderDemoBusiness })}
         title={departmentName(department)}
         headingRef={heading}
-        subtitle={prepStatus(t, data, department, now)}
+        // With nothing to make, the empty state below says so, once.
+        subtitle={
+          tickets.length > 0 ? prepStatus(t, data, department, now) : undefined
+        }
       />
       <div className="-mt-2 flex flex-wrap items-center gap-2">
         {offline ? (
@@ -227,7 +237,7 @@ export function KitchenStation() {
             const name = place ? placeTitle(t, place) : "";
             return (
               <li key={ticket.id}>
-                <TicketCard
+                <TicketView
                   t={t}
                   ticket={ticket}
                   round={round}

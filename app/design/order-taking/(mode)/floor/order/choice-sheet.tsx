@@ -6,13 +6,21 @@ import { Sheet } from "@ui/sheet";
 import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
 import { useId, useState } from "react";
-import { type MenuItem, missingGroups } from "../../../model";
+import {
+  type ChoiceGroup,
+  type MenuItem,
+  missingGroups,
+  singleChoice,
+  toggleChoice,
+} from "../../../model";
 import { Price, useOrderWords } from "../../../parts";
 
 /**
  * An item with choices (§3.2 step 3): its groups, the required ones first,
  * each saying "חובה לבחור"; how many; and "הוספה", which waits until every
- * required group has its choice and says which one is missing.
+ * required group has its choice and says which one is missing. A group of
+ * exactly one choice is radios; any other, an optional extra of one option
+ * included, is switches, so what was picked can be unpicked.
  */
 export function ChoiceSheet({
   item,
@@ -60,10 +68,8 @@ function ChoiceForm({
       option,
     ]);
   }
-  function toggle(option: string, on: boolean) {
-    setChoices((now) =>
-      on ? [...now, option] : now.filter((c) => c !== option),
-    );
+  function toggle(group: ChoiceGroup, option: string, on: boolean) {
+    setChoices((now) => toggleChoice(group, now, option, on));
   }
 
   return (
@@ -78,7 +84,7 @@ function ChoiceForm({
             </span>
           </span>
         );
-        if (group.max === 1) {
+        if (singleChoice(group)) {
           return (
             <ChoiceList
               key={group.id}
@@ -107,6 +113,10 @@ function ChoiceForm({
             </ChoiceList>
           );
         }
+        // More than one allowed and all taken: the rest wait for one off.
+        const full =
+          group.max > 1 &&
+          optionIds.filter((o) => choices.includes(o)).length >= group.max;
         return (
           <fieldset
             key={group.id}
@@ -137,7 +147,8 @@ function ChoiceForm({
                     </span>
                     <Switch
                       checked={on}
-                      onChange={(next) => toggle(option.id, next)}
+                      disabled={full && !on}
+                      onChange={(next) => toggle(group, option.id, next)}
                       aria-labelledby={labelId}
                     />
                   </div>

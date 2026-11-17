@@ -21,7 +21,7 @@ import {
   placeTitle,
   prepStatus,
   recentlyReady,
-  TicketCard,
+  TicketView,
   toMake,
   useOrderWords,
   useUndoToast,
@@ -84,7 +84,10 @@ export function PrepScreen() {
         eyebrow={t("mode")}
         title={t("prep.title")}
         headingRef={heading}
-        subtitle={prepStatus(t, data, department, now)}
+        // With nothing to make, the empty state below says so, once.
+        subtitle={
+          tickets.length > 0 ? prepStatus(t, data, department, now) : undefined
+        }
       />
       <Segmented
         label={t("prep.department")}
@@ -121,7 +124,7 @@ export function PrepScreen() {
             const name = place ? placeTitle(t, place) : "";
             return (
               <li key={ticket.id}>
-                <TicketCard
+                <TicketView
                   t={t}
                   ticket={ticket}
                   round={round}

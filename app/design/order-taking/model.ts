@@ -141,6 +141,37 @@ export function unitPrice(item: MenuItem, choices: readonly string[]): number {
   );
 }
 
+/**
+ * A group of exactly one choice, drawn as radios: one must be picked and
+ * another replaces it. Any other group, an optional one of one option
+ * included, is drawn with switches, so what was picked can be unpicked.
+ */
+export const singleChoice = (group: ChoiceGroup) =>
+  group.min === 1 && group.max === 1;
+
+/**
+ * The choices after an option of the group is switched on or off. Past the
+ * group's most, switching one on replaces the other where only one is
+ * allowed, and otherwise changes nothing until one is switched off.
+ */
+export function toggleChoice(
+  group: ChoiceGroup,
+  choices: readonly string[],
+  optionId: string,
+  on: boolean,
+): string[] {
+  const rest = choices.filter((c) => c !== optionId);
+  if (!on) return rest;
+  const inGroup = group.options
+    .map((option) => option.id)
+    .filter((id) => rest.includes(id));
+  if (inGroup.length < group.max) return [...rest, optionId];
+  if (group.max === 1) {
+    return [...rest.filter((c) => !inGroup.includes(c)), optionId];
+  }
+  return [...choices];
+}
+
 /** The groups that still need a choice before the item can be added. */
 export function missingGroups(
   item: MenuItem,
@@ -215,6 +246,44 @@ export function placeStatus(
   if (longest >= LATE_AFTER_MINUTES) return { kind: "late", minutes: longest };
   const last = order.rounds.at(-1)?.at ?? order.openedAt;
   return { kind: "open", minutes: minutesSince(last, now) };
+}
+
+/**
+ * Whether the sender may still take a line back (§3.3): within the window,
+ * while nothing was marked ready on its ticket, even if it went back since,
+ * and never from a department the sender works in, where one person could
+ * send, make and take back with nobody else seeing.
+ */
+export function takeBackOpen(
+  round: Round,
+  ticket: Ticket,
+  now: number,
+  viewer: { id: string; departments: readonly DepartmentKey[] },
+): boolean {
+  return (
+    round.by === viewer.id &&
+    !viewer.departments.includes(ticket.department) &&
+    ticket.state === "new" &&
+    ticket.readyAt === null &&
+    minutesSince(round.at, now) < TAKE_BACK_MINUTES
+  );
+}
+
+/**
+ * The takeaways the floor shows: each with an open order, and a new one
+ * while its draft has something in it. A closed one leaves the floor, so
+ * its number is never taken again; its list stays under today's closed.
+ */
+export function takeawaysOnFloor(
+  takeaways: readonly Place[],
+  orders: readonly Order[],
+  drafts: Readonly<Record<string, readonly DraftLine[]>>,
+): Place[] {
+  return takeaways.filter(
+    (place) =>
+      orders.some((order) => order.placeId === place.id) ||
+      (place.name === null && (drafts[place.id]?.length ?? 0) > 0),
+  );
 }
 
 /** Whether an order has a held block neither fired nor taken back. */

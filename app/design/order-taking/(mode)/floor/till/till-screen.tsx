@@ -22,8 +22,8 @@ import {
   personName,
   placeById,
   placeTitle,
-  TillList,
   TillNote,
+  TillView,
   useOrderWords,
   useUndoToast,
 } from "../../../parts";
@@ -154,15 +154,15 @@ function Till({ order, opened }: { order: Order; opened: string | null }) {
           ]}
         />
         <div className="md:max-w-2xl">
-          <TillList order={order} view={view} headingLevel={2} />
+          <TillView order={order} view={view} headingLevel={2} />
         </div>
       </div>
       <div className="hidden gap-8 xl:grid xl:grid-cols-2 xl:items-start">
         <PageSection title={t("till.byItem")}>
-          <TillList order={order} view="item" />
+          <TillView order={order} view="item" />
         </PageSection>
         <PageSection title={t("till.byRound")}>
-          <TillList order={order} view="round" />
+          <TillView order={order} view="round" />
         </PageSection>
       </div>
       {toast}

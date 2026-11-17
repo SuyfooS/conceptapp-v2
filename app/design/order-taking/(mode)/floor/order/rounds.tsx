@@ -6,15 +6,12 @@ import { PageSection } from "@ui/page";
 import { Check, Flame, Receipt, Undo2 } from "lucide-react";
 import Link from "next/link";
 import type { Ref } from "react";
-import { READER } from "../../../data";
 import { useOrderDemo } from "../../../demo-store";
 import {
-  minutesSince,
   type Order,
-  type Round,
   type SentLine,
-  TAKE_BACK_MINUTES,
   type Ticket,
+  takeBackOpen,
   ticketCount,
 } from "../../../model";
 import {
@@ -25,23 +22,15 @@ import {
   SentLineView,
   TicketStateBadge,
   useOrderWords,
+  viewer,
 } from "../../../parts";
-
-/**
- * Whether its sender may still take a line back (§3.3): within the window,
- * while nothing was marked ready on its ticket, even if it went back since.
- */
-const takeBackOpen = (round: Round, ticket: Ticket, now: number) =>
-  round.by === READER &&
-  ticket.state === "new" &&
-  ticket.readyAt === null &&
-  minutesSince(round.at, now) < TAKE_BACK_MINUTES;
 
 /**
  * What was sent (§3.2 step 6): each round with its time and sender, and
  * each department's ticket with its state in words. A ticket is served
  * with one tap, even one still new, and a held block goes with "להוציא".
- * Within two minutes the sender takes a line back. No sum of money.
+ * Within two minutes the sender takes a line back, unless it went to a
+ * department they work in (`takeBackOpen`). No sum of money.
  */
 export function Rounds({
   order,
@@ -84,7 +73,7 @@ export function Rounds({
                 })}
               </h3>
               {round.tickets.map((ticket) => {
-                const canTakeBack = takeBackOpen(round, ticket, now);
+                const canTakeBack = takeBackOpen(round, ticket, now, viewer);
                 const live = ticketCount(ticket) > 0;
                 return (
                   // Not a region: a round may hold two of a department (one held).

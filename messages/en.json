@@ -592,7 +592,7 @@
         "withChoices": "with choices",
         "soldOut": "Sold out",
         "inDraft": "in the draft",
-        "added": "Added to the draft: {name}",
+        "added": "{count, plural, one {Added to the draft: {name}} other {Added to the draft: {name}, # in the draft}}",
         "noMenu": {
           "title": "No menu yet",
           "body": "Add items, or copy a menu that exists by pasting it.",
@@ -815,7 +815,8 @@
           "long": "Name too long",
           "duplicate": "Repeated",
           "reversed": "Line turned around",
-          "noItem": "Extra with no item above"
+          "noItem": "Extra with no item above",
+          "noCategory": "No category above it"
         }
       },
       "toast": {
@@ -824,6 +825,8 @@
         "served": "{place} · {department}: served",
         "ready": "{place} · {department}: ready",
         "removed": "Removed from the draft: {name}",
+        "noteRemoved": "Note removed: {name}",
+        "allergyRemoved": "Allergy removed: {name}",
         "fired": "Fired · {department}",
         "takenBack": "Taken back: {name}",
         "closed": "{place} closed",
@@ -838,7 +841,26 @@
     },
     "orderTakingTitle": "Waiter mode",
     "orderTakingText": "Taking orders on a phone and sending them to the kitchen and the bar: the tables, the order, the kitchen screen and the till, with sample data.",
-    "orderTakingDemo": "To the waiter mode demo"
+    "orderTakingDemo": "To the waiter mode demo",
+    "orderParts": {
+      "text": "A table in each of its states, an order on the prep screen with its choices, note and allergy, what to key in at the till, and items added with one tap.",
+      "tiles": "Tables",
+      "tickets": "Orders to prepare",
+      "till": "For the till",
+      "items": "Items to add",
+      "waiter": "Yoav",
+      "kitchen": "Kitchen",
+      "burger": "Burger",
+      "medium": "Medium",
+      "cheese": "Cheese",
+      "sesame": "Sesame",
+      "hummus": "Hummus",
+      "noGarlic": "No garlic",
+      "fish": "Fish of the day",
+      "schnitzel": "Schnitzel",
+      "mash": "Mash",
+      "lemonade": "Lemonade"
+    }
   },
   "shell": {
     "metaTitle": "Layout demo",

@@ -15,6 +15,7 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   addLine,
+  changeLine,
   changeTicket,
   putLineBack,
   removeLine,
@@ -36,6 +37,7 @@ import {
 } from "../../../model";
 import {
   departmentName,
+  floorTakeaways,
   ltr,
   openOrderOf,
   paths,
@@ -60,7 +62,13 @@ export function OrderScreen() {
   const { t } = useOrderWords();
   const { data } = useOrderDemo();
   const place = placeById(data, placeId);
-  if (!place) {
+  // A takeaway closed at the till is off the floor: its number is never
+  // taken again, and its list stays under today's closed.
+  const closedTakeaway =
+    place?.kind === "takeaway" &&
+    place.name !== null &&
+    !openOrderOf(data, place.id);
+  if (!place || closedTakeaway) {
     return (
       <PageBody>
         <EmptyState
@@ -107,10 +115,16 @@ function PlaceOrder({
     line: DraftLine;
     kind: "note" | "allergy";
   } | null>(null);
-  const [added, setAdded] = useState("");
+  // What was just added, for screen readers: with how many of it the draft
+  // holds now, and a new node each time, so a second tap on the same item
+  // (a second lemonade) is said again.
+  const [added, setAdded] = useState({ text: "", stamp: 0 });
   const { say, toast } = useUndoToast();
   const draftHeading = useRef<HTMLHeadingElement>(null);
   const roundsHeading = useRef<HTMLHeadingElement>(null);
+  // A send takes away the button pressed: the rounds take the focus once
+  // they are drawn with the new round in them.
+  const [sentFocus, setSentFocus] = useState(false);
 
   // Just sent (`?state=sent`): the toast says so, as after a real send.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, as the screen opens
@@ -118,9 +132,22 @@ function PlaceOrder({
     if (opened === "sent") say(t("toast.sent", { place: title }));
   }, []);
 
+  useEffect(() => {
+    if (!sentFocus) return;
+    setSentFocus(false);
+    roundsHeading.current?.focus();
+  }, [sentFocus]);
+
   function add(item: MenuItem, choices: string[] = [], qty = 1) {
+    const count =
+      draft
+        .filter((line) => line.itemId === item.id)
+        .reduce((sum, line) => sum + line.qty, 0) + qty;
     update((d) => addLine(d, place.id, item.id, choices, qty));
-    setAdded(t("picker.added", { name: item.name }));
+    setAdded((was) => ({
+      text: t("picker.added", { name: item.name, count }),
+      stamp: was.stamp + 1,
+    }));
   }
 
   function pick(item: MenuItem) {
@@ -137,6 +164,38 @@ function PlaceOrder({
     update((d) => send(d, place.id, READER, now));
     setView("order");
     say(t("toast.sent", { place: sentAs }));
+    setSentFocus(true);
+  }
+
+  /**
+   * A note or an allergy saved from its sheet. Taken off, it comes back from
+   * the toast rather than an "are you sure", with the focus on the way back
+   * and then on the draft, as a removed line does.
+   */
+  function noteSaved(
+    line: DraftLine,
+    kind: "note" | "allergy",
+    text: string | null,
+  ) {
+    setNoteFor(null);
+    const was = kind === "note" ? line.note : line.allergy;
+    if (!was || text) return;
+    const name = itemById(data.menu, line.itemId)?.name ?? "";
+    say(
+      t(kind === "note" ? "toast.noteRemoved" : "toast.allergyRemoved", {
+        name,
+      }),
+      () =>
+        update((d) =>
+          changeLine(
+            d,
+            place.id,
+            line.id,
+            kind === "note" ? { note: was } : { allergy: was },
+          ),
+        ),
+      { focus: true, after: () => draftHeading.current },
+    );
   }
 
   function remove(line: DraftLine, index: number) {
@@ -281,7 +340,7 @@ function PlaceOrder({
         </div>
       ) : null}
       <p role="status" className="sr-only">
-        {added}
+        {added.text ? <span key={added.stamp}>{added.text}</span> : null}
       </p>
       <ChoiceSheet
         item={choiceFor}
@@ -295,7 +354,7 @@ function PlaceOrder({
         placeId={place.id}
         target={noteFor}
         onClose={() => setNoteFor(null)}
-        onSaved={() => setNoteFor(null)}
+        onSaved={noteSaved}
       />
       {toast}
     </PageBody>
@@ -306,9 +365,12 @@ function PlaceOrder({
 function FloorList({ current }: { current: string }) {
   const { t } = useOrderWords();
   const { data, now } = useOrderDemo();
+  // The floor's takeaways, and the new one being taken here.
+  const takeaways = floorTakeaways(data);
   const places = [
     ...orderDemoTables,
-    ...data.takeaways.filter((p) => p.name !== null || p.id === current),
+    ...takeaways,
+    ...data.takeaways.filter((p) => p.id === current && !takeaways.includes(p)),
   ];
   return (
     <nav

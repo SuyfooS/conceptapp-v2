@@ -9,97 +9,10 @@ import {
   useEffect,
   useState,
 } from "react";
-import {
-  DEMO_START,
-  demoClosed,
-  demoDraft,
-  demoJustSent,
-  demoOrders,
-  demoSoldOut,
-  demoTakeaways,
-  orderDemoMenu,
-  READER,
-} from "./data";
-import type { DraftLine, Menu, Order, Place } from "./model";
+import { DEMO_START } from "./data";
+import { type DemoData, scenario } from "./scenario";
 
-/** Everything the demo holds, in memory only: a reload starts the evening again. */
-export type DemoData = {
-  menu: Menu;
-  soldOut: string[];
-  /** The open orders, one per place at most. */
-  orders: Order[];
-  /** Today's closed orders, newest first. */
-  closed: Order[];
-  /** What each place's waiter is building, by place: it lives on the phone. */
-  drafts: Record<string, DraftLine[]>;
-  takeaways: Place[];
-  /** The next takeaway's number, given at its first send. */
-  nextTakeaway: number;
-};
-
-const service = (): DemoData => ({
-  menu: orderDemoMenu,
-  soldOut: demoSoldOut,
-  orders: demoOrders(),
-  closed: demoClosed(),
-  drafts: {},
-  takeaways: demoTakeaways,
-  nextTakeaway: 2,
-});
-
-/**
- * What the demo opens with for each `?state=` that changes its rows (the
- * rest open a screen's own part, such as a sheet): `quiet` the evening
- * before anyone sat down, `draft` table 6's draft with a note, an allergy
- * and a main held, `sent` table 6 just sent, `nothingSent` an evening when
- * Shiran sent nothing yet, `nothingOpen` a kitchen with every ticket out,
- * and `noMenu` a business whose menu is still to be added.
- */
-export function scenario(state: string | null): DemoData {
-  const base = service();
-  switch (state) {
-    case "quiet":
-      return { ...base, orders: [], closed: [], takeaways: [] };
-    case "draft":
-      return { ...base, drafts: { "table-6": demoDraft() } };
-    case "sent":
-      return { ...base, orders: [...base.orders, demoJustSent()] };
-    case "nothingSent":
-      return {
-        ...base,
-        orders: base.orders.filter((order) =>
-          order.rounds.every((round) => round.by !== READER),
-        ),
-        takeaways: [],
-      };
-    case "nothingOpen":
-      return {
-        ...base,
-        orders: base.orders.map((order) => ({
-          ...order,
-          rounds: order.rounds.map((round) => ({
-            ...round,
-            tickets: round.tickets.map((ticket) => ({
-              ...ticket,
-              held: false,
-              state: "served" as const,
-            })),
-          })),
-        })),
-      };
-    case "noMenu":
-      return {
-        ...base,
-        menu: { categories: [], items: [] },
-        soldOut: [],
-        orders: [],
-        closed: [],
-        takeaways: [],
-      };
-    default:
-      return base;
-  }
-}
+export type { DemoData } from "./scenario";
 
 /** How often the demo's clock moves: ages and the take-back window follow it. */
 const TICK_MS = 10_000;
@@ -137,7 +50,9 @@ export function useOpenedWith(): string | null {
  * stored anywhere: a reload starts the evening again. A link with
  * `?state=` opens it afresh in that state (`scenario`), and the state then
  * comes off the address, so going back to that page keeps what was done
- * since rather than starting over.
+ * since rather than starting over. A link without one keeps what is there:
+ * the screens' own links and tabs, never the index's, whose plain rows ask
+ * for `?state=service`.
  */
 export function OrderDemo({ children }: { children: ReactNode }) {
   const pathname = usePathname();
