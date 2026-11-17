@@ -18,7 +18,8 @@ import {
  * the preview line by line.
  *
  *   an item      a line that ends in a price: "שניצל 62", "פרגית על האש ₪72",
- *                "קפה הפוך 14.50". The price is read by `parseShekels`, which
+ *                "קפה הפוך 14.50", and with a typeset menu's leaders,
+ *                "שניצל.....62". The price is read by `parseShekels`, which
  *                takes ₪, a comma for the point and direction marks.
  *   two sizes    two prices with a slash, "קפה הפוך 14/17": the item at the
  *                first, and a required group of two sizes, the regular at 0
@@ -29,7 +30,11 @@ import {
  *   a category   a line with no price, up to 40 characters: it heads the
  *                lines after it. Items before any go to one of their own.
  *   a sheet row  tab-separated, as a spreadsheet pastes it: a name, a price
- *                and, if there is one, the category.
+ *                and, if there is one, the category, with empty cells
+ *                between them skipped. A name or a price that starts with
+ *                "+" makes an extra, as a line does. A first row with no
+ *                number where the price goes names the columns, and is
+ *                read as nothing.
  *   backwards    a PDF copies Hebrew in the order it is drawn, so a word
  *                comes out starting with a final letter (ם ן ץ ף ך): the line
  *                is marked, and `reverseLine` turns it around.
@@ -71,6 +76,8 @@ export type MenuProblem =
 
 /** What a line became. */
 export type MenuRowResult =
+  /** A spreadsheet's first row, naming its columns: read as nothing. */
+  | { kind: "header" }
   | { kind: "category"; name: string }
   | { kind: "item"; name: string; priceAgorot: number; category: string }
   | {
@@ -118,14 +125,22 @@ const BULLET = /^[-*•·]\s*/u;
 const LEADERS = /[\s.\-–—:·…_|]+$/u;
 /** The currency after a price, and a "62.-". */
 const CURRENCY_AFTER = /\s*(?:₪|ש["״']?ח|שקלים|שקל)\s*$|\.?-$/u;
-/** A price at the end of a line, with a space before it: "62", "₪72", "+6", "14/17". */
+/**
+ * A price at the end of a line: "62", "₪72", "+6", "14/17". A space comes
+ * before it, or the leaders a typeset menu runs straight into it
+ * ("שניצל.....62", "פסטה....₪58", "שניצל-62"), the whole run of them, but
+ * never a run that follows a number: "12-14" is two numbers, not a name and
+ * its price.
+ */
 const PRICE_AT_END =
-  /(?:^|\s)(\+)?\s*(?:₪\s*)?(\d[\d.,]*(?:\s*\/\s*\d[\d.,]*)?)\s*(?:₪)?$/u;
+  /(?:^|\s|(?<![\d.\-–—:·…_|])[.\-–—:·…_|]+)(\+)?\s*(?:₪\s*)?(\d[\d.,]*(?:\s*\/\s*\d[\d.,]*)?)\s*(?:₪)?$/u;
 /**
  * Something that ends in a number but isn't a price read as one ("10/12/14",
  * "62₪₪"): the line is an item whose price isn't clear, never a category.
  */
 const NUMBER_AT_END = /(?:^|\s)(\+)?(\S*\d)$/u;
+/** A spreadsheet's price cell with a number in it, read or not. */
+const HAS_NUMBER = /\d/u;
 /** A word that starts with a final letter: Hebrew copied backwards. */
 const FINAL_FIRST = /^[^\p{L}\d]*[םןץףך]/u;
 
@@ -325,18 +340,38 @@ export function parseMenu(input: string, words: ImportWords): ParsedMenu {
       return;
     }
 
-    // A row from a spreadsheet: a name, a price and maybe its category.
-    const fields = raw.split("\t").map(clean);
-    if (fields.filter(Boolean).length > 1) {
-      lastItem = null;
-      const [name = "", written = "", categoryName = ""] = fields;
-      if (categoryName && chars(categoryName) > MENU_TEXT_MAX.category) {
-        push("nameTooLong");
+    // A row from a spreadsheet: a name, a price and maybe its category, the
+    // empty cells between them skipped, as Word and Docs line a price up
+    // with two tabs ("שניצל\t\t62").
+    const fields = raw.split("\t").map(clean).filter(Boolean);
+    if (fields.length > 1) {
+      const [first = "", written = "", categoryName = ""] = fields;
+      const bare = written.replace(CURRENCY_AFTER, "");
+      // An extra, as a line is: its name starts with "+", or its price does.
+      if (first.startsWith("+") || bare.startsWith("+")) {
+        const name = first.replace(/^\+\s*/u, "").replace(LEADERS, "");
+        const price = readPrice(
+          bare.replace(/^\+/u, "").replace(/\s+/g, ""),
+          MAX_OPTION_AGOROT,
+        );
+        push(
+          !HAS_NUMBER.test(bare)
+            ? "noPrice"
+            : price.ok && price.large === null
+              ? addExtra(name, price.agorot)
+              : "unclearPrice",
+        );
         return;
       }
-      const bare = written.replace(CURRENCY_AFTER, "");
-      if (!bare) {
-        push("noPrice");
+      lastItem = null;
+      if (!HAS_NUMBER.test(bare)) {
+        // The first row with no number where the price goes names the
+        // columns ("שם\tמחיר\tקטגוריה"); any other is an item with no price.
+        push(rows.length === 0 ? { kind: "header" } : "noPrice");
+        return;
+      }
+      if (categoryName && chars(categoryName) > MENU_TEXT_MAX.category) {
+        push("nameTooLong");
         return;
       }
       const price = readPrice(bare.replace(/\s+/g, ""), MAX_ITEM_AGOROT);
@@ -346,7 +381,7 @@ export function parseMenu(input: string, words: ImportWords): ParsedMenu {
       }
       push(
         addItem(
-          name.replace(LEADERS, ""),
+          first.replace(LEADERS, ""),
           price,
           categoryName ? categoryNamed(categoryName) : null,
         ),

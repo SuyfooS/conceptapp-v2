@@ -145,6 +145,50 @@ describe("a pasted menu", () => {
     ]);
   });
 
+  it("reads a typeset menu's leaders that run straight into the price", () => {
+    // As a PDF menu copies them, with no space before the price.
+    expect(
+      outcomes(
+        [
+          "שניצל.....62",
+          "תוספת ביצה.....+6",
+          "פסטה....58 ₪",
+          "המבורגר .......68 ₪",
+          "מרק.......₪32",
+          "פלאפל-24",
+          "חומוס:30",
+          "קפה הפוך…14/17",
+          "סלט_____44.-",
+        ].join("\n"),
+      ),
+    ).toEqual([
+      { kind: "item", name: "שניצל", priceAgorot: 6200, category: "כללי" },
+      { kind: "extra", name: "תוספת ביצה", priceAgorot: 600, item: "שניצל" },
+      { kind: "item", name: "פסטה", priceAgorot: 5800, category: "כללי" },
+      { kind: "item", name: "המבורגר", priceAgorot: 6800, category: "כללי" },
+      { kind: "item", name: "מרק", priceAgorot: 3200, category: "כללי" },
+      { kind: "item", name: "פלאפל", priceAgorot: 2400, category: "כללי" },
+      { kind: "item", name: "חומוס", priceAgorot: 3000, category: "כללי" },
+      {
+        kind: "sizes",
+        name: "קפה הפוך",
+        priceAgorot: 1400,
+        largeAgorot: 1700,
+        category: "כללי",
+      },
+      { kind: "item", name: "סלט", priceAgorot: 4400, category: "כללי" },
+    ]);
+  });
+
+  it("never takes a dash between two numbers for leaders", () => {
+    // "12-14" is two prices, not "קפה 12" at 14.
+    expect(outcomes("קפה 12-14\nתה 12––14\nמגש 1.....5")).toEqual([
+      "unclearPrice",
+      "unclearPrice",
+      "unclearPrice",
+    ]);
+  });
+
   it("puts items before any category line in one of their own", () => {
     const menu = parse("שניצל 62\nעיקריות\nפסטה 58");
     expect(menu.categories.map((category) => category.name)).toEqual([
@@ -378,6 +422,110 @@ describe("rows from a spreadsheet", () => {
         "nameTooLong",
       ],
     );
+  });
+
+  it("take an extra from a name or a price that starts with +", () => {
+    const menu = parse(
+      [
+        "המבורגר\t68\tעיקריות",
+        "+ גבינה\t6",
+        "ביצה\t+4\tעיקריות",
+        "+ בצל\t\t0",
+        "+ חלב\t2/3",
+        "+ קצפת\tשתייה",
+      ].join("\n"),
+    );
+    expect(menu.rows.map((row) => (row.ok ? row.became : row.problem))).toEqual(
+      [
+        {
+          kind: "item",
+          name: "המבורגר",
+          priceAgorot: 6800,
+          category: "עיקריות",
+        },
+        { kind: "extra", name: "גבינה", priceAgorot: 600, item: "המבורגר" },
+        { kind: "extra", name: "ביצה", priceAgorot: 400, item: "המבורגר" },
+        { kind: "extra", name: "בצל", priceAgorot: 0, item: "המבורגר" },
+        // An extra takes one price only.
+        "unclearPrice",
+        "noPrice",
+      ],
+    );
+    expect(menu.categories).toEqual([
+      {
+        name: "עיקריות",
+        items: [
+          {
+            name: "המבורגר",
+            priceAgorot: 6800,
+            optionGroups: [
+              {
+                id: "extras",
+                name: "תוספות",
+                min: 0,
+                max: 3,
+                options: [
+                  { id: "x1", name: "גבינה", priceAgorot: 600 },
+                  { id: "x2", name: "ביצה", priceAgorot: 400 },
+                  { id: "x3", name: "בצל", priceAgorot: 0 },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ]);
+    // With no item above, as a line has it.
+    expect(outcomes("+ גבינה\t6")).toEqual(["noItem"]);
+  });
+
+  it("skip the empty cells a price is lined up with", () => {
+    const menu = parse(
+      ["שניצל\t\t62", "פסטה\t\t\t58 ₪", "\tמרק\t32", "סלט\t44\t\tראשונות"].join(
+        "\n",
+      ),
+    );
+    expect(menu.rows.map((row) => (row.ok ? row.became : row.problem))).toEqual(
+      [
+        { kind: "item", name: "שניצל", priceAgorot: 6200, category: "כללי" },
+        { kind: "item", name: "פסטה", priceAgorot: 5800, category: "כללי" },
+        { kind: "item", name: "מרק", priceAgorot: 3200, category: "כללי" },
+        { kind: "item", name: "סלט", priceAgorot: 4400, category: "ראשונות" },
+      ],
+    );
+    // The preview shows each row as it reads.
+    expect(menu.rows[0]?.text).toBe("שניצל 62");
+  });
+
+  it("read a first row that names the columns as nothing", () => {
+    const menu = parse(["שם\tמחיר\tקטגוריה", "שניצל\t62\tעיקריות"].join("\n"));
+    expect(menu.error).toBe(null);
+    expect(menu.rows.map((row) => (row.ok ? row.became : row.problem))).toEqual(
+      [
+        { kind: "header" },
+        {
+          kind: "item",
+          name: "שניצל",
+          priceAgorot: 6200,
+          category: "עיקריות",
+        },
+      ],
+    );
+    expect(menu.categories).toEqual([
+      {
+        name: "עיקריות",
+        items: [{ name: "שניצל", priceAgorot: 6200, optionGroups: [] }],
+      },
+    ]);
+    expect(outcomes("Name\tPrice\tCategory\nTea\t9")).toEqual([
+      { kind: "header" },
+      { kind: "item", name: "Tea", priceAgorot: 900, category: "כללי" },
+    ]);
+    // Only the first row: one further down is an item with no price.
+    expect(outcomes("שניצל\t62\nשם\tמחיר")).toEqual([
+      { kind: "item", name: "שניצל", priceAgorot: 6200, category: "כללי" },
+      "noPrice",
+    ]);
   });
 });
 

@@ -16,11 +16,12 @@
 -- the menu: the staff and a view as a role on it, while the module is on;
 -- never an accountant, a view as one, or another business. public.order_menu
 -- answers with nothing new on the same version, and the version moves with
--- every write. And a line's unit price (private.unit_agorot). Every write
+-- every write, and with a department removed or brought back, which changes
+-- where items go. And a line's unit price (private.unit_agorot). Every write
 -- passes its moment, so nothing depends on today's date. Fixed ids (e1…)
 -- and numbers (050-061-xxxx), so nothing here meets the seed or another test.
 begin;
-select plan(75);
+select plan(77);
 
 -- A: 1 owner; 2 a manager in the floor and the bar (as the demo's Shiran);
 -- 3 a worker in the kitchen (Noa); 4 a worker in the bar (Yoav); 5 put in
@@ -1049,6 +1050,55 @@ select is(
   'true true',
   'a write moves the version, and one that changes nothing keeps it'
 );
+
+-- A department removed or brought back on the management page changes where
+-- items go (public.set_departments, replaced by the migration), so it moves
+-- the version too: the phone holding the one before reads the routes anew.
+-- Where Lemonade, Schnitzel and Shot go, as order_menu answers the phone
+-- holding the version kept as `held`, or 'nothing new'.
+create function pg_temp.routes(held text) returns text language sql as $$
+  select coalesce((
+    select string_agg((i ->> 'name') || ':' || coalesce(i ->> 'route', '-'), ',' order by i ->> 'name')
+    from jsonb_array_elements(public.order_menu(
+      pg_temp.a(), (select (g.value #>> '{}')::bigint from got g where g.name = held)
+    ) -> 'items') as i
+    where i ->> 'name' in ('Lemonade', 'Schnitzel', 'Shot')
+  ), 'nothing new')
+$$;
+
+select pg_temp.keep('before', to_jsonb(pg_temp.menu_version()));
+select public.set_departments(pg_temp.p(1), pg_temp.a(),
+  '[{"key": "kitchen", "name": "Kitchen"}, {"key": "floor", "name": "Floor"}]');
+select pg_temp.keep('after', to_jsonb(pg_temp.menu_version()));
+select pg_temp.sign_in(pg_temp.p(3));
+select is(
+  ((select (g.value #>> '{}')::bigint from got g where g.name = 'after')
+    > (select (g.value #>> '{}')::bigint from got g where g.name = 'before'))::text
+  || ' | ' || pg_temp.routes('before') || ' | ' || pg_temp.routes('after'),
+  'true | Lemonade:-,Schnitzel:' || pg_temp.d(1) || ',Shot:- | nothing new',
+  'removing the bar moves the version: the phone holding the one before reads its items, the category''s and the override''s, going nowhere'
+);
+reset role;
+
+select pg_temp.keep('before', to_jsonb(pg_temp.menu_version()));
+select public.set_departments(pg_temp.p(1), pg_temp.a(),
+  '[{"key": "kitchen", "name": "Kitchen"}, {"key": "bar", "name": "Bar"}, {"key": "floor", "name": "Floor"}]');
+select pg_temp.keep('after', to_jsonb(pg_temp.menu_version()));
+select public.set_departments(pg_temp.p(1), pg_temp.a(),
+  '[{"key": "kitchen", "name": "Kitchen"}, {"key": "bar", "name": "Bar"}, {"key": "floor", "name": "Floor"}]');
+select pg_temp.keep('again', to_jsonb(pg_temp.menu_version()));
+select pg_temp.sign_in(pg_temp.p(3));
+select is(
+  ((select (g.value #>> '{}')::bigint from got g where g.name = 'after')
+    > (select (g.value #>> '{}')::bigint from got g where g.name = 'before'))::text
+  || ' ' || ((select g.value from got g where g.name = 'again')
+    = (select g.value from got g where g.name = 'after'))::text
+  || ' | ' || pg_temp.routes('before') || ' | ' || pg_temp.routes('after'),
+  'true true | Lemonade:' || pg_temp.d(2) || ',Schnitzel:' || pg_temp.d(1) || ',Shot:' || pg_temp.d(2)
+    || ' | nothing new',
+  'bringing it back moves it again, the routes back with it, and the same departments saved again keep it'
+);
+reset role;
 
 ------------------------------------------------------------------------------
 -- Off again: nothing is read, nothing is written

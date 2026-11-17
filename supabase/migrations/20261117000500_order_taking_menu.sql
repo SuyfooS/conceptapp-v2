@@ -42,10 +42,12 @@
 --
 -- It replaces, from their latest versions and with only these changes:
 -- private.settings_perm and private.log_perm
--- (20261115001000_roles_manage.sql's), with the new area; and
--- public.reset_demo_business (20261111000200_chat.sql's), with the sample
--- menu last. Each keeps its signature, so its grants stay; revoked and
--- granted again all the same.
+-- (20261115001000_roles_manage.sql's), with the new area;
+-- public.set_departments (20261109000600_lists.sql's), which moves the menu
+-- version when the departments change, since a removed or restored one
+-- changes where items go; and public.reset_demo_business
+-- (20261111000200_chat.sql's), with the sample menu last. Each keeps its
+-- signature, so its grants stay; revoked and granted again all the same.
 
 ------------------------------------------------------------------------------
 -- 1. The module: off everywhere
@@ -439,7 +441,7 @@ comment on table public.menu_categories is
 comment on table public.menu_items is
   'The menu''s items: price in agorot, VAT included; an optional department of their own; sold out; up to five groups of choices (private.valid_option_groups). Archived when removed. Written by public.save_menu_item, archive_menu_item, restore_menu_item, set_menu_item_available, import_menu and the demo''s seed; read by the staff while taking orders is on.';
 comment on table private.menu_versions is
-  'Each business''s menu version, moved by every write to its menu and places (private.bump_menu_version), for public.order_menu.';
+  'Each business''s menu version, moved by every write to its menu and places, and by public.set_departments when the departments change (private.bump_menu_version), for public.order_menu.';
 
 ------------------------------------------------------------------------------
 -- 5. Who may do what
@@ -488,7 +490,9 @@ as $$
 $$;
 
 -- Moves the business's menu version (private.menu_versions). Every write to
--- the menu and the places calls it last.
+-- the menu and the places calls it last, and so does public.set_departments
+-- (replaced below) when the departments change, since that changes where
+-- items go.
 create function private.bump_menu_version(business uuid)
 returns void
 language sql
@@ -1540,7 +1544,117 @@ end;
 $$;
 
 ------------------------------------------------------------------------------
--- 9. The demo
+-- 9. The departments the menu sends its items to
+
+-- 20261109000600_lists.sql's, with one line more: when the live departments
+-- change, the menu version moves, since a department removed or brought back
+-- changes where items go (the route public.order_menu works out on every
+-- read), and a phone holding the version before must not be told nothing is
+-- new. Whether taking orders is on or not, as it may be switched on later.
+--
+-- Saves the business's departments, in order, as [{key, name}]: at most 30,
+-- each key and each name once. Keys missing from it are archived, archived
+-- keys that come back are restored (the undo), new keys are added. Owners,
+-- managers and the team, who edit positions too.
+create or replace function public.set_departments(
+  actor uuid,
+  business uuid,
+  departments jsonb
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  entry jsonb;
+  before_list jsonb;
+  after_list jsonb;
+begin
+  if not private.can_edit_settings(business, actor) then
+    raise exception 'Managers, owners and the team only' using errcode = '42501';
+  end if;
+  perform 1 from public.businesses b where b.id = business for no key update;
+  if not found then
+    raise exception 'Unknown business' using errcode = 'P0002';
+  end if;
+
+  if jsonb_typeof(departments) is distinct from 'array' then
+    raise exception 'Departments must be a list' using errcode = '22023';
+  end if;
+  if jsonb_array_length(departments) > 30 then
+    raise exception 'A business has at most 30 departments' using errcode = '22023';
+  end if;
+  for entry in select e.value from jsonb_array_elements(departments) as e (value)
+  loop
+    if jsonb_typeof(entry) <> 'object' then
+      raise exception 'A department must be an object' using errcode = '22023';
+    end if;
+    if exists (
+      select 1 from jsonb_object_keys(entry) as k (field)
+      where k.field not in ('key', 'name')
+    ) then
+      raise exception 'A department has a key and a name' using errcode = '22023';
+    end if;
+    if private.json_key(entry -> 'key', 'A department''s key') is null
+      or private.json_text(entry -> 'name', 40, 'A department''s name') is null then
+      raise exception 'A department needs a key and a name' using errcode = '22023';
+    end if;
+  end loop;
+  if (
+    select count(distinct e.value ->> 'key') from jsonb_array_elements(departments) as e (value)
+  ) <> jsonb_array_length(departments) then
+    raise exception 'Each department''s key once' using errcode = '22023';
+  end if;
+  if (
+    select count(distinct lower(btrim(e.value ->> 'name')))
+    from jsonb_array_elements(departments) as e (value)
+  ) <> jsonb_array_length(departments) then
+    raise exception 'Each department''s name once' using errcode = '22023';
+  end if;
+
+  select coalesce(
+    jsonb_agg(jsonb_build_object('key', d.key, 'name', d.name) order by d.position, d.key),
+    '[]'::jsonb
+  )
+  into before_list
+  from public.departments d
+  where d.business_id = business and d.archived_at is null;
+
+  -- Everything live is archived first, so names can move between departments
+  -- in one save; what stays is restored with its new name and place.
+  update public.departments d
+  set archived_at = now()
+  where d.business_id = business and d.archived_at is null;
+
+  insert into public.departments as d (business_id, key, name, position, archived_at)
+  select business, e.value ->> 'key', btrim(e.value ->> 'name'),
+    (e.ordinality - 1)::smallint, null::timestamptz
+  from jsonb_array_elements(departments) with ordinality as e (value, ordinality)
+  on conflict (business_id, key) do update
+  set name = excluded.name, position = excluded.position, archived_at = null;
+
+  select coalesce(
+    jsonb_agg(jsonb_build_object('key', d.key, 'name', d.name) order by d.position, d.key),
+    '[]'::jsonb
+  )
+  into after_list
+  from public.departments d
+  where d.business_id = business and d.archived_at is null;
+
+  if before_list is distinct from after_list then
+    insert into public.audit_log (business_id, actor_id, action, details)
+    values (
+      business, actor, 'departments.change',
+      jsonb_build_object('from', before_list, 'to', after_list)
+    );
+    perform private.bump_menu_version(business);
+  end if;
+end;
+$$;
+
+------------------------------------------------------------------------------
+-- 10. The demo
 
 -- What the demo restaurant starts with on its menu: four categories, the
 -- kitchen's three and the bar's drinks, thirteen items with no choices (the
@@ -1765,6 +1879,9 @@ revoke execute on function private.settings_perm(public.module_key)
   from public, anon, authenticated;
 revoke execute on function private.log_perm(text) from public, anon;
 grant execute on function private.log_perm(text) to authenticated;
+revoke execute on function public.set_departments(uuid, uuid, jsonb)
+  from public, anon, authenticated;
+grant execute on function public.set_departments(uuid, uuid, jsonb) to service_role;
 revoke execute on function public.reset_demo_business(uuid)
   from public, anon, authenticated;
 grant execute on function public.reset_demo_business(uuid) to service_role;

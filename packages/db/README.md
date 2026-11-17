@@ -2171,9 +2171,11 @@ All three are read under RLS by the staff and a view as a role on it while
 the module is on (`private.order_taking_on`), never by an accountant; and
 `public.order_menu(business, known_version)`, with the person's own session,
 answers the same menu as one JSON, or null when `known_version` is the
-business's version now (`private.menu_versions`, moved by every write: the
-moment in microseconds, or one more, so it never comes back to a number a
-phone holds after a demo reset). Writes are the server's, for `actor`, each
+business's version now (`private.menu_versions`, moved by every write, and
+by `set_departments` when the departments change, since a department removed
+or brought back changes where items go: the moment in microseconds, or one
+more, so it never comes back to a number a phone holds after a demo reset).
+Writes are the server's, for `actor`, each
 refused while the module is off (42501, hint `off`): `set_menu_categories`
 and `set_order_places` save the list whole as `set_departments` does,
 `save_menu_item` (40001 behind `known_version`), `archive_menu_item`,
