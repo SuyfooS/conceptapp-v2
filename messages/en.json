@@ -1736,6 +1736,7 @@
             "tooManyStations": "The business already runs {count, plural, one {one clock station} other {# clock stations}}. To add one, stop one of them in the team's hours.",
             "managerOnly": "This business shows the code on a manager's phone only, so it has no clock stations.",
             "name": "The station needs a name, up to 40 characters.",
+            "busy": "We couldn't lock the device just now. You can try again in a few minutes.",
             "noAccess": "Locking a device on the code is no longer yours to do.",
             "viewOnly": "No device is locked in view mode.",
             "failed": "We couldn't lock the device. You can try again."

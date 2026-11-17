@@ -61,7 +61,8 @@ export const LOCK_PAIRING_SLOTS = 3;
  * nothing here can delete it. On its own few hashes, a business's locks leave
  * at most three such rows however often they are repeated, so no business
  * fills the table for the others. A lock whose slot is taken (23505: another
- * lock pairing now, or one left over) takes the next.
+ * lock pairing now, or one left over) takes the next; with all three taken it
+ * is refused as `busy`, until the leftovers' five minutes are up.
  */
 export function lockPairingHash(
   businessId: string,
@@ -82,9 +83,11 @@ export function lockPairingHash(
  * pairing is one of the business's own, `lockPairingHash`). Ten running
  * refuse it before any pairing starts (`tooManyStations`), as the caller's
  * checks refuse what the database would (who edits the clock, where codes may
- * show on a station, the name), so a refused lock leaves nothing pairing. The
- * database refuses it all the same where codes are shown on a manager's
- * phone only (`managerOnly`), and with ten running reached meanwhile.
+ * show on a station, the name, control characters included), so a refused
+ * lock almost never leaves a pairing behind: only when something changes
+ * between those checks and the approval (ten running reached meanwhile, the
+ * person's role, where codes show), which the database then refuses
+ * (`tooManyStations`, `noAccess`, `managerOnly`).
  */
 export async function lockStation(
   actorId: string,
@@ -110,8 +113,9 @@ export async function lockStation(
       short_hash: unkeptHash(),
       token_hash: hashStationToken(token),
     });
-    if (started.error?.code === "23505" && slot < LOCK_PAIRING_SLOTS - 1) {
-      continue;
+    if (started.error?.code === "23505") {
+      if (slot < LOCK_PAIRING_SLOTS - 1) continue;
+      return { ok: false, failure: "busy" };
     }
     if (started.error) return lockRefusal(started.error);
     const { data, error } = await admin.rpc("approve_station_pairing", {

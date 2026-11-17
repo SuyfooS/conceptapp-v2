@@ -113,8 +113,12 @@ export function StationScreen({
     refusal === "stopped" || refusal === "notStation" || refusal === "signedIn";
   /** The page's reading (`data.now`) the screen was last told to leave on. */
   const toldOn = useRef<string | null>(null);
-  /** When the page was last read again for a refusal. */
-  const readAgainAt = useRef(0);
+  /**
+   * When the page was last read again for a refusal, on the device's own
+   * clock (performance.now(), as the rotation times itself), so a time of day
+   * set back can't hold the next reading off.
+   */
+  const readAgainAt = useRef(Number.NEGATIVE_INFINITY);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new reading of the page asks again, not each render's `retry`
   useEffect(() => {
     if (!leaving) {
@@ -123,9 +127,12 @@ export function StationScreen({
     }
     if (toldOn.current !== null && toldOn.current !== data.now) retry();
     toldOn.current = data.now;
-    const wait = Math.max(0, readAgainAt.current + READ_AGAIN_MS - Date.now());
+    const wait = Math.max(
+      0,
+      readAgainAt.current + READ_AGAIN_MS - performance.now(),
+    );
     const timer = setTimeout(() => {
-      readAgainAt.current = Date.now();
+      readAgainAt.current = performance.now();
       router.refresh();
     }, wait);
     return () => clearTimeout(timer);

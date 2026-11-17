@@ -155,7 +155,7 @@ export function StationsCard({
         onFocusLeave={() => heading.current?.focus({ preventScroll: true })}
       />
       {rows.length > 0 ? (
-        <Card padding="none" className="overflow-hidden md:max-w-2xl">
+        <Card padding="none" className="overflow-hidden">
           {failure ? (
             <p role="alert" className="px-4 pt-3 font-medium text-danger">
               {t(`failure.${failure}`)}
@@ -165,7 +165,7 @@ export function StationsCard({
             {rows.map((row) => (
               <li
                 key={row.id}
-                className="relative flex flex-col gap-2 px-4 py-3 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line md:flex-row md:items-center md:gap-3"
+                className="relative flex flex-col gap-2 px-4 py-3 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line xl:flex-row xl:items-center xl:gap-3"
               >
                 <div className="flex min-w-0 flex-1 items-center gap-3">
                   <span
@@ -179,7 +179,7 @@ export function StationsCard({
                     <span className="text-ink-2 text-sm">{seen(row)}</span>
                   </div>
                 </div>
-                <div className="ps-[52px] md:ms-auto md:ps-0">
+                <div className="ps-[52px] xl:ms-auto xl:ps-0">
                   <Button
                     variant="secondary"
                     aria-label={t("stopLabel", { name: row.name })}
@@ -198,7 +198,7 @@ export function StationsCard({
         // None running: how to leave a device as one, or, where codes show
         // on a manager's phone only, that none can be. A stop that failed on
         // the last one says so here.
-        <Card className="flex flex-col gap-2 md:max-w-2xl">
+        <Card className="flex flex-col gap-2">
           {failure ? (
             <p role="alert" className="font-medium text-danger">
               {t(`failure.${failure}`)}
@@ -210,7 +210,7 @@ export function StationsCard({
         </Card>
       )}
       {stations.howTo && rows.length > 0 ? (
-        <p className="px-1 text-ink-2 text-sm md:max-w-2xl">{t("howTo")}</p>
+        <p className="px-1 text-ink-2 text-sm">{t("howTo")}</p>
       ) : null}
     </PageSection>
   );

@@ -267,13 +267,16 @@ export function TeamHoursView({
         </div>
       </div>
 
-      {/* Always in place, also showing nothing: a stop's toast lives in it. */}
-      <StationsCard
-        stations={data.stations}
-        stop={actions.stopStation}
-        restart={actions.restartStation}
-        viewOnly={data.viewOnly}
-      />
+      {/* Always in place, also showing nothing: a stop's toast lives in it.
+          From a tablet up it lines up with the column of who is at work. */}
+      <div className="empty:hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-8">
+        <StationsCard
+          stations={data.stations}
+          stop={actions.stopStation}
+          restart={actions.restartStation}
+          viewOnly={data.viewOnly}
+        />
+      </div>
     </PageBody>
   );
 }

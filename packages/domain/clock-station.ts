@@ -53,9 +53,18 @@ export function lockOpen(offer: {
   return offer.current !== null || offer.running.length < MAX_STATIONS;
 }
 
-/** A station's name, as the database takes it: 1 to 40 characters, trimmed. */
+/**
+ * A station's name, as the database takes it: 1 to 40 characters, trimmed,
+ * and no control characters (a NUL can't be stored, so the database would
+ * refuse it only after the pairing started).
+ */
 export const STATION_NAME_MAX = 40;
-export const stationName = z.string().trim().min(1).max(STATION_NAME_MAX);
+export const stationName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(STATION_NAME_MAX)
+  .refine((name) => !/\p{Cc}/u.test(name));
 
 /**
  * The name a new station is offered: `nameFor(n)` ("עמדת שעון 2") for the
@@ -137,12 +146,15 @@ export function stationCodeFailureOf(
 
 /**
  * Why a device wasn't locked. `tooManyStations`: ten run already; `name`: no
- * name, or one longer than 40 characters.
+ * name, or one longer than 40 characters; `busy`: the business's few
+ * pairings are all taken (locks refused in the last five minutes), so the next
+ * try works once they expire.
  */
 export type LockFailure =
   | "tooManyStations"
   | "managerOnly"
   | "name"
+  | "busy"
   | "noAccess"
   | "viewOnly"
   | "failed";

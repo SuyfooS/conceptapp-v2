@@ -165,7 +165,7 @@ describe("locking a device", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     expect(await lockStation(ACTOR, BUSINESS, "Office")).toEqual({
       ok: false,
-      failure: "failed",
+      failure: "busy",
     });
     error.mockRestore();
     expect(started()).toHaveLength(LOCK_PAIRING_SLOTS);

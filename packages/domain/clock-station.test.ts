@@ -55,6 +55,9 @@ describe("a station's name", () => {
     expect(stationName.safeParse("   ").success).toBe(false);
     expect(stationName.safeParse("א".repeat(40)).success).toBe(true);
     expect(stationName.safeParse("א".repeat(41)).success).toBe(false);
+    // Postgres can't store a NUL: refused here, before any pairing starts.
+    expect(stationName.safeParse("\u0000").success).toBe(false);
+    expect(stationName.safeParse("עמדה\u0007").success).toBe(false);
   });
 
   it("is offered as the station after those running, a number nobody has", () => {
