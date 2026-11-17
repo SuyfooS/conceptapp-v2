@@ -768,32 +768,56 @@ export function parseBreakTimes(
   const fromClockIn = (moment: Date) =>
     moment.getTime() <= clockIn.getTime() &&
     clockIn.getTime() - moment.getTime() < 60_000;
-  // Where another break ended, in that minute: its own end, as stored.
+  // Where other breaks ended in that minute: the last of those ends, as
+  // stored.
   const endedIn = (moment: Date) =>
-    breaks.find(
-      (pause) =>
-        pause.id !== keep &&
-        pause.endedAt !== null &&
-        Date.parse(pause.endedAt) >= moment.getTime() &&
-        Date.parse(pause.endedAt) - moment.getTime() < 60_000,
-    )?.endedAt ?? null;
+    breaks
+      .filter(
+        (pause): pause is typeof pause & { endedAt: string } =>
+          pause.id !== keep &&
+          pause.endedAt !== null &&
+          Date.parse(pause.endedAt) >= moment.getTime() &&
+          Date.parse(pause.endedAt) - moment.getTime() < 60_000,
+      )
+      .map((pause) => pause.endedAt)
+      .sort((a, b) => Date.parse(a) - Date.parse(b))
+      .at(-1) ?? null;
+  // A reading of the start: the minute itself, or what in it comes later and
+  // the break follows (the clock-in, another break's end), as stored.
+  const startOf = (moment: Date): { at: Date; text: string | null } => {
+    let at = moment;
+    let text: string | null = null;
+    if (fromClockIn(moment)) {
+      at = clockIn;
+      text = entry.clockIn;
+    }
+    const ended = endedIn(moment);
+    if (ended !== null && Date.parse(ended) >= at.getTime()) {
+      at = new Date(ended);
+      text = ended;
+    }
+    return { at, text };
+  };
   let startText: string | null = null;
   let startAt: Date | undefined;
   if (keptStart && kept) {
     startText = kept.startedAt;
     startAt = new Date(kept.startedAt);
   } else {
-    startAt = [inDate, addDays(inDate, 1)]
+    const readings = [inDate, addDays(inDate, 1)]
       .flatMap((date) => readingsOf(date, start, timeZone))
-      .map((moment) => (fromClockIn(moment) ? clockIn : moment))
-      .filter((moment) => moment.getTime() >= clockIn.getTime())
-      .sort((a, b) => a.getTime() - b.getTime())[0];
-    if (startAt === clockIn) {
-      startText = entry.clockIn;
-    } else if (startAt !== undefined) {
-      startText = endedIn(startAt);
-      if (startText !== null) startAt = new Date(startText);
-    }
+      .map(startOf)
+      .filter(({ at }) => at.getTime() >= clockIn.getTime())
+      .sort((a, b) => a.at.getTime() - b.at.getTime());
+    // With its end kept, the start is the last reading before that end, on
+    // the same side of a change of the clocks; else the first.
+    const beforeEnd =
+      keptEnd !== null
+        ? readings.filter(({ at }) => at.getTime() < Date.parse(keptEnd))
+        : [];
+    const chosen = beforeEnd.at(-1) ?? readings[0];
+    startAt = chosen?.at;
+    startText = chosen?.text ?? null;
   }
   if (startAt === undefined) return { ok: false, problem: "breakOutside" };
   const from = startAt;

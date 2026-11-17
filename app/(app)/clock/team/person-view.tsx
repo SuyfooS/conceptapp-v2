@@ -790,7 +790,9 @@ function BreakRows({
       <p
         id={`${id}-note`}
         role="status"
-        className="px-1 text-ink-2 text-sm empty:hidden pt-1.5"
+        // Empty, out of the flow but still read (not display: none, which a
+        // reader would miss as it fills), as access-view's does.
+        className="px-1 pt-1.5 text-ink-2 text-sm empty:sr-only"
       >
         {note}
       </p>

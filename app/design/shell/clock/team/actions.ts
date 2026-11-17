@@ -86,6 +86,13 @@ function spanOf(date: string, start: string, end: string | null) {
   };
 }
 
+/** The minute after an HH:MM, past midnight to 00:00. */
+function plusMinute(time: string): string {
+  const [hours, minutes] = time.split(":").map(Number);
+  const next = ((hours ?? 0) * 60 + (minutes ?? 0) + 1) % (24 * 60);
+  return `${String(Math.floor(next / 60)).padStart(2, "0")}:${String(next % 60).padStart(2, "0")}`;
+}
+
 /**
  * A break's times checked as the app checks them, against the demo shift
  * they belong to, and its other breaks (the database's 23P01 there): nothing
@@ -102,21 +109,33 @@ function checkBreak(
   const now = new Date();
   const times = parseBreakTimes(entry, values, TIME_ZONE, now);
   if (!times.ok) return { ok: false, failure: times.problem };
+  // A break still running holds everything from its start on, as the
+  // database's range with no end does.
   const others = shift.breaks
     .filter((one) => one.id !== breakId)
-    .map((one) =>
-      parseBreakTimes(
+    .map((one) => {
+      const read = parseBreakTimes(
         entry,
-        { start: one.start, end: one.end ?? one.start },
+        { start: one.start, end: one.end ?? plusMinute(one.start) },
         TIME_ZONE,
-        now,
-      ),
-    );
+        // Read as if over, so a running one isn't refused as still to come.
+        new Date(8.64e15),
+      );
+      return read.ok
+        ? {
+            start: Date.parse(read.start),
+            end:
+              one.end === null
+                ? Number.POSITIVE_INFINITY
+                : Date.parse(read.end),
+          }
+        : null;
+    });
   const overlaps = others.some(
     (other) =>
-      other.ok &&
-      Date.parse(other.start) < Date.parse(times.end) &&
-      Date.parse(times.start) < Date.parse(other.end),
+      other !== null &&
+      other.start < Date.parse(times.end) &&
+      Date.parse(times.start) < other.end,
   );
   if (overlaps) return { ok: false, failure: "breakOverlap" };
   return parseReason(values.reason) === null

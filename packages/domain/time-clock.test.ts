@@ -1302,6 +1302,74 @@ describe("parseBreakTimes", () => {
       start: first.endedAt,
       end: "2026-11-10T11:40:00.000Z",
     });
+    // Two ended in that minute (one pressed by mistake): after the later.
+    const quick = {
+      id: "q",
+      startedAt: "2026-11-10T11:30:27.111111Z",
+      endedAt: "2026-11-10T11:30:45Z",
+      unpaid: false,
+    };
+    expect(
+      parseBreakTimes(
+        { ...day, breaks: [first, quick] },
+        { start: "13:30", end: "13:40" },
+        TZ,
+        now,
+      ),
+    ).toMatchObject({ ok: true, start: quick.endedAt });
+  });
+
+  it("starts after a break that ended in the clock-in's own minute", () => {
+    const pressed = {
+      id: "a",
+      startedAt: "2026-11-16T06:00:15.2Z",
+      endedAt: "2026-11-16T06:00:30.3Z",
+      unpaid: false,
+    };
+    expect(
+      parseBreakTimes(
+        {
+          clockIn: "2026-11-16T06:00:10.123456Z",
+          clockOut: "2026-11-16T14:00:00Z",
+          breaks: [pressed],
+        },
+        { start: "08:00", end: "08:30" },
+        TZ,
+        now,
+      ),
+    ).toEqual({
+      ok: true,
+      start: pressed.endedAt,
+      end: "2026-11-16T06:30:00.000Z",
+    });
+  });
+
+  it("reads a changed start by the end it keeps, in the hour the clocks repeat", () => {
+    // In the second 01:10 to 01:40, its start changed to 01:20: the second
+    // 01:20, not an hour earlier.
+    const second = {
+      id: "b2",
+      startedAt: "2026-10-24T23:10:00Z",
+      endedAt: "2026-10-24T23:40:00Z",
+      unpaid: true,
+    };
+    expect(
+      parseBreakTimes(
+        {
+          clockIn: "2026-10-24T19:00:00Z",
+          clockOut: "2026-10-25T04:00:00Z",
+          breaks: [second],
+        },
+        { start: "01:20", end: "01:40" },
+        TZ,
+        now,
+        "b2",
+      ),
+    ).toEqual({
+      ok: true,
+      start: "2026-10-24T23:20:00.000Z",
+      end: second.endedAt,
+    });
   });
 
   it("refuses a break outside its shift", () => {
