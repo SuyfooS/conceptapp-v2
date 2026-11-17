@@ -1222,6 +1222,88 @@ describe("parseBreakTimes", () => {
     });
   });
 
+  it("keeps a changed break's time left as it shows, as stored", () => {
+    // A break in the second 01:30 to 01:45 of the night the clocks go back.
+    const second = {
+      id: "b1",
+      startedAt: "2026-10-24T23:30:05.111111Z",
+      endedAt: "2026-10-24T23:45:10.222222Z",
+      unpaid: true,
+    };
+    const change = {
+      clockIn: "2026-10-24T19:00:00.123456Z",
+      clockOut: "2026-10-25T04:00:00.654321Z",
+      breaks: [second],
+    };
+    const keep = (start: string, end: string) =>
+      parseBreakTimes(change, { start, end }, TZ, now, "b1");
+    // Saved as it is: nothing moves.
+    expect(keep("01:30", "01:45")).toEqual({
+      ok: true,
+      start: second.startedAt,
+      end: second.endedAt,
+    });
+    // Only its end changed: the start stays in the second hour, and so does
+    // an end in it; 02:10 comes once, 40 minutes after.
+    expect(keep("01:30", "01:50")).toEqual({
+      ok: true,
+      start: second.startedAt,
+      end: "2026-10-24T23:50:00.000Z",
+    });
+    expect(keep("01:30", "02:10")).toEqual({
+      ok: true,
+      start: second.startedAt,
+      end: "2026-10-25T00:10:00.000Z",
+    });
+  });
+
+  it("starts a break typed in the minute another ended where that one ended", () => {
+    // Ended at 13:30:20 and pressed again at 13:30:27: both show 13:30.
+    const first = {
+      id: "a",
+      startedAt: "2026-11-10T11:00:12.3Z",
+      endedAt: "2026-11-10T11:30:20.456789Z",
+      unpaid: false,
+    };
+    const next = {
+      id: "b",
+      startedAt: "2026-11-10T11:30:27.111111Z",
+      endedAt: "2026-11-10T11:45:10Z",
+      unpaid: false,
+    };
+    const day = {
+      clockIn: "2026-11-10T08:00:00.5Z",
+      clockOut: "2026-11-10T16:00:00.5Z",
+    };
+    // The second one changed at its end only: its start stays where it was.
+    expect(
+      parseBreakTimes(
+        { ...day, breaks: [first, next] },
+        { start: "13:30", end: "13:50" },
+        TZ,
+        now,
+        "b",
+      ),
+    ).toEqual({
+      ok: true,
+      start: next.startedAt,
+      end: "2026-11-10T11:50:00.000Z",
+    });
+    // A new one from 13:30: from the first one's end.
+    expect(
+      parseBreakTimes(
+        { ...day, breaks: [first] },
+        { start: "13:30", end: "13:40" },
+        TZ,
+        now,
+      ),
+    ).toEqual({
+      ok: true,
+      start: first.endedAt,
+      end: "2026-11-10T11:40:00.000Z",
+    });
+  });
+
   it("refuses a break outside its shift", () => {
     // Before the clock-in, it can only be the next day, after the clock-out.
     expect(parse(evening, "15:00", "15:30")).toEqual({

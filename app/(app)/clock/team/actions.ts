@@ -273,6 +273,8 @@ function afterBreakEdit(result: ClockResult<unknown>): EntryActionResult {
 async function breakTimesOf(
   entryId: string,
   values: BreakValues,
+  /** The break being changed: a time left as it shows stays as stored. */
+  keep?: string,
 ): Promise<
   | {
       ok: true;
@@ -288,7 +290,13 @@ async function breakTimesOf(
   const shift = await getTimeEntry(editor.businessId, entry.data);
   if (!shift) return { ok: false, failure: "noAccess" };
 
-  const times = parseBreakTimes(shift, values, editor.timeZone, new Date());
+  const times = parseBreakTimes(
+    shift,
+    values,
+    editor.timeZone,
+    new Date(),
+    keep,
+  );
   if (!times.ok) return { ok: false, failure: times.problem };
   // After the times, so the form says what's wrong with them first.
   const note = parseReason(values.reason);
@@ -327,7 +335,7 @@ export async function changeBreakAction(
 ): Promise<EntryActionResult> {
   const pause = z.uuid().safeParse(breakId);
   if (!pause.success) return { ok: false, failure: "failed" };
-  const typed = await breakTimesOf(entryId, values);
+  const typed = await breakTimesOf(entryId, values, pause.data);
   if (!typed.ok) return typed;
   return afterBreakEdit(
     await changeTimeBreak(typed.actorId, pause.data, typed.times),

@@ -98,6 +98,9 @@ export function PersonHoursView({
   // where it left, and the fix is as it was typed.
   const [stepBack, setStepBack] = useState<StepBack | null>(null);
   const [draft, setDraft] = useState<EntryValues | null>(null);
+  // The shift's times as the sheet opened on them: what "typed and not
+  // saved" is measured from, whatever a refresh reads meanwhile.
+  const [baseline, setBaseline] = useState<EntryValues | null>(null);
   const [saving, start] = useTransition();
   // The toast's "ביטול" runs on its own, so a sheet opened meanwhile isn't held.
   const [, startUndo] = useTransition();
@@ -130,6 +133,16 @@ export function PersonHoursView({
     setFailed(failure);
     setStepBack(null);
     setDraft(null);
+    setBaseline(
+      next.kind === "add"
+        ? null
+        : {
+            date: next.record.date,
+            in: next.record.in ?? "",
+            out: next.record.out ?? "",
+            reason: "",
+          },
+    );
     setOpened((count) => count + 1);
     setOpen(true);
   }
@@ -501,6 +514,7 @@ export function PersonHoursView({
             failed={failed}
             returning={stepBack}
             initial={stepBack ? draft : null}
+            baseline={baseline}
             toCancel={
               record
                 ? (values) => {
@@ -533,6 +547,7 @@ function EntryForm({
   failed,
   returning,
   initial,
+  baseline,
   toCancel,
   toBreak,
 }: {
@@ -547,6 +562,8 @@ function EntryForm({
   returning: StepBack | null;
   /** The fix as it was typed before a step, back from it. */
   initial: EntryValues | null;
+  /** The shift's times as the sheet opened on them. */
+  baseline: EntryValues | null;
   /** A shift that is there: the way to cancel it, beside fixing it, with the fix as typed. */
   toCancel?: (values: EntryValues) => void;
   /**
@@ -575,11 +592,14 @@ function EntryForm({
   const canStayOpen = record?.out === null && !record.overdue;
   // Times typed and not saved: a break's save or removal closes the sheet,
   // so its rows wait until these are saved, rather than lose them.
+  // Measured from the times the sheet opened on, not the shift as a refresh
+  // reads it now, so nothing reads as typed that wasn't.
   const timesChanged =
     record !== null &&
-    (values.date !== record.date ||
-      values.in !== (record.in ?? "") ||
-      values.out !== (record.out ?? ""));
+    baseline !== null &&
+    (values.date !== baseline.date ||
+      values.in !== baseline.in ||
+      values.out !== baseline.out);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: once, as it is drawn
   useEffect(() => {
@@ -717,7 +737,12 @@ function BreakRows({
   const id = useId();
   return (
     // biome-ignore lint/a11y/useSemanticElements: a fieldset would style and announce these rows as a form
-    <div role="group" aria-labelledby={id} className="flex flex-col">
+    <div
+      role="group"
+      aria-labelledby={id}
+      aria-describedby={`${id}-note`}
+      className="flex flex-col"
+    >
       <h3 id={id} className="px-3 pt-1 pb-1.5 font-semibold text-ink-2 text-sm">
         {t("breaks.title")}
       </h3>
@@ -761,7 +786,14 @@ function BreakRows({
           onClick={() => open(null)}
         />
       </ListGroup>
-      {note ? <p className="px-1 pt-1.5 text-ink-2 text-sm">{note}</p> : null}
+      {/* Always there, so a screen reader hears it as the rows wait. */}
+      <p
+        id={`${id}-note`}
+        role="status"
+        className="px-1 text-ink-2 text-sm empty:hidden pt-1.5"
+      >
+        {note}
+      </p>
     </div>
   );
 }

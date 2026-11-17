@@ -728,22 +728,37 @@ function readingsOf(date: string, time: string, timeZone: string): Date[] {
  * that time (in the hour the clocks repeat, the first of the two), and the
  * end the first after the start, so a break past midnight, or in a night
  * shift, takes no date. A start in the clock-in's own minute is the
- * clock-in itself, as the database has it (to the microsecond). It must be inside the shift (up to now
+ * clock-in itself, as the database has it (to the microsecond), and one in
+ * the minute another of its breaks ended starts where that one ended. A
+ * break being changed (`keep`, its id) keeps a time left as it shows, as
+ * stored: by the minute it would move, and in the hour the clocks repeat it
+ * could be read in the other of the two. It must be inside the shift (up to now
  * while it is open) and over by now, as private.check_break_fits asks. The
  * database has the last word, and on another break at the same time.
  */
 export function parseBreakTimes(
-  entry: Pick<TimeEntry, "clockIn" | "clockOut">,
+  entry: Pick<TimeEntry, "clockIn" | "clockOut"> & {
+    breaks?: TimeEntry["breaks"];
+  },
   input: unknown,
   timeZone: string,
   now: Date,
+  keep?: string,
 ):
   | { ok: true; start: string; end: string }
   | { ok: false; problem: BreakProblem } {
   const parsed = breakTimes.safeParse(input);
   if (!parsed.success) return { ok: false, problem: "breakTimes" };
   const { start, end } = parsed.data;
-  if (start === end) return { ok: false, problem: "breakSameTime" };
+  const breaks = entry.breaks ?? [];
+  const kept = keep ? breaks.find((pause) => pause.id === keep) : undefined;
+  const shown = (instant: string) => timeIn(new Date(instant), timeZone);
+  const keptStart = kept && start === shown(kept.startedAt);
+  const keptEnd =
+    kept?.endedAt != null && end === shown(kept.endedAt) ? kept.endedAt : null;
+  if (start === end && !(keptStart && keptEnd !== null)) {
+    return { ok: false, problem: "breakSameTime" };
+  }
 
   const clockIn = new Date(entry.clockIn);
   const inDate = dateIn(clockIn, timeZone);
@@ -753,17 +768,45 @@ export function parseBreakTimes(
   const fromClockIn = (moment: Date) =>
     moment.getTime() <= clockIn.getTime() &&
     clockIn.getTime() - moment.getTime() < 60_000;
-  const startAt = [inDate, addDays(inDate, 1)]
-    .flatMap((date) => readingsOf(date, start, timeZone))
-    .map((moment) => (fromClockIn(moment) ? clockIn : moment))
-    .filter((moment) => moment.getTime() >= clockIn.getTime())
-    .sort((a, b) => a.getTime() - b.getTime())[0];
+  // Where another break ended, in that minute: its own end, as stored.
+  const endedIn = (moment: Date) =>
+    breaks.find(
+      (pause) =>
+        pause.id !== keep &&
+        pause.endedAt !== null &&
+        Date.parse(pause.endedAt) >= moment.getTime() &&
+        Date.parse(pause.endedAt) - moment.getTime() < 60_000,
+    )?.endedAt ?? null;
+  let startText: string | null = null;
+  let startAt: Date | undefined;
+  if (keptStart && kept) {
+    startText = kept.startedAt;
+    startAt = new Date(kept.startedAt);
+  } else {
+    startAt = [inDate, addDays(inDate, 1)]
+      .flatMap((date) => readingsOf(date, start, timeZone))
+      .map((moment) => (fromClockIn(moment) ? clockIn : moment))
+      .filter((moment) => moment.getTime() >= clockIn.getTime())
+      .sort((a, b) => a.getTime() - b.getTime())[0];
+    if (startAt === clockIn) {
+      startText = entry.clockIn;
+    } else if (startAt !== undefined) {
+      startText = endedIn(startAt);
+      if (startText !== null) startAt = new Date(startText);
+    }
+  }
   if (startAt === undefined) return { ok: false, problem: "breakOutside" };
-  const startDate = dateIn(startAt, timeZone);
-  const endAt = [startDate, addDays(startDate, 1)]
-    .flatMap((date) => readingsOf(date, end, timeZone))
-    .filter((moment) => moment.getTime() > startAt.getTime())
-    .sort((a, b) => a.getTime() - b.getTime())[0];
+  const from = startAt;
+  const startDate = dateIn(from, timeZone);
+  const endText =
+    keptEnd !== null && Date.parse(keptEnd) > from.getTime() ? keptEnd : null;
+  const endAt =
+    endText !== null
+      ? new Date(endText)
+      : [startDate, addDays(startDate, 1)]
+          .flatMap((date) => readingsOf(date, end, timeZone))
+          .filter((moment) => moment.getTime() > from.getTime())
+          .sort((a, b) => a.getTime() - b.getTime())[0];
   if (endAt === undefined) return { ok: false, problem: "breakTimes" };
   if (entry.clockOut !== null) {
     // A shift that ended has, so its breaks are all before now.
@@ -783,10 +826,10 @@ export function parseBreakTimes(
   }
   return {
     ok: true,
-    // The clock-in's own string: a Date holds milliseconds, the database
-    // microseconds, and a start a hair before the clock-in is refused.
-    start: startAt === clockIn ? entry.clockIn : startAt.toISOString(),
-    end: endAt.toISOString(),
+    // Stored strings as they are: a Date holds milliseconds, the database
+    // microseconds, and a start a hair before what it follows is refused.
+    start: startText ?? startAt.toISOString(),
+    end: endText ?? endAt.toISOString(),
   };
 }
 
