@@ -10,15 +10,26 @@ const served = vi.hoisted(() => ({
   rows: [] as Record<string, unknown>[],
   ranges: [] as [number, number][],
   orders: [] as string[],
+  /** The filters asked for, each as [method, ...arguments]. */
+  filters: [] as unknown[][],
 }));
 vi.mock("./supabase/server", () => ({
   createClient: async () => ({
     from: () => {
+      const filter =
+        (method: string) =>
+        (...args: unknown[]) => {
+          served.filters.push([method, ...args]);
+          return query;
+        };
       const query = {
         select: () => query,
-        eq: () => query,
-        lt: () => query,
-        or: () => query,
+        eq: filter("eq"),
+        lt: filter("lt"),
+        gte: filter("gte"),
+        or: filter("or"),
+        is: filter("is"),
+        not: filter("not"),
         order: (column: string) => {
           served.orders.push(column);
           return query;
@@ -35,6 +46,8 @@ vi.mock("./supabase/server", () => ({
 }));
 
 const {
+  entryOf,
+  getCancelledEntries,
   getTimeEntries,
   hashPunchCode,
   hashShortCode,
@@ -141,5 +154,108 @@ describe("a business's entries", () => {
     ]);
     // A stable order, so no row falls between two pages.
     expect(served.orders.slice(0, 2)).toEqual(["clock_in", "id"]);
+  });
+});
+
+/** A row as the database serves it, with its breaks. */
+const entryRow = (more: Record<string, unknown> = {}) => ({
+  id: "00000000-0000-4000-8000-000000000001",
+  user_id: "11111111-1111-4111-a111-111111111111",
+  clock_in: "2026-11-10T06:00:00+00:00",
+  clock_out: "2026-11-10T14:00:00+00:00",
+  source: "punch",
+  in_proof: "scan",
+  out_proof: "scan",
+  confirmed_at: null,
+  note: null,
+  edited_by: null,
+  edited_at: null,
+  created_at: "2026-11-10T06:00:00+00:00",
+  restored_at: null,
+  time_breaks: [] as Record<string, unknown>[],
+  ...more,
+});
+
+describe("live and cancelled shifts", () => {
+  const read = () => {
+    served.rows = [];
+    served.filters = [];
+    served.ranges = [];
+    served.orders = [];
+  };
+
+  it("leaves a removed break out of its shift, which keeps the live ones", () => {
+    const entry = entryOf(
+      entryRow({
+        time_breaks: [
+          {
+            id: "00000000-0000-4000-8000-0000000000b1",
+            started_at: "2026-11-10T09:00:00+00:00",
+            ended_at: "2026-11-10T09:30:00+00:00",
+            unpaid: true,
+            removed_at: null,
+          },
+          {
+            id: "00000000-0000-4000-8000-0000000000b2",
+            started_at: "2026-11-10T11:00:00+00:00",
+            ended_at: "2026-11-10T12:00:00+00:00",
+            unpaid: true,
+            removed_at: "2026-11-11T08:00:00+00:00",
+          },
+        ],
+        restored_at: "2026-11-12T08:00:00+00:00",
+      }) as Parameters<typeof entryOf>[0],
+    );
+    expect(entry.breaks.map((pause) => pause.id)).toEqual([
+      "00000000-0000-4000-8000-0000000000b1",
+    ]);
+    expect(entry.restoredAt).toBe("2026-11-12T08:00:00+00:00");
+  });
+
+  it("reads live shifts only for every sum", async () => {
+    read();
+    await getTimeEntries(
+      BUSINESS,
+      new Date("2026-11-01T00:00:00Z"),
+      new Date("2026-12-01T00:00:00Z"),
+    );
+    expect(served.filters).toContainEqual(["is", "cancelled_at", null]);
+  });
+
+  it("reads the cancelled ones apart, with who, when and why", async () => {
+    read();
+    served.rows = [
+      entryRow({
+        clock_out: "2026-11-11T06:00:00+00:00",
+        cancelled_at: "2026-11-11T06:00:00+00:00",
+        cancelled_by: "22222222-2222-4222-a222-222222222222",
+        cancel_reason: "Clocked in by mistake",
+        cancelled_open: true,
+      }),
+    ];
+    const cancelled = await getCancelledEntries(
+      BUSINESS,
+      new Date("2026-11-01T00:00:00Z"),
+      new Date("2026-12-01T00:00:00Z"),
+      "11111111-1111-4111-a111-111111111111",
+    );
+    expect(served.filters).toContainEqual(["not", "cancelled_at", "is", null]);
+    expect(served.filters).toContainEqual([
+      "eq",
+      "user_id",
+      "11111111-1111-4111-a111-111111111111",
+    ]);
+    expect(cancelled).toEqual([
+      {
+        entry: expect.objectContaining({
+          id: "00000000-0000-4000-8000-000000000001",
+          clockOut: "2026-11-11T06:00:00+00:00",
+        }),
+        cancelledAt: "2026-11-11T06:00:00+00:00",
+        cancelledBy: "22222222-2222-4222-a222-222222222222",
+        reason: "Clocked in by mistake",
+        wasOpen: true,
+      },
+    ]);
   });
 });

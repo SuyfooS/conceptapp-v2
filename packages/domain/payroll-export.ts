@@ -866,18 +866,26 @@ export function exportSheets(
 
 /**
  * Whether a month changed after its newest file went out (`exportedAt`, an
- * instant): one of its shifts written, corrected, confirmed or ended since,
- * or a wage set since that reaches into the month. The pay screen then says
- * a new file is worth taking. `entries` are the month's own.
+ * instant): one of its shifts written, corrected (its breaks too: a break
+ * edit stamps its shift), confirmed, ended or brought back after a cancel
+ * since, one of its shifts cancelled since that was there when the file went
+ * out (`cancelled`, the month's cancelled shifts: one written after it
+ * never was), or a wage set since that reaches into the month. The
+ * pay screen then says a new file is worth taking. `entries` are the month's
+ * own live shifts.
  */
 export function changedSinceExport(
   entries: readonly Pick<
     TimeEntry,
-    "createdAt" | "editedAt" | "confirmedAt" | "clockOut"
+    "createdAt" | "editedAt" | "confirmedAt" | "clockOut" | "restoredAt"
   >[],
   wages: readonly { setAt: string; from: string }[],
   month: string,
   exportedAt: string,
+  cancelled: readonly {
+    cancelledAt: string;
+    entry: Pick<TimeEntry, "createdAt">;
+  }[] = [],
 ): boolean {
   const since = Date.parse(exportedAt);
   const after = (instant: string | null) =>
@@ -888,7 +896,11 @@ export function changedSinceExport(
         after(entry.createdAt) ||
         after(entry.editedAt) ||
         after(entry.confirmedAt) ||
-        after(entry.clockOut),
+        after(entry.clockOut) ||
+        after(entry.restoredAt),
+    ) ||
+    cancelled.some(
+      (one) => after(one.cancelledAt) && !after(one.entry.createdAt),
     ) ||
     wages.some((wage) => after(wage.setAt) && wage.from <= lastDayOf(month))
   );

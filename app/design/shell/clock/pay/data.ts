@@ -423,6 +423,7 @@ function entryOf(userId: string, day: PayDay): TimeEntry {
     editedBy: day.correction ? SHIRAN : null,
     editedAt: day.correction ? at(addDays(day.date, 1), "10:00") : null,
     createdAt: null,
+    restoredAt: null,
   };
 }
 
@@ -822,6 +823,33 @@ export function demoPayExport(): {
 }
 
 /**
+ * October's cancelled shifts, by person: Noa's Friday, recorded by mistake on
+ * a day she had off and cancelled the Sunday after. In no total and no file.
+ */
+const cancelledShifts: Record<string, ShiftRecord[]> = {
+  noa: [
+    {
+      id: "69000000-0000-4000-a000-0000000000c1",
+      date: "2026-10-16",
+      in: "10:00",
+      out: "14:00",
+      minutes: 0,
+      breakMinutes: 0,
+      byManager: false,
+      overdue: false,
+      attendance: null,
+      correction: null,
+      cancelled: {
+        by: "שירן הדגמה",
+        date: "2026-10-18",
+        time: "09:40",
+        note: "נרשמה בטעות, נועה לא עבדה ביום שישי",
+      },
+    },
+  ],
+};
+
+/**
  * One person's October, from the same days as their row; `estimate` "off"
  * leaves out every amount, `close` "closed" is October closed for payroll,
  * which a new wage can't start in (payroll P9).
@@ -850,6 +878,7 @@ export function demoPayPerson(
     currentMonth: CURRENT,
     totals,
     days,
+    cancelled: cancelledShifts[userId] ?? [],
     monthWage: monthWageOf,
     wage: personWage(userId, close === "closed" ? [MONTH] : []),
     details: personDetails(userId),
@@ -957,6 +986,7 @@ function recordEntry(userId: string, record: ShiftRecord): TimeEntry {
     editedBy: null,
     editedAt: null,
     createdAt: null,
+    restoredAt: null,
   };
 }
 
@@ -975,6 +1005,7 @@ const runningEntry = (userId: string): TimeEntry => ({
   editedBy: null,
   editedAt: null,
   createdAt: null,
+  restoredAt: null,
 });
 
 /**
@@ -990,9 +1021,10 @@ export function demoOwnPay(
   open = false,
 ): OwnPay | null {
   if (!amountsFrom(estimate)) return null;
+  // A cancelled shift counts nowhere, as the app's reads leave it out.
   const own = [
     ...records
-      .filter((record) => record.out !== null)
+      .filter((record) => record.out !== null && record.cancelled === null)
       .map((record) => recordEntry("noa", record)),
     ...(open ? [runningEntry("noa")] : []),
   ];

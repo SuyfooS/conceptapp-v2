@@ -1761,6 +1761,25 @@ only. Nothing in the app calls the four yet. Covered by
 `break_edits.test.sql`, with `time_breaks.test.sql`, `hours_kept.test.sql` and
 `demo_reset.test.sql`.
 
+The reads of both (`time-clock.ts`, the clock plan's PR3). RLS reads cancelled
+shifts and removed breaks as any others, so the readers leave them out:
+`getTimeEntries` and `getEntriesToConfirm` return live shifts only
+(`cancelled_at is null`), and every entry read (`entryOf`) leaves its removed
+breaks out (`removed_at`), so every sum, the hours engine, pay, holiday pay,
+the file for payroll, Today and who is at work or overdue count neither,
+`PAYROLL_ENGINE_VERSION` unchanged. Each entry carries `restoredAt`, which a
+file made before sees as a change (`changedSinceExport`). The few screens
+that show a cancelled shift read it apart: `getCancelledEntries(business,
+from, to, userId?)`, the shifts starting in [from, to), oldest first, as
+`@domain/time-clock`'s `CancelledEntry` (the entry as it was, with
+`cancelledAt`, `cancelledBy`, `reason` and `wasOpen`, from `cancelled_open`),
+for the person's page on the team's hours and their own history
+(`monthRecords` lists them among the live ones, counting for nothing), the
+person's pay page (listed under the days), whether the month changed since its
+file, and the reasons beside a closed month's differences in the next file.
+`getCorrections` stays on `clock.correct` rows: a cancel or a break edit moves
+no times of the shift. Covered by `time-clock.test.ts`.
+
 Chat (`20261111000100_chat_module.sql`, `20261111000200_chat.sql`, chat C1), in
 the database first, with the module off everywhere until C2 (below). `public.chat_conversations`
 holds a business's chats: its team's group (made with the business, by the

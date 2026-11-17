@@ -163,6 +163,10 @@ export function breakFitKind(breaks: readonly BreakFit[]): BreakFitKind {
   return kinds.size === 1 && only ? only : "other";
 }
 
+/** What a break edit did: as `public.add_time_break` and the others log it. */
+export const BREAK_EDIT_KINDS = ["add", "change", "remove", "restore"] as const;
+export type BreakEditKind = (typeof BREAK_EDIT_KINDS)[number];
+
 /** Who a permission was given to: everyone in a role, or one person. */
 export type ActivityGrantee =
   | { kind: "role"; role: Role | null }
@@ -234,6 +238,48 @@ export type ActivityLine =
        */
       clockIn: string | null;
       breaks: [BreakFit, ...BreakFit[]];
+    }
+  | {
+      /**
+       * Someone who edits the clock cancelled a shift, with why
+       * (20261117000200_cancelled_shifts.sql): it is kept, and counts
+       * nowhere. `times.clockOut` is null for one still open, which the
+       * cancel ended.
+       */
+      action: "clock.cancel";
+      person: ActivityPerson;
+      /** Whose shift, for the way to their hours; null when the row can't say. */
+      personId: string | null;
+      times: ClockTimes;
+      note: string | null;
+    }
+  | {
+      /** A cancelled shift brought back; `reopened`: open again, as it was. */
+      action: "clock.restore";
+      person: ActivityPerson;
+      personId: string | null;
+      times: ClockTimes;
+      reopened: boolean;
+    }
+  | {
+      /**
+       * Someone who edits the clock changed, added or removed one break of a
+       * shift, with why, or brought back one they had just removed, which
+       * asks for none (20261117000300_break_edits.sql). Each side the break's
+       * times; `from` null for one added or brought back, `to` null for one
+       * removed.
+       */
+      action: "clock.break_edit";
+      person: ActivityPerson;
+      personId: string | null;
+      /** When the shift starts, which names its day. */
+      clockIn: string;
+      change: BreakEditKind;
+      from: ClockTimes | null;
+      to: ClockTimes | null;
+      /** An unpaid break: its change changed the paid hours. Null when unknown. */
+      unpaid: boolean | null;
+      note: string | null;
     }
   /** A manager approved hours made without a code, or set by someone for themselves. */
   | { action: "clock.confirm"; person: ActivityPerson }
@@ -687,6 +733,30 @@ const schemas = {
     clock_in: instant.optional(),
     breaks: z.array(z.object({ from: span, to: span.nullable() })),
   }),
+  // 20261117000200_cancelled_shifts.sql: an open shift's clock_out is null.
+  "clock.cancel": z.object({
+    person: id,
+    clock_in: instant,
+    clock_out: instant.nullable().optional(),
+    note: z.unknown().optional(),
+  }),
+  "clock.restore": z.object({
+    person: id,
+    clock_in: instant,
+    clock_out: instant.nullable().optional(),
+    reopened: z.unknown().optional(),
+  }),
+  // 20261117000300_break_edits.sql: a break added or brought back has no
+  // `from`, one removed no `to`; a restore no note.
+  "clock.break_edit": z.object({
+    person: id,
+    clock_in: instant,
+    change: z.enum(BREAK_EDIT_KINDS),
+    from: span.nullable().optional(),
+    to: span.nullable().optional(),
+    unpaid: z.boolean().nullable().optional().catch(null),
+    note: z.unknown().optional(),
+  }),
   "clock.confirm": z.object({ person: id }),
   "clock.code.locked": z.object({ person: id.optional() }),
   // A role the business named, by its name then (20261115001600_named_roles_give.sql).
@@ -914,6 +984,37 @@ function noteOf(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+const PATH_ID = /^[0-9a-z-]{1,64}$/i;
+
+/**
+ * Whose a row is, as a link may carry it: a database's id, or the demo's own
+ * ("yoav"); null for anything else, which never reaches an address.
+ */
+function pathIdOf(value: string): string | null {
+  return PATH_ID.test(value) ? value : null;
+}
+
+/**
+ * Whether a break edit's sides fit what it did: one added or brought back has
+ * only its new times, one removed only its old, one changed both.
+ */
+function breakEditFits(
+  change: BreakEditKind,
+  from: unknown,
+  to: unknown,
+): boolean {
+  const has = (side: unknown) => side !== null && side !== undefined;
+  switch (change) {
+    case "add":
+    case "restore":
+      return has(to);
+    case "remove":
+      return has(from);
+    case "change":
+      return has(from) && has(to);
+  }
+}
+
 /** A role the business named, by its name then, for a line that names one (R11b). */
 function namedOf(name: string | undefined): { roleName?: string } {
   return name?.trim() ? { roleName: name.trim() } : {};
@@ -1034,6 +1135,63 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         person: personOf(details.person, lookups),
         clockIn: details.clock_in ?? null,
         breaks: [breakOf(first), ...rest.map(breakOf)],
+      };
+    }
+    case "clock.cancel": {
+      const details = read(schemas["clock.cancel"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        personId: pathIdOf(details.person),
+        times: {
+          clockIn: details.clock_in,
+          clockOut: details.clock_out ?? null,
+        },
+        note: noteOf(details.note),
+      };
+    }
+    case "clock.restore": {
+      const details = read(schemas["clock.restore"]);
+      if (!details) return other;
+      const reopened = details.reopened === true;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        personId: pathIdOf(details.person),
+        times: {
+          clockIn: details.clock_in,
+          // Open again, it has no end.
+          clockOut: reopened ? null : (details.clock_out ?? null),
+        },
+        reopened,
+      };
+    }
+    case "clock.break_edit": {
+      const details = read(schemas["clock.break_edit"]);
+      if (!details || !breakEditFits(details.change, details.from, details.to))
+        return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        personId: pathIdOf(details.person),
+        clockIn: details.clock_in,
+        change: details.change,
+        from:
+          details.change === "add" || details.change === "restore"
+            ? null
+            : details.from
+              ? spanTimes(details.from)
+              : null,
+        to:
+          details.change === "remove"
+            ? null
+            : details.to
+              ? spanTimes(details.to)
+              : null,
+        unpaid: details.unpaid ?? null,
+        // A restore asks for no reason.
+        note: details.change === "restore" ? null : noteOf(details.note),
       };
     }
     case "clock.confirm": {

@@ -286,6 +286,7 @@ function entry(from: string, to: string | null, userId = ID): TimeEntry {
     editedBy: null,
     editedAt: null,
     createdAt: null,
+    restoredAt: null,
   };
 }
 

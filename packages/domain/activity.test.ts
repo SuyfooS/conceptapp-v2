@@ -393,6 +393,233 @@ describe("buildActivity: each action", () => {
     expect(breakFitKind([])).toBe("other");
   });
 
+  it("reads a shift cancelled, with why, and one cancelled while open", () => {
+    expect(
+      lineOf(
+        row(
+          "clock.cancel",
+          {
+            entry: GONE,
+            person: NOA,
+            clock_in: "2026-11-03T06:00:00+00:00",
+            clock_out: "2026-11-03T14:00:00+00:00",
+            note: " Recorded twice ",
+          },
+          YOAV,
+        ),
+      ),
+    ).toEqual({
+      action: "clock.cancel",
+      person: { kind: "member", name: "Noa" },
+      personId: NOA,
+      times: {
+        clockIn: "2026-11-03T06:00:00+00:00",
+        clockOut: "2026-11-03T14:00:00+00:00",
+      },
+      note: "Recorded twice",
+    });
+    // Open when cancelled: no clock-out, and the end the cancel set is no
+    // part of the line.
+    expect(
+      lineOf(
+        row("clock.cancel", {
+          entry: GONE,
+          person: LEFT,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: null,
+          ended_at: "2026-11-04T06:00:00+00:00",
+          note: "Clocked in by mistake",
+          closed_month: "2026-11",
+        }),
+      ),
+    ).toMatchObject({
+      action: "clock.cancel",
+      person: { kind: "former" },
+      times: { clockIn: "2026-11-03T06:00:00+00:00", clockOut: null },
+    });
+    for (const details of [
+      { entry: GONE, person: NOA },
+      { entry: GONE, person: NOA, clock_in: "x" },
+      { entry: GONE, clock_in: "2026-11-03T06:00:00+00:00" },
+      "x",
+      null,
+    ]) {
+      expect(lineOf(row("clock.cancel", details))).toEqual({ action: "other" });
+    }
+  });
+
+  it("reads a cancelled shift brought back, open again when it was", () => {
+    expect(
+      lineOf(
+        row("clock.restore", {
+          entry: GONE,
+          person: NOA,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: "2026-11-03T14:00:00+00:00",
+          reopened: false,
+        }),
+      ),
+    ).toEqual({
+      action: "clock.restore",
+      person: { kind: "member", name: "Noa" },
+      personId: NOA,
+      times: {
+        clockIn: "2026-11-03T06:00:00+00:00",
+        clockOut: "2026-11-03T14:00:00+00:00",
+      },
+      reopened: false,
+    });
+    expect(
+      lineOf(
+        row("clock.restore", {
+          entry: GONE,
+          person: NOA,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: null,
+          reopened: true,
+        }),
+      ),
+    ).toMatchObject({
+      reopened: true,
+      times: { clockIn: "2026-11-03T06:00:00+00:00", clockOut: null },
+    });
+    // A row without the flag reads as one that wasn't open.
+    expect(
+      lineOf(
+        row("clock.restore", {
+          person: NOA,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          reopened: "yes",
+        }),
+      ),
+    ).toMatchObject({ reopened: false });
+    expect(lineOf(row("clock.restore", { person: NOA }))).toEqual({
+      action: "other",
+    });
+  });
+
+  it("reads a break changed, added, removed or brought back", () => {
+    const shift = {
+      entry: GONE,
+      person: NOA,
+      clock_in: "2026-11-05T06:00:00+00:00",
+      break: GONE,
+    };
+    const before = {
+      start: "2026-11-05T10:00:00+00:00",
+      end: "2026-11-05T10:45:00+00:00",
+    };
+    const after = { ...before, end: "2026-11-05T10:30:00+00:00" };
+    expect(
+      lineOf(
+        row(
+          "clock.break_edit",
+          {
+            ...shift,
+            change: "change",
+            from: before,
+            to: after,
+            unpaid: true,
+            note: "Came back early",
+            closed_month: "2026-11",
+          },
+          YOAV,
+        ),
+      ),
+    ).toEqual({
+      action: "clock.break_edit",
+      person: { kind: "member", name: "Noa" },
+      personId: NOA,
+      clockIn: "2026-11-05T06:00:00+00:00",
+      change: "change",
+      from: {
+        clockIn: "2026-11-05T10:00:00+00:00",
+        clockOut: "2026-11-05T10:45:00+00:00",
+      },
+      to: {
+        clockIn: "2026-11-05T10:00:00+00:00",
+        clockOut: "2026-11-05T10:30:00+00:00",
+      },
+      unpaid: true,
+      note: "Came back early",
+    });
+    expect(
+      lineOf(
+        row("clock.break_edit", {
+          ...shift,
+          change: "add",
+          from: null,
+          to: after,
+          unpaid: false,
+          note: "Forgot to press",
+        }),
+      ),
+    ).toMatchObject({ change: "add", from: null, unpaid: false });
+    expect(
+      lineOf(
+        row("clock.break_edit", {
+          ...shift,
+          change: "remove",
+          from: before,
+          to: null,
+          unpaid: false,
+          note: "Pressed by mistake",
+        }),
+      ),
+    ).toMatchObject({ change: "remove", to: null, note: "Pressed by mistake" });
+    // Brought back: no reason asked, and an odd flag is no flag.
+    expect(
+      lineOf(
+        row("clock.break_edit", {
+          ...shift,
+          change: "restore",
+          from: null,
+          to: before,
+          unpaid: "maybe",
+        }),
+      ),
+    ).toMatchObject({ change: "restore", note: null, unpaid: null });
+    // Sides that don't fit what it did, or a kind it never logs: a plain line.
+    for (const details of [
+      { ...shift, change: "add", from: before, to: null },
+      { ...shift, change: "remove", to: after },
+      { ...shift, change: "change", from: before },
+      { ...shift, change: "move", from: before, to: after },
+      { ...shift, change: "change", from: { start: "x" }, to: after },
+      { person: NOA, change: "add", to: after },
+    ]) {
+      expect(lineOf(row("clock.break_edit", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("keeps a cancel's, a restore's and a break edit's line, never routine", () => {
+    for (const action of [
+      "clock.cancel",
+      "clock.restore",
+      "clock.break_edit",
+    ]) {
+      expect(ROUTINE_ACTIONS as readonly string[]).not.toContain(action);
+    }
+  });
+
+  it("names whose shift a line leads to only by an id fit for an address", () => {
+    const cancel = (person: string) =>
+      lineOf(
+        row("clock.cancel", {
+          person,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: "2026-11-03T14:00:00+00:00",
+          note: "x",
+        }),
+      );
+    expect(cancel("yoav")).toMatchObject({ personId: "yoav" });
+    for (const person of ["../pay", "a b", "", "x".repeat(65)]) {
+      expect(cancel(person)).toMatchObject({ personId: null });
+    }
+  });
+
   it("reads an approval of someone's hours", () => {
     expect(
       lineOf(row("clock.confirm", { entry: GONE, person: NOA }, YOAV)),

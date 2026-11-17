@@ -1,8 +1,10 @@
 import { formatShekels, moneyLocale } from "@domain/money";
 import type { PayDay } from "@domain/pay-month";
 import { hasEstimate } from "@domain/pay-rates";
+import type { ShiftRecord } from "@domain/time-clock";
 import { addMonths } from "@domain/time-clock-format";
 import type { MonthWage, WageSpan } from "@domain/wages";
+import { Badge } from "@ui/badge";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
 import { type DataColumn, DataTable } from "@ui/data-table";
@@ -13,6 +15,7 @@ import { useFormatter, useLocale } from "next-intl";
 import { Fragment, type ReactNode } from "react";
 import type { Translator } from "../../wording";
 import { MonthLink } from "../month-hero";
+import { cancelLine } from "../shift-list";
 import type { BeforePayroll, PayPerson } from "./pay-types";
 
 /*
@@ -442,6 +445,43 @@ function originalLine(day: PayDay, t: PayT): ReactNode {
         out: day.original.out,
       })
     : t.rich("day.originalOpen", { ltr, in: day.original.in });
+}
+
+/**
+ * A person's cancelled shifts of a month, oldest first, one row each, as the
+ * days list them: the day and its times, "בוטלה", and who cancelled it, when
+ * and why, in the shift history's words (`th`). They count in no total and
+ * no file; the same list on every screen size.
+ */
+export function CancelledShifts({
+  shifts,
+  th,
+}: {
+  shifts: readonly ShiftRecord[];
+  th: Translator<"app.clock.history">;
+}) {
+  const dayName = useDayName();
+  return (
+    <ListGroup>
+      {shifts.map((shift) => (
+        <ListRow
+          key={shift.id}
+          title={
+            <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <span>{dayName(shift.date)}</span>
+              <span className="font-normal text-ink-2">
+                {shift.out
+                  ? th.rich("times", { ltr, in: shift.in, out: shift.out })
+                  : th.rich("since", { ltr, in: shift.in })}
+              </span>
+            </span>
+          }
+          subtitle={cancelLine(shift, th)}
+          trailing={<Badge>{th("cancelled")}</Badge>}
+        />
+      ))}
+    </ListGroup>
+  );
 }
 
 /**

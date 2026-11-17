@@ -180,11 +180,20 @@ export async function clearTimeEntries(phone: string): Promise<void> {
   });
 }
 
-/** A shift already worked: on the 1st of this month, or the 10th of an earlier one. */
+/**
+ * A shift already worked, at 06:00 UTC: on the 1st of this month, or the 10th
+ * of an earlier one (or its `day`, for a second one in the month). Returns its
+ * id.
+ */
 export async function addDemoShift(
   phone: string,
-  shift: { monthsAgo: number; minutes: number; unpaidBreak: number },
-): Promise<void> {
+  shift: {
+    monthsAgo: number;
+    minutes: number;
+    unpaidBreak: number;
+    day?: number;
+  },
+): Promise<string> {
   // The month as the business counts it, which is not always UTC's.
   const [year = 0, month = 1] = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Jerusalem",
@@ -192,7 +201,7 @@ export async function addDemoShift(
     .format(new Date())
     .split("-")
     .map(Number);
-  const day = shift.monthsAgo === 0 ? 1 : 10;
+  const day = shift.day ?? (shift.monthsAgo === 0 ? 1 : 10);
   const start = new Date(Date.UTC(year, month - 1 - shift.monthsAgo, day, 6));
   const end = new Date(start.getTime() + shift.minutes * 60_000);
   const [entry] = await sql<{ id: string; user_id: string }[]>`
@@ -211,6 +220,67 @@ export async function addDemoShift(
       values (${entry.id}, ${DEMO_RESTAURANT}, ${entry.user_id},
         ${new Date(start.getTime() + 10 * 60_000)}, ${breakEnd}, true)`;
   }
+  return entry.id;
+}
+
+/** The demo restaurant's manager, Shiran, who cancels and fixes hours below. */
+const DEMO_MANAGER = "00000000-0000-4000-a000-000000000002";
+
+/**
+ * Cancels a shift as the demo restaurant's manager, with why, through the
+ * database function the person's page calls (public.cancel_time_entry,
+ * 20261117000200_cancelled_shifts.sql), so the log has its row. Returns when
+ * the database cancelled it.
+ */
+export async function cancelDemoShift(
+  entryId: string,
+  reason: string,
+): Promise<Date> {
+  await sql`select public.cancel_time_entry(${DEMO_MANAGER}::uuid,
+    ${entryId}::uuid, ${reason})`;
+  const [row] = await sql<{ at: Date | null }[]>`
+    select cancelled_at as at from public.time_entries where id = ${entryId}`;
+  if (!row?.at) throw new Error(`entry ${entryId} was not cancelled`);
+  return row.at;
+}
+
+/**
+ * Removes the person's one live break at the demo restaurant as its manager,
+ * with why, through public.remove_time_break
+ * (20261117000300_break_edits.sql), so the log has its row.
+ */
+export async function removeDemoBreak(
+  phone: string,
+  reason: string,
+): Promise<void> {
+  const breaks = await sql<{ id: string }[]>`
+    select b.id from public.time_breaks b
+    join public.time_entries e on e.id = b.entry_id
+    join public.profiles p on p.id = b.user_id
+    where b.business_id = ${DEMO_RESTAURANT} and p.phone = ${phone}
+      and b.removed_at is null and e.cancelled_at is null`;
+  const [only] = breaks;
+  if (!only || breaks.length > 1) {
+    throw new Error(`${phone} has ${breaks.length} live breaks, not one`);
+  }
+  await sql`select public.remove_time_break(${DEMO_MANAGER}::uuid,
+    ${only.id}::uuid, ${reason})`;
+}
+
+/**
+ * How many shifts the demo restaurant's newest file for payroll of `month`
+ * listed, as its log row says (`payroll.export`), or null before any.
+ */
+export async function demoLastFileShifts(
+  month: string,
+): Promise<number | null> {
+  const [row] = await sql<{ shifts: number | null }[]>`
+    select (details ->> 'shifts')::int as shifts from public.audit_log
+    where business_id = ${DEMO_RESTAURANT} and action = 'payroll.export'
+      and details ->> 'month' = ${month}
+    order by id desc
+    limit 1`;
+  return row?.shifts ?? null;
 }
 
 /**

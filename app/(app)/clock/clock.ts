@@ -1,6 +1,7 @@
 import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
 import { getOwnPublishedShifts } from "@db/schedule";
 import {
+  getCancelledEntries,
   getClockPeople,
   getEntriesToConfirm,
   getTimeEntries,
@@ -19,6 +20,7 @@ import { timeIn } from "@domain/shabbat";
 import {
   addMonths,
   atWorkNow,
+  type CancelledEntry,
   canConfirm,
   clockStatus,
   editsClock,
@@ -89,14 +91,21 @@ export const clockAccess = cache(async () => {
 });
 
 /**
- * The names of whoever corrected these entries, as the reader may see them,
- * for each shift's "corrected by" line. Reads the team only when one was.
+ * The names of whoever corrected these entries or cancelled these shifts, as
+ * the reader may see them, for each shift's "corrected by" or "cancelled by"
+ * line. Reads the team only when someone did.
  */
 async function correctorNames(
   businessId: string,
   entries: readonly TimeEntry[],
+  cancelled: readonly CancelledEntry[] = [],
 ): Promise<(userId: string) => string | null> {
-  if (!entries.some((entry) => entry.editedBy !== null)) return () => null;
+  if (
+    !entries.some((entry) => entry.editedBy !== null) &&
+    !cancelled.some((one) => one.cancelledBy !== null)
+  ) {
+    return () => null;
+  }
   const people = await getClockPeople(businessId);
   return (userId) =>
     people.find((person) => person.userId === userId)?.name ?? null;
@@ -241,7 +250,11 @@ export async function currentClock(): Promise<ClockData | null> {
   };
 }
 
-/** One month of the person's shifts. Null when they cannot open the clock. */
+/**
+ * One month of the person's shifts, with their cancelled ones among them, each
+ * saying who cancelled it, when and why (RLS lets them read their own). Null
+ * when they cannot open the clock.
+ */
 export async function currentClockHistory(
   asked: string | undefined,
 ): Promise<HistoryData | null> {
@@ -258,14 +271,25 @@ export async function currentClockHistory(
       : currentMonth;
   const settings = await currentModuleSettings("time_clock");
   const { from, to } = monthRange(month, timeZone);
-  const entries = await getTimeEntries(businessId, from, to, userId);
+  const [entries, cancelled] = await Promise.all([
+    getTimeEntries(businessId, from, to, userId),
+    getCancelledEntries(businessId, from, to, userId),
+  ]);
   const step = settings.roundToMinutes;
-  const nameOf = await correctorNames(businessId, entries);
+  const nameOf = await correctorNames(businessId, entries, cancelled);
   return {
     month,
     currentMonth,
     minutes: monthMinutes(entries, month, timeZone, now, step),
-    records: monthRecords(entries, month, timeZone, now, step, nameOf),
+    records: monthRecords(
+      entries,
+      month,
+      timeZone,
+      now,
+      step,
+      nameOf,
+      cancelled,
+    ),
   };
 }
 

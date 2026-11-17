@@ -1411,6 +1411,8 @@
         "aManager": "a manager",
         "breakMinutes": "{minutes} min",
         "noBreak": "No break",
+        "cancelled": "Cancelled",
+        "cancelledBy": "Cancelled by {name}, at <ltr>{time}</ltr>: {note}",
         "columns": {
           "day": "Day",
           "in": "In",
@@ -1703,6 +1705,8 @@
         "waiting": "Waiting for approval",
         "open": "Still open",
         "daysTitle": "The days",
+        "cancelledTitle": "Cancelled shifts",
+        "cancelledHint": "They count in neither the hours nor the payroll file.",
         "empty": {
           "title": "No shifts in {month}",
           "body": "{form, select, f {Once she clocks in} m {Once he clocks in} other {Once they clock in}}, the shifts show here. The arrows beside the month's name lead to other months."
@@ -2435,7 +2439,13 @@
             "breakFit": "{kind, select, removed {Removed {count, plural, one {a break} other {# breaks}}} ended {Ended {count, plural, one {an open break} other {# open breaks}}} cut {Shortened {count, plural, one {a break} other {# breaks}}} other {Changed {count, plural, one {a break} other {# breaks}}}} when fixing {person}'s shift on {day}",
             "breakOpen": "from <ltr>{in}</ltr>, not ended",
             "break": "Break",
-            "breakRemoved": "Removed"
+            "breakRemoved": "Removed",
+            "cancel": "Cancelled {person}'s shift: {day}, <ltr>{in}–{out}</ltr>",
+            "cancelOpen": "Cancelled {person}'s open shift: {day}, from <ltr>{in}</ltr>",
+            "restore": "Brought back {person}'s cancelled shift: {day}, <ltr>{in}–{out}</ltr>",
+            "restoreOpen": "Brought back {person}'s cancelled shift: {day}, from <ltr>{in}</ltr>, open again",
+            "breakEdit": "{change, select, add {Added a break} remove {Removed a break} restore {Brought back a removed break} other {Fixed a break}} in {person}'s shift on {day}",
+            "breakUnpaid": "The break is unpaid, so the hours changed"
           },
           "invite": {
             "create": "Invited to the team: {name}, {role}",

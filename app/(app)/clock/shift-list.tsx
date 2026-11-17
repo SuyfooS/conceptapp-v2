@@ -1,3 +1,4 @@
+import { dayMonth } from "@domain/availability-form";
 import type { Attendance, ShiftRecord } from "@domain/time-clock";
 import { formatHours } from "@domain/time-clock-format";
 import { Badge } from "@ui/badge";
@@ -26,7 +27,9 @@ function useDayLabel() {
 
 /**
  * Shifts as a list on phones and tablets and as a table on desktop. Each shows
- * the times, the break and what it counted for.
+ * the times, the break and what it counted for. A cancelled one shows its
+ * times, "בוטלה" instead of what it counted for, and who cancelled it, when
+ * and why; it can't be pressed.
  */
 export function ShiftList({
   records,
@@ -133,6 +136,28 @@ export function correctionLine(
     : t("correctedBy", { name });
 }
 
+/**
+ * Who cancelled a shift, when and why, as its second line: "בוטלה על ידי
+ * שירן, ב-10:12: נרשמה בטעות". The time has its day when that isn't the
+ * shift's, as the lists' lines say it. Null for a live shift.
+ */
+export function cancelLine(
+  record: ShiftRecord,
+  t: Translator<"app.clock.history">,
+): ReactNode {
+  const cancel = record.cancelled;
+  if (!cancel) return null;
+  return t.rich("cancelledBy", {
+    ltr,
+    name: cancel.by ?? t("aManager"),
+    time:
+      cancel.date === record.date
+        ? cancel.time
+        : `${dayMonth(cancel.date)}, ${cancel.time}`,
+    note: cancel.note,
+  });
+}
+
 function StateBadge({
   record,
   t,
@@ -162,6 +187,24 @@ function ShiftRows({
   return (
     <ListGroup className={className}>
       {records.map((record) => {
+        if (record.cancelled) {
+          // Counted for nothing: its times, and who cancelled it, when and why.
+          return (
+            <ListRow
+              key={record.id}
+              title={dayLabel(record.date)}
+              subtitle={
+                <>
+                  {record.out
+                    ? t.rich("times", { in: record.in, out: record.out, ltr })
+                    : t.rich("since", { in: record.in, ltr })}
+                  <span className="block">{cancelLine(record, t)}</span>
+                </>
+              }
+              trailing={<Badge>{t("cancelled")}</Badge>}
+            />
+          );
+        }
         const pending = record.attendance?.pending === true;
         const proof = proofInline(record.attendance, t, pending);
         const fixed = correctionLine(record, t);
@@ -253,6 +296,33 @@ function ShiftTable({
         </thead>
         <tbody>
           {records.map((record) => {
+            if (record.cancelled) {
+              return (
+                <tr key={record.id}>
+                  <th
+                    scope="row"
+                    className={cn(td, "text-start font-medium text-ink")}
+                  >
+                    {dayLabel(record.date)}
+                    <span className="block font-normal text-ink-2 text-sm">
+                      {cancelLine(record, t)}
+                    </span>
+                  </th>
+                  <td className={cn(td, "tabular-nums")}>
+                    <span dir="ltr">{record.in}</span>
+                  </td>
+                  <td className={cn(td, "tabular-nums")}>
+                    {/* One the cancel ended has no end of its own. */}
+                    {record.out ? <span dir="ltr">{record.out}</span> : "—"}
+                  </td>
+                  <td className={cn(td, "text-ink-2")}>—</td>
+                  <td className={td}>
+                    <Badge>{t("cancelled")}</Badge>
+                  </td>
+                  {onEdit ? <td className={td} /> : null}
+                </tr>
+              );
+            }
             const proof = proofLabel(record.attendance, t);
             const fixed = correctionLine(record, t);
             return (

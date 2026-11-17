@@ -4,6 +4,7 @@ import {
   attendanceOf,
   atWorkNow,
   breakMinutes,
+  type CancelledEntry,
   canConfirm,
   clockFailureOf,
   clockStatus,
@@ -35,6 +36,7 @@ import {
 } from "./time-clock";
 
 const TZ = "Asia/Jerusalem";
+const GONE = "68000000-0000-4000-a000-000000000020";
 
 const entry = (userId: string, clockIn: string, clockOut: string | null) => ({
   userId,
@@ -259,6 +261,7 @@ describe("confirming what was made without a code", () => {
           editedBy: null,
           editedAt: null,
           createdAt: null,
+          restoredAt: null,
           ...made("none", "typed"),
         },
       ],
@@ -668,6 +671,7 @@ describe("months", () => {
       editedBy: null,
       editedAt: null,
       createdAt: null,
+      restoredAt: null,
     });
     const records = monthRecords(
       [
@@ -794,6 +798,122 @@ describe("months", () => {
       [true, { kind: "added", by: "Shiran", note: "Forgot to punch" }],
     ]);
   });
+
+  it("lists cancelled shifts among the live ones, counting for nothing", () => {
+    const live = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000001",
+      userId: "u1",
+      clockIn: "2026-11-10T06:00:00Z",
+      clockOut: "2026-11-10T14:00:00Z",
+      source: "punch",
+    });
+    const cancelled = (
+      id: string,
+      clockIn: string,
+      clockOut: string,
+      more: Partial<CancelledEntry> = {},
+    ): CancelledEntry => ({
+      entry: timeEntry.parse({
+        id: `68000000-0000-4000-a000-00000000001${id}`,
+        userId: "u1",
+        clockIn,
+        clockOut,
+        source: "punch",
+        // An earlier correction stays the entry's own.
+        note: "Forgot to clock out",
+        editedBy: "m2",
+        editedAt: "2026-11-11T08:00:00Z",
+        breaks: [
+          {
+            id: "68000000-0000-4000-a000-000000000099",
+            startedAt: clockIn,
+            endedAt: new Date(Date.parse(clockIn) + 3_600_000).toISOString(),
+            unpaid: true,
+          },
+        ],
+      }),
+      cancelledAt: "2026-11-12T16:30:00Z",
+      cancelledBy: "m1",
+      reason: "Recorded by mistake",
+      wasOpen: false,
+      ...more,
+    });
+    const names = new Map([
+      ["m1", "Shiran"],
+      ["m2", "Dana"],
+    ]);
+    const records = monthRecords(
+      [live],
+      "2026-11",
+      TZ,
+      now,
+      0,
+      (userId) => names.get(userId) ?? null,
+      [
+        cancelled("1", "2026-11-12T06:00:00Z", "2026-11-12T14:00:00Z"),
+        // Open when it was cancelled, the cancel two days on: no end of its own.
+        cancelled("2", "2026-11-08T06:00:00Z", "2026-11-09T06:00:00Z", {
+          wasOpen: true,
+          cancelledAt: "2026-11-10T07:15:00Z",
+          cancelledBy: null,
+        }),
+        // Another month's, by its day there.
+        cancelled("3", "2026-10-31T20:30:00Z", "2026-10-31T21:30:00Z"),
+      ],
+    );
+    expect(records.map((r) => r.date)).toEqual([
+      "2026-11-12",
+      "2026-11-10",
+      "2026-11-08",
+    ]);
+    expect(records[0]).toEqual({
+      id: "68000000-0000-4000-a000-000000000011",
+      date: "2026-11-12",
+      in: "08:00",
+      out: "16:00",
+      minutes: 0,
+      breakMinutes: 0,
+      byManager: false,
+      overdue: false,
+      attendance: null,
+      correction: null,
+      cancelled: {
+        by: "Shiran",
+        date: "2026-11-12",
+        time: "18:30",
+        note: "Recorded by mistake",
+      },
+    });
+    expect(records[1]).toMatchObject({ minutes: 480, cancelled: null });
+    expect(records[2]).toMatchObject({
+      in: "08:00",
+      out: null,
+      overdue: false,
+      cancelled: { by: null, date: "2026-11-10", time: "09:15" },
+    });
+    // The month's total stays the live shifts'.
+    expect(monthMinutes([live], "2026-11", TZ, now)).toBe(480);
+  });
+
+  it("puts a live shift first beside the cancelled one it replaced", () => {
+    const live = timeEntry.parse({
+      id: "68000000-0000-4000-a000-000000000002",
+      userId: "u1",
+      clockIn: "2026-11-12T06:00:00Z",
+      clockOut: "2026-11-12T12:00:00Z",
+      source: "manager",
+    });
+    const records = monthRecords([live], "2026-11", TZ, now, 0, () => null, [
+      {
+        entry: timeEntry.parse({ ...live, id: GONE, source: "punch" }),
+        cancelledAt: "2026-11-12T15:00:00Z",
+        cancelledBy: null,
+        reason: "Wrong day",
+        wasOpen: false,
+      },
+    ]);
+    expect(records.map((r) => r.id)).toEqual([live.id, GONE]);
+  });
 });
 
 describe("the manager's view", () => {
@@ -818,6 +938,7 @@ describe("the manager's view", () => {
     editedBy: null,
     editedAt: null,
     createdAt: null,
+    restoredAt: null,
   });
   const pause = {
     id: "68000000-0000-4000-a000-000000000009",

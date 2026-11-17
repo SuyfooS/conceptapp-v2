@@ -75,6 +75,7 @@ function entry(
     editedBy: null,
     editedAt: null,
     createdAt: null,
+    restoredAt: null,
     ...more,
   };
 }
@@ -937,6 +938,7 @@ describe("changedSinceExport", () => {
     editedAt: null,
     confirmedAt: null,
     clockOut: "2026-10-01T16:00:00Z",
+    restoredAt: null,
     ...more,
   });
 
@@ -946,17 +948,65 @@ describe("changedSinceExport", () => {
     expect(
       changedSinceExport([row({ clockOut: null })], [], "2026-10", sent),
     ).toBe(false);
+    // Brought back, or cancelled, before the file: it already knew.
+    expect(
+      changedSinceExport(
+        [row({ restoredAt: "2026-11-02T08:00:00Z" })],
+        [],
+        "2026-10",
+        sent,
+        [
+          {
+            cancelledAt: "2026-11-03T07:59:59Z",
+            entry: { createdAt: "2026-10-20T08:00:00Z" },
+          },
+        ],
+      ),
+    ).toBe(false);
   });
 
-  it("is true for a shift written, corrected, confirmed or ended after it", () => {
+  it("is true for a shift written, corrected, confirmed, ended or brought back after it", () => {
     for (const more of [
       { createdAt: "2026-11-04T08:00:00Z" },
       { editedAt: "2026-11-03T08:00:01Z" },
       { confirmedAt: "2026-11-05T08:00:00Z" },
       { clockOut: "2026-11-03T09:00:00+00:00" },
+      { restoredAt: "2026-11-04T10:00:00Z" },
     ]) {
       expect(changedSinceExport([row(more)], [], "2026-10", sent)).toBe(true);
     }
+  });
+
+  it("is true for a shift cancelled after it, though it is no longer the month's", () => {
+    const before = { createdAt: "2026-10-20T08:00:00Z" };
+    expect(
+      changedSinceExport([row({})], [], "2026-10", sent, [
+        { cancelledAt: "2026-11-04T08:00:00Z", entry: before },
+      ]),
+    ).toBe(true);
+    // Its only shift cancelled: nothing live is left to say so.
+    expect(
+      changedSinceExport([], [], "2026-10", sent, [
+        { cancelledAt: "2026-11-04T08:00:00Z", entry: before },
+      ]),
+    ).toBe(true);
+    // Cancelled before the file: the file never had it.
+    expect(
+      changedSinceExport([], [], "2026-10", sent, [
+        { cancelledAt: "2026-10-31T08:00:00Z", entry: before },
+      ]),
+    ).toBe(false);
+  });
+
+  it("is false for a shift written after it and cancelled: the file never had it", () => {
+    expect(
+      changedSinceExport([], [], "2026-10", sent, [
+        {
+          cancelledAt: "2026-11-04T09:00:00Z",
+          entry: { createdAt: "2026-11-04T08:00:00Z" },
+        },
+      ]),
+    ).toBe(false);
   });
 
   it("is true for a wage set after it that reaches into the month", () => {

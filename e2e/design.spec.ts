@@ -1060,8 +1060,9 @@ test("the team demo deletes an invite, changes a role and takes someone off the 
 test("a person's hours in the demo match their row in the team list", async ({
   page,
 }) => {
+  // Yoav's cancelled shift is listed and counts as none.
   for (const [person, shifts] of [
-    ["yoav", "4 משמרות"],
+    ["yoav", "5 משמרות"],
     ["shiran", "3 משמרות"],
   ] as const) {
     await page.goto(`/design/shell/clock/team/${person}`);
@@ -1069,6 +1070,64 @@ test("a person's hours in the demo match their row in the team list", async ({
       page.getByText(`שעות, ${shifts}`).filter({ visible: true }).first(),
     ).toBeVisible();
   }
+});
+
+// A cancelled shift (the clock plan's PR3) in every shape: "בוטלה" instead of
+// its hours, who cancelled it, when and why, and no way to press it yet; the
+// worker reads the same in her history, and the pay demo lists it apart.
+test("the clock demo lists a cancelled shift with who, when and why", async ({
+  page,
+}) => {
+  const cancelled = (time: string, note: string) =>
+    heT.markup("app.clock.history.cancelledBy", {
+      ltr: (chunks: string) => chunks,
+      name: "שירן הדגמה",
+      time,
+      note,
+    });
+  for (const [path, line] of [
+    [
+      "/design/shell/clock/team/yoav",
+      cancelled("4.11, 15:10", "נרשמה פעמיים בטעות"),
+    ],
+    [
+      "/design/shell/clock/team/noa",
+      cancelled("08:20", "נכנסה בטעות ביום חופש"),
+    ],
+    [
+      "/design/shell/clock/history",
+      cancelled("08:20", "נכנסה בטעות ביום חופש"),
+    ],
+  ] as const) {
+    await page.goto(path);
+    const main = page.getByRole("main");
+    await expect(
+      main.getByText(line).filter({ visible: true }).first(),
+    ).toBeVisible();
+    await expect(
+      main
+        .getByText(he.app.clock.history.cancelled, { exact: true })
+        .filter({ visible: true }),
+    ).toHaveCount(1);
+    await expect(
+      main.getByRole("button").filter({ hasText: line }),
+    ).toHaveCount(0);
+  }
+  await page.goto("/design/shell/clock/pay/noa");
+  await expect(
+    page
+      .getByRole("heading", { name: he.app.pay.person.cancelledTitle })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByRole("main")
+      .getByText(
+        cancelled("18.10, 09:40", "נרשמה בטעות, נועה לא עבדה ביום שישי"),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
 });
 
 // The switcher's twins (payroll P3b): the demo's accountant keeps the books of

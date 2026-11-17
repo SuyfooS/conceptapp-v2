@@ -11,6 +11,7 @@ import type {
   PeriodFormErrors,
 } from "@domain/payroll-details";
 import type { AddressForm } from "@domain/profile";
+import type { ShiftRecord } from "@domain/time-clock";
 import type {
   MonthWage,
   WageFailure,
@@ -246,6 +247,12 @@ export type PayPersonData = {
   currentMonth: string;
   totals: PayTotals;
   days: PayDay[];
+  /**
+   * The month's cancelled shifts, oldest first, each with who cancelled it,
+   * when and why (`ShiftRecord.cancelled`): in no total and no file, listed
+   * so whoever pays sees what was cancelled.
+   */
+  cancelled: ShiftRecord[];
   /** The month's wages; null for someone off the staff. */
   monthWage: MonthWage | null;
   /** Their wage now and its history; null for someone off the staff. */

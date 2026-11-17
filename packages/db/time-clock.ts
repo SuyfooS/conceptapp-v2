@@ -3,7 +3,9 @@ import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { isStaff } from "@domain/modules";
 import { type PunchProof, padShortCode } from "@domain/punch-code-format";
 import {
+  type CancelledEntry,
   type ClockFailure,
+  cancelledEntry,
   clockFailureOf,
   ENTRY_PROOFS,
   type EntryProof,
@@ -329,7 +331,11 @@ export async function getClockPeople(
 }
 
 const ENTRY_COLUMNS =
-  "id, user_id, clock_in, clock_out, source, in_proof, out_proof, confirmed_at, note, edited_by, edited_at, created_at, time_breaks (id, started_at, ended_at, unpaid)";
+  "id, user_id, clock_in, clock_out, source, in_proof, out_proof, confirmed_at, note, edited_by, edited_at, created_at, restored_at, time_breaks (id, started_at, ended_at, unpaid, removed_at)";
+
+/** The same, with who cancelled it, when and why (cancelled shifts only). */
+const CANCELLED_COLUMNS =
+  "id, user_id, clock_in, clock_out, source, in_proof, out_proof, confirmed_at, note, edited_by, edited_at, created_at, restored_at, time_breaks (id, started_at, ended_at, unpaid, removed_at), cancelled_at, cancelled_by, cancel_reason, cancelled_open";
 
 type EntryRow = {
   id: string;
@@ -344,15 +350,22 @@ type EntryRow = {
   edited_by: string | null;
   edited_at: string | null;
   created_at: string;
+  restored_at: string | null;
   time_breaks: {
     id: string;
     started_at: string;
     ended_at: string | null;
     unpaid: boolean;
+    removed_at: string | null;
   }[];
 };
 
-function entryOf(row: EntryRow): TimeEntry {
+/**
+ * A row as an entry. A removed break (`removed_at`, 20261117000300_break_edits.sql)
+ * is kept in the database as the record of what was removed and counts
+ * nowhere, so it is left out here, before any sum or list sees it.
+ */
+export function entryOf(row: EntryRow): TimeEntry {
   return timeEntry.parse({
     id: row.id,
     userId: row.user_id,
@@ -366,12 +379,15 @@ function entryOf(row: EntryRow): TimeEntry {
     editedBy: row.edited_by,
     editedAt: row.edited_at,
     createdAt: row.created_at,
-    breaks: row.time_breaks.map((pause) => ({
-      id: pause.id,
-      startedAt: pause.started_at,
-      endedAt: pause.ended_at,
-      unpaid: pause.unpaid,
-    })),
+    restoredAt: row.restored_at,
+    breaks: row.time_breaks
+      .filter((pause) => pause.removed_at === null)
+      .map((pause) => ({
+        id: pause.id,
+        startedAt: pause.started_at,
+        endedAt: pause.ended_at,
+        unpaid: pause.unpaid,
+      })),
   });
 }
 
@@ -382,6 +398,13 @@ function entryOf(row: EntryRow): TimeEntry {
  * are included, so "at work now" sees a night shift from yesterday. With
  * `userId`, that person's only. Read page by page (`allPages`): payroll reads
  * a whole business over four months, past PostgREST's 1000 rows.
+ *
+ * Live shifts only: a cancelled one (`cancelled_at`,
+ * 20261117000200_cancelled_shifts.sql) counts nowhere, so every sum, the
+ * hours engine, pay, the file and who is at work are right without asking.
+ * The few screens that show cancelled shifts read them apart
+ * (`getCancelledEntries`). A cancelled shift always has an end, so the open
+ * ones read here are all live.
  */
 export async function getTimeEntries(
   businessId: string,
@@ -395,6 +418,7 @@ export async function getTimeEntries(
       .from("time_entries")
       .select(ENTRY_COLUMNS)
       .eq("business_id", businessId)
+      .is("cancelled_at", null)
       .lt("clock_in", to.toISOString())
       .or(`clock_in.gte.${from.toISOString()},clock_out.is.null`);
     if (userId) query = query.eq("user_id", userId);
@@ -407,7 +431,8 @@ export async function getTimeEntries(
 /**
  * Entries with a time still to confirm that started since `since`, as the
  * signed-in person may read them (RLS: the business's for managers), oldest
- * first. Reads through time_entries_to_confirm_idx.
+ * first. Reads through time_entries_to_confirm_idx. Live shifts only: a
+ * cancelled one waits for nobody (its clock.confirm line settles with it).
  */
 export async function getEntriesToConfirm(
   businessId: string,
@@ -418,9 +443,58 @@ export async function getEntriesToConfirm(
     .from("time_entries")
     .select(ENTRY_COLUMNS)
     .eq("business_id", businessId)
+    .is("cancelled_at", null)
     .gte("clock_in", since.toISOString())
     .or("in_proof.in.(none,self),out_proof.in.(none,self)")
     .order("clock_in");
   if (error) throw error;
   return data.map(entryOf).filter((entry) => entryToConfirm(entry) !== null);
+}
+
+type CancelledRow = EntryRow & {
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancel_reason: string | null;
+  cancelled_open: boolean;
+};
+
+/**
+ * A business's cancelled shifts that start in [from, to), as the signed-in
+ * person may read them (RLS, as `getTimeEntries`: their own; whoever edits
+ * the clock or holds pay, the business's), oldest first, each with who
+ * cancelled it, when and why. With `userId`, that person's only. For the few
+ * screens that show them as cancelled; they count nowhere. A cancelled shift
+ * always has an end (the cancel ends one still open, `wasOpen`).
+ */
+export async function getCancelledEntries(
+  businessId: string,
+  from: Date,
+  to: Date,
+  userId?: string,
+): Promise<CancelledEntry[]> {
+  const supabase = await createClient();
+  const rows = await allPages<CancelledRow>((first, last) => {
+    let query = supabase
+      .from("time_entries")
+      .select(CANCELLED_COLUMNS)
+      .eq("business_id", businessId)
+      .not("cancelled_at", "is", null)
+      .gte("clock_in", from.toISOString())
+      .lt("clock_in", to.toISOString());
+    if (userId) query = query.eq("user_id", userId);
+    return query.order("clock_in").order("id").range(first, last);
+  });
+  return rows.flatMap((row) =>
+    row.cancelled_at === null || row.cancel_reason === null
+      ? []
+      : [
+          cancelledEntry.parse({
+            entry: entryOf(row),
+            cancelledAt: row.cancelled_at,
+            cancelledBy: row.cancelled_by,
+            reason: row.cancel_reason,
+            wasOpen: row.cancelled_open,
+          }),
+        ],
+  );
 }
