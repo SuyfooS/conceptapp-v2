@@ -13,6 +13,14 @@ what is next, defaults applied.
 - App: `renameMemberAction`; on `/team/[person]` "שם" and "תפקיד" share one group (`TeamPlace`; `MemberRoleRow` split from `MemberRoleNotes`), the sheet "השם בצוות" with "תיקון השם", written at once with "השם עכשיו …" and "ביטול" for 8 s, then "השם שוב …"; the title follows (`ShownName`). The same component in every shape. Activity line "תיקון השם של …". Twins: `demoRenameMemberAction`, `?state=nameless`, an activity row. The console's frame and account card call the signed-in person by their own name, never a business's for them.
 - Tests: unit (domain team, people, activity; `member-names.test.ts`; `session.test.ts` for both names; the roles and payroll fakes learn the names). pgTAP `member_names.test.sql` (53) and the RLS list; a parity loop in `team-changes.db.test.ts`; e2e (first run in CI) in `team-changes.spec.ts` and `design.spec.ts`.
 - Next: Orel's answers; then a name row on `/me` for one's own name.
+## 2026-11-18 · nightly · two stale lines in the docs
+
+- Guessed: Orel left no work (no open `orel`, `question` or `urgent` issue, no new word from him on #1). What merged since the last run (#186 to #194) was reviewed and tested in its day sessions with green CI, and the clock station's pure rules all have tests; the three open day PRs (#193, #195, #196) hold the swaps, the team's names and the menu, so tonight stays away from them.
+- `docs/ROADMAP.md`, known issue 9: Today no longer misses Saturday night's shift after midnight. On the week's first day it reads the day before's shifts still on (`overnightDay` in `@domain/today`, used by `app/(app)/schedule/week.ts`, with its tests); the line still said it did.
+- `docs/AGENT.md`, "Holes in what exists": the stuck business (expired invites, no owner) is unstuck from the console (`addPersonAction`, renewing an invite), as ROADMAP's known issue 3 says; the backlog still listed it as open.
+- Docs only, no code. Restore point: branch `backup/before-night-2026-11-18` at `7cfc14d` (the tag push was cut off).
+- Next: Orel's open day PRs; waiter mode P2 waits for his decision 1 in #191.
+- Defaults applied: none.
 
 ## 2026-11-17 · chat · waiter mode: the screens first, clickable, no database (S0, #191)
 
