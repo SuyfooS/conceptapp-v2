@@ -14,6 +14,7 @@ import {
   saveDemoRunningWeek,
   scheduleAssignments,
   scheduleDemoSunday,
+  scheduleDemoToday,
   schedulePublished,
   scheduleShiftIds,
   scheduleShifts,
@@ -43,8 +44,27 @@ const YOAV = {
   e164: "+972500000004",
 };
 const WAITER = "מלצר/ית";
+const BUSINESS = "מסעדת הדגמה";
 
 const tb = he.app.build;
+const ts = he.app.shifts.share;
+const us = he.ui.share;
+/**
+ * A week's dates in words, as the page's own browser writes them (the share
+ * reads them on the device): seven days from `start`.
+ */
+const rangeIn = (page: Page, start: string) =>
+  page.evaluate((first) => {
+    const day = new Date(`${first}T00:00:00Z`);
+    return new Intl.DateTimeFormat("he", {
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    }).formatRange(day, new Date(day.getTime() + 6 * 86_400_000));
+  }, start);
+/** The text a WhatsApp link writes. */
+const whatsappText = (href: string | null) =>
+  new URL(href ?? "").searchParams.get("text");
 /**
  * A test that waits out a publish held for its undo (`HOLD_MS` each) gets
  * the time for it.
@@ -322,6 +342,8 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   expect(await scheduleAssignments()).toEqual([
     { weekday: 0, pattern: "morning", phone: NOA.e164, position: null },
   ]);
+  // Out, with nothing new: the dock offers sharing it with the team instead.
+  await expect(page.getByRole("button", { name: ts.action })).toBeInViewport();
 
   // Published: no more draft, and nothing to publish until something changes.
   // Changes are published, not saved aside.
@@ -349,11 +371,160 @@ test("a manager publishes next week's schedule, then publishes changes", async (
   expect(await scheduleAssignments()).toEqual([]);
   expect(await schedulePublished()).toBe(true);
 
+  // Shared after "פרסום השינויים", the message says it was updated.
+  const start = new URL(page.url()).searchParams.get("week") ?? "";
+  expect(start).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  await page.getByRole("button", { name: ts.action }).click();
+  const sheet = page.getByRole("dialog", { name: ts.title });
+  await expect(sheet).toContainText(
+    heT("app.shifts.share.text", {
+      business: BUSINESS,
+      range: await rangeIn(page, start),
+      kind: "changes",
+    }),
+  );
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+
   // The schedule's entry says it is out.
   await page.goto("/schedule");
   await expect(
     page.getByRole("link", { name: new RegExp(tb.title) }),
   ).toContainText(tb.entry.subtitlePublished);
+});
+
+// Once the week is out, whoever builds it shares it with the team: the
+// business, the week in words and the link to that week, never anyone's
+// name, number or hours. The app sends nothing itself: WhatsApp, the
+// device's share sheet (where it has one) or a copy. The link opens that
+// week on the schedule tab, for the manager and for Noa, who works in it.
+test("a manager shares the published week, and its link opens that week", async ({
+  page,
+  browser,
+}, testInfo) => {
+  await scheduleDemoSunday({ morning: [[NOA.e164, null]], evening: [] }, true);
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const share = page.getByRole("button", { name: ts.action });
+  const sheet = page.getByRole("dialog", { name: ts.title });
+  await signIn(page, MANAGER);
+  await page.goto("/schedule/build");
+  // The builder names its week once it is on the screen.
+  await expect(page).toHaveURL(/\?week=\d{4}-\d{2}-\d{2}$/);
+  const start = new URL(page.url()).searchParams.get("week") ?? "";
+  const origin = new URL(page.url()).origin;
+  await expect(share).toBeInViewport();
+  await expect(page.getByRole("button", { name: tb.publish })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: tb.publishChanges }),
+  ).toHaveCount(0);
+  await expectCleanPage(page);
+
+  await share.click();
+  await expect(sheet).toBeVisible();
+  const text = `${heT("app.shifts.share.text", {
+    business: BUSINESS,
+    range: await rangeIn(page, start),
+    kind: "other",
+  })}\n${origin}/schedule?week=${start}`;
+  const whatsapp = sheet.getByRole("link", { name: us.whatsapp });
+  const href = await whatsapp.getAttribute("href");
+  expect(href?.startsWith("https://wa.me/?text=")).toBe(true);
+  const sent = whatsappText(href) ?? "";
+  expect(sent).toBe(text);
+  // Nobody's name, number or hours.
+  expect(sent).not.toContain(NOA.first);
+  expect(sent).not.toContain("+972");
+  expect(sent).not.toMatch(/05\d-?\d{3}-?\d{4}/);
+  expect(sent).not.toContain("09:00");
+  await expect(whatsapp).toHaveAttribute("target", "_blank");
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("schedule-share.png"),
+    fullPage: true,
+  });
+  // The device's own share sheet only where the browser has one.
+  const native = await page.evaluate(
+    () => typeof navigator.share === "function",
+  );
+  await expect(sheet.getByRole("button", { name: us.other })).toHaveCount(
+    native ? 1 : 0,
+  );
+
+  await sheet.getByRole("button", { name: us.copy }).click();
+  await expect(sheet.getByRole("button", { name: us.copied })).toBeVisible();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(text);
+  // Closed from the keyboard, the focus goes back to what opened it.
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(share).toBeFocused();
+
+  // A device with a share sheet: it gets the one text, and the sheet closes.
+  await page.addInitScript(() => {
+    const shared: ShareData[] = [];
+    Object.assign(window, { shared });
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data: ShareData) => {
+        shared.push(data);
+      },
+    });
+    Object.defineProperty(navigator, "canShare", {
+      configurable: true,
+      value: () => true,
+    });
+  });
+  await page.goto("/schedule/build");
+  await expect(page).toHaveURL(/\?week=\d{4}-\d{2}-\d{2}$/);
+  await share.click();
+  await sheet.getByRole("button", { name: us.other }).click();
+  await expect(sheet).toHaveCount(0);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { shared: ShareData[] }).shared,
+    ),
+  ).toEqual([{ text }]);
+
+  // The link opens that week on the schedule tab, with the share beside
+  // "פורסם ב-…" for whoever builds it. This week is out too, with Noa on
+  // today's morning, so without the link the tab opens on this week
+  // (`scheduleOpening`): only the link's `?week=` leads to next week.
+  await scheduleDemoToday([[NOA.e164, null]]);
+  const link = `/schedule?week=${start}`;
+  const weekButton = (on: Page, key: "this" | "next") =>
+    on.getByRole("button", { name: he.app.shifts.week[key], exact: true });
+  await page.goto("/schedule");
+  await expect(weekButton(page, "this")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.goto(link);
+  await expect(weekButton(page, "next")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await expect(
+    page
+      .getByText(before(he.app.shifts.board.publishedAt))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(share).toBeVisible();
+  await expectCleanPage(page);
+
+  // Noa opens it on that week too (on her shift there: `scheduleOpening`),
+  // though on her own the tab opens on today's, with nothing to share.
+  const noa = await secondPage(browser, testInfo);
+  await signIn(noa, NOA);
+  await noa.goto("/schedule");
+  await expect(weekButton(noa, "this")).toHaveAttribute("aria-pressed", "true");
+  await noa.goto(link);
+  await expect(weekButton(noa, "next")).toHaveAttribute("aria-pressed", "true");
+  await expect(
+    noa
+      .getByText(before(he.app.shifts.board.publishedAt))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(noa.getByRole("button", { name: ts.action })).toHaveCount(0);
+  await noa.context().close();
 });
 
 // Publishing changes waits `HOLD_MS` for "ביטול" before anything reaches the

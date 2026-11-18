@@ -14,6 +14,7 @@ import {
   shopRunningAnswers,
   shopRunningBasis,
   shopRunningShifts,
+  shopShare,
   shopSwaps,
   shopTeam,
   shopThisWeek,
@@ -36,7 +37,8 @@ const HREF = "/design/shell/schedule/build/running";
 // a minute, as the app's does from the server's moment. "פרסום השינויים"
 // waits eight seconds for "ביטול" before the stand-in hears of it (R3b), as
 // the app's does before the server: the held state, its toast with the way
-// back, and "ביטול" letting it go unsent, are this twin's to look at.
+// back, and "ביטול" letting it go unsent, are this twin's to look at. At rest
+// and after a publish, the dock offers sharing the week on WhatsApp.
 export default function ShellScheduleBuildRunning(props: Props) {
   return (
     <Suspense>
@@ -64,6 +66,7 @@ async function Demo({ searchParams }: Props) {
   const common = {
     manageHref: "/design/shell/manage/scheduling",
     backHref: "/design/shell/schedule",
+    share: shopShare,
     wording: baseWording,
   };
   const running = {

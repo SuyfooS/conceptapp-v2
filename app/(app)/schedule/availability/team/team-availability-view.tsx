@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { type AppWording, type Translator, translator } from "../../../wording";
 import type { TeamAvailabilityWeek } from "../../week";
 import { HeroChip } from "../hero-chip";
+import { type Remind, RemindButton } from "./remind-button";
 
 type T = Translator<"app">;
 type Team = TeamAvailabilityWeek["team"];
@@ -42,17 +43,25 @@ function moment(t: T, iso: string, timeZone: string) {
  * The manager's view of next week's availability: who has not sent it, with a
  * way to call them, and what everyone else sent. Phone: the hero with the
  * missing people lifted over it, and the answers under that; tablet: the same
- * two in two columns; desktop: one table with a column per day. Also rendered
- * with mock data on /design/shell/schedule/availability/team.
+ * two in two columns; desktop: one table with a column per day. While
+ * someone is missing, the screen's main action is a reminder for the whole
+ * team (`remind`), on WhatsApp or another way, in the header on all three.
+ * Also rendered with mock data on /design/shell/schedule/availability/team.
  */
 export function TeamAvailabilityView({
   data,
   backHref,
+  remind = null,
   wording,
 }: {
   data: TeamAvailabilityWeek;
   /** The schedule screen this one sits under. */
   backHref: string;
+  /**
+   * The reminder, until next week is published; null once it is, and while
+   * viewing as a role, which speaks for nobody.
+   */
+  remind?: Remind | null;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -70,6 +79,18 @@ export function TeamAvailabilityView({
           to: dayMonth(week.dates.at(-1) ?? week.start),
         })}
         title={t("availability.team.title")}
+        actions={
+          remind && team.counts.missing > 0 ? (
+            <RemindButton
+              {...remind}
+              week={{
+                dates: week.dates,
+                dueAt: week.dueAt,
+                timeZone: week.timeZone,
+              }}
+            />
+          ) : undefined
+        }
       />
       <div className="grid gap-7 md:grid-cols-2 md:items-start md:gap-6 xl:grid-cols-1">
         <div className="flex min-w-0 flex-col">

@@ -1232,6 +1232,75 @@ describe("scheduleOpening", () => {
   it("stays on today when neither week has anything", () => {
     expect(scheduleOpening(base)).toEqual({ week: "this", day: "2026-11-03" });
   });
+
+  describe("on the week a link names", () => {
+    it("opens a worker on their shift in next week, though one comes sooner", () => {
+      expect(
+        scheduleOpening({
+          ...base,
+          asked: "next",
+          thisWeek: { dates: dates(1), shifts: [onShift("2026-11-05", dana)] },
+          nextWeek: {
+            dates: dates(8),
+            shifts: [onShift("2026-11-08", avi), onShift("2026-11-10", dana)],
+          },
+        }),
+      ).toEqual({ week: "next", day: "2026-11-10" });
+    });
+
+    it("opens next week on its first shift without one of theirs", () => {
+      expect(
+        scheduleOpening({
+          ...base,
+          asked: "next",
+          thisWeek: { dates: dates(1), shifts: [onShift("2026-11-05", dana)] },
+          nextWeek: { dates: dates(8), shifts: [onShift("2026-11-09", avi)] },
+        }),
+      ).toEqual({ week: "next", day: "2026-11-09" });
+    });
+
+    it("opens next week on its first day when it has nothing", () => {
+      expect(scheduleOpening({ ...base, asked: "next" })).toEqual({
+        week: "next",
+        day: "2026-11-08",
+      });
+    });
+
+    it("opens a manager on today in this week, though it is empty", () => {
+      expect(
+        scheduleOpening({
+          ...base,
+          manager: true,
+          asked: "this",
+          nextWeek: { dates: dates(8), shifts: [onShift("2026-11-08", avi)] },
+        }),
+      ).toEqual({ week: "this", day: "2026-11-03" });
+    });
+
+    it("opens a worker on their next shift in this week, not one behind", () => {
+      expect(
+        scheduleOpening({
+          ...base,
+          asked: "this",
+          thisWeek: {
+            dates: dates(1),
+            shifts: [onShift("2026-11-02", dana), onShift("2026-11-06", dana)],
+          },
+          nextWeek: { dates: dates(8), shifts: [onShift("2026-11-08", dana)] },
+        }),
+      ).toEqual({ week: "this", day: "2026-11-06" });
+    });
+
+    it("opens as without a link when it names neither week", () => {
+      const nextOnly = {
+        ...base,
+        nextWeek: { dates: dates(8), shifts: [onShift("2026-11-09", dana)] },
+      };
+      expect(scheduleOpening({ ...nextOnly, asked: null })).toEqual(
+        scheduleOpening(nextOnly),
+      );
+    });
+  });
 });
 
 describe("shiftsByDay", () => {

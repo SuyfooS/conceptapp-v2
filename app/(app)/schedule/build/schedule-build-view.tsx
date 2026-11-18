@@ -7,6 +7,7 @@ import { PageBody, PageHeader } from "@ui/page";
 import { CalendarCheck } from "lucide-react";
 import Link from "next/link";
 import { type AppWording, translator } from "../../wording";
+import type { ShareWeek } from "../share-week";
 import type { ScheduleBuildWeek } from "../week";
 import type { ScheduleState } from "./actions";
 import { type BuilderWeeks, ScheduleBuilder } from "./schedule-builder";
@@ -23,6 +24,7 @@ export function ScheduleBuildView({
   manageHref = "/manage/scheduling",
   running,
   publishes = true,
+  share = null,
   wording,
 }: {
   data: ScheduleBuildWeek;
@@ -47,6 +49,11 @@ export function ScheduleBuildView({
    * they save drafts, and read a published week. True unless said otherwise.
    */
   publishes?: boolean;
+  /**
+   * Sharing the week with the team once it is published: the business's
+   * name and the schedule tab the link opens. None while viewing as a role.
+   */
+  share?: ShareWeek | null;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -81,6 +88,7 @@ export function ScheduleBuildView({
         manageHref={manageHref}
         running={running}
         publishes={publishes}
+        share={share}
         save={save}
       />
     </PageBody>

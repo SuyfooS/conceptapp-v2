@@ -54,6 +54,7 @@ import { PunchCircle } from "@ui/punch-circle";
 import { QrCode } from "@ui/qr-code";
 import { ScanCircle } from "@ui/scan-circle";
 import { Segmented } from "@ui/segmented";
+import { ShareSheet } from "@ui/share-sheet";
 import { Sheet } from "@ui/sheet";
 import { SkeletonBones } from "@ui/skeleton";
 import { StatusToast } from "@ui/status-toast";
@@ -271,6 +272,7 @@ function GalleryBody({
   const shownTotal = useCountUp(total, "gallery");
   const [appearance, setAppearance] = useState<Appearance>("system");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [needed, setNeeded] = useState("3");
   const [position, setPosition] = useState("waiter");
   const [toastAt, setToastAt] = useState<string | null>(null);
@@ -1533,6 +1535,19 @@ function GalleryBody({
               />
             </ListGroup>
           </Sheet>
+        </Section>
+
+        <Section title={t("share")}>
+          <Button variant="secondary" onClick={() => setShareOpen(true)}>
+            {t("shareOpen")}
+          </Button>
+          <ShareSheet
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+            title={t("shareTitle")}
+            message={t("shareSample")}
+            path="/schedule?week=2026-11-22"
+          />
         </Section>
 
         <Section title={t("groupedForm")}>

@@ -14,8 +14,9 @@
  * What the app may ask the device for, and only on its own pages, never in
  * a frame: the camera for the clock's QR scanner (`@ui/use-qr-camera`), the
  * screen kept on while the clock's code is shown (`@ui/use-wake-lock`), and
- * full screen for the code (`/clock/code`, and a clock station's `/station`).
- * The rest is off for everyone.
+ * full screen for the code (`/clock/code`, and a clock station's `/station`),
+ * and the device's share sheet for the schedule and the availability
+ * reminder (`@ui/share-sheet`). The rest is off for everyone.
  * Notifications on the phone (Web Push) are not a feature of this header:
  * the person allows them in the browser.
  */
@@ -23,6 +24,7 @@ export const PERMISSIONS_POLICY = [
   "camera=(self)",
   "screen-wake-lock=(self)",
   "fullscreen=(self)",
+  "web-share=(self)",
   "microphone=()",
   "geolocation=()",
   "payment=()",
