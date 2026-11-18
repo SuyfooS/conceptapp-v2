@@ -1,5 +1,6 @@
 import { instantIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import type { FirstStepsData } from "@domain/first-steps";
 import type { ModuleNavEntry, Role } from "@domain/modules";
 import { firstNameOf } from "@domain/people";
 import { formArg } from "@domain/profile";
@@ -83,6 +84,8 @@ import type {
   TeamAvailabilityWeek,
 } from "../schedule/week";
 import { type AppWording, type Translator, translator } from "../wording";
+import { hideFirstStepsAction } from "./actions";
+import { FirstStepsCard } from "./first-steps-card";
 import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
 
@@ -160,6 +163,13 @@ export type TodayData = {
    * Null anywhere else.
    */
   station?: LockOffer | null;
+  /**
+   * The owner's first steps (`currentFirstSteps`): only an owner of a real
+   * business has them, until every step counted is done or they hid them on
+   * this device; the team viewing as the owner reads them. Null for anyone
+   * else.
+   */
+  firstSteps?: FirstStepsData | null;
 };
 
 type T = Translator<"app">;
@@ -252,14 +262,17 @@ function runningOf(schedule: TodaySchedule, now: string) {
  * today's shifts side by side. The avatar by the greeting leads to the
  * person's profile, where signing out is. Someone in more than one business
  * (payroll P3b) has them listed last, on phones and tablets, to switch
- * between. `base` prefixes links for the demo, which also renders this with
- * mock data on /design/shell.
+ * between. An owner of a business still being set up has its first steps
+ * under the greeting, the screen's one accent card, on the same columns as
+ * what is under it. `base` prefixes links for the demo, which also renders
+ * this with mock data on /design/shell.
  */
 export async function TodayView({
   data,
   wording,
   businesses,
   base = "",
+  hideFirstSteps = hideFirstStepsAction,
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
@@ -267,6 +280,8 @@ export async function TodayView({
   /** The businesses to switch between, for someone in more than one. */
   businesses?: Businesses | null;
   base?: string;
+  /** Hides the first steps: `hideFirstStepsAction`, or the demo's stand-in. */
+  hideFirstSteps?: () => Promise<void>;
 }) {
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -455,6 +470,15 @@ export async function TodayView({
 
         {data.station?.current ? (
           <StationReminder offer={data.station} t={t} />
+        ) : null}
+
+        {data.firstSteps ? (
+          <FirstStepsCard
+            data={data.firstSteps}
+            t={t}
+            path={path}
+            hide={hideFirstSteps}
+          />
         ) : null}
 
         {view ? (

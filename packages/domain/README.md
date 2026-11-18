@@ -93,6 +93,20 @@ viewer gives that hold what they don't, which the role sheet shows as an
 owner's to give, and `namedRoleShown` strips a named role to its names and
 base before it reaches a browser: what it holds is the owner's to read.
 
+`setup.ts` is the console's checklist of a business just opened (opened,
+owner, staff, address), each item from the business as stored, and the rule
+for "staff" it shares with the owner's first steps: managers and workers
+(`SETUP_STAFF_ROLES`, `isSetupStaff`, `hasStaff`), owners counted apart and
+an accountant outside. `first-steps.ts` is the owner's own list on Today, by
+module (`FIRST_STEP_MODULE`: the team and the business's details always, job
+roles and shifts and the first publish with scheduling, people in departments
+with lists once there are departments, the clock's code with the time clock):
+`firstSteps` works each out from facts, `firstStepHref` is the screen that
+does it, and the clock's code is optional (`OPTIONAL_STEPS`), shown and never
+counted (`stepsLeft`), so it never keeps the card open. Hiding it is kept on
+the device, in `FIRST_STEPS_HIDDEN_COOKIE` (`firstStepsHidden`,
+`withFirstStepsHidden`: the businesses' ids, the latest last).
+
 `manage-access.ts` is who manages the business on /manage (the roles plan's
 R7): `manageReach` (edit at `manage.edit`, view at `manage.view`, else
 none), `settingsPermission` (the module's own edit a module's settings need

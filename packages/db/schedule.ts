@@ -212,6 +212,24 @@ export async function getPublishedShifts(
   }));
 }
 
+/**
+ * Whether the business ever published a week (`schedule_published_at`),
+ * read under RLS: its staff, and the team viewing it in a staff role, while
+ * scheduling is on (20261110000300_payroll_access.sql). A publish is never
+ * taken back, so once true it stays true.
+ */
+export async function hasPublishedWeek(businessId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("schedule_weeks")
+    .select("id")
+    .eq("business_id", businessId)
+    .not("schedule_published_at", "is", null)
+    .limit(1);
+  if (error) throw error;
+  return data.length > 0;
+}
+
 const StoredRows = z.array(
   z.object({
     id: z.string(),

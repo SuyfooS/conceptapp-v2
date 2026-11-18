@@ -4,6 +4,10 @@ import {
   BUSINESS_COOKIE_MAX_AGE,
   DEPARTURE_SEEN_COOKIE,
 } from "@domain/businesses";
+import {
+  FIRST_STEPS_HIDDEN_COOKIE,
+  withFirstStepsHidden,
+} from "@domain/first-steps";
 import { cookies } from "next/headers";
 import { requestOrigin } from "@/app/origin";
 
@@ -50,11 +54,28 @@ export async function rememberDepartureSeen(leftAt: string): Promise<void> {
 }
 
 /**
- * Forget the choice, and the departures seen, on signing out, so the next
- * person starts afresh.
+ * The owner hid this business's first steps on Today: on this device they
+ * aren't drawn again (`firstStepsHidden`), and another business's hidden
+ * here stay hidden. Kept as the business cookie is.
+ */
+export async function rememberFirstStepsHidden(
+  businessId: string,
+): Promise<void> {
+  const jar = await cookies();
+  jar.set(
+    FIRST_STEPS_HIDDEN_COOKIE,
+    withFirstStepsHidden(jar.get(FIRST_STEPS_HIDDEN_COOKIE)?.value, businessId),
+    await businessCookieOptions(),
+  );
+}
+
+/**
+ * Forget the choice, the departures seen and the first steps hidden, on
+ * signing out, so the next person starts afresh.
  */
 export async function forgetBusiness(): Promise<void> {
   const jar = await cookies();
   jar.delete(BUSINESS_COOKIE);
   jar.delete(DEPARTURE_SEEN_COOKIE);
+  jar.delete(FIRST_STEPS_HIDDEN_COOKIE);
 }

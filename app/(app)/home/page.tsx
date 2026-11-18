@@ -25,6 +25,7 @@ import {
 import { currentTeam } from "../team";
 import { baseWording, translator } from "../wording";
 import { AccountantHome } from "./accountant-home";
+import { currentFirstSteps } from "./first-steps";
 import { TodayView } from "./today-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -60,6 +61,7 @@ export default async function HomePage() {
     wording,
     businesses,
     lock,
+    firstSteps,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -76,6 +78,7 @@ export default async function HomePage() {
     currentWording(),
     currentBusinesses(),
     currentStationReminder(),
+    currentFirstSteps(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -119,6 +122,8 @@ export default async function HomePage() {
         documents,
         // This device is the business's clock station, unlocked: lock it again.
         station: lock,
+        // An owner's business still being set up: what to do first.
+        firstSteps,
       }}
     />
   );

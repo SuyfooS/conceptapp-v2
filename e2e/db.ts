@@ -4183,3 +4183,149 @@ export async function rolesLogActors(): Promise<(string | null)[]> {
     order by created_at, id`;
   return rows.map((row) => row.actor);
 }
+
+/**
+ * A real business on its first day, for the owner's first steps on Today:
+ * opened from the general template (no job roles, shifts or departments) with
+ * no address and no Shabbat city, its owner alone in it. A demo business
+ * never has the steps, so this one is its own, made afresh for each test and
+ * gone after. Its people's numbers are in no other spec.
+ */
+export const FIRST_STEPS_BUSINESS = {
+  id: "00000000-0000-4000-b000-0000000000ec",
+  slug: "first-steps-e2e",
+  name: "עסק לצעדים ראשונים",
+} as const;
+export const FIRST_STEPS_PEOPLE = {
+  owner: {
+    id: "00000000-0000-4000-a000-000000000977",
+    name: "שקד צעדים",
+    local: "050-000-0977",
+    e164: "+972500000977",
+  },
+  /** Joins only when a test says so. */
+  worker: {
+    id: "00000000-0000-4000-a000-000000000989",
+    name: "ירדן צעדים",
+    local: "050-000-0989",
+    e164: "+972500000989",
+  },
+} as const;
+
+export async function openFirstStepsBusiness(): Promise<void> {
+  const business = FIRST_STEPS_BUSINESS;
+  const people = FIRST_STEPS_PEOPLE;
+  await closeFirstStepsBusiness();
+  await ensureLogins(Object.values(people));
+  await sql`insert into public.businesses (id, slug, name, address, shabbat_city)
+    values (${business.id}, ${business.slug}, ${business.name}, null, null)`;
+  await sql`select public.apply_template(${business.id}, 'general')`;
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${business.id}, ${people.owner.id}, 'owner')`;
+}
+
+/** The business gone with its records, when the test is done. */
+export async function closeFirstStepsBusiness(): Promise<void> {
+  await deleteRealBusiness(FIRST_STEPS_BUSINESS.id);
+}
+
+/** The business's address and the city its Shabbat times follow. */
+export async function setFirstStepsDetails(
+  address: string,
+  city: string,
+): Promise<void> {
+  await sql`update public.businesses
+    set address = ${address}, shabbat_city = ${city}
+    where id = ${FIRST_STEPS_BUSINESS.id}`;
+}
+
+/** The worker joins the team. */
+export async function joinFirstStepsWorker(): Promise<void> {
+  await sql`insert into public.memberships (business_id, user_id, role)
+    values (${FIRST_STEPS_BUSINESS.id}, ${FIRST_STEPS_PEOPLE.worker.id}, 'worker')`;
+}
+
+/** Two job roles and one regular shift in the scheduling settings. */
+export async function setFirstStepsStaffing(): Promise<void> {
+  await sql`update public.business_modules
+    set settings = settings || ${sql.json({
+      positions: [
+        { key: "front", name: "קבלה" },
+        { key: "back", name: "תפעול" },
+      ],
+      shifts: [
+        {
+          key: "morning",
+          name: "בוקר",
+          days: [0, 1, 2, 3, 4],
+          start: "09:00",
+          end: "16:00",
+          needed: 1,
+        },
+      ],
+    })}::jsonb
+    where business_id = ${FIRST_STEPS_BUSINESS.id}
+      and module_key = 'scheduling'`;
+}
+
+/**
+ * Next week published by the owner, through the database functions the app
+ * uses, with the worker on its one shift (the worker must have joined).
+ */
+export async function publishFirstStepsWeek(): Promise<void> {
+  const business = FIRST_STEPS_BUSINESS;
+  const people = FIRST_STEPS_PEOPLE;
+  const [week] = await sql<{ id: string; starts_on: string }[]>`
+    with here as (
+      select (now() at time zone b.timezone)::date as today,
+        coalesce((m.settings ->> 'weekStartsOn')::int, 0) as starts_on
+      from public.businesses b
+      join public.business_modules m
+        on m.business_id = b.id and m.module_key = 'scheduling'
+      where b.id = ${business.id}
+    ),
+    next_week as (
+      select today - ((extract(dow from today)::int - starts_on + 7) % 7)
+        + 7 as starts_on
+      from here
+    )
+    select public.open_schedule_week(${business.id}, starts_on,
+        now() + interval '1 day')::text as id,
+      starts_on::text as starts_on
+    from next_week`;
+  if (!week) throw new Error("Could not open next week");
+  await sql`select public.publish_week_schedule(${people.owner.id}, ${week.id},
+    ${sql.json([
+      {
+        day: week.starts_on,
+        name: "בוקר",
+        start: "09:00",
+        end: "16:00",
+        needed: 1,
+        assignees: [{ user: people.worker.id, position: null }],
+      },
+    ])})`;
+}
+
+/**
+ * A department with nobody in it yet, with lists on (what reads the
+ * departments). Its key is made from the order it was added in.
+ */
+export async function addFirstStepsDepartment(name: string): Promise<void> {
+  const business = FIRST_STEPS_BUSINESS.id;
+  await sql`insert into public.business_modules (business_id, module_key, enabled)
+    values (${business}, 'lists', true)
+    on conflict (business_id, module_key) do update set enabled = true`;
+  await sql`insert into public.departments (business_id, key, name, position)
+    select ${business}, 'e2e-' || (count(*) + 1), ${name}, count(*)::smallint
+    from public.departments where business_id = ${business}`;
+}
+
+/** The worker in the department of that name. */
+export async function joinFirstStepsDepartment(name: string): Promise<void> {
+  await sql`insert into public.department_members
+      (department_id, business_id, user_id)
+    select d.id, d.business_id, ${FIRST_STEPS_PEOPLE.worker.id}
+    from public.departments d
+    where d.business_id = ${FIRST_STEPS_BUSINESS.id} and d.name = ${name}`;
+}

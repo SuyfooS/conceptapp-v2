@@ -23,6 +23,11 @@ const PAGES = [
   // A manager lowered to team none (roles R6): no team row on Today.
   "/design/shell/today/no-team",
   "/design/shell/today/scheduling-off",
+  // The owner's first steps: a business a few days in, one on its first
+  // day, and the team viewing as the owner.
+  "/design/shell/today/first-steps",
+  "/design/shell/today/first-steps?state=new",
+  "/design/shell/today/first-steps?state=viewing",
   "/design/shell/schedule",
   "/design/shell/schedule/worker",
   "/design/shell/schedule/swaps",
@@ -747,6 +752,51 @@ test("the Today demo's open places this week open this week's builder", async ({
   await expect(
     page.getByRole("heading", { level: 1, name: he.app.build.titleRunning }),
   ).toBeVisible();
+});
+
+// The owner's first steps on the Today demo: each row leads to its screen in
+// the demo, "הסתרה" takes the card away with a way back, and the team
+// viewing as the owner has no "הסתרה".
+test("the Today demo's first steps lead into the demo and hide with a way back", async ({
+  page,
+}) => {
+  const f = he.app.home.firstSteps;
+  const card = page.getByRole("region", { name: f.title });
+  await page.goto("/design/shell/today/first-steps");
+  await expect(card).toContainText(
+    heT("app.home.firstSteps.progress", { done: 2, total: 5 }),
+  );
+  await expect(card).toContainText(
+    heT("app.home.firstSteps.next", { step: f.steps.departments.title }),
+  );
+  const links = card.getByRole("link");
+  await expect(links).toHaveCount(6);
+  for (const href of await links.evaluateAll((all) =>
+    all.map((a) => a.getAttribute("href") ?? ""),
+  )) {
+    expect(href).toMatch(/^\/design\/shell\//);
+  }
+
+  const hide = card.getByRole("button", { name: f.hide });
+  await hide.click();
+  await expect(card).toHaveCount(0);
+  const undo = page
+    .getByRole("status")
+    .filter({ hasText: f.hidden })
+    .getByRole("button", { name: he.app.manage.undo });
+  await expect(undo).toBeFocused();
+  await undo.click();
+  await expect(card).toBeVisible();
+  await expect(hide).toBeFocused();
+
+  await card
+    .getByRole("link", { name: new RegExp(`^${f.steps.departments.title}`) })
+    .click();
+  await expect(page).toHaveURL(/\/design\/shell\/manage\/departments$/);
+
+  await page.goto("/design/shell/today/first-steps?state=viewing");
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("button", { name: f.hide })).toHaveCount(0);
 });
 
 // A stale screen on the builder's demo (R1b), at every size: Omer gives his

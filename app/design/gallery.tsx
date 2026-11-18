@@ -57,6 +57,7 @@ import { Segmented } from "@ui/segmented";
 import { Sheet } from "@ui/sheet";
 import { SkeletonBones } from "@ui/skeleton";
 import { StatusToast } from "@ui/status-toast";
+import { StepList, StepRow } from "@ui/step-list";
 import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
@@ -177,6 +178,8 @@ function GalleryBody({
   const tTimes = useTranslations("app.lists.schedules");
   const tPay = useTranslations("app.pay");
   const tRoles = useTranslations("app.roles");
+  const tSteps = useTranslations("app.home.firstSteps");
+  const tSetup = useTranslations("admin.setup.checklist");
   const [ticked, setTicked] = useState(false);
   // Items with a story (L6a), each as its story left it (they don't tick
   // here, or their line would no longer match it), and the sheet that tells
@@ -1477,6 +1480,40 @@ function GalleryBody({
             <ProgressRing value={3} max={4} />
             <span className="font-medium">{t("emptyBody")}</span>
           </Card>
+        </Section>
+
+        <Section title={t("steps")}>
+          {/* Done, open, missing (the console's), and an optional step. */}
+          <StepList>
+            <StepRow
+              href="/design/shell/team"
+              mark="done"
+              title={tSteps("steps.team.title")}
+              detail={tSteps("steps.team.done", { count: 3 })}
+              state={tSteps("done")}
+            />
+            <StepRow
+              href="/design/shell/schedule/build"
+              mark="open"
+              title={tSteps("steps.publish.title")}
+              detail={tSteps("steps.publish.todo")}
+              state={tSteps("open")}
+            />
+            <StepRow
+              mark="missing"
+              title={tSetup("items.address.title")}
+              detail={tSetup("items.address.todo")}
+              state={tSetup("todo")}
+            />
+            <StepRow
+              href="/design/shell/manage/time_clock"
+              mark="open"
+              title={tSteps("steps.clockCode.title")}
+              detail={tSteps("steps.clockCode.todo")}
+              state={tSteps("open")}
+              badge={<Badge>{tSteps("optional")}</Badge>}
+            />
+          </StepList>
         </Section>
 
         <Section title={t("tiles")}>

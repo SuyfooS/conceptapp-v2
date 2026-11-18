@@ -16,3 +16,7 @@ export async function demoChooseBusiness(_form: FormData): Promise<void> {}
 // Stand-in for saying a business left was seen, on the design demo: the
 // notice stays where it is.
 export async function demoSeenDeparture(): Promise<void> {}
+
+// Stand-in for hiding the owner's first steps on the design demo: the card
+// goes on screen and the demo's data stays as it is.
+export async function demoHideFirstSteps(): Promise<void> {}
