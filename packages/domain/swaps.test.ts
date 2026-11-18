@@ -4,9 +4,15 @@ import { ISRAEL_TIME_ZONE } from "./shabbat";
 import {
   approvalsFor,
   decidesSwap,
+  type EndedSwap,
+  endedSwapOf,
   myRequestFor,
+  noLongerWaiting,
   offersFor,
+  outcomeOnShift,
+  pastRequestsFor,
   type ShiftSwap,
+  type SwapOutcome,
   shiftsOverlap,
   swapFailureOf,
   swapsEndedBy,
@@ -623,5 +629,441 @@ describe("swapsEndedBy", () => {
     expect(swapsEndedBy([shift], [], [swap("2", "next-week", "noa")])).toEqual(
       [],
     );
+  });
+});
+
+// A request that no longer waits (20261115000200_swap_history.sql): the shift
+// it asked for, kept on the row, and how it ended.
+describe("endedSwapOf", () => {
+  const row = (fields: Record<string, unknown> = {}) => ({
+    id: "00000000-0000-4000-a000-0000000000c1",
+    shift_id: "00000000-0000-4000-a000-0000000000d1",
+    shift: { day: "2026-11-08", name: "Evening", start: "16:00", end: "23:30" },
+    requested_by: "00000000-0000-4000-a000-000000000003",
+    taken_by: "00000000-0000-4000-a000-000000000004",
+    status: "declined",
+    cancelled_because: null,
+    decided_by: "00000000-0000-4000-a000-000000000002",
+    created_at: "2026-11-05T10:00:00.123456+00:00",
+    ...fields,
+  });
+
+  it("reads approved and declined by their status", () => {
+    expect(endedSwapOf(row())).toEqual({
+      id: "00000000-0000-4000-a000-0000000000c1",
+      shiftId: "00000000-0000-4000-a000-0000000000d1",
+      shift: {
+        day: "2026-11-08",
+        name: "Evening",
+        start: "16:00",
+        end: "23:30",
+      },
+      requestedBy: "00000000-0000-4000-a000-000000000003",
+      takenBy: "00000000-0000-4000-a000-000000000004",
+      outcome: "declined",
+      decidedBy: "00000000-0000-4000-a000-000000000002",
+      createdAt: "2026-11-05T10:00:00.123456+00:00",
+    });
+    expect(endedSwapOf(row({ status: "approved" }))?.outcome).toBe("approved");
+  });
+
+  it("reads a cancelled one by why it was cancelled", () => {
+    for (const reason of ["withdrawn", "schedule", "team"] as const) {
+      expect(
+        endedSwapOf(
+          row({
+            status: "cancelled",
+            cancelled_because: reason,
+            decided_by: null,
+          }),
+        )?.outcome,
+      ).toBe(reason);
+    }
+  });
+
+  it("reads nothing for a cancelled one that doesn't say why, or one still waiting", () => {
+    expect(endedSwapOf(row({ status: "cancelled" }))).toBeNull();
+    expect(endedSwapOf(row({ status: "open", taken_by: null }))).toBeNull();
+    expect(endedSwapOf(row({ status: "taken" }))).toBeNull();
+    expect(
+      endedSwapOf(row({ status: "cancelled", cancelled_because: "other" })),
+    ).toBeNull();
+  });
+
+  it("reads nothing for a shift that doesn't read as one", () => {
+    expect(
+      endedSwapOf(
+        row({ shift: { day: "2026-11-08", name: "Evening", start: "16:00" } }),
+      ),
+    ).toBeNull();
+    expect(
+      endedSwapOf(
+        row({
+          shift: {
+            day: "2026-11-08",
+            name: "Evening",
+            start: "9:00",
+            end: "16:00",
+          },
+        }),
+      ),
+    ).toBeNull();
+    expect(endedSwapOf(row({ shift: null }))).toBeNull();
+    expect(endedSwapOf(null)).toBeNull();
+  });
+
+  it("reads one whose shift was deleted, with the shift it kept", () => {
+    const swap = endedSwapOf(
+      row({
+        shift_id: null,
+        status: "cancelled",
+        cancelled_because: "schedule",
+        decided_by: null,
+      }),
+    );
+    expect(swap?.shiftId).toBeNull();
+    expect(swap?.shift.start).toBe("16:00");
+  });
+});
+
+const brief = (day: string, start = "16:00", name = "Evening") => ({
+  day,
+  name,
+  start,
+  end: "23:30",
+});
+
+const finished = (
+  id: string,
+  shiftId: string | null,
+  requestedBy: string,
+  takenBy: string | null,
+  outcome: SwapOutcome,
+  createdAt: string,
+  shift = brief("2026-11-08"),
+): EndedSwap => ({
+  id,
+  shiftId,
+  shift,
+  requestedBy,
+  takenBy,
+  outcome,
+  decidedBy: outcome === "approved" || outcome === "declined" ? "uri" : null,
+  createdAt,
+});
+
+describe("pastRequestsFor", () => {
+  const TODAY = "2026-11-08";
+
+  it("lists what the person asked for and what they took, saying which", () => {
+    const past = pastRequestsFor(
+      [
+        finished(
+          "asked",
+          "eve",
+          "noa",
+          "yoav",
+          "declined",
+          "2026-11-05T10:00Z",
+        ),
+        finished(
+          "took",
+          "mon",
+          "omer",
+          "noa",
+          "approved",
+          "2026-11-05T11:00Z",
+          brief("2026-11-09"),
+        ),
+        finished(
+          "theirs",
+          "tue",
+          "maya",
+          "yoav",
+          "approved",
+          "2026-11-05T12:00Z",
+          brief("2026-11-10"),
+        ),
+      ],
+      [],
+      "noa",
+      TODAY,
+    );
+    expect(past.map((p) => [p.swap.id, p.side])).toEqual([
+      ["asked", "from"],
+      ["took", "to"],
+    ]);
+  });
+
+  it("leaves out shifts before today, by the shift each asked for", () => {
+    // The shift may have moved to today since; the request asked for
+    // yesterday's.
+    const past = pastRequestsFor(
+      [
+        finished(
+          "old",
+          "eve",
+          "noa",
+          "yoav",
+          "declined",
+          "2026-11-05T10:00Z",
+          brief("2026-11-07"),
+        ),
+      ],
+      [],
+      "noa",
+      TODAY,
+    );
+    expect(past).toEqual([]);
+  });
+
+  it("keeps the newest request on each shift", () => {
+    // Withdrawn, then asked again and declined.
+    const past = pastRequestsFor(
+      [
+        finished(
+          "again",
+          "eve",
+          "noa",
+          "yoav",
+          "declined",
+          "2026-11-05T12:00Z",
+        ),
+        finished("first", "eve", "noa", null, "withdrawn", "2026-11-05T10:00Z"),
+      ],
+      [],
+      "noa",
+      TODAY,
+    );
+    expect(past.map((p) => p.swap.id)).toEqual(["again"]);
+  });
+
+  it("keeps each one's own once the shift was given away again, or deleted", () => {
+    // Noa's request Yoav took was declined; she offered it again, and Maya
+    // took it and was approved. A decided request stays as it was, so the
+    // screen says it in the past (shift-text's pastRequestLine).
+    const swaps = [
+      finished(
+        "declined",
+        "eve",
+        "noa",
+        "yoav",
+        "declined",
+        "2026-11-05T10:00Z",
+      ),
+      finished(
+        "approved",
+        "eve",
+        "noa",
+        "maya",
+        "approved",
+        "2026-11-05T12:00Z",
+      ),
+    ];
+    const read = (userId: string, ended: EndedSwap[] = swaps) =>
+      pastRequestsFor(ended, [], userId, TODAY).map((p) => [
+        p.swap.id,
+        p.side,
+        p.swap.shiftId,
+      ]);
+    expect(read("yoav")).toEqual([["declined", "to", "eve"]]);
+    expect(read("noa")).toEqual([["approved", "from", "eve"]]);
+    expect(read("maya")).toEqual([["approved", "to", "eve"]]);
+    // Then the shift was deleted: the rows stay, by the shift they kept.
+    const deleted = swaps.map((s) => ({ ...s, shiftId: null }));
+    expect(read("yoav", deleted)).toEqual([["declined", "to", null]]);
+    expect(read("noa", deleted)).toEqual([["approved", "from", null]]);
+  });
+
+  it("leaves out a shift on which a request of theirs waits, not one where it doesn't", () => {
+    const swaps = [
+      finished(
+        "declined",
+        "eve",
+        "noa",
+        "yoav",
+        "declined",
+        "2026-11-05T10:00Z",
+      ),
+    ];
+    // Noa asked again: her shift says so.
+    const live = [swap("again", "eve", "noa")];
+    expect(pastRequestsFor(swaps, live, "noa", TODAY)).toEqual([]);
+    // Yoav, who took the one declined, still sees it.
+    expect(
+      pastRequestsFor(swaps, live, "yoav", TODAY).map((p) => [
+        p.swap.id,
+        p.side,
+      ]),
+    ).toEqual([["declined", "to"]]);
+    // A request of hers waiting on another shift hides nothing here.
+    expect(
+      pastRequestsFor(swaps, [swap("his", "mon", "omer", "noa")], "noa", TODAY),
+    ).toHaveLength(1);
+  });
+
+  it("keys a deleted shift by the shift it kept", () => {
+    const gone = brief("2026-11-09", "10:00", "Morning");
+    const past = pastRequestsFor(
+      [
+        finished(
+          "a",
+          null,
+          "noa",
+          null,
+          "withdrawn",
+          "2026-11-05T10:00Z",
+          gone,
+        ),
+        finished(
+          "b",
+          null,
+          "noa",
+          "yoav",
+          "schedule",
+          "2026-11-05T12:00Z",
+          gone,
+        ),
+        finished(
+          "c",
+          null,
+          "noa",
+          null,
+          "schedule",
+          "2026-11-05T13:00Z",
+          brief("2026-11-09", "16:00"),
+        ),
+      ],
+      [],
+      "noa",
+      TODAY,
+    );
+    expect(past.map((p) => p.swap.id)).toEqual(["b", "c"]);
+  });
+
+  it("orders them by shift time", () => {
+    const past = pastRequestsFor(
+      [
+        finished(
+          "late",
+          "tue",
+          "noa",
+          null,
+          "schedule",
+          "2026-11-05T09:00Z",
+          brief("2026-11-10"),
+        ),
+        finished(
+          "evening",
+          "eve",
+          "noa",
+          "yoav",
+          "declined",
+          "2026-11-05T10:00Z",
+        ),
+        finished(
+          "morning",
+          "mor",
+          "noa",
+          "yoav",
+          "approved",
+          "2026-11-05T11:00Z",
+          brief("2026-11-08", "09:00", "Morning"),
+        ),
+      ],
+      [],
+      "noa",
+      TODAY,
+    );
+    expect(past.map((p) => p.swap.id)).toEqual(["morning", "evening", "late"]);
+  });
+});
+
+describe("outcomeOnShift", () => {
+  const one = (outcome: SwapOutcome) => [
+    finished("1", "eve", "noa", "yoav", outcome, "2026-11-05T10:00Z"),
+  ];
+
+  it("says a request not approved, or one the schedule ended", () => {
+    expect(outcomeOnShift(one("declined"), [], "eve", "noa")).toBe("declined");
+    expect(outcomeOnShift(one("schedule"), [], "eve", "noa")).toBe("schedule");
+  });
+
+  it("says nothing of one withdrawn, approved or ended by a change in the team", () => {
+    for (const outcome of ["withdrawn", "approved", "team"] as const) {
+      expect(outcomeOnShift(one(outcome), [], "eve", "noa")).toBeNull();
+    }
+  });
+
+  it("says nothing while a request of theirs waits on the shift", () => {
+    expect(
+      outcomeOnShift(one("declined"), [swap("2", "eve", "noa")], "eve", "noa"),
+    ).toBeNull();
+  });
+
+  it("goes by the newest request on the shift", () => {
+    // Declined, then asked again and withdrawn.
+    const swaps = [
+      finished("2", "eve", "noa", null, "withdrawn", "2026-11-05T12:00Z"),
+      ...one("declined"),
+    ];
+    expect(outcomeOnShift(swaps, [], "eve", "noa")).toBeNull();
+    expect(outcomeOnShift([...swaps].reverse(), [], "eve", "noa")).toBeNull();
+  });
+
+  it("goes by their own requests on that shift only", () => {
+    // Yoav took it: the shift was never his to give away.
+    expect(outcomeOnShift(one("declined"), [], "eve", "yoav")).toBeNull();
+    expect(outcomeOnShift(one("declined"), [], "mon", "noa")).toBeNull();
+  });
+
+  it("goes by a newer request the person took on it, not their own older one", () => {
+    // Noa's request ended with the schedule giving the shift to Yoav; Yoav
+    // then gave it back to her, approved. It came back by her taking it.
+    const swaps = [
+      finished("1", "eve", "noa", null, "schedule", "2026-11-05T10:00Z"),
+      finished("2", "eve", "yoav", "noa", "approved", "2026-11-05T12:00Z"),
+    ];
+    expect(outcomeOnShift(swaps, [], "eve", "noa")).toBeNull();
+    expect(outcomeOnShift([...swaps].reverse(), [], "eve", "noa")).toBeNull();
+    // A request of someone else's she had no part in changes nothing.
+    const others = [
+      ...one("declined"),
+      finished("3", "eve", "maya", "omer", "approved", "2026-11-05T12:00Z"),
+    ];
+    expect(outcomeOnShift(others, [], "eve", "noa")).toBe("declined");
+  });
+});
+
+describe("noLongerWaiting", () => {
+  it("lists the requests someone took, from today on, by shift time", () => {
+    const list = noLongerWaiting(
+      [
+        finished(
+          "tue",
+          "tue",
+          "noa",
+          "yoav",
+          "withdrawn",
+          "2026-11-05T09:00Z",
+          brief("2026-11-10"),
+        ),
+        finished("sun", "sun", "maya", "noa", "declined", "2026-11-05T10:00Z"),
+        finished(
+          "past",
+          "sat",
+          "omer",
+          "noa",
+          "approved",
+          "2026-11-05T11:00Z",
+          brief("2026-11-07"),
+        ),
+        // Nobody took them: they never waited for a decision.
+        finished("open", "mon", "noa", null, "schedule", "2026-11-05T12:00Z"),
+        finished("mine", "wed", "noa", null, "withdrawn", "2026-11-05T13:00Z"),
+      ],
+      "2026-11-08",
+    );
+    expect(list.map((s) => s.id)).toEqual(["sun", "tue"]);
   });
 });

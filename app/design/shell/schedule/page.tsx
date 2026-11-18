@@ -1,7 +1,11 @@
 import { ScheduleView } from "../../../(app)/schedule/schedule-view";
 import { baseWording } from "../../../(app)/wording";
 import { demoSwap } from "./shifts/actions";
-import { demoManagerSchedule, demoRequest } from "./shifts/published";
+import {
+  DEMO_ENDED,
+  demoManagerSchedule,
+  demoRequest,
+} from "./shifts/published";
 
 // The real schedule tab as Shiran, the shift manager, sees it on Tuesday
 // 3 November at noon: this week published, with four of its shifts still to
@@ -10,11 +14,14 @@ import { demoManagerSchedule, demoRequest } from "./shifts/published";
 export default function ShellSchedule() {
   return (
     <ScheduleView
-      {...demoManagerSchedule([
-        demoRequest("1", "2026-11-06/friday", "noa"),
-        demoRequest("2", "2026-11-04/morning", "maya", "itay"),
-        demoRequest("3", "2026-11-07/saturday-night", "yoav", "noa"),
-      ])}
+      {...demoManagerSchedule(
+        [
+          demoRequest("1", "2026-11-06/friday", "noa"),
+          demoRequest("2", "2026-11-04/morning", "maya", "itay"),
+          demoRequest("3", "2026-11-07/saturday-night", "yoav", "noa"),
+        ],
+        DEMO_ENDED,
+      )}
       swap={demoSwap}
       wording={baseWording}
     />

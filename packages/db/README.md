@@ -186,7 +186,13 @@ write ends it first, and a delete by hand is refused (23514), which is why
 business deleted takes its requests with it. A cancelled request says why,
 `cancelled_because`: `withdrawn` (`cancel_shift_swap`), `schedule`
 (`private.write_week_schedule`) or `team` (`private.leave_staff`). The policy
-is unchanged. `swap_history.test.sql` covers it.
+is unchanged. `swap_history.test.sql` covers it. `getEndedSwaps` in
+`@db/swaps` reads the requests that no longer wait, under the same policy, by
+the day of the shift each asked for (`shift->>day`, from today on), so the
+shifts screens say what became of them: "מה קרה לבקשות שלך" for whoever asked
+or took one (`pastRequestsFor`), a line on the person's own shift for one not
+approved or cancelled by the schedule (`outcomeOnShift`), and "כבר לא מחכות
+להחלטה" on the swap board with who decided (`noLongerWaiting`).
 
 What has begun stays as it was (`20261115000300_running_week.sql`; Orel's
 answer of 15 November 2026: a shift that has begun only takes more people).

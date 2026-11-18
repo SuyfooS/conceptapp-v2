@@ -1,7 +1,7 @@
 "use client";
 
 import type { WeekScheduleShift } from "@db/schedule";
-import { type Approval, toApprove } from "@domain/swaps";
+import { type Approval, type EndedSwap, toApprove } from "@domain/swaps";
 import { Avatar } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Card, CardText } from "@ui/card";
@@ -22,6 +22,7 @@ import {
 } from "../shifts/shift-text";
 import type { DecideState } from "./actions";
 import { DecideButton } from "./decide-button";
+import { EndedRequests } from "./ended-requests";
 
 type Row = Approval<WeekScheduleShift>;
 type DecideAction = (
@@ -49,15 +50,23 @@ const subject = (t: AppT, names: Names, row: Row) =>
  * once and says what was decided, as the prototype's request card does; the
  * database has no way to undo a decision. One whose shift has begun says so
  * and offers only declining, as the database refuses approving it; the
- * count and the main action are for the ones still to approve.
+ * count and the main action are for the ones still to approve. Under them,
+ * what no longer waits (`ended`), so a decision stays in sight once the
+ * screen is read again.
  */
 export function ApprovalsBoard({
   rows,
+  ended,
+  viewer,
   people,
   positions,
   decide,
 }: {
   rows: Row[];
+  /** Requests a colleague took that no longer wait (`noLongerWaiting`). */
+  ended: readonly EndedSwap[];
+  /** The person reading, for "אישרת". */
+  viewer: string;
   people: Names["people"];
   positions: Names["positions"];
   decide: DecideAction;
@@ -146,6 +155,10 @@ export function ApprovalsBoard({
           </p>
         </>
       )}
+
+      {ended.length > 0 ? (
+        <EndedRequests rows={ended} names={names} viewer={viewer} />
+      ) : null}
     </div>
   );
 }

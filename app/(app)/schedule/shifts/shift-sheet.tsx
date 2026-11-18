@@ -13,10 +13,12 @@ import {
   formOf,
   hasStarted,
   nameOf,
+  outcomeLine,
   photoOf,
   positionName,
   type ShiftData,
   shiftLabel,
+  shiftOutcome,
   timeRange,
   weekdayName,
 } from "./shift-text";
@@ -142,6 +144,10 @@ function SheetBody({
   const request = myRequestFor(data.swaps, shift.id, data.userId);
   // From its start on, the database refuses to give it away.
   const upcoming = !hasStarted(data, shift);
+  // Their last request wasn't approved, or the schedule cancelled it: said
+  // above giving it away again.
+  const outcome =
+    mine && upcoming && !request ? shiftOutcome(data, shift.id) : null;
   const title = t("shifts.sheet.people");
 
   return (
@@ -182,6 +188,8 @@ function SheetBody({
           </ul>
         )}
       </section>
+
+      {outcome ? <Consequence>{outcomeLine(t, outcome)}</Consequence> : null}
 
       {mine && upcoming && !request ? (
         <Consequence

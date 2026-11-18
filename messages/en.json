@@ -1701,6 +1701,17 @@
         "line": "{name} · <ltr>{start}–{end}</ltr>",
         "later": "After that"
       },
+      "past": {
+        "title": "What happened to your requests",
+        "approvedFrom": "The swap with {name} was approved. You gave the shift away",
+        "approvedTo": "The swap with {name} was approved. You got the shift",
+        "declined": "The swap with {name} was not approved",
+        "withdrawnFrom": "You cancelled the request",
+        "withdrawnTo": "{form, select, other {{name} cancelled the request}}",
+        "schedule": "Cancelled because the schedule changed",
+        "team": "Cancelled after a change in the team",
+        "gone": "The shift was taken off the schedule"
+      },
       "board": {
         "pickWeek": "Pick a week",
         "pickDay": "Pick a day",
@@ -1725,6 +1736,8 @@
         "tookIt": "You took it, waiting for approval",
         "givingOpen": "You asked to give it away",
         "givingTaken": "{form, select, other {{name} is taking it}}",
+        "givingDeclined": "Swap not approved",
+        "givingRemoved": "Request cancelled",
         "manage": "Managing the schedule",
         "own": "Your shifts and availability",
         "teamSent": "{sent} of {total} sent"
@@ -1737,7 +1750,8 @@
         "today": "Today",
         "tomorrow": "Tomorrow",
         "giveQuestion": "Can't make it?",
-        "giveHint": "You can offer it to the team"
+        "giveHint": "You can offer it to the team",
+        "giveAgain": "You can offer it to the team again"
       },
       "sheet": {
         "close": "Close",
@@ -1786,6 +1800,8 @@
         },
         "open": "You asked to give this shift away. Waiting for someone on the team to take it.",
         "taken": "{form, select, other {{name} is taking the shift}}. Waiting for approval.",
+        "declined": "The swap was not approved. The shift stays yours.",
+        "removed": "Your request was cancelled because the schedule changed. The shift stays yours.",
         "offers": {
           "title": "Shifts you can take",
           "count": "{count, plural, one {One shift} other {# shifts}}",
@@ -1812,6 +1828,18 @@
         "approved": "Approved: {to} instead of {from}. {shift}.",
         "declined": "Declined. {fromForm, select, other {{from} stays}} on the shift. {shift}."
       },
+      "ended": {
+        "title": "No longer waiting",
+        "approved": "{form, select, other {{name} approved the swap}}",
+        "declined": "{form, select, other {{name} declined the request}}",
+        "approvedYou": "You approved the swap",
+        "declinedYou": "You declined the request",
+        "approvedPlain": "The swap was approved",
+        "declinedPlain": "The request was declined",
+        "withdrawn": "{form, select, other {{name} cancelled the request}}",
+        "schedule": "Cancelled because the schedule changed",
+        "team": "Cancelled after a change in the team"
+      },
       "noPosition": "No position",
       "columns": {
         "day": "Day",
@@ -1819,6 +1847,7 @@
         "position": "Position",
         "from": "Giving away",
         "to": "Taking",
+        "outcome": "Outcome",
         "decision": "Decision"
       },
       "buttons": {
