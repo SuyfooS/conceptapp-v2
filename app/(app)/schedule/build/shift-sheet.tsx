@@ -12,6 +12,7 @@ import {
   type ShiftDetailsProblem,
   shiftCandidates,
   shiftDetailsProblem,
+  shiftStarted,
 } from "@domain/schedule";
 import type { Position } from "@domain/staffing";
 import type { TeamMember } from "@domain/team";
@@ -25,7 +26,14 @@ import { Sheet } from "@ui/sheet";
 import { Stepper } from "@ui/stepper";
 import { ChevronDown, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { Fragment, type ReactNode, useId, useState } from "react";
+import {
+  Fragment,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 export type ShiftRow = { id: number; shift: ScheduledShift };
 
@@ -38,6 +46,20 @@ export type ShiftDetails = Pick<
   ScheduledShift,
   "name" | "start" | "end" | "needed"
 >;
+
+/**
+ * A shift of a published week that has begun, as the sheet shows it: under
+ * way ("now"), when it only takes more people, or over, when it only says so;
+ * with how it was read, whose people stay on it.
+ */
+export type LockedShift = { stage: "now" | "over"; read: ScheduledShift };
+
+/**
+ * What is wrong with a shift's details as typed: the details themselves, or,
+ * in a published week, a new shift (`past`) or one moved (`pastMoved`)
+ * that would start at or before now.
+ */
+type FieldsProblem = ShiftDetailsProblem | "past" | "pastMoved";
 
 type TeamPerson = Pick<TeamMember, "userId" | "name" | "photo">;
 type Answer = { userId: string; ranges: AvailabilityRange[] };
@@ -62,7 +84,9 @@ const detailsOf = (draft: Draft): ShiftDetails => ({
  * The sheet of the "build the week" screen: who is on a shift and who could
  * be, the shift's own details, and adding a new shift. Everything in it
  * changes the schedule on the screen straight away; saving stays with the
- * screen's own buttons. One sheet for all three layouts.
+ * screen's own buttons. One sheet for all three layouts. In a published
+ * week, a shift that is over only says so, with its people, and one under
+ * way only takes more people; a new shift, or new hours, start after now.
  */
 export function ShiftSheet({
   open,
@@ -71,8 +95,15 @@ export function ShiftSheet({
   rows,
   removed,
   team,
+  people = team,
   answers,
   positions,
+  lockOf = () => null,
+  lockedNote = () => null,
+  readOnlyLine = null,
+  clock = false,
+  startsAfter = null,
+  timeZone,
   onClose,
   onChange,
   onRemove,
@@ -83,9 +114,37 @@ export function ShiftSheet({
   weekStart: string;
   rows: ShiftRow[];
   removed: ShiftRow[];
+  /** The staff, who can be put on a shift. */
   team: TeamPerson[];
+  /**
+   * Everyone on the team, for the names of those on a shift: someone missing
+   * here is no longer on the team. The staff, unless said otherwise.
+   */
+  people?: TeamPerson[];
   answers: Answer[];
   positions: Position[];
+  /** Whether a shift has begun in a published week, and how it was read. */
+  lockOf?: (row: ShiftRow) => LockedShift | null;
+  /**
+   * Why a shift locked as the screen's clock reached it, with its changes put
+   * back, while that is still said (null otherwise): the sheet says it too,
+   * since it covers the dock's own line.
+   */
+  lockedNote?: (row: ShiftRow) => ReactNode;
+  /**
+   * The week is only read here (published, by someone who builds it without
+   * publishing it: the roles plan's R3): this line says why, in place of the
+   * shift's own changes, with its people as they are. Null otherwise.
+   */
+  readOnlyLine?: ReactNode;
+  /** The time clock is on: a shift that is over has its hours kept there. */
+  clock?: boolean;
+  /**
+   * In a published week, the moment a new shift or new hours must start
+   * after; null in a week that is free.
+   */
+  startsAfter?: Date | null;
+  timeZone: string;
   onClose: () => void;
   onChange: (id: number, shift: ScheduledShift) => void;
   onRemove: (id: number) => void;
@@ -94,7 +153,7 @@ export function ShiftSheet({
   const t = useTranslations();
   const tb = useTranslations("app.build");
   const [draft, setDraft] = useState(EMPTY_DRAFT);
-  const [problem, setProblem] = useState<ShiftDetailsProblem | null>(null);
+  const [problem, setProblem] = useState<FieldsProblem | null>(null);
   // Each opening of "add a shift" starts empty.
   const [draftFor, setDraftFor] = useState(view);
   if (draftFor !== view) {
@@ -109,7 +168,16 @@ export function ShiftSheet({
   function add() {
     if (view.kind !== "add") return;
     const details = detailsOf(draft);
-    const found = shiftDetailsProblem(details);
+    const found =
+      shiftDetailsProblem(details) ??
+      (startsAfter &&
+      shiftStarted(
+        { day: view.date, start: details.start },
+        startsAfter,
+        timeZone,
+      )
+        ? "past"
+        : null);
     setProblem(found);
     if (!found) onAdd(view.date, details);
   }
@@ -149,6 +217,27 @@ export function ShiftSheet({
   if (!row) return null;
   const context = rows.includes(row) ? rows : [...rows, row];
   const { shift } = row;
+  const locked = lockOf(row);
+  const note = locked ? lockedNote(row) : null;
+  const onShift = (
+    fixed: ReadonlySet<string>,
+    readOnly: boolean,
+    over = readOnly,
+  ) => (
+    <ShiftPeople
+      weekStart={weekStart}
+      shifts={context.map((r) => r.shift)}
+      index={context.indexOf(row)}
+      team={team}
+      people={people}
+      answers={answers}
+      positions={positions}
+      fixed={fixed}
+      readOnly={readOnly}
+      over={over}
+      onChange={(next) => onChange(row.id, next)}
+    />
+  );
 
   return (
     <Sheet
@@ -167,24 +256,76 @@ export function ShiftSheet({
       })}
       action={{ label: tb("done"), onClick: onClose }}
     >
-      <div className="flex flex-col">
-        <EditDetails
-          key={row.id}
-          shift={shift}
-          onChange={(details) => onChange(row.id, { ...shift, ...details })}
-          onRemove={() => onRemove(row.id)}
-        />
-        <ShiftPeople
-          weekStart={weekStart}
-          shifts={context.map((r) => r.shift)}
-          index={context.indexOf(row)}
-          team={team}
-          answers={answers}
-          positions={positions}
-          onChange={(next) => onChange(row.id, next)}
-        />
-      </div>
+      {readOnlyLine ? (
+        // Read only: who is on it, as they are, and why nothing changes.
+        <div className="flex flex-col">
+          <p className="px-3 pt-1 pb-2 text-base text-ink-2">{readOnlyLine}</p>
+          {onShift(new Set(shift.assignees.map((a) => a.user)), true, false)}
+        </div>
+      ) : locked ? (
+        // Begun: who is on it stays. Over, nobody joins; under way, people
+        // do, and nothing else changes.
+        <div className="flex flex-col">
+          {note ? <LockedNotice>{note}</LockedNotice> : null}
+          <p className="px-3 pt-1 pb-2 text-base text-ink-2">
+            {locked.stage === "over"
+              ? clock
+                ? `${tb("running.overLine")} ${tb("running.clockLine")}`
+                : tb("running.overLine")
+              : tb.rich("running.begunLine", {
+                  time: locked.read.start,
+                  ltr,
+                })}
+          </p>
+          {onShift(
+            new Set(locked.read.assignees.map((a) => a.user)),
+            locked.stage === "over",
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col">
+          <EditDetails
+            key={row.id}
+            shift={shift}
+            startsAfter={startsAfter}
+            timeZone={timeZone}
+            onChange={(details) => onChange(row.id, { ...shift, ...details })}
+            onRemove={() => onRemove(row.id)}
+          />
+          {onShift(new Set(), false)}
+        </div>
+      )}
     </Sheet>
+  );
+}
+
+/**
+ * Why the open shift locked as the clock reached it, its changes put back:
+ * said in the sheet, which covers the dock's own line. The details, and the
+ * field that had focus, go as it locks, so focus comes here rather than being
+ * lost; when focus is still somewhere in the sheet, it stays there.
+ */
+function LockedNotice({ children }: { children: ReactNode }) {
+  const ref = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (
+      active === null ||
+      active === document.body ||
+      active.getAttribute("role") === "dialog"
+    ) {
+      ref.current?.focus();
+    }
+  }, []);
+  return (
+    <p
+      ref={ref}
+      role="status"
+      tabIndex={-1}
+      className="mb-2 rounded-card bg-elevated px-4 py-3 font-medium text-base text-ink shadow-card outline-none"
+    >
+      {children}
+    </p>
   );
 }
 
@@ -207,22 +348,39 @@ function SheetSection({
   );
 }
 
-/** Who is on the shift, then everyone who could be, those available first. */
+/**
+ * Who is on the shift, then everyone who could be, those available first.
+ * On a shift that has begun, those already on it (`fixed`) stay as they
+ * are, in their positions; on one that is over (`readOnly`) nobody else is
+ * offered, and so on one only read (`over` false: nobody on it is said as of
+ * now, not as of a shift gone by).
+ */
 function ShiftPeople({
   weekStart,
   shifts,
   index,
   team,
+  people,
   answers,
   positions,
+  fixed,
+  readOnly,
+  over = readOnly,
   onChange,
 }: {
   weekStart: string;
   shifts: ScheduledShift[];
   index: number;
+  /** The staff: who could be on the shift. */
   team: TeamPerson[];
+  /** Everyone on the team: the names of who is on it. */
+  people: TeamPerson[];
   answers: Answer[];
   positions: Position[];
+  fixed: ReadonlySet<string>;
+  readOnly: boolean;
+  /** The shift is over: who was on it is said as of then. */
+  over?: boolean;
   onChange: (shift: ScheduledShift) => void;
 }) {
   const t = useTranslations();
@@ -231,8 +389,8 @@ function ShiftPeople({
   if (!shift) return null;
 
   const noName = t("app.team.noName");
-  const nameOf = new Map(team.map((m) => [m.userId, m.name ?? noName]));
-  const photoOf = new Map(team.map((m) => [m.userId, m.photo]));
+  const nameOf = new Map(people.map((m) => [m.userId, m.name ?? noName]));
+  const photoOf = new Map(people.map((m) => [m.userId, m.photo]));
   const rangesOf = new Map(answers.map((a) => [a.userId, a.ranges]));
   const clashes = doubleBooked(weekStart, shifts);
   const candidates = shiftCandidates(weekStart, shifts, index, team, answers);
@@ -305,14 +463,17 @@ function ShiftPeople({
     <>
       <SheetSection title={tb("groups.assigned")}>
         {shift.assignees.length === 0 ? (
-          <ListRow title={tb("nobody")} />
+          <ListRow title={over ? tb("running.nobodyPast") : tb("nobody")} />
         ) : (
           shift.assignees.map(({ user, position }) => {
-            const name = nameOf.get(user) ?? noName;
-            const note = noteOf(user);
+            // Someone no longer on the team, on a builder opened before, or
+            // kept on a shift that has begun.
+            const name = nameOf.get(user) ?? t("app.shifts.former");
+            const note = readOnly ? null : noteOf(user);
             const positionName =
               positions.find((p) => p.key === position)?.name ??
               tb("noPosition");
+            const stays = readOnly || fixed.has(user);
             return (
               <ListRow
                 key={user}
@@ -323,7 +484,9 @@ function ShiftPeople({
                 subtitle={
                   positions.length > 0 || note ? (
                     <span className="flex flex-wrap items-center gap-x-1.5">
-                      {positions.length > 0 ? (
+                      {positions.length > 0 && stays ? (
+                        <span>{positionName}</span>
+                      ) : positions.length > 0 ? (
                         <ChoiceMenu
                           label={tb("position", {
                             name,
@@ -363,19 +526,21 @@ function ShiftPeople({
                   ) : null
                 }
                 trailing={
-                  <IconButton
-                    label={tb("remove", { name })}
-                    icon={<X />}
-                    className="-me-2"
-                    onClick={() =>
-                      onChange({
-                        ...shift,
-                        assignees: shift.assignees.filter(
-                          (a) => a.user !== user,
-                        ),
-                      })
-                    }
-                  />
+                  stays ? null : (
+                    <IconButton
+                      label={tb("remove", { name })}
+                      icon={<X />}
+                      className="-me-2"
+                      onClick={() =>
+                        onChange({
+                          ...shift,
+                          assignees: shift.assignees.filter(
+                            (a) => a.user !== user,
+                          ),
+                        })
+                      }
+                    />
+                  )
                 }
               />
             );
@@ -383,7 +548,7 @@ function ShiftPeople({
         )}
       </SheetSection>
       {GROUPS.map((group) => {
-        const people = byState(group);
+        const people = readOnly ? [] : byState(group);
         if (people.length === 0) return null;
         return (
           <SheetSection key={group} title={tb(`groups.${group}`)}>
@@ -441,10 +606,15 @@ function ShiftPeople({
  */
 function EditDetails({
   shift,
+  startsAfter,
+  timeZone,
   onChange,
   onRemove,
 }: {
   shift: ScheduledShift;
+  /** In a published week: new hours start after this moment. */
+  startsAfter: Date | null;
+  timeZone: string;
   onChange: (details: ShiftDetails) => void;
   onRemove: () => void;
 }) {
@@ -456,12 +626,21 @@ function EditDetails({
     end: shift.end,
     needed: String(shift.needed),
   }));
-  const [problem, setProblem] = useState<ShiftDetailsProblem | null>(null);
+  const [problem, setProblem] = useState<FieldsProblem | null>(null);
 
   function update(next: Draft) {
     setDraft(next);
     const details = detailsOf(next);
-    const found = shiftDetailsProblem(details);
+    const found =
+      shiftDetailsProblem(details) ??
+      (startsAfter &&
+      shiftStarted(
+        { day: shift.day, start: details.start },
+        startsAfter,
+        timeZone,
+      )
+        ? "pastMoved"
+        : null);
     setProblem(found);
     if (!found) onChange(details);
   }
@@ -520,7 +699,7 @@ function ShiftFields({
   onEnter,
 }: {
   draft: Draft;
-  problem: ShiftDetailsProblem | null;
+  problem: FieldsProblem | null;
   onChange: (draft: Draft) => void;
   /** Enter in a field, where the sheet has an action to take. */
   onEnter?: () => void;
@@ -528,10 +707,11 @@ function ShiftFields({
   const t = useTranslations("app.build.editor");
   const id = useId();
   const errorId = `${id}-error`;
+  const marked = { "aria-invalid": true, "aria-describedby": errorId } as const;
   const invalid = (field: ShiftDetailsProblem) =>
-    problem === field || (field === "time" && problem === "same")
-      ? ({ "aria-invalid": true, "aria-describedby": errorId } as const)
-      : {};
+    problem === field || (field === "time" && problem === "same") ? marked : {};
+  // A start at or before now is the start's alone.
+  const late = problem === "past" || problem === "pastMoved" ? marked : {};
   const onKeyDown = (event: { key: string; preventDefault: () => void }) => {
     if (event.key === "Enter" && onEnter) {
       event.preventDefault();
@@ -568,6 +748,7 @@ function ShiftFields({
             onKeyDown={onKeyDown}
             className={rowPillInputClass}
             {...invalid("time")}
+            {...late}
           />
         </FieldRow>
         <FieldRow label={t("end")} htmlFor={`${id}-end`}>

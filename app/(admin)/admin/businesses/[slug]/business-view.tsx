@@ -2,9 +2,10 @@ import type { BusinessSetup, SetupPerson } from "@db/admin";
 import { accentTokens } from "@domain/color";
 import type { Role } from "@domain/modules";
 import { displayIsraeliMobile } from "@domain/phone";
+import { type NamedRole, namedRoleName } from "@domain/role-access";
 import { type SetupItem, setupChecklist, setupRemaining } from "@domain/setup";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
-import { VIEW_AS_ROLES } from "@domain/view-as";
+import { type ViewAsFailure, viewAsChoices, viewAsKey } from "@domain/view-as";
 import { accentProps } from "@ui/accent";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -14,18 +15,20 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
+import { StepList, StepRow } from "@ui/step-list";
 import {
   Check,
   ChevronRight,
-  CircleDashed,
   Eye,
+  KeyRound,
   MessageSquareText,
+  ShieldCheck,
   SlidersHorizontal,
   UserPlus,
 } from "lucide-react";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
-import type { ComponentProps, ReactNode } from "react";
+import { getLocale, getTranslations } from "next-intl/server";
+import type { ComponentProps } from "react";
 import { InviteLink } from "./invite-link";
 
 type T = Awaited<ReturnType<typeof getTranslations<"admin">>>;
@@ -43,35 +46,51 @@ function templateName(t: T, key: string | null) {
  * the people in it. Phone: one column; tablet: the checklist beside the people;
  * desktop: the checklist beside viewing as a role, and the people as a table
  * under them. Also rendered with mock data on /design/console/businesses.
+ * Viewing as a role offers the business's own named roles too, each after
+ * the role it is built on (the roles plan's R11c).
  * Invites that ran out stay on the page, with a way to renew them, so a
- * business whose owner never joined is not stuck.
+ * business whose owner never joined is not stuck. Under the people, roles and
+ * permissions and who sees pay, each on its own page.
  */
 export async function BusinessView({
   business,
   listHref,
   created,
-  viewFailed,
+  viewFailure,
   settingsHref,
   wordingHref,
   addHref,
+  rolesHref,
+  accessHref,
   viewAs,
+  namedRoles = [],
   issue,
 }: {
   business: BusinessSetup;
   listHref: string;
   created: boolean;
-  viewFailed: boolean;
+  /** Why the last view didn't open (`?view=`), or null. */
+  viewFailure: ViewAsFailure | null;
   /** Where this business's settings are, when the person may edit them. */
   settingsHref: string | null;
   /** Where this business's sentences are, when the person may edit them. */
   wordingHref: string | null;
   /** Where to add a person, when the person may invite staff. */
   addHref: string | null;
+  /** What each role sees and does, when the person reads it. */
+  rolesHref: string | null;
+  /** Who sees pay, where it opens something and the person reads it. */
+  accessHref: string | null;
   /** Bound to this business, when the person may view it as a role. */
   viewAs: ((form: FormData) => Promise<void>) | null;
+  /** The business's live named roles, to view it as too; none by default. */
+  namedRoles?: readonly NamedRole[];
   issue: Issue;
 }) {
   const t = await getTranslations("admin");
+  // Its rows read as the pages they open are named, as in the owner's /manage.
+  const tAccess = await getTranslations("app.manage.access");
+  const tRoles = await getTranslations("app.manage.roles");
   const template = templateName(t, business.templateKey);
   // Someone whose invite ran out can't join through it, so they don't count.
   const count = (r: Role) =>
@@ -164,14 +183,38 @@ export async function BusinessView({
           id="people"
           className="scroll-mt-4 md:col-start-2 md:row-span-2 md:row-start-1 xl:col-span-2 xl:col-start-1 xl:row-span-1 xl:row-start-2"
         >
-          <People t={t} business={business} issue={issue} />
+          <People
+            t={t}
+            business={business}
+            issue={issue}
+            roles={
+              rolesHref
+                ? {
+                    href: rolesHref,
+                    title: tRoles("title"),
+                    subtitle: tRoles("row"),
+                  }
+                : null
+            }
+            access={
+              accessHref
+                ? {
+                    href: accessHref,
+                    title: tAccess("title"),
+                    subtitle: tAccess("row"),
+                  }
+                : null
+            }
+          />
         </div>
         {viewAs ? (
           <div className="md:col-start-1 md:row-start-2 xl:col-start-2 xl:row-start-1">
             <ViewAs
               t={t}
               business={business}
-              failed={viewFailed}
+              failure={viewFailure}
+              namedRoles={namedRoles}
+              locale={await getLocale()}
               viewAs={viewAs}
             />
           </div>
@@ -264,102 +307,61 @@ function Checklist({
           {t("setup.checklist.remaining", { count: remaining })}
         </p>
       </Card>
-      <ul className="relative z-10 mx-3 -mt-[60px] overflow-hidden rounded-card bg-surface shadow-float">
+      <StepList className="relative z-10 mx-3 -mt-[60px]">
         {items.map((item) => (
-          <ChecklistRow key={item.key} href={href(item)}>
-            {item.done ? (
-              <span
-                aria-hidden="true"
-                className="grid size-7 shrink-0 place-items-center rounded-full bg-success-soft text-success [&_svg]:size-4 [&_svg]:stroke-3"
-              >
-                <Check />
-              </span>
-            ) : (
-              <span
-                aria-hidden="true"
-                className="grid size-7 shrink-0 place-items-center rounded-full bg-warning-soft text-warning [&_svg]:size-4 [&_svg]:stroke-3"
-              >
-                <CircleDashed />
-              </span>
-            )}
-            <span className="flex min-w-0 flex-col">
-              <span className="font-medium">
-                {t(`setup.checklist.items.${item.key}.title`)}
-                <span className="sr-only">
-                  {" · "}
-                  {item.done
-                    ? t("setup.checklist.done")
-                    : t("setup.checklist.todo")}
-                </span>
-              </span>
-              <span className="break-words text-ink-2 text-sm">
-                {body(item)}
-              </span>
-            </span>
-          </ChecklistRow>
+          <StepRow
+            key={item.key}
+            // A missing item leads to where it is fixed.
+            href={href(item)}
+            mark={item.done ? "done" : "missing"}
+            title={t(`setup.checklist.items.${item.key}.title`)}
+            state={
+              item.done ? t("setup.checklist.done") : t("setup.checklist.todo")
+            }
+            detail={body(item)}
+          />
         ))}
-      </ul>
+      </StepList>
     </section>
   );
 }
 
-const rowClass =
-  "relative flex min-h-16 items-center gap-3 px-4 py-2.5 not-first:before:absolute not-first:before:end-0 not-first:before:start-[56px] not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
-
-/** A checklist item; one that is missing leads to where it is fixed. */
-function ChecklistRow({
-  href,
-  children,
-}: {
-  href: string | null;
-  children: ReactNode;
-}) {
-  if (!href) return <li className={rowClass}>{children}</li>;
-  return (
-    <li className={cn(rowClass, "p-0")}>
-      <Link
-        href={href}
-        className="flex min-h-16 w-full items-center gap-3 px-4 py-2.5 transition-colors duration-150 ease-calm hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent active:bg-surface-3"
-      >
-        {children}
-        <ChevronRight
-          aria-hidden="true"
-          className="ms-auto size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
-        />
-      </Link>
-    </li>
-  );
-}
-
-// Open the business's app as one of its roles, read only.
+// Open the business's app as one of its roles, read only: the built-in
+// ones, each followed by the business's named roles built on it, by their
+// names with what each is built on (R11c).
 function ViewAs({
   t,
   business,
-  failed,
+  failure,
+  namedRoles,
+  locale,
   viewAs,
 }: {
   t: T;
   business: BusinessSetup;
-  failed: boolean;
+  failure: ViewAsFailure | null;
+  namedRoles: readonly NamedRole[];
+  /** For a named role's English name, where it has one. */
+  locale: string;
   viewAs: (form: FormData) => Promise<void>;
 }) {
   return (
     <PageSection title={t("setup.viewAs.title")}>
-      {failed ? (
+      {failure ? (
         <p role="alert" className="px-1 text-danger text-sm">
-          {t("setup.viewAs.failed")}
+          {t(`setup.viewAs.${failure}`)}
         </p>
       ) : null}
       <form
         action={viewAs}
         className="overflow-hidden rounded-card bg-surface shadow-card"
       >
-        {VIEW_AS_ROLES.map((r) => (
+        {viewAsChoices(namedRoles).map((choice) => (
           <button
-            key={r}
+            key={viewAsKey(choice)}
             type="submit"
             name="role"
-            value={r}
+            value={viewAsKey(choice)}
             className="relative flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-start font-medium transition-colors duration-150 ease-calm not-first:before:absolute not-first:before:end-0 not-first:before:start-[60px] not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-[''] hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent active:bg-surface-3"
           >
             <span
@@ -368,7 +370,24 @@ function ViewAs({
             >
               <Eye />
             </span>
-            <span className="min-w-0 flex-1">{t(`setup.viewAs.as.${r}`)}</span>
+            {choice.namedRole ? (
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span>
+                  {t("setup.viewAs.asNamed", {
+                    role: namedRoleName(choice.namedRole, locale),
+                  })}
+                </span>
+                <span className="font-normal text-ink-2 text-sm">
+                  {t("setup.viewAs.namedHint", {
+                    role: t(`memberRoles.${choice.role}`),
+                  })}
+                </span>
+              </span>
+            ) : (
+              <span className="min-w-0 flex-1">
+                {t(`setup.viewAs.as.${choice.role}`)}
+              </span>
+            )}
             <ChevronRight
               aria-hidden="true"
               className="size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
@@ -386,14 +405,22 @@ function ViewAs({
 const th = "px-5 pt-4 pb-2.5 text-start font-medium text-ink-2 text-sm";
 const td = "px-5 py-3 border-line border-t";
 
+type PageLink = { href: string; title: string; subtitle: string };
+
 function People({
   t,
   business,
   issue,
+  roles,
+  access,
 }: {
   t: T;
   business: BusinessSetup;
   issue: Issue;
+  /** Roles and permissions, its row as the owner's /manage names it. */
+  roles: PageLink | null;
+  /** Who sees pay, its row as the owner's /manage names it. */
+  access: PageLink | null;
 }) {
   const { people } = business;
   const name = (n: string) => n || t("setup.people.noName");
@@ -517,6 +544,26 @@ function People({
           </div>
         </>
       )}
+      {roles || access ? (
+        <ListGroup className="xl:max-w-2xl">
+          {roles ? (
+            <ListRow
+              href={roles.href}
+              leading={<ShieldCheck />}
+              title={roles.title}
+              subtitle={roles.subtitle}
+            />
+          ) : null}
+          {access ? (
+            <ListRow
+              href={access.href}
+              leading={<KeyRound />}
+              title={access.title}
+              subtitle={access.subtitle}
+            />
+          ) : null}
+        </ListGroup>
+      ) : null}
     </PageSection>
   );
 }

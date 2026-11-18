@@ -129,10 +129,73 @@ export async function readyWorker(): Promise<ServiceWorkerRegistration> {
   return navigator.serviceWorker.ready;
 }
 
+/** The line the worker shows when the app can't be reached, in our words. */
+export type FallbackLine = {
+  title: string;
+  body: string;
+  lang: string;
+  dir: string;
+};
+
 /** Leave the worker the line it shows when the app can't be reached. */
 export function leaveFallback(
   registration: ServiceWorkerRegistration,
-  line: { title: string; body: string; lang: string; dir: string },
+  line: FallbackLine,
 ): void {
   registration.active?.postMessage({ type: "fallback", ...line });
+}
+
+/**
+ * What turning notifications on came to: on, blocked by the browser, not
+ * allowed this time (the person closed the question), a demo business, or
+ * something that didn't go through.
+ */
+export type TurnOnAnswer = "on" | "denied" | "off" | "demo" | "failed";
+
+/**
+ * Turn notifications on in this browser for whoever is signed in, from
+ * inside the press that asked for it (the push switch, the quiet card after
+ * giving away a shift). With the worker here from before, it subscribes at
+ * once. Otherwise it asks for permission first, while Safari still counts the
+ * press, then registers the worker and subscribes. The app keeps the
+ * subscription, or it is taken back. Answers with the worker, once there is
+ * one, for the next press.
+ */
+export async function turnOnPush(
+  known: ServiceWorkerRegistration | null,
+  publicKey: string,
+  fallback: FallbackLine,
+): Promise<{
+  answer: TurnOnAnswer;
+  registration: ServiceWorkerRegistration | null;
+}> {
+  let registration = known;
+  let subscription: PushSubscription;
+  try {
+    if (registration) {
+      subscription = await subscribe(registration, publicKey);
+    } else {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        return {
+          answer: permission === "denied" ? "denied" : "off",
+          registration,
+        };
+      }
+      registration = await readyWorker();
+      leaveFallback(registration, fallback);
+      subscription = await subscribe(registration, publicKey);
+    }
+  } catch {
+    return {
+      answer: Notification.permission === "denied" ? "denied" : "failed",
+      registration,
+    };
+  }
+  const saved = await saveSubscription(subscription);
+  if (saved !== "saved") await subscription.unsubscribe().catch(() => false);
+  return {
+    answer: saved === "saved" ? "on" : saved === "demo" ? "demo" : "failed",
+    registration,
+  };
 }

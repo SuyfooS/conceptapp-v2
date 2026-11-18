@@ -10,6 +10,7 @@ import {
   takeDemoSwap,
 } from "./db";
 import { secondPage, signIn } from "./session";
+import { heT } from "./t";
 
 // Notifications in the app (N1): the database writes a line from what
 // happened, the person sees the bell and the inbox, and opening a line marks it
@@ -90,8 +91,9 @@ test("a published week reaches the worker's bell, and opening it reads it", asyn
     true,
   );
   await page.goto("/home");
+  // The count as the badge shows it, in digits: "התראות, 1 חדשה".
   await expect(bell(page)).toHaveAccessibleName(
-    `${words.bell}, ${words.bellCount.replace(/.*one \{([^}]*)\}.*/, "$1")}`,
+    `${words.bell}, ${heT("app.notifications.bellCount", { count: 1 })}`,
   );
   // A published week is news, not something to do: Home stays quiet.
   await expect(homeTab(page)).not.toHaveAccessibleName(new RegExp(NEEDS));

@@ -3,9 +3,13 @@ import {
   ACTIVITY_PAGE_SIZE,
   type ActivityLookups,
   type ActivityRow,
+  type ActivityShift,
   activityRefs,
+  activityShiftOf,
   ROUTINE_ACTIONS,
 } from "@domain/activity";
+import { memberNames, nameIn } from "./member-names";
+import { isMissingColumn } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createClient } from "./supabase/server";
 
@@ -21,9 +25,11 @@ const ROUTINE = `(${ROUTINE_ACTIONS.map((action) => `"${action}"`).join(",")})`;
 
 /**
  * A page of a business's activity log, newest first, as the signed-in person
- * may read it: its owners and managers, and the team viewing it as one (RLS).
+ * may read it (RLS): whoever holds manage.view, each row only while they hold
+ * its own area too, and the team viewing it as a role that does.
  * Everything the rows point at is read the same way, so an id from another
- * business finds nothing, and someone who has left keeps no name.
+ * business finds nothing, and someone who has left keeps no name. People by
+ * the business's name for them, as it is now.
  */
 export async function getBusinessActivity(
   businessId: string,
@@ -52,13 +58,7 @@ export async function getBusinessActivity(
   const refs = activityRefs(rows);
 
   const [swaps, invites] = await Promise.all([
-    refs.swaps.length
-      ? supabase
-          .from("shift_swaps")
-          .select("id, shift_id, requested_by, taken_by")
-          .eq("business_id", businessId)
-          .in("id", refs.swaps)
-      : null,
+    refs.swaps.length ? getSwaps(businessId, refs.swaps) : [],
     refs.invites.length
       ? supabase
           .from("invites")
@@ -67,19 +67,19 @@ export async function getBusinessActivity(
           .in("id", refs.invites)
       : null,
   ]);
-  if (swaps?.error) throw swaps.error;
   if (invites?.error) throw invites.error;
 
-  // A swap names its shift and its people only through the request itself.
+  // A swap names its people only through the request itself, and its shift
+  // as the request keeps it; the shift by id only where that isn't there.
   const people = new Set(refs.people);
   const shifts = new Set(refs.shifts);
-  for (const swap of swaps?.data ?? []) {
-    people.add(swap.requested_by);
-    if (swap.taken_by) people.add(swap.taken_by);
-    shifts.add(swap.shift_id);
+  for (const swap of swaps) {
+    people.add(swap.requestedBy);
+    if (swap.takenBy) people.add(swap.takenBy);
+    if (!swap.shift && swap.shiftId) shifts.add(swap.shiftId);
   }
 
-  const [members, shiftRows, departments] = await Promise.all([
+  const [members, names, shiftRows, departments, stations] = await Promise.all([
     people.size
       ? supabase
           .from("memberships")
@@ -87,6 +87,7 @@ export async function getBusinessActivity(
           .eq("business_id", businessId)
           .in("user_id", [...people])
       : null,
+    memberNames(supabase, businessId, [...people]),
     shifts.size
       ? supabase
           .from("schedule_shifts")
@@ -102,6 +103,15 @@ export async function getBusinessActivity(
           .eq("business_id", businessId)
           .in("id", refs.departments)
       : null,
+    // Stopped ones too, for whoever edits the clock (RLS): anyone else reads
+    // a stop without its name.
+    refs.stations.length
+      ? supabase
+          .from("clock_stations")
+          .select("id, name")
+          .eq("business_id", businessId)
+          .in("id", refs.stations)
+      : null,
   ]);
   if (members?.error) throw members.error;
   if (shiftRows?.error) throw shiftRows.error;
@@ -109,6 +119,7 @@ export async function getBusinessActivity(
   if (departments?.error && !isMissingTable(departments.error)) {
     throw departments.error;
   }
+  if (stations?.error) throw stations.error;
 
   return {
     rows,
@@ -119,7 +130,7 @@ export async function getBusinessActivity(
           row.user_id,
           {
             active: row.active,
-            name: row.profiles?.full_name?.trim() || null,
+            name: nameIn(names, row.user_id, row.profiles?.full_name),
           },
         ]),
       ),
@@ -143,16 +154,59 @@ export async function getBusinessActivity(
       departments: new Map(
         (departments?.data ?? []).map((row) => [row.id, row.name]),
       ),
-      swaps: new Map(
-        (swaps?.data ?? []).map((row) => [
-          row.id,
-          {
-            shiftId: row.shift_id,
-            requestedBy: row.requested_by,
-            takenBy: row.taken_by,
-          },
-        ]),
+      stations: new Map(
+        (stations?.data ?? []).map((row) => [row.id, row.name]),
       ),
+      swaps: new Map(swaps.map(({ id, ...swap }) => [id, swap])),
     },
   };
+}
+
+type ActivitySwap = {
+  id: string;
+  shiftId: string | null;
+  shift: ActivityShift | null;
+  requestedBy: string;
+  takenBy: string | null;
+};
+
+/**
+ * The swap requests a page of the log names, under the reader's access, each
+ * with the shift as it was asked for (`shift_swaps.shift`), which outlives the
+ * shift. Until 20261115000200_swap_history.sql reaches the project, without
+ * it: the shift by id, while it is there.
+ */
+async function getSwaps(
+  businessId: string,
+  ids: string[],
+): Promise<ActivitySwap[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("shift_swaps")
+    .select("id, shift_id, shift, requested_by, taken_by")
+    .eq("business_id", businessId)
+    .in("id", ids);
+  if (!error) {
+    return data.map((row) => ({
+      id: row.id,
+      shiftId: row.shift_id,
+      shift: activityShiftOf(row.shift),
+      requestedBy: row.requested_by,
+      takenBy: row.taken_by,
+    }));
+  }
+  if (!isMissingColumn(error)) throw error;
+  const before = await supabase
+    .from("shift_swaps")
+    .select("id, shift_id, requested_by, taken_by")
+    .eq("business_id", businessId)
+    .in("id", ids);
+  if (before.error) throw before.error;
+  return before.data.map((row) => ({
+    id: row.id,
+    shiftId: row.shift_id,
+    shift: null,
+    requestedBy: row.requested_by,
+    takenBy: row.taken_by,
+  }));
 }

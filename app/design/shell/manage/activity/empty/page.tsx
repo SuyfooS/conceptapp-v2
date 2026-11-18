@@ -16,6 +16,7 @@ export default function ShellManageActivityEmpty() {
       manageable={modulesToManage(demoModuleRows)}
       clockOn
       listsOn={listsOn(demoModuleRows)}
+      everyArea
       paths={demoActivityPaths}
       wording={baseWording}
     />

@@ -1,0 +1,1046 @@
+import "server-only";
+import { isUuid } from "@domain/activity";
+import {
+  CHAT_FILE_KINDS,
+  CHAT_KINDS,
+  CHAT_MESSAGE_KINDS,
+  type ChatCursor,
+  type ChatFileKind,
+  type ChatInboxRow,
+  type ChatKind,
+  type ChatMessageKind,
+  type ChatTitle,
+  checkMessage,
+  conversationTitle,
+  readChatInbox,
+  sortInbox,
+} from "@domain/chat";
+import { readersCount } from "@domain/chat-announce";
+import { chatFileSrc } from "@domain/chat-files";
+import {
+  type ChatDirectory,
+  type ChatListRow,
+  type ChatMember,
+  type ChatSyncPerson,
+  chatListRows,
+  type PinnedAnnouncement,
+} from "@domain/chat-sync";
+import { isStaff } from "@domain/modules";
+import { profilePhotoSrc } from "@domain/profile-photos";
+import { z } from "zod";
+import type { Database } from "./database.types";
+import { memberNames, nameIn } from "./member-names";
+import { isMissingFunction } from "./missing";
+import { isMissingTable } from "./notifications";
+import { createAdminClient } from "./supabase/admin";
+import { createClient } from "./supabase/server";
+
+/*
+ * Chat (supabase/migrations/20261111000200_chat.sql, and from C2
+ * 20261111000300_chat_on.sql). Reads run under RLS as
+ * the signed-in person, so a private chat is read by its two people only and a
+ * group from when the reader joined it; a view session reads nothing. Writes
+ * run with the secret key for `actorId`; the database checks who may do what,
+ * and callers check the actor is the signed-in person and not viewing as
+ * someone else. Nothing here logs what a message says: a failure is logged by
+ * its code. Everything tolerates a project the migration hasn't reached yet
+ * ("notYet").
+ */
+
+/** Why a write was refused, for the screens' words. */
+export type ChatFailure =
+  /** Not theirs to do (42501), or nothing of theirs (P0002). */
+  | "noAccess"
+  /** No text, too long, or a shape the database won't keep (22023). */
+  | "invalid"
+  /** Chat is off, the group is closed, the other person left, too late to undo (55000). */
+  | "closed"
+  /** Too many in a minute, or in a demo's hour (54000). */
+  | "tooFast"
+  /** The migration isn't on this project yet. */
+  | "notYet"
+  | "failed";
+
+export type ChatWrite<T> =
+  | { ok: true; value: T }
+  | { ok: false; failure: ChatFailure };
+
+/** A chat write's refusal, by its code (@db/chat-files reads the same). */
+export function chatFailureOf(error: { code?: string }): ChatFailure {
+  if (isMissingFunction(error)) return "notYet";
+  switch (error.code) {
+    case "42501":
+    case "P0002":
+      return "noAccess";
+    case "22023":
+      return "invalid";
+    case "55000":
+      return "closed";
+    case "54000":
+      return "tooFast";
+    default:
+      // The code alone: a message's text never reaches a log.
+      console.error("a chat write failed", error.code ?? "without a code");
+      return "failed";
+  }
+}
+
+const refused = (failure: ChatFailure) => ({ ok: false, failure }) as const;
+const done = <T>(value: T) => ({ ok: true, value }) as const;
+
+/** `at_time` for a write, when the caller says when it happened. */
+const atTime = (at?: Date) => (at ? { at_time: at.toISOString() } : {});
+
+/** A text column the database keeps to a list of words, read leniently. */
+function oneOf<T extends string>(
+  words: readonly T[],
+  value: string | null,
+  fallback: T,
+): T {
+  return words.find((word) => word === value) ?? fallback;
+}
+
+/**
+ * The signed-in person's chats in the business, in the list's order
+ * (`public.chat_inbox`, under their own session): nothing for a view session.
+ */
+export async function getChatInbox(
+  businessId: string,
+): Promise<ChatInboxRow[] | "notYet"> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("chat_inbox", {
+    business: businessId,
+  });
+  if (error) {
+    if (isMissingFunction(error)) return "notYet";
+    throw error;
+  }
+  return sortInbox(readChatInbox(data));
+}
+
+/**
+ * Who and what the chat screens name in the business, as the signed-in person
+ * reads them (RLS: everyone in a business reads its team and departments):
+ * every membership, active or not, with its name and photo (`active` is on
+ * the staff now, so someone who left, or is only the accountant, reads as
+ * having left a private chat), and every department, removed ones too, by id.
+ * Each person by the business's name for them. Nothing about any chat. Empty
+ * before anything is readable.
+ */
+export async function getChatDirectory(
+  businessId: string,
+): Promise<ChatDirectory> {
+  const supabase = await createClient();
+  const [members, names, departments] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select("user_id, role, active, profiles (full_name, avatar_path)")
+      .eq("business_id", businessId),
+    memberNames(supabase, businessId),
+    supabase
+      .from("departments")
+      .select("id, name")
+      .eq("business_id", businessId),
+  ]);
+  if (members.error) throw members.error;
+  if (departments.error && !isMissingTable(departments.error)) {
+    throw departments.error;
+  }
+  return {
+    members: new Map(
+      (members.data ?? []).map((row): [string, ChatMember] => [
+        row.user_id.toLowerCase(),
+        {
+          active: row.active && isStaff(row.role),
+          name: nameIn(names, row.user_id, row.profiles?.full_name),
+          photo: profilePhotoSrc(row.profiles?.avatar_path),
+          role: row.role,
+        },
+      ]),
+    ),
+    departments: new Map(
+      (departments.data ?? []).map((row): [string, string] => [
+        row.id.toLowerCase(),
+        row.name,
+      ]),
+    ),
+  };
+}
+
+/**
+ * The signed-in person's chats in the business, in the list's order and each
+ * with its title and picture (`getChatInbox` named from `getChatDirectory`):
+ * what the list draws, and what `/chat-sync` sends when it moved.
+ */
+export async function getChatList(
+  businessId: string,
+): Promise<ChatListRow[] | "notYet"> {
+  const [rows, directory] = await Promise.all([
+    getChatInbox(businessId),
+    getChatDirectory(businessId),
+  ]);
+  return rows === "notYet" ? rows : chatListRows(rows, directory);
+}
+
+/** A conversation as its reader may see it. */
+export type ChatConversation = {
+  id: string;
+  kind: ChatKind;
+  /** A department's group: its department. */
+  departmentId: string | null;
+  /** A private chat's two people, the lower id first. */
+  people: [string, string] | null;
+  lastMessageAt: string | null;
+  /** Its department was removed: read only. */
+  closed: boolean;
+};
+
+/**
+ * Whether the reader may write in it, as far as the conversation says:
+ * "closed" while its department is removed, "left" when the other person of
+ * a private chat is no longer on the staff, else "open". Who writes in the
+ * whole team's group (`teamGroupWho`) is the screen's, from the settings and
+ * the reader's permissions.
+ */
+export type ChatConversationState = "open" | "closed" | "left";
+
+/** A conversation as its screen draws it. */
+export type ChatConversationView = ChatConversation & {
+  title: ChatTitle;
+  /** A private chat: the other person. */
+  otherPerson: string | null;
+  state: ChatConversationState;
+  /**
+   * The names and photos its messages' authors are shown with: a private
+   * chat's two people, or for a group everyone in the business, those who
+   * left too. A lookup, not who is in the group (that is C3's details).
+   */
+  names: ChatSyncPerson[];
+};
+
+const CONVERSATION_COLUMNS =
+  "id, kind, department_id, person_a, person_b, last_message_at, closed_at";
+
+/**
+ * One conversation of the business, when the signed-in person (`readerId`)
+ * reads it (RLS), with its title, whether they may write in it and the people
+ * it names; null otherwise, the same for one that doesn't exist.
+ */
+export async function getConversation(
+  businessId: string,
+  conversationId: string,
+  readerId: string,
+): Promise<ChatConversationView | null> {
+  if (!isUuid(conversationId)) return null;
+  const supabase = await createClient();
+  const [read, directory] = await Promise.all([
+    supabase
+      .from("chat_conversations")
+      .select(CONVERSATION_COLUMNS)
+      .eq("business_id", businessId)
+      .eq("id", conversationId.toLowerCase())
+      .maybeSingle(),
+    getChatDirectory(businessId),
+  ]);
+  const { data, error } = read;
+  if (error) {
+    if (isMissingTable(error)) return null;
+    throw error;
+  }
+  if (!data) return null;
+  const kind = oneOf(CHAT_KINDS, data.kind, "team");
+  const people: [string, string] | null =
+    data.person_a && data.person_b ? [data.person_a, data.person_b] : null;
+  const reader = readerId.toLowerCase();
+  const otherPerson = people
+    ? (people.find((person) => person.toLowerCase() !== reader) ?? null)
+    : null;
+  const title = conversationTitle(
+    { kind, department: data.department_id, otherPerson },
+    directory,
+  );
+  const named = (id: string): ChatSyncPerson => {
+    const member = directory.members.get(id.toLowerCase());
+    return {
+      id: id.toLowerCase(),
+      name: member?.name ?? null,
+      photo: member?.photo ?? null,
+    };
+  };
+  return {
+    id: data.id,
+    kind,
+    departmentId: data.department_id,
+    people,
+    lastMessageAt: data.last_message_at,
+    closed: data.closed_at !== null,
+    title,
+    otherPerson,
+    state:
+      data.closed_at !== null
+        ? "closed"
+        : kind === "direct" &&
+            !(
+              otherPerson &&
+              directory.members.get(otherPerson.toLowerCase())?.active
+            )
+          ? "left"
+          : "open",
+    names: people
+      ? people.map(named)
+      : [...directory.members.keys()].map(named),
+  };
+}
+
+/**
+ * The kind of one conversation of the business, and its own stamp for the
+ * signed-in person (`public.chat_stamp`, C4: when anything they see there last
+ * changed, a message sent, removed, put back or pinned, a file no longer
+ * kept, and a confirmation
+ * only when they see who confirmed: their own announcement's, any for a
+ * moderator, their own), when they read it; null otherwise. One small read,
+ * for `/chat-sync`. Before C4's migration, the conversation's `changed_at`.
+ */
+export async function getConversationStamp(
+  businessId: string,
+  conversationId: string,
+): Promise<{ kind: ChatKind; changed: string } | null> {
+  if (!isUuid(conversationId)) return null;
+  const supabase = await createClient();
+  const stamp = await supabase
+    .rpc("chat_stamp", {
+      business: businessId,
+      conversation: conversationId.toLowerCase(),
+    })
+    .maybeSingle();
+  if (!stamp.error) {
+    return stamp.data
+      ? {
+          kind: oneOf(CHAT_KINDS, stamp.data.kind, "team"),
+          changed: stamp.data.changed,
+        }
+      : null;
+  }
+  if (!isMissingFunction(stamp.error)) throw stamp.error;
+  const { data, error } = await supabase
+    .from("chat_conversations")
+    .select("id, kind, changed_at")
+    .eq("business_id", businessId)
+    .eq("id", conversationId.toLowerCase())
+    .maybeSingle();
+  if (error) {
+    if (isMissingTable(error)) return null;
+    throw error;
+  }
+  return data
+    ? { kind: oneOf(CHAT_KINDS, data.kind, "team"), changed: data.changed_at }
+    : null;
+}
+
+/**
+ * The names and photos of the people who wrote messages in the business, as
+ * the signed-in person reads them (their colleagues, RLS), each by the
+ * business's name for them; someone they can't read comes back without a
+ * name.
+ */
+export async function getChatAuthors(
+  businessId: string,
+  ids: readonly string[],
+): Promise<ChatSyncPerson[]> {
+  const wanted = [...new Set(ids.filter(isUuid).map((id) => id.toLowerCase()))];
+  if (wanted.length === 0) return [];
+  const supabase = await createClient();
+  const [{ data, error }, names] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name, avatar_path")
+      .in("id", wanted),
+    memberNames(supabase, businessId, wanted),
+  ]);
+  if (error) throw error;
+  const found = new Map((data ?? []).map((row) => [row.id.toLowerCase(), row]));
+  return wanted.map((id) => {
+    const row = found.get(id);
+    return {
+      id,
+      name: nameIn(names, id, row?.full_name),
+      photo: profilePhotoSrc(row?.avatar_path),
+    };
+  });
+}
+
+/** A message as its reader may see it. */
+export type ChatMessage = {
+  id: string;
+  authorId: string | null;
+  kind: ChatMessageKind;
+  /** Null when it was removed, or it is only a file. */
+  body: string | null;
+  fileKind: ChatFileKind | null;
+  fileName: string | null;
+  fileSize: number | null;
+  /** The days or the space took its file; the message stays. */
+  fileGone: boolean;
+  /**
+   * Where its picture is shown, and its thumbnail (`chatFileSrc`, the app's
+   * own route, which checks the reader again); null with no file, once it is
+   * removed, or no longer kept.
+   */
+  fileSrc: string | null;
+  thumbSrc: string | null;
+  pinned: boolean;
+  /** ISO instant. */
+  createdAt: string;
+  removed: boolean;
+  removedBy: string | null;
+  /**
+   * The browser's own id it was sent with, for the reader's own messages
+   * (`withOwnDrafts`); null for anyone else's, and before it is read.
+   */
+  draft: string | null;
+};
+
+/** Messages a page reads at most. */
+export const CHAT_PAGE_SIZE = 50;
+
+const MESSAGE_COLUMNS =
+  "id, author_id, kind, body, file_kind, file_name, file_size, file_removed_at, file_path, thumb_path, pinned, created_at, removed_at, removed_by";
+
+const ANNOUNCEMENT_COLUMNS =
+  "conversation_id, id, author_id, kind, body, file_kind, file_name, file_size, file_removed_at, file_path, thumb_path, pinned, created_at, removed_at, removed_by";
+
+type MessageRow = Pick<
+  Database["public"]["Tables"]["chat_messages"]["Row"],
+  | "id"
+  | "author_id"
+  | "kind"
+  | "body"
+  | "file_kind"
+  | "file_name"
+  | "file_size"
+  | "file_removed_at"
+  | "file_path"
+  | "thumb_path"
+  | "pinned"
+  | "created_at"
+  | "removed_at"
+  | "removed_by"
+>;
+
+/** A message's file as the screen may show it: kept, and not removed. */
+const shownFile = (
+  row: Pick<MessageRow, "removed_at" | "file_removed_at">,
+  path: string | null,
+): string | null =>
+  row.removed_at === null && row.file_removed_at === null
+    ? chatFileSrc(path)
+    : null;
+
+const toMessage = (row: MessageRow): ChatMessage => ({
+  id: row.id,
+  authorId: row.author_id,
+  kind: oneOf(CHAT_MESSAGE_KINDS, row.kind, "text"),
+  body: row.body,
+  fileKind: row.file_kind
+    ? (CHAT_FILE_KINDS.find((kind) => kind === row.file_kind) ?? null)
+    : null,
+  fileName: row.file_name,
+  fileSize: row.file_size,
+  fileGone: row.file_removed_at !== null,
+  fileSrc: shownFile(row, row.file_path),
+  thumbSrc: shownFile(row, row.thumb_path),
+  pinned: row.pinned,
+  createdAt: row.created_at,
+  removed: row.removed_at !== null,
+  removedBy: row.removed_by,
+  draft: null,
+});
+
+/**
+ * A page of a conversation's messages the signed-in person reads, newest
+ * first: before a cursor (older ones), after one (what came since), or the
+ * newest (`public.chat_page`, under their own session). A page starts where
+ * their history does (when they joined it); the database asks who reads it
+ * once and stops there, never walking the older history. Pinned announcements
+ * from before that come from `getPinnedAnnouncements`.
+ */
+export async function getMessages({
+  businessId,
+  conversationId,
+  before,
+  after,
+  since,
+  limit = CHAT_PAGE_SIZE,
+}: {
+  businessId: string;
+  conversationId: string;
+  /** From `parseChatCursor`. */
+  before?: ChatCursor | null;
+  after?: ChatCursor | null;
+  /**
+   * Strictly after this instant, whatever the id, in place of `after`: the
+   * sync's second look before its cursor (`syncWindowStart`).
+   */
+  since?: string | null;
+  limit?: number;
+}): Promise<ChatMessage[]> {
+  if (!isUuid(conversationId)) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("chat_page", {
+    business: businessId,
+    conversation: conversationId.toLowerCase(),
+    ...(before ? { before_at: before.at, before_id: before.id } : {}),
+    ...(since
+      ? { after_at: since }
+      : after
+        ? { after_at: after.at, after_id: after.id }
+        : {}),
+    page_limit: Math.min(Math.max(limit, 1), CHAT_PAGE_SIZE),
+  });
+  if (error) {
+    if (isMissingFunction(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map(toMessage);
+}
+
+/**
+ * The messages, with the draft each of the reader's own was sent with (the
+ * browser's own id for it), read under their session: how the screen knows
+ * its own message on its way, and keeps it one bubble once it arrives.
+ * Nobody else's draft is read, and nothing is when none is theirs.
+ */
+export async function withOwnDrafts(
+  messages: readonly ChatMessage[],
+  readerId: string,
+): Promise<ChatMessage[]> {
+  const reader = readerId.toLowerCase();
+  const own = messages
+    .filter((m) => m.authorId?.toLowerCase() === reader)
+    .map((m) => m.id.toLowerCase());
+  if (own.length === 0) return [...messages];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select("id, draft_id")
+    .eq("author_id", reader)
+    .in("id", own);
+  if (error) {
+    if (isMissingTable(error)) return [...messages];
+    throw error;
+  }
+  const drafts = new Map(
+    (data ?? []).map((row) => [
+      row.id.toLowerCase(),
+      row.draft_id.toLowerCase(),
+    ]),
+  );
+  return messages.map((m) => ({
+    ...m,
+    draft: drafts.get(m.id.toLowerCase()) ?? null,
+  }));
+}
+
+/** At most this many marked messages a sync reads where a screen's are. */
+const MARKED_READ_MAX = 500;
+
+/**
+ * The messages of a conversation the signed-in person reads (RLS) that count
+ * in a screen's marks (`chatMarks`): those removed, and those whose file is
+ * no longer kept (C4), from the instant of `from` to that of `through` (the
+ * oldest and the newest message a screen holds; the caller trims the ends to
+ * the ids), oldest first: what `/chat-sync` compares a screen's marks with,
+ * so a removal, or a picture's file going, reaches every screen that holds
+ * the message, however far up. A removed one's words are gone already; the
+ * page index bounds the read.
+ */
+export async function getMarkedMessages({
+  businessId,
+  conversationId,
+  from,
+  through,
+}: {
+  businessId: string;
+  conversationId: string;
+  from: ChatCursor;
+  through: ChatCursor;
+}): Promise<ChatMessage[]> {
+  if (!isUuid(conversationId)) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("conversation_id", conversationId.toLowerCase())
+    .or("removed_at.not.is.null,file_removed_at.not.is.null")
+    .gte("created_at", from.at)
+    .lte("created_at", through.at)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(MARKED_READ_MAX);
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map(toMessage);
+}
+
+/**
+ * Some of a conversation's messages by id, as the signed-in person reads
+ * them (RLS), oldest first: the ones a screen shows as removed, read again
+ * by `/chat-sync` so one put back comes back with its words.
+ */
+export async function getMessagesById(
+  businessId: string,
+  conversationId: string,
+  ids: readonly string[],
+): Promise<ChatMessage[]> {
+  const wanted = [...new Set(ids.filter(isUuid).map((id) => id.toLowerCase()))];
+  if (!isUuid(conversationId) || wanted.length === 0) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("conversation_id", conversationId.toLowerCase())
+    .in("id", wanted)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map(toMessage);
+}
+
+/**
+ * A conversation's pinned announcements the signed-in person reads (RLS: every
+ * member reads them, from before they joined too), newest first, for the top
+ * of the conversation.
+ */
+export async function getPinnedAnnouncements(
+  businessId: string,
+  conversationId: string,
+): Promise<ChatMessage[]> {
+  if (!isUuid(conversationId)) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(MESSAGE_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("conversation_id", conversationId.toLowerCase())
+    .eq("pinned", true)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(CHAT_PAGE_SIZE);
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map(toMessage);
+}
+
+/**
+ * Which of these announcements the signed-in person confirmed ("קראתי"):
+ * their own confirmations, under RLS (nobody reads anyone else's).
+ */
+export async function getOwnConfirmations(
+  messageIds: readonly string[],
+): Promise<Set<string>> {
+  const wanted = [
+    ...new Set(messageIds.filter(isUuid).map((id) => id.toLowerCase())),
+  ];
+  if (wanted.length === 0) return new Set();
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_acks")
+    .select("message_id")
+    .in("message_id", wanted);
+  if (error) {
+    if (isMissingTable(error)) return new Set();
+    throw error;
+  }
+  return new Set((data ?? []).map((row) => row.message_id.toLowerCase()));
+}
+
+/**
+ * How many of the group confirmed an announcement of how many, for its
+ * author and management (`public.announcement_readers`, which reads nobody
+ * for anyone else): null for anyone else, who isn't asked at all. A group
+ * with nobody in it but its author counts 0 of 0 for that author.
+ */
+async function readersOf(
+  message: Pick<ChatMessage, "id" | "authorId">,
+  readerId: string,
+  moderates: boolean,
+): Promise<{ count: number; total: number } | null> {
+  const own = message.authorId?.toLowerCase() === readerId.toLowerCase();
+  if (!own && !moderates) return null;
+  const readers = await announcementReaders(message.id);
+  if (readers.length === 0 && !own) return null;
+  return readersCount(readers);
+}
+
+/**
+ * The pinned announcements of a conversation as the signed-in person
+ * (`readerId`, who holds chat.moderate when `moderates`) sees them, newest
+ * first: each with whether they confirmed it and, for its author and
+ * management, how many did. Every member reads them, those from before they
+ * joined too (RLS).
+ */
+export async function getPinnedState(
+  businessId: string,
+  conversationId: string,
+  readerId: string,
+  moderates: boolean,
+): Promise<PinnedAnnouncement[]> {
+  const pinned = await getPinnedAnnouncements(businessId, conversationId);
+  if (pinned.length === 0) return [];
+  const [mine, readers] = await Promise.all([
+    getOwnConfirmations(pinned.map((m) => m.id)),
+    Promise.all(pinned.map((m) => readersOf(m, readerId, moderates))),
+  ]);
+  return pinned.map((message, i) => ({
+    message,
+    confirmed: mine.has(message.id.toLowerCase()),
+    readers: readers[i] ?? null,
+  }));
+}
+
+/**
+ * The pinned announcements waiting for the signed-in person's "קראתי" in the
+ * business: someone else's, in any of their groups (RLS), not confirmed yet,
+ * newest first, each with its conversation. For Today.
+ */
+export async function getWaitingAnnouncements(
+  businessId: string,
+  readerId: string,
+): Promise<{ conversation: string; message: ChatMessage }[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(ANNOUNCEMENT_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("pinned", true)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(ANNOUNCEMENTS_SHOWN);
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  const reader = readerId.toLowerCase();
+  const theirs = (data ?? []).filter(
+    (row) => row.author_id?.toLowerCase() !== reader,
+  );
+  const mine = await getOwnConfirmations(theirs.map((row) => row.id));
+  return theirs
+    .filter((row) => !mine.has(row.id.toLowerCase()))
+    .map((row) => ({
+      conversation: row.conversation_id.toLowerCase(),
+      message: toMessage(row),
+    }));
+}
+
+/** An announcement of /chat/announcements, with where it was posted. */
+export type ChatAnnouncement = PinnedAnnouncement & {
+  conversation: string;
+};
+
+/** Announcements /chat/announcements lists at most. */
+export const ANNOUNCEMENTS_SHOWN = 50;
+
+/**
+ * Every announcement in the signed-in person's groups that wasn't removed, as
+ * they read them (RLS: from when they joined a group, pinned ones whenever),
+ * pinned ones first, then newest first, at most `ANNOUNCEMENTS_SHOWN`; each
+ * with whether they confirmed it, and for a pinned one of theirs, or any for
+ * management, how many did. Nothing for a view session.
+ */
+export async function getAnnouncements(
+  businessId: string,
+  readerId: string,
+  moderates: boolean,
+): Promise<ChatAnnouncement[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_messages")
+    .select(ANNOUNCEMENT_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("kind", "announcement")
+    .is("removed_at", null)
+    .order("pinned", { ascending: false })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(ANNOUNCEMENTS_SHOWN);
+  if (error) {
+    if (isMissingTable(error)) return [];
+    throw error;
+  }
+  const rows = data ?? [];
+  const reader = readerId.toLowerCase();
+  const messages = rows.map(toMessage);
+  const [mine, readers] = await Promise.all([
+    getOwnConfirmations(messages.map((m) => m.id)),
+    // Counted for the pinned ones only: the rest open who confirmed when
+    // asked (announcementReaders).
+    Promise.all(
+      messages.map((m) =>
+        m.pinned && (moderates || m.authorId?.toLowerCase() === reader)
+          ? readersOf(m, readerId, moderates)
+          : null,
+      ),
+    ),
+  ]);
+  return messages.map((message, i) => ({
+    conversation: (rows[i]?.conversation_id ?? "").toLowerCase(),
+    message,
+    confirmed: mine.has(message.id.toLowerCase()),
+    readers: readers[i] ?? null,
+  }));
+}
+
+/**
+ * Whether anything changed in the signed-in person's chats since they last
+ * asked (`public.chat_version`): an opaque value to compare. Null before the
+ * migration reaches the project.
+ */
+export async function chatVersion(businessId: string): Promise<string | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("chat_version", {
+    business: businessId,
+  });
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return typeof data === "string" ? data : null;
+}
+
+/**
+ * How far the other person of the signed-in person's private chat read it
+ * ("נקראה", `public.chat_seen`), as an ISO instant; null for anyone else, a
+ * group, or nothing read yet.
+ */
+export async function chatSeen(conversationId: string): Promise<string | null> {
+  if (!isUuid(conversationId)) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("chat_seen", {
+    conversation: conversationId.toLowerCase(),
+  });
+  if (error) {
+    if (isMissingFunction(error)) return null;
+    throw error;
+  }
+  return typeof data === "string" ? data : null;
+}
+
+/**
+ * Who of the group confirmed an announcement, and when (null: not yet), for
+ * its author and the moderators (`public.announcement_readers`); nobody for
+ * anyone else.
+ */
+export async function announcementReaders(
+  messageId: string,
+): Promise<{ person: string; ackedAt: string | null }[]> {
+  if (!isUuid(messageId)) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("announcement_readers", {
+    message: messageId.toLowerCase(),
+  });
+  if (error) {
+    if (isMissingFunction(error)) return [];
+    throw error;
+  }
+  return (data ?? []).map((row) => ({
+    person: row.person,
+    ackedAt: row.acked_at ?? null,
+  }));
+}
+
+/** Where a message goes: a conversation, or someone's private chat. */
+export type ChatTarget = { conversation: string } | { toPerson: string };
+
+const sentSchema = z.object({
+  conversation: z.string().refine(isUuid),
+  message: z.string().refine(isUuid),
+});
+
+/**
+ * Sends a message (`public.send_chat_message`), cleaned and checked first as
+ * the database checks it. `draft` is the browser's own id for it: sending the
+ * same draft again gives back the same message. Returns where it went.
+ */
+export async function sendChatMessage(
+  actorId: string,
+  businessId: string,
+  input: ChatTarget & { draft: string; words: string; announce?: boolean },
+  at?: Date,
+): Promise<ChatWrite<{ conversation: string; message: string }>> {
+  const message = checkMessage(input.words);
+  if (!message.ok || !isUuid(input.draft)) return refused("invalid");
+  const target =
+    "conversation" in input
+      ? isUuid(input.conversation)
+        ? { conversation: input.conversation.toLowerCase() }
+        : null
+      : isUuid(input.toPerson)
+        ? { to_person: input.toPerson.toLowerCase() }
+        : null;
+  if (!target) return refused("noAccess");
+  const { data, error } = await createAdminClient().rpc("send_chat_message", {
+    actor: actorId,
+    business: businessId,
+    draft: input.draft.toLowerCase(),
+    words: message.body,
+    announce: input.announce === true,
+    ...target,
+    ...atTime(at),
+  });
+  if (error) return refused(chatFailureOf(error));
+  const sent = sentSchema.safeParse(data);
+  return sent.success ? done(sent.data) : refused("failed");
+}
+
+/**
+ * The signed-in person read a conversation up to `upTo` (the newest message on
+ * their screen; everything until now when left out), which reads its line too
+ * once that covers the last message (`public.read_chat`). Called from a
+ * server action while the conversation is on screen, never while a page
+ * renders.
+ */
+export async function readChat(
+  actorId: string,
+  conversationId: string,
+  upTo?: string,
+  at?: Date,
+): Promise<ChatWrite<null>> {
+  if (!isUuid(conversationId)) return refused("noAccess");
+  if (upTo !== undefined && Number.isNaN(Date.parse(upTo))) {
+    return refused("invalid");
+  }
+  const { error } = await createAdminClient().rpc("read_chat", {
+    actor: actorId,
+    conversation: conversationId.toLowerCase(),
+    ...(upTo !== undefined ? { up_to: upTo } : {}),
+    ...atTime(at),
+  });
+  return error ? refused(chatFailureOf(error)) : done(null);
+}
+
+/** Mutes a conversation for its reader, or unmutes it (`public.mute_chat`). */
+export async function muteChat(
+  actorId: string,
+  conversationId: string,
+  mute: boolean,
+): Promise<ChatWrite<null>> {
+  if (!isUuid(conversationId)) return refused("noAccess");
+  const { error } = await createAdminClient().rpc("mute_chat", {
+    actor: actorId,
+    conversation: conversationId.toLowerCase(),
+    mute,
+  });
+  return error ? refused(chatFailureOf(error)) : done(null);
+}
+
+type MessageChange =
+  | "remove_chat_message"
+  | "restore_chat_message"
+  | "confirm_announcement";
+
+async function changeMessage(
+  change: MessageChange,
+  actorId: string,
+  messageId: string,
+  at?: Date,
+): Promise<ChatWrite<null>> {
+  if (!isUuid(messageId)) return refused("noAccess");
+  const { error } = await createAdminClient().rpc(change, {
+    actor: actorId,
+    message: messageId.toLowerCase(),
+    ...atTime(at),
+  });
+  return error ? refused(chatFailureOf(error)) : done(null);
+}
+
+/**
+ * Removes a message: one's own anywhere, someone else's in a group for a
+ * moderator. What it said waits 10 minutes for `restoreChatMessage`.
+ */
+export function removeChatMessage(
+  actorId: string,
+  messageId: string,
+  at?: Date,
+): Promise<ChatWrite<null>> {
+  return changeMessage("remove_chat_message", actorId, messageId, at);
+}
+
+/** Puts back a message its remover removed, within 10 minutes ("closed" after). */
+export function restoreChatMessage(
+  actorId: string,
+  messageId: string,
+  at?: Date,
+): Promise<ChatWrite<null>> {
+  return changeMessage("restore_chat_message", actorId, messageId, at);
+}
+
+/** "קראתי" on an announcement, which settles the person's own line. */
+export function confirmAnnouncement(
+  actorId: string,
+  messageId: string,
+  at?: Date,
+): Promise<ChatWrite<null>> {
+  return changeMessage("confirm_announcement", actorId, messageId, at);
+}
+
+/** Its author or a moderator pins an announcement, or unpins it. */
+export async function pinAnnouncement(
+  actorId: string,
+  messageId: string,
+  pin: boolean,
+  at?: Date,
+): Promise<ChatWrite<null>> {
+  if (!isUuid(messageId)) return refused("noAccess");
+  const { error } = await createAdminClient().rpc("pin_announcement", {
+    actor: actorId,
+    message: messageId.toLowerCase(),
+    pin,
+    ...atTime(at),
+  });
+  return error ? refused(chatFailureOf(error)) : done(null);
+}
+
+/**
+ * Whether the signed-in person has read chat's notice in the business, who
+ * sees what (`public.chat_notices`, their own row under RLS): the list shows
+ * it until they have. False before the migration reaches the project, so the
+ * notice is never skipped.
+ */
+export async function chatNoticeSeen(businessId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_notices")
+    .select("seen_at")
+    .eq("business_id", businessId)
+    .limit(1);
+  if (error) {
+    if (isMissingTable(error)) return false;
+    throw error;
+  }
+  return (data ?? []).length > 0;
+}
+
+/**
+ * The person read chat's notice in the business (`public.see_chat_notice`):
+ * kept once. "noAccess" off the staff, "closed" while chat is off.
+ */
+export async function seeChatNotice(
+  actorId: string,
+  businessId: string,
+): Promise<ChatWrite<null>> {
+  const { error } = await createAdminClient().rpc("see_chat_notice", {
+    actor: actorId,
+    business: businessId,
+  });
+  return error ? refused(chatFailureOf(error)) : done(null);
+}

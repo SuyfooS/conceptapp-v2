@@ -1,4 +1,5 @@
 import type { AdminBusiness } from "@db/admin";
+import type { StorageUse } from "@db/chat-files";
 import { TEMPLATE_KEYS, type TemplateKey } from "@domain/templates";
 import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
@@ -11,7 +12,9 @@ import { PersonList, PersonRow } from "@ui/person-row";
 import { ChevronRight, Plus, Store } from "lucide-react";
 import Link from "next/link";
 import { getFormatter, getTranslations } from "next-intl/server";
+import { type SignOutAction, SignOutForm } from "@/app/sign-out-form";
 import { BusinessMark } from "../business-mark";
+import { StorageCard } from "./storage-card";
 
 type Labels = Awaited<ReturnType<typeof labelsFor>>;
 
@@ -38,8 +41,9 @@ async function labelsFor() {
  * The console's first screen: every business, in its own colour, with what
  * needs attention (open invites) visible at a glance, each leading to its
  * checklist. Phone: a grouped list; tablet: a grid of cards; desktop: a table
- * with every column. The account and the way out close the page. Also rendered
- * with mock data on /design/console.
+ * with every column. Then how full the free plan is (StorageCard: sizes
+ * only), and the account and the way out close the page. Also rendered with
+ * mock data on /design/console.
  */
 export async function BusinessesView({
   businesses,
@@ -47,14 +51,17 @@ export async function BusinessesView({
   basePath,
   account,
   signOut,
+  storage = null,
 }: {
   businesses: AdminBusiness[];
+  /** How full the project is (`getStorageUse`); null before C4's migration. */
+  storage?: StorageUse | null;
   canCreate: boolean;
   /** Where the console lives: "/admin", or the design demo's own place. */
   basePath: string;
   account: { name: string; role: string };
   /** `signOut`, or the design demo's stand-in. */
-  signOut: () => Promise<void>;
+  signOut: SignOutAction;
 }) {
   const [labels, ta] = await Promise.all([
     labelsFor(),
@@ -107,6 +114,14 @@ export async function BusinessesView({
           </div>
         </>
       )}
+      {storage ? (
+        <StorageCard
+          use={storage}
+          accents={
+            new Map(businesses.map((b) => [b.id.toLowerCase(), b.accent]))
+          }
+        />
+      ) : null}
       <PageSection title={ta("title")} className="md:max-w-xl">
         <PersonList>
           <PersonRow
@@ -114,11 +129,11 @@ export async function BusinessesView({
             title={account.name}
             subtitle={account.role}
             trailing={
-              <form action={signOut}>
+              <SignOutForm action={signOut}>
                 <Button type="submit" variant="secondary">
                   {ta("signOut")}
                 </Button>
-              </form>
+              </SignOutForm>
             }
           />
         </PersonList>

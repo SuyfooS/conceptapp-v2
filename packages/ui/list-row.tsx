@@ -19,17 +19,33 @@ type Content = {
   className?: string;
 };
 
+/** What only a row that sends its form has. */
+type NoSubmit = { submit?: never; name?: never; value?: never };
+
 export type ListRowProps = Content &
   (
-    | { href: string; onClick?: never; disabled?: never }
-    | {
+    | ({ href: string; onClick?: never; disabled?: never } & NoSubmit)
+    | ({
         /** Gets the click, whose `currentTarget` is the row, to focus later. */
         onClick: (event: MouseEvent<HTMLButtonElement>) => void;
         /** Dimmed, and it takes no press, for as long as it can't help. */
         disabled?: boolean;
         href?: never;
+      } & NoSubmit)
+    | {
+        /**
+         * Sends the form it is in, with `name` and `value` when given: a row
+         * that works before the page's script has loaded, as a server
+         * action's form does.
+         */
+        submit: true;
+        name?: string;
+        value?: string;
+        disabled?: boolean;
+        href?: never;
+        onClick?: never;
       }
-    | { href?: never; onClick?: never; disabled?: never }
+    | ({ href?: never; onClick?: never; disabled?: never } & NoSubmit)
   );
 
 const base =
@@ -48,11 +64,15 @@ export function ListRow({
   trailing,
   href,
   onClick,
+  submit,
+  name,
+  value,
   disabled = false,
   current = false,
   className,
 }: ListRowProps) {
-  const interactive = href !== undefined || onClick !== undefined;
+  const interactive =
+    href !== undefined || onClick !== undefined || submit === true;
   // The separator starts at the text, as in a grouped list; the current row
   // has its bar.
   const row = cn(
@@ -93,6 +113,24 @@ export function ListRow({
       >
         {content}
       </Link>
+    );
+  }
+  if (submit) {
+    return (
+      <button
+        type="submit"
+        name={name}
+        value={value}
+        disabled={disabled}
+        aria-current={ariaCurrent}
+        className={cn(
+          row,
+          disabled ? "opacity-50" : interactiveClass,
+          className,
+        )}
+      >
+        {content}
+      </button>
     );
   }
   if (onClick) {

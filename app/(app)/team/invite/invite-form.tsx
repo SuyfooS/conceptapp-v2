@@ -1,7 +1,13 @@
 "use client";
 
 import type { Role } from "@domain/modules";
-import { TEAM_NAME_MAX } from "@domain/team";
+import { type NamedRole, namedRoleName } from "@domain/role-access";
+import {
+  type InviteChoice,
+  type RoleChoice,
+  roleChoiceKey,
+  TEAM_NAME_MAX,
+} from "@domain/team";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceList, ChoiceRow } from "@ui/choice-row";
@@ -11,7 +17,7 @@ import { FloatingAction, floatingButtonClass } from "@ui/floating-action";
 import { PersonAvatar } from "@ui/person-row";
 import { Send, Smartphone } from "lucide-react";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useActionState, useState } from "react";
 import { CopyLink } from "@/app/copy-link";
 import type { InviteState } from "../actions";
@@ -21,10 +27,16 @@ const initial: InviteState = {};
 /**
  * Invite someone by phone: name, mobile and role, then the link to send
  * on. `roles` are the ones the signed-in person may give, most senior
- * first; the default is the last (worker), the usual case.
+ * first, each role the business named after the role it is built on (the
+ * roles plan's R11b), by its name with its base under it; the default is a
+ * worker, the usual case. A role only an owner gives (`blocked`: it holds
+ * pay, or a named role holding more than they do) is shown, not offered,
+ * with why, as the role sheet on a person's page shows it.
  */
 type InviteFormProps = {
-  roles: readonly Role[];
+  roles: readonly InviteChoice[];
+  /** The names of the business's named roles among `roles`; none by default. */
+  namedRoles?: readonly NamedRole[];
   /** Where "back" goes once the link is ready: the team, or the console's business. */
   back: { href: string; label: string };
   /** The role picked to start with; a worker otherwise, when `roles` has one. */
@@ -43,6 +55,7 @@ export function InviteForm(props: InviteFormProps) {
 
 function InviteRound({
   roles,
+  namedRoles = [],
   back,
   defaultRole: startRole,
   invite,
@@ -51,6 +64,10 @@ function InviteRound({
   const t = useTranslations("app.team.invite");
   const tr = useTranslations("app.team.roles");
   const tl = useTranslations("app.team.link");
+  const tc = useTranslations("app.team.changes");
+  const locale = useLocale();
+  const namedOf = (choice: RoleChoice) =>
+    namedRoles.find((role) => role.id === choice.namedRole) ?? null;
   const [state, action, pending] = useActionState(invite, initial);
   const values = state.done ? undefined : state.values;
   // The avatar fills in as the name is typed, as it will look in the team.
@@ -93,11 +110,13 @@ function InviteRound({
   }
 
   const errors = state.errors ?? {};
+  // Only a role offered starts chosen.
+  const keys = roles.filter((choice) => !choice.blocked).map(roleChoiceKey);
   // A worker, never "the last role": an owner's list ends with an accountant.
   const defaultRole =
     values?.role ||
     startRole ||
-    (roles.includes("worker") ? "worker" : roles[roles.length - 1]);
+    (keys.includes("worker") ? "worker" : keys[keys.length - 1]);
 
   return (
     <form
@@ -138,16 +157,29 @@ function InviteRound({
         error={errors.role ? t(`errors.role.${errors.role}`) : undefined}
         className="md:row-span-2"
       >
-        {roles.map((role) => (
-          <ChoiceRow
-            key={role}
-            name="role"
-            value={role}
-            defaultChecked={role === defaultRole}
-            title={tr(role)}
-            hint={t(`roleHint.${role}`)}
-          />
-        ))}
+        {roles.map((choice) => {
+          const key = roleChoiceKey(choice);
+          const named = namedOf(choice);
+          return (
+            <ChoiceRow
+              key={key}
+              name="role"
+              value={key}
+              defaultChecked={!choice.blocked && key === defaultRole}
+              disabled={Boolean(choice.blocked)}
+              title={named ? namedRoleName(named, locale) : tr(choice.role)}
+              hint={
+                choice.blocked === "pay"
+                  ? tc("payHint")
+                  : choice.blocked === "held"
+                    ? tc("heldHint")
+                    : named
+                      ? t("namedHint", { role: tr(choice.role) })
+                      : t(`roleHint.${choice.role}`)
+              }
+            />
+          );
+        })}
       </ChoiceList>
       {state.failure ? (
         <p role="alert" className="px-1 text-danger md:col-start-1">

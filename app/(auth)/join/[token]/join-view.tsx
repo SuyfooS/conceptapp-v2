@@ -2,6 +2,7 @@ import { accentTokens } from "@domain/color";
 import { phoneEnding } from "@domain/invites";
 import type { Role } from "@domain/modules";
 import { signInPath } from "@domain/passive-sign-in";
+import { namedRoleName } from "@domain/role-access";
 import { accentProps } from "@ui/accent";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
@@ -10,7 +11,7 @@ import { EmptyState } from "@ui/empty-state";
 import { glowClass } from "@ui/page-glow";
 import { CircleCheck, Link2Off } from "lucide-react";
 import Link from "next/link";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
 import type { ComponentProps } from "react";
 import { CenteredScreen } from "@/app/centered-screen";
 import { JoinForm } from "./join-form";
@@ -18,6 +19,8 @@ import { JoinForm } from "./join-form";
 type OpenInvite = {
   phone: string;
   role: Role;
+  /** The role the business named that it gives, by its names (R11b); none for the role itself. */
+  namedRole?: { name: string; nameEn: string | null } | null;
   name: string | null;
   business: { name: string; accent: string };
 };
@@ -36,7 +39,10 @@ export async function JoinView({
   join: ComponentProps<typeof JoinForm>["join"];
 }) {
   const t = await getTranslations("auth.join");
-  const role = t(`roles.${invite.role}`);
+  // A role the business named, by its own name (the roles plan's R11b).
+  const role = invite.namedRole
+    ? namedRoleName(invite.namedRole, await getLocale())
+    : t(`roles.${invite.role}`);
   return (
     <main
       className={cn(

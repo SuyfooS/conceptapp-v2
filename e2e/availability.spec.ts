@@ -119,7 +119,13 @@ test("a worker sends next week's availability around Shabbat", async ({
   await expect(
     saturday.getByText(before(ta.errors.ranges.saturday)),
   ).toBeVisible();
-  await saturday.getByLabel(ta.start).fill("19:30");
+  // Havdalah moves with the season (about 17:30 in winter, past 20:30 in
+  // summer), so the hour comes from the sheet, never a fixed time.
+  const havdalah = /\d{2}:\d{2}/.exec(
+    (await saturday.getByText(before(ta.havdalah)).textContent()) ?? "",
+  )?.[0];
+  if (!havdalah) throw new Error("no havdalah time on Saturday's sheet");
+  await saturday.getByLabel(ta.start).fill(havdalah);
   await finishSheet(saturday);
 
   await writeNote(page, "מבחן ביום שלישי");
@@ -131,7 +137,7 @@ test("a worker sends next week's availability around Shabbat", async ({
   expect(await availabilityOf(WORKER.e164)).toEqual([
     { weekday: 0, start: "09:00", end: "17:00", note: "מבחן ביום שלישי" },
     { weekday: 5, start: "08:00", end: "12:00", note: "מבחן ביום שלישי" },
-    { weekday: 6, start: "19:30", end: "23:30", note: "מבחן ביום שלישי" },
+    { weekday: 6, start: havdalah, end: "23:30", note: "מבחן ביום שלישי" },
   ]);
   await expectCleanPage(page);
   await page.screenshot({

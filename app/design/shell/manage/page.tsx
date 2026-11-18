@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import {
   modulesToManage,
   shabbatCityState,
@@ -7,17 +8,40 @@ import { baseWording } from "../../../(app)/wording";
 import { demoBusinessDetails, demoModuleRows } from "../data";
 import { demoDepartments } from "../lists/data";
 
-// The real management page, with the demo's modules.
-export default function ShellManage() {
+type Props = { searchParams: Promise<{ state?: string }> };
+
+// The real management page, with the demo's modules, and the owner's row to
+// the roles screen's twin (roles plan R0), beside who sees pay, as the app
+// has it since R9.
+// `?state=view` is someone at view here (R7): a worker raised to see the
+// management page without changing it, with the line that says so, and no
+// rows to the team, the roles or pay, which aren't theirs. `?state=noTeam`
+// is a manager lowered to team none (R6): no row to the team, and, as for
+// every manager, none to the roles or pay, which are the owner's.
+export default function ShellManage({ searchParams }: Props) {
+  return (
+    <Suspense>
+      <Demo searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function Demo({ searchParams }: Props) {
+  const { state } = await searchParams;
+  const readOnly = state === "view";
+  // The rows to the roles and to pay are the owner's alone, as the app has them.
+  const owner = !readOnly && state !== "noTeam";
   return (
     <ManageView
       modules={modulesToManage(demoModuleRows)}
       base="/design/shell"
       home="/design/shell"
-      team="/design/shell/team"
+      team={readOnly || state === "noTeam" ? null : "/design/shell/team"}
       shabbatCity={shabbatCityState(demoModuleRows, demoBusinessDetails)}
       departments={demoDepartments.map((d) => d.name)}
-      payAccess
+      payAccess={owner}
+      roles={owner}
+      readOnly={readOnly}
       wording={baseWording}
     />
   );

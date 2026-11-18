@@ -1,12 +1,21 @@
 import "server-only";
-import { type ShiftSwap, type SwapFailure, swapFailureOf } from "@domain/swaps";
+import {
+  type EndedSwap,
+  endedSwapOf,
+  type ShiftSwap,
+  type SwapFailure,
+  swapFailureOf,
+} from "@domain/swaps";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
 /**
  * A business's live shift swaps (open, or taken and waiting for a
  * manager), as the signed-in person may read them (RLS: active members of
- * the business, and "view as").
+ * the business, and "view as"). A live one always has its shift
+ * (`shift_swaps_live_shift`, 20261115000200_swap_history.sql); only a
+ * request no longer waiting outlives its shift, and `getEndedSwaps` reads
+ * those.
  */
 export async function getLiveSwaps(businessId: string): Promise<ShiftSwap[]> {
   const supabase = await createClient();
@@ -18,7 +27,7 @@ export async function getLiveSwaps(businessId: string): Promise<ShiftSwap[]> {
     .order("created_at");
   if (error) throw error;
   return data.flatMap((row) =>
-    row.status === "open" || row.status === "taken"
+    (row.status === "open" || row.status === "taken") && row.shift_id
       ? [
           {
             id: row.id,
@@ -30,6 +39,35 @@ export async function getLiveSwaps(businessId: string): Promise<ShiftSwap[]> {
         ]
       : [],
   );
+}
+
+/**
+ * The business's swap requests that no longer wait (approved, declined, or
+ * cancelled, with why), on shifts from `fromDay` on by the shift each asked
+ * for (`shift_swaps.shift`, which outlives the shift), as the signed-in
+ * person may read them (RLS: its staff, and "view as"). Newest first, at
+ * most 200.
+ */
+export async function getEndedSwaps(
+  businessId: string,
+  fromDay: string,
+): Promise<EndedSwap[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("shift_swaps")
+    .select(
+      "id, shift_id, shift, requested_by, taken_by, status, cancelled_because, decided_by, created_at",
+    )
+    .eq("business_id", businessId)
+    .in("status", ["approved", "declined", "cancelled"])
+    .gte("shift->>day", fromDay)
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return data.flatMap((row) => {
+    const swap = endedSwapOf(row);
+    return swap ? [swap] : [];
+  });
 }
 
 export type SwapResult = { ok: true } | { ok: false; failure: SwapFailure };

@@ -1,15 +1,21 @@
+import { formatShekels, moneyLocale } from "@domain/money";
 import type { PayDay } from "@domain/pay-month";
+import { hasEstimate } from "@domain/pay-rates";
+import type { ShiftRecord } from "@domain/time-clock";
 import { addMonths } from "@domain/time-clock-format";
+import type { MonthWage, WageSpan } from "@domain/wages";
+import { Badge } from "@ui/badge";
 import { Card } from "@ui/card";
 import { cn } from "@ui/cn";
 import { type DataColumn, DataTable } from "@ui/data-table";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { useFormatter } from "next-intl";
-import type { ReactNode } from "react";
+import { useFormatter, useLocale } from "next-intl";
+import { Fragment, type ReactNode } from "react";
 import type { Translator } from "../../wording";
 import { MonthLink } from "../month-hero";
+import { cancelLine } from "../shift-list";
 import type { BeforePayroll, PayPerson } from "./pay-types";
 
 /*
@@ -30,6 +36,92 @@ export function useHoursText(): (minutes: number) => string {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
+}
+
+/** Agorot as shekels with two decimals, as the screen's language writes them: "38.00 ₪". */
+export function useShekels(): (agorot: number) => string {
+  const locale = moneyLocale(useLocale());
+  return (agorot) => formatShekels(agorot, locale);
+}
+
+/** A day in full, `YYYY-MM-DD` as "1.11.2026". */
+export function useFullDate(): (date: string) => string {
+  const format = useFormatter();
+  return (date) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      day: "numeric",
+      month: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+}
+
+/** A day of the month, `YYYY-MM-DD` as "15.10". */
+export function useShortDate(): (date: string) => string {
+  const format = useFormatter();
+  return (date) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      day: "numeric",
+      month: "numeric",
+      timeZone: "UTC",
+    });
+}
+
+/** A day's month and year, `YYYY-MM-DD` as "4.2027": how long someone is a minor. */
+export function useMonthYear(): (date: string) => string {
+  const format = useFormatter();
+  return (date) =>
+    format.dateTime(new Date(`${date}T12:00:00Z`), {
+      month: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+}
+
+/** A stretch that runs from the month's first day stands for the whole month. */
+const fromFirst = (span: WageSpan) => span.since.endsWith("-01");
+
+/**
+ * A month's wages in words: "38.00 ₪ לשעה", then each change, "מ-15.10:
+ * 38.00 ₪". Null when the month has none.
+ */
+export function WageSpans({
+  wage,
+  t,
+}: {
+  wage: MonthWage | null;
+  t: PayT;
+}): ReactNode {
+  const shekels = useShekels();
+  const date = useShortDate();
+  if (!wage || wage.spans.length === 0) return null;
+  return wage.spans.map((span, index) => (
+    <Fragment key={span.since}>
+      {index > 0 ? " · " : null}
+      {index === 0 && fromFirst(span)
+        ? t.rich("wage.perHour", { ltr, amount: shekels(span.agorot) })
+        : t.rich("wage.spanFrom", {
+            ltr,
+            amount: shekels(span.agorot),
+            date: date(span.since),
+          })}
+    </Fragment>
+  ));
+}
+
+/** What a month's shifts lack: no wage at all, or none before the first one starts. */
+export function MissingWage({
+  wage,
+  t,
+}: {
+  wage: MonthWage | null;
+  t: PayT;
+}): ReactNode {
+  const date = useShortDate();
+  if (!wage?.missing) return null;
+  return wage.missing.since
+    ? t.rich("wage.missingBefore", { ltr, date: date(wage.missing.since) })
+    : t("wage.missing");
 }
 
 /** A month's name with its year: "אוקטובר 2026". */
@@ -54,6 +146,7 @@ export function PayHero({
   hrefFor,
   minutes,
   caption,
+  estimate,
   t,
   overlap = false,
 }: {
@@ -62,6 +155,8 @@ export function PayHero({
   hrefFor: (month: string) => string;
   minutes: number;
   caption: ReactNode;
+  /** The month's estimate before tax, under the caption (payroll P7). */
+  estimate?: ReactNode;
   t: PayT;
   overlap?: boolean;
 }) {
@@ -104,9 +199,35 @@ export function PayHero({
           })}
         </span>
         <span className="text-base">{caption}</span>
+        {estimate ? (
+          <span className="mt-1 block text-base">{estimate}</span>
+        ) : null}
       </p>
     </Card>
   );
+}
+
+/**
+ * The line under a month's hours, on the pay screens and the accountant's
+ * Home: who has hours, then what there is to check (shifts waiting or open,
+ * and the hours engine's remarks), each when there is some. "אין מה לבדוק"
+ * only when there is neither.
+ */
+export function payCaption(
+  t: PayT,
+  counts: { people: number; shifts: number; remarks: number },
+): string {
+  const parts = [t("captionParts.people", { count: counts.people })];
+  if (counts.shifts > 0) {
+    parts.push(t("captionParts.shifts", { count: counts.shifts }));
+  }
+  if (counts.remarks > 0) {
+    parts.push(t("captionParts.remarks", { count: counts.remarks }));
+  }
+  if (counts.people > 0 && counts.shifts === 0 && counts.remarks === 0) {
+    parts.push(t("captionParts.nothing"));
+  }
+  return parts.join(" · ");
 }
 
 /** What waits before paying the month: the screen's one accent card, when anything does. */
@@ -114,11 +235,23 @@ export function BeforePayrollCard({
   before,
   t,
   fixHref,
+  noWageHref,
+  noNumberHref,
+  remarks = [],
 }: {
   before: BeforePayroll;
   t: PayT;
+  /**
+   * What the hours engine asks to check (payroll P7), each a line in words
+   * with whose it is, already drawn.
+   */
+  remarks?: readonly { key: string; line: ReactNode }[];
   /** Where hours are fixed and approved, for those who do it. */
   fixHref: string | null;
+  /** The month's list of those without a wage; null when it is on screen. */
+  noWageHref: string | null;
+  /** The month's list of those without a payroll number; null when it is on screen. */
+  noNumberHref: string | null;
 }) {
   const lines = [
     before.ownerOnly > 0
@@ -131,10 +264,35 @@ export function BeforePayrollCard({
     before.corrected > 0
       ? t("beforePayroll.corrected", { count: before.corrected })
       : null,
+    before.noWage > 0
+      ? t("beforePayroll.noWage", { count: before.noWage })
+      : null,
+    before.noNumber > 0
+      ? t("beforePayroll.noNumber", { count: before.noNumber })
+      : null,
+    // The screens' words for P6's `roundingIgnored` note, whose own words
+    // (`modules.time_clock.payroll.notes`) wait for P8's file: change both.
     before.rounding ? t("beforePayroll.rounding") : null,
   ].filter((line): line is string => line !== null);
-  if (lines.length === 0) return null;
+  if (lines.length === 0 && remarks.length === 0) return null;
   const waits = before.ownerOnly + before.waiting + before.open > 0;
+  const links = [
+    fixHref && waits
+      ? { key: "fix", href: fixHref, text: t("beforePayroll.fix") }
+      : null,
+    noWageHref && before.noWage > 0
+      ? { key: "noWage", href: noWageHref, text: t("beforePayroll.showNoWage") }
+      : null,
+    noNumberHref && before.noNumber > 0
+      ? {
+          key: "noNumber",
+          href: noNumberHref,
+          text: t("beforePayroll.showNoNumber"),
+        }
+      : null,
+  ].filter((one) => one !== null);
+  const link =
+    "inline-flex min-h-11 items-center self-start font-semibold text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent";
   return (
     <Card tone="accent" padding="lg" className="flex flex-col gap-2">
       <h2 className="font-semibold text-ink text-md">
@@ -144,23 +302,44 @@ export function BeforePayrollCard({
         {lines.map((line) => (
           <li key={line}>{line}</li>
         ))}
+        {remarks.map((remark) => (
+          <li key={remark.key}>{remark.line}</li>
+        ))}
       </ul>
-      {fixHref && waits ? (
-        <Link
-          href={fixHref}
-          className="mt-1 inline-flex min-h-11 items-center self-start font-semibold text-ink underline underline-offset-4 focus-visible:outline-2 focus-visible:outline-accent"
-        >
-          {t("beforePayroll.fix")}
-        </Link>
+      {links.length > 0 ? (
+        <div className="mt-1 flex flex-wrap gap-x-5">
+          {links.map((one) => (
+            <Link key={one.key} href={one.href} className={link}>
+              {one.text}
+            </Link>
+          ))}
+        </div>
       ) : null}
     </Card>
   );
 }
 
-/** A person's line in the month's list: hours and days, and what to check. */
-export function PersonLine({ person, t }: { person: PayPerson; t: PayT }) {
+/**
+ * A person's line in the month's list: hours and days, with their estimate
+ * while the business shows amounts and the month has something to estimate
+ * (payroll P7), their wage, and what to check.
+ */
+export function PersonLine({
+  person,
+  t,
+  amounts = false,
+}: {
+  person: PayPerson;
+  t: PayT;
+  amounts?: boolean;
+}) {
   const hours = useHoursText();
+  const shekels = useShekels();
   const check = person.totals.waiting + person.totals.open;
+  const estimate =
+    amounts && person.rates && hasEstimate(person.rates)
+      ? person.rates.estimateAgorot
+      : null;
   return (
     <>
       <span className="block">
@@ -169,7 +348,18 @@ export function PersonLine({ person, t }: { person: PayPerson; t: PayT }) {
           hours: hours(person.totals.minutes),
           days: person.totals.days,
         })}
+        {estimate !== null ? (
+          <>
+            {" · "}
+            {t.rich("estimate.row", { ltr, amount: shekels(estimate) })}
+          </>
+        ) : null}
       </span>
+      {person.wage && person.wage.spans.length > 0 ? (
+        <span className="block">
+          <WageSpans wage={person.wage} t={t} />
+        </span>
+      ) : null}
       <PersonFlags person={person} t={t} check={check} />
     </>
   );
@@ -184,16 +374,38 @@ function PersonFlags({
   t: PayT;
   check: number;
 }) {
-  const flags = [
-    person.former ? t("former", { form: person.form }) : null,
-    person.totals.corrected > 0
-      ? t("corrected", { count: person.totals.corrected })
+  const flags: { key: string; text: ReactNode }[] = [
+    person.former
+      ? { key: "former", text: t("former", { form: person.form }) }
       : null,
-    check > 0 ? t("toCheck", { count: check }) : null,
-  ].filter((flag): flag is string => flag !== null);
+    person.wage?.missing
+      ? { key: "wage", text: <MissingWage wage={person.wage} t={t} /> }
+      : null,
+    person.noNumber ? { key: "number", text: t("numberMissing") } : null,
+    person.totals.corrected > 0
+      ? {
+          key: "corrected",
+          text: t("corrected", { count: person.totals.corrected }),
+        }
+      : null,
+    check > 0 ? { key: "check", text: t("toCheck", { count: check }) } : null,
+    person.rates && person.rates.toCheck > 0
+      ? {
+          key: "remarks",
+          text: t("remarks.count", { count: person.rates.toCheck }),
+        }
+      : null,
+  ].filter((flag) => flag !== null);
   if (flags.length === 0) return null;
   return (
-    <span className="block font-medium text-warning">{flags.join(" · ")}</span>
+    <span className="block font-medium text-warning">
+      {flags.map((flag, index) => (
+        <Fragment key={flag.key}>
+          {index > 0 ? " · " : null}
+          <span>{flag.text}</span>
+        </Fragment>
+      ))}
+    </span>
   );
 }
 
@@ -235,15 +447,57 @@ function originalLine(day: PayDay, t: PayT): ReactNode {
     : t.rich("day.originalOpen", { ltr, in: day.original.in });
 }
 
-/** One person's shifts of a month, oldest first, one row each. */
+/**
+ * A person's cancelled shifts of a month, oldest first, one row each, as the
+ * days list them: the day and its times, "בוטלה", and who cancelled it, when
+ * and why, in the shift history's words (`th`). They count in no total and
+ * no file; the same list on every screen size.
+ */
+export function CancelledShifts({
+  shifts,
+  th,
+}: {
+  shifts: readonly ShiftRecord[];
+  th: Translator<"app.clock.history">;
+}) {
+  const dayName = useDayName();
+  return (
+    <ListGroup>
+      {shifts.map((shift) => (
+        <ListRow
+          key={shift.id}
+          title={
+            <span className="flex flex-wrap items-baseline justify-between gap-x-3">
+              <span>{dayName(shift.date)}</span>
+              <span className="font-normal text-ink-2">
+                {shift.out
+                  ? th.rich("times", { ltr, in: shift.in, out: shift.out })
+                  : th.rich("since", { ltr, in: shift.in })}
+              </span>
+            </span>
+          }
+          subtitle={cancelLine(shift, th)}
+          trailing={<Badge>{th("cancelled")}</Badge>}
+        />
+      ))}
+    </ListGroup>
+  );
+}
+
+/**
+ * One person's shifts of a month, oldest first, one row each. `extra` adds
+ * lines under a shift: the hours engine's split, tags and remarks (P7).
+ */
 export function PayDayList({
   days,
   t,
   className,
+  extra,
 }: {
   days: readonly PayDay[];
   t: PayT;
   className?: string;
+  extra?: (day: PayDay) => ReactNode;
 }) {
   const hours = useHoursText();
   const dayName = useDayName();
@@ -281,6 +535,7 @@ export function PayDayList({
                 ) : null}
                 {fix ? <span className="block">{fix}</span> : null}
                 {before ? <span className="block">{before}</span> : null}
+                {extra?.(day)}
               </>
             }
           />
@@ -298,10 +553,15 @@ export function PayDayTable({
   days,
   t,
   caption,
+  extraColumns = [],
+  extraCells,
 }: {
   days: readonly PayDay[];
   t: PayT;
   caption: string;
+  /** The hours engine's columns, after the net hours (payroll P7). */
+  extraColumns?: readonly DataColumn[];
+  extraCells?: (day: PayDay) => Record<string, ReactNode>;
 }) {
   const hours = useHoursText();
   const format = useFormatter();
@@ -323,6 +583,7 @@ export function PayDayTable({
     { key: "out", label: t("dayColumns.out"), numeric: true },
     { key: "breaks", label: t("dayColumns.breaks"), align: "end" },
     { key: "net", label: t("dayColumns.net"), align: "end", numeric: true },
+    ...extraColumns,
     { key: "source", label: t("dayColumns.source") },
     { key: "correction", label: t("dayColumns.correction") },
   ];
@@ -333,6 +594,7 @@ export function PayDayTable({
       rows={days.map((day) => ({
         key: day.id,
         cells: {
+          ...extraCells?.(day),
           date: date(day.date),
           weekday: weekday(day.date),
           in: day.in,
@@ -374,14 +636,38 @@ export function PayDayTable({
 export const personHref = (pay: string, userId: string, month: string) =>
   `${pay}/${userId}?month=${month}`;
 
-/** The columns of the month's table, in payroll's order. */
-export function payMonthColumns(t: PayT): DataColumn[] {
+/**
+ * The columns of the month's table, in payroll's order: who, their number,
+ * days and hours, the hours at each rate (`rates`, payroll P7), night shifts
+ * and unpaid breaks, the wage, the estimate while the business shows amounts,
+ * then what the list on a phone and a tablet says too: shifts corrected,
+ * shifts to check (waiting or open) and the hours engine's things to check,
+ * each on its own.
+ */
+export function payMonthColumns(
+  t: PayT,
+  rates: readonly DataColumn[],
+  amounts: boolean,
+): DataColumn[] {
   return [
     { key: "name", label: t("columns.name") },
+    { key: "number", label: t("columns.number"), numeric: true },
     { key: "days", label: t("columns.days"), align: "end", numeric: true },
     { key: "hours", label: t("columns.hours"), align: "end", numeric: true },
-    { key: "shifts", label: t("columns.shifts"), align: "end", numeric: true },
+    ...rates,
+    { key: "nights", label: t("columns.nights"), align: "end", numeric: true },
     { key: "breaks", label: t("columns.breaks"), align: "end" },
+    { key: "wage", label: t("columns.wage"), align: "end" },
+    ...(amounts
+      ? [
+          {
+            key: "estimate",
+            label: t("columns.estimate"),
+            align: "end" as const,
+            numeric: true,
+          },
+        ]
+      : []),
     {
       key: "corrected",
       label: t("columns.corrected"),
@@ -389,14 +675,14 @@ export function payMonthColumns(t: PayT): DataColumn[] {
       numeric: true,
     },
     {
-      key: "waiting",
-      label: t("columns.waiting"),
+      key: "toCheck",
+      label: t("columns.toCheck"),
       align: "end",
       numeric: true,
     },
     {
-      key: "toCheck",
-      label: t("columns.toCheck"),
+      key: "remarks",
+      label: t("columns.remarks"),
       align: "end",
       numeric: true,
     },

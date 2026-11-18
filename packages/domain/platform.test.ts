@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PLATFORM_ACTIONS, platformCan } from "./platform";
+import {
+  consolePayAccess,
+  consoleRolesAccess,
+  PLATFORM_ACTIONS,
+  PLATFORM_ROLES,
+  platformCan,
+} from "./platform";
 
 describe("platformCan", () => {
   it("lets a platform admin do everything", () => {
@@ -29,5 +35,29 @@ describe("platformCan", () => {
     for (const action of PLATFORM_ACTIONS) {
       expect(platformCan(null, action)).toBe(false);
     }
+  });
+});
+
+describe("consolePayAccess", () => {
+  it("lets every role that invites people change who sees pay", () => {
+    // Inviting an accountant, who always sees pay, is already theirs.
+    for (const role of ["platform_admin", "onboarder"] as const) {
+      expect(platformCan(role, "staff.invite")).toBe(true);
+      expect(consolePayAccess(role)).toBe("change");
+    }
+  });
+
+  it("gives nothing to someone off the team", () => {
+    expect(consolePayAccess(null)).toBeNull();
+  });
+});
+
+describe("consoleRolesAccess", () => {
+  it("is gated as who sees pay: every role that invites people changes it", () => {
+    for (const role of [...PLATFORM_ROLES, null]) {
+      expect(consoleRolesAccess(role)).toBe(consolePayAccess(role));
+    }
+    expect(consoleRolesAccess("onboarder")).toBe("change");
+    expect(consoleRolesAccess(null)).toBeNull();
   });
 });

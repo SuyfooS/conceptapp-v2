@@ -12,7 +12,9 @@ export const manifest = defineManifest({
     order: 30,
   },
   homeWidget: { minRole: "worker" },
-  permissions: [{ key: "reservations.edit", defaultRole: "worker" }],
+  permissions: [
+    { key: "reservations.edit", area: "reservations", defaultRole: "worker" },
+  ],
   // Nothing reads these yet: no screen offers them until the module is built.
   settings: z.object({
     /** Bookable start times are this many minutes apart. */

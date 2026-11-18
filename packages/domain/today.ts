@@ -136,16 +136,25 @@ export function availabilityStatus(week: {
 export type TodayTile =
   | { key: "availability"; status: AvailabilityStatus }
   | { key: "offers"; count: number }
+  /** Open places in this week's shifts still to start. */
+  | { key: "gapsThisWeek"; count: number }
+  /** Open places next week. */
   | { key: "gaps"; count: number }
   | { key: "missing"; count: number; late: boolean }
   | { key: "swaps"; count: number };
 
 /**
- * The tiles a person gets. Workers: their own availability and the shifts
- * they can take. Owners and managers: open places next week (when it has
- * shifts), who has not sent availability (until next week is published) and
- * swap requests. A manager works shifts too, so their own availability joins
- * while it is missing; owners do not owe one (`missingAvailability`).
+ * The tiles a person gets. Someone who doesn't build the schedule: their own
+ * availability and the shifts they can take. Whoever builds it (`team`: the
+ * holders of schedule.edit, owners and managers by default, the roles plan's
+ * R3): open places this week, first and only while there are any (Orel's
+ * answer 6 of 15 November 2026: what is nearer is more urgent), then open
+ * places next week (when it has shifts), who has not sent availability
+ * (until next week is published) and swap requests. Anyone but an owner works
+ * shifts too, so their own availability joins while it is missing; owners do
+ * not owe one (`missingAvailability`). A worker who builds keeps the shifts
+ * they can take while there are any, as every worker takes them (view is the
+ * floor, Orel's answer 1); a manager's tiles stay as they were.
  */
 export function todayTiles({
   role,
@@ -156,8 +165,13 @@ export function todayTiles({
   role: Role;
   availability: AvailabilityStatus;
   offers: number;
-  /** What an owner or manager reads; null for a worker. */
+  /** What someone who builds the schedule reads; null for anyone else. */
   team: {
+    /**
+     * People this week's shifts still to start need, once the week was
+     * built (`runningGaps`); 0 otherwise.
+     */
+    gapsThisWeek: number;
     /** People next week's shifts still need; null when it has no shifts. */
     gaps: number | null;
     /** Who has not sent availability; null once next week is published. */
@@ -171,6 +185,9 @@ export function todayTiles({
   if (!team) return [own, { key: "offers", count: offers }];
   const owes = availability === "due" || availability === "late";
   return [
+    ...(team.gapsThisWeek > 0
+      ? [{ key: "gapsThisWeek", count: team.gapsThisWeek } as const]
+      : []),
     ...(team.gaps === null ? [] : [{ key: "gaps", count: team.gaps } as const]),
     ...(team.missing === null
       ? []
@@ -182,7 +199,10 @@ export function todayTiles({
           } as const,
         ]),
     { key: "swaps", count: team.swaps },
-    ...(role === "manager" && owes ? [own] : []),
+    ...(role !== "owner" && owes ? [own] : []),
+    ...(role === "worker" && offers > 0
+      ? [{ key: "offers", count: offers } as const]
+      : []),
   ];
 }
 

@@ -1,15 +1,24 @@
 "use client";
 
+import { WEEKDAY_KEYS } from "@domain/availability-form";
 import { accentTokens } from "@domain/color";
 import { avatarHue } from "@domain/people";
 import { COVER_PRESETS, type CoverPreset } from "@domain/profile";
 import { punchPayload, spokenDigits } from "@domain/punch-code-format";
+import { type DateParts, EMPTY_DATE, parseTypedDate } from "@domain/typed-date";
 import { accentProps } from "@ui/accent";
 import { AccentPicker, AccentPreview } from "@ui/accent-picker";
 import { Ambient } from "@ui/ambient";
 import { Avatar, AvatarStack } from "@ui/avatar";
 import { AvatarPhotoPicker } from "@ui/avatar-photo-picker";
 import { Badge } from "@ui/badge";
+import {
+  type BusinessChoice,
+  BusinessList,
+  BusinessMark,
+  BusinessMenu,
+  BusinessSwitchRow,
+} from "@ui/business-switcher";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { ChecklistItem } from "@ui/checklist-item";
@@ -22,6 +31,8 @@ import { useCountUp } from "@ui/count-up";
 import { CoverChoices } from "@ui/cover-choices";
 import { CoverageBar } from "@ui/coverage-bar";
 import { DataTable } from "@ui/data-table";
+import { DateField } from "@ui/date-field";
+import { DayToggles } from "@ui/day-toggles";
 import { EmptyState } from "@ui/empty-state";
 import {
   FieldGroup,
@@ -43,9 +54,11 @@ import { PunchCircle } from "@ui/punch-circle";
 import { QrCode } from "@ui/qr-code";
 import { ScanCircle } from "@ui/scan-circle";
 import { Segmented } from "@ui/segmented";
+import { ShareSheet } from "@ui/share-sheet";
 import { Sheet } from "@ui/sheet";
 import { SkeletonBones } from "@ui/skeleton";
 import { StatusToast } from "@ui/status-toast";
+import { StepList, StepRow } from "@ui/step-list";
 import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
 import { ltrInputClass, TextArea, TextField } from "@ui/text-field";
@@ -59,6 +72,7 @@ import {
   Check,
   Fingerprint,
   ListChecks,
+  Lock,
   Plus,
   Save,
   ScanQrCode,
@@ -71,6 +85,10 @@ import { type ReactNode, useState } from "react";
 import { direction, type Locale } from "@/i18n/config";
 import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
+import { GalleryChat } from "./gallery-chat";
+import { GalleryFileField } from "./gallery-documents";
+import { GalleryOrderTaking } from "./gallery-order-taking";
+import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
 const ACCENTS = [
@@ -151,27 +169,113 @@ function GalleryBody({
   const t = useTranslations("design");
   const tDays = useTranslations("days");
   const tWeek = useTranslations("app.shifts.week");
+  const tBuild = useTranslations("app.build");
   const tCode = useTranslations("app.clock.code");
   const tClock = useTranslations("app.clock");
   const tMe = useTranslations("app.me");
   const tNav = useTranslations("app.nav");
   const tCover = useTranslations("ui.profileCover");
   const tList = useTranslations("app.lists.list");
+  const tTimes = useTranslations("app.lists.schedules");
+  const tPay = useTranslations("app.pay");
+  const tRoles = useTranslations("app.roles");
+  const tSteps = useTranslations("app.home.firstSteps");
+  const tSetup = useTranslations("admin.setup.checklist");
   const [ticked, setTicked] = useState(false);
+  // Items with a story (L6a), each as its story left it (they don't tick
+  // here, or their line would no longer match it), and the sheet that tells
+  // the one opened.
+  const [story, setStory] = useState<"ticked" | "unticked" | "fridge" | null>(
+    null,
+  );
+  const stories: Record<
+    "ticked" | "unticked" | "fridge",
+    { label: string; rows: { what: ReactNode; name: string; time: string }[] }
+  > = {
+    ticked: {
+      label: t("checklistCheck"),
+      rows: [
+        {
+          what: tList("history.checked"),
+          name: t("checklistWho"),
+          time: "07:42",
+        },
+        {
+          what: tList("history.unchecked"),
+          name: t("checklistOther"),
+          time: "09:10",
+        },
+        {
+          what: tList("history.checked"),
+          name: t("checklistOther"),
+          time: "11:02",
+        },
+      ],
+    },
+    unticked: {
+      label: t("checklistCheck"),
+      rows: [
+        {
+          what: tList("history.checked"),
+          name: t("checklistOther"),
+          time: "07:50",
+        },
+        {
+          what: tList("history.unchecked"),
+          name: t("checklistWho"),
+          time: "08:15",
+        },
+      ],
+    },
+    fridge: {
+      label: t("checklistNumber"),
+      rows: [
+        {
+          what: tList.rich("history.reading", {
+            value: "4 °C",
+            ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+          }),
+          name: t("checklistWho"),
+          time: "07:42",
+        },
+        {
+          what: tList.rich("history.readingChanged", {
+            from: "4 °C",
+            to: "6 °C",
+            ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+          }),
+          name: t("checklistOther"),
+          time: "11:02",
+        },
+        {
+          what: tList("history.comment", { comment: t("checklistComment") }),
+          name: t("checklistOther"),
+          time: "11:20",
+        },
+      ],
+    },
+  };
+  const [ordered, setOrdered] = useState(true);
+  const [givenCount, setGivenCount] = useState("20");
   const [fridge, setFridge] = useState("7");
   const [freezer, setFreezer] = useState("18");
   const [below, setBelow] = useState(true);
   const [missing, setMissing] = useState("");
+  const [listPhoto, setListPhoto] = useState<string | null>(null);
   const [week, setWeek] = useState<"this" | "next">("this");
   const [requested, setRequested] = useState<string>(ACCENTS[0].hex);
   const [phone, setPhone] = useState<PhoneValue>({ display: "", e164: null });
+  const [birth, setBirth] = useState<DateParts>(EMPTY_DATE);
+  const typedBirth = parseTypedDate(birth);
   const [day, setDay] = useState("0");
+  const [galleryDays, setGalleryDays] = useState([0, 1, 2, 3, 4]);
   const [codeStatus, setCodeStatus] = useState<CodeSlotsStatus>("idle");
   const [codeRun, setCodeRun] = useState(0);
   const [total, setTotal] = useState(120);
   const shownTotal = useCountUp(total, "gallery");
   const [appearance, setAppearance] = useState<Appearance>("system");
   const [sheetOpen, setSheetOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [needed, setNeeded] = useState("3");
   const [position, setPosition] = useState("waiter");
   const [toastAt, setToastAt] = useState<string | null>(null);
@@ -187,6 +291,31 @@ function GalleryBody({
   const switchLang = (next: Locale) => {
     onLangChange(next);
     setPhone({ display: "", e164: null }); // the fields remount empty in the new language
+    setBirth(EMPTY_DATE);
+  };
+
+  // One login in two businesses (payroll P3b), switched with a stand-in that
+  // only waits a moment.
+  const galleryBusinesses: BusinessChoice[] = [
+    {
+      id: "shop",
+      name: t("switcherShop"),
+      accent: ACCENTS[1].hex,
+      role: tRoles("owner"),
+      unread: 2,
+      current: true,
+    },
+    {
+      id: "bakery",
+      name: t("switcherBakery"),
+      accent: ACCENTS[2].hex,
+      role: tRoles("accountant"),
+      unread: 1,
+      current: false,
+    },
+  ];
+  const galleryChoose = async (_form: FormData) => {
+    await pause();
   };
 
   const tokens = accentTokens(requested);
@@ -416,6 +545,29 @@ function GalleryBody({
                 )}
               </div>
             </div>
+            <div className="flex flex-col gap-2">
+              <DateField
+                label={t("dateField")}
+                parts={{
+                  day: tPay("dateParts.day"),
+                  month: tPay("dateParts.month"),
+                  year: tPay("dateParts.year"),
+                }}
+                value={birth}
+                onChange={setBirth}
+                hint={t("dateFieldHint")}
+              />
+              <div>
+                {typedBirth.ok ? (
+                  <Badge tone="success">
+                    {t("dateFieldValid")} ·{" "}
+                    <span dir="ltr">{typedBirth.date}</span>
+                  </Badge>
+                ) : (
+                  <Badge>{t("phoneIncomplete")}</Badge>
+                )}
+              </div>
+            </div>
           </Card>
         </Section>
 
@@ -470,6 +622,44 @@ function GalleryBody({
           </ListGroup>
         </Section>
 
+        <Section title={t("chat")}>
+          <GalleryChat />
+        </Section>
+
+        <Section title={t("fileField")}>
+          <GalleryFileField />
+        </Section>
+
+        {/* Waiter mode (S0): its parts, and its mock screens. */}
+        <Section title={t("orderTakingTitle")}>
+          <p className="text-ink-2">{t("orderTakingText")}</p>
+          <GalleryOrderTaking />
+          <Button asChild variant="secondary" className="w-full">
+            <Link href="/design/order-taking">{t("orderTakingDemo")}</Link>
+          </Button>
+        </Section>
+
+        <Section title={t("switcher")}>
+          <p className="text-ink-2 text-sm">{t("switcherText")}</p>
+          <BusinessList businesses={galleryBusinesses} action={galleryChoose} />
+          <BusinessSwitchRow
+            businesses={galleryBusinesses}
+            action={galleryChoose}
+          />
+          {/* As the sidebar draws it: the same mark, and the name as a menu
+              with what is unread in the other business under it. */}
+          <Card className="flex items-center gap-3">
+            <BusinessMark
+              name={galleryBusinesses[0]?.name ?? ""}
+              accent={galleryBusinesses[0]?.accent ?? ACCENTS[1].hex}
+            />
+            <BusinessMenu
+              businesses={galleryBusinesses}
+              action={galleryChoose}
+            />
+          </Card>
+        </Section>
+
         <Section title={t("dataTable")}>
           <GalleryTable />
         </Section>
@@ -497,6 +687,26 @@ function GalleryBody({
             options={[
               { value: "this", label: tWeek("this") },
               { value: "next", label: tWeek("next") },
+            ]}
+            className="self-start"
+          />
+          {/* With a count of what needs action on each, as the builder's
+              switch between this week and next shows it. */}
+          <Segmented
+            label={t("week")}
+            value={week}
+            onChange={setWeek}
+            options={[
+              {
+                value: "this",
+                label: tWeek("this"),
+                badge: { count: 1, label: tBuild("gaps", { count: 1 }) },
+              },
+              {
+                value: "next",
+                label: tWeek("next"),
+                badge: { count: 4, label: tBuild("gaps", { count: 4 }) },
+              },
             ]}
             className="self-start"
           />
@@ -573,6 +783,14 @@ function GalleryBody({
                 { name: t("person3") },
               ]}
             />
+            {/* All the link holds: the avatar says what it does, as on Today. */}
+            <Link
+              href="/design/shell/me"
+              title={t("profileLink")}
+              className="pressable shrink-0 rounded-full p-0.5 focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <Avatar name={t("person1")} label={t("profileLink")} />
+            </Link>
           </div>
         </Section>
 
@@ -722,7 +940,26 @@ function GalleryBody({
               hint={t("choiceHint")}
               leading={<Users />}
             />
+            <ChoiceRow
+              name="galleryChoice"
+              disabled
+              title={t("choiceOff")}
+              hint={t("choiceOffHint")}
+              leading={<Lock />}
+            />
           </ChoiceList>
+        </Section>
+
+        <Section title={t("dayToggles")}>
+          <DayToggles
+            legend={tTimes("sheet.days")}
+            value={galleryDays}
+            onChange={setGalleryDays}
+            days={WEEKDAY_KEYS.map((key) => ({
+              short: tDays(`${key}.short`),
+              long: tTimes(`dayNames.${key}`),
+            }))}
+          />
         </Section>
 
         <Section title={t("emptyState")}>
@@ -764,6 +1001,98 @@ function GalleryBody({
               })}
               check={{ checked: ticked, onToggle: () => setTicked(!ticked) }}
               commentAction={{ label: tList("comment.add"), onClick: () => {} }}
+            />
+            {/*
+              With a story (L6a): who did it and how many more changes, in a
+              row of its own under the check, which opens them all.
+            */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistCheck")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              history={{
+                line: tList.rich("doneBy", {
+                  name: t("checklistOther"),
+                  time: "11:02",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+                more: tList("history.more", { count: 2 }),
+                label: tList("history.open", { label: t("checklistCheck") }),
+                onOpen: () => setStory("ticked"),
+              }}
+              commentAction={{ label: tList("comment.add"), onClick: () => {} }}
+            />
+            {/* Taken back: what changed last, by whom and when. */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistCheck")}
+              required
+              optionalLabel={tList("optional")}
+              done={false}
+              history={{
+                line: tList.rich("history.line", {
+                  what: tList("history.unchecked"),
+                  name: t("checklistWho"),
+                  time: "08:15",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+                more: tList("history.more", { count: 1 }),
+                label: tList("history.open", { label: t("checklistCheck") }),
+                onOpen: () => setStory("unticked"),
+              }}
+            />
+            {/* An order's check: ticked, how many were given, and how many short. */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistOrder")}
+              hint={tList("requested", { count: 24 })}
+              required
+              optionalLabel={tList("optional")}
+              done={ordered}
+              check={{
+                checked: ordered,
+                onToggle: () => {
+                  setOrdered(!ordered);
+                  setGivenCount("24");
+                },
+              }}
+              quantity={{
+                label: tList("givenLabel"),
+                value: givenCount,
+                onValueChange: setGivenCount,
+                onCommit: () => {},
+                fieldLabel: tList("givenOf", { label: t("checklistOrder") }),
+                decreaseLabel: tList("fewer", { label: t("checklistOrder") }),
+                increaseLabel: tList("more", { label: t("checklistOrder") }),
+                max: 9999,
+                short:
+                  Number(givenCount) < 24
+                    ? tList("short", { count: 24 - Number(givenCount) })
+                    : null,
+              }}
+            />
+            {/* The same, only read: the count in words. */}
+            <ChecklistItem
+              kind="check"
+              label={t("checklistOrder")}
+              hint={tList("requested", { count: 24 })}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              quantity={{
+                label: tList("givenLabel"),
+                value: "20",
+                onValueChange: () => {},
+                onCommit: () => {},
+                fieldLabel: tList("givenOf", { label: t("checklistOrder") }),
+                decreaseLabel: tList("fewer", { label: t("checklistOrder") }),
+                increaseLabel: tList("more", { label: t("checklistOrder") }),
+                max: 9999,
+                text: tList("given", { given: 20, requested: 24 }),
+              }}
             />
             <ChecklistItem
               kind="number"
@@ -829,13 +1158,68 @@ function GalleryBody({
                 placeholder: tList("answerPlaceholder"),
               }}
             />
+            {/* A photo (L6): taken or chosen here, shown at once, nothing stored. */}
+            <ChecklistItem
+              kind="photo"
+              label={t("checklistPhoto")}
+              required={false}
+              optionalLabel={tList("optional")}
+              done={listPhoto !== null}
+              photo={{
+                src: listPhoto,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+                take: {
+                  label: tList("photo.take"),
+                  replaceLabel: tList("photo.replace"),
+                  hint: tList("photo.takeHint"),
+                  onPick: (file) => {
+                    if (!file.type.startsWith("image/")) return;
+                    setListPhoto((old) => {
+                      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
+                      return URL.createObjectURL(file);
+                    });
+                  },
+                },
+                remove: {
+                  label: tList("photo.remove"),
+                  onRemove: () =>
+                    setListPhoto((old) => {
+                      if (old?.startsWith("blob:")) URL.revokeObjectURL(old);
+                      return null;
+                    }),
+                },
+              }}
+            />
+            {/* Taken, only read: who took it and when. */}
+            <ChecklistItem
+              kind="photo"
+              label={t("checklistPhoto")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              doneLine={tList.rich("doneBy", {
+                name: t("checklistWho"),
+                time: "16:52",
+                ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+              })}
+              photo={{
+                src: listPhotos.kitchen,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+              }}
+            />
+            {/* In a demo business: said, with no way to take one. */}
             <ChecklistItem
               kind="photo"
               label={t("checklistPhoto")}
               required={false}
               optionalLabel={tList("optional")}
               done={false}
-              photo={{ text: tList("photoLater") }}
+              photo={{
+                src: null,
+                alt: tList("photo.alt", { label: t("checklistPhoto") }),
+                locked: tList("photo.demo"),
+              }}
             />
             <ChecklistItem
               kind="check"
@@ -878,7 +1262,65 @@ function GalleryBody({
                 }),
               }}
             />
+            {/* Read-only with a story: the row still opens it. */}
+            <ChecklistItem
+              kind="number"
+              label={t("checklistNumber")}
+              required
+              optionalLabel={tList("optional")}
+              done
+              readOnly
+              comment={t("checklistComment")}
+              history={{
+                line: tList.rich("doneBy", {
+                  name: t("checklistOther"),
+                  time: "11:02",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+                more: tList("history.more", { count: 2 }),
+                label: tList("history.open", { label: t("checklistNumber") }),
+                onOpen: () => setStory("fridge"),
+              }}
+              number={{
+                value: "6",
+                onValueChange: () => {},
+                onCommit: () => {},
+                fieldLabel: tList("readingOf", { label: t("checklistNumber") }),
+                unit: "°C",
+                outOfRange: tList.rich("outOfRange", {
+                  range: "0–5 °C",
+                  ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                }),
+              }}
+            />
           </ListGroup>
+          {/* What a story opens: one row a change, oldest first. */}
+          <Sheet
+            open={story !== null}
+            onOpenChange={(open) => {
+              if (!open) setStory(null);
+            }}
+            title={tList("history.title")}
+            subtitle={story ? stories[story].label : undefined}
+            closeLabel={tList("history.close")}
+            readingLabel={tList("history.title")}
+          >
+            <div className="px-2 pt-1 pb-2">
+              <ListGroup className="bg-elevated">
+                {(story ? stories[story].rows : []).map((row) => (
+                  <ListRow
+                    key={row.time}
+                    title={row.what}
+                    subtitle={tList.rich("doneBy", {
+                      name: row.name,
+                      time: row.time,
+                      ltr: (chunks) => <span dir="ltr">{chunks}</span>,
+                    })}
+                  />
+                ))}
+              </ListGroup>
+            </div>
+          </Sheet>
         </Section>
 
         <Section title={t("punchCircle")}>
@@ -1042,6 +1484,40 @@ function GalleryBody({
           </Card>
         </Section>
 
+        <Section title={t("steps")}>
+          {/* Done, open, missing (the console's), and an optional step. */}
+          <StepList>
+            <StepRow
+              href="/design/shell/team"
+              mark="done"
+              title={tSteps("steps.team.title")}
+              detail={tSteps("steps.team.done", { count: 3 })}
+              state={tSteps("done")}
+            />
+            <StepRow
+              href="/design/shell/schedule/build"
+              mark="open"
+              title={tSteps("steps.publish.title")}
+              detail={tSteps("steps.publish.todo")}
+              state={tSteps("open")}
+            />
+            <StepRow
+              mark="missing"
+              title={tSetup("items.address.title")}
+              detail={tSetup("items.address.todo")}
+              state={tSetup("todo")}
+            />
+            <StepRow
+              href="/design/shell/manage/time_clock"
+              mark="open"
+              title={tSteps("steps.clockCode.title")}
+              detail={tSteps("steps.clockCode.todo")}
+              state={tSteps("open")}
+              badge={<Badge>{tSteps("optional")}</Badge>}
+            />
+          </StepList>
+        </Section>
+
         <Section title={t("tiles")}>
           <div className="grid grid-cols-3 gap-2.5">
             <Tile
@@ -1096,6 +1572,19 @@ function GalleryBody({
               />
             </ListGroup>
           </Sheet>
+        </Section>
+
+        <Section title={t("share")}>
+          <Button variant="secondary" onClick={() => setShareOpen(true)}>
+            {t("shareOpen")}
+          </Button>
+          <ShareSheet
+            open={shareOpen}
+            onOpenChange={setShareOpen}
+            title={t("shareTitle")}
+            message={t("shareSample")}
+            path="/schedule?week=2026-11-22"
+          />
         </Section>
 
         <Section title={t("groupedForm")}>
@@ -1240,9 +1729,9 @@ function GalleryTable() {
               numeric: true,
             },
           ]}
+          // Each row's button is named by its name; what it does is said after.
           rows={people.map((person) => ({
             key: person.key,
-            label: t("dataTableOpen", { name: person.name }),
             cells: {
               name: person.name,
               days: person.days,
@@ -1250,6 +1739,7 @@ function GalleryTable() {
               waiting: person.waiting,
             },
           }))}
+          rowHint={t("dataTableRowHint")}
           selected={chosen}
           onSelect={setChosen}
         />
@@ -1261,6 +1751,147 @@ function GalleryTable() {
             })
           : t("dataTableHint")}
       </p>
+      <GalleryReadTable />
+    </div>
+  );
+}
+
+/**
+ * A table that only reads, wide enough to scroll sideways on a phone: with
+ * no row to choose, the keyboard reaches its scroller (Tab, then the arrows).
+ */
+function GalleryReadTable() {
+  const t = useTranslations("design");
+  const days = [
+    {
+      key: "d1",
+      date: "1.10",
+      in: "09:00",
+      out: "17:30",
+      regular: "8.00",
+      ot125: "0.50",
+      ot150: "0.00",
+      note: t("dataTableNote1"),
+    },
+    {
+      key: "d2",
+      date: "2.10",
+      in: "22:00",
+      out: "06:30",
+      regular: "7.00",
+      ot125: "1.50",
+      ot150: "0.00",
+      note: t("dataTableNote2"),
+    },
+    {
+      key: "d3",
+      date: "6.10",
+      in: "08:00",
+      out: "18:00",
+      regular: "7.00",
+      ot125: "2.00",
+      ot150: "1.00",
+      note: t("dataTableNote3"),
+    },
+  ];
+  const number = (key: string, label: string) => ({
+    key,
+    label,
+    align: "end" as const,
+    numeric: true,
+  });
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      <Card padding="none" className="overflow-hidden">
+        <DataTable
+          caption={t("dataTableRead")}
+          columns={[
+            { key: "date", label: t("dataTableDate"), numeric: true },
+            { key: "in", label: t("dataTableIn"), numeric: true },
+            { key: "out", label: t("dataTableOut"), numeric: true },
+            number("regular", t("dataTableRegular")),
+            number("ot125", t("dataTableOt125")),
+            number("ot150", t("dataTableOt150")),
+            { key: "note", label: t("dataTableNote") },
+          ]}
+          rows={days.map((day) => ({
+            key: day.key,
+            cells: {
+              date: day.date,
+              in: day.in,
+              out: day.out,
+              regular: day.regular,
+              ot125: day.ot125,
+              ot150: day.ot150,
+              note: day.note,
+            },
+          }))}
+        />
+      </Card>
+      <p className="px-1 text-ink-2 text-sm">{t("dataTableReadHint")}</p>
+      <GalleryControlsTable />
+    </div>
+  );
+}
+
+/**
+ * A table whose cells hold their own controls (`controls`), as the roles
+ * screen's matrix: the keyboard goes from switch to switch, with no stop on
+ * the scroller of its own.
+ */
+function GalleryControlsTable() {
+  const t = useTranslations("design");
+  const columns = ["app", "phone"] as const;
+  const [on, setOn] = useState<Record<string, boolean>>({
+    "p1:app": true,
+    "p1:phone": true,
+    "p2:app": true,
+    "p2:phone": false,
+    "p3:app": false,
+    "p3:phone": false,
+  });
+  const label = (column: (typeof columns)[number]) =>
+    column === "app" ? t("dataTableApp") : t("dataTablePhone");
+  const people = [
+    { key: "p1", name: t("person1") },
+    { key: "p2", name: t("person2") },
+    { key: "p3", name: t("person3") },
+  ];
+  return (
+    <div className="mt-4 flex flex-col gap-2">
+      <Card padding="none" className="overflow-hidden">
+        <DataTable
+          caption={t("dataTableControls")}
+          controls
+          columns={[
+            { key: "name", label: t("dataTableName") },
+            ...columns.map((column) => ({ key: column, label: label(column) })),
+          ]}
+          rows={people.map((person) => ({
+            key: person.key,
+            cells: {
+              name: person.name,
+              ...Object.fromEntries(
+                columns.map((column) => {
+                  const key = `${person.key}:${column}`;
+                  return [
+                    column,
+                    <Switch
+                      key={key}
+                      checked={on[key] === true}
+                      aria-label={`${person.name}, ${label(column)}`}
+                      onChange={(value) =>
+                        setOn((now) => ({ ...now, [key]: value }))
+                      }
+                    />,
+                  ];
+                }),
+              ),
+            },
+          }))}
+        />
+      </Card>
+      <p className="px-1 text-ink-2 text-sm">{t("dataTableControlsHint")}</p>
     </div>
   );
 }

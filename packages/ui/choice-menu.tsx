@@ -3,20 +3,45 @@
 import { Check, ChevronDown } from "lucide-react";
 import { useLocale } from "next-intl";
 import { DropdownMenu } from "radix-ui";
-import { useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import { cn } from "./cn";
 
 export type ChoiceMenuProps = {
-  /** Names the control for screen readers, with its current value in it. */
+  /**
+   * Names the control for screen readers, with exactly the words the button
+   * shows in it, so speech input can say them: the field, as the row beside
+   * it says, then those words ("מחלקה: מטבח", and "מחלקה: בחירה" before a
+   * choice). `choiceShown` gives the words.
+   */
   label: string;
   /** The key of the chosen option. */
   value: string;
-  options: { key: string; label: string }[];
+  options: {
+    key: string;
+    label: string;
+    /** A mark at the start of the option, in the menu only. */
+    leading?: ReactNode;
+    /** A second line under it, in the menu only. */
+    hint?: string;
+  }[];
   onChange: (key: string) => void;
   /** Shown while no option is chosen yet. */
   placeholder?: string;
   className?: string;
 };
+
+/**
+ * What a ChoiceMenu's button shows for `value`: the chosen option's label,
+ * or the placeholder while none of the options is chosen (a removed one
+ * included). Its `label` takes these same words.
+ */
+export function choiceShown(
+  options: readonly { key: string; label: string }[],
+  value: string,
+  placeholder?: string,
+): string | undefined {
+  return options.find((option) => option.key === value)?.label ?? placeholder;
+}
 
 /**
  * Choosing one of a short list: a quiet button with the current value, and a
@@ -35,7 +60,7 @@ export function ChoiceMenu({
   const locale = useLocale();
   const trigger = useRef<HTMLButtonElement>(null);
   const [container, setContainer] = useState<HTMLElement | null>(null);
-  const current = options.find((option) => option.key === value);
+  const shown = choiceShown(options, value, placeholder);
   return (
     <DropdownMenu.Root
       dir={locale === "he" ? "rtl" : "ltr"}
@@ -56,7 +81,7 @@ export function ChoiceMenu({
           className,
         )}
       >
-        {current?.label ?? placeholder}
+        {shown}
         <ChevronDown aria-hidden="true" />
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal container={container ?? undefined}>
@@ -73,7 +98,21 @@ export function ChoiceMenu({
                 value={option.key}
                 className="flex min-h-11 cursor-pointer items-center justify-between gap-4 rounded-[14px] px-3 text-md text-ink outline-none data-[highlighted]:bg-surface-2"
               >
-                {option.label}
+                {option.leading || option.hint ? (
+                  <span className="flex min-w-0 items-center gap-3 py-1.5">
+                    {option.leading}
+                    <span className="flex min-w-0 flex-col">
+                      {option.label}
+                      {option.hint ? (
+                        <span className="text-ink-2 text-sm">
+                          {option.hint}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                ) : (
+                  option.label
+                )}
                 <DropdownMenu.ItemIndicator>
                   <Check aria-hidden="true" className="size-5" />
                 </DropdownMenu.ItemIndicator>

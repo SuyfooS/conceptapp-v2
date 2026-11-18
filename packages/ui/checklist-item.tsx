@@ -1,9 +1,21 @@
 "use client";
 
-import { Check, ImageOff, MessageSquareText } from "lucide-react";
-import { type ReactNode, useId } from "react";
+import {
+  Check,
+  ChevronRight,
+  ImageOff,
+  ImagePlus,
+  MessageSquareText,
+  Trash2,
+} from "lucide-react";
+import Image from "next/image";
+import { type ReactNode, useId, useRef, useState } from "react";
 import { Badge } from "./badge";
+import { Button } from "./button";
 import { cn } from "./cn";
+import { PICKED_PHOTO_ACCEPT } from "./photo-encode";
+import { Spinner } from "./spinner";
+import { Stepper } from "./stepper";
 import { fieldInputClass, ltrInputClass } from "./text-field";
 
 export type ChecklistItemKind = "check" | "number" | "note" | "photo";
@@ -17,8 +29,25 @@ export type ChecklistItemProps = {
   /** Said beside an item that may stay empty ("לא חובה"). */
   optionalLabel: string;
   done: boolean;
-  /** Who did it and when ("נועה · 07:42"). */
+  /** Who did it and when ("נועה · 07:42"), when that is all there is to say. */
   doneLine?: ReactNode;
+  /**
+   * What happened to it (L6a), as a row of its own under it that opens the
+   * whole story: who did it and when, or what changed last ("הסימון הוסר ·
+   * דני · 08:15"), and how many more changes there were. In place of
+   * `doneLine`, and there in a list only read too.
+   */
+  history?: {
+    line: ReactNode;
+    /** "עוד 2 שינויים", after the line, when there were more. */
+    more?: ReactNode;
+    /**
+     * Said first to screen readers, with the item in it, in a form that
+     * reads with any label ('מה קרה בפריט "מקרר ראשי"'); ": " follows it.
+     */
+    label: string;
+    onOpen: () => void;
+  } | null;
   /** A comment left on the item. */
   comment?: string | null;
   /** The quiet way to add or change the comment. */
@@ -27,6 +56,28 @@ export type ChecklistItemProps = {
   readOnly?: boolean;
   /** A check: the whole row ticks it, and ticking again takes it back. */
   check?: { checked: boolean; onToggle: () => void };
+  /**
+   * An order's check: how many were given. Ticking gives what was asked for
+   * (the hint says how many); once ticked, a stepper under the row changes
+   * it, saved on leaving the field or shortly after the last tap. Read-only,
+   * `text` says it instead ("ניתנו 20 מתוך 24").
+   */
+  quantity?: {
+    /** "ניתנו", beside the stepper. */
+    label: string;
+    value: string;
+    onValueChange: (value: string) => void;
+    onCommit: () => void;
+    /** Names the count for screen readers, with the item in it. */
+    fieldLabel: string;
+    decreaseLabel: string;
+    increaseLabel: string;
+    max: number;
+    /** Said beside it while fewer were given than asked ("חסרים 4"). */
+    short?: ReactNode;
+    /** What was given, in words, for a list only read. */
+    text?: ReactNode;
+  } | null;
   /** A number: typed left to right, saved on leaving the field or on Enter. */
   number?: {
     value: string;
@@ -53,8 +104,40 @@ export type ChecklistItemProps = {
     fieldLabel: string;
     placeholder?: string;
   };
-  /** A photo item, which this version shows but can't take yet. */
-  photo?: { text: string };
+  /**
+   * A photo (L6): the photo taken, and the way to take one, replace it or
+   * remove it with the phone's own chooser (its camera or its photos). The
+   * screen re-encodes and saves what is picked (`onPick`) and says how it went.
+   */
+  photo?: {
+    /** The photo now (stored, or the one being saved), or null for none. */
+    src: string | null;
+    /** Names the photo for screen readers. */
+    alt: string;
+    /** Said in place of a photo: none was taken, or it is no longer kept. */
+    empty?: ReactNode;
+    /** Said beside a spinner while a photo is prepared or saved. */
+    busy?: ReactNode;
+    /** Why the last photo didn't save or go, in words. */
+    problem?: ReactNode;
+    /** Why no photo is taken here (a demo business), in place of the buttons. */
+    locked?: ReactNode;
+    take?: {
+      /**
+       * "הוספת תמונה", and "החלפת התמונה" once there is one: words that
+       * hold on any device (a phone's chooser offers its camera, a
+       * computer's its files).
+       */
+      label: string;
+      replaceLabel: string;
+      /** Under the button: take one, or choose one already there. */
+      hint?: ReactNode;
+      onPick: (file: File) => void;
+    } | null;
+    remove?: { label: string; onRemove: () => void } | null;
+    /** Under it all, such as the undo of a removal. */
+    after?: ReactNode;
+  };
 };
 
 const rowClass =
@@ -64,7 +147,10 @@ const rowClass =
  * One item of a list being filled: a check, a number with its unit and range,
  * a note, or a photo. A tick is a 44px circle that fills, on a row that is
  * itself the button. A reading outside its range is said in words, in the
- * warning colour. Who did it and when sits under it. Read-only lists show the
+ * warning colour. Who did it and when sits under it. On an order, a ticked
+ * check has its count under it, a stepper that says how many were given.
+ * An item with a story has it in a quiet row of its own at the end, outside
+ * the check's label, so pressing it never ticks. Read-only lists show the
  * same without the controls. A checkbox is named by its label alone; the
  * rest of the row describes it.
  */
@@ -76,20 +162,24 @@ export function ChecklistItem({
   optionalLabel,
   done,
   doneLine,
+  history,
   comment,
   commentAction,
   readOnly = false,
   check,
+  quantity,
   number,
   note,
   photo,
 }: ChecklistItemProps) {
   const fieldId = useId();
+  const shortId = useId();
   const labelId = useId();
   const optionalId = useId();
   const hintId = useId();
   const commentId = useId();
   const doneId = useId();
+  const historyId = useId();
   const title = (
     <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span id={labelId} className="font-medium text-md text-ink">
@@ -102,7 +192,7 @@ export function ChecklistItem({
       )}
     </span>
   );
-  const shownDoneLine = done && doneLine ? doneLine : null;
+  const shownDoneLine = done && doneLine && !history ? doneLine : null;
   const below = (
     <>
       {comment ? (
@@ -129,10 +219,48 @@ export function ChecklistItem({
       required ? null : optionalId,
       hint ? hintId : null,
       comment ? commentId : null,
-      shownDoneLine ? doneId : null,
+      shownDoneLine ? doneId : history ? historyId : null,
     ]
       .filter((id) => id !== null)
       .join(" ") || undefined;
+  // The story, under all the rest: a quiet 44px row, past a check's circle.
+  // When it wraps on a phone, "· עוד 2 שינויים" and the chevron go to the next
+  // line whole, and the chevron stays at the end of the words (a word joiner
+  // holds it to the last one), never apart from them.
+  const chevron = (
+    <ChevronRight
+      aria-hidden="true"
+      className="ms-1 inline size-4 align-[-0.2em] rtl:-scale-x-100"
+    />
+  );
+  const historyRow = history ? (
+    <div className={cn("-my-2 flex", kind === "check" && "ps-14")}>
+      <button
+        type="button"
+        onClick={history.onOpen}
+        className="pressable -mx-2 flex min-h-11 max-w-full items-center rounded-full px-2 text-start text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
+      >
+        <span className="sr-only">{history.label}: </span>
+        <span id={historyId} className="min-w-0">
+          {history.line}
+          {history.more ? (
+            <>
+              {" "}
+              <span className="whitespace-nowrap">
+                · {history.more}
+                {chevron}
+              </span>
+            </>
+          ) : (
+            <span className="whitespace-nowrap">
+              {"⁠"}
+              {chevron}
+            </span>
+          )}
+        </span>
+      </button>
+    </div>
+  ) : null;
   const commentButton =
     commentAction && !readOnly ? (
       <button
@@ -172,8 +300,45 @@ export function ChecklistItem({
         {below}
       </span>
     );
-    return (
-      <div className={cn(rowClass, "flex-row items-center gap-3")}>
+    // An order's count, under the row once it's ticked: a stepper while it
+    // is filled, its words while it is only read. In line with the label,
+    // past the circle.
+    const counted =
+      quantity && checked ? (
+        readOnly || !check ? (
+          quantity.text ? (
+            <span className="ps-14 text-ink-2 text-sm">{quantity.text}</span>
+          ) : null
+        ) : (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 ps-14">
+            <span aria-hidden="true" className="font-medium text-base text-ink">
+              {quantity.label}
+            </span>
+            <Stepper
+              value={quantity.value}
+              onValueChange={quantity.onValueChange}
+              onBlur={quantity.onCommit}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") event.currentTarget.blur();
+              }}
+              min={0}
+              max={quantity.max}
+              wide
+              label={quantity.fieldLabel}
+              decreaseLabel={quantity.decreaseLabel}
+              increaseLabel={quantity.increaseLabel}
+              describedBy={quantity.short ? shortId : undefined}
+            />
+            {quantity.short ? (
+              <span id={shortId} className="text-ink-2 text-sm">
+                {quantity.short}
+              </span>
+            ) : null}
+          </div>
+        )
+      ) : null;
+    const row = (
+      <div className="flex min-w-0 flex-1 items-center gap-3">
         {readOnly || !check ? (
           <span className="flex min-w-0 flex-1 items-center gap-3">
             {circle}
@@ -205,6 +370,15 @@ export function ChecklistItem({
         )}
         {commentButton}
       </div>
+    );
+    return counted || historyRow ? (
+      <div className={rowClass}>
+        {row}
+        {counted}
+        {historyRow}
+      </div>
+    ) : (
+      <div className={cn(rowClass, "flex-row items-center gap-3")}>{row}</div>
     );
   }
 
@@ -319,13 +493,161 @@ export function ChecklistItem({
       ) : null}
 
       {kind === "photo" && photo ? (
-        <span className="flex items-center gap-2 text-ink-2 text-sm">
-          <ImageOff aria-hidden="true" className="size-4 shrink-0" />
-          {photo.text}
-        </span>
+        <PhotoPart photo={photo} label={label} readOnly={readOnly} />
       ) : null}
 
       {below}
+      {historyRow}
+    </div>
+  );
+}
+
+/**
+ * A photo item's own part: the whole photo in a rounded frame of its own
+ * shape (wide or tall, as it loads; never cropped), or what is said instead;
+ * while it saves, a spinner over it and the words; the buttons to take,
+ * replace or remove it, each named with the item.
+ */
+function PhotoPart({
+  photo,
+  label,
+  readOnly,
+}: {
+  photo: NonNullable<ChecklistItemProps["photo"]>;
+  label: string;
+  readOnly: boolean;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const hintId = useId();
+  // A photo taller than it is wide gets a tall frame, as wide as a wide
+  // one's height, so it shows as large; until it loads, a wide one.
+  const [tall, setTall] = useState(false);
+  const busy = Boolean(photo.busy);
+  const take = readOnly || photo.locked ? null : (photo.take ?? null);
+  const remove =
+    readOnly || photo.locked || !photo.src || busy
+      ? null
+      : (photo.remove ?? null);
+  // How to take one, until there is one.
+  const showHint = Boolean(take?.hint) && !photo.src;
+  const note = (text: ReactNode) => (
+    <span className="flex items-center gap-2 text-ink-2 text-sm">
+      <ImageOff aria-hidden="true" className="size-4 shrink-0" />
+      {text}
+    </span>
+  );
+
+  return (
+    <div className="flex flex-col gap-3">
+      {photo.src ? (
+        <span
+          className={cn(
+            "relative block w-full overflow-hidden rounded-control bg-surface-2",
+            tall ? "aspect-[3/4] max-w-72" : "aspect-[4/3] max-w-sm",
+          )}
+        >
+          <Image
+            src={photo.src}
+            alt={photo.alt}
+            fill
+            unoptimized
+            draggable={false}
+            sizes="(min-width: 768px) 384px, 100vw"
+            onLoad={(event) => {
+              const shown = event.currentTarget;
+              setTall(shown.naturalHeight > shown.naturalWidth);
+            }}
+            className={cn(
+              "object-contain transition-opacity duration-200",
+              busy && "opacity-60",
+            )}
+          />
+          {busy ? (
+            <span
+              aria-hidden="true"
+              className="absolute inset-0 grid place-items-center text-ink"
+            >
+              <span className="grid size-11 place-items-center rounded-full bg-surface shadow-card">
+                <Spinner />
+              </span>
+            </span>
+          ) : null}
+        </span>
+      ) : busy ? null : photo.empty ? (
+        note(photo.empty)
+      ) : null}
+
+      {/* Out of the flow, so it is there before it speaks. */}
+      <span aria-live="polite" className="sr-only">
+        {photo.busy}
+      </span>
+      {busy ? (
+        <span
+          aria-hidden="true"
+          className="flex items-center gap-2 text-base text-ink-2"
+        >
+          {photo.src ? null : <Spinner className="size-4" />}
+          {photo.busy}
+        </span>
+      ) : null}
+      {photo.problem ? (
+        <p role="alert" className="font-medium text-danger text-sm">
+          {photo.problem}
+        </p>
+      ) : null}
+
+      {readOnly ? null : photo.locked ? (
+        note(photo.locked)
+      ) : take || remove ? (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {take ? (
+              <>
+                <input
+                  ref={input}
+                  type="file"
+                  accept={PICKED_PHOTO_ACCEPT}
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    // The same file can be picked again after a problem.
+                    event.target.value = "";
+                    if (file) take.onPick(file);
+                  }}
+                />
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  aria-label={`${photo.src ? take.replaceLabel : take.label}: ${label}`}
+                  aria-describedby={showHint ? hintId : undefined}
+                  onClick={() => input.current?.click()}
+                >
+                  <ImagePlus aria-hidden="true" />
+                  {photo.src ? take.replaceLabel : take.label}
+                </Button>
+              </>
+            ) : null}
+            {remove ? (
+              <Button
+                variant="ghost"
+                aria-label={`${remove.label}: ${label}`}
+                onClick={remove.onRemove}
+                className="text-danger"
+              >
+                <Trash2 aria-hidden="true" />
+                {remove.label}
+              </Button>
+            ) : null}
+          </div>
+          {showHint ? (
+            <span id={hintId} className="text-ink-2 text-sm">
+              {take?.hint}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      {photo.after}
     </div>
   );
 }

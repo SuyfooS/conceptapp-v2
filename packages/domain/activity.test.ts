@@ -4,11 +4,15 @@ import {
   type ActivityRow,
   activityByDay,
   activityRefs,
+  activityShiftOf,
   breakFitKind,
   buildActivity,
   parseActivityCursor,
+  ROUTINE_ACTIONS,
+  rolePermissionOf,
 } from "./activity";
 import { dateIn } from "./availability";
+import { ACCESS_AREAS, ACCESS_EXTRA_KEYS, AREA_EDIT } from "./role-access";
 
 const NOA = "11111111-1111-4111-8111-111111111111";
 const YOAV = "22222222-2222-4222-8222-222222222222";
@@ -21,6 +25,7 @@ const SWAP = "88888888-8888-4888-8888-888888888888";
 const GONE = "99999999-9999-4999-8999-999999999999";
 const KITCHEN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const LIST = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const STATION = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 
 const lookups: ActivityLookups = {
   members: new Map([
@@ -36,8 +41,24 @@ const lookups: ActivityLookups = {
       { day: "2026-11-05", name: "Evening", start: "16:00", end: "23:00" },
     ],
   ]),
-  swaps: new Map([[SWAP, { shiftId: SHIFT, requestedBy: NOA, takenBy: YOAV }]]),
+  swaps: new Map([
+    [
+      SWAP,
+      {
+        shiftId: SHIFT,
+        shift: {
+          day: "2026-11-05",
+          name: "Evening",
+          start: "16:00",
+          end: "23:00",
+        },
+        requestedBy: NOA,
+        takenBy: YOAV,
+      },
+    ],
+  ]),
   departments: new Map([[KITCHEN, "Kitchen"]]),
+  stations: new Map([[STATION, "Entrance"]]),
 };
 
 let nextId = 1000;
@@ -374,6 +395,233 @@ describe("buildActivity: each action", () => {
     expect(breakFitKind([])).toBe("other");
   });
 
+  it("reads a shift cancelled, with why, and one cancelled while open", () => {
+    expect(
+      lineOf(
+        row(
+          "clock.cancel",
+          {
+            entry: GONE,
+            person: NOA,
+            clock_in: "2026-11-03T06:00:00+00:00",
+            clock_out: "2026-11-03T14:00:00+00:00",
+            note: " Recorded twice ",
+          },
+          YOAV,
+        ),
+      ),
+    ).toEqual({
+      action: "clock.cancel",
+      person: { kind: "member", name: "Noa" },
+      personId: NOA,
+      times: {
+        clockIn: "2026-11-03T06:00:00+00:00",
+        clockOut: "2026-11-03T14:00:00+00:00",
+      },
+      note: "Recorded twice",
+    });
+    // Open when cancelled: no clock-out, and the end the cancel set is no
+    // part of the line.
+    expect(
+      lineOf(
+        row("clock.cancel", {
+          entry: GONE,
+          person: LEFT,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: null,
+          ended_at: "2026-11-04T06:00:00+00:00",
+          note: "Clocked in by mistake",
+          closed_month: "2026-11",
+        }),
+      ),
+    ).toMatchObject({
+      action: "clock.cancel",
+      person: { kind: "former" },
+      times: { clockIn: "2026-11-03T06:00:00+00:00", clockOut: null },
+    });
+    for (const details of [
+      { entry: GONE, person: NOA },
+      { entry: GONE, person: NOA, clock_in: "x" },
+      { entry: GONE, clock_in: "2026-11-03T06:00:00+00:00" },
+      "x",
+      null,
+    ]) {
+      expect(lineOf(row("clock.cancel", details))).toEqual({ action: "other" });
+    }
+  });
+
+  it("reads a cancelled shift brought back, open again when it was", () => {
+    expect(
+      lineOf(
+        row("clock.restore", {
+          entry: GONE,
+          person: NOA,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: "2026-11-03T14:00:00+00:00",
+          reopened: false,
+        }),
+      ),
+    ).toEqual({
+      action: "clock.restore",
+      person: { kind: "member", name: "Noa" },
+      personId: NOA,
+      times: {
+        clockIn: "2026-11-03T06:00:00+00:00",
+        clockOut: "2026-11-03T14:00:00+00:00",
+      },
+      reopened: false,
+    });
+    expect(
+      lineOf(
+        row("clock.restore", {
+          entry: GONE,
+          person: NOA,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: null,
+          reopened: true,
+        }),
+      ),
+    ).toMatchObject({
+      reopened: true,
+      times: { clockIn: "2026-11-03T06:00:00+00:00", clockOut: null },
+    });
+    // A row without the flag reads as one that wasn't open.
+    expect(
+      lineOf(
+        row("clock.restore", {
+          person: NOA,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          reopened: "yes",
+        }),
+      ),
+    ).toMatchObject({ reopened: false });
+    expect(lineOf(row("clock.restore", { person: NOA }))).toEqual({
+      action: "other",
+    });
+  });
+
+  it("reads a break changed, added, removed or brought back", () => {
+    const shift = {
+      entry: GONE,
+      person: NOA,
+      clock_in: "2026-11-05T06:00:00+00:00",
+      break: GONE,
+    };
+    const before = {
+      start: "2026-11-05T10:00:00+00:00",
+      end: "2026-11-05T10:45:00+00:00",
+    };
+    const after = { ...before, end: "2026-11-05T10:30:00+00:00" };
+    expect(
+      lineOf(
+        row(
+          "clock.break_edit",
+          {
+            ...shift,
+            change: "change",
+            from: before,
+            to: after,
+            unpaid: true,
+            note: "Came back early",
+            closed_month: "2026-11",
+          },
+          YOAV,
+        ),
+      ),
+    ).toEqual({
+      action: "clock.break_edit",
+      person: { kind: "member", name: "Noa" },
+      personId: NOA,
+      clockIn: "2026-11-05T06:00:00+00:00",
+      change: "change",
+      from: {
+        clockIn: "2026-11-05T10:00:00+00:00",
+        clockOut: "2026-11-05T10:45:00+00:00",
+      },
+      to: {
+        clockIn: "2026-11-05T10:00:00+00:00",
+        clockOut: "2026-11-05T10:30:00+00:00",
+      },
+      unpaid: true,
+      note: "Came back early",
+    });
+    expect(
+      lineOf(
+        row("clock.break_edit", {
+          ...shift,
+          change: "add",
+          from: null,
+          to: after,
+          unpaid: false,
+          note: "Forgot to press",
+        }),
+      ),
+    ).toMatchObject({ change: "add", from: null, unpaid: false });
+    expect(
+      lineOf(
+        row("clock.break_edit", {
+          ...shift,
+          change: "remove",
+          from: before,
+          to: null,
+          unpaid: false,
+          note: "Pressed by mistake",
+        }),
+      ),
+    ).toMatchObject({ change: "remove", to: null, note: "Pressed by mistake" });
+    // Brought back: no reason asked, and an odd flag is no flag.
+    expect(
+      lineOf(
+        row("clock.break_edit", {
+          ...shift,
+          change: "restore",
+          from: null,
+          to: before,
+          unpaid: "maybe",
+        }),
+      ),
+    ).toMatchObject({ change: "restore", note: null, unpaid: null });
+    // Sides that don't fit what it did, or a kind it never logs: a plain line.
+    for (const details of [
+      { ...shift, change: "add", from: before, to: null },
+      { ...shift, change: "remove", to: after },
+      { ...shift, change: "change", from: before },
+      { ...shift, change: "move", from: before, to: after },
+      { ...shift, change: "change", from: { start: "x" }, to: after },
+      { person: NOA, change: "add", to: after },
+    ]) {
+      expect(lineOf(row("clock.break_edit", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("keeps a cancel's, a restore's and a break edit's line, never routine", () => {
+    for (const action of [
+      "clock.cancel",
+      "clock.restore",
+      "clock.break_edit",
+    ]) {
+      expect(ROUTINE_ACTIONS as readonly string[]).not.toContain(action);
+    }
+  });
+
+  it("names whose shift a line leads to only by an id fit for an address", () => {
+    const cancel = (person: string) =>
+      lineOf(
+        row("clock.cancel", {
+          person,
+          clock_in: "2026-11-03T06:00:00+00:00",
+          clock_out: "2026-11-03T14:00:00+00:00",
+          note: "x",
+        }),
+      );
+    expect(cancel("yoav")).toMatchObject({ personId: "yoav" });
+    for (const person of ["../pay", "a b", "", "x".repeat(65)]) {
+      expect(cancel(person)).toMatchObject({ personId: null });
+    }
+  });
+
   it("reads an approval of someone's hours", () => {
     expect(
       lineOf(row("clock.confirm", { entry: GONE, person: NOA }, YOAV)),
@@ -411,6 +659,28 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads a name fixed for someone, which never holds a name", () => {
+    // By who they are now: the reader's name for them, never the log's.
+    expect(lineOf(row("member.name", { person: NOA }, YOAV))).toEqual({
+      action: "member.name",
+      person: { kind: "member", name: "Noa" },
+    });
+    expect(lineOf(row("member.name", { person: LEFT }))).toEqual({
+      action: "member.name",
+      person: { kind: "former" },
+    });
+    expect(lineOf(row("member.name", { person: GONE }, STAFF))).toEqual({
+      action: "member.name",
+      person: { kind: "unknown" },
+    });
+    for (const details of [{}, { person: 5 }, { name: "Noa" }, "x", null]) {
+      expect(lineOf(row("member.name", details))).toEqual({ action: "other" });
+    }
+    expect(activityRefs([row("member.name", { person: YOAV }, NOA)])).toEqual(
+      expect.objectContaining({ people: [NOA, YOAV] }),
+    );
+  });
+
   it("reads a typing block", () => {
     expect(lineOf(row("clock.code.locked", { person: NOA }))).toEqual({
       action: "clock.code.locked",
@@ -420,6 +690,42 @@ describe("buildActivity: each action", () => {
     });
     for (const details of [{ person: 5 }, "x", null]) {
       expect(lineOf(row("clock.code.locked", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("reads a clock station left, by its name, and stopped or started again by the station's", () => {
+    expect(
+      lineOf(
+        row("clock.station.add", { station: STATION, name: " Entrance " }),
+      ),
+    ).toEqual({ action: "clock.station.add", name: "Entrance" });
+    for (const action of ["clock.station.stop", "clock.station.restart"]) {
+      expect(lineOf(row(action, { station: STATION }))).toEqual({
+        action,
+        name: "Entrance",
+      });
+      expect(lineOf(row(action, { station: STATION.toUpperCase() }))).toEqual({
+        action,
+        name: "Entrance",
+      });
+      // Not one the reader may read (the clock off, or not theirs to edit).
+      expect(lineOf(row(action, { station: GONE }))).toEqual({
+        action,
+        name: null,
+      });
+      for (const details of [{}, { station: 5 }, "x", null]) {
+        expect(lineOf(row(action, details))).toEqual({ action: "other" });
+      }
+    }
+    for (const details of [
+      { station: STATION },
+      { station: STATION, name: "  " },
+      { station: STATION, name: 5 },
+      null,
+    ]) {
+      expect(lineOf(row("clock.station.add", details))).toEqual({
         action: "other",
       });
     }
@@ -444,6 +750,72 @@ describe("buildActivity: each action", () => {
     ).toEqual({ action: "invite.claim", role: "worker" });
   });
 
+  it("reads a role the business named by its name then, on invites, role changes and removals (R11b)", () => {
+    const named = { named_role: INVITE, role_name: "אחראי משמרת" };
+    expect(
+      lineOf(
+        row("invite.create", { invite: INVITE, role: "worker", ...named }),
+      ),
+    ).toEqual({
+      action: "invite.create",
+      name: "Dana",
+      role: "worker",
+      roleName: "אחראי משמרת",
+    });
+    expect(
+      lineOf(row("invite.claim", { invite: INVITE, role: "worker", ...named })),
+    ).toEqual({
+      action: "invite.claim",
+      role: "worker",
+      roleName: "אחראי משמרת",
+    });
+    const change = lineOf(
+      row("member.role", {
+        person: NOA,
+        role: "worker",
+        was: "worker",
+        ...named,
+        was_named: GONE,
+        was_role_name: "אחראי בר",
+      }),
+    );
+    expect(change).toMatchObject({
+      action: "member.role",
+      role: "worker",
+      was: "worker",
+      roleName: "אחראי משמרת",
+      wasName: "אחראי בר",
+    });
+    // Deleting an invite to one, and taking someone in one off the team.
+    expect(
+      lineOf(
+        row("invite.cancel", { invite: INVITE, role: "worker", ...named }),
+      ),
+    ).toEqual({
+      action: "invite.cancel",
+      name: "Dana",
+      role: "worker",
+      roleName: "אחראי משמרת",
+    });
+    expect(
+      lineOf(row("member.remove", { person: NOA, role: "worker", ...named })),
+    ).toMatchObject({
+      action: "member.remove",
+      role: "worker",
+      roleName: "אחראי משמרת",
+    });
+    // A name that isn't one is no name.
+    expect(
+      lineOf(
+        row("invite.create", {
+          invite: INVITE,
+          role: "worker",
+          role_name: 7,
+        }),
+      ),
+    ).toEqual({ action: "invite.create", name: "Dana", role: "worker" });
+  });
+
   it("reads a view by the team, with its role", () => {
     expect(
       lineOf(row("view_as.start", { session: GONE, role: "manager" }, STAFF)),
@@ -451,6 +823,37 @@ describe("buildActivity: each action", () => {
     expect(
       lineOf(row("view_as.end", { session: GONE, role: "boss" }, STAFF)),
     ).toEqual({ action: "view_as.end", role: null });
+  });
+
+  it("reads a view as a role the business named, by its name then (R11c)", () => {
+    expect(
+      lineOf(
+        row(
+          "view_as.start",
+          {
+            session: GONE,
+            role: "worker",
+            named_role: GONE,
+            role_name: " Shift lead ",
+          },
+          STAFF,
+        ),
+      ),
+    ).toEqual({
+      action: "view_as.start",
+      role: "worker",
+      roleName: "Shift lead",
+    });
+    // A name that isn't one reads as the built-in role.
+    expect(
+      lineOf(
+        row(
+          "view_as.start",
+          { session: GONE, role: "worker", role_name: 3 },
+          STAFF,
+        ),
+      ),
+    ).toEqual({ action: "view_as.start", role: "worker" });
   });
 
   it("reads swaps through the request and its shift, while they're there", () => {
@@ -480,7 +883,97 @@ describe("buildActivity: each action", () => {
     });
   });
 
-  it("reads a swap whose shift was replaced by publishing again", () => {
+  // 20261115000200_swap_history.sql: the request keeps its shift as it was
+  // asked for, which outlives the shift moving or going.
+  it("names a swap's shift as the request keeps it, after the shift moved or went", () => {
+    const asked = {
+      day: "2026-11-06",
+      name: "Morning",
+      start: "07:00",
+      end: "15:00",
+    };
+    const moved: ActivityLookups = {
+      ...lookups,
+      swaps: new Map([
+        [
+          SWAP,
+          { shiftId: SHIFT, shift: asked, requestedBy: NOA, takenBy: YOAV },
+        ],
+        [
+          GONE,
+          { shiftId: null, shift: asked, requestedBy: NOA, takenBy: null },
+        ],
+      ]),
+    };
+    const lineIn = (r: ActivityRow) => buildActivity([r], moved)[0]?.line;
+    // The shift is there with other hours now: the line keeps the old ones.
+    expect(lineIn(row("swap.request", { swap: SWAP, shift: SHIFT }))).toEqual({
+      action: "swap.request",
+      shift: asked,
+    });
+    expect(
+      lineIn(
+        row("swap.approve", { swap: SWAP, shift: SHIFT, from: NOA, to: YOAV }),
+      ),
+    ).toMatchObject({ action: "swap.approve", shift: asked });
+    // The shift is gone: the request still says which it was.
+    expect(lineIn(row("swap.take", { swap: GONE }, YOAV))).toEqual({
+      action: "swap.take",
+      shift: asked,
+      from: { kind: "member", name: "Noa" },
+    });
+    expect(lineIn(row("swap.cancel", { swap: GONE }))).toEqual({
+      action: "swap.cancel",
+      shift: asked,
+    });
+    expect(
+      lineIn(row("swap.decline", { swap: GONE, shift: GONE, from: NOA })),
+    ).toMatchObject({ action: "swap.decline", shift: asked });
+  });
+
+  it("names a swap's shift by id where the request has no snapshot", () => {
+    const before: ActivityLookups = {
+      ...lookups,
+      swaps: new Map([
+        [
+          SWAP,
+          { shiftId: SHIFT, shift: null, requestedBy: NOA, takenBy: YOAV },
+        ],
+      ]),
+    };
+    expect(
+      buildActivity([row("swap.take", { swap: SWAP }, YOAV)], before)[0]?.line,
+    ).toMatchObject({ shift: lookups.shifts.get(SHIFT) });
+  });
+
+  it("reads a swap's shift only when it has the shape of one", () => {
+    expect(
+      activityShiftOf({
+        day: "2026-11-06",
+        name: "Morning",
+        start: "07:00",
+        end: "15:00",
+      }),
+    ).toEqual({
+      day: "2026-11-06",
+      name: "Morning",
+      start: "07:00",
+      end: "15:00",
+    });
+    expect(activityShiftOf(null)).toBeNull();
+    expect(
+      activityShiftOf({
+        day: "Thursday",
+        name: "Morning",
+        start: "7",
+        end: "15",
+      }),
+    ).toBeNull();
+  });
+
+  // Before 20261115000200_swap_history.sql a republish took the request with
+  // its shift, and an account deleted still takes its requests.
+  it("reads a swap whose request and shift are both gone", () => {
     expect(lineOf(row("swap.take", { swap: GONE }, YOAV))).toEqual({
       action: "swap.take",
       shift: null,
@@ -513,7 +1006,43 @@ describe("buildActivity: each action", () => {
       shifts: 12,
       first: false,
       swapsRemoved: 2,
+      running: false,
     });
+  });
+
+  it("reads a publish of a week under way", () => {
+    expect(
+      lineOf(
+        row("schedule.publish", {
+          week: GONE,
+          starts_on: "2026-11-15",
+          shifts: 9,
+          first: false,
+          swaps_removed: 0,
+          running: true,
+          joined: [{ shift: GONE, user: NOA }],
+        }),
+      ),
+    ).toEqual({
+      action: "schedule.publish",
+      startsOn: "2026-11-15",
+      shifts: 9,
+      first: false,
+      swapsRemoved: 0,
+      running: true,
+    });
+    // A row that says something else of it is not read as a publish.
+    expect(
+      lineOf(
+        row("schedule.publish", {
+          starts_on: "2026-11-15",
+          shifts: 9,
+          first: false,
+          swaps_removed: 0,
+          running: "yes",
+        }),
+      ),
+    ).toEqual({ action: "other" });
   });
 
   it("reads the departments added, removed, renamed or put in order", () => {
@@ -613,6 +1142,24 @@ describe("buildActivity: each action", () => {
       name: "Closing",
       to: { kind: "role", role: "worker" },
     });
+    // To a role the business named (R11d): by its name as it was sent.
+    expect(
+      lineOf(
+        row("lists.send", {
+          name: "Closing",
+          recipient: {
+            kind: "role",
+            role: "worker",
+            named_role: KITCHEN,
+            role_name: "Shift lead",
+          },
+        }),
+      ),
+    ).toEqual({
+      action: "lists.send",
+      name: "Closing",
+      to: { kind: "role", role: "worker", name: "Shift lead" },
+    });
     expect(
       lineOf(
         row("lists.finish", {
@@ -639,6 +1186,157 @@ describe("buildActivity: each action", () => {
     expect(
       lineOf(row("lists.reopen", { list: LIST, name: "Opening", was: "open" })),
     ).toEqual({ action: "lists.reopen", name: "Opening", was: null });
+  });
+
+  it("reads a list passed from one department to another, never its note (L5)", () => {
+    expect(
+      lineOf(
+        row("lists.pass", {
+          list: LIST,
+          name: "Bar order",
+          from_department: GONE,
+          to_department: KITCHEN.toUpperCase(),
+          has_note: true,
+        }),
+      ),
+    ).toEqual({
+      action: "lists.pass",
+      name: "Bar order",
+      from: null,
+      to: "Kitchen",
+      note: true,
+    });
+    // From a person or a role: no department it was with.
+    expect(
+      lineOf(
+        row("lists.pass", {
+          list: LIST,
+          name: "Opening",
+          from_department: null,
+          to_department: KITCHEN,
+          has_note: false,
+        }),
+      ),
+    ).toEqual({
+      action: "lists.pass",
+      name: "Opening",
+      from: null,
+      to: "Kitchen",
+      note: false,
+    });
+    expect(lineOf(row("lists.pass", { name: "Opening" }))).toEqual({
+      action: "other",
+    });
+  });
+
+  it("reads a list's times: late, not done, and a reading out of range", () => {
+    expect(
+      lineOf(row("lists.late", { list: LIST, name: "Opening", due_at: "x" })),
+    ).toEqual({ action: "lists.late", name: "Opening" });
+    expect(
+      lineOf(row("lists.missed", { list: LIST, name: "Opening" })),
+    ).toEqual({ action: "lists.missed", name: "Opening" });
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LIST,
+          item: LIST,
+          name: "Opening",
+          label: "Fridge",
+          reading: 7,
+          min: 0,
+          max: 5,
+          unit: "°C",
+        }),
+      ),
+    ).toEqual({
+      action: "lists.out_of_range",
+      name: "Opening",
+      label: "Fridge",
+      reading: 7,
+      min: 0,
+      max: 5,
+      unit: "°C",
+    });
+    // A bound the item didn't have, and a row from before it kept the unit.
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LIST,
+          name: "Opening",
+          label: "Fridge",
+          reading: 7,
+          min: null,
+        }),
+      ),
+    ).toMatchObject({ min: null, max: null, unit: null });
+    // The opening and the reminder are the lists' own news, and the owners'
+    // step after a late line is their own line's.
+    expect(ROUTINE_ACTIONS).toEqual(
+      expect.arrayContaining(["lists.open", "lists.due", "lists.late_owner"]),
+    );
+    expect(ROUTINE_ACTIONS).not.toContain("lists.late");
+  });
+
+  it("reads a fix of a closed list, with what each value was and is, never its text (L6b-1)", () => {
+    expect(
+      lineOf(
+        row("lists.fix", {
+          list: LIST,
+          name: "Bar order",
+          item: LIST,
+          label: "Lemons",
+          kind: "check",
+          unit: null,
+          changed: ["given", "comment", "fixed"],
+          from: { checked: true, given: 20, reading: null },
+          to: { checked: true, given: 18, reading: null },
+        }),
+      ),
+    ).toEqual({
+      action: "lists.fix",
+      name: "Bar order",
+      items: [
+        {
+          label: "Lemons",
+          kind: "check",
+          unit: null,
+          // A field it doesn't know is left out.
+          fields: ["given", "comment"],
+          from: { checked: true, given: 20, reading: null },
+          to: { checked: true, given: 18, reading: null },
+        },
+      ],
+    });
+    // An unticked check is null in the row; a kind it doesn't know, none.
+    expect(
+      lineOf(
+        row("lists.fix", {
+          list: LIST,
+          name: "Opening",
+          label: "Gas",
+          kind: "dial",
+          changed: ["checked"],
+          from: { checked: null, given: null, reading: null },
+          to: { checked: true, given: null, reading: null },
+        }),
+      ),
+    ).toMatchObject({
+      items: [
+        {
+          kind: null,
+          unit: null,
+          from: { checked: false },
+          to: { checked: true },
+        },
+      ],
+    });
+    // Without its list or its label, a plain line; and it is news, not
+    // routine.
+    expect(lineOf(row("lists.fix", { name: "Opening", label: "Gas" }))).toEqual(
+      { action: "other" },
+    );
+    expect(ROUTINE_ACTIONS).not.toContain("lists.fix");
   });
 
   it("reads a template saved, removed and brought back", () => {
@@ -692,6 +1390,542 @@ describe("buildActivity: each action", () => {
     expect(lineOf(row("permission.grant", { perm: "clock.payroll" }))).toEqual({
       action: "other",
     });
+  });
+
+  it("reads a role's permission switched on or off, by what the screen calls it", () => {
+    expect(
+      lineOf(
+        row("role.permission", {
+          role: "worker",
+          perm: "schedule.edit",
+          area: "scheduling",
+          from: false,
+          to: true,
+        }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: "worker",
+      permission: { kind: "edit", area: "scheduling" },
+      on: true,
+    });
+    expect(
+      lineOf(
+        row("role.permission", {
+          role: "manager",
+          perm: "schedule.publish",
+          area: "scheduling",
+          from: true,
+          to: false,
+        }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: "manager",
+      permission: { kind: "extra", extra: "schedule.publish" },
+      on: false,
+    });
+    expect(
+      lineOf(
+        row("role.permission", {
+          role: "manager",
+          perm: "team.view",
+          area: "team",
+          from: true,
+          to: false,
+        }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: "manager",
+      permission: { kind: "view", area: "team" },
+      on: false,
+    });
+    expect(
+      lineOf(
+        row("role.permission", { role: "boss", perm: "lists.later", to: true }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: null,
+      permission: { kind: "other" },
+      on: true,
+    });
+    expect(
+      lineOf(row("role.permission", { role: "worker", perm: "lists.send" })),
+    ).toEqual({ action: "other" });
+  });
+
+  it("names a role the business named by its name then, on its switches (R11a)", () => {
+    expect(
+      lineOf(
+        row("role.permission", {
+          role: "worker",
+          perm: "schedule.edit",
+          area: "scheduling",
+          from: false,
+          to: true,
+          named_role: "a1000000-0000-4000-a000-0000000000c1",
+          name: "Shift lead",
+        }),
+      ),
+    ).toEqual({
+      action: "role.permission",
+      role: "worker",
+      permission: { kind: "edit", area: "scheduling" },
+      on: true,
+      named: "Shift lead",
+    });
+  });
+
+  it("reads a role the business named added, renamed, archived and back", () => {
+    expect(
+      lineOf(
+        row("role.create", {
+          named_role: "a1000000-0000-4000-a000-0000000000c1",
+          name: "Shift lead",
+          base: "worker",
+          copy_role: "manager",
+        }),
+      ),
+    ).toEqual({ action: "role.create", name: "Shift lead", base: "worker" });
+    expect(
+      lineOf(row("role.create", { name: "Bar lead", base: "boss" })),
+    ).toEqual({ action: "role.create", name: "Bar lead", base: null });
+    expect(
+      lineOf(row("role.rename", { from: "Shift lead", to: "Shift leader" })),
+    ).toEqual({
+      action: "role.rename",
+      from: "Shift lead",
+      to: "Shift leader",
+    });
+    expect(lineOf(row("role.archive", { name: "Shift lead" }))).toEqual({
+      action: "role.archive",
+      name: "Shift lead",
+    });
+    expect(lineOf(row("role.restore", { name: "Shift lead" }))).toEqual({
+      action: "role.restore",
+      name: "Shift lead",
+    });
+    expect(lineOf(row("role.rename", { to: "Shift leader" }))).toEqual({
+      action: "other",
+    });
+  });
+
+  it("names every permission the roles screen draws", () => {
+    for (const area of ACCESS_AREAS) {
+      expect(rolePermissionOf(AREA_EDIT[area])).toEqual({ kind: "edit", area });
+    }
+    for (const extra of ACCESS_EXTRA_KEYS) {
+      expect(rolePermissionOf(extra)).toEqual({ kind: "extra", extra });
+    }
+    expect(rolePermissionOf("manage.view")).toEqual({
+      kind: "view",
+      area: "manage",
+    });
+    expect(rolePermissionOf("clock.payroll")).toEqual({ kind: "other" });
+  });
+
+  it("reads a wage set from a day, with what it was and the minimum then", () => {
+    expect(
+      lineOf(
+        row("wage.set", {
+          person: YOAV,
+          wage: SHIFT,
+          from_agorot: 3600,
+          to_agorot: 3800,
+          effective_from: "2026-11-01",
+          minimum_agorot: 3540,
+          note: " A raise ",
+        }),
+      ),
+    ).toEqual({
+      action: "wage.set",
+      person: { kind: "member", name: "Yoav" },
+      agorot: 3800,
+      previous: 3600,
+      from: "2026-11-01",
+      minimum: 3540,
+      note: "A raise",
+    });
+    expect(
+      lineOf(
+        row("wage.set", {
+          person: LEFT,
+          from_agorot: null,
+          to_agorot: 3000,
+          effective_from: "2026-10-01",
+          note: null,
+        }),
+      ),
+    ).toEqual({
+      action: "wage.set",
+      person: { kind: "former" },
+      agorot: 3000,
+      previous: null,
+      from: "2026-10-01",
+      minimum: null,
+      note: null,
+    });
+    for (const details of [
+      { person: YOAV, to_agorot: 0, effective_from: "2026-11-01" },
+      { person: YOAV, to_agorot: 38.5, effective_from: "2026-11-01" },
+      { person: YOAV, to_agorot: 3800, effective_from: "1.11.2026" },
+      { to_agorot: 3800, effective_from: "2026-11-01" },
+    ]) {
+      expect(lineOf(row("wage.set", details))).toEqual({ action: "other" });
+    }
+  });
+
+  it("reads which payroll details changed, in their order, never a value", () => {
+    expect(
+      lineOf(
+        row("payroll.details", {
+          person: YOAV,
+          fields: ["youth_until", "payroll_number", "salary"],
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.details",
+      person: { kind: "member", name: "Yoav" },
+      fields: ["payroll_number", "youth_until"],
+    });
+    expect(lineOf(row("payroll.details", { person: YOAV }))).toEqual({
+      action: "other",
+    });
+  });
+
+  it("reads a period of work added, changed or checked", () => {
+    expect(
+      lineOf(
+        row("payroll.period", {
+          person: LEFT,
+          period: SHIFT,
+          added: true,
+          confirmed: false,
+          fields: ["started_on", "ended_on", "last_paid_on"],
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.period",
+      person: { kind: "former" },
+      added: true,
+      confirmed: false,
+      fields: ["started_on", "ended_on", "last_paid_on"],
+    });
+    expect(
+      lineOf(
+        row("payroll.period", {
+          person: YOAV,
+          period: SHIFT,
+          added: false,
+          confirmed: true,
+          fields: [],
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.period",
+      person: { kind: "member", name: "Yoav" },
+      added: false,
+      confirmed: true,
+      fields: [],
+    });
+  });
+
+  it("reads a file for payroll taken: its month, and how many people and shifts", () => {
+    expect(
+      lineOf(
+        row("payroll.export", {
+          month: "2026-10",
+          format: "xlsx",
+          people: 4,
+          shifts: 120,
+          ids: false,
+          engine: "2026-11",
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.export",
+      month: "2026-10",
+      people: 4,
+      shifts: 120,
+    });
+    expect(lineOf(row("payroll.export", { month: "2026-10" }))).toEqual({
+      action: "payroll.export",
+      month: "2026-10",
+      people: null,
+      shifts: null,
+    });
+    for (const details of [
+      { month: "10/2026" },
+      { month: "2026-13" },
+      { people: 4 },
+      { month: "2026-10", people: -1 },
+    ]) {
+      expect(lineOf(row("payroll.export", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("reads a month closed for payroll, and reopened with its reason (payroll P9)", () => {
+    expect(
+      lineOf(row("payroll.close", { month: "2026-10", engine: "2026-11" })),
+    ).toEqual({ action: "payroll.close", month: "2026-10" });
+    expect(
+      lineOf(
+        row("payroll.reopen", {
+          month: "2026-10",
+          reason: " A shift was missing ",
+        }),
+      ),
+    ).toEqual({
+      action: "payroll.reopen",
+      month: "2026-10",
+      reason: "A shift was missing",
+    });
+    expect(lineOf(row("payroll.reopen", { month: "2026-10" }))).toEqual({
+      action: "payroll.reopen",
+      month: "2026-10",
+      reason: null,
+    });
+    for (const action of ["payroll.close", "payroll.reopen"]) {
+      expect(lineOf(row(action, { month: "10/2026" }))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("reads a message management removed in a group, and put back, never its text (chat C1)", () => {
+    expect(
+      lineOf(
+        row(
+          "chat.remove",
+          {
+            conversation: LIST,
+            message: GONE,
+            author: NOA,
+            department: KITCHEN.toUpperCase(),
+          },
+          YOAV,
+        ),
+      ),
+    ).toEqual({
+      action: "chat.remove",
+      group: { kind: "department", name: "Kitchen" },
+      author: { kind: "member", name: "Noa" },
+    });
+    expect(
+      lineOf(
+        row("chat.restore", {
+          conversation: LIST,
+          message: GONE,
+          author: null,
+          department: null,
+        }),
+      ),
+    ).toEqual({
+      action: "chat.restore",
+      group: { kind: "team" },
+      author: { kind: "unknown" },
+    });
+    expect(
+      lineOf(
+        row("chat.remove", {
+          conversation: LIST,
+          message: GONE,
+          author: LEFT,
+          department: GONE,
+        }),
+      ),
+    ).toEqual({
+      action: "chat.remove",
+      group: { kind: "department", name: null },
+      author: { kind: "former" },
+    });
+    expect(lineOf(row("chat.remove", { author: NOA }))).toEqual({
+      action: "other",
+    });
+  });
+
+  it("reads a document sent, opened, removed and put back, never what it is (chat C6)", () => {
+    // The ids and codes the database writes; nothing else is read.
+    expect(
+      lineOf(
+        row("document.send", {
+          document: GONE,
+          direction: "to_people",
+          recipients: 3,
+          category: "payslip",
+        }),
+      ),
+    ).toEqual({
+      action: "document.send",
+      direction: "to_people",
+      recipients: 3,
+    });
+    expect(
+      lineOf(
+        row("document.send", {
+          document: GONE,
+          direction: "from_person",
+          recipients: 7,
+        }),
+      ),
+    ).toEqual({
+      action: "document.send",
+      direction: "from_person",
+      recipients: 0,
+    });
+    expect(
+      lineOf(row("document.open", { document: GONE, person: YOAV }, NOA)),
+    ).toEqual({
+      action: "document.open",
+      person: { kind: "member", name: "Yoav" },
+    });
+    expect(
+      lineOf(row("document.open", { document: GONE, person: null })),
+    ).toEqual({ action: "document.open", person: null });
+    expect(
+      lineOf(row("document.remove", { document: GONE, reason: "wrong_file" })),
+    ).toEqual({ action: "document.remove", reason: "wrong_file" });
+    // A reason it doesn't know is no reason, never shown as written.
+    expect(
+      lineOf(row("document.remove", { document: GONE, reason: "her flu" })),
+    ).toEqual({ action: "document.remove", reason: null });
+    expect(lineOf(row("document.restore", { document: GONE }))).toEqual({
+      action: "document.restore",
+    });
+    for (const [action, details] of [
+      ["document.send", { document: GONE, direction: "both" }],
+      ["document.open", { person: NOA }],
+      ["document.remove", { reason: "duplicate" }],
+      ["document.restore", {}],
+    ] as const) {
+      expect(lineOf(row(action, details)), action).toEqual({ action: "other" });
+    }
+  });
+
+  it("reads an item added to the menu or saved, with its prices before and after (waiter mode P1)", () => {
+    // As public.save_menu_item writes them: the item as it was then, what
+    // changed, its price's agorot, and each option whose price moved.
+    expect(
+      lineOf(
+        row("menu.item.save", {
+          item: GONE,
+          name: "שניצל",
+          created: false,
+          changed: ["price", "options", "colour"],
+          price: { before: 6200, after: 6800 },
+          options: [
+            { group: "תוספות", option: "גבינה", before: 600, after: 700 },
+            { group: "תוספות", option: "ביצה", before: null, after: 600 },
+            { group: "גודל", option: "גדול", before: 400, after: null },
+          ],
+        }),
+      ),
+    ).toEqual({
+      action: "menu.item.save",
+      name: "שניצל",
+      created: false,
+      // A field it doesn't know is left out; the rest in the screen's order.
+      fields: ["price", "options"],
+      price: { before: 6200, after: 6800 },
+      options: [
+        { group: "תוספות", option: "גבינה", before: 600, after: 700 },
+        { group: "תוספות", option: "ביצה", before: null, after: 600 },
+        { group: "גודל", option: "גדול", before: 400, after: null },
+      ],
+    });
+    expect(
+      lineOf(
+        row("menu.item.save", {
+          item: GONE,
+          name: "פסטה",
+          created: true,
+          changed: [],
+          price: { before: null, after: 5800 },
+        }),
+      ),
+    ).toEqual({
+      action: "menu.item.save",
+      name: "פסטה",
+      created: true,
+      fields: [],
+      price: { before: null, after: 5800 },
+      options: [],
+    });
+    // A name alone changed: no price to show.
+    expect(
+      lineOf(
+        row("menu.item.save", {
+          item: GONE,
+          name: "שניצל עוף",
+          changed: ["name"],
+        }),
+      ),
+    ).toMatchObject({ fields: ["name"], price: null, options: [] });
+    // A price that isn't agorot is no price, never shown as written.
+    expect(
+      lineOf(
+        row("menu.item.save", {
+          item: GONE,
+          name: "שניצל",
+          changed: ["price"],
+          price: { before: 62, after: 68.5 },
+        }),
+      ),
+    ).toMatchObject({ price: null });
+    expect(
+      lineOf(row("menu.item.save", { name: "שניצל", changed: [] })),
+    ).toEqual({ action: "other" });
+  });
+
+  it("reads an item removed and brought back, an import and the categories and places saved", () => {
+    expect(
+      lineOf(row("menu.item.archive", { item: GONE, name: "דג היום" })),
+    ).toEqual({ action: "menu.item.archive", name: "דג היום" });
+    expect(
+      lineOf(row("menu.item.restore", { item: GONE, name: "דג היום" })),
+    ).toEqual({ action: "menu.item.restore", name: "דג היום" });
+    expect(lineOf(row("menu.import", { categories: 2, items: 38 }))).toEqual({
+      action: "menu.import",
+      categories: 2,
+      items: 38,
+    });
+    expect(
+      lineOf(
+        row("menu.categories", {
+          added: 1,
+          restored: 0,
+          archived: 2,
+          changed: 3,
+          total: 4,
+        }),
+      ),
+    ).toEqual({
+      action: "menu.categories",
+      added: 1,
+      archived: 2,
+      restored: 0,
+      changed: 3,
+    });
+    expect(
+      lineOf(row("menu.places", { added: 12, total: 12, changed: "x" })),
+    ).toEqual({
+      action: "menu.places",
+      added: 12,
+      archived: 0,
+      restored: 0,
+      changed: 0,
+    });
+    for (const [action, details] of [
+      ["menu.item.archive", { name: "x" }],
+      ["menu.item.restore", { item: GONE }],
+      ["menu.import", { categories: -1, items: 2 }],
+    ] as const) {
+      expect(lineOf(row(action, details)), action).toEqual({ action: "other" });
+    }
   });
 
   it("turns anything it can't read into a plain line", () => {
@@ -973,6 +2207,115 @@ describe("buildActivity: a run of edits reads as one", () => {
       ),
     ).toHaveLength(2);
   });
+
+  it("folds one person's fixes of one list, each item once from where it began (L6b-1)", () => {
+    const FRIDGE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    const FREEZER = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    const OTHER_LIST = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+    const fix = (
+      minute: number,
+      item: string,
+      label: string,
+      from: number | null,
+      to: number | null,
+      extra: { list?: string; actor?: string; changed?: string[] } = {},
+    ) =>
+      row(
+        "lists.fix",
+        {
+          list: extra.list ?? LIST,
+          name: "Opening",
+          item,
+          label,
+          kind: "number",
+          unit: "°C",
+          changed: extra.changed ?? ["reading"],
+          from: { checked: null, given: null, reading: from },
+          to: { checked: null, given: null, reading: to },
+        },
+        extra.actor ?? NOA,
+        `2026-11-04T14:${String(minute).padStart(2, "0")}:00+00:00`,
+      );
+    const reading = (value: number | null) => ({
+      checked: false,
+      given: null,
+      reading: value,
+    });
+    // Newest first, as the log reads: the freezer twice, the fridge once.
+    const [line, ...rest] = buildActivity(
+      [
+        fix(26, FREEZER, "Freezer", -20, -19),
+        fix(24, FRIDGE, "Fridge", 7, 4),
+        fix(20, FREEZER, "Freezer", -12, -20),
+      ],
+      lookups,
+    );
+    expect(rest).toEqual([]);
+    expect(line?.line).toEqual({
+      action: "lists.fix",
+      name: "Opening",
+      items: [
+        {
+          label: "Freezer",
+          kind: "number",
+          unit: "°C",
+          fields: ["reading"],
+          from: reading(-12),
+          to: reading(-19),
+        },
+        {
+          label: "Fridge",
+          kind: "number",
+          unit: "°C",
+          fields: ["reading"],
+          from: reading(7),
+          to: reading(4),
+        },
+      ],
+    });
+    // Another list, someone else, or more than ten minutes apart: lines of
+    // their own.
+    expect(
+      buildActivity(
+        [
+          fix(24, FRIDGE, "Fridge", 7, 4, { list: OTHER_LIST }),
+          fix(20, FREEZER, "Freezer", -12, -20),
+        ],
+        lookups,
+      ),
+    ).toHaveLength(2);
+    expect(
+      buildActivity(
+        [
+          fix(24, FRIDGE, "Fridge", 7, 4, { actor: YOAV }),
+          fix(20, FREEZER, "Freezer", -12, -20),
+        ],
+        lookups,
+      ),
+    ).toHaveLength(2);
+    expect(
+      buildActivity(
+        [
+          fix(45, FRIDGE, "Fridge", 7, 4),
+          fix(20, FREEZER, "Freezer", -12, -20),
+        ],
+        lookups,
+      ),
+    ).toHaveLength(2);
+    // A reading fixed and put back says nothing; a comment always says so.
+    expect(
+      buildActivity(
+        [fix(22, FRIDGE, "Fridge", 4, 7), fix(20, FRIDGE, "Fridge", 7, 4)],
+        lookups,
+      ),
+    ).toEqual([]);
+    expect(
+      buildActivity(
+        [fix(20, FRIDGE, "Fridge", 7, 7, { changed: ["comment"] })],
+        lookups,
+      ),
+    ).toHaveLength(1);
+  });
 });
 
 describe("activityRefs", () => {
@@ -996,14 +2339,54 @@ describe("activityRefs", () => {
           name: "Opening",
           recipient: { kind: "department", id: KITCHEN },
         }),
+        row("lists.pass", {
+          name: "Bar order",
+          from_department: GONE,
+          to_department: KITCHEN,
+          has_note: false,
+        }),
+        row("chat.remove", {
+          conversation: LIST,
+          message: SHIFT,
+          author: INVITE,
+          department: KITCHEN,
+        }),
       ]),
     ).toEqual({
-      people: [NOA, YOAV, STAFF, LEFT, GONE, NAMELESS],
+      people: [NOA, YOAV, STAFF, LEFT, GONE, NAMELESS, INVITE],
       invites: [INVITE],
       shifts: [SHIFT],
       swaps: [SWAP],
-      departments: [KITCHEN],
+      departments: [KITCHEN, GONE],
+      stations: [],
     });
+  });
+
+  it("looks up whose document the office opened, and never the document", () => {
+    expect(
+      activityRefs([
+        row("document.open", { document: GONE, person: YOAV }, NOA),
+        row("document.send", { document: SHIFT, direction: "to_people" }, NOA),
+      ]),
+    ).toEqual({
+      people: [NOA, YOAV],
+      invites: [],
+      shifts: [],
+      swaps: [],
+      departments: [],
+      stations: [],
+    });
+  });
+
+  it("looks up the station a stop or a restart names, and none an add keeps by name", () => {
+    expect(
+      activityRefs([
+        row("clock.station.add", { station: SHIFT, name: "Entrance" }, NOA),
+        row("clock.station.stop", { station: STATION }, YOAV),
+        row("clock.station.restart", { station: STATION.toUpperCase() }, YOAV),
+        row("clock.station.stop", { station: "not an id" }, YOAV),
+      ]).stations,
+    ).toEqual([STATION]);
   });
 });
 
@@ -1065,5 +2448,147 @@ describe("parseActivityCursor", () => {
       expect(parseActivityCursor(value)).toBeNull();
     }
     expect(parseActivityCursor("99999999999999999")).toBeNull();
+  });
+});
+
+describe("buildActivity: team changes (Orel, 14 November 2026)", () => {
+  const brief = {
+    week: SHIFT,
+    starts_on: "2026-11-22",
+    day: "2026-11-24",
+    name: "Evening",
+    start: "16:00",
+    end: "23:00",
+  };
+
+  it("reads someone taken off the team, by their role and the shifts freed", () => {
+    expect(
+      lineOf(
+        row("member.remove", {
+          person: LEFT,
+          role: "worker",
+          perms: [],
+          shifts: [brief, brief],
+          drafts: 1,
+          swaps: [],
+        }),
+      ),
+    ).toEqual({
+      action: "member.remove",
+      person: { kind: "former" },
+      role: "worker",
+      shifts: 2,
+      swaps: 0,
+      reopened: 0,
+    });
+    expect(
+      lineOf(row("member.remove", { person: NOA, shifts: "two" })),
+    ).toEqual({
+      action: "member.remove",
+      person: { kind: "member", name: "Noa" },
+      role: null,
+      shifts: 0,
+      swaps: 0,
+      reopened: 0,
+    });
+    expect(lineOf(row("member.remove", { role: "worker" }))).toEqual({
+      action: "other",
+    });
+  });
+
+  // Orel, 15 November 2026: a swap they asked for is cancelled, one they took
+  // from a colleague, still waiting for approval, is open again.
+  it("counts the swaps cancelled and those open again", () => {
+    const swap = {
+      id: SHIFT,
+      requested_by: LEFT,
+      taken_by: NOA,
+      shift: {
+        day: "2026-11-24",
+        name: "Evening",
+        start: "16:00",
+        end: "23:00",
+      },
+    };
+    const back = { id: SHIFT, requested_by: NOA, shift: swap.shift };
+    expect(
+      lineOf(
+        row("member.remove", {
+          person: LEFT,
+          role: "worker",
+          shifts: [brief],
+          drafts: 0,
+          swaps: [swap],
+          reopened: [back, back],
+        }),
+      ),
+    ).toMatchObject({ shifts: 1, swaps: 1, reopened: 2 });
+    expect(
+      lineOf(
+        row("member.role", {
+          person: YOAV,
+          role: "accountant",
+          was: "worker",
+          reopened: [back],
+        }),
+      ),
+    ).toMatchObject({ shifts: 0, swaps: 0, reopened: 1 });
+    // A row whose lists are not lists still reads, with none.
+    expect(
+      lineOf(
+        row("member.remove", {
+          person: LEFT,
+          swaps: 2,
+          reopened: { id: SHIFT },
+        }),
+      ),
+    ).toMatchObject({ swaps: 0, reopened: 0 });
+  });
+
+  it("reads a role changed, with what it was", () => {
+    expect(
+      lineOf(
+        row("member.role", { person: YOAV, role: "manager", was: "worker" }),
+      ),
+    ).toEqual({
+      action: "member.role",
+      person: { kind: "member", name: "Yoav" },
+      role: "manager",
+      was: "worker",
+      shifts: 0,
+      swaps: 0,
+      reopened: 0,
+    });
+    expect(
+      lineOf(
+        row("member.role", {
+          person: YOAV,
+          role: "accountant",
+          was: "chef",
+          shifts: [brief],
+        }),
+      ),
+    ).toMatchObject({ role: "accountant", was: null, shifts: 1 });
+  });
+
+  it("names a cancelled invite from its row, which stays", () => {
+    expect(
+      lineOf(row("invite.cancel", { invite: INVITE, role: "manager" })),
+    ).toEqual({ action: "invite.cancel", name: "Dana", role: "manager" });
+    expect(lineOf(row("invite.cancel", { invite: GONE }))).toEqual({
+      action: "invite.cancel",
+      name: null,
+      role: null,
+    });
+  });
+
+  it("asks for the person and the invite a team change names", () => {
+    const refs = activityRefs([
+      row("member.remove", { person: LEFT, role: "worker" }, NOA),
+      row("member.role", { person: YOAV, role: "manager", was: "worker" }),
+      row("invite.cancel", { invite: INVITE, role: "worker" }),
+    ]);
+    expect(refs.people.sort()).toEqual([NOA, YOAV, LEFT].sort());
+    expect(refs.invites).toEqual([INVITE]);
   });
 });

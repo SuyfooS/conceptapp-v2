@@ -319,9 +319,11 @@ select 'ty', (public.save_list_template('73000000-0000-4000-a000-000000000009',
     "items": [{"kind": "check", "label": "Y item"}]}') ->> 'id')::uuid;
 insert into ids values ('ty-item', pg_temp.titem_of('ty', 'Y item'));
 
+-- Photo items are taken from L6 (20261110001500_list_photos.sql,
+-- list_photos.test.sql), like a note: with no unit or range.
 select throws_ok(
-  $$select pg_temp.save_x('{"name": "P", "items": [{"kind": "photo", "label": "Picture"}]}')$$,
-  '22023', 'Photo items come later', 'photo items wait for their part'
+  $$select pg_temp.save_x('{"name": "P", "items": [{"kind": "photo", "label": "Picture", "unit": "cm"}]}')$$,
+  '22023', 'Only numbers have a unit and a range', 'a photo item has no unit or range'
 );
 select throws_ok(
   $$select pg_temp.save_x(jsonb_build_object('name', 'Long', 'items',
@@ -1194,6 +1196,14 @@ values (
   pg_temp.id_of('t1'), '73000000-0000-4000-b000-000000000001', '{1}', 600, 630, 'person',
   '73000000-0000-4000-a000-000000000005', '2026-11-11'
 );
+-- Their employment periods are kept (20261110000600_payroll_details.sql) and
+-- hold their place in the business: a purge that names it takes them first,
+-- for this test, so only the lists are left to show what stays.
+select set_config('ca.records_purge', '73000000-0000-4000-b000-000000000001', true);
+delete from public.employment_periods
+where business_id = '73000000-0000-4000-b000-000000000001'
+  and user_id in ('73000000-0000-4000-a000-000000000005', '73000000-0000-4000-a000-000000000003');
+select set_config('ca.records_purge', '', true);
 select lives_ok(
   $$delete from auth.users where id = '73000000-0000-4000-a000-000000000005'$$,
   'deleting someone a schedule names goes through'

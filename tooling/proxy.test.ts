@@ -35,6 +35,26 @@ describe("proxy", () => {
     expect(source).toContain('"/photos/:path*"');
   });
 
+  it("guards the list photos", () => {
+    expect(source).toContain('"/list-photos",');
+    expect(source).toContain('"/list-photos/:path*"');
+  });
+
+  it("guards the files sent in chat", () => {
+    // /chat-files serves a message's picture under the reader's session
+    // (C4), as /list-photos does: a signed-out visitor goes to sign-in.
+    expect(source).toContain('"/chat-files",');
+    expect(source).toContain('"/chat-files/:path*"');
+  });
+
+  it("guards the official documents' files", () => {
+    // /document-files serves a document's file or sample, and the office's
+    // download of them all (C7), under the reader's session: a signed-out
+    // visitor goes to sign-in, and the route itself answers nobody else.
+    expect(source).toContain('"/document-files",');
+    expect(source).toContain('"/document-files/:path*"');
+  });
+
   it("guards every module screen", () => {
     for (const m of manifests) {
       if (!m.nav) continue;
@@ -43,8 +63,49 @@ describe("proxy", () => {
     }
   });
 
+  it("refreshes a session left on a clock station, without guarding it", () => {
+    // /station is for a device with nobody signed in, so never PRIVATE; in
+    // the matcher, a session left on it is renewed and seen as one, and no
+    // code shows beside it.
+    expect(source).toContain('"/station/:path*"');
+    expect(source).not.toContain('"/station",');
+  });
+
   it("guards the admin console", () => {
     expect(source).toContain(`"/admin",`);
     expect(source).toContain(`"/admin/:path*"`);
+  });
+
+  it("leaves chat's sync out, as the push routes are", () => {
+    // /chat-sync is asked every few seconds while a chat is on screen: in the
+    // matcher, each ask would run the proxy too. It renews the session itself
+    // and answers a signed-out caller 401, never a redirect.
+    // Every path proxy.ts lists, in PRIVATE and in the matcher.
+    const listed = [...source.matchAll(/^\s+"(\/[^"]*)",$/gm)].map(
+      ([, pattern = ""]) => pattern,
+    );
+    expect(listed).toContain("/chat/:path*");
+    // Each entry as Next.js reads it: a literal path, or one with
+    // `/:path*`, which is the path itself or anything under it.
+    const matches = (pattern: string, path: string) =>
+      pattern.endsWith("/:path*")
+        ? path === pattern.slice(0, -"/:path*".length) ||
+          path.startsWith(pattern.slice(0, -":path*".length))
+        : path === pattern;
+    for (const path of ["/chat-sync", "/chat-sync/x", "/push/inbox"]) {
+      expect(listed.filter((pattern) => matches(pattern, path))).toEqual([]);
+    }
+    expect(listed.some((pattern) => matches(pattern, "/chat"))).toBe(true);
+    expect(listed.some((pattern) => matches(pattern, "/chat/x"))).toBe(true);
+    expect(
+      listed.some((pattern) => matches(pattern, "/chat-files/a/b/c.webp")),
+    ).toBe(true);
+    expect(
+      listed.some((pattern) => matches(pattern, "/document-files/a/b")),
+    ).toBe(true);
+    expect(
+      listed.some((pattern) => matches(pattern, "/document-files/download")),
+    ).toBe(true);
+    expect(source).not.toContain('"/chat-sync');
   });
 });

@@ -9,10 +9,12 @@ import type { BusinessDetails } from "@domain/business-details";
 import type { ModuleRow } from "@domain/modules";
 import type { AddressForm, CoverPreset } from "@domain/profile";
 import type { Position, ShiftPattern } from "@domain/staffing";
-import type { TeamInvite, TeamMember } from "@domain/team";
+import type { GivableNamedRole, TeamInvite, TeamMember } from "@domain/team";
 import { portraits } from "../portraits";
 
 export const business = { name: "מסעדת הדגמה" };
+/** A business the demo's accountant was taken off the team of. */
+export const leftBusiness = { name: "בית הקפה של נועה" };
 export const user = {
   name: "שירן",
   role: "מנהלת משמרת",
@@ -150,6 +152,32 @@ export const totalOpenSlots = days.reduce((n, d) => n + openSlots(d), 0);
 // The Team screen: members and invites as the database returns them.
 export const teamToday = new Date("2026-10-23T09:00:00+03:00");
 
+/**
+ * The role the demo restaurant named itself (the roles plan's R11), as the
+ * team's screens give it: "אחראי משמרת", built on workers, building the
+ * schedule without publishing it, running the lists and seeing the team
+ * (the roles twin's `demoShiftLead`). Yoav and Itay hold it, and Dana is
+ * invited to it.
+ */
+export const demoNamedRole: GivableNamedRole = {
+  id: "shift-lead",
+  name: "אחראי משמרת",
+  nameEn: null,
+  base: "worker",
+  holds: ["lists.manage", "lists.send", "schedule.edit", "team.view"],
+};
+
+const demoNamedRoleNames = {
+  id: demoNamedRole.id,
+  name: demoNamedRole.name,
+  nameEn: demoNamedRole.nameEn,
+  base: demoNamedRole.base,
+};
+
+/** Who holds the demo's named role. */
+const inNamedRole = (id: string) =>
+  id === "yoav" || id === "itay" ? demoNamedRoleNames : null;
+
 export const teamMembers: TeamMember[] = [
   {
     userId: "shiran",
@@ -172,6 +200,7 @@ export const teamMembers: TeamMember[] = [
     name: s.name,
     phone: `+97254123456${i}`,
     role: "worker" as const,
+    namedRole: inNamedRole(s.id),
     photo: photos[s.id] ?? null,
     addressForm: forms[s.id] ?? null,
   })),
@@ -183,7 +212,13 @@ export const teamMembers: TeamMember[] = [
  */
 export const teamProfiles: Record<
   string,
-  { bio: string | null; cover: CoverPreset; since: string }
+  {
+    bio: string | null;
+    cover: CoverPreset;
+    since: string;
+    /** A minor's 18th birthday, as a manager sees it (payroll P5). */
+    youthUntil?: string;
+  }
 > = {
   shiran: {
     bio: "אחראית משמרת בערב. אם משהו לא ברור בסידור, אפשר לשאול אותי.",
@@ -200,7 +235,49 @@ export const teamProfiles: Record<
     cover: "arcs",
     since: "2026-10-04T08:00:00.000Z",
   },
+  // A minor: her manager sees until when, and nothing else of her details.
+  maya: {
+    bio: null,
+    cover: "glow",
+    since: "2026-03-01T08:00:00.000Z",
+    youthUntil: "2027-04-15",
+  },
 };
+
+/**
+ * Their shifts still to start in the demo, in the published schedule and in
+ * the draft: what their page says comes off them, and then that it did
+ * (/design/shell/team/[person]). Noa has the most; anyone not named has one.
+ */
+export const teamShiftsAhead: Record<
+  string,
+  { shifts: number; drafts: number }
+> = {
+  noa: { shifts: 3, drafts: 2 },
+  yoav: { shifts: 2, drafts: 0 },
+  maya: { shifts: 0, drafts: 0 },
+};
+
+/** Someone's shifts still to start in the demo (`teamShiftsAhead`). */
+export const shiftsAheadOf = (person: string) =>
+  teamShiftsAhead[person] ?? { shifts: 1, drafts: 0 };
+
+/**
+ * The swap requests their removal settles in the demo, said on the card once
+ * they are off the team: Noa asked to give one of her shifts away, which is
+ * cancelled, and took a colleague's, still waiting for approval, which is
+ * open to others again. Anyone not named has none.
+ */
+export const teamSwapsLeft: Record<
+  string,
+  { swaps: number; reopened: number }
+> = {
+  noa: { swaps: 1, reopened: 1 },
+};
+
+/** The swaps someone's removal settles in the demo (`teamSwapsLeft`). */
+export const swapsLeftOf = (person: string) =>
+  teamSwapsLeft[person] ?? { swaps: 0, reopened: 0 };
 
 export const teamInvites: TeamInvite[] = [
   {
@@ -208,6 +285,7 @@ export const teamInvites: TeamInvite[] = [
     name: "דנה אברהם",
     phone: "+972531234567",
     role: "worker",
+    namedRole: demoNamedRoleNames,
     expiresAt: "2026-11-02T09:00:00+02:00",
   },
   {
@@ -382,10 +460,19 @@ export const demoActivityLookups: ActivityLookups = {
   swaps: new Map([
     [
       "swap-thu",
-      { shiftId: "shift-thu-evening", requestedBy: "noa", takenBy: "yoav" },
+      {
+        shiftId: "shift-thu-evening",
+        shift: { day: "2026-11-05", name: "ערב", start: "16:00", end: "23:00" },
+        requestedBy: "noa",
+        takenBy: "yoav",
+      },
     ],
   ]),
   departments: new Map([["dep-kitchen", "מטבח"]]),
+  stations: new Map([
+    ["station-entrance", "עמדת הכניסה"],
+    ["station-kitchen", "טאבלט המטבח"],
+  ]),
 };
 
 const demoRow = (
@@ -396,7 +483,146 @@ const demoRow = (
   details: unknown,
 ): ActivityRow => ({ id, action, details, createdAt, actorId });
 
+/** The list a run of fixes names, by an id the log folds them by (L6b-1). */
+const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
+
 export const demoActivityRows: ActivityRow[] = [
+  // A name fixed on the person's page, as set_member_name logs it: the
+  // person only, never a name.
+  demoRow(142, "2026-11-04T15:40:00+02:00", "shiran", "member.name", {
+    person: "noa",
+  }),
+  // The entrance's tablet locked into the clock station from the code
+  // screen, and the kitchen's stopped from the team's hours (#78 phase 5),
+  // as approve_station_pairing and set_clock_station_stopped log them.
+  demoRow(141, "2026-11-04T15:30:00+02:00", "shiran", "clock.station.stop", {
+    station: "station-kitchen",
+  }),
+  demoRow(140, "2026-11-04T15:20:00+02:00", "shiran", "clock.station.add", {
+    station: "station-entrance",
+    name: "עמדת הכניסה",
+  }),
+  // A shift recorded by mistake, cancelled with why, and a break pressed by
+  // mistake, removed (the clock plan's PR1 and PR2), as cancel_time_entry and
+  // remove_time_break log them: each leads to Yoav's hours of the month.
+  demoRow(139, "2026-11-04T15:10:00+02:00", "shiran", "clock.cancel", {
+    entry: "entry-yoav-cancelled",
+    person: "yoav",
+    clock_in: "2026-11-03T16:00:00+02:00",
+    clock_out: "2026-11-03T23:00:00+02:00",
+    note: "נרשמה פעמיים בטעות",
+  }),
+  demoRow(138, "2026-11-04T15:05:00+02:00", "shiran", "clock.break_edit", {
+    entry: "entry-yoav-break",
+    person: "yoav",
+    clock_in: "2026-11-02T16:00:00+02:00",
+    break: "break-yoav-3",
+    change: "remove",
+    from: {
+      start: "2026-11-02T19:00:00+02:00",
+      end: "2026-11-02T19:20:00+02:00",
+    },
+    to: null,
+    unpaid: false,
+    note: "ההפסקה נלחצה בטעות",
+  }),
+  // A closed list fixed in place (lists L6b-1): Shiran fixed two readings
+  // of the kitchen's opening after Noa closed it, one with its comment,
+  // which read as one line with each reading from before to after.
+  demoRow(137, "2026-11-04T14:56:00+02:00", "shiran", "lists.fix", {
+    list: DEMO_FIXED_LIST,
+    name: "פתיחת מטבח",
+    item: "00000000-0000-4000-8000-00000000f1a3",
+    label: "מקרר ראשי",
+    kind: "number",
+    unit: "°C",
+    changed: ["reading", "comment"],
+    from: { checked: null, given: null, reading: 7 },
+    to: { checked: null, given: null, reading: 4 },
+  }),
+  demoRow(136, "2026-11-04T14:52:00+02:00", "shiran", "lists.fix", {
+    list: DEMO_FIXED_LIST,
+    name: "פתיחת מטבח",
+    item: "00000000-0000-4000-8000-00000000f1a2",
+    label: "מקפיא",
+    kind: "number",
+    unit: "°C",
+    changed: ["reading"],
+    from: { checked: null, given: null, reading: -12 },
+    to: { checked: null, given: null, reading: -19 },
+  }),
+  // Roles and permissions (roles R2): the ConceptApp team, from the console,
+  // let workers build the schedule and took publishing from managers.
+  demoRow(135, "2026-11-04T14:40:00+02:00", "team-staff", "role.permission", {
+    role: "manager",
+    perm: "schedule.publish",
+    area: "scheduling",
+    from: true,
+    to: false,
+  }),
+  demoRow(134, "2026-11-04T14:30:00+02:00", "team-staff", "role.permission", {
+    role: "worker",
+    perm: "schedule.edit",
+    area: "scheduling",
+    from: false,
+    to: true,
+  }),
+  // Closing a month for payroll (payroll P9): October closed, reopened with
+  // its reason, and closed again.
+  demoRow(133, "2026-11-04T14:20:00+02:00", "shiran", "payroll.close", {
+    month: "2026-10",
+    engine: "2026-11",
+  }),
+  demoRow(132, "2026-11-04T14:10:00+02:00", "shiran", "payroll.reopen", {
+    month: "2026-10",
+    reason: "חסרה משמרת של יואב",
+  }),
+  demoRow(131, "2026-11-04T14:00:00+02:00", "shiran", "payroll.close", {
+    month: "2026-10",
+    engine: "2026-11",
+  }),
+  // The file for payroll (payroll P8): October's, with what it listed.
+  demoRow(130, "2026-11-04T13:50:00+02:00", "shiran", "payroll.export", {
+    month: "2026-10",
+    format: "xlsx",
+    people: 4,
+    shifts: 76,
+    ids: false,
+    engine: "2026-11",
+  }),
+  // Details for payroll (payroll P5): a number and a minor's age entered,
+  // never their values, and a start copied from joining set right.
+  demoRow(129, "2026-11-04T13:40:00+02:00", "shiran", "payroll.details", {
+    person: "dana",
+    fields: ["payroll_number", "youth_until"],
+  }),
+  demoRow(128, "2026-11-04T13:30:00+02:00", "shiran", "payroll.period", {
+    person: "yoav",
+    period: "period-yoav",
+    added: false,
+    confirmed: true,
+    fields: ["started_on"],
+  }),
+  // Hourly wages (payroll P4): a raise, with what it was and its note, and a
+  // wage under the minimum of its day, which was saved all the same.
+  demoRow(127, "2026-11-04T13:20:00+02:00", "shiran", "wage.set", {
+    person: "dana",
+    wage: "wage-dana",
+    from_agorot: null,
+    to_agorot: 3000,
+    effective_from: "2026-11-01",
+    minimum_agorot: 3540,
+    note: null,
+  }),
+  demoRow(126, "2026-11-04T13:10:00+02:00", "shiran", "wage.set", {
+    person: "yoav",
+    wage: "wage-yoav",
+    from_agorot: 3600,
+    to_agorot: 3800,
+    effective_from: "2026-11-01",
+    minimum_agorot: 3540,
+    note: "העלאה אחרי חצי שנה",
+  }),
   // One correction, two rows: its own and, written first, the breaks it cut
   // (one shortened, one removed), as correct_time_entry logs them.
   demoRow(125, "2026-11-04T12:50:00+02:00", "shiran", "clock.correct", {
@@ -545,3 +771,34 @@ export const demoActivityRows: ActivityRow[] = [
     invites: 6,
   }),
 ];
+
+/**
+ * The businesses one login is in, for the switcher's demo (payroll P3b): the
+ * demo's accountant keeps the books of this restaurant, where she is now, and
+ * of a shop with two lines she hasn't read. In the switcher's order.
+ */
+export const demoBusinesses: {
+  id: string;
+  name: string;
+  accent: string;
+  role: "accountant";
+  unread: number;
+}[] = [
+  {
+    id: "shop",
+    name: "חנות הדגמה",
+    accent: "#7c3aed",
+    role: "accountant",
+    unread: 2,
+  },
+  {
+    id: "restaurant",
+    name: business.name,
+    accent: demoBusinessDetails.accent,
+    role: "accountant",
+    unread: 1,
+  },
+];
+
+/** Where the demo's accountant is now. */
+export const demoBusinessHere = "restaurant";

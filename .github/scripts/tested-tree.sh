@@ -4,8 +4,10 @@
 # Prints the link to the pull_request run of ci.yml that already passed check,
 # database and e2e on exactly the tree of <commit>, or prints nothing.
 # A run counts only when all of these hold:
-#   - check, database and e2e each recorded, as their last step, that they
-#     passed on this tree (artifacts passed-<job>-<tree>), all in that run;
+#   - check, database and each of the three e2e jobs (phone, tablet,
+#     desktop) recorded, as their last step, that they passed on this tree
+#     (artifacts passed-<job>-<tree>, passed-e2e-<size>-<tree>), all in that
+#     run;
 #   - the run belongs to this repository (no fork), ran ci.yml for a
 #     pull_request event, is completed, and its latest attempt succeeded;
 #   - the run was created today in Asia/Jerusalem, so no day, week or month
@@ -22,19 +24,19 @@ today=$(TZ=Asia/Jerusalem date +%F)
 tree=$(gh api "repos/$repo/git/commits/$commit" --jq .tree.sha)
 echo "Commit $commit has tree $tree." >&2
 
-# Runs holding a record from each of the three jobs, newest first.
+# Runs holding a record from each of the five jobs, newest first.
 runs=$(
-  for job in check database e2e; do
+  for job in check database e2e-phone e2e-tablet e2e-desktop; do
     gh api "repos/$repo/actions/artifacts?name=passed-$job-$tree&per_page=100" \
       --jq ".artifacts[]
         | select((.expired | not)
             and .workflow_run.repository_id == $repo_id
             and .workflow_run.head_repository_id == $repo_id)
         | .workflow_run.id" | sort -u
-  done | sort | uniq -c | awk '$1 == 3 { print $2 }' | sort -rn
+  done | sort | uniq -c | awk '$1 == 5 { print $2 }' | sort -rn
 )
 if [ -z "$runs" ]; then
-  echo "No run holds records from all three jobs for this tree." >&2
+  echo "No run holds records from all five jobs for this tree." >&2
   exit 0
 fi
 

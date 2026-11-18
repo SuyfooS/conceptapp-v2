@@ -38,10 +38,10 @@ export default async function BusinessSettingsPage({
     getBusinessDetailsForTeam(business.id),
   ]);
   if (!own) notFound();
-  // Departments while lists are on, as on the business's own /manage.
-  const departments = enabledModules(manifests, rows).includes("lists")
-    ? await getDepartmentsForTeam(business.id)
-    : null;
+  // Departments and the list templates while lists are on, as on the
+  // business's own /manage and /lists.
+  const lists = enabledModules(manifests, rows).includes("lists");
+  const departments = lists ? await getDepartmentsForTeam(business.id) : null;
   return (
     <BusinessSettingsView
       name={business.name}
@@ -65,6 +65,7 @@ export default async function BusinessSettingsPage({
             }
           : null
       }
+      listsHref={lists ? `/admin/businesses/${slug}/lists` : null}
     />
   );
 }

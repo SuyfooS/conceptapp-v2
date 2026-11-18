@@ -1,12 +1,22 @@
 import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
-import type {
-  NotificationEntry,
-  NotificationGroup,
-  NotificationPerson,
-  NotificationShift,
+import { numberRange, signed } from "@domain/lists";
+import {
+  inboxAgo,
+  LIST_TIME_WORDS,
+  type NotificationActor,
+  type NotificationEntry,
+  type NotificationGroup,
+  type NotificationShift,
+  type ShiftChange,
+  saysShiftsLeft,
+  unfilledWeekBegun,
+  weekUnderWay,
 } from "@domain/notifications";
+import { shiftStarted } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
+import { addMonths } from "@domain/time-clock-format";
+import { dayMonthYear } from "@domain/wages";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
@@ -15,19 +25,16 @@ import { ListGroup } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
-import {
-  Bell,
-  CalendarDays,
-  ClipboardCheck,
-  ListChecks,
-  Repeat,
-  Users,
-} from "lucide-react";
+import { Bell, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
 import { type AppWording, translator } from "../wording";
+import { GROUP_ICONS } from "./group-icons";
 import { InboxOpen, InboxRow, ReadAllButton } from "./inbox-row";
+import { outOfRangeTitle } from "./range-words";
+import { roleChangeWords } from "./role-change-words";
+import { NotificationSettingsLink } from "./settings-link";
 
 export type InboxPaths = {
   /** This screen, for the newest page and an older one's cursor. */
@@ -38,17 +45,6 @@ export type InboxPaths = {
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
-
-const GROUP_ICONS: Record<NotificationGroup, ReactNode> = {
-  schedule: <CalendarDays />,
-  swaps: <Repeat />,
-  approvals: <ClipboardCheck />,
-  team: <Users />,
-  lists: <ListChecks />,
-};
-
-/** A week is long enough to say "3 days ago"; older lines say their date. */
-const RELATIVE_FOR_MS = 7 * 24 * 60 * 60 * 1000;
 
 const th = "px-4 py-3 text-start font-medium text-ink-2 text-sm";
 const td = "border-line border-t px-4 py-3 align-top";
@@ -74,7 +70,9 @@ type Described = {
  * each section is a table with who, what, the shift and when, beside the same
  * card. The words are worked out once per line, so every shape says the same.
  * `push`, the switch for notifications on this phone, sits at the top on a
- * phone and above the card from the tablet up. Also on the design demo.
+ * phone and above the card from the tablet up. `settings`, the way to what
+ * reaches the phone: under the lines on a phone, under the card from the
+ * tablet up. Also on the design demo.
  */
 export function InboxView({
   unread,
@@ -89,6 +87,7 @@ export function InboxView({
   paths,
   wording,
   push,
+  settings = null,
 }: {
   unread: NotificationEntry[];
   earlier: NotificationEntry[];
@@ -112,15 +111,29 @@ export function InboxView({
   wording: AppWording;
   /** The phone switch (`PushSwitch`), or nothing where push isn't set up. */
   push?: ReactNode;
+  /** Where the notification settings are, where there is something to choose. */
+  settings?: string | null;
 }) {
   const t = translator(wording, "app.notifications");
   const tDays = translator(wording, "app.availability.weekdays");
+  const tDocuments = translator(wording, "app.chat.documents");
   const format = useFormatter();
   const nowDate = new Date(now);
 
   const weekday = (date: string) =>
     tDays(WEEKDAY_KEYS[weekdayOf(date)] ?? "sun");
-  const who = (person: NotificationPerson) =>
+  /** A month in words, `2026-10` as "אוקטובר 2026". */
+  const monthName = (month: string) =>
+    format.dateTime(new Date(`${month}-15T12:00:00Z`), {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  /**
+   * Who a line names or is from: the app itself for its own reminders, and
+   * the ConceptApp team for what it did from the console.
+   */
+  const who = (person: NotificationActor) =>
     person.kind === "member"
       ? (person.name ?? t("who.noName"))
       : t(`who.${person.kind}`);
@@ -135,11 +148,36 @@ export function InboxView({
           end: shift.end,
         })
       : null;
+  /**
+   * The reader's nearest shift a change moved, added, took off them or only
+   * renamed or gave another position.
+   */
+  const changeWords = (near: ShiftChange) =>
+    t.rich(`kinds.schedule.changed.nearest.${near.change}`, {
+      ltr,
+      day: weekday(near.shift.day),
+      start: near.shift.start,
+      end: near.shift.end,
+    });
+  /**
+   * The line's shift has begun at the moment the screen is read, so it can
+   * no longer be taken or approved, as the database decides.
+   */
+  const begun = (shift: NotificationShift | null) =>
+    shift !== null && shiftStarted(shift, nowDate, timeZone);
+  /** A moment's weekday and time on the business's clock, in words. */
+  const dayAndTime = (at: string) => {
+    const instant = new Date(at);
+    return {
+      day: weekday(dateIn(instant, timeZone)),
+      time: timeIn(instant, timeZone),
+    };
+  };
   const when = (at: string) => {
     const instant = new Date(at);
-    const ago = nowDate.getTime() - instant.getTime();
-    if (ago < 60_000) return t("time.now");
-    if (ago < RELATIVE_FOR_MS) return format.relativeTime(instant, nowDate);
+    const ago = inboxAgo(instant, nowDate);
+    if (ago?.unit === "now") return t("time.now");
+    if (ago) return t(`time.${ago.unit}`, { count: ago.count });
     return format.dateTime(instant, {
       day: "numeric",
       month: "numeric",
@@ -157,21 +195,73 @@ export function InboxView({
       case "schedule.changed": {
         const key =
           line.kind === "schedule.published" ? "published" : "changed";
+        const dated = t(`kinds.schedule.${key}.title`, {
+          date: dayMonth(line.startsOn),
+        });
+        if (!line.running) {
+          return {
+            title: dated,
+            shift: null,
+            notes: [t(`kinds.schedule.${key}.body`, { count: line.mine })],
+          };
+        }
+        // Written while the week ran (Orel, 15 November 2026): the nearest
+        // shift that changed, and how many were left. "This week" while it
+        // still is; after it, the week's date. How many were left was
+        // counted when the line was written, so it is said on that day only
+        // (on the business's clock), and never beside a shift under way they
+        // joined with none left to start (`saysShiftsLeft`).
+        const today = dateIn(nowDate, timeZone);
+        const current = weekUnderWay(line.startsOn, today);
+        const left =
+          current &&
+          dateIn(new Date(entry.at), timeZone) === today &&
+          saysShiftsLeft(line);
         return {
-          title: t(`kinds.schedule.${key}.title`, {
-            date: dayMonth(line.startsOn),
-          }),
+          title: current ? t(`kinds.schedule.${key}.titleRunning`) : dated,
           shift: null,
-          notes: [t(`kinds.schedule.${key}.body`, { count: line.mine })],
+          notes: [
+            ...(line.nearest ? [changeWords(line.nearest)] : []),
+            ...(left
+              ? [t(`kinds.schedule.${key}.left`, { count: line.mine })]
+              : []),
+          ],
         };
+      }
+      // A team change freed shifts (Orel, 14 November 2026): how many, never
+      // who left. Counted again by a publish, and settled when none is left:
+      // nothing waits on it then. A week already under way is filled in this
+      // week's schedule, which the line opens (the running-week plan's R4).
+      case "schedule.unfilled": {
+        const date = dayMonth(line.startsOn);
+        const count = line.count;
+        return settled
+          ? {
+              title: t("kinds.schedule.unfilled.settledTitle", {
+                count,
+                date,
+              }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t("kinds.schedule.unfilled.title", { count, date }),
+              shift: null,
+              notes: [
+                unfilledWeekBegun(line.startsOn, dateIn(nowDate, timeZone))
+                  ? t("kinds.schedule.unfilled.begun", { count })
+                  : t("kinds.schedule.unfilled.note", { count }),
+              ],
+            };
       }
       case "swap.offered":
         return {
           title: t("kinds.swap.offered.title", { name: who(line.from) }),
           shift: shiftWords(line.shift),
-          // Taken, withdrawn or gone with the schedule: nothing to take.
+          // Taken, withdrawn, gone with the schedule, or begun (My shifts no
+          // longer offers it): nothing to take.
           notes: [
-            settled
+            settled || begun(line.shift)
               ? t("kinds.swap.offered.settledNote")
               : t("kinds.swap.offered.note"),
           ],
@@ -182,11 +272,14 @@ export function InboxView({
           shift: shiftWords(line.shift),
           notes: [t("kinds.swap.taken.note")],
         };
+      // Once the shift has begun it can't be approved, and the approvals
+      // screen no longer counts it.
       case "swap.waiting":
         return {
-          title: settled
-            ? t("kinds.swap.waiting.settledTitle")
-            : t("kinds.swap.waiting.title"),
+          title:
+            settled || begun(line.shift)
+              ? t("kinds.swap.waiting.settledTitle")
+              : t("kinds.swap.waiting.title"),
           shift: shiftWords(line.shift),
           notes: [
             t("kinds.swap.waiting.people", {
@@ -232,6 +325,14 @@ export function InboxView({
           shift: shiftWords(line.shift),
           notes: [],
         };
+      // Whoever took it left the team first (Orel, 15 November 2026): open
+      // again for someone else, and nobody named.
+      case "swap.reopened":
+        return {
+          title: t("kinds.swap.reopened.title"),
+          shift: shiftWords(line.shift),
+          notes: [t("kinds.swap.reopened.note")],
+        };
       case "clock.confirm": {
         const at = new Date(line.at);
         return {
@@ -257,6 +358,107 @@ export function InboxView({
           shift: null,
           notes: [],
         };
+      // The reminders (notifications part 4): what they ask for and by when,
+      // from what the line holds (a week, a moment, a count). Who hasn't
+      // sent availability is on the team's screen it leads to, not here.
+      case "availability.due": {
+        const date = dayMonth(line.startsOn);
+        // Sent, or the week published: nothing waits on it now.
+        return settled
+          ? {
+              title: t("kinds.availability.due.settledTitle", { date }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t("kinds.availability.due.title", { date }),
+              shift: null,
+              notes: line.dueAt
+                ? [
+                    t.rich("kinds.availability.due.note", {
+                      ltr,
+                      ...dayAndTime(line.dueAt),
+                    }),
+                  ]
+                : [],
+            };
+      }
+      case "availability.missing": {
+        const date = dayMonth(line.startsOn);
+        // Everyone sent it, or the week published.
+        return settled
+          ? {
+              title: t("kinds.availability.missing.settledTitle", { date }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t("kinds.availability.missing.title", {
+                count: line.missing,
+                date,
+              }),
+              shift: null,
+              notes: line.dueAt
+                ? [
+                    t.rich("kinds.availability.missing.note", {
+                      ltr,
+                      ...dayAndTime(line.dueAt),
+                    }),
+                  ]
+                : [],
+            };
+      }
+      case "clock.open":
+        // Clocked out, closed by a correction, or now a manager's to close.
+        return settled
+          ? {
+              title: t("kinds.clock.open.settledTitle"),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t("kinds.clock.open.title"),
+              shift: null,
+              notes: [
+                line.shiftEnd
+                  ? t.rich("kinds.clock.open.afterShift", {
+                      ltr,
+                      time: timeIn(new Date(line.shiftEnd), timeZone),
+                    })
+                  : line.since
+                    ? t.rich("kinds.clock.open.noShift", {
+                        ltr,
+                        ...dayAndTime(line.since),
+                      })
+                    : t("kinds.clock.open.plain"),
+              ],
+            };
+      case "clock.overdue":
+        return {
+          // The reader's own entry says so, without their name; once
+          // corrected, it says that.
+          title: line.mine
+            ? settled
+              ? t("kinds.clock.overdue.settledTitleMine")
+              : t("kinds.clock.overdue.titleMine")
+            : settled
+              ? t("kinds.clock.overdue.settledTitle", {
+                  name: who(line.person),
+                })
+              : t("kinds.clock.overdue.title", { name: who(line.person) }),
+          shift: null,
+          notes: [
+            ...(line.since
+              ? [
+                  t.rich("kinds.clock.overdue.since", {
+                    ltr,
+                    ...dayAndTime(line.since),
+                  }),
+                ]
+              : []),
+            ...(settled ? [] : [t("kinds.clock.overdue.note")]),
+          ],
+        };
       case "lists.sent":
         return {
           // Finished, cancelled or missed: nothing waits on it now.
@@ -272,6 +474,72 @@ export function InboxView({
           shift: null,
           notes: [],
         };
+      case "lists.passed":
+        // Finished, or passed on again: nothing waits on it now.
+        return settled
+          ? {
+              title: t("kinds.lists.passed.settledTitle", { name: line.name }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: line.department
+                ? t("kinds.lists.passed.title", {
+                    name: line.name,
+                    department: line.department,
+                  })
+                : t("kinds.lists.passed.titlePlain", { name: line.name }),
+              shift: null,
+              notes: line.hasNote ? [t("kinds.lists.passed.note")] : [],
+            };
+      case "lists.due":
+      case "lists.late":
+      case "lists.late_team":
+      case "lists.late_owner": {
+        const key = LIST_TIME_WORDS[line.kind];
+        // Finished or missed: nothing waits on it now.
+        return settled
+          ? {
+              title: t(`kinds.lists.${key}.settledTitle`, { name: line.name }),
+              shift: null,
+              notes: [],
+            }
+          : {
+              title: t(`kinds.lists.${key}.title`, { name: line.name }),
+              shift: null,
+              notes: line.due
+                ? [
+                    t.rich(`kinds.lists.${key}.note`, {
+                      ltr,
+                      time: timeIn(new Date(line.due), timeZone),
+                    }),
+                  ]
+                : [],
+            };
+      }
+      case "lists.out_of_range": {
+        const said = outOfRangeTitle(line, settled, wording);
+        // Read again inside its range: nothing waits on it now, and the
+        // reading that was outside is no news.
+        if (said.back) return { title: said.title, shift: null, notes: [] };
+        // The reading and its range, with a real minus sign, when it kept them.
+        const range = line.reading ? numberRange(line.reading) : null;
+        return {
+          title: said.title,
+          shift: null,
+          notes:
+            line.reading && range
+              ? [
+                  t.rich("kinds.lists.out_of_range.note", {
+                    ltr,
+                    reading: `${signed(line.reading.value)}${line.reading.unit ? ` ${line.reading.unit}` : ""}`,
+                    kind: range.kind,
+                    range: range.range,
+                  }),
+                ]
+              : [],
+        };
+      }
       case "access.pay_granted":
         return {
           // Taken back since: it says so, and leads nowhere new.
@@ -279,8 +547,170 @@ export function InboxView({
             ? t("kinds.access.pay_granted.settledTitle")
             : t("kinds.access.pay_granted.title"),
           shift: null,
-          notes: settled ? [] : [t("kinds.access.pay_granted.note")],
+          // Given from the console: every shape says it was the ConceptApp
+          // team, not a colleague (a phone shows no "who").
+          notes: settled
+            ? []
+            : [
+                ...(entry.actor.kind === "team"
+                  ? [t("kinds.access.pay_granted.byTeam")]
+                  : []),
+                t("kinds.access.pay_granted.note"),
+              ],
         };
+      case "pay.wage_set":
+        return {
+          // The day it takes effect, never the amount: the clock shows that.
+          title: t("kinds.pay.wage_set.title"),
+          shift: null,
+          notes: [
+            line.since
+              ? t.rich("kinds.pay.wage_set.note", {
+                  ltr,
+                  since: dayMonthYear(line.since),
+                })
+              : t("kinds.pay.wage_set.noteUndated"),
+          ],
+        };
+      case "pay.after_close":
+        return {
+          // Its difference goes into the file of the month after the closed
+          // one, named: read on the day of the correction, "next month"
+          // would read as the month after today. Nothing to do.
+          title: line.month
+            ? t("kinds.pay.after_close.title", { month: monthName(line.month) })
+            : t("kinds.pay.after_close.titleUndated"),
+          shift: null,
+          notes: [
+            line.month
+              ? t("kinds.pay.after_close.note", {
+                  next: monthName(addMonths(line.month, 1)),
+                })
+              : t("kinds.pay.after_close.noteUndated"),
+          ],
+        };
+      case "pay.month_due": {
+        // Counts only; once the month is closed, it says so.
+        const month = line.month ? monthName(line.month) : null;
+        if (settled) {
+          return {
+            title: month
+              ? t("kinds.pay.month_due.settledTitle", { month })
+              : t("kinds.pay.month_due.settledTitleUndated"),
+            shift: null,
+            notes: [],
+          };
+        }
+        const counts = [
+          ...(line.waiting > 0
+            ? [t("kinds.pay.month_due.waiting", { count: line.waiting })]
+            : []),
+          ...(line.open > 0
+            ? [t("kinds.pay.month_due.open", { count: line.open })]
+            : []),
+        ];
+        return {
+          title: month
+            ? t("kinds.pay.month_due.title", { month })
+            : t("kinds.pay.month_due.titleUndated"),
+          shift: null,
+          notes: counts.length > 0 ? counts : [t("kinds.pay.month_due.ready")],
+        };
+      }
+      // A chat's own lines don't reach the inbox (`inbox: false`); the
+      // phone says the same words.
+      case "chat.direct":
+        return {
+          title: t("kinds.chat.direct.title", { name: who(line.from) }),
+          shift: null,
+          notes: [t("kinds.chat.direct.body", { count: line.count })],
+        };
+      case "chat.group":
+        return {
+          title:
+            line.chat?.kind === "team"
+              ? t("kinds.chat.group.titleTeam")
+              : line.chat?.name
+                ? t("kinds.chat.group.title", { group: line.chat.name })
+                : t("kinds.chat.group.titlePlain"),
+          shift: null,
+          notes: [
+            t("kinds.chat.group.body", {
+              count: line.count,
+              name: who(line.from),
+            }),
+          ],
+        };
+      case "chat.announcement":
+        return {
+          title: t("kinds.chat.announcement.title"),
+          shift: null,
+          notes: [
+            settled
+              ? t("kinds.chat.announcement.settledNote")
+              : line.chat?.kind === "team"
+                ? t("kinds.chat.announcement.bodyTeam")
+                : line.chat?.name
+                  ? t("kinds.chat.announcement.body", {
+                      group: line.chat.name,
+                    })
+                  : t("kinds.chat.announcement.bodyPlain"),
+          ],
+        };
+      // A document's lines (chat C6): who sent it, and here, behind
+      // sign-in, its category, read from the document itself under the
+      // reader's own session; nothing of it once they no longer read it.
+      // The phone never says the category.
+      case "documents.received":
+        return {
+          title: t("kinds.documents.received.title", { name: who(line.from) }),
+          shift: null,
+          notes: [
+            ...(line.category
+              ? [tDocuments(`categories.${line.category}`)]
+              : []),
+            ...(settled ? [t("kinds.documents.received.settledNote")] : []),
+          ],
+        };
+      case "documents.sent":
+        return {
+          title: t("kinds.documents.sent.title"),
+          shift: null,
+          notes: line.category
+            ? [tDocuments(`categories.${line.category}`)]
+            : [],
+        };
+      case "documents.to_confirm":
+        return {
+          title: t("kinds.documents.to_confirm.title"),
+          shift: null,
+          notes: [
+            ...(line.category
+              ? [tDocuments(`categories.${line.category}`)]
+              : []),
+            settled
+              ? t("kinds.documents.to_confirm.settledNote")
+              : t("kinds.documents.to_confirm.body"),
+          ],
+        };
+      // What the reader's role does in an area changed (the roles plan's
+      // R10): its role, and what the area gives and takes now. From the
+      // console, every shape says it was the ConceptApp team.
+      case "role.changed": {
+        const said = roleChangeWords(line, wording, (items) =>
+          format.list(items, { type: "conjunction" }),
+        );
+        return {
+          title: said.title,
+          shift: null,
+          notes: [
+            said.change,
+            ...(entry.actor.kind === "team"
+              ? [t("kinds.role.changed.byTeam")]
+              : []),
+          ],
+        };
+      }
       case "push.test":
         return {
           title: t("kinds.push.test.title"),
@@ -306,8 +736,11 @@ export function InboxView({
       return {
         entry,
         ...words(entry),
+        // The ConceptApp team has the mark the activity log gives it.
         leading: actor ? (
           <PersonAvatar name={actor} />
+        ) : entry.actor.kind === "team" ? (
+          <ShieldCheck />
         ) : (
           (entry.group && GROUP_ICONS[entry.group]) || <Bell />
         ),
@@ -469,8 +902,17 @@ export function InboxView({
         </EmptyState>
       ) : null}
       {nothing && !olderPage ? (
-        push ? (
-          <div className="mx-auto w-full max-w-xl">{push}</div>
+        push || settings ? (
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-6">
+            {push}
+            {settings ? (
+              <NotificationSettingsLink
+                href={settings}
+                wording={wording}
+                from="inbox"
+              />
+            ) : null}
+          </div>
         ) : null
       ) : nothing ? (
         <EmptyState
@@ -536,9 +978,18 @@ export function InboxView({
                 ) : null}
               </nav>
             ) : null}
+
+            {settings ? (
+              <NotificationSettingsLink
+                href={settings}
+                wording={wording}
+                from="inbox"
+                className="md:hidden"
+              />
+            ) : null}
           </div>
 
-          {push || groups.length > 0 ? (
+          {push || groups.length > 0 || settings ? (
             <div
               className={cn(
                 "order-first flex min-w-0 flex-col gap-6 md:order-none",
@@ -581,6 +1032,14 @@ export function InboxView({
                     ))}
                   </ul>
                 </Card>
+              ) : null}
+              {settings ? (
+                <NotificationSettingsLink
+                  href={settings}
+                  wording={wording}
+                  from="inbox"
+                  className="hidden md:block"
+                />
               ) : null}
             </div>
           ) : null}

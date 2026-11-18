@@ -25,6 +25,8 @@ const manifests: ModuleManifest[] = [
   manifest("storefront"),
   manifest("notifications"),
   manifest("lists"),
+  manifest("chat"),
+  manifest("order_taking"),
 ];
 
 const template = (overrides: Record<string, unknown> = {}) => ({
@@ -96,6 +98,8 @@ describe("validateTemplate", () => {
     const fewer = template();
     fewer.modules.notifications = { enabled: false, settings: {} };
     fewer.modules.lists = { enabled: false, settings: {} };
+    fewer.modules.chat = { enabled: false, settings: {} };
+    fewer.modules.order_taking = { enabled: false, settings: {} };
     expect(() => validateTemplate(tabbed, fewer)).not.toThrow();
   });
 
@@ -161,17 +165,26 @@ describe("validateTemplate", () => {
         list({ kind: "role", role: "worker" }, { fromDepartment: "kitchen" }),
       ),
     ).toThrow(/order/);
+    // A photo item is a template's own from L6, as the restaurant's weekly
+    // cleaning has one; a photo with a number's range is not.
+    expect(
+      validateTemplate(
+        manifests,
+        list(
+          { kind: "role", role: "worker" },
+          { items: [{ kind: "photo", label: "Picture", required: false }] },
+        ),
+      ).listTemplates[0]?.items[0]?.kind,
+    ).toBe("photo");
     expect(() =>
       validateTemplate(
         manifests,
         list(
           { kind: "role", role: "worker" },
-          {
-            items: [{ kind: "photo", label: "Picture" }],
-          },
+          { items: [{ kind: "photo", label: "Picture", unit: "°C" }] },
         ),
       ),
-    ).toThrow(/Photo/);
+    ).toThrow(/Only numbers/);
     expect(() =>
       validateTemplate(
         manifests,

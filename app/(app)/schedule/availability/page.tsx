@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
+import { currentPushAsk } from "../../notifications/push-ask-offer";
 import { baseWording, translator } from "../../wording";
 import { currentAvailabilityWeek } from "../week";
 import { saveAvailabilityAction } from "./actions";
@@ -12,17 +13,23 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 // Everyone in a business with scheduling on sends their availability for
-// next week here.
+// next week here. Once it's sent, the first time, the offer of
+// notifications on the phone.
 export default async function AvailabilityPage() {
   const week = await currentAvailabilityWeek();
   if (!week) notFound();
+  const [wording, ask] = await Promise.all([
+    currentWording(),
+    currentPushAsk(),
+  ]);
   return (
     <AvailabilityView
       week={week}
       late={Date.parse(week.dueAt) < Date.now()}
       save={saveAvailabilityAction}
       backHref="/schedule"
-      wording={await currentWording()}
+      wording={wording}
+      ask={ask}
     />
   );
 }

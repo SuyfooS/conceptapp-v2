@@ -1,3 +1,4 @@
+import { dayMonth } from "@domain/availability-form";
 import type { Attendance, ShiftRecord } from "@domain/time-clock";
 import { formatHours } from "@domain/time-clock-format";
 import { Badge } from "@ui/badge";
@@ -26,7 +27,10 @@ function useDayLabel() {
 
 /**
  * Shifts as a list on phones and tablets and as a table on desktop. Each shows
- * the times, the break and what it counted for.
+ * the times, the break and what it counted for. A cancelled one shows its
+ * times, "בוטלה" instead of what it counted for, and who cancelled it, when
+ * and why. For a manager, pressing a shift opens it: to fix one, or to bring
+ * a cancelled one back.
  */
 export function ShiftList({
   records,
@@ -40,7 +44,10 @@ export function ShiftList({
    * business's words, a client one with useTranslations.
    */
   t: Translator<"app.clock.history">;
-  /** For a manager: pressing a shift offers to correct it. */
+  /**
+   * For a manager: pressing a shift offers to correct it, or a cancelled one
+   * to bring it back.
+   */
   onEdit?: (record: ShiftRecord) => void;
   className?: string;
 }) {
@@ -133,6 +140,28 @@ export function correctionLine(
     : t("correctedBy", { name });
 }
 
+/**
+ * Who cancelled a shift, when and why, as its second line: "בוטלה על ידי
+ * שירן, ב-10:12: נרשמה בטעות". The time has its day when that isn't the
+ * shift's, as the lists' lines say it. Null for a live shift.
+ */
+export function cancelLine(
+  record: ShiftRecord,
+  t: Translator<"app.clock.history">,
+): ReactNode {
+  const cancel = record.cancelled;
+  if (!cancel) return null;
+  return t.rich("cancelledBy", {
+    ltr,
+    name: cancel.by ?? t("aManager"),
+    time:
+      cancel.date === record.date
+        ? cancel.time
+        : `${dayMonth(cancel.date)}, ${cancel.time}`,
+    note: cancel.note,
+  });
+}
+
 function StateBadge({
   record,
   t,
@@ -145,6 +174,65 @@ function StateBadge({
   ) : (
     <Badge tone="accent">{t("now")}</Badge>
   );
+}
+
+/**
+ * What a shift's row on phones and tablets says: its day, its times and the
+ * lines under them, and what it counted for. A cancelled one counted for
+ * nothing: its times, and who cancelled it, when and why.
+ */
+function rowOf(
+  record: ShiftRecord,
+  t: Translator<"app.clock.history">,
+  dayLabel: (date: string) => string,
+): { title: ReactNode; subtitle: ReactNode; trailing: ReactNode } {
+  const times = record.out
+    ? t.rich("times", { in: record.in, out: record.out, ltr })
+    : t.rich("since", { in: record.in, ltr });
+  if (record.cancelled) {
+    return {
+      title: dayLabel(record.date),
+      subtitle: (
+        <>
+          {times}
+          <span className="block">{cancelLine(record, t)}</span>
+        </>
+      ),
+      trailing: <Badge>{t("cancelled")}</Badge>,
+    };
+  }
+  const pending = record.attendance?.pending === true;
+  const proof = proofInline(record.attendance, t, pending);
+  const fixed = correctionLine(record, t);
+  // A shift a manager added names who recorded it on its own line.
+  const added = record.correction?.kind === "added";
+  return {
+    title: dayLabel(record.date),
+    subtitle: (
+      <>
+        {times}
+        {record.breakMinutes > 0
+          ? t("withBreak", { minutes: record.breakMinutes })
+          : null}
+        {record.byManager && !added ? t("byManager") : null}
+        {proof ? t("withProof", { proof }) : null}
+        {fixed ? <span className="block">{fixed}</span> : null}
+      </>
+    ),
+    trailing: (
+      <span className="flex items-center gap-2">
+        {pending ? (
+          <Badge tone="warning">{t("proof.pendingShort")}</Badge>
+        ) : null}
+        {record.out ? null : <StateBadge record={record} t={t} />}
+        {record.out || record.overdue ? (
+          <span dir="ltr" className="font-semibold text-ink tabular-nums">
+            {formatHours(record.minutes)}
+          </span>
+        ) : null}
+      </span>
+    ),
+  };
 }
 
 function ShiftRows({
@@ -162,46 +250,35 @@ function ShiftRows({
   return (
     <ListGroup className={className}>
       {records.map((record) => {
-        const pending = record.attendance?.pending === true;
-        const proof = proofInline(record.attendance, t, pending);
-        const fixed = correctionLine(record, t);
-        // A shift a manager added names who recorded it on its own line.
-        const added = record.correction?.kind === "added";
-        const row = {
-          title: dayLabel(record.date),
-          subtitle: (
-            <>
-              {record.out
-                ? t.rich("times", { in: record.in, out: record.out, ltr })
-                : t.rich("since", { in: record.in, ltr })}
-              {record.breakMinutes > 0
-                ? t("withBreak", { minutes: record.breakMinutes })
-                : null}
-              {record.byManager && !added ? t("byManager") : null}
-              {proof ? t("withProof", { proof }) : null}
-              {fixed ? <span className="block">{fixed}</span> : null}
-            </>
-          ),
-          trailing: (
-            <span className="flex items-center gap-2">
-              {pending ? (
-                <Badge tone="warning">{t("proof.pendingShort")}</Badge>
-              ) : null}
-              {record.out ? null : <StateBadge record={record} t={t} />}
-              {record.out || record.overdue ? (
-                <span dir="ltr" className="font-semibold text-ink tabular-nums">
-                  {formatHours(record.minutes)}
-                </span>
-              ) : null}
-            </span>
-          ),
-        };
+        const row = rowOf(record, t, dayLabel);
         return onEdit ? (
           <ListRow key={record.id} {...row} onClick={() => onEdit(record)} />
         ) : (
           <ListRow key={record.id} {...row} />
         );
       })}
+    </ListGroup>
+  );
+}
+
+/**
+ * One shift as its row reads on phones and tablets, on its own and not
+ * pressable: what a sheet about it shows on every screen, so it is the same
+ * shift the list showed.
+ */
+export function ShiftSummary({
+  record,
+  t,
+  className,
+}: {
+  record: ShiftRecord;
+  t: Translator<"app.clock.history">;
+  className?: string;
+}) {
+  const dayLabel = useDayLabel();
+  return (
+    <ListGroup className={className}>
+      <ListRow {...rowOf(record, t, dayLabel)} />
     </ListGroup>
   );
 }
@@ -253,6 +330,45 @@ function ShiftTable({
         </thead>
         <tbody>
           {records.map((record) => {
+            if (record.cancelled) {
+              return (
+                <tr key={record.id}>
+                  <th
+                    scope="row"
+                    className={cn(td, "text-start font-medium text-ink")}
+                  >
+                    {dayLabel(record.date)}
+                    <span className="block font-normal text-ink-2 text-sm">
+                      {cancelLine(record, t)}
+                    </span>
+                  </th>
+                  <td className={cn(td, "tabular-nums")}>
+                    <span dir="ltr">{record.in}</span>
+                  </td>
+                  <td className={cn(td, "tabular-nums")}>
+                    {/* One the cancel ended has no end of its own. */}
+                    {record.out ? <span dir="ltr">{record.out}</span> : "—"}
+                  </td>
+                  <td className={cn(td, "text-ink-2")}>—</td>
+                  <td className={td}>
+                    <Badge>{t("cancelled")}</Badge>
+                  </td>
+                  {onEdit ? (
+                    <td className={cn(td, "text-end")}>
+                      <Button
+                        variant="ghost"
+                        aria-label={t("restoreShift", {
+                          day: dayLabel(record.date),
+                        })}
+                        onClick={() => onEdit(record)}
+                      >
+                        {t("restore")}
+                      </Button>
+                    </td>
+                  ) : null}
+                </tr>
+              );
+            }
             const proof = proofLabel(record.attendance, t);
             const fixed = correctionLine(record, t);
             return (

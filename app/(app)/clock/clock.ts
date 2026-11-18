@@ -1,20 +1,29 @@
+import { getEmploymentPeriods, getPayrollDetails } from "@db/payroll-details";
 import { getOwnPublishedShifts } from "@db/schedule";
 import {
+  getCancelledEntries,
   getClockPeople,
   getEntriesToConfirm,
   getTimeEntries,
 } from "@db/time-clock";
+import { getWages } from "@db/wages";
 import { addDays, instantIn } from "@domain/availability";
 import { canOpenModule } from "@domain/modules";
 import { canSeePay } from "@domain/payroll-access";
+import {
+  currentPeriod,
+  type EmploymentPeriod,
+  type PayrollDetails,
+} from "@domain/payroll-details";
 import { needsPunchCode } from "@domain/punch-code";
 import { timeIn } from "@domain/shabbat";
-import { canSeeTeam } from "@domain/team";
 import {
   addMonths,
   atWorkNow,
+  type CancelledEntry,
   canConfirm,
   clockStatus,
+  editsClock,
   entryMinutes,
   entryOverdue,
   entryToConfirm,
@@ -30,11 +39,13 @@ import {
 } from "@domain/time-clock";
 import { clockAt, nextShift } from "@domain/today";
 import { canWrite } from "@domain/view-as";
+import { wageNow } from "@domain/wages";
+import { youthLabel } from "@domain/youth";
 import { manifestFor } from "@modules/registry";
 import { cache } from "react";
 import { currentMember } from "../member";
 import { currentModuleSettings, currentModules } from "../modules";
-import type { ClockData, ClockPaths } from "./clock-types";
+import type { ClockData, ClockPaths, OwnDetails } from "./clock-types";
 import type { HistoryData } from "./history/history-view";
 
 export const clockPaths: ClockPaths = {
@@ -80,14 +91,21 @@ export const clockAccess = cache(async () => {
 });
 
 /**
- * The names of whoever corrected these entries, as the reader may see them,
- * for each shift's "corrected by" line. Reads the team only when one was.
+ * The names of whoever corrected these entries or cancelled these shifts, as
+ * the reader may see them, for each shift's "corrected by" or "cancelled by"
+ * line. Reads the team only when someone did.
  */
 async function correctorNames(
   businessId: string,
   entries: readonly TimeEntry[],
+  cancelled: readonly CancelledEntry[] = [],
 ): Promise<(userId: string) => string | null> {
-  if (!entries.some((entry) => entry.editedBy !== null)) return () => null;
+  if (
+    !entries.some((entry) => entry.editedBy !== null) &&
+    !cancelled.some((one) => one.cancelledBy !== null)
+  ) {
+    return () => null;
+  }
   const people = await getClockPeople(businessId);
   return (userId) =>
     people.find((person) => person.userId === userId)?.name ?? null;
@@ -123,6 +141,29 @@ async function shiftToday(
   };
 }
 
+/**
+ * What the clock shows of the person's own details for payroll: what a pay
+ * holder set. A start copied from joining the app is left out: it is the
+ * day they joined the app, for a holder to check, not when they started.
+ * Null when there is nothing to show.
+ */
+function ownDetailsOf(
+  details: PayrollDetails | undefined,
+  periods: readonly EmploymentPeriod[],
+  today: string,
+): OwnDetails | null {
+  const period = currentPeriod(periods, today);
+  const own: OwnDetails = {
+    payrollNumber: details?.payrollNumber ?? null,
+    restDay: details ? details.restDay : null,
+    youthUntil: youthLabel(details?.youthUntil ?? null, today)?.until ?? null,
+    startedOn: period?.source === "set" ? period.startedOn : null,
+  };
+  return own.payrollNumber || own.restDay !== null || own.startedOn
+    ? own
+    : null;
+}
+
 /** Everything on the clock screen. Null when the person cannot open it. */
 export async function currentClock(): Promise<ClockData | null> {
   const access = await clockAccess();
@@ -133,8 +174,10 @@ export async function currentClock(): Promise<ClockData | null> {
   const settings = await currentModuleSettings("time_clock");
   const month = monthOf(clockAt(now, timeZone).date);
   const lastMonth = addMonths(month, -1);
-  const manager = canSeeTeam(role);
-  const [entries, today, openNow] = await Promise.all([
+  // The team's hours and the code screen, for whoever edits the clock
+  // (clock.edit, as the database answers it: the roles plan's R4).
+  const edits = editsClock(access);
+  const [entries, today, openNow, wages, details, periods] = await Promise.all([
     getTimeEntries(
       businessId,
       monthRange(lastMonth, timeZone).from,
@@ -142,8 +185,14 @@ export async function currentClock(): Promise<ClockData | null> {
       userId,
     ),
     scheduling ? shiftToday(businessId, userId, timeZone, now) : null,
-    manager ? getTimeEntries(businessId, now, now) : [],
+    edits ? getTimeEntries(businessId, now, now) : [],
+    // Their own wages, details and periods only, under their own session.
+    getWages(businessId, userId),
+    getPayrollDetails(businessId, userId),
+    getEmploymentPeriods(businessId, userId),
   ]);
+  const localToday = clockAt(now, timeZone).date;
+  const ownWage = wageNow(wages, localToday);
 
   const step = settings.roundToMinutes;
   const nameOf = await correctorNames(businessId, entries);
@@ -179,9 +228,9 @@ export async function currentClock(): Promise<ClockData | null> {
     punch: {
       required: settings.requirePunchCode,
       needsCode: needsPunchCode(settings, role),
-      canShowCode: manager && settings.codeDisplay !== "station",
+      canShowCode: edits && settings.codeDisplay !== "station",
     },
-    team: manager
+    team: edits
       ? {
           atWork: atWorkNow(
             openNow.filter((entry) => !entryOverdue(entry, now)),
@@ -191,11 +240,21 @@ export async function currentClock(): Promise<ClockData | null> {
         }
       : null,
     payroll: canSeePay({ role, perms: access.perms }),
+    ownWage: ownWage.current || ownWage.next ? ownWage : null,
+    ownDetails: ownDetailsOf(
+      details.get(userId),
+      periods.get(userId) ?? [],
+      localToday,
+    ),
     viewOnly,
   };
 }
 
-/** One month of the person's shifts. Null when they cannot open the clock. */
+/**
+ * One month of the person's shifts, with their cancelled ones among them, each
+ * saying who cancelled it, when and why (RLS lets them read their own). Null
+ * when they cannot open the clock.
+ */
 export async function currentClockHistory(
   asked: string | undefined,
 ): Promise<HistoryData | null> {
@@ -212,27 +271,38 @@ export async function currentClockHistory(
       : currentMonth;
   const settings = await currentModuleSettings("time_clock");
   const { from, to } = monthRange(month, timeZone);
-  const entries = await getTimeEntries(businessId, from, to, userId);
+  const [entries, cancelled] = await Promise.all([
+    getTimeEntries(businessId, from, to, userId),
+    getCancelledEntries(businessId, from, to, userId),
+  ]);
   const step = settings.roundToMinutes;
-  const nameOf = await correctorNames(businessId, entries);
+  const nameOf = await correctorNames(businessId, entries, cancelled);
   return {
     month,
     currentMonth,
     minutes: monthMinutes(entries, month, timeZone, now, step),
-    records: monthRecords(entries, month, timeZone, now, step, nameOf),
+    records: monthRecords(
+      entries,
+      month,
+      timeZone,
+      now,
+      step,
+      nameOf,
+      cancelled,
+    ),
   };
 }
 
 /**
  * The entries made without a code, or set by someone for themselves, that the
  * signed-in person may confirm, since the start of last month, oldest first.
- * Empty for anyone who doesn't see the team.
+ * Empty for anyone who doesn't edit the clock (`editsClock`).
  */
 export const currentEntriesToConfirm = cache(
   async (): Promise<{ entry: TimeEntry; toConfirm: ToConfirm }[]> => {
     const access = await clockAccess();
-    if (!access || !canSeeTeam(access.role)) return [];
-    const { businessId, timeZone, userId, role } = access;
+    if (!access || !editsClock(access)) return [];
+    const { businessId, timeZone, userId, role, perms } = access;
     const month = monthOf(clockAt(new Date(), timeZone).date);
     const entries = await getEntriesToConfirm(
       businessId,
@@ -240,7 +310,8 @@ export const currentEntriesToConfirm = cache(
     );
     return entries.flatMap((entry) => {
       const toConfirm = entryToConfirm(entry);
-      return toConfirm && canConfirm(toConfirm, entry.userId, { userId, role })
+      return toConfirm &&
+        canConfirm(toConfirm, entry.userId, { userId, role, perms })
         ? [{ entry, toConfirm }]
         : [];
     });
@@ -253,17 +324,18 @@ export type ClockLine =
   | { kind: "confirm"; count: number };
 
 /**
- * What the clock's row on Today says: shifts a manager has to fix first, then
- * hours waiting for their approval, then where the person stands. Null when
- * there is nothing to say.
+ * What the clock's row on Today says: shifts whoever edits the clock has to
+ * fix first, then hours waiting for their approval, then where the person
+ * stands. Null when there is nothing to say.
  */
 export const currentClockLine = cache(async (): Promise<ClockLine | null> => {
   const access = await clockAccess();
   if (!access) return null;
   const now = new Date();
-  // A manager reads everyone's open entries here, and anyone else their own.
+  // Whoever edits the clock reads everyone's open entries here, and anyone
+  // else their own.
   const open = await getTimeEntries(access.businessId, now, now);
-  const overdue = canSeeTeam(access.role)
+  const overdue = editsClock(access)
     ? open.filter((entry) => entryOverdue(entry, now)).length
     : 0;
   if (overdue > 0) return { kind: "overdue", count: overdue };

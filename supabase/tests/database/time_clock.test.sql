@@ -6,7 +6,7 @@
 -- managers the business's, other businesses and anonymous visitors
 -- nothing. Every call passes the time so the test does not depend on today.
 begin;
-select plan(48);
+select plan(51);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -333,6 +333,28 @@ update public.view_sessions set role = 'manager'
 where staff_id = '68000000-0000-4000-a000-000000000010';
 select pg_temp.sign_in('68000000-0000-4000-a000-000000000010');
 select is((select count(*)::int from public.time_entries), 4, 'viewing as a manager reads the business''s entries');
+reset role;
+
+-- A cancelled entry makes way (20261117000200_cancelled_shifts.sql): the
+-- right one goes over it, and live entries still never overlap.
+set local role service_role;
+select lives_ok(
+  $$select public.cancel_time_entry('68000000-0000-4000-a000-00000000000b',
+    (select id from ids where name = 'c3'), 'Wrong day', '2026-11-13 08:30+00')$$,
+  'a manager cancels an entry'
+);
+select lives_ok(
+  $$select public.add_time_entry('68000000-0000-4000-a000-00000000000b',
+    '68000000-0000-4000-b000-000000000001', '68000000-0000-4000-a000-00000000000c',
+    '2026-11-09 07:00+00', '2026-11-09 15:00+00', 'The right hours', '2026-11-13 08:31+00')$$,
+  'the right one goes over the cancelled one'
+);
+select throws_ok(
+  $$select public.add_time_entry('68000000-0000-4000-a000-00000000000b',
+    '68000000-0000-4000-b000-000000000001', '68000000-0000-4000-a000-00000000000c',
+    '2026-11-09 14:30+00', '2026-11-09 16:00+00', 'Forgot to punch', '2026-11-13 08:32+00')$$,
+  '23P01', null, 'and a live entry still cannot overlap another'
+);
 reset role;
 
 -- Switching the module off closes it.

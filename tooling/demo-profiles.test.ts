@@ -34,8 +34,31 @@ describe("demo businesses and profiles", () => {
     }
   });
 
+  // One login in two businesses (payroll P3b): the door offers Galit in both,
+  // and each business's reset puts her back in it.
+  it("has one accountant in both demo businesses, locally and hosted", () => {
+    for (const file of ["supabase/seed.sql", "supabase/hosted-demo.sql"]) {
+      const accountants = read(file)
+        .split(/\r?\n/)
+        .filter((line) => line.includes('"role": "accountant"'));
+      expect(accountants, file).toHaveLength(2);
+      const ids = accountants.map((line) => /"user_id": "([^"]+)"/.exec(line));
+      expect(new Set(ids.map((id) => id?.[1])).size, file).toBe(1);
+    }
+  });
+
   it("never opens a hosted demo business to profile changes", () => {
     expect(read("supabase/hosted-demo.sql")).not.toMatch(/"profiles"/);
+  });
+
+  // Lists' times (L4): a hosted demo opens today's scheduled lists when it is
+  // reset, and the minute job keeps them coming; the local seed's open none,
+  // so no browser test depends on the hour CI runs at (they tick themselves).
+  it("opens scheduled lists on a reset only in the hosted demo", () => {
+    // A definition's own line, not the comments that name it.
+    const flag = /^\s+"scheduledLists": true,\r?$/gm;
+    expect(read("supabase/hosted-demo.sql").match(flag)).toHaveLength(2);
+    expect(read("supabase/seed.sql").match(flag)).toBeNull();
   });
 
   it("opens only the local seed's restaurant, for the browser tests", () => {
@@ -45,5 +68,44 @@ describe("demo businesses and profiles", () => {
     expect(
       seed.match(/"template": "restaurant", [^\n]*"profiles": true,/g),
     ).toHaveLength(1);
+  });
+
+  // Photos on lists (L6, 20261110001500_list_photos.sql): a demo business
+  // takes none unless its definition says `"photos": true`, as with profile
+  // photos. The local seed opens its restaurant for the browser tests and
+  // keeps the shop closed; the hosted ones stay closed, or a visitor's photo
+  // would wait for the next one, and pile up in Storage.
+  it("never opens a hosted demo business to photos on lists", () => {
+    expect(read("supabase/hosted-demo.sql")).not.toMatch(/"photos"/);
+  });
+
+  it("opens only the local seed's restaurant to photos on lists", () => {
+    const seed = read("supabase/seed.sql");
+    // A definition's own line, not the comments that name it.
+    expect(seed.match(/^\s+"template": [^\n]*"photos": true,\r?$/gm)).toEqual([
+      expect.stringMatching(/"template": "restaurant", /),
+    ]);
+    expect(seed.match(/"photos": true,/g)).toHaveLength(1);
+  });
+
+  // Files in chat (C4, 20261111000500_chat_files.sql): the same rule, with
+  // its own flag. A hosted demo never takes one: anyone at the door is any of
+  // its people, and the reset can't remove Storage files.
+  it("never opens a hosted demo business to files in chat", () => {
+    expect(read("supabase/hosted-demo.sql")).not.toMatch(/"chatFiles"/);
+  });
+
+  it("opens only the local seed's restaurant to files in chat", () => {
+    const seed = read("supabase/seed.sql");
+    // A definition's own line, not the comments that name it.
+    expect(seed.match(/^\s+"chatFiles": true,\r?$/gm)).toHaveLength(1);
+    const restaurant = seed.indexOf('"slug": "demo-restaurant"');
+    const shop = seed.indexOf('"slug": "demo-shop"');
+    const flag = seed.search(/^\s+"chatFiles": true,\r?$/m);
+    expect(restaurant).toBeGreaterThan(-1);
+    expect(shop).toBeGreaterThan(restaurant);
+    // In the restaurant's definition, before the shop's begins.
+    expect(flag).toBeGreaterThan(restaurant);
+    expect(flag).toBeLessThan(shop);
   });
 });

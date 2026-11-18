@@ -1,22 +1,26 @@
 import {
   type ActivityDay,
   type ActivityEntry,
+  type ActivityListFix,
   type ActivityPerson,
   type ActivityRecipient,
   type ActivityShift,
   breakFitKind,
   type ClockTimes,
   type FieldChange,
+  type ListFixValues,
 } from "@domain/activity";
 import { dateIn } from "@domain/availability";
 import { WEEKDAY_KEYS } from "@domain/availability-form";
 import { accentTokens } from "@domain/color";
+import { numberRange, signed } from "@domain/lists";
 import {
   type ModuleKey,
   type ModuleManifest,
   type Role,
   readModuleSettings,
 } from "@domain/modules";
+import { editOrView } from "@domain/role-access";
 import { describeSettings } from "@domain/settings-form";
 import { shabbatCityOf, timeIn } from "@domain/shabbat";
 import { manifests } from "@modules/registry";
@@ -32,6 +36,7 @@ import { History, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
+import { useFullDate, useShekels } from "../../clock/pay/pay-parts";
 import { type AppWording, translator } from "../../wording";
 
 export type ActivityPaths = {
@@ -39,11 +44,23 @@ export type ActivityPaths = {
   /** This screen, for the newest page and the cursor of an older one. */
   self: string;
   business: string;
-  clockTeam: string;
+  /**
+   * The team's hours, where the clock's lines lead: only for whoever opens
+   * them (clock.edit, the roles plan's R4, with the clock on). A pay holder
+   * lowered on the clock still reads those lines, as plain text.
+   */
+  clockTeam?: string;
   /** The business's departments, where their lines lead. */
   departments: string;
   /** Who sees pay, where its lines lead: the owner's alone. */
   access?: string;
+  /**
+   * Roles and permissions, where a role's switched permission leads: the
+   * owner's alone (the roles plan's R9).
+   */
+  roles?: string;
+  /** The hours for payroll, where a wage's line leads (only pay holders read it). */
+  pay?: string;
 };
 
 /**
@@ -113,6 +130,7 @@ export function ActivityView({
   manageable,
   clockOn,
   listsOn,
+  everyArea,
   paths,
   wording,
 }: {
@@ -128,6 +146,12 @@ export function ActivityView({
   clockOn: boolean;
   /** Lists are on, so the departments have their screen to link to. */
   listsOn: boolean;
+  /**
+   * The reader reads every area's rows (`readsEveryLogArea`), so the words
+   * may promise the settings', the team's and the schedule's changes; else
+   * they speak of the reader's own areas, which are all the log shows them.
+   */
+  everyArea: boolean;
   paths: ActivityPaths;
   /** The business's words. */
   wording: AppWording;
@@ -139,7 +163,11 @@ export function ActivityView({
   const tDays = translator(wording, "days");
   const tDetails = translator(wording, "app.manage.business");
   const tManage = translator(wording, "app.manage");
+  const tAccess = translator(wording, "app.manage.roles");
+  const tDocuments = translator(wording, "app.chat.documents");
   const format = useFormatter();
+  const shekels = useShekels();
+  const fullDate = useFullDate();
 
   const dayName = (date: string) =>
     format.dateTime(new Date(`${date}T12:00:00Z`), {
@@ -158,7 +186,15 @@ export function ActivityView({
     person.kind === "member"
       ? (person.name ?? t("who.noName"))
       : t(`who.${person.kind}`);
-  const roleName = (role: Role) => tRoles(role);
+  const tTeam = translator(wording, "app.team");
+  /**
+   * A role in the business's words, or a role it named by its name then,
+   * with the role it is built on (the roles plan's R11b).
+   */
+  const roleName = (role: Role, named?: string) =>
+    named
+      ? tTeam("namedRole", { name: named, role: tRoles(role) })
+      : tRoles(role);
   const names = (list: readonly string[]) =>
     format.list(list, { type: "conjunction" });
   /** Who a list went to: "to the kitchen", "to Noa", "to the workers". */
@@ -173,7 +209,9 @@ export function ActivityView({
       case "shift":
         return t("actions.lists.to.shift");
       case "role":
-        return t("actions.lists.to.role", { role: to.role ?? "other" });
+        return to.name
+          ? t("actions.lists.to.namedRole", { name: to.name })
+          : t("actions.lists.to.role", { role: to.role ?? "other" });
     }
   };
   const moduleWords = (key: string, part: string) => `${key}.${part}` as never;
@@ -202,9 +240,38 @@ export function ActivityView({
           ltr,
           in: clockTime(times.clockIn),
         });
-  /** Why hours were added or corrected, as its own line under the change. */
+  /** Why hours were added, corrected or cancelled, as its own line under the change. */
   const reasonNotes = (note: string | null): ReactNode[] =>
     note ? [t("actions.clock.reason", { note })] : [];
+  /**
+   * Where a shift's line leads: the person's hours in the month the shift is
+   * in, for whoever opens the team's hours; the team's hours when the row
+   * can't say whose.
+   */
+  const personHours = (personId: string | null, clockIn: string) =>
+    paths.clockTeam && personId
+      ? `${paths.clockTeam}/${personId}?month=${dateIn(new Date(clockIn), timeZone).slice(0, 7)}`
+      : paths.clockTeam;
+  /**
+   * What a team change took off someone, a count apiece: the shifts freed,
+   * the swap requests cancelled, and those open again (Orel, 15 November
+   * 2026), as the person page said them to whoever removed them.
+   */
+  const leftNotes = (left: {
+    shifts: number;
+    swaps: number;
+    reopened: number;
+  }): ReactNode[] => [
+    ...(left.shifts > 0
+      ? [t("actions.member.shiftsOff", { count: left.shifts })]
+      : []),
+    ...(left.swaps > 0
+      ? [t("actions.member.swapsOff", { count: left.swaps })]
+      : []),
+    ...(left.reopened > 0
+      ? [t("actions.member.swapsReopened", { count: left.reopened })]
+      : []),
+  ];
 
   /** A module's setting as words, from what its manifest says the field is. */
   function settingChanges(module: string, changes: FieldChange[]): Change[] {
@@ -298,6 +365,78 @@ export function ActivityView({
       return typeof value === "string" ? value : t("noAddress");
     }
     return typeof value === "string" ? value : "—";
+  }
+
+  /** A fixed item's value as its list shows it (L6b-1). */
+  function fixValue(
+    item: ActivityListFix,
+    field: "checked" | "given" | "reading",
+    values: ListFixValues,
+  ): ReactNode {
+    switch (field) {
+      case "checked":
+        return values.checked
+          ? t("actions.lists.fixValue.checked")
+          : t("actions.lists.fixValue.unchecked");
+      case "given":
+        return values.given === null ? (
+          t("actions.lists.fixValue.empty")
+        ) : (
+          <span dir="ltr">{values.given}</span>
+        );
+      case "reading":
+        return values.reading === null ? (
+          t("actions.lists.fixValue.empty")
+        ) : (
+          <span dir="ltr">
+            {`${signed(values.reading)}${item.unit ? ` ${item.unit}` : ""}`}
+          </span>
+        );
+    }
+  }
+
+  /**
+   * What a fix changed in one item (L6b-1), as the log's changes: its value
+   * before and after (an order's count, else its reading, else its tick),
+   * then that its answer, comment or photo changed. `named` puts the item's
+   * name on each, for a line of several items.
+   */
+  function fixChanges(
+    item: ActivityListFix,
+    key: string,
+    named: boolean,
+  ): Change[] {
+    const field = item.fields.includes("given")
+      ? "given"
+      : item.fields.includes("reading")
+        ? "reading"
+        : item.fields.includes("checked")
+          ? "checked"
+          : null;
+    const value: Change[] = field
+      ? [
+          {
+            key: `${key}:${field}`,
+            label: named ? item.label : t(`actions.lists.fixField.${field}`),
+            values: {
+              from: fixValue(item, field, item.from),
+              to: fixValue(item, field, item.to),
+            },
+          },
+        ]
+      : [];
+    const others = (["answer", "comment", "photo"] as const)
+      .filter((other) => item.fields.includes(other))
+      .map((other) => {
+        const what = t(`actions.lists.fixOther.${other}`);
+        return {
+          key: `${key}:${other}`,
+          label: named
+            ? t("actions.lists.fixOtherOf", { label: item.label, what })
+            : what,
+        };
+      });
+    return [...value, ...others];
   }
 
   function describe(entry: ActivityEntry): Described {
@@ -428,6 +567,71 @@ export function ActivityView({
             },
           })),
         };
+      case "clock.cancel": {
+        const values = {
+          ltr,
+          person: who(line.person),
+          day: clockDay(line.times),
+          in: clockTime(line.times.clockIn),
+        };
+        return {
+          what: line.times.clockOut
+            ? t.rich("actions.clock.cancel", {
+                ...values,
+                out: clockTime(line.times.clockOut),
+              })
+            : t.rich("actions.clock.cancelOpen", values),
+          notes: reasonNotes(line.note),
+          changes: [],
+          href: personHours(line.personId, line.times.clockIn),
+        };
+      }
+      case "clock.restore": {
+        const values = {
+          ltr,
+          person: who(line.person),
+          day: clockDay(line.times),
+          in: clockTime(line.times.clockIn),
+        };
+        return {
+          what: line.times.clockOut
+            ? t.rich("actions.clock.restore", {
+                ...values,
+                out: clockTime(line.times.clockOut),
+              })
+            : t.rich("actions.clock.restoreOpen", values),
+          notes: [],
+          changes: [],
+          href: personHours(line.personId, line.times.clockIn),
+        };
+      }
+      case "clock.break_edit": {
+        // Changed: before and after. Removed: before, and that it went.
+        // Added or brought back: its times now.
+        const values = line.from
+          ? {
+              from: breakHours(line.from),
+              to: line.to
+                ? breakHours(line.to)
+                : t("actions.clock.breakRemoved"),
+            }
+          : line.to
+            ? { to: breakHours(line.to) }
+            : undefined;
+        return {
+          what: t("actions.clock.breakEdit", {
+            change: line.change,
+            person: who(line.person),
+            day: clockDay({ clockIn: line.clockIn, clockOut: null }),
+          }),
+          notes: [
+            ...reasonNotes(line.note),
+            ...(line.unpaid ? [t("actions.clock.breakUnpaid")] : []),
+          ],
+          changes: [{ key: "break", label: t("actions.clock.break"), values }],
+          href: personHours(line.personId, line.clockIn),
+        };
+      }
       case "clock.confirm":
         return plain(
           t("actions.clock.confirm", { person: who(line.person) }),
@@ -435,6 +639,26 @@ export function ActivityView({
         );
       case "clock.code.locked":
         return plain(t("actions.clock.codeLocked"));
+      // The stations are listed on the team's hours, where they are stopped.
+      case "clock.station.add":
+        return plain(
+          t("actions.clock.stationAdd", { name: line.name }),
+          paths.clockTeam,
+        );
+      case "clock.station.stop":
+        return plain(
+          line.name
+            ? t("actions.clock.stationStop", { name: line.name })
+            : t("actions.clock.stationStopPlain"),
+          paths.clockTeam,
+        );
+      case "clock.station.restart":
+        return plain(
+          line.name
+            ? t("actions.clock.stationRestart", { name: line.name })
+            : t("actions.clock.stationRestartPlain"),
+          paths.clockTeam,
+        );
       case "profile.bio_cleared":
         // Never the line itself: the log keeps who and when only.
         return plain(
@@ -445,10 +669,12 @@ export function ActivityView({
           line.name && line.role
             ? t("actions.invite.create", {
                 name: line.name,
-                role: roleName(line.role),
+                role: roleName(line.role, line.roleName),
               })
             : line.role
-              ? t("actions.invite.createNoName", { role: roleName(line.role) })
+              ? t("actions.invite.createNoName", {
+                  role: roleName(line.role, line.roleName),
+                })
               : t("actions.invite.createPlain"),
         );
       case "invite.send":
@@ -457,16 +683,74 @@ export function ActivityView({
             ? t("actions.invite.send", { name: line.name })
             : t("actions.invite.sendNoName"),
         );
+      case "invite.cancel":
+        return plain(
+          line.name && line.role
+            ? t("actions.invite.cancel", {
+                name: line.name,
+                role: roleName(line.role, line.roleName),
+              })
+            : line.role
+              ? t("actions.invite.cancelNoName", {
+                  role: roleName(line.role, line.roleName),
+                })
+              : t("actions.invite.cancelPlain"),
+        );
       case "invite.claim":
         return plain(
           line.role
-            ? t("actions.invite.claim", { role: roleName(line.role) })
+            ? t("actions.invite.claim", {
+                role: roleName(line.role, line.roleName),
+              })
             : t("actions.invite.claimPlain"),
         );
+      // A team change (Orel, 14 November 2026). Someone taken off the team is
+      // nameless to the log by then, so their role says who they were; the
+      // shifts that came off them, and the swaps cancelled or open again, are
+      // counts, never which.
+      case "member.remove":
+        return {
+          what:
+            line.person.kind === "member" && line.role
+              ? t("actions.member.remove", {
+                  person: who(line.person),
+                  role: roleName(line.role, line.roleName),
+                })
+              : line.role
+                ? t("actions.member.removeRole", {
+                    role: roleName(line.role, line.roleName),
+                  })
+                : t("actions.member.removePlain"),
+          notes: leftNotes(line),
+          changes: [],
+        };
+      case "member.role":
+        return {
+          what:
+            line.role && line.was
+              ? line.person.kind === "member"
+                ? t("actions.member.role", {
+                    person: who(line.person),
+                    role: roleName(line.role, line.roleName),
+                    was: roleName(line.was, line.wasName),
+                  })
+                : t("actions.member.rolePlain", {
+                    role: roleName(line.role, line.roleName),
+                    was: roleName(line.was, line.wasName),
+                  })
+              : t("actions.member.roleNone"),
+          notes: leftNotes(line),
+          changes: [],
+        };
+      case "member.name":
+        // Never the name, old or new: the reader sees who it is now.
+        return plain(t("actions.member.name", { person: who(line.person) }));
       case "view_as.start":
         return plain(
           line.role
-            ? t("actions.view_as.start", { role: roleName(line.role) })
+            ? t("actions.view_as.start", {
+                role: roleName(line.role, line.roleName),
+              })
             : t("actions.view_as.startPlain"),
         );
       case "view_as.end":
@@ -517,10 +801,13 @@ export function ActivityView({
         );
       case "schedule.publish":
         return {
-          what: t("actions.schedule.publish", {
-            first: String(line.first),
-            week: shortDate(line.startsOn),
-          }),
+          // A week published once it had begun: changes during the week.
+          what: t(
+            line.running
+              ? "actions.schedule.running"
+              : "actions.schedule.publish",
+            { first: String(line.first), week: shortDate(line.startsOn) },
+          ),
           notes: [
             t("actions.schedule.shifts", { count: line.shifts }),
             ...(line.swapsRemoved > 0
@@ -618,12 +905,130 @@ export function ActivityView({
         };
       case "lists.cancel":
         return plain(t("actions.lists.cancel", { name: line.name }));
+      case "lists.pass":
+        return {
+          what: line.to
+            ? t("actions.lists.pass", { name: line.name, to: line.to })
+            : t("actions.lists.passPlain", { name: line.name }),
+          notes: [
+            ...(line.from
+              ? [t("actions.lists.passedFrom", { from: line.from })]
+              : []),
+            ...(line.note ? [t("actions.lists.passNote")] : []),
+          ],
+          changes: [],
+        };
+      case "lists.late":
+        return plain(t("actions.lists.late", { name: line.name }));
+      case "lists.missed":
+        return plain(t("actions.lists.missed", { name: line.name }));
+      case "lists.out_of_range": {
+        // The reading and its range as the list shows them, with a real
+        // minus sign and the item's unit.
+        const range = numberRange(line);
+        return {
+          what: t.rich("actions.lists.outOfRange", {
+            ltr,
+            name: line.name,
+            label: line.label,
+            reading: `${signed(line.reading)}${line.unit ? ` ${line.unit}` : ""}`,
+          }),
+          notes: range
+            ? [
+                t.rich(`actions.lists.range.${range.kind}`, {
+                  ltr,
+                  range: range.range,
+                }),
+              ]
+            : [],
+          changes: [],
+        };
+      }
       case "lists.reopen":
         return plain(
           t("actions.lists.reopen", {
             name: line.name,
             was: line.was ?? "other",
           }),
+        );
+      case "lists.fix": {
+        // One item names it in the line, and each change by its field;
+        // several name each item. A value from before and after, as hours
+        // corrected show them; an answer, a comment or a photo only that it
+        // changed, since the log keeps no text.
+        const one = line.items.length === 1 ? line.items[0] : undefined;
+        return {
+          what: one
+            ? t("actions.lists.fix", { name: line.name, label: one.label })
+            : t("actions.lists.fixMany", {
+                name: line.name,
+                count: line.items.length,
+              }),
+          notes: [],
+          changes: line.items.flatMap((item, index) =>
+            fixChanges(item, `${index}`, one === undefined),
+          ),
+        };
+      }
+      case "role.permission": {
+        const permission = line.permission;
+        // A role the business named goes by its name (roles R11a).
+        const role = line.named ? "named" : (line.role ?? "other");
+        const name = line.named ?? "";
+        const side = line.on ? "On" : "Off";
+        switch (permission.kind) {
+          case "edit":
+          case "view":
+            return plain(
+              t(`actions.rolePermission.${permission.kind}${side}`, {
+                role,
+                name,
+                area: editOrView(permission.area)
+                  ? moduleName(permission.area)
+                  : tAccess(`areas.${permission.area}`),
+              }),
+              paths.roles,
+            );
+          case "extra":
+            return plain(
+              t(`actions.rolePermission.extra${side}`, {
+                role,
+                name,
+                extra: tAccess(`extras.${permission.extra}.phrase`),
+              }),
+              paths.roles,
+            );
+          case "other":
+            return plain(
+              t(`actions.rolePermission.other${side}`, { role, name }),
+              paths.roles,
+            );
+        }
+        break;
+      }
+      case "role.create":
+        return plain(
+          t("actions.role.create", {
+            name: line.name,
+            base: line.base ?? "other",
+          }),
+          paths.roles,
+        );
+      case "role.rename":
+        return plain(
+          t("actions.role.rename", { from: line.from, to: line.to }),
+          paths.roles,
+        );
+      case "role.archive":
+      case "role.restore":
+        return plain(
+          t(
+            line.action === "role.archive"
+              ? "actions.role.archive"
+              : "actions.role.restore",
+            { name: line.name },
+          ),
+          paths.roles,
         );
       case "permission.grant":
       case "permission.revoke": {
@@ -643,6 +1048,264 @@ export function ActivityView({
             : t("actions.permission.revoke", { perm, from: whom }),
           paths.access,
         );
+      }
+      case "wage.set": {
+        // The minimum of that day, as the log kept it: under it, it says so.
+        const below = line.minimum !== null && line.agorot < line.minimum;
+        return {
+          what: t.rich("actions.wage.set", {
+            ltr,
+            person: who(line.person),
+            amount: shekels(line.agorot),
+            date: fullDate(line.from),
+          }),
+          notes: [
+            ...(below && line.minimum !== null
+              ? [
+                  t.rich("actions.wage.belowMinimum", {
+                    ltr,
+                    minimum: shekels(line.minimum),
+                  }),
+                ]
+              : []),
+            ...(line.note ? [t("actions.wage.note", { note: line.note })] : []),
+          ],
+          changes:
+            line.previous === null || line.previous === line.agorot
+              ? []
+              : [
+                  {
+                    key: "wage",
+                    label: t("actions.wage.label"),
+                    values: {
+                      from: <span dir="ltr">{shekels(line.previous)}</span>,
+                      to: <span dir="ltr">{shekels(line.agorot)}</span>,
+                    },
+                  },
+                ],
+          href: paths.pay,
+        };
+      }
+      case "payroll.details":
+        // Which fields, never their values: the log holds none.
+        return plain(
+          line.fields.length > 0
+            ? t("actions.payroll.details", {
+                person: who(line.person),
+                fields: names(
+                  line.fields.map((field) =>
+                    t(`actions.payroll.fields.${field}`),
+                  ),
+                ),
+              })
+            : t("actions.payroll.detailsPlain", { person: who(line.person) }),
+          paths.pay,
+        );
+      case "payroll.period": {
+        const person = who(line.person);
+        const what = line.added
+          ? t("actions.payroll.periodAdded", { person })
+          : line.fields.length > 0
+            ? t("actions.payroll.periodChanged", {
+                person,
+                fields: names(
+                  line.fields.map((field) =>
+                    t(`actions.payroll.periodFields.${field}`),
+                  ),
+                ),
+              })
+            : t("actions.payroll.periodConfirmed", { person });
+        return {
+          what,
+          notes:
+            line.confirmed && line.fields.length > 0
+              ? [t("actions.payroll.wasJoined")]
+              : [],
+          changes: [],
+          href: paths.pay,
+        };
+      }
+      case "payroll.export":
+        // The month and how much it held: the file itself is kept nowhere.
+        return {
+          what: t("actions.payroll.export", {
+            month: format.dateTime(new Date(`${line.month}-15T12:00:00Z`), {
+              month: "long",
+              year: "numeric",
+              timeZone: "UTC",
+            }),
+          }),
+          notes:
+            line.people !== null && line.shifts !== null
+              ? [
+                  t("actions.payroll.exportCounts", {
+                    people: line.people,
+                    shifts: line.shifts,
+                  }),
+                ]
+              : [],
+          changes: [],
+          href: paths.pay ? `${paths.pay}?month=${line.month}` : undefined,
+        };
+      case "payroll.close":
+      case "payroll.reopen": {
+        // A month closed for payroll, or reopened with its reason (P9).
+        const month = format.dateTime(new Date(`${line.month}-15T12:00:00Z`), {
+          month: "long",
+          year: "numeric",
+          timeZone: "UTC",
+        });
+        return {
+          what:
+            line.action === "payroll.close"
+              ? t("actions.payroll.close", { month })
+              : t("actions.payroll.reopen", { month }),
+          notes:
+            line.action === "payroll.reopen" && line.reason
+              ? [t("actions.payroll.reopenReason", { reason: line.reason })]
+              : [],
+          changes: [],
+          href: paths.pay ? `${paths.pay}?month=${line.month}` : undefined,
+        };
+      }
+      case "chat.remove":
+      case "chat.restore": {
+        // Management took someone's message out of a group, or put it back
+        // (chat C1): whose, and where, never what it said.
+        const group =
+          line.group.kind === "team"
+            ? t("actions.chat.group.team")
+            : line.group.name
+              ? t("actions.chat.group.department", { name: line.group.name })
+              : t("actions.chat.group.departmentUnknown");
+        return plain(
+          line.action === "chat.remove"
+            ? t("actions.chat.remove", { author: who(line.author), group })
+            : t("actions.chat.restore", { author: who(line.author), group }),
+        );
+      }
+      // Documents (chat C6), read by the office alone: who sent one and to
+      // how many, whose was opened, a file removed with its reason's code and
+      // put back. Never a category, title, note or file's name: the rows hold
+      // ids and codes only.
+      case "document.send":
+        return plain(
+          line.direction === "from_person"
+            ? t("actions.document.sendToBusiness")
+            : t("actions.document.sendToPeople", { count: line.recipients }),
+        );
+      case "document.open":
+        return plain(
+          line.person
+            ? t("actions.document.open", { person: who(line.person) })
+            : t("actions.document.openToPeople"),
+        );
+      case "document.remove":
+        return {
+          what: t("actions.document.remove"),
+          notes: line.reason
+            ? [
+                t("actions.document.reason", {
+                  reason: tDocuments(`reasons.${line.reason}`),
+                }),
+              ]
+            : [],
+          changes: [],
+        };
+      case "document.restore":
+        return plain(t("actions.document.restore"));
+      // The menu (waiter mode P1): an item added or saved, with its price
+      // and each option's price before and after in LTR spans, what else
+      // changed, an item removed or back, an import's counts, and the
+      // categories or places saved whole.
+      case "menu.item.save": {
+        const price = line.price;
+        const amount = (agorot: number) => (
+          <span dir="ltr">{shekels(agorot)}</span>
+        );
+        return {
+          what: line.created
+            ? t("actions.menu.itemCreate", { name: line.name })
+            : t("actions.menu.itemSave", { name: line.name }),
+          notes:
+            line.fields.length > 0
+              ? [
+                  t("actions.menu.changed", {
+                    fields: names(
+                      line.fields.map((field) =>
+                        t(`actions.menu.fields.${field}`),
+                      ),
+                    ),
+                  }),
+                ]
+              : [],
+          changes: [
+            ...(price
+              ? [
+                  {
+                    key: "price",
+                    label: t("actions.menu.price"),
+                    values:
+                      price.before === null
+                        ? { to: amount(price.after) }
+                        : {
+                            from: amount(price.before),
+                            to: amount(price.after),
+                          },
+                  },
+                ]
+              : []),
+            ...line.options.map((move, index) => ({
+              key: `option:${index}`,
+              label: t("actions.menu.option", {
+                group: move.group,
+                option: move.option,
+              }),
+              values:
+                move.after === null
+                  ? {
+                      ...(move.before === null
+                        ? {}
+                        : { from: amount(move.before) }),
+                      to: t("actions.menu.optionRemoved"),
+                    }
+                  : move.before === null
+                    ? { to: amount(move.after) }
+                    : { from: amount(move.before), to: amount(move.after) },
+            })),
+          ],
+        };
+      }
+      case "menu.item.archive":
+        return plain(t("actions.menu.itemArchive", { name: line.name }));
+      case "menu.item.restore":
+        return plain(t("actions.menu.itemRestore", { name: line.name }));
+      case "menu.import":
+        return {
+          what: t("actions.menu.import", { count: line.items }),
+          notes:
+            line.categories > 0
+              ? [
+                  t("actions.menu.importCategories", {
+                    count: line.categories,
+                  }),
+                ]
+              : [],
+          changes: [],
+        };
+      case "menu.categories":
+      case "menu.places": {
+        const kind =
+          line.action === "menu.categories" ? "categories" : "places";
+        return {
+          what: t(`actions.menu.${kind}.title`),
+          notes: (["added", "archived", "restored", "changed"] as const)
+            .filter((count) => line[count] > 0)
+            .map((count) =>
+              t(`actions.menu.${kind}.${count}`, { count: line[count] }),
+            ),
+          changes: [],
+        };
       }
       case "other":
         return plain(t("actions.other"));
@@ -666,6 +1329,9 @@ export function ActivityView({
             from: () => values.from,
           });
 
+  /** Where the note about the punches leads, for whoever opens it. */
+  const clockTeam = clockOn ? paths.clockTeam : undefined;
+
   const lines = days.map((day) => ({
     ...day,
     title:
@@ -686,15 +1352,15 @@ export function ActivityView({
       <PageHeader
         back={{ href: paths.manage, label: tManage("title") }}
         title={t("title")}
-        subtitle={t("subtitle")}
+        subtitle={everyArea ? t("subtitle") : t("subtitleAreas")}
       />
 
-      {clockOn && lines.length > 0 ? (
+      {clockTeam && lines.length > 0 ? (
         <p className="px-1 text-ink-2 text-sm md:max-w-2xl">
           {t.rich("clockNote", {
             link: (chunks) => (
               <Link
-                href={paths.clockTeam}
+                href={clockTeam}
                 className="font-medium text-ink underline underline-offset-2"
               >
                 {chunks}
@@ -724,7 +1390,7 @@ export function ActivityView({
             headingLevel="h2"
             icon={<History />}
             title={t("empty.title")}
-            body={t("empty.body")}
+            body={everyArea ? t("empty.body") : t("empty.bodyAreas")}
           >
             <Button asChild variant="secondary">
               <Link href={paths.manage}>{t("empty.action")}</Link>

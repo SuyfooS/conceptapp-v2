@@ -10,6 +10,7 @@ import {
   closedWords,
   dueChip,
   dueWords,
+  fixUntilWords,
   fromWords,
   holderWords,
   openedWords,
@@ -31,22 +32,28 @@ export type ListShown = {
 
 /**
  * One list as a card: its progress as a ring, its name, who it is for and who
- * asked, and by when, or how it closed. The whole card leads to the list.
+ * asked, and by when (a chip under the words), or how it closed, and for a
+ * closed list someone given "תיקון רשימות שנסגרו" may still fix (L6b-2),
+ * until when (`fixUntil`). The whole card leads to the list.
  */
 export function ListCard({
   list,
   shown,
+  fixUntil = null,
   className,
 }: {
   list: ListSummary;
   shown: ListShown;
+  fixUntil?: string | null;
   className?: string;
 }) {
   const { t, lookups, userId, now, timeZone, timing } = shown;
   const chip = dueChip(t, list, now, timeZone, timing);
   const from = fromWords(t, list, lookups);
   const closed =
-    list.status === "open" ? null : closedWords(t, list, lookups, timeZone);
+    list.status === "open"
+      ? null
+      : closedWords(t, list, lookups, timeZone, now);
   return (
     <Link
       href={shown.href(list.id)}
@@ -70,12 +77,19 @@ export function ListCard({
         <span className="text-ink-2 text-sm">
           {closed ?? progressWords(t, list.progress)}
         </span>
+        {fixUntil ? (
+          <span className="text-ink-2 text-sm">
+            {fixUntilWords(t, fixUntil, now, timeZone)}
+          </span>
+        ) : null}
+        {/* Under the words, not beside them: beside, a long "late" chip left
+            the name one word per line on a phone. */}
+        {chip ? (
+          <Badge tone={chip.tone} className="mt-1 self-start">
+            {chip.label}
+          </Badge>
+        ) : null}
       </span>
-      {chip ? (
-        <Badge tone={chip.tone} className="shrink-0">
-          {chip.label}
-        </Badge>
-      ) : null}
       <ChevronRight
         aria-hidden="true"
         className="size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
@@ -90,16 +104,19 @@ const td = "border-line border-t px-4 py-3 align-middle";
 /**
  * Lists as a table, for a computer: the same words, one column each. By when
  * has its own column, in the warning colour once it is near or late; the
- * status says open, late, or how it closed.
+ * status says open, late, or how it closed, and for a list still to fix
+ * (L6b-2, `fixUntil` by its id) until when.
  */
 export function ListTable({
   lists,
   shown,
   caption,
+  fixUntil = {},
 }: {
   lists: readonly ListSummary[];
   shown: ListShown;
   caption: string;
+  fixUntil?: Readonly<Record<string, string>>;
 }) {
   const { t, lookups, userId, now, timeZone, timing } = shown;
   return (
@@ -137,6 +154,7 @@ export function ListTable({
             const due = list.dueAt
               ? dueWords(t, list.dueAt, now, timeZone)
               : null;
+            const until = fixUntil[list.id];
             return (
               <tr key={list.id}>
                 <td className={td}>
@@ -180,9 +198,20 @@ export function ListTable({
                     ) : (
                       <span className="text-ink-2">{t("card.open")}</span>
                     )
+                  ) : list.status === "missed" ? (
+                    <Badge tone="warning">
+                      {closedWords(t, list, lookups, timeZone, now)}
+                    </Badge>
                   ) : (
-                    <span className="text-ink-2">
-                      {closedWords(t, list, lookups, timeZone)}
+                    <span className="flex flex-col gap-0.5 text-ink-2">
+                      <span>
+                        {closedWords(t, list, lookups, timeZone, now)}
+                      </span>
+                      {until ? (
+                        <span className="text-sm">
+                          {fixUntilWords(t, until, now, timeZone)}
+                        </span>
+                      ) : null}
                     </span>
                   )}
                 </td>

@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { setupChecklist, setupRemaining } from "./setup";
+import { ROLES } from "./modules";
+import {
+  hasStaff,
+  isSetupStaff,
+  SETUP_STAFF_ROLES,
+  setupChecklist,
+  setupRemaining,
+} from "./setup";
 
 const none = { owner: 0, manager: 0, worker: 0 };
 
@@ -38,5 +45,29 @@ describe("setupChecklist", () => {
       hasAddress: true,
     });
     expect(setupRemaining(items)).toBe(0);
+  });
+});
+
+describe("hasStaff", () => {
+  it("counts managers and workers, never owners or accountants", () => {
+    expect(SETUP_STAFF_ROLES).toEqual(["manager", "worker"]);
+    expect(ROLES.filter(isSetupStaff)).toEqual(["manager", "worker"]);
+    expect(hasStaff({ manager: 0, worker: 0 })).toBe(false);
+    expect(hasStaff({ manager: 1, worker: 0 })).toBe(true);
+    expect(hasStaff({ manager: 0, worker: 2 })).toBe(true);
+  });
+
+  it("is what the checklist's staff item says", () => {
+    for (const people of [
+      none,
+      { ...none, owner: 2 },
+      { ...none, manager: 1 },
+      { ...none, worker: 1 },
+    ]) {
+      const staff = setupChecklist({ people, hasAddress: false }).find(
+        (item) => item.key === "staff",
+      );
+      expect(staff?.done).toBe(hasStaff(people));
+    }
   });
 });

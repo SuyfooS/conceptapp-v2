@@ -5,8 +5,11 @@ import { type NextRequest, NextResponse } from "next/server";
 /**
  * Screens for signed-in people: home, each module's screens (the `nav`
  * hrefs in `modules/<key>/manifest.ts`), the notifications, which have no
- * tab, the profile, the photos it shows and the admin console
- * (tooling/proxy.test.ts keeps both lists in step). Everything else is public.
+ * tab, the profile, the photos it shows, the photos on lists, the files sent in
+ * chat, the official documents' files and the admin console
+ * (tooling/proxy.test.ts keeps both lists in step).
+ * Everything else is public; chat's sync (/chat-sync) stays out on purpose.
+ * The clock station (/station) is public too, and in the matcher only.
  */
 const HOME = "/home";
 export const PRIVATE = [
@@ -16,11 +19,15 @@ export const PRIVATE = [
   "/reservations",
   "/storefront",
   "/lists",
+  "/chat",
   "/team",
   "/manage",
   "/notifications",
   "/me",
   "/photos",
+  "/list-photos",
+  "/chat-files",
+  "/document-files",
   "/admin",
 ];
 const DOORS = ["/sign-in", "/enter"];
@@ -61,12 +68,20 @@ export const config = {
     "/reservations/:path*",
     "/storefront/:path*",
     "/lists/:path*",
+    "/chat/:path*",
     "/team/:path*",
     "/manage/:path*",
     "/notifications/:path*",
     "/me/:path*",
     "/photos/:path*",
+    "/list-photos/:path*",
+    "/chat-files/:path*",
+    "/document-files/:path*",
     "/admin/:path*",
+    // Public, and refreshed all the same: a session left on a clock station
+    // is renewed here and counted as one, never read as nobody (PRIVATE
+    // leaves it out, so a device with nobody signed in reaches it).
+    "/station/:path*",
     "/sign-in",
     "/enter",
   ],

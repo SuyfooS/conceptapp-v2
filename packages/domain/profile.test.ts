@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Viewer } from "./modules";
 import {
   ADDRESS_FORMS,
   addressFormOf,
@@ -139,18 +140,47 @@ describe("checkProfileChange", () => {
 });
 
 describe("mayClearBio", () => {
+  // As the database answers by default: managers edit the team, workers
+  // don't (the roles plan's R6).
+  const EDITS = ["team.view", "team.edit"];
+  const owner: Viewer = { role: "owner", perms: [] };
+  const manager: Viewer = { role: "manager", perms: EDITS };
+  const worker: Viewer = { role: "worker", perms: [] };
+
   it("lets owners clear anyone's line and managers anyone's but an owner's", () => {
-    expect(mayClearBio("owner", "owner")).toBe(true);
-    expect(mayClearBio("owner", "manager")).toBe(true);
-    expect(mayClearBio("owner", "worker")).toBe(true);
-    expect(mayClearBio("manager", "manager")).toBe(true);
-    expect(mayClearBio("manager", "worker")).toBe(true);
-    expect(mayClearBio("manager", "owner")).toBe(false);
+    expect(mayClearBio(owner, "owner")).toBe(true);
+    expect(mayClearBio(owner, "manager")).toBe(true);
+    expect(mayClearBio(owner, "worker")).toBe(true);
+    expect(mayClearBio(manager, "manager")).toBe(true);
+    expect(mayClearBio(manager, "worker")).toBe(true);
+    expect(mayClearBio(manager, "owner")).toBe(false);
   });
 
   it("lets workers clear nobody's", () => {
-    expect(mayClearBio("worker", "worker")).toBe(false);
-    expect(mayClearBio("worker", "manager")).toBe(false);
+    expect(mayClearBio(worker, "worker")).toBe(false);
+    expect(mayClearBio(worker, "manager")).toBe(false);
+  });
+
+  it("follows team edit, within the rank (R6)", () => {
+    // A worker raised to edit the team clears a worker's line, never a
+    // manager's; a manager lowered to view, or to none, clears nobody's.
+    const raised: Viewer = { role: "worker", perms: EDITS };
+    expect(mayClearBio(raised, "worker")).toBe(true);
+    expect(mayClearBio(raised, "manager")).toBe(false);
+    expect(
+      mayClearBio({ role: "manager", perms: ["team.view"] }, "worker"),
+    ).toBe(false);
+    expect(mayClearBio({ role: "manager", perms: [] }, "worker")).toBe(false);
+  });
+
+  it("leaves an accountant's line to those above their rank (R6)", () => {
+    // An accountant reads at a worker's rank: a worker raised to edit the
+    // team doesn't clear their line, a manager and an owner do.
+    expect(mayClearBio({ role: "worker", perms: EDITS }, "accountant")).toBe(
+      false,
+    );
+    expect(mayClearBio(manager, "accountant")).toBe(true);
+    expect(mayClearBio(owner, "accountant")).toBe(true);
   });
 });
 

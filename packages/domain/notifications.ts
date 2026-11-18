@@ -1,6 +1,30 @@
 import { z } from "zod";
 import { isUuid } from "./activity";
-import { atLeast, type ModuleKey, type Role } from "./modules";
+import { addDays, dateIn, instantIn } from "./availability";
+import { type DocumentCategory, isDocumentCategory } from "./documents";
+import { timeOfDay } from "./hours";
+import {
+  atLeast,
+  holdsPermission,
+  isStaff,
+  type ModuleKey,
+  type PermissionKey,
+  type Role,
+} from "./modules";
+import {
+  ACCESS_AREAS,
+  type AccessArea,
+  type AreaChange,
+  accessFromHeld,
+  areaAccess,
+  areaChangeOf,
+  BASE_ROLES,
+  type BaseRole,
+  changesAnything,
+} from "./role-access";
+import { builderHref } from "./running-week";
+import { timeIn } from "./shabbat";
+import { MAX_ENTRY_HOURS } from "./time-clock-format";
 
 /**
  * Notifications in the app: what happened that a person should know, one line
@@ -12,24 +36,44 @@ import { atLeast, type ModuleKey, type Role } from "./modules";
  * read leniently: anything unexpected becomes a plain line, never an error.
  */
 
-/** What a person switches on or off for the phone, later: each kind is in one. */
+/**
+ * What a person switches on or off for the phone (notifications part 3):
+ * each kind is in one, or in none when nobody switches it off.
+ */
 export const NOTIFICATION_GROUPS = [
   "schedule",
   "swaps",
+  // The reminder to clock out (notifications part 4).
+  "clock",
   "approvals",
   "team",
   "lists",
+  "chat",
+  "documents",
 ] as const;
 
 export type NotificationGroup = (typeof NOTIFICATION_GROUPS)[number];
 
 type KindInfo = {
-  /** Null for a line nobody switches off: the test from the phone switch. */
+  /**
+   * Null for a line nobody switches off: the lines about pay (the person's
+   * own access and wage, and the office's month to close and corrections
+   * after closing it), the test from the phone switch, and a line in the app
+   * alone (`appOnly`), which has nothing to keep off a phone.
+   */
   group: NotificationGroup | null;
   /** The module the line is about; switching it off hides the line. */
   module: ModuleKey | null;
-  /** The lowest role the line is ever for. */
+  /** The lowest role the line is ever for, by default. */
   minRole: Role;
+  /**
+   * For those who hold this permission rather than for a rank and up (the
+   * line's `audience_perm` in the database, the roles plan's R3): written
+   * only to them and read only while they hold it, whatever their role.
+   * `minRole` is then the lowest role that holds it by default, but worker
+   * on the lists' lines, which were for anyone who ran the lists (R5).
+   */
+  perm?: PermissionKey;
   /**
    * The reader has something to do about it (take a shift, approve). The Home
    * tab counts only these, in red and read out as "needs action"; the bell
@@ -40,17 +84,66 @@ type KindInfo = {
   href: `/${string}`;
   /**
    * Leads to the thing itself when the line names it: "list" opens
-   * `/lists/<params.list>`, and `href` is where it leads otherwise.
+   * `/lists/<params.list>`, "payMonth" the hours for payroll of
+   * `params.month`, "conversation" the chat `/chat/<params.conversation>`,
+   * "document" the document `/chat/documents/<params.document>` (C7's
+   * screen), "person" the person's hours `/clock/team/<params.person>`,
+   * "week" the builder of the week `params.startsOn` names
+   * (`/schedule/build?week=<params.startsOn>`, the running-week plan's R4),
+   * "area" the screen of the area `params.area` names (`AREA_HREF`) while
+   * the reader still reaches it (`params.to`), and `href` is where it leads
+   * otherwise.
    */
-  to?: "list";
+  to?:
+    | "list"
+    | "payMonth"
+    | "conversation"
+    | "document"
+    | "person"
+    | "week"
+    | "area";
+  /**
+   * Shown in the bell and the inbox, and counted there: all but a chat's own
+   * lines, which the Chat tab counts instead (as chats with unread messages).
+   * They still reach the phone (/push/inbox reads them).
+   */
+  inbox?: false;
+  /**
+   * Never for someone off the staff (an accountant), who is in no chat: the
+   * inbox doesn't say such lines reach them.
+   */
+  staffOnly?: true;
   /**
    * Where a settled line leads instead, when settling it closes `href` to its
    * reader (access taken back): the inbox, which leads nowhere new.
    */
   settledHref?: `/${string}`;
+  /**
+   * Written by the app on its own, with nobody behind it: a reminder, a list
+   * or a month coming due, the phone switch's test. Such a line without an
+   * actor names the app where the inbox says who (`NotificationActor`), not
+   * "someone on the team".
+   */
+  byApp?: true;
+  /**
+   * In the app alone, never on the phone: the database writes it with
+   * nothing for the phone (`push_state` 'none'), as the reminders' lines in
+   * the app alone. In no group, so no settings screen offers to keep it off
+   * the phone, and it never counts as a line that always comes there
+   * (`alwaysOnPhone`).
+   */
+  appOnly?: true;
 };
 
 export const NOTIFICATION_KINDS = {
+  // A week published, the first time to everyone in it, and published again
+  // to those whose own shifts changed. Of a week already under way (Orel, 15
+  // November 2026; `private.notify_for` in
+  // supabase/migrations/20261115000400_running_week_notices.sql), the first
+  // time only to those with a shift still to start, and each line says how
+  // many are left; a change names the reader's nearest shift that changed
+  // (`ShiftChange`), and reaches the phone only before it starts, two minutes
+  // after the publish so a later one replaces it.
   "schedule.published": {
     group: "schedule",
     module: "scheduling",
@@ -64,6 +157,32 @@ export const NOTIFICATION_KINDS = {
     minRole: "worker",
     needsAction: false,
     href: "/schedule/shifts",
+  },
+  // Someone left the team or the staff, and their shifts still to start in a
+  // published week came off them (Orel, 14 November 2026;
+  // `private.notify_for_team` in
+  // supabase/migrations/20261114000100_team_changes.sql): to the owners and
+  // managers who build the schedule, how many of that week's shifts still to
+  // start lack someone now, a count and never who left. Publishing the week
+  // again counts it again (Orel, 15 November 2026): settled when none is left,
+  // otherwise its count lowered to what is left (never raised: a shift
+  // published with nobody on it wasn't freed by the team change) without
+  // telling anyone again; and none being left later (filled, or begun)
+  // settles it too. It opens that week's builder (the running-week plan's
+  // R4): next week's, or the week already under way, whose words say it is
+  // filled there (`unfilledWeekBegun`). A line whose week can't be read
+  // leads to the schedule. Read, it no longer counts.
+  "schedule.unfilled": {
+    group: "approvals",
+    module: "scheduling",
+    minRole: "manager",
+    // Those who publish the schedule fill them (the roles plan's R3): only a
+    // published week's shifts are left short, and someone who builds
+    // without publishing only reads a published week.
+    perm: "schedule.publish",
+    needsAction: true,
+    href: "/schedule",
+    to: "week",
   },
   "swap.offered": {
     group: "swaps",
@@ -83,6 +202,9 @@ export const NOTIFICATION_KINDS = {
     group: "approvals",
     module: "scheduling",
     minRole: "manager",
+    // Whoever builds the schedule decides a swap (Orel's answer 6 of 15
+    // November 2026).
+    perm: "schedule.edit",
     needsAction: true,
     href: "/schedule/swaps",
   },
@@ -114,10 +236,29 @@ export const NOTIFICATION_KINDS = {
     needsAction: false,
     href: "/schedule/shifts",
   },
+  // The colleague who took the reader's shift left the team or the staff
+  // before a manager approved (Orel, 15 November 2026; `private.notify_for_team`
+  // in supabase/migrations/20261114000100_team_changes.sql): the request is
+  // open again for someone else to take, and the shift stays the reader's
+  // until someone does and the swap is approved. It replaces their "taken"
+  // line, and names nobody.
+  "swap.reopened": {
+    group: "swaps",
+    module: "scheduling",
+    minRole: "worker",
+    needsAction: false,
+    href: "/schedule/shifts",
+  },
   "clock.confirm": {
     group: "approvals",
     module: "time_clock",
     minRole: "manager",
+    // Whoever edits the clock confirms hours without a code (the roles plan's
+    // R4); hours someone set for themselves are an owner's line, who holds
+    // every permission. Confirming settles it, and so does cancelling the
+    // shift, for everyone (20261117000200_cancelled_shifts.sql); bringing it
+    // back makes it wait again for those who confirm it.
+    perm: "clock.edit",
     needsAction: true,
     // Hours are approved on the team's hours.
     href: "/clock/team",
@@ -126,8 +267,66 @@ export const NOTIFICATION_KINDS = {
     group: "team",
     module: null,
     minRole: "manager",
+    // Those who see the team hear who joined it (the roles plan's R6).
+    perm: "team.view",
     needsAction: false,
     href: "/team",
+  },
+  // The reminders (notifications part 4, `private.run_reminders` in
+  // supabase/migrations/20261112000200_reminders.sql), each given once and
+  // settled by what they ask for. Next week's availability, before it is due,
+  // to the workers and managers who haven't sent it (never owners, as
+  // `missingAvailability`); sending it settles the reader's line, publishing
+  // the week everyone's.
+  "availability.due": {
+    group: "schedule",
+    module: "scheduling",
+    minRole: "worker",
+    needsAction: true,
+    href: "/schedule/availability",
+    staffOnly: true,
+    byApp: true,
+  },
+  // At the due moment, to owners and managers: how many haven't sent it,
+  // a count and never who. Settled once nobody is missing or the week is
+  // published.
+  "availability.missing": {
+    group: "approvals",
+    module: "scheduling",
+    minRole: "manager",
+    perm: "schedule.edit",
+    needsAction: true,
+    href: "/schedule/availability/team",
+    byApp: true,
+  },
+  // Still clocked in a while after the shift ended (or 12 hours with no
+  // shift), to the person: clocking out settles it, and so does a
+  // correction that closes the entry, cancelling the shift (which ends it,
+  // 20261117000200_cancelled_shifts.sql; bringing it back doesn't ask again),
+  // or its 24 hours passing, when only a manager can close it (clock.overdue).
+  "clock.open": {
+    group: "clock",
+    module: "time_clock",
+    minRole: "worker",
+    needsAction: true,
+    href: "/clock",
+    staffOnly: true,
+    byApp: true,
+  },
+  // Open longer than an entry can be (`entryOverdue`), to whoever edits the
+  // clock (owners and managers by default, the roles plan's R4), the person
+  // too when they do: a correction settles it, and so does cancelling the
+  // shift, for one clocked in by mistake. Bringing it back doesn't ask again;
+  // the team's hours still show it overdue.
+  "clock.overdue": {
+    group: "approvals",
+    module: "time_clock",
+    minRole: "manager",
+    perm: "clock.edit",
+    needsAction: true,
+    href: "/clock/team",
+    to: "person",
+    byApp: true,
   },
   // The Lists tab counts the open lists a person holds, so a list's lines
   // don't ask for action on Home as well.
@@ -147,6 +346,78 @@ export const NOTIFICATION_KINDS = {
     href: "/lists",
     to: "list",
   },
+  // A list passed to the reader's department (lists L5), which their Lists
+  // tab then counts.
+  "lists.passed": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: false,
+    href: "/lists",
+    to: "list",
+  },
+  // A list's times (lists L4): due soon and late, to the people it is for,
+  // whose Lists tab already counts it.
+  "lists.due": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: false,
+    href: "/lists",
+    to: "list",
+    byApp: true,
+  },
+  "lists.late": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    needsAction: false,
+    href: "/lists",
+    to: "list",
+    byApp: true,
+  },
+  // To those who run the lists (lists.manage: owners, and managers by
+  // default, the roles plan's R5), whose Lists tab counts only what they
+  // hold: these ask them to look. `minRole` stays worker, as the database
+  // writes it for whoever runs the lists, whatever their role.
+  "lists.late_team": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    perm: "lists.manage",
+    needsAction: true,
+    href: "/lists/today",
+    to: "list",
+    byApp: true,
+  },
+  // A list of a template's times still open `tellOwnersAfterMinutes` after it
+  // became late (Orel, 15 November 2026; `private.notify_for_lists` in
+  // supabase/migrations/20261115000500_lists_owners_late.sql): to the
+  // business's owners who don't hold it, one line each, for owners alone.
+  // Their `lists.late_team` line of the list is then marked read, so Home
+  // counts the list once. Finishing it, cancelling it or its closing as
+  // missed settles it.
+  "lists.late_owner": {
+    group: "lists",
+    module: "lists",
+    minRole: "owner",
+    needsAction: true,
+    href: "/lists/today",
+    to: "list",
+    byApp: true,
+  },
+  // A reading outside its range, to those who run the lists, as
+  // `lists.late_team`. Settled once a reading of the item is back inside it
+  // (Orel, 17 November 2026), and open again if it leaves again.
+  "lists.out_of_range": {
+    group: "lists",
+    module: "lists",
+    minRole: "worker",
+    perm: "lists.manage",
+    needsAction: true,
+    href: "/lists/today",
+    to: "list",
+  },
   // Someone was given pay access to them alone (payroll P3): about their own
   // access, so not a line anyone switches off. Taking it back settles it, and
   // the pay screens are then not found for them: a settled line stays in the
@@ -159,6 +430,143 @@ export const NOTIFICATION_KINDS = {
     href: "/clock/pay",
     settledHref: "/notifications",
   },
+  // The reader's own hourly wage was set, from a day (payroll P4): about
+  // their own pay, so not a line anyone switches off. It names the day and
+  // never the amount, which the clock shows them.
+  "pay.wage_set": {
+    group: null,
+    module: "time_clock",
+    minRole: "worker",
+    needsAction: false,
+    href: "/clock",
+  },
+  // A shift of a month closed for payroll was corrected, added, cancelled or
+  // brought back, or had an unpaid break changed (payroll P9; the clock
+  // plan's PR1 and PR2, `closed_month` on clock.cancel, clock.restore and
+  // clock.break_edit): to the month's closer and the accountants, one line
+  // per month. Its
+  // difference goes into the next month's file; nothing to do here. Not about
+  // the reader's own pay, yet payroll kept it out of every group, as it did
+  // the month to close below: both always reach the phone, and the settings
+  // say pay always comes (`alwaysOnPhone`).
+  "pay.after_close": {
+    group: null,
+    module: "time_clock",
+    minRole: "worker",
+    needsAction: false,
+    href: "/clock/pay",
+    to: "payMonth",
+  },
+  // On the 2nd, last month's hours wait to be closed (payroll P9): to its pay
+  // holders, with how many shifts wait or are open. Closing it settles it.
+  "pay.month_due": {
+    group: null,
+    module: "time_clock",
+    minRole: "worker",
+    needsAction: true,
+    href: "/clock/pay",
+    to: "payMonth",
+    byApp: true,
+  },
+  // A chat's line (chat C1): one per person per conversation, with how many
+  // messages wait and who wrote last, never a word of them. The Chat tab
+  // counts chats with unread messages, so these stay out of the bell and the
+  // inbox and reach the phone only.
+  "chat.direct": {
+    group: "chat",
+    module: "chat",
+    minRole: "worker",
+    needsAction: false,
+    href: "/chat",
+    to: "conversation",
+    inbox: false,
+    staffOnly: true,
+  },
+  "chat.group": {
+    group: "chat",
+    module: "chat",
+    minRole: "worker",
+    needsAction: false,
+    href: "/chat",
+    to: "conversation",
+    inbox: false,
+    staffOnly: true,
+  },
+  // An announcement in a group (chat C1), which asks the reader for
+  // "קראתי": confirming it settles their line, removing or unpinning it
+  // everyone's.
+  "chat.announcement": {
+    group: "chat",
+    module: "chat",
+    minRole: "worker",
+    needsAction: true,
+    href: "/chat",
+    to: "conversation",
+    staffOnly: true,
+  },
+  // Official documents (chat C6): to the office (pay holders, never a
+  // manager without pay access), a document someone on the staff sent the
+  // business; to each recipient, one sent to them, asking for "קראתי" or
+  // not. Their params hold the document's id and who sent it, never its
+  // category, title or file: a line outlives its reader's pay access, and a
+  // lock screen is seen by whoever is near the phone. The inbox names the
+  // category from the document itself, read under the reader's own session
+  // (`documents` in the lookups), and says "מסמך" to whoever no longer reads
+  // it. The office's first opening settles documents.received for all of
+  // it, and losing pay access one's own; a recipient's opening settles their
+  // documents.sent, and their "קראתי" their documents.to_confirm; removing
+  // the document's file settles every line about it.
+  "documents.received": {
+    group: "documents",
+    module: "chat",
+    minRole: "worker",
+    needsAction: true,
+    href: "/chat/documents",
+    to: "document",
+    // Settled when the reader lost pay access, too: the document's screen
+    // is then not found for them.
+    settledHref: "/notifications",
+  },
+  "documents.sent": {
+    group: "documents",
+    module: "chat",
+    minRole: "worker",
+    needsAction: false,
+    href: "/chat/documents",
+    to: "document",
+    // Only people on the staff are sent documents.
+    staffOnly: true,
+  },
+  "documents.to_confirm": {
+    group: "documents",
+    module: "chat",
+    minRole: "worker",
+    needsAction: true,
+    href: "/chat/documents",
+    to: "document",
+    staffOnly: true,
+  },
+  // What the reader's role does in an area changed (the roles plan's R10;
+  // Orel, 16 November 2026: "האנשים בתפקיד מקבלים התראה באפליקציה בלבד";
+  // `private.notify_role_change` in
+  // supabase/migrations/20261115001700_roles_changes.sql): to the active
+  // people in the role, never its owners, an accountant or whoever changed
+  // it, one line a role and an area, saying what the area gives and takes
+  // now against where the line began. A change undone before they read it
+  // takes the line away; one after they read it starts a line of its own.
+  // In the app alone, so in no group: nothing of it reaches a phone, and
+  // nobody switches it off. It leads to the area's screen while the reader
+  // still reaches it.
+  "role.changed": {
+    group: null,
+    module: null,
+    minRole: "worker",
+    needsAction: false,
+    href: "/notifications",
+    to: "area",
+    staffOnly: true,
+    appOnly: true,
+  },
   // "Send a test notification", from the phone switch: to the person alone.
   "push.test": {
     group: null,
@@ -166,6 +574,7 @@ export const NOTIFICATION_KINDS = {
     minRole: "worker",
     needsAction: false,
     href: "/notifications",
+    byApp: true,
   },
 } as const satisfies Record<string, KindInfo>;
 
@@ -180,8 +589,33 @@ export function notificationKindOf(value: unknown): NotificationKind | null {
   return NOTIFICATION_KIND_KEYS.find((kind) => kind === value) ?? null;
 }
 
+/**
+ * The lines about a list's times (lists L4, and the owners' step after them),
+ * each with the key its words have under `kinds.lists`: the inbox and the
+ * phone read them alike.
+ */
+export const LIST_TIME_WORDS = {
+  "lists.due": "due",
+  "lists.late": "late",
+  "lists.late_team": "late_team",
+  "lists.late_owner": "late_owner",
+} as const satisfies Partial<Record<NotificationKind, string>>;
+
 /** Where the inbox itself is, and where an unknown line leads. */
 export const INBOX_PATH = "/notifications";
+
+/** Each area's own screen, where a line about what a role does there leads. */
+export const AREA_HREF: Record<AccessArea, `/${string}`> = {
+  scheduling: "/schedule",
+  time_clock: "/clock",
+  lists: "/lists",
+  chat: "/chat",
+  // Taking orders has no screen of its own until its mode (P4 of waiter
+  // mode): Home until then.
+  order_taking: "/home",
+  team: "/team",
+  manage: "/manage",
+};
 
 /**
  * Where opening a line leads: always a path inside the app, chosen from the
@@ -204,6 +638,41 @@ export function linkFor(
       return `/lists/${list.data.list.toLowerCase()}`;
     }
   }
+  if (info.to === "conversation") {
+    const chat = z.object({ conversation: z.string() }).safeParse(params);
+    if (chat.success && isUuid(chat.data.conversation)) {
+      return `/chat/${chat.data.conversation.toLowerCase()}`;
+    }
+  }
+  if (info.to === "document") {
+    const document = z.object({ document: z.string() }).safeParse(params);
+    if (document.success && isUuid(document.data.document)) {
+      return `/chat/documents/${document.data.document.toLowerCase()}`;
+    }
+  }
+  if (info.to === "payMonth") {
+    const month = schemas.month.safeParse(params);
+    if (month.success) return `${info.href}?month=${month.data.month}`;
+  }
+  if (info.to === "person") {
+    const person = z.object({ person: z.string() }).safeParse(params);
+    if (person.success && isUuid(person.data.person)) {
+      return `/clock/team/${person.data.person.toLowerCase()}`;
+    }
+  }
+  if (info.to === "week") {
+    const week = z.object({ startsOn: z.iso.date() }).safeParse(params);
+    if (week.success) return builderHref(week.data.startsOn);
+  }
+  if (info.to === "area") {
+    // The area's screen, unless the change took the reader's way there (the
+    // team screen or the management page at none).
+    const change = schemas.roleChange.safeParse(params);
+    if (change.success) {
+      const { area, to } = change.data;
+      if (heldPart(area, to).level !== "none") return AREA_HREF[area];
+    }
+  }
   return info.href;
 }
 
@@ -221,11 +690,58 @@ export function isAppPath(url: unknown): url is `/${string}` {
   );
 }
 
+/**
+ * Whether a `schedule.unfilled` line's week is already under way on `today`
+ * (the business's own day, YYYY-MM-DD): its freed shifts are filled in this
+ * week's schedule, which the line opens (`linkFor`), and its words say so.
+ */
+export function unfilledWeekBegun(startsOn: string, today: string): boolean {
+  return startsOn <= today;
+}
+
+/**
+ * Whether the week starting on `startsOn` is the one under way on `today`
+ * (both the business's own days, YYYY-MM-DD): a line written while it ran
+ * says "this week" while it still does, and the week's date after.
+ */
+export function weekUnderWay(startsOn: string, today: string): boolean {
+  return startsOn <= today && today < addDays(startsOn, 7);
+}
+
+/**
+ * Whether a running week's line says how many of the reader's shifts are
+ * left. Not when it names a shift they joined under way and none is left to
+ * start: they are on it now, and "none left" would say they aren't. (A shift
+ * that has begun is never moved or taken off anyone, so an added one that
+ * isn't counted as still to start is under way.)
+ */
+export function saysShiftsLeft(line: {
+  mine: number;
+  nearest: ShiftChange | null;
+}): boolean {
+  return !(line.mine === 0 && line.nearest?.change === "added");
+}
+
 /** Whether a line asks its reader to do something. */
 export function needsAction(kind: string): boolean {
   const known = notificationKindOf(kind);
   return known ? NOTIFICATION_KINDS[known].needsAction : false;
 }
+
+/**
+ * Whether a line shows in the bell and the inbox: every kind but a chat's own
+ * lines (`inbox: false`). A kind this app doesn't know shows, as a plain line.
+ */
+export function inInbox(kind: string): boolean {
+  const known = notificationKindOf(kind);
+  if (!known) return true;
+  const info: KindInfo = NOTIFICATION_KINDS[known];
+  return info.inbox !== false;
+}
+
+/** The kinds the inbox and the bell leave out: they reach the phone only. */
+export const PHONE_ONLY_KINDS: readonly NotificationKind[] =
+  NOTIFICATION_KIND_KEYS.filter((kind) => !inInbox(kind));
 
 /** How many lines a person has not read in a business. */
 export type UnreadCounts = {
@@ -248,7 +764,7 @@ export function unreadCounts(
   let all = 0;
   let action = 0;
   for (const row of rows) {
-    if (row.business_id !== businessId) continue;
+    if (row.business_id !== businessId || !inInbox(row.kind)) continue;
     all += 1;
     if (needsAction(row.kind)) action += 1;
   }
@@ -256,23 +772,333 @@ export function unreadCounts(
 }
 
 /**
+ * Whether a kind of line is ever for this person: those who hold its
+ * permission, when it has one and their permissions are known (`perms`, as
+ * the database answers them), and otherwise their role from its lowest one
+ * up.
+ */
+function kindFor(
+  info: KindInfo,
+  role: Role,
+  perms: readonly string[] | undefined,
+): boolean {
+  return info.perm && perms
+    ? holdsPermission({ role, perms }, info.perm)
+    : atLeast(role, info.minRole);
+}
+
+/**
  * The groups of lines a person in this role can get in a business with these
- * modules on, in order: what the inbox says reaches it.
+ * modules on, in order: what the inbox says reaches it. With what they hold
+ * (`perms`), a line for those who hold a permission counts by it: a worker
+ * who builds the schedule gets the approvals, a manager who doesn't, not
+ * theirs. A line in the app alone (`appOnly`) is in no group, so it adds
+ * none.
  */
 export function groupsFor(
   role: Role,
   enabled: readonly ModuleKey[],
+  perms?: readonly string[],
 ): NotificationGroup[] {
   return NOTIFICATION_GROUPS.filter((group) =>
     NOTIFICATION_KIND_KEYS.some((kind) => {
       const info: KindInfo = NOTIFICATION_KINDS[kind];
       return (
         info.group === group &&
-        atLeast(role, info.minRole) &&
+        kindFor(info, role, perms) &&
+        !(info.staffOnly && !isStaff(role)) &&
         (info.module === null || enabled.includes(info.module))
       );
     }),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Each person's choices (notifications part 3,
+// supabase/migrations/20261112000100_notification_preferences.sql): which
+// groups reach their phone, quiet hours, and what a lock screen shows. They
+// are the person's own, across every business they are in, and read by
+// nobody else. The app's inbox always shows everything.
+
+/** Whether a value names a group. */
+export function isNotificationGroup(
+  value: unknown,
+): value is NotificationGroup {
+  return NOTIFICATION_GROUPS.some((group) => group === value);
+}
+
+/**
+ * The group a kind is in, as the database reads it
+ * (`private.notification_group`, kept equal by
+ * packages/db/notification-preferences.db.test.ts): null for a line nobody
+ * switches off (the lines about pay, the person's own and the office's, and
+ * the test) and for a kind this app doesn't know.
+ */
+export function notificationGroupOf(kind: string): NotificationGroup | null {
+  const known = notificationKindOf(kind);
+  if (!known) return null;
+  const info: KindInfo = NOTIFICATION_KINDS[known];
+  return info.group;
+}
+
+/**
+ * The kinds that reach this role's phone here whatever they switch off: in
+ * no group, for this role, with their module on. Only the lines about pay
+ * (payroll kept each of them out of every group), so a settings screen that
+ * finds any says pay always comes. The test from the phone switch, asked for
+ * there and then, isn't one, nor a line in the app alone (`appOnly`), which
+ * never reaches the phone.
+ */
+export function alwaysOnPhone(
+  role: Role,
+  enabled: readonly ModuleKey[],
+): NotificationKind[] {
+  return NOTIFICATION_KIND_KEYS.filter((kind) => {
+    const info: KindInfo = NOTIFICATION_KINDS[kind];
+    return (
+      kind !== "push.test" &&
+      !info.appOnly &&
+      info.group === null &&
+      atLeast(role, info.minRole) &&
+      !(info.staffOnly && !isStaff(role)) &&
+      (info.module === null || enabled.includes(info.module))
+    );
+  });
+}
+
+/**
+ * The groups a person may keep off their phone: every one, those whose lines
+ * ask them to act included, since those still wait in the app and count on
+ * Home and the bell. Nothing is ever switched off in the app. Which of them a
+ * settings screen offers is `groupsFor` the person's role.
+ */
+export const SWITCHABLE_GROUPS: readonly NotificationGroup[] =
+  NOTIFICATION_GROUPS;
+
+/** Quiet hours, "HH:MM" on the person's clock; `to` before `from` crosses midnight. */
+export type QuietHours = { from: string; to: string };
+
+/** Quiet hours when first switched on (plan §9): 22:00 to 07:00. */
+export const DEFAULT_QUIET_HOURS: QuietHours = { from: "22:00", to: "07:00" };
+
+/** The clock quiet hours are read on, until a screen says the business's. */
+export const NOTIFICATION_TIME_ZONE = "Asia/Jerusalem";
+
+export type NotificationPreferences = {
+  /** Groups that don't reach the phone; their lines still reach the app. */
+  pushOff: NotificationGroup[];
+  /** Null while quiet hours are off, as they are until switched on. */
+  quiet: QuietHours | null;
+  /** The clock `quiet` is read on (an IANA zone). */
+  timeZone: string;
+  /** What the lock screen shows: the line, or only its group's words. */
+  previews: boolean;
+  /**
+   * When the person was first offered notifications on the phone after
+   * giving away a shift or sending availability, as an ISO instant: asked
+   * once, never again. Null: not yet.
+   */
+  askedAt: string | null;
+};
+
+/** Everyone's choices until they make their own. */
+export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
+  pushOff: [],
+  quiet: null,
+  timeZone: NOTIFICATION_TIME_ZONE,
+  previews: true,
+  askedAt: null,
+};
+
+/** "HH:MM" of a stored time ("22:00:00"), or null for anything else. */
+function clockOf(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const clock = value.slice(0, 5);
+  return timeOfDay.safeParse(clock).success ? clock : null;
+}
+
+/**
+ * Choices as the database keeps them, read leniently: anything unexpected
+ * reads as its default, and quiet hours are on only with both ends.
+ */
+export function readNotificationPreferences(stored: {
+  pushOff: unknown;
+  quietFrom: unknown;
+  quietTo: unknown;
+  timeZone: unknown;
+  previews: unknown;
+  askedAt: unknown;
+}): NotificationPreferences {
+  const from = clockOf(stored.quietFrom);
+  const to = clockOf(stored.quietTo);
+  return {
+    pushOff: SWITCHABLE_GROUPS.filter(
+      (group) =>
+        Array.isArray(stored.pushOff) && stored.pushOff.includes(group),
+    ),
+    quiet: from && to && from !== to ? { from, to } : null,
+    timeZone:
+      typeof stored.timeZone === "string" && stored.timeZone
+        ? stored.timeZone
+        : NOTIFICATION_TIME_ZONE,
+    previews: stored.previews !== false,
+    askedAt:
+      typeof stored.askedAt === "string" &&
+      !Number.isNaN(Date.parse(stored.askedAt))
+        ? stored.askedAt
+        : null,
+  };
+}
+
+/** Whether a kind's lines reach the person's phone by their choices. */
+export function reachesPhone(
+  kind: string,
+  preferences: Pick<NotificationPreferences, "pushOff">,
+): boolean {
+  const group = notificationGroupOf(kind);
+  return group === null || !preferences.pushOff.includes(group);
+}
+
+/**
+ * When the quiet hours `at` falls in end, or null when it falls outside them
+ * (or there are none): from `from` (included) until `to` (not), on the clock
+ * of `timeZone`, the next day's `to` when they cross midnight. The same as
+ * `private.quiet_end`, which packages/db/notification-preferences.db.test.ts
+ * compares with this across the clock changes.
+ */
+export function quietEnd(
+  quiet: QuietHours | null,
+  timeZone: string,
+  at: Date,
+): Date | null {
+  if (!quiet || quiet.from === quiet.to) return null;
+  const day = dateIn(at, timeZone);
+  const now = timeIn(at, timeZone);
+  const { from, to } = quiet;
+  if (from < to) {
+    return now >= from && now < to ? instantIn(day, to, timeZone) : null;
+  }
+  if (now >= from) return instantIn(addDays(day, 1), to, timeZone);
+  if (now < to) return instantIn(day, to, timeZone);
+  return null;
+}
+
+/**
+ * When a line of `kind` written at `at` goes to the person's phone, by their
+ * choices, or null for not at all (`private.push_plan`, for someone whose
+ * phone gets the business's lines): at once, or at the end of their quiet
+ * hours. The test from the phone switch is asked for there and then, so it
+ * never waits.
+ */
+export function phoneTime(
+  kind: string,
+  preferences: Pick<NotificationPreferences, "pushOff" | "quiet" | "timeZone">,
+  at: Date,
+): Date | null {
+  if (!reachesPhone(kind, preferences)) return null;
+  if (kind === "push.test") return at;
+  return quietEnd(preferences.quiet, preferences.timeZone, at) ?? at;
+}
+
+// ---------------------------------------------------------------------------
+// The reminders (notifications part 4,
+// supabase/migrations/20261112000200_reminders.sql): written by the database
+// once a minute, each once. How long before availability is due and how long
+// after a shift they come are each business's settings
+// (modules/notifications/manifest.ts); the rest are these.
+
+/**
+ * The reminders' own times, the same as `private.reminder_rules` in the
+ * database (modules/notifications/reminders.db.test.ts compares them).
+ */
+export const REMINDER_RULES = {
+  /**
+   * Owners and managers hear how many haven't sent availability from its due
+   * moment until this many hours after, while next week isn't published.
+   */
+  missingForHours: 6,
+  /**
+   * Someone still clocked in with no published shift that day hears it this
+   * many hours after clocking in.
+   */
+  openWithoutShiftHours: 12,
+  /**
+   * The reminder to clock out comes, and reaches the phone, until this many
+   * hours after clocking in; then the entry is overdue and only a manager
+   * closes it, so its owners and managers hear of it instead.
+   */
+  openForHours: MAX_ENTRY_HOURS,
+  /**
+   * Nobody hears of next week's availability before this time on the first
+   * day of the week before it, when the app begins to show it as next week
+   * (`nextWeekStart`): a due moment early in the week gets the hours left
+   * before it, not a push at midnight as the week turns, and one due by then
+   * (on that first day) is a line in the app alone.
+   */
+  earliestAt: "08:00",
+} as const;
+
+const quietHours = z
+  .object({ from: timeOfDay, to: timeOfDay })
+  .refine((hours) => hours.from !== hours.to, "Quiet hours need a length");
+
+/**
+ * One change from the settings screen, saved at once: a group on or off for
+ * the phone, quiet hours on with their times or off (`hours: null`), or
+ * whether the lock screen shows the line.
+ */
+export const notificationPreferenceChange = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("group"),
+    group: z.enum(NOTIFICATION_GROUPS),
+    on: z.boolean(),
+  }),
+  z.object({ kind: z.literal("quiet"), hours: quietHours.nullable() }),
+  z.object({ kind: z.literal("previews"), on: z.boolean() }),
+]);
+
+export type NotificationPreferenceChange = z.infer<
+  typeof notificationPreferenceChange
+>;
+
+/**
+ * Why a change was not saved: the team viewing as someone changes nothing
+ * (`viewOnly`), a change the screen can't have sent (`invalid`), or anything
+ * else (`failed`).
+ */
+export type PreferencesFailure = "viewOnly" | "invalid" | "failed";
+
+/** What saving a change answers: the choices as they now stand. */
+export type PreferencesSaveResult =
+  | { ok: true; preferences: NotificationPreferences }
+  | { ok: false; failure: PreferencesFailure };
+
+/**
+ * How long ago a line came, in the inbox's own words: "now" under a minute,
+ * then whole minutes, hours and days (rounded down) for a week, and `null`
+ * after that, when the line says its date. Our own words, not
+ * `Intl.RelativeTimeFormat`, which writes "לפני שעה (1)" in Hebrew.
+ */
+export type InboxAgo =
+  | { unit: "now" }
+  | { unit: "minutes" | "hours" | "days"; count: number }
+  | null;
+
+const MINUTE_MS = 60_000;
+const HOUR_MS = 60 * MINUTE_MS;
+const DAY_MS = 24 * HOUR_MS;
+
+export function inboxAgo(at: Date, now: Date): InboxAgo {
+  const ago = now.getTime() - at.getTime();
+  if (Number.isNaN(ago)) return null;
+  // A clock a little ahead of the server's still reads "now".
+  if (ago < MINUTE_MS) return { unit: "now" };
+  if (ago < HOUR_MS)
+    return { unit: "minutes", count: Math.floor(ago / MINUTE_MS) };
+  if (ago < DAY_MS) return { unit: "hours", count: Math.floor(ago / HOUR_MS) };
+  if (ago < 7 * DAY_MS)
+    return { unit: "days", count: Math.floor(ago / DAY_MS) };
+  return null;
 }
 
 /**
@@ -367,10 +1193,27 @@ export function inboxPage<T extends { createdAt: string; id: string }>(
   };
 }
 
+/** A chat's group as a line names it. */
+export type NotificationChat =
+  | { kind: "team" }
+  /** The name is null when the department is not known (any more). */
+  | { kind: "department"; name: string | null };
+
 /** What lines point at, read under the reader's own access. */
 export type NotificationLookups = {
   /** The business's memberships, active or not, by person. */
   members: ReadonlyMap<string, { active: boolean; name: string | null }>;
+  /**
+   * The groups chat lines name, by conversation: those the reader reads.
+   * Left out where no line needs them.
+   */
+  chats?: ReadonlyMap<string, NotificationChat>;
+  /**
+   * The categories of the documents lines name, by document: those the
+   * reader still reads, for the inbox alone. Never read for a phone: a lock
+   * screen never names a category ("אישור מחלה").
+   */
+  documents?: ReadonlyMap<string, DocumentCategory>;
 };
 
 /** Someone a line names, as its reader may know them. */
@@ -382,6 +1225,19 @@ export type NotificationPerson =
   /** Nothing says who. */
   | { kind: "unknown" };
 
+/**
+ * Who a line is from: a person, the app itself for a kind it writes on its
+ * own (`byApp`: a reminder, a list or a month coming due) with nobody behind
+ * it, or the ConceptApp team, from the console (pay access given there): an
+ * actor who was never in the business, which the activity log reads the same
+ * way (`actorOf` in ./activity), never a colleague's name or "someone on the
+ * team".
+ */
+export type NotificationActor =
+  | NotificationPerson
+  | { kind: "app" }
+  | { kind: "team" };
+
 /** A shift as a line shows it: what everyone reads in the published week. */
 export type NotificationShift = {
   /** YYYY-MM-DD */
@@ -392,6 +1248,21 @@ export type NotificationShift = {
   end: string;
 };
 
+/**
+ * The reader's nearest shift that a publish of a week under way changed:
+ * moved (its day or hours, named as it is now), added (a shift they are on
+ * now, one under way they joined included), removed (one they are no longer
+ * on, named as it was), or edited (its name or position alone, named as it is
+ * now; only when nothing else of theirs changed, since it moves nothing).
+ */
+export type ShiftChange = {
+  change: (typeof SHIFT_CHANGES)[number];
+  shift: NotificationShift;
+};
+
+/** How a shift of the reader's changed, as `private.nearest_change` says. */
+export const SHIFT_CHANGES = ["moved", "added", "removed", "edited"] as const;
+
 /** The reader's own part in a decided swap. */
 export type SwapSide = "from" | "to" | null;
 
@@ -400,8 +1271,23 @@ export type NotificationLine =
       kind: "schedule.published" | "schedule.changed";
       /** The week's first day, YYYY-MM-DD. */
       startsOn: string;
-      /** How many of the week's shifts are the reader's. */
+      /**
+       * How many of the week's shifts are the reader's: of a week under way,
+       * those still to start when the line was written.
+       */
       mine: number;
+      /** The week had begun when the line was written. */
+      running: boolean;
+      /** A change in a week under way: the nearest shift it changed, if any. */
+      nearest: ShiftChange | null;
+    }
+  | {
+      /** Shifts still to start in the week lack someone, since a team change. */
+      kind: "schedule.unfilled";
+      /** The week's first day, YYYY-MM-DD. */
+      startsOn: string;
+      /** How many of its shifts still to start lacked someone then. */
+      count: number;
     }
   | {
       kind: "swap.offered" | "swap.cancelled";
@@ -429,6 +1315,11 @@ export type NotificationLine =
     }
   | { kind: "swap.removed"; shift: NotificationShift | null }
   | {
+      /** The reader's request is open again: whoever took it left first. */
+      kind: "swap.reopened";
+      shift: NotificationShift | null;
+    }
+  | {
       kind: "clock.confirm";
       person: NotificationPerson;
       /** 'none': without a code; 'self': hours someone set for themselves. */
@@ -439,14 +1330,166 @@ export type NotificationLine =
     }
   | { kind: "team.joined"; person: NotificationPerson }
   | {
+      /** The reader hasn't sent next week's availability yet. */
+      kind: "availability.due";
+      /** The week's first day, YYYY-MM-DD. */
+      startsOn: string;
+      /** When it is due, as an ISO instant; null when the line lost it. */
+      dueAt: string | null;
+    }
+  | {
+      /** At the due moment, how many still haven't sent it: never who. */
+      kind: "availability.missing";
+      startsOn: string;
+      dueAt: string | null;
+      /** How many of the staff hadn't sent it then. */
+      missing: number;
+    }
+  | {
+      /** The reader is still clocked in after their shift. */
+      kind: "clock.open";
+      /** When they clocked in, as an ISO instant; null when the line lost it. */
+      since: string | null;
+      /**
+       * When their shift that day ended, as an ISO instant; null when they
+       * had none (the reminder came 12 hours after clocking in).
+       */
+      shiftEnd: string | null;
+    }
+  | {
+      /** Someone's entry is open longer than one can be: a manager closes it. */
+      kind: "clock.overdue";
+      person: NotificationPerson;
+      /** When they clocked in, as an ISO instant; null when the line lost it. */
+      since: string | null;
+      /** The entry is the reader's own. */
+      mine: boolean;
+    }
+  | {
       kind: "lists.sent" | "lists.finished";
       /** The list's name, as it was sent. */
       name: string;
     }
+  | {
+      /** A list passed to the reader's department; the actor passed it. */
+      kind: "lists.passed";
+      name: string;
+      /** The department's name when it was passed; null when the line lost it. */
+      department: string | null;
+      /** A note came with it, which the list itself shows. */
+      hasNote: boolean;
+    }
+  | {
+      kind:
+        | "lists.due"
+        | "lists.late"
+        | "lists.late_team"
+        /** Still open a while after it became late: to its owners. */
+        | "lists.late_owner";
+      name: string;
+      /** When it is due, as an ISO instant; null when the line lost it. */
+      due: string | null;
+    }
+  | {
+      /** A reading outside its item's range; the actor read it. */
+      kind: "lists.out_of_range";
+      name: string;
+      /** The item's label; null when the line lost it. */
+      label: string | null;
+      /**
+       * The reading with its range and unit; null for a line from before it
+       * kept them.
+       */
+      reading: {
+        value: number;
+        min: number | null;
+        max: number | null;
+        unit: string | null;
+      } | null;
+      /**
+       * Settled by a reading of the item back inside its range (the line
+       * keeps the reading that was outside).
+       */
+      backInRange: boolean;
+    }
   /** Pay access, given to the reader alone; the actor gave it. */
   | { kind: "access.pay_granted" }
+  | {
+      /** The reader's hourly wage changed; the actor set it. */
+      kind: "pay.wage_set";
+      /** The day it takes effect, YYYY-MM-DD; null when the line lost it. */
+      since: string | null;
+    }
+  | {
+      /** A shift of a closed month was corrected or added; the actor did it. */
+      kind: "pay.after_close";
+      /** The closed month, YYYY-MM; null when the line lost it. */
+      month: string | null;
+    }
+  | {
+      /** Last month's hours wait to be closed. */
+      kind: "pay.month_due";
+      /** That month, YYYY-MM; null when the line lost it. */
+      month: string | null;
+      /** Its shifts waiting for a confirmation, and still open. */
+      waiting: number;
+      open: number;
+    }
+  | {
+      /** A private chat's line: who wrote last, and how many messages wait. */
+      kind: "chat.direct";
+      from: NotificationPerson;
+      count: number;
+    }
+  | {
+      /** A group's line: who wrote last, and how many messages wait. */
+      kind: "chat.group";
+      from: NotificationPerson;
+      count: number;
+      /** The group, as its reader may know it; null when the line lost it. */
+      chat: NotificationChat | null;
+    }
+  | {
+      /** An announcement in a group, asking the reader for "קראתי". */
+      kind: "chat.announcement";
+      from: NotificationPerson;
+      chat: NotificationChat | null;
+    }
+  | {
+      /**
+       * A document: to the business (to the office, from `from`), or to the
+       * reader, asking for "קראתי" (`to_confirm`) or not (`sent`).
+       */
+      kind: "documents.received" | "documents.sent" | "documents.to_confirm";
+      from: NotificationPerson;
+      /**
+       * Its category, as the reader may still read the document; null when
+       * they no longer do, or nobody looked it up (a phone never does).
+       */
+      category: DocumentCategory | null;
+    }
+  | {
+      /**
+       * What the reader's role does in an area changed (the roles plan's
+       * R10); the actor changed it: what the area gives and takes now,
+       * against where the line began.
+       */
+      kind: "role.changed";
+      role: NotificationRole;
+      area: AccessArea;
+      change: AreaChange;
+    }
   | { kind: "push.test" }
   | { kind: "other" };
+
+/**
+ * The role a line about a role's permissions names: managers or workers, in
+ * the business's words, or a role the business named, by the name it had
+ * then (null when the line lost it).
+ */
+export type NotificationRole =
+  | { kind: "base"; base: BaseRole }
+  | { kind: "named"; name: string | null };
 
 /** One line of the inbox. Holds no ids but its own, so it can go anywhere. */
 export type NotificationEntry = {
@@ -459,8 +1502,8 @@ export type NotificationEntry = {
    * decided, hours confirmed): it no longer says something waits.
    */
   settled: boolean;
-  /** Who did it, for the line's picture. */
-  actor: NotificationPerson;
+  /** Who did it, for the line's picture and the inbox's "who". */
+  actor: NotificationActor;
   group: NotificationGroup | null;
   href: `/${string}`;
   line: NotificationLine;
@@ -479,7 +1522,20 @@ const instant = z
   .refine((value) => !Number.isNaN(Date.parse(value)), "not a time");
 
 const schemas = {
-  week: z.object({ startsOn: z.iso.date(), mine: z.int().min(0) }),
+  week: z.object({
+    startsOn: z.iso.date(),
+    mine: z.int().min(0),
+    // Lines from before the running week say nothing of it.
+    running: z.boolean().catch(false),
+    nearest: z
+      .object({ change: z.enum(SHIFT_CHANGES), shift })
+      .nullable()
+      .catch(null),
+  }),
+  unfilled: z.object({
+    startsOn: z.iso.date(),
+    count: z.int().min(0).catch(0),
+  }),
   from: z.object({ from: uuid }),
   by: z.object({ by: uuid }),
   decided: z.object({ from: uuid, to: uuid.nullable().optional() }),
@@ -490,8 +1546,63 @@ const schemas = {
     at: instant,
   }),
   person: z.object({ person: uuid }),
+  availability: z.object({
+    startsOn: z.iso.date(),
+    dueAt: instant.nullable().catch(null),
+    missing: z.int().min(0).catch(0),
+  }),
+  open: z.object({
+    since: instant.nullable().catch(null),
+    shiftEnd: instant.nullable().catch(null),
+  }),
   list: z.object({ list: uuid, name: z.string().min(1) }),
+  due: z.object({ due: instant }),
+  passed: z.object({
+    departmentName: z.string().min(1).nullable().catch(null),
+    hasNote: z.boolean().catch(false),
+  }),
+  label: z.object({ label: z.string().min(1) }),
+  reading: z.object({
+    reading: z.number(),
+    min: z.number().nullable().default(null),
+    max: z.number().nullable().default(null),
+    unit: z.string().nullable().default(null),
+  }),
+  backInRange: z.object({ backInRange: z.boolean().catch(false) }),
+  since: z.object({ since: z.iso.date() }),
+  month: z.object({ month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/) }),
+  counts: z.object({
+    waiting: z.int().min(0).catch(0),
+    open: z.int().min(0).catch(0),
+  }),
+  chat: z.object({
+    conversation: uuid,
+    from: uuid.nullable().catch(null),
+    count: z.int().min(1).max(99).catch(1),
+  }),
+  document: z.object({
+    document: uuid,
+    from: uuid.nullable().catch(null),
+  }),
+  // What a role's line holds (`private.notify_role_change`): its role
+  // (managers, workers, or a named role's id, with its name), the area, and
+  // what the role held of the area's keys where the line began and now.
+  roleChange: z.object({
+    role: z.union([z.enum(BASE_ROLES), uuid]),
+    name: z.string().min(1).nullable().optional().catch(null),
+    area: z.enum(ACCESS_AREAS),
+    from: z.record(z.string(), z.boolean()),
+    to: z.record(z.string(), z.boolean()),
+  }),
 };
+
+/** One area as a role held it, from what it held of the area's keys. */
+function heldPart(area: AccessArea, held: Readonly<Record<string, boolean>>) {
+  return areaAccess(
+    accessFromHeld((key) => held[key] === true),
+    area,
+  );
+}
 
 function personOf(
   id: string | null | undefined,
@@ -502,6 +1613,46 @@ function personOf(
   return member.active
     ? { kind: "member", name: member.name }
     : { kind: "former" };
+}
+
+/**
+ * Who a line is from. The app, for a line it wrote on its own; someone
+ * unknown when the actor's account is gone (set null). An actor the business
+ * never had as a member, active or not, is the ConceptApp team: the only
+ * other writer of a business's log (the console gives pay access, through
+ * the secret key, in the team member's name). The reader reads every
+ * membership of their business, those of people who left included
+ * (`private.is_member`), and `notificationRefs` asks for every actor, so a
+ * colleague is never taken for the team.
+ */
+function actorOf(
+  actorId: string | null,
+  info: KindInfo | null,
+  lookups: NotificationLookups,
+): NotificationActor {
+  if (actorId === null) {
+    return info?.byApp ? { kind: "app" } : { kind: "unknown" };
+  }
+  if (!isUuid(actorId)) return { kind: "unknown" };
+  if (!lookups.members.has(actorId.toLowerCase())) return { kind: "team" };
+  return personOf(actorId, lookups);
+}
+
+/** The category of a document a line names, as the reader may still read it. */
+function categoryOf(
+  document: string,
+  lookups: NotificationLookups,
+): DocumentCategory | null {
+  const category = lookups.documents?.get(document.toLowerCase());
+  return isDocumentCategory(category) ? category : null;
+}
+
+/** The group a chat line names, as the reader may know it. */
+function chatOf(
+  conversation: string,
+  lookups: NotificationLookups,
+): NotificationChat | null {
+  return lookups.chats?.get(conversation.toLowerCase()) ?? null;
 }
 
 function lineOf(
@@ -525,7 +1676,23 @@ function lineOf(
     case "schedule.changed": {
       const params = read(schemas.week);
       return params
-        ? { kind, startsOn: params.startsOn, mine: params.mine }
+        ? {
+            kind,
+            startsOn: params.startsOn,
+            mine: params.mine,
+            running: params.running,
+            // Only a change names one, and only of a week under way.
+            nearest:
+              kind === "schedule.changed" && params.running
+                ? params.nearest
+                : null,
+          }
+        : other;
+    }
+    case "schedule.unfilled": {
+      const params = read(schemas.unfilled);
+      return params
+        ? { kind, startsOn: params.startsOn, count: params.count }
         : other;
     }
     case "swap.offered":
@@ -563,6 +1730,7 @@ function lineOf(
       return { kind, ...people, side };
     }
     case "swap.removed":
+    case "swap.reopened":
       return { kind, shift: shiftOf() };
     case "clock.confirm": {
       const params = read(schemas.confirm);
@@ -582,10 +1750,161 @@ function lineOf(
         ? { kind, person: personOf(params.person, lookups) }
         : other;
     }
+    case "availability.due": {
+      const params = read(schemas.availability);
+      return params
+        ? { kind, startsOn: params.startsOn, dueAt: params.dueAt }
+        : other;
+    }
+    case "availability.missing": {
+      const params = read(schemas.availability);
+      return params
+        ? {
+            kind,
+            startsOn: params.startsOn,
+            dueAt: params.dueAt,
+            missing: params.missing,
+          }
+        : other;
+    }
+    case "clock.open": {
+      // Still a reminder to clock out without its times.
+      const params = read(schemas.open);
+      return {
+        kind,
+        since: params?.since ?? null,
+        shiftEnd: params?.shiftEnd ?? null,
+      };
+    }
+    case "clock.overdue": {
+      const params = read(schemas.person);
+      return params
+        ? {
+            kind,
+            person: personOf(params.person, lookups),
+            since: read(schemas.open)?.since ?? null,
+            mine: params.person.toLowerCase() === readerId.toLowerCase(),
+          }
+        : other;
+    }
     case "lists.sent":
     case "lists.finished": {
       const params = read(schemas.list);
       return params ? { kind, name: params.name } : other;
+    }
+    case "lists.passed": {
+      const params = read(schemas.list);
+      // Still a line without the department's name.
+      const passed = read(schemas.passed);
+      return params
+        ? {
+            kind,
+            name: params.name,
+            department: passed?.departmentName ?? null,
+            hasNote: passed?.hasNote ?? false,
+          }
+        : other;
+    }
+    case "lists.due":
+    case "lists.late":
+    case "lists.late_team":
+    case "lists.late_owner": {
+      const params = read(schemas.list);
+      // Still a line without its due time.
+      return params
+        ? { kind, name: params.name, due: read(schemas.due)?.due ?? null }
+        : other;
+    }
+    case "lists.out_of_range": {
+      const params = read(schemas.list);
+      const reading = read(schemas.reading);
+      return params
+        ? {
+            kind,
+            name: params.name,
+            label: read(schemas.label)?.label ?? null,
+            reading: reading
+              ? {
+                  value: reading.reading,
+                  min: reading.min,
+                  max: reading.max,
+                  unit: reading.unit,
+                }
+              : null,
+            backInRange: read(schemas.backInRange)?.backInRange ?? false,
+          }
+        : other;
+    }
+    case "pay.wage_set":
+      // The line still says the wage changed without its day.
+      return { kind, since: read(schemas.since)?.since ?? null };
+    case "pay.after_close":
+      // And a closed month changed without its name.
+      return { kind, month: read(schemas.month)?.month ?? null };
+    case "pay.month_due": {
+      const counts = read(schemas.counts);
+      return {
+        kind,
+        month: read(schemas.month)?.month ?? null,
+        waiting: counts?.waiting ?? 0,
+        open: counts?.open ?? 0,
+      };
+    }
+    case "chat.direct": {
+      const params = read(schemas.chat);
+      return params
+        ? { kind, from: personOf(params.from, lookups), count: params.count }
+        : other;
+    }
+    case "chat.group": {
+      const params = read(schemas.chat);
+      return params
+        ? {
+            kind,
+            from: personOf(params.from, lookups),
+            count: params.count,
+            chat: chatOf(params.conversation, lookups),
+          }
+        : other;
+    }
+    case "chat.announcement": {
+      const params = read(schemas.chat);
+      return params
+        ? {
+            kind,
+            from: personOf(params.from, lookups),
+            chat: chatOf(params.conversation, lookups),
+          }
+        : other;
+    }
+    case "documents.received":
+    case "documents.sent":
+    case "documents.to_confirm": {
+      const params = read(schemas.document);
+      return params
+        ? {
+            kind,
+            from: personOf(params.from, lookups),
+            category: categoryOf(params.document, lookups),
+          }
+        : other;
+    }
+    case "role.changed": {
+      const params = read(schemas.roleChange);
+      if (!params) return other;
+      const { area } = params;
+      const change = areaChangeOf(
+        area,
+        heldPart(area, params.from),
+        heldPart(area, params.to),
+      );
+      // A line that says nothing changed is no line of this kind.
+      if (!changesAnything(change)) return other;
+      const role: NotificationRole =
+        params.role === "manager" || params.role === "worker"
+          ? { kind: "base", base: params.role }
+          : { kind: "named", name: params.name ?? null };
+      return { kind, role, area, change };
     }
     case "access.pay_granted":
     case "push.test":
@@ -619,6 +1938,42 @@ export function notificationRefs(rows: readonly NotificationRow[]): string[] {
   return [...people];
 }
 
+/**
+ * The chats a page of rows names for their group (a group's line and an
+ * announcement), each one safe to look up. A private chat's line names its
+ * person, which `notificationRefs` gives.
+ */
+export function notificationChats(rows: readonly NotificationRow[]): string[] {
+  const chats = new Set<string>();
+  for (const row of rows) {
+    if (row.kind !== "chat.group" && row.kind !== "chat.announcement") continue;
+    const params = z
+      .object({ conversation: z.unknown() })
+      .safeParse(row.params);
+    const conversation = params.success ? params.data.conversation : null;
+    if (isUuid(conversation)) chats.add(conversation.toLowerCase());
+  }
+  return [...chats];
+}
+
+/**
+ * The documents a page of rows names (a document's line), each one safe to
+ * look up: for the inbox to name their categories, under the reader's own
+ * session. A phone's lines are never looked up this way.
+ */
+export function notificationDocuments(
+  rows: readonly NotificationRow[],
+): string[] {
+  const documents = new Set<string>();
+  for (const row of rows) {
+    if (!row.kind.startsWith("documents.")) continue;
+    const params = z.object({ document: z.unknown() }).safeParse(row.params);
+    const document = params.success ? params.data.document : null;
+    if (isUuid(document)) documents.add(document.toLowerCase());
+  }
+  return [...documents];
+}
+
 /** The inbox's lines from their rows, in the order given. */
 export function buildInbox(
   rows: readonly NotificationRow[],
@@ -627,13 +1982,14 @@ export function buildInbox(
 ): NotificationEntry[] {
   return rows.map((row) => {
     const kind = notificationKindOf(row.kind);
+    const info: KindInfo | null = kind ? NOTIFICATION_KINDS[kind] : null;
     return {
       id: row.id,
       at: row.createdAt,
       read: row.readAt !== null,
       settled: row.resolvedAt !== null,
-      actor: personOf(row.actorId, lookups),
-      group: kind ? NOTIFICATION_KINDS[kind].group : null,
+      actor: actorOf(row.actorId, info, lookups),
+      group: info ? info.group : null,
       href: linkFor(row.kind, row.params, row.resolvedAt !== null),
       line: lineOf(row, lookups, readerId),
     };

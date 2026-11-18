@@ -1,17 +1,33 @@
 import { instantIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
+import type { FirstStepsData } from "@domain/first-steps";
 import type { ModuleNavEntry, Role } from "@domain/modules";
 import { firstNameOf } from "@domain/people";
 import { formArg } from "@domain/profile";
 import {
+  BUILDER_PATH,
+  builderHref,
+  runningFirst,
+  runningGaps,
+  shiftEnded,
+} from "@domain/running-week";
+import {
+  changesWeek,
   type ScheduledShift,
   scheduleGaps,
   shiftsByDay,
   stillNeeded,
 } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
-import { approvalsFor, myRequestFor, offersFor } from "@domain/swaps";
-import { canSeeTeam, type Team } from "@domain/team";
+import {
+  approvalsFor,
+  decidesSwap,
+  myRequestFor,
+  offersFor,
+  outcomeOnShift,
+  toApprove,
+} from "@domain/swaps";
+import type { Team } from "@domain/team";
 import {
   availabilityStatus,
   type BusinessClock,
@@ -30,7 +46,7 @@ import { Badge } from "@ui/badge";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
 import { cn } from "@ui/cn";
-import { IconButton } from "@ui/icon-button";
+import { BADGE_MOST, IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { PersonAvatar } from "@ui/person-row";
@@ -44,11 +60,21 @@ import {
   ChevronRight,
   Repeat,
   SlidersHorizontal,
+  Tablet,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { Businesses } from "../businesses";
+import type { ChatHomeData } from "../chat/chat";
+import { confirmDocumentAction } from "../chat/documents/actions";
+import type { DocumentsTodayData } from "../chat/documents/document-screen-types";
+import { TodayDocuments } from "../chat/documents/today-documents";
+import { TodayChat } from "../chat/today-chat";
+import { lockDeviceAction } from "../clock/station/actions";
+import { LockStation } from "../clock/station/lock-station";
+import type { LockOffer } from "../clock/station/station-types";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
 import { moduleIcons } from "../module-icons";
@@ -59,15 +85,36 @@ import type {
   TeamAvailabilityWeek,
 } from "../schedule/week";
 import { type AppWording, type Translator, translator } from "../wording";
+import { FirstStepsCard } from "./first-steps-card";
+import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
 
 /** What the schedule module brings to Today; null when it is off. */
 export type TodaySchedule = {
   published: PublishedSchedule;
   availability: AvailabilityWeek;
-  /** Owners and managers only, like `build`. */
+  /**
+   * The person builds the schedule (`buildsSchedule`: owners and managers by
+   * default, whoever an owner raised; the roles plan's R3): the business's
+   * next shift, the requests to decide and the team's tiles are theirs.
+   */
+  builds: boolean;
+  /**
+   * They publish it too (`publishesSchedule`). Without it a published week
+   * is only read on the builder, so nothing here sends them to fill it, and
+   * they decide only colleagues' requests (`decidesSwap`).
+   */
+  publishes: boolean;
+  /** Whoever builds the schedule only, like `build` and `running`. */
   teamAvailability: TeamAvailabilityWeek | null;
+  /** Next week as its builder builds it. */
   build: ScheduleBuildWeek | null;
+  /**
+   * The week running now as the manager builds it, once someone built it
+   * (`currentRunningBuild`): what it still lacks comes first (Orel's answer
+   * 6 of 15 November 2026).
+   */
+  running: ScheduleBuildWeek | null;
 };
 
 export type TodayData = {
@@ -89,12 +136,40 @@ export type TodayData = {
     | { kind: "confirm"; count: number }
     | null;
   schedule: TodaySchedule | null;
-  /** Owners and managers only. */
+  /**
+   * The team, for whoever sees it (`canSeeTeam`: team.view, the roles plan's
+   * R6; owners and managers by default); null for anyone else.
+   */
   team: Team | null;
+  /**
+   * Whether the person opens the management page: they hold manage.view
+   * (`manageReach`; owners and managers by default, the roles plan's R7).
+   */
+  manage: boolean;
   /** The bell and how many lines are unread; null when there is none. */
   bell?: { unread: number } | null;
   /** What lists bring to Today; null when they are off or out of reach. */
   lists?: ListsHomeData | null;
+  /** What chat brings to Today (C3); null when it is off or out of reach. */
+  chat?: ChatHomeData | null;
+  /**
+   * What documents bring (chat C7): those waiting for the person's "קראתי",
+   * and for the office what came that nobody there opened.
+   */
+  documents?: DocumentsTodayData | null;
+  /**
+   * This device is the business's clock station, unlocked by someone who
+   * edits the clock: the reminder to lock it again (`currentStationReminder`).
+   * Null anywhere else.
+   */
+  station?: LockOffer | null;
+  /**
+   * The owner's first steps (`currentFirstSteps`): only an owner of a real
+   * business has them, until every step counted is done or they hid them on
+   * this device; the team viewing as the owner reads them. Null for anyone
+   * else.
+   */
+  firstSteps?: FirstStepsData | null;
 };
 
 type T = Translator<"app">;
@@ -116,8 +191,29 @@ const allShifts = ({ thisWeek, nextWeek }: PublishedSchedule) => [
   ...thisWeek.shifts,
   ...nextWeek.shifts,
 ];
-const nameIn = (t: T, published: PublishedSchedule, userId: string) =>
-  published.people.find((p) => p.userId === userId)?.name ?? t("shifts.noName");
+/**
+ * The requests the person still approves, by shift time: every one for
+ * whoever publishes the schedule, colleagues' only for someone who builds it
+ * without publishing (`decidesSwap`). One whose shift has begun can't be
+ * approved any more.
+ */
+const approvalsHere = (schedule: TodaySchedule, now: string) => {
+  const { published } = schedule;
+  const decider = { userId: published.userId, publishes: schedule.publishes };
+  return toApprove(
+    approvalsFor(
+      published.swaps,
+      allShifts(published),
+      new Date(now),
+      published.timeZone,
+    ),
+  ).filter((approval) => decidesSwap(approval.swap, decider));
+};
+/** As `nameOf` on the shift screens: someone who left reads as such. */
+const nameIn = (t: T, published: PublishedSchedule, userId: string) => {
+  const person = published.people.find((p) => p.userId === userId);
+  return person ? (person.name ?? t("shifts.noName")) : t("shifts.former");
+};
 const photoIn = (published: PublishedSchedule, userId: string | null) =>
   published.people.find((p) => p.userId === userId)?.photo ?? null;
 /** How the app writes about them, for an ICU `select`. */
@@ -130,6 +226,30 @@ const personIn = (t: T, published: PublishedSchedule, userId: string) => ({
 });
 
 /**
+ * What the week running now still lacks, in places, and where its builder
+ * builds the schedule: this week's builder while a shift still to start in
+ * it lacks someone, or while it waits to be published (Orel's answer 6 of 15
+ * November 2026: what is nearer first; `runningFirst`), next week's
+ * otherwise. Someone who builds without publishing only reads the week once
+ * it is published (`changesWeek`): nothing of it is theirs to fill, so it
+ * lacks nothing for them and they build next week's.
+ */
+function runningOf(schedule: TodaySchedule, now: string) {
+  const { running, published } = schedule;
+  const at = new Date(now);
+  const fills = changesWeek(schedule.publishes, {
+    published: Boolean(running?.publishedAt),
+  });
+  return {
+    places: fills ? runningGaps(running, at, published.timeZone).people : 0,
+    href:
+      fills && running && runningFirst(running, at, published.timeZone)
+        ? builderHref(running.week.start)
+        : BUILDER_PATH,
+  };
+}
+
+/**
  * Today: what is next for the person and what needs them. Each enabled module
  * brings its part (`moduleWidgets`), so a module that is off disappears.
  * Scheduling brings the hero, the requests, the tiles and who works today; a
@@ -140,18 +260,31 @@ const personIn = (t: T, published: PublishedSchedule, userId: string) => ({
  * row that scrolls. Tablet: the hero beside the tiles, each list across the
  * width in two columns. Desktop: the same with the lists under the tiles, and
  * today's shifts side by side. The avatar by the greeting leads to the
- * person's profile, where signing out is. `base` prefixes links for the
- * demo, which also renders this with mock data on /design/shell.
+ * person's profile, where signing out is. Someone in more than one business
+ * (payroll P3b) has them listed last, on phones and tablets, to switch
+ * between. An owner of a business still being set up has its first steps
+ * under the greeting, the screen's one accent card, on the same columns as
+ * what is under it. `base` prefixes links for the demo, which also renders
+ * this with mock data on /design/shell.
  */
 export async function TodayView({
   data,
   wording,
+  businesses,
   base = "",
+  hideFirstStepsUrl,
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
   wording: AppWording;
+  /** The businesses to switch between, for someone in more than one. */
+  businesses?: Businesses | null;
   base?: string;
+  /**
+   * Where hiding the first steps is sent: /home/first-steps, or the demo's
+   * stand-in, which keeps nothing.
+   */
+  hideFirstStepsUrl: string;
 }) {
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -166,24 +299,48 @@ export async function TodayView({
     data.widgets.some((w) => w.key === "lists") && data.lists
       ? data.lists
       : null;
+  const chat =
+    data.widgets.some((w) => w.key === "chat") && data.chat ? data.chat : null;
+  // Documents are chat's (private.documents_on). Their part is drawn with
+  // something waiting only, but stays mounted with chat's: once the last
+  // "קראתי ואישרתי" is given there, it says so and keeps the focus.
+  const documents =
+    data.widgets.some((w) => w.key === "chat") && data.documents
+      ? data.documents
+      : null;
+  const documentsWaiting =
+    documents !== null &&
+    (documents.toConfirm.length > 0 || documents.waiting.length > 0);
   // Modules with a part of their own aren't quiet rows.
   const quiet = data.widgets.filter(
-    (w) => w.key !== "scheduling" && !(w.key === "lists" && lists),
+    (w) =>
+      w.key !== "scheduling" &&
+      !(w.key === "lists" && lists) &&
+      !(w.key === "chat" && chat),
   );
   const view = schedule ? { t, path, clock, role: data.role, schedule } : null;
+  // Chat's part, then lists', one under the other where lists' part was:
+  // what waits for the person's "קראתי" first.
   const listsPart = (className?: string) =>
-    lists ? (
-      <TodayLists
-        data={lists}
-        wording={wording}
-        path={path}
-        className={className}
-      />
+    lists || chat || documentsWaiting ? (
+      <div className={cn("flex min-w-0 flex-col gap-6", className)}>
+        {chat ? <TodayChat data={chat} wording={wording} path={path} /> : null}
+        {documents ? (
+          <TodayDocuments
+            data={documents}
+            base={path("/chat/documents")}
+            confirm={confirmDocumentAction.bind(null, documents.business)}
+          />
+        ) : null}
+        {lists ? (
+          <TodayLists data={lists} wording={wording} path={path} />
+        ) : null}
+      </div>
     ) : null;
 
-  /** The quiet lists at the end: modules with no part of their own yet, the team. */
+  /** The quiet lists at the end: modules with no part of their own yet, the team, the management page. */
   const rest = (className?: string) =>
-    quiet.length > 0 || data.team ? (
+    quiet.length > 0 || data.team || data.manage ? (
       <div className={cn("grid min-w-0 gap-6 md:grid-cols-2", className)}>
         {quiet.length > 0 ? (
           <PageSection title={t("home.modulesTitle")}>
@@ -221,27 +378,33 @@ export async function TodayView({
             </ListGroup>
           </PageSection>
         ) : null}
-        {data.team ? (
+        {data.team || data.manage ? (
           <PageSection title={t("home.manageTitle")}>
             <ListGroup>
-              <ListRow
-                href={path("/team")}
-                leading={<Users />}
-                title={t("team.title")}
-                subtitle={
-                  data.team.counts.open > 0
-                    ? t("team.invites.open", { count: data.team.counts.open })
-                    : t("team.members.count", {
-                        count: data.team.counts.members,
-                      })
-                }
-              />
-              <ListRow
-                href={path("/manage")}
-                leading={<SlidersHorizontal />}
-                title={t("manage.row")}
-                subtitle={t("manage.rowSubtitle")}
-              />
+              {data.team ? (
+                <ListRow
+                  href={path("/team")}
+                  leading={<Users />}
+                  title={t("team.title")}
+                  subtitle={
+                    data.team.counts.open > 0
+                      ? t("team.invites.open", {
+                          count: data.team.counts.open,
+                        })
+                      : t("team.members.count", {
+                          count: data.team.counts.members,
+                        })
+                  }
+                />
+              ) : null}
+              {data.manage ? (
+                <ListRow
+                  href={path("/manage")}
+                  leading={<SlidersHorizontal />}
+                  title={t("manage.row")}
+                  subtitle={t("manage.rowSubtitle")}
+                />
+              ) : null}
             </ListGroup>
           </PageSection>
         ) : null}
@@ -255,13 +418,17 @@ export async function TodayView({
       <RefreshOnReturn />
       <PageBody>
         <div className="flex items-center gap-3">
+          {/* Named by its picture: the initials are a monogram, not words. */}
           <Link
             href={path("/me")}
-            aria-label={t("me.open")}
             title={t("me.open")}
             className="pressable shrink-0 rounded-full p-0.5 focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <PersonAvatar name={data.name} photo={data.photo} />
+            <PersonAvatar
+              name={data.name}
+              photo={data.photo}
+              label={t("me.open")}
+            />
           </Link>
           <div className="min-w-0 flex-1">
             <PageHeader
@@ -290,9 +457,13 @@ export async function TodayView({
               label={t("notifications.bell")}
               badge={{
                 count: data.bell.unread,
-                label: t("notifications.bellCount", {
-                  count: data.bell.unread,
-                }),
+                // The badge stops at "99+", and the name says the number shown.
+                label:
+                  data.bell.unread > BADGE_MOST
+                    ? t("notifications.bellCountMore", { count: BADGE_MOST })
+                    : t("notifications.bellCount", {
+                        count: data.bell.unread,
+                      }),
               }}
               icon={<Bell />}
               variant="ghost"
@@ -300,18 +471,31 @@ export async function TodayView({
           ) : null}
         </div>
 
+        {data.station?.current ? (
+          <StationReminder offer={data.station} t={t} />
+        ) : null}
+
+        {data.firstSteps ? (
+          <FirstStepsCard
+            data={data.firstSteps}
+            t={t}
+            path={path}
+            hideUrl={hideFirstStepsUrl}
+          />
+        ) : null}
+
         {view ? (
           <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:gap-x-8">
             <div className="min-w-0 xl:row-span-2">
-              <NextShift {...view} format={format} />
+              <NextShift {...view} format={format} now={data.now} />
             </div>
             <Needs {...view} now={data.now} />
             {listsPart(
               "md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2",
             )}
-            <WhoWorksToday {...view} />
+            <WhoWorksToday {...view} now={data.now} />
             {rest(
-              lists
+              lists || chat || documentsWaiting
                 ? "md:col-span-2"
                 : "md:col-span-2 xl:col-span-1 xl:col-start-2 xl:row-start-2",
             )}
@@ -334,32 +518,67 @@ export async function TodayView({
             {rest()}
           </>
         )}
+        <MyBusinesses
+          businesses={businesses}
+          wording={wording}
+          className="md:max-w-xl"
+        />
       </PageBody>
     </div>
   );
 }
 
-/** The hero and, for an owner or manager, the first request floating over it. */
+/**
+ * On the business's clock station, unlocked: it is the station, and is locked
+ * again when they are done, with the same sheet as the code screen's. Small,
+ * since it is not what Today is for.
+ */
+function StationReminder({ offer, t }: { offer: LockOffer; t: T }) {
+  return (
+    <Card className="flex flex-col gap-3 md:max-w-2xl md:flex-row md:items-center">
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5"
+        >
+          <Tablet />
+        </span>
+        <p className="text-ink">{t("clock.station.reminder.body")}</p>
+      </div>
+      <div className="ps-[52px] md:ps-0">
+        <LockStation
+          offer={offer}
+          lock={lockDeviceAction}
+          label={t("clock.station.reminder.lock")}
+        />
+      </div>
+    </Card>
+  );
+}
+
+/**
+ * The hero and, for whoever builds the schedule, the first request floating
+ * over it.
+ */
 function NextShift({
   t,
   path,
   clock,
-  role,
   schedule,
   format,
-}: ViewProps & { format: Format }) {
+  now,
+}: ViewProps & { format: Format; now: string }) {
   const { published, availability } = schedule;
   const shifts = allShifts(published);
-  const manager = canSeeTeam(role);
+  const manager = schedule.builds;
   // Last night's shift can still be on in the first hours of the week.
   const ahead = [...published.overnight, ...shifts];
   const own = nextShift(ahead, clock, published.userId);
   // Someone who runs the place and is on no shift still has a next shift to
   // look out for: the business's.
   const shift = own ?? (manager ? nextShift(ahead, clock) : null);
-  const request = manager
-    ? approvalsFor(published.swaps, shifts, clock.date)[0]
-    : null;
+  // One whose shift has begun can't be approved any more: not offered here.
+  const request = manager ? approvalsHere(schedule, now)[0] : null;
   const overlap = Boolean(request);
 
   if (!shift) {
@@ -383,7 +602,7 @@ function NextShift({
             body: t("home.hero.noShifts.body"),
           };
     const action = manager
-      ? { href: "/schedule/build", label: t("home.hero.build") }
+      ? { href: runningOf(schedule, now).href, label: t("home.hero.build") }
       : anyPublished
         ? { href: "/schedule/shifts", label: t("home.hero.myShifts") }
         : {
@@ -442,6 +661,17 @@ function NextShift({
   const swap = mine
     ? myRequestFor(published.swaps, shift.id, published.userId)
     : null;
+  // Their last request wasn't approved, or the schedule cancelled it: said
+  // in its place until they ask again or the shift begins, as on the shift.
+  const outcome =
+    mine && !swap && !running
+      ? outcomeOnShift(
+          published.endedSwaps,
+          published.swaps,
+          shift.id,
+          published.userId,
+        )
+      : null;
 
   return (
     <>
@@ -467,15 +697,19 @@ function NextShift({
             </span>
           ))}
         </p>
-        {swap ? (
+        {swap || outcome ? (
           <p className="mt-2 flex items-start gap-1.5 font-medium text-sm">
             <Repeat aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            {swap.status === "taken"
-              ? t("shifts.swap.taken", {
-                  name: nameIn(t, published, swap.takenBy ?? ""),
-                  form: formIn(published, swap.takenBy),
-                })
-              : t("shifts.swap.open")}
+            {swap
+              ? swap.status === "taken"
+                ? t("shifts.swap.taken", {
+                    name: nameIn(t, published, swap.takenBy ?? ""),
+                    form: formIn(published, swap.takenBy),
+                  })
+                : t("shifts.swap.open")
+              : outcome === "declined"
+                ? t("shifts.swap.declined")
+                : t("shifts.swap.removed")}
           </p>
         ) : null}
         <div className="mt-4 flex items-center gap-3">
@@ -635,8 +869,18 @@ function tileContent(
   t: T,
   tile: TodayTile,
   due: { day: string; time: string },
+  /** This week's builder, where its open places are filled. */
+  running: string,
 ): Omit<TileProps, "className"> {
   switch (tile.key) {
+    case "gapsThisWeek":
+      return {
+        href: running,
+        icon: <CalendarClock />,
+        tone: "warning",
+        value: tile.count,
+        label: t("home.needs.gapsThisWeek", { count: tile.count }),
+      };
     case "gaps":
       return {
         href: "/schedule/build",
@@ -709,17 +953,11 @@ function tileContent(
   }
 }
 
-function Needs({
-  t,
-  path,
-  clock,
-  role,
-  schedule,
-  now,
-}: ViewProps & { now: string }) {
+function Needs({ t, path, role, schedule, now }: ViewProps & { now: string }) {
   const { published, availability, build } = schedule;
   const shifts = allShifts(published);
-  const teamView = canSeeTeam(role) && schedule.teamAvailability;
+  const teamView = schedule.builds && schedule.teamAvailability;
+  const running = runningOf(schedule, now);
   const nextWeekPublished = published.nextWeek.publishedAt !== null;
   const dueAt = new Date(availability.dueAt);
   const tiles = todayTiles({
@@ -734,17 +972,25 @@ function Needs({
       published.swaps,
       shifts,
       published.userId,
-      clock.date,
+      new Date(now),
+      published.timeZone,
     ).filter((offer) => offer.state === "available").length,
     team: teamView
       ? {
+          gapsThisWeek: running.places,
+          // Next week's open places, while the person can fill them
+          // (`changesWeek`): once it is published, only if they publish.
           gaps:
-            build && build.shifts.length > 0
+            build &&
+            build.shifts.length > 0 &&
+            changesWeek(schedule.publishes, {
+              published: build.publishedAt !== null,
+            })
               ? scheduleGaps(build.shifts).people
               : null,
           missing: nextWeekPublished ? null : teamView.team.counts.missing,
           pastDue: dueAt.getTime() < new Date(now).getTime(),
-          swaps: approvalsFor(published.swaps, shifts, clock.date).length,
+          swaps: approvalsHere(schedule, now).length,
         }
       : null,
   });
@@ -767,14 +1013,16 @@ function Needs({
           "-my-3 gap-2.5 py-3",
           "md:mx-0 md:grid md:grid-cols-2 md:overflow-visible md:px-0",
           "md:[&>:last-child:nth-child(odd)]:col-span-2",
-          "xl:auto-cols-fr xl:grid-flow-col xl:grid-cols-none xl:[&>:last-child:nth-child(odd)]:col-span-1",
+          // Desktop: as many across as fit at a readable width, wrapping
+          // rather than squeezing (up to six tiles).
+          "xl:grid-cols-[repeat(auto-fit,minmax(8.5rem,1fr))] xl:[&>:last-child:nth-child(odd)]:col-span-1",
           scrolls
             ? "-mx-4 flex snap-x snap-proximity scroll-px-4 overflow-x-auto px-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             : "grid grid-cols-2",
         )}
       >
         {tiles.map((tile) => {
-          const { href, ...content } = tileContent(t, tile, due);
+          const { href, ...content } = tileContent(t, tile, due, running.href);
           return (
             <Tile
               key={tile.key}
@@ -791,9 +1039,22 @@ function Needs({
   );
 }
 
-/** Today's published shifts, each a grouped list of who works it. */
-function WhoWorksToday({ t, path, clock, schedule }: ViewProps) {
+/**
+ * Today's published shifts, each a grouped list of who works it. For
+ * whoever publishes the schedule, a shift short of someone that has not
+ * ended leads to this week's builder, which opens on today (the running-week
+ * plan's R4); someone who builds without publishing sees it short, with no
+ * link, as the week is theirs only to read.
+ */
+function WhoWorksToday({
+  t,
+  path,
+  clock,
+  schedule,
+  now,
+}: ViewProps & { now: string }) {
   const { published } = schedule;
+  const manager = schedule.builds;
   const { thisWeek, nextWeek } = published;
   // With nothing published at all the hero says so, and says what to do next.
   if (thisWeek.publishedAt === null && nextWeek.publishedAt === null) {
@@ -832,6 +1093,14 @@ function WhoWorksToday({ t, path, clock, schedule }: ViewProps) {
         >
           {today.map((shift) => {
             const short = stillNeeded(shift);
+            const shortWords = t("home.who.short", { count: short });
+            // Someone can still join a shift under way, never one over. This
+            // week is published, so only someone who publishes fills it.
+            const fill =
+              manager &&
+              schedule.publishes &&
+              short > 0 &&
+              !shiftEnded(shift, new Date(now), published.timeZone);
             return (
               <section
                 key={shift.id}
@@ -855,10 +1124,22 @@ function WhoWorksToday({ t, path, clock, schedule }: ViewProps) {
                     {shiftPhase(shift, clock) === "now" ? (
                       <Badge tone="success">{t("home.who.now")}</Badge>
                     ) : null}
-                    {short > 0 ? (
-                      <Badge tone="warning">
-                        {t("home.who.short", { count: short })}
-                      </Badge>
+                    {fill ? (
+                      <Link
+                        href={path(builderHref(thisWeek.start))}
+                        aria-label={t("home.who.fill", { short: shortWords })}
+                        className="pressable -my-2.5 flex min-h-11 items-center rounded-full focus-visible:outline-2 focus-visible:outline-accent"
+                      >
+                        <Badge tone="warning">
+                          {shortWords}
+                          <ChevronRight
+                            aria-hidden="true"
+                            className="-me-1 size-4 shrink-0 rtl:-scale-x-100"
+                          />
+                        </Badge>
+                      </Link>
+                    ) : short > 0 ? (
+                      <Badge tone="warning">{shortWords}</Badge>
                     ) : null}
                   </span>
                 </div>

@@ -8,11 +8,17 @@ export function UndoRow({
   message,
   onUndo,
   pending = false,
+  autoFocus = false,
 }: {
   message: string;
   onUndo: () => void;
   /** The way back is on its way: the button spins and waits. */
   pending?: boolean;
+  /**
+   * "ביטול" takes the focus as it appears: for when what was pressed went
+   * with what it removed.
+   */
+  autoFocus?: boolean;
 }) {
   const t = useTranslations("app.manage");
   return (
@@ -25,6 +31,7 @@ export function UndoRow({
         variant="ghost"
         loading={pending}
         onClick={onUndo}
+        autoFocus={autoFocus}
         className="shrink-0"
       >
         {t("undo")}

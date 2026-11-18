@@ -5,6 +5,7 @@ import {
   departments as departmentsSchema,
 } from "@domain/departments";
 import { profilePhotoSrc } from "@domain/profile-photos";
+import { memberNames, nameIn } from "./member-names";
 import { isMissingFunction } from "./missing";
 import { type Written, written } from "./module-settings";
 import { isMissingTable } from "./notifications";
@@ -114,7 +115,8 @@ export type DepartmentPerson = {
 /**
  * A business's departments and its active people, for the console: the team
  * isn't a member, so RLS has nothing to show it. Callers check that the
- * person is on the team first.
+ * person is on the team first. People by the business's name for them, as
+ * it sees them.
  */
 export async function getDepartmentsForTeam(
   businessId: string,
@@ -122,7 +124,7 @@ export async function getDepartmentsForTeam(
   { departments: Department[]; people: DepartmentPerson[] } | "notYet"
 > {
   const admin = createAdminClient();
-  const [departments, members, people] = await Promise.all([
+  const [departments, members, people, names] = await Promise.all([
     admin
       .from("departments")
       .select("id, key, name, position, archived_at")
@@ -141,6 +143,7 @@ export async function getDepartmentsForTeam(
       .eq("business_id", businessId)
       .eq("active", true)
       .neq("role", "accountant"),
+    memberNames(admin, businessId),
   ]);
   for (const { error } of [departments, members]) {
     if (error) {
@@ -166,7 +169,7 @@ export async function getDepartmentsForTeam(
     })),
     people: people.data.map((row) => ({
       userId: row.user_id,
-      name: row.profiles?.full_name?.trim() || null,
+      name: nameIn(names, row.user_id, row.profiles?.full_name),
       photo: profilePhotoSrc(row.profiles?.avatar_path),
     })),
   };

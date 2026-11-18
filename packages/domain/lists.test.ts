@@ -1,11 +1,37 @@
 import { describe, expect, it } from "vitest";
 import {
   anyItemResult,
+  askingGone,
+  boundOf,
+  byTime,
   byUrgency,
+  DEFAULT_FIX_HOURS,
+  type DraftItem,
+  type DraftSchedule,
+  dayRuns,
+  doneChangeOf,
+  draftItemsOf,
+  draftSchedulesOf,
+  dueAtOf,
+  dueTimeFor,
+  FIX_HOURS,
+  FIX_RUN_MINUTES,
+  fixDeadline,
+  fixedAfterClose,
+  fixRuns,
+  fixWindowHours,
   fromOffsets,
+  HISTORY_FOLD_MINUTES,
   holdsList,
   isOutOfRange,
+  itemHistory,
+  itemLine,
   itemResult,
+  itemsForSave,
+  type ListItem,
+  type ListItemChange,
+  type ListReopen,
+  type ListTemplate,
   listHref,
   listItemInput,
   listItemSeed,
@@ -18,17 +44,45 @@ import {
   listTemplateProblem,
   listTemplateSeed,
   listTemplateSeeds,
+  listTimeline,
   MAX_LIST_ITEMS,
+  moved,
+  numberRange,
+  ofDepartment,
+  parseQuantity,
   parseReading,
+  passInput,
+  passTargets,
+  quantitiesOf,
+  readBound,
+  recipientGone,
+  roleChoiceKey,
+  roleRecipientOf,
+  type SendShift,
+  scheduleGone,
   scheduleInput,
+  scheduleProblem,
+  schedulesForSave,
+  sendDefaults,
   sendInput,
+  signed,
+  suggestedDue,
+  templateDraftProblem,
   templateForSave,
+  templateInputOf,
+  templatesByDepartment,
   toOffsets,
+  typedBound,
+  typedItems,
   undoDeadline,
+  upcomingShifts,
+  withItemChange,
 } from "./lists";
 
 const KITCHEN = "11111111-1111-4111-8111-111111111111";
 const BAR = "22222222-2222-4222-8222-222222222222";
+// A role the business named: its shift leads, built on workers.
+const LEAD = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const NOA = "33333333-3333-4333-8333-333333333333";
 const ITEM = "44444444-4444-4444-8444-444444444444";
 const LIST = "55555555-5555-4555-8555-555555555555";
@@ -112,10 +166,27 @@ describe("an item", () => {
     ).toBe(false);
   });
 
-  it("is not a photo yet", () => {
-    const result = listItemSeed.safeParse({ kind: "photo", label: "Picture" });
-    expect(result.success).toBe(false);
-    expect(result.error?.issues[0]?.message).toBe("Photo items come later");
+  it("may be a photo (L6), with nothing of a number's or an order's", () => {
+    expect(
+      listItemSeed.safeParse({ kind: "photo", label: "Picture" }).success,
+    ).toBe(true);
+    expect(
+      listItemSeed.safeParse({
+        kind: "photo",
+        label: "Picture",
+        required: false,
+        hint: "From the door",
+      }).success,
+    ).toBe(true);
+    for (const bad of [
+      { kind: "photo", label: "Picture", unit: "°C" },
+      { kind: "photo", label: "Picture", min: 0 },
+      { kind: "photo", label: "Picture", defaultQuantity: 1 },
+    ]) {
+      expect(listItemSeed.safeParse(bad).success, JSON.stringify(bad)).toBe(
+        false,
+      );
+    }
   });
 });
 
@@ -424,6 +495,30 @@ describe("sending", () => {
     expect(template("accountant")).toBe(false);
   });
 
+  it("goes to a role the business named by its id, which a global template never names", () => {
+    const named = { kind: "role", role: "worker", namedRole: LEAD };
+    expect(
+      sendInput.safeParse({ template: LIST, recipient: named }).success,
+    ).toBe(true);
+    expect(
+      sendInput.safeParse({
+        template: LIST,
+        recipient: { ...named, namedRole: "shift-lead" },
+      }).success,
+    ).toBe(false);
+    expect(
+      scheduleInput.safeParse({
+        days: [1],
+        opens: "08:30",
+        dueAfterMinutes: 45,
+        recipient: named,
+      }).success,
+    ).toBe(true);
+    expect(listTemplateSeed.safeParse(seed({ recipient: named })).success).toBe(
+      false,
+    );
+  });
+
   it("names a shift by its id, and a due time with its offset", () => {
     expect(
       sendInput.safeParse({
@@ -629,6 +724,22 @@ describe("listHref and holdsList", () => {
       holdsList({ kind: "role", role: "manager" }, { ...noa, role: "owner" }),
     ).toBe(false);
   });
+
+  it("gives a list to a named role to exactly its people, and one to the role to everyone in it", () => {
+    const toLeads = { kind: "role", role: "worker", namedRole: LEAD } as const;
+    const lead = { userId: NOA, role: "worker" as const, departments: [] };
+    expect(holdsList(toLeads, { ...lead, namedRole: LEAD })).toBe(true);
+    expect(holdsList(toLeads, lead)).toBe(false);
+    expect(holdsList(toLeads, { ...lead, namedRole: null })).toBe(false);
+    expect(holdsList(toLeads, { ...lead, namedRole: KITCHEN })).toBe(false);
+    // "To the workers" still reaches a shift lead: they are workers.
+    expect(
+      holdsList({ kind: "role", role: "worker" }, { ...lead, namedRole: LEAD }),
+    ).toBe(true);
+    expect(
+      holdsList(toLeads, { ...lead, role: "manager", namedRole: LEAD }),
+    ).toBe(false);
+  });
 });
 
 describe("byUrgency and listsTally", () => {
@@ -721,6 +832,109 @@ describe("undoDeadline", () => {
   });
 });
 
+// L6b-2: who fixes a finished list, and until when, as private.can_fix_list
+// (20261116000400_lists_fix_switch.sql) decides it.
+describe("fixDeadline", () => {
+  const closed = {
+    status: "finished" as const,
+    finishedAt: "2026-12-14T08:00:00.000Z",
+  };
+  const holder = { canManage: false, canFix: true, holds: true };
+  const at = (iso: string) => new Date(iso);
+
+  it("lets a holder given lists.fix fix until the window ends, that moment included", () => {
+    expect(fixDeadline(closed, holder, 24, at("2026-12-14T09:00:00Z"))).toEqual(
+      { can: true, until: "2026-12-15T08:00:00.000Z", ended: null },
+    );
+    expect(
+      fixDeadline(closed, holder, 24, at("2026-12-15T08:00:00.000Z")),
+    ).toEqual({ can: true, until: "2026-12-15T08:00:00.000Z", ended: null });
+    // A millisecond later it ended, and says when, so the screen says why.
+    expect(
+      fixDeadline(closed, holder, 24, at("2026-12-15T08:00:00.001Z")),
+    ).toEqual({ can: false, until: null, ended: "2026-12-15T08:00:00.000Z" });
+    expect(
+      fixDeadline(closed, holder, 2, at("2026-12-21T08:00:00Z")).ended,
+    ).toBe("2026-12-14T10:00:00.000Z");
+  });
+
+  it("counts each window the setting offers, and anything else as a day", () => {
+    expect(FIX_HOURS).toEqual([2, 12, 24, 72]);
+    expect(DEFAULT_FIX_HOURS).toBe(24);
+    const now = at("2026-12-14T08:30:00Z");
+    expect(fixDeadline(closed, holder, 2, now).until).toBe(
+      "2026-12-14T10:00:00.000Z",
+    );
+    expect(fixDeadline(closed, holder, 12, now).until).toBe(
+      "2026-12-14T20:00:00.000Z",
+    );
+    expect(fixDeadline(closed, holder, 72, now).until).toBe(
+      "2026-12-17T08:00:00.000Z",
+    );
+    for (const odd of [48, 2.5, 0, -2, Number.NaN]) {
+      expect(fixDeadline(closed, holder, odd, now).until).toBe(
+        "2026-12-15T08:00:00.000Z",
+      );
+    }
+    expect(
+      [2, 12, 24, 72, 48, "12", null, undefined].map(fixWindowHours),
+    ).toEqual([2, 12, 24, 72, 24, 24, 24, 24]);
+    // Two hours is two hours: three later is past it.
+    expect(fixDeadline(closed, holder, 2, at("2026-12-14T11:00:00Z")).can).toBe(
+      false,
+    );
+  });
+
+  it("lets those who run the lists fix at any time, with no window", () => {
+    const manager = { canManage: true, canFix: false, holds: false };
+    expect(fixDeadline(closed, manager, 2, at("2026-12-21T08:00:00Z"))).toEqual(
+      { can: true, until: null, ended: null },
+    );
+    // Running the lists wins over the switch and its window.
+    expect(
+      fixDeadline(
+        closed,
+        { ...holder, canManage: true },
+        2,
+        at("2026-12-21T08:00:00Z"),
+      ),
+    ).toEqual({ can: true, until: null, ended: null });
+  });
+
+  it("needs both the switch and the list, at any time, and has no end to say without them", () => {
+    const no = { can: false, until: null, ended: null };
+    for (const now of [
+      at("2026-12-14T09:00:00Z"),
+      at("2026-12-21T09:00:00Z"),
+    ]) {
+      expect(
+        fixDeadline(closed, { ...holder, canFix: false }, 24, now),
+      ).toEqual(no);
+      expect(fixDeadline(closed, { ...holder, holds: false }, 24, now)).toEqual(
+        no,
+      );
+    }
+  });
+
+  it("never fixes an open, missed or cancelled list, or a finish with no time", () => {
+    const now = at("2026-12-14T09:00:00Z");
+    const manager = { canManage: true, canFix: true, holds: true };
+    for (const status of ["open", "missed", "cancelled"] as const) {
+      expect(fixDeadline({ ...closed, status }, manager, 24, now)).toEqual({
+        can: false,
+        until: null,
+        ended: null,
+      });
+    }
+    expect(
+      fixDeadline({ ...closed, finishedAt: null }, holder, 24, now),
+    ).toEqual({ can: false, until: null, ended: null });
+    expect(
+      fixDeadline({ ...closed, finishedAt: null }, manager, 24, now),
+    ).toEqual({ can: true, until: null, ended: null });
+  });
+});
+
 describe("anyItemResult and parseReading", () => {
   it("takes each field in its bounds, or null to clear", () => {
     expect(anyItemResult.parse({ checked: true, comment: " ok " })).toEqual({
@@ -742,5 +956,1551 @@ describe("anyItemResult and parseReading", () => {
     expect(parseReading("abc")).toBeNull();
     expect(parseReading("1e3")).toBeNull();
     expect(parseReading("200000")).toBeNull();
+  });
+});
+
+describe("a number item's range", () => {
+  it("reads with a real minus sign, spaced once one is in it", () => {
+    expect(signed(-18)).toBe("−18");
+    expect(signed(4.5)).toBe("4.5");
+    expect(numberRange({ min: 0, max: 5, unit: "°C" })).toEqual({
+      kind: "between",
+      range: "0–5 °C",
+    });
+    expect(numberRange({ min: -25, max: -18, unit: "°C" })).toEqual({
+      kind: "between",
+      range: "−25 – −18 °C",
+    });
+    expect(numberRange({ min: 0, max: null, unit: null })).toEqual({
+      kind: "atLeast",
+      range: "0",
+    });
+    expect(numberRange({ min: null, max: 9, unit: "₪" })).toEqual({
+      kind: "atMost",
+      range: "9 ₪",
+    });
+    expect(numberRange({ min: null, max: null, unit: "°C" })).toBeNull();
+  });
+
+  it("keeps a bound's minus, from the toggle or typed with its digits", () => {
+    expect(boundOf(-18)).toEqual({ text: "18", minus: true });
+    expect(boundOf(5)).toEqual({ text: "5", minus: false });
+    expect(boundOf(null)).toEqual({ text: "", minus: false });
+    expect(readBound({ text: "18", minus: true })).toBe(-18);
+    expect(readBound({ text: "4.5", minus: false })).toBe(4.5);
+    // Typed with the toggle off: kept, never dropped.
+    expect(readBound({ text: "-5", minus: false })).toBe(-5);
+    expect(readBound({ text: "−18", minus: false })).toBe(-18);
+    expect(readBound({ text: "-18", minus: true })).toBe(-18);
+    expect(readBound({ text: " ", minus: true })).toBeNull();
+    expect(readBound({ text: "abc", minus: false })).toBe("number");
+    // A minus typed before the digits turns the toggle on.
+    expect(typedBound(false, "-18")).toEqual({ text: "18", minus: true });
+    expect(typedBound(false, "−5")).toEqual({ text: "5", minus: true });
+    expect(typedBound(false, "-")).toEqual({ text: "", minus: true });
+    expect(typedBound(true, "18")).toEqual({ text: "18", minus: true });
+    expect(typedBound(false, "4,5")).toEqual({ text: "4,5", minus: false });
+    expect(readBound(typedBound(false, "-18"))).toBe(-18);
+  });
+});
+
+const TEMPLATE = "66666666-6666-4666-8666-666666666666";
+const SCHEDULE = "77777777-7777-4777-8777-777777777777";
+const ITEM_2 = "88888888-8888-4888-8888-888888888888";
+
+const template: ListTemplate = {
+  id: TEMPLATE,
+  key: "kitchen-opening",
+  name: "Kitchen opening",
+  note: null,
+  recipient: { kind: "department", department: KITCHEN },
+  fromDepartment: null,
+  asksQuantities: false,
+  version: 3,
+  archivedAt: null,
+  items: [
+    {
+      id: ITEM,
+      kind: "number",
+      label: "Fridge",
+      hint: null,
+      required: true,
+      unit: "°C",
+      min: 0,
+      max: 5,
+      defaultQuantity: null,
+    },
+    {
+      id: ITEM_2,
+      kind: "check",
+      label: "Surfaces",
+      hint: "With the blue cloth",
+      required: false,
+      unit: null,
+      min: null,
+      max: null,
+      defaultQuantity: null,
+    },
+  ],
+  schedules: [
+    {
+      id: SCHEDULE,
+      days: [0, 1, 2, 3, 4],
+      anchor: "day",
+      shift: null,
+      opensOffset: 510,
+      dueOffset: 555,
+      recipient: { kind: "department", department: KITCHEN },
+      active: true,
+      startsOn: "2026-11-09",
+      opensFrom: "2026-11-09T06:00:00.000Z",
+    },
+  ],
+};
+
+describe("the template editor", () => {
+  it("saves a template as it was read, its times untouched", () => {
+    const drafts = draftItemsOf(template.items);
+    expect(drafts.map((d) => d.key)).toEqual([ITEM, ITEM_2]);
+    const input = templateInputOf(template, {
+      name: " Kitchen opening ",
+      note: "  ",
+      recipient: template.recipient,
+      items: itemsForSave(drafts, new Set([ITEM, ITEM_2])),
+    });
+    const saved = templateForSave(input);
+    expect(saved).toMatchObject({
+      id: TEMPLATE,
+      name: "Kitchen opening",
+      recipient: { kind: "department", department: KITCHEN },
+      fromDepartment: null,
+      asksQuantities: false,
+    });
+    expect(saved.note).toBeUndefined();
+    expect(saved.items).toEqual([
+      {
+        id: ITEM,
+        kind: "number",
+        label: "Fridge",
+        required: true,
+        unit: "°C",
+        min: 0,
+        max: 5,
+      },
+      {
+        id: ITEM_2,
+        kind: "check",
+        label: "Surfaces",
+        hint: "With the blue cloth",
+        required: false,
+      },
+    ]);
+    expect(saved.schedules).toEqual([
+      {
+        id: SCHEDULE,
+        days: [0, 1, 2, 3, 4],
+        anchor: "day",
+        recipient: { kind: "department", department: KITCHEN },
+        active: true,
+        opensOffset: 510,
+        dueOffset: 555,
+      },
+    ]);
+  });
+
+  it("adds again an item the database no longer has, and keeps a new one's id out", () => {
+    const drafts: DraftItem[] = [
+      ...draftItemsOf(template.items),
+      {
+        key: "i-1",
+        id: null,
+        kind: "note",
+        label: "What is missing",
+        hint: null,
+        required: false,
+        unit: null,
+        min: null,
+        max: null,
+        defaultQuantity: null,
+      },
+    ];
+    const items = itemsForSave(drafts, new Set([ITEM]));
+    expect(items.map((item) => item.id)).toEqual([ITEM, undefined, undefined]);
+    expect(typedItems(drafts).every((item) => item.id === undefined)).toBe(
+      true,
+    );
+    expect(
+      sendInput.safeParse({
+        name: "Typed",
+        items: typedItems(drafts),
+        recipient: { kind: "role", role: "worker" },
+      }).success,
+    ).toBe(true);
+  });
+
+  it("saves an order's department and counts as the editor has them (L5)", () => {
+    const input = templateInputOf(template, {
+      name: "Bar order",
+      note: "",
+      recipient: { kind: "department", department: KITCHEN },
+      items: itemsForSave(draftItemsOf(template.items), new Set([ITEM])),
+      fromDepartment: BAR,
+      asksQuantities: true,
+    });
+    expect(listTemplateInput.parse(input)).toMatchObject({
+      fromDepartment: BAR,
+      asksQuantities: true,
+    });
+    // None asking: no order any more.
+    expect(
+      templateInputOf(
+        { ...template, fromDepartment: BAR, asksQuantities: true },
+        {
+          name: "Bar order",
+          note: "",
+          recipient: template.recipient,
+          items: [],
+          fromDepartment: null,
+        },
+      ),
+    ).toMatchObject({ fromDepartment: null, asksQuantities: true });
+  });
+
+  it("is a new template without an id", () => {
+    const input = templateInputOf(
+      { ...template, id: null, schedules: [] },
+      {
+        name: "Weekly cleaning",
+        note: "Before Shabbat",
+        recipient: null,
+        items: typedItems(draftItemsOf(template.items)),
+      },
+    );
+    expect(listTemplateInput.parse(input)).toMatchObject({
+      name: "Weekly cleaning",
+      note: "Before Shabbat",
+      recipient: null,
+    });
+    expect(input.id).toBeUndefined();
+  });
+
+  it("says what keeps a draft from saving", () => {
+    const items = draftItemsOf(template.items);
+    const draft = {
+      name: "Kitchen opening",
+      note: "",
+      recipient: template.recipient,
+      items,
+    };
+    expect(templateDraftProblem(draft, null)).toBeNull();
+    expect(templateDraftProblem({ ...draft, name: "  " }, null)).toBe("name");
+    expect(templateDraftProblem({ ...draft, items: [] }, null)).toBe("items");
+    expect(
+      templateDraftProblem(
+        { ...draft, items: [{ ...items[0], key: "x", min: 9 } as DraftItem] },
+        null,
+      ),
+    ).toBe("item");
+    // An order goes from its department to another one.
+    expect(templateDraftProblem(draft, KITCHEN)).toBe("recipient");
+    expect(templateDraftProblem({ ...draft, recipient: null }, BAR)).toBe(
+      "recipient",
+    );
+    expect(templateDraftProblem(draft, BAR)).toBeNull();
+    // Whatever its ids: the demo's aren't the database's.
+    expect(
+      templateDraftProblem(
+        {
+          ...draft,
+          recipient: { kind: "department", department: "dep-kitchen" },
+          items: items.map((item) => ({ ...item, id: "ti-1" })),
+        },
+        null,
+      ),
+    ).toBeNull();
+  });
+
+  it("moves an item one place, and nowhere past the ends", () => {
+    expect(moved(["a", "b", "c"], 2, -1)).toEqual(["a", "c", "b"]);
+    expect(moved(["a", "b", "c"], 0, 1)).toEqual(["b", "a", "c"]);
+    expect(moved(["a", "b", "c"], 0, -1)).toEqual(["a", "b", "c"]);
+    expect(moved(["a", "b", "c"], 2, 1)).toEqual(["a", "b", "c"]);
+  });
+
+  it("knows a recipient that is gone", () => {
+    const department = { kind: "department", department: KITCHEN } as const;
+    expect(recipientGone(department, [KITCHEN], [])).toBe(false);
+    expect(recipientGone(department, [BAR], [])).toBe(true);
+    expect(recipientGone({ kind: "shift", shift: "evening" }, [], [])).toBe(
+      true,
+    );
+    expect(
+      recipientGone({ kind: "shift", shift: "evening" }, [], ["evening"]),
+    ).toBe(false);
+    expect(recipientGone({ kind: "role", role: "worker" }, [], [])).toBe(false);
+    expect(recipientGone(null, [], [])).toBe(false);
+    // A role the business named: gone once archived, when the live ones are
+    // known.
+    const toLeads = { kind: "role", role: "worker", namedRole: LEAD } as const;
+    expect(recipientGone(toLeads, [], [], [LEAD])).toBe(false);
+    expect(recipientGone(toLeads, [], [], [])).toBe(true);
+    expect(recipientGone(toLeads, [], [])).toBe(false);
+  });
+
+  it("offers the roles and the business's named roles by one key each", () => {
+    const named = [{ id: LEAD, base: "worker" as const }];
+    expect(roleChoiceKey({ role: "manager" })).toBe("manager");
+    expect(roleChoiceKey({ role: "worker", namedRole: LEAD })).toBe(LEAD);
+    expect(
+      roleRecipientOf("manager", ["owner", "manager", "worker"], named),
+    ).toEqual({ kind: "role", role: "manager" });
+    expect(
+      roleRecipientOf(LEAD, ["owner", "manager", "worker"], named),
+    ).toEqual({
+      kind: "role",
+      role: "worker",
+      namedRole: LEAD,
+    });
+    expect(roleRecipientOf(KITCHEN, ["worker"], named)).toBeNull();
+    expect(roleRecipientOf("accountant", ["worker"], named)).toBeNull();
+  });
+
+  it("knows an order whose asking department is gone, which holds its saves", () => {
+    expect(askingGone(template, [KITCHEN, BAR])).toBe(false);
+    expect(askingGone({ ...template, fromDepartment: BAR }, [KITCHEN])).toBe(
+      true,
+    );
+    expect(
+      askingGone({ ...template, fromDepartment: BAR }, [KITCHEN, BAR]),
+    ).toBe(false);
+    const draft = {
+      name: "Bar order",
+      note: "",
+      recipient: template.recipient,
+      items: draftItemsOf(template.items),
+    };
+    const places = { departments: [KITCHEN], shifts: [] };
+    expect(templateDraftProblem(draft, BAR, places)).toBe("order");
+    expect(
+      templateDraftProblem(draft, BAR, {
+        ...places,
+        departments: [KITCHEN, BAR],
+      }),
+    ).toBeNull();
+    // With none asking, it is a list of its own, and saves.
+    expect(templateDraftProblem(draft, null, places)).toBeNull();
+  });
+
+  it("knows a time pointing at something gone, which the editor changes now", () => {
+    const [schedule] = template.schedules;
+    if (!schedule) throw new Error("The template has a time");
+    expect(scheduleGone(schedule, [KITCHEN], [])).toBe(false);
+    // A time that goes to a removed department, or to a shift gone.
+    expect(scheduleGone(schedule, [BAR], [])).toBe(true);
+    const toShift = {
+      ...schedule,
+      recipient: { kind: "shift", shift: "evening" } as const,
+    };
+    expect(scheduleGone(toShift, [], ["evening"])).toBe(false);
+    expect(scheduleGone(toShift, [], ["morning"])).toBe(true);
+    // A time that follows a shift gone.
+    const followsShift = {
+      ...schedule,
+      anchor: "shift_start" as const,
+      shift: "morning",
+      recipient: { kind: "role", role: "worker" } as const,
+    };
+    expect(scheduleGone(followsShift, [], ["morning"])).toBe(false);
+    expect(scheduleGone(followsShift, [], [])).toBe(true);
+    // A person is the database's to check.
+    expect(
+      scheduleGone(
+        { ...schedule, recipient: { kind: "person", user: NOA } as const },
+        [],
+        [],
+      ),
+    ).toBe(false);
+    // A time to a role the business named that it archived since.
+    const toLeads = {
+      ...schedule,
+      recipient: { kind: "role", role: "worker", namedRole: LEAD } as const,
+    };
+    expect(scheduleGone(toLeads, [], [], [LEAD])).toBe(false);
+    expect(scheduleGone(toLeads, [], [], [])).toBe(true);
+    expect(
+      scheduleProblem(
+        { ...toLeads, key: "k" },
+        { departments: [], shifts: [], roles: [] },
+      ),
+    ).toBe("gone");
+  });
+});
+
+describe("a template's times in its editor", () => {
+  const [saved] = template.schedules;
+  if (!saved) throw new Error("The template has a time");
+  const added: DraftSchedule = {
+    key: "s-1",
+    id: null,
+    days: [5, 0],
+    anchor: "shift_start",
+    shift: "evening",
+    opensOffset: -30,
+    dueOffset: 60,
+    recipient: { kind: "shift", shift: "evening" },
+    active: true,
+    startsOn: null,
+    opensFrom: null,
+  };
+  const places = { departments: [KITCHEN], shifts: ["evening"] };
+
+  it("saves the times it has, in order, with ids only for those still saved", () => {
+    const drafts = [...draftSchedulesOf(template.schedules), added];
+    expect(drafts.map((d) => d.key)).toEqual([SCHEDULE, "s-1"]);
+    const schedules = schedulesForSave(drafts, new Set([SCHEDULE]));
+    expect(schedules).toEqual([
+      {
+        id: SCHEDULE,
+        days: [0, 1, 2, 3, 4],
+        anchor: "day",
+        opens: "08:30",
+        dueAfterMinutes: 45,
+        recipient: { kind: "department", department: KITCHEN },
+        active: true,
+      },
+      {
+        days: [0, 5],
+        anchor: "shift_start",
+        shift: "evening",
+        opens: -30,
+        dueAfterMinutes: 90,
+        recipient: { kind: "shift", shift: "evening" },
+        active: true,
+      },
+    ]);
+    // One removed and saved comes back as a new one.
+    expect(schedulesForSave(drafts, new Set())[0]?.id).toBeUndefined();
+    const input = templateInputOf(template, {
+      name: "Kitchen opening",
+      note: "",
+      recipient: template.recipient,
+      items: itemsForSave(
+        draftItemsOf(template.items),
+        new Set([ITEM, ITEM_2]),
+      ),
+      schedules,
+    });
+    expect(templateForSave(input).schedules[1]).toMatchObject({
+      anchor: "shift_start",
+      opensOffset: -30,
+      dueOffset: 60,
+    });
+  });
+
+  it("sums a time's days up as runs of days in a row", () => {
+    expect(dayRuns([4, 0, 1, 2, 3])).toEqual([[0, 4]]);
+    expect(dayRuns([0, 1, 2, 3, 4, 6])).toEqual([
+      [0, 4],
+      [6, 6],
+    ]);
+    expect(dayRuns([5, 5])).toEqual([[5, 5]]);
+    expect(dayRuns([])).toEqual([]);
+  });
+
+  it("says what keeps a time from saving", () => {
+    const [first] = draftSchedulesOf(template.schedules);
+    if (!first) throw new Error("A time");
+    expect(scheduleProblem(first, places)).toBeNull();
+    expect(scheduleProblem(added, places)).toBeNull();
+    expect(scheduleProblem({ ...first, days: [] }, places)).toBe("days");
+    expect(
+      scheduleProblem({ ...first, dueOffset: first.opensOffset }, places),
+    ).toBe("times");
+    expect(scheduleProblem({ ...added, opensOffset: -800 }, places)).toBe(
+      "times",
+    );
+    expect(scheduleProblem(added, { departments: [KITCHEN], shifts: [] })).toBe(
+      "gone",
+    );
+    // Without the business's places, only its own shape.
+    expect(scheduleProblem(added)).toBeNull();
+    const draft = {
+      name: "Kitchen opening",
+      note: "",
+      recipient: template.recipient,
+      items: draftItemsOf(template.items),
+    };
+    expect(
+      templateDraftProblem(
+        { ...draft, schedules: [first, added] },
+        null,
+        places,
+      ),
+    ).toBeNull();
+    expect(
+      templateDraftProblem(
+        { ...draft, schedules: [{ ...first, days: [] }] },
+        null,
+        places,
+      ),
+    ).toBe("schedule");
+    expect(
+      templateDraftProblem({ ...draft, schedules: [added] }, null, {
+        departments: [KITCHEN],
+        shifts: [],
+      }),
+    ).toBe("schedule");
+  });
+});
+
+describe("templates by department", () => {
+  it("follows the departments' order, then the rest", () => {
+    const of = (name: string, recipient: ListTemplate["recipient"]) => ({
+      name,
+      recipient,
+    });
+    const groups = templatesByDepartment(
+      [
+        of("bar closing", { kind: "department", department: BAR }),
+        of("anyone", null),
+        of("kitchen opening", { kind: "department", department: KITCHEN }),
+        of("workers", { kind: "role", role: "worker" }),
+        of("removed", {
+          kind: "department",
+          department: "99999999-9999-4999-8999-999999999999",
+        }),
+        of("bar order", { kind: "department", department: BAR }),
+      ],
+      [{ id: KITCHEN }, { id: BAR }, { id: "empty" }],
+    );
+    expect(
+      groups.map((g) => [g.department, g.templates.map((t) => t.name)]),
+    ).toEqual([
+      [KITCHEN, ["kitchen opening"]],
+      [BAR, ["bar closing", "bar order"]],
+      [null, ["anyone", "workers", "removed"]],
+    ]);
+    expect(templatesByDepartment([], [{ id: KITCHEN }])).toEqual([]);
+  });
+});
+
+describe("a due time when sending", () => {
+  const zone = "Asia/Jerusalem";
+  // Tuesday 10 November 2026, 08:12 in Israel (winter, UTC+2).
+  const now = new Date("2026-11-10T06:12:00.000Z");
+
+  it("is today or tomorrow in the business's zone, and never gone by", () => {
+    expect(dueAtOf("today", "09:30", now, zone)).toEqual({
+      ok: true,
+      dueAt: "2026-11-10T07:30:00.000Z",
+    });
+    expect(dueAtOf("tomorrow", "07:00", now, zone)).toEqual({
+      ok: true,
+      dueAt: "2026-11-11T05:00:00.000Z",
+    });
+    expect(dueAtOf("today", "08:12", now, zone)).toEqual({
+      ok: false,
+      problem: "past",
+    });
+    expect(dueAtOf("today", "7:00", now, zone)).toEqual({
+      ok: false,
+      problem: "time",
+    });
+    expect(dueAtOf("tomorrow", "23:59", now, zone)).toEqual({
+      ok: true,
+      dueAt: "2026-11-11T21:59:00.000Z",
+    });
+  });
+
+  it("starts an hour ahead, on the half hour, tomorrow after midnight", () => {
+    expect(suggestedDue(now, zone)).toEqual({ day: "today", time: "09:30" });
+    expect(suggestedDue(new Date("2026-11-10T07:00:00.000Z"), zone)).toEqual({
+      day: "today",
+      time: "10:00",
+    });
+    expect(suggestedDue(new Date("2026-11-10T21:40:00.000Z"), zone)).toEqual({
+      day: "tomorrow",
+      time: "01:00",
+    });
+  });
+
+  it("starts today late in the evening at a time still to come", () => {
+    // 08:12: the suggestion, either day.
+    expect(dueTimeFor("today", now, zone)).toBe("09:30");
+    expect(dueTimeFor("tomorrow", now, zone)).toBe("09:30");
+    // 23:10: an hour ahead is tomorrow; today is the next half hour.
+    const late = new Date("2026-11-10T21:10:00.000Z");
+    expect(dueTimeFor("tomorrow", late, zone)).toBe("00:30");
+    expect(dueTimeFor("today", late, zone)).toBe("23:30");
+    expect(
+      dueAtOf("today", dueTimeFor("today", late, zone), late, zone).ok,
+    ).toBe(true);
+    // 23:40, in the last half hour: a minute before midnight.
+    const later = new Date("2026-11-10T21:40:00.000Z");
+    expect(dueTimeFor("today", later, zone)).toBe("23:59");
+    expect(
+      dueAtOf("today", dueTimeFor("today", later, zone), later, zone).ok,
+    ).toBe(true);
+    // 23:00 on the dot: the half hour after it.
+    expect(
+      dueTimeFor("today", new Date("2026-11-10T21:00:00.000Z"), zone),
+    ).toBe("23:30");
+  });
+});
+
+describe("where a template is sent from the send screen", () => {
+  const shifts: SendShift[] = [
+    {
+      id: "s-1",
+      day: "2026-11-10",
+      name: "Evening",
+      start: "16:00",
+      end: "23:00",
+      pattern: "evening",
+      people: [],
+    },
+    {
+      id: "s-2",
+      day: "2026-11-11",
+      name: "Evening",
+      start: "16:00",
+      end: "23:00",
+      pattern: "evening",
+      people: [NOA],
+    },
+  ];
+
+  it("starts at its own recipient, and at nobody once its department is gone", () => {
+    const kitchen = { kind: "department", department: KITCHEN } as const;
+    expect(sendDefaults(kitchen, shifts, [KITCHEN, BAR])).toEqual({
+      kind: "department",
+      department: KITCHEN,
+      shift: null,
+      role: null,
+      namedRole: null,
+      gone: false,
+    });
+    expect(sendDefaults(kitchen, shifts, [BAR])).toEqual({
+      kind: "department",
+      department: null,
+      shift: null,
+      role: null,
+      namedRole: null,
+      gone: true,
+    });
+    // A role the business named while it is live, and nothing chosen once
+    // it was archived.
+    const toLeads = { kind: "role", role: "worker", namedRole: LEAD } as const;
+    expect(sendDefaults(toLeads, shifts, [], [LEAD])).toMatchObject({
+      kind: "role",
+      role: "worker",
+      namedRole: LEAD,
+      gone: false,
+    });
+    expect(sendDefaults(toLeads, shifts, [], [])).toMatchObject({
+      kind: "role",
+      role: null,
+      namedRole: null,
+      gone: true,
+    });
+    // Live but nobody holds it yet: nothing chosen, and nothing gone.
+    expect(sendDefaults(toLeads, shifts, [], [LEAD], [LEAD])).toEqual({
+      kind: "role",
+      department: null,
+      shift: null,
+      role: null,
+      namedRole: null,
+      gone: false,
+    });
+    // Archived and empty: gone, as before.
+    expect(sendDefaults(toLeads, shifts, [], [], [LEAD])).toMatchObject({
+      gone: true,
+    });
+    expect(
+      sendDefaults({ kind: "role", role: "manager" }, shifts, []),
+    ).toMatchObject({ kind: "role", role: "manager", gone: false });
+    // The next of its shift with people on it.
+    expect(
+      sendDefaults({ kind: "shift", shift: "evening" }, shifts, []),
+    ).toMatchObject({ kind: "shift", shift: "s-2" });
+    expect(
+      sendDefaults({ kind: "shift", shift: "evening" }, null, []),
+    ).toMatchObject({ kind: "person", shift: null });
+    expect(sendDefaults(null, shifts, [KITCHEN])).toMatchObject({
+      kind: "person",
+      gone: false,
+    });
+    expect(sendDefaults(undefined, shifts, [KITCHEN]).kind).toBe("person");
+  });
+});
+
+describe("the shifts a list can go to", () => {
+  const zone = "Asia/Jerusalem";
+  const now = new Date("2026-11-10T14:30:00.000Z"); // 16:30 in Israel
+  const shift = (day: string, name: string, start: string, end: string) => ({
+    day,
+    name,
+    start,
+    end,
+  });
+
+  it("are from today to a week ahead, and not over yet", () => {
+    const shown = upcomingShifts(
+      [
+        shift("2026-11-18", "Evening", "16:00", "23:30"),
+        shift("2026-11-10", "Morning", "09:00", "16:00"),
+        shift("2026-11-11", "Morning", "09:00", "16:00"),
+        shift("2026-11-10", "Evening", "16:00", "23:30"),
+        shift("2026-11-09", "Night", "22:00", "06:00"),
+        shift("2026-11-17", "Evening", "16:00", "23:30"),
+      ],
+      now,
+      zone,
+    );
+    expect(shown.map((s) => `${s.day} ${s.name}`)).toEqual([
+      "2026-11-10 Evening",
+      "2026-11-11 Morning",
+      "2026-11-17 Evening",
+    ]);
+  });
+
+  it("keeps a shift that ends after midnight until its day is over", () => {
+    const night = shift("2026-11-10", "Night", "22:00", "02:00");
+    // 23:30 in Israel: it has started, and goes on.
+    expect(
+      upcomingShifts([night], new Date("2026-11-10T21:30:00.000Z"), zone),
+    ).toEqual([night]);
+    // 01:00 the next day: still on, but `send_list` takes shifts from
+    // today on, so it is gone here too.
+    expect(
+      upcomingShifts([night], new Date("2026-11-10T23:00:00.000Z"), zone),
+    ).toEqual([]);
+  });
+});
+
+describe("between departments (L5)", () => {
+  const STOREROOM = "66666666-6666-4666-8666-666666666666";
+  const departments = [
+    { id: KITCHEN, name: "Kitchen", archivedAt: null, members: [NOA] },
+    { id: BAR, name: "Bar", archivedAt: null, members: [] },
+    {
+      id: STOREROOM,
+      name: "Old",
+      archivedAt: "2026-11-01T00:00:00Z",
+      members: [],
+    },
+  ];
+
+  it("passes a list to any live department but the one holding it", () => {
+    const active = new Set([NOA]);
+    expect(
+      passTargets(
+        departments,
+        { kind: "department", department: KITCHEN },
+        active,
+      ),
+    ).toEqual([{ id: BAR, name: "Bar", people: 0 }]);
+    // From a person or a role, every live department, its people counted.
+    expect(
+      passTargets(departments, { kind: "role", role: "worker" }, active),
+    ).toEqual([
+      { id: KITCHEN, name: "Kitchen", people: 1 },
+      { id: BAR, name: "Bar", people: 0 },
+    ]);
+    // Someone who left isn't counted.
+    expect(
+      passTargets(departments, { kind: "person", people: [NOA] }, new Set())[0],
+    ).toMatchObject({ id: KITCHEN, people: 0 });
+  });
+
+  it("takes a note of at most 200, trimmed", () => {
+    expect(
+      passInput.parse({ list: LIST, department: BAR, note: "  Twenty  " }),
+    ).toEqual({ list: LIST, department: BAR, note: "Twenty" });
+    expect(passInput.safeParse({ list: LIST, department: BAR }).success).toBe(
+      true,
+    );
+    expect(
+      passInput.safeParse({
+        list: LIST,
+        department: BAR,
+        note: "x".repeat(201),
+      }).success,
+    ).toBe(false);
+    expect(
+      passInput.safeParse({ list: LIST, department: "dep-bar" }).success,
+    ).toBe(false);
+  });
+
+  it("keeps a department's lists: those it holds, and the orders it asked for", () => {
+    const order = {
+      holder: { kind: "department", department: KITCHEN } as const,
+      fromDepartment: BAR,
+    };
+    expect(ofDepartment(order, KITCHEN)).toBe(true);
+    expect(ofDepartment(order, BAR)).toBe(true);
+    expect(
+      ofDepartment(
+        { holder: { kind: "person", people: [NOA] }, fromDepartment: null },
+        KITCHEN,
+      ),
+    ).toBe(false);
+  });
+
+  it("reads an order's counts, the usual ones for what isn't typed", () => {
+    expect(parseQuantity(" 24 ")).toBe(24);
+    expect(parseQuantity("0")).toBe(0);
+    for (const bad of ["", "-1", "2.5", "10000", "abc"]) {
+      expect(parseQuantity(bad), bad).toBeNull();
+    }
+    const items = [
+      { id: ITEM, kind: "check" as const },
+      { id: LIST, kind: "check" as const },
+      { id: NOA, kind: "number" as const },
+    ];
+    expect(
+      quantitiesOf(items, { [ITEM]: "24", [LIST]: " ", [NOA]: "3" }),
+    ).toEqual({ ok: true, counts: { [ITEM]: 24 } });
+    // Each count that isn't one, by its item, so the form says which.
+    expect(quantitiesOf(items, { [ITEM]: "a lot", [LIST]: "6" })).toEqual({
+      ok: false,
+      invalid: [ITEM],
+    });
+    expect(
+      quantitiesOf(items, { [ITEM]: "-2", [LIST]: "10000", [NOA]: "x" }),
+    ).toEqual({ ok: false, invalid: [ITEM, LIST] });
+    const typed = quantitiesOf(items, { [ITEM]: "24" });
+    expect(
+      sendInput.safeParse({
+        template: LIST,
+        recipient: { kind: "department", department: BAR },
+        quantities: typed.ok ? typed.counts : null,
+      }).success,
+    ).toBe(true);
+  });
+});
+
+describe("an item's history (L6a)", () => {
+  const DANA = "66666666-6666-4666-8666-666666666666";
+  const at = (time: string) => `2026-12-03T${time}.000Z`;
+  const anItem = (fields: Partial<ListItem> = {}): ListItem => ({
+    id: ITEM,
+    templateItemId: null,
+    kind: "check",
+    label: "ניקוי משטחי עבודה",
+    hint: null,
+    required: true,
+    unit: null,
+    min: null,
+    max: null,
+    requested: null,
+    given: null,
+    checked: false,
+    reading: null,
+    answer: null,
+    photo: null,
+    photoRemoved: false,
+    comment: null,
+    done: false,
+    doneBy: null,
+    doneAt: null,
+    fixedAt: null,
+    ...fields,
+  });
+  let ids = 0;
+  const change = (
+    by: string | null,
+    time: string,
+    changed: ListItemChange["changed"],
+    values: Partial<ListItemChange> = {},
+  ): ListItemChange => {
+    ids += 1;
+    return {
+      id: String(ids),
+      itemId: ITEM,
+      by,
+      at: at(time),
+      changed,
+      checked: false,
+      given: null,
+      reading: null,
+      answer: null,
+      comment: null,
+      photo: false,
+      done: false,
+      fixed: false,
+      ...values,
+    };
+  };
+  const partsOf = (item: ListItem, changes: ListItemChange[]) =>
+    itemHistory(item, changes).map((entry) => entry.parts);
+
+  it("compares the first change with an item as it is made, and each with the one before", () => {
+    const fridge = anItem({ kind: "number", unit: "°C" });
+    const changes = [
+      change(NOA, "05:42:00", ["reading"], { reading: 4, done: true }),
+      change(DANA, "09:02:00", ["reading"], { reading: 6, done: true }),
+      change(DANA, "09:20:00", ["comment"], {
+        reading: 6,
+        comment: "הדלת נשארה פתוחה",
+        done: true,
+      }),
+      change(DANA, "10:00:00", ["reading"], {
+        comment: "הדלת נשארה פתוחה",
+      }),
+    ];
+    const history = itemHistory(fridge, changes);
+    expect(history.map(({ by, at }) => ({ by, at }))).toEqual([
+      { by: NOA, at: at("05:42:00") },
+      { by: DANA, at: at("09:02:00") },
+      { by: DANA, at: at("09:20:00") },
+      { by: DANA, at: at("10:00:00") },
+    ]);
+    expect(history.map((entry) => entry.parts)).toEqual([
+      [{ field: "reading", from: null, to: 4 }],
+      [{ field: "reading", from: 4, to: 6 }],
+      [{ field: "comment", from: null, to: "הדלת נשארה פתוחה" }],
+      [{ field: "reading", from: 6, to: null }],
+    ]);
+    // Another item's changes are its own.
+    expect(
+      itemHistory(
+        fridge,
+        changes.map((each) => ({ ...each, itemId: LIST })),
+      ),
+    ).toEqual([]);
+  });
+
+  it("says a tick and its undo, and an order's count instead of its tick", () => {
+    expect(
+      partsOf(anItem(), [
+        change(NOA, "05:00:00", ["checked"], { checked: true, done: true }),
+        change(DANA, "06:15:00", ["checked"]),
+      ]),
+    ).toEqual([
+      [{ field: "checked", on: true }],
+      [{ field: "checked", on: false }],
+    ]);
+    const order = anItem({ requested: 24 });
+    expect(
+      partsOf(order, [
+        change(NOA, "05:00:00", ["checked", "given"], {
+          checked: true,
+          given: 24,
+          done: true,
+        }),
+        change(NOA, "05:10:00", ["given"], {
+          checked: true,
+          given: 20,
+          done: true,
+        }),
+        change(DANA, "06:00:00", ["checked", "given"]),
+      ]),
+    ).toEqual([
+      [{ field: "given", given: 24 }],
+      [{ field: "given", given: 20 }],
+      [{ field: "checked", on: false }],
+    ]);
+  });
+
+  it("says an answer and a comment written, changed and removed", () => {
+    const note = anItem({ kind: "note" });
+    expect(
+      partsOf(note, [
+        change(NOA, "05:00:00", ["answer", "comment"], {
+          answer: "חסר בצל",
+          comment: "הזמנתי",
+          done: true,
+        }),
+        change(DANA, "06:00:00", ["answer", "comment"], {
+          answer: "חסר בצל וגזר",
+          comment: "הזמנתי מחר",
+          done: true,
+        }),
+        change(NOA, "07:00:00", ["answer", "comment"]),
+      ]),
+    ).toEqual([
+      [
+        { field: "answer", from: null, to: "חסר בצל" },
+        { field: "comment", from: null, to: "הזמנתי" },
+      ],
+      [
+        { field: "answer", from: "חסר בצל", to: "חסר בצל וגזר" },
+        { field: "comment", from: "הזמנתי", to: "הזמנתי מחר" },
+      ],
+      [
+        { field: "answer", from: "חסר בצל וגזר", to: null },
+        { field: "comment", from: "הזמנתי מחר", to: null },
+      ],
+    ]);
+  });
+
+  it("says a photo added, replaced and removed, though no photo is kept", () => {
+    expect(
+      partsOf(anItem({ kind: "photo" }), [
+        change(NOA, "05:00:00", ["photo"], { photo: true, done: true }),
+        change(DANA, "06:00:00", ["photo"], { photo: true, done: true }),
+        change(NOA, "07:00:00", ["photo"]),
+      ]),
+    ).toEqual([
+      [{ field: "photo", photo: "added" }],
+      [{ field: "photo", photo: "replaced" }],
+      [{ field: "photo", photo: "removed" }],
+    ]);
+  });
+
+  it("folds one person's changes close together, and drops a run that ends where it began", () => {
+    expect(HISTORY_FOLD_MINUTES).toBe(2);
+    const fridge = anItem({ kind: "number" });
+    const typo = [
+      change(NOA, "05:42:00", ["reading"], { reading: 40, done: true }),
+      change(NOA, "05:43:30", ["reading"], { reading: 4, done: true }),
+      // Within two minutes of the one before it, not of the first.
+      change(NOA, "05:45:00", ["comment"], {
+        reading: 4,
+        comment: "אחרי סחורה",
+        done: true,
+      }),
+    ];
+    expect(itemHistory(fridge, typo)).toEqual([
+      {
+        key: typo[2]?.id,
+        by: NOA,
+        at: at("05:45:00"),
+        parts: [
+          { field: "reading", from: null, to: 4 },
+          { field: "comment", from: null, to: "אחרי סחורה" },
+        ],
+        fixed: false,
+      },
+    ]);
+    // Someone else, or more than two minutes on, is an entry of its own.
+    expect(
+      partsOf(fridge, [
+        change(NOA, "05:42:00", ["reading"], { reading: 4, done: true }),
+        change(DANA, "05:42:30", ["reading"], { reading: 5, done: true }),
+        change(DANA, "05:45:00", ["reading"], { reading: 6, done: true }),
+      ]),
+    ).toHaveLength(3);
+    // Nobody named never folds.
+    expect(
+      partsOf(fridge, [
+        change(null, "05:42:00", ["reading"], { reading: 4, done: true }),
+        change(null, "05:42:30", ["reading"], { reading: 5, done: true }),
+      ]),
+    ).toHaveLength(2);
+    // A tick taken back at once says nothing; the next tick is a tick.
+    expect(
+      partsOf(anItem(), [
+        change(NOA, "05:00:00", ["checked"], { checked: true, done: true }),
+        change(NOA, "05:00:40", ["checked"]),
+        change(DANA, "05:30:00", ["checked"], { checked: true, done: true }),
+      ]),
+    ).toEqual([[{ field: "checked", on: true }]]);
+  });
+
+  it("keeps a run that does the item again with the value it had: it is theirs now", () => {
+    // Someone else takes Noa's tick back and gives it again at once: the
+    // database moves who did it to them, and the story says both.
+    const ticked = anItem({
+      checked: true,
+      done: true,
+      doneBy: DANA,
+      doneAt: at("08:15:00"),
+    });
+    const ticks = itemHistory(ticked, [
+      change(NOA, "07:40:00", ["checked"], { checked: true, done: true }),
+      change(DANA, "08:14:00", ["checked"]),
+      change(DANA, "08:15:00", ["checked"], { checked: true, done: true }),
+    ]);
+    expect(ticks.map(({ by, at, parts }) => ({ by, at, parts }))).toEqual([
+      { by: NOA, at: at("07:40:00"), parts: [{ field: "checked", on: true }] },
+      { by: DANA, at: at("08:15:00"), parts: [{ field: "checked", on: true }] },
+    ]);
+    expect(itemLine(ticked, ticks)).toEqual({
+      kind: "done",
+      by: DANA,
+      at: at("08:15:00"),
+      more: 1,
+    });
+
+    // A reading changed and put back: said as written again, not as 4 to 4.
+    const fridge = anItem({
+      kind: "number",
+      reading: 4,
+      done: true,
+      doneBy: DANA,
+      doneAt: at("08:15:00"),
+    });
+    const readings = itemHistory(fridge, [
+      change(NOA, "07:42:00", ["reading"], { reading: 4, done: true }),
+      change(DANA, "08:14:00", ["reading"], { reading: 5, done: true }),
+      change(DANA, "08:15:00", ["reading"], { reading: 4, done: true }),
+    ]);
+    expect(readings.map(({ by, parts }) => ({ by, parts }))).toEqual([
+      { by: NOA, parts: [{ field: "reading", from: null, to: 4 }] },
+      { by: DANA, parts: [{ field: "reading", from: null, to: 4 }] },
+    ]);
+    expect(itemLine(fridge, readings)).toMatchObject({ by: DANA, more: 1 });
+
+    // An order's count, its value first and a comment of the same run after.
+    const order = anItem({ requested: 20 });
+    expect(
+      partsOf(order, [
+        change(NOA, "07:40:00", ["checked", "given"], {
+          checked: true,
+          given: 20,
+          done: true,
+        }),
+        change(DANA, "08:14:00", ["given"], {
+          checked: true,
+          given: 3,
+          done: true,
+        }),
+        change(DANA, "08:15:00", ["given", "comment"], {
+          checked: true,
+          given: 20,
+          comment: "נספרו שוב",
+          done: true,
+        }),
+      ]),
+    ).toEqual([
+      [{ field: "given", given: 20 }],
+      [
+        { field: "given", given: 20 },
+        { field: "comment", from: null, to: "נספרו שוב" },
+      ],
+    ]);
+
+    // A comment written and taken back still says nothing.
+    expect(
+      partsOf(ticked, [
+        change(NOA, "07:40:00", ["checked"], { checked: true, done: true }),
+        change(DANA, "08:14:00", ["comment"], {
+          checked: true,
+          comment: "רגע",
+          done: true,
+        }),
+        change(DANA, "08:15:00", ["comment"], { checked: true, done: true }),
+      ]),
+    ).toEqual([[{ field: "checked", on: true }]]);
+  });
+
+  it("reads an item done with no changes kept as one entry from who did it, its comment unnamed", () => {
+    const done = anItem({
+      checked: true,
+      comment: "נשאר מעט",
+      done: true,
+      doneBy: NOA,
+      doneAt: at("05:00:00"),
+    });
+    expect(itemHistory(done, [])).toEqual([
+      {
+        key: `done:${ITEM}`,
+        by: NOA,
+        at: at("05:00:00"),
+        parts: [{ field: "checked", on: true }],
+        fixed: false,
+      },
+    ]);
+    expect(itemHistory(anItem({ comment: "נשאר מעט" }), [])).toEqual([]);
+    expect(doneChangeOf(anItem())).toBeNull();
+    // A photo the clean-up removed was still taken.
+    expect(
+      doneChangeOf(
+        anItem({
+          kind: "photo",
+          photoRemoved: true,
+          done: true,
+          doneBy: NOA,
+          doneAt: at("05:00:00"),
+        }),
+      )?.changed,
+    ).toEqual(["photo"]);
+    // As the backfill writes it: a comment changed after it says from what.
+    const backfilled = doneChangeOf(done);
+    expect(backfilled).not.toBeNull();
+    expect(
+      partsOf(done, [
+        ...(backfilled ? [backfilled] : []),
+        change(DANA, "06:00:00", ["comment"], {
+          checked: true,
+          comment: "נגמר",
+          done: true,
+        }),
+      ]),
+    ).toEqual([
+      [{ field: "checked", on: true }],
+      [{ field: "comment", from: "נשאר מעט", to: "נגמר" }],
+    ]);
+  });
+
+  it("adds the screen's own change as the database writes it", () => {
+    const before = anItem({
+      checked: true,
+      done: true,
+      doneBy: NOA,
+      doneAt: at("05:00:00"),
+    });
+    const after = { ...before, comment: "חסר סבון" };
+    const changes = withItemChange([], before, after, {
+      id: "local-1",
+      by: DANA,
+      at: at("06:00:00"),
+    });
+    // Who ticked it stays in its history, before the comment.
+    expect(changes.map((c) => [c.id, c.by, c.changed])).toEqual([
+      [`done:${ITEM}`, NOA, ["checked"]],
+      ["local-1", DANA, ["comment"]],
+    ]);
+    expect(itemHistory(after, changes)).toHaveLength(2);
+    // Nothing changed, nothing added; once it has changes, none stands in.
+    expect(
+      withItemChange(changes, after, after, {
+        id: "local-2",
+        by: DANA,
+        at: at("06:01:00"),
+      }),
+    ).toEqual(changes);
+    const unticked = { ...after, checked: false, done: false };
+    expect(
+      withItemChange(changes, after, unticked, {
+        id: "local-3",
+        by: DANA,
+        at: at("06:10:00"),
+      }).map((c) => c.id),
+    ).toEqual([`done:${ITEM}`, "local-1", "local-3"]);
+    // A photo set or removed is named even when the address shows the same.
+    const photo = anItem({ kind: "photo", photo: "/a.webp", done: true });
+    expect(
+      withItemChange([], photo, photo, {
+        id: "local-4",
+        by: DANA,
+        at: at("06:20:00"),
+        photo: true,
+      }).at(-1)?.changed,
+    ).toEqual(["photo"]);
+  });
+
+  it("says on the line who did it, or what changed last, and how many more", () => {
+    const fridge = anItem({
+      kind: "number",
+      reading: 6,
+      comment: "הדלת נשארה פתוחה",
+      done: true,
+      doneBy: DANA,
+      doneAt: at("09:02:00"),
+    });
+    const entries = itemHistory(fridge, [
+      change(NOA, "05:42:00", ["reading"], { reading: 4, done: true }),
+      change(DANA, "09:02:00", ["reading"], { reading: 6, done: true }),
+      change(DANA, "09:20:00", ["comment"], {
+        reading: 6,
+        comment: "הדלת נשארה פתוחה",
+        done: true,
+      }),
+    ]);
+    expect(itemLine(fridge, entries)).toEqual({
+      kind: "done",
+      by: DANA,
+      at: at("09:02:00"),
+      more: 2,
+    });
+    const once = anItem({
+      checked: true,
+      done: true,
+      doneBy: NOA,
+      doneAt: at("05:00:00"),
+    });
+    expect(itemLine(once, itemHistory(once, []))).toEqual({
+      kind: "done",
+      by: NOA,
+      at: at("05:00:00"),
+      more: 0,
+    });
+    const unticked = anItem();
+    expect(
+      itemLine(
+        unticked,
+        itemHistory(unticked, [
+          change(NOA, "05:00:00", ["checked"], { checked: true, done: true }),
+          change(DANA, "06:15:00", ["checked"]),
+        ]),
+      ),
+    ).toEqual({
+      kind: "changed",
+      by: DANA,
+      at: at("06:15:00"),
+      part: { field: "checked", on: false },
+      more: 1,
+    });
+    expect(itemLine(unticked, [])).toBeNull();
+  });
+});
+
+describe("a list's timeline (L6a)", () => {
+  const SHIRAN = "77777777-7777-4777-8777-777777777777";
+  const DANI = "88888888-8888-4888-8888-888888888888";
+  const at = (time: string) => `2026-12-03T${time}.000Z`;
+  const reopen = (
+    id: string,
+    was: ListReopen["was"],
+    wasBy: string,
+    wasAt: string,
+    reopenedBy: string,
+    reopenedAt: string,
+  ): ListReopen => ({
+    id,
+    was,
+    wasBy,
+    wasAt: at(wasAt),
+    reopenedBy,
+    reopenedAt: at(reopenedAt),
+  });
+  const finished = {
+    status: "finished" as const,
+    finishedAt: at("09:00:00"),
+    finishedBy: DANI,
+    closedAt: null,
+    closedBy: null,
+  };
+
+  it("shows each close a reopen undid, the reopen, and the close now, in time order", () => {
+    expect(
+      listTimeline(finished, [
+        reopen("r1", "finished", NOA, "06:05:00", SHIRAN, "08:00:00"),
+      ]).map(({ kind, by, at }) => ({ kind, by, at })),
+    ).toEqual([
+      { kind: "finished", by: NOA, at: at("06:05:00") },
+      { kind: "reopened", by: SHIRAN, at: at("08:00:00") },
+      { kind: "finished", by: DANI, at: at("09:00:00") },
+    ]);
+    expect(
+      listTimeline({ ...finished, status: "open", finishedAt: null }, [
+        reopen("r1", "cancelled", SHIRAN, "06:05:00", SHIRAN, "07:00:00"),
+      ]).map((event) => event.kind),
+    ).toEqual(["cancelled", "restored"]);
+  });
+
+  it("leaves out the undo: whoever closed it, within their five minutes", () => {
+    expect(
+      listTimeline(finished, [
+        reopen("r1", "finished", NOA, "06:05:00", NOA, "06:09:00"),
+      ]).map((event) => event.key),
+    ).toEqual(["finished"]);
+    // Later, or by someone else, it is a reopen.
+    expect(
+      listTimeline(finished, [
+        reopen("r1", "finished", NOA, "06:05:00", NOA, "06:11:00"),
+        reopen("r2", "finished", NOA, "06:20:00", SHIRAN, "06:21:00"),
+      ]).map((event) => event.key),
+    ).toEqual(["r1:closed", "r1:opened", "r2:closed", "r2:opened", "finished"]);
+  });
+
+  it("ends a missed list with its close, and nothing for an open one", () => {
+    expect(
+      listTimeline(
+        { ...finished, status: "missed", finishedAt: null, closedAt: null },
+        [],
+      ),
+    ).toEqual([{ key: "missed", kind: "missed", by: null, at: null }]);
+    expect(
+      listTimeline({ ...finished, status: "open", finishedAt: null }, []),
+    ).toEqual([]);
+  });
+
+  it("puts entries with no time last, and keeps the order of equal times", () => {
+    expect(
+      byTime([
+        { at: null, n: 1 },
+        { at: at("08:00:00"), n: 2 },
+        { at: at("07:00:00"), n: 3 },
+        { at: at("08:00:00"), n: 4 },
+      ]).map((entry) => entry.n),
+    ).toEqual([3, 2, 4, 1]);
+  });
+});
+
+describe("a closed list fixed in place (L6b-1)", () => {
+  const SHIRAN = "77777777-7777-4777-8777-777777777777";
+  const OTHER = "99999999-9999-4999-8999-999999999999";
+  const at = (time: string) => `2026-12-10T${time}.000Z`;
+  const finished = {
+    status: "finished" as const,
+    finishedAt: at("06:05:00"),
+  };
+  const freezer = (fields: Partial<ListItem> = {}): ListItem => ({
+    id: ITEM,
+    templateItemId: null,
+    kind: "number",
+    label: "מקפיא",
+    hint: null,
+    required: true,
+    unit: "°C",
+    min: -25,
+    max: -18,
+    requested: null,
+    given: null,
+    checked: false,
+    reading: -19,
+    answer: null,
+    photo: null,
+    photoRemoved: false,
+    comment: null,
+    done: true,
+    doneBy: NOA,
+    doneAt: at("05:44:00"),
+    fixedAt: at("14:20:00"),
+    ...fields,
+  });
+  let ids = 0;
+  const change = (
+    by: string | null,
+    time: string,
+    values: Partial<ListItemChange> = {},
+  ): ListItemChange => {
+    ids += 1;
+    return {
+      id: String(ids),
+      itemId: ITEM,
+      by,
+      at: at(time),
+      changed: ["reading"],
+      checked: false,
+      given: null,
+      reading: -19,
+      answer: null,
+      comment: null,
+      photo: false,
+      done: true,
+      fixed: false,
+      ...values,
+    };
+  };
+
+  it("reads as fixed while its last fix is after the finish", () => {
+    expect(fixedAfterClose(at("14:20:00"), finished)).toBe(true);
+    expect(fixedAfterClose(null, finished)).toBe(false);
+    // Opened again and finished after the fix: the mark is gone, the column
+    // still says it.
+    expect(
+      fixedAfterClose(at("14:20:00"), {
+        ...finished,
+        finishedAt: at("15:00:00"),
+      }),
+    ).toBe(false);
+    expect(
+      fixedAfterClose(at("14:20:00"), { status: "open", finishedAt: null }),
+    ).toBe(false);
+    expect(fixedAfterClose("not a time", finished)).toBe(false);
+  });
+
+  it("marks a fix in the item's story, and never folds it with what came before", () => {
+    const history = itemHistory(freezer(), [
+      change(NOA, "06:04:00", { reading: -12 }),
+      // The same person a minute and a half on, as a fix: its own entry.
+      change(NOA, "06:05:30", { reading: -19, fixed: true }),
+    ]);
+    expect(
+      history.map(({ by, fixed, parts }) => ({ by, fixed, parts })),
+    ).toEqual([
+      {
+        by: NOA,
+        fixed: false,
+        parts: [{ field: "reading", from: null, to: -12 }],
+      },
+      {
+        by: NOA,
+        fixed: true,
+        parts: [{ field: "reading", from: -12, to: -19 }],
+      },
+    ]);
+    // One person's fixes close together are one entry, still a fix.
+    expect(
+      itemHistory(freezer(), [
+        change(NOA, "05:44:00", { reading: -12 }),
+        change(SHIRAN, "14:19:00", { reading: -20, fixed: true }),
+        change(SHIRAN, "14:20:00", { reading: -19, fixed: true }),
+      ]).map(({ by, fixed, parts }) => ({ by, fixed, parts })),
+    ).toEqual([
+      {
+        by: NOA,
+        fixed: false,
+        parts: [{ field: "reading", from: null, to: -12 }],
+      },
+      {
+        by: SHIRAN,
+        fixed: true,
+        parts: [{ field: "reading", from: -12, to: -19 }],
+      },
+    ]);
+  });
+
+  it("says on the line who fixed it and when, while the list reads as fixed", () => {
+    const entries = itemHistory(freezer(), [
+      change(NOA, "05:44:00", { reading: -12 }),
+      change(SHIRAN, "14:20:00", { reading: -19, fixed: true }),
+    ]);
+    expect(itemLine(freezer(), entries, finished)).toEqual({
+      kind: "fixed",
+      by: SHIRAN,
+      at: at("14:20:00"),
+      more: 1,
+    });
+    // Without the list, or once a new finish came after it: who did it.
+    expect(itemLine(freezer(), entries)).toMatchObject({
+      kind: "done",
+      by: NOA,
+    });
+    expect(
+      itemLine(freezer(), entries, { ...finished, finishedAt: at("15:00:00") }),
+    ).toMatchObject({ kind: "done", by: NOA });
+  });
+
+  it("adds a fix made on the screen as the database marks it", () => {
+    const before = freezer({ reading: -12, fixedAt: null });
+    const after = freezer();
+    const changes = withItemChange([], before, after, {
+      id: "here:1",
+      by: SHIRAN,
+      at: at("14:20:00"),
+      fixed: true,
+    });
+    expect(changes.map((c) => [c.id, c.fixed])).toEqual([
+      [`done:${ITEM}`, false],
+      ["here:1", true],
+    ]);
+    expect(
+      withItemChange([], before, after, {
+        id: "here:2",
+        by: SHIRAN,
+        at: at("14:20:00"),
+      }).at(-1)?.fixed,
+    ).toBe(false);
+  });
+
+  it("puts one line on the timeline per person's run of fixes within ten minutes", () => {
+    expect(FIX_RUN_MINUTES).toBe(10);
+    const other = (by: string, time: string, item: string) => ({
+      ...change(by, time, { fixed: true }),
+      itemId: item,
+    });
+    const runs = fixRuns([
+      change(NOA, "05:44:00"),
+      other(SHIRAN, "14:20:00", "a"),
+      other(OTHER, "14:21:00", "c"),
+      other(SHIRAN, "14:24:00", "b"),
+      // The same item again, in the same run, counts once.
+      other(SHIRAN, "14:30:00", "b"),
+      // More than ten minutes after her last: a run of its own.
+      other(SHIRAN, "14:41:00", "a"),
+    ]);
+    expect(runs.map(({ by, at, items }) => ({ by, at, items }))).toEqual([
+      { by: OTHER, at: at("14:21:00"), items: 1 },
+      { by: SHIRAN, at: at("14:30:00"), items: 2 },
+      { by: SHIRAN, at: at("14:41:00"), items: 1 },
+    ]);
+    expect(new Set(runs.map((run) => run.key)).size).toBe(3);
+    expect(fixRuns([change(NOA, "05:44:00")])).toEqual([]);
   });
 });

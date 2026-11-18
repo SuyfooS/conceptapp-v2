@@ -4,24 +4,37 @@ import { clockAt, dayPart } from "@domain/today";
 import { Ambient } from "@ui/ambient";
 import { Button } from "@ui/button";
 import { Card, CardText, CardTitle } from "@ui/card";
-import { IconButton } from "@ui/icon-button";
+import { BADGE_MOST, IconButton } from "@ui/icon-button";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { PersonAvatar } from "@ui/person-row";
 import {
+  Banknote,
   Bell,
   CircleCheck,
   Clock3,
+  Hash,
   PencilLine,
   ReceiptText,
+  TriangleAlert,
 } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { Businesses } from "../businesses";
+import { confirmDocumentAction } from "../chat/documents/actions";
+import type { DocumentsTodayData } from "../chat/documents/document-screen-types";
+import { TodayDocuments } from "../chat/documents/today-documents";
 import type { PayHomeData } from "../clock/pay/pay";
-import { useHoursText, useMonthName } from "../clock/pay/pay-parts";
+import {
+  payCaption,
+  useHoursText,
+  useMonthName,
+  useShekels,
+} from "../clock/pay/pay-parts";
 import { type AppWording, translator } from "../wording";
+import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
 
 export type AccountantHomeData = {
@@ -33,6 +46,8 @@ export type AccountantHomeData = {
   businessName: string;
   /** Null when the business has the clock off: no hours come yet. */
   pay: PayHomeData | null;
+  /** What came to the business that nobody in the office opened yet (chat C7). */
+  documents?: DocumentsTodayData | null;
   /** The bell and how many lines are unread; null when there is none. */
   bell: { unread: number } | null;
 };
@@ -45,15 +60,23 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * the months before. Nothing to punch, no schedule. Phone: one under the
  * other. Tablet: the hero beside the card. Desktop: a third column with the
  * months before. With the clock off, a card says the hours come once it is on.
- * `base` keeps the links inside the demo on /design/shell.
+ * From the same loader as the pay screens (payroll P7), the hero adds the
+ * month's estimate before tax while the business shows amounts, and the card
+ * how many things the hours engine asks to check. Someone who keeps the books
+ * of several businesses (payroll P3b) has them listed last, on phones and
+ * tablets, to switch between. `base` keeps the links inside the demo on
+ * /design/shell.
  */
 export async function AccountantHome({
   data,
   wording,
+  businesses,
   base = "",
 }: {
   data: AccountantHomeData;
   wording: AppWording;
+  /** The businesses to switch between, for someone in more than one. */
+  businesses?: Businesses | null;
   base?: string;
 }) {
   const t = translator(wording, "app");
@@ -69,13 +92,17 @@ export async function AccountantHome({
       <RefreshOnReturn />
       <PageBody>
         <div className="flex items-center gap-3">
+          {/* Named by its picture: the initials are a monogram, not words. */}
           <Link
             href={path("/me")}
-            aria-label={t("me.open")}
             title={t("me.open")}
             className="pressable shrink-0 rounded-full p-0.5 focus-visible:outline-2 focus-visible:outline-accent"
           >
-            <PersonAvatar name={data.name} photo={data.photo} />
+            <PersonAvatar
+              name={data.name}
+              photo={data.photo}
+              label={t("me.open")}
+            />
           </Link>
           <div className="min-w-0 flex-1">
             <PageHeader
@@ -107,9 +134,13 @@ export async function AccountantHome({
               label={t("notifications.bell")}
               badge={{
                 count: data.bell.unread,
-                label: t("notifications.bellCount", {
-                  count: data.bell.unread,
-                }),
+                // The badge stops at "99+", and the name says the number shown.
+                label:
+                  data.bell.unread > BADGE_MOST
+                    ? t("notifications.bellCountMore", { count: BADGE_MOST })
+                    : t("notifications.bellCount", {
+                        count: data.bell.unread,
+                      }),
               }}
               icon={<Bell />}
               variant="ghost"
@@ -139,6 +170,19 @@ export async function AccountantHome({
             <CardText>{t("home.accountant.noClock.body")}</CardText>
           </Card>
         )}
+        {data.documents ? (
+          <TodayDocuments
+            data={data.documents}
+            base={path("/chat/documents")}
+            confirm={confirmDocumentAction.bind(null, data.documents.business)}
+            className="md:max-w-xl"
+          />
+        ) : null}
+        <MyBusinesses
+          businesses={businesses}
+          wording={wording}
+          className="md:max-w-xl"
+        />
       </PageBody>
     </div>
   );
@@ -157,6 +201,7 @@ function PayMonthCard({
   const t = translator(wording, "app.home.accountant");
   const tPay = translator(wording, "app.pay");
   const hours = useHoursText();
+  const shekels = useShekels();
   const format = useMonthOnly();
   const label = t("title", { month: format(pay.month) });
   return (
@@ -172,9 +217,32 @@ function PayMonthCard({
               </span>
             ),
           })}
+          {/* As on /clock/pay: shifts and the engine's remarks each on their own. */}
           <span className="block text-base">
-            {tPay("caption", { people: pay.people, toCheck: pay.toCheck })}
+            {payCaption(tPay, {
+              people: pay.people,
+              shifts: pay.toCheck,
+              remarks: pay.remarks,
+            })}
           </span>
+          {/* The month's estimate, while the business shows amounts. */}
+          {pay.estimate ? (
+            <span className="mt-1 block text-base">
+              {tPay.rich("estimate.total", {
+                ltr: (chunks) => (
+                  <span dir="ltr" className="font-semibold tabular-nums">
+                    {chunks}
+                  </span>
+                ),
+                amount: shekels(pay.estimate.agorot),
+              })}
+              {pay.estimate.missing > 0 ? (
+                <span className="block text-sm">
+                  {tPay("estimate.missing", { count: pay.estimate.missing })}
+                </span>
+              ) : null}
+            </span>
+          ) : null}
         </p>
         <Button
           asChild
@@ -220,6 +288,7 @@ function BeforeCard({
           key: "ownerOnly",
           icon: <Clock3 />,
           text: tPay("ownerOnly", { count: pay.before.ownerOnly }),
+          href,
         }
       : null,
     pay.before.waiting > 0
@@ -227,6 +296,7 @@ function BeforeCard({
           key: "waiting",
           icon: <Clock3 />,
           text: tPay("waiting", { count: pay.before.waiting }),
+          href,
         }
       : null,
     pay.before.open > 0
@@ -234,6 +304,7 @@ function BeforeCard({
           key: "open",
           icon: <Clock3 />,
           text: tPay("open", { count: pay.before.open }),
+          href,
         }
       : null,
     pay.before.corrected > 0
@@ -241,6 +312,34 @@ function BeforeCard({
           key: "corrected",
           icon: <PencilLine />,
           text: tPay("corrected", { count: pay.before.corrected }),
+          href,
+        }
+      : null,
+    // Leads to the month with only them listed.
+    pay.before.noWage > 0
+      ? {
+          key: "noWage",
+          icon: <Banknote />,
+          text: tPay("noWage", { count: pay.before.noWage }),
+          href: `${href}&show=noWage`,
+        }
+      : null,
+    // Who has shifts and no payroll number (payroll P5), listed alone.
+    pay.before.noNumber > 0
+      ? {
+          key: "noNumber",
+          icon: <Hash />,
+          text: tPay("noNumber", { count: pay.before.noNumber }),
+          href: `${href}&show=noNumber`,
+        }
+      : null,
+    // What the hours engine asks to check, in words on the month (P7).
+    pay.remarks > 0
+      ? {
+          key: "remarks",
+          icon: <TriangleAlert />,
+          text: t("remarks", { count: pay.remarks }),
+          href,
         }
       : null,
   ].filter((row) => row !== null);
@@ -251,7 +350,7 @@ function BeforeCard({
           {rows.map((row) => (
             <ListRow
               key={row.key}
-              href={href}
+              href={row.href}
               leading={row.icon}
               title={row.text}
             />

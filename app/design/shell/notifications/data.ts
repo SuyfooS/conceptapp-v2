@@ -97,10 +97,42 @@ export const demoUnread: NotificationRow[] = [
 ];
 
 /**
- * Already read: hours someone else confirmed, a swap decided, the week
- * published, someone joining.
+ * Already read: a change to her shifts in the week under way (Wednesday's
+ * evening starts later now, which replaced the line saying the week was
+ * published: one line per week), her own wage set from the first of the
+ * month (its day, never the amount), hours someone else confirmed, a swap
+ * decided, what managers do in lists changed (sending taken away, R10), pay
+ * access the ConceptApp team gave her from the console (who was never in the
+ * restaurant, so the line says the team), someone joining.
  */
 export const demoEarlier: NotificationRow[] = [
+  {
+    id: line(5),
+    kind: "schedule.changed",
+    params: {
+      week: line(5),
+      startsOn: "2026-11-01",
+      mine: 3,
+      running: true,
+      nearest: {
+        change: "moved",
+        shift: { ...shift("evening", "2026-11-04"), start: "18:00" },
+      },
+    },
+    actorId: PEOPLE.uri,
+    createdAt: "2026-11-02T17:40:00.000Z",
+    readAt: "2026-11-02T18:00:00.000Z",
+    resolvedAt: null,
+  },
+  {
+    id: "a0000000-0000-4000-8000-000000000011",
+    kind: "pay.wage_set",
+    params: { since: "2026-11-01" },
+    actorId: PEOPLE.uri,
+    createdAt: "2026-11-02T07:30:00.000Z",
+    readAt: "2026-11-02T08:00:00.000Z",
+    resolvedAt: null,
+  },
   {
     id: line(0),
     kind: "clock.confirm",
@@ -132,12 +164,29 @@ export const demoEarlier: NotificationRow[] = [
     resolvedAt: null,
   },
   {
-    id: line(5),
-    kind: "schedule.published",
-    params: { week: line(5), startsOn: "2026-11-01", mine: 4 },
+    // Uri took sending lists from managers (the roles plan's R10): in the
+    // app alone, from where her line began to now.
+    id: "a0000000-0000-4000-8000-000000000013",
+    kind: "role.changed",
+    params: {
+      role: "manager",
+      area: "lists",
+      from: { "lists.manage": true, "lists.send": true },
+      to: { "lists.manage": true, "lists.send": false },
+    },
     actorId: PEOPLE.uri,
-    createdAt: "2026-10-29T15:00:00.000Z",
-    readAt: "2026-10-29T15:20:00.000Z",
+    createdAt: "2026-10-29T08:15:00.000Z",
+    readAt: "2026-10-29T09:00:00.000Z",
+    resolvedAt: null,
+  },
+  {
+    id: "a0000000-0000-4000-8000-000000000012",
+    kind: "access.pay_granted",
+    params: {},
+    // Someone on the ConceptApp team: in no membership of the restaurant.
+    actorId: "00000000-0000-4000-a000-0000000000c0",
+    createdAt: "2026-10-27T09:30:00.000Z",
+    readAt: "2026-10-27T10:00:00.000Z",
     resolvedAt: null,
   },
   {

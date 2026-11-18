@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../../current-wording";
 import { baseWording, translator } from "../../../wording";
-import { notePayViewAction } from "../actions";
+import {
+  notePayViewAction,
+  setDetailsAction,
+  setPeriodAction,
+  setWageAction,
+} from "../actions";
 import { currentPayPerson } from "../pay";
 import { payPaths } from "../pay-types";
 import { PersonPayView } from "../person-pay-view";
@@ -28,6 +33,9 @@ export default async function PayPersonPage({
       data={data}
       paths={payPaths}
       note={notePayViewAction}
+      setWage={setWageAction}
+      setDetails={setDetailsAction}
+      setPeriod={setPeriodAction}
       wording={await currentWording()}
     />
   );

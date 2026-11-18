@@ -1,11 +1,18 @@
-import { getClockPeople, getTimeEntries } from "@db/time-clock";
+import { getRunningStations } from "@db/clock-stations";
+import {
+  getCancelledEntries,
+  getClockPeople,
+  getTimeEntries,
+} from "@db/time-clock";
+import { dateIn } from "@domain/availability";
+import { stationSeen } from "@domain/clock-station";
 import { canSeePay } from "@domain/payroll-access";
 import { timeIn } from "@domain/shabbat";
-import { canSeeTeam } from "@domain/team";
 import {
   attendanceOf,
   atWorkNow,
   confirmRowOf,
+  editsClock,
   entryDate,
   entryOverdue,
   monthMinutes,
@@ -19,12 +26,15 @@ import { cache } from "react";
 import { z } from "zod";
 import { currentModuleSettings } from "../../modules";
 import { clockAccess, currentEntriesToConfirm } from "../clock";
-import type { PersonHoursData, TeamHoursData } from "./team-types";
+import type { PersonHoursData, StationRow, TeamHoursData } from "./team-types";
 
-/** The clock's reader, when they are also someone who sees the team. */
+/**
+ * The clock's reader, when they also edit it (`editsClock`: clock.edit, the
+ * roles plan's R4): the team's hours are theirs to read and fix.
+ */
 const teamAccess = cache(async () => {
   const access = await clockAccess();
-  return access && canSeeTeam(access.role) ? access : null;
+  return access && editsClock(access) ? access : null;
 });
 
 const askedMonth = z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/);
@@ -37,7 +47,7 @@ function monthFrom(asked: string | undefined, currentMonth: string): string {
     : currentMonth;
 }
 
-/** Everyone's hours in a month. Null when the person doesn't see the team. */
+/** Everyone's hours in a month. Null when the person doesn't edit the clock. */
 export async function currentTeamHours(
   asked: string | undefined,
 ): Promise<TeamHoursData | null> {
@@ -49,13 +59,15 @@ export async function currentTeamHours(
   const currentMonth = monthOf(clockAt(now, timeZone).date);
   const month = monthFrom(asked, currentMonth);
   const { from, to } = monthRange(month, timeZone);
-  const [settings, people, entries, openNow, waiting] = await Promise.all([
-    currentModuleSettings("time_clock"),
-    getClockPeople(businessId),
-    getTimeEntries(businessId, from, to),
-    getTimeEntries(businessId, now, now),
-    currentEntriesToConfirm(),
-  ]);
+  const [settings, people, entries, openNow, waiting, running] =
+    await Promise.all([
+      currentModuleSettings("time_clock"),
+      getClockPeople(businessId),
+      getTimeEntries(businessId, from, to),
+      getTimeEntries(businessId, now, now),
+      currentEntriesToConfirm(),
+      getRunningStations(businessId),
+    ]);
 
   const nameOf = (userId: string) =>
     people.find((person) => person.userId === userId)?.name ?? null;
@@ -89,6 +101,26 @@ export async function currentTeamHours(
         (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
         (a.name ?? "").localeCompare(b.name ?? "", "he"),
     );
+
+  // A station shows the code where codes may show on a station, so the line
+  // on leaving one is said there: under those running, or alone where the
+  // business asks for the code. Those running are listed wherever, to stop.
+  const stationRows = running.map((station): StationRow => {
+    const seen = stationSeen(station.lastSeenAt, now);
+    return {
+      id: station.id,
+      name: station.name,
+      seen:
+        seen.kind === "seen"
+          ? {
+              kind: "seen",
+              date: dateIn(new Date(seen.at), timeZone),
+              time: timeIn(new Date(seen.at), timeZone),
+            }
+          : seen,
+    };
+  });
+  const howTo = settings.codeDisplay !== "manager";
 
   // Someone who forgot to leave days ago needs fixing; they aren't at work.
   const current = openNow.filter((entry) => !entryOverdue(entry, now));
@@ -139,15 +171,26 @@ export async function currentTeamHours(
         in: timeIn(new Date(entry.clockIn), timeZone),
       })),
     people: rows,
+    // Always, so the list (and a stop's toast in it) stays when the page is
+    // read again with its last station stopped.
+    stations: {
+      rows: stationRows,
+      howTo,
+      shownEmpty: howTo && settings.requirePunchCode,
+      today: clockAt(now, timeZone).date,
+    },
   };
 }
 
 const personId = z.uuid();
 
 /**
- * One person's shifts in a month. Null when the person asking doesn't see the
- * team, that person was never in the business, or they are off the staff (an
- * accountant) and have no hours in the month.
+ * One person's shifts in a month, with those cancelled among them, each saying
+ * who cancelled it, when and why (they count for nothing). Null when the
+ * person asking doesn't edit the clock, that person was never in the
+ * business, or they are off the staff (an accountant) with no shifts in the
+ * month, live or cancelled: a cancelled shift of someone who left can still
+ * be reached.
  */
 export async function currentPersonHours(
   asked: string,
@@ -163,16 +206,22 @@ export async function currentPersonHours(
   const currentMonth = monthOf(today);
   const month = monthFrom(askedForMonth, currentMonth);
   const { from, to } = monthRange(month, timeZone);
-  const [settings, people, entries] = await Promise.all([
+  const [settings, people, entries, cancelled] = await Promise.all([
     currentModuleSettings("time_clock"),
     getClockPeople(businessId),
     getTimeEntries(businessId, from, to, id.data),
+    getCancelledEntries(businessId, from, to, id.data),
   ]);
   const person = people.find((row) => row.userId === id.data);
-  if (!person || (!person.staff && entries.length === 0)) return null;
+  if (
+    !person ||
+    (!person.staff && entries.length === 0 && cancelled.length === 0)
+  ) {
+    return null;
+  }
 
   const step = settings.roundToMinutes;
-  // Who corrected each shift, for its line.
+  // Who corrected or cancelled each shift, for its line.
   const nameOf = (userId: string) =>
     people.find((row) => row.userId === userId)?.name ?? null;
   return {
@@ -180,8 +229,17 @@ export async function currentPersonHours(
     month,
     currentMonth,
     minutes: monthMinutes(entries, month, timeZone, now, step),
-    records: monthRecords(entries, month, timeZone, now, step, nameOf),
+    records: monthRecords(
+      entries,
+      month,
+      timeZone,
+      now,
+      step,
+      nameOf,
+      cancelled,
+    ),
     today,
+    unpaidBreaks: settings.unpaidBreaks,
     viewOnly,
   };
 }

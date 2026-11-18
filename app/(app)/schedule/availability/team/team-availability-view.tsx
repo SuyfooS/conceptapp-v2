@@ -13,6 +13,7 @@ import type { ReactNode } from "react";
 import { type AppWording, type Translator, translator } from "../../../wording";
 import type { TeamAvailabilityWeek } from "../../week";
 import { HeroChip } from "../hero-chip";
+import { type Remind, RemindButton } from "./remind-button";
 
 type T = Translator<"app">;
 type Team = TeamAvailabilityWeek["team"];
@@ -42,17 +43,25 @@ function moment(t: T, iso: string, timeZone: string) {
  * The manager's view of next week's availability: who has not sent it, with a
  * way to call them, and what everyone else sent. Phone: the hero with the
  * missing people lifted over it, and the answers under that; tablet: the same
- * two in two columns; desktop: one table with a column per day. Also rendered
- * with mock data on /design/shell/schedule/availability/team.
+ * two in two columns; desktop: one table with a column per day. While
+ * someone is missing, the screen's main action is a reminder for the whole
+ * team (`remind`), on WhatsApp or another way, in the header on all three.
+ * Also rendered with mock data on /design/shell/schedule/availability/team.
  */
 export function TeamAvailabilityView({
   data,
   backHref,
+  remind = null,
   wording,
 }: {
   data: TeamAvailabilityWeek;
   /** The schedule screen this one sits under. */
   backHref: string;
+  /**
+   * The reminder, until next week is published; null once it is, and while
+   * viewing as a role, which speaks for nobody.
+   */
+  remind?: Remind | null;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -70,6 +79,18 @@ export function TeamAvailabilityView({
           to: dayMonth(week.dates.at(-1) ?? week.start),
         })}
         title={t("availability.team.title")}
+        actions={
+          remind && team.counts.missing > 0 ? (
+            <RemindButton
+              {...remind}
+              week={{
+                dates: week.dates,
+                dueAt: week.dueAt,
+                timeZone: week.timeZone,
+              }}
+            />
+          ) : undefined
+        }
       />
       <div className="grid gap-7 md:grid-cols-2 md:items-start md:gap-6 xl:grid-cols-1">
         <div className="flex min-w-0 flex-col">
@@ -178,23 +199,25 @@ function CallLink({
   showNumber?: boolean;
 }) {
   if (!person.phone) return null;
-  const label = t("availability.team.call", {
-    name: personName(t, person.name),
-  });
+  const name = personName(t, person.name);
+  const number = displayIsraeliMobile(person.phone);
+  const call = t("availability.team.call", { name });
   return (
     <a
       href={`tel:${person.phone}`}
-      aria-label={label}
-      title={label}
+      // With the number showing, the name starts with it, as it reads, and
+      // the words need no tooltip; the phone alone has one.
+      aria-label={
+        showNumber ? t("availability.team.callNumber", { number, name }) : call
+      }
+      title={showNumber ? undefined : call}
       className={cn(
         "pressable inline-flex size-11 shrink-0 items-center justify-center gap-2 rounded-full bg-accent-soft text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent [&_svg]:size-5",
         showNumber && "w-auto ps-3.5 pe-4 font-medium text-base",
       )}
     >
       <Phone aria-hidden="true" />
-      {showNumber ? (
-        <span dir="ltr">{displayIsraeliMobile(person.phone)}</span>
-      ) : null}
+      {showNumber ? <span dir="ltr">{number}</span> : null}
     </a>
   );
 }

@@ -9,15 +9,22 @@ import {
   issueInviteLink,
 } from "@db/invites";
 import {
+  archiveListTemplate,
+  getListTemplateForTeam,
+  restoreListTemplate,
+  saveListTemplate,
+} from "@db/lists";
+import {
   getBusinessModulesForTeam,
   setModuleEnabled,
   setModuleSettings,
 } from "@db/module-settings";
-import { startViewing } from "@db/view-as";
+import { getViewableNamedRoles, startViewing } from "@db/view-as";
 import { getTemplateSentence, setBusinessWording } from "@db/wording";
 import { checkBusinessDetailsChange } from "@domain/business-details";
 import { departments as departmentsSchema } from "@domain/departments";
 import { inviteLink } from "@domain/invites";
+import { listTemplateInput, type SavedTemplate } from "@domain/lists";
 import {
   enabledModules,
   fitsTabBar,
@@ -27,7 +34,11 @@ import {
 import { platformCan } from "@domain/platform";
 import { checkSettingsChange } from "@domain/settings-form";
 import { parseTeamInvite } from "@domain/team";
-import { parseViewAsRole } from "@domain/view-as";
+import {
+  parseViewAsRole,
+  readViewAsChoice,
+  type ViewAsFailure,
+} from "@domain/view-as";
 import {
   baseSentence,
   checkSentence,
@@ -39,6 +50,7 @@ import { manifestFor, manifests } from "@modules/registry";
 import { refresh, revalidatePath } from "next/cache";
 import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
+import type { ListActionResult } from "@/app/(app)/lists/list-types";
 import type { SettingsResult } from "@/app/(app)/manage/settings-types";
 import type { InviteState } from "@/app/(app)/team/actions";
 import { requestOrigin } from "@/app/origin";
@@ -50,7 +62,7 @@ import type { WordingSaveResult } from "./wording/wording-types";
 export type InviteLinkState =
   | {
       link?: undefined;
-      failure?: "failed" | "noPermission" | "demo" | "hasOwner";
+      failure?: "failed" | "noPermission" | "demo" | "hasOwner" | "roleGone";
     }
   | { link: string; failure?: undefined };
 
@@ -91,8 +103,9 @@ export async function inviteLinkAction(
  * Someone on the team adds a person to a business, in any role, from the
  * console (an owner only while the business has none): the result is a link
  * for them to send on, as from the Team screen. A number with an invite nobody claimed, open or expired, gets that
- * invite renewed. A number already working in another business is refused:
- * the app opens a person's oldest business, so they would never see this one.
+ * invite renewed. A number on another business's staff is refused a place on
+ * this one's (one place on a staff per login, payroll P3b), and may still be
+ * added as its accountant.
  */
 export async function addPersonAction(
   business: { id: string; slug: string },
@@ -109,11 +122,13 @@ export async function addPersonAction(
     return { failure: "noPermission", values };
   }
   // The team may give any role, as an owner may.
-  const parsed = parseTeamInvite(values, "owner");
+  const parsed = parseTeamInvite(values, { role: "owner", perms: [] });
   if (!parsed.ok) return { errors: parsed.errors, values };
 
   try {
-    if (await activeElsewhere(parsed.value.phone, business.id)) {
+    if (
+      await activeElsewhere(parsed.value.phone, business.id, parsed.value.role)
+    ) {
       return { failure: "elsewhere", values };
     }
     const result = await inviteFromConsole(
@@ -137,25 +152,40 @@ export async function addPersonAction(
 }
 
 /**
- * Open the business's app as the role in the form, read only. The session
- * and the audit log entry are written by the database; the app then reads
- * the business as that role until the session ends (two hours at most).
+ * Open the business's app as the role in the form, read only: a built-in
+ * role, or one the business named, by its id among its live ones (the roles
+ * plan's R11c), viewed on its base. The session and the audit log entry are
+ * written by the database; the app then reads the business as that role
+ * until the session ends (two hours at most). A named role archived since
+ * the page was drawn (no longer among the live ones, or refused as the view
+ * starts) says so on the page (`?view=roleGone`), drawn again without it.
  */
 export async function viewAsAction(
   business: { id: string; slug: string },
   form: FormData,
 ): Promise<never> {
   const staff = await getPlatformStaff();
-  const role = parseViewAsRole(form.get("role"));
-  if (!staff || !platformCan(staff.role, "businesses.view_as") || !role) {
-    notFound();
+  if (!staff || !platformCan(staff.role, "businesses.view_as")) notFound();
+  const value = form.get("role");
+  // The business's named roles are read only for a choice that isn't a
+  // built-in role.
+  const choice = readViewAsChoice(
+    value,
+    parseViewAsRole(value) ? [] : await getViewableNamedRoles(business.id),
+  );
+  if (choice === "gone") {
+    redirect(`/admin/businesses/${business.slug}?view=roleGone`);
   }
+  if (!choice) notFound();
+  let failure: ViewAsFailure | null = null;
   try {
-    await startViewing(staff.userId, business.id, role);
+    const started = await startViewing(staff.userId, business.id, choice);
+    if (!started.ok) failure = started.failure;
   } catch (error) {
     console.error("startViewing failed", (error as Error).message);
-    redirect(`/admin/businesses/${business.slug}?view=failed`);
+    failure = "failed";
   }
+  if (failure) redirect(`/admin/businesses/${business.slug}?view=${failure}`);
   redirect("/home");
 }
 
@@ -250,6 +280,71 @@ export async function saveTeamDepartmentMembersAction(
   );
   refresh();
   return teamResult(result);
+}
+
+/**
+ * Someone on the team saves a business's list template, as they set it up,
+ * with the version the editor last had (`public.save_list_template`, which
+ * lets the team write: `private.can_edit_settings`). The editor keeps what
+ * it shows, so nothing is read again here.
+ */
+export async function saveTeamListTemplateAction(
+  businessId: string,
+  input: unknown,
+  seenVersion: unknown,
+): Promise<ListActionResult<SavedTemplate>> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const template = listTemplateInput.safeParse(input);
+  const version = z.int().min(1).nullable().safeParse(seenVersion);
+  if (!template.success || !version.success) {
+    return { ok: false, failure: "invalid" };
+  }
+  return saveListTemplate(
+    staff.userId,
+    businessId,
+    template.data,
+    version.data ?? undefined,
+  );
+}
+
+/**
+ * Removes one of the business's templates, or brings it back (the undo), as
+ * the team sets its lists up. Only a template of that business.
+ */
+async function teamTemplateChange(
+  businessId: string,
+  templateId: unknown,
+  change: typeof archiveListTemplate,
+): Promise<ListActionResult> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const id = z.uuid().safeParse(templateId);
+  if (!id.success) return { ok: false, failure: "invalid" };
+  const template = await getListTemplateForTeam(businessId, id.data);
+  if (template === "notYet") return { ok: false, failure: "notYet" };
+  if (!template) return { ok: false, failure: "noAccess" };
+  const result = await change(staff.userId, id.data);
+  refresh();
+  return result;
+}
+
+export async function archiveTeamListTemplateAction(
+  businessId: string,
+  templateId: unknown,
+): Promise<ListActionResult> {
+  return teamTemplateChange(businessId, templateId, archiveListTemplate);
+}
+
+export async function restoreTeamListTemplateAction(
+  businessId: string,
+  templateId: unknown,
+): Promise<ListActionResult> {
+  return teamTemplateChange(businessId, templateId, restoreListTemplate);
 }
 
 function teamResult(result: { ok: true } | { ok: false; code?: string }) {

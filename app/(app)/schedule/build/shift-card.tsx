@@ -15,7 +15,7 @@ import { CoverageBar } from "@ui/coverage-bar";
 import { IconButton } from "@ui/icon-button";
 import { ChevronRight, Plus, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { MouseEvent, ReactNode } from "react";
+import { type MouseEvent, type ReactNode, useId } from "react";
 
 /**
  * How much room a card has: a whole phone's width, a cell of the tablet's
@@ -28,17 +28,41 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 const pressClass =
   "pressable focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
+/** A card's line for what someone else did to its shift meanwhile. */
+function MeanwhileLine({
+  className,
+  children,
+}: {
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <span
+      className={cn(
+        "flex items-center gap-1.5 font-semibold text-sm text-warning before:size-1.5 before:shrink-0 before:rounded-full before:bg-current before:content-['']",
+        className,
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
 /**
  * One shift at a glance: its name and hours, how full it is, who is on it and
  * what is missing. Tapping it opens the shift's sheet. The hidden line gives
  * the whole picture to a screen reader, with the day the card cannot show.
+ * In a published week, a shift that is over is muted, with its people and
+ * nothing of what it lacked; one under way says so in place of its status.
  */
 export function ShiftCard({
   id,
   label,
   shift,
+  stage = null,
   people,
   clashing,
+  meanwhile = false,
   positions,
   density,
   onOpen,
@@ -46,22 +70,44 @@ export function ShiftCard({
   id: number;
   label: string;
   shift: ScheduledShift;
-  /** Who is on the shift, as their names read everywhere, with their photos. */
-  people: AvatarPerson[];
+  /**
+   * Where a shift of a published week stands once it has begun: under way
+   * ("now") or over. Null for one still to start, or in a week that is free.
+   */
+  stage?: "now" | "over" | null;
+  /**
+   * Who is on the shift, as their names read everywhere, with their photos.
+   * Those no longer on the team (`former`, kept on a shift that has begun)
+   * are said once, in full, by how many they are.
+   */
+  people: (AvatarPerson & { former?: boolean })[];
   /** Those of them who are on another shift at the same time. */
   clashing: string[];
+  /**
+   * Put back as it is now, after a write refused because it changed
+   * meanwhile: it says so until the week is written.
+   */
+  meanwhile?: boolean;
   positions: Position[];
   density: CardDensity;
   onOpen: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const t = useTranslations("app.build");
   const names = people.map((p) => p.name);
+  const formers = people.filter((p) => p.former).length;
+  const shown = [
+    ...shortNames(people.filter((p) => !p.former).map((p) => p.name)),
+    ...(formers > 0 ? [t("formerCount", { count: formers })] : []),
+  ];
   const missing = stillNeeded(shift);
   const full = density === "full";
   const column = density === "column";
   const inPositions = positionCounts(shift, positions);
+  const over = stage === "over";
   const status =
-    missing > 0 ? (
+    stage === "now" ? (
+      <Badge tone="accent">{t("running.now")}</Badge>
+    ) : over ? null : missing > 0 ? (
       <Badge tone="warning">{t("missing", { count: missing })}</Badge>
     ) : (
       <Badge tone="success">{t("staffed")}</Badge>
@@ -75,20 +121,28 @@ export function ShiftCard({
       onClick={onOpen}
       className={cn(
         pressClass,
-        "flex w-full min-w-0 flex-col items-stretch bg-surface text-start shadow-card",
+        "flex w-full min-w-0 flex-col items-stretch text-start",
+        over ? "bg-surface-2 text-ink-2" : "bg-surface shadow-card",
         full ? "rounded-[28px] p-4" : "rounded-card p-3",
         // Most cards line up across the week's columns.
         column && "min-h-[13.75rem]",
+        column && over && "min-h-0",
       )}
     >
       <span className="sr-only">
         {label}.{" "}
+        {stage
+          ? `${t(stage === "now" ? "running.begunSr" : "running.overSr", { time: shift.start })}. `
+          : null}
         {t("people", {
           assigned: shift.assignees.length,
           needed: shift.needed,
         })}
         .{" "}
       </span>
+      {meanwhile ? (
+        <MeanwhileLine className="mb-1.5">{t("meanwhile")}</MeanwhileLine>
+      ) : null}
       <span className="flex items-start justify-between gap-x-2.5">
         <span className="min-w-0">
           <span className={cn("block font-bold", full ? "text-lg" : "text-md")}>
@@ -102,22 +156,26 @@ export function ShiftCard({
         </span>
         {column ? null : status}
       </span>
-      <CoverageBar
-        filled={shift.assignees.length}
-        total={shift.needed}
-        className={full ? "my-3.5" : "my-2.5"}
-      />
-      {column ? <span className="mb-2.5 flex">{status}</span> : null}
+      {over ? (
+        <span aria-hidden="true" className={full ? "h-3.5" : "h-2.5"} />
+      ) : (
+        <CoverageBar
+          filled={shift.assignees.length}
+          total={shift.needed}
+          className={full ? "my-3.5" : "my-2.5"}
+        />
+      )}
+      {column && status ? <span className="mb-2.5 flex">{status}</span> : null}
       <span
         className={cn(
           "flex gap-2.5",
           column ? "flex-col items-start gap-1.5" : "min-h-8 items-center",
         )}
       >
-        {names.length > 0 || missing > 0 ? (
+        {names.length > 0 || (missing > 0 && !over) ? (
           <span className="flex shrink-0">
             <AvatarStack people={people} max={column ? 3 : 4} />
-            {missing > 0 ? (
+            {missing > 0 && !over ? (
               <span
                 aria-hidden="true"
                 className={cn(
@@ -136,7 +194,11 @@ export function ShiftCard({
             full ? "text-base" : "text-sm",
           )}
         >
-          {names.length > 0 ? shortNames(names).join(", ") : t("nobody")}
+          {names.length > 0
+            ? shown.join(", ")
+            : over
+              ? t("running.nobodyPast")
+              : t("nobody")}
           {inPositions.length > 0 ? (
             <span className="flex flex-wrap gap-x-2 text-sm">
               {inPositions.map(({ position, count }) => (
@@ -170,12 +232,18 @@ export function ShiftCard({
 export function RemovedShift({
   id,
   shift,
+  meanwhile = false,
   weekday,
   density,
   onUndo,
 }: {
   id: number;
   shift: ScheduledShift;
+  /**
+   * Deleted meanwhile by someone else, found when a write was refused: it
+   * says so until the week is written, and the way back adds it as new.
+   */
+  meanwhile?: boolean;
   weekday: string;
   density: CardDensity;
   onUndo: () => void;
@@ -188,6 +256,11 @@ export function RemovedShift({
         density === "full" ? "rounded-[28px] p-4" : "rounded-card p-3",
       )}
     >
+      {meanwhile ? (
+        <MeanwhileLine className="basis-full">
+          {t("goneMeanwhile")}
+        </MeanwhileLine>
+      ) : null}
       <span
         className={cn(
           "min-w-0 flex-1 basis-36 text-ink-2",
@@ -209,6 +282,28 @@ export function RemovedShift({
   );
 }
 
+/**
+ * In place of the way to add a shift, on a day of a published week that is
+ * over and had none: it takes no new shift.
+ */
+export function PastDayNote({ density }: { density: CardDensity }) {
+  const t = useTranslations("app.build.running");
+  return (
+    <p
+      className={cn(
+        "rounded-card bg-surface-2 text-ink-2",
+        density === "full" ? "px-4 py-4 text-base" : "px-3 py-3 text-sm",
+      )}
+    >
+      {t("noShiftsPast")}
+    </p>
+  );
+}
+
+/** The card's ring while its button has the keyboard. */
+const ringWithin =
+  "has-[button:focus-visible]:outline-2 has-[button:focus-visible]:outline-offset-2 has-[button:focus-visible]:outline-accent";
+
 /** The clear way to add a shift to a day, at the end of its shifts. */
 export function AddShiftRow({
   label,
@@ -217,7 +312,7 @@ export function AddShiftRow({
   density,
   onClick,
 }: {
-  /** Says which day, for a screen reader. */
+  /** Its name: what it shows, then which day ("הוספת משמרת ליום ראשון…"). */
   label: string;
   /** The day has nothing else to show. */
   alone: boolean;
@@ -227,6 +322,7 @@ export function AddShiftRow({
   onClick: (event: MouseEvent<HTMLButtonElement>) => void;
 }) {
   const t = useTranslations("app.build");
+  const hintId = useId();
   // On a tablet it sits small under the day's name, leaving the grid to shifts.
   if (density === "tile" && !alone) {
     return (
@@ -239,42 +335,66 @@ export function AddShiftRow({
       />
     );
   }
+  // The button holds only its words, so its name starts with all it shows,
+  // and it stretches over the whole card, so all of it opens the sheet. The
+  // hint is an instruction, not its label: it sits beside the button, in the
+  // same card, and is said after the name as its description.
+  const button = (content: ReactNode, className: string) => (
+    <button
+      type="button"
+      aria-label={label}
+      aria-haspopup="dialog"
+      aria-describedby={hint ? hintId : undefined}
+      onClick={onClick}
+      className={cn(
+        "outline-none after:absolute after:inset-0 after:rounded-card after:content-['']",
+        className,
+      )}
+    >
+      {content}
+    </button>
+  );
   if (density === "full") {
     return (
-      <button
-        type="button"
-        aria-label={label}
-        aria-haspopup="dialog"
-        onClick={onClick}
+      <div
         className={cn(
-          pressClass,
-          "flex min-h-16 w-full items-center gap-3 rounded-card bg-surface px-4 py-2.5 text-start shadow-card",
+          "pressable relative flex min-h-16 w-full items-center gap-3 rounded-card bg-surface px-4 py-2.5 text-start shadow-card",
+          ringWithin,
         )}
       >
         <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent-soft text-ink [&_svg]:size-5">
           <Plus aria-hidden="true" />
         </span>
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="font-medium">{t("addShift")}</span>
-          {hint ? <span className="text-ink-2 text-sm">{hint}</span> : null}
+          {button(t("addShift"), "text-start font-medium")}
+          {hint ? (
+            <span id={hintId} className="text-ink-2 text-sm">
+              {hint}
+            </span>
+          ) : null}
         </span>
-      </button>
+      </div>
     );
   }
   return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-haspopup="dialog"
-      onClick={onClick}
+    <div
       className={cn(
-        pressClass,
-        "flex min-h-11 w-full flex-wrap items-center justify-center gap-x-1 rounded-card bg-surface-2/60 px-2 py-2 text-center font-medium text-ink-2 text-sm transition-colors hover:bg-surface-2 [&_svg]:size-4",
+        "pressable relative flex min-h-11 w-full flex-wrap items-center justify-center gap-x-1 rounded-card bg-surface-2/60 px-2 py-2 text-center font-medium text-ink-2 text-sm transition-colors hover:bg-surface-2",
+        ringWithin,
       )}
     >
-      <Plus aria-hidden="true" />
-      {t("addShift")}
-      {hint ? <span className="w-full font-normal">{hint}</span> : null}
-    </button>
+      {button(
+        <>
+          <Plus aria-hidden="true" />
+          {t("addShift")}
+        </>,
+        "inline-flex items-center gap-x-1 [&_svg]:size-4",
+      )}
+      {hint ? (
+        <span id={hintId} className="w-full font-normal">
+          {hint}
+        </span>
+      ) : null}
+    </div>
   );
 }

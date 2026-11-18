@@ -1,7 +1,23 @@
 import { z } from "zod";
 import { addDays, dateIn } from "./availability";
+import {
+  DOCUMENT_DIRECTIONS,
+  DOCUMENT_REMOVE_REASONS,
+  type DocumentDirection,
+  type DocumentRemoveReason,
+} from "./documents";
 import { ROLES, type Role } from "./modules";
+import {
+  ACCESS_AREAS,
+  ACCESS_EXTRA_KEYS,
+  type AccessArea,
+  type AccessExtra,
+  AREA_EDIT,
+  AREA_VIEW,
+  PLACE_AREAS,
+} from "./role-access";
 import { shabbatCityOf } from "./shabbat";
+import { swapShift } from "./swaps";
 
 /**
  * The business's activity log: what changed, who changed it and when, read from
@@ -20,6 +36,9 @@ export const ROUTINE_ACTIONS = [
   // A scheduled list opening and its reminder: the lists themselves show them.
   "lists.open",
   "lists.due",
+  // A late list's owners told it is still open: the log already says it was
+  // late, and the owners have their line.
+  "lists.late_owner",
   // Someone opened the pay screens: kept for the record, not news.
   "payroll.view",
 ] as const;
@@ -59,18 +78,43 @@ export type ActivityShift = {
   end: string;
 };
 
+/**
+ * A shift as the database keeps it on a swap request (`shift_swaps.shift`,
+ * private.shift_brief: its day, name and hours when the request was made),
+ * or null when it is anything else.
+ */
+export function activityShiftOf(value: unknown): ActivityShift | null {
+  const parsed = swapShift.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
 /** What rows point at, read with them under the reader's own access. */
 export type ActivityLookups = {
   /** The business's memberships, active or not, by person. */
   members: ReadonlyMap<string, { active: boolean; name: string | null }>;
   invites: ReadonlyMap<string, { name: string | null; role: Role | null }>;
   shifts: ReadonlyMap<string, ActivityShift>;
+  /**
+   * Swap requests by id: their shift while it is there (null once it is
+   * deleted), the shift as it was asked for (null on a project without
+   * 20261115000200_swap_history.sql), and their people.
+   */
   swaps: ReadonlyMap<
     string,
-    { shiftId: string; requestedBy: string; takenBy: string | null }
+    {
+      shiftId: string | null;
+      shift: ActivityShift | null;
+      requestedBy: string;
+      takenBy: string | null;
+    }
   >;
   /** The business's departments, removed ones too, by id: their names. */
   departments: ReadonlyMap<string, string>;
+  /**
+   * The business's clock stations, stopped ones too, by id: their names, as
+   * the reader may read them (whoever edits the clock, with the clock on).
+   */
+  stations: ReadonlyMap<string, string>;
 };
 
 export const DETAIL_KEYS = [
@@ -117,10 +161,36 @@ export function breakFitKind(breaks: readonly BreakFit[]): BreakFitKind {
   return kinds.size === 1 && only ? only : "other";
 }
 
+/** What a break edit did: as `public.add_time_break` and the others log it. */
+export const BREAK_EDIT_KINDS = ["add", "change", "remove", "restore"] as const;
+export type BreakEditKind = (typeof BREAK_EDIT_KINDS)[number];
+
 /** Who a permission was given to: everyone in a role, or one person. */
 export type ActivityGrantee =
   | { kind: "role"; role: Role | null }
   | { kind: "person"; person: ActivityPerson };
+
+/**
+ * A permission a role's rule switched, as the screen "תפקידים והרשאות" names
+ * it: an area's edit, its view (team and manage), one of the switches under
+ * edit, or a key the screen doesn't draw.
+ */
+export type ActivityRolePermission =
+  | { kind: "edit" | "view"; area: AccessArea }
+  | { kind: "extra"; extra: AccessExtra }
+  | { kind: "other" };
+
+/** Which of an area's permissions a key is, from the key alone. */
+export function rolePermissionOf(perm: string): ActivityRolePermission {
+  for (const area of ACCESS_AREAS) {
+    if (AREA_EDIT[area] === perm) return { kind: "edit", area };
+  }
+  for (const area of PLACE_AREAS) {
+    if (AREA_VIEW[area] === perm) return { kind: "view", area };
+  }
+  const extra = ACCESS_EXTRA_KEYS.find((key) => key === perm);
+  return extra ? { kind: "extra", extra } : { kind: "other" };
+}
 
 /** Who a list went to, as the log says it. */
 export type ActivityRecipient =
@@ -128,7 +198,11 @@ export type ActivityRecipient =
   /** The name is null when the department is not known (any more). */
   | { kind: "department"; name: string | null }
   | { kind: "shift" }
-  | { kind: "role"; role: Role | null };
+  /**
+   * A role, or a role the business named on it by its name as the list was
+   * sent (`name`, the roles plan's R11d).
+   */
+  | { kind: "role"; role: Role | null; name?: string };
 
 export type ActivityLine =
   | { action: "business.create"; invites: number }
@@ -163,17 +237,139 @@ export type ActivityLine =
       clockIn: string | null;
       breaks: [BreakFit, ...BreakFit[]];
     }
+  | {
+      /**
+       * Someone who edits the clock cancelled a shift, with why
+       * (20261117000200_cancelled_shifts.sql): it is kept, and counts
+       * nowhere. `times.clockOut` is null for one still open, which the
+       * cancel ended.
+       */
+      action: "clock.cancel";
+      person: ActivityPerson;
+      /** Whose shift, for the way to their hours; null when the row can't say. */
+      personId: string | null;
+      times: ClockTimes;
+      note: string | null;
+    }
+  | {
+      /** A cancelled shift brought back; `reopened`: open again, as it was. */
+      action: "clock.restore";
+      person: ActivityPerson;
+      personId: string | null;
+      times: ClockTimes;
+      reopened: boolean;
+    }
+  | {
+      /**
+       * Someone who edits the clock changed, added or removed one break of a
+       * shift, with why, or brought back one they had just removed, which
+       * asks for none (20261117000300_break_edits.sql). Each side the break's
+       * times; `from` null for one added or brought back, `to` null for one
+       * removed.
+       */
+      action: "clock.break_edit";
+      person: ActivityPerson;
+      personId: string | null;
+      /** When the shift starts, which names its day. */
+      clockIn: string;
+      change: BreakEditKind;
+      from: ClockTimes | null;
+      to: ClockTimes | null;
+      /** An unpaid break: its change changed the paid hours. Null when unknown. */
+      unpaid: boolean | null;
+      note: string | null;
+    }
   /** A manager approved hours made without a code, or set by someone for themselves. */
   | { action: "clock.confirm"; person: ActivityPerson }
   /** Typing the clock's code was blocked after too many wrong tries; the actor is who typed. */
   | { action: "clock.code.locked" }
+  /**
+   * Someone who edits the clock left the device they were on as a clock
+   * station (#78 phase 5), by the name they gave it.
+   */
+  | { action: "clock.station.add"; name: string }
+  /**
+   * A station stopped, or started again in the two minutes after; its name
+   * where the reader may read the station, else null.
+   */
   | {
-      action: "invite.create" | "invite.send";
+      action: "clock.station.stop" | "clock.station.restart";
+      name: string | null;
+    }
+  | {
+      action: "invite.create" | "invite.send" | "invite.cancel";
       name: string | null;
       role: Role | null;
+      /**
+       * The role the business named that it gave, by its name then, built
+       * on `role` (the roles plan's R11b); missing for none.
+       */
+      roleName?: string;
     }
-  | { action: "invite.claim"; role: Role | null }
-  | { action: "view_as.start" | "view_as.end"; role: Role | null }
+  | {
+      action: "invite.claim";
+      role: Role | null;
+      /** The role the business named that they joined in, as for an invite. */
+      roleName?: string;
+    }
+  | {
+      /**
+       * An owner or manager took someone off the team (Orel, 14 November
+       * 2026). They are almost always former by the time it is read.
+       */
+      action: "member.remove";
+      person: ActivityPerson;
+      /** The role they had. */
+      role: Role | null;
+      /**
+       * The role the business named that they held, by its name then, built
+       * on `role` (the roles plan's R11b); missing for none.
+       */
+      roleName?: string;
+      /** Their shifts still to start in published weeks, which came off them. */
+      shifts: number;
+      /** Swap requests they made on those shifts, cancelled. */
+      swaps: number;
+      /**
+       * Colleagues' shifts they had taken, waiting for approval, whose
+       * requests are open again (Orel, 15 November 2026).
+       */
+      reopened: number;
+    }
+  | {
+      /** An owner or manager changed someone's role. */
+      action: "member.role";
+      person: ActivityPerson;
+      role: Role | null;
+      /** The role before. */
+      was: Role | null;
+      /**
+       * The role the business named that they were given, and the one they
+       * left, by their names then, each built on `role` and `was` (the roles
+       * plan's R11b); missing for none.
+       */
+      roleName?: string;
+      wasName?: string;
+      /** Published shifts that came off them, when they left the staff. */
+      shifts: number;
+      /** Swaps cancelled and swaps open again, as for a removal. */
+      swaps: number;
+      reopened: number;
+    }
+  /**
+   * Someone who edits the team fixed the name the business shows for
+   * someone (`public.set_member_name`); never the name, old or new.
+   */
+  | { action: "member.name"; person: ActivityPerson }
+  | {
+      action: "view_as.start" | "view_as.end";
+      role: Role | null;
+      /**
+       * The role the business named that the view was as, by its name then,
+       * built on `role` (the roles plan's R11c); missing for none.
+       */
+      roleName?: string;
+    }
   | { action: "swap.request" | "swap.cancel"; shift: ActivityShift | null }
   | {
       action: "swap.take";
@@ -194,6 +390,11 @@ export type ActivityLine =
       shifts: number;
       first: boolean;
       swapsRemoved: number;
+      /**
+       * The week had begun when it was published
+       * (20261115000300_running_week.sql); false for a row from before.
+       */
+      running: boolean;
     }
   | {
       /** One of the app's sentences, replaced for the business or cleared. */
@@ -239,6 +440,30 @@ export type ActivityLine =
     }
   | { action: "lists.cancel"; name: string }
   | {
+      /** A list passed from one department to another (lists L5). */
+      action: "lists.pass";
+      name: string;
+      /** Where it was: null for a person, a shift or a role, or a department not known. */
+      from: string | null;
+      /** Null when the department is not known (any more). */
+      to: string | null;
+      /** A note came with it; the log never keeps the note. */
+      note: boolean;
+    }
+  /** A list's times (lists L4): one late, or closed with nobody doing it. */
+  | { action: "lists.late" | "lists.missed"; name: string }
+  | {
+      /** A reading outside its item's range; the actor read it. */
+      action: "lists.out_of_range";
+      name: string;
+      label: string;
+      reading: number;
+      min: number | null;
+      max: number | null;
+      /** The item's unit; null when it has none, or the row is older than it. */
+      unit: string | null;
+    }
+  | {
       /** An owner or the team gave a permission, or took it back. */
       action: "permission.grant" | "permission.revoke";
       /** The permission's key, such as `clock.payroll`. */
@@ -246,11 +471,270 @@ export type ActivityLine =
       to: ActivityGrantee;
     }
   | {
+      /**
+       * An owner or the team switched a permission for everyone in a role
+       * (roles R2, `public.set_role_permission`): on, or off.
+       */
+      action: "role.permission";
+      role: Role | null;
+      permission: ActivityRolePermission;
+      on: boolean;
+      /**
+       * The role the business named, by its name then, when the switch was
+       * its own (roles R11a); `role` is what it is built on.
+       */
+      named?: string;
+    }
+  | {
+      /**
+       * An owner or the team added a role the business names (roles R11a),
+       * built on a manager or a worker.
+       */
+      action: "role.create";
+      name: string;
+      base: Role | null;
+    }
+  | {
+      /** A role the business named got a new name. */
+      action: "role.rename";
+      from: string;
+      to: string;
+    }
+  | {
+      /** A role the business named went to the archive, or came back. */
+      action: "role.archive" | "role.restore";
+      name: string;
+    }
+  | {
       action: "lists.reopen";
       name: string;
       was: "finished" | "cancelled" | null;
     }
+  | {
+      /**
+       * Items of a finished list fixed in place after it closed (lists
+       * L6b-1): one, or one person's run of them on the list, each item once
+       * from where it began to where it ended. No text: the list is the
+       * record.
+       */
+      action: "lists.fix";
+      name: string;
+      items: ActivityListFix[];
+    }
+  | {
+      /** A pay holder set someone's hourly wage from a day (payroll P4). */
+      action: "wage.set";
+      person: ActivityPerson;
+      /** The wage, in agorot. */
+      agorot: number;
+      /** What it was on that day before, in agorot; null when it had none. */
+      previous: number | null;
+      /** The day it takes effect, YYYY-MM-DD. */
+      from: string;
+      /**
+       * The adult minimum of that day when it was set, in agorot; null when
+       * the table had none, or on a row from before the log kept it.
+       */
+      minimum: number | null;
+      note: string | null;
+    }
+  | {
+      /**
+       * A pay holder changed someone's details for payroll (payroll P5): which
+       * fields, never their values. A birth date shows as the youth.
+       */
+      action: "payroll.details";
+      person: ActivityPerson;
+      fields: PayrollDetailField[];
+    }
+  | {
+      /** A pay holder added or changed a period of someone's work (payroll P5). */
+      action: "payroll.period";
+      person: ActivityPerson;
+      added: boolean;
+      /** It had been copied from joining the app, and is a holder's now. */
+      confirmed: boolean;
+      fields: PeriodField[];
+    }
+  | {
+      /**
+       * A pay holder took a month's file for payroll (payroll P8): which
+       * month, and how many people and shifts it listed when the log says.
+       */
+      action: "payroll.export";
+      /** `YYYY-MM`. */
+      month: string;
+      people: number | null;
+      shifts: number | null;
+    }
+  | {
+      /** The owner or an accountant closed a month for payroll (payroll P9). */
+      action: "payroll.close";
+      /** `YYYY-MM`. */
+      month: string;
+    }
+  | {
+      /** The owner or an accountant reopened a closed month, saying why (payroll P9). */
+      action: "payroll.reopen";
+      /** `YYYY-MM`. */
+      month: string;
+      reason: string | null;
+    }
+  | {
+      /**
+       * Management removed someone's message in a group, or put it back
+       * (chat C1). Never what it said: the row holds ids only, and a view
+       * session reads none of these.
+       */
+      action: "chat.remove" | "chat.restore";
+      group: ActivityChatGroup;
+      /** Who wrote it. */
+      author: ActivityPerson;
+    }
+  | {
+      /**
+       * A document was sent (chat C6): to the business by the actor, or by
+       * the actor to people, how many. Never its category, title or file:
+       * the row holds ids and codes only, and only the office reads it.
+       */
+      action: "document.send";
+      direction: DocumentDirection;
+      /** People it went to; 0 for a document to the business. */
+      recipients: number;
+    }
+  | {
+      /**
+       * The office opened someone's document (once a day per reader): the
+       * access log. `person` is whose it is, null for one sent to people.
+       */
+      action: "document.open";
+      person: ActivityPerson | null;
+    }
+  | {
+      /** A document's file was removed, with the reason's code. */
+      action: "document.remove";
+      reason: DocumentRemoveReason | null;
+    }
+  /** A removed document's file was put back by whoever removed it. */
+  | { action: "document.restore" }
+  | {
+      /**
+       * Someone who runs the menu added an item or saved one (waiter mode
+       * P1, 20261117000500_order_taking_menu.sql): what changed, and the
+       * agorot before and after for its price and each option whose price
+       * moved. The row stands on its own: it names the item as it was then.
+       */
+      action: "menu.item.save";
+      name: string;
+      created: boolean;
+      /** What changed, in `MENU_ITEM_FIELDS`' order; none for a new one. */
+      fields: MenuItemField[];
+      /** Its price before (null for a new one) and after, when it moved. */
+      price: { before: number | null; after: number } | null;
+      options: MenuOptionMove[];
+    }
+  | { action: "menu.item.archive" | "menu.item.restore"; name: string }
+  | {
+      /** A pasted menu written in one go: how many items and new categories. */
+      action: "menu.import";
+      categories: number;
+      items: number;
+    }
+  | {
+      /** The menu's categories, or the business's places, saved whole. */
+      action: "menu.categories" | "menu.places";
+      added: number;
+      archived: number;
+      restored: number;
+      /** Renamed, moved, or sent to another department. */
+      changed: number;
+    }
   | { action: "other" };
+
+/** What an item's save changed, as the log names it, in order. */
+export const MENU_ITEM_FIELDS = [
+  "name",
+  "description",
+  "price",
+  "category",
+  "department",
+  "options",
+  "position",
+] as const;
+export type MenuItemField = (typeof MENU_ITEM_FIELDS)[number];
+
+/**
+ * An option whose price moved, by its group's name and its own: none before
+ * for one added, none after for one removed.
+ */
+export type MenuOptionMove = {
+  group: string;
+  option: string;
+  before: number | null;
+  after: number | null;
+};
+
+/** The fields of a list item a fix names (lists L6b-1), in order. */
+export const LIST_FIX_FIELDS = [
+  "checked",
+  "given",
+  "reading",
+  "answer",
+  "comment",
+  "photo",
+] as const;
+export type ListFixField = (typeof LIST_FIX_FIELDS)[number];
+
+/** An item's value a fix's row keeps, before and after: never its text. */
+export type ListFixValues = {
+  checked: boolean;
+  given: number | null;
+  reading: number | null;
+};
+
+/** One item a fix changed (lists L6b-1). */
+export type ActivityListFix = {
+  label: string;
+  /** The item's kind, or null when the row doesn't say. */
+  kind: "check" | "number" | "note" | "photo" | null;
+  unit: string | null;
+  /** What changed, in `LIST_FIX_FIELDS`' order. */
+  fields: ListFixField[];
+  from: ListFixValues;
+  to: ListFixValues;
+};
+
+/** A chat's group, as the log names it. */
+export type ActivityChatGroup =
+  | { kind: "team" }
+  /** The name is null when the department is not known (any more). */
+  | { kind: "department"; name: string | null };
+
+/** The fields of someone's details for payroll, as the log names them, in order. */
+export const PAYROLL_DETAIL_FIELDS = [
+  "payroll_number",
+  "rest_day",
+  "hours_law",
+  "compulsory_education",
+  "youth_until",
+] as const;
+export type PayrollDetailField = (typeof PAYROLL_DETAIL_FIELDS)[number];
+
+/** The fields of a period of work, as the log names them, in order. */
+export const PERIOD_FIELDS = [
+  "started_on",
+  "ended_on",
+  "last_paid_on",
+] as const;
+export type PeriodField = (typeof PERIOD_FIELDS)[number];
+
+/** The known names of a list, in their order; anything else is left out. */
+function knownFields<F extends string>(
+  names: readonly unknown[],
+  known: readonly F[],
+): F[] {
+  return known.filter((field) => names.includes(field));
+}
 
 /** One line of the log. Holds no ids, so it can go anywhere. */
 export type ActivityEntry = {
@@ -275,6 +759,22 @@ const instant = z
 const fields = z.record(z.string(), z.unknown());
 const times = z.object({ clock_in: instant, clock_out: instant.nullable() });
 const span = z.object({ start: instant, end: instant.nullable() });
+const fixValues = z.object({
+  checked: z.boolean().nullable().catch(null),
+  given: z.number().nullable().catch(null),
+  reading: z.number().nullable().catch(null),
+});
+const noValues: ListFixValues = { checked: false, given: null, reading: null };
+const fixValuesOf = (
+  values: z.infer<typeof fixValues> | undefined,
+): ListFixValues =>
+  values
+    ? {
+        checked: values.checked === true,
+        given: values.given,
+        reading: values.reading,
+      }
+    : noValues;
 
 const schemas = {
   "business.create": z.object({ invites: z.int().min(0).optional() }),
@@ -304,10 +804,69 @@ const schemas = {
     clock_in: instant.optional(),
     breaks: z.array(z.object({ from: span, to: span.nullable() })),
   }),
+  // 20261117000200_cancelled_shifts.sql: an open shift's clock_out is null.
+  "clock.cancel": z.object({
+    person: id,
+    clock_in: instant,
+    clock_out: instant.nullable().optional(),
+    note: z.unknown().optional(),
+  }),
+  "clock.restore": z.object({
+    person: id,
+    clock_in: instant,
+    clock_out: instant.nullable().optional(),
+    reopened: z.unknown().optional(),
+  }),
+  // 20261117000300_break_edits.sql: a break added or brought back has no
+  // `from`, one removed no `to`; a restore no note.
+  "clock.break_edit": z.object({
+    person: id,
+    clock_in: instant,
+    change: z.enum(BREAK_EDIT_KINDS),
+    from: span.nullable().optional(),
+    to: span.nullable().optional(),
+    unpaid: z.boolean().nullable().optional().catch(null),
+    note: z.unknown().optional(),
+  }),
   "clock.confirm": z.object({ person: id }),
   "clock.code.locked": z.object({ person: id.optional() }),
-  invite: z.object({ invite: id, role: z.unknown().optional() }),
-  role: z.object({ role: z.unknown().optional() }),
+  // 20261108000200_qr_clock.sql: the add keeps the name, a stop or restart
+  // the station alone.
+  "clock.station.add": z.object({ station: id, name: z.string() }),
+  "clock.station.stop": z.object({ station: id }),
+  // A role the business named, by its name then (20261115001600_named_roles_give.sql).
+  invite: z.object({
+    invite: id,
+    role: z.unknown().optional(),
+    role_name: z.string().optional().catch(undefined),
+  }),
+  // A team change (20261114000100_team_changes.sql): the published shifts
+  // that came off the person, the swaps cancelled and those open again are
+  // arrays, counted here.
+  "member.remove": z.object({
+    person: id,
+    role: z.unknown().optional(),
+    role_name: z.string().optional().catch(undefined),
+    shifts: z.array(z.unknown()).optional().catch(undefined),
+    swaps: z.array(z.unknown()).optional().catch(undefined),
+    reopened: z.array(z.unknown()).optional().catch(undefined),
+  }),
+  "member.role": z.object({
+    person: id,
+    role: z.unknown().optional(),
+    was: z.unknown().optional(),
+    role_name: z.string().optional().catch(undefined),
+    was_role_name: z.string().optional().catch(undefined),
+    shifts: z.array(z.unknown()).optional().catch(undefined),
+    swaps: z.array(z.unknown()).optional().catch(undefined),
+    reopened: z.array(z.unknown()).optional().catch(undefined),
+  }),
+  // 20261117000700_member_names.sql: the person alone, never a name.
+  "member.name": z.object({ person: id }),
+  role: z.object({
+    role: z.unknown().optional(),
+    role_name: z.string().optional().catch(undefined),
+  }),
   "swap.request": z.object({ swap: id, shift: id }),
   swap: z.object({ swap: id }),
   "swap.decide": z.object({
@@ -321,6 +880,7 @@ const schemas = {
     shifts: z.int().min(0),
     first: z.boolean(),
     swaps_removed: z.int().min(0),
+    running: z.boolean().default(false),
   }),
   "profile.bio_cleared": z.object({ person: id }),
   "wording.change": z.object({
@@ -348,6 +908,8 @@ const schemas = {
       kind: z.string(),
       id: id.optional(),
       role: z.unknown().optional(),
+      // A role the business named (R11d): its name as the list was sent.
+      role_name: z.string().optional().catch(undefined),
     }),
   }),
   "lists.finish": z.object({
@@ -359,10 +921,123 @@ const schemas = {
     name: z.string(),
     was: z.string().optional(),
   }),
+  "lists.pass": z.object({
+    name: z.string(),
+    from_department: id.nullable().optional(),
+    to_department: id,
+    has_note: z.boolean().default(false),
+  }),
+  "lists.out_of_range": z.object({
+    name: z.string(),
+    label: z.string(),
+    reading: z.number(),
+    min: z.number().nullable().default(null),
+    max: z.number().nullable().default(null),
+    unit: z.string().nullable().default(null),
+  }),
+  // A fix of a finished list (20261116000300_lists_fix.sql): `checked` is
+  // true or null, as list_items keeps it.
+  "lists.fix": z.object({
+    list: id,
+    name: z.string(),
+    item: id.optional(),
+    label: z.string(),
+    kind: z.enum(["check", "number", "note", "photo"]).nullable().catch(null),
+    unit: z.string().nullable().catch(null),
+    changed: z.array(z.unknown()).catch([]),
+    from: fixValues.optional().catch(undefined),
+    to: fixValues.optional().catch(undefined),
+  }),
+  "role.permission": z.object({
+    role: z.unknown(),
+    perm: z.string(),
+    to: z.boolean(),
+    name: z.string().optional().catch(undefined),
+  }),
+  "role.create": z.object({ name: z.string(), base: z.unknown().optional() }),
+  "role.rename": z.object({ from: z.string(), to: z.string() }),
+  "role.named": z.object({ name: z.string() }),
   permission: z.object({
     perm: z.string(),
     role: z.unknown().optional(),
     person: id.optional(),
+  }),
+  "wage.set": z.object({
+    person: id,
+    to_agorot: z.int().min(1),
+    from_agorot: z.int().min(1).nullable().optional(),
+    effective_from: z.iso.date(),
+    minimum_agorot: z.int().min(1).nullable().optional(),
+    note: z.unknown().optional(),
+  }),
+  "payroll.details": z.object({
+    person: id,
+    fields: z.array(z.unknown()),
+  }),
+  "payroll.period": z.object({
+    person: id,
+    added: z.boolean().default(false),
+    confirmed: z.boolean().default(false),
+    fields: z.array(z.unknown()).default([]),
+  }),
+  "payroll.export": z.object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    people: z.int().min(0).optional(),
+    shifts: z.int().min(0).optional(),
+  }),
+  "payroll.month": z.object({
+    month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/),
+    reason: z.unknown().optional(),
+  }),
+  "chat.moderation": z.object({
+    conversation: id,
+    message: id,
+    author: id.nullable().optional(),
+    department: id.nullable().optional(),
+  }),
+  "document.send": z.object({
+    document: id,
+    direction: z.enum(DOCUMENT_DIRECTIONS),
+    recipients: z.int().min(0).catch(0),
+  }),
+  "document.open": z.object({ document: id, person: id.nullable().optional() }),
+  "document.remove": z.object({
+    document: id,
+    reason: z.enum(DOCUMENT_REMOVE_REASONS).nullable().catch(null),
+  }),
+  "document.restore": z.object({ document: id }),
+  // The menu (20261117000500_order_taking_menu.sql): prices in agorot.
+  "menu.item.save": z.object({
+    item: id,
+    name: z.string(),
+    created: z.boolean().default(false),
+    changed: z.array(z.unknown()).catch([]),
+    price: z
+      .object({ before: z.int().min(0).nullable(), after: z.int().min(0) })
+      .optional()
+      .catch(undefined),
+    options: z
+      .array(
+        z.object({
+          group: z.string(),
+          option: z.string(),
+          before: z.int().min(0).nullable(),
+          after: z.int().min(0).nullable(),
+        }),
+      )
+      .optional()
+      .catch(undefined),
+  }),
+  "menu.item": z.object({ item: id, name: z.string() }),
+  "menu.import": z.object({
+    categories: z.int().min(0),
+    items: z.int().min(0),
+  }),
+  "menu.list": z.object({
+    added: z.int().min(0).catch(0),
+    archived: z.int().min(0).catch(0),
+    restored: z.int().min(0).catch(0),
+    changed: z.int().min(0).catch(0),
   }),
 };
 
@@ -419,14 +1094,55 @@ function noteOf(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+const PATH_ID = /^[0-9a-z-]{1,64}$/i;
+
+/**
+ * Whose a row is, as a link may carry it: a database's id, or the demo's own
+ * ("yoav"); null for anything else, which never reaches an address.
+ */
+function pathIdOf(value: string): string | null {
+  return PATH_ID.test(value) ? value : null;
+}
+
+/**
+ * Whether a break edit's sides fit what it did: one added or brought back has
+ * only its new times, one removed only its old, one changed both.
+ */
+function breakEditFits(
+  change: BreakEditKind,
+  from: unknown,
+  to: unknown,
+): boolean {
+  const has = (side: unknown) => side !== null && side !== undefined;
+  switch (change) {
+    case "add":
+    case "restore":
+      return has(to);
+    case "remove":
+      return has(from);
+    case "change":
+      return has(from) && has(to);
+  }
+}
+
+/** A role the business named, by its name then, for a line that names one (R11b). */
+function namedOf(name: string | undefined): { roleName?: string } {
+  return name?.trim() ? { roleName: name.trim() } : {};
+}
+
 function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
   const other = { action: "other" } as const;
   const read = <S extends z.ZodType>(schema: S) => {
     const parsed = schema.safeParse(row.details);
     return parsed.success ? (parsed.data as z.infer<S>) : null;
   };
-  const shiftOf = (shiftId: string | undefined) =>
+  const shiftOf = (shiftId: string | null | undefined) =>
     (shiftId && lookups.shifts.get(shiftId)) || null;
+  // A swap's line names the shift the request was made for, as it was then,
+  // so it reads the same after the shift moves or goes; without the request
+  // to read, the shift the row names, while it is there.
+  const swapShift = (swapId: string, shiftId: string | null | undefined) =>
+    lookups.swaps.get(swapId)?.shift ?? shiftOf(shiftId);
 
   switch (row.action) {
     case "business.create": {
@@ -531,6 +1247,63 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         breaks: [breakOf(first), ...rest.map(breakOf)],
       };
     }
+    case "clock.cancel": {
+      const details = read(schemas["clock.cancel"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        personId: pathIdOf(details.person),
+        times: {
+          clockIn: details.clock_in,
+          clockOut: details.clock_out ?? null,
+        },
+        note: noteOf(details.note),
+      };
+    }
+    case "clock.restore": {
+      const details = read(schemas["clock.restore"]);
+      if (!details) return other;
+      const reopened = details.reopened === true;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        personId: pathIdOf(details.person),
+        times: {
+          clockIn: details.clock_in,
+          // Open again, it has no end.
+          clockOut: reopened ? null : (details.clock_out ?? null),
+        },
+        reopened,
+      };
+    }
+    case "clock.break_edit": {
+      const details = read(schemas["clock.break_edit"]);
+      if (!details || !breakEditFits(details.change, details.from, details.to))
+        return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        personId: pathIdOf(details.person),
+        clockIn: details.clock_in,
+        change: details.change,
+        from:
+          details.change === "add" || details.change === "restore"
+            ? null
+            : details.from
+              ? spanTimes(details.from)
+              : null,
+        to:
+          details.change === "remove"
+            ? null
+            : details.to
+              ? spanTimes(details.to)
+              : null,
+        unpaid: details.unpaid ?? null,
+        // A restore asks for no reason.
+        note: details.change === "restore" ? null : noteOf(details.note),
+      };
+    }
     case "clock.confirm": {
       const details = read(schemas["clock.confirm"]);
       return details
@@ -547,8 +1320,25 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       return read(schemas["clock.code.locked"])
         ? { action: row.action }
         : other;
+    case "clock.station.add": {
+      const details = read(schemas["clock.station.add"]);
+      return details?.name.trim()
+        ? { action: row.action, name: details.name.trim() }
+        : other;
+    }
+    case "clock.station.stop":
+    case "clock.station.restart": {
+      const details = read(schemas["clock.station.stop"]);
+      return details
+        ? {
+            action: row.action,
+            name: lookups.stations.get(details.station.toLowerCase()) ?? null,
+          }
+        : other;
+    }
     case "invite.create":
-    case "invite.send": {
+    case "invite.send":
+    case "invite.cancel": {
       const details = read(schemas.invite);
       if (!details) return other;
       const invite = lookups.invites.get(details.invite);
@@ -556,20 +1346,72 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
         action: row.action,
         name: invite?.name ?? null,
         role: roleOf(details.role) ?? invite?.role ?? null,
+        ...namedOf(details.role_name),
       };
     }
-    case "invite.claim":
+    case "member.remove": {
+      const details = read(schemas["member.remove"]);
+      return details
+        ? {
+            action: row.action,
+            person: personOf(details.person, lookups),
+            role: roleOf(details.role),
+            ...namedOf(details.role_name),
+            shifts: details.shifts?.length ?? 0,
+            swaps: details.swaps?.length ?? 0,
+            reopened: details.reopened?.length ?? 0,
+          }
+        : other;
+    }
+    case "member.role": {
+      const details = read(schemas["member.role"]);
+      return details
+        ? {
+            action: row.action,
+            person: personOf(details.person, lookups),
+            role: roleOf(details.role),
+            was: roleOf(details.was),
+            ...namedOf(details.role_name),
+            ...(details.was_role_name
+              ? { wasName: details.was_role_name }
+              : {}),
+            shifts: details.shifts?.length ?? 0,
+            swaps: details.swaps?.length ?? 0,
+            reopened: details.reopened?.length ?? 0,
+          }
+        : other;
+    }
+    case "member.name": {
+      const details = read(schemas["member.name"]);
+      return details
+        ? { action: row.action, person: personOf(details.person, lookups) }
+        : other;
+    }
+    case "invite.claim": {
+      const details = read(schemas.role);
+      return details
+        ? {
+            action: row.action,
+            role: roleOf(details.role),
+            ...namedOf(details.role_name),
+          }
+        : other;
+    }
     case "view_as.start":
     case "view_as.end": {
       const details = read(schemas.role);
       return details
-        ? { action: row.action, role: roleOf(details.role) }
+        ? {
+            action: row.action,
+            role: roleOf(details.role),
+            ...namedOf(details.role_name),
+          }
         : other;
     }
     case "swap.request": {
       const details = read(schemas["swap.request"]);
       return details
-        ? { action: row.action, shift: shiftOf(details.shift) }
+        ? { action: row.action, shift: swapShift(details.swap, details.shift) }
         : other;
     }
     case "swap.take":
@@ -577,7 +1419,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       const details = read(schemas.swap);
       if (!details) return other;
       const swap = lookups.swaps.get(details.swap);
-      const shift = shiftOf(swap?.shiftId);
+      const shift = swapShift(details.swap, swap?.shiftId);
       return row.action === "swap.take"
         ? {
             action: row.action,
@@ -592,7 +1434,8 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       if (!details) return other;
       return {
         action: row.action,
-        shift: shiftOf(
+        shift: swapShift(
+          details.swap,
           details.shift ?? lookups.swaps.get(details.swap)?.shiftId,
         ),
         from: personOf(details.from, lookups),
@@ -647,14 +1490,16 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     }
     case "lists.template.archive":
     case "lists.template.restore":
-    case "lists.cancel": {
+    case "lists.cancel":
+    case "lists.late":
+    case "lists.missed": {
       const details = read(schemas["lists.named"]);
       return details ? { action: row.action, name: details.name } : other;
     }
     case "lists.send": {
       const details = read(schemas["lists.send"]);
       if (!details) return other;
-      const { kind, id: to, role } = details.recipient;
+      const { kind, id: to, role, role_name: roleName } = details.recipient;
       const recipient: ActivityRecipient | null =
         kind === "person"
           ? { kind, person: personOf(to, lookups) }
@@ -666,7 +1511,9 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             : kind === "shift"
               ? { kind }
               : kind === "role"
-                ? { kind, role: roleOf(role) }
+                ? roleName
+                  ? { kind, role: roleOf(role), name: roleName }
+                  : { kind, role: roleOf(role) }
                 : null;
       return recipient
         ? { action: row.action, name: details.name, to: recipient }
@@ -683,6 +1530,25 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
           }
         : other;
     }
+    case "lists.out_of_range": {
+      const details = read(schemas["lists.out_of_range"]);
+      return details ? { action: row.action, ...details } : other;
+    }
+    case "lists.pass": {
+      const details = read(schemas["lists.pass"]);
+      if (!details) return other;
+      const named = (department: string | null | undefined) =>
+        department
+          ? (lookups.departments.get(department.toLowerCase()) ?? null)
+          : null;
+      return {
+        action: row.action,
+        name: details.name,
+        from: named(details.from_department),
+        to: named(details.to_department),
+        note: details.has_note,
+      };
+    }
     case "lists.reopen": {
       const details = read(schemas["lists.reopen"]);
       if (!details) return other;
@@ -691,6 +1557,52 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
           ? details.was
           : null;
       return { action: row.action, name: details.name, was };
+    }
+    case "lists.fix": {
+      const details = read(schemas["lists.fix"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        name: details.name,
+        items: [
+          {
+            label: details.label,
+            kind: details.kind,
+            unit: details.unit,
+            fields: knownFields(details.changed, LIST_FIX_FIELDS),
+            from: fixValuesOf(details.from),
+            to: fixValuesOf(details.to),
+          },
+        ],
+      };
+    }
+    case "role.permission": {
+      const details = read(schemas["role.permission"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        role: roleOf(details.role),
+        permission: rolePermissionOf(details.perm),
+        on: details.to,
+        ...(details.name ? { named: details.name } : {}),
+      };
+    }
+    case "role.create": {
+      const details = read(schemas["role.create"]);
+      return details
+        ? { action: row.action, name: details.name, base: roleOf(details.base) }
+        : other;
+    }
+    case "role.rename": {
+      const details = read(schemas["role.rename"]);
+      return details
+        ? { action: row.action, from: details.from, to: details.to }
+        : other;
+    }
+    case "role.archive":
+    case "role.restore": {
+      const details = read(schemas["role.named"]);
+      return details ? { action: row.action, name: details.name } : other;
     }
     case "permission.grant":
     case "permission.revoke": {
@@ -711,6 +1623,139 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             to: { kind: "role", role: roleOf(details.role) },
           };
     }
+    case "wage.set": {
+      const details = read(schemas["wage.set"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        agorot: details.to_agorot,
+        previous: details.from_agorot ?? null,
+        from: details.effective_from,
+        minimum: details.minimum_agorot ?? null,
+        note: noteOf(details.note),
+      };
+    }
+    case "payroll.details": {
+      const details = read(schemas["payroll.details"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        fields: knownFields(details.fields, PAYROLL_DETAIL_FIELDS),
+      };
+    }
+    case "payroll.period": {
+      const details = read(schemas["payroll.period"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        person: personOf(details.person, lookups),
+        added: details.added,
+        confirmed: details.confirmed,
+        fields: knownFields(details.fields, PERIOD_FIELDS),
+      };
+    }
+    case "payroll.export": {
+      const details = read(schemas["payroll.export"]);
+      return details
+        ? {
+            action: row.action,
+            month: details.month,
+            people: details.people ?? null,
+            shifts: details.shifts ?? null,
+          }
+        : other;
+    }
+    case "payroll.close": {
+      const details = read(schemas["payroll.month"]);
+      return details ? { action: row.action, month: details.month } : other;
+    }
+    case "payroll.reopen": {
+      const details = read(schemas["payroll.month"]);
+      return details
+        ? {
+            action: row.action,
+            month: details.month,
+            reason: noteOf(details.reason),
+          }
+        : other;
+    }
+    case "chat.remove":
+    case "chat.restore": {
+      const details = read(schemas["chat.moderation"]);
+      if (!details) return other;
+      const department = details.department ?? null;
+      return {
+        action: row.action,
+        group: department
+          ? {
+              kind: "department",
+              name: lookups.departments.get(department.toLowerCase()) ?? null,
+            }
+          : { kind: "team" },
+        author: personOf(details.author, lookups),
+      };
+    }
+    case "document.send": {
+      const details = read(schemas["document.send"]);
+      return details
+        ? {
+            action: row.action,
+            direction: details.direction,
+            recipients:
+              details.direction === "to_people" ? details.recipients : 0,
+          }
+        : other;
+    }
+    case "document.open": {
+      const details = read(schemas["document.open"]);
+      if (!details) return other;
+      const person = details.person ?? null;
+      return {
+        action: row.action,
+        person: person === null ? null : personOf(person, lookups),
+      };
+    }
+    case "document.remove": {
+      const details = read(schemas["document.remove"]);
+      return details ? { action: row.action, reason: details.reason } : other;
+    }
+    case "document.restore":
+      return read(schemas["document.restore"]) ? { action: row.action } : other;
+    case "menu.item.save": {
+      const details = read(schemas["menu.item.save"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        name: details.name,
+        created: details.created,
+        fields: details.created
+          ? []
+          : knownFields(details.changed, MENU_ITEM_FIELDS),
+        price:
+          details.price && details.price.before !== details.price.after
+            ? details.price
+            : null,
+        options: (details.options ?? []).filter(
+          (move) => move.before !== move.after,
+        ),
+      };
+    }
+    case "menu.item.archive":
+    case "menu.item.restore": {
+      const details = read(schemas["menu.item"]);
+      return details ? { action: row.action, name: details.name } : other;
+    }
+    case "menu.import": {
+      const details = read(schemas["menu.import"]);
+      return details ? { action: row.action, ...details } : other;
+    }
+    case "menu.categories":
+    case "menu.places": {
+      const details = read(schemas["menu.list"]);
+      return details ? { action: row.action, ...details } : other;
+    }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);
       return details
@@ -720,6 +1765,7 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             shifts: details.shifts,
             first: details.first,
             swapsRemoved: details.swaps_removed,
+            running: details.running,
           }
         : other;
     }
@@ -735,6 +1781,7 @@ export function activityRefs(rows: readonly ActivityRow[]) {
   const shifts = new Set<string>();
   const swaps = new Set<string>();
   const departments = new Set<string>();
+  const stations = new Set<string>();
   const add = (set: Set<string>, value: unknown) => {
     if (isUuid(value)) set.add(value.toLowerCase());
   };
@@ -757,6 +1804,20 @@ export function activityRefs(rows: readonly ActivityRow[]) {
       addAll(people, details.data.added);
       addAll(people, details.data.removed);
     }
+    if (row.action === "lists.pass") {
+      add(departments, details.data.from_department);
+      add(departments, details.data.to_department);
+    }
+    if (row.action === "chat.remove" || row.action === "chat.restore") {
+      add(people, details.data.author);
+      add(departments, details.data.department);
+    }
+    if (
+      row.action === "clock.station.stop" ||
+      row.action === "clock.station.restart"
+    ) {
+      add(stations, details.data.station);
+    }
     if (row.action === "lists.send") {
       const recipient = fields.safeParse(details.data.recipient);
       if (recipient.success) {
@@ -772,6 +1833,7 @@ export function activityRefs(rows: readonly ActivityRow[]) {
     shifts: [...shifts],
     swaps: [...swaps],
     departments: [...departments],
+    stations: [...stations],
   };
 }
 
@@ -779,7 +1841,25 @@ type Parsed = ActivityEntry & {
   actorId: string | null;
   /** When the run of edits this line stands for began. */
   since: string;
+  /**
+   * A fix's list, and each of its items' ids beside the line's items (lists
+   * L6b-1): what a run folds by, never shown.
+   */
+  fix?: { list: string; items: (string | null)[] };
 };
+
+/** The ids a fix's row names (lists L6b-1), for folding a run of them. */
+function fixRefsOf(row: ActivityRow): Parsed["fix"] {
+  if (row.action !== "lists.fix") return undefined;
+  const details = fields.safeParse(row.details);
+  if (!details.success) return undefined;
+  const { list, item } = details.data;
+  if (!isUuid(list)) return undefined;
+  return {
+    list: list.toLowerCase(),
+    items: [isUuid(item) ? item.toLowerCase() : null],
+  };
+}
 
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
@@ -795,11 +1875,56 @@ function foldsInto(newer: Parsed, older: Parsed): boolean {
   if (a.action === "lists.template.save") {
     return b.action === "lists.template.save" && a.name === b.name;
   }
+  // One person's fixes of one list (lists L6b-1).
+  if (a.action === "lists.fix") {
+    return (
+      b.action === "lists.fix" &&
+      newer.fix !== undefined &&
+      newer.fix.list === older.fix?.list
+    );
+  }
   return (
     a.action === "module.settings" &&
     b.action === "module.settings" &&
     a.module === b.module
   );
+}
+
+/**
+ * A run of fixes as one line (lists L6b-1): the older one's items first, as
+ * they were fixed, and an item fixed again once, from where it began to
+ * where it ended, with every field either named.
+ */
+function foldFixes(
+  newer: Parsed,
+  older: Parsed,
+  a: Extract<ActivityLine, { action: "lists.fix" }>,
+  b: Extract<ActivityLine, { action: "lists.fix" }>,
+): Parsed {
+  const items = [...b.items];
+  const ids = [...(older.fix?.items ?? b.items.map(() => null))];
+  a.items.forEach((item, index) => {
+    const id = newer.fix?.items[index] ?? null;
+    const at = id === null ? -1 : ids.indexOf(id);
+    const was = at >= 0 ? items[at] : undefined;
+    if (!was) {
+      items.push(item);
+      ids.push(id);
+      return;
+    }
+    items[at] = {
+      ...item,
+      fields: LIST_FIX_FIELDS.filter(
+        (field) => was.fields.includes(field) || item.fields.includes(field),
+      ),
+      from: was.from,
+    };
+  });
+  return {
+    ...newer,
+    line: { ...a, items },
+    fix: newer.fix ? { list: newer.fix.list, items: ids } : undefined,
+  };
 }
 
 /** The changes of two edits as one: the older one's before, the newer one's after. */
@@ -840,8 +1965,18 @@ function fold(newer: Parsed, older: Parsed): Parsed {
   ) {
     return { ...newer, line: { ...a, created: a.created || b.created } };
   }
+  if (a.action === "lists.fix" && b.action === "lists.fix") {
+    return foldFixes(newer, older, a, b);
+  }
   return newer;
 }
+
+/** The fields a fix's row keeps the values of, before and after. */
+const FIX_VALUE_FIELDS: readonly ListFixField[] = [
+  "checked",
+  "given",
+  "reading",
+];
 
 /** Each module's settings as they are when a business never set them, by module. */
 export type SettingDefaults = ReadonlyMap<
@@ -869,6 +2004,17 @@ function withoutNoChange(
     const changes = line.changes.filter((c) => !same(before(c), c.to));
     return changes.length ? { ...entry, line: { ...line, changes } } : null;
   }
+  // A fix that put a value back where it began (lists L6b-1). A fix of an
+  // answer, a comment or a photo has no value kept, so it always says so.
+  if (line.action === "lists.fix") {
+    const items = line.items.filter(
+      (item) =>
+        item.fields.length === 0 ||
+        !item.fields.every((field) => FIX_VALUE_FIELDS.includes(field)) ||
+        !same(item.from, item.to),
+    );
+    return items.length ? { ...entry, line: { ...line, items } } : null;
+  }
   return entry;
 }
 
@@ -893,6 +2039,7 @@ export function buildActivity(
       line: lineOf(row, lookups),
       actorId: row.actorId,
       since: row.createdAt,
+      fix: fixRefsOf(row),
     };
     const last = lines.at(-1);
     if (last && foldsInto(last, entry)) {

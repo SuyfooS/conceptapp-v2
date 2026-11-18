@@ -1,14 +1,20 @@
 import "server-only";
+import { type DocumentCategory, isDocumentCategory } from "@domain/documents";
 import {
   INBOX_PAGE_SIZE,
   type InboxCursor,
   type InboxPlace,
   inboxCursor,
   inboxPage,
+  type NotificationChat,
   type NotificationLookups,
   type NotificationRow,
+  notificationChats,
+  notificationDocuments,
   notificationRefs,
+  PHONE_ONLY_KINDS,
 } from "@domain/notifications";
+import { memberNames, nameIn } from "./member-names";
 import { isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -34,6 +40,10 @@ export type InboxPage = {
 
 const COLUMNS = "id, kind, params, actor_id, created_at, read_at, resolved_at";
 
+// A chat's own lines reach the phone only (`inbox: false`): the Chat tab
+// counts them. Quoted: PostgREST reads a dot in a list as its own syntax.
+const PHONE_ONLY = `(${PHONE_ONLY_KINDS.map((kind) => `"${kind}"`).join(",")})`;
+
 type Row = {
   id: string;
   kind: string;
@@ -56,10 +66,10 @@ const toRow = (row: Row): NotificationRow => ({
 
 /**
  * A page of the signed-in person's lines in a business, under RLS: only their
- * own, and only those still for them (their role, the modules that are on).
- * Every unread line comes first, a page at a time, then the read ones
- * (`inboxPage`), so whatever the bell counts is on some page. The names they
- * point at are read the same way.
+ * own, and only those still for them (their role, the modules that are on),
+ * but a chat's own lines, which only the phone shows. Every unread line comes
+ * first, a page at a time, then the read ones (`inboxPage`), so whatever the
+ * bell counts is on some page. The names they point at are read the same way.
  */
 export async function getInbox(
   businessId: string,
@@ -73,7 +83,8 @@ export async function getInbox(
       .from("notifications")
       .select(COLUMNS)
       .eq("business_id", businessId)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .not("kind", "in", PHONE_ONLY);
     query = read ? query.not("read_at", "is", null) : query.is("read_at", null);
     if (after) {
       query = query.or(
@@ -104,32 +115,87 @@ export async function getInbox(
     unread,
     earlier,
     older,
-    lookups: await lookupsFor(supabase, businessId, [...unread, ...earlier]),
+    lookups: await lookupsFor(supabase, businessId, [...unread, ...earlier], {
+      documents: true,
+    }),
   };
 }
 
-/** The names the rows point at, read under the reader's own access. */
+/**
+ * The names the rows point at, read under the reader's own access: people,
+ * by the business's name for them, and the groups chat lines name (a group the reader no longer reads, and its
+ * department's name, stay unknown). For the inbox alone (`documents`), the
+ * categories of the documents lines name, read from the documents themselves
+ * under the same session (RLS: only a document the reader still reads, so
+ * someone who lost pay access, or a recipient of a removed one, learns
+ * nothing); a phone's lines never look one up, so no lock screen says
+ * "אישור מחלה".
+ */
 async function lookupsFor(
   supabase: Awaited<ReturnType<typeof createClient>>,
   businessId: string,
   rows: readonly NotificationRow[],
+  read: { documents: boolean },
 ): Promise<NotificationLookups> {
   const people = notificationRefs(rows);
-  const members = people.length
-    ? await supabase
-        .from("memberships")
-        .select("user_id, active, profiles (full_name)")
-        .eq("business_id", businessId)
-        .in("user_id", people)
-    : null;
+  const chatIds = notificationChats(rows);
+  const documentIds = read.documents ? notificationDocuments(rows) : [];
+  const [members, names, chats, documents] = await Promise.all([
+    people.length
+      ? supabase
+          .from("memberships")
+          .select("user_id, active, profiles (full_name)")
+          .eq("business_id", businessId)
+          .in("user_id", people)
+      : null,
+    memberNames(supabase, businessId, people),
+    chatIds.length
+      ? supabase
+          .from("chat_conversations")
+          .select("id, kind, departments (name)")
+          .eq("business_id", businessId)
+          .in("id", chatIds)
+      : null,
+    documentIds.length
+      ? supabase
+          .from("documents")
+          .select("id, category")
+          .eq("business_id", businessId)
+          .in("id", documentIds)
+      : null,
+  ]);
   if (members?.error) throw members.error;
+  // Before the chat migration reaches a project there are no chats.
+  if (chats?.error && !isMissingTable(chats.error)) throw chats.error;
+  // Nor documents before C6's: the lines then say "a document" alone.
+  if (documents?.error && !isMissingTable(documents.error)) {
+    throw documents.error;
+  }
+  const categories = new Map<string, DocumentCategory>();
+  for (const document of documents?.data ?? []) {
+    if (isDocumentCategory(document.category)) {
+      categories.set(document.id, document.category);
+    }
+  }
+  const groups = new Map<string, NotificationChat>();
+  for (const chat of chats?.data ?? []) {
+    if (chat.kind === "team") groups.set(chat.id, { kind: "team" });
+    if (chat.kind === "department") {
+      groups.set(chat.id, {
+        kind: "department",
+        name: chat.departments?.name ?? null,
+      });
+    }
+  }
   return {
+    chats: groups,
+    ...(read.documents ? { documents: categories } : {}),
     members: new Map(
       (members?.data ?? []).map((row) => [
         row.user_id,
         {
           active: row.active,
-          name: row.profiles?.full_name?.trim() || null,
+          name: nameIn(names, row.user_id, row.profiles?.full_name),
         },
       ]),
     ),
@@ -192,7 +258,8 @@ export async function getPushedLines(
   return {
     lines: rows,
     again,
-    lookups: await lookupsFor(supabase, businessId, rows),
+    // Never a document's category: the phone shows these lines.
+    lookups: await lookupsFor(supabase, businessId, rows, { documents: false }),
   };
 }
 

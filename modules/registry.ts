@@ -1,6 +1,9 @@
 import type { ModuleKey, ModuleManifest } from "@domain/modules";
+import { declaredPermissions } from "@domain/permissions";
+import { manifest as chat } from "./chat/manifest";
 import { manifest as lists } from "./lists/manifest";
 import { manifest as notifications } from "./notifications/manifest";
+import { manifest as orderTaking } from "./order_taking/manifest";
 import { manifest as reservations } from "./reservations/manifest";
 import { manifest as scheduling } from "./scheduling/manifest";
 import { manifest as storefront } from "./storefront/manifest";
@@ -18,9 +21,18 @@ export const manifests = [
   storefront,
   notifications,
   lists,
+  chat,
+  orderTaking,
 ] as const satisfies readonly ModuleManifest[];
 
 export type Manifests = typeof manifests;
+
+/**
+ * Every permission, the modules' and the core ones, as
+ * `public.permission_keys` holds them: what the session computes today's
+ * answer from while the database can't give its own (`@db/session`).
+ */
+export const permissions = declaredPermissions(manifests);
 
 export function manifestFor<Key extends ModuleKey>(
   key: Key,

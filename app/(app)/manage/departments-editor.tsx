@@ -357,15 +357,15 @@ export function DepartmentsEditor({
                       if (event.key === "Enter") event.currentTarget.blur();
                     }}
                   />
+                  {/*
+                   * Named by what it shows, then the department, for a
+                   * screen reader only ("3 אנשים במטבח"). The faces are
+                   * pictures, hidden, so their initials stay out of the name.
+                   */}
                   <button
                     type="button"
                     onClick={() => openPeople(department.key)}
-                    // Says what it shows first ("3 people in the kitchen").
-                    aria-label={t("peopleIn", {
-                      count: department.members.length,
-                      name: department.name,
-                    })}
-                    className="pressable flex min-h-11 shrink-0 items-center gap-2 rounded-full px-2.5 text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
+                    className="pressable relative flex min-h-11 shrink-0 items-center gap-2 rounded-full px-2.5 text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
                   >
                     {faces.length > 0 ? (
                       <AvatarStack people={faces} size="sm" max={3} />
@@ -374,6 +374,10 @@ export function DepartmentsEditor({
                     )}
                     <span className="whitespace-nowrap">
                       {t("people", { count: department.members.length })}
+                    </span>
+                    <span className="sr-only">
+                      {" "}
+                      {t("peopleWhere", { name: department.name })}
                     </span>
                   </button>
                   {disabled ? null : (

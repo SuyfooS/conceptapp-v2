@@ -1,6 +1,7 @@
 import { dateIn } from "@domain/availability";
 import { dayMonth } from "@domain/availability-form";
 import {
+  fixedAfterClose,
   type ListHolder,
   type ListStatus,
   type ListSummary,
@@ -71,10 +72,19 @@ export function holderWords(
         ? t("card.to.department", { name })
         : t("card.for.department", { name });
     }
-    case "role":
+    case "role": {
+      // A role the business named, by its name; its base's words if it is
+      // one the reader can't name.
+      const name = holder.namedRole && lookups.roles[holder.namedRole];
+      if (name) {
+        return to
+          ? t("card.to.namedRole", { name })
+          : t("card.for.namedRole", { name });
+      }
       return to
         ? t("card.to.role", { role: holder.role })
         : t("card.for.role", { role: holder.role });
+    }
   }
 }
 
@@ -123,6 +133,40 @@ export function dueWords(
 }
 
 /**
+ * Until when someone given "תיקון רשימות שנסגרו" may still fix a closed list
+ * (L6b-2): "אפשר לתקן עד 08:05", with its day when that isn't today.
+ */
+export function fixUntilWords(
+  t: T,
+  until: string,
+  now: Date,
+  timeZone: string,
+): ReactNode {
+  const { time, date } = timeAndDay(until, now, timeZone);
+  return date === null
+    ? t.rich("list.fix.until", { time, ltr })
+    : t.rich("list.fix.untilOn", { time, date, ltr });
+}
+
+/**
+ * When that window ended, for someone given "תיקון רשימות שנסגרו" whose
+ * time is over (L6b-2), and who still fixes it: "הזמן לתקן את הרשימה נגמר
+ * ב-08:05. מי שעורך את הרשימות עדיין יכול לתקן אותה.", with its day when
+ * that wasn't today.
+ */
+export function fixOverWords(
+  t: T,
+  ended: string,
+  now: Date,
+  timeZone: string,
+): ReactNode {
+  const { time, date } = timeAndDay(ended, now, timeZone);
+  return date === null
+    ? t.rich("list.fix.over", { time, ltr })
+    : t.rich("list.fix.overOn", { time, date, ltr });
+}
+
+/**
  * By when an open list is due: a chip, louder once it's near or late. Late,
  * it still says by when, so a phone, which has no due column, keeps the time.
  */
@@ -161,12 +205,20 @@ export function openedWords(
   return date === null ? time : `${date}, ${time}`;
 }
 
-/** How a closed list ended: who finished it and when, missed, cancelled. */
+/**
+ * How a closed list ended: who finished it and when, with its day when that
+ * wasn't today (yesterday's list, still to fix, beside today's of the same
+ * name: "נסגרה ב-2.11, 08:20 על ידי נועה"), missed, cancelled. A list fixed
+ * after it was finished (L6b-1) says when, after who closed it, with the day
+ * when the fix wasn't on the day it closed: "נסגרה ב-08:05 על ידי נועה ·
+ * תוקנה ב-14:20".
+ */
 export function closedWords(
   t: T,
-  list: Pick<ListSummary, "status" | "finishedAt" | "finishedBy">,
+  list: Pick<ListSummary, "status" | "finishedAt" | "finishedBy" | "fixedAt">,
   lookups: ListLookups,
   timeZone: string,
+  now: Date,
 ): ReactNode {
   const ended: Record<Exclude<ListStatus, "open" | "finished">, string> = {
     missed: t("card.missed"),
@@ -174,13 +226,32 @@ export function closedWords(
   };
   if (list.status === "open") return null;
   if (list.status !== "finished") return ended[list.status];
-  return list.finishedAt
-    ? t.rich("card.finishedBy", {
-        time: timeIn(new Date(list.finishedAt), timeZone),
-        name: personName(t, lookups, list.finishedBy),
-        ltr,
-      })
-    : t("card.finished");
+  if (!list.finishedAt) return t("card.finished");
+  const finished = new Date(list.finishedAt);
+  const name = personName(t, lookups, list.finishedBy);
+  const at = timeAndDay(list.finishedAt, now, timeZone);
+  const closed =
+    at.date === null
+      ? t.rich("card.finishedBy", { time: at.time, name, ltr })
+      : t.rich("card.finishedByOn", {
+          time: at.time,
+          date: at.date,
+          name,
+          ltr,
+        });
+  if (!list.fixedAt || !fixedAfterClose(list.fixedAt, list)) return closed;
+  const fixed = new Date(list.fixedAt);
+  const time = timeIn(fixed, timeZone);
+  const day = dateIn(fixed, timeZone);
+  return (
+    <>
+      {closed}
+      {" · "}
+      {day === dateIn(finished, timeZone)
+        ? t.rich("card.fixed", { time, ltr })
+        : t.rich("card.fixedOn", { time, date: dayMonth(day), ltr })}
+    </>
+  );
 }
 
 /** "3 of 6". */

@@ -217,3 +217,16 @@ export function pushBatch<T>(
   }
   return { kind: "lines", lines: [...lines] };
 }
+
+/**
+ * Where a summary of several lines opens (payroll P3b), from the businesses
+ * the lines are from and the one the person is in now (`here`): the inbox
+ * when every line is from `here`, since the inbox lists that business only;
+ * else Home, where "העסקים שלי" says what is unread in each business.
+ */
+export function summaryPlace(
+  businessIds: readonly string[],
+  here: string,
+): "inbox" | "home" {
+  return businessIds.every((id) => id === here) ? "inbox" : "home";
+}

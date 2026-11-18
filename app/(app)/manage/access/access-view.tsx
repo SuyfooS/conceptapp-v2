@@ -2,15 +2,20 @@
 
 import {
   canGetPersonalPay,
+  coveredByRole,
+  hasPayRoleStaff,
+  namedRolesBesidePay,
   overPayHoldersWarning,
   PAY_ROLES,
   type PayRole,
   payHolderCount,
 } from "@domain/payroll-access";
+import { namedRoleName } from "@domain/role-access";
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { FieldRow } from "@ui/field-row";
+import { onLeavingBusiness } from "@ui/leaving-business";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
@@ -18,7 +23,7 @@ import { PersonAvatar } from "@ui/person-row";
 import { StatusToast } from "@ui/status-toast";
 import { Switch } from "@ui/switch";
 import { TriangleAlert } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { NoteView } from "../../clock/pay/note-view";
 import type { NotePayView } from "../../clock/pay/pay-types";
@@ -62,27 +67,44 @@ function useUndoSlot() {
  * switches; and people given access personally, each removed with an undo
  * under their list that holds the removal for six seconds before it is
  * written (so nobody is told twice), and added from the staff without it. A
- * held removal is written early when the page is hidden or closed, or the
- * screen is left, and its undo goes with it. How many see pay is said under
+ * held removal is written early when the page is hidden or closed, the
+ * screen is left, or the person switches business, and its undo goes with
+ * it. Each write names the business the screen was drawn for, and the
+ * server refuses it in any other. How many see pay is said under
  * the roles, with the warning past ten. Phone: one column. Tablet and desktop:
- * the roles at the start, the personal access at the end.
+ * the roles at the start, the personal access at the end. The same screen is
+ * the ConceptApp team's in the console (`paths.place`), with its own actions,
+ * its way back to the business and its own words for what a team role can't
+ * do; it notes no view there (`noted`). There a business may have nobody in
+ * it yet, and the screen says nobody sees pay and that whoever joins shows
+ * up, and someone on the team who is also in the business can't take away
+ * their own access. Someone in a role the business named goes by its name,
+ * with the role it is built on, and sees pay only by their own access, even
+ * where that role sees it (the roles plan's R11e): they are offered here,
+ * and while anyone offered is in one on a role that sees pay, a line under
+ * the switches names it, the switch it isn't under, and where to give them
+ * access, said as it appears (a switch turned on, a removal).
  */
 export function AccessView({
   data,
   actions,
   paths,
-  month,
-  note,
+  noted,
 }: {
   data: AccessData;
   actions: AccessActions;
   paths: AccessPaths;
-  /** The business's month today, for the view's note. */
-  month: string;
-  note: NotePayView;
+  /**
+   * Notes that the owner opened it (`payroll.view`), with the business's
+   * month today; null in the console, where the team holds no pay access.
+   */
+  noted: { month: string; note: NotePayView } | null;
 }) {
   const t = useTranslations("app.manage.access");
+  const tConsole = useTranslations("admin.access");
   const tRoles = useTranslations("app.team.roles");
+  const tTeam = useTranslations("app.team");
+  const locale = useLocale();
   const id = useId();
   // What the screen shows is its own from here: each change shows at once.
   const [roles, setRoles] = useState<PayRole[]>(data.roles);
@@ -101,9 +123,50 @@ export function AccessView({
 
   const nameOf = (person: AccessPersonRow) => person.name ?? t("noName");
   const disabled = data.viewOnly;
-  /** Their role sees pay anyway, with or without their own access. */
-  const roleCovers = (person: AccessPersonRow) =>
-    roles.some((role) => role === person.role);
+  /**
+   * What went wrong, said to whoever reads it: in the console, what a team
+   * role can't do, and someone no longer in the business (not "the team");
+   * what only the console's actions say, in its words wherever it comes.
+   */
+  const failureWords = (failure: AccessFailure) => {
+    if (failure === "notInUse" || failure === "self") {
+      return tConsole(`failure.${failure}`);
+    }
+    return paths.place === "console" &&
+      (failure === "noAccess" ||
+        failure === "viewOnly" ||
+        failure === "notInTeam")
+      ? tConsole(`failure.${failure}`)
+      : t(`failure.${failure}`);
+  };
+  /**
+   * Why nobody is offered: nobody pay access is given to (no managers or
+   * workers yet, as in a business the team has just set up), or all of them
+   * see it already, "the business" in the console, where "the team" is
+   * ConceptApp's.
+   */
+  const nobodyWords = () => {
+    if (!hasPayRoleStaff(people)) return t("personal.noStaff");
+    return paths.place === "console"
+      ? tConsole("nobody")
+      : t("personal.nobody");
+  };
+  /**
+   * Their role sees pay anyway, with or without their own access: never a
+   * role the business named (`coveredByRole`).
+   */
+  const roleCovers = (person: AccessPersonRow) => coveredByRole(person, roles);
+  /**
+   * Their role as the team's screens name it (the roles plan's R11b): a
+   * role the business named by its name, with the role it is built on.
+   */
+  const roleOf = (person: AccessPersonRow) =>
+    person.namedRole
+      ? tTeam("namedRole", {
+          name: namedRoleName(person.namedRole, locale),
+          role: tRoles(person.role),
+        })
+      : tRoles(person.role);
 
   function say(text: string) {
     setToast({ text, stamp: new Date().toISOString() });
@@ -170,12 +233,15 @@ export function AccessView({
     return held.person;
   }
 
-  /** Writes a removal held for its undo, now. Its undo goes with it. */
-  function commitPending() {
+  /**
+   * Writes a removal held for its undo, now, and returns the write (none when
+   * nothing is held). Its undo goes with it.
+   */
+  function commitPending(): Promise<boolean> | null {
     const person = releasePending();
-    if (person === null) return;
+    if (person === null) return null;
     personUndo.clear();
-    void run(
+    return run(
       () => actions.setPerson(person, false),
       () => markPersonal(person, true),
     );
@@ -199,7 +265,7 @@ export function AccessView({
 
   function remove(person: AccessPersonRow) {
     // One removal waits at a time: an earlier one is written now.
-    commitPending();
+    void commitPending();
     markPersonal(person.userId, false);
     pending.current = {
       person: person.userId,
@@ -229,7 +295,7 @@ export function AccessView({
       say(t("done.added", { name: nameOf(person) }));
       return;
     }
-    commitPending();
+    void commitPending();
     markPersonal(personId, true);
     void run(
       () => actions.setPerson(personId, true),
@@ -240,18 +306,23 @@ export function AccessView({
   }
 
   // While a removal is held, a hidden or closing page writes it now: a phone
-  // may never run the screen's timer again, and a closed tab never will.
+  // may never run the screen's timer again, and a closed tab never will. So
+  // does a switch to another business (payroll P3b), which waits for the
+  // write, so it runs in this business and not in the next.
   // biome-ignore lint/correctness/useExhaustiveDependencies: listens while one is held
   useEffect(() => {
     if (holding === null) return;
+    const now = () => void commitPending();
     const hidden = () => {
-      if (document.visibilityState === "hidden") commitPending();
+      if (document.visibilityState === "hidden") now();
     };
-    window.addEventListener("pagehide", commitPending);
+    window.addEventListener("pagehide", now);
     document.addEventListener("visibilitychange", hidden);
+    const stopLeaving = onLeavingBusiness(commitPending);
     return () => {
-      window.removeEventListener("pagehide", commitPending);
+      window.removeEventListener("pagehide", now);
       document.removeEventListener("visibilitychange", hidden);
+      stopLeaving();
     };
   }, [holding]);
 
@@ -262,7 +333,7 @@ export function AccessView({
   // biome-ignore lint/correctness/useExhaustiveDependencies: only on leaving
   useLayoutEffect(
     () => () => {
-      commitPending();
+      void commitPending();
       roleUndo.clear();
       personUndo.clear();
     },
@@ -273,6 +344,10 @@ export function AccessView({
   const personal = people.filter((p) => p.personal);
   const candidates = people.filter((p) => canGetPersonalPay(p, roles, data.me));
   const canAdd = !disabled && candidates.length > 0;
+  // Someone offered who is in a role the business named, on a role that sees
+  // pay: that role's switch isn't theirs, and the lines under it say so, a
+  // line for each such role, while one of its people still waits for access.
+  const besidePay = namedRolesBesidePay(candidates, roles);
 
   const fixed = (key: "owner" | "accountant") => (
     <ListRow
@@ -283,21 +358,27 @@ export function AccessView({
 
   return (
     <PageBody className={pageGlowClass}>
-      <NoteView month={month} kind="access" note={note} />
+      {noted ? (
+        <NoteView month={noted.month} kind="access" note={noted.note} />
+      ) : null}
       <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
       <PageHeader
-        back={{ href: paths.manage, label: t("back") }}
+        back={
+          paths.place === "app"
+            ? { href: paths.manage, label: t("back") }
+            : { href: paths.business, label: paths.name }
+        }
         title={t("title")}
         subtitle={t("subtitle")}
       />
 
       {failure ? (
         <p role="alert" className="px-1 font-medium text-danger">
-          {t(`failure.${failure}`)}
+          {failureWords(failure)}
         </p>
       ) : null}
       {disabled ? (
-        <p className="px-1 text-ink-2">{t("failure.viewOnly")}</p>
+        <p className="px-1 text-ink-2">{failureWords("viewOnly")}</p>
       ) : null}
 
       <div className="flex flex-col gap-6 md:grid md:grid-cols-2 md:items-start md:gap-8">
@@ -327,6 +408,32 @@ export function AccessView({
             />
           ) : null}
           <p className="px-1 text-ink-2">{t("count", { count })}</p>
+          {/* Always there, so what appears in it is said: the switch just
+              turned on isn't theirs. Empty, it is out of the flow but still
+              read (not display: none, which a reader would miss). */}
+          <div
+            aria-live="polite"
+            className="flex flex-col gap-1 px-1 text-ink-2 empty:sr-only"
+          >
+            {besidePay.map(({ namedRole, base }) => (
+              <p key={namedRole.id}>
+                {t("namedRoles", {
+                  role: namedRoleName(namedRole, locale),
+                  base,
+                })}
+              </p>
+            ))}
+            {besidePay.length > 0 && canAdd ? (
+              <p>{t("namedRolesAdd", { add: t("personal.add") })}</p>
+            ) : null}
+          </div>
+          {/* The office reads the documents people send (chat C7): the same people. */}
+          {data.documents ? (
+            <div className="flex flex-col gap-1 px-1 text-ink-2">
+              <p>{t("documents")}</p>
+              <p>{t("documentsCount", { count })}</p>
+            </div>
+          ) : null}
           {overPayHoldersWarning(count) ? (
             <p className="flex items-start gap-2 px-1 font-medium text-warning">
               <TriangleAlert
@@ -350,23 +457,29 @@ export function AccessView({
                   title={nameOf(person)}
                   subtitle={
                     roleCovers(person)
-                      ? `${tRoles(person.role)} · ${t("personal.roleCovers")}`
-                      : tRoles(person.role)
+                      ? `${roleOf(person)} · ${t("personal.roleCovers")}`
+                      : roleOf(person)
                   }
                   trailing={
-                    <Button
-                      variant="secondary"
-                      disabled={disabled}
-                      aria-label={t("personal.removeLabel", {
-                        name: nameOf(person),
-                      })}
-                      title={t("personal.removeLabel", {
-                        name: nameOf(person),
-                      })}
-                      onClick={() => remove(person)}
-                    >
-                      {t("personal.remove")}
-                    </Button>
+                    // Nobody changes their own (the database refuses it): in
+                    // the console, someone on the team who is also in the
+                    // business, given access by its owner.
+                    person.userId === data.me ? (
+                      <span className="text-ink-2">{t("personal.self")}</span>
+                    ) : (
+                      <Button
+                        variant="secondary"
+                        disabled={disabled}
+                        // The word it shows, then whose access it takes away.
+                        aria-label={t("personal.removeLabel", {
+                          remove: t("personal.remove"),
+                          name: nameOf(person),
+                        })}
+                        onClick={() => remove(person)}
+                      >
+                        {t("personal.remove")}
+                      </Button>
+                    )
                   }
                 />
               ))}
@@ -388,19 +501,22 @@ export function AccessView({
             <ListGroup>
               <FieldRow label={t("personal.add")}>
                 <ChoiceMenu
-                  label={t("personal.addLabel")}
+                  // Field, then what the button shows, as every menu reads.
+                  // The words beside it come in as a placeholder, so they
+                  // stay the name's first words in any business's wording.
+                  label={`${t("personal.addLabel", { add: t("personal.add") })}: ${t("personal.choose")}`}
                   value=""
                   placeholder={t("personal.choose")}
                   options={candidates.map((person) => ({
                     key: person.userId,
-                    label: `${nameOf(person)} · ${tRoles(person.role)}`,
+                    label: `${nameOf(person)} · ${roleOf(person)}`,
                   }))}
                   onChange={add}
                 />
               </FieldRow>
             </ListGroup>
           ) : candidates.length === 0 ? (
-            <p className="px-1 text-ink-2 text-sm">{t("personal.nobody")}</p>
+            <p className="px-1 text-ink-2 text-sm">{nobodyWords()}</p>
           ) : null}
         </PageSection>
       </div>

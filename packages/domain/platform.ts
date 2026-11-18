@@ -41,3 +41,36 @@ export function platformCan(
   if (role === "onboarder") return ONBOARDER.has(action);
   return false;
 }
+
+/**
+ * What the console's "מי רואה שכר" lets a team role do in a business (Orel's
+ * payroll decision 1, 9 November 2026: the owner, and the ConceptApp team from
+ * the console). Changing it takes `staff.invite`: the console's add-person
+ * page lets a role holding it invite anyone in any role, an accountant
+ * included, and an accountant always sees pay, so switching a role's or a
+ * person's access gives no power the role lacks. A role that only reads
+ * businesses would see the screen without changing it ("read"); none does
+ * today, so both platform admins and onboarders change it. Off the team:
+ * nothing (null), and the page is not found.
+ */
+export function consolePayAccess(
+  role: PlatformRole | null,
+): "change" | "read" | null {
+  if (!platformCan(role, "businesses.read")) return null;
+  return platformCan(role, "staff.invite") ? "change" : "read";
+}
+
+/**
+ * What the console's "תפקידים והרשאות" lets a team role do in a business
+ * (Orel, 15 November 2026, issue #1, Q5: the owner, and the ConceptApp team
+ * from the console, as who sees pay), gated as "מי רואה שכר" is: changing
+ * it takes `staff.invite`, since a role holding it invites anyone in any
+ * role, an owner included, who changes all of it, so switching what a role
+ * does gives no power the role lacks. A role that only reads businesses sees
+ * it without changing it ("read"); off the team, nothing (null).
+ */
+export function consoleRolesAccess(
+  role: PlatformRole | null,
+): "change" | "read" | null {
+  return consolePayAccess(role);
+}

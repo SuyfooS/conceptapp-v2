@@ -12,6 +12,12 @@ import {
   useState,
 } from "react";
 import { Avatar } from "./avatar";
+import {
+  type BusinessChoice,
+  BusinessMark,
+  BusinessMenu,
+  type ChooseBusiness,
+} from "./business-switcher";
 import { cn } from "./cn";
 
 export type NavItem = {
@@ -37,6 +43,18 @@ export type AppShellProps = {
   user: { name: string; role: string; photo?: string | null; href?: string };
   /** At most five items: the tab bar has room for five. */
   nav: NavItem[];
+  /**
+   * The businesses the person is in, when there is another to switch to
+   * (payroll P3b): the sidebar names the business as a menu of them. Phones
+   * and tablets switch from Home and the profile instead.
+   */
+  businesses?: { list: BusinessChoice[]; action: ChooseBusiness } | null;
+  /**
+   * The mode the screens are in, when the app draws a mode's own items
+   * (waiter mode): under the business's name in the sidebar, so a desktop
+   * says where it is, as each of the mode's screens does in its eyebrow.
+   */
+  mode?: string;
   children: ReactNode;
 };
 
@@ -86,6 +104,20 @@ function Count({ value, className }: { value?: number; className?: string }) {
  * page, or after scrolling up a good way, so small movements of a finger reading
  * the page don't keep resizing it. The soft blur under the wide bar goes with it.
  */
+/**
+ * A screen that takes the whole phone marks itself (ImmersiveScreen), and the
+ * tab bar steps aside there: the Composer floats in its place, over the bar's
+ * soft fade, which stays whole however the page scrolls and goes under the
+ * Composer (z-20) while still over the messages, so the content needs only
+ * the room under it. Tablets keep the bar. The selectors live here, in one
+ * place.
+ */
+const whenImmersive = {
+  hide: "max-md:[body:has([data-immersive])_&]:hidden",
+  fade: "max-md:[body:has([data-immersive])_&]:z-10 max-md:[body:has([data-immersive])_&]:opacity-100",
+  room: "max-md:[body:has([data-immersive])_&]:pb-[calc(env(safe-area-inset-bottom)+14px)]",
+};
+
 /** Below this far from the top of the page, the bar is always full. */
 const NEAR_TOP = 40;
 /** How far scrolling up has to go before a shrunk bar opens again. */
@@ -182,6 +214,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
         className={cn(
           "edge-fade-bottom pointer-events-none fixed inset-x-0 bottom-0 z-20 h-24 transition-opacity duration-200 ease-calm xl:hidden",
           small && "opacity-0",
+          whenImmersive.fade,
         )}
       />
       <nav
@@ -193,6 +226,7 @@ function TabBar({ nav }: { nav: NavItem[] }) {
         className={cn(
           "pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+14px)] z-30 flex xl:hidden",
           "md:justify-center",
+          whenImmersive.hide,
         )}
       >
         <ul
@@ -327,7 +361,14 @@ function UserBlock({ user }: { user: AppShellProps["user"] }) {
  * while the page loads. Items, labels, icons and order are identical
  * everywhere, so moving between devices needs no relearning.
  */
-export function AppShell({ businessName, user, nav, children }: AppShellProps) {
+export function AppShell({
+  businessName,
+  user,
+  nav,
+  businesses,
+  mode,
+  children,
+}: AppShellProps) {
   const { pathname, shown, press } = usePressedPath();
   const t = useTranslations("ui.appShell");
 
@@ -336,13 +377,21 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
       {/* desktop: full sidebar */}
       <aside className="fixed inset-y-3 start-3 z-20 hidden w-64 flex-col rounded-card bg-surface shadow-card xl:flex">
         <div className="flex items-center gap-3 px-5 py-5">
-          <span
-            aria-hidden="true"
-            className="flex size-10 items-center justify-center rounded-control bg-accent font-bold text-accent-ink"
-          >
-            {businessName.slice(0, 1)}
-          </span>
-          <span className="min-w-0 font-bold text-md">{businessName}</span>
+          {/* The same mark as the switcher's, in the business's colour. */}
+          <BusinessMark name={businessName} />
+          {businesses && businesses.list.length > 1 ? (
+            <BusinessMenu
+              businesses={businesses.list}
+              action={businesses.action}
+            />
+          ) : mode ? (
+            <span className="flex min-w-0 flex-col">
+              <span className="font-bold text-md">{businessName}</span>
+              <span className="text-ink-2 text-sm">{mode}</span>
+            </span>
+          ) : (
+            <span className="min-w-0 font-bold text-md">{businessName}</span>
+          )}
         </div>
         <nav
           aria-label={t("mainNav")}
@@ -409,7 +458,12 @@ export function AppShell({ businessName, user, nav, children }: AppShellProps) {
         )}
       </aside>
 
-      <div className="pb-[calc(env(safe-area-inset-bottom)+6.5rem)] xl:ps-[17.5rem] xl:pb-0">
+      <div
+        className={cn(
+          "pb-[calc(env(safe-area-inset-bottom)+6.5rem)] xl:ps-[17.5rem] xl:pb-0",
+          whenImmersive.room,
+        )}
+      >
         {children}
       </div>
 

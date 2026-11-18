@@ -1,8 +1,7 @@
 "use client";
 
 import type { WeekScheduleShift } from "@db/schedule";
-import { addDays, weekdayOf } from "@domain/availability";
-import { WEEKDAY_KEYS } from "@domain/availability-form";
+import { addDays } from "@domain/availability";
 import type { OwnShift } from "@domain/schedule";
 import { myRequestFor, offersFor } from "@domain/swaps";
 import { Avatar, AvatarStack } from "@ui/avatar";
@@ -13,6 +12,13 @@ import { cn } from "@ui/cn";
 import { PageSection } from "@ui/page";
 import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
+import {
+  PushAsk,
+  type PushAskOffer,
+  usePushAskOnce,
+} from "../../notifications/push-ask";
+import { DayTile } from "./day-tile";
+import { PastRequests } from "./past-requests";
 import { CardTarget, MyShiftHero } from "./shift-card";
 import {
   personRow,
@@ -24,31 +30,18 @@ import {
   assigneePeople,
   dayLabel,
   formOf,
+  hasStarted,
   ltr,
   nameOf,
+  outcomeLine,
   photoOf,
   positionName,
   type ShiftData,
   shiftLabel,
+  shiftOutcome,
   timeRange,
 } from "./shift-text";
 import { SwapButton } from "./swap-button";
-
-/** The day of a shift at a glance, as on the week strip. */
-function DayTile({ date }: { date: string }) {
-  const tDays = useTranslations("days");
-  return (
-    <span
-      aria-hidden="true"
-      className="flex size-10 shrink-0 flex-col items-center justify-center rounded-[13px] bg-surface-2 leading-none"
-    >
-      <span className="font-medium text-[11px] text-ink-2">
-        {tDays(`${WEEKDAY_KEYS[weekdayOf(date)] ?? "sun"}.short`)}
-      </span>
-      <span className="font-bold text-md">{Number(date.slice(8))}</span>
-    </span>
-  );
-}
 
 export function MyShiftsBoard({
   mine,
@@ -56,16 +49,26 @@ export function MyShiftsBoard({
   shifts,
   data,
   swap,
+  ask = null,
 }: {
   mine: OwnShift<WeekScheduleShift>[];
   anyPublished: boolean;
   shifts: WeekScheduleShift[];
   data: ShiftData;
   swap: SwapAction;
+  /** Offered once, right after a shift is given away. */
+  ask?: PushAskOffer | null;
 }) {
   const t = useTranslations("app");
   const sheet = useShiftSheet();
-  const offers = offersFor(data.swaps, shifts, data.userId, data.today);
+  const pushAsk = usePushAskOnce(ask);
+  const offers = offersFor(
+    data.swaps,
+    shifts,
+    data.userId,
+    new Date(data.now),
+    data.timeZone,
+  );
   const available = offers.filter((o) => o.state === "available").length;
   const [next, ...later] = mine;
   const tomorrow = addDays(data.today, 1);
@@ -76,10 +79,16 @@ export function MyShiftsBoard({
   return (
     <div className="grid items-start gap-8 md:grid-cols-2 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="flex min-w-0 flex-col gap-6">
+        <PushAsk offer={pushAsk.asking} moment="swap" onClose={pushAsk.close} />
         {next && whenNext ? (
           <MyShiftHero
             shift={next.shift}
-            label={t("shifts.hero.next")}
+            // Once it has begun it is no longer the next one, but theirs now.
+            label={
+              hasStarted(data, next.shift)
+                ? t("shifts.yours")
+                : t("shifts.hero.next")
+            }
             heading="h2"
             chip={
               whenNext === data.today
@@ -111,6 +120,12 @@ export function MyShiftsBoard({
                 const role = positionName(data, position);
                 const label = shiftLabel(t, shift);
                 const request = myRequestFor(data.swaps, shift.id, data.userId);
+                // Not approved, or the schedule cancelled it: said until they
+                // ask again or the shift begins. The sheet gives it again.
+                const outcome =
+                  request || hasStarted(data, shift)
+                    ? null
+                    : shiftOutcome(data, shift.id);
                 return (
                   <li
                     key={shift.id}
@@ -156,6 +171,10 @@ export function MyShiftsBoard({
                             />
                           </div>
                         </>
+                      ) : outcome ? (
+                        <p className="pt-1 text-sm">
+                          {outcomeLine(t, outcome)}
+                        </p>
                       ) : null}
                     </div>
                     <AvatarStack
@@ -174,80 +193,83 @@ export function MyShiftsBoard({
         ) : null}
       </div>
 
-      <PageSection
-        title={offersTitle}
-        action={
-          available > 0 ? (
-            <Badge tone="accent">
-              {t("shifts.swap.offers.count", { count: available })}
-            </Badge>
-          ) : null
-        }
-      >
-        {offers.length === 0 ? (
-          <Card padding="lg">
-            <CardText>{t("shifts.swap.offers.empty")}</CardText>
-          </Card>
-        ) : (
-          <ul
-            aria-label={offersTitle}
-            className="m-0 list-none overflow-hidden rounded-card bg-surface p-0 shadow-card"
-          >
-            {offers.map(({ swap: request, shift, state }) => {
-              const from = nameOf(t, data, request.requestedBy);
-              const role = positionName(
-                data,
-                shift.assignees.find((a) => a.user === request.requestedBy)
-                  ?.position,
-              );
-              return (
-                <li
-                  key={request.id}
-                  className={cn(personRow, "items-start py-3.5")}
-                >
-                  <Avatar
-                    name={from}
-                    photo={photoOf(data, request.requestedBy)}
-                  />
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="font-medium">
-                      {state === "takenByYou"
-                        ? t("shifts.swap.offers.takenByYou")
-                        : t("shifts.swap.offers.from", {
-                            name: from,
-                            form: formOf(data, request.requestedBy),
-                          })}
-                    </span>
-                    <span className="text-ink-2 text-sm">
-                      {dayLabel(t, shift.day)}
-                    </span>
-                    <span className="text-ink-2 text-sm">
-                      {shift.name} · {timeRange(t, shift)}
-                      {role ? ` · ${role}` : null}
-                    </span>
-                    {state === "busy" ? (
-                      <p className="pt-1 text-sm text-warning">
-                        {t("shifts.swap.offers.busy")}
-                      </p>
-                    ) : null}
-                    {state === "available" ? (
-                      <div className="pt-2">
-                        <Button
-                          variant="secondary"
-                          onClick={() => sheet.show(shift.id)}
-                          aria-label={`${t("shifts.swap.buttons.take")}, ${shiftLabel(t, shift)}`}
-                        >
-                          {t("shifts.swap.buttons.take")}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </PageSection>
+      <div className="flex min-w-0 flex-col gap-8">
+        <PageSection
+          title={offersTitle}
+          action={
+            available > 0 ? (
+              <Badge tone="accent">
+                {t("shifts.swap.offers.count", { count: available })}
+              </Badge>
+            ) : null
+          }
+        >
+          {offers.length === 0 ? (
+            <Card padding="lg">
+              <CardText>{t("shifts.swap.offers.empty")}</CardText>
+            </Card>
+          ) : (
+            <ul
+              aria-label={offersTitle}
+              className="m-0 list-none overflow-hidden rounded-card bg-surface p-0 shadow-card"
+            >
+              {offers.map(({ swap: request, shift, state }) => {
+                const from = nameOf(t, data, request.requestedBy);
+                const role = positionName(
+                  data,
+                  shift.assignees.find((a) => a.user === request.requestedBy)
+                    ?.position,
+                );
+                return (
+                  <li
+                    key={request.id}
+                    className={cn(personRow, "items-start py-3.5")}
+                  >
+                    <Avatar
+                      name={from}
+                      photo={photoOf(data, request.requestedBy)}
+                    />
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="font-medium">
+                        {state === "takenByYou"
+                          ? t("shifts.swap.offers.takenByYou")
+                          : t("shifts.swap.offers.from", {
+                              name: from,
+                              form: formOf(data, request.requestedBy),
+                            })}
+                      </span>
+                      <span className="text-ink-2 text-sm">
+                        {dayLabel(t, shift.day)}
+                      </span>
+                      <span className="text-ink-2 text-sm">
+                        {shift.name} · {timeRange(t, shift)}
+                        {role ? ` · ${role}` : null}
+                      </span>
+                      {state === "busy" ? (
+                        <p className="pt-1 text-sm text-warning">
+                          {t("shifts.swap.offers.busy")}
+                        </p>
+                      ) : null}
+                      {state === "available" ? (
+                        <div className="pt-2">
+                          <Button
+                            variant="secondary"
+                            onClick={() => sheet.show(shift.id)}
+                            aria-label={`${t("shifts.swap.buttons.take")}, ${shiftLabel(t, shift)}`}
+                          >
+                            {t("shifts.swap.buttons.take")}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </PageSection>
+        <PastRequests data={data} />
+      </div>
 
       <ShiftSheet
         id={sheet.id}
@@ -257,6 +279,7 @@ export function MyShiftsBoard({
         offers={offers}
         data={data}
         swap={swap}
+        onGiven={pushAsk.offer}
       />
     </div>
   );

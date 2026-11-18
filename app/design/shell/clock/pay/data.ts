@@ -1,32 +1,122 @@
 // Mock rows for the pay screens' demo: October 2026 at the demo restaurant,
-// to the minute. They stand in for database data (names, the reasons a
+// to the minute, with each person's hourly wage and details for payroll, run
+// through the real hours engine (payroll P7) with the three months before for
+// holiday pay. They stand in for database data (names, the reasons and notes a
 // manager wrote), so their Hebrew stays here; tooling/hebrew-literals.ts
 // allows this file.
 
-import { addDays, weekdayOf } from "@domain/availability";
+import { addDays, instantIn, weekdayOf } from "@domain/availability";
+import { payrollHistory } from "@domain/holiday-pay";
+import { minimumWageTableFrom } from "@domain/minimum-wage";
 import {
   addTotals,
   NO_PAY_TOTALS,
   type PayDay,
   type PayTotals,
 } from "@domain/pay-month";
+import {
+  monthEstimate,
+  ownMonthOf,
+  personRates,
+  remarkLines,
+  restNameOfAll,
+  toCheckOf,
+  weeksWorkedOut,
+} from "@domain/pay-rates";
+import {
+  type Buckets,
+  NO_BUCKETS,
+  type PayrollMonth,
+  type PayrollSettings,
+  payrollMonth,
+  payrollPersonOf,
+  payrollRange,
+  personPayroll,
+  withoutAmounts,
+} from "@domain/payroll";
+import { payrollCalendar } from "@domain/payroll-calendar";
+import {
+  currentPeriod,
+  DEFAULT_DETAILS,
+  type EmploymentPeriod,
+  type PayrollDetails,
+  wageFloorOf,
+} from "@domain/payroll-details";
+import {
+  type ExportDifference,
+  type ExportDifferences,
+  type ExportMeta,
+  type ExportPerson,
+  exportShiftsOf,
+} from "@domain/payroll-export";
+import { shabbatPlaceOf } from "@domain/shabbat";
+import {
+  entryDate,
+  type ShiftRecord,
+  type TimeEntry,
+} from "@domain/time-clock";
+import {
+  firstOfMonth,
+  firstOpenDay,
+  monthWage,
+  type WageRow,
+  wageFromBounds,
+  wageHistory,
+  wageNow,
+} from "@domain/wages";
+import { youthLabel } from "@domain/youth";
+import type { OwnPay } from "../../../../(app)/clock/clock-types";
 import type { PayHomeData } from "../../../../(app)/clock/pay/pay";
 import type {
+  MonthClosing,
   PayMonthData,
   PayPaths,
   PayPerson,
   PayPersonData,
+  PersonDetails,
+  PersonWage,
 } from "../../../../(app)/clock/pay/pay-types";
 import { portraits } from "../../../portraits";
+import { business } from "../../data";
 
 const MONTH = "2026-10";
 const CURRENT = "2026-11";
+/** The month before, closed for payroll in some of the demo's states (payroll P9). */
+const SEPTEMBER = "2026-09";
+/** The demo's today: wages are shown as they stand on it. */
+const TODAY = "2026-11-10";
+/** And its now, for the hours engine: a fixed moment, so the demo never changes. */
+const NOW = new Date("2026-11-10T10:00:00.000Z");
+const TIME_ZONE = "Asia/Jerusalem";
+/** The demo restaurant is in Tel Aviv, and hasn't set its work week. */
+const PLACE = { shabbatCity: "telAviv", timeZone: TIME_ZONE };
+const SETTINGS: PayrollSettings = {
+  workWeek: "unset",
+  shortDay: 4,
+  restStart: "candleLighting",
+  restStartTime: "14:00",
+  roundToMinutes: 0,
+};
 
 export const demoPayPaths: PayPaths = {
   pay: "/design/shell/clock/pay",
   team: "/design/shell/clock/team",
   clock: "/design/shell/clock",
+  settings: "/design/shell/manage/time_clock",
+  // The demo's own file, from these rows, logged nowhere.
+  file: "/design/shell/clock/pay/export",
 };
+
+/**
+ * The demo's paths for where October stands (`close`, `demoClosing`): with
+ * September's differences in October's file ("before", "empty"), the file
+ * link says so, so the workbook downloaded matches the screen.
+ */
+export function demoPayPathsFor(close: string | undefined): PayPaths {
+  return close === "before" || close === "empty"
+    ? { ...demoPayPaths, file: `${demoPayPaths.file}?close=${close}` }
+    : demoPayPaths;
+}
 
 let next = 0;
 const id = () => {
@@ -35,11 +125,15 @@ const id = () => {
 };
 
 /** A usual month: Sunday to Thursday, but the weekday off, 09:00–17:00 with half an hour off. */
-function usualDays(dayOff: number, more: Record<string, Partial<PayDay>> = {}) {
+function usualDays(
+  dayOff: number,
+  more: Record<string, Partial<PayDay>> = {},
+  month = MONTH,
+) {
   const days: PayDay[] = [];
   for (
-    let date = `${MONTH}-01`;
-    date.startsWith(MONTH);
+    let date = `${month}-01`;
+    date.startsWith(month);
     date = addDays(date, 1)
   ) {
     const weekday = weekdayOf(date);
@@ -80,6 +174,90 @@ function totalsOf(days: readonly PayDay[]): PayTotals {
   };
 }
 
+const URI = "69000000-0000-4000-a000-0000000000a1";
+const SHIRAN = "69000000-0000-4000-a000-0000000000a2";
+/** Who set the demo's wages, by id. */
+const setters: Record<string, string> = {
+  [URI]: "אורי הדגמה",
+  [SHIRAN]: "שירן הדגמה",
+};
+
+const wage = (
+  id: string,
+  agorot: number,
+  from: string,
+  setAt: string,
+  setBy: string | null,
+  note: string | null = null,
+): WageRow => ({ id, agorot, from, setAt, setBy, note });
+
+/** Each person's wages, as the database would give them. */
+const wages: Record<string, WageRow[]> = {
+  // A typo fixed the same day, and a raise set for December.
+  noa: [
+    wage("w-noa-1", 3880, "2026-10-01", "2026-09-28T07:00:00.000Z", URI),
+    wage(
+      "w-noa-2",
+      3800,
+      "2026-10-01",
+      "2026-09-28T07:05:00.000Z",
+      URI,
+      "תיקון הקלדה",
+    ),
+    wage("w-noa-3", 4000, "2026-12-01", "2026-11-08T08:00:00.000Z", URI),
+  ],
+  shiran: [
+    wage("w-shiran", 4500, "2026-09-01", "2026-08-30T08:00:00.000Z", URI),
+  ],
+  // A raise in the middle of October.
+  yoav: [
+    wage("w-yoav-1", 3600, "2026-09-01", "2026-08-30T08:00:00.000Z", URI),
+    wage(
+      "w-yoav-2",
+      3800,
+      "2026-10-15",
+      "2026-10-14T08:00:00.000Z",
+      SHIRAN,
+      "העלאה אחרי חצי שנה",
+    ),
+  ],
+  // She left before anyone set hers: her October has nothing to pay it by.
+  maya: [],
+};
+
+/** Each person's details for payroll, as the database would give them. */
+const details: Record<string, PayrollDetails> = {
+  shiran: { ...DEFAULT_DETAILS, payrollNumber: "101" },
+  noa: { ...DEFAULT_DETAILS, payrollNumber: "102" },
+  // He asked to rest on Friday.
+  yoav: { ...DEFAULT_DETAILS, payrollNumber: "103", restDay: 5 },
+  // A minor at school, 17 until April, still without a number.
+  maya: { ...DEFAULT_DETAILS, youthUntil: "2027-04-15" },
+};
+
+const period = (
+  id: string,
+  startedOn: string,
+  endedOn: string | null,
+  source: EmploymentPeriod["source"],
+  lastPaidOn: string | null = null,
+): EmploymentPeriod => ({ id, startedOn, endedOn, lastPaidOn, source });
+
+/** Each person's periods of work, oldest first. */
+const periods: Record<string, EmploymentPeriod[]> = {
+  shiran: [period("p-shiran", "2025-09-01", null, "set")],
+  // Copied from when she joined the app, for someone to check.
+  noa: [period("p-noa", "2026-03-01", null, "joined")],
+  // He worked here before, and came back in August.
+  yoav: [
+    period("p-yoav-1", "2024-06-01", "2024-12-31", "set", "2025-01-10"),
+    period("p-yoav-2", "2026-08-10", null, "set"),
+  ],
+  maya: [period("p-maya", "2026-03-01", "2026-10-19", "set")],
+};
+
+const detailsOfDemo = (userId: string) => details[userId] ?? DEFAULT_DETAILS;
+
 const person = (
   userId: string,
   name: string,
@@ -94,8 +272,58 @@ const person = (
   former: false,
   totals: totalsOf(days),
   days,
+  // Filled in from the hours engine below.
+  rates: null,
+  wage: monthWage(
+    wages[userId] ?? [],
+    MONTH,
+    days.map((day) => day.date),
+  ),
+  payrollNumber: detailsOfDemo(userId).payrollNumber,
+  // Shifts and no number: everyone here is on the staff, and nobody an owner.
+  noNumber:
+    totalsOf(days).shifts > 0 && detailsOfDemo(userId).payrollNumber === null,
+  minor: youthLabel(detailsOfDemo(userId).youthUntil, TODAY) !== null,
   ...more,
 });
+
+/**
+ * The person page's wage, as it stands on the demo's today; `closed` the
+ * months closed for payroll, which no wage may start in (payroll P9).
+ */
+function personWage(userId: string, closed: string[] = []): PersonWage {
+  const rows = wages[userId] ?? [];
+  const bounds = wageFromBounds(TODAY);
+  const earliest = firstOpenDay(bounds.earliest, closed);
+  const { latest } = bounds;
+  return {
+    ...wageNow(rows, TODAY),
+    history: wageHistory(rows).map((row) => ({
+      ...row,
+      setByName: row.setBy ? (setters[row.setBy] ?? null) : null,
+      setOn: row.setAt.slice(0, 10),
+    })),
+    can: "set",
+    today: TODAY,
+    from: { initial: firstOfMonth(TODAY), earliest, latest },
+    youthUntil: detailsOfDemo(userId).youthUntil,
+    startsOn: wageFloorOf(periods[userId] ?? []),
+    closed,
+  };
+}
+
+/** The person page's details, as their owner reads them on the demo's today. */
+function personDetails(userId: string): PersonDetails {
+  const own = periods[userId] ?? [];
+  return {
+    details: detailsOfDemo(userId),
+    periods: own,
+    current: currentPeriod(own, TODAY),
+    can: "set",
+    birth: true,
+    today: TODAY,
+  };
+}
 
 const people: PayPerson[] = [
   person(
@@ -123,6 +351,10 @@ const people: PayPerson[] = [
     usualDays(0, {
       // Hours she set for herself, for the owner to confirm.
       "2026-10-14": { source: "self", waiting: true, ownerOnly: true },
+      // She forgot to leave, and nobody has closed it yet: the hours count it
+      // up to the most an entry can be (24 hours), the rates not until it
+      // ends.
+      "2026-10-29": { out: null, minutes: 24 * 60, unpaidBreakMinutes: 0 },
     }),
     { photo: portraits.shiran },
   ),
@@ -152,39 +384,512 @@ const people: PayPerson[] = [
 ];
 
 const all = addTotals(people.map((row) => row.totals));
+const noWage = people.filter((row) => row.wage?.missing).length;
+const noNumber = people.filter((row) => row.noNumber).length;
 
-/** Everyone's October, with Noa beside the list on a tablet unless asked. */
-export function demoPayMonth(person?: string): PayMonthData {
+const at = (date: string, time: string) =>
+  instantIn(date, time, TIME_ZONE).toISOString();
+
+/** A shift of the demo as the clock would have recorded it, for the hours engine. */
+function entryOf(userId: string, day: PayDay): TimeEntry {
+  const ends =
+    day.out === null
+      ? null
+      : day.out <= day.in
+        ? addDays(day.date, 1)
+        : day.date;
+  return {
+    id: day.id,
+    userId,
+    clockIn: at(day.date, day.in),
+    clockOut: day.out === null || ends === null ? null : at(ends, day.out),
+    source: "punch",
+    breaks:
+      day.unpaidBreakMinutes > 0
+        ? [
+            {
+              id: `${day.id.slice(0, -3)}b00`,
+              startedAt: at(day.date, "13:00"),
+              endedAt: at(day.date, "13:30"),
+              unpaid: true,
+            },
+          ]
+        : [],
+    inProof:
+      day.source === "none" ? "none" : day.source === "self" ? "self" : "off",
+    outProof: day.source === "manager" ? "manager" : "off",
+    confirmedAt: null,
+    note: day.correction?.note ?? null,
+    editedBy: day.correction ? SHIRAN : null,
+    editedAt: day.correction ? at(addDays(day.date, 1), "10:00") : null,
+    createdAt: null,
+    restoredAt: null,
+  };
+}
+
+/** Whether the demo person worked here on a day, by their periods. */
+const employedOn = (userId: string, date: string) =>
+  (periods[userId] ?? []).some(
+    (one) =>
+      one.startedOn <= date && (one.endedOn === null || date <= one.endedOn),
+  );
+
+/**
+ * The three months before October, as each person usually worked them, for
+ * holiday pay's average: the same weekday off as in October, while employed.
+ */
+const usualDayOff: Record<string, number> = {
+  noa: 1,
+  shiran: 0,
+  yoav: 2,
+  maya: 3,
+};
+const historyEntries: TimeEntry[] = Object.entries(usualDayOff).flatMap(
+  ([userId, dayOff]) =>
+    ["2026-07", "2026-08", "2026-09"]
+      .flatMap((month) => usualDays(dayOff, {}, month))
+      .filter((day) => employedOn(userId, day.date))
+      .map((day) => entryOf(userId, day)),
+);
+const entries = [
+  ...historyEntries,
+  ...people.flatMap((row) => row.days.map((day) => entryOf(row.userId, day))),
+];
+
+/** The engine's input for a month of the demo, for some of its people. */
+function demoInput(
+  month: string,
+  of: readonly string[],
+  more: TimeEntry[] = [],
+) {
+  const range = payrollRange(month);
+  const read = [...entries, ...more].filter((entry) =>
+    of.includes(entry.userId),
+  );
+  return {
+    month,
+    timeZone: TIME_ZONE,
+    now: NOW,
+    entries: read,
+    people: of.map((userId) =>
+      payrollPersonOf(
+        userId,
+        details[userId],
+        periods[userId] ?? [],
+        wages[userId] ?? [],
+      ),
+    ),
+    settings: SETTINGS,
+    calendar: payrollCalendar(
+      shabbatPlaceOf(PLACE),
+      range.from,
+      range.to,
+      SETTINGS,
+    ),
+    history: payrollHistory(read, month, TIME_ZONE, NOW),
+  };
+}
+
+/**
+ * October by the hours engine: Shmini Atzeret on a Saturday, election day on
+ * the 27th (Yoav's day off, so it is paid; the others worked it), Yoav's night
+ * inside his Friday rest, Maya a minor with a short break every day, and
+ * Shiran's shift left open on the 29th, which the rates leave out.
+ */
+const ENGINE: PayrollMonth = payrollMonth(
+  demoInput(
+    MONTH,
+    people.map((row) => row.userId),
+  ),
+);
+
+/** The engine's month, or as while a business's estimate is off, without its amounts. */
+const engineOf = (amounts: boolean) =>
+  amounts ? ENGINE : withoutAmounts(ENGINE);
+
+/** `?estimate=off` shows the screens as a business sees them before the team turns amounts on. */
+const amountsFrom = (estimate: string | undefined) => estimate !== "off";
+
+/** Everyone's rows with their month by rate. */
+function peopleWithRates(amounts: boolean): PayPerson[] {
+  const engine = engineOf(amounts);
+  return people.map((row) => {
+    const month = engine.people.find((one) => one.userId === row.userId);
+    return {
+      ...row,
+      rates: month
+        ? personRates(month, detailsOfDemo(row.userId).restDay)
+        : null,
+    };
+  });
+}
+
+/** The month's estimate, as the app adds it: who has no wage is left out and counted. */
+const demoEstimate = (engine: PayrollMonth) =>
+  monthEstimate(
+    engine.people.map((one) => ({
+      estimateAgorot: one.estimateAgorot,
+      missing:
+        one.estimateAgorot === null &&
+        one.flags.some((flag) => flag.code === "noWage"),
+    })),
+  );
+
+/** The accent card's remarks, as the app names them. */
+function demoRemarks(
+  rows: readonly PayPerson[],
+  engine: PayrollMonth,
+): PayMonthData["remarks"] {
+  const { lines, rest } = remarkLines(
+    rows.map((row) => ({
+      userId: row.userId,
+      remarks: row.rates?.remarks ?? [],
+      holidayPay: row.rates?.holidayPay ?? [],
+    })),
+    5,
+  );
+  return {
+    lines: lines.map((line) => ({
+      ...line,
+      name: rows.find((row) => row.userId === line.userId)?.name ?? null,
+    })),
+    rest,
+    total: engine.people.reduce((sum, one) => sum + toCheckOf(one), 0),
+  };
+}
+
+/**
+ * Closing October (payroll P9), by `close`: none, a month that has ended and
+ * isn't closed, which the demo's owner may close; "closed" closed by Galit on
+ * 3 November; "changed" the same with a day corrected since; "manager" closed,
+ * as a manager with pay access reads it, who neither closes nor reopens;
+ * "before" not closed, with September closed and changed since, whose
+ * differences October's file holds; "empty" the same, with no hours of its
+ * own in October, whose file is still there for September's differences.
+ */
+function demoClosing(close: string | undefined): MonthClosing {
+  const closed =
+    close === "closed" || close === "changed" || close === "manager"
+      ? { date: "2026-11-03", time: "10:00", by: demoAccountantName }
+      : null;
+  return {
+    ended: true,
+    closed,
+    can: close !== "manager",
+    changed: close === "changed" ? 1 : 0,
+    // November, the month after, is the demo's current one: never closed.
+    nextClosed: false,
+  };
+}
+
+/**
+ * Everyone's October, with Noa beside the list on a tablet unless asked;
+ * `show` "noWage" lists only those whose shifts have no wage, "noNumber"
+ * those with no payroll number; `estimate` "off" leaves out every amount;
+ * `file` "sent" is a month whose file went out on 3 November, "changed" one
+ * whose hours changed since; `close` where the month stands for payroll
+ * (`demoClosing`).
+ */
+export function demoPayMonth(
+  person?: string,
+  show?: string,
+  estimate?: string,
+  file?: string,
+  close?: string,
+): PayMonthData {
+  const amounts = amountsFrom(estimate);
+  // September closed and changed since: October's file holds its days.
+  const differences =
+    close === "before" || close === "empty"
+      ? { month: SEPTEMBER, days: demoPayDifferences().rows.length }
+      : null;
+  if (close === "empty") {
+    // No hours of its own: nothing to estimate, check or close, and still
+    // a file, for September's differences.
+    return {
+      month: MONTH,
+      currentMonth: CURRENT,
+      minutes: 0,
+      people: [],
+      counts: { withHours: 0, toCheck: 0 },
+      before: {
+        ownerOnly: 0,
+        waiting: 0,
+        open: 0,
+        corrected: 0,
+        noWage: 0,
+        noNumber: 0,
+        rounding: false,
+      },
+      filter: null,
+      selected: null,
+      back: "team",
+      fixes: true,
+      amounts,
+      estimate: null,
+      remarks: { lines: [], rest: 0, total: 0 },
+      restName: restNameOfAll([]),
+      lastFile: null,
+      closing: demoClosing(close),
+      differences,
+    };
+  }
+  const engine = engineOf(amounts);
+  const everyone = peopleWithRates(amounts);
+  const filter =
+    show === "noWage" && noWage > 0
+      ? "noWage"
+      : show === "noNumber" && noNumber > 0
+        ? "noNumber"
+        : null;
+  const shown =
+    filter === "noWage"
+      ? everyone.filter((row) => row.wage?.missing)
+      : filter === "noNumber"
+        ? everyone.filter((row) => row.noNumber)
+        : everyone;
   return {
     month: MONTH,
     currentMonth: CURRENT,
     minutes: all.minutes,
-    people,
+    people: shown,
+    counts: {
+      withHours: people.filter((row) => row.totals.shifts > 0).length,
+      toCheck: all.waiting + all.open,
+    },
     before: {
       ownerOnly: all.ownerOnly,
       waiting: all.waiting - all.ownerOnly,
       open: all.open,
       corrected: all.corrected,
+      noWage,
+      noNumber,
       rounding: false,
     },
-    selected: people.find((row) => row.userId === person)?.userId ?? "noa",
+    filter,
+    selected:
+      shown.find((row) => row.userId === person)?.userId ??
+      shown[0]?.userId ??
+      null,
     back: "team",
     fixes: true,
+    amounts,
+    estimate: amounts ? demoEstimate(engine) : null,
+    remarks: demoRemarks(shown, engine),
+    restName: restNameOfAll(
+      everyone.flatMap((row) => (row.rates ? [row.rates.restDay] : [])),
+    ),
+    lastFile:
+      file === "sent" || file === "changed"
+        ? { date: "2026-11-03", time: "10:00", changed: file === "changed" }
+        : null,
+    closing: demoClosing(close),
+    differences,
   };
 }
 
-/** One person's October, from the same days as their row. */
-export function demoPayPerson(userId: string): PayPersonData | null {
-  const row = people.find((one) => one.userId === userId);
+/**
+ * September, closed for payroll on 3 October and changed since (payroll P9):
+ * the days October's file lists as differences with `?close=before` or
+ * `empty`, as the screen counts them. Noa stayed half an hour more on a
+ * 9-hour Monday (30 minutes more at 125%), and Yoav's forgotten Wednesday was
+ * added. Minutes only, never an amount.
+ */
+export function demoPayDifferences(): ExportDifferences {
+  const row = (
+    userId: string,
+    date: string,
+    minutes: { before: number; now: number },
+    change: Partial<Buckets>,
+    reason: string,
+  ): ExportDifference => {
+    const own = detailsOfDemo(userId);
+    return {
+      userId,
+      name: people.find((one) => one.userId === userId)?.name ?? null,
+      payrollNumber: own.payrollNumber,
+      restDay: own.restDay,
+      day: {
+        date,
+        before: minutes.before,
+        now: minutes.now,
+        buckets: { ...NO_BUCKETS, ...change },
+        entryIds: [],
+      },
+      reasons: [reason],
+    };
+  };
+  return {
+    month: SEPTEMBER,
+    closedAt: "2026-10-03T10:00",
+    engineChanged: false,
+    rows: [
+      row(
+        "noa",
+        "2026-09-14",
+        { before: 540, now: 570 },
+        { ot125: 30 },
+        "נשארה לסגור",
+      ),
+      row(
+        "yoav",
+        "2026-09-16",
+        { before: 0, now: 240 },
+        { regular: 240 },
+        "שכח להחתים כניסה",
+      ),
+    ],
+  };
+}
+
+/**
+ * October's file for payroll on the demo (payroll P8): the same month by the
+ * hours engine, its people with their October shifts as the clock recorded
+ * them, and what the file says about itself. Built by the app's own code
+ * (`payrollFileOf`) and logged nowhere.
+ */
+export function demoPayExport(): {
+  month: PayrollMonth;
+  people: ExportPerson[];
+  meta: ExportMeta;
+  slug: string;
+  now: Date;
+} {
+  const ids = new Set(people.map((row) => row.userId));
+  const october = entries.filter(
+    (entry) =>
+      ids.has(entry.userId) && entryDate(entry, TIME_ZONE).startsWith(MONTH),
+  );
+  // Each corrected shift's times before the correction.
+  const originals = new Map(
+    people.flatMap((row) =>
+      row.days.flatMap((day) =>
+        day.original
+          ? [
+              [
+                day.id,
+                {
+                  clockIn: at(day.date, day.original.in),
+                  clockOut:
+                    day.original.out === null
+                      ? null
+                      : at(day.date, day.original.out),
+                },
+              ] as const,
+            ]
+          : [],
+      ),
+    ),
+  );
+  const shifts = exportShiftsOf(
+    october,
+    MONTH,
+    TIME_ZONE,
+    NOW,
+    (userId) => setters[userId] ?? null,
+    originals,
+  );
+  return {
+    month: ENGINE,
+    people: people.map((row) => {
+      const own = detailsOfDemo(row.userId);
+      return {
+        userId: row.userId,
+        name: row.name,
+        form: row.form,
+        payrollNumber: own.payrollNumber,
+        hoursLaw: own.hoursLaw,
+        restDay: own.restDay,
+        wages: wages[row.userId] ?? [],
+        shifts: shifts.filter((shift) => shift.userId === row.userId),
+      };
+    }),
+    meta: {
+      business: business.name,
+      month: MONTH,
+      madeAt: "2026-11-10T12:00",
+      madeBy: "שירן הדגמה",
+      viewing: false,
+      settings: {
+        ...SETTINGS,
+        unpaidBreaks: true,
+        city: "telAviv",
+      },
+      minimumWageFrom: minimumWageTableFrom(),
+    },
+    slug: "demo-restaurant",
+    now: NOW,
+  };
+}
+
+/**
+ * October's cancelled shifts, by person: Noa's Friday, recorded by mistake on
+ * a day she had off and cancelled the Sunday after. In no total and no file.
+ */
+const cancelledShifts: Record<string, ShiftRecord[]> = {
+  noa: [
+    {
+      id: "69000000-0000-4000-a000-0000000000c1",
+      date: "2026-10-16",
+      in: "10:00",
+      out: "14:00",
+      minutes: 0,
+      breakMinutes: 0,
+      byManager: false,
+      overdue: false,
+      attendance: null,
+      correction: null,
+      cancelled: {
+        by: "שירן הדגמה",
+        date: "2026-10-18",
+        time: "09:40",
+        note: "נרשמה בטעות, נועה לא עבדה ביום שישי",
+      },
+      breaks: [],
+    },
+  ],
+};
+
+/**
+ * One person's October, from the same days as their row; `estimate` "off"
+ * leaves out every amount, `close` "closed" is October closed for payroll,
+ * which a new wage can't start in (payroll P9).
+ */
+export function demoPayPerson(
+  userId: string,
+  estimate?: string,
+  close?: string,
+): PayPersonData | null {
+  const amounts = amountsFrom(estimate);
+  const row = peopleWithRates(amounts).find((one) => one.userId === userId);
   if (!row) return null;
-  const { days, totals, ...who } = row;
+  const {
+    days,
+    totals,
+    wage: monthWageOf,
+    payrollNumber: _number,
+    noNumber: _noNumber,
+    minor: _minor,
+    rates,
+    ...who
+  } = row;
   return {
     person: who,
     month: MONTH,
     currentMonth: CURRENT,
     totals,
     days,
+    cancelled: cancelledShifts[userId] ?? [],
+    monthWage: monthWageOf,
+    wage: personWage(userId, close === "closed" ? [MONTH] : []),
+    details: personDetails(userId),
     fixes: true,
+    rates,
+    amounts,
+    weeks: weeksWorkedOut(ENGINE.notes, userId),
+    stale: false,
+    // The demo's reader is the owner: the note leads to the clock's settings.
+    setsWeek: true,
   };
 }
 
@@ -205,6 +910,24 @@ export const demoPayHome: PayHomeData = {
     { month: "2026-08", minutes: 112_410 },
     { month: "2026-07", minutes: 104_220 },
   ],
+  estimate: demoEstimate(ENGINE),
+  remarks: demoRemarks(peopleWithRates(true), ENGINE).total,
+};
+
+/** The same Home before the team turns the business's amounts on. */
+export const demoPayHomeNoAmounts: PayHomeData = {
+  ...demoPayHome,
+  estimate: null,
+};
+
+/**
+ * The same Home once every shift is approved and closed, with the hours
+ * engine's remarks still to check: the hero says those, not "אין מה לבדוק".
+ */
+export const demoPayHomeChecked: PayHomeData = {
+  ...demoPayHome,
+  toCheck: 0,
+  before: { ...demoPayHome.before, ownerOnly: 0, waiting: 0, open: 0 },
 };
 
 /** The same Home in a business whose clock has no hours yet. */
@@ -218,7 +941,101 @@ export const demoPayHomeEmpty: PayHomeData = {
     waiting: 0,
     open: 0,
     corrected: 0,
+    noWage: 0,
+    noNumber: 0,
     rounding: false,
   },
   earlier: demoPayHome.earlier.map((month) => ({ ...month, minutes: 0 })),
+  estimate: null,
+  remarks: 0,
 };
+
+/** A shift on the clock demo as the clock recorded it: its break after four hours. */
+function recordEntry(userId: string, record: ShiftRecord): TimeEntry {
+  const clockIn = instantIn(record.date, record.in, TIME_ZONE);
+  const ends =
+    record.out !== null && record.out <= record.in
+      ? addDays(record.date, 1)
+      : record.date;
+  const pause = clockIn.getTime() + 4 * 3_600_000;
+  return {
+    id: record.id,
+    userId,
+    clockIn: clockIn.toISOString(),
+    clockOut:
+      record.out === null
+        ? null
+        : instantIn(ends, record.out, TIME_ZONE).toISOString(),
+    source: "punch",
+    breaks:
+      record.breakMinutes > 0
+        ? [
+            {
+              id: `${record.id.slice(0, -3)}b00`,
+              startedAt: new Date(pause).toISOString(),
+              endedAt: new Date(
+                pause + record.breakMinutes * 60_000,
+              ).toISOString(),
+              unpaid: true,
+            },
+          ]
+        : [],
+    inProof: "off",
+    outProof: "off",
+    confirmedAt: null,
+    note: null,
+    editedBy: null,
+    editedAt: null,
+    createdAt: null,
+    restoredAt: null,
+  };
+}
+
+/** The shift Noa is in on the clock demo while she is at work: since 08:00 on the demo's today. */
+const runningEntry = (userId: string): TimeEntry => ({
+  id: "68000000-0000-4000-a000-000000000016",
+  userId,
+  clockIn: instantIn(TODAY, "08:00", TIME_ZONE).toISOString(),
+  clockOut: null,
+  source: "punch",
+  breaks: [],
+  inProof: "off",
+  outProof: null,
+  confirmedAt: null,
+  note: null,
+  editedBy: null,
+  editedAt: null,
+  createdAt: null,
+  restoredAt: null,
+});
+
+/**
+ * Noa's own month on the clock demo, by the same engine: the clock's shifts
+ * of `month`, her October and the months before for holiday pay, her wage
+ * and details, and with `open` the shift she is in, which the engine counts
+ * once it ends. Null with `estimate` "off", as the clock shows nothing then.
+ */
+export function demoOwnPay(
+  records: readonly ShiftRecord[],
+  month: string,
+  estimate?: string,
+  open = false,
+): OwnPay | null {
+  if (!amountsFrom(estimate)) return null;
+  // A cancelled shift counts nowhere, as the app's reads leave it out.
+  const own = [
+    ...records
+      .filter((record) => record.out !== null && record.cancelled === null)
+      .map((record) => recordEntry("noa", record)),
+    ...(open ? [runningEntry("noa")] : []),
+  ];
+  const result = personPayroll(demoInput(month, ["noa"], own), "noa");
+  if (!result) return null;
+  return {
+    month,
+    restDay: detailsOfDemo("noa").restDay,
+    business: business.name,
+    form: "f",
+    ...ownMonthOf(result),
+  };
+}

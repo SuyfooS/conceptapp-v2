@@ -4,9 +4,10 @@
 -- breaks, which the log keeps. Deleting a person or a business with hours fails;
 -- someone who only acted can still go, their log rows kept without them. The log
 -- changes only that way. Corrections and added shifts need a reason, which the
--- log keeps. Every call passes the time so the test does not depend on today.
+-- log keeps. A cancelled shift is kept the same, and so is a removed break.
+-- Every call passes the time so the test does not depend on today.
 begin;
-select plan(38);
+select plan(42);
 
 -- Before anything sets them: a session that never named the settings reads
 -- them as NULL, which the guard must treat as "no".
@@ -23,11 +24,14 @@ values
   ('76000000-0000-4000-a000-00000000000c', 'authenticated', 'authenticated', '972500002603'),
   ('76000000-0000-4000-a000-00000000000d', 'authenticated', 'authenticated', '972500002604'),
   ('76000000-0000-4000-a000-00000000000e', 'authenticated', 'authenticated', '972500002605'),
-  ('76000000-0000-4000-a000-00000000000f', 'authenticated', 'authenticated', '972500002606');
+  ('76000000-0000-4000-a000-00000000000f', 'authenticated', 'authenticated', '972500002606'),
+  ('76000000-0000-4000-a000-000000000010', 'authenticated', 'authenticated', '972500002607');
 
--- a: owner of X and Y; b: manager of X; c: worker of X, with hours; d: worker
--- of X who only acted (log rows, no hours); e and f: the owner and a worker of
--- a demo business.
+-- a: owner of X; g: owner of Y (one place on a staff per login,
+-- 20261110000900_several_businesses.sql); b: manager of X; c: worker of X,
+-- with hours; d: X's accountant, who only acted (log rows, no hours, and off the staff, so no
+-- employment period either: 20261110000600_payroll_details.sql keeps those);
+-- e and f: the owner and a worker of a demo business.
 insert into public.businesses (id, slug, name)
 values
   ('76000000-0000-4000-b000-000000000001', 'hk-x', 'Kept X'),
@@ -38,8 +42,8 @@ values
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000a', 'owner'),
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000b', 'manager'),
   ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000c', 'worker'),
-  ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000d', 'worker'),
-  ('76000000-0000-4000-b000-000000000002', '76000000-0000-4000-a000-00000000000a', 'owner');
+  ('76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000d', 'accountant'),
+  ('76000000-0000-4000-b000-000000000002', '76000000-0000-4000-a000-000000000010', 'owner');
 
 -- Nothing set: no code asked for.
 insert into public.business_modules (business_id, module_key, enabled, settings)
@@ -56,13 +60,13 @@ create temporary table ids (name text primary key, id uuid) on commit drop;
 grant all on ids to service_role, authenticated;
 
 -- c's shift at X with a break; the log's rows by c and by d; a log row of a
--- template, with no business; a's shift at Y.
+-- template, with no business; g's shift at Y.
 insert into public.time_entries (id, business_id, user_id, clock_in, clock_out)
 values
   ('76000000-0000-4000-e000-000000000001', '76000000-0000-4000-b000-000000000001',
     '76000000-0000-4000-a000-00000000000c', '2026-11-02 06:00+00', '2026-11-02 14:00+00'),
   ('76000000-0000-4000-e000-000000000002', '76000000-0000-4000-b000-000000000002',
-    '76000000-0000-4000-a000-00000000000a', '2026-11-02 06:00+00', '2026-11-02 14:00+00');
+    '76000000-0000-4000-a000-000000000010', '2026-11-02 06:00+00', '2026-11-02 14:00+00');
 insert into public.time_breaks (id, entry_id, business_id, user_id, started_at, ended_at, unpaid)
 values ('76000000-0000-4000-e000-0000000000b1', '76000000-0000-4000-e000-000000000001',
   '76000000-0000-4000-b000-000000000001', '76000000-0000-4000-a000-00000000000c',
@@ -221,6 +225,25 @@ select is(
 reset role;
 
 ------------------------------------------------------------------------------
+-- A cancel is no delete (20261117000200_cancelled_shifts.sql)
+
+set local role service_role;
+select public.cancel_time_entry('76000000-0000-4000-a000-00000000000b',
+  (select id from ids where name = 'added'), 'Wrong day', '2026-11-04 08:05+00');
+reset role;
+select is(
+  (select count(*)::integer || '/' || min(e.cancel_reason) || '/' || min(e.cancelled_by::text)
+   from public.time_entries e where e.id = (select id from ids where name = 'added')),
+  '1/Wrong day/76000000-0000-4000-a000-00000000000b',
+  'a cancelled shift stays, with who cancelled it and why'
+);
+select throws_ok(
+  format($$delete from public.time_entries where id = %L$$, (select id from ids where name = 'added')),
+  '42501', 'Hours are kept: nothing deletes them',
+  'and nothing deletes it either'
+);
+
+------------------------------------------------------------------------------
 -- A correction's trims of breaks are logged
 
 -- c's shift of 5 November, 06:00–14:00, with three breaks.
@@ -326,6 +349,27 @@ select is(
    where e.id = (select id from ids where name = 'punched')),
   'true/true',
   'with the shift and its break open again'
+);
+
+------------------------------------------------------------------------------
+-- A removed break is no delete (20261117000300_break_edits.sql)
+
+-- c's first break of 5 November, 10:30–11:00 since the shift moved.
+set local role service_role;
+select public.remove_time_break('76000000-0000-4000-a000-00000000000b',
+  '76000000-0000-4000-e000-0000000000b5', 'Pressed by mistake', '2026-11-06 09:00+00');
+reset role;
+select is(
+  (select count(*)::integer || '/' || min(to_char(b.started_at at time zone 'UTC', 'HH24:MI'))
+     || '-' || min(to_char(b.ended_at at time zone 'UTC', 'HH24:MI')) || '/' || min(b.removed_by::text)
+   from public.time_breaks b where b.id = '76000000-0000-4000-e000-0000000000b5'),
+  '1/10:30-11:00/76000000-0000-4000-a000-00000000000b',
+  'a removed break stays, with its times and who removed it'
+);
+select throws_ok(
+  $$delete from public.time_breaks where id = '76000000-0000-4000-e000-0000000000b5'$$,
+  '42501', 'Breaks are kept: nothing deletes them',
+  'and nothing deletes it either'
 );
 
 ------------------------------------------------------------------------------

@@ -32,7 +32,14 @@ select set_eq(
     'clock_stations', 'notifications', 'push_subscriptions', 'push_deliveries',
     'departments', 'department_members', 'list_templates',
     'list_template_items', 'list_schedules', 'lists', 'list_people',
-    'list_items', 'list_passes', 'permission_keys', 'role_permissions'
+    'list_items', 'list_passes', 'list_item_changes', 'list_reopens',
+    'permission_keys', 'role_permissions', 'business_roles',
+    'minimum_wages', 'member_wages', 'member_payroll_details', 'member_names',
+    'employment_periods', 'payroll_months', 'chat_conversations', 'chat_messages',
+    'chat_reads', 'chat_acks', 'chat_notices', 'documents', 'document_recipients',
+    'document_notices',
+    'notification_preferences',
+    'order_places', 'menu_categories', 'menu_items'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

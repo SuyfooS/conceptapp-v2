@@ -60,7 +60,13 @@ export async function demoJoin(
   return { step: "invite", error: "failed" };
 }
 
-export async function demoSignOut(): Promise<void> {}
+/** Nothing is signed in on the demo: nowhere to go. */
+export async function demoSignOut(): Promise<null> {
+  return null;
+}
+
+/** Ending a view on the demo, where nothing is being viewed. */
+export async function demoEndView(): Promise<void> {}
 
 /** The passive door's stand-in: on to the demo app, nothing signed in. */
 export async function demoEnter(): Promise<{ failed: true }> {

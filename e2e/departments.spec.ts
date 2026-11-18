@@ -7,6 +7,7 @@ import {
   demoDepartmentPhones,
 } from "./db";
 import { signIn } from "./session";
+import { heT } from "./t";
 
 // The business's departments on /manage/departments (L2), while lists are on:
 // add, rename, put people in and take them out, remove with undo, and the
@@ -80,13 +81,14 @@ test("a manager adds a department, names it, puts people in it and removes it wi
     RENAMED,
   );
 
-  // Noa in and out, each saved at once. The people button starts with what
-  // it shows ("אין אנשים בשטיפת כלים").
-  const inRenamed = fill(d.peopleIn.replace(/^.*\}\} /, ""), {
-    name: RENAMED,
-  });
+  // Noa in and out, each saved at once. The people button is named by what
+  // it shows, then the department ("אין אנשים בשטיפת כלים").
+  const nobody = heT("app.manage.departments.people", { count: 0 });
+  const inRenamed = fill(d.peopleWhere, { name: RENAMED });
   await page
-    .getByRole("button", { name: new RegExp(`${literal(inRenamed)}$`) })
+    .getByRole("button", {
+      name: new RegExp(`^${literal(nobody)}\\s+${literal(inRenamed)}$`),
+    })
     .click();
   const noa = page
     .getByRole("switch", {

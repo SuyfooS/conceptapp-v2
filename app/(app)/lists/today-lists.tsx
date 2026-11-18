@@ -51,7 +51,9 @@ export function TodayLists({
         </Link>
       }
     >
-      {data.team ? <TeamToday t={t} team={data.team} /> : null}
+      {data.team ? (
+        <TeamToday t={t} team={data.team} href={path("/lists/today")} />
+      ) : null}
       {data.view === "viewOnly" ? (
         <Card tone="flat" padding="lg">
           <CardText>{t("viewOnly.title")}</CardText>

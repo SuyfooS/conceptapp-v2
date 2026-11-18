@@ -1,7 +1,7 @@
 "use client";
 
 import type { WeekScheduleShift } from "@db/schedule";
-import type { Approval } from "@domain/swaps";
+import { type Approval, type EndedSwap, toApprove } from "@domain/swaps";
 import { Avatar } from "@ui/avatar";
 import { Badge } from "@ui/badge";
 import { Card, CardText } from "@ui/card";
@@ -22,6 +22,7 @@ import {
 } from "../shifts/shift-text";
 import type { DecideState } from "./actions";
 import { DecideButton } from "./decide-button";
+import { EndedRequests } from "./ended-requests";
 
 type Row = Approval<WeekScheduleShift>;
 type DecideAction = (
@@ -47,15 +48,25 @@ const subject = (t: AppT, names: Names, row: Row) =>
 /**
  * The requests waiting for a decision. A decided request leaves the list at
  * once and says what was decided, as the prototype's request card does; the
- * database has no way to undo a decision.
+ * database has no way to undo a decision. One whose shift has begun says so
+ * and offers only declining, as the database refuses approving it; the
+ * count and the main action are for the ones still to approve. Under them,
+ * what no longer waits (`ended`), so a decision stays in sight once the
+ * screen is read again.
  */
 export function ApprovalsBoard({
   rows,
+  ended,
+  viewer,
   people,
   positions,
   decide,
 }: {
   rows: Row[];
+  /** Requests a colleague took that no longer wait (`noLongerWaiting`). */
+  ended: readonly EndedSwap[];
+  /** The person reading, for "אישרת". */
+  viewer: string;
   people: Names["people"];
   positions: Names["positions"];
   decide: DecideAction;
@@ -66,6 +77,9 @@ export function ApprovalsBoard({
   const waiting = rows.filter(
     (row) => !settled.some((s) => s.id === row.swap.id),
   );
+  const approvable = toApprove(waiting);
+  // The first one still to approve carries the screen's main action.
+  const main = approvable[0]?.swap.id;
   const title = t("swaps.list.title");
 
   function onDecided(row: Row, decision: Decision) {
@@ -93,7 +107,7 @@ export function ApprovalsBoard({
     );
   }
 
-  const view = { t, names, decide, onDecided };
+  const view = { t, names, decide, onDecided, main };
 
   return (
     <div className="flex flex-col gap-4">
@@ -121,21 +135,18 @@ export function ApprovalsBoard({
         <>
           <div className="flex items-center justify-between gap-3 px-1">
             <h2 className="font-bold text-lg">{title}</h2>
-            <Badge tone="warning">
-              {t("swaps.count", { count: waiting.length })}
-            </Badge>
+            {approvable.length > 0 ? (
+              <Badge tone="warning">
+                {t("swaps.count", { count: approvable.length })}
+              </Badge>
+            ) : null}
           </div>
           <ul
             aria-label={title}
             className="m-0 grid list-none grid-cols-1 gap-3 p-0 md:grid-cols-2 md:gap-4 xl:hidden"
           >
-            {waiting.map((row, i) => (
-              <RequestCard
-                key={row.swap.id}
-                {...view}
-                row={row}
-                main={i === 0}
-              />
+            {waiting.map((row) => (
+              <RequestCard key={row.swap.id} {...view} row={row} />
             ))}
           </ul>
           <RequestTable {...view} rows={waiting} title={title} />
@@ -144,6 +155,10 @@ export function ApprovalsBoard({
           </p>
         </>
       )}
+
+      {ended.length > 0 ? (
+        <EndedRequests rows={ended} names={names} viewer={viewer} />
+      ) : null}
     </div>
   );
 }
@@ -153,7 +168,64 @@ type RowView = {
   names: Names;
   decide: DecideAction;
   onDecided: (row: Row, decision: Decision) => void;
+  /** The request whose approval is the screen's main action, if any. */
+  main: string | undefined;
 };
+
+/**
+ * The decision buttons of one request. Once its shift has begun: why it
+ * can no longer be approved, and declining alone.
+ */
+function Decisions({
+  t,
+  decide,
+  onDecided,
+  main,
+  row,
+  about,
+  block = false,
+}: Omit<RowView, "names"> & { row: Row; about: string; block?: boolean }) {
+  const decline = (
+    <DecideButton
+      action={decide}
+      decision="decline"
+      id={row.swap.id}
+      subject={about}
+      variant={row.started ? "secondary" : "ghost"}
+      block={block}
+      onDone={() => onDecided(row, "decline")}
+    />
+  );
+  if (row.started) {
+    return (
+      <div className={cn("flex flex-col gap-2", block ? null : "items-end")}>
+        <p
+          className={cn(
+            "text-ink-2",
+            block ? "text-base" : "max-w-64 text-end text-sm",
+          )}
+        >
+          {t("swaps.failures.started")}
+        </p>
+        {decline}
+      </div>
+    );
+  }
+  return (
+    <div className={cn("flex items-start gap-2", block ? null : "justify-end")}>
+      <DecideButton
+        action={decide}
+        decision="approve"
+        id={row.swap.id}
+        subject={about}
+        variant={row.swap.id === main ? "primary" : "secondary"}
+        block={block}
+        onDone={() => onDecided(row, "approve")}
+      />
+      {decline}
+    </div>
+  );
+}
 
 /**
  * Who gives it away and who takes it, the arrow pointing the way it moves,
@@ -193,14 +265,8 @@ function Handover({
   );
 }
 
-function RequestCard({
-  t,
-  names,
-  decide,
-  onDecided,
-  row,
-  main,
-}: RowView & { row: Row; main: boolean }) {
+function RequestCard({ names, row, ...view }: RowView & { row: Row }) {
+  const { t } = view;
   const about = subject(t, names, row);
   return (
     <li className="flex min-w-0 flex-col gap-3.5 rounded-[28px] bg-surface p-4 shadow-card">
@@ -212,26 +278,7 @@ function RequestCard({
         </p>
       </div>
       <Handover t={t} names={names} row={row} />
-      <div className="flex items-start gap-2">
-        <DecideButton
-          action={decide}
-          decision="approve"
-          id={row.swap.id}
-          subject={about}
-          variant={main ? "primary" : "secondary"}
-          block
-          onDone={() => onDecided(row, "approve")}
-        />
-        <DecideButton
-          action={decide}
-          decision="decline"
-          id={row.swap.id}
-          subject={about}
-          variant="ghost"
-          block
-          onDone={() => onDecided(row, "decline")}
-        />
-      </div>
+      <Decisions {...view} row={row} about={about} block />
     </li>
   );
 }
@@ -240,13 +287,12 @@ const th = "px-4 py-3 text-start align-bottom font-medium text-ink-2 text-sm";
 const td = "px-4 py-3 align-middle";
 
 function RequestTable({
-  t,
   names,
-  decide,
-  onDecided,
   rows,
   title,
+  ...view
 }: RowView & { rows: Row[]; title: string }) {
+  const { t } = view;
   const columns = ["day", "shift", "position", "from", "to"] as const;
   const person = (name: string, photo: string | null) => (
     <span className="flex items-center gap-2.5">
@@ -271,7 +317,7 @@ function RequestTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row, i) => {
+          {rows.map((row) => {
             const about = subject(t, names, row);
             return (
               <tr key={row.swap.id} className="border-line border-t">
@@ -298,24 +344,7 @@ function RequestTable({
                   )}
                 </td>
                 <td className={td}>
-                  <div className="flex items-start justify-end gap-2">
-                    <DecideButton
-                      action={decide}
-                      decision="approve"
-                      id={row.swap.id}
-                      subject={about}
-                      variant={i === 0 ? "primary" : "secondary"}
-                      onDone={() => onDecided(row, "approve")}
-                    />
-                    <DecideButton
-                      action={decide}
-                      decision="decline"
-                      id={row.swap.id}
-                      subject={about}
-                      variant="ghost"
-                      onDone={() => onDecided(row, "decline")}
-                    />
-                  </div>
+                  <Decisions {...view} row={row} about={about} />
                 </td>
               </tr>
             );

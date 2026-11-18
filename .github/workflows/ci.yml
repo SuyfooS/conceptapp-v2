@@ -11,6 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Read the code and nothing more (#80); a job that needs more says so. Every
+# action is pinned to a commit, with its version beside it for Dependabot.
+permissions:
+  contents: read
+
 jobs:
   # Push to main only. A squash merge of an up-to-date branch lands exactly the
   # tree its pull request run tested. If that tree passed check, database and
@@ -26,7 +31,7 @@ jobs:
     outputs:
       tested: ${{ steps.find.outputs.tested }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           sparse-checkout: .github/scripts
       - id: find
@@ -56,7 +61,7 @@ jobs:
       actions: read # the gate's dry run below
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # The gate's script on every pull request, against the tip of main it is
       # based on. It only prints; the push to main is where it decides.
@@ -71,9 +76,9 @@ jobs:
           url=$(bash .github/scripts/tested-tree.sh "$BASE_SHA")
           echo "Main at $BASE_SHA: ${url:-no passing pull_request run today, so a push of it would run everything}" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -102,7 +107,7 @@ jobs:
           tree=$(git rev-parse 'HEAD^{tree}')
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
           echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
         continue-on-error: true
         with:
@@ -117,19 +122,33 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
 
+      # Started once more if its port was still taken, as the e2e job does.
       - name: Start local Postgres, apply migrations and seed
-        run: pnpm exec supabase db start
+        run: |
+          log="$RUNNER_TEMP/db-start.log"
+          if ! pnpm exec supabase db start > "$log" 2>&1; then
+            cat "$log"
+            if ! grep -q "address already in use" "$log"; then
+              exit 1
+            fi
+            echo "::warning::A port the local database needs was still taken; stopping it and starting it once more"
+            pnpm exec supabase stop --no-backup || true
+            sleep 15
+            pnpm exec supabase db start
+          else
+            cat "$log"
+          fi
 
       - name: RLS and isolation tests (pgTAP)
         run: pnpm db:test
@@ -153,7 +172,7 @@ jobs:
           tree=$(git rev-parse 'HEAD^{tree}')
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
           echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
         continue-on-error: true
         with:
@@ -162,20 +181,28 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # After check and database pass: a red PR doesn't spend 20 minutes on e2e.
+  # After check and database pass: a red PR doesn't spend the time on e2e.
+  # One job per screen size, side by side, each with its own database: the
+  # sizes no longer share the demo data, and the run takes a third of the
+  # time it took in one job (it had reached the 45-minute limit).
   e2e:
+    name: e2e (${{ matrix.project }})
     needs: [gate, check, database]
     if: >-
       ${{ !cancelled() && needs.gate.outputs.tested != 'yes'
         && needs.check.result == 'success' && needs.database.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [phone, tablet, desktop]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version-file: .nvmrc
           cache: pnpm
@@ -186,17 +213,40 @@ jobs:
       # fails the step if it did not start, and the log is printed either way.
       # Storage runs for the profile photos (e2e/profile.spec.ts); its image
       # transformations (imgproxy) are not used.
+      # Chromium's system packages come from Ubuntu's archives. The runner
+      # already has all but a few fonts, so when the archives can't be
+      # reached (11 November 2026, a DNS outage on the runners) Chromium is
+      # installed alone, on what the runner has, with a warning. Chromium
+      # itself must install: that failing still fails the step.
+      # A port the database binds can still be taken on the runner when the
+      # stack starts (15 November 2026, "failed to bind host port
+      # 0.0.0.0:54322/tcp: address already in use", twice in a day). Then it
+      # is stopped and started once more, with a warning; any other failure,
+      # or the same one again, still fails the step.
       - name: Start local Supabase (database, auth, API, storage) and install Chromium
         run: |
           log="$RUNNER_TEMP/supabase-start.log"
-          pnpm exec supabase start \
-            -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor \
-            > "$log" 2>&1 &
+          start_supabase() {
+            pnpm exec supabase start \
+              -x realtime,imgproxy,mailpit,postgres-meta,studio,edge-runtime,logflare,vector,supavisor
+          }
+          start_supabase > "$log" 2>&1 &
           supabase=$!
           trap 'echo "::group::supabase start"; cat "$log"; echo "::endgroup::"' EXIT
-          pnpm exec playwright install --with-deps chromium
+          if ! pnpm exec playwright install --with-deps chromium; then
+            echo "::warning::Chromium's system packages could not be installed from Ubuntu's archives; installing Chromium on the runner's own packages"
+            pnpm exec playwright install chromium
+          fi
           echo "Chromium ready at $(date -u +%T)"
-          wait "$supabase"
+          if ! wait "$supabase"; then
+            if ! grep -q "address already in use" "$log"; then
+              exit 1
+            fi
+            echo "::warning::A port the local database needs was still taken; stopping the stack and starting it once more"
+            pnpm exec supabase stop --no-backup >> "$log" 2>&1 || true
+            sleep 15
+            start_supabase >> "$log" 2>&1
+          fi
           echo "Supabase ready at $(date -u +%T)"
 
       # The local stack's URL and keys are fixed development values, not
@@ -225,13 +275,18 @@ jobs:
       - name: Build
         run: pnpm build
 
-      - name: Playwright (phone, tablet, desktop)
-        run: pnpm e2e
+      - name: Playwright (${{ matrix.project }})
+        run: pnpm e2e --project=${{ matrix.project }}
 
-      - uses: actions/upload-artifact@v4
+      # The results are for reading a failure, not part of passing: when
+      # GitHub's artifact service is down (11 November 2026, it answered with
+      # a web page), the job keeps the tests' own outcome and still records
+      # the tree it passed on.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
+        continue-on-error: true
         with:
-          name: playwright-results
+          name: playwright-results-${{ matrix.project }}
           path: test-results/
           # 3 days, not 7: at ~14 MB a run, 7 days kept ~1.3 GB against the
           # plan's 1 GB, and a refused upload would also stop the record below.
@@ -245,11 +300,11 @@ jobs:
           tree=$(git rev-parse 'HEAD^{tree}')
           echo "tree=$tree" >> "$GITHUB_OUTPUT"
           echo "$GITHUB_SHA $tree" > "$RUNNER_TEMP/passed.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'pull_request' && steps.passed.outputs.tree != ''
         continue-on-error: true
         with:
-          name: passed-${{ github.job }}-${{ steps.passed.outputs.tree }}
+          name: passed-${{ github.job }}-${{ matrix.project }}-${{ steps.passed.outputs.tree }}
           path: ${{ runner.temp }}/passed.txt
           retention-days: 1
           if-no-files-found: error

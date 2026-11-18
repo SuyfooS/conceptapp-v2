@@ -1,7 +1,9 @@
+import { getChatInbox } from "@db/chat";
 import { countMyOpenLists } from "@db/lists";
 import { pushConfig } from "@db/push/env";
+import { waitingChats } from "@domain/chat-sync";
 import { accentTokens } from "@domain/color";
-import { enabledModules, moduleNav } from "@domain/modules";
+import { enabledModules, isStaff, moduleNav } from "@domain/modules";
 import { signInPath } from "@domain/passive-sign-in";
 import { displayIsraeliMobile } from "@domain/phone";
 import { profilePhotoSrc } from "@domain/profile-photos";
@@ -15,7 +17,10 @@ import { redirect } from "next/navigation";
 import { type ReactNode, Suspense } from "react";
 import { currentPlatformRole } from "../(admin)/staff";
 import { signOut } from "../(auth)/actions";
+import { currentBusinesses } from "./businesses";
 import { currentWording } from "./current-wording";
+import { DepartureNotice } from "./departure-notice";
+import { currentDeparture } from "./departures";
 import { currentMember } from "./member";
 import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
@@ -52,23 +57,47 @@ async function Shell({ children }: { children: ReactNode }) {
   if (!member.membership) {
     // The ConceptApp team works in the console, not inside a business.
     if (await currentPlatformRole()) redirect("/admin");
-    return <NoBusinessScreen signOut={signOut} />;
+    // Taken off the team of their last business: which one, said once more
+    // each time, since nothing else of it is theirs to read.
+    const left = await currentDeparture(member);
+    return <NoBusinessScreen signOut={signOut} left={left?.name ?? null} />;
   }
 
-  const { business, role, perms } = member.membership;
-  const [enabled, wording, openLists] = await Promise.all([
-    currentModules(),
-    currentWording(),
-    // The Lists tab carries the open lists the person holds; none while
-    // viewing as someone, who holds none.
-    enabledModules(manifests, business.modules).includes("lists") &&
-    !member.viewing
-      ? countMyOpenLists(member.userId, business.id).catch((error: Error) => {
-          console.error("counting open lists failed", error.message);
-          return 0;
-        })
-      : 0,
-  ]);
+  const { business, role, perms, namedRole } = member.membership;
+  const on = enabledModules(manifests, business.modules);
+  const [enabled, wording, businesses, openLists, chats, left] =
+    await Promise.all([
+      currentModules(),
+      currentWording(),
+      // Someone in more than one business switches from the sidebar too.
+      currentBusinesses(),
+      // The Lists tab carries the open lists the person holds; none while
+      // viewing as someone, who holds none.
+      on.includes("lists") && !member.viewing
+        ? countMyOpenLists(member.userId, business.id).catch((error: Error) => {
+            console.error("counting open lists failed", error.message);
+            return 0;
+          })
+        : 0,
+      // The Chat tab carries the chats with something waiting for the person
+      // (`waitingChats`), drawn here and again when a chat screen sees the
+      // count move; none while viewing as someone, who reads no chat, and none
+      // for someone off the staff, who is in none.
+      on.includes("chat") && !member.viewing && isStaff(role)
+        ? getChatInbox(business.id)
+            .then((rows) => (rows === "notYet" ? 0 : waitingChats(rows)))
+            .catch((error: { code?: string }) => {
+              console.error(
+                "counting chats failed",
+                error.code ?? "without a code",
+              );
+              return 0;
+            })
+        : 0,
+      // Taken off the team of a business, and still in this one: said above
+      // the screen until they say they saw it, whichever was open then.
+      currentDeparture(member),
+    ]);
   // The business's words: its tab names and role names may be its own.
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -94,7 +123,12 @@ async function Shell({ children }: { children: ReactNode }) {
         ? tm(`${entry.key}.outsideNav` as never)
         : tm(`${entry.key}.name`),
       icon: moduleIcons[entry.icon],
-      count: entry.key === "lists" && openLists > 0 ? openLists : undefined,
+      count:
+        entry.key === "lists" && openLists > 0
+          ? openLists
+          : entry.key === "chat" && chats > 0
+            ? chats
+            : undefined,
     })),
   ];
   const name =
@@ -111,16 +145,24 @@ async function Shell({ children }: { children: ReactNode }) {
           businessName={business.name}
           user={{
             name,
-            role: t(`roles.${role}`),
+            // A role the business named by its own name (R11b).
+            role: namedRole?.name ?? t(`roles.${role}`),
             photo: profilePhotoSrc(member.photoPath),
             href: "/me",
           }}
           nav={nav}
+          businesses={businesses}
         >
           {member.viewing ? (
             <ViewAsBanner
               viewing={member.viewing}
               businessName={business.name}
+              wording={wording}
+            />
+          ) : left ? (
+            <DepartureNotice
+              business={left.name}
+              current={business.name}
               wording={wording}
             />
           ) : null}

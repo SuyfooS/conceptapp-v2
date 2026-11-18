@@ -23,8 +23,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-// What changed in the business, who changed it and when, for its owner and
-// managers (and the team viewing as one). `?before=` reads an older page.
+// What changed in the business, who changed it and when, for whoever sees the
+// management page (and the team viewing as a role that does), each row only
+// for those who hold its own area too (the database's policies; the roles
+// plan's R7). `?before=` reads an older page.
 export default async function ManageActivityPage({
   searchParams,
 }: {
@@ -46,6 +48,12 @@ export default async function ManageActivityPage({
     page = await getBusinessActivity(access.businessId, page.older);
     entries = buildActivity(page.rows, page.lookups, defaults);
   }
+  // The clock's lines lead to the team's hours only for whoever opens them
+  // (clock.edit, with the clock on): a pay holder lowered on the clock reads
+  // those lines without a way that ends on the not-found screen.
+  const clockOn =
+    access.readsClock &&
+    enabledModules(manifests, access.rows).includes("time_clock");
   return (
     <ActivityView
       days={activityByDay(entries, access.timeZone, new Date())}
@@ -53,15 +61,18 @@ export default async function ManageActivityPage({
       older={page.older}
       earlier={before !== null}
       manageable={modulesToManage(access.rows, access.level)}
-      clockOn={enabledModules(manifests, access.rows).includes("time_clock")}
+      clockOn={clockOn}
       listsOn={listsOn(access.rows)}
+      everyArea={access.readsEveryArea}
       paths={{
         manage: "/manage",
         self: "/manage/activity",
         business: "/manage/business",
-        clockTeam: "/clock/team",
+        clockTeam: clockOn ? "/clock/team" : undefined,
         departments: "/manage/departments",
         access: access.grantsPay ? "/manage/access" : undefined,
+        roles: access.changesRoles ? "/manage/roles" : undefined,
+        pay: "/clock/pay",
       }}
       wording={await currentWording()}
     />

@@ -4,3 +4,8 @@
 *.jpg binary
 *.ico binary
 *.woff2 binary
+# The demo's sample documents: their bytes as they are, never normalized, and
+# never shown through a text converter (Git for Windows' astextplain turns a
+# PDF into its text in a diff, and a patch made from that loses the file).
+*.pdf binary
+*.webp binary

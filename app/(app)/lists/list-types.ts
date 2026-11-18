@@ -1,12 +1,25 @@
 import type {
+  OpeningShift,
+  ScheduleOpenings,
+  ShabbatSpan,
+} from "@domain/list-openings";
+import type {
   ItemResult,
   ListDetail,
+  ListItemKind,
   ListProgress,
   ListSummary,
   ListsTally,
+  ListTemplate,
+  ListTemplateInput,
+  PassTarget,
+  SavedTemplate,
+  ScheduleAnchor,
+  SendShift,
   TemplateRecipient,
 } from "@domain/lists";
 import type { StaffRole } from "@domain/modules";
+import type { BaseRole } from "@domain/role-access";
 
 /** Who and what a list's ids point at, as the reader may see them. */
 export type ListLookups = {
@@ -14,7 +27,33 @@ export type ListLookups = {
   people: Record<string, { name: string | null; photo: string | null }>;
   /** Its departments, removed ones too, by id: their names. */
   departments: Record<string, string>;
+  /**
+   * The roles it named, archived ones too, by id: their names in the
+   * reader's language (the roles plan's R11d).
+   */
+  roles: Record<string, string>;
 };
+
+/**
+ * A role the business named, as the lists' screens offer and name it (the
+ * roles plan's R11d): what it is built on, its name in the reader's
+ * language, and whether it was archived, when it is only named, never
+ * offered.
+ */
+export type ListRoleOption = {
+  id: string;
+  base: BaseRole;
+  name: string;
+  archived: boolean;
+};
+
+/**
+ * A role the business named as the send screen offers it: with how many
+ * active people on the staff hold it now, who alone a list to it reaches
+ * (`private.list_holders`), so one nobody holds yet says so and takes no
+ * list, as a shift nobody is on.
+ */
+export type SendRoleOption = ListRoleOption & { people: number };
 
 /** What the screens need of the lists settings. */
 export type ListsTiming = {
@@ -24,8 +63,8 @@ export type ListsTiming = {
 
 /**
  * Whose lists a screen shows: the person's own, the whole business's (a view
- * session as a manager, which is no one), or none (a view session as a worker:
- * lists belong to the people they were sent to).
+ * session of a role that manages lists, which is no one), or none (a view
+ * session of one that doesn't: lists belong to the people they were sent to).
  */
 export type ListsView = "mine" | "business" | "viewOnly";
 
@@ -50,11 +89,55 @@ export type ListsHomeData = {
   open: ListSummary[];
   /** Closed lists that opened today, newest first. */
   closed: ListSummary[];
+  /**
+   * Finished lists that opened before today and the person may still fix
+   * (L6b-2): someone given "תיקון רשימות שנסגרו" who doesn't run the lists,
+   * the lists that reach them within the business's `fixHours` after they
+   * closed, the latest close first, each with until when (`until`, as
+   * `fixDeadline` has it). Empty for everyone else.
+   */
+  fixable: FixableList[];
+  /**
+   * Open orders one of the person's departments asked for, held by another
+   * (L5), most urgent first: they follow them from here.
+   */
+  asked: ListSummary[];
+  /**
+   * The department filter, for someone in more than one department (L5): their
+   * live departments in order, the one chosen (null for all) and where each
+   * choice leads. Null for everyone else.
+   */
+  filter: DepartmentFilterData | null;
   /** The business's day, for those who manage lists. */
   team: ListsTally | null;
   send: SendWay | null;
+  /**
+   * Manages lists without sending them (lists.manage without lists.send, the
+   * roles plan's R5): a line says who sends. False for everyone else.
+   */
+  othersSend: boolean;
   /** A list this person just sent, while it can still be taken back. */
   sent: ListSummary | null;
+  /**
+   * The live department a list was just passed to (L5), by name, from the
+   * address the list's screen came back with; null otherwise.
+   */
+  passed: string | null;
+  /**
+   * How many live templates the business has, for those who manage lists:
+   * the way to change and make them. Null for everyone else.
+   */
+  templates: number | null;
+};
+
+/** A closed list someone given "תיקון רשימות שנסגרו" may still fix, and until when (L6b-2). */
+export type FixableList = { list: ListSummary; until: string };
+
+/** The department filter on Lists. */
+export type DepartmentFilterData = {
+  departments: { id: string; name: string }[];
+  /** The department chosen, or null for all of them. */
+  chosen: string | null;
 };
 
 /** Why a list is only read here. */
@@ -64,6 +147,18 @@ export type ListReadOnly =
   | "cancelled"
   | "elsewhere"
   | "viewOnly";
+
+/** Passing a list on from its screen (L5), when the person may. */
+export type ListPassData = {
+  /** Every live department but the one holding it, with its people now. */
+  targets: PassTarget[];
+  /**
+   * Whether the person still reads the list once it is passed (a list
+   * manager, its sender, its people, a department it passed through): their
+   * screen then stays, and otherwise goes back to Lists.
+   */
+  stays: boolean;
+};
 
 /** One list on its own screen. */
 export type ListScreenData = {
@@ -81,14 +176,64 @@ export type ListScreenData = {
      * manager's. Whoever closed it has `undoUntil` instead.
      */
     reopen: boolean;
+    /**
+     * Fixing it in place once it is finished (L6b-1), as
+     * `private.can_fix_list` allows (`fixDeadline`): whoever runs the lists
+     * at any time, and (L6b-2) someone given "תיקון רשימות שנסגרו" for a
+     * list that reaches them, until `fixUntil`; never in a view session. It
+     * stays finished, and keeps who closed it and when.
+     */
+    fix: boolean;
   };
+  /**
+   * Until when this person may still fix it (L6b-2): someone given lists.fix
+   * for a list that reaches them, the business's `fixHours` after it closed.
+   * Null when there is no such end: they run the lists, or may not fix it.
+   */
+  fixUntil: string | null;
+  /**
+   * When that window ended, for someone given lists.fix who holds the list
+   * but whose time to fix it is over (L6b-2), so the screen says why there
+   * is no "תיקון הרשימה" and who still fixes it. Null otherwise.
+   */
+  fixEndedAt: string | null;
   readOnly: ListReadOnly | null;
   /**
    * Until when this person may take their finish or cancel back (the undo),
    * or null. Counted against `now`, the server's clock.
    */
   undoUntil: string | null;
+  /** Passing it to another department, or null when it isn't theirs to pass. */
+  pass: ListPassData | null;
+  /** Photo items (L6): whether this business takes photos. */
+  photos: ListPhotosData;
 };
+
+/**
+ * Photos on a list's screen: taken here, or not in a demo business, or not
+ * yet where the migration hasn't reached the project.
+ */
+export type ListPhotosData = {
+  taking: "yes" | "demo" | "notYet";
+};
+
+/**
+ * Why a photo didn't save or go: an item's reasons (a fix's too), the
+ * file's, and a demo's.
+ */
+export type ListPhotoFailure =
+  | ItemFailure
+  | "demo"
+  | "empty"
+  | "tooBig"
+  | "type"
+  | "metadata"
+  | "pixels";
+
+/** A photo saved or removed: where it shows now (null once removed). */
+export type ListPhotoResult =
+  | { ok: true; value: { photo: string | null } }
+  | { ok: false; failure: ListPhotoFailure };
 
 export type ListFailure =
   | "noAccess"
@@ -98,20 +243,84 @@ export type ListFailure =
   | "finished"
   | "left"
   | "notYet"
+  /**
+   * The person switched business after the screen was drawn (payroll P3b):
+   * refused, never written in the other one.
+   */
+  | "businessChanged"
   | "failed";
 
-export type ListActionResult<T = null> =
-  | { ok: true; value: T }
-  | { ok: false; failure: ListFailure };
+/**
+ * Why an item's save didn't happen: a list's reasons, and a fix's (L6b-1):
+ * a required item of a closed list is changed, never emptied
+ * ("keepRequired"), and a list opened again meanwhile is filled, not fixed
+ * ("reopened"); and (L6b-2) the business's window for someone given "תיקון
+ * רשימות שנסגרו" is over ("fixOver"), or the database no longer lets them
+ * fix it at all ("fixNoAccess": the switch or running the lists taken away,
+ * the list moved away), while the list may still reach them.
+ */
+export type ItemFailure =
+  | ListFailure
+  | "keepRequired"
+  | "reopened"
+  | "fixOver"
+  | "fixNoAccess";
 
-/** What the list's screen asks the server to do. The demo passes stand-ins. */
+/** A write's answer; `F` is why it can be refused (an item's, with a fix's). */
+export type ListActionResult<T = null, F extends string = ListFailure> =
+  | { ok: true; value: T }
+  | {
+      ok: false;
+      failure: F;
+      /**
+       * A new template the database did save before what came after failed:
+       * its id, which the editor takes instead of making it again.
+       */
+      saved?: string;
+    };
+
+/**
+ * What the list's screen asks the server to do. The demo passes stand-ins.
+ * `fixing` is a fix of a finished list in place (L6b-1), through the
+ * database's own fix functions, never a fill.
+ */
 export type ListActions = {
   setItem: (
     itemId: string,
     result: ItemResult,
-  ) => Promise<ListActionResult<ListProgress>>;
+    fixing?: boolean,
+  ) => Promise<ListActionResult<ListProgress, ItemFailure>>;
   finish: (listId: string) => Promise<ListActionResult>;
   reopen: (listId: string) => Promise<ListActionResult>;
+  /** Passes it to another department, with a note (blank for none). */
+  pass: (
+    listId: string,
+    department: string,
+    note: string,
+  ) => Promise<ListActionResult>;
+  /**
+   * Sets a photo item's photo (L6), as the browser re-encoded it: the form
+   * carries it as `photo`. The undo of a removal sets the kept bytes again.
+   */
+  setPhoto: (
+    itemId: string,
+    form: FormData,
+    fixing?: boolean,
+  ) => Promise<ListPhotoResult>;
+  /** Removes a photo item's photo; the item is no longer done. */
+  removePhoto: (itemId: string, fixing?: boolean) => Promise<ListPhotoResult>;
+};
+
+/** An item as a preview of a list shows it. */
+export type PreviewItem = {
+  kind: ListItemKind;
+  label: string;
+  required: boolean;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  /** An order's check: how many it will ask for, when it asks (L5). */
+  requested?: number | null;
 };
 
 /** A template as the send screen offers it. */
@@ -119,22 +328,247 @@ export type SendTemplate = {
   id: string;
   name: string;
   note: string | null;
-  items: { kind: string; label: string }[];
+  /** Its items, with their ids, which its counts go by. */
+  items: (PreviewItem & { id: string })[];
   recipient: TemplateRecipient | null;
   /** An order: the department that asks, which sends it to its recipient. */
   fromDepartment: string | null;
+  /**
+   * It asks for counts (L5): its check items, each with its usual count,
+   * which the send screen starts from. Empty when it doesn't.
+   */
+  quantities: { id: string; label: string; usual: number | null }[];
 };
 
+/** Where the send screen starts: a template, or a list typed now. */
+export const NEW_LIST = "new";
+
 export type SendFormData = {
+  /** ISO timestamp of the moment the screen is read, and the business's zone. */
+  now: string;
+  timeZone: string;
   templates: SendTemplate[];
-  /** The one to start with: from the address, or the first. */
+  /** The one to start with: from the address, the first, or `NEW_LIST`. */
   initial: string;
-  /** May send any list to anyone; otherwise only their department's orders. */
+  /**
+   * May send any list to anyone, typed now too; otherwise only their
+   * department's orders.
+   */
   free: boolean;
   people: { userId: string; name: string | null; photo: string | null }[];
   departments: { id: string; name: string }[];
   roles: readonly StaffRole[];
+  /**
+   * The roles the business named, offered after `roles` while live, each
+   * with its people now.
+   */
+  namedRoles: readonly SendRoleOption[];
+  /**
+   * Published shifts from today to a week ahead that haven't ended, earliest
+   * first; null while scheduling is off.
+   */
+  shifts: SendShift[] | null;
+  /**
+   * The business takes no photos (a demo one, `list_photos_closed`): a
+   * photo item of a list typed now is never required, so it can be finished.
+   */
+  photosClosed: boolean;
 };
 
 /** A list to send, as the form sends it (`sendInput` checks it). */
 export type SendResult = ListActionResult<string>;
+
+/** A template as the screen of templates lists it. */
+export type TemplateRow = {
+  id: string;
+  name: string;
+  recipient: TemplateRecipient | null;
+  fromDepartment: string | null;
+  items: number;
+  archivedAt: string | null;
+  /** Its times, in short (L4). */
+  times: {
+    /** How many it has, paused ones too. */
+    count: number;
+    /** The first one that isn't paused, for its words; null when none runs. */
+    first: {
+      days: number[];
+      anchor: ScheduleAnchor;
+      shift: string | null;
+      opensOffset: number;
+    } | null;
+    /** How many point at a shift, a department or a named role that is gone. */
+    gone: number;
+  };
+};
+
+/** Where the screens of templates lead, inside the app, the console or the demo. */
+export type TemplatePaths = {
+  /** The screen of templates; an editor is `${list}/${id}`, a new one `${list}/new`. */
+  list: string;
+  /** What the screen of templates goes back to. */
+  back: { href: string; label: string };
+  /** The send screen, for "send it now"; null where nobody sends (the console). */
+  send: string | null;
+};
+
+/** The business's templates on their own screen. */
+export type TemplatesScreenData = {
+  /** Live templates, in their order. */
+  templates: TemplateRow[];
+  /** Removed ones, most recently removed first, each with its undo. */
+  removed: TemplateRow[];
+  /** Live departments, in their order. */
+  departments: { id: string; name: string }[];
+  /** Every department's name by id, removed ones too. */
+  departmentNames: Record<string, string>;
+  /** The scheduling settings' shifts by key: their names. */
+  shiftNames: Record<string, string>;
+  /** The roles the business named by id, archived ones too: their names. */
+  roleNames: Record<string, string>;
+  /** The template just removed in its editor (`?removed=`), for its undo. */
+  justRemoved: TemplateRow | null;
+  /** Only reading: a view session. */
+  readOnly: boolean;
+};
+
+/**
+ * What a template's times are worked out with in its editor (L4): the
+ * moment and the business's zone, its Shabbat, the shifts a time may follow,
+ * the people one may go to, and the saved times' next openings as the
+ * database will open them.
+ */
+export type EditorTimes = {
+  /** ISO timestamp of the moment the screen is read. */
+  now: string;
+  timeZone: string;
+  closesOnShabbat: boolean;
+  /** The business's next Shabbatot; none when it is open on Shabbat. */
+  shabbat: ShabbatSpan[];
+  /** Published shifts of the coming week, for a time that follows a shift. */
+  shifts: OpeningShift[];
+  /** Who a time may go to by name; none where nobody is read (the console). */
+  people: { userId: string; name: string | null }[];
+  /** Each saved time's next openings, by its id. */
+  openings: ScheduleOpenings;
+};
+
+/** One template in its editor, or a new one. */
+export type TemplateEditorData = {
+  /** Null for a new template, saved once it has a name and an item. */
+  template: ListTemplate | null;
+  /** Live departments, in their order. */
+  departments: { id: string; name: string }[];
+  departmentNames: Record<string, string>;
+  /** The scheduling settings' shifts, which a template may go to. */
+  shifts: { key: string; name: string }[];
+  roles: readonly StaffRole[];
+  /** The roles the business named: the live ones offered after `roles`. */
+  namedRoles: readonly ListRoleOption[];
+  /** Only reading: a view session. */
+  readOnly: boolean;
+  /** Back after a save was refused: what shows is the latest, and says so. */
+  changed: boolean;
+  times: EditorTimes;
+  /**
+   * The business takes no photos (a demo one, `list_photos_closed`): a
+   * photo item is never required, so its lists can be finished.
+   */
+  photosClosed: boolean;
+};
+
+/** A number item's reading, on the manager's day. */
+export type DayReading = {
+  listId: string;
+  listName: string;
+  label: string;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  reading: number;
+  doneAt: string | null;
+  doneBy: string | null;
+  outOfRange: boolean;
+  /** Fixed after its list closed (L6b-1): the row says so. */
+  fixed: boolean;
+};
+
+/** One number item of a template across the week, a reading a day. */
+export type WeekReadings = {
+  /** The template's item, or the list's own item when it has none. */
+  key: string;
+  label: string;
+  listName: string;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  /**
+   * By day, "YYYY-MM-DD": the day's reading, or null when there was none;
+   * `fixed` while it was fixed after its list closed (L6b-1).
+   */
+  days: Record<
+    string,
+    { reading: number; outOfRange: boolean; fixed: boolean } | null
+  >;
+};
+
+/** The manager's overview of a day (L4): today's lists, or a past day's. */
+export type ListsTodayData = {
+  now: string;
+  timeZone: string;
+  timing: ListsTiming;
+  lookups: ListLookups;
+  userId: string;
+  /** The day shown, "YYYY-MM-DD", and whether it is today. */
+  day: string;
+  today: boolean;
+  /** The days a person can pick, oldest first, today last. */
+  week: string[];
+  /** Late first; the rest by when they are due. */
+  late: ListSummary[];
+  open: ListSummary[];
+  /** Finished or cancelled. */
+  closed: ListSummary[];
+  missed: ListSummary[];
+  /** The readings of the day's number items, those outside their range first. */
+  readings: DayReading[];
+  /** The week's number items, a row each. */
+  weekReadings: WeekReadings[];
+  /**
+   * Each day of the week, "YYYY-MM-DD", that has something to look at: lists
+   * nobody did, lists still late, and readings outside their range.
+   */
+  weekFlags: Record<string, DayFlags>;
+  /**
+   * Live templates whose times, not paused, follow a shift or go to a place
+   * that is gone, and so open nothing: their ids and names.
+   */
+  stopped: { id: string; name: string }[];
+  send: SendWay | null;
+  /** Manages lists without sending them: a line says who sends. */
+  othersSend: boolean;
+  /** Only reading: a view session. */
+  viewOnly: boolean;
+};
+
+/** What a day of the overview's week has to look at. */
+export type DayFlags = { missed: number; late: number; outOfRange: number };
+
+/** What the template screens ask the server to do. The console and demo pass their own. */
+export type TemplateActions = {
+  save: (
+    input: ListTemplateInput,
+    seenVersion: number | null,
+  ) => Promise<ListActionResult<SavedTemplate>>;
+  archive: (templateId: string) => Promise<ListActionResult>;
+};
+
+export type RestoreTemplate = (templateId: string) => Promise<ListActionResult>;
+
+/**
+ * The key of "every department" among the department filter's choices. Here,
+ * not in the filter's own file: that one is a client module, and a server
+ * component importing a value from it gets a reference, not the string, so
+ * the "all" choice had no address and did nothing.
+ */
+export const ALL_DEPARTMENTS = "all";

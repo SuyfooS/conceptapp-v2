@@ -1,4 +1,5 @@
 import { listBusinesses } from "@db/admin";
+import { getStorageUse } from "@db/chat-files";
 import { displayIsraeliMobile } from "@domain/phone";
 import { platformCan } from "@domain/platform";
 import type { Metadata } from "next";
@@ -19,10 +20,12 @@ export default async function BusinessesPage() {
   // The layout already shows the no-access screen; this keeps the list
   // from being read for anyone off the team.
   if (!role || !platformCan(role, "businesses.read")) notFound();
-  const [businesses, member, t] = await Promise.all([
+  const [businesses, member, t, storage] = await Promise.all([
     listBusinesses(),
     currentMember(),
     getTranslations("admin.roles"),
+    // Sizes only (public.admin_storage refuses anyone off the team).
+    getStorageUse(),
   ]);
   const phone = member?.phone ? displayIsraeliMobile(member.phone) : "";
 
@@ -31,8 +34,10 @@ export default async function BusinessesPage() {
       businesses={businesses}
       canCreate={platformCan(role, "businesses.create")}
       basePath="/admin"
-      account={{ name: member?.name ?? phone, role: t(role) }}
+      // Their own name, as the console's frame shows it, never a business's.
+      account={{ name: member?.ownName ?? phone, role: t(role) }}
       signOut={signOut}
+      storage={storage}
     />
   );
 }

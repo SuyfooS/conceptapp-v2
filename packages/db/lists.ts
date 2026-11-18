@@ -1,4 +1,6 @@
 import "server-only";
+import type { ScheduleOpenings } from "@domain/list-openings";
+import { listPhotoSrc } from "@domain/list-photos";
 import {
   holdsList,
   type ItemResult,
@@ -19,7 +21,10 @@ import {
   type ListTemplateInput,
   listProgress,
   listProgressSchema,
+  type PassInput,
+  passInput,
   type Reading,
+  type SavedTemplate,
   SCHEDULE_ANCHORS,
   type ScheduleRecipient,
   type SendInput,
@@ -29,10 +34,27 @@ import {
   templateForSave,
 } from "@domain/lists";
 import { type Role, STAFF_ROLES, type StaffRole } from "@domain/modules";
+import { BASE_ROLES, type NamedRole } from "@domain/role-access";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database, Json } from "./database.types";
-import { isMissingFunction } from "./missing";
+import {
+  type DatabaseRefusal,
+  type ItemFailure,
+  itemFailureOf,
+  type ListFailure,
+  listFailureOf,
+} from "./list-failures";
+import {
+  CHANGE_COLUMNS,
+  CHANGE_COLUMNS_BEFORE_FIX,
+  changesOf,
+  REOPEN_COLUMNS,
+  reopensOf,
+} from "./list-history";
+import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
+import { allPages } from "./pages";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -46,47 +68,27 @@ import { createClient } from "./supabase/server";
  * migration hasn't reached yet ("notYet").
  */
 
-/** Why a write was refused, for the screens' words. */
-export type ListFailure =
-  /** Not theirs to do (42501), or nothing of theirs (P0002). */
-  | "noAccess"
-  /** A shape the database won't keep (22023). */
-  | "invalid"
-  /** Required items are left (23514). */
-  | "left"
-  /** Changed since it was read (40001). */
-  | "changed"
-  /** Closed: finished, cancelled, missed, or a removed template (55000). */
-  | "finished"
-  /** The migration isn't on this project yet. */
-  | "notYet"
-  | "failed";
+/** Why a write was refused, for the screens' words (@db/list-failures). */
+export type { ItemFailure, ListFailure } from "./list-failures";
 
-export type ListWrite<T> =
+/** A write's answer; `F` is why it can be refused (an item's, with a fix's). */
+export type ListWrite<T, F extends string = ListFailure> =
   | { ok: true; value: T }
-  | { ok: false; failure: ListFailure };
+  | {
+      ok: false;
+      failure: F;
+      /**
+       * A template the database did save before what came after failed: its
+       * id, so an editor that was making it takes it and never makes it
+       * twice (`saveListTemplate`).
+       */
+      saved?: string;
+    };
 
-function failureOf(error: { code?: string; message: string }): ListFailure {
-  if (isMissingFunction(error)) return "notYet";
-  switch (error.code) {
-    case "42501":
-    case "P0002":
-      return "noAccess";
-    case "22023":
-      return "invalid";
-    case "23514":
-      return "left";
-    case "40001":
-      return "changed";
-    case "55000":
-      return "finished";
-    default:
-      console.error("a lists write failed", error.message);
-      return "failed";
-  }
-}
+const failureOf = (error: DatabaseRefusal) => listFailureOf(error);
 
-const refused = (failure: ListFailure) => ({ ok: false, failure }) as const;
+const refused = <F extends string>(failure: F) =>
+  ({ ok: false, failure }) as const;
 
 /** `at_time` for a write, when the caller says when it happened. */
 const atTime = (at?: Date) => (at ? { at_time: at.toISOString() } : {});
@@ -127,12 +129,67 @@ type ListRow = Pick<
 const LIST_COLUMNS =
   "id, name, status, origin, recipient_kind, recipient_department, recipient_role, from_department, template_id, sent_by, opens_at, due_at, finished_at, finished_by, closed_at, closed_by";
 
-function holderOf(row: ListRow, people: readonly string[]): ListHolder {
+/** A role recipient, with the role the business named on it when there is one. */
+const roleHolder = (role: string | null, named: string | undefined) =>
+  named === undefined
+    ? { kind: "role" as const, role: roleOf(role) }
+    : { kind: "role" as const, role: roleOf(role), namedRole: named };
+
+/**
+ * The role the business named that each row goes to
+ * (`recipient_named_role`, the roles plan's R11d), by the row's id, read
+ * with `query`: only the rows that name one. Read beside the rest, so a
+ * project without 20261115001900_named_roles_lists.sql reads none (none
+ * names one there) and every screen reads as before.
+ */
+async function namedRolesOf(
+  query: PromiseLike<{
+    data: { id: string; recipient_named_role: string | null }[] | null;
+    error: { code?: string; message: string } | null;
+  }>,
+): Promise<Map<string, string>> {
+  const { data, error } = await query;
+  if (isMissingColumn(error)) return new Map();
+  if (error) throw error;
+  return new Map(
+    (data ?? []).flatMap((row): [string, string][] =>
+      row.recipient_named_role ? [[row.id, row.recipient_named_role]] : [],
+    ),
+  );
+}
+
+/**
+ * When each list was last fixed after it closed (`lists.fixed_at`, L6b-1),
+ * by the row's id, read with `query`: only the rows fixed. Read beside the
+ * rest, so a project without 20261116000300_lists_fix.sql reads none (none
+ * was fixed there) and every screen reads as before.
+ */
+async function fixedTimesOf(
+  query: PromiseLike<{
+    data: { id: string; fixed_at: string | null }[] | null;
+    error: { code?: string; message: string } | null;
+  }>,
+): Promise<Map<string, string>> {
+  const { data, error } = await query;
+  if (isMissingColumn(error)) return new Map();
+  if (error) throw error;
+  return new Map(
+    (data ?? []).flatMap((row): [string, string][] =>
+      row.fixed_at ? [[row.id, row.fixed_at]] : [],
+    ),
+  );
+}
+
+function holderOf(
+  row: ListRow,
+  people: readonly string[],
+  named?: string,
+): ListHolder {
   switch (row.recipient_kind) {
     case "department":
       return { kind: "department", department: row.recipient_department ?? "" };
     case "role":
-      return { kind: "role", role: roleOf(row.recipient_role) };
+      return roleHolder(row.recipient_role, named);
     case "shift":
       return { kind: "shift", people: [...people] };
     default:
@@ -144,13 +201,15 @@ function summaryOf(
   row: ListRow,
   people: readonly string[],
   progress: ListProgress,
+  named?: string,
+  fixedAt?: string,
 ): ListSummary {
   return {
     id: row.id,
     name: row.name,
     status: oneOf(LIST_STATUSES, row.status, "open"),
     origin: oneOf(LIST_ORIGINS, row.origin, "sent"),
-    holder: holderOf(row, people),
+    holder: holderOf(row, people, named),
     fromDepartment: row.from_department,
     templateId: row.template_id,
     sentBy: row.sent_by,
@@ -160,33 +219,72 @@ function summaryOf(
     finishedBy: row.finished_by,
     closedAt: row.closed_at,
     closedBy: row.closed_by,
+    fixedAt: fixedAt ?? null,
     progress,
   };
 }
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
-/** The people and the progress of these lists, read under RLS. */
+/**
+ * The people, the progress, the named roles (`namedRolesOf`) and the last
+ * fixes (`fixedTimesOf`) of these lists, read under RLS. Their items are
+ * read page by page (`allPages`): a day's lists, with the closed ones still
+ * to fix (L6b-2), can pass PostgREST's `max_rows`, past which a read is cut
+ * short without an error and the counts would come out wrong.
+ */
 async function partsOf(
   supabase: Supabase,
   ids: readonly string[],
 ): Promise<
-  | { people: Map<string, string[]>; progress: Map<string, ListProgress> }
+  | {
+      people: Map<string, string[]>;
+      progress: Map<string, ListProgress>;
+      named: Map<string, string>;
+      fixed: Map<string, string>;
+    }
   | "notYet"
 > {
   const people = new Map<string, string[]>();
   const items = new Map<string, { required: boolean; done: boolean }[]>();
+  let named = new Map<string, string>();
+  let fixed = new Map<string, string>();
   if (ids.length > 0) {
-    const [peopleRows, itemRows] = await Promise.all([
+    const [peopleRows, itemRows, namedRows, fixedRows] = await Promise.all([
       supabase
         .from("list_people")
         .select("list_id, user_id")
         .in("list_id", [...ids]),
-      supabase
-        .from("list_items")
-        .select("list_id, required, done")
-        .in("list_id", [...ids]),
+      allPages((first, last) =>
+        supabase
+          .from("list_items")
+          .select("list_id, required, done")
+          .in("list_id", [...ids])
+          .order("list_id")
+          .order("id")
+          .range(first, last),
+      ).then(
+        (data) => ({ data, error: null }),
+        // As the other reads answer: a missing table is "notYet".
+        (error: unknown) => ({ data: null, error: error as { code?: string } }),
+      ),
+      namedRolesOf(
+        supabase
+          .from("lists")
+          .select("id, recipient_named_role")
+          .in("id", [...ids])
+          .not("recipient_named_role", "is", null),
+      ),
+      fixedTimesOf(
+        supabase
+          .from("lists")
+          .select("id, fixed_at")
+          .in("id", [...ids])
+          .not("fixed_at", "is", null),
+      ),
     ]);
+    named = namedRows;
+    fixed = fixedRows;
     for (const { error } of [peopleRows, itemRows]) {
       if (error) {
         if (isMissingTable(error)) return "notYet";
@@ -206,7 +304,7 @@ async function partsOf(
   const progress = new Map(
     ids.map((id) => [id, listProgress(items.get(id) ?? [])]),
   );
-  return { people, progress };
+  return { people, progress, named, fixed };
 }
 
 async function summaries(
@@ -223,6 +321,8 @@ async function summaries(
       row,
       parts.people.get(row.id) ?? [],
       parts.progress.get(row.id) ?? listProgress([]),
+      parts.named.get(row.id),
+      parts.fixed.get(row.id),
     ),
   );
 }
@@ -256,40 +356,80 @@ async function openAndClosed(
 }
 
 /**
- * The lists a person holds now (their people, their departments, their role):
- * every open one, and those that opened in the window and are closed. Not
- * every list they may read: a list manager reads them all.
+ * The lists a person holds now (their people, their departments, their role,
+ * or the role the business named that they hold, `namedRole`): every open
+ * one, and those that opened in the window and are closed. Not every list
+ * they may read: a list manager reads them all. `asked` is the open orders
+ * one of their departments asked for that another holds (L5), which they
+ * follow from Lists. With `fixableSince` (L6b-2: someone given "תיקון
+ * רשימות שנסגרו", the start of the business's own window for it, now less
+ * its `fixHours`), also `fixable`: the finished lists they hold that opened
+ * before `window` and were finished since `fixableSince`, the latest close
+ * first; the caller still holds each one to its window to the moment
+ * (`fixDeadline`).
  */
 export async function getMyLists(
   businessId: string,
-  person: { userId: string; role: Role },
+  person: { userId: string; role: Role; namedRole?: string | null },
   window: Window,
-): Promise<ListSummary[] | "notYet"> {
+  fixableSince: string | null = null,
+): Promise<
+  | { held: ListSummary[]; asked: ListSummary[]; fixable: ListSummary[] }
+  | "notYet"
+> {
   const supabase = await createClient();
-  const [[open, closed], departments] = await Promise.all([
+  const [[open, closed], departments, earlier] = await Promise.all([
     openAndClosed(supabase, businessId, window),
     supabase
       .from("department_members")
       .select("department_id")
       .eq("business_id", businessId)
       .eq("user_id", person.userId),
+    fixableSince === null
+      ? null
+      : supabase
+          .from("lists")
+          .select(LIST_COLUMNS)
+          .eq("business_id", businessId)
+          .eq("status", "finished")
+          .gte("finished_at", fixableSince)
+          .lt("opens_at", window.from)
+          .order("finished_at", { ascending: false }),
   ]);
-  for (const { error } of [open, closed, departments]) {
+  for (const { error } of [
+    open,
+    closed,
+    departments,
+    ...(earlier ? [earlier] : []),
+  ]) {
     if (error) {
       if (isMissingTable(error)) return "notYet";
       throw error;
     }
   }
+  const before = earlier?.data ?? [];
   const all = await summaries(supabase, [
     ...(open.data ?? []),
     ...(closed.data ?? []),
+    ...before,
   ]);
   if (all === "notYet") return all;
   const mine = {
     ...person,
     departments: (departments.data ?? []).map((row) => row.department_id),
   };
-  return all.filter((list) => holdsList(list.holder, mine));
+  const earlierIds = new Set(before.map((row) => row.id));
+  const theirs = all.filter((list) => holdsList(list.holder, mine));
+  const held = theirs.filter((list) => !earlierIds.has(list.id));
+  const fixable = theirs.filter((list) => earlierIds.has(list.id));
+  const asked = all.filter(
+    (list) =>
+      list.status === "open" &&
+      list.fromDepartment !== null &&
+      mine.departments.includes(list.fromDepartment) &&
+      !holdsList(list.holder, mine),
+  );
+  return { held, asked, fixable };
 }
 
 /**
@@ -343,31 +483,173 @@ const shiftSchema = z.object({
   end: z.string(),
 });
 
-/** One list with its items and passes, if the person may read it. */
+const ITEM_COLUMNS =
+  "id, template_item_id, kind, label, hint, required, unit, min_value, max_value, requested, given, checked, reading, answer, photo_path, comment, done, done_by, done_at";
+
+/**
+ * A list's items in order, under RLS. When the fixes' migration
+ * (20261116000300_lists_fix.sql) isn't on the project yet, read without when
+ * each was last fixed: none was; when the photos' migration
+ * (20261110001500_list_photos.sql) isn't either, without when a photo was
+ * removed: none was.
+ */
+async function itemRows(supabase: Supabase, listId: string) {
+  const withFixed = await supabase
+    .from("list_items")
+    .select(`${ITEM_COLUMNS}, photo_removed_at, fixed_at`)
+    .eq("list_id", listId)
+    .order("position");
+  if (!isMissingColumn(withFixed.error)) return withFixed;
+  const withRemoved = await supabase
+    .from("list_items")
+    .select(`${ITEM_COLUMNS}, photo_removed_at`)
+    .eq("list_id", listId)
+    .order("position");
+  if (!isMissingColumn(withRemoved.error)) {
+    return {
+      ...withRemoved,
+      data: (withRemoved.data ?? []).map((row) => ({ ...row, fixed_at: null })),
+    };
+  }
+  const without = await supabase
+    .from("list_items")
+    .select(ITEM_COLUMNS)
+    .eq("list_id", listId)
+    .order("position");
+  return {
+    ...without,
+    data: (without.data ?? []).map((row) => ({
+      ...row,
+      photo_removed_at: null,
+      fixed_at: null,
+    })),
+  };
+}
+
+/**
+ * Rows of a table of each item's history: none where its migration hasn't
+ * reached the project yet.
+ */
+function historyRows<T>(read: {
+  data: T[] | null;
+  error: { code?: string; message: string } | null;
+}): T[] {
+  if (read.error) {
+    if (isMissingTable(read.error)) return [];
+    throw read.error;
+  }
+  return read.data ?? [];
+}
+
+/**
+ * At most this many of a list's changes, and of its reopens, are read: the
+ * newest. The API answers at most 1000 rows (`max_rows` in
+ * supabase/config.toml, as on the hosted project) and would cut the newest
+ * ones silently, so the read asks for fewer, newest first, and a list
+ * changed more often than this (a tick taken back and given again all day)
+ * loses only its oldest changes. An item whose first change read isn't its
+ * first is said from there, as written then.
+ */
+const HISTORY_ROWS = 900;
+
+/**
+ * A list's item changes, newest first, the newest `HISTORY_ROWS`, under RLS:
+ * with whether each was a fix after the close (L6b-1), or, where
+ * 20261116000300_lists_fix.sql hasn't reached the project yet, without (none
+ * was).
+ */
+async function changeRows(
+  supabase: Supabase,
+  listId: string,
+): Promise<{
+  data: unknown[] | null;
+  error: { code?: string; message: string } | null;
+}> {
+  const withFixed = await supabase
+    .from("list_item_changes")
+    .select(CHANGE_COLUMNS)
+    .eq("list_id", listId)
+    .order("changed_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(HISTORY_ROWS);
+  if (!isMissingColumn(withFixed.error)) return withFixed;
+  return await supabase
+    .from("list_item_changes")
+    .select(CHANGE_COLUMNS_BEFORE_FIX)
+    .eq("list_id", listId)
+    .order("changed_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(HISTORY_ROWS);
+}
+
+/**
+ * What happened to a list's items, oldest first (those of one moment, the
+ * demo seed's, as they were made), and the closes its reopens undid (L6a),
+ * under RLS: the newest `HISTORY_ROWS` of each. None where
+ * 20261116000200_list_history.sql hasn't reached the project yet: the list
+ * still opens, with no history.
+ */
+async function historyOf(
+  supabase: Supabase,
+  listId: string,
+): Promise<Pick<ListDetail, "changes" | "reopens">> {
+  const [changes, reopens] = await Promise.all([
+    changeRows(supabase, listId),
+    supabase
+      .from("list_reopens")
+      .select(REOPEN_COLUMNS)
+      .eq("list_id", listId)
+      .order("reopened_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(HISTORY_ROWS),
+  ]);
+  return {
+    changes: changesOf(historyRows(changes).reverse()),
+    reopens: reopensOf(historyRows(reopens).reverse()),
+  };
+}
+
+/**
+ * One list with its items, passes and history (L6a: what happened to each
+ * item, and the closes its reopens undid), and when it and each item were
+ * last fixed after the close (L6b-1), if the person may read it.
+ */
 export async function getList(
   listId: string,
 ): Promise<ListDetail | null | "notYet"> {
   const supabase = await createClient();
-  const [list, items, people, passes] = await Promise.all([
-    supabase
-      .from("lists")
-      .select(`${LIST_COLUMNS}, note, asks_quantities, shift`)
-      .eq("id", listId)
-      .maybeSingle(),
-    supabase
-      .from("list_items")
-      .select(
-        "id, template_item_id, kind, label, hint, required, unit, min_value, max_value, requested, given, checked, reading, answer, comment, done, done_by, done_at",
-      )
-      .eq("list_id", listId)
-      .order("position"),
-    supabase.from("list_people").select("user_id").eq("list_id", listId),
-    supabase
-      .from("list_passes")
-      .select("id, from_department, to_department, passed_by, passed_at, note")
-      .eq("list_id", listId)
-      .order("passed_at"),
-  ]);
+  const [list, items, people, passes, named, fixed, history] =
+    await Promise.all([
+      supabase
+        .from("lists")
+        .select(`${LIST_COLUMNS}, note, asks_quantities, shift`)
+        .eq("id", listId)
+        .maybeSingle(),
+      itemRows(supabase, listId),
+      supabase.from("list_people").select("user_id").eq("list_id", listId),
+      supabase
+        .from("list_passes")
+        .select(
+          "id, from_department, to_department, passed_by, passed_at, note",
+        )
+        .eq("list_id", listId)
+        .order("passed_at"),
+      namedRolesOf(
+        supabase
+          .from("lists")
+          .select("id, recipient_named_role")
+          .eq("id", listId)
+          .not("recipient_named_role", "is", null),
+      ),
+      fixedTimesOf(
+        supabase
+          .from("lists")
+          .select("id, fixed_at")
+          .eq("id", listId)
+          .not("fixed_at", "is", null),
+      ),
+      historyOf(supabase, listId),
+    ]);
   for (const { error } of [list, items, people, passes]) {
     if (error) {
       if (isMissingTable(error)) return "notYet";
@@ -390,10 +672,15 @@ export async function getList(
     checked: row.checked === true,
     reading: row.reading,
     answer: row.answer,
+    // A photo still kept is shown through the app's route; one the clean-up
+    // removed is said in words.
+    photo: row.photo_removed_at === null ? listPhotoSrc(row.photo_path) : null,
+    photoRemoved: row.photo_path !== null && row.photo_removed_at !== null,
     comment: row.comment,
     done: row.done,
     doneBy: row.done_by,
     doneAt: row.done_at,
+    fixedAt: row.fixed_at,
   }));
   const passList: ListPass[] = (passes.data ?? []).map((row) => ({
     id: row.id,
@@ -409,12 +696,15 @@ export async function getList(
       list.data,
       (people.data ?? []).map((row) => row.user_id),
       listProgress(itemList),
+      named.get(list.data.id),
+      fixed.get(list.data.id),
     ),
     note: list.data.note,
     asksQuantities: list.data.asks_quantities,
     shift: shift.success ? (shift.data satisfies ListShift) : null,
     items: itemList,
     passes: passList,
+    ...history,
   };
 }
 
@@ -437,12 +727,15 @@ type TemplateRow = Pick<
   | "archived_at"
 >;
 
-function templateRecipientOf(row: {
-  recipient_kind: string | null;
-  recipient_department: string | null;
-  recipient_shift: string | null;
-  recipient_role: string | null;
-}): TemplateRecipient | null {
+function templateRecipientOf(
+  row: {
+    recipient_kind: string | null;
+    recipient_department: string | null;
+    recipient_shift: string | null;
+    recipient_role: string | null;
+  },
+  named?: string,
+): TemplateRecipient | null {
   switch (row.recipient_kind) {
     case "department":
       return row.recipient_department
@@ -453,20 +746,23 @@ function templateRecipientOf(row: {
         ? { kind: "shift", shift: row.recipient_shift }
         : null;
     case "role":
-      return { kind: "role", role: roleOf(row.recipient_role) };
+      return roleHolder(row.recipient_role, named);
     default:
       return null;
   }
 }
 
-/** Templates with their items and (for list managers) their schedules. */
+/**
+ * Templates with their items and (for list managers, and the team through
+ * the secret key) their schedules.
+ */
 async function templatesFrom(
-  supabase: Supabase,
+  supabase: SupabaseClient<Database>,
   rows: readonly TemplateRow[],
 ): Promise<ListTemplate[] | "notYet"> {
   const ids = rows.map((row) => row.id);
   if (ids.length === 0) return [];
-  const [items, schedules] = await Promise.all([
+  const [items, schedules, namedTemplates, namedSchedules] = await Promise.all([
     supabase
       .from("list_template_items")
       .select(
@@ -477,10 +773,24 @@ async function templatesFrom(
     supabase
       .from("list_schedules")
       .select(
-        "id, template_id, days, anchor, shift_key, opens_offset, due_offset, recipient_kind, recipient_user, recipient_department, recipient_shift, recipient_role, active, starts_on",
+        "id, template_id, days, anchor, shift_key, opens_offset, due_offset, recipient_kind, recipient_user, recipient_department, recipient_shift, recipient_role, active, starts_on, opens_from",
       )
       .in("template_id", ids)
       .order("position"),
+    namedRolesOf(
+      supabase
+        .from("list_templates")
+        .select("id, recipient_named_role")
+        .in("id", ids)
+        .not("recipient_named_role", "is", null),
+    ),
+    namedRolesOf(
+      supabase
+        .from("list_schedules")
+        .select("id, recipient_named_role")
+        .in("template_id", ids)
+        .not("recipient_named_role", "is", null),
+    ),
   ]);
   for (const { error } of [items, schedules]) {
     if (error) {
@@ -510,7 +820,7 @@ async function templatesFrom(
     const recipient: ScheduleRecipient | null =
       row.recipient_kind === "person" && row.recipient_user
         ? { kind: "person", user: row.recipient_user }
-        : templateRecipientOf(row);
+        : templateRecipientOf(row, namedSchedules.get(row.id));
     if (!recipient) continue;
     schedulesOf.set(row.template_id, [
       ...(schedulesOf.get(row.template_id) ?? []),
@@ -524,6 +834,7 @@ async function templatesFrom(
         recipient,
         active: row.active,
         startsOn: row.starts_on,
+        opensFrom: row.opens_from,
       },
     ]);
   }
@@ -532,7 +843,7 @@ async function templatesFrom(
     key: row.key,
     name: row.name,
     note: row.note,
-    recipient: templateRecipientOf(row),
+    recipient: templateRecipientOf(row, namedTemplates.get(row.id)),
     fromDepartment: row.from_department,
     asksQuantities: row.asks_quantities,
     version: row.version,
@@ -563,14 +874,19 @@ export async function getListTemplates(
   return templatesFrom(supabase, data ?? []);
 }
 
-/** One template, if the person may read it. */
+/**
+ * One template of the business, if the person may read it. Someone in
+ * several businesses reads it only in the one they are in now.
+ */
 export async function getListTemplate(
+  businessId: string,
   templateId: string,
 ): Promise<ListTemplate | null | "notYet"> {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("list_templates")
     .select(TEMPLATE_COLUMNS)
+    .eq("business_id", businessId)
     .eq("id", templateId)
     .maybeSingle();
   if (error) {
@@ -580,6 +896,163 @@ export async function getListTemplate(
   if (!data) return null;
   const templates = await templatesFrom(supabase, [data]);
   return templates === "notYet" ? templates : (templates[0] ?? null);
+}
+
+/**
+ * A business's list templates for the console, removed ones too, with their
+ * times: the team sets a business's lists up but isn't a member, so RLS has
+ * nothing to show it. Callers check that the person is on the team first.
+ */
+export async function getListTemplatesForTeam(
+  businessId: string,
+): Promise<ListTemplate[] | "notYet"> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("list_templates")
+    .select(TEMPLATE_COLUMNS)
+    .eq("business_id", businessId)
+    .order("position")
+    .order("name");
+  if (error) {
+    if (isMissingTable(error)) return "notYet";
+    throw error;
+  }
+  return templatesFrom(admin, data ?? []);
+}
+
+/** A role the business named, as the lists' screens offer and name it. */
+export type ListRole = NamedRole & { archived: boolean };
+
+const ListRoleRow = z.object({
+  id: z.uuid(),
+  base: z.enum(BASE_ROLES),
+  name: z.string(),
+  name_en: z.string().nullable(),
+  archived_at: z.string().nullable(),
+});
+
+/**
+ * The roles the business named, archived ones too (a list sent before keeps
+ * its name), in their order, read with `supabase`: the lists' screens offer
+ * the live ones next to the built-in roles (the roles plan's R11d). None
+ * until the database sends lists to them
+ * (20261115001900_named_roles_lists.sql: `lists.recipient_named_role`), so
+ * a screen never offers what it can't send.
+ */
+async function readListRoles(
+  supabase: SupabaseClient<Database>,
+  businessId: string,
+): Promise<ListRole[]> {
+  const [roles, takes] = await Promise.all([
+    supabase
+      .from("business_roles")
+      .select("id, base, name, name_en, archived_at")
+      .eq("business_id", businessId)
+      .order("sort")
+      .order("created_at"),
+    supabase.from("lists").select("recipient_named_role").limit(0),
+  ]);
+  if (isMissingColumn(takes.error)) return [];
+  if (takes.error) throw takes.error;
+  // PostgREST's and Postgres's "no such table".
+  if (roles.error?.code === "PGRST205" || roles.error?.code === "42P01") {
+    return [];
+  }
+  if (roles.error) throw roles.error;
+  return z
+    .array(ListRoleRow)
+    .parse(roles.data)
+    .map((row) => ({
+      id: row.id,
+      base: row.base,
+      name: row.name,
+      nameEn: row.name_en,
+      archived: row.archived_at !== null,
+    }));
+}
+
+/**
+ * The same, as the business's members read them (RLS: a colleague's role is
+ * no secret), for the lists' screens in the app.
+ */
+export async function getListRoles(businessId: string): Promise<ListRole[]> {
+  return readListRoles(await createClient(), businessId);
+}
+
+/**
+ * The same, for the console's template screens, with the secret key: the
+ * team isn't a member. Callers check first that the person is on the team.
+ */
+export async function getListRolesForTeam(
+  businessId: string,
+): Promise<ListRole[]> {
+  return readListRoles(createAdminClient(), businessId);
+}
+
+/**
+ * Where a business is, for its times in the console: its zone and the city
+ * its Shabbat follows. The team isn't a member, so this reads with the
+ * secret key; callers check that the person is on the team first.
+ */
+export async function getBusinessPlaceForTeam(
+  businessId: string,
+): Promise<{ timeZone: string; shabbatCity: string | null } | null> {
+  const { data, error } = await createAdminClient()
+    .from("businesses")
+    .select("timezone, shabbat_city")
+    .eq("id", businessId)
+    .maybeSingle();
+  if (error) throw error;
+  return data
+    ? { timeZone: data.timezone, shabbatCity: data.shabbat_city }
+    : null;
+}
+
+/** One template of the business for the console, or null when it isn't one. */
+export async function getListTemplateForTeam(
+  businessId: string,
+  templateId: string,
+): Promise<ListTemplate | null | "notYet"> {
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("list_templates")
+    .select(TEMPLATE_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("id", templateId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingTable(error)) return "notYet";
+    throw error;
+  }
+  if (!data) return null;
+  const templates = await templatesFrom(admin, [data]);
+  return templates === "notYet" ? templates : (templates[0] ?? null);
+}
+
+/**
+ * The lists the person sent that opened in the window, newest first: "sent
+ * today" on the send screen. Under RLS, which lets a sender read their own.
+ */
+export async function getSentLists(
+  businessId: string,
+  userId: string,
+  window: Window,
+): Promise<ListSummary[] | "notYet"> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("lists")
+    .select(LIST_COLUMNS)
+    .eq("business_id", businessId)
+    .eq("sent_by", userId)
+    .gte("opens_at", window.from)
+    .lt("opens_at", window.to)
+    .order("opens_at", { ascending: false })
+    .limit(50);
+  if (error) {
+    if (isMissingTable(error)) return "notYet";
+    throw error;
+  }
+  return summaries(supabase, data ?? []);
 }
 
 /**
@@ -624,6 +1097,80 @@ export async function getReadings(
   );
 }
 
+/** A number item of a list, with its reading if it has one. */
+export type ListReading = {
+  listId: string;
+  itemId: string;
+  templateItemId: string | null;
+  label: string;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  reading: number | null;
+  doneAt: string | null;
+  doneBy: string | null;
+  /** When it was last fixed after its list closed (L6b-1), or null. */
+  fixedAt: string | null;
+  outOfRange: boolean;
+};
+
+const READING_COLUMNS =
+  "id, list_id, template_item_id, label, unit, min_value, max_value, reading, done_at, done_by";
+
+/**
+ * The number items of these lists, in each list's order, with their readings:
+ * the manager's overview of a day and its week. Under RLS, which lets the
+ * reader see the items of the lists they read. Where
+ * 20261116000300_lists_fix.sql hasn't reached the project yet, none was
+ * fixed.
+ */
+export async function getListReadings(
+  listIds: readonly string[],
+): Promise<ListReading[] | "notYet"> {
+  if (listIds.length === 0) return [];
+  const supabase = await createClient();
+  const withFixed = await supabase
+    .from("list_items")
+    .select(`${READING_COLUMNS}, fixed_at`)
+    .in("list_id", [...listIds])
+    .eq("kind", "number")
+    .order("position");
+  const { data, error } = !isMissingColumn(withFixed.error)
+    ? withFixed
+    : await supabase
+        .from("list_items")
+        .select(READING_COLUMNS)
+        .in("list_id", [...listIds])
+        .eq("kind", "number")
+        .order("position")
+        .then((read) => ({
+          ...read,
+          data: (read.data ?? []).map((row) => ({ ...row, fixed_at: null })),
+        }));
+  if (error) {
+    if (isMissingTable(error)) return "notYet";
+    throw error;
+  }
+  return (data ?? []).map((row) => ({
+    listId: row.list_id,
+    itemId: row.id,
+    templateItemId: row.template_item_id,
+    label: row.label,
+    unit: row.unit,
+    min: row.min_value,
+    max: row.max_value,
+    reading: row.reading,
+    doneAt: row.done_at,
+    doneBy: row.done_by,
+    fixedAt: row.fixed_at,
+    outOfRange: isOutOfRange({
+      reading: row.reading,
+      min: row.min_value,
+      max: row.max_value,
+    }),
+  }));
+}
+
 /**
  * The Lists tab's count: the open lists `actorId` holds (`public.my_open_lists`,
  * with the secret key, since under RLS a list manager would count every list).
@@ -646,24 +1193,87 @@ export async function countMyOpenLists(
 
 const savedSchema = z.object({ id: z.string(), version: z.int() });
 
+const openingsSchema = z.array(
+  z.object({
+    schedule: z.string(),
+    openings: z.array(
+      z.object({
+        occursOn: z.string(),
+        opensAt: z.string(),
+        dueAt: z.string(),
+      }),
+    ),
+  }),
+);
+
+/** Instants as the screens compare them: ISO, in UTC. */
+const iso = (stamp: string) => new Date(stamp).toISOString();
+
+/**
+ * The next three openings of each of a template's times, as the database's
+ * minute job will open them (`public.next_list_openings`, with the secret key
+ * for `actorId`, a list manager or the team). Empty when it can't say: the
+ * migration not on this project yet, or not theirs to read.
+ */
+export async function nextListOpenings(
+  actorId: string,
+  templateId: string,
+  at?: Date,
+): Promise<ScheduleOpenings> {
+  const { data, error } = await createAdminClient().rpc("next_list_openings", {
+    actor: actorId,
+    template: templateId,
+    ...atTime(at),
+  });
+  if (error) {
+    if (
+      !isMissingFunction(error) &&
+      error.code !== "P0002" &&
+      error.code !== "42501"
+    ) {
+      console.error("reading a template's next openings failed", error.message);
+    }
+    return {};
+  }
+  const parsed = openingsSchema.safeParse(data);
+  if (!parsed.success) return {};
+  return Object.fromEntries(
+    parsed.data.map((row) => [
+      row.schedule,
+      row.openings.map((opening) => ({
+        occursOn: opening.occursOn,
+        opensAt: iso(opening.opensAt),
+        dueAt: iso(opening.dueAt),
+        shiftId: null,
+      })),
+    ]),
+  );
+}
+
 /**
  * Creates or saves a template with its items and times
  * (`public.save_list_template`). `seenVersion` is the version the editor read:
- * a save behind it is refused ("changed").
+ * a save behind it is refused ("changed"). The function gives back the id and
+ * the version; the items' ids, which the editor needs for its next save, are
+ * read after it, and a save that something else followed at once reads as
+ * "changed", since the editor's next save would be refused anyway. Once the
+ * function has saved, a failure after it carries the template's id
+ * (`saved`), so a new one is never made again by the next save.
  */
 export async function saveListTemplate(
   actorId: string,
   businessId: string,
   input: ListTemplateInput,
   seenVersion?: number,
-): Promise<ListWrite<{ id: string; version: number }>> {
+): Promise<ListWrite<SavedTemplate>> {
   let template: ReturnType<typeof templateForSave>;
   try {
     template = templateForSave(input);
   } catch {
     return refused("invalid");
   }
-  const { data, error } = await createAdminClient().rpc("save_list_template", {
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("save_list_template", {
     actor: actorId,
     business: businessId,
     template: template as Json,
@@ -671,7 +1281,47 @@ export async function saveListTemplate(
   });
   if (error) return refused(failureOf(error));
   const saved = savedSchema.safeParse(data);
-  return saved.success ? { ok: true, value: saved.data } : refused("failed");
+  if (!saved.success) return refused("failed");
+  const [now, items, schedules, openings] = await Promise.all([
+    admin
+      .from("list_templates")
+      .select("version")
+      .eq("id", saved.data.id)
+      .eq("business_id", businessId)
+      .maybeSingle(),
+    admin
+      .from("list_template_items")
+      .select("id")
+      .eq("template_id", saved.data.id)
+      .eq("business_id", businessId)
+      .order("position"),
+    admin
+      .from("list_schedules")
+      .select("id")
+      .eq("template_id", saved.data.id)
+      .eq("business_id", businessId)
+      .order("position"),
+    nextListOpenings(actorId, saved.data.id),
+  ]);
+  if (now.error || items.error || schedules.error) {
+    console.error(
+      "reading a saved template failed",
+      (now.error ?? items.error ?? schedules.error)?.message,
+    );
+    return { ...refused("failed"), saved: saved.data.id };
+  }
+  if (now.data?.version !== saved.data.version) {
+    return { ...refused("changed"), saved: saved.data.id };
+  }
+  return {
+    ok: true,
+    value: {
+      ...saved.data,
+      items: (items.data ?? []).map((row) => row.id),
+      schedules: (schedules.data ?? []).map((row) => row.id),
+      openings,
+    },
+  };
 }
 
 /** Removes a template from the screens (`public.archive_list_template`). */
@@ -722,21 +1372,33 @@ export async function sendList(
 /**
  * Fills an item, or clears it with null (`public.set_list_item`). Callers check
  * the result against the item's kind first (`itemResult`). Returns the list's
- * progress.
+ * progress. `fixing` fixes an item of a finished list in place instead
+ * (`public.fix_list_item`, L6b-1): the list stays finished, the change is the
+ * actor's and marked fixed; "keepRequired" for a required item it would
+ * empty, "reopened" once the list was opened again meanwhile, and "notYet"
+ * before 20261116000300_lists_fix.sql reaches the project.
  */
 export async function setListItem(
   actorId: string,
   itemId: string,
   result: ItemResult,
-  at?: Date,
-): Promise<ListWrite<ListProgress>> {
-  const { data, error } = await createAdminClient().rpc("set_list_item", {
-    actor: actorId,
-    item: itemId,
-    result: result as Json,
-    ...atTime(at),
-  });
-  if (error) return refused(failureOf(error));
+  options: { fixing?: boolean; at?: Date } = {},
+): Promise<ListWrite<ListProgress, ItemFailure>> {
+  const fixing = options.fixing === true;
+  const { data, error } = await createAdminClient().rpc(
+    fixing ? "fix_list_item" : "set_list_item",
+    {
+      actor: actorId,
+      item: itemId,
+      result: result as Json,
+      ...atTime(options.at),
+    },
+  );
+  if (error) {
+    return refused(
+      itemFailureOf(error, fixing, fixing ? "a list fix" : "a lists write"),
+    );
+  }
   const progress = listProgressSchema.safeParse(data);
   return progress.success
     ? { ok: true, value: progress.data }
@@ -805,4 +1467,27 @@ export function reopenList(
   at?: Date,
 ): Promise<ListWrite<null>> {
   return changeList("reopen_list", actorId, listId, at);
+}
+
+/**
+ * Passes an open list to another department of its business, with a note if
+ * there is one (`public.pass_list`): whoever holds it, or a list manager.
+ * "invalid" for the department holding it already, a removed one, or a note
+ * too long; "finished" once it is closed.
+ */
+export async function passList(
+  actorId: string,
+  input: PassInput,
+  at?: Date,
+): Promise<ListWrite<null>> {
+  const pass = passInput.safeParse(input);
+  if (!pass.success) return refused("invalid");
+  const { error } = await createAdminClient().rpc("pass_list", {
+    actor: actorId,
+    list: pass.data.list,
+    department: pass.data.department,
+    ...(pass.data.note ? { pass_note: pass.data.note } : {}),
+    ...atTime(at),
+  });
+  return error ? refused(failureOf(error)) : { ok: true, value: null };
 }

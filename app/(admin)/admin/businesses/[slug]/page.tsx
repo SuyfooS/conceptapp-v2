@@ -1,8 +1,15 @@
 import { getBusinessSetup } from "@db/admin";
-import { platformCan } from "@domain/platform";
+import { getViewableNamedRoles } from "@db/view-as";
+import {
+  consolePayAccess,
+  consoleRolesAccess,
+  platformCan,
+} from "@domain/platform";
+import { viewAsFailureOf } from "@domain/view-as";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentPlatformRole } from "../../../staff";
+import { payAccessIn } from "./access/pay-access";
 import { inviteLinkAction, viewAsAction } from "./actions";
 import { BusinessView } from "./business-view";
 
@@ -27,13 +34,22 @@ export default async function BusinessSetupPage({
   ]);
   const business = await getBusinessSetup(slug);
   if (!business) notFound();
+  const viewsAs = platformCan(role, "businesses.view_as");
+  // Who sees pay, where a module that is on uses it (its page says why); and
+  // the roles the business named, each one more to view it as (R11c).
+  const [payAccess, namedRoles] = await Promise.all([
+    consolePayAccess(role) !== null
+      ? payAccessIn(business.id).then((access) => access !== null)
+      : false,
+    viewsAs ? getViewableNamedRoles(business.id) : [],
+  ]);
 
   return (
     <BusinessView
       business={business}
       listHref="/admin"
       created={Boolean(created)}
-      viewFailed={view === "failed"}
+      viewFailure={viewAsFailureOf(view)}
       settingsHref={
         platformCan(role, "businesses.edit")
           ? `/admin/businesses/${business.slug}/settings`
@@ -49,11 +65,20 @@ export default async function BusinessSetupPage({
           ? `/admin/businesses/${business.slug}/people/new`
           : null
       }
+      rolesHref={
+        consoleRolesAccess(role) !== null
+          ? `/admin/businesses/${business.slug}/roles`
+          : null
+      }
+      accessHref={
+        payAccess ? `/admin/businesses/${business.slug}/access` : null
+      }
       viewAs={
-        platformCan(role, "businesses.view_as")
+        viewsAs
           ? viewAsAction.bind(null, { id: business.id, slug: business.slug })
           : null
       }
+      namedRoles={namedRoles}
       issue={inviteLinkAction}
     />
   );

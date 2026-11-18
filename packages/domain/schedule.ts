@@ -1,6 +1,12 @@
 import { z } from "zod";
-import { type AvailabilityRange, weekDates, weekdayOf } from "./availability";
+import {
+  type AvailabilityRange,
+  instantIn,
+  weekDates,
+  weekdayOf,
+} from "./availability";
 import { minutesOf, rangeMinutes, timeOfDay } from "./hours";
+import { holdsPermission, type Viewer } from "./modules";
 import { calendarDate } from "./shabbat";
 import { MAX_SHIFTS_IN_A_WEEK, type ShiftPattern, shiftsOn } from "./staffing";
 
@@ -27,6 +33,13 @@ export type ShiftAssignee = z.infer<typeof shiftAssignee>;
 
 export const scheduledShift = z
   .object({
+    /**
+     * The stored shift this is, when the screen read it from the week: the
+     * database writes it in place, and keeps its swap requests and lists
+     * (20261115000100_week_in_place.sql). A new shift has none, and so does
+     * a copy of another: the same id twice is refused.
+     */
+    id: z.uuid().optional(),
     day: calendarDate,
     name: z.string().trim().min(1).max(40),
     start: timeOfDay,
@@ -55,9 +68,10 @@ function span(
 
 /**
  * A whole week's schedule for the week starting on `weekStart`: shifts
- * inside the week, each person once per shift, in one of `positionKeys`
- * when given one, and never on two shifts at the same time. People being
- * active members is the database's to check.
+ * inside the week, each stored shift once, each person once per shift, in
+ * one of `positionKeys` when given one, and never on two shifts at the same
+ * time. People being active members, and the ids being the week's own, is
+ * the database's to check.
  */
 export function weekSchedule(
   weekStart: string,
@@ -70,7 +84,18 @@ export function weekSchedule(
     .max(MAX_SHIFTS_IN_A_WEEK)
     .superRefine((shifts, ctx) => {
       const busy = new Map<string, { at: [number, number]; shift: number }[]>();
+      const ids = new Set<string>();
       shifts.forEach((shift, i) => {
+        if (shift.id !== undefined) {
+          if (ids.has(shift.id)) {
+            ctx.addIssue({
+              code: "custom",
+              message: "The same shift twice",
+              path: [i, "id"],
+            });
+          }
+          ids.add(shift.id);
+        }
         if (!days.has(shift.day)) {
           ctx.addIssue({
             code: "custom",
@@ -115,6 +140,186 @@ export function weekSchedule(
         });
       });
     });
+}
+
+/**
+ * What the builder read of a saved week: each stored shift's id and the
+ * digest the database gave it (`seen`, from `public.week_shifts`). Sent back
+ * with the week, it tells which shifts changed since, so a stale screen
+ * never undoes a change it did not see. Null for a week drawn from the
+ * pattern, which replaces whatever is stored, as before.
+ */
+export const shiftBasis = z
+  .record(z.uuid(), z.string().regex(/^[0-9a-f]{32}$/))
+  .nullable();
+
+export type ShiftBasis = NonNullable<z.infer<typeof shiftBasis>>;
+
+/**
+ * The builder's key: it starts again from what the server read after each
+ * save or publish, with the new shifts' ids and what was seen, so a second
+ * press never sends the same new shifts again.
+ */
+export function builderKey(
+  weekStart: string,
+  savedAt: string | null,
+  publishedAt: string | null,
+): string {
+  return [weekStart, savedAt ?? "", publishedAt ?? ""].join("|");
+}
+
+/**
+ * Whether two versions of a shift show the same: its day, name, hours,
+ * people needed and pattern, and the same people in the same positions, in
+ * any order. These are what the database digests of a shift
+ * (`private.shift_digest`, which stays the authority), read off the screen's
+ * own shape, for what the builder tells before it sends the week
+ * (`swapsEndedBy` in ./swaps). Never sent as what was seen.
+ */
+export function sameShift(
+  a: Pick<
+    ScheduledShift,
+    "day" | "name" | "start" | "end" | "needed" | "pattern" | "assignees"
+  >,
+  b: Pick<
+    ScheduledShift,
+    "day" | "name" | "start" | "end" | "needed" | "pattern" | "assignees"
+  >,
+): boolean {
+  const people = (shift: Pick<ScheduledShift, "assignees">) =>
+    shift.assignees
+      .map((p) => `${p.user.toLowerCase()}=${p.position ?? ""}`)
+      .sort()
+      .join(",");
+  return (
+    a.day === b.day &&
+    a.name.trim() === b.name.trim() &&
+    a.start === b.start &&
+    a.end === b.end &&
+    a.needed === b.needed &&
+    (a.pattern ?? null) === (b.pattern ?? null) &&
+    people(a) === people(b)
+  );
+}
+
+/**
+ * A stored shift as it is now, with what is seen of it (`public.week_shifts`):
+ * what the builder puts back after a save or publish was refused because the
+ * shift changed meanwhile (`weekMoved`).
+ */
+export type ShiftAsNow = ScheduledShift & { id: string; seen: string };
+
+/** A shift on the builder's screen, under an id of the screen's own. */
+export type ScreenShift = { id: number; shift: ScheduledShift };
+
+/**
+ * The builder's week after a save or publish was refused because shifts it
+ * changed had changed meanwhile (`weekMoved`, 40001 with hint `moved`):
+ * - each of `now` takes the place of the screen's version of it, as it is now
+ *   and in its place in the day (back among the shifts if the screen had
+ *   removed it), keeping the screen's id, so an open sheet keeps its place;
+ * - each of `gone` (deleted meanwhile) goes among the removed, with its stored
+ *   id dropped, so bringing it back adds it as a new shift;
+ * - everything else stays as it is on the screen, unsaved work included.
+ * A shift of `now` the screen does not have (which it always has: the
+ * database names only shifts the screen read) is added under `nextId()`.
+ */
+export function withShiftsAsNow(
+  screen: { rows: readonly ScreenShift[]; removed: readonly ScreenShift[] },
+  moved: { shifts: readonly ShiftAsNow[]; gone: readonly string[] },
+  nextId: () => number,
+): { rows: ScreenShift[]; removed: ScreenShift[] } {
+  const asNow = new Map<string, ScheduledShift>(
+    moved.shifts.map(({ seen: _, ...shift }) => [shift.id, shift]),
+  );
+  const gone = new Set(moved.gone);
+  const idOf = (row: ScreenShift) => row.shift.id ?? "";
+  const withoutId = ({ id, shift: { id: _, ...shift } }: ScreenShift) => ({
+    id,
+    shift,
+  });
+
+  const back: ScreenShift[] = [];
+  const placed = new Set<string>();
+  for (const row of [...screen.rows, ...screen.removed]) {
+    const shift = asNow.get(idOf(row));
+    if (shift && !placed.has(idOf(row))) {
+      placed.add(idOf(row));
+      back.push({ id: row.id, shift });
+    }
+  }
+  for (const [id, shift] of asNow) {
+    if (!placed.has(id)) back.push({ id: nextId(), shift });
+  }
+
+  let rows = screen.rows.filter(
+    (row) => !asNow.has(idOf(row)) && !gone.has(idOf(row)),
+  );
+  for (const row of back) {
+    const at = shiftSlot(
+      rows.map((r) => r.shift),
+      row.shift,
+    );
+    rows = [...rows.slice(0, at), row, ...rows.slice(at)];
+  }
+  return {
+    rows,
+    removed: [
+      ...screen.removed
+        .filter((row) => !asNow.has(idOf(row)))
+        .map((row) => (gone.has(idOf(row)) ? withoutId(row) : row)),
+      ...screen.rows.filter((row) => gone.has(idOf(row))).map(withoutId),
+    ],
+  };
+}
+
+/**
+ * Whether sending `sent` for a week read as `read` would write anything: a
+ * shift new on the screen, one not as it was read (`sameShift`), or one read
+ * and not sent. After a write refused because shifts changed meanwhile, with
+ * those put back as they are now (`withShiftsAsNow`), it says whether any of
+ * the screen's own work is left to send.
+ */
+export function changedSince(
+  read: readonly ScheduledShift[],
+  sent: readonly ScheduledShift[],
+): boolean {
+  const before = new Map(
+    read.flatMap((shift) => (shift.id ? [[shift.id, shift] as const] : [])),
+  );
+  const kept = new Set<string>();
+  for (const shift of sent) {
+    const was = shift.id ? before.get(shift.id) : undefined;
+    if (!shift.id || !was || !sameShift(was, shift)) return true;
+    kept.add(shift.id);
+  }
+  return [...before.keys()].some((id) => !kept.has(id));
+}
+
+/**
+ * The day a phone shows after a write refused because shifts changed
+ * meanwhile (`weekMoved`): the one on the screen while one of those shifts is
+ * on it, else the earliest of theirs, so what is marked is in sight. A shift
+ * changed meanwhile is on its day as it is now; one deleted meanwhile on its
+ * day as the screen sent it.
+ */
+export function dayOfMoved(
+  current: string,
+  moved: {
+    shifts: readonly Pick<ScheduledShift, "day">[];
+    gone: readonly string[];
+  },
+  sent: readonly Pick<ScheduledShift, "id" | "day">[],
+): string {
+  const days = [
+    ...moved.shifts.map((shift) => shift.day),
+    ...sent
+      .filter(
+        (shift) => shift.id !== undefined && moved.gone.includes(shift.id),
+      )
+      .map((shift) => shift.day),
+  ].sort();
+  return days.includes(current) ? current : (days[0] ?? current);
 }
 
 /**
@@ -181,6 +386,10 @@ export function coverageOf(
  * whichever week it falls. Everyone else, and a worker with nothing coming,
  * opens on today; or, when this week has nothing to show and next week does,
  * on next week's first shift.
+ *
+ * A link that names one of the weeks (`asked`, from a shared schedule) opens
+ * that week: a worker on their next shift in it, anyone else on today in
+ * this week, or on next week's first shift (its first day when it has none).
  */
 export function scheduleOpening<
   S extends Pick<ScheduledShift, "day" | "assignees">,
@@ -190,13 +399,27 @@ export function scheduleOpening<
   manager,
   thisWeek,
   nextWeek,
+  asked = null,
 }: {
   today: string;
   userId: string;
   manager: boolean;
   thisWeek: { dates: readonly string[]; shifts: readonly S[] };
   nextWeek: { dates: readonly string[]; shifts: readonly S[] };
+  asked?: "this" | "next" | null;
 }): { week: "this" | "next"; day: string } {
+  if (asked) {
+    const week = asked === "this" ? thisWeek : nextWeek;
+    const mine = manager
+      ? undefined
+      : shiftsOf(week.shifts, userId, today)[0]?.shift.day;
+    const day =
+      mine ??
+      (asked === "this"
+        ? today
+        : (week.shifts[0]?.day ?? week.dates[0] ?? today));
+    return { week: asked, day };
+  }
   const own = manager
     ? undefined
     : shiftsOf([...thisWeek.shifts, ...nextWeek.shifts], userId, today)[0]
@@ -485,6 +708,25 @@ export function shiftsOf<S extends Pick<ScheduledShift, "day" | "assignees">>(
   });
 }
 
+/**
+ * Whether a shift has begun at `now`: its start, on its day in the business's
+ * time zone, is at or before the moment. This is the database's own moment
+ * (`lower(private.shift_span(id)) <= at_time`), the one that refuses giving a
+ * shift away, taking it or approving the swap. A start the clocks skip lands
+ * just after the change, and one they repeat counts the second time, as
+ * Postgres's `timestamp at time zone` reads them (`instantIn`, in any zone,
+ * east or west of UTC). A shift past
+ * midnight has begun from its start, and one that ended has begun too.
+ * Wall-clock comparisons (`shiftPhase`) drift by an hour on those nights.
+ */
+export function shiftStarted(
+  shift: Pick<ScheduledShift, "day" | "start">,
+  now: Date,
+  timeZone: string,
+): boolean {
+  return instantIn(shift.day, shift.start, timeZone).getTime() <= now.getTime();
+}
+
 /** How long a list of shifts is in all, in minutes (past midnight counts). */
 export function shiftMinutes(
   shifts: readonly Pick<ScheduledShift, "start" | "end">[],
@@ -513,4 +755,40 @@ export function shiftsByDay<
           a.name.localeCompare(b.name),
       ),
   }));
+}
+
+/**
+ * Whether the viewer builds the schedule: reads its drafts and everyone's
+ * availability, saves the week and decides swaps (Orel's answer 6 of 15
+ * November 2026). It is `schedule.edit` as the database answers it
+ * (`public.my_permissions`): owners always, managers by default, and anyone
+ * whose role an owner raised (the roles plan's R3). The database asks the same
+ * (`private.builds_schedule`), at every read of a draft and every write.
+ */
+export function buildsSchedule(viewer: Viewer): boolean {
+  return holdsPermission(viewer, "schedule.edit");
+}
+
+/**
+ * Whether the viewer publishes the schedule: they build it and hold
+ * `schedule.publish`, a switch under building, on by default (Q3). Someone
+ * who builds without it saves drafts only, and can't change a published week,
+ * which is only ever published again (`private.publishes_schedule`).
+ */
+export function publishesSchedule(viewer: Viewer): boolean {
+  return buildsSchedule(viewer) && holdsPermission(viewer, "schedule.publish");
+}
+
+/**
+ * Whether someone who builds the schedule changes a week: a draft always,
+ * a published week only if they publish too, since it changes only by being
+ * published again (Q3). Otherwise the builder only shows it, and what it
+ * lacks (open places, short shifts) is not theirs to fill: no count or link
+ * sends them there to fill it.
+ */
+export function changesWeek(
+  publishes: boolean,
+  week: { published: boolean },
+): boolean {
+  return publishes || !week.published;
 }

@@ -1,5 +1,6 @@
 import { timeIn } from "@domain/shabbat";
 import { clockStatus } from "@domain/time-clock";
+import type { WageNow } from "@domain/wages";
 import { Card } from "@ui/card";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
@@ -8,8 +9,16 @@ import type { ReactNode } from "react";
 import { RefreshOnReturn } from "../home/refresh-on-return";
 import { type AppWording, translator } from "../wording";
 import { ClockPanel } from "./clock-panel";
-import type { ClockActions, ClockData, ClockPaths } from "./clock-types";
+import type {
+  ClockActions,
+  ClockData,
+  ClockPaths,
+  OwnDetails,
+  OwnPay,
+} from "./clock-types";
 import { HoursCount } from "./hours-count";
+import { OwnPayCard } from "./own-pay-card";
+import { useFullDate, useMonthYear, useShekels } from "./pay/pay-parts";
 import { ShiftList } from "./shift-list";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -17,15 +26,20 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
 /**
  * The clock: one large circle to start and end work, the month's hours under
  * it, and the way to the history. Tablet and desktop add the latest shifts
- * beside it.
+ * beside it. Under the person's own wage, their month's estimate before tax
+ * (payroll P7) when the business shows one, in a flat card: the circle is the
+ * screen's hero.
  */
 export function ClockView({
   data,
+  ownPay = null,
   actions,
   paths,
   wording,
 }: {
   data: ClockData;
+  /** Their own month in shekels (`currentOwnPay`); null when it isn't shown. */
+  ownPay?: OwnPay | null;
   actions: ClockActions;
   paths: ClockPaths;
   /** The business's words. */
@@ -79,6 +93,19 @@ export function ClockView({
               />
             </PageSection>
           ) : null}
+
+          {data.ownWage || data.ownDetails ? (
+            <ListGroup>
+              {data.ownWage ? (
+                <OwnWage wage={data.ownWage} wording={wording} />
+              ) : null}
+              {data.ownDetails ? (
+                <OwnDetailsRow details={data.ownDetails} wording={wording} />
+              ) : null}
+            </ListGroup>
+          ) : null}
+
+          {ownPay ? <OwnPayCard pay={ownPay} wording={wording} /> : null}
 
           {data.team || data.payroll ? (
             <ListGroup>
@@ -139,6 +166,95 @@ function headerLine(data: ClockData, wording: AppWording): ReactNode {
   }
   if (scheduling) return t("noShift");
   return data.punch.needsCode ? null : t("idle");
+}
+
+/**
+ * The person's own hourly wage, and nobody else's: the one in effect today
+ * from its day, and the next one when one is set (or that one alone, when
+ * it's the first).
+ */
+function OwnWage({ wage, wording }: { wage: WageNow; wording: AppWording }) {
+  const t = translator(wording, "app.clock.ownWage");
+  const shekels = useShekels();
+  const fullDate = useFullDate();
+  const shown = wage.current ?? wage.next;
+  if (!shown) return null;
+  const later = wage.current ? wage.next : null;
+  return (
+    <ListRow
+      title={t.rich("title", { ltr, amount: shekels(shown.agorot) })}
+      subtitle={
+        <>
+          <span className="block">
+            {t.rich("since", { ltr, date: fullDate(shown.from) })}
+          </span>
+          {later ? (
+            <span className="block">
+              {t.rich("next", {
+                ltr,
+                date: fullDate(later.from),
+                amount: shekels(later.agorot),
+              })}
+            </span>
+          ) : null}
+        </>
+      }
+    />
+  );
+}
+
+/**
+ * The person's own details for payroll, as a pay holder set them, and
+ * nobody else's: their payroll number, rest day, until when they are a
+ * minor, and when their work began.
+ */
+function OwnDetailsRow({
+  details,
+  wording,
+}: {
+  details: OwnDetails;
+  wording: AppWording;
+}) {
+  const t = translator(wording, "app.clock.ownDetails");
+  const tDays = translator(wording, "app.pay.details.restDay");
+  const fullDate = useFullDate();
+  const monthYear = useMonthYear();
+  const lines = [
+    details.payrollNumber
+      ? {
+          key: "number",
+          text: t.rich("number", { ltr, number: details.payrollNumber }),
+        }
+      : null,
+    details.restDay !== null
+      ? {
+          key: "rest",
+          text: t("restDay", { day: tDays(`${details.restDay}`) }),
+        }
+      : null,
+    details.youthUntil
+      ? {
+          key: "youth",
+          text: t.rich("youth", { ltr, until: monthYear(details.youthUntil) }),
+        }
+      : null,
+    details.startedOn
+      ? {
+          key: "since",
+          text: t.rich("since", { ltr, date: fullDate(details.startedOn) }),
+        }
+      : null,
+  ].filter((line) => line !== null);
+  return (
+    <ListRow
+      title={t("title")}
+      subtitle={lines.map((line) => (
+        <span key={line.key} className="block">
+          {line.text}
+        </span>
+      ))}
+    />
+  );
 }
 
 function Hours({

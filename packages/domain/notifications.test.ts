@@ -1,22 +1,45 @@
 import { describe, expect, it } from "vitest";
 import {
+  alwaysOnPhone,
   buildInbox,
+  DEFAULT_NOTIFICATION_PREFERENCES,
+  DEFAULT_QUIET_HOURS,
   groupsFor,
   INBOX_PAGE_SIZE,
+  inboxAgo,
   inboxCursor,
   inboxPage,
+  inInbox,
   isAppPath,
+  isNotificationGroup,
+  LIST_TIME_WORDS,
   linkFor,
+  NOTIFICATION_GROUPS,
   NOTIFICATION_KIND_KEYS,
   NOTIFICATION_KINDS,
   type NotificationLookups,
   type NotificationRow,
   needsAction,
+  notificationChats,
+  notificationDocuments,
+  notificationGroupOf,
   notificationKindOf,
+  notificationPreferenceChange,
   notificationRefs,
+  PHONE_ONLY_KINDS,
   parseInboxCursor,
+  phoneTime,
+  quietEnd,
+  REMINDER_RULES,
+  reachesPhone,
+  readNotificationPreferences,
+  SWITCHABLE_GROUPS,
+  saysShiftsLeft,
+  unfilledWeekBegun,
   unreadCounts,
+  weekUnderWay,
 } from "./notifications";
+import { MAX_ENTRY_HOURS } from "./time-clock-format";
 
 const NOA = "11111111-1111-4111-8111-111111111111";
 const YOAV = "22222222-2222-4222-8222-222222222222";
@@ -97,12 +120,35 @@ describe("the kinds", () => {
   it("count as needing action only what asks the reader to act", () => {
     expect(
       NOTIFICATION_KIND_KEYS.filter((kind) => needsAction(kind)).sort(),
-    ).toEqual(["clock.confirm", "swap.offered", "swap.waiting"]);
+    ).toEqual([
+      "availability.due",
+      "availability.missing",
+      "chat.announcement",
+      "clock.confirm",
+      "clock.open",
+      "clock.overdue",
+      "documents.received",
+      "documents.to_confirm",
+      "lists.late_owner",
+      "lists.late_team",
+      "lists.out_of_range",
+      "pay.month_due",
+      "schedule.unfilled",
+      "swap.offered",
+      "swap.waiting",
+    ]);
     expect(needsAction("something.else")).toBe(false);
   });
 
   it("give the manager-only kinds to managers", () => {
-    for (const kind of ["swap.waiting", "clock.confirm", "team.joined"]) {
+    for (const kind of [
+      "swap.waiting",
+      "clock.confirm",
+      "team.joined",
+      "availability.missing",
+      "clock.overdue",
+      "schedule.unfilled",
+    ]) {
       expect(
         NOTIFICATION_KINDS[kind as keyof typeof NOTIFICATION_KINDS].minRole,
       ).toBe("manager");
@@ -146,13 +192,478 @@ describe("unreadCounts", () => {
     expect(unreadCounts(rows, "b")).toEqual({ all: 1, action: 1 });
     expect(unreadCounts(rows, "c")).toEqual({ all: 0, action: 0 });
   });
+
+  it("leaves out a chat's own lines, which the Chat tab counts", () => {
+    const rows = [
+      { business_id: "a", kind: "chat.direct" },
+      { business_id: "a", kind: "chat.group" },
+      { business_id: "a", kind: "chat.announcement" },
+      { business_id: "a", kind: "something.new" },
+    ];
+    // An announcement asks for "קראתי": the bell and Home count it.
+    expect(unreadCounts(rows, "a")).toEqual({ all: 2, action: 1 });
+  });
+});
+
+describe("chat's lines", () => {
+  const CHAT = "66666666-6666-4666-8666-666666666666";
+  const chatLookups: NotificationLookups = {
+    ...lookups,
+    chats: new Map([[CHAT, { kind: "department", name: "Kitchen" }]]),
+  };
+
+  it("reach the phone only, but for an announcement", () => {
+    expect([...PHONE_ONLY_KINDS].sort()).toEqual(["chat.direct", "chat.group"]);
+    expect(inInbox("chat.announcement")).toBe(true);
+    expect(inInbox("lists.sent")).toBe(true);
+    // An unknown kind shows, as a plain line.
+    expect(inInbox("chat.message")).toBe(true);
+  });
+
+  it("lead to their chat, and only by a real id", () => {
+    for (const kind of ["chat.direct", "chat.group", "chat.announcement"]) {
+      expect(linkFor(kind, { conversation: CHAT.toUpperCase() })).toBe(
+        `/chat/${CHAT}`,
+      );
+      expect(linkFor(kind, { conversation: "../admin" })).toBe("/chat");
+      expect(linkFor(kind)).toBe("/chat");
+    }
+  });
+
+  it("read who wrote and how many wait, never a word of the messages", () => {
+    expect(
+      buildInbox(
+        [
+          row("chat.direct", { conversation: CHAT, from: YOAV, count: 3 }),
+          row("chat.group", { conversation: CHAT, from: LEFT, count: 120 }),
+          row("chat.announcement", {
+            conversation: CHAT,
+            message: LINE,
+            from: MANAGER,
+          }),
+        ],
+        chatLookups,
+        NOA,
+      ).map((entry) => [entry.group, entry.href, entry.line]),
+    ).toEqual([
+      [
+        "chat",
+        `/chat/${CHAT}`,
+        {
+          kind: "chat.direct",
+          from: { kind: "member", name: "Yoav" },
+          count: 3,
+        },
+      ],
+      [
+        "chat",
+        `/chat/${CHAT}`,
+        {
+          kind: "chat.group",
+          from: { kind: "former" },
+          // A count it can't read is one.
+          count: 1,
+          chat: { kind: "department", name: "Kitchen" },
+        },
+      ],
+      [
+        "chat",
+        `/chat/${CHAT}`,
+        {
+          kind: "chat.announcement",
+          from: { kind: "member", name: null },
+          chat: { kind: "department", name: "Kitchen" },
+        },
+      ],
+    ]);
+  });
+
+  it("still read without the group's name, and as a plain line without their chat", () => {
+    expect(
+      lineOf(row("chat.group", { conversation: CHAT, from: YOAV, count: 2 }))
+        ?.line,
+    ).toEqual({
+      kind: "chat.group",
+      from: { kind: "member", name: "Yoav" },
+      count: 2,
+      chat: null,
+    });
+    expect(lineOf(row("chat.direct", { from: YOAV }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("name the groups to look up, and only by a real id", () => {
+    expect(
+      notificationChats([
+        row("chat.group", { conversation: CHAT.toUpperCase() }),
+        row("chat.announcement", { conversation: CHAT }),
+        row("chat.direct", { conversation: LINE }),
+        row("chat.group", { conversation: "../admin" }),
+      ]),
+    ).toEqual([CHAT]);
+  });
+
+  it("follow who builds the schedule for its approvals, once what the person holds is known (R3)", () => {
+    // swap.waiting and availability.missing are for those who hold
+    // schedule.edit, schedule.unfilled (only ever of a published week) for
+    // those who publish it: managers by default.
+    for (const kind of ["swap.waiting", "availability.missing"] as const) {
+      expect(NOTIFICATION_KINDS[kind].perm).toBe("schedule.edit");
+    }
+    expect(NOTIFICATION_KINDS["schedule.unfilled"].perm).toBe(
+      "schedule.publish",
+    );
+    expect(groupsFor("worker", ["scheduling"], ["schedule.edit"])).toContain(
+      "approvals",
+    );
+    expect(groupsFor("worker", ["scheduling"], [])).not.toContain("approvals");
+    // A manager lowered to view keeps none of scheduling's approvals.
+    expect(groupsFor("manager", ["scheduling"], [])).not.toContain("approvals");
+    // An owner holds everything; without what they hold, by role as before.
+    expect(groupsFor("owner", ["scheduling"], [])).toContain("approvals");
+    expect(groupsFor("manager", ["scheduling"])).toContain("approvals");
+  });
+
+  it("follow who edits the clock for its approvals, once what the person holds is known (R4)", () => {
+    // clock.confirm and clock.overdue are for those who hold clock.edit:
+    // managers by default; hours someone set for themselves are an owner's,
+    // who holds everything.
+    for (const kind of ["clock.confirm", "clock.overdue"] as const) {
+      expect(NOTIFICATION_KINDS[kind].perm).toBe("clock.edit");
+    }
+    expect(groupsFor("worker", ["time_clock"], ["clock.edit"])).toContain(
+      "approvals",
+    );
+    expect(groupsFor("worker", ["time_clock"], [])).not.toContain("approvals");
+    // A manager lowered to view keeps none of the clock's approvals.
+    expect(groupsFor("manager", ["time_clock"], [])).not.toContain("approvals");
+    expect(groupsFor("owner", ["time_clock"], [])).toContain("approvals");
+    // Pay alone reads hours and confirms none.
+    expect(
+      groupsFor("accountant", ["time_clock"], ["clock.payroll"]),
+    ).not.toContain("approvals");
+  });
+
+  it("tell those who run the lists of a list still late and a reading out of range (R5)", () => {
+    // lists.late_team and lists.out_of_range are for those who hold
+    // lists.manage: owners, managers by default, and a worker raised to it;
+    // the owners' own late line stays theirs by rank.
+    for (const kind of ["lists.late_team", "lists.out_of_range"] as const) {
+      expect(NOTIFICATION_KINDS[kind].perm).toBe("lists.manage");
+    }
+    expect(NOTIFICATION_KINDS["lists.late_owner"]).not.toHaveProperty("perm");
+    // Every member of the staff still hears of their own lists.
+    expect(groupsFor("worker", ["lists"], [])).toContain("lists");
+    expect(groupsFor("manager", ["lists"], [])).toContain("lists");
+  });
+
+  it("tell of someone joining whoever sees the team, once what the person holds is known (R6)", () => {
+    // team.joined is for those who hold team.view: managers by default, a
+    // worker raised to it, not a manager lowered to none.
+    expect(NOTIFICATION_KINDS["team.joined"].perm).toBe("team.view");
+    expect(groupsFor("worker", [], ["team.view"])).toContain("team");
+    expect(groupsFor("worker", [], [])).not.toContain("team");
+    expect(groupsFor("manager", [], [])).not.toContain("team");
+    expect(groupsFor("owner", [], [])).toContain("team");
+    // Without what they hold, by role as before.
+    expect(groupsFor("manager", [])).toContain("team");
+  });
+
+  it("reach the staff only: an accountant is in no chat, only in documents", () => {
+    expect(groupsFor("worker", ["chat"])).toEqual(["chat", "documents"]);
+    expect(groupsFor("accountant", ["chat"])).toEqual(["documents"]);
+    expect(groupsFor("worker", [])).toEqual([]);
+  });
+});
+
+describe("documents' lines", () => {
+  const DOC = "77777777-7777-4777-8777-777777777777";
+  const KINDS = [
+    "documents.received",
+    "documents.sent",
+    "documents.to_confirm",
+  ] as const;
+  const withCategories: NotificationLookups = {
+    ...lookups,
+    documents: new Map([[DOC, "sick_note"]]),
+  };
+
+  it("are in the inbox and the bell, and ask for action when the reader has to act", () => {
+    for (const kind of KINDS) {
+      expect(inInbox(kind), kind).toBe(true);
+      expect(NOTIFICATION_KINDS[kind].group, kind).toBe("documents");
+    }
+    expect(needsAction("documents.received")).toBe(true);
+    expect(needsAction("documents.to_confirm")).toBe(true);
+    expect(needsAction("documents.sent")).toBe(false);
+  });
+
+  it("lead to their document, and only by a real id", () => {
+    for (const kind of KINDS) {
+      expect(linkFor(kind, { document: DOC.toUpperCase() })).toBe(
+        `/chat/documents/${DOC}`,
+      );
+      expect(linkFor(kind, { document: "../admin" })).toBe("/chat/documents");
+      expect(linkFor(kind)).toBe("/chat/documents");
+    }
+  });
+
+  it("lead a settled one to the inbox when the office's access may have gone", () => {
+    expect(linkFor("documents.received", { document: DOC }, true)).toBe(
+      "/notifications",
+    );
+    // A recipient's line settles when they opened or confirmed it.
+    expect(linkFor("documents.to_confirm", { document: DOC }, true)).toBe(
+      `/chat/documents/${DOC}`,
+    );
+  });
+
+  it("read who sent it, and its category only from the document itself", () => {
+    const params = { document: DOC, from: NOA, category: "payslip" };
+    expect(
+      buildInbox(
+        KINDS.map((kind) => row(kind, params)),
+        withCategories,
+        YOAV,
+      ).map((entry) => [entry.group, entry.href, entry.line]),
+    ).toEqual(
+      KINDS.map((kind) => [
+        "documents",
+        `/chat/documents/${DOC}`,
+        // What params say of a category is never read: the document's is.
+        {
+          kind,
+          from: { kind: "member", name: "Noa" },
+          category: "sick_note",
+        },
+      ]),
+    );
+  });
+
+  it("say nothing of a category the reader can't read, and read without who sent it", () => {
+    expect(
+      lineOf(row("documents.received", { document: DOC, from: LEFT }))?.line,
+    ).toEqual({
+      kind: "documents.received",
+      from: { kind: "former" },
+      category: null,
+    });
+    expect(
+      buildInbox(
+        [row("documents.sent", { document: DOC })],
+        {
+          ...lookups,
+          documents: new Map([[DOC, "medical" as never]]),
+        },
+        NOA,
+      )[0]?.line,
+    ).toEqual({
+      kind: "documents.sent",
+      from: { kind: "unknown" },
+      category: null,
+    });
+    expect(lineOf(row("documents.sent", { from: NOA }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("name the documents to look up, and only by a real id", () => {
+    expect(
+      notificationDocuments([
+        row("documents.received", { document: DOC.toUpperCase() }),
+        row("documents.sent", { document: DOC }),
+        row("documents.to_confirm", { document: "../admin" }),
+        row("lists.sent", { document: LINE }),
+      ]),
+    ).toEqual([DOC]);
+  });
+
+  it("reach the office and the staff: an accountant gets a document to the business", () => {
+    expect(groupsFor("accountant", ["chat"])).toContain("documents");
+    expect(NOTIFICATION_KINDS["documents.received"]).not.toHaveProperty(
+      "staffOnly",
+    );
+    expect(NOTIFICATION_KINDS["documents.sent"].staffOnly).toBe(true);
+  });
+});
+
+describe("the reminders' lines", () => {
+  const DUE = "2026-11-25T16:00:00+00:00";
+
+  it("lead to what they ask for", () => {
+    expect(linkFor("availability.due")).toBe("/schedule/availability");
+    expect(linkFor("availability.missing")).toBe("/schedule/availability/team");
+    expect(linkFor("clock.open", { entry: LINE })).toBe("/clock");
+    // An overdue entry opens its person's hours, by a real id only.
+    expect(linkFor("clock.overdue", { entry: LINE, person: NOA })).toBe(
+      `/clock/team/${NOA}`,
+    );
+    expect(linkFor("clock.overdue", { person: NOA.toUpperCase() }, true)).toBe(
+      `/clock/team/${NOA}`,
+    );
+    for (const params of [{ person: "../pay" }, { person: 7 }, null]) {
+      expect(linkFor("clock.overdue", params), String(params)).toBe(
+        "/clock/team",
+      );
+    }
+  });
+
+  it("are in the groups the settings screen shows", () => {
+    expect(notificationGroupOf("availability.due")).toBe("schedule");
+    expect(notificationGroupOf("availability.missing")).toBe("approvals");
+    expect(notificationGroupOf("clock.open")).toBe("clock");
+    expect(notificationGroupOf("clock.overdue")).toBe("approvals");
+    expect(NOTIFICATION_GROUPS.indexOf("clock")).toBe(
+      NOTIFICATION_GROUPS.indexOf("swaps") + 1,
+    );
+  });
+
+  it("are from the app, which wrote them, not from someone on the team", () => {
+    // The desktop inbox's "who" says so: nobody on the team sent a reminder.
+    for (const kind of [
+      "availability.due",
+      "availability.missing",
+      "clock.open",
+      "clock.overdue",
+      "lists.due",
+      "lists.late",
+      "lists.late_team",
+      "lists.late_owner",
+      "pay.month_due",
+      "push.test",
+    ]) {
+      expect(lineOf(row(kind, {}, { actorId: null }))?.actor, kind).toEqual({
+        kind: "app",
+      });
+    }
+    // A line of what someone did, whose account is gone, still says nobody
+    // knows who; and one the app wrote for what someone did names them.
+    expect(
+      lineOf(row("swap.offered", { from: NOA }, { actorId: null }))?.actor,
+    ).toEqual({ kind: "unknown" });
+    expect(lineOf(row("lists.due", {}))?.actor.kind).toBe("member");
+  });
+
+  it("read next week's availability reminder", () => {
+    expect(
+      lineOf(
+        row(
+          "availability.due",
+          { startsOn: "2026-11-29", dueAt: DUE },
+          { actorId: null },
+        ),
+      ),
+    ).toMatchObject({
+      actor: { kind: "app" },
+      group: "schedule",
+      href: "/schedule/availability",
+      line: { kind: "availability.due", startsOn: "2026-11-29", dueAt: DUE },
+    });
+    // Without its due moment it still reads; without its week it doesn't.
+    expect(
+      lineOf(row("availability.due", { startsOn: "2026-11-29", dueAt: 7 }))
+        ?.line,
+    ).toEqual({
+      kind: "availability.due",
+      startsOn: "2026-11-29",
+      dueAt: null,
+    });
+    expect(lineOf(row("availability.due", { dueAt: DUE }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("read how many haven't sent theirs, a count and never who", () => {
+    expect(
+      lineOf(
+        row("availability.missing", {
+          startsOn: "2026-11-29",
+          dueAt: DUE,
+          missing: 3,
+        }),
+        MANAGER,
+      )?.line,
+    ).toEqual({
+      kind: "availability.missing",
+      startsOn: "2026-11-29",
+      dueAt: DUE,
+      missing: 3,
+    });
+    expect(
+      lineOf(
+        row("availability.missing", { startsOn: "2026-11-29", missing: -1 }),
+        MANAGER,
+      )?.line,
+    ).toMatchObject({ missing: 0, dueAt: null });
+  });
+
+  it("read a reminder to clock out, with the shift or without one", () => {
+    const since = "2026-11-25T05:55:00+00:00";
+    const shiftEnd = "2026-11-25T14:00:00+00:00";
+    expect(
+      lineOf(row("clock.open", { entry: LINE, since, shiftEnd }))?.line,
+    ).toEqual({ kind: "clock.open", since, shiftEnd });
+    expect(
+      lineOf(row("clock.open", { entry: LINE, since, shiftEnd: null }))?.line,
+    ).toEqual({ kind: "clock.open", since, shiftEnd: null });
+    // Still a reminder when the line lost its times.
+    expect(lineOf(row("clock.open", "not an object"))?.line).toEqual({
+      kind: "clock.open",
+      since: null,
+      shiftEnd: null,
+    });
+  });
+
+  it("read an overdue entry, and say when it is the reader's own", () => {
+    const since = "2026-11-24T10:00:00+00:00";
+    const overdue = row("clock.overdue", { entry: LINE, person: NOA, since });
+    expect(lineOf(overdue, MANAGER)).toMatchObject({
+      group: "approvals",
+      href: `/clock/team/${NOA}`,
+      line: {
+        kind: "clock.overdue",
+        person: { kind: "member", name: "Noa" },
+        since,
+        mine: false,
+      },
+    });
+    expect(lineOf(overdue, NOA)?.line).toMatchObject({ mine: true });
+    expect(lineOf(row("clock.overdue", { since }))?.line).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("ask the reader to act, the Home tab counts them", () => {
+    expect(
+      unreadCounts(
+        [
+          { business_id: LINE, kind: "availability.due" },
+          { business_id: LINE, kind: "clock.open" },
+          { business_id: LINE, kind: "schedule.published" },
+        ],
+        LINE,
+      ),
+    ).toEqual({ all: 3, action: 2 });
+  });
+
+  it("keep their own times, a reminder to clock out lasting as long as an entry", () => {
+    expect(REMINDER_RULES).toEqual({
+      missingForHours: 6,
+      openWithoutShiftHours: 12,
+      openForHours: MAX_ENTRY_HOURS,
+      earliestAt: "08:00",
+    });
+    expect(MAX_ENTRY_HOURS).toBe(24);
+  });
 });
 
 describe("groupsFor", () => {
-  it("gives a worker the schedule and swaps", () => {
+  it("gives a worker the schedule, swaps and the clock", () => {
     expect(groupsFor("worker", ["scheduling", "time_clock"])).toEqual([
       "schedule",
       "swaps",
+      "clock",
     ]);
   });
 
@@ -160,14 +671,26 @@ describe("groupsFor", () => {
     expect(groupsFor("manager", ["scheduling", "time_clock"])).toEqual([
       "schedule",
       "swaps",
+      "clock",
       "approvals",
       "team",
     ]);
   });
 
   it("follows the modules that are on", () => {
-    expect(groupsFor("owner", ["time_clock"])).toEqual(["approvals", "team"]);
+    expect(groupsFor("owner", ["time_clock"])).toEqual([
+      "clock",
+      "approvals",
+      "team",
+    ]);
+    expect(groupsFor("worker", ["time_clock"])).toEqual(["clock"]);
     expect(groupsFor("worker", [])).toEqual([]);
+  });
+
+  it("gives someone off the staff no reminder to clock out", () => {
+    expect(groupsFor("accountant", ["scheduling", "time_clock"])).not.toContain(
+      "clock",
+    );
   });
 });
 
@@ -283,7 +806,13 @@ describe("buildInbox", () => {
       actor: { kind: "member", name: null },
       group: "schedule",
       href: "/schedule/shifts",
-      line: { kind: "schedule.published", startsOn: "2026-11-15", mine: 3 },
+      line: {
+        kind: "schedule.published",
+        startsOn: "2026-11-15",
+        mine: 3,
+        running: false,
+        nearest: null,
+      },
     });
   });
 
@@ -384,6 +913,210 @@ describe("buildInbox", () => {
     ).toMatchObject({ line: { kind: "lists.finished", name: "Bar order" } });
   });
 
+  it("reads a list passed to the reader's department, with its name and whether a note came", () => {
+    expect(
+      lineOf(
+        row(
+          "lists.passed",
+          {
+            list: LINE,
+            name: "Bar order",
+            department: GONE,
+            fromDepartment: GONE,
+            departmentName: "Bar",
+            hasNote: true,
+          },
+          { actorId: MANAGER },
+        ),
+      ),
+    ).toMatchObject({
+      group: "lists",
+      href: `/lists/${LINE}`,
+      line: {
+        kind: "lists.passed",
+        name: "Bar order",
+        department: "Bar",
+        hasNote: true,
+      },
+    });
+    // A line that lost the department's name still reads, with no note.
+    expect(
+      lineOf(row("lists.passed", { list: LINE, name: "Bar order" })),
+    ).toMatchObject({
+      line: { kind: "lists.passed", department: null, hasNote: false },
+    });
+    expect(needsAction("lists.passed")).toBe(false);
+  });
+
+  it("reads a list due soon or late, with its due time if it kept it", () => {
+    const due = "2026-11-16T07:15:00.000Z";
+    for (const kind of [
+      "lists.due",
+      "lists.late",
+      "lists.late_team",
+      "lists.late_owner",
+    ]) {
+      expect(
+        lineOf(row(kind, { list: LINE, name: "Opening", due })),
+        kind,
+      ).toMatchObject({
+        group: "lists",
+        href: `/lists/${LINE}`,
+        line: { kind, name: "Opening", due },
+      });
+      expect(
+        lineOf(row(kind, { list: LINE, name: "Opening", due: "soon" })),
+        kind,
+      ).toMatchObject({ line: { kind, due: null } });
+    }
+    // Late, for its managers, leads to the business's day when it lost the list.
+    expect(linkFor("lists.late_team")).toBe("/lists/today");
+  });
+
+  it("tells the owners of a list still late, for them alone, asking them to look", () => {
+    // Orel, 15 November 2026: the step after the late line, written by the
+    // minute job (20261115000500_lists_owners_late.sql).
+    expect(NOTIFICATION_KINDS["lists.late_owner"]).toMatchObject({
+      group: "lists",
+      module: "lists",
+      minRole: "owner",
+      needsAction: true,
+      byApp: true,
+    });
+    expect(linkFor("lists.late_owner", { list: LINE })).toBe(`/lists/${LINE}`);
+    expect(linkFor("lists.late_owner", { list: "../pay" })).toBe(
+      "/lists/today",
+    );
+    expect(
+      lineOf(row("lists.late_owner", { list: LINE, name: "Opening" })),
+    ).toMatchObject({
+      group: "lists",
+      line: { kind: "lists.late_owner", name: "Opening", due: null },
+    });
+    // Without the list's name there is nothing to say.
+    expect(lineOf(row("lists.late_owner", { list: LINE }))?.line).toEqual({
+      kind: "other",
+    });
+    // Owners hear of lists in the same group as the rest of the team.
+    expect(groupsFor("owner", ["lists"])).toContain("lists");
+    expect(groupsFor("worker", ["lists"])).toContain("lists");
+  });
+
+  it("reads every line about a list's times with words of its own", () => {
+    expect(Object.keys(LIST_TIME_WORDS).sort()).toEqual([
+      "lists.due",
+      "lists.late",
+      "lists.late_owner",
+      "lists.late_team",
+    ]);
+    for (const [kind, key] of Object.entries(LIST_TIME_WORDS)) {
+      expect(kind, key).toBe(`lists.${key}`);
+    }
+  });
+
+  it("reads a reading outside its range, with the item's label", () => {
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LINE,
+          name: "Opening",
+          item: LINE,
+          label: "Fridge",
+        }),
+        MANAGER,
+      ),
+    ).toMatchObject({
+      href: `/lists/${LINE}`,
+      line: {
+        kind: "lists.out_of_range",
+        name: "Opening",
+        label: "Fridge",
+        reading: null,
+      },
+    });
+    expect(
+      lineOf(row("lists.out_of_range", { list: LINE, name: "Opening" })),
+    ).toMatchObject({ line: { label: null, reading: null } });
+    // With the reading, its range and its unit, as the database now sends.
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LINE,
+          name: "Opening",
+          item: LINE,
+          label: "Fridge",
+          reading: 7,
+          min: 0,
+          max: 5,
+          unit: "°C",
+        }),
+        MANAGER,
+      ),
+    ).toMatchObject({
+      line: { reading: { value: 7, min: 0, max: 5, unit: "°C" } },
+    });
+    expect(
+      lineOf(
+        row("lists.out_of_range", {
+          list: LINE,
+          name: "Opening",
+          reading: -17,
+          min: -25,
+          max: -18,
+          unit: null,
+        }),
+      ),
+    ).toMatchObject({
+      line: { reading: { value: -17, min: -25, max: -18, unit: null } },
+    });
+  });
+
+  it("reads a reading outside its range settled by one back inside it", () => {
+    const facts = {
+      list: LINE,
+      name: "Opening",
+      item: LINE,
+      label: "Fridge",
+      reading: 7,
+      min: 0,
+      max: 5,
+      unit: "°C",
+    };
+    // As the database writes it, and as it settles it (backInRange).
+    expect(lineOf(row("lists.out_of_range", facts), MANAGER)).toMatchObject({
+      settled: false,
+      line: { backInRange: false },
+    });
+    expect(
+      lineOf(
+        row(
+          "lists.out_of_range",
+          { ...facts, backInRange: true },
+          {
+            readAt: "2026-11-09T10:05:00+00:00",
+            resolvedAt: "2026-11-09T10:05:00+00:00",
+          },
+        ),
+        MANAGER,
+      ),
+    ).toMatchObject({
+      settled: true,
+      href: `/lists/${LINE}`,
+      line: {
+        kind: "lists.out_of_range",
+        backInRange: true,
+        reading: { value: 7 },
+      },
+    });
+    // Anything but true is no mark.
+    expect(
+      lineOf(
+        row("lists.out_of_range", { ...facts, backInRange: "yes" }),
+        MANAGER,
+      ),
+    ).toMatchObject({ line: { backInRange: false } });
+  });
+
   it("reads someone joining", () => {
     expect(
       lineOf(row("team.joined", { person: NOA }, { actorId: NOA }), MANAGER),
@@ -423,6 +1156,65 @@ describe("buildInbox", () => {
     expect(needsAction("access.pay_granted")).toBe(false);
   });
 
+  it("says pay access given from the console is from the ConceptApp team, never a colleague", () => {
+    // TEAM was never in the business: someone on the ConceptApp team gave it
+    // from the console, in their own name (set_member_permission's actor).
+    const TEAM = "66666666-6666-4666-8666-666666666666";
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: TEAM }), NOA),
+    ).toMatchObject({
+      actor: { kind: "team" },
+      href: "/clock/pay",
+      line: { kind: "access.pay_granted" },
+    });
+    // Upper case as any id may come: the same person.
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: TEAM.toUpperCase() }))
+        ?.actor,
+    ).toEqual({ kind: "team" });
+    // The owner who gave it, in the business now, by name; one who left, as
+    // someone who left; an account gone, as nobody known. None is the team.
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: YOAV }))?.actor,
+    ).toEqual({ kind: "member", name: "Yoav" });
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: LEFT }))?.actor,
+    ).toEqual({ kind: "former" });
+    expect(
+      lineOf(row("access.pay_granted", {}, { actorId: null }))?.actor,
+    ).toEqual({ kind: "unknown" });
+  });
+
+  it("reads an actor the business never had as the ConceptApp team, in every kind", () => {
+    const TEAM = "66666666-6666-4666-8666-666666666666";
+    // A line of what someone did: the team, never "someone on the team".
+    expect(
+      lineOf(
+        row(
+          "schedule.published",
+          { week: GONE, startsOn: "2026-11-15", mine: 3 },
+          { actorId: TEAM },
+        ),
+      )?.actor,
+    ).toEqual({ kind: "team" });
+    // One the app writes on its own: from the app with nobody behind it,
+    // from the team when one of it is, and from a colleague by name.
+    expect(lineOf(row("lists.due", {}, { actorId: null }))?.actor).toEqual({
+      kind: "app",
+    });
+    expect(lineOf(row("lists.due", {}, { actorId: TEAM }))?.actor).toEqual({
+      kind: "team",
+    });
+    expect(lineOf(row("lists.due", {}, { actorId: YOAV }))?.actor).toEqual({
+      kind: "member",
+      name: "Yoav",
+    });
+    // An id that isn't one is nobody known, not the team.
+    expect(
+      lineOf(row("schedule.published", {}, { actorId: "not-an-id" }))?.actor,
+    ).toEqual({ kind: "unknown" });
+  });
+
   it("keeps pay access taken back in the inbox, where the hours are closed", () => {
     expect(
       lineOf(
@@ -441,11 +1233,78 @@ describe("buildInbox", () => {
     expect(linkFor("lists.sent", { list: LINE }, true)).toBe(`/lists/${LINE}`);
   });
 
+  it("reads a wage set for the reader, with its day and never an amount", () => {
+    expect(
+      lineOf(
+        row("pay.wage_set", { since: "2026-11-01" }, { actorId: MANAGER }),
+      ),
+    ).toMatchObject({
+      group: null,
+      href: "/clock",
+      line: { kind: "pay.wage_set", since: "2026-11-01" },
+    });
+    // A line that lost its day still says the wage changed.
+    expect(
+      lineOf(row("pay.wage_set", { since: "1.11" }, { actorId: MANAGER })),
+    ).toMatchObject({ line: { kind: "pay.wage_set", since: null } });
+    expect(needsAction("pay.wage_set")).toBe(false);
+    expect(linkFor("pay.wage_set", { since: "2026-11-01" }, true)).toBe(
+      "/clock",
+    );
+  });
+
+  it("reads a closed month corrected since, leading to that month's hours (payroll P9)", () => {
+    expect(
+      lineOf(
+        row("pay.after_close", { month: "2026-10" }, { actorId: MANAGER }),
+      ),
+    ).toMatchObject({
+      group: null,
+      href: "/clock/pay?month=2026-10",
+      line: { kind: "pay.after_close", month: "2026-10" },
+    });
+    // Without its month, to the hours for payroll as they open.
+    expect(lineOf(row("pay.after_close", { month: "10/2026" }))).toMatchObject({
+      href: "/clock/pay",
+      line: { kind: "pay.after_close", month: null },
+    });
+    expect(needsAction("pay.after_close")).toBe(false);
+  });
+
+  it("reads last month waiting to be closed, with its counts only", () => {
+    expect(
+      lineOf(
+        row(
+          "pay.month_due",
+          { month: "2026-10", waiting: 2, open: 1 },
+          { actorId: null },
+        ),
+      ),
+    ).toMatchObject({
+      group: null,
+      href: "/clock/pay?month=2026-10",
+      actor: { kind: "app" },
+      line: { kind: "pay.month_due", month: "2026-10", waiting: 2, open: 1 },
+    });
+    // Counts it can't read are none.
+    expect(
+      lineOf(row("pay.month_due", { month: "2026-10", waiting: "two" })),
+    ).toMatchObject({
+      line: { kind: "pay.month_due", month: "2026-10", waiting: 0, open: 0 },
+    });
+    // Closing the month settles it, and it still leads to that month.
+    expect(linkFor("pay.month_due", { month: "2026-10" }, true)).toBe(
+      "/clock/pay?month=2026-10",
+    );
+    // Nobody switches either off: they are in none of the groups.
+    expect(groupsFor("accountant", ["time_clock"])).toEqual([]);
+  });
+
   it("reads the phone switch's test as a line of its own, in no group", () => {
     expect(lineOf(row("push.test", {}, { actorId: null }))).toMatchObject({
       group: null,
       href: "/notifications",
-      actor: { kind: "unknown" },
+      actor: { kind: "app" },
       line: { kind: "push.test" },
     });
     expect(needsAction("push.test")).toBe(false);
@@ -498,5 +1357,651 @@ describe("notificationRefs", () => {
         row("other.thing", "text"),
       ]).sort(),
     ).toEqual([NOA, YOAV, MANAGER].sort());
+  });
+});
+
+describe("inboxAgo", () => {
+  const now = new Date("2026-11-12T10:00:00Z");
+  const agoBy = (ms: number) => inboxAgo(new Date(now.getTime() - ms), now);
+  const min = 60_000;
+  const hour = 60 * min;
+  const day = 24 * hour;
+
+  it("says now under a minute, and for a clock a little ahead", () => {
+    expect(agoBy(0)).toEqual({ unit: "now" });
+    expect(agoBy(59_999)).toEqual({ unit: "now" });
+    expect(agoBy(-5_000)).toEqual({ unit: "now" });
+  });
+
+  it("counts whole minutes, hours and days, rounded down", () => {
+    expect(agoBy(min)).toEqual({ unit: "minutes", count: 1 });
+    expect(agoBy(59 * min + 59_000)).toEqual({ unit: "minutes", count: 59 });
+    expect(agoBy(hour)).toEqual({ unit: "hours", count: 1 });
+    expect(agoBy(2 * hour - 1)).toEqual({ unit: "hours", count: 1 });
+    expect(agoBy(23 * hour + 59 * min)).toEqual({ unit: "hours", count: 23 });
+    expect(agoBy(day)).toEqual({ unit: "days", count: 1 });
+    expect(agoBy(2 * day)).toEqual({ unit: "days", count: 2 });
+    expect(agoBy(7 * day - 1)).toEqual({ unit: "days", count: 6 });
+  });
+
+  it("gives way to the date from a week on, or for a time it can't read", () => {
+    expect(agoBy(7 * day)).toBeNull();
+    expect(agoBy(400 * day)).toBeNull();
+    expect(inboxAgo(new Date("not a time"), now)).toBeNull();
+  });
+});
+
+describe("each person's choices", () => {
+  const ZONE = "Asia/Jerusalem";
+  const at = (instant: string) => new Date(instant);
+  const iso = (date: Date | null) => date?.toISOString() ?? null;
+  const night = { from: "22:00", to: "07:00" };
+
+  it("puts every kind in the group the database does, or in none", () => {
+    expect(notificationGroupOf("swap.offered")).toBe("swaps");
+    expect(notificationGroupOf("clock.confirm")).toBe("approvals");
+    expect(notificationGroupOf("chat.direct")).toBe("chat");
+    expect(notificationGroupOf("documents.to_confirm")).toBe("documents");
+    expect(notificationGroupOf("push.test")).toBeNull();
+    expect(notificationGroupOf("pay.month_due")).toBeNull();
+    expect(notificationGroupOf("weather.rain")).toBeNull();
+    for (const kind of NOTIFICATION_KIND_KEYS) {
+      const group = notificationGroupOf(kind);
+      expect(group === null || SWITCHABLE_GROUPS.includes(group), kind).toBe(
+        true,
+      );
+    }
+  });
+
+  it("says which lines reach the phone whatever is switched off: pay's alone", () => {
+    expect(alwaysOnPhone("worker", ["time_clock"])).toEqual([
+      "access.pay_granted",
+      "pay.wage_set",
+      "pay.after_close",
+      "pay.month_due",
+    ]);
+    expect(alwaysOnPhone("accountant", ["time_clock"])).toContain(
+      "pay.after_close",
+    );
+    // With the time clock off, nothing about pay comes; the test never counts.
+    expect(alwaysOnPhone("owner", ["scheduling", "chat"])).toEqual([]);
+    // The settings say "pay always comes": a line in no group that isn't
+    // about pay needs its own words there first. One in the app alone
+    // (R10's role.changed) never comes to the phone at all.
+    const appOnly = (kind: keyof typeof NOTIFICATION_KINDS) =>
+      (NOTIFICATION_KINDS[kind] as { appOnly?: true }).appOnly === true;
+    for (const kind of NOTIFICATION_KIND_KEYS) {
+      if (kind === "push.test" || notificationGroupOf(kind) !== null) continue;
+      if (appOnly(kind)) continue;
+      expect(
+        kind.startsWith("pay.") || kind === "access.pay_granted",
+        kind,
+      ).toBe(true);
+    }
+    expect(alwaysOnPhone("worker", ["scheduling", "lists"])).toEqual([]);
+  });
+
+  it("lets every group be kept off the phone, those that ask to act too", () => {
+    expect([...SWITCHABLE_GROUPS]).toEqual([...NOTIFICATION_GROUPS]);
+    expect(isNotificationGroup("approvals")).toBe(true);
+    expect(isNotificationGroup("weather")).toBe(false);
+  });
+
+  it("starts with every group on, no quiet hours and the line on the lock screen", () => {
+    expect(DEFAULT_NOTIFICATION_PREFERENCES).toEqual({
+      pushOff: [],
+      quiet: null,
+      timeZone: ZONE,
+      previews: true,
+      askedAt: null,
+    });
+    expect(DEFAULT_QUIET_HOURS).toEqual(night);
+  });
+
+  it("reads stored choices leniently", () => {
+    expect(
+      readNotificationPreferences({
+        pushOff: ["chat", "weather", "swaps"],
+        quietFrom: "22:00:00",
+        quietTo: "07:00:00",
+        timeZone: ZONE,
+        previews: false,
+        askedAt: "2026-11-12T08:00:00+00:00",
+      }),
+    ).toEqual({
+      pushOff: ["swaps", "chat"],
+      quiet: night,
+      timeZone: ZONE,
+      previews: false,
+      askedAt: "2026-11-12T08:00:00+00:00",
+    });
+    expect(
+      readNotificationPreferences({
+        pushOff: "chat",
+        quietFrom: "22:00:00",
+        quietTo: null,
+        timeZone: "",
+        previews: null,
+        askedAt: "soon",
+      }),
+    ).toEqual(DEFAULT_NOTIFICATION_PREFERENCES);
+  });
+
+  it("keeps a group off the phone, never a line with none", () => {
+    const choices = { pushOff: ["swaps" as const, "chat" as const] };
+    expect(reachesPhone("swap.offered", choices)).toBe(false);
+    expect(reachesPhone("chat.group", choices)).toBe(false);
+    expect(reachesPhone("swap.waiting", choices)).toBe(true);
+    expect(reachesPhone("pay.month_due", choices)).toBe(true);
+    expect(reachesPhone("push.test", choices)).toBe(true);
+  });
+
+  it("holds a line in quiet hours until they end, across midnight", () => {
+    // Israel in November is two hours ahead of UTC.
+    expect(iso(quietEnd(night, ZONE, at("2026-11-20T21:00:00Z")))).toBe(
+      "2026-11-21T05:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2026-11-21T01:30:00Z")))).toBe(
+      "2026-11-21T05:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2026-11-20T20:00:00Z")))).toBe(
+      "2026-11-21T05:00:00.000Z",
+    );
+    expect(quietEnd(night, ZONE, at("2026-11-20T19:59:59Z"))).toBeNull();
+    expect(quietEnd(night, ZONE, at("2026-11-21T05:00:00Z"))).toBeNull();
+    expect(quietEnd(night, ZONE, at("2026-11-20T10:00:00Z"))).toBeNull();
+    expect(quietEnd(null, ZONE, at("2026-11-20T21:00:00Z"))).toBeNull();
+  });
+
+  it("ends them on the clock of the day they end, across the clock changes", () => {
+    // Back on 25 October 2026 at 02:00, forward on 26 March 2027 at 02:00.
+    expect(iso(quietEnd(night, ZONE, at("2026-10-24T20:00:00Z")))).toBe(
+      "2026-10-25T05:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2026-10-24T23:30:00Z")))).toBe(
+      "2026-10-25T05:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2027-03-25T21:00:00Z")))).toBe(
+      "2027-03-26T04:00:00.000Z",
+    );
+    expect(iso(quietEnd(night, ZONE, at("2027-03-26T01:30:00Z")))).toBe(
+      "2027-03-26T04:00:00.000Z",
+    );
+  });
+
+  it("holds within a day too", () => {
+    const noon = { from: "13:00", to: "15:00" };
+    expect(iso(quietEnd(noon, ZONE, at("2026-11-20T11:30:00Z")))).toBe(
+      "2026-11-20T13:00:00.000Z",
+    );
+    expect(quietEnd(noon, ZONE, at("2026-11-20T13:30:00Z"))).toBeNull();
+    expect(quietEnd(noon, ZONE, at("2026-11-20T21:00:00Z"))).toBeNull();
+  });
+
+  it("says when a line goes to the phone, and never holds the test", () => {
+    const choices = {
+      pushOff: ["swaps" as const],
+      quiet: night,
+      timeZone: ZONE,
+    };
+    const late = at("2026-11-20T21:00:00Z");
+    expect(phoneTime("swap.offered", choices, late)).toBeNull();
+    expect(iso(phoneTime("schedule.published", choices, late))).toBe(
+      "2026-11-21T05:00:00.000Z",
+    );
+    expect(phoneTime("push.test", choices, late)).toEqual(late);
+    const noon = at("2026-11-20T10:00:00Z");
+    expect(phoneTime("schedule.published", choices, noon)).toEqual(noon);
+  });
+
+  it("takes one change at a time from the settings screen", () => {
+    const ok = (change: unknown) =>
+      notificationPreferenceChange.safeParse(change).success;
+    expect(ok({ kind: "group", group: "chat", on: false })).toBe(true);
+    expect(ok({ kind: "quiet", hours: { from: "22:00", to: "07:00" } })).toBe(
+      true,
+    );
+    expect(ok({ kind: "quiet", hours: null })).toBe(true);
+    expect(ok({ kind: "previews", on: false })).toBe(true);
+    expect(ok({ kind: "group", group: "weather", on: false })).toBe(false);
+    expect(ok({ kind: "quiet", hours: { from: "07:00", to: "07:00" } })).toBe(
+      false,
+    );
+    expect(ok({ kind: "quiet", hours: { from: "7:00", to: "22:00" } })).toBe(
+      false,
+    );
+    expect(ok({ kind: "quiet" })).toBe(false);
+    expect(ok({ kind: "everything", on: false })).toBe(false);
+  });
+});
+
+describe("shifts freed by a team change", () => {
+  // The running-week plan's R4: the line opens the builder of its week, this
+  // week's as much as next week's, settled or not.
+  it("open their week's builder, in approvals", () => {
+    const line = { week: LINE, startsOn: "2026-11-15", count: 1 };
+    expect(linkFor("schedule.unfilled", line)).toBe(
+      "/schedule/build?week=2026-11-15",
+    );
+    expect(
+      linkFor("schedule.unfilled", { ...line, startsOn: "2026-11-22" }, true),
+    ).toBe("/schedule/build?week=2026-11-22");
+    expect(isAppPath(linkFor("schedule.unfilled", line))).toBe(true);
+    expect(notificationGroupOf("schedule.unfilled")).toBe("approvals");
+    expect(NOTIFICATION_KINDS["schedule.unfilled"].module).toBe("scheduling");
+  });
+
+  it("lead to the schedule when their week can't be read", () => {
+    expect(linkFor("schedule.unfilled", { week: LINE })).toBe("/schedule");
+    expect(linkFor("schedule.unfilled")).toBe("/schedule");
+    for (const startsOn of [
+      "15.11.2026",
+      "2026-11-15&week=x",
+      "../admin",
+      "",
+      15,
+      null,
+    ]) {
+      expect(linkFor("schedule.unfilled", { startsOn }), String(startsOn)).toBe(
+        "/schedule",
+      );
+    }
+  });
+
+  it("read the week and how many lack someone, never who left", () => {
+    expect(
+      lineOf(
+        row("schedule.unfilled", {
+          week: LINE,
+          startsOn: "2026-11-22",
+          count: 2,
+        }),
+        MANAGER,
+      )?.line,
+    ).toEqual({ kind: "schedule.unfilled", startsOn: "2026-11-22", count: 2 });
+    expect(
+      lineOf(
+        row("schedule.unfilled", { startsOn: "2026-11-22", count: -3 }),
+        MANAGER,
+      )?.line,
+    ).toEqual({ kind: "schedule.unfilled", startsOn: "2026-11-22", count: 0 });
+    expect(
+      lineOf(row("schedule.unfilled", { count: 2 }), MANAGER)?.line,
+    ).toEqual({ kind: "other" });
+  });
+
+  it("know a week already under way, filled in this week's schedule", () => {
+    expect(unfilledWeekBegun("2026-11-22", "2026-11-21")).toBe(false);
+    expect(unfilledWeekBegun("2026-11-22", "2026-11-22")).toBe(true);
+    expect(unfilledWeekBegun("2026-11-22", "2026-11-28")).toBe(true);
+  });
+});
+
+// The running week's lines (Orel, 15 November 2026, answers 4 and 5;
+// supabase/migrations/20261115000400_running_week_notices.sql): written while
+// the week ran, they count the reader's shifts still to start, and a change
+// names the nearest shift it changed.
+describe("a week under way", () => {
+  const moved = {
+    week: GONE,
+    startsOn: "2026-11-15",
+    mine: 2,
+    running: true,
+    nearest: { change: "moved", shift: SHIFT },
+  };
+
+  it("reads a change with its nearest shift and what is left", () => {
+    expect(lineOf(row("schedule.changed", moved))?.line).toEqual({
+      kind: "schedule.changed",
+      startsOn: "2026-11-15",
+      mine: 2,
+      running: true,
+      nearest: { change: "moved", shift: SHIFT },
+    });
+    for (const change of ["added", "removed", "edited"] as const) {
+      expect(
+        lineOf(
+          row("schedule.changed", {
+            ...moved,
+            nearest: { change, shift: SHIFT },
+          }),
+        )?.line,
+      ).toMatchObject({ nearest: { change, shift: SHIFT } });
+    }
+  });
+
+  it("reads a first publish under way, which names no shift", () => {
+    expect(
+      lineOf(
+        row("schedule.published", {
+          ...moved,
+          mine: 1,
+          nearest: { change: "added", shift: SHIFT },
+        }),
+      )?.line,
+    ).toEqual({
+      kind: "schedule.published",
+      startsOn: "2026-11-15",
+      mine: 1,
+      running: true,
+      nearest: null,
+    });
+  });
+
+  it("still reads the week when the change it names can't be read", () => {
+    for (const nearest of [
+      { change: "swapped", shift: SHIFT },
+      { change: "moved", shift: { ...SHIFT, start: "late" } },
+      { change: "moved" },
+      "Tuesday",
+    ]) {
+      expect(
+        lineOf(row("schedule.changed", { ...moved, nearest }))?.line,
+      ).toMatchObject({ kind: "schedule.changed", mine: 2, nearest: null });
+    }
+    // A week still to come names none, whatever the row holds.
+    expect(
+      lineOf(row("schedule.changed", { ...moved, running: false }))?.line,
+    ).toMatchObject({ running: false, nearest: null });
+    expect(
+      lineOf(row("schedule.changed", { ...moved, running: "yes" }))?.line,
+    ).toMatchObject({ running: false, nearest: null });
+  });
+
+  it("reads a line from before the running week as one of a week to come", () => {
+    expect(
+      lineOf(
+        row("schedule.changed", {
+          week: GONE,
+          startsOn: "2026-11-15",
+          mine: 4,
+        }),
+      )?.line,
+    ).toEqual({
+      kind: "schedule.changed",
+      startsOn: "2026-11-15",
+      mine: 4,
+      running: false,
+      nearest: null,
+    });
+  });
+
+  it("reads a change as the database writes it, when it counts from included", () => {
+    expect(
+      lineOf(
+        row("schedule.changed", {
+          ...moved,
+          nearest: {
+            change: "moved",
+            shift: SHIFT,
+            from: "2026-11-17T08:00:00+00:00",
+          },
+        }),
+      )?.line,
+    ).toEqual({
+      kind: "schedule.changed",
+      startsOn: "2026-11-15",
+      mine: 2,
+      running: true,
+      nearest: { change: "moved", shift: SHIFT },
+    });
+  });
+
+  it("says what is left, but not beside a shift under way they joined", () => {
+    const near = (change: "moved" | "added" | "removed" | "edited") => ({
+      change,
+      shift: SHIFT,
+    });
+    expect(saysShiftsLeft({ mine: 0, nearest: near("added") })).toBe(false);
+    expect(saysShiftsLeft({ mine: 1, nearest: near("added") })).toBe(true);
+    expect(saysShiftsLeft({ mine: 0, nearest: near("removed") })).toBe(true);
+    expect(saysShiftsLeft({ mine: 0, nearest: near("edited") })).toBe(true);
+    expect(saysShiftsLeft({ mine: 0, nearest: null })).toBe(true);
+  });
+
+  it("knows the week under way from its first day to its last", () => {
+    expect(weekUnderWay("2026-11-15", "2026-11-14")).toBe(false);
+    expect(weekUnderWay("2026-11-15", "2026-11-15")).toBe(true);
+    expect(weekUnderWay("2026-11-15", "2026-11-21")).toBe(true);
+    expect(weekUnderWay("2026-11-15", "2026-11-22")).toBe(false);
+    // Across a month's end.
+    expect(weekUnderWay("2026-11-29", "2026-12-05")).toBe(true);
+    expect(weekUnderWay("2026-11-29", "2026-12-06")).toBe(false);
+  });
+});
+
+// Orel, 15 November 2026: the colleague who took the reader's shift left the
+// team or the staff before a manager approved, so the request is open again.
+describe("a request open again", () => {
+  it("leads the one who asked to their shifts, in swaps, asking nothing", () => {
+    expect(linkFor("swap.reopened", { swap: LINE })).toBe("/schedule/shifts");
+    expect(notificationGroupOf("swap.reopened")).toBe("swaps");
+    expect(NOTIFICATION_KINDS["swap.reopened"]).toMatchObject({
+      module: "scheduling",
+      minRole: "worker",
+      needsAction: false,
+    });
+  });
+
+  it("reads its shift, and names nobody", () => {
+    expect(
+      lineOf(row("swap.reopened", { swap: LINE, shift: SHIFT }))?.line,
+    ).toEqual({ kind: "swap.reopened", shift: SHIFT });
+    // A line that lost its shift still reads.
+    expect(lineOf(row("swap.reopened", { swap: LINE }))?.line).toEqual({
+      kind: "swap.reopened",
+      shift: null,
+    });
+    // Whatever else the params hold, no one is read out of them.
+    expect(
+      lineOf(row("swap.reopened", { swap: LINE, shift: SHIFT, by: LEFT }))
+        ?.line,
+    ).not.toHaveProperty("by");
+  });
+});
+
+// The roles plan's R10 (Orel, 16 November 2026): the people in a role hear
+// in the app alone what an owner changed in what it does, one line a role
+// and an area, from where the line began to now.
+describe("a role's change", () => {
+  const LEAD = "66666666-6666-4666-8666-666666666666";
+  const lowered = {
+    role: "manager",
+    area: "scheduling",
+    from: { "schedule.edit": true, "schedule.publish": true },
+    to: { "schedule.edit": false, "schedule.publish": false },
+  };
+
+  it("is in the app alone, in no group, asking nothing, for the staff", () => {
+    expect(NOTIFICATION_KINDS["role.changed"]).toMatchObject({
+      group: null,
+      minRole: "worker",
+      needsAction: false,
+      staffOnly: true,
+      appOnly: true,
+    });
+    expect(notificationGroupOf("role.changed")).toBeNull();
+    expect(needsAction("role.changed")).toBe(false);
+    expect(inInbox("role.changed")).toBe(true);
+    // Never said to come to the phone whatever is switched off, nor a group
+    // a settings screen offers.
+    expect(alwaysOnPhone("worker", [])).not.toContain("role.changed");
+    expect(groupsFor("worker", [])).toEqual([]);
+  });
+
+  it("reads what the area gives and takes now, against where it began", () => {
+    expect(lineOf(row("role.changed", lowered))?.line).toEqual({
+      kind: "role.changed",
+      role: { kind: "base", base: "manager" },
+      area: "scheduling",
+      change: { level: "view", on: [], off: ["schedule.publish"] },
+    });
+    // Raised to edit with the switch under it.
+    expect(
+      lineOf(
+        row("role.changed", {
+          role: "worker",
+          area: "lists",
+          from: { "lists.manage": false, "lists.send": false },
+          to: { "lists.manage": true, "lists.send": true },
+        }),
+      )?.line,
+    ).toMatchObject({
+      role: { kind: "base", base: "worker" },
+      change: { level: "edit", on: ["lists.send"], off: [] },
+    });
+    // A switch alone, at the same level; and one on, one off.
+    expect(
+      lineOf(
+        row("role.changed", {
+          role: "manager",
+          area: "chat",
+          from: {
+            "chat.moderate": true,
+            "chat.announce": true,
+            "chat.send_documents": false,
+          },
+          to: {
+            "chat.moderate": true,
+            "chat.announce": false,
+            "chat.send_documents": true,
+          },
+        }),
+      )?.line,
+    ).toMatchObject({
+      change: {
+        level: null,
+        on: ["chat.send_documents"],
+        off: ["chat.announce"],
+      },
+    });
+    // The team screen down to none.
+    expect(
+      lineOf(
+        row("role.changed", {
+          role: "manager",
+          area: "team",
+          from: { "team.view": true, "team.edit": true },
+          to: { "team.view": false, "team.edit": false },
+        }),
+      )?.line,
+    ).toMatchObject({ change: { level: "none", on: [], off: [] } });
+  });
+
+  // L6b-2: lists' keys now carry fixing closed lists, the first switch at
+  // view. It is named only while the area stays at view; edit covers it,
+  // so raising and lowering say what they said before it came.
+  it("reads fixing closed lists at view, and leaves it to edit's words beside edit", () => {
+    const keys = (manage: boolean, send: boolean, fix: boolean) => ({
+      "lists.fix": fix,
+      "lists.manage": manage,
+      "lists.send": send,
+    });
+    const change = (
+      from: Record<string, boolean>,
+      to: Record<string, boolean>,
+      role: string = LEAD,
+    ) =>
+      lineOf(
+        row("role.changed", {
+          role,
+          name: "עובד בכיר",
+          area: "lists",
+          from,
+          to,
+        }),
+      )?.line;
+    expect(change(keys(false, false, false), keys(false, false, true))).toEqual(
+      {
+        kind: "role.changed",
+        role: { kind: "named", name: "עובד בכיר" },
+        area: "lists",
+        change: { level: null, on: ["lists.fix"], off: [] },
+      },
+    );
+    expect(
+      change(keys(false, false, true), keys(false, false, false)),
+    ).toMatchObject({ change: { level: null, on: [], off: ["lists.fix"] } });
+    // Raised and lowered: as before, sending alone.
+    for (const fix of [true, false]) {
+      expect(
+        change(keys(false, false, fix), keys(true, true, true), "worker"),
+      ).toMatchObject({
+        role: { kind: "base", base: "worker" },
+        change: { level: "edit", on: ["lists.send"], off: [] },
+      });
+      expect(
+        change(keys(true, true, true), keys(false, false, fix), "manager"),
+      ).toMatchObject({
+        change: { level: "view", on: [], off: ["lists.send"] },
+      });
+    }
+    // At edit, its row alone changes nothing the role holds. The database
+    // writes no such line (private.area_holds counts it held while the role
+    // runs the lists, 20261116000400_lists_fix_switch.sql); one that said
+    // only that would be no line of this kind, which the inbox would still
+    // count and show as "עדכון חדש".
+    expect(change(keys(true, true, true), keys(true, true, false))).toEqual({
+      kind: "other",
+    });
+  });
+
+  it("names a role the business named by the name it had, or by none", () => {
+    expect(
+      lineOf(row("role.changed", { ...lowered, role: LEAD, name: "Lead" }))
+        ?.line,
+    ).toMatchObject({ role: { kind: "named", name: "Lead" } });
+    expect(
+      lineOf(row("role.changed", { ...lowered, role: LEAD }))?.line,
+    ).toMatchObject({ role: { kind: "named", name: null } });
+  });
+
+  it("is a plain line when it says nothing changed, or can't be read", () => {
+    for (const params of [
+      { ...lowered, to: lowered.from },
+      { ...lowered, area: "storefront" },
+      { ...lowered, role: "owner" },
+      { ...lowered, from: "edit" },
+      null,
+    ]) {
+      expect(
+        lineOf(row("role.changed", params))?.line,
+        JSON.stringify(params),
+      ).toEqual({ kind: "other" });
+    }
+  });
+
+  it("leads to the area's screen while the reader still reaches it", () => {
+    expect(linkFor("role.changed", lowered)).toBe("/schedule");
+    expect(
+      linkFor("role.changed", {
+        role: "worker",
+        area: "manage",
+        from: { "manage.view": false, "manage.edit": false },
+        to: { "manage.view": true, "manage.edit": false },
+      }),
+    ).toBe("/manage");
+    // The team screen taken away: the inbox, which leads nowhere closed.
+    expect(
+      linkFor("role.changed", {
+        role: "manager",
+        area: "team",
+        from: { "team.view": true, "team.edit": true },
+        to: { "team.view": false, "team.edit": false },
+      }),
+    ).toBe("/notifications");
+    expect(linkFor("role.changed", { area: "../admin" })).toBe(
+      "/notifications",
+    );
+  });
+
+  it("is from whoever changed it, the ConceptApp team from the console", () => {
+    expect(lineOf(row("role.changed", lowered))?.actor).toEqual({
+      kind: "member",
+      name: null,
+    });
+    expect(
+      lineOf(row("role.changed", lowered, { actorId: GONE }))?.actor,
+    ).toEqual({ kind: "team" });
   });
 });

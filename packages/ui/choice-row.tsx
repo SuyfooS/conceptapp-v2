@@ -7,6 +7,7 @@ export function ChoiceList({
   legendClassName,
   error,
   className,
+  groupClassName,
   children,
 }: {
   legend: ReactNode;
@@ -15,6 +16,8 @@ export function ChoiceList({
   /** Under the list, in place of nothing: what is wrong with the choice, read out as it appears. */
   error?: ReactNode;
   className?: string;
+  /** The group of rows: `bg-elevated shadow-none` in a sheet, as its other groups. */
+  groupClassName?: string;
   children: ReactNode;
 }) {
   const errorId = useId();
@@ -26,7 +29,12 @@ export function ChoiceList({
       <legend className={cn("mb-3 px-1 font-bold text-lg", legendClassName)}>
         {legend}
       </legend>
-      <div className="overflow-hidden rounded-card bg-surface shadow-card">
+      <div
+        className={cn(
+          "overflow-hidden rounded-card bg-surface shadow-card",
+          groupClassName,
+        )}
+      >
         {children}
       </div>
       {error ? (
@@ -48,22 +56,27 @@ export type ChoiceRowProps = Omit<ComponentProps<"input">, "type" | "title"> & {
 /**
  * A row with a real radio button, drawn as a check in a circle that fills and
  * draws itself, after Spring Check from React Bits (see packages/ui/README.md).
- * The whole row is the label, so anywhere on it selects it.
+ * The whole row is the label, so anywhere on it selects it. A `disabled` row
+ * takes no press and doesn't look pressable: its title in `text-ink-2` and
+ * its circle dimmed, while its hint, which says why, stays fully readable.
  */
 export function ChoiceRow({
   title,
   hint,
   leading,
   className,
+  disabled,
   ...input
 }: ChoiceRowProps) {
   return (
     <label
       className={cn(
-        "relative flex min-h-16 cursor-pointer items-center gap-3 px-4 py-2.5",
+        "relative flex min-h-16 items-center gap-3 px-4 py-2.5",
         "not-first:before:absolute not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']",
         leading ? "not-first:before:start-[68px]" : "not-first:before:start-4",
-        "transition-colors duration-150 ease-calm hover:bg-surface-2/60 active:bg-surface-2",
+        disabled
+          ? "cursor-default"
+          : "cursor-pointer transition-colors duration-150 ease-calm hover:bg-surface-2/60 active:bg-surface-2",
         className,
       )}
     >
@@ -76,14 +89,25 @@ export function ChoiceRow({
         </span>
       ) : null}
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="font-medium text-ink">{title}</span>
+        <span
+          className={cn("font-medium", disabled ? "text-ink-2" : "text-ink")}
+        >
+          {title}
+        </span>
         {hint ? <span className="text-ink-2 text-sm">{hint}</span> : null}
       </span>
-      <span className="relative grid size-7 shrink-0 place-items-center">
+      <span
+        className={cn(
+          "relative grid size-7 shrink-0 place-items-center",
+          disabled && "opacity-50",
+        )}
+      >
         <input
           type="radio"
+          disabled={disabled}
           className={cn(
-            "peer size-7 cursor-pointer appearance-none rounded-full border-2 border-edge transition-colors duration-150 ease-calm",
+            "peer size-7 appearance-none rounded-full border-2 border-edge transition-colors duration-150 ease-calm",
+            disabled ? "cursor-default" : "cursor-pointer",
             "checked:border-accent checked:bg-accent",
             "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent",
           )}

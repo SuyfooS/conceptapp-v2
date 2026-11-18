@@ -7,6 +7,7 @@ import {
   demoShopWeek,
   setDemoBusinessDetails,
 } from "./db";
+import { secondPage } from "./session";
 
 // The passive door (Orel, 6 November 2026): one press on a person of a demo
 // business, seeded with these emails in supabase/seed.sql.
@@ -70,6 +71,37 @@ test("signed-out visitors choose who they are and come in", async ({
   ).toBeVisible();
 });
 
+// Signing out ends this device's session only (#80): a shared tablet left
+// behind doesn't sign the person out of their own phone.
+test("signing out on one device leaves the other signed in", async ({
+  page,
+  browser,
+}, testInfo) => {
+  await page.goto("/enter");
+  await person(page, "worker").click();
+  await expect(page).toHaveURL(/\/home$/);
+  const other = await secondPage(browser, testInfo);
+  try {
+    await other.goto("/enter");
+    await person(other, "worker").click();
+    await expect(other).toHaveURL(/\/home$/);
+
+    await page.goto("/me");
+    await page.getByRole("button", { name: he.app.signOut }).click();
+    await expect(page).toHaveURL(/\/enter$/);
+    await page.goto("/home");
+    await expect(page).toHaveURL(/\/enter$/);
+
+    await other.goto("/me");
+    await expect(other).toHaveURL(/\/me$/);
+    await expect(
+      other.getByRole("button", { name: he.app.signOut }),
+    ).toBeVisible();
+  } finally {
+    await other.context().close();
+  }
+});
+
 test("the console is not on offer", async ({ page }) => {
   await page.goto("/enter");
   await person(page, "owner").click();
@@ -90,6 +122,17 @@ test("the door offers a restaurant and a shop, each with its people", async ({
     ).toBeVisible();
   }
   for (const key of Object.keys(e.people) as (keyof typeof e.people)[]) {
+    // Galit keeps the books of both (payroll P3b): offered in each.
+    if (key === "accountant") {
+      for (const business of Object.values(e.businesses)) {
+        await expect(
+          page
+            .getByRole("region", { name: business.name })
+            .getByRole("button", { name: new RegExp(e.people[key].name) }),
+        ).toBeVisible();
+      }
+      continue;
+    }
     await expect(person(page, key)).toBeVisible();
   }
   await expect(page.getByText(e.warning)).toHaveCount(1);
@@ -129,6 +172,7 @@ test("in the shop, this week is already published and no tab is empty", async ({
     he.modules.scheduling.name,
     he.modules.time_clock.name,
     he.modules.lists.name,
+    he.modules.chat.name,
   ]);
   const week = await demoShopWeek();
   expect(week.published).toBe(true);

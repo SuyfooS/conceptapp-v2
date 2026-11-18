@@ -1,8 +1,16 @@
 import { dateIn, weekdayOf } from "@domain/availability";
 import { dayMonth, WEEKDAY_KEYS } from "@domain/availability-form";
-import { scheduleGaps, scheduleOpening } from "@domain/schedule";
+import {
+  BUILDER_PATH,
+  boardDraft,
+  builderHref,
+  runningFirst,
+  runningGaps,
+} from "@domain/running-week";
+import { changesWeek, scheduleGaps, scheduleOpening } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
-import { offersFor } from "@domain/swaps";
+import { weekRange } from "@domain/share";
+import { offersFor, toApprove } from "@domain/swaps";
 import { Badge } from "@ui/badge";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageSection } from "@ui/page";
@@ -15,9 +23,11 @@ import {
 } from "lucide-react";
 import { getLocale } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { PushAskOffer } from "../notifications/push-ask";
 import { type AppWording, type Translator, translator } from "../wording";
+import type { ShareWeek } from "./share-week";
 import type { SwapAction } from "./shifts/shift-sheet";
-import { ltr, upcomingShifts } from "./shifts/shift-text";
+import { ltr, ownEndedSwaps, upcomingShifts } from "./shifts/shift-text";
 import { pendingApprovals } from "./swaps/swap-approvals-view";
 import type {
   AvailabilityWeek,
@@ -50,8 +60,33 @@ export type ScheduleViewProps = {
   late: boolean;
   /** Set for owners and managers. */
   team: TeamAvailabilityWeek | null;
+  /** Next week as the manager builds it; set for owners and managers. */
   build: ScheduleBuildWeek | null;
+  /**
+   * The week running now as the manager builds it, once someone built it
+   * (`currentRunningBuild`); null for anyone else, and until then.
+   */
+  running: ScheduleBuildWeek | null;
+  /**
+   * The person publishes the schedule too (`publishesSchedule`). Without it
+   * a published week is only read on the builder, so its short shifts are
+   * not counted here, and their own requests aren't theirs to approve. True
+   * unless said otherwise.
+   */
+  publishes?: boolean;
   swap: SwapAction;
+  /** After giving a shift away, once, the offer of notifications on the phone. */
+  ask?: PushAskOffer | null;
+  /**
+   * The week a link named (`?week=`, `scheduleWeekOf`): the tab opens on it.
+   * None opens as usual.
+   */
+  asked?: "this" | "next" | null;
+  /**
+   * Sharing a published week with the team, for whoever builds the schedule;
+   * null for anyone else, and while viewing as a role.
+   */
+  share?: ShareWeek | null;
 };
 
 /**
@@ -65,8 +100,13 @@ export async function ScheduleView({
   late,
   team,
   build,
+  running,
+  publishes = true,
   swap,
   wording,
+  ask = null,
+  asked = null,
+  share = null,
 }: ScheduleViewProps & {
   /** The business's words. */
   wording: AppWording;
@@ -75,16 +115,7 @@ export async function ScheduleView({
   const tm = translator(wording, "modules.scheduling");
   const locale = await getLocale();
   const manager = team !== null;
-  const range = new Intl.DateTimeFormat(locale, {
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  });
-  const rangeOf = (dates: string[]) =>
-    range.formatRange(
-      new Date(`${dates[0]}T00:00:00Z`),
-      new Date(`${dates.at(-1)}T00:00:00Z`),
-    );
+  const rangeOf = (dates: string[]) => weekRange(locale, dates);
 
   const publishedOf = (at: string | null) =>
     at
@@ -95,17 +126,21 @@ export async function ScheduleView({
       : null;
 
   // Drafts stay with the managers: the rest of the team reads what is out.
-  const draft =
-    build && data.nextWeek.publishedAt === null && build.shifts.length > 0
-      ? build
-      : null;
+  // This week's too, once someone saved it: a draft outlives the week's turn
+  // (the running-week plan's R4), and the builder opens the week under way.
+  const thisDraft = boardDraft(data.thisWeek, running);
+  const draft = boardDraft(data.nextWeek, build);
   const weeks: [BoardWeek, BoardWeek] = [
     {
       key: "this",
       range: rangeOf(data.thisWeek.dates),
       dates: data.thisWeek.dates,
-      state: data.thisWeek.publishedAt ? "published" : "none",
-      shifts: data.thisWeek.shifts,
+      state: data.thisWeek.publishedAt
+        ? "published"
+        : thisDraft
+          ? "draft"
+          : "none",
+      shifts: thisDraft ? thisDraft.shifts : data.thisWeek.shifts,
       shabbat: data.thisWeek.shabbat,
       published: publishedOf(data.thisWeek.publishedAt),
     },
@@ -120,7 +155,9 @@ export async function ScheduleView({
     },
   ];
 
-  const approvals = pendingApprovals(data).length;
+  // A request whose shift has begun can only be declined: it waits for no
+  // approval, so it is not counted (it is still listed on the screen).
+  const approvals = toApprove(pendingApprovals(data, publishes)).length;
   // The one thing waiting for this person goes first, in the accent.
   const approvalsFirst = manager && approvals > 0;
   const availabilityFirst = !manager && !week.mine;
@@ -140,7 +177,8 @@ export async function ScheduleView({
     data.swaps,
     [...data.thisWeek.shifts, ...data.nextWeek.shifts],
     data.userId,
-    data.today,
+    new Date(data.now),
+    data.timeZone,
   ).filter((o) => o.state === "available").length;
 
   const own = (
@@ -154,6 +192,8 @@ export async function ScheduleView({
   return (
     <PageBody>
       <WeekBoard
+        // A link to the other week, followed from here, opens it afresh.
+        key={asked ?? "today"}
         title={tm("name")}
         weeks={weeks}
         opening={scheduleOpening({
@@ -162,17 +202,23 @@ export async function ScheduleView({
           manager,
           thisWeek: weeks[0],
           nextWeek: weeks[1],
+          asked,
         })}
         data={{
           userId: data.userId,
           today: data.today,
+          now: data.now,
+          timeZone: data.timeZone,
           people: data.people,
           positions: data.positions,
           swaps: data.swaps,
+          endedSwaps: ownEndedSwaps(data),
         }}
         manager={manager}
         swap={swap}
-        draftHref="/schedule/build"
+        ask={ask}
+        share={share}
+        draftHref={BUILDER_PATH}
         prompt={
           prompt ? (
             <ListGroup className="bg-accent-soft shadow-none [&_a>span:first-child]:bg-surface [&_a]:hover:bg-transparent">
@@ -184,7 +230,18 @@ export async function ScheduleView({
           team ? (
             <PageSection title={t("shifts.board.manage")}>
               <ListGroup className={groupClass}>
-                {build ? <BuildRow t={t} build={build} /> : null}
+                {running ? (
+                  <RunningRow
+                    t={t}
+                    running={running}
+                    publishes={publishes}
+                    now={data.now}
+                    timeZone={data.timeZone}
+                  />
+                ) : null}
+                {build ? (
+                  <BuildRow t={t} build={build} publishes={publishes} />
+                ) : null}
                 <TeamRow t={t} team={team} />
                 {approvalsFirst ? null : approvalsRow}
               </ListGroup>
@@ -292,9 +349,70 @@ function AvailabilityRow({
   );
 }
 
-/** Owners and managers: next week's schedule, and the shifts still short. */
-function BuildRow({ t, build }: { t: T; build: ScheduleBuildWeek }) {
-  const short = scheduleGaps(build.shifts).shifts.length;
+/**
+ * Whoever builds the schedule: this week's schedule, only while a shift
+ * still to start lacks someone or while it waits to be published (Orel's
+ * answer 6 of 15 November 2026: what is nearer goes first; `runningFirst`),
+ * leading to the builder of the week under way. Once it is published, only
+ * for someone who publishes it: it is the others' only to read
+ * (`changesWeek`), and the board shows it.
+ */
+function RunningRow({
+  t,
+  running,
+  publishes,
+  now,
+  timeZone,
+}: {
+  t: T;
+  running: ScheduleBuildWeek;
+  publishes: boolean;
+  /** ISO timestamp: the moment the server read the schedule. */
+  now: string;
+  timeZone: string;
+}) {
+  const at = new Date(now);
+  if (!changesWeek(publishes, { published: running.publishedAt !== null })) {
+    return null;
+  }
+  if (!runningFirst(running, at, timeZone)) return null;
+  const short = runningGaps(running, at, timeZone).shifts;
+  const status = running.publishedAt
+    ? t("build.entry.subtitlePublished")
+    : t("build.entry.subtitleSaved");
+  return (
+    <ListRow
+      href={builderHref(running.week.start)}
+      leading={<CalendarClock />}
+      title={t("build.titleRunning")}
+      subtitle={
+        short > 0
+          ? `${status} · ${t("build.entry.thisWeek", { count: short })}`
+          : status
+      }
+      trailing={short > 0 ? <Badge tone="warning">{short}</Badge> : null}
+    />
+  );
+}
+
+/**
+ * Whoever builds the schedule: next week's schedule, and the shifts still
+ * short while they can fill them (`changesWeek`: once it is published, only
+ * someone who publishes it).
+ */
+function BuildRow({
+  t,
+  build,
+  publishes,
+}: {
+  t: T;
+  build: ScheduleBuildWeek;
+  publishes: boolean;
+}) {
+  const fills = changesWeek(publishes, {
+    published: build.publishedAt !== null,
+  });
+  const short = fills ? scheduleGaps(build.shifts).shifts.length : 0;
   const status = build.publishedAt
     ? t("build.entry.subtitlePublished")
     : build.savedAt
@@ -306,7 +424,7 @@ function BuildRow({ t, build }: { t: T; build: ScheduleBuildWeek }) {
       leading={<CalendarDays />}
       title={t("build.title")}
       subtitle={
-        build.shifts.length === 0
+        build.shifts.length === 0 || !fills
           ? status
           : short > 0
             ? `${status} · ${t("build.gaps", { count: short })}`

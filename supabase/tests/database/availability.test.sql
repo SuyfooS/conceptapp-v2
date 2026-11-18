@@ -32,7 +32,9 @@ values
   ('64000000-0000-4000-b000-000000000001', '64000000-0000-4000-a000-00000000000d', 'worker', true),
   ('64000000-0000-4000-b000-000000000002', '64000000-0000-4000-a000-00000000000e', 'worker', true),
   ('64000000-0000-4000-b000-000000000001', '64000000-0000-4000-a000-00000000000f', 'worker', false),
-  ('64000000-0000-4000-b000-000000000003', '64000000-0000-4000-a000-00000000000e', 'worker', true);
+  -- One place on a staff per login (20261110000900_several_businesses.sql):
+  -- in Z, e keeps the books.
+  ('64000000-0000-4000-b000-000000000003', '64000000-0000-4000-a000-00000000000e', 'accountant', true);
 
 insert into public.business_modules (business_id, module_key, enabled, settings)
 values

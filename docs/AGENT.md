@@ -101,6 +101,21 @@ rules.
   with label `orel`. Also answer and close any matching `question` issue, and
   add a line to `docs/agent/LOG.md` with the next merge.
 
+## Reviewers
+
+Four review agents live in `.claude/agents` (Orel, 15 November 2026). Each one
+reads and reports; whoever made the change fixes what holds.
+
+- `design-reviewer`: any screen, `packages/ui` or words a person sees.
+- `database-reviewer`: migrations, SQL, RLS, pgTAP, generated types and the
+  server code that calls them.
+- `security-reviewer`: anything touching sign-in, RLS, a security-definer
+  function, a server action or route, storage, push or cron, or personal data.
+- `business-reviewer`: plans before building, and features before they ship.
+
+Every change gets the ones its files call for before its pull request, and a
+substantive change gets them as separate reviewers, each trying to refute it.
+
 ## The nightly run
 
 1. **Catch up.** Read `docs/agent/LOG.md`, every open issue with label
@@ -185,7 +200,17 @@ if a reverted migration reached one, open an `urgent` issue.
   uses Supabase test numbers and a logging SMS hook. The app sending the
   notifications people turned on is the product, but a nightly run never sends a
   test notification, never calls `/cron/notifications` on the hosted project, and
-  never writes Vault secrets.
+  never writes Vault secrets. It never calls `/cron/list-photos` on the hosted
+  project either: that route deletes stored photos.
+- Read anyone's chats. Chats aren't end-to-end encrypted, so that the ConceptApp
+  team doesn't read them is this rule: never select from `chat_messages`,
+  `chat_conversations`, `chat_reads`, `chat_acks` or `private.chat_removed` (from C6
+  also `documents` and `document_recipients`, and from C4 `private.file_uploads` and
+  the `chat-files` and `documents` buckets) on any hosted project, never print
+  their rows in a log, an issue or a PR, and never call `/cron/chat-files` on the
+  hosted project (C4). No console page or script reads them (the console's storage
+  card gets sizes per business from `public.admin_storage`, never a file or a row);
+  a test reads only its own rows, locally or in CI.
 - Contact the pilot restaurant or anyone else outside this repo.
 - Delete the repository, other people's branches, or data outside the dev
   project. Never rewrite published history.
@@ -210,18 +235,14 @@ The full picture and the reasoning are in `docs/ROADMAP.md`. Skip ahead only whe
 
 The design rework is under way in day sessions with Orel, toward `docs/design/target-prototype.html`. A nightly run does not change tokens, `packages/ui` or the look of a screen unless Orel left that work. Items marked "database first" stop before their screens, so nothing is built twice.
 
-- **Orel's order after step 2 (7 November 2026):** (1) the console sets up people (built); (2) wording per business and template (built; editing a template's sentences from the console waits for a real business); (3) lists, database first; (4) hours that are never deleted, and an hours report for payroll; (5) roles and permissions. The small improvements go in between: install as an app (built), fill and copy last week, share on WhatsApp.
+- **Orel's order after step 2 (7 November 2026):** (1) the console sets up people (built); (2) wording per business and template (built; editing a template's sentences from the console waits for a real business); (3) lists, database first; (4) hours that are never deleted, and an hours report for payroll; (5) roles and permissions. The small improvements go in between: install as an app (built), fill and copy last week, share on WhatsApp (built).
 - **Wording.** Every server view under app/(app) takes the business's words as a value (`wording: AppWording`) and builds translators with `translator(wording, ns)` from app/(app)/wording.ts; its page passes `await currentWording()`, a /design page passes `baseWording`, and page titles stay on `baseWording`. Never call getTranslations or a server useTranslations there: tooling/wording-guard.test.ts refuses it, because the business's sentences would quietly not show. Client components keep useTranslations; WordingProvider gives them the business's sentences.
-- **Holes in what exists.** Each smallest first:
-  - Editing the week that has already started, and not losing an unpublished draft when the week changes.
-  - A business stuck with expired invites and no owner: the console can add a person and revive an invite.
-  - A warning before republishing deletes swap requests.
-  - Remove a person, change a role, cancel an invite (database first).
+- **Holes in what exists.** None open: a business stuck with expired invites and no owner is unstuck from the console, which adds a person and renews an invite (`/admin/businesses/[slug]`).
 - **Roles and permissions, database first.** For each role and module: edit, view or none, enforced by RLS and covered by pgTAP, plus roles a business names itself. Today's owner, manager and worker keep working. See "מה הפיילוט חייב" in the roadmap.
-- **Time clock, what's left.** The worker's and manager's screens are built. Still missing: deleting a shift entered by mistake and editing a break's times, both database first. Clocking in and out by QR (Orel, 8 November 2026, replacing his 6 November decision): the design and his choices are in issue #78, the database is `20261108000200_qr_clock.sql` and `20261108000300_sealed.sql`. The code on a manager's phone, typing its digits, clocking in without a code and approving it are built, and so is scanning it with the camera inside the circle; checking that on real phones (Android, iPhone, a home-screen app) is next, then stations and pairing, each in its own PR.
+- **Time clock, what's left.** The worker's and manager's screens are built. Marking a shift entered by mistake cancelled, never deleting it, and fixing its breaks one at a time (change, add a forgotten one, remove one pressed by mistake, with undo) are built on /clock/team/[person] (the clock plan's PR1 to PR5). Clocking in and out by QR (Orel, 8 November 2026, replacing his 6 November decision): the design and his choices are in issue #78, the database is `20261108000200_qr_clock.sql` and `20261108000300_sealed.sql`. The code on a manager's phone, typing its digits, clocking in without a code and approving it are built, and so is scanning it with the camera inside the circle; and so is a business tablet locked on the code as a clock station (#78 phase 5, entered from a signed-in tablet; `docs/clock-station.md`). Checking all of it on real phones and tablets (Android, iPhone, iPad, a home-screen app) is next, and needs Orel. Pairing a station from a phone, without signing in on the tablet, waits until someone asks for it.
 - **Lists, database first.** A new module: templates with items and recipients, sending with a count per item, receiving, checking off, finishing, and permission to manage or send. Lists move between departments inside the business, and departments are the business's own data, from its template, like positions. Branches wait until after the pilot. L1 (the database) and L2 (the module on everywhere, `/lists`, `/lists/[id]`, a basic `/lists/send`, `/manage/departments` and the console's departments, the Lists tab with its count and Today's part, `20261109000700_lists_on.sql`) are built; next are L3 (templates and the full send), L4 (times, due and late), L5 (between departments) and L6 (photos), each its own PR.
 - **Management page.** Module settings, module switches, the business's own details and the activity log are built (`/manage`, `/manage/business`, `/manage/activity` and the console). Week start is a team-level setting, since changing it hides published weeks. Opening hours wait: nothing reads them yet. A new server write that changes a business also writes its own row to `audit_log`, and the activity log needs to read it: a case in `@domain/activity`, its words under `app.manage.activity.actions`, and a case in `describe()` in `app/(app)/manage/activity/activity-view.tsx`, which typecheck asks for once the line exists. Until then it shows as "something else".
-- **Approved improvements, built by day on the new screens:** install as an app; fill the week automatically and copy from last week; a moment when a schedule is published; a share on WhatsApp button for the manager after publishing; profile photos; a live shift card after clocking in.
+- **Approved improvements, built by day on the new screens:** install as an app; fill the week automatically and copy from last week; a moment when a schedule is published; a share on WhatsApp button for the manager after publishing (built, with the availability reminder); profile photos; a live shift card after clocking in.
 - **3b · Migrations on `conceptapp-dev`.** By hand only, through the workflow Orel starts (#8). Not for a nightly run.
 - **Notifications, in four parts, each its own PR.** N1, the inbox and what writes to it, is
   built: `/notifications` from a bell on Today, the unread count on Home (only what
@@ -239,9 +260,105 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   (`20261109000500_push.sql`): devices in `push_subscriptions`, one delivery per line
   and device in `push_deliveries`, the minute job (off locally), `public/sw.js` with no
   fetch handler, `/push/*` and `/cron/notifications`, the switch on `/notifications` and
-  `/me`. It reaches a phone once Orel sets the VAPID keys and the cron secret
+  (since N3) `/notifications/settings`. It reaches a phone once Orel sets the VAPID keys and the cron secret
   (`README.md`, `supabase/README.md`), never for a demo business. A new producing action
-  calls `pushSoon()` from `app/push/server.ts` after it writes.
+  calls `pushSoon()` from `app/push/server.ts` after it writes. N3 is built too
+  (`20261112000100_notification_preferences.sql`): each person's own choices in
+  `notification_preferences` (read by that person alone, written only through
+  `set_notification_preferences` and `see_push_ask` under their own session, never the
+  secret key or a view session), `private.notification_group` kept equal to
+  `@domain/notifications` by `packages/db/notification-preferences.db.test.ts`,
+  `private.push_plan` holding a group kept off the phone and waiting out quiet hours
+  (the minute job sends it when they end), `claim_due_pushes` asking again at every send
+  (a retry stops for a group switched off and waits out quiet hours), the lines about pay
+  in no group and always on the phone (whether the office's two get a group is Orel's call), `/push/inbox` showing only the group's words
+  when details are off the lock screen, `/notifications/settings` (the phone's switch,
+  a switch per group, quiet hours, the lock screen) reached from `/me` and the inbox,
+  and the one-time offer after giving a shift away or sending availability. A new kind is
+  a row in `private.notification_kind_groups` too. N4 is built too
+  (`20261112000200_reminders.sql`): `private.run_reminders`, which the minute job runs
+  before it sends, writes each reminder once through `private.notify` (its dedupe key),
+  so the group switches and quiet hours apply: `availability.due` to the workers and
+  managers who haven't sent next week's availability, `availabilityReminderHours`
+  before it is due; `availability.missing` to owners and managers at the due moment,
+  a count and never names; `clock.open` to someone still clocked in
+  `clockOutReminderMinutes` after their shift, or 12 hours after clocking in with none
+  (the new group `clock`); `clock.overdue` to owners and managers for an entry open
+  past 24 hours. Sending availability, clocking out, a correction or publishing the
+  week settles them (triggers on `availability_submissions` and the audit log). The
+  two timings are the notifications module's settings, on `/manage/notifications`,
+  read in SQL with the manifest's defaults and choices (`private.reminder_settings`,
+  kept equal by `modules/notifications/reminders.db.test.ts`, which also compares the
+  due moment with `availabilityDueAt` across the clock changes). A demo business gets
+  no reminders at all. The daily job also deletes old lines (read ones after 90 days,
+  any after 180). A nightly run never calls `/cron/notifications` on the hosted project
+  and never writes Vault secrets; `e2e/reminders.spec.ts` runs the reminders at chosen
+  moments in a business of its own.
+- **Chat, database first** (Orel, 8 November 2026, issue #1; the plan's C1 to C8, each
+  its own PR). C1 is built: `20261111000100_chat_module.sql` and `20261111000200_chat.sql`
+  (conversations, messages, reads, announcements, removal with undo, the line per
+  conversation, the job `chat`). C2 is built too (`20261111000300_chat_on.sql`): the
+  module on everywhere its tab fits, `/chat`, `/chat/[conversation]`,
+  `/chat/with/[person]`, `/chat-sync` (polling, no Realtime) and the notice of who sees
+  what. C3 is built too (`20261111000400_chat_announce.sql`, the demo's announcement
+  only): announcements with "קראתי" and who confirmed, `/chat/announcements`, Today's
+  part, a message's actions with undo, mute and `/chat/[conversation]/info`, and
+  `/chat-sync` bringing changes to messages already on screen. C4 is built too
+  (`20261111000500_chat_files.sql`): pictures in chat, made ready on the phone
+  (`encodeChatImage`: about 0.3 MB, a 360 px thumbnail, nothing from the camera) and
+  sent through the server, served by `/chat-files` to the readers of their message only,
+  kept `fileDays` (90) and, past a business's `fileSpaceMb` (100), the oldest first, by
+  the `chat` job and `/cron/chat-files`; the message stays ("הקובץ כבר לא נשמר"). A demo
+  business takes none, and the console's storage card shows sizes only. C5 is built too
+  (`20261111000600_chat_pdfs.sql`): PDFs up to 10 MB from the composer's attach sheet
+  ("תמונה", "קובץ PDF"; C7 adds the business's documents as its third row), put in Storage
+  by the browser itself through a signed upload for the one path the server reserved (no
+  Supabase client, no session; at most 10 unsent a day per person, a business's PDFs of
+  10 minutes within its space, and a place let go keeps a 1-byte tombstone so its signed
+  upload can't write there again), sent once the server
+  read their first KB (`isPdf`), and served by `/chat-files` as a download only
+  (`attachment`, the name in UTF-8 with an ASCII fallback). C6 is built too, in the
+  database only (`20261111000700_documents.sql`, Orel's answers of 11 November on #1):
+  official documents both ways (a worker's to the business, read by them and the office,
+  the `clock.payroll` holders; the business's to people, asking for "קראתי" or not), kept
+  forever (no delete but the demo reset's purge, never evicted for space: past
+  `documentSpaceMb`, 50 MB, new ones are refused), a file removed only by its sender in 10
+  minutes or by the office with a reason from a list, with 10 minutes to undo; lines and log
+  rows with ids and codes only, the log's `document.*` rows for the office alone; the bucket
+  `documents`; three samples in each demo; `@domain/documents`, `@db/documents`, the
+  `documents.*` kinds and the activity cases. C7 is built too (`20261111000800_documents_screens.sql`,
+  the notice's table only): documents on screen. `/chat/documents` is "המסמכים שלי" for
+  the staff (with "שלחת" for a sender outside the office) and the office's for owners, pay
+  holders and accountants (their "מסמכים" tab, by time_clock's `clock.payroll` through the
+  manifest's `outsideStaff.from`): on a phone "מחכה לך" or everyone by person, on a tablet the
+  people beside the chosen one's documents, on a desktop a table with filters and a preview.
+  `/chat/documents/send` (to the business, or to a person, a department or everyone as a
+  count, with "לבקש אישור קריאה"; a photo of a page made ready at 1600 px by
+  `encodeDocumentPhoto` through the server, or a PDF by its signed upload; a demo's titles
+  are its kinds' words, and one that takes no file sends its sample), `/chat/documents/[id]`
+  (the photo inline or the PDF to download, "קראתי ואישרתי", the recipients' marks, the
+  sender's "ביטול" for 10 minutes, the office's "מחיקת הקובץ" with a reason and a toast's
+  undo), the attach sheet's third row, Today's part, the row on `/me`, the line and count on
+  `/manage/access`, and `/document-files` (a same-origin navigation only, never cached,
+  each opening through `public.open_document`, the samples from `public/demo-documents/`),
+  with "הורדת כל המסמכים" of a person or a month as a ZIP with its list, and the office's
+  one notice to keep a copy, read in the database. The conversations' screens moved into
+  the route group `app/(app)/chat/(talk)/`, so documents have a frame of their own. Next:
+  C8, chat and documents on real phones (the keyboard, PDFs into the phone's viewer and
+  back, the camera picker, a sick note's photo legible at 1600 px, push waking an open
+  window).
+  A private chat has no branch
+  for owners, managers, the team or a view session, anywhere: a change that adds one
+  is refused (see "Never").
+- **Taking orders (waiter mode, issue #191), database first.** Orel asked for it on 17
+  November 2026; when to build it is his decision 1 in the design. P1 is built, in the
+  database alone (`20261117000400_order_taking_module.sql`,
+  `20261117000500_order_taking_menu.sql`): the menu's categories, each to a department,
+  items with prices in agorot, choices and "sold out", the places, the key
+  `order_taking.edit`, `@domain/order-taking`, `@domain/menu-import` and
+  `@db/order-taking`, with the module off everywhere and a sample menu waiting in the
+  demo restaurant. P2 onward (the screens, orders, the kitchen) waits for Orel's
+  decision 1: a nightly run doesn't start it.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

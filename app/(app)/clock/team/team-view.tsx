@@ -16,6 +16,7 @@ import { type AppWording, type Translator, translator } from "../../wording";
 import { MonthHero } from "../month-hero";
 import { proofInline } from "../shift-list";
 import { ConfirmCard } from "./confirm-card";
+import { StationsCard } from "./stations-card";
 import type { TeamActions, TeamHoursData, TeamPaths } from "./team-types";
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -41,7 +42,7 @@ function attendanceLine(
  * The team on the clock: hours waiting for approval, what needs fixing, who
  * is at work now and how they came in, and each person's hours in a month,
  * leading to their shifts. When the business asks for a code, showing it is
- * the screen's main action.
+ * the screen's main action. Last, the clock stations running, to stop.
  */
 export function TeamHoursView({
   data,
@@ -264,6 +265,17 @@ export function TeamHoursView({
             </ListGroup>
           ) : null}
         </div>
+      </div>
+
+      {/* Always in place, also showing nothing: a stop's toast lives in it.
+          From a tablet up it lines up with the column of who is at work. */}
+      <div className="empty:hidden md:grid md:grid-cols-[minmax(0,2fr)_minmax(0,3fr)] md:gap-8">
+        <StationsCard
+          stations={data.stations}
+          stop={actions.stopStation}
+          restart={actions.restartStation}
+          viewOnly={data.viewOnly}
+        />
       </div>
     </PageBody>
   );

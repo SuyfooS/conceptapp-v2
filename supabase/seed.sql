@@ -3,10 +3,13 @@
 -- signs in with its own number, so the SMS resend cooldown never trips between
 -- specs.
 --   the restaurant  an owner, a shift manager and two workers (the same as
---                   /design/shell). Its schedule is the visitor's to build.
---   the shop        an owner, a manager, four workers and an accountant, with
---                   this week's schedule always published.
---   both            last month's hours, for the pay screens.
+--                   /design/shell), and the shop's accountant, Galit. Its
+--                   schedule is the visitor's to build.
+--   the shop        an owner, a manager, four workers and Galit, its
+--                   accountant, with this week's schedule always published.
+--   both            last month's hours, everyone's hourly wage and their
+--                   details for payroll, for the pay screens, with the pay
+--                   estimate on.
 -- Fictional businesses and people. Phones are in the 050-000-00xx range and
 -- are never sent anything. This file runs on `supabase db reset` only; it
 -- never reaches a real project (supabase/hosted-demo.sql is the hosted twin).
@@ -101,25 +104,54 @@ values
 -- departments they are in, by their template's keys (tooling/demo-departments.test.ts).
 -- The shop's managers hold pay access ("rolePermissions"), to show the owner's
 -- switch; the restaurant's start without it, as a real business does
--- (20261110000300_payroll_access.sql). The shop also has an accountant, Galit,
--- in no department and on no shift. Each starts with last month's hours
+-- (20261110000300_payroll_access.sql). Both have the same accountant, Galit,
+-- in no department and on no shift: one login in two businesses, to show the
+-- switch between them (20261110000900_several_businesses.sql). Each starts with last month's hours
 -- ("hours", 20261110000400_payroll_screens.sql): its staff's usual days, and
--- the cases the pay screens show, each on the person it names.
+-- the cases the pay screens show, each on the person it names. And with its
+-- wages from the first of last month ("wages",
+-- 20261110000500_hourly_wages.sql): 45.00 for managers and 38.00 for
+-- workers; the shop's Roni gets a raise from 36.00 on the 15th, and the
+-- restaurant's Yoav has no wage, for the screens that say so. And with their
+-- details for payroll ("details", 20261110000600_payroll_details.sql):
+-- payroll numbers from 101 and periods from 1 March 2026; in the shop, Liya is
+-- a minor (17 through last month) with no number yet, Roni rests on Friday,
+-- and Itai started on the 10th of three months ago, as the owner set it.
+-- Both show the pay estimate ("settings", over the template's;
+-- 20261110000700_pay_rules.sql), which a real business has only once an
+-- accountant confirms. Neither opens its scheduled lists when it is reset
+-- (only a definition that says "scheduledLists": true does, as the hosted
+-- ones do; 20261110001300_list_schedules.sql): the browser tests open them at
+-- the times they choose, so none depends on the hour. The restaurant also takes
+-- photos on its lists ("photos": true; 20261110001500_list_photos.sql) and
+-- pictures in chat ("chatFiles": true; 20261111000500_chat_files.sql), for the
+-- browser tests, which remove their own files; the shop takes neither, like the
+-- hosted ones. Both start with the
+-- demo's own conversations (private.seed_demo_chat,
+-- 20261111000300_chat_on.sql), written by the first owner, manager and two
+-- workers each names, as the hosted ones are (tooling/demo-chat.test.ts).
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
   {
     "slug": "demo-restaurant", "name": "מסעדת הדגמה", "accent": "#2563eb",
     "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
-    "template": "restaurant", "renews": false, "invites": true, "profiles": true,
+    "template": "restaurant", "renews": false, "invites": true, "profiles": true, "photos": true,
+    "chatFiles": true,
+    "settings": { "time_clock": { "payEstimate": true } },
     "hours": { "fridays": false, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000004", "case": "night" }
     ] },
+    "wages": { "manager": 4500, "worker": 3800, "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000004", "case": "none" }
+    ] },
+    "details": { "since": "2026-03-01", "numbers": 101, "cases": [] },
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000001", "role": "owner", "name": "אורי הדגמה" },
       { "user_id": "00000000-0000-4000-a000-000000000002", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
       { "user_id": "00000000-0000-4000-a000-000000000003", "role": "worker", "name": "נועה כהן", "departments": ["kitchen"] },
-      { "user_id": "00000000-0000-4000-a000-000000000004", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] }
+      { "user_id": "00000000-0000-4000-a000-000000000004", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] },
+      { "user_id": "00000000-0000-4000-a000-000000000014", "role": "accountant", "name": "גלית הדגמה" }
     ]
   }
   $json$::jsonb),
@@ -128,6 +160,7 @@ values
     "slug": "demo-shop", "name": "חנות הדגמה", "accent": "#7c3aed",
     "address": "רחוב הדגמה 2, חיפה", "shabbat_city": "haifa",
     "template": "retail", "renews": true, "invites": true,
+    "settings": { "time_clock": { "payEstimate": true } },
     "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
     "hours": { "fridays": true, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000010", "case": "friday_late" },
@@ -135,6 +168,15 @@ values
       { "user_id": "00000000-0000-4000-a000-000000000011", "case": "saturday_night" },
       { "user_id": "00000000-0000-4000-a000-000000000011", "case": "without_code" },
       { "user_id": "00000000-0000-4000-a000-000000000013", "case": "evening" }
+    ] },
+    "wages": { "manager": 4500, "worker": 3800, "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000012", "case": "raise", "agorot": 3600 }
+    ] },
+    "details": { "since": "2026-03-01", "numbers": 101, "cases": [
+      { "user_id": "00000000-0000-4000-a000-000000000013", "case": "youth" },
+      { "user_id": "00000000-0000-4000-a000-000000000013", "case": "no_number" },
+      { "user_id": "00000000-0000-4000-a000-000000000012", "case": "rest_friday" },
+      { "user_id": "00000000-0000-4000-a000-000000000011", "case": "started" }
     ] },
     "people": [
       { "user_id": "00000000-0000-4000-a000-000000000007", "role": "owner", "name": "מיכל הדגמה" },
@@ -189,9 +231,16 @@ revoke execute on function dev.send_sms(jsonb) from public, anon, authenticated;
 grant usage on schema dev to supabase_auth_admin;
 grant execute on function dev.send_sms(jsonb) to supabase_auth_admin;
 
--- The minute job and the daily one (20261109000500_push.sql) stay off here,
--- or they would send and clean at real time under the tests, which call what
--- the jobs run themselves, at times they choose. A hosted project keeps both.
+-- The minute jobs and the daily ones (20261109000500_push.sql, payroll's
+-- reminder of 20261110001000_payroll_months.sql, lists' times of
+-- 20261110001300_list_schedules.sql and their photos' clean-up of
+-- 20261110001500_list_photos.sql) and chat's every 10 minutes
+-- (20261111000200_chat.sql, with its files' clean-up from
+-- 20261111000500_chat_files.sql) stay off here, or they would send, clean, remind
+-- and open lists at real time under the tests, which call what the jobs run
+-- themselves, at times they choose. A hosted project keeps them.
 select cron.alter_job(j.jobid, active => false)
 from cron.job j
-where j.jobname in ('notifications', 'notifications-clean');
+where j.jobname in (
+  'notifications', 'notifications-clean', 'payroll', 'lists', 'list-photos', 'chat'
+);

@@ -1,7 +1,18 @@
 "use server";
 
-// Stand-in for signing out on the design demo, where nobody is signed in.
-export async function demoSignOut(): Promise<void> {}
+// Stand-in for signing out on the design demo, where nobody is signed in:
+// nowhere to go.
+export async function demoSignOut(): Promise<null> {
+  return null;
+}
 
 // Stand-in for marking every notification read: the demo's lines stay as they are.
 export async function demoReadAllNotifications(): Promise<void> {}
+
+// Stand-in for switching business on the design demo, where nobody is signed
+// in: the demo stays where it is.
+export async function demoChooseBusiness(_form: FormData): Promise<void> {}
+
+// Stand-in for saying a business left was seen, on the design demo: the
+// notice stays where it is.
+export async function demoSeenDeparture(): Promise<void> {}

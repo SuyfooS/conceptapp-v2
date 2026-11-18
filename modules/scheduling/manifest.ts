@@ -9,8 +9,25 @@ export const manifest = defineManifest({
   nav: { href: "/schedule", icon: "calendar", minRole: "worker", order: 10 },
   homeWidget: { minRole: "worker" },
   permissions: [
-    { key: "schedule.edit", defaultRole: "manager" },
-    { key: "schedule.publish", defaultRole: "manager" },
+    // Building the week (its drafts, everyone's availability, saving, and
+    // deciding swaps: Orel's answer 6), and publishing it, which needs
+    // building it (a switch under edit, on by default: Orel, 15 November
+    // 2026). The database asks both (private.builds_schedule and
+    // private.publishes_schedule, the roles plan's R3), and owners and the
+    // team switch them per role.
+    {
+      key: "schedule.edit",
+      area: "scheduling",
+      defaultRole: "manager",
+      settable: true,
+    },
+    {
+      key: "schedule.publish",
+      area: "scheduling",
+      defaultRole: "manager",
+      requires: "schedule.edit",
+      settable: true,
+    },
   ],
   settings: z.object({
     /** Day the week starts on (0 = Sunday). */

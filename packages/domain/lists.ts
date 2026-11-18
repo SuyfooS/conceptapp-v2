@@ -1,8 +1,12 @@
 import { z } from "zod";
 import { isUuid } from "./activity";
+import { addDays, dateIn, instantIn } from "./availability";
 import { departmentKey } from "./departments";
-import { dayOfWeek, minutesOf, timeOfDay } from "./hours";
-import { type Role, STAFF_ROLES } from "./modules";
+import { dayOfWeek, minutesOf, rangeMinutes, timeOfDay } from "./hours";
+import type { ScheduleOpenings } from "./list-openings";
+import { type Role, STAFF_ROLES, type StaffRole } from "./modules";
+import type { BaseRole } from "./role-access";
+import { timeIn } from "./shabbat";
 
 /**
  * Lists (Orel, 8 and 9 November 2026, issue #1): checklists sent to a person,
@@ -50,6 +54,10 @@ export const MAX_OPEN_LISTS = 500;
 export const REOPEN_MINUTES = 5;
 /** A due time is at most this many days after sending. */
 export const MAX_DUE_DAYS = 14;
+/** A note passed on with a list, at most (`public.pass_list`). */
+export const MAX_PASS_NOTE = 200;
+/** The most of one item an order asks for, or says was given. */
+export const MAX_QUANTITY = 9999;
 /** A list sent to a shift names one from today to this many days ahead. */
 export const SHIFT_DAYS_AHEAD = 7;
 /** A shift-anchored time is at most this many minutes around the shift. */
@@ -71,7 +79,7 @@ const itemLabel = z.string().trim().min(1).max(120);
 const itemHint = z.string().trim().min(1).max(200);
 const itemUnit = z.string().trim().min(1).max(12);
 const bound = z.number().min(-100000).max(100000);
-const count = z.int().min(0).max(9999);
+const count = z.int().min(0).max(MAX_QUANTITY);
 const itemComment = z.string().trim().min(1).max(200);
 const itemAnswer = z.string().trim().min(1).max(500);
 
@@ -85,7 +93,7 @@ const itemFields = {
   min: bound.optional(),
   max: bound.optional(),
   /** Orders: the usual count of a check item, filled in when sending. */
-  defaultQuantity: z.int().min(1).max(9999).optional(),
+  defaultQuantity: z.int().min(1).max(MAX_QUANTITY).optional(),
 };
 
 type ItemShape = {
@@ -96,11 +104,11 @@ type ItemShape = {
   defaultQuantity?: number;
 };
 
-/** The rules an item keeps whatever holds it; photos come with their own part. */
+/**
+ * The rules an item keeps whatever holds it. A photo (from L6) is like a
+ * note: no unit, range or usual count.
+ */
 function checkItem(item: ItemShape, ctx: z.RefinementCtx) {
-  if (item.kind === "photo") {
-    ctx.addIssue({ code: "custom", message: "Photo items come later" });
-  }
   if (
     item.kind !== "number" &&
     (item.unit !== undefined ||
@@ -136,17 +144,29 @@ export const listItemInput = z
   .superRefine(checkItem);
 export type ListItemInput = z.input<typeof listItemInput>;
 
-const roleRecipient = z.strictObject({
+const roleFields = {
   kind: z.literal("role"),
   // A list goes to someone on the staff, never to accountants.
   role: z.enum(STAFF_ROLES),
+};
+
+/**
+ * A role in a business: the role itself, everyone in it (those in a role
+ * named on it among them), or a role the business named on it (`namedRole`,
+ * its id; the roles plan's R11d), exactly the people who hold it. The
+ * database checks that the named role is the business's, live, and built on
+ * `role`.
+ */
+const roleRecipient = z.strictObject({
+  ...roleFields,
+  namedRole: uuid.optional(),
 });
 
-/** A template's default recipient in a global template: by keys. */
+/** A template's default recipient in a global template: by keys, never a named role. */
 export const recipientSeed = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("department"), department: departmentKey }),
   z.strictObject({ kind: z.literal("shift"), shift: shiftKey }),
-  roleRecipient,
+  z.strictObject(roleFields),
 ]);
 export type RecipientSeed = z.output<typeof recipientSeed>;
 
@@ -689,6 +709,51 @@ export function undoDeadline(
     : new Date(until).toISOString();
 }
 
+/**
+ * The hours after a list closed that someone given "תיקון רשימות שנסגרו"
+ * (lists.fix, L6b-2) may still fix it, as the lists' `fixHours` setting
+ * offers them; anything else counts as `DEFAULT_FIX_HOURS`, as
+ * `private.list_fix_hours` reads it.
+ */
+export const FIX_HOURS = [2, 12, 24, 72] as const;
+export const DEFAULT_FIX_HOURS = 24;
+
+/** The window as `private.list_fix_hours` reads the setting. */
+export function fixWindowHours(stored: unknown): number {
+  return (FIX_HOURS as readonly unknown[]).includes(stored)
+    ? (stored as number)
+    : DEFAULT_FIX_HOURS;
+}
+
+/**
+ * Whether this person may fix a list in place now, and until when (L6b-2),
+ * as `private.can_fix_list` decides it: a finished list, by someone who runs
+ * the lists (`canManage`, lists.manage) at any time, `until` null; or by
+ * someone given lists.fix (`canFix`) for a list that reaches them now
+ * (`holds`, `private.holds_list`) until `fixHours` after it closed, that
+ * moment included, `until` then. Past it, they may not, and `ended` says
+ * when their window ended, so the screen says why (`fixOver`). Missed,
+ * cancelled and open lists never; a finish with no time ends no window, so
+ * it isn't theirs either.
+ */
+export function fixDeadline(
+  list: Pick<ListSummary, "status" | "finishedAt">,
+  who: { canManage: boolean; canFix: boolean; holds: boolean },
+  fixHours: number,
+  now: Date,
+): { can: boolean; until: string | null; ended: string | null } {
+  const no = { can: false, until: null, ended: null };
+  if (list.status !== "finished") return no;
+  if (who.canManage) return { can: true, until: null, ended: null };
+  if (!who.canFix || !who.holds || list.finishedAt === null) return no;
+  const until =
+    Date.parse(list.finishedAt) + fixWindowHours(fixHours) * 3_600_000;
+  if (Number.isNaN(until)) return no;
+  const at = new Date(until).toISOString();
+  if (now.getTime() > until) return { can: false, until: null, ended: at };
+  return { can: true, until: at, ended: null };
+}
+
 /** A list's screen. */
 export function listHref(id: string): `/${string}` {
   return isUuid(id) ? `/lists/${id.toLowerCase()}` : "/lists";
@@ -699,16 +764,25 @@ export type ListHolder =
   /** A person, or the people of a shift when it was sent. */
   | { kind: "person" | "shift"; people: string[] }
   | { kind: "department"; department: string }
-  | { kind: "role"; role: Role };
+  /** A role, or a role the business named on it (`namedRole`, its id). */
+  | { kind: "role"; role: Role; namedRole?: string };
 
 /**
  * Whether the list is for this person now: among its people, in its
- * department, or in its role. What `private.holds_list` says, for lists already
- * read (a list manager reads every list, and holds few).
+ * department, or in its role: a role the business named when the list names
+ * one (`namedRole`: exactly those who hold it), else the whole role, those in
+ * a role named on it among them. What `private.holds_list` says, for lists
+ * already read (a list manager reads every list, and holds few).
  */
 export function holdsList(
   holder: ListHolder,
-  person: { userId: string; role: Role; departments: readonly string[] },
+  person: {
+    userId: string;
+    role: Role;
+    departments: readonly string[];
+    /** The role the business named that they hold, by its id; none for null. */
+    namedRole?: string | null;
+  },
 ): boolean {
   switch (holder.kind) {
     case "person":
@@ -717,7 +791,11 @@ export function holdsList(
     case "department":
       return person.departments.includes(holder.department);
     case "role":
-      return holder.role === person.role;
+      return (
+        holder.role === person.role &&
+        (holder.namedRole === undefined ||
+          holder.namedRole === person.namedRole)
+      );
   }
 }
 
@@ -746,6 +824,12 @@ export type ListSummary = {
   finishedBy: string | null;
   closedAt: string | null;
   closedBy: string | null;
+  /**
+   * When an item of it was last fixed after it was finished (L6b-1), or
+   * null: it reads as fixed while this is after `finishedAt`
+   * (`fixedAfterClose`), so a reopen and a new finish clear the mark.
+   */
+  fixedAt: string | null;
   progress: ListProgress;
 };
 
@@ -765,10 +849,25 @@ export type ListItem = {
   checked: boolean;
   reading: number | null;
   answer: string | null;
+  /**
+   * A photo item's photo (L6), where the app shows it (`listPhotoSrc` in
+   * @domain/list-photos), or null when none was taken or it is no longer kept.
+   */
+  photo: string | null;
+  /**
+   * The photo was taken, and the daily clean-up removed it after the days the
+   * business keeps photos: the item stays done.
+   */
+  photoRemoved: boolean;
   comment: string | null;
   done: boolean;
   doneBy: string | null;
   doneAt: string | null;
+  /**
+   * When it was last fixed after its list was finished (L6b-1), or null. A
+   * fix keeps who did it and when while it stays done; this says the fix.
+   */
+  fixedAt: string | null;
 };
 
 export type ListPass = {
@@ -780,6 +879,56 @@ export type ListPass = {
   note: string | null;
 };
 
+/**
+ * The fields an item's history names (L6a): its result's own (a tick, how
+ * many were given, a reading, an answer), its comment and its photo.
+ */
+export const ITEM_FIELDS = [
+  "checked",
+  "given",
+  "reading",
+  "answer",
+  "comment",
+  "photo",
+] as const;
+export type ItemField = (typeof ITEM_FIELDS)[number];
+
+/**
+ * One real change of an item (L6a, `public.list_item_changes`): who made it
+ * and when, which fields it changed, and the item after it. Earlier answers
+ * and comments are in the rows before it; an earlier photo is not kept, only
+ * that there was one.
+ */
+export type ListItemChange = {
+  /** The row's id; the screen's own changes, until it is read again, have theirs. */
+  id: string;
+  itemId: string;
+  by: string | null;
+  at: string;
+  changed: ItemField[];
+  checked: boolean;
+  given: number | null;
+  reading: number | null;
+  answer: string | null;
+  comment: string | null;
+  /** Whether it has a photo. */
+  photo: boolean;
+  done: boolean;
+  /** A fix of the finished list, after its close (L6b-1). */
+  fixed: boolean;
+};
+
+/** A close that a reopen undid (L6a, `public.list_reopens`), and the reopen. */
+export type ListReopen = {
+  id: string;
+  reopenedBy: string | null;
+  reopenedAt: string;
+  /** How it was closed, by whom and when. */
+  was: "finished" | "cancelled";
+  wasBy: string | null;
+  wasAt: string;
+};
+
 /** One list with everything on its screen. */
 export type ListDetail = ListSummary & {
   note: string | null;
@@ -787,6 +936,13 @@ export type ListDetail = ListSummary & {
   shift: ListShift | null;
   items: ListItem[];
   passes: ListPass[];
+  /**
+   * What happened to its items, oldest first (L6a); none before the
+   * migration reaches the project.
+   */
+  changes: ListItemChange[];
+  /** The closes its reopens undid, oldest first (L6a). */
+  reopens: ListReopen[];
 };
 
 export type TemplateItem = {
@@ -811,6 +967,11 @@ export type ListSchedule = {
   recipient: ScheduleRecipient;
   active: boolean;
   startsOn: string;
+  /**
+   * From when its openings count: when it was saved, or last given other
+   * days or hours, or switched back on. Nothing opens before then.
+   */
+  opensFrom: string;
 };
 
 /** A template as the editor and the send screen read it. */
@@ -839,3 +1000,1242 @@ export type Reading = {
   doneBy: string | null;
   outOfRange: boolean;
 };
+
+/*
+ * Each item's history (L6a): who ticked, who changed what, and when, read
+ * from its changes (`ListItemChange`), and how a list closed and opened
+ * again (`ListReopen`). Everyone who reads the list reads them.
+ */
+
+/** Within this, one person's changes to one item read as one. */
+export const HISTORY_FOLD_MINUTES = 2;
+
+/** What a change did to one field, as an item's history says it. */
+export type HistoryPart =
+  /** Ticked, or the tick taken back (an order's too). */
+  | { field: "checked"; on: boolean }
+  /** An order's count given; a tick on an order says it this way. */
+  | { field: "given"; given: number }
+  /** A reading written (from null), changed, or cleared (to null). */
+  | { field: "reading"; from: number | null; to: number | null }
+  /** An answer or a comment written, changed or removed. */
+  | { field: "answer" | "comment"; from: string | null; to: string | null }
+  /** Only that there was a photo is kept, so a replaced one is just "replaced". */
+  | { field: "photo"; photo: "added" | "replaced" | "removed" };
+
+/** One entry of an item's history: one person's change, or a run of them. */
+export type HistoryEntry = {
+  /** Its last change's id. */
+  key: string;
+  by: string | null;
+  at: string;
+  /** What changed, its result first and its comment last; never empty. */
+  parts: HistoryPart[];
+  /** A fix after the list closed (L6b-1): its sheet marks it. */
+  fixed: boolean;
+};
+
+type ItemValues = Pick<
+  ListItemChange,
+  "checked" | "given" | "reading" | "answer" | "comment" | "photo"
+>;
+
+/**
+ * The fields of an item's value, which move who did it and when
+ * (`set_list_item`); a photo item's photo says itself.
+ */
+const VALUE_FIELDS: ReadonlySet<ItemField> = new Set<ItemField>([
+  "checked",
+  "given",
+  "reading",
+  "answer",
+]);
+
+/** An item as it is made: nothing done, nothing written. */
+const NOTHING_YET: ItemValues = {
+  checked: false,
+  given: null,
+  reading: null,
+  answer: null,
+  comment: null,
+  photo: false,
+};
+
+const valuesOf = (item: ListItem): ItemValues => ({
+  checked: item.checked,
+  given: item.given,
+  reading: item.reading,
+  answer: item.answer,
+  comment: item.comment,
+  // One the clean-up removed was still there.
+  photo: item.photo !== null || item.photoRemoved,
+});
+
+/** What changed from one state of an item to another, among the fields named. */
+function partsBetween(
+  before: ItemValues,
+  after: ItemValues,
+  named: ReadonlySet<ItemField>,
+): HistoryPart[] {
+  const moved = (field: Exclude<ItemField, "photo">) =>
+    named.has(field) && before[field] !== after[field];
+  const parts: HistoryPart[] = [];
+  // On an order, a tick gives a count, and the count says it.
+  const given = moved("given") ? after.given : null;
+  if (given !== null) parts.push({ field: "given", given });
+  if (moved("checked") && !(given !== null && after.checked)) {
+    parts.push({ field: "checked", on: after.checked });
+  }
+  if (moved("reading")) {
+    parts.push({ field: "reading", from: before.reading, to: after.reading });
+  }
+  if (moved("answer")) {
+    parts.push({ field: "answer", from: before.answer, to: after.answer });
+  }
+  if (named.has("photo") && (before.photo || after.photo)) {
+    parts.push({
+      field: "photo",
+      photo: !before.photo ? "added" : after.photo ? "replaced" : "removed",
+    });
+  }
+  if (moved("comment")) {
+    parts.push({ field: "comment", from: before.comment, to: after.comment });
+  }
+  return parts;
+}
+
+/**
+ * The change an item done before its history began stands for, as the
+ * migration's backfill writes it (`private.backfill_list_item_changes`): by
+ * whoever did it, when, naming its result's fields. Its comment is kept but
+ * not named, since who wrote it is unknown. Null for an item not done.
+ */
+export function doneChangeOf(item: ListItem): ListItemChange | null {
+  if (!item.done || item.doneAt === null) return null;
+  const values = valuesOf(item);
+  const changed = ITEM_FIELDS.filter((field) =>
+    field === "comment"
+      ? false
+      : field === "checked" || field === "photo"
+        ? values[field]
+        : values[field] !== null,
+  );
+  if (changed.length === 0) return null;
+  return {
+    id: `done:${item.id}`,
+    itemId: item.id,
+    by: item.doneBy,
+    at: item.doneAt,
+    changed,
+    ...values,
+    done: true,
+    fixed: false,
+  };
+}
+
+/**
+ * A change by the same person shortly after the one before it, read as one;
+ * a fix after the close never with a change before it (L6b-1).
+ */
+function foldsInto(change: ListItemChange, last: ListItemChange): boolean {
+  if (change.by === null || change.by !== last.by) return false;
+  if (change.fixed !== last.fixed) return false;
+  const gap = Date.parse(change.at) - Date.parse(last.at);
+  return gap >= 0 && gap <= HISTORY_FOLD_MINUTES * 60_000;
+}
+
+/**
+ * An item's history, oldest first, from the list's changes (oldest first, as
+ * they are read). Each change is compared with the one before it, the first
+ * with an item as it is made. One person's changes within
+ * `HISTORY_FOLD_MINUTES` of each other are one entry, from the item before
+ * them to the item after them. One that ends where it began says nothing when
+ * it leaves the item undone (a tick taken back at once) or touched only its
+ * comment; one that leaves it done with the value it had (someone else's tick
+ * taken back and given again, a reading changed and put back) made it theirs,
+ * from then (`done_by`, `done_at`), so it says that value as if written then.
+ * An item done with no changes kept (before the migration) is one entry, from
+ * whoever did it (`doneChangeOf`).
+ */
+export function itemHistory(
+  item: ListItem,
+  changes: readonly ListItemChange[],
+): HistoryEntry[] {
+  const own = changes.filter((change) => change.itemId === item.id);
+  const done = own.length === 0 ? doneChangeOf(item) : null;
+  const runs: { from: ItemValues; changes: ListItemChange[] }[] = [];
+  let previous: ItemValues = NOTHING_YET;
+  for (const change of done ? [done] : own) {
+    const run = runs.at(-1);
+    const last = run?.changes.at(-1);
+    if (run && last && foldsInto(change, last)) run.changes.push(change);
+    else runs.push({ from: previous, changes: [change] });
+    previous = change;
+  }
+  return runs.flatMap((run): HistoryEntry[] => {
+    const last = run.changes.at(-1);
+    if (!last) return [];
+    const named = new Set(run.changes.flatMap((change) => change.changed));
+    const parts = partsBetween(run.from, last, named);
+    const valueNamed = new Set(
+      [...named].filter((field) => VALUE_FIELDS.has(field)),
+    );
+    const again =
+      last.done &&
+      valueNamed.size > 0 &&
+      parts.every((part) => part.field === "comment")
+        ? partsBetween(NOTHING_YET, last, valueNamed)
+        : [];
+    const said = [...again, ...parts];
+    return said.length > 0
+      ? [
+          {
+            key: last.id,
+            by: last.by,
+            at: last.at,
+            parts: said,
+            fixed: last.fixed,
+          },
+        ]
+      : [];
+  });
+}
+
+/**
+ * The history with one more change, made here by `by` at `at`, as the
+ * database writes it: only when a field's value changed, and `photo` when a
+ * photo was set or removed, and `fixed` for a fix of the finished list
+ * (L6b-1). An item done before its history began first gets the change it
+ * stands for (`doneChangeOf`), so whoever did it stays in it.
+ */
+export function withItemChange(
+  changes: readonly ListItemChange[],
+  before: ListItem,
+  after: ListItem,
+  change: {
+    id: string;
+    by: string;
+    at: string;
+    photo?: boolean;
+    fixed?: boolean;
+  },
+): ListItemChange[] {
+  const from = valuesOf(before);
+  const to = valuesOf(after);
+  const changed = ITEM_FIELDS.filter((field) =>
+    field === "photo" ? change.photo === true : from[field] !== to[field],
+  );
+  if (changed.length === 0) return [...changes];
+  const earlier = changes.some((c) => c.itemId === before.id)
+    ? null
+    : doneChangeOf(before);
+  return [
+    ...changes,
+    ...(earlier ? [earlier] : []),
+    {
+      id: change.id,
+      itemId: before.id,
+      by: change.by,
+      at: change.at,
+      changed,
+      ...to,
+      done: after.done,
+      fixed: change.fixed === true,
+    },
+  ];
+}
+
+/**
+ * Whether a list, or one of its items, reads as fixed after its close
+ * (L6b-1): it is finished, and its last fix (`fixedAt`) came after the
+ * finish. A reopen and a new finish clear the mark without touching the
+ * column, as the database has it.
+ */
+export function fixedAfterClose(
+  fixedAt: string | null,
+  list: Pick<ListSummary, "status" | "finishedAt">,
+): boolean {
+  if (fixedAt === null || list.status !== "finished") return false;
+  if (list.finishedAt === null) return false;
+  const fixed = Date.parse(fixedAt);
+  const finished = Date.parse(list.finishedAt);
+  return !Number.isNaN(fixed) && !Number.isNaN(finished) && fixed > finished;
+}
+
+/**
+ * What the line under an item says (L6a). Done: who did it and when, as
+ * before, with how many other entries its history has (`more`). Not done but
+ * changed: what changed last, by whom and when ("the tick was taken back"),
+ * with the same count. Fixed after its list closed (L6b-1): who fixed it and
+ * when, before who did it, since a fix keeps that. Null when nothing
+ * happened to it.
+ */
+export type ItemLine =
+  | { kind: "done" | "fixed"; by: string | null; at: string; more: number }
+  | {
+      kind: "changed";
+      by: string | null;
+      at: string;
+      part: HistoryPart;
+      more: number;
+    };
+
+/**
+ * The line under an item, from its history; `list` says whether it reads as
+ * fixed after the close (`fixedAfterClose`), its last entry a fix.
+ */
+export function itemLine(
+  item: Pick<ListItem, "done" | "doneBy" | "doneAt"> &
+    Partial<Pick<ListItem, "fixedAt">>,
+  entries: readonly HistoryEntry[],
+  list?: Pick<ListSummary, "status" | "finishedAt">,
+): ItemLine | null {
+  const more = Math.max(0, entries.length - 1);
+  const last = entries.at(-1);
+  if (list && last?.fixed && fixedAfterClose(item.fixedAt ?? null, list)) {
+    return { kind: "fixed", by: last.by, at: last.at, more };
+  }
+  if (item.done && item.doneAt !== null) {
+    return { kind: "done", by: item.doneBy, at: item.doneAt, more };
+  }
+  const part = last?.parts[0];
+  if (!last || !part) return null;
+  return { kind: "changed", by: last.by, at: last.at, part, more };
+}
+
+/** Within this, one person's fixes of a list read as one on its timeline. */
+export const FIX_RUN_MINUTES = 10;
+
+/**
+ * One person's fixes of a finished list (L6b-1), each within
+ * `FIX_RUN_MINUTES` of the one before: who, when the last one was, and how
+ * many items they changed.
+ */
+export type FixRun = {
+  key: string;
+  by: string | null;
+  at: string;
+  items: number;
+};
+
+/**
+ * A list's fixes after its close as its timeline says them, in time order:
+ * one run per person's fixes within `FIX_RUN_MINUTES` of each other, however
+ * the others' fall between them. Fixes a later reopen came after stay: they
+ * happened.
+ */
+export function fixRuns(changes: readonly ListItemChange[]): FixRun[] {
+  const time = (change: ListItemChange) => Date.parse(change.at);
+  const fixes = changes.filter(
+    (change) => change.fixed && !Number.isNaN(time(change)),
+  );
+  const people = [...new Set(fixes.map((change) => change.by))];
+  const runs = people.flatMap((by) => {
+    const theirs = fixes
+      .filter((change) => change.by === by)
+      .sort((a, b) => time(a) - time(b));
+    const grouped: ListItemChange[][] = [];
+    for (const change of theirs) {
+      const run = grouped.at(-1);
+      const last = run?.at(-1);
+      if (
+        run &&
+        last &&
+        time(change) - time(last) <= FIX_RUN_MINUTES * 60_000
+      ) {
+        run.push(change);
+      } else {
+        grouped.push([change]);
+      }
+    }
+    return grouped.flatMap((run): FixRun[] => {
+      const [first] = run;
+      const last = run.at(-1);
+      if (!first || !last) return [];
+      return [
+        {
+          key: `fixed:${first.id}`,
+          by,
+          at: last.at,
+          items: new Set(run.map((change) => change.itemId)).size,
+        },
+      ];
+    });
+  });
+  return byTime(runs);
+}
+
+/** A close or a reopen on a list's timeline (L6a). */
+export type ListTimelineEvent = {
+  key: string;
+  /** "reopened" after a finish, "restored" after a cancel. */
+  kind: "finished" | "cancelled" | "reopened" | "restored" | "missed";
+  by: string | null;
+  /** Null only for a list missed with no time kept. */
+  at: string | null;
+};
+
+/** Whoever closed it took it back within their minutes: the undo. */
+function isUndo(reopen: ListReopen): boolean {
+  if (reopen.reopenedBy === null || reopen.reopenedBy !== reopen.wasBy) {
+    return false;
+  }
+  const gap = Date.parse(reopen.reopenedAt) - Date.parse(reopen.wasAt);
+  return gap >= 0 && gap <= REOPEN_MINUTES * 60_000;
+}
+
+/**
+ * How a list closed and opened again, in time order: each close a reopen
+ * undid and the reopen, then how it is closed now. A reopen by whoever
+ * closed it within `REOPEN_MINUTES` is their undo, and neither of its lines
+ * is said.
+ */
+export function listTimeline(
+  list: Pick<
+    ListSummary,
+    "status" | "finishedAt" | "finishedBy" | "closedAt" | "closedBy"
+  >,
+  reopens: readonly ListReopen[],
+): ListTimelineEvent[] {
+  const events: ListTimelineEvent[] = reopens.flatMap(
+    (reopen): ListTimelineEvent[] =>
+      isUndo(reopen)
+        ? []
+        : [
+            {
+              key: `${reopen.id}:closed`,
+              kind: reopen.was,
+              by: reopen.wasBy,
+              at: reopen.wasAt,
+            },
+            {
+              key: `${reopen.id}:opened`,
+              kind: reopen.was === "finished" ? "reopened" : "restored",
+              by: reopen.reopenedBy,
+              at: reopen.reopenedAt,
+            },
+          ],
+  );
+  if (list.status === "finished" && list.finishedAt !== null) {
+    events.push({
+      key: "finished",
+      kind: "finished",
+      by: list.finishedBy,
+      at: list.finishedAt,
+    });
+  }
+  if (list.status === "cancelled" && list.closedAt !== null) {
+    events.push({
+      key: "cancelled",
+      kind: "cancelled",
+      by: list.closedBy,
+      at: list.closedAt,
+    });
+  }
+  if (list.status === "missed") {
+    events.push({ key: "missed", kind: "missed", by: null, at: list.closedAt });
+  }
+  return byTime(events);
+}
+
+/** In time order, those with no time last; the same order for the same time. */
+export function byTime<T extends { at: string | null }>(
+  entries: readonly T[],
+): T[] {
+  const time = (entry: T) => {
+    const at = entry.at === null ? Number.NaN : Date.parse(entry.at);
+    return Number.isNaN(at) ? Number.POSITIVE_INFINITY : at;
+  };
+  return [...entries].sort((a, b) => {
+    const x = time(a);
+    const y = time(b);
+    return x === y ? 0 : x < y ? -1 : 1;
+  });
+}
+
+/*
+ * Editing templates and sending lists (L3): the shapes the template editor
+ * and the send screen keep while someone works on them, and the small sums
+ * they show.
+ */
+
+/**
+ * A number below zero with a real minus sign, which a hyphen beside a range's
+ * dash ("-25–-18") is not.
+ */
+export function signed(n: number): string {
+  return n < 0 ? `−${Math.abs(n)}` : String(n);
+}
+
+/** A number item's range in words: between, at least or at most. */
+export type NumberRange = {
+  kind: "between" | "atLeast" | "atMost";
+  /** "0–5 °C", "−25 – −18 °C" (spaced once a minus sign is in it), "0 ₪". */
+  range: string;
+};
+
+export function numberRange(item: {
+  min: number | null;
+  max: number | null;
+  unit: string | null;
+}): NumberRange | null {
+  const unit = item.unit ? ` ${item.unit}` : "";
+  if (item.min !== null && item.max !== null) {
+    const dash = item.min < 0 || item.max < 0 ? " – " : "–";
+    return {
+      kind: "between",
+      range: `${signed(item.min)}${dash}${signed(item.max)}${unit}`,
+    };
+  }
+  if (item.min !== null) {
+    return { kind: "atLeast", range: `${signed(item.min)}${unit}` };
+  }
+  if (item.max !== null) {
+    return { kind: "atMost", range: `${signed(item.max)}${unit}` };
+  }
+  return null;
+}
+
+/**
+ * An item as the editor keeps it: `key` is its own on this screen and never
+ * changes, `id` the database's once it is saved.
+ */
+export type DraftItem = {
+  key: string;
+  id: string | null;
+  kind: ListItemKind;
+  label: string;
+  hint: string | null;
+  required: boolean;
+  unit: string | null;
+  min: number | null;
+  max: number | null;
+  defaultQuantity: number | null;
+};
+
+/**
+ * A range's bound as an item's sheet keeps it: its digits, and whether it is
+ * below zero, which has its own toggle since a phone's number pad may have no
+ * minus.
+ */
+export type TypedBound = { text: string; minus: boolean };
+
+export function boundOf(value: number | null): TypedBound {
+  return {
+    text: value === null ? "" : String(Math.abs(value)),
+    minus: value !== null && value < 0,
+  };
+}
+
+/**
+ * A bound as it is typed: a minus typed before the digits ("-18", "−18")
+ * turns the bound's own minus on and leaves the digits, so the field and the
+ * toggle always say the same.
+ */
+export function typedBound(minus: boolean, text: string): TypedBound {
+  const start = text.trimStart();
+  return /^[-−]/.test(start)
+    ? { text: start.slice(1), minus: true }
+    : { text, minus };
+}
+
+/**
+ * A bound's number, null when it is empty, or "number" when it isn't one. A
+ * minus typed with the digits counts as much as the toggle's: neither is ever
+ * dropped.
+ */
+export function readBound(bound: TypedBound): number | null | "number" {
+  if (bound.text.trim() === "") return null;
+  const value = parseReading(bound.text);
+  if (value === null) return "number";
+  return bound.minus ? -Math.abs(value) : value;
+}
+
+/** A key for an item added on a screen. */
+export function newItemKey(): string {
+  const [random = 0] = crypto.getRandomValues(new Uint32Array(1));
+  return `i-${random.toString(16).padStart(8, "0")}`;
+}
+
+/** A template's items as the editor starts with them. */
+export function draftItemsOf(items: readonly TemplateItem[]): DraftItem[] {
+  return items.map((item) => ({ ...item, key: item.id }));
+}
+
+/** An item in the shape the database takes, without what it doesn't have. */
+function itemFieldsOf(item: Omit<DraftItem, "key" | "id">) {
+  return {
+    kind: item.kind,
+    label: item.label,
+    ...(item.hint ? { hint: item.hint } : {}),
+    required: item.required,
+    ...(item.unit ? { unit: item.unit } : {}),
+    ...(item.min === null ? {} : { min: item.min }),
+    ...(item.max === null ? {} : { max: item.max }),
+    ...(item.defaultQuantity === null
+      ? {}
+      : { defaultQuantity: item.defaultQuantity }),
+  };
+}
+
+/**
+ * The items to save, in their order. An item keeps its id only while the
+ * database still has it (`known`, what the last save left): one removed and
+ * saved, then brought back by its undo, is added again rather than refused
+ * as not the template's.
+ */
+export function itemsForSave(
+  items: readonly DraftItem[],
+  known: ReadonlySet<string>,
+): ListItemInput[] {
+  return items.map((item) => ({
+    ...(item.id && known.has(item.id) ? { id: item.id } : {}),
+    ...itemFieldsOf(item),
+  }));
+}
+
+/**
+ * What keeps the editor's draft from saving, by the rules the database holds
+ * it to, whatever its ids: no name, no items or too many, an item that
+ * doesn't keep its kind's rules, an order whose asking department is gone
+ * (when the business's places are given) or without another department to go
+ * to. Null when it can be saved.
+ */
+export function templateDraftProblem(
+  draft: {
+    name: string;
+    note: string;
+    recipient: TemplateRecipient | null;
+    items: readonly DraftItem[];
+    /** Its times, when the editor edits them: one that can't save holds the rest. */
+    schedules?: readonly DraftSchedule[];
+  },
+  fromDepartment: string | null,
+  /** The business's live departments and shift keys, to say a time points at one gone. */
+  places?: SchedulePlaces,
+):
+  | "name"
+  | "note"
+  | "items"
+  | "item"
+  | "order"
+  | "recipient"
+  | "schedule"
+  | null {
+  if (!listName.safeParse(draft.name).success) return "name";
+  if (draft.note.trim() !== "" && !listNote.safeParse(draft.note).success) {
+    return "note";
+  }
+  if (draft.items.length === 0 || draft.items.length > MAX_LIST_ITEMS) {
+    return "items";
+  }
+  if (
+    draft.items.some(
+      (item) => !listItemSeed.safeParse(itemFieldsOf(item)).success,
+    )
+  ) {
+    return "item";
+  }
+  if (
+    places &&
+    fromDepartment !== null &&
+    !places.departments.includes(fromDepartment)
+  ) {
+    return "order";
+  }
+  if (
+    fromDepartment !== null &&
+    (draft.recipient?.kind !== "department" ||
+      draft.recipient.department === fromDepartment)
+  ) {
+    return "recipient";
+  }
+  if (
+    (draft.schedules ?? []).length > MAX_LIST_SCHEDULES ||
+    (draft.schedules ?? []).some(
+      (schedule) => scheduleProblem(schedule, places) !== null,
+    )
+  ) {
+    return "schedule";
+  }
+  return null;
+}
+
+/** Typed items of a list sent now, which have no ids. */
+export function typedItems(items: readonly DraftItem[]): ListItemInput[] {
+  return items.map((item) => itemFieldsOf(item));
+}
+
+/** What a schedule saves as, from its fields; its id only when it has one. */
+function scheduleInputOf(
+  schedule: Omit<ListSchedule, "id" | "startsOn" | "opensFrom"> & {
+    id: string | null;
+  },
+): ScheduleInput {
+  return {
+    ...(schedule.id ? { id: schedule.id } : {}),
+    days: [...schedule.days].sort((a, b) => a - b),
+    anchor: schedule.anchor,
+    ...(schedule.shift === null ? {} : { shift: schedule.shift }),
+    ...fromOffsets(schedule.anchor, schedule.opensOffset, schedule.dueOffset),
+    recipient: schedule.recipient,
+    active: schedule.active,
+  };
+}
+
+/**
+ * A template as the editor saves it, with these fields of its own. What the
+ * editor leaves out (an order's department and its counts, its times) goes
+ * back as it was read, so a save never loses them.
+ */
+export function templateInputOf(
+  template: Pick<
+    ListTemplate,
+    "fromDepartment" | "asksQuantities" | "schedules"
+  > & { id: string | null },
+  own: {
+    name: string;
+    note: string;
+    recipient: TemplateRecipient | null;
+    items: ListItemInput[];
+    schedules?: ScheduleInput[];
+    /** The department that asks, null for none: the list is then no order. */
+    fromDepartment?: string | null;
+    asksQuantities?: boolean;
+  },
+): ListTemplateInput {
+  const note = own.note.trim();
+  return {
+    ...(template.id ? { id: template.id } : {}),
+    name: own.name.trim(),
+    ...(note ? { note } : {}),
+    recipient: own.recipient,
+    fromDepartment:
+      own.fromDepartment === undefined
+        ? template.fromDepartment
+        : own.fromDepartment,
+    asksQuantities: own.asksQuantities ?? template.asksQuantities,
+    items: own.items,
+    schedules: own.schedules ?? template.schedules.map(scheduleInputOf),
+  };
+}
+
+/**
+ * A template just saved: its id, its version now, its items' and its times'
+ * ids in order, and each time's next openings as the database works them out.
+ */
+export type SavedTemplate = {
+  id: string;
+  version: number;
+  items: string[];
+  schedules: string[];
+  openings: ScheduleOpenings;
+};
+
+/*
+ * A template's times in its editor (L4): the shape the editor keeps while
+ * someone works on them, as it keeps items.
+ */
+
+/**
+ * A time as the editor keeps it: `key` is its own on this screen, `id` the
+ * database's once it is saved. `startsOn` and `opensFrom` are the saved
+ * one's, so its next openings read as the database will open them; null for
+ * a new one, and `opensFrom` null too once its days or hours change or it is
+ * switched back on here (`restartsOpenings`): it counts from now.
+ */
+export type DraftSchedule = {
+  key: string;
+  id: string | null;
+  days: number[];
+  anchor: ScheduleAnchor;
+  shift: string | null;
+  opensOffset: number;
+  dueOffset: number;
+  recipient: ScheduleRecipient;
+  active: boolean;
+  startsOn: string | null;
+  opensFrom: string | null;
+};
+
+/**
+ * A time's days as runs of days in a row, Sunday first, for its summary:
+ * Sunday to Thursday and Saturday are [[0, 4], [6, 6]].
+ */
+export function dayRuns(days: readonly number[]): [number, number][] {
+  const runs: [number, number][] = [];
+  for (const day of [...new Set(days)].sort((a, b) => a - b)) {
+    const last = runs.at(-1);
+    if (last && day === last[1] + 1) last[1] = day;
+    else runs.push([day, day]);
+  }
+  return runs;
+}
+
+/** A key for a time added on a screen. */
+export function newScheduleKey(): string {
+  const [random = 0] = crypto.getRandomValues(new Uint32Array(1));
+  return `s-${random.toString(16).padStart(8, "0")}`;
+}
+
+/** A template's times as the editor starts with them. */
+export function draftSchedulesOf(
+  schedules: readonly ListSchedule[],
+): DraftSchedule[] {
+  return schedules.map((schedule) => ({ ...schedule, key: schedule.id }));
+}
+
+/**
+ * The times to save, in their order. A time keeps its id only while the
+ * database still has it (`known`), so one removed and saved, then brought
+ * back by its undo, is added again rather than refused.
+ */
+export function schedulesForSave(
+  schedules: readonly DraftSchedule[],
+  known: ReadonlySet<string>,
+): ScheduleInput[] {
+  return schedules.map((schedule) =>
+    scheduleInputOf({
+      ...schedule,
+      id: schedule.id && known.has(schedule.id) ? schedule.id : null,
+    }),
+  );
+}
+
+/**
+ * Whether a time points at something gone: a shift it follows, or a
+ * department, a shift or a role the business named (when its live ones are
+ * given, `liveRoles`) it goes to, that the business no longer has. The
+ * database takes none in a save, and a shift that's gone opens nothing.
+ * A person who has left is the database's to refuse.
+ */
+export function scheduleGone(
+  schedule: Pick<ListSchedule, "shift" | "recipient">,
+  liveDepartments: readonly string[],
+  shiftKeys: readonly string[],
+  liveRoles?: readonly string[],
+): boolean {
+  return (
+    (schedule.shift !== null && !shiftKeys.includes(schedule.shift)) ||
+    (schedule.recipient.kind !== "person" &&
+      recipientGone(schedule.recipient, liveDepartments, shiftKeys, liveRoles))
+  );
+}
+
+/**
+ * The business's live departments, its scheduling settings' shift keys and,
+ * when known, its live named roles' ids (the roles plan's R11d).
+ */
+export type SchedulePlaces = {
+  departments: readonly string[];
+  shifts: readonly string[];
+  roles?: readonly string[];
+};
+
+/**
+ * What keeps a time from saving, by the rules the database holds it to,
+ * whatever its ids: its days (one to seven, each once), its times (a time of
+ * the day, or up to 12 hours around a shift it names, due after it opens and
+ * within a day), or (when the business's places are given) something it
+ * points at that is gone.
+ */
+export function scheduleProblem(
+  schedule: DraftSchedule,
+  places?: SchedulePlaces,
+): "days" | "times" | "gone" | null {
+  if (
+    places &&
+    scheduleGone(schedule, places.departments, places.shifts, places.roles)
+  ) {
+    return "gone";
+  }
+  const days = schedule.days;
+  if (
+    days.length === 0 ||
+    new Set(days).size !== days.length ||
+    days.some((day) => !dayOfWeek.safeParse(day).success)
+  ) {
+    return "days";
+  }
+  const byDay = schedule.anchor === "day";
+  const { opensOffset: opens, dueOffset: due } = schedule;
+  if (
+    byDay !== (schedule.shift === null) ||
+    (schedule.shift !== null && !shiftKey.safeParse(schedule.shift).success) ||
+    !Number.isInteger(opens) ||
+    !Number.isInteger(due)
+  ) {
+    return "times";
+  }
+  const opensOk = byDay
+    ? opens >= 0 && opens < DAY_MINUTES
+    : Math.abs(opens) <= MAX_SHIFT_OFFSET;
+  return opensOk && due > opens && due <= opens + DAY_MINUTES ? null : "times";
+}
+
+/** The list with the entry at `index` moved one place up or down. */
+export function moved<T>(list: readonly T[], index: number, by: -1 | 1): T[] {
+  const to = index + by;
+  if (index < 0 || index >= list.length || to < 0 || to >= list.length) {
+    return [...list];
+  }
+  const next = [...list];
+  const [entry] = next.splice(index, 1);
+  if (entry !== undefined) next.splice(to, 0, entry);
+  return next;
+}
+
+/**
+ * Whether a template's own recipient is gone: a department removed since, a
+ * shift the scheduling settings no longer have, or a role the business named
+ * that it archived since (when its live ones are given, `liveRoles`; one
+ * can be archived only while no live template goes to it, so this is a
+ * template restored after it). The database takes none in a save, so the
+ * editor asks for another.
+ */
+export function recipientGone(
+  recipient: TemplateRecipient | null,
+  liveDepartments: readonly string[],
+  shiftKeys: readonly string[],
+  liveRoles?: readonly string[],
+): boolean {
+  if (recipient?.kind === "department") {
+    return !liveDepartments.includes(recipient.department);
+  }
+  if (recipient?.kind === "shift") return !shiftKeys.includes(recipient.shift);
+  if (recipient?.kind === "role" && recipient.namedRole !== undefined) {
+    return liveRoles !== undefined && !liveRoles.includes(recipient.namedRole);
+  }
+  return false;
+}
+
+/** A role the business named, as the lists' pickers offer it. */
+export type ListNamedRole = { id: string; base: BaseRole };
+
+/**
+ * The key a role recipient goes by in a picker: its named role's id, or the
+ * role itself (`"worker"`), which are never alike.
+ */
+export function roleChoiceKey(recipient: {
+  role: StaffRole;
+  namedRole?: string;
+}): string {
+  return recipient.namedRole ?? recipient.role;
+}
+
+/**
+ * The role recipient a picker's key stands for: one of `roles`, or one of the
+ * business's live named roles (`named`), on its base. Null for anything else.
+ */
+export function roleRecipientOf(
+  key: string,
+  roles: readonly StaffRole[],
+  named: readonly ListNamedRole[],
+): { kind: "role"; role: StaffRole; namedRole?: string } | null {
+  const role = roles.find((r) => r === key);
+  if (role) return { kind: "role", role };
+  const own = named.find((n) => n.id === key);
+  return own ? { kind: "role", role: own.base, namedRole: own.id } : null;
+}
+
+/**
+ * Whether an order's asking department was removed since. The database takes
+ * it in no save (22023), so the editor opens with no department asking and
+ * says so, and the person chooses another or keeps it a list of its own.
+ */
+export function askingGone(
+  template: Pick<ListTemplate, "fromDepartment">,
+  liveDepartments: readonly string[],
+): boolean {
+  return (
+    template.fromDepartment !== null &&
+    !liveDepartments.includes(template.fromDepartment)
+  );
+}
+
+/*
+ * Between departments (L5): orders with their counts, and lists passed from
+ * one department to another (`public.pass_list`).
+ */
+
+/** A note passed on with a list: trimmed, at most `MAX_PASS_NOTE`; blank is none. */
+export const passNote = z.string().trim().max(MAX_PASS_NOTE);
+
+/** What passing a list on sends: the department it goes to, and a note. */
+export const passInput = z.strictObject({
+  list: uuid,
+  department: uuid,
+  note: passNote.optional(),
+});
+export type PassInput = z.input<typeof passInput>;
+
+/** A department a list can be passed to, with how many people are in it now. */
+export type PassTarget = { id: string; name: string; people: number };
+
+/**
+ * Where a list can be passed: every live department but the one holding it,
+ * in their order. One with nobody in it is there too, with its count of none,
+ * which the sheet says and doesn't take.
+ */
+export function passTargets(
+  departments: readonly {
+    id: string;
+    name: string;
+    archivedAt: string | null;
+    members: readonly string[];
+  }[],
+  holder: ListHolder,
+  active: ReadonlySet<string>,
+): PassTarget[] {
+  return departments
+    .filter(
+      (d) =>
+        d.archivedAt === null &&
+        !(holder.kind === "department" && holder.department === d.id),
+    )
+    .map((d) => ({
+      id: d.id,
+      name: d.name,
+      people: d.members.filter((person) => active.has(person)).length,
+    }));
+}
+
+/**
+ * Whether a list is a department's: it holds it, or asked for it (an order).
+ * What the department filter on Lists keeps.
+ */
+export function ofDepartment(
+  list: Pick<ListSummary, "holder" | "fromDepartment">,
+  department: string,
+): boolean {
+  return (
+    (list.holder.kind === "department" &&
+      list.holder.department === department) ||
+    list.fromDepartment === department
+  );
+}
+
+/**
+ * An order's count as it is typed ("24", " 6 "), or null when it is empty or
+ * not a whole number from 0 to `MAX_QUANTITY`.
+ */
+export function parseQuantity(text: string): number | null {
+  const clean = text.trim();
+  if (!/^\d{1,4}$/.test(clean)) return null;
+  const value = Number(clean);
+  return count.safeParse(value).success ? value : null;
+}
+
+/**
+ * The counts a list sent from a template asks for, by the template's item id,
+ * from what the send screen has typed: only the check items, and only those
+ * typed as a count; the rest take their usual one (`send_list`). When
+ * something typed isn't a count, the ids of those items instead, in order, so
+ * the form says which.
+ */
+export function quantitiesOf(
+  items: readonly { id: string; kind: ListItemKind }[],
+  typed: Readonly<Record<string, string>>,
+):
+  | { ok: true; counts: Record<string, number> }
+  | { ok: false; invalid: string[] } {
+  const counts: Record<string, number> = {};
+  const invalid: string[] = [];
+  for (const item of items) {
+    if (item.kind !== "check") continue;
+    const text = typed[item.id];
+    if (text === undefined || text.trim() === "") continue;
+    const value = parseQuantity(text);
+    if (value === null) invalid.push(item.id);
+    else counts[item.id] = value;
+  }
+  return invalid.length > 0 ? { ok: false, invalid } : { ok: true, counts };
+}
+
+/**
+ * Templates by the department they go to, in the departments' order, then
+ * one group (`department: null`) for the rest: to a role or a shift, chosen
+ * each time, or to a department removed since.
+ */
+export function templatesByDepartment<
+  T extends { recipient: TemplateRecipient | null },
+>(
+  templates: readonly T[],
+  departments: readonly { id: string }[],
+): { department: string | null; templates: T[] }[] {
+  const departmentOf = (template: T): string | null => {
+    const recipient = template.recipient;
+    return recipient?.kind === "department" &&
+      departments.some((d) => d.id === recipient.department)
+      ? recipient.department
+      : null;
+  };
+  const groups = departments.flatMap((department) => {
+    const own = templates.filter((t) => departmentOf(t) === department.id);
+    return own.length > 0
+      ? [{ department: department.id, templates: own }]
+      : [];
+  });
+  const rest = templates.filter((t) => departmentOf(t) === null);
+  return rest.length > 0
+    ? [...groups, { department: null, templates: rest }]
+    : groups;
+}
+
+/** When a list sent now is due: no time, or a time today or tomorrow. */
+export const DUE_DAYS = ["none", "today", "tomorrow"] as const;
+export type DueDay = (typeof DUE_DAYS)[number];
+
+/**
+ * The due time of a list sent now, from a day and an "HH:MM" in the
+ * business's zone: "past" when it has already gone by (the database takes
+ * only a time after sending), "time" when it isn't a time.
+ */
+export function dueAtOf(
+  day: Exclude<DueDay, "none">,
+  time: string,
+  now: Date,
+  timeZone: string,
+): { ok: true; dueAt: string } | { ok: false; problem: "time" | "past" } {
+  if (!timeOfDay.safeParse(time).success) {
+    return { ok: false, problem: "time" };
+  }
+  const today = dateIn(now, timeZone);
+  const date = day === "today" ? today : addDays(today, 1);
+  const due = instantIn(date, time, timeZone);
+  if (due.getTime() <= now.getTime()) return { ok: false, problem: "past" };
+  return { ok: true, dueAt: due.toISOString() };
+}
+
+/** "HH:MM" of minutes after midnight. */
+const clockOf = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+/**
+ * The due time the send screen starts with: an hour from now, up to the next
+ * half hour, tomorrow when that is after midnight.
+ */
+export function suggestedDue(
+  now: Date,
+  timeZone: string,
+): { day: "today" | "tomorrow"; time: string } {
+  const later = Math.ceil((minutesOf(timeIn(now, timeZone)) + 60) / 30) * 30;
+  return {
+    day: later >= DAY_MINUTES ? "tomorrow" : "today",
+    time: clockOf(later % DAY_MINUTES),
+  };
+}
+
+/**
+ * The due time a day starts with on the send screen, until the person sets
+ * one: the suggestion (`suggestedDue`), except today once an hour ahead has
+ * passed midnight, when it is the next half hour still today, or 23:59 in the
+ * last half hour, so choosing today late in the evening never starts gone by.
+ */
+export function dueTimeFor(
+  day: Exclude<DueDay, "none">,
+  now: Date,
+  timeZone: string,
+): string {
+  const suggested = suggestedDue(now, timeZone);
+  if (day === "tomorrow" || suggested.day === "today") return suggested.time;
+  const next = Math.ceil((minutesOf(timeIn(now, timeZone)) + 1) / 30) * 30;
+  return next < DAY_MINUTES ? clockOf(next) : "23:59";
+}
+
+/**
+ * Where a template sends itself on the send screen when nobody chooses: its
+ * department while it is still there, its role (a role the business named,
+ * `namedRole`, while it is live: `liveRoles`, its ids, and somebody holds
+ * it), or the next of its shift that has people on it; nothing chosen for a
+ * department removed or a named role archived since (`gone`, which the
+ * screen says), nor for a live named role nobody holds yet (`emptyRoles`,
+ * as a shift nobody is on: the screen says so on its row), and anyone else
+ * starts at a person.
+ */
+export function sendDefaults(
+  recipient: TemplateRecipient | null | undefined,
+  shifts: readonly SendShift[] | null,
+  liveDepartments: readonly string[],
+  liveRoles: readonly string[] = [],
+  emptyRoles: readonly string[] = [],
+): {
+  kind: RecipientKind;
+  department: string | null;
+  shift: string | null;
+  role: StaffRole | null;
+  namedRole: string | null;
+  gone: boolean;
+} {
+  const none = {
+    department: null,
+    shift: null,
+    role: null,
+    namedRole: null,
+    gone: false,
+  };
+  if (recipient?.kind === "department") {
+    const live = liveDepartments.includes(recipient.department);
+    return {
+      ...none,
+      kind: "department",
+      department: live ? recipient.department : null,
+      gone: !live,
+    };
+  }
+  if (recipient?.kind === "role") {
+    const named = recipient.namedRole;
+    if (named === undefined) {
+      return { ...none, kind: "role", role: recipient.role };
+    }
+    if (!liveRoles.includes(named))
+      return { ...none, kind: "role", gone: true };
+    return emptyRoles.includes(named)
+      ? { ...none, kind: "role" }
+      : { ...none, kind: "role", role: recipient.role, namedRole: named };
+  }
+  if (recipient?.kind === "shift" && shifts !== null) {
+    const next = shifts.find(
+      (s) => s.pattern === recipient.shift && s.people.length > 0,
+    );
+    return { ...none, kind: "shift", shift: next?.id ?? null };
+  }
+  return { ...none, kind: "person" };
+}
+
+/** A published shift a list can be sent to, with its people now. */
+export type SendShift = {
+  id: string;
+  day: string;
+  name: string;
+  start: string;
+  end: string;
+  /** The scheduling settings' shift it was made from, if any. */
+  pattern: string | null;
+  people: string[];
+};
+
+/**
+ * The shifts a list can go to now: from today to `SHIFT_DAYS_AHEAD` days
+ * ahead, and not over yet (one ending at or before its start ends the next
+ * day). Earliest first.
+ */
+export function upcomingShifts<
+  S extends { day: string; start: string; end: string; name: string },
+>(shifts: readonly S[], now: Date, timeZone: string): S[] {
+  const today = dateIn(now, timeZone);
+  const last = addDays(today, SHIFT_DAYS_AHEAD);
+  return shifts
+    .filter((shift) => {
+      if (shift.day < today || shift.day > last) return false;
+      const ends =
+        instantIn(shift.day, shift.start, timeZone).getTime() +
+        rangeMinutes(shift.start, shift.end) * 60_000;
+      return ends > now.getTime();
+    })
+    .sort((a, b) =>
+      `${a.day}${a.start}${a.name}`.localeCompare(
+        `${b.day}${b.start}${b.name}`,
+      ),
+    );
+}

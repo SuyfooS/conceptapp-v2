@@ -23,6 +23,11 @@ import {
   useEffect,
   useState,
 } from "react";
+import {
+  PushAsk,
+  type PushAskOffer,
+  usePushAskOnce,
+} from "../../notifications/push-ask";
 import type { AvailabilityWeek } from "../week";
 import type { AvailabilityState } from "./actions";
 import {
@@ -45,6 +50,8 @@ export type AvailabilityFormProps = {
   late: boolean;
   /** `saveAvailabilityAction`, or the design demo's stand-in. */
   save: (prev: AvailabilityState, form: FormData) => Promise<AvailabilityState>;
+  /** Offered once, right after availability is sent (`currentPushAsk`). */
+  ask?: PushAskOffer | null;
 };
 
 const cardClass =
@@ -55,9 +62,15 @@ const cardClass =
  * with that day's answer, and Send always in reach. A tap opens the day in a
  * sheet. Phone: one grouped list, Send floating above the tab bar; tablet: a
  * grid of four; desktop: the whole week in a row, Send on the hero. The same
- * checks run here, in the sheet and on the server.
+ * checks run here, in the sheet and on the server. Once it's sent, the first
+ * time, the offer of notifications on the phone sits under the days.
  */
-export function AvailabilityForm({ week, late, save }: AvailabilityFormProps) {
+export function AvailabilityForm({
+  week,
+  late,
+  save,
+  ask = null,
+}: AvailabilityFormProps) {
   const t = useTranslations("app.availability");
   const [state, action, pending] = useActionState(save, initialState);
   const [days, setDays] = useState<Record<string, Row[]>>(() =>
@@ -78,6 +91,9 @@ export function AvailabilityForm({ week, late, save }: AvailabilityFormProps) {
   const [dayDraft, setDayDraft] = useState(() => closedDraft(week.start));
   const [noteDraft, setNoteDraft] = useState({ text: "", open: false });
 
+  const pushAsk = usePushAskOnce(ask);
+  const offerPush = pushAsk.offer;
+
   // "Saved" shows for a moment; the hero keeps saying it was sent.
   useEffect(() => {
     if (!state.savedAt) return;
@@ -85,6 +101,11 @@ export function AvailabilityForm({ week, late, save }: AvailabilityFormProps) {
     const timer = setTimeout(() => setSaved(false), 5000);
     return () => clearTimeout(timer);
   }, [state.savedAt]);
+
+  // Sent: the offer of notifications on the phone, once.
+  useEffect(() => {
+    if (state.savedAt) offerPush();
+  }, [state.savedAt, offerPush]);
 
   const flat = week.dates.flatMap((date) =>
     (days[date] ?? []).map((r) => ({
@@ -221,6 +242,14 @@ export function AvailabilityForm({ week, late, save }: AvailabilityFormProps) {
       <p className="px-4 text-ink-2 text-sm md:px-1">
         {t("summary", { count })}
       </p>
+
+      {/* Clear of Send, which floats over the screen until a desktop. */}
+      <PushAsk
+        offer={pushAsk.asking}
+        moment="availability"
+        onClose={pushAsk.close}
+        className="mt-3 scroll-mb-[calc(env(safe-area-inset-bottom)+13.5rem)] xl:scroll-mb-24"
+      />
 
       <ListGroup className="mt-3 md:hidden xl:block">
         <NoteRow {...noteProps} />

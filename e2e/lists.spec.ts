@@ -4,10 +4,11 @@ import he from "../messages/he.json" with { type: "json" };
 import { demoLists, endViewSessions, resetDemoLists } from "./db";
 import { secondPage, signIn } from "./session";
 
-// Lists, part 2 (L2): the demo restaurant starts with two example lists
+// Lists, part 2 (L2): the demo restaurant starts with example lists
 // (supabase/migrations/20261109000700_lists_on.sql): the kitchen's opening
 // list sent to Noa, with two of its checks done by her, and the floor's
-// opening list sent to the floor. Each test starts from them again. The
+// opening list sent to the floor; from L5 also the bar's order waiting at the
+// storeroom (lists-pass.spec.ts). Each test starts from them again. The
 // people are seeded in supabase/seed.sql: Noa in the kitchen, Yoav at the bar
 // and the storeroom, Shiran (the manager) on the floor and at the bar.
 const NOA = { local: "050-000-0003", e164: "+972500000003" };
@@ -361,5 +362,36 @@ test("the team viewing as a manager reads the lists and changes nothing", async 
   await expect(page.getByText(l.list.readOnly.viewOnly).first()).toBeVisible();
   await expect(finishButton(page)).toHaveCount(0);
   await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expectCleanPage(page);
+
+  // The business's lists (L3), only read: nothing to make, and an editor
+  // whose fields are closed and which removes nothing.
+  await page.goto("/lists/templates");
+  await expect(page.getByText(l.templates.viewOnly).first()).toBeVisible();
+  await expect(
+    page
+      .getByRole("main")
+      .getByRole("link", { name: l.templates.create, exact: true }),
+  ).toHaveCount(0);
+  await expectCleanPage(page);
+  await page
+    .getByRole("main")
+    .getByRole("link", { name: new RegExp(`^${literal(OPENING)}`) })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/lists\/templates\/[0-9a-f-]{36}$/);
+  await expect(
+    page.getByText(l.templates.editor.viewOnly).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByLabel(l.templates.editor.name, { exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: l.templates.editor.archive }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: l.items.add, exact: true }),
+  ).toHaveCount(0);
   await expectCleanPage(page);
 });

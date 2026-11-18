@@ -1,4 +1,5 @@
 import type { BusinessDetails } from "@domain/business-details";
+import type { ManageReadOnly } from "@domain/manage-access";
 import type { ShabbatCity } from "@domain/shabbat";
 import { PageBody, PageHeader } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
@@ -11,7 +12,7 @@ import type { CityShabbat } from "./shabbat-by-city";
 export function BusinessDetailsView({
   details,
   save,
-  viewOnly,
+  readOnly,
   showCity,
   cities,
   backHref,
@@ -19,7 +20,8 @@ export function BusinessDetailsView({
 }: {
   details: BusinessDetails;
   save: SaveSettings;
-  viewOnly: boolean;
+  /** Why nothing here saves, or null when it saves. */
+  readOnly: ManageReadOnly;
   showCity: boolean;
   cities: Record<ShabbatCity, CityShabbat>;
   backHref: string;
@@ -32,12 +34,12 @@ export function BusinessDetailsView({
       <PageHeader
         back={{ href: backHref, label: t("title") }}
         title={t("business.title")}
-        subtitle={t("savesItself")}
+        subtitle={readOnly ? undefined : t("savesItself")}
       />
       <BusinessDetailsForm
         details={details}
         save={save}
-        viewOnly={viewOnly}
+        readOnly={readOnly}
         showCity={showCity}
         cities={cities}
       />

@@ -3,7 +3,9 @@ import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { isStaff } from "@domain/modules";
 import { type PunchProof, padShortCode } from "@domain/punch-code-format";
 import {
+  type CancelledEntry,
   type ClockFailure,
+  cancelledEntry,
   clockFailureOf,
   ENTRY_PROOFS,
   type EntryProof,
@@ -13,6 +15,8 @@ import {
   timeEntry,
 } from "@domain/time-clock";
 import type { Database } from "./database.types";
+import { memberNames, nameIn } from "./member-names";
+import { allPages } from "./pages";
 import { punchKey } from "./punch-key";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -57,11 +61,11 @@ export type ClockResult<T = undefined> =
   | { ok: true; value: T }
   | { ok: false; failure: ClockFailure };
 
-type RpcError = { code?: string; message: string };
+type RpcError = { code?: string; message: string; hint?: string | null };
 
 /** A refusal as the screen says it. Only the message is logged: it holds no hash. */
 function refusal(error: RpcError): { ok: false; failure: ClockFailure } {
-  const failure = clockFailureOf(error.code, error.message);
+  const failure = clockFailureOf(error.code, error.message, error.hint);
   if (failure === "failed") console.error("time clock failed", error.message);
   return { ok: false, failure };
 }
@@ -286,6 +290,113 @@ export const correctTimeEntry = (
   );
 
 /**
+ * Whoever edits the clock cancels a shift entered by mistake, with why
+ * (`note`, which the database requires, keeps on the entry and logs as
+ * `clock.cancel`): it stays, marked with who, when and why, and counts
+ * nowhere. One still open is ended by it, so the person can clock in again.
+ * Their own shift only an owner cancels.
+ */
+export const cancelTimeEntry = (
+  actorId: string,
+  entryId: string,
+  note: string,
+) =>
+  call(() =>
+    createAdminClient().rpc("cancel_time_entry", {
+      actor: actorId,
+      entry: entryId,
+      note,
+    }),
+  );
+
+/**
+ * Whoever edits the clock brings a cancelled shift back as it was, with no
+ * reason (logged as `clock.restore`); one the cancel ended opens again. A live
+ * shift of the same person over those hours refuses it (`times`).
+ */
+export const restoreTimeEntry = (actorId: string, entryId: string) =>
+  call(() =>
+    createAdminClient().rpc("restore_time_entry", {
+      actor: actorId,
+      entry: entryId,
+    }),
+  );
+
+/**
+ * Whoever edits the clock adds a break the shift is missing, with why (`note`,
+ * which the database requires, keeps on the shift and logs as
+ * `clock.break_edit`): paid or not by the business's setting now. Its times
+ * must be inside the shift and over (`breakOutside`, `breakTimes`), clear of
+ * its other breaks (`breakOverlap`). Their own shift only an owner edits.
+ * Returns the new break's id.
+ */
+export const addTimeBreak = (
+  actorId: string,
+  entryId: string,
+  times: { start: string; end: string; note: string },
+) =>
+  call(() =>
+    createAdminClient().rpc("add_time_break", {
+      actor: actorId,
+      entry: entryId,
+      new_start: times.start,
+      new_end: times.end,
+      note: times.note,
+    }),
+  );
+
+/**
+ * Whoever edits the clock changes the times of a break that ended, with why,
+ * as `addTimeBreak`; it stays paid or not as it was. A break still running is
+ * refused (`breakOpen`), and one removed meanwhile (`breakGone`).
+ */
+export const changeTimeBreak = (
+  actorId: string,
+  breakId: string,
+  times: { start: string; end: string; note: string },
+) =>
+  call(() =>
+    createAdminClient().rpc("change_time_break", {
+      actor: actorId,
+      time_break: breakId,
+      new_start: times.start,
+      new_end: times.end,
+      note: times.note,
+    }),
+  );
+
+/**
+ * Whoever edits the clock removes a break that ended, with why: it is marked
+ * removed and keeps its times, and counts nowhere. Refused as
+ * `changeTimeBreak`.
+ */
+export const removeTimeBreak = (
+  actorId: string,
+  breakId: string,
+  note: string,
+) =>
+  call(() =>
+    createAdminClient().rpc("remove_time_break", {
+      actor: actorId,
+      time_break: breakId,
+      note,
+    }),
+  );
+
+/**
+ * Whoever removed a break takes it back, within ten minutes and with no
+ * reason (`tooLate` after, or for anyone else; `notRemoved` when it is back
+ * already), while it still fits its shift beside the live breaks.
+ */
+export const restoreTimeBreak = (actorId: string, breakId: string) =>
+  call(() =>
+    createAdminClient().rpc("restore_time_break", {
+      actor: actorId,
+      time_break: breakId,
+    }),
+  );
+
+/**
  * A manager confirms an entry made without a code, or an owner one someone
  * set for themselves: what waits on it, up to now. Logged as `clock.confirm`.
  */
@@ -308,27 +419,35 @@ export type ClockPerson = {
 /**
  * Everyone who is or was in the business, for the hours of the month: someone
  * who has left still has hours to pay, and so does someone who worked here and
- * came back as an accountant. Each caller decides who to list by `staff`.
+ * came back as an accountant. Each caller decides who to list by `staff`. Each
+ * by the business's name for them.
  */
 export async function getClockPeople(
   businessId: string,
 ): Promise<ClockPerson[]> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("memberships")
-    .select("user_id, role, active, profiles (full_name)")
-    .eq("business_id", businessId);
+  const [{ data, error }, names] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select("user_id, role, active, profiles (full_name)")
+      .eq("business_id", businessId),
+    memberNames(supabase, businessId),
+  ]);
   if (error) throw error;
   return data.map((row) => ({
     userId: row.user_id,
-    name: row.profiles?.full_name?.trim() || null,
+    name: nameIn(names, row.user_id, row.profiles?.full_name),
     active: row.active,
     staff: isStaff(row.role),
   }));
 }
 
 const ENTRY_COLUMNS =
-  "id, user_id, clock_in, clock_out, source, in_proof, out_proof, confirmed_at, note, edited_by, edited_at, created_at, time_breaks (id, started_at, ended_at, unpaid)";
+  "id, user_id, clock_in, clock_out, source, in_proof, out_proof, confirmed_at, note, edited_by, edited_at, created_at, restored_at, time_breaks (id, started_at, ended_at, unpaid, removed_at)";
+
+/** The same, with who cancelled it, when and why (cancelled shifts only). */
+const CANCELLED_COLUMNS =
+  "id, user_id, clock_in, clock_out, source, in_proof, out_proof, confirmed_at, note, edited_by, edited_at, created_at, restored_at, time_breaks (id, started_at, ended_at, unpaid, removed_at), cancelled_at, cancelled_by, cancel_reason, cancelled_open";
 
 type EntryRow = {
   id: string;
@@ -343,15 +462,22 @@ type EntryRow = {
   edited_by: string | null;
   edited_at: string | null;
   created_at: string;
+  restored_at: string | null;
   time_breaks: {
     id: string;
     started_at: string;
     ended_at: string | null;
     unpaid: boolean;
+    removed_at: string | null;
   }[];
 };
 
-function entryOf(row: EntryRow): TimeEntry {
+/**
+ * A row as an entry. A removed break (`removed_at`, 20261117000300_break_edits.sql)
+ * is kept in the database as the record of what was removed and counts
+ * nowhere, so it is left out here, before any sum or list sees it.
+ */
+export function entryOf(row: EntryRow): TimeEntry {
   return timeEntry.parse({
     id: row.id,
     userId: row.user_id,
@@ -365,12 +491,15 @@ function entryOf(row: EntryRow): TimeEntry {
     editedBy: row.edited_by,
     editedAt: row.edited_at,
     createdAt: row.created_at,
-    breaks: row.time_breaks.map((pause) => ({
-      id: pause.id,
-      startedAt: pause.started_at,
-      endedAt: pause.ended_at,
-      unpaid: pause.unpaid,
-    })),
+    restoredAt: row.restored_at,
+    breaks: row.time_breaks
+      .filter((pause) => pause.removed_at === null)
+      .map((pause) => ({
+        id: pause.id,
+        startedAt: pause.started_at,
+        endedAt: pause.ended_at,
+        unpaid: pause.unpaid,
+      })),
   });
 }
 
@@ -379,7 +508,15 @@ function entryOf(row: EntryRow): TimeEntry {
  * signed-in person may read them (RLS: their own; managers, owners and
  * `clock.edit` the business's), oldest first. Open entries that started earlier
  * are included, so "at work now" sees a night shift from yesterday. With
- * `userId`, that person's only.
+ * `userId`, that person's only. Read page by page (`allPages`): payroll reads
+ * a whole business over four months, past PostgREST's 1000 rows.
+ *
+ * Live shifts only: a cancelled one (`cancelled_at`,
+ * 20261117000200_cancelled_shifts.sql) counts nowhere, so every sum, the
+ * hours engine, pay, the file and who is at work are right without asking.
+ * The few screens that show cancelled shifts read them apart
+ * (`getCancelledEntries`). A cancelled shift always has an end, so the open
+ * ones read here are all live.
  */
 export async function getTimeEntries(
   businessId: string,
@@ -388,22 +525,46 @@ export async function getTimeEntries(
   userId?: string,
 ): Promise<TimeEntry[]> {
   const supabase = await createClient();
-  const query = supabase
+  const rows = await allPages((first, last) => {
+    let query = supabase
+      .from("time_entries")
+      .select(ENTRY_COLUMNS)
+      .eq("business_id", businessId)
+      .is("cancelled_at", null)
+      .lt("clock_in", to.toISOString())
+      .or(`clock_in.gte.${from.toISOString()},clock_out.is.null`);
+    if (userId) query = query.eq("user_id", userId);
+    // `id` breaks ties, so no row falls between two pages.
+    return query.order("clock_in").order("id").range(first, last);
+  });
+  return rows.map(entryOf);
+}
+
+/**
+ * One of a business's shifts with its live breaks, as the signed-in person
+ * may read it (RLS, as `getTimeEntries`), cancelled or not; null when there is
+ * none they may read. What a break's typed times are read against.
+ */
+export async function getTimeEntry(
+  businessId: string,
+  entryId: string,
+): Promise<TimeEntry | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
     .from("time_entries")
     .select(ENTRY_COLUMNS)
     .eq("business_id", businessId)
-    .lt("clock_in", to.toISOString())
-    .or(`clock_in.gte.${from.toISOString()},clock_out.is.null`)
-    .order("clock_in");
-  const { data, error } = await (userId ? query.eq("user_id", userId) : query);
+    .eq("id", entryId)
+    .maybeSingle();
   if (error) throw error;
-  return data.map(entryOf);
+  return data ? entryOf(data) : null;
 }
 
 /**
  * Entries with a time still to confirm that started since `since`, as the
  * signed-in person may read them (RLS: the business's for managers), oldest
- * first. Reads through time_entries_to_confirm_idx.
+ * first. Reads through time_entries_to_confirm_idx. Live shifts only: a
+ * cancelled one waits for nobody (its clock.confirm line settles with it).
  */
 export async function getEntriesToConfirm(
   businessId: string,
@@ -414,9 +575,58 @@ export async function getEntriesToConfirm(
     .from("time_entries")
     .select(ENTRY_COLUMNS)
     .eq("business_id", businessId)
+    .is("cancelled_at", null)
     .gte("clock_in", since.toISOString())
     .or("in_proof.in.(none,self),out_proof.in.(none,self)")
     .order("clock_in");
   if (error) throw error;
   return data.map(entryOf).filter((entry) => entryToConfirm(entry) !== null);
+}
+
+type CancelledRow = EntryRow & {
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancel_reason: string | null;
+  cancelled_open: boolean;
+};
+
+/**
+ * A business's cancelled shifts that start in [from, to), as the signed-in
+ * person may read them (RLS, as `getTimeEntries`: their own; whoever edits
+ * the clock or holds pay, the business's), oldest first, each with who
+ * cancelled it, when and why. With `userId`, that person's only. For the few
+ * screens that show them as cancelled; they count nowhere. A cancelled shift
+ * always has an end (the cancel ends one still open, `wasOpen`).
+ */
+export async function getCancelledEntries(
+  businessId: string,
+  from: Date,
+  to: Date,
+  userId?: string,
+): Promise<CancelledEntry[]> {
+  const supabase = await createClient();
+  const rows = await allPages<CancelledRow>((first, last) => {
+    let query = supabase
+      .from("time_entries")
+      .select(CANCELLED_COLUMNS)
+      .eq("business_id", businessId)
+      .not("cancelled_at", "is", null)
+      .gte("clock_in", from.toISOString())
+      .lt("clock_in", to.toISOString());
+    if (userId) query = query.eq("user_id", userId);
+    return query.order("clock_in").order("id").range(first, last);
+  });
+  return rows.flatMap((row) =>
+    row.cancelled_at === null || row.cancel_reason === null
+      ? []
+      : [
+          cancelledEntry.parse({
+            entry: entryOf(row),
+            cancelledAt: row.cancelled_at,
+            cancelledBy: row.cancelled_by,
+            reason: row.cancel_reason,
+            wasOpen: row.cancelled_open,
+          }),
+        ],
+  );
 }

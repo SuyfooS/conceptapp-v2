@@ -1,6 +1,7 @@
 "use client";
 
 import type { ProfileFailure, ProfileSaveResult } from "@domain/profile";
+import { onLeavingBusiness } from "@ui/leaving-business";
 import { ListGroup } from "@ui/list-row";
 import { Trash2 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -8,6 +9,7 @@ import {
   createContext,
   type ReactNode,
   use,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -44,8 +46,9 @@ function useBio(): BioValue {
 /**
  * A colleague's line about themselves, and its deletion by an owner or
  * manager. Deleting hides the line at once and offers "ביטול" for a moment;
- * only then, or when the screen is left inside the app, is the delete sent,
- * for the line as it was on the screen: one rewritten since stays. An undo
+ * only then, or when the screen is left inside the app or the person switches
+ * business, is the delete sent, for the line as it was on the screen: one
+ * rewritten since stays, and so does one in a business left since. An undo
  * after the fact would need a way to write into someone else's profile,
  * which nothing has. Closing the tab inside the hold keeps the line.
  */
@@ -105,28 +108,42 @@ export function BioState({
     setPhase("shown");
   }
 
-  // Leaving the screen inside the hold: the delete goes now, as it would
-  // have. Next keeps the screen (cacheComponents hides it in an <Activity>)
-  // and shows it again, as it was, on the way back: so it shows the delete
-  // as done, with no undo that can't, and the line again, with why, if the
-  // delete fails. A layout effect, so the way back never flashes the hold.
+  /**
+   * The delete on hold, sent now as it would have been, and the write (none
+   * when nothing is on hold). It shows as done, with no undo that can't, and
+   * the line comes back, with why, if the delete fails.
+   */
+  function sendHeld(): Promise<void> | null {
+    const line = meant.current;
+    if (timer.current === null || line === null) return null;
+    clearTimeout(timer.current);
+    timer.current = null;
+    setShown(null);
+    setPhase("shown");
+    return settle(clearBio(personId, line)).then((result) => {
+      if (result.ok) return;
+      // The line back, unless the server's own (read again) took its place.
+      setShown((now) => now ?? line);
+      setFailure(result.failure);
+    });
+  }
+
+  // Leaving the screen inside the hold: the delete goes now. Next keeps the
+  // screen (cacheComponents hides it in an <Activity>) and shows it again, as
+  // it was, on the way back. A layout effect, so the way back never flashes
+  // the hold.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sendHeld reads refs, clearBio and personId
   useLayoutEffect(
     () => () => {
-      const line = meant.current;
-      if (timer.current === null || line === null) return;
-      clearTimeout(timer.current);
-      timer.current = null;
-      setShown(null);
-      setPhase("shown");
-      void settle(clearBio(personId, line)).then((result) => {
-        if (result.ok) return;
-        // The line back, unless the server's own (read again) took its place.
-        setShown((now) => now ?? line);
-        setFailure(result.failure);
-      });
+      void sendHeld();
     },
     [clearBio, personId],
   );
+
+  // A switch to another business inside the hold (payroll P3b): the delete
+  // goes first, and the switch waits for it, so it is made in this business.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sendHeld reads refs, clearBio and personId
+  useEffect(() => onLeavingBusiness(sendHeld), [clearBio, personId]);
 
   return (
     <BioContext value={{ bio: shown, phase, failure, canClear, clear, undo }}>
@@ -157,28 +174,35 @@ export function BioUndo({ message }: { message: string }) {
 }
 
 /**
- * What the viewer can do about this person: call them, and delete their line
- * when it is there and they may. Nothing at all when neither applies. The
- * delete is a group of its own, centred and with no chevron: it leads
- * nowhere, it acts.
+ * What the viewer can do about this person: call them, fix their name and
+ * change their role (`place`, when they may), and delete their line when it
+ * is there and they may. Nothing at all when none applies. The delete is a
+ * group of its own, centred and with no chevron: it leads nowhere, it acts.
  */
 export function PersonActions({
   call,
+  place = null,
   clearLabel,
   clearHint,
 }: {
   /** The call row, when the business has their number. */
   call: ReactNode;
+  /**
+   * Their name and role, and the ways to change them (`TeamPlace`), when the
+   * viewer may.
+   */
+  place?: ReactNode;
   clearLabel: string;
   clearHint: string;
 }) {
   const t = useTranslations("app.team.person.failures");
   const { bio, phase, failure, canClear, clear } = useBio();
   const clearable = canClear && bio !== null && phase === "shown";
-  if (!call && !clearable && !failure) return null;
+  if (!call && !place && !clearable && !failure) return null;
   return (
     <section className="flex flex-col gap-4">
       {call ? <ListGroup>{call}</ListGroup> : null}
+      {place}
       {clearable || failure ? (
         <div className="flex flex-col gap-2">
           {clearable ? (
@@ -202,6 +226,7 @@ export function PersonActions({
                 failure === "noAccess" ||
                   failure === "viewOnly" ||
                   failure === "changed" ||
+                  failure === "businessChanged" ||
                   failure === "notYet"
                   ? failure
                   : "failed",

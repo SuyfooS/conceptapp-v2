@@ -1,4 +1,4 @@
-import { canSeeTeam } from "@domain/team";
+import { buildsSchedule, publishesSchedule } from "@domain/schedule";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
@@ -13,20 +13,23 @@ export async function generateMetadata(): Promise<Metadata> {
   return { title: t("title") };
 }
 
-// Owners and managers approve or decline the shifts colleagues took.
-// Workers get the not-found screen, as on the team availability screen.
+// Whoever builds the schedule approves or declines the shifts colleagues took
+// (Orel's answer 6 of 15 November 2026), and their own only if they publish
+// it too (`decidesSwap`). Anyone else gets the not-found screen, as on the
+// team availability screen.
 export default async function SwapApprovalsPage() {
   const [member, data, wording] = await Promise.all([
     currentMember(),
     currentPublishedSchedule(),
     currentWording(),
   ]);
-  const role = member?.membership?.role;
-  if (!data || !role || !canSeeTeam(role)) notFound();
+  const membership = member?.membership;
+  if (!data || !membership || !buildsSchedule(membership)) notFound();
   return (
     <SwapApprovalsView
       data={data}
       decide={decideSwapAction}
+      publishes={publishesSchedule(membership)}
       wording={wording}
     />
   );

@@ -29,7 +29,11 @@ export type WeekStripProps = {
   label: string;
 };
 
-/** The week in one line, Sunday first. The same shape wherever a week appears. */
+/**
+ * The week in one line, Sunday first. The same shape wherever a week
+ * appears; a history (the lists' overview) passes its own seven days, today
+ * last, in the same shape.
+ */
 export function WeekStrip({ days, value, onChange, label }: WeekStripProps) {
   return (
     <fieldset className="m-0 grid min-w-0 grid-cols-7 gap-0.5 rounded-card border-0 bg-surface p-1.5 shadow-card">

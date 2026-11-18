@@ -1,12 +1,16 @@
 import { execFileSync } from "node:child_process";
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, posix } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import {
   crossModuleImports,
@@ -287,7 +291,13 @@ describe("the clock's browser files", () => {
 });
 
 // Biome applies per-folder overrides only to files on disk, so each case is a
-// throwaway probe file placed in the folder whose rule it exercises.
+// throwaway probe file placed in the folder whose rule it exercises. The
+// probes are written outside the repository, into a folder of their own
+// beside copies of biome.json and .gitignore (VCS is on, so Biome wants the
+// ignore file): override paths are relative to the configuration, so
+// `packages/ui/**` reaches <probes>/packages/ui. Inside the repository they
+// raced the tests that walk app/, packages/ and modules/ in other workers,
+// which listed a probe and found it gone, or read its forbidden import.
 const cases: { path: string; from: string; blocked: boolean }[] = [
   { path: "packages/domain", from: "@ui/button", blocked: true },
   { path: "packages/domain", from: "@db/client", blocked: true },
@@ -307,41 +317,83 @@ const cases: { path: string; from: string; blocked: boolean }[] = [
   { path: "modules/probe", from: "@domain/phone", blocked: false },
 ];
 
+/** Biome configurations below `dir`, which the probes' copy would leave out. */
+function nestedConfigs(dir: string): string[] {
+  return readdirSync(join(root, dir), { withFileTypes: true }).flatMap(
+    (entry) => {
+      if (entry.name === "node_modules") return [];
+      const path = posix.join(dir, entry.name);
+      if (entry.isDirectory()) return nestedConfigs(path);
+      return /^biome\.jsonc?$/.test(entry.name) ? [path] : [];
+    },
+  );
+}
+
 describe("Biome layer rules", () => {
-  const written: string[] = [];
+  let probes: string | undefined;
   afterAll(() => {
-    for (const file of written) rmSync(file, { force: true });
-    rmSync(join(root, "modules/probe"), { recursive: true, force: true });
+    if (probes) rmSync(probes, { recursive: true, force: true });
+  });
+
+  it("come from biome.json alone, so a copy of it is the whole picture", () => {
+    expect([...nestedConfigs("packages"), ...nestedConfigs("modules")]).toEqual(
+      [],
+    );
   });
 
   it("blocks every forbidden import and allows the permitted ones", () => {
+    const dir = mkdtempSync(join(tmpdir(), "boundary-probes-"));
+    probes = dir;
+    for (const name of ["biome.json", ".gitignore"]) {
+      copyFileSync(join(root, name), join(dir, name));
+    }
     const files = cases.map((c, i) => {
-      const file = join(root, c.path, `__boundary_probe_${i}__.ts`);
+      const file = join(dir, c.path, `__boundary_probe_${i}__.ts`);
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(
         file,
         `import { x } from "${c.from}";\nexport const y = x;\n`,
       );
-      written.push(file);
       return file;
     });
 
     // The GitHub reporter prints one stable line per diagnostic:
     // ::error title=<rule>,file=<path>,line=…::<message>
+    // Biome's JavaScript entry runs through Node, because node_modules/.bin/biome
+    // is a shell shim that Windows can't execute directly.
     let output = "";
     try {
       output = execFileSync(
-        join(root, "node_modules/.bin/biome"),
-        ["lint", "--reporter=github", "--max-diagnostics=none", ...files],
-        { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+        process.execPath,
+        [
+          join(root, "node_modules/@biomejs/biome/bin/biome"),
+          "lint",
+          "--reporter=github",
+          "--max-diagnostics=none",
+          ...files,
+        ],
+        { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
       );
     } catch (error) {
-      output = (error as { stdout: string }).stdout;
+      // Biome exits non-zero when it reports errors; that output is what we read.
+      const { stdout, stderr, message } = error as {
+        stdout?: string;
+        stderr?: string;
+        message?: string;
+      };
+      if (typeof stdout !== "string") {
+        throw new Error(
+          `Biome did not run: ${stderr || message || String(error)}`,
+        );
+      }
+      output = stdout;
     }
     const blocked = output
       .split("\n")
       .filter((line) => line.includes("title=lint/style/noRestrictedImports,"))
-      .map((line) => /file=([^,]+),/.exec(line)?.[1] ?? "");
+      .map((line) =>
+        (/file=([^,]+),/.exec(line)?.[1] ?? "").split("\\").join("/"),
+      );
 
     const result = cases.map((c, i) => ({
       ...c,

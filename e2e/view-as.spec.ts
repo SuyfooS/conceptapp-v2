@@ -1,15 +1,31 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
-import { endViewSessions, invitesBySlug, viewAudit } from "./db";
+import { before } from "./build-screen";
+import {
+  addShopNamedRole,
+  clearSchedule,
+  endViewSessions,
+  invitesBySlug,
+  lastViewedRoleName,
+  removeShopNamedRole,
+  scheduleDemoSunday,
+  viewAudit,
+} from "./db";
 import { signIn } from "./session";
+import { heT } from "./t";
 
 // The seeded platform admin (supabase/seed.sql) opens the demo restaurant
 // as one of its roles from the console, reads it as that role, cannot
-// change anything, and every start and end is in the audit log.
+// change anything, and every start and end is in the audit log. It also
+// opens the demo shop as a role the shop named (the roles plan's R11c).
 const ADMIN = { local: "050-000-0005", e164: "+972500000005" };
 const NEW = { name: "לא תישמר", local: "050-000-0931", e164: "+972500000931" };
 const BUSINESS = "מסעדת הדגמה";
+const SHOP = "חנות הדגמה";
+/** The seeded Noa, a worker of the demo restaurant. */
+const NOA_ID = "00000000-0000-4000-a000-000000000003";
+const NOA_PHONE = "+972500000003";
 
 const a = he.admin.setup.viewAs;
 const v = he.app.viewAs;
@@ -122,6 +138,21 @@ test("viewing as a manager shows the team but saves nothing", async ({
     page.getByText("נועה כהן").filter({ visible: true }).first(),
   ).toBeVisible();
   await expectCleanPage(page);
+  // No invite to delete, and on a person's page no role to change and no
+  // taking them off the team: viewing changes nothing.
+  await expect(
+    page.getByRole("button", { name: new RegExp(`^${tt.cancel.action}`) }),
+  ).toHaveCount(0);
+  await page.goto(`/team/${NOA_ID}`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: "נועה כהן" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: tt.changes.remove }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: new RegExp(`^${tt.changes.role}`) }),
+  ).toHaveCount(0);
 
   await page.goto("/team/invite");
   await page.getByLabel(tt.invite.name).fill(NEW.name);
@@ -177,16 +208,64 @@ test("viewing as a manager shows the team but saves nothing", async ({
       .first(),
   ).toBeVisible();
   await expectCleanPage(page);
+
+  // Viewing speaks for nobody: no reminder to the team, nor a schedule
+  // shared with it.
+  await page.goto("/schedule/availability/team");
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: he.app.availability.team.title,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: he.app.availability.team.remind.action }),
+  ).toHaveCount(0);
+  // With next week published, the builder at rest and the tab's "פורסם ב-…"
+  // offer sharing it to whoever builds the schedule; viewing as one, neither
+  // does.
+  const share = page.getByRole("button", { name: he.app.shifts.share.action });
+  await scheduleDemoSunday({ morning: [[NOA_PHONE, null]], evening: [] }, true);
+  try {
+    await page.goto("/schedule/build");
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.build.title }),
+    ).toBeVisible();
+    // The builder names its week once it is on the screen.
+    await expect(page).toHaveURL(/\?week=\d{4}-\d{2}-\d{2}$/);
+    await expect(
+      page.getByText(before(he.app.build.publishedAt)),
+    ).toBeVisible();
+    await expect(share).toHaveCount(0);
+    const start = new URL(page.url()).searchParams.get("week") ?? "";
+    await page.goto(`/schedule?week=${start}`);
+    await expect(
+      page.getByRole("button", { name: he.app.shifts.week.next, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page
+        .getByText(before(he.app.shifts.board.publishedAt))
+        .filter({ visible: true }),
+    ).toBeVisible();
+    await expect(share).toHaveCount(0);
+  } finally {
+    await clearSchedule();
+  }
 });
 
 // The one view that reads pay (payroll P3): as an accountant, the business
-// shows Home and the hours for payroll, and nothing of the staff's.
+// shows Home, the hours for payroll and the documents' tab (chat C7), whose
+// screen says only that documents aren't shown, and nothing of the staff's.
 test("viewing as an accountant shows the hours for payroll and nothing else", async ({
   page,
 }) => {
   await viewAs(page, "accountant");
   const items = nav(page).locator("[data-nav-label]");
-  await expect(items).toHaveText([he.app.nav.home, m.time_clock.outsideNav]);
+  await expect(items).toHaveText([
+    he.app.nav.home,
+    m.time_clock.outsideNav,
+    m.chat.outsideNav,
+  ]);
   await expect(
     page.getByRole("link", { name: he.app.home.accountant.open }),
   ).toBeVisible();
@@ -199,13 +278,51 @@ test("viewing as an accountant shows the hours for payroll and nothing else", as
   ).toBeVisible();
   await expectCleanPage(page);
 
-  for (const path of ["/schedule", "/clock", "/team", "/manage/access"]) {
+  // Noa's wage reads, and nothing changes it from a view (payroll P4).
+  await page.goto("/clock/pay/00000000-0000-4000-a000-000000000003");
+  await expect(
+    page.getByText("38.00 ₪").filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(he.app.pay.wage.viewOnly).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: he.app.pay.wage.change }),
+  ).toHaveCount(0);
+  // Her details for payroll read too, and nothing changes them (payroll P5).
+  await expect(
+    page.getByText("102", { exact: true }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText(he.app.pay.details.can.viewOnly).filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: he.app.pay.details.edit }),
+  ).toHaveCount(0);
+
+  for (const path of [
+    "/schedule",
+    "/clock",
+    "/team",
+    "/manage/access",
+    "/manage/roles",
+  ]) {
     await page.goto(path);
     await expect(
       page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
       path,
     ).toBeVisible();
   }
+
+  // The documents' tab (chat C7) says only that documents aren't shown.
+  await nav(page)
+    .getByRole("link", { name: new RegExp(`^${m.chat.outsideNav}`) })
+    .click();
+  await expect(page).toHaveURL(/\/chat\/documents$/);
+  await expect(page.getByText(he.app.chat.viewing)).toBeVisible();
+  await expect(
+    page.getByRole("main").locator('a[href^="/chat/documents/"]'),
+  ).toHaveCount(0);
 });
 
 test("viewing as the owner reads no pay", async ({ page }) => {
@@ -220,4 +337,88 @@ test("viewing as the owner reads no pay", async ({ page }) => {
     page.getByRole("switch", { name: he.app.manage.access.roles.manager }),
   ).toBeDisabled();
   await expectCleanPage(page);
+  // So can what each role does (the roles plan's R9): every switch off.
+  const r = he.app.manage.roles;
+  await page.goto("/manage/roles");
+  await expect(
+    page
+      .getByRole("heading", { level: 1, name: r.title })
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(r.failure.viewOnly).filter({ visible: true }),
+  ).toBeVisible();
+  await expectCleanPage(page);
+  // A role's switches: a phone has them on the role's own screen, which the
+  // address opens; a tablet beside the list; a computer in its table.
+  await page.goto("/manage/roles?role=manager");
+  await expect(
+    page.getByText(r.failure.viewOnly).filter({ visible: true }),
+  ).toBeVisible();
+  const switches = page
+    .getByRole("main")
+    .getByRole("switch")
+    .filter({ visible: true });
+  // Some at every width, so the check below reads something.
+  await expect(switches.first()).toBeVisible();
+  for (const control of await switches.all()) {
+    await expect(control).toBeDisabled();
+  }
+  await expectCleanPage(page);
+});
+
+// A role the business named (the roles plan's R11c): the team views the demo
+// shop as its shift lead, built on workers, who builds the schedule. The
+// console offers it after workers, by its name; the banner names it; it
+// opens the builder, which workers don't, and not the team, as workers
+// don't; the log names it.
+test("viewing the shop as a role it named reads what that role holds", async ({
+  page,
+}) => {
+  const name = "אחראי משמרת";
+  await removeShopNamedRole(name);
+  await addShopNamedRole(name, ["schedule.edit"]);
+  try {
+    await signIn(page, ADMIN, /\/admin$/);
+    await page.goto("/admin/businesses/demo-shop");
+    await expect(
+      page.getByRole("heading", { level: 2, name: a.title }),
+    ).toBeVisible();
+    const lead = page.getByRole("button", {
+      name: new RegExp(`^${heT("admin.setup.viewAs.asNamed", { role: name })}`),
+    });
+    await expect(lead).toContainText(
+      heT("admin.setup.viewAs.namedHint", {
+        role: he.admin.memberRoles.worker,
+      }),
+    );
+    await expectCleanPage(page);
+    await lead.click();
+    await expect(page).toHaveURL(/\/home$/);
+    const banner = page.getByRole("complementary", { name: v.label });
+    await expect(banner).toContainText(
+      v.title.replace("{role}", name).replace("{business}", SHOP),
+    );
+    await expectCleanPage(page);
+
+    await page.goto("/schedule/build");
+    await expect(
+      page
+        .getByRole("heading", { level: 1, name: he.app.build.title })
+        .filter({ visible: true }),
+    ).toBeVisible();
+    await page.goto("/team");
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
+    ).toBeVisible();
+
+    // The shop's log names the role; stopping goes back to the shop.
+    expect(await lastViewedRoleName(ADMIN.e164)).toBe(name);
+    await page.goto("/home");
+    await banner.getByRole("button", { name: v.end }).click();
+    await expect(page).toHaveURL(/\/admin\/businesses\/demo-shop$/);
+  } finally {
+    await endViewSessions(ADMIN.e164);
+    await removeShopNamedRole(name);
+  }
 });

@@ -4,7 +4,7 @@
 -- viewing it as a manager or owner, but not as a worker, not after the session
 -- ends, and never another business's.
 begin;
-select plan(26);
+select plan(30);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -84,8 +84,15 @@ select is(
 );
 select results_eq(
   -- Whose shifts changed and the requests removed are for notifications
-  -- (notifications.test.sql).
-  $$select actor_id, details - 'changed' - 'removed_swaps' from public.audit_log
+  -- (notifications.test.sql); what was kept, edited, added and removed, the
+  -- requests opened again and the moment, for the week written in place
+  -- (week_in_place.test.sql); who joined a shift under way and whether the
+  -- week had begun, for the week under way (running_week.test.sql); and the
+  -- nearest shift that changed for each person, for its notifications
+  -- (running_week_notices.test.sql).
+  $$select actor_id, details - 'changed' - 'removed_swaps' - 'reopened' - 'kept'
+      - 'edited' - 'added' - 'removed' - 'at' - 'joined' - 'running' - 'nearest'
+    from public.audit_log
     where business_id = '6c000000-0000-4000-b000-000000000001' and action = 'schedule.publish'$$,
   $$values ('6c000000-0000-4000-a000-00000000000b'::uuid, jsonb_build_object(
     'week', (select id from ids where name = 'x'),
@@ -116,12 +123,20 @@ select is(
   'two swap requests are waiting'
 );
 
--- Publishing again with changes removes them, and says so.
+-- Publishing again with nothing read replaces the shifts: it ends the waiting
+-- requests, which stay without their shift (20261115000200_swap_history.sql),
+-- and says so. Each publish of the week again passes its moment, before the
+-- week begins, so what has begun (20261115000300_running_week.sql) never
+-- depends on today's date.
 select public.publish_week_schedule('6c000000-0000-4000-a000-00000000000a',
-  (select id from ids where name = 'x'), (select shifts from week_x));
-select is_empty(
-  $$select 1 from public.shift_swaps where business_id = '6c000000-0000-4000-b000-000000000001'$$,
-  'publishing again removes the waiting requests with the old shifts'
+  (select id from ids where name = 'x'), (select shifts from week_x),
+  at_time => '2026-11-05 10:00+00');
+select is(
+  (select array_agg(status::text || '/' || cancelled_because || '/' || coalesce(shift_id::text, 'gone')
+     order by status::text)
+   from public.shift_swaps where business_id = '6c000000-0000-4000-b000-000000000001'),
+  array['cancelled/schedule/gone', 'cancelled/schedule/gone'],
+  'publishing again ends the waiting requests with the old shifts, and they stay'
 );
 select results_eq(
   $$select actor_id, details ->> 'first', details ->> 'swaps_removed', details ->> 'shifts'
@@ -136,7 +151,7 @@ select results_eq(
 
 -- Clearing a published week is still publishing: the log says no shifts.
 select public.publish_week_schedule('6c000000-0000-4000-a000-00000000000b',
-  (select id from ids where name = 'x'), '[]');
+  (select id from ids where name = 'x'), '[]', at_time => '2026-11-05 10:00+00');
 select is(
   (select details ->> 'shifts' from public.audit_log
     where business_id = '6c000000-0000-4000-b000-000000000001' and action = 'schedule.publish'
@@ -145,7 +160,8 @@ select is(
   'publishing an empty week is in the log with no shifts'
 );
 select public.publish_week_schedule('6c000000-0000-4000-a000-00000000000b',
-  (select id from ids where name = 'x'), (select shifts from week_x));
+  (select id from ids where name = 'x'), (select shifts from week_x),
+  at_time => '2026-11-05 10:00+00');
 
 -- A refused publish writes nothing.
 select throws_ok(
@@ -261,6 +277,36 @@ select public.end_view_session('6c000000-0000-4000-a000-00000000000f');
 reset role;
 select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000f');
 select is_empty($$select 1 from public.audit_log$$, 'an ended view reads none of the log');
+reset role;
+
+-- The menu's rows (20261117000500_order_taking_menu.sql): read by those who
+-- run the menu (private.log_perm, order_taking.edit), owners and managers by
+-- default and a view as a manager; never a worker.
+insert into public.audit_log (business_id, actor_id, action, details)
+values
+  ('6c000000-0000-4000-b000-000000000001', '6c000000-0000-4000-a000-00000000000b', 'menu.item.save',
+   '{"item": "6c000000-0000-4000-c000-000000000001", "name": "Schnitzel", "created": false,
+     "changed": ["price"], "price": {"before": 6200, "after": 6800}}'),
+  ('6c000000-0000-4000-b000-000000000001', '6c000000-0000-4000-a000-00000000000b', 'menu.places',
+   '{"added": 12, "restored": 0, "archived": 0, "changed": 0, "total": 12}');
+create function pg_temp.menu_rows() returns int language sql as $$
+  select count(*)::int from public.audit_log
+  where business_id = '6c000000-0000-4000-b000-000000000001' and action like 'menu.%'
+$$;
+
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000a');
+select is(pg_temp.menu_rows(), 2, 'the owner reads the menu''s rows');
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000b');
+select is(pg_temp.menu_rows(), 2, 'and so does a manager, who runs the menu by default');
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000c');
+select is(pg_temp.menu_rows(), 0, 'a worker reads none of them');
+reset role;
+set local role service_role;
+select public.start_view_session('6c000000-0000-4000-a000-00000000000f',
+  '6c000000-0000-4000-b000-000000000001', 'manager');
+reset role;
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000f');
+select is(pg_temp.menu_rows(), 2, 'and a view as a manager reads them as a manager would');
 reset role;
 
 select * from finish();

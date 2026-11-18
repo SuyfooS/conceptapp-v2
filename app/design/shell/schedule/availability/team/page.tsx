@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { TeamAvailabilityView } from "../../../../../(app)/schedule/availability/team/team-availability-view";
 import { baseWording } from "../../../../../(app)/wording";
 import {
+  business,
   teamAnswers,
   teamInvites,
   teamMembers,
@@ -16,6 +17,9 @@ type Props = { searchParams: Promise<{ state?: string }> };
 // The real team availability screen with mock answers for the demo week:
 // five sent (one late, one with no hours), two missing. ?state=none shows
 // nobody sent yet, ?state=all everyone sent, ?state=empty a team of no one.
+// While someone is missing, the header offers a reminder on WhatsApp, its
+// link to the availability twin; ?state=late words it for after the due
+// moment (the demo week's is fixed, so the state says which).
 export default function ShellTeamAvailability({ searchParams }: Props) {
   return (
     <Suspense>
@@ -45,6 +49,12 @@ async function Demo({ searchParams }: Props) {
         ),
       }}
       backHref="/design/shell/schedule"
+      // The screen offers it only while someone is missing.
+      remind={{
+        business: business.name,
+        late: state === "late",
+        path: "/design/shell/schedule/availability",
+      }}
       wording={baseWording}
     />
   );

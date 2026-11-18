@@ -1,5 +1,6 @@
 import { GeoLocation, Zmanim } from "@hebcal/core";
 import { addDays, dateIn } from "./availability";
+import type { ShabbatSpan } from "./list-openings";
 import {
   dateParts,
   HAVDALAH_DEGREES,
@@ -43,6 +44,27 @@ export function shabbatTimes(place: ShabbatPlace, date: string): ShabbatTimes {
       zmanimOn(gloc, saturday).tzeit(HAVDALAH_DEGREES),
     ),
   };
+}
+
+/**
+ * `weeks` Shabbatot from the one `date` belongs to, as lists' times read
+ * them (@domain/list-openings): each Friday with candle lighting and havdalah
+ * as instants.
+ */
+export function shabbatSpansFrom(
+  place: ShabbatPlace,
+  date: string,
+  weeks: number,
+): ShabbatSpan[] {
+  const first = shabbatFriday(date);
+  return Array.from({ length: weeks }, (_, week) => {
+    const times = shabbatTimes(place, addDays(first, week * 7));
+    return {
+      friday: times.friday,
+      candleLighting: times.candleLighting.toISOString(),
+      havdalah: times.havdalah.toISOString(),
+    };
+  });
 }
 
 /**

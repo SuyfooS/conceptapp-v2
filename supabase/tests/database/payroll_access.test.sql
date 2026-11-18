@@ -151,13 +151,16 @@ insert into public.list_schedules (template_id, business_id, days, opens_offset,
   recipient_kind, recipient_user, starts_on)
 values ('77000000-0000-4000-d000-000000000011', '77000000-0000-4000-b000-000000000001',
   '{1}', 480, 540, 'person', '77000000-0000-4000-a000-000000000017', '2026-11-10');
-insert into public.shift_swaps (business_id, shift_id, requested_by)
+-- Each request keeps its shift as it was asked for
+-- (20261115000200_swap_history.sql), as public.request_shift_swap writes it.
+insert into public.shift_swaps (business_id, shift_id, requested_by, shift)
 values ('77000000-0000-4000-b000-000000000001', '77000000-0000-4000-f000-000000000011',
-  '77000000-0000-4000-a000-00000000000c');
-insert into public.shift_swaps (business_id, shift_id, requested_by, status, taken_by, taken_at)
+  '77000000-0000-4000-a000-00000000000c',
+  private.shift_brief('77000000-0000-4000-f000-000000000011'));
+insert into public.shift_swaps (business_id, shift_id, requested_by, status, taken_by, taken_at, shift)
 values ('77000000-0000-4000-b000-000000000001', '77000000-0000-4000-f000-000000000012',
   '77000000-0000-4000-a000-000000000016', 'taken', '77000000-0000-4000-a000-000000000019',
-  '2026-11-09 08:00+00');
+  '2026-11-09 08:00+00', private.shift_brief('77000000-0000-4000-f000-000000000012'));
 
 -- The log: a pay row, a settings row and a clock row.
 insert into public.audit_log (business_id, actor_id, action, details)
@@ -210,11 +213,11 @@ select ok(
 -- Who may call what
 
 select ok(
-  not has_function_privilege('authenticated', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean)', 'execute')
-  and not has_function_privilege('anon', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean)', 'execute')
+  not has_function_privilege('authenticated', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean, uuid)', 'execute')
+  and not has_function_privilege('anon', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'public.set_member_permission(uuid, uuid, uuid, text, boolean)', 'execute')
   and not has_function_privilege('anon', 'public.set_member_permission(uuid, uuid, uuid, text, boolean)', 'execute')
-  and has_function_privilege('service_role', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean)', 'execute')
+  and has_function_privilege('service_role', 'public.set_role_permission(uuid, uuid, public.member_role, text, boolean, uuid)', 'execute')
   and has_function_privilege('service_role', 'public.set_member_permission(uuid, uuid, uuid, text, boolean)', 'execute'),
   'grants change through the server only'
 );
@@ -297,7 +300,7 @@ select throws_ok(
 );
 select throws_ok(
   $$select public.set_role_permission('77000000-0000-4000-a000-00000000000a',
-    '77000000-0000-4000-b000-000000000001', 'manager', 'clock.edit', false)$$,
+    '77000000-0000-4000-b000-000000000001', 'manager', 'storefront.edit', false)$$,
   '22023', null, 'a permission that follows its role is not switched'
 );
 select throws_ok(
@@ -444,7 +447,7 @@ select ok(
 select pg_temp.sign_in('77000000-0000-4000-a000-00000000000a');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.edit,clock.payroll,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,clock.payroll,lists.fix,lists.manage,lists.send,manage.edit,manage.view,order_taking.edit,reservations.edit,schedule.edit,schedule.publish,storefront.edit,team.edit,team.view}'::text[],
   'an owner holds every permission'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-00000000000d');
@@ -467,19 +470,19 @@ select is(
 select pg_temp.sign_in('77000000-0000-4000-a000-00000000000b');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,lists.fix,lists.manage,lists.send,manage.edit,manage.view,order_taking.edit,reservations.edit,schedule.edit,schedule.publish,storefront.edit,team.edit,team.view}'::text[],
   'a manager without pay access holds the rest'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-000000000012');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,lists.fix,lists.manage,lists.send,manage.edit,manage.view,order_taking.edit,reservations.edit,schedule.edit,schedule.publish,storefront.edit,team.edit,team.view}'::text[],
   'a view as a manager holds what a manager does by default'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-000000000018');
 select is(
   public.my_permissions('77000000-0000-4000-b000-000000000001'),
-  '{clock.edit,lists.manage,lists.send,reservations.edit,schedule.edit,schedule.publish,storefront.edit}'::text[],
+  '{chat.announce,chat.moderate,chat.send_documents,clock.edit,lists.fix,lists.manage,lists.send,manage.edit,manage.view,order_taking.edit,reservations.edit,schedule.edit,schedule.publish,storefront.edit,team.edit,team.view}'::text[],
   'and a view as an owner everything but pay access'
 );
 select pg_temp.sign_in('77000000-0000-4000-a000-000000000011');

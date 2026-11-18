@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { atLeast, type Role } from "./modules";
+import { atLeast, isStaff, type Role, type Viewer } from "./modules";
+import { canEditTeam } from "./team";
 
 /**
  * The profile a person's colleagues read (issue #82, H2): one line about
@@ -101,6 +102,11 @@ export type ProfileFailure =
   | "noAccess"
   /** A colleague's line was rewritten since it was read, so it stays. */
   | "changed"
+  /**
+   * The person switched business since the screen was drawn (payroll P3b),
+   * so a colleague's line there stays.
+   */
+  | "businessChanged"
   | "notYet"
   | "failed"
   | "viewOnly";
@@ -150,10 +156,19 @@ export function seenBioOf(value: unknown): string | null {
 }
 
 /**
- * Whether someone in `actor`'s role may clear the line of someone in
- * `person`'s, when it is abusive: owners anyone's, managers anyone's but an
- * owner's, workers nobody's. The database holds the same rule.
+ * Whether the viewer may clear the line of someone in `person`'s role, when
+ * it is abusive: whoever edits the team (`canEditTeam`, the roles plan's
+ * R6), the line of their own role or one below it. By default owners clear
+ * anyone's, managers anyone's but an owner's, and workers nobody's; a worker
+ * raised to edit the team, a worker's. An accountant, at a worker's rank and
+ * with one line in every business they serve, is cleared only from above
+ * (a manager, an owner). The database holds the same rule
+ * (`public.clear_profile_bio`).
  */
-export function mayClearBio(actor: Role, person: Role): boolean {
-  return atLeast(actor, "manager") && atLeast(actor, person);
+export function mayClearBio(viewer: Viewer, person: Role): boolean {
+  return (
+    canEditTeam(viewer) &&
+    atLeast(viewer.role, person) &&
+    (isStaff(person) || !atLeast(person, viewer.role))
+  );
 }

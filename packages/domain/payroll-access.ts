@@ -1,4 +1,5 @@
 import { isStaff, type Role, type Viewer } from "./modules";
+import type { NamedRole } from "./role-access";
 
 /**
  * Who sees pay (payroll P2 and P3; Orel, 8 and 9 November 2026, issue #1).
@@ -45,13 +46,64 @@ export const PAY_HOLDERS_WARNING = 10;
 export type PayHolderCandidate = {
   userId: string;
   role: Role;
+  /**
+   * The role the business named that they hold (the roles plan's R11b),
+   * built on `role`; null for the role itself.
+   */
+  namedRole: Pick<NamedRole, "id"> | null;
   /** Given pay access to them alone (`memberships.perms`). */
   personal: boolean;
 };
 
 /**
- * How many active people see pay: owners and accountants always, everyone in
- * a role given it, and everyone given it personally, each once.
+ * Whether their role gives them pay: one the business gives it to, held as
+ * it is. A role the business named never does, whatever it is built on
+ * (`private.role_gives` refuses it a key an owner gives, the roles plan's
+ * R11a), so its people see pay only by their own access (R11e).
+ */
+export function coveredByRole(
+  person: Pick<PayHolderCandidate, "role" | "namedRole">,
+  roles: readonly Role[],
+): boolean {
+  return person.namedRole === null && roles.includes(person.role);
+}
+
+/**
+ * Whether they hold (or would hold) a role the business named built on one
+ * it gives pay to: that role's switch reads as theirs too and isn't
+ * (`coveredByRole`), so they see pay only by their own access. `namedRole`
+ * is the named role, or its id as a role choice names it.
+ */
+export function namedOnPayRole(
+  person: { role: Role; namedRole: string | Pick<NamedRole, "id"> | null },
+  roles: readonly Role[],
+): boolean {
+  return person.namedRole !== null && roles.includes(person.role);
+}
+
+/**
+ * The roles the business named that `people` hold on a role it gives pay to
+ * (`namedOnPayRole`), each once and in the order first held, with the role
+ * it is built on: the access screen names each, for those it still offers.
+ */
+export function namedRolesBesidePay<R extends Pick<NamedRole, "id">>(
+  people: readonly { role: Role; namedRole: R | null }[],
+  roles: readonly Role[],
+): { namedRole: R; base: Role }[] {
+  const named: { namedRole: R; base: Role }[] = [];
+  for (const person of people) {
+    const role = person.namedRole;
+    if (role === null || !namedOnPayRole(person, roles)) continue;
+    if (named.some((seen) => seen.namedRole.id === role.id)) continue;
+    named.push({ namedRole: role, base: person.role });
+  }
+  return named;
+}
+
+/**
+ * How many active people see pay: owners and accountants always, everyone
+ * whose role gives it (`coveredByRole`), and everyone given it personally,
+ * each once.
  */
 export function payHolderCount(
   people: readonly PayHolderCandidate[],
@@ -61,7 +113,7 @@ export function payHolderCount(
     (person) =>
       person.role === "owner" ||
       !isStaff(person.role) ||
-      roles.includes(person.role) ||
+      coveredByRole(person, roles) ||
       person.personal,
   ).length;
 }
@@ -73,7 +125,8 @@ export function overPayHoldersWarning(count: number): boolean {
 
 /**
  * Who may be given pay access personally: active staff who hold it neither as
- * owners nor by their role, and don't have it yet. Never the giver.
+ * owners nor by their role (`coveredByRole`: someone in a role the business
+ * named is offered), and don't have it yet. Never the giver.
  */
 export function canGetPersonalPay(
   person: PayHolderCandidate,
@@ -84,8 +137,34 @@ export function canGetPersonalPay(
     person.userId !== giverId &&
     person.role !== "owner" &&
     isStaff(person.role) &&
-    !roles.includes(person.role) &&
+    !coveredByRole(person, roles) &&
     !person.personal
+  );
+}
+
+/**
+ * Whether the business has anyone pay access is given to, by role or on their
+ * own: a manager or a worker. A business the team has just set up may have
+ * nobody yet, or only its owner, and the access screen says so rather than
+ * that everyone already sees pay.
+ */
+export function hasPayRoleStaff(people: readonly { role: Role }[]): boolean {
+  return people.some((person) =>
+    (PAY_ROLES as readonly Role[]).includes(person.role),
+  );
+}
+
+/**
+ * The order the access screen lists people in, the owner's and the console's
+ * alike: by name in Hebrew order, and those without one last.
+ */
+export function accessOrder(
+  a: { name: string | null },
+  b: { name: string | null },
+): number {
+  return (
+    (a.name === null ? 1 : 0) - (b.name === null ? 1 : 0) ||
+    (a.name ?? "").localeCompare(b.name ?? "", "he")
   );
 }
 

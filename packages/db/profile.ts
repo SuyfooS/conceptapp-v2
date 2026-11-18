@@ -62,8 +62,9 @@ export async function setOwnProfile(
 }
 
 /**
- * An owner or manager clears a colleague's line in their business, when it
- * is abusive; the database logs it without the text. `seenBio` is the line
+ * Someone who edits the team clears a colleague's line in their business,
+ * when it is abusive, no higher a role than their own; the database logs it
+ * without the text. `seenBio` is the line
  * as they read it: one rewritten since stays ("changed"). Clearing a line
  * that is already gone changes nothing.
  */

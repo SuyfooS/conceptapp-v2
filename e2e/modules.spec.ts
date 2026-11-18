@@ -5,8 +5,9 @@ import { signIn } from "./session";
 import { setDemoModule } from "./sms";
 
 // Seeded in supabase/seed.sql. The demo restaurant starts with the schedule,
-// the clock and lists, the modules that are built; a test that needs another switches it
-// on itself, as the ConceptApp team would from the console.
+// the clock, lists and chat, the modules that are built, which fill the tab
+// bar; a test that needs another switches it on itself, as the ConceptApp team
+// would from the console, and makes room for it first.
 // The worker here is not the one sign-in.spec.ts uses: the auth server
 // refuses a second code to the same number within its resend wait
 // (`[auth.sms] max_frequency`).
@@ -43,6 +44,7 @@ test.afterEach(async () => {
   await setDemoModule("reservations", false);
   await setDemoModule("storefront", false);
   await setDemoModule("scheduling", true);
+  await setDemoModule("chat", true);
 });
 
 test("the owner's navigation follows the business's modules", async ({
@@ -55,14 +57,24 @@ test("the owner's navigation follows the business's modules", async ({
     m.scheduling.name,
     m.time_clock.name,
     m.lists.name,
+    m.chat.name,
   ]);
   const rows = page
     .getByRole("main")
     .locator('a[href="/clock"], a[href="/reservations"]');
   await expect(rows).toHaveCount(1);
 
-  // Switching a module on adds its tab and its row on Today, with no code
-  // change.
+  // Switching a module off takes its tab away, and switching one on adds its
+  // tab and its row on Today, with no code change. Chat fills the bar, so it
+  // goes first, as the console would refuse another beside it.
+  await setDemoModule("chat", false);
+  await page.goto("/home");
+  expect(await navItems(page)).toEqual([
+    he.app.nav.home,
+    m.scheduling.name,
+    m.time_clock.name,
+    m.lists.name,
+  ]);
   await setDemoModule("reservations", true);
   await page.goto("/home");
   expect(await navItems(page)).toEqual([
@@ -109,6 +121,17 @@ test("the owner's navigation follows the business's modules", async ({
   await expect(rows).toHaveCount(1);
   await expect(rows.filter({ hasText: m.reservations.name })).toHaveCount(0);
   await expectUnavailable(page, "/reservations");
+
+  // And chat back on takes its place again.
+  await setDemoModule("chat", true);
+  await page.goto("/home");
+  expect(await navItems(page)).toEqual([
+    he.app.nav.home,
+    m.scheduling.name,
+    m.time_clock.name,
+    m.lists.name,
+    m.chat.name,
+  ]);
 });
 
 test("switching scheduling off takes its part of Today with it", async ({
@@ -127,6 +150,7 @@ test("switching scheduling off takes its part of Today with it", async ({
     he.app.nav.home,
     m.time_clock.name,
     m.lists.name,
+    m.chat.name,
   ]);
   await expect(hero).toHaveCount(0);
   await expect(scheduling).toHaveCount(0);
@@ -156,6 +180,7 @@ test("a worker does not see manager-only modules", async ({ page }) => {
     m.scheduling.name,
     m.time_clock.name,
     m.lists.name,
+    m.chat.name,
   ]);
   await expectUnavailable(page, "/storefront");
 });

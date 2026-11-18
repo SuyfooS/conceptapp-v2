@@ -21,8 +21,8 @@ export function JoinForm({
   const errors = useTranslations("auth.signIn.errors");
   const [state, action, pending] = useActionState(join, initial);
   const error =
-    state.error === "shiftsLeft"
-      ? t("shiftsLeft")
+    state.error === "shiftsLeft" || state.error === "elsewhere"
+      ? t(state.error)
       : state.error
         ? errors(state.error)
         : undefined;

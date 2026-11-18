@@ -25,10 +25,20 @@ export const ALLOWED: Record<string, string> = {
     "mock rows for the layout demo; stands in for database data, not UI copy",
   "app/design/shell/manage/access/data.ts":
     "mock rows for the demo of who sees pay; stands in for database data, not UI copy",
+  "app/design/shell/manage/roles/data.ts":
+    "mock rows for the demo of roles and permissions (a role the business named); stands in for database data, not UI copy",
   "app/design/shell/lists/data.ts":
     "mock rows for the lists demo; stands in for database data, not UI copy",
+  "app/design/shell/schedule/build/running/shop.ts":
+    "mock rows for the running week's demo (the shop's people, positions and shifts); stands in for database data, not UI copy",
+  "app/design/chat/data.ts":
+    "mock rows for the chat demo (people, departments, what they wrote); stands in for database data, not UI copy",
+  "app/design/chat/documents/data.ts":
+    "mock rows for the documents' demo (titles, notes, departments); stands in for database data, not UI copy",
   "app/design/console/data.ts":
     "mock rows for the console demo; stands in for database data, not UI copy",
+  "app/design/order-taking/data.ts":
+    "mock rows for the waiter mode demo (dishes, choices, departments, people, a pasted menu); stands in for database data, not UI copy",
   "app/global-error-copy.ts":
     "global-error has no provider, and importing the message file there loads it on every page; messages.test.ts keeps the words equal to errors in he.json",
 };

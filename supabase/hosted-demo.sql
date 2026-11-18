@@ -54,8 +54,13 @@ begin
   -- How each one starts. Written again on every run, so a change here reaches
   -- the next reset. Each person names the departments they are in, by their
   -- template's keys, as supabase/seed.sql does. The shop's managers hold pay
-  -- access, as there, and the shop has its accountant. Both start with last
-  -- month's hours, with the same cases as there.
+  -- access, as there, and both have the same accountant, Galit, to show the
+  -- switch between businesses (20261110000900_several_businesses.sql). Both
+  -- start with last month's hours, the wages from the first of last month and
+  -- the details for payroll, with the same cases as there, and both show the
+  -- pay estimate. Both open today's scheduled lists when they are reset
+  -- ("scheduledLists": true, 20261110001300_list_schedules.sql), and the
+  -- minute job keeps them coming; the local seed's don't.
   insert into private.demo_businesses (business_id, definition)
   values
     ('10000000-0000-4000-b000-000000000001', $json$
@@ -63,14 +68,21 @@ begin
       "slug": "demo-restaurant", "name": "מסעדת הדגמה", "accent": "#2563eb",
       "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
       "template": "restaurant", "renews": false,
+      "settings": { "time_clock": { "payEstimate": true } },
+      "scheduledLists": true,
       "hours": { "fridays": false, "cases": [
         { "user_id": "10000000-0000-4000-a000-000000000105", "case": "night" }
       ] },
+      "wages": { "manager": 4500, "worker": 3800, "cases": [
+        { "user_id": "10000000-0000-4000-a000-000000000105", "case": "none" }
+      ] },
+      "details": { "since": "2026-03-01", "numbers": 101, "cases": [] },
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000102", "role": "owner", "name": "אורי הדגמה" },
         { "user_id": "10000000-0000-4000-a000-000000000103", "role": "manager", "name": "שירן הדגמה", "departments": ["floor", "bar"] },
         { "user_id": "10000000-0000-4000-a000-000000000104", "role": "worker", "name": "נועה כהן", "departments": ["kitchen"] },
-        { "user_id": "10000000-0000-4000-a000-000000000105", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] }
+        { "user_id": "10000000-0000-4000-a000-000000000105", "role": "worker", "name": "יואב לוי", "departments": ["bar", "storeroom"] },
+        { "user_id": "10000000-0000-4000-a000-000000000112", "role": "accountant", "name": "גלית הדגמה" }
       ]
     }
     $json$::jsonb),
@@ -79,6 +91,8 @@ begin
       "slug": "demo-shop", "name": "חנות הדגמה", "accent": "#7c3aed",
       "address": "רחוב הדגמה 2, חיפה", "shabbat_city": "haifa",
       "template": "retail", "renews": true,
+      "settings": { "time_clock": { "payEstimate": true } },
+      "scheduledLists": true,
       "rolePermissions": [{ "role": "manager", "perm": "clock.payroll" }],
       "hours": { "fridays": true, "cases": [
         { "user_id": "10000000-0000-4000-a000-000000000108", "case": "friday_late" },
@@ -86,6 +100,15 @@ begin
         { "user_id": "10000000-0000-4000-a000-000000000109", "case": "saturday_night" },
         { "user_id": "10000000-0000-4000-a000-000000000109", "case": "without_code" },
         { "user_id": "10000000-0000-4000-a000-000000000111", "case": "evening" }
+      ] },
+      "wages": { "manager": 4500, "worker": 3800, "cases": [
+        { "user_id": "10000000-0000-4000-a000-000000000110", "case": "raise", "agorot": 3600 }
+      ] },
+      "details": { "since": "2026-03-01", "numbers": 101, "cases": [
+        { "user_id": "10000000-0000-4000-a000-000000000111", "case": "youth" },
+        { "user_id": "10000000-0000-4000-a000-000000000111", "case": "no_number" },
+        { "user_id": "10000000-0000-4000-a000-000000000110", "case": "rest_friday" },
+        { "user_id": "10000000-0000-4000-a000-000000000109", "case": "started" }
       ] },
       "people": [
         { "user_id": "10000000-0000-4000-a000-000000000106", "role": "owner", "name": "מיכל הדגמה" },
@@ -104,8 +127,9 @@ begin
   -- business that is there starts again too when someone its definition names
   -- has an account but no place in it: the reset leaves out a person without
   -- an account, so a person added to a definition by a migration (the shop's
-  -- accountant, 20261110000400_payroll_screens.sql) joins only once their
-  -- account is made above. After that they have their place, and the business
+  -- accountant, 20261110000400_payroll_screens.sql, and the restaurant's,
+  -- 20261110000900_several_businesses.sql) joins only once their account is
+  -- made above. After that they have their place, and the business
   -- stays as visitors left it.
   perform public.reset_demo_business(d.business_id)
   from private.demo_businesses d

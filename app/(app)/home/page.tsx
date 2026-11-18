@@ -1,9 +1,15 @@
+import { manageReach } from "@domain/manage-access";
 import { isStaff, moduleWidgets } from "@domain/modules";
 import { profilePhotoSrc } from "@domain/profile-photos";
+import { buildsSchedule, publishesSchedule } from "@domain/schedule";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
+import { currentBusinesses } from "../businesses";
+import { currentChatHome } from "../chat/chat";
+import { currentDocumentsHome } from "../chat/documents/documents";
 import { currentClockLine } from "../clock/clock";
 import { currentPayHome } from "../clock/pay/pay";
+import { currentStationReminder } from "../clock/station/station";
 import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
 import { currentListsHome } from "../lists/lists";
@@ -12,12 +18,14 @@ import { currentModules } from "../modules";
 import {
   currentAvailabilityWeek,
   currentPublishedSchedule,
+  currentRunningBuild,
   currentScheduleBuild,
   currentTeamAvailability,
 } from "../schedule/week";
 import { currentTeam } from "../team";
 import { baseWording, translator } from "../wording";
 import { AccountantHome } from "./accountant-home";
+import { currentFirstSteps } from "./first-steps";
 import { TodayView } from "./today-view";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -45,9 +53,15 @@ export default async function HomePage() {
     availability,
     teamAvailability,
     build,
+    running,
     clockLine,
     lists,
+    chat,
+    documents,
     wording,
+    businesses,
+    lock,
+    firstSteps,
   ] = await Promise.all([
     currentMember(),
     currentModules(),
@@ -56,9 +70,15 @@ export default async function HomePage() {
     currentAvailabilityWeek(),
     currentTeamAvailability(),
     currentScheduleBuild(),
+    currentRunningBuild(),
     currentClockLine(),
     currentListsHome(),
+    currentChatHome(),
+    currentDocumentsHome(),
     currentWording(),
+    currentBusinesses(),
+    currentStationReminder(),
+    currentFirstSteps(),
   ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
@@ -67,6 +87,8 @@ export default async function HomePage() {
   return (
     <TodayView
       wording={wording}
+      businesses={businesses}
+      hideFirstStepsUrl="/home/first-steps"
       data={{
         now: new Date().toISOString(),
         timeZone: published?.timeZone ?? membership.business.place.timeZone,
@@ -78,15 +100,31 @@ export default async function HomePage() {
         clockLine,
         schedule:
           published && availability
-            ? { published, availability, teamAvailability, build }
+            ? {
+                published,
+                availability,
+                builds: buildsSchedule(membership),
+                publishes: publishesSchedule(membership),
+                teamAvailability,
+                build,
+                running,
+              }
             : null,
         team,
+        // The management page, for those who hold manage.view.
+        manage: manageReach(membership) !== null,
         // The bell, while notifications are on and the person is themselves.
         bell:
           enabled.includes("notifications") && !member.viewing
             ? { unread: member.unread.all }
             : null,
         lists,
+        chat,
+        documents,
+        // This device is the business's clock station, unlocked: lock it again.
+        station: lock,
+        // An owner's business still being set up: what to do first.
+        firstSteps,
       }}
     />
   );
@@ -98,17 +136,21 @@ export default async function HomePage() {
  * about modules, which other modules being on would make untrue.
  */
 async function OutsideStaffHome() {
-  const [member, enabled, pay, wording] = await Promise.all([
-    currentMember(),
-    currentModules(),
-    currentPayHome(),
-    currentWording(),
-  ]);
+  const [member, enabled, pay, documents, wording, businesses] =
+    await Promise.all([
+      currentMember(),
+      currentModules(),
+      currentPayHome(),
+      currentDocumentsHome(),
+      currentWording(),
+      currentBusinesses(),
+    ]);
   const membership = member?.membership;
   if (!member || !membership) return null;
   return (
     <AccountantHome
       wording={wording}
+      businesses={businesses}
       data={{
         now: new Date().toISOString(),
         timeZone: membership.business.place.timeZone,
@@ -116,6 +158,7 @@ async function OutsideStaffHome() {
         photo: profilePhotoSrc(member.photoPath),
         businessName: membership.business.name,
         pay,
+        documents,
         bell:
           enabled.includes("notifications") && !member.viewing
             ? { unread: member.unread.all }

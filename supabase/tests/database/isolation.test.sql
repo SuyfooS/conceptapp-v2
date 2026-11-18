@@ -1,7 +1,7 @@
 -- Tenant isolation: a member of business A never sees business B, and each
 -- role sees only what it should inside its own business.
 begin;
-select plan(24);
+select plan(40);
 
 -- Fixtures: business A (owner, manager, worker) and business B (owner).
 insert into auth.users (id, aud, role, phone)
@@ -36,10 +36,13 @@ values
   ('20000000-0000-4000-b000-00000000000a', '+972500000201', 'hash-a'),
   ('20000000-0000-4000-b000-00000000000b', '+972500000202', 'hash-b');
 
+-- An action of the management page's own family, which its readers see
+-- (private.log_perm, 20261115001000_roles_manage.sql): one nobody placed is
+-- read by nobody.
 insert into public.audit_log (business_id, action)
 values
-  ('20000000-0000-4000-b000-00000000000a', 'test.a'),
-  ('20000000-0000-4000-b000-00000000000b', 'test.b');
+  ('20000000-0000-4000-b000-00000000000a', 'business.a'),
+  ('20000000-0000-4000-b000-00000000000b', 'business.b');
 
 -- Act as a signed-in user.
 create function pg_temp.sign_in(uid uuid) returns void language sql as $$
@@ -124,7 +127,7 @@ select results_eq(
 );
 select results_eq(
   'select action from public.audit_log',
-  array['test.a'],
+  array['business.a'],
   'manager of A reads the audit log of A only'
 );
 select throws_ok(
@@ -178,6 +181,196 @@ select results_eq(
   array[1],
   'an inactive member sees only themself'
 );
+
+-- Chats (20261111000200_chat.sql), with chat on in both ---------------------
+reset role;
+insert into public.business_modules (business_id, module_key)
+values
+  ('20000000-0000-4000-b000-00000000000a', 'chat'),
+  ('20000000-0000-4000-b000-00000000000b', 'chat');
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select results_eq(
+  'select business_id from public.chat_conversations',
+  array['20000000-0000-4000-b000-00000000000a'::uuid],
+  'worker of A reads the team''s group of A only'
+);
+select throws_ok(
+  $$insert into public.chat_messages (business_id, conversation_id, author_id, draft_id, body)
+    select c.business_id, c.id, '20000000-0000-4000-a000-00000000000c', gen_random_uuid(), 'Hi'
+    from public.chat_conversations c$$,
+  '42501',
+  null,
+  'and writes no message from the browser'
+);
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
+select results_eq(
+  'select business_id from public.chat_conversations',
+  array['20000000-0000-4000-b000-00000000000b'::uuid],
+  'the owner of B reads B''s only'
+);
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000e');
+select is_empty('select 1 from public.chat_conversations', 'an inactive member reads no chat');
+
+-- Chat's notice (20261111000300_chat_on.sql): the worker and the manager of A
+-- and the owner of B have read it.
+reset role;
+insert into public.chat_notices (business_id, user_id)
+values
+  ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-a000-00000000000c'),
+  ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-a000-00000000000b'),
+  ('20000000-0000-4000-b000-00000000000b', '20000000-0000-4000-a000-00000000000d');
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select results_eq(
+  'select business_id, user_id from public.chat_notices',
+  $$values ('20000000-0000-4000-b000-00000000000a'::uuid, '20000000-0000-4000-a000-00000000000c'::uuid)$$,
+  'worker of A reads their own notice only, not the manager''s or B''s'
+);
+select throws_ok(
+  $$insert into public.chat_notices (business_id, user_id)
+    values ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-a000-00000000000c')$$,
+  '42501',
+  null,
+  'and writes none from the browser'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000a');
+select is_empty('select 1 from public.chat_notices', 'the owner of A reads none of their people''s');
+
+-- Chat files (20261111000500_chat_files.sql): the manager of A's picture in
+-- A's team group, and its thumbnail, in the bucket as the server puts them.
+reset role;
+insert into public.chat_messages (business_id, conversation_id, author_id, draft_id,
+  file_kind, file_path, thumb_path, file_size)
+select c.business_id, c.id, '20000000-0000-4000-a000-00000000000b', gen_random_uuid(), 'image',
+  c.business_id::text || '/' || c.id::text || '/' || md5('isolation') || '.webp',
+  c.business_id::text || '/' || c.id::text || '/' || md5('isolation') || '-s.webp', 42000
+from public.chat_conversations c
+where c.business_id = '20000000-0000-4000-b000-00000000000a' and c.kind = 'team';
+insert into storage.objects (bucket_id, name, metadata)
+select 'chat-files', f.name, jsonb_build_object('size', f.bytes, 'mimetype', 'image/webp')
+from public.chat_messages m
+cross join lateral (values (m.file_path, 40000), (m.thumb_path, 2000)) as f (name, bytes)
+where m.business_id = '20000000-0000-4000-b000-00000000000a' and m.file_path is not null;
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select results_eq(
+  $$select count(*)::int from storage.objects
+    where bucket_id = 'chat-files' and name like '20000000-0000-4000-b000-00000000000a/%'$$,
+  array[2],
+  'worker of A reads the picture of A''s team group and its thumbnail'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
+select is_empty(
+  $$select 1 from storage.objects
+    where bucket_id = 'chat-files' and name like '20000000-0000-4000-b000-00000000000a/%'$$,
+  'the owner of B reads neither'
+);
+
+-- Documents (20261111000700_documents.sql): the worker of A's sick note to
+-- the business, and the owner of A's form to the worker, each with its file
+-- in the bucket, as the server puts them.
+reset role;
+insert into public.documents (id, business_id, direction, person_id, author_id, category, title,
+  file_kind, file_path, file_size)
+values
+  ('20000000-0000-4000-c000-00000000000a', '20000000-0000-4000-b000-00000000000a', 'from_person',
+   '20000000-0000-4000-a000-00000000000c', '20000000-0000-4000-a000-00000000000c', 'sick_note',
+   'Sick note', 'pdf', '20000000-0000-4000-b000-00000000000a/' || md5('isolation-sick') || '.pdf', 50000),
+  ('20000000-0000-4000-c000-00000000000b', '20000000-0000-4000-b000-00000000000a', 'to_people',
+   null, '20000000-0000-4000-a000-00000000000a', 'form',
+   'Form', 'pdf', '20000000-0000-4000-b000-00000000000a/' || md5('isolation-form') || '.pdf', 50000);
+insert into public.document_recipients (document_id, business_id, person_id)
+values ('20000000-0000-4000-c000-00000000000b', '20000000-0000-4000-b000-00000000000a',
+  '20000000-0000-4000-a000-00000000000c');
+insert into storage.objects (bucket_id, name, metadata)
+select 'documents', d.file_path, jsonb_build_object('size', 50000, 'mimetype', 'application/pdf')
+from public.documents d
+where d.business_id = '20000000-0000-4000-b000-00000000000a';
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select is(
+  (select count(*)::integer from public.documents)
+  + (select count(*)::integer from public.document_recipients)
+  + (select count(*)::integer from storage.objects where bucket_id = 'documents'),
+  3,
+  'worker of A reads their sick note and the form sent to them, and their mark; their files only through the server (20261111000900_documents_server_only.sql)'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000b');
+select is(
+  (select count(*)::integer from public.documents)
+  + (select count(*)::integer from storage.objects where bucket_id = 'documents'),
+  0,
+  'the manager of A, without pay access, reads neither, nor their files'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
+select is(
+  (select count(*)::integer from public.documents)
+  + (select count(*)::integer from public.document_recipients)
+  + (select count(*)::integer from storage.objects where bucket_id = 'documents'),
+  0,
+  'and the owner of B reads none of A''s documents, marks or files'
+);
+
+-- The menu and the places (20261117000500_order_taking_menu.sql), with
+-- taking orders on in both: a category, an item and a place in each.
+reset role;
+insert into public.business_modules (business_id, module_key, enabled)
+values
+  ('20000000-0000-4000-b000-00000000000a', 'order_taking', true),
+  ('20000000-0000-4000-b000-00000000000b', 'order_taking', true);
+insert into public.departments (id, business_id, key, name)
+values
+  ('20000000-0000-4000-d000-00000000000a', '20000000-0000-4000-b000-00000000000a', 'kitchen', 'Kitchen'),
+  ('20000000-0000-4000-d000-00000000000b', '20000000-0000-4000-b000-00000000000b', 'kitchen', 'Kitchen');
+insert into public.menu_categories (id, business_id, name, department_id)
+values
+  ('20000000-0000-4000-e000-00000000000a', '20000000-0000-4000-b000-00000000000a', 'Mains',
+   '20000000-0000-4000-d000-00000000000a'),
+  ('20000000-0000-4000-e000-00000000000b', '20000000-0000-4000-b000-00000000000b', 'Mains',
+   '20000000-0000-4000-d000-00000000000b');
+insert into public.menu_items (business_id, category_id, name, price_agorot)
+values
+  ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-e000-00000000000a', 'Schnitzel', 6200),
+  ('20000000-0000-4000-b000-00000000000b', '20000000-0000-4000-e000-00000000000b', 'Schnitzel', 6200);
+insert into public.order_places (business_id, name)
+values
+  ('20000000-0000-4000-b000-00000000000a', '1'),
+  ('20000000-0000-4000-b000-00000000000b', '1');
+
+-- Whose menu rows the signed-in person reads: each business once.
+create function pg_temp.menu_businesses() returns text language sql as $$
+  select coalesce(string_agg(distinct r.business_id::text, ','), '')
+  from (
+    select c.business_id from public.menu_categories c
+    union all select i.business_id from public.menu_items i
+    union all select p.business_id from public.order_places p
+  ) r
+$$;
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000c');
+select is(
+  pg_temp.menu_businesses(),
+  '20000000-0000-4000-b000-00000000000a',
+  'worker of A reads the menu and the places of A only'
+);
+select throws_ok(
+  $$update public.menu_items set price_agorot = 1
+    where business_id = '20000000-0000-4000-b000-00000000000a'$$,
+  '42501',
+  null,
+  'and changes no price from the browser'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000d');
+select is(
+  pg_temp.menu_businesses(),
+  '20000000-0000-4000-b000-00000000000b',
+  'the owner of B reads B''s only'
+);
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000e');
+select is(pg_temp.menu_businesses(), '', 'an inactive member reads no menu');
 
 select * from finish();
 rollback;

@@ -12,6 +12,7 @@ import {
   pushSupport,
   pushTtl,
   retryAfterSeconds,
+  summaryPlace,
 } from "./push";
 
 const IPHONE =
@@ -164,6 +165,17 @@ describe("pushBatch", () => {
     expect(pushBatch([1, 2, 3])).toEqual({ kind: "lines", lines: [1, 2, 3] });
     expect(pushBatch([])).toEqual({ kind: "lines", lines: [] });
     expect(pushBatch([1, 2, 3, 4, 5])).toEqual({ kind: "summary", count: 5 });
+  });
+});
+
+describe("summaryPlace", () => {
+  it("opens the inbox when every line is from the business the person is in", () => {
+    expect(summaryPlace(["a", "a", "a", "a"], "a")).toBe("inbox");
+  });
+
+  it("opens Home when a line is from another business, which the inbox doesn't list", () => {
+    expect(summaryPlace(["a", "b", "a", "a"], "a")).toBe("home");
+    expect(summaryPlace(["b", "b", "b", "b"], "a")).toBe("home");
   });
 });
 

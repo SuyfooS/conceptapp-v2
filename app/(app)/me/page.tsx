@@ -1,14 +1,18 @@
 import { photoAllowed } from "@db/profile-photos";
 import { pushAllowed } from "@db/push/devices";
-import { pushConfig } from "@db/push/env";
 import { displayIsraeliMobile } from "@domain/phone";
 import { profilePhotoSrc } from "@domain/profile-photos";
 import type { Metadata } from "next";
 import { signOut } from "../../(auth)/actions";
+import { currentBusinesses } from "../businesses";
+import { currentDocumentsHome } from "../chat/documents/documents";
+import { documentsAccess } from "../chat/documents/documents-access";
+import { MyDocumentsSection } from "../chat/documents/my-documents";
 import { currentWording } from "../current-wording";
+import { SwitchBusinessSection } from "../home/my-businesses";
 import { currentMember } from "../member";
 import { currentModules } from "../modules";
-import { PushSwitch } from "../notifications/push-switch";
+import { NotificationSettingsLink } from "../notifications/settings-link";
 import { baseWording, translator } from "../wording";
 import {
   removeMyPhotoAction,
@@ -25,11 +29,15 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // The signed-in person's own profile, for everyone in a business.
 export default async function MePage() {
-  const [member, wording, enabled] = await Promise.all([
-    currentMember(),
-    currentWording(),
-    currentModules(),
-  ]);
+  const [member, wording, enabled, businesses, documents, documentsHome] =
+    await Promise.all([
+      currentMember(),
+      currentWording(),
+      currentModules(),
+      currentBusinesses(),
+      documentsAccess(),
+      currentDocumentsHome(),
+    ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
   if (!member || !membership) return null;
@@ -37,15 +45,15 @@ export default async function MePage() {
   // While viewing as a role nothing changes; otherwise the database says
   // whether the person is in a demo business that keeps its people.
   let locked: PhotoLock | null = "viewOnly";
-  // Notifications on this phone: not while viewing as someone, and not
-  // without the VAPID settings or with the module off.
-  const push =
-    !member.viewing && enabled.includes("notifications") ? pushConfig() : null;
-  let canPush: boolean | null = null;
+  // The way to the notification settings: not while viewing as someone, not
+  // with the module off, and not in a demo business, whose lines never reach
+  // a phone (the inbox says so).
+  const notificationsOn = !member.viewing && enabled.includes("notifications");
+  let canPush: boolean | null = false;
   if (!member.viewing) {
     const [allowed, pushes] = await Promise.all([
       photoAllowed(member.userId),
-      push ? pushAllowed(member.userId) : null,
+      notificationsOn ? pushAllowed(member.userId) : false,
     ]);
     locked = allowed === "yes" ? null : allowed;
     canPush = pushes;
@@ -62,8 +70,25 @@ export default async function MePage() {
         saveProfile: saveMyProfileAction,
       }}
       notifications={
-        push && canPush !== null ? (
-          <PushSwitch publicKey={push.publicKey} demo={!canPush} />
+        notificationsOn && canPush !== false ? (
+          <NotificationSettingsLink
+            href="/notifications/settings"
+            wording={wording}
+            from="profile"
+          />
+        ) : null
+      }
+      businesses={
+        <SwitchBusinessSection businesses={businesses} wording={wording} />
+      }
+      documents={
+        documents ? (
+          <MyDocumentsSection
+            wording={wording}
+            href="/chat/documents"
+            office={documents.office}
+            toConfirm={documentsHome?.toConfirmCount ?? 0}
+          />
         ) : null
       }
       data={{
@@ -72,6 +97,7 @@ export default async function MePage() {
           (member.phone ? displayIsraeliMobile(member.phone) : ""),
         photo: profilePhotoSrc(member.photoPath),
         role: membership.role,
+        namedRole: membership.namedRole,
         businessName: membership.business.name,
         timeZone: membership.business.place.timeZone,
         since: membership.since,

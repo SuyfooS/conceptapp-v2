@@ -27,9 +27,11 @@ export default async function ManagePage() {
     <ManageView
       modules={modulesToManage(access.rows, access.level)}
       home="/home"
-      team="/team"
+      team={access.seesTeam ? "/team" : null}
       shabbatCity={shabbatCityState(access.rows, access.details)}
       payAccess={access.grantsPay}
+      roles={access.changesRoles}
+      readOnly={access.readOnly === "manage"}
       departments={
         departments === null
           ? null

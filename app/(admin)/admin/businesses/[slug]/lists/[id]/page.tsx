@@ -1,0 +1,61 @@
+import { listPhotosAllowed } from "@db/list-photos";
+import { getListTemplateForTeam } from "@db/lists";
+import { isUuid } from "@domain/activity";
+import type { Metadata } from "next";
+import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
+import { TemplateEditor } from "@/app/(app)/lists/templates/template-editor";
+import { templateEditor } from "@/app/(app)/lists/templates/templates-data";
+import { currentPlatformStaff } from "../../../../../staff";
+import {
+  archiveTeamListTemplateAction,
+  saveTeamListTemplateAction,
+} from "../../actions";
+import { teamListsSetup, teamTemplatePaths } from "../team-lists";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("app.lists.templates");
+  return { title: t("title") };
+}
+
+// One of a business's templates in the editor its list managers have, as the
+// team sets it up, with the console's own actions. The team sends nothing.
+export default async function TeamListTemplatePage({
+  params,
+  searchParams,
+}: PageProps<"/admin/businesses/[slug]/lists/[id]">) {
+  const [{ slug, id }, { changed }] = await Promise.all([params, searchParams]);
+  if (!isUuid(id)) notFound();
+  const setup = await teamListsSetup(slug);
+  if (!setup) notFound();
+  const [template, paths, staff, photos] = await Promise.all([
+    getListTemplateForTeam(setup.business.id, id),
+    teamTemplatePaths(slug),
+    currentPlatformStaff(),
+    // A demo business takes no photos: its photo items stay optional.
+    listPhotosAllowed(setup.business.id).catch((): "notYet" => "notYet"),
+  ]);
+  if (!template || template === "notYet" || !staff) notFound();
+  const stamp = typeof changed === "string" ? changed : "";
+  const times = await setup.times(staff.userId, template.id);
+  return (
+    <TemplateEditor
+      key={`${id}:${template.version}:${stamp}`}
+      data={templateEditor({
+        template,
+        departments: setup.departments,
+        shifts: setup.shifts,
+        namedRoles: setup.namedRoles,
+        readOnly: false,
+        changed: stamp !== "",
+        times,
+        photosClosed: photos === "demo",
+      })}
+      actions={{
+        save: saveTeamListTemplateAction.bind(null, setup.business.id),
+        archive: archiveTeamListTemplateAction.bind(null, setup.business.id),
+      }}
+      paths={paths}
+    />
+  );
+}

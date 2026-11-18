@@ -45,9 +45,10 @@ test("the owner sees the team and who has not joined yet", async ({
 }, testInfo) => {
   await signIn(page, OWNER);
 
-  // Today says an invite is waiting before the team screen is opened.
+  // Today says an invite is waiting before the team screen is opened. The
+  // row's name starts with the title: chat's row says "the whole team" too.
   const teamRow = page.getByRole("main").getByRole("link", {
-    name: new RegExp(tt.title),
+    name: new RegExp(`^${tt.title}`),
   });
   await expect(teamRow).toContainText("הזמנה אחת ממתינה");
   await teamRow.click();
@@ -100,7 +101,9 @@ test("the owner sees the team and who has not joined yet", async ({
 test("a worker has no team screen", async ({ page }) => {
   await signIn(page, WORKER);
   await expect(
-    page.getByRole("main").getByRole("link", { name: new RegExp(tt.title) }),
+    page
+      .getByRole("main")
+      .getByRole("link", { name: new RegExp(`^${tt.title}`) }),
   ).toHaveCount(0);
   await page.goto("/team");
   await expect(
