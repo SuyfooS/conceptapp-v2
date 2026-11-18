@@ -29,9 +29,17 @@ const PAGES = [
   "/design/shell/today/first-steps?state=new",
   "/design/shell/today/first-steps?state=viewing",
   "/design/shell/schedule",
+  // Next week, as the link in a shared schedule opens it.
+  "/design/shell/schedule?week=2026-11-08",
   "/design/shell/schedule/worker",
   "/design/shell/schedule/swaps",
   "/design/shell/schedule/availability",
+  // The team's answers, with the reminder before and after the due moment,
+  // nobody sent yet, and everyone sent (no reminder).
+  "/design/shell/schedule/availability/team",
+  "/design/shell/schedule/availability/team?state=late",
+  "/design/shell/schedule/availability/team?state=none",
+  "/design/shell/schedule/availability/team?state=all",
   "/design/shell/schedule/build",
   "/design/shell/schedule/build?state=meanwhile",
   "/design/shell/schedule/build?week=2026-11-01",
@@ -971,6 +979,159 @@ test("the builder demo warns before ending a request, and puts back a shift chan
   // Published now, not when the demo week was first published (29.10).
   await expect(status).toBeVisible();
   await expect(status).not.toContainText("29.10");
+});
+
+/** The text a share sheet's WhatsApp link writes. */
+async function sharedText(sheet: Locator): Promise<string> {
+  const href = await sheet
+    .getByRole("link", { name: he.ui.share.whatsapp })
+    .getAttribute("href");
+  return new URL(href ?? "").searchParams.get("text") ?? "";
+}
+
+// Sharing a published week, in the builder's dock once nothing is new: the
+// message names the business and its week, and its link leads to the
+// schedule tab's twin on that week. After the stand-in's publish, and at
+// rest on a published week, also for someone who builds without publishing.
+// From the keyboard, the sheet gives the focus back to what opened it.
+test("the builder demo offers sharing once published", async ({ page }) => {
+  const tb = he.app.build;
+  const ts = he.app.shifts.share;
+  const share = page.getByRole("button", { name: ts.action });
+  const sheet = page.getByRole("dialog", { name: ts.title });
+
+  await page.goto("/design/shell/schedule/build");
+  await expect(page.getByRole("button", { name: tb.publish })).toBeVisible();
+  await expect(share).toHaveCount(0);
+  await page.getByRole("button", { name: tb.publish }).click();
+  await expect(
+    page.getByRole("status").filter({ hasText: tb.published }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: tb.publish })).toHaveCount(0);
+  await share.click();
+  await expect(sheet).toBeVisible();
+  // The demo week, 1 to 7 November, in the browser's own words.
+  const range = await page.evaluate(() =>
+    new Intl.DateTimeFormat("he", {
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    }).formatRange(
+      new Date("2026-11-01T00:00:00Z"),
+      new Date("2026-11-07T00:00:00Z"),
+    ),
+  );
+  expect(await sharedText(sheet)).toBe(
+    `${heT("app.shifts.share.text", {
+      business: "מסעדת הדגמה",
+      range,
+      kind: "other",
+    })}\n${new URL(page.url()).origin}/design/shell/schedule?week=2026-11-01`,
+  );
+  await expectCleanPage(page, "", true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(share).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(sheet).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(share).toBeFocused();
+
+  // At rest on a published week, also only to read it.
+  for (const path of [
+    "/design/shell/schedule/build?state=meanwhile",
+    "/design/shell/schedule/build?state=meanwhile&publishes=no",
+  ]) {
+    await page.goto(path);
+    await expect(share).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: tb.publishChanges }),
+    ).toHaveCount(0);
+  }
+
+  // The shop's week under way, by the shop's own name.
+  await page.goto("/design/shell/schedule/build/running");
+  await share.click();
+  expect(await sharedText(sheet)).toContain("חנות הדגמה");
+});
+
+// The link in a shared schedule names its week (`?week=`): the schedule tab's
+// twin opens on next week with it, and on this week, Shiran's, without it or
+// with a week that is neither. Only the published week offers sharing it.
+test("the schedule demo opens on the week its link names", async ({ page }) => {
+  const path = "/design/shell/schedule";
+  const week = (key: "this" | "next") =>
+    page.getByRole("button", { name: he.app.shifts.week[key], exact: true });
+  const share = page.getByRole("button", { name: he.app.shifts.share.action });
+
+  await page.goto(path);
+  await expect(week("this")).toHaveAttribute("aria-pressed", "true");
+  await expect(share).toBeVisible();
+
+  await page.goto(`${path}?week=2026-11-08`);
+  await expect(week("next")).toHaveAttribute("aria-pressed", "true");
+  await expect(week("this")).toHaveAttribute("aria-pressed", "false");
+  await expect(share).toHaveCount(0);
+
+  await page.goto(`${path}?week=2026-11-15`);
+  await expect(week("this")).toHaveAttribute("aria-pressed", "true");
+});
+
+// The reminder on the team's answers, while someone is missing: one message
+// for the whole team with the week and the due moment, or that it is still
+// not too late; nobody's name. None once everyone sent.
+test("the team availability demo sends a reminder, and says it is late when it is", async ({
+  page,
+}) => {
+  const tt = he.app.availability.team;
+  const path = "/design/shell/schedule/availability/team";
+  const remind = page.getByRole("button", { name: tt.remind.action });
+  const sheet = page.getByRole("dialog", { name: tt.remind.title });
+  // The demo week, 1 to 7 November, due on Wednesday 28 October at 18:00.
+  const range = () =>
+    page.evaluate(() =>
+      new Intl.DateTimeFormat("he", {
+        day: "numeric",
+        month: "long",
+        timeZone: "UTC",
+      }).formatRange(
+        new Date("2026-11-01T00:00:00Z"),
+        new Date("2026-11-07T00:00:00Z"),
+      ),
+    );
+  const words = async () => ({
+    business: "מסעדת הדגמה",
+    range: await range(),
+    day: he.app.availability.weekdays.wed,
+    time: "18:00",
+  });
+  const link = () =>
+    `${new URL(page.url()).origin}/design/shell/schedule/availability`;
+
+  await page.goto(path);
+  await remind.focus();
+  await page.keyboard.press("Enter");
+  await expect(sheet).toBeVisible();
+  // The whole message, so nobody's name is in it.
+  expect(await sharedText(sheet)).toBe(
+    `${heT("app.availability.team.remind.text", await words())}\n${link()}`,
+  );
+  await expectCleanPage(page, path, true);
+  await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+  await expect(remind).toBeFocused();
+
+  await page.goto(`${path}?state=late`);
+  await remind.click();
+  expect(await sharedText(sheet)).toBe(
+    `${heT("app.availability.team.remind.textLate", await words())}\n${link()}`,
+  );
+
+  await page.goto(`${path}?state=all`);
+  await expect(
+    page.getByRole("heading", { level: 1, name: tt.title }),
+  ).toBeVisible();
+  await expect(remind).toHaveCount(0);
 });
 
 // The running week's twin (R3a), at every size: the shop on Tuesday 17

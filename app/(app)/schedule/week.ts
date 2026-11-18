@@ -185,6 +185,16 @@ export const currentAvailabilityWeek = cache(
     (await availabilityContext())?.week ?? null,
 );
 
+/**
+ * Whether next week's schedule is out: once it is, a reminder to send
+ * availability for it no longer helps. Read from the week already read for
+ * the answers, so it costs no query of its own.
+ */
+export const currentNextWeekPublished = cache(
+  async (): Promise<boolean> =>
+    Boolean((await availabilityContext())?.open?.schedulePublishedAt),
+);
+
 export type TeamAvailabilityWeek = {
   week: AvailabilityWeek;
   team: TeamAvailability<TeamMember, AvailabilityAnswer>;

@@ -26,6 +26,7 @@ import {
   type PushAskOffer,
   usePushAskOnce,
 } from "../notifications/push-ask";
+import { type ShareWeek, ShareWeekButton } from "./share-week";
 import {
   type BoardShift,
   CardTarget,
@@ -104,7 +105,9 @@ function shabbatNote(week: BoardWeek, date: string) {
  * shift away here, once, the offer of notifications on the phone
  * (`currentPushAsk`), under the week's title, as on the person's own shifts.
  * A manager's draft of either week opens that week's builder: `draftHref`,
- * with `?week=` its first day.
+ * with `?week=` its first day. Under a published week's "פורסם ב-…" line,
+ * whoever builds the schedule may share it with the team (`share`): quiet,
+ * beside the line on a phone and a tablet, on its row on a desktop.
  */
 export function WeekBoard({
   title,
@@ -118,6 +121,7 @@ export function WeekBoard({
   manage,
   own,
   ask = null,
+  share = null,
 }: {
   title: string;
   weeks: [BoardWeek, BoardWeek];
@@ -131,6 +135,8 @@ export function WeekBoard({
   manage?: ReactNode;
   own: ReactNode;
   ask?: PushAskOffer | null;
+  /** Sharing a published week; null for anyone who doesn't build it. */
+  share?: ShareWeek | null;
 }) {
   const t = useTranslations("app");
   const tb = useTranslations("app.shifts.board");
@@ -197,6 +203,17 @@ export function WeekBoard({
       {t.rich("shifts.board.publishedAt", { ...week.published, ltr })}
     </p>
   ) : null;
+  const shareButton =
+    share && week.state === "published" ? (
+      <ShareWeekButton
+        shape="inline"
+        {...share}
+        start={week.dates[0] ?? data.today}
+        dates={week.dates}
+        range={week.range}
+        kind="other"
+      />
+    ) : null;
 
   return (
     <>
@@ -291,7 +308,14 @@ export function WeekBoard({
                 draftHref={draftLink}
               />
             )}
-            {publishedLine}
+            {shareButton ? (
+              <div className="flex flex-col items-start gap-2">
+                {publishedLine}
+                {shareButton}
+              </div>
+            ) : (
+              publishedLine
+            )}
           </div>
         ) : (
           <Card
@@ -331,7 +355,14 @@ export function WeekBoard({
               onOpen={sheet.show}
               draftHref={draftLink}
             />
-            {publishedLine}
+            {shareButton ? (
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                {publishedLine}
+                {shareButton}
+              </div>
+            ) : (
+              publishedLine
+            )}
           </div>
         ) : null}
 

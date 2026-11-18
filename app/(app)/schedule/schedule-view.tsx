@@ -9,6 +9,7 @@ import {
 } from "@domain/running-week";
 import { changesWeek, scheduleGaps, scheduleOpening } from "@domain/schedule";
 import { timeIn } from "@domain/shabbat";
+import { weekRange } from "@domain/share";
 import { offersFor, toApprove } from "@domain/swaps";
 import { Badge } from "@ui/badge";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -24,6 +25,7 @@ import { getLocale } from "next-intl/server";
 import type { ReactNode } from "react";
 import type { PushAskOffer } from "../notifications/push-ask";
 import { type AppWording, type Translator, translator } from "../wording";
+import type { ShareWeek } from "./share-week";
 import type { SwapAction } from "./shifts/shift-sheet";
 import { ltr, ownEndedSwaps, upcomingShifts } from "./shifts/shift-text";
 import { pendingApprovals } from "./swaps/swap-approvals-view";
@@ -75,6 +77,16 @@ export type ScheduleViewProps = {
   swap: SwapAction;
   /** After giving a shift away, once, the offer of notifications on the phone. */
   ask?: PushAskOffer | null;
+  /**
+   * The week a link named (`?week=`, `scheduleWeekOf`): the tab opens on it.
+   * None opens as usual.
+   */
+  asked?: "this" | "next" | null;
+  /**
+   * Sharing a published week with the team, for whoever builds the schedule;
+   * null for anyone else, and while viewing as a role.
+   */
+  share?: ShareWeek | null;
 };
 
 /**
@@ -93,6 +105,8 @@ export async function ScheduleView({
   swap,
   wording,
   ask = null,
+  asked = null,
+  share = null,
 }: ScheduleViewProps & {
   /** The business's words. */
   wording: AppWording;
@@ -101,16 +115,7 @@ export async function ScheduleView({
   const tm = translator(wording, "modules.scheduling");
   const locale = await getLocale();
   const manager = team !== null;
-  const range = new Intl.DateTimeFormat(locale, {
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  });
-  const rangeOf = (dates: string[]) =>
-    range.formatRange(
-      new Date(`${dates[0]}T00:00:00Z`),
-      new Date(`${dates.at(-1)}T00:00:00Z`),
-    );
+  const rangeOf = (dates: string[]) => weekRange(locale, dates);
 
   const publishedOf = (at: string | null) =>
     at
@@ -187,6 +192,8 @@ export async function ScheduleView({
   return (
     <PageBody>
       <WeekBoard
+        // A link to the other week, followed from here, opens it afresh.
+        key={asked ?? "today"}
         title={tm("name")}
         weeks={weeks}
         opening={scheduleOpening({
@@ -195,6 +202,7 @@ export async function ScheduleView({
           manager,
           thisWeek: weeks[0],
           nextWeek: weeks[1],
+          asked,
         })}
         data={{
           userId: data.userId,
@@ -209,6 +217,7 @@ export async function ScheduleView({
         manager={manager}
         swap={swap}
         ask={ask}
+        share={share}
         draftHref={BUILDER_PATH}
         prompt={
           prompt ? (

@@ -386,6 +386,10 @@ export function coverageOf(
  * whichever week it falls. Everyone else, and a worker with nothing coming,
  * opens on today; or, when this week has nothing to show and next week does,
  * on next week's first shift.
+ *
+ * A link that names one of the weeks (`asked`, from a shared schedule) opens
+ * that week: a worker on their next shift in it, anyone else on today in
+ * this week, or on next week's first shift (its first day when it has none).
  */
 export function scheduleOpening<
   S extends Pick<ScheduledShift, "day" | "assignees">,
@@ -395,13 +399,27 @@ export function scheduleOpening<
   manager,
   thisWeek,
   nextWeek,
+  asked = null,
 }: {
   today: string;
   userId: string;
   manager: boolean;
   thisWeek: { dates: readonly string[]; shifts: readonly S[] };
   nextWeek: { dates: readonly string[]; shifts: readonly S[] };
+  asked?: "this" | "next" | null;
 }): { week: "this" | "next"; day: string } {
+  if (asked) {
+    const week = asked === "this" ? thisWeek : nextWeek;
+    const mine = manager
+      ? undefined
+      : shiftsOf(week.shifts, userId, today)[0]?.shift.day;
+    const day =
+      mine ??
+      (asked === "this"
+        ? today
+        : (week.shifts[0]?.day ?? week.dates[0] ?? today));
+    return { week: asked, day };
+  }
   const own = manager
     ? undefined
     : shiftsOf([...thisWeek.shifts, ...nextWeek.shifts], userId, today)[0]

@@ -76,6 +76,17 @@
         "mosaic": "Mosaic",
         "bloom": "Cloud"
       }
+    },
+    "share": {
+      "whatsapp": "Send on WhatsApp",
+      "other": "Share another way",
+      "copy": "Copy the message",
+      "copied": "Message copied",
+      "copyFailed": "We could not copy it. Select the message and copy it.",
+      "shareFailed": "Sharing did not open. Send it on WhatsApp or copy the message.",
+      "note": "The app does not send this message. On WhatsApp you choose whom to send it to.",
+      "preview": "The message",
+      "close": "Close"
     }
   },
   "days": {
@@ -283,6 +294,10 @@
     "sheetClose": "Close",
     "sheetDone": "Done",
     "sheetRole": "Waiter",
+    "share": "Sharing",
+    "shareOpen": "Open sharing",
+    "shareTitle": "Share the schedule",
+    "shareSample": "The schedule at the business for November 22 – 28 has been published. You can see it in the app.",
     "groupedForm": "Grouped form",
     "startTime": "Start",
     "peopleNeeded": "People needed",
@@ -1554,6 +1569,12 @@
         "entry": {
           "subtitle": "{sent} of {total} sent availability for next week",
           "allSent": "Everyone sent"
+        },
+        "remind": {
+          "action": "Send a reminder on WhatsApp",
+          "title": "A reminder to send availability",
+          "text": "A reminder for the {business} team: send your availability for {range} by {day} at {time}.",
+          "textLate": "A reminder for the {business} team: you can still send your availability for {range}. It was due {day} at {time}."
         }
       }
     },
@@ -1859,7 +1880,12 @@
           "takenByYou": "You took the shift. Waiting for approval."
         }
       },
-      "former": "Someone no longer on the team"
+      "former": "Someone no longer on the team",
+      "share": {
+        "action": "Share the schedule on WhatsApp",
+        "title": "Share the schedule",
+        "text": "The schedule at {business} for {range} has {kind, select, changes {been updated} other {been published}}. You can see it in the app."
+      }
     },
     "swaps": {
       "title": "Swap approvals",

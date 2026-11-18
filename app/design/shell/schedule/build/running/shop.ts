@@ -10,12 +10,22 @@ import { shabbatTimes } from "@domain/shabbat-times";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import type { ShiftSwap } from "@domain/swaps";
 import type { TeamMember } from "@domain/team";
+import type { ShareWeek } from "../../../../../(app)/schedule/share-week";
 import type { AvailabilityWeek } from "../../../../../(app)/schedule/week";
 
 // The demo shop (supabase/seed.sql, the retail template) for the twin of the
 // running week (the running-week plan's R3a): its people, positions and shift
 // pattern, and a week under way. Haifa, closed on Shabbat, the week from
 // Sunday.
+
+/**
+ * Sharing the shop's published week, by its name in the seed: the link leads
+ * to the schedule tab's twin.
+ */
+export const shopShare: ShareWeek = {
+  business: "חנות הדגמה",
+  base: "/design/shell/schedule",
+};
 
 /** Tuesday 17 November 2026 at 11:20 in Haifa (winter time, UTC+2). */
 export const SHOP_NOW = "2026-11-17T09:20:00.000Z";

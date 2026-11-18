@@ -5,7 +5,8 @@ import {
   type ShiftBasis,
 } from "@domain/schedule";
 import type { ShiftSwap } from "@domain/swaps";
-import { demoExtraShift, demoShiftPatterns } from "../../data";
+import type { ShareWeek } from "../../../../(app)/schedule/share-week";
+import { business, demoExtraShift, demoShiftPatterns } from "../../data";
 import { demoWeek } from "../availability/week";
 
 // Who is already on a shift in the demo, and in which position: a week
@@ -156,3 +157,9 @@ export const meanwhileNow: ShiftAsNow = {
 export const meanwhileSwapsNow: ShiftSwap[] = meanwhileSwaps.filter(
   (swap) => swap.requestedBy !== "noa",
 );
+
+/** Sharing a published week: its link leads to the schedule tab's twin. */
+export const demoShare: ShareWeek = {
+  business: business.name,
+  base: "/design/shell/schedule",
+};
