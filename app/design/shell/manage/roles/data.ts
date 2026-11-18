@@ -93,10 +93,11 @@ export const demoSenior: EditableRole = {
 
 export const demoRoles: RolesData = {
   // Every area: the demo restaurant has each of these modules on, chat
-  // included (/design/chat).
+  // included (/design/chat), but taking orders, which is off until its
+  // screens (waiter mode).
   // Each open for changes, as the screen will be once every area's phase
   // has moved it (the roles plan's R3 to R8).
-  areas: ACCESS_AREAS.map((key) => {
+  areas: ACCESS_AREAS.filter((key) => key !== "order_taking").map((key) => {
     const module = AREA_MODULE[key];
     return {
       key,

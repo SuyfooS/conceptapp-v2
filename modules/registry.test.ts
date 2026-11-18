@@ -116,13 +116,13 @@ describe("module registry", () => {
     }
   });
 
-  it("lets owners switch scheduling's, the clock's, lists', the team's and the management page's permissions per role, nothing else yet, and never pay", () => {
+  it("lets owners switch scheduling's, the clock's, lists', taking orders', the team's and the management page's permissions per role, nothing else yet, and never pay", () => {
     // Each area's phase turns its keys on once every check in the area reads
     // them (the roles plan): scheduling's in R3, the clock's in R4, lists' in
     // R5, the team's in R6, the management page's in R7. lists.fix came
-    // settable (L6b-2), so lists stays open on the roles screen.
-    // clock.payroll keeps its own switch. Chat's are its own test's below
-    // (R8).
+    // settable (L6b-2), so lists stays open on the roles screen, and so did
+    // order_taking.edit (waiter mode P1). clock.payroll keeps its own
+    // switch. Chat's are its own test's below (R8).
     expect(
       permissions
         .filter((p) => p.settable && p.area !== "chat")
@@ -135,6 +135,7 @@ describe("module registry", () => {
       "lists.send",
       "manage.edit",
       "manage.view",
+      "order_taking.edit",
       "schedule.edit",
       "schedule.publish",
       "team.edit",
@@ -306,6 +307,26 @@ describe("module registry", () => {
       readModuleSettings(manifest, { tellOwnersAfterMinutes: 0 })
         .tellOwnersAfterMinutes,
     ).toBe(0);
+  });
+
+  it("gives taking orders one key of its own area, managers' by default, switched per role, and no tab", () => {
+    // Waiter mode P1: private.runs_orders asks it (owners always hold it),
+    // and private.settings_perm and private.log_perm name it
+    // (20261117000500_order_taking_menu.sql). No tab: the bar is full, and
+    // the mode draws its own items later; nothing on Home either.
+    const manifest = manifestFor("order_taking");
+    expect(manifest.permissions).toEqual([
+      {
+        key: "order_taking.edit",
+        area: "order_taking",
+        defaultRole: "manager",
+        settable: true,
+      },
+    ]);
+    expect(manifest.nav).toBeNull();
+    expect(manifest.homeWidget).toBeNull();
+    expect(manifest.settings.parse({})).toEqual({});
+    expect(he.modules.order_taking.name).toBe("קבלת הזמנות");
   });
 
   it("gives chat the default roles its SQL helpers hold", () => {

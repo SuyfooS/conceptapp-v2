@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(41);
+select plan(45);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -330,6 +330,85 @@ select is(
      where business_id = '6d000000-0000-4000-b000-000000000001'),
   0,
   'and leaves none of the hours or breaks from before'
+);
+
+-- A demo restaurant's sample menu (20261117000500_order_taking_menu.sql):
+-- four categories to the kitchen and the bar, thirteen items, the fish of
+-- the day sold out, and twelve tables, with the module off and nothing in
+-- the log; a shop gets none. Its own ids (e2…) and numbers (050-062-xxxx).
+insert into auth.users (id, aud, role, phone)
+select ('e2000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
+  'authenticated', 'authenticated', '97250062' || lpad(n::text, 4, '0')
+from generate_series(1, 3) as n;
+insert into private.demo_businesses (business_id, definition)
+values ('e2000000-0000-4000-b000-000000000001', $json$
+  {
+    "slug": "demo-reset-menu", "name": "Demo restaurant M", "accent": "#2563eb",
+    "address": "Demo street 3", "shabbat_city": "telAviv",
+    "template": "restaurant", "renews": false,
+    "people": [
+      { "user_id": "e2000000-0000-4000-a000-000000000001", "role": "owner", "name": "Owner M" },
+      { "user_id": "e2000000-0000-4000-a000-000000000002", "role": "manager", "name": "Manager M", "departments": ["floor", "bar"] },
+      { "user_id": "e2000000-0000-4000-a000-000000000003", "role": "worker", "name": "Cook M", "departments": ["kitchen"] }
+    ]
+  }
+  $json$);
+set local role service_role;
+select public.reset_demo_business('e2000000-0000-4000-b000-000000000001');
+reset role;
+
+select is(
+  (select string_agg(c.name || ':' || d.key, ',' order by c.position)
+   from public.menu_categories c join public.departments d on d.id = c.department_id
+   where c.business_id = 'e2000000-0000-4000-b000-000000000001' and c.archived_at is null)
+  || ' | ' || (select string_agg(i.name, ',')
+   from public.menu_items i
+   where i.business_id = 'e2000000-0000-4000-b000-000000000001' and not i.available)
+  || ' | ' || (select count(*)::text from public.menu_items i
+   where i.business_id = 'e2000000-0000-4000-b000-000000000001')
+  || ' | ' || (select string_agg(p.name, ',' order by p.position) from public.order_places p
+   where p.business_id = 'e2000000-0000-4000-b000-000000000001'),
+  'ראשונות:kitchen,עיקריות:kitchen,קינוחים:kitchen,שתייה:bar | דג היום | 13 | 1,2,3,4,5,6,7,8,9,10,11,12',
+  'a demo restaurant starts with its sample menu: four categories to the kitchen and the bar, thirteen items, the fish of the day sold out, twelve tables'
+);
+select is(
+  (select bm.enabled::text from public.business_modules bm
+   where bm.business_id = 'e2000000-0000-4000-b000-000000000001' and bm.module_key = 'order_taking')
+  || ' ' || (select count(*)::text from public.audit_log a
+   where a.business_id = 'e2000000-0000-4000-b000-000000000001' and a.action like 'menu.%')
+  || ' ' || ((select v.version from private.menu_versions v
+   where v.business_id = 'e2000000-0000-4000-b000-000000000001') > 0)::text
+  || ' ' || (select count(*)::text from public.menu_items i
+   where i.business_id = '6d000000-0000-4000-b000-000000000001'),
+  'false 0 true 0',
+  'with taking orders off, nothing of it in the log and its version set; and the shop has no menu'
+);
+select private.seed_demo_order_taking('e2000000-0000-4000-b000-000000000001');
+select is(
+  (select count(*)::integer from public.menu_items i
+   where i.business_id = 'e2000000-0000-4000-b000-000000000001'),
+  13,
+  'the sample is written once: a business that has a menu keeps it'
+);
+-- A visitor changes a price, removes a category and adds a table.
+update public.menu_items set price_agorot = 100
+where business_id = 'e2000000-0000-4000-b000-000000000001' and name = 'שניצל';
+update public.menu_categories set archived_at = now()
+where business_id = 'e2000000-0000-4000-b000-000000000001' and name = 'שתייה';
+insert into public.order_places (business_id, name)
+values ('e2000000-0000-4000-b000-000000000001', '13');
+set local role service_role;
+select public.reset_demo_business('e2000000-0000-4000-b000-000000000001');
+reset role;
+select is(
+  (select i.price_agorot::text from public.menu_items i
+   where i.business_id = 'e2000000-0000-4000-b000-000000000001' and i.name = 'שניצל')
+  || ' ' || (select count(*)::text from public.menu_categories c
+   where c.business_id = 'e2000000-0000-4000-b000-000000000001' and c.archived_at is null)
+  || ' ' || (select count(*)::text from public.order_places p
+   where p.business_id = 'e2000000-0000-4000-b000-000000000001'),
+  '6200 4 12',
+  'and the reset brings it back as it starts'
 );
 
 -- The links to departments are checked at commit, which a test never reaches:
