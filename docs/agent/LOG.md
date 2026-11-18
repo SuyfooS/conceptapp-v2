@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-18 · night 33's PR (#97) · the lists' limits, held to the database's (guessed on 10 November)
+
+- Guessed: Orel left no work, and open PR #96 held the files of the newest screens. Tests only, in `packages/domain/lists.test.ts`: an item's label, hint and unit, a list's name and note, and the 60 typed items a sent list takes, each at the database's limit and one past it, plus an editor item's id. Planting a looser limit in `@domain/lists` turns them red.
+- Waited from 10 November, when Actions started no job (#99), until CI ran again; merged with main on 18 November, the old "is not a photo yet" test giving way to L6's photo test. The inbox's "לפני שעה (1)" found that night was fixed since (`inboxAgo`).
+- Restore point: branch `backup/before-night-2026-11-10` at `0c352fb` (the tag push was cut off).
+- Next: nothing from this PR.
+- Defaults applied: none.
+
 ## 2026-11-18 · chat · Today: the owner's first steps
 
 - On chat/owner-first-steps, from main (`b206f49`, with #196 on top). The ROADMAP row "צעדים ראשונים לבעלים" (אדם אמיתי ייתקע בלעדיהם, owner, small): an owner of a real business sees on Today what to do first and what is already done, each step worked out from what the business holds and leading to the screen that does it. The row moves to the status table, with two known issues (21, 22).
