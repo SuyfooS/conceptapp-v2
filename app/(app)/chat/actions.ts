@@ -352,6 +352,7 @@ export async function olderChatMessagesAction(
     const oldestFirst = [...page].reverse();
     const [people, messages] = await Promise.all([
       getChatAuthors(
+        businessId,
         oldestFirst.flatMap((message) =>
           message.authorId ? [message.authorId] : [],
         ),
@@ -493,13 +494,15 @@ export async function announcementReadersAction(
 ): Promise<ChatActionResult<ChatReaders>> {
   const id = messageId.safeParse(message);
   if (!id.success) return { ok: false, failure: "invalid" };
-  return asMember(business, async () => {
+  return asMember(business, async (_actor, businessId) => {
     const readers = await announcementReaders(id.data);
     const people = new Map(
-      (await getChatAuthors(readers.map((r) => r.person))).map((p) => [
-        p.id,
-        p,
-      ]),
+      (
+        await getChatAuthors(
+          businessId,
+          readers.map((r) => r.person),
+        )
+      ).map((p) => [p.id, p]),
     );
     const named = readers
       .map((reader): ReaderShown => {

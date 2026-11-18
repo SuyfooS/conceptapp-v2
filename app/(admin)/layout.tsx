@@ -54,8 +54,10 @@ async function Shell({ children }: { children: ReactNode }) {
   const nav: NavItem[] = [
     { href: "/admin", label: t("nav.businesses"), icon: <Store /> },
   ];
+  // Their own name, as ConceptApp calls them: never a business's for them,
+  // which would follow whichever business the app last opened.
   const name =
-    member.name ?? (member.phone ? displayIsraeliMobile(member.phone) : "");
+    member.ownName ?? (member.phone ? displayIsraeliMobile(member.phone) : "");
 
   return (
     <div {...brandProps}>

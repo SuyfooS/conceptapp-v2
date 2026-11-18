@@ -21,6 +21,7 @@ import {
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "./database.types";
+import { type MemberNames, memberNames, nameIn } from "./member-names";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
@@ -90,8 +91,11 @@ async function membersWithoutNamedRoles(
   return older.data;
 }
 
-const nameOf = (row: Pick<MemberRow, "profiles">) =>
-  row.profiles?.full_name?.trim() || null;
+/** A member's name in the business: its own for them, else theirs. */
+const nameOf = (
+  row: Pick<MemberRow, "user_id" | "profiles">,
+  names: MemberNames,
+) => nameIn(names, row.user_id, row.profiles?.full_name);
 
 /** An invite nobody claimed, as the Team screen reads it. */
 type InviteRow = {
@@ -220,22 +224,24 @@ function namedOf(
  * the signed-in person under RLS, so only someone who sees the team
  * (team.view, the roles plan's R6) gets the invites and the numbers
  * (`public.team_phones`; members read each other's names only); callers
- * check `canSeeTeam` first.
+ * check `canSeeTeam` first. Each member by the business's name for them
+ * (`memberNames`); an invite by the name it was sent with.
  */
 export async function getTeam(
   businessId: string,
 ): Promise<{ members: TeamMember[]; invites: TeamInvite[] }> {
   const supabase = await createClient();
-  const [members, phoneOf, invites, roles] = await Promise.all([
+  const [members, phoneOf, invites, roles, names] = await Promise.all([
     activeMembers(supabase, businessId),
     teamPhones(supabase, businessId),
     openInvites(supabase, businessId),
     businessRoleNames(supabase, businessId),
+    memberNames(supabase, businessId),
   ]);
   return {
     members: members.map((row) => ({
       userId: row.user_id,
-      name: nameOf(row),
+      name: nameOf(row, names),
       phone: phoneOf.get(row.user_id) ?? null,
       role: row.role,
       namedRole: namedOf(roles, row.named_role),
@@ -298,22 +304,23 @@ export type TeamPerson = TeamMember & {
  * team reads them (RLS; callers check `canSeeTeam` first), with the role
  * the business named that they hold (R11b). Null when they are not an
  * active member. Before the profile's H2 migration reaches a project, they
- * have no line and the default cover.
+ * have no line and the default cover. By the business's name for them.
  */
 export async function getTeamPerson(
   businessId: string,
   personId: string,
 ): Promise<TeamPerson | null> {
   const supabase = await createClient();
-  const [row, phoneOf, roles] = await Promise.all([
+  const [row, phoneOf, roles, names] = await Promise.all([
     teamPersonRow(supabase, businessId, personId),
     teamPhones(supabase, businessId),
     businessRoleNames(supabase, businessId),
+    memberNames(supabase, businessId, [personId]),
   ]);
   if (!row) return null;
   return {
     userId: row.user_id,
-    name: nameOf(row),
+    name: nameOf(row, names),
     phone: phoneOf.get(row.user_id) ?? null,
     role: row.role,
     namedRole: namedOf(roles, row.named_role),
@@ -396,14 +403,17 @@ export type Colleague = {
  * anyone in it may read them (RLS): for the published schedule, which every
  * member reads. With each one's role and the role the business named that
  * they hold (members read both), so the lists' send screen counts who holds
- * each.
+ * each. Each by the business's name for them.
  */
 export async function getColleagues(businessId: string): Promise<Colleague[]> {
   const supabase = await createClient();
-  const members = await activeMembers(supabase, businessId);
+  const [members, names] = await Promise.all([
+    activeMembers(supabase, businessId),
+    memberNames(supabase, businessId),
+  ]);
   return members.map((row) => ({
     userId: row.user_id,
-    name: nameOf(row),
+    name: nameOf(row, names),
     role: row.role,
     namedRole: row.named_role ?? null,
     photo: profilePhotoSrc(row.profiles?.avatar_path),
@@ -525,6 +535,51 @@ export async function setMemberRole(
       reopened: row.reopened,
     },
   };
+}
+
+const NameChangeRow = z.object({
+  changed: z.boolean(),
+  name: z.string().nullable(),
+});
+
+/**
+ * `actorId` fixes the name the business shows for `personId`
+ * (`public.set_member_name`, ROADMAP "תיקון שם"): its own for them, in this
+ * business only and everywhere in it, by the rule of changing a role
+ * (`canRemoveMember`); their own name is never touched. `to` null, or their
+ * own name, keeps none of the business's own, so it shows theirs again (the
+ * undo of a first fix). `seen` is the name the screen showed (null: none),
+ * so one changed meanwhile stays (`changed`). The same name writes nothing
+ * (`changed: false`). `name` is the one shown after it. Logged without a
+ * name; the person is told nothing.
+ *
+ * Runs with the secret key: callers check the viewer may act on the person
+ * and is not viewing as someone else (`canWrite`), and send a name
+ * `parseTeamName` kept; the database checks again. Refused as
+ * `setMemberRole` is (`notAllowed`, `gone`, `yourself`, `demo`, `changed`),
+ * and `badName` for a name it can't keep. Any other error throws.
+ */
+export async function setMemberName(
+  actorId: string,
+  businessId: string,
+  personId: string,
+  to: string | null,
+  seen: string | null,
+): Promise<
+  | { ok: true; changed: boolean; name: string | null }
+  | { ok: false; error: TeamChangeError }
+> {
+  const { data, error } = await createAdminClient().rpc("set_member_name", {
+    actor: actorId,
+    business: businessId,
+    person: personId,
+    // None given is none: no name of the business's own, none seen.
+    ...(to !== null ? { new_name: to } : {}),
+    ...(seen !== null ? { seen_name: seen } : {}),
+  });
+  if (error) return { ok: false, error: teamChangeError(error) };
+  const row = NameChangeRow.parse(data);
+  return { ok: true, changed: row.changed, name: row.name };
 }
 
 /**
@@ -677,7 +732,8 @@ const FormerRow = z.object({
  * memberships), with the role the business named that they left in (R11b);
  * null for someone active, or never in it. For the person's page once they
  * were taken off: it says so instead of "not found". Before
- * 20261115001500_named_roles.sql reaches a project, none was named.
+ * 20261115001500_named_roles.sql reaches a project, none was named. By the
+ * business's name for them, which only the same pay holders still read.
  */
 export async function getFormerMember(
   businessId: string,
@@ -696,14 +752,18 @@ export async function getFormerMember(
       .eq("user_id", personId)
       .eq("active", false)
       .maybeSingle();
-  let { data, error } = await read(true);
+  const [first, names] = await Promise.all([
+    read(true),
+    memberNames(supabase, businessId, [personId]),
+  ]);
+  let { data, error } = first;
   if (isMissingColumn(error)) ({ data, error } = await read(false));
   if (error) throw error;
   if (!data) return null;
   const row = FormerRow.parse(data);
   return {
     userId: row.user_id,
-    name: row.profiles?.full_name?.trim() || null,
+    name: nameIn(names, row.user_id, row.profiles?.full_name),
     role: row.role,
     namedRole: await namedRoleIn(supabase, businessId, row.named_role),
   };

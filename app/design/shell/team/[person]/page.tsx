@@ -22,6 +22,7 @@ import { demoAccess } from "../../manage/access/data";
 import {
   demoClearBioAction,
   demoRemoveMemberAction,
+  demoRenameMemberAction,
   demoSetMemberRoleAction,
 } from "../actions";
 
@@ -53,7 +54,10 @@ type Props = {
 // R11b): the owner; the manager, who holds less than it, sees it there as
 // the owner's to give. ?state=pay, as the owner: workers see pay too, so
 // choosing the named role for Noa (built on workers, with no access of her
-// own) says she would see it only by her own access (R11e).
+// own) says she would see it only by her own access (R11e). "שם" fixes the
+// name the business shows for them with the demo's stand-in, shown at once
+// with the fix back as its undo, the mock name back on reload;
+// ?state=nameless: someone nobody named, whose title and row read "בלי שם".
 export default function ShellTeamPerson(props: Props) {
   return (
     <Suspense>
@@ -98,6 +102,7 @@ async function Demo({ params, searchParams }: Props) {
     <PersonView
       data={{
         ...member,
+        name: state === "nameless" ? null : member.name,
         bio: profile?.bio ?? null,
         cover: profile?.cover ?? "glow",
         since: profile?.since ?? "2026-09-01T08:00:00.000Z",
@@ -141,6 +146,7 @@ async function Demo({ params, searchParams }: Props) {
               actions: {
                 remove: demoRemoveMemberAction,
                 setRole: demoSetMemberRoleAction,
+                rename: demoRenameMemberAction,
               },
             }
           : null

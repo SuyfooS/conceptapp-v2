@@ -20,6 +20,14 @@ export type MemberChangeResult =
   | { ok: true; left: LeftCounts }
   | { ok: false; failure: TeamChangeActionFailure };
 
+/**
+ * Fixing the name the business shows for someone: whether it changed, and
+ * the name shown now (null: none).
+ */
+export type MemberNameResult =
+  | { ok: true; changed: boolean; name: string | null }
+  | { ok: false; failure: TeamChangeActionFailure };
+
 /** Cancelling an invite nobody claimed. */
 export type InviteCancelResult =
   | { ok: true }
@@ -42,6 +50,16 @@ export type MemberChangeActions = {
     to: RoleChoice,
     seen: RoleChoice,
   ) => Promise<MemberChangeResult>;
+  /**
+   * `to`: the name the business shows for them from now on, or null for
+   * their own; `seen`: the name the screen showed (null: none), so a fix
+   * made meanwhile stays.
+   */
+  rename: (
+    personId: string,
+    to: string | null,
+    seen: string | null,
+  ) => Promise<MemberNameResult>;
 };
 
 /** Cancelling an invite from the Team screen, bound the same way. */

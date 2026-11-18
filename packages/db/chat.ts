@@ -29,6 +29,7 @@ import { isStaff } from "@domain/modules";
 import { profilePhotoSrc } from "@domain/profile-photos";
 import { z } from "zod";
 import type { Database } from "./database.types";
+import { memberNames, nameIn } from "./member-names";
 import { isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createAdminClient } from "./supabase/admin";
@@ -123,17 +124,19 @@ export async function getChatInbox(
  * every membership, active or not, with its name and photo (`active` is on
  * the staff now, so someone who left, or is only the accountant, reads as
  * having left a private chat), and every department, removed ones too, by id.
- * Nothing about any chat. Empty before anything is readable.
+ * Each person by the business's name for them. Nothing about any chat. Empty
+ * before anything is readable.
  */
 export async function getChatDirectory(
   businessId: string,
 ): Promise<ChatDirectory> {
   const supabase = await createClient();
-  const [members, departments] = await Promise.all([
+  const [members, names, departments] = await Promise.all([
     supabase
       .from("memberships")
       .select("user_id, role, active, profiles (full_name, avatar_path)")
       .eq("business_id", businessId),
+    memberNames(supabase, businessId),
     supabase
       .from("departments")
       .select("id, name")
@@ -149,7 +152,7 @@ export async function getChatDirectory(
         row.user_id.toLowerCase(),
         {
           active: row.active && isStaff(row.role),
-          name: row.profiles?.full_name?.trim() || null,
+          name: nameIn(names, row.user_id, row.profiles?.full_name),
           photo: profilePhotoSrc(row.profiles?.avatar_path),
           role: row.role,
         },
@@ -335,27 +338,32 @@ export async function getConversationStamp(
 }
 
 /**
- * The names and photos of the people who wrote messages, as the signed-in
- * person reads them (their colleagues, RLS); someone they can't read comes
- * back without a name.
+ * The names and photos of the people who wrote messages in the business, as
+ * the signed-in person reads them (their colleagues, RLS), each by the
+ * business's name for them; someone they can't read comes back without a
+ * name.
  */
 export async function getChatAuthors(
+  businessId: string,
   ids: readonly string[],
 ): Promise<ChatSyncPerson[]> {
   const wanted = [...new Set(ids.filter(isUuid).map((id) => id.toLowerCase()))];
   if (wanted.length === 0) return [];
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, avatar_path")
-    .in("id", wanted);
+  const [{ data, error }, names] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, full_name, avatar_path")
+      .in("id", wanted),
+    memberNames(supabase, businessId, wanted),
+  ]);
   if (error) throw error;
   const found = new Map((data ?? []).map((row) => [row.id.toLowerCase(), row]));
   return wanted.map((id) => {
     const row = found.get(id);
     return {
       id,
-      name: row?.full_name?.trim() || null,
+      name: nameIn(names, id, row?.full_name),
       photo: profilePhotoSrc(row?.avatar_path),
     };
   });

@@ -659,6 +659,28 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads a name fixed for someone, which never holds a name", () => {
+    // By who they are now: the reader's name for them, never the log's.
+    expect(lineOf(row("member.name", { person: NOA }, YOAV))).toEqual({
+      action: "member.name",
+      person: { kind: "member", name: "Noa" },
+    });
+    expect(lineOf(row("member.name", { person: LEFT }))).toEqual({
+      action: "member.name",
+      person: { kind: "former" },
+    });
+    expect(lineOf(row("member.name", { person: GONE }, STAFF))).toEqual({
+      action: "member.name",
+      person: { kind: "unknown" },
+    });
+    for (const details of [{}, { person: 5 }, { name: "Noa" }, "x", null]) {
+      expect(lineOf(row("member.name", details))).toEqual({ action: "other" });
+    }
+    expect(activityRefs([row("member.name", { person: YOAV }, NOA)])).toEqual(
+      expect.objectContaining({ people: [NOA, YOAV] }),
+    );
+  });
+
   it("reads a typing block", () => {
     expect(lineOf(row("clock.code.locked", { person: NOA }))).toEqual({
       action: "clock.code.locked",

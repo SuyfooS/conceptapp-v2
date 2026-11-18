@@ -17,6 +17,9 @@ import {
   teamChangesInviteCancelled,
   teamChangesLineCount,
   teamChangesLines,
+  teamChangesName,
+  teamChangesNameLines,
+  teamChangesOwnName,
   teamChangesPlace,
   teamChangesRemovals,
   teamChangesRunningWeekClock,
@@ -60,6 +63,12 @@ const roleChoice = (page: Page, role: string) =>
 /** The role row on a person's page, which opens the sheet. */
 const roleRow = (page: Page) =>
   page.getByRole("button", { name: new RegExp(`^${literal(tc.role)}`) });
+
+/** The name row on a person's page, titled "שם", which opens its sheet. */
+const nameRow = (page: Page) =>
+  page
+    .getByRole("button")
+    .filter({ has: page.getByText(tc.name, { exact: true }) });
 
 /** What is on the screen now: each screen size has its own shapes. */
 const shown = (page: Page, text: string | RegExp) =>
@@ -392,6 +401,121 @@ test("whoever left loses the business, and the manager hears of the shift that n
   }
 });
 
+test("the owner fixes a name: everywhere in the business and only there, with the change back as its undo", async ({
+  page,
+  browser,
+  baseURL,
+}, testInfo) => {
+  test.setTimeout(90_000);
+  // The leaving worker also keeps the books of a second business, which
+  // never sees the fix.
+  await openTeamChangesOther();
+  const FIXED = "ורד צוות-לוי";
+  const heading = (name: string) =>
+    page.getByRole("heading", { level: 1, name, exact: true });
+  await signIn(page, OWNER);
+  await page.goto(`/team/${LEAVING.id}`);
+  await expect(heading(LEAVING.name)).toBeVisible();
+  await expect(nameRow(page)).toContainText(LEAVING.name);
+  await expectCleanPage(page);
+
+  // The sheet holds the name shown, and asks for one.
+  await nameRow(page).click();
+  const sheet = page.getByRole("dialog");
+  await expect(
+    sheet.getByRole("heading", { name: tc.nameSheet }),
+  ).toBeVisible();
+  const field = sheet.getByLabel(tt.invite.name, { exact: true });
+  await expect(field).toHaveValue(LEAVING.name);
+  await expectCleanPage(page);
+  await field.fill("");
+  await sheet.getByRole("button", { name: tc.nameSubmit }).click();
+  await expect(sheet).toContainText(tt.invite.errors.name.required);
+
+  // Fixed at once, in this business: their own name stays theirs.
+  await field.fill(FIXED);
+  await sheet.getByRole("button", { name: tc.nameSubmit }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(heading(FIXED)).toBeVisible();
+  const changed = heT("app.team.changes.nameChanged", { name: FIXED });
+  await expect(shown(page, changed)).toBeVisible();
+  await expect.poll(() => teamChangesName(LEAVING.id)).toBe(FIXED);
+  expect(await teamChangesOwnName(LEAVING.id)).toBe(LEAVING.name);
+
+  // "ביטול" is the change back.
+  await page
+    .getByRole("status")
+    .filter({ hasText: changed })
+    .getByRole("button", { name: he.app.manage.undo })
+    .click();
+  await expect(heading(LEAVING.name)).toBeVisible();
+  await expect(
+    shown(page, heT("app.team.changes.nameBack", { name: LEAVING.name })),
+  ).toBeVisible();
+  await expect.poll(() => teamChangesName(LEAVING.id)).toBe(null);
+
+  // Again, for good: the Team screen and the log call them by it, and the
+  // log keeps each fix, never the name.
+  await nameRow(page).click();
+  const again = page.getByRole("dialog");
+  await again.getByLabel(tt.invite.name, { exact: true }).fill(FIXED);
+  await again.getByRole("button", { name: tc.nameSubmit }).click();
+  await expect(heading(FIXED)).toBeVisible();
+  await expect.poll(() => teamChangesName(LEAVING.id)).toBe(FIXED);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("team-name.png"),
+    fullPage: true,
+  });
+  await page.goto("/team");
+  await expect(shown(page, FIXED)).toBeVisible();
+  await page.goto("/manage/activity");
+  await expect(
+    shown(
+      page,
+      heT("app.manage.activity.actions.member.name", { person: FIXED }),
+    ),
+  ).toBeVisible();
+  expect(await teamChangesNameLines(LEAVING.id)).toBe(3);
+
+  // The person reads it in this business, and their own name in the other.
+  const person = await secondPage(browser, testInfo);
+  try {
+    await signIn(person, LEAVING);
+    for (const [business, name] of [
+      [TEAM_CHANGES_BUSINESS.id, FIXED],
+      [TEAM_CHANGES_OTHER.id, LEAVING.name],
+    ] as const) {
+      await person
+        .context()
+        .addCookies([
+          { name: "ca_business", value: business, url: baseURL ?? "" },
+        ]);
+      await person.goto("/me");
+      await expect(
+        person.getByRole("heading", { level: 1, name, exact: true }),
+      ).toBeVisible();
+    }
+  } finally {
+    await person.context().close();
+  }
+
+  // A manager fixes a worker's name, never an owner's.
+  const manager = await secondPage(browser, testInfo);
+  try {
+    await signIn(manager, MANAGER);
+    await manager.goto(`/team/${OWNER.id}`);
+    await expect(
+      manager.getByRole("heading", { level: 1, name: OWNER.name }),
+    ).toBeVisible();
+    await expect(nameRow(manager)).toHaveCount(0);
+    await manager.goto(`/team/${STAYING.id}`);
+    await expect(nameRow(manager)).toContainText(STAYING.name);
+  } finally {
+    await manager.context().close();
+  }
+});
+
 test("someone still in another business is told once, above it, whichever was open", async ({
   page,
   baseURL,
@@ -453,6 +577,7 @@ test("a demo business closed to invites keeps its people: nothing to change on a
   ).toBeVisible();
   await expect(page.getByRole("button", { name: tc.remove })).toHaveCount(0);
   await expect(roleRow(page)).toHaveCount(0);
+  await expect(nameRow(page)).toHaveCount(0);
   await page.goto("/team");
   await expect(
     page.getByRole("button", {

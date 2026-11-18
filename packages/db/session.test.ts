@@ -9,7 +9,9 @@ vi.mock("server-only", () => ({}));
  * `public.my_permissions`'s answer, or its error, as the test sets it. What
  * they hold comes from the database (the roles plan's R1: the screens keep no
  * defaults of their own), read only when asked; while the function is
- * missing on a project, today's rules from the declarations instead.
+ * missing on a project, today's rules from the declarations instead. And
+ * the signed-in member (`getCurrentMember`), for the names it keeps: the
+ * business's for them, and their own beside it for the console.
  */
 type Answer = { data: unknown; error: { code?: string } | null };
 
@@ -18,6 +20,8 @@ const db = vi.hoisted(() => ({
   reads: [] as string[],
   tables: {} as Record<string, Answer>,
   rpc: { data: null, error: null } as Answer,
+  /** A function's own answer, over `rpc`'s. */
+  functions: {} as Record<string, Answer>,
 }));
 
 /** A query that answers the table's rows however it is narrowed. */
@@ -26,9 +30,12 @@ function query(answer: Answer): Promise<Answer> {
   return Object.assign(Promise.resolve(answer), {
     select: narrowed,
     eq: narrowed,
+    in: narrowed,
     is: narrowed,
     gt: narrowed,
     limit: narrowed,
+    order: narrowed,
+    maybeSingle: narrowed,
   });
 }
 
@@ -47,12 +54,12 @@ vi.mock("./supabase/server", () => ({
     },
     rpc: async (fn: string) => {
       db.reads.push(`rpc:${fn}`);
-      return db.rpc;
+      return db.functions[fn] ?? db.rpc;
     },
   }),
 }));
 
-const { getOwnPlace } = await import("./session");
+const { getCurrentMember, getOwnPlace } = await import("./session");
 
 const BUSINESS = "92000000-0000-4000-b000-000000000001";
 // The core permissions alone: managers hold the team's and the management
@@ -62,6 +69,7 @@ const catalogue = declaredPermissions([]);
 beforeEach(() => {
   db.reads = [];
   db.rpc = { data: null, error: null };
+  db.functions = {};
   db.tables = {
     memberships: {
       data: [
@@ -134,5 +142,82 @@ describe("getOwnPlace", () => {
     await expect(own?.place?.permissions(catalogue)).rejects.toMatchObject({
       code: "42501",
     });
+  });
+});
+
+describe("getCurrentMember", () => {
+  const business = {
+    id: BUSINESS,
+    name: "Names X",
+    accent: "#0d9488",
+    slug: "names-x",
+    address: null,
+    shabbat_city: null,
+    timezone: "Asia/Jerusalem",
+    template_key: null,
+    business_modules: [],
+  };
+
+  beforeEach(() => {
+    db.functions = {
+      own_phone: { data: "+972500009206", error: null },
+      my_permissions: { data: ["clock.payroll"], error: null },
+    };
+    db.tables = {
+      profiles: {
+        data: {
+          full_name: "Galit Books",
+          avatar_path: null,
+          bio: null,
+          cover: null,
+          address_form: null,
+        },
+        error: null,
+      },
+      memberships: {
+        data: [
+          {
+            role: "accountant",
+            perms: [],
+            created_at: "2026-11-01T08:00:00Z",
+            named_role: null,
+            businesses: business,
+          },
+        ],
+        error: null,
+      },
+      view_sessions: { data: null, error: null },
+      // The name the business gave them, as `public.member_names` keeps it.
+      member_names: {
+        data: [{ user_id: db.user.toUpperCase(), name: "Galit X" }],
+        error: null,
+      },
+    };
+  });
+
+  it("names them as the business does, and keeps their own beside it", async () => {
+    const member = await getCurrentMember(catalogue);
+    expect(member?.membership?.business.id).toBe(BUSINESS);
+    expect(member?.name).toBe("Galit X");
+    // The console's, the same in every business.
+    expect(member?.ownName).toBe("Galit Books");
+  });
+
+  it("has their own name twice where the business gave none", async () => {
+    db.tables.member_names = { data: [], error: null };
+    const member = await getCurrentMember(catalogue);
+    expect(member?.name).toBe("Galit Books");
+    expect(member?.ownName).toBe("Galit Books");
+  });
+
+  it("has their own name twice while viewing a business as a role", async () => {
+    db.tables.view_sessions = {
+      data: { role: "worker", named_role: null, businesses: business },
+      error: null,
+    };
+    const member = await getCurrentMember(catalogue);
+    expect(member?.viewing).toMatchObject({ role: "worker" });
+    expect(member?.name).toBe("Galit Books");
+    expect(member?.ownName).toBe("Galit Books");
   });
 });

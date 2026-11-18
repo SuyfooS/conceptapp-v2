@@ -355,28 +355,26 @@ export function WhileOnTeam({ children }: { children: ReactNode }) {
   return children;
 }
 
-/** "תפקיד" with their role, which opens the sheet to change it. */
+/**
+ * "תפקיד" with their role, which opens the sheet to change it: a row for a
+ * grouped list (`TeamPlace`), its sheet after it. None with fewer than two
+ * roles to show.
+ */
 export function MemberRoleRow() {
   const value = use(ChangesContext);
   const t = useTranslations("app.team.changes");
   const [open, setOpen] = useState(false);
   const roleName = useRoleName(value?.data ?? NO_DATA);
   if (!value || shownRoles(value.data).length < 2) return null;
-  const { role, holding, roleUndo, toast } = value;
+  const { role, holding } = value;
   return (
-    <div className="flex flex-col gap-2">
-      <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
-      <ListGroup>
-        <ListRow
-          title={t("role")}
-          trailing={<span className="text-ink-2">{roleName(role)}</span>}
-          disabled={holding}
-          onClick={() => setOpen(true)}
-        />
-      </ListGroup>
-      {roleUndo ? (
-        <UndoRow message={roleUndo.message} onUndo={roleUndo.run} />
-      ) : null}
+    <>
+      <ListRow
+        title={t("role")}
+        trailing={<span className="text-ink-2">{roleName(role)}</span>}
+        disabled={holding}
+        onClick={() => setOpen(true)}
+      />
       <Sheet
         open={open}
         onOpenChange={setOpen}
@@ -386,7 +384,22 @@ export function MemberRoleRow() {
         {/* Mounted on each opening, so it starts from the role they have. */}
         <RolePicker value={value} onDone={() => setOpen(false)} />
       </Sheet>
-    </div>
+    </>
+  );
+}
+
+/** Under the role row: "… שוב …" once a change was taken back, and its undo. */
+export function MemberRoleNotes() {
+  const value = use(ChangesContext);
+  if (!value || shownRoles(value.data).length < 2) return null;
+  const { roleUndo, toast } = value;
+  return (
+    <>
+      <StatusToast message={toast?.text ?? null} stamp={toast?.stamp} />
+      {roleUndo ? (
+        <UndoRow message={roleUndo.message} onUndo={roleUndo.run} />
+      ) : null}
+    </>
   );
 }
 

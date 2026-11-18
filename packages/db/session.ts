@@ -27,6 +27,7 @@ import type { ViewSession } from "@domain/view-as";
 import type { Wording } from "@domain/wording";
 import { cookies } from "next/headers";
 import type { Database } from "./database.types";
+import { type MemberNames, memberNames } from "./member-names";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createClient } from "./supabase/server";
@@ -56,7 +57,17 @@ export type MemberBusiness = {
 
 export type CurrentMember = {
   userId: string;
+  /**
+   * Their name as the current business shows them: the one it gave them
+   * (`public.member_names`), else their own; their own while viewing.
+   */
   name: string | null;
+  /**
+   * Their own name (`profiles.full_name`), the same in every business: for
+   * where ConceptApp itself speaks to them (the console), which no
+   * business's name for them reaches.
+   */
+  ownName: string | null;
   phone: string | null;
   /** The stored photo's path (`profiles.avatar_path`), or null. */
   photoPath: string | null;
@@ -364,6 +375,7 @@ export async function getCurrentMember(
   const person = {
     userId,
     name: own?.full_name ?? null,
+    ownName: own?.full_name ?? null,
     phone: ownPhone,
     photoPath: own?.avatar_path ?? null,
     profile: {
@@ -425,8 +437,8 @@ export async function getCurrentMember(
   // business's lines read on their own, together and with the permissions,
   // so one business's lines never crowd out another's count. The names of
   // the role the business named that they hold come with them, for someone
-  // who holds one.
-  const [counts, perms, namedRole] = await Promise.all([
+  // who holds one, and the name the business gave them, if it did.
+  const [counts, perms, namedRole, names] = await Promise.all([
     places.length > 1
       ? Promise.all(
           places.map(
@@ -451,6 +463,9 @@ export async function getCurrentMember(
     picked
       ? namedRoleIn(supabase, picked.businessId, picked.namedRole)
       : Promise.resolve(null),
+    picked
+      ? memberNames(supabase, picked.businessId, [userId])
+      : Promise.resolve<MemberNames>(new Map()),
   ]);
   const counted = new Map<string, UnreadCounts>(counts);
   const unreadOf = (businessId: string) => counted.get(businessId) ?? NO_UNREAD;
@@ -465,6 +480,8 @@ export async function getCurrentMember(
   }));
   return {
     ...person,
+    // As the business they are in calls them (`public.member_names`).
+    name: names.get(userId.toLowerCase()) ?? person.name,
     membership: picked
       ? {
           role: picked.role,

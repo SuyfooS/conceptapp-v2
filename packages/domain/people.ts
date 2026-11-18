@@ -1,3 +1,15 @@
+/**
+ * The name someone goes by in a business: the one the business gave them
+ * (`public.member_names`), else their own; null when neither is written.
+ * Each business keeps its own, so a fix in one never shows in another.
+ */
+export function shownName(
+  business: string | null | undefined,
+  own: string | null | undefined,
+): string | null {
+  return business?.trim() || own?.trim() || null;
+}
+
 /** Up to two initials: the first letter of the first two words. */
 export function initialsOf(name: string): string {
   return name

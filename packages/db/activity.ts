@@ -8,6 +8,7 @@ import {
   activityShiftOf,
   ROUTINE_ACTIONS,
 } from "@domain/activity";
+import { memberNames, nameIn } from "./member-names";
 import { isMissingColumn } from "./missing";
 import { isMissingTable } from "./notifications";
 import { createClient } from "./supabase/server";
@@ -27,7 +28,8 @@ const ROUTINE = `(${ROUTINE_ACTIONS.map((action) => `"${action}"`).join(",")})`;
  * may read it (RLS): whoever holds manage.view, each row only while they hold
  * its own area too, and the team viewing it as a role that does.
  * Everything the rows point at is read the same way, so an id from another
- * business finds nothing, and someone who has left keeps no name.
+ * business finds nothing, and someone who has left keeps no name. People by
+ * the business's name for them, as it is now.
  */
 export async function getBusinessActivity(
   businessId: string,
@@ -77,7 +79,7 @@ export async function getBusinessActivity(
     if (!swap.shift && swap.shiftId) shifts.add(swap.shiftId);
   }
 
-  const [members, shiftRows, departments, stations] = await Promise.all([
+  const [members, names, shiftRows, departments, stations] = await Promise.all([
     people.size
       ? supabase
           .from("memberships")
@@ -85,6 +87,7 @@ export async function getBusinessActivity(
           .eq("business_id", businessId)
           .in("user_id", [...people])
       : null,
+    memberNames(supabase, businessId, [...people]),
     shifts.size
       ? supabase
           .from("schedule_shifts")
@@ -127,7 +130,7 @@ export async function getBusinessActivity(
           row.user_id,
           {
             active: row.active,
-            name: row.profiles?.full_name?.trim() || null,
+            name: nameIn(names, row.user_id, row.profiles?.full_name),
           },
         ]),
       ),

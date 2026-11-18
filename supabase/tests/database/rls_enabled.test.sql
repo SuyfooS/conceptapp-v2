@@ -34,7 +34,7 @@ select set_eq(
     'list_template_items', 'list_schedules', 'lists', 'list_people',
     'list_items', 'list_passes', 'list_item_changes', 'list_reopens',
     'permission_keys', 'role_permissions', 'business_roles',
-    'minimum_wages', 'member_wages', 'member_payroll_details',
+    'minimum_wages', 'member_wages', 'member_payroll_details', 'member_names',
     'employment_periods', 'payroll_months', 'chat_conversations', 'chat_messages',
     'chat_reads', 'chat_acks', 'chat_notices', 'documents', 'document_recipients',
     'document_notices',

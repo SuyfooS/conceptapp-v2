@@ -4,11 +4,12 @@ import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 
 /**
- * Who may take someone off the team or change their role is one rule in the
- * database (`public.remove_member`, `public.set_member_role`,
- * `private.gives_role`) and on the screens (`canRemoveMember`,
- * `mayChangeRole` in @domain/team): every role against every role, and every
- * change between them, asked of both, the screens with what each actor holds
+ * Who may take someone off the team, change their role or fix the name the
+ * business shows for them is one rule in the database
+ * (`public.remove_member`, `public.set_member_role`,
+ * `public.set_member_name`, `private.gives_role`) and on the screens
+ * (`canRemoveMember`, `mayChangeRole` in @domain/team): every role against
+ * every role, and every change between them, asked of both, the screens with what each actor holds
  * as the database answers it (team.edit, the roles plan's R6). pgTAP can't
  * read TypeScript, so this asks SQL, in one transaction it rolls back, each
  * try in a savepoint of its own. Needs the local database (`pnpm db:start`);
@@ -142,6 +143,32 @@ describe("team changes, in the database as on the screens", () => {
               mayChangeRole(held, from, to) ? "ok" : "42501",
             );
           }
+        }
+      }
+    });
+  });
+
+  it("rename the same people", async () => {
+    await withTeam(async (tx) => {
+      for (const actor of ROLES) {
+        const held = await actorAs(tx, actor);
+        for (const target of ROLES) {
+          // Nobody here has a name yet, so none was seen.
+          const outcome = await attempt(
+            tx,
+            (sp) => sp`
+              select public.set_member_name(
+                ${ACTORS[actor]}, ${BUSINESS}, ${TARGETS[target]},
+                'Renamed', at_time => ${AT}
+              )`,
+          );
+          const allowed = canRemoveMember(
+            { userId: ACTORS[actor], ...held },
+            { userId: TARGETS[target], role: target },
+          );
+          expect(outcome, `${actor} renames ${target}`).toBe(
+            allowed ? "ok" : "42501",
+          );
         }
       }
     });

@@ -3789,6 +3789,33 @@ export async function teamChangesPlace(userId: string): Promise<{
   return row ?? null;
 }
 
+/** The name the business gave someone (`public.member_names`), or null for none. */
+export async function teamChangesName(userId: string): Promise<string | null> {
+  const [row] = await sql<{ name: string }[]>`
+    select name from public.member_names
+    where business_id = ${TEAM_CHANGES_BUSINESS.id} and user_id = ${userId}`;
+  return row?.name ?? null;
+}
+
+/** Someone's own name, in their profile, which a business's fix never touches. */
+export async function teamChangesOwnName(
+  userId: string,
+): Promise<string | null> {
+  const [row] = await sql<{ full_name: string | null }[]>`
+    select full_name from public.profiles where id = ${userId}`;
+  return row?.full_name ?? null;
+}
+
+/** How many times the log says someone's name was fixed, never which. */
+export async function teamChangesNameLines(userId: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.audit_log
+    where business_id = ${TEAM_CHANGES_BUSINESS.id}
+      and action = 'member.name'
+      and details ->> 'person' = ${userId}`;
+  return row?.count ?? 0;
+}
+
 /** How many shifts someone is on in the business, past and ahead. */
 export async function teamChangesShifts(userId: string): Promise<number> {
   const [row] = await sql<{ count: number }[]>`

@@ -18,13 +18,14 @@ import {
   MemberChangesState,
   MemberLeft,
   MemberRemoval,
-  MemberRoleRow,
   WhileOnTeam,
 } from "./member-changes";
+import { MemberNameState, ShownName, TeamPlace } from "./member-name";
 
 /**
- * What the viewer may change about the person's place on the team: their
- * role among `roles`, and taking them off it.
+ * What the viewer may change about the person's place on the team: the name
+ * the business shows for them, their role among `roles`, and taking them off
+ * it.
  */
 export type PersonChanges = Pick<
   MemberChangesData,
@@ -45,7 +46,9 @@ export type PersonChanges = Pick<
  * their line about themselves, a way to call them, and a way to delete a line
  * that is hurtful or out of place. Whoever may invite to their role
  * (`changes`) changes their role and takes them off the team from here
- * (Orel, 14 November 2026); name fixes come later. A minor shows until when
+ * (Orel, 14 November 2026), and fixes the name the business shows for them:
+ * the business's own name for them, shown everywhere in it and only in it,
+ * their own name untouched (ROADMAP "תיקון שם"). A minor shows until when
  * (payroll P5): the schedule needs it, and only that day, never a birth date
  * or the rest of their details for payroll. Also rendered with mock data on
  * /design/shell/team/[person].
@@ -143,12 +146,71 @@ export async function PersonView({
             </>
           ) : null
         }
-        role={changes ? <MemberRoleRow /> : null}
+        place={changes ? <TeamPlace /> : null}
         clearLabel={t("team.person.clearBio")}
         clearHint={t("team.person.clearBioHint", { name: first, form })}
       />
       {changes ? <MemberRemoval /> : null}
     </>
+  );
+
+  const frame = (
+    <ProfileFrame
+      label={name}
+      cover={data.cover}
+      hue={avatarHue(data.name ?? "")}
+      back={{ href: teamHref, label: t("team.title") }}
+      avatar={
+        <PersonAvatar
+          name={data.name}
+          photo={data.photo}
+          size="xl"
+          className={profileAvatarRing}
+        />
+      }
+      identity={
+        <>
+          <PageHeader
+            // The name a fix just wrote, before the page is read again.
+            title={changes ? <ShownName none={t("team.noName")} /> : name}
+            subtitle={subtitle}
+          />
+          <BioLine noBio={t("team.person.noBio", { name: first, form })} />
+          <BioUndo message={t("team.person.bioCleared", { name })} />
+        </>
+      }
+    >
+      {changes ? (
+        <MemberChangesState
+          data={{
+            personId: data.userId,
+            name,
+            first,
+            form,
+            role: {
+              role: data.role,
+              namedRole: data.namedRole?.id ?? null,
+            },
+            teamHref,
+            roles: changes.roles,
+            beyond: changes.beyond,
+            namedRoles: changes.namedRoles,
+            ownerOnly: changes.ownerOnly,
+            pay: changes.pay,
+            ahead: changes.ahead,
+            clockedIn: changes.clockedIn,
+            clockHref: changes.clockHref,
+            scheduleHref: changes.scheduleHref,
+          }}
+          actions={changes.actions}
+        >
+          <WhileOnTeam>{offers}</WhileOnTeam>
+          <MemberLeft />
+        </MemberChangesState>
+      ) : (
+        offers
+      )}
+    </ProfileFrame>
   );
 
   return (
@@ -159,58 +221,17 @@ export async function PersonView({
         canClear={canClear}
         clearBio={clearBio}
       >
-        <ProfileFrame
-          label={name}
-          cover={data.cover}
-          hue={avatarHue(data.name ?? "")}
-          back={{ href: teamHref, label: t("team.title") }}
-          avatar={
-            <PersonAvatar
-              name={data.name}
-              photo={data.photo}
-              size="xl"
-              className={profileAvatarRing}
-            />
-          }
-          identity={
-            <>
-              <PageHeader title={name} subtitle={subtitle} />
-              <BioLine noBio={t("team.person.noBio", { name: first, form })} />
-              <BioUndo message={t("team.person.bioCleared", { name })} />
-            </>
-          }
-        >
-          {changes ? (
-            <MemberChangesState
-              data={{
-                personId: data.userId,
-                name,
-                first,
-                form,
-                role: {
-                  role: data.role,
-                  namedRole: data.namedRole?.id ?? null,
-                },
-                teamHref,
-                roles: changes.roles,
-                beyond: changes.beyond,
-                namedRoles: changes.namedRoles,
-                ownerOnly: changes.ownerOnly,
-                pay: changes.pay,
-                ahead: changes.ahead,
-                clockedIn: changes.clockedIn,
-                clockHref: changes.clockHref,
-                scheduleHref: changes.scheduleHref,
-              }}
-              actions={changes.actions}
-            >
-              <WhileOnTeam>{offers}</WhileOnTeam>
-              <MemberLeft />
-            </MemberChangesState>
-          ) : (
-            offers
-          )}
-        </ProfileFrame>
+        {changes ? (
+          <MemberNameState
+            personId={data.userId}
+            name={data.name}
+            rename={changes.actions.rename}
+          >
+            {frame}
+          </MemberNameState>
+        ) : (
+          frame
+        )}
       </BioState>
     </PageBody>
   );

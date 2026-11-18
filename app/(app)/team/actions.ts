@@ -2,7 +2,12 @@
 
 import { inviteToTeam, issueTeamInviteLink } from "@db/invites";
 import { clearProfileBio } from "@db/profile";
-import { cancelTeamInvite, removeMember, setMemberRole } from "@db/team";
+import {
+  cancelTeamInvite,
+  removeMember,
+  setMemberName,
+  setMemberRole,
+} from "@db/team";
 import { isUuid } from "@domain/activity";
 import { inviteLink } from "@domain/invites";
 import { ROLES } from "@domain/modules";
@@ -10,6 +15,7 @@ import { type ProfileSaveResult, seenBioOf } from "@domain/profile";
 import {
   canEditTeam,
   parseTeamInvite,
+  parseTeamName,
   type TeamInviteErrors,
 } from "@domain/team";
 import { canWrite } from "@domain/view-as";
@@ -22,6 +28,7 @@ import { currentGivableNamedRoles } from "../team";
 import type {
   InviteCancelResult,
   MemberChangeResult,
+  MemberNameResult,
   TeamChangeActionFailure,
 } from "./team-change-types";
 
@@ -230,6 +237,11 @@ const roleChoice = z.object({
   namedRole: z.uuid().nullable(),
 });
 const roleChange = memberChange.extend({ to: roleChoice, seen: roleChoice });
+/** A name as typed, or none; `parseTeamName` reads it after. */
+const nameChange = memberChange.extend({
+  to: z.string().max(400).nullable(),
+  seen: z.string().max(400).nullable(),
+});
 const inviteCancel = z.object({ business: z.uuid(), invite: z.uuid() });
 
 /**
@@ -336,6 +348,60 @@ export async function setMemberRoleAction(
   } catch (error) {
     console.error(
       "setMemberRole failed",
+      error instanceof Error ? error.message : "unknown",
+    );
+    return { ok: false, failure: "failed" };
+  }
+}
+
+/**
+ * Someone who may change a person's role fixes the name the business shows
+ * for them (ROADMAP "תיקון שם"): in this business only, everywhere in it;
+ * their own name stays theirs. `to` null keeps none of the business's own
+ * (the undo of a first fix); `seen`, the name the screen showed, so one
+ * changed meanwhile stays ("changed", and the page reads it again). Logged
+ * without the name, and nothing logged here holds it either. The page reads
+ * the person again.
+ */
+export async function renameMemberAction(
+  business: string,
+  person: string,
+  to: unknown,
+  seen: unknown,
+): Promise<MemberNameResult> {
+  const parsed = nameChange.safeParse({ business, person, to, seen });
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const actor = await changer(parsed.data.business);
+  if ("failure" in actor) return { ok: false, failure: actor.failure };
+  if (parsed.data.person === actor.userId) {
+    return { ok: false, failure: "yourself" };
+  }
+  let name: string | null = null;
+  if (parsed.data.to !== null) {
+    const kept = parseTeamName(parsed.data.to);
+    if (!kept.ok) return { ok: false, failure: "invalid" };
+    name = kept.name;
+  }
+  try {
+    const result = await setMemberName(
+      actor.userId,
+      parsed.data.business,
+      parsed.data.person,
+      name,
+      parsed.data.seen,
+    );
+    if (!result.ok) {
+      if (result.error === "changed") refresh();
+      return { ok: false, failure: result.error };
+    }
+    if (result.changed) {
+      revalidatePath("/team");
+      refresh();
+    }
+    return { ok: true, changed: result.changed, name: result.name };
+  } catch (error) {
+    console.error(
+      "setMemberName failed",
       error instanceof Error ? error.message : "unknown",
     );
     return { ok: false, failure: "failed" };

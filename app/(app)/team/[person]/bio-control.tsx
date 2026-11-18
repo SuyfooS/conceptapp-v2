@@ -174,32 +174,35 @@ export function BioUndo({ message }: { message: string }) {
 }
 
 /**
- * What the viewer can do about this person: call them, change their role
- * (`role`, when they may), and delete their line when it is there and they
- * may. Nothing at all when none applies. The delete is a group of its own,
- * centred and with no chevron: it leads nowhere, it acts.
+ * What the viewer can do about this person: call them, fix their name and
+ * change their role (`place`, when they may), and delete their line when it
+ * is there and they may. Nothing at all when none applies. The delete is a
+ * group of its own, centred and with no chevron: it leads nowhere, it acts.
  */
 export function PersonActions({
   call,
-  role = null,
+  place = null,
   clearLabel,
   clearHint,
 }: {
   /** The call row, when the business has their number. */
   call: ReactNode;
-  /** Their role and the way to change it (`MemberRoleRow`), when the viewer may. */
-  role?: ReactNode;
+  /**
+   * Their name and role, and the ways to change them (`TeamPlace`), when the
+   * viewer may.
+   */
+  place?: ReactNode;
   clearLabel: string;
   clearHint: string;
 }) {
   const t = useTranslations("app.team.person.failures");
   const { bio, phase, failure, canClear, clear } = useBio();
   const clearable = canClear && bio !== null && phase === "shown";
-  if (!call && !role && !clearable && !failure) return null;
+  if (!call && !place && !clearable && !failure) return null;
   return (
     <section className="flex flex-col gap-4">
       {call ? <ListGroup>{call}</ListGroup> : null}
-      {role}
+      {place}
       {clearable || failure ? (
         <div className="flex flex-col gap-2">
           {clearable ? (
