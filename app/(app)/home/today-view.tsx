@@ -24,6 +24,7 @@ import {
   decidesSwap,
   myRequestFor,
   offersFor,
+  outcomeOnShift,
   toApprove,
 } from "@domain/swaps";
 import type { Team } from "@domain/team";
@@ -658,6 +659,17 @@ function NextShift({
   const swap = mine
     ? myRequestFor(published.swaps, shift.id, published.userId)
     : null;
+  // Their last request wasn't approved, or the schedule cancelled it: said
+  // in its place until they ask again or the shift begins, as on the shift.
+  const outcome =
+    mine && !swap && !running
+      ? outcomeOnShift(
+          published.endedSwaps,
+          published.swaps,
+          shift.id,
+          published.userId,
+        )
+      : null;
 
   return (
     <>
@@ -683,15 +695,19 @@ function NextShift({
             </span>
           ))}
         </p>
-        {swap ? (
+        {swap || outcome ? (
           <p className="mt-2 flex items-start gap-1.5 font-medium text-sm">
             <Repeat aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-            {swap.status === "taken"
-              ? t("shifts.swap.taken", {
-                  name: nameIn(t, published, swap.takenBy ?? ""),
-                  form: formIn(published, swap.takenBy),
-                })
-              : t("shifts.swap.open")}
+            {swap
+              ? swap.status === "taken"
+                ? t("shifts.swap.taken", {
+                    name: nameIn(t, published, swap.takenBy ?? ""),
+                    form: formIn(published, swap.takenBy),
+                  })
+                : t("shifts.swap.open")
+              : outcome === "declined"
+                ? t("shifts.swap.declined")
+                : t("shifts.swap.removed")}
           </p>
         ) : null}
         <div className="mt-4 flex items-center gap-3">

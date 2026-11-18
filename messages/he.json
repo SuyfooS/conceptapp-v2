@@ -1749,6 +1749,17 @@
         "line": "{name} · <ltr>{start}–{end}</ltr>",
         "later": "אחר כך"
       },
+      "past": {
+        "title": "מה קרה לבקשות שלך",
+        "approvedFrom": "ההחלפה עם {name} אושרה. מסרת את המשמרת",
+        "approvedTo": "ההחלפה עם {name} אושרה. קיבלת את המשמרת",
+        "declined": "ההחלפה עם {name} לא אושרה",
+        "withdrawnFrom": "ביטלת את הבקשה",
+        "withdrawnTo": "{form, select, f {{name} ביטלה את הבקשה} m {{name} ביטל את הבקשה} other {הבקשה של {name} בוטלה}}",
+        "schedule": "הבקשה בוטלה כי הסידור השתנה",
+        "team": "הבקשה בוטלה בגלל שינוי בצוות",
+        "gone": "המשמרת הוסרה מהסידור"
+      },
       "board": {
         "pickWeek": "בחירת שבוע",
         "pickDay": "בחירת יום",
@@ -1773,6 +1784,8 @@
         "tookIt": "לקחת, מחכים לאישור",
         "givingOpen": "ביקשת למסור",
         "givingTaken": "{form, select, f {{name} לוקחת} m {{name} לוקח} other {{name} לוקח/ת}}",
+        "givingDeclined": "המסירה לא אושרה",
+        "givingRemoved": "הבקשה בוטלה",
         "manage": "ניהול הסידור",
         "own": "המשמרות והזמינות שלך",
         "teamSent": "{sent} מתוך {total} שלחו"
@@ -1785,7 +1798,8 @@
         "today": "היום",
         "tomorrow": "מחר",
         "giveQuestion": "לא מסתדר לך?",
-        "giveHint": "אפשר להציע אותה לצוות"
+        "giveHint": "אפשר להציע אותה לצוות",
+        "giveAgain": "אפשר להציע אותה שוב לצוות"
       },
       "sheet": {
         "close": "סגירה",
@@ -1834,6 +1848,8 @@
         },
         "open": "ביקשת למסור את המשמרת. מחכים שמישהו מהצוות ייקח אותה.",
         "taken": "{form, select, f {{name} לוקחת את המשמרת} m {{name} לוקח את המשמרת} other {{name} לוקח/ת את המשמרת}}. מחכים לאישור.",
+        "declined": "ההחלפה לא אושרה. המשמרת נשארת שלך.",
+        "removed": "בקשת המסירה בוטלה כי הסידור השתנה. המשמרת נשארת שלך.",
         "offers": {
           "title": "משמרות שאפשר לקחת",
           "count": "{count, plural, one {משמרת אחת} other {# משמרות}}",
@@ -1860,6 +1876,18 @@
         "approved": "אישרת: {to} במקום {from}. {shift}.",
         "declined": "דחית את הבקשה. {from} {fromForm, select, f {נשארת} m {נשאר} other {נשאר/ת}} במשמרת. {shift}."
       },
+      "ended": {
+        "title": "כבר לא מחכות להחלטה",
+        "approved": "{form, select, f {{name} אישרה את ההחלפה} m {{name} אישר את ההחלפה} other {ההחלפה אושרה על ידי {name}}}",
+        "declined": "{form, select, f {{name} דחתה את הבקשה} m {{name} דחה את הבקשה} other {הבקשה נדחתה על ידי {name}}}",
+        "approvedYou": "אישרת את ההחלפה",
+        "declinedYou": "דחית את הבקשה",
+        "approvedPlain": "ההחלפה אושרה",
+        "declinedPlain": "הבקשה נדחתה",
+        "withdrawn": "{form, select, f {{name} ביטלה את הבקשה} m {{name} ביטל את הבקשה} other {הבקשה של {name} בוטלה}}",
+        "schedule": "בוטלה כי הסידור השתנה",
+        "team": "בוטלה בגלל שינוי בצוות"
+      },
       "noPosition": "בלי תפקיד",
       "columns": {
         "day": "יום",
@@ -1867,6 +1895,7 @@
         "position": "תפקיד",
         "from": "מוסר/ת",
         "to": "לוקח/ת",
+        "outcome": "מה קרה",
         "decision": "החלטה"
       },
       "buttons": {

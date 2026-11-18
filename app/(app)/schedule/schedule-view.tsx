@@ -25,7 +25,7 @@ import type { ReactNode } from "react";
 import type { PushAskOffer } from "../notifications/push-ask";
 import { type AppWording, type Translator, translator } from "../wording";
 import type { SwapAction } from "./shifts/shift-sheet";
-import { ltr, upcomingShifts } from "./shifts/shift-text";
+import { ltr, ownEndedSwaps, upcomingShifts } from "./shifts/shift-text";
 import { pendingApprovals } from "./swaps/swap-approvals-view";
 import type {
   AvailabilityWeek,
@@ -204,6 +204,7 @@ export async function ScheduleView({
           people: data.people,
           positions: data.positions,
           swaps: data.swaps,
+          endedSwaps: ownEndedSwaps(data),
         }}
         manager={manager}
         swap={swap}

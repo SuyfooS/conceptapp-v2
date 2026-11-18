@@ -30,6 +30,8 @@ import { demoDepartments, demoListsHome, demoWorkerLists } from "../lists/data";
 import { demoUnread } from "../notifications/data";
 import { demoWeek } from "../schedule/availability/week";
 import {
+  DEMO_ENDED,
+  DEMO_NOON,
   demoPublished,
   demoRequest,
   demoRunningBuild,
@@ -78,8 +80,10 @@ const SHORT: Record<string, number> = {
 
 const team = () => buildTeam(teamMembers, teamInvites, teamToday);
 
+// What became of the requests that no longer wait (`DEMO_ENDED`): Noa's
+// evening tonight wasn't approved, which her hero says.
 function published(userId: string, swaps: ShiftSwap[]): PublishedSchedule {
-  const data = demoPublished(userId, swaps);
+  const data = demoPublished(userId, swaps, DEMO_NOON, DEMO_ENDED);
   return {
     ...data,
     thisWeek: {
@@ -97,6 +101,7 @@ const notPublished = (data: PublishedSchedule): PublishedSchedule => ({
   ...data,
   thisWeek: { ...data.thisWeek, publishedAt: null, shifts: [] },
   swaps: [],
+  endedSwaps: [],
 });
 
 function availabilityWeek(sent: boolean): AvailabilityWeek {

@@ -17,6 +17,7 @@ import {
   PLACE_AREAS,
 } from "./role-access";
 import { shabbatCityOf } from "./shabbat";
+import { swapShift } from "./swaps";
 
 /**
  * The business's activity log: what changed, who changed it and when, read from
@@ -77,21 +78,13 @@ export type ActivityShift = {
   end: string;
 };
 
-const hourMinute = z.string().regex(/^\d{2}:\d{2}$/);
-const shiftBrief = z.object({
-  day: z.iso.date(),
-  name: z.string(),
-  start: hourMinute,
-  end: hourMinute,
-});
-
 /**
  * A shift as the database keeps it on a swap request (`shift_swaps.shift`,
  * private.shift_brief: its day, name and hours when the request was made),
  * or null when it is anything else.
  */
 export function activityShiftOf(value: unknown): ActivityShift | null {
-  const parsed = shiftBrief.safeParse(value);
+  const parsed = swapShift.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
 

@@ -23,9 +23,11 @@ import {
   hasStarted,
   ltr,
   nameOf,
+  outcomeLine,
   positionName,
   type ShiftData,
   shiftLabel,
+  shiftOutcome,
   timeRange,
 } from "./shift-text";
 import { SwapButton } from "./swap-button";
@@ -143,6 +145,10 @@ export function ShiftCard({
   // "ביטול הבקשה" still works.
   const upcoming = !hasStarted(data, shift);
   const request = id ? myRequestFor(data.swaps, id, data.userId) : null;
+  // Not approved, or the schedule cancelled it: said until they ask again or
+  // the shift begins, with the way to give it away again under it.
+  const outcome =
+    id && mine && !request && upcoming ? shiftOutcome(data, id) : null;
   const offer = offers[0];
 
   return (
@@ -221,14 +227,19 @@ export function ShiftCard({
               />
             </>
           ) : (
-            <Button
-              variant="secondary"
-              onClick={() => onOpen(id)}
-              aria-label={`${t("shifts.swap.buttons.give")}, ${label}`}
-              className="w-full"
-            >
-              {t("shifts.swap.buttons.give")}
-            </Button>
+            <>
+              {outcome ? (
+                <p className="text-base">{outcomeLine(t, outcome)}</p>
+              ) : null}
+              <Button
+                variant="secondary"
+                onClick={() => onOpen(id)}
+                aria-label={`${t("shifts.swap.buttons.give")}, ${label}`}
+                className="w-full"
+              >
+                {t("shifts.swap.buttons.give")}
+              </Button>
+            </>
           )}
         </div>
       ) : null}
@@ -293,7 +304,9 @@ function heroLine(
  * colour, with a card lifted over its edge for what they can do about it.
  * Once the shift has begun it can't be given away: a request already made
  * stays on the card with its "ביטול הבקשה", as on the sheet, and otherwise
- * the card goes and the hero stands alone.
+ * the card goes and the hero stands alone. Until then, a last request that
+ * wasn't approved, or that the schedule cancelled, is said in place of the
+ * question, and the shift can be offered again.
  */
 export function MyShiftHero({
   shift,
@@ -321,6 +334,7 @@ export function MyShiftHero({
   const request = myRequestFor(data.swaps, shift.id, data.userId);
   // Nothing to do about it: begun, and not asked to give away.
   const alone = !request && hasStarted(data, shift);
+  const outcome = request || alone ? null : shiftOutcome(data, shift.id);
   return (
     <section aria-label={subject}>
       <Card
@@ -378,10 +392,14 @@ export function MyShiftHero({
             <div className="flex items-center gap-3">
               <p className="flex min-w-0 flex-1 flex-col">
                 <span className="font-semibold text-base">
-                  {t("shifts.hero.giveQuestion")}
+                  {outcome
+                    ? outcomeLine(t, outcome)
+                    : t("shifts.hero.giveQuestion")}
                 </span>
                 <span className="text-ink-2 text-sm">
-                  {t("shifts.hero.giveHint")}
+                  {outcome
+                    ? t("shifts.hero.giveAgain")
+                    : t("shifts.hero.giveHint")}
                 </span>
               </p>
               <Button
