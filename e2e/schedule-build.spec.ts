@@ -14,6 +14,7 @@ import {
   saveDemoRunningWeek,
   scheduleAssignments,
   scheduleDemoSunday,
+  scheduleDemoToday,
   schedulePublished,
   scheduleShiftIds,
   scheduleShifts,
@@ -484,12 +485,23 @@ test("a manager shares the published week, and its link opens that week", async 
   ).toEqual([{ text }]);
 
   // The link opens that week on the schedule tab, with the share beside
-  // "פורסם ב-…" for whoever builds it.
+  // "פורסם ב-…" for whoever builds it. This week is out too, with Noa on
+  // today's morning, so without the link the tab opens on this week
+  // (`scheduleOpening`): only the link's `?week=` leads to next week.
+  await scheduleDemoToday([[NOA.e164, null]]);
   const link = `/schedule?week=${start}`;
-  const nextWeek = (on: Page) =>
-    on.getByRole("button", { name: he.app.shifts.week.next, exact: true });
+  const weekButton = (on: Page, key: "this" | "next") =>
+    on.getByRole("button", { name: he.app.shifts.week[key], exact: true });
+  await page.goto("/schedule");
+  await expect(weekButton(page, "this")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await page.goto(link);
-  await expect(nextWeek(page)).toHaveAttribute("aria-pressed", "true");
+  await expect(weekButton(page, "next")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
   await expect(
     page
       .getByText(before(he.app.shifts.board.publishedAt))
@@ -499,11 +511,13 @@ test("a manager shares the published week, and its link opens that week", async 
   await expectCleanPage(page);
 
   // Noa opens it on that week too (on her shift there: `scheduleOpening`),
-  // with nothing to share.
+  // though on her own the tab opens on today's, with nothing to share.
   const noa = await secondPage(browser, testInfo);
   await signIn(noa, NOA);
+  await noa.goto("/schedule");
+  await expect(weekButton(noa, "this")).toHaveAttribute("aria-pressed", "true");
   await noa.goto(link);
-  await expect(nextWeek(noa)).toHaveAttribute("aria-pressed", "true");
+  await expect(weekButton(noa, "next")).toHaveAttribute("aria-pressed", "true");
   await expect(
     noa
       .getByText(before(he.app.shifts.board.publishedAt))

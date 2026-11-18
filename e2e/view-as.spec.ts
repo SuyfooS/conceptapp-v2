@@ -1,12 +1,15 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { before } from "./build-screen";
 import {
   addShopNamedRole,
+  clearSchedule,
   endViewSessions,
   invitesBySlug,
   lastViewedRoleName,
   removeShopNamedRole,
+  scheduleDemoSunday,
   viewAudit,
 } from "./db";
 import { signIn } from "./session";
@@ -22,6 +25,7 @@ const BUSINESS = "מסעדת הדגמה";
 const SHOP = "חנות הדגמה";
 /** The seeded Noa, a worker of the demo restaurant. */
 const NOA_ID = "00000000-0000-4000-a000-000000000003";
+const NOA_PHONE = "+972500000003";
 
 const a = he.admin.setup.viewAs;
 const v = he.app.viewAs;
@@ -217,13 +221,36 @@ test("viewing as a manager shows the team but saves nothing", async ({
   await expect(
     page.getByRole("button", { name: he.app.availability.team.remind.action }),
   ).toHaveCount(0);
-  await page.goto("/schedule/build");
-  await expect(
-    page.getByRole("heading", { level: 1, name: he.app.build.title }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: he.app.shifts.share.action }),
-  ).toHaveCount(0);
+  // With next week published, the builder at rest and the tab's "פורסם ב-…"
+  // offer sharing it to whoever builds the schedule; viewing as one, neither
+  // does.
+  const share = page.getByRole("button", { name: he.app.shifts.share.action });
+  await scheduleDemoSunday({ morning: [[NOA_PHONE, null]], evening: [] }, true);
+  try {
+    await page.goto("/schedule/build");
+    await expect(
+      page.getByRole("heading", { level: 1, name: he.app.build.title }),
+    ).toBeVisible();
+    // The builder names its week once it is on the screen.
+    await expect(page).toHaveURL(/\?week=\d{4}-\d{2}-\d{2}$/);
+    await expect(
+      page.getByText(before(he.app.build.publishedAt)),
+    ).toBeVisible();
+    await expect(share).toHaveCount(0);
+    const start = new URL(page.url()).searchParams.get("week") ?? "";
+    await page.goto(`/schedule?week=${start}`);
+    await expect(
+      page.getByRole("button", { name: he.app.shifts.week.next, exact: true }),
+    ).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page
+        .getByText(before(he.app.shifts.board.publishedAt))
+        .filter({ visible: true }),
+    ).toBeVisible();
+    await expect(share).toHaveCount(0);
+  } finally {
+    await clearSchedule();
+  }
 });
 
 // The one view that reads pay (payroll P3): as an accountant, the business

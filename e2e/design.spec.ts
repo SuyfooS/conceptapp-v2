@@ -1005,6 +1005,28 @@ test("the builder demo offers sharing once published", async ({ page }) => {
   expect(await sharedText(sheet)).toContain("חנות הדגמה");
 });
 
+// The link in a shared schedule names its week (`?week=`): the schedule tab's
+// twin opens on next week with it, and on this week, Shiran's, without it or
+// with a week that is neither. Only the published week offers sharing it.
+test("the schedule demo opens on the week its link names", async ({ page }) => {
+  const path = "/design/shell/schedule";
+  const week = (key: "this" | "next") =>
+    page.getByRole("button", { name: he.app.shifts.week[key], exact: true });
+  const share = page.getByRole("button", { name: he.app.shifts.share.action });
+
+  await page.goto(path);
+  await expect(week("this")).toHaveAttribute("aria-pressed", "true");
+  await expect(share).toBeVisible();
+
+  await page.goto(`${path}?week=2026-11-08`);
+  await expect(week("next")).toHaveAttribute("aria-pressed", "true");
+  await expect(week("this")).toHaveAttribute("aria-pressed", "false");
+  await expect(share).toHaveCount(0);
+
+  await page.goto(`${path}?week=2026-11-15`);
+  await expect(week("this")).toHaveAttribute("aria-pressed", "true");
+});
+
 // The reminder on the team's answers, while someone is missing: one message
 // for the whole team with the week and the due moment, or that it is still
 // not too late; nobody's name. None once everyone sent.
