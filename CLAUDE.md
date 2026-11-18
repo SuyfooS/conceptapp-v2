@@ -90,7 +90,8 @@ Only `app/` imports app code (`@/…`).
 - Components live in `packages/ui` and appear on `/design` (Hebrew and
   English, any accent). Add a new component to the gallery in the same change.
   Built so far: Button, IconButton (also as a link, with a count), TextField, PhoneField, DateField, CodeSlots, FieldGroup, FieldRow, Stepper, Switch,
-  ChoiceList, ChoiceMenu (options with a mark and hint), Segmented, Card, ListRow (with submit and current) and ListGroup, DataTable, PersonList, Badge, Avatar
+  ChoiceList, ChoiceMenu (options with a mark and hint), Segmented, Card, ListRow (with submit and current) and ListGroup, DataTable, PersonList, Badge, StepList and StepRow (a step done, open or missing: the console's
+  checklist and the owner's first steps), Avatar
   and AvatarStack (with photos), AvatarPhotoPicker, VisibilityNote, ProfileCover (eight presets) and CoverChoices, Tile, CoverageBar, ProgressRing, PunchCircle and ScanCircle, ChecklistItem, DayToggles, Sheet, ShareSheet (a message as it will go out: WhatsApp, the device's share, copy), FloatingAction, FloatingDock,
   StatusToast (with an undo), EmptyState, Ambient, Spinner, PageSkeleton, AppShellSkeleton, WeekStrip, AppShell, PageBody/PageHeader/
   PageSection, AccentPicker and AccentPreview, Logo and LogoMark, QrCode and CodeDisplay,

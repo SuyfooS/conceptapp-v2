@@ -15,10 +15,10 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar, PersonList, PersonRow } from "@ui/person-row";
+import { StepList, StepRow } from "@ui/step-list";
 import {
   Check,
   ChevronRight,
-  CircleDashed,
   Eye,
   KeyRound,
   MessageSquareText,
@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import { InviteLink } from "./invite-link";
 
 type T = Awaited<ReturnType<typeof getTranslations<"admin">>>;
@@ -307,70 +307,22 @@ function Checklist({
           {t("setup.checklist.remaining", { count: remaining })}
         </p>
       </Card>
-      <ul className="relative z-10 mx-3 -mt-[60px] overflow-hidden rounded-card bg-surface shadow-float">
+      <StepList className="relative z-10 mx-3 -mt-[60px]">
         {items.map((item) => (
-          <ChecklistRow key={item.key} href={href(item)}>
-            {item.done ? (
-              <span
-                aria-hidden="true"
-                className="grid size-7 shrink-0 place-items-center rounded-full bg-success-soft text-success [&_svg]:size-4 [&_svg]:stroke-3"
-              >
-                <Check />
-              </span>
-            ) : (
-              <span
-                aria-hidden="true"
-                className="grid size-7 shrink-0 place-items-center rounded-full bg-warning-soft text-warning [&_svg]:size-4 [&_svg]:stroke-3"
-              >
-                <CircleDashed />
-              </span>
-            )}
-            <span className="flex min-w-0 flex-col">
-              <span className="font-medium">
-                {t(`setup.checklist.items.${item.key}.title`)}
-                <span className="sr-only">
-                  {" · "}
-                  {item.done
-                    ? t("setup.checklist.done")
-                    : t("setup.checklist.todo")}
-                </span>
-              </span>
-              <span className="break-words text-ink-2 text-sm">
-                {body(item)}
-              </span>
-            </span>
-          </ChecklistRow>
+          <StepRow
+            key={item.key}
+            // A missing item leads to where it is fixed.
+            href={href(item)}
+            mark={item.done ? "done" : "missing"}
+            title={t(`setup.checklist.items.${item.key}.title`)}
+            state={
+              item.done ? t("setup.checklist.done") : t("setup.checklist.todo")
+            }
+            detail={body(item)}
+          />
         ))}
-      </ul>
+      </StepList>
     </section>
-  );
-}
-
-const rowClass =
-  "relative flex min-h-16 items-center gap-3 px-4 py-2.5 not-first:before:absolute not-first:before:end-0 not-first:before:start-[56px] not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
-
-/** A checklist item; one that is missing leads to where it is fixed. */
-function ChecklistRow({
-  href,
-  children,
-}: {
-  href: string | null;
-  children: ReactNode;
-}) {
-  if (!href) return <li className={rowClass}>{children}</li>;
-  return (
-    <li className={cn(rowClass, "p-0")}>
-      <Link
-        href={href}
-        className="flex min-h-16 w-full items-center gap-3 px-4 py-2.5 transition-colors duration-150 ease-calm hover:bg-surface-2 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent active:bg-surface-3"
-      >
-        {children}
-        <ChevronRight
-          aria-hidden="true"
-          className="ms-auto size-5 shrink-0 text-ink-2 rtl:-scale-x-100"
-        />
-      </Link>
-    </li>
   );
 }
 

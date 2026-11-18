@@ -1,4 +1,9 @@
 import { addDays, teamAvailability, weekDates } from "@domain/availability";
+import {
+  type FirstStepsFacts,
+  firstSteps as firstStepsOf,
+  teamProgress,
+} from "@domain/first-steps";
 import { type ModuleKey, moduleWidgets, type Role } from "@domain/modules";
 import { declaredPermissions, permissionsByDefault } from "@domain/permissions";
 import { draftWeek, type ShiftAssignee } from "@domain/schedule";
@@ -13,13 +18,15 @@ import type {
 } from "../../../(app)/schedule/week";
 import {
   business,
+  demoBusinessDetails,
+  demoPositions,
   demoShiftPatterns,
   teamAnswers,
   teamInvites,
   teamMembers,
   teamToday,
 } from "../data";
-import { demoListsHome, demoWorkerLists } from "../lists/data";
+import { demoDepartments, demoListsHome, demoWorkerLists } from "../lists/data";
 import { demoUnread } from "../notifications/data";
 import { demoWeek } from "../schedule/availability/week";
 import {
@@ -231,6 +238,99 @@ export const managerToday = () =>
     scheduleFor("manager", published("shiran", SWAPS), true, true),
   );
 
+/** The modules of a business the team just opened, for its first steps. */
+const OPENED_MODULES: ModuleKey[] = ["scheduling", "time_clock", "lists"];
+
+/**
+ * Uri, the owner, a few days after the team opened the restaurant from its
+ * template: the team joined with one invite waiting, the job roles and
+ * shifts came with the template, nobody is in the storeroom yet, nothing is
+ * published, the address is in and the Shabbat city isn't, and there's no
+ * clock code. `new` is a business of any kind on its first day instead, the
+ * owner alone with nothing set; `viewing` is the default as the ConceptApp
+ * team reads it, viewing as the owner, with no way to hide it.
+ */
+function firstSteps(state?: "new" | "viewing"): TodayData {
+  if (state === "new") return firstDay();
+  const departments = demoDepartments.map((d) =>
+    d.key === "storeroom" ? { ...d, members: [] } : d,
+  );
+  const facts: FirstStepsFacts = {
+    team: teamProgress(team()),
+    details: { address: demoBusinessDetails.address, cityMissing: true },
+    scheduling: {
+      positions: demoPositions.length,
+      patterns: demoShiftPatterns.length,
+      published: false,
+    },
+    lists: {
+      departments: departments.length,
+      empty: departments.filter((d) => d.members.length === 0).length,
+    },
+    timeClock: { requirePunchCode: false },
+  };
+  return {
+    ...today(
+      "uri",
+      "owner",
+      scheduleFor("owner", notPublished(published("uri", [])), false, false),
+      { modules: OPENED_MODULES },
+    ),
+    firstSteps: { steps: firstStepsOf(facts), hides: state !== "viewing" },
+  };
+}
+
+/**
+ * A business of any kind on its first day: Uri alone, no job roles or
+ * shifts, no departments, no address and no Shabbat city, nothing sent yet.
+ */
+function firstDay(): TodayData {
+  const alone = buildTeam(
+    teamMembers.filter((m) => m.userId === "uri"),
+    [],
+    teamToday,
+  );
+  const data = notPublished(published("uri", []));
+  const availability = availabilityWeek(false);
+  const build = nextWeekBuild(availability, false);
+  const schedule: TodaySchedule = {
+    published: {
+      ...data,
+      people: data.people.filter((p) => p.userId === "uri"),
+    },
+    availability,
+    builds: true,
+    publishes: true,
+    teamAvailability: {
+      week: availability,
+      team: teamAvailability(alone.members, [], availability.dueAt),
+    },
+    build: {
+      ...build,
+      shifts: [],
+      hasPattern: false,
+      team: alone.members,
+      people: alone.members,
+      answers: [],
+    },
+    running: null,
+  };
+  const facts: FirstStepsFacts = {
+    team: teamProgress(alone),
+    details: { address: null, cityMissing: true },
+    scheduling: { positions: 0, patterns: 0, published: false },
+    lists: { departments: 0, empty: 0 },
+    timeClock: { requirePunchCode: false },
+  };
+  return {
+    ...today("uri", "owner", schedule, { modules: OPENED_MODULES }),
+    team: alone,
+    // Nothing sent yet: lists keep their quiet row.
+    lists: null,
+    firstSteps: { steps: firstStepsOf(facts), hides: true },
+  };
+}
+
 /** The other people and states, each with its page under /design/shell/today. */
 export const todayScenarios = {
   /** Shiran again at 10:30, in the middle of her shift. */
@@ -326,4 +426,6 @@ export const todayScenarios = {
   /** A business with scheduling off: its part of Today disappears. */
   schedulingOff: () =>
     today("shiran", "manager", null, { modules: ["reservations"] }),
+  /** The owner's first steps (`firstSteps` above). */
+  firstSteps,
 };

@@ -276,6 +276,7 @@
     "emptyAction": "The next step",
     "floatingAction": "The floating main action",
     "ring": "How much is done",
+    "steps": "Step rows",
     "errorDemoTitle": "A real error screen",
     "errorDemoAction": "Show the error screen",
     "person1": "Noa Cohen",
@@ -1185,6 +1186,53 @@
         "fill": "{short}, to fill in this week's schedule",
         "noShifts": "No shifts today in the published schedule. The rest of the week is under “The whole week”.",
         "notPublished": "This week's schedule is not published yet. When it is, you will see here who works today."
+      },
+      "firstSteps": {
+        "title": "First steps",
+        "progress": "{done} of {total}",
+        "remaining": "{count, plural, one {One step left} other {# steps left}}",
+        "next": "Next: {step}",
+        "hide": "Hide",
+        "hidden": "First steps are hidden on this device",
+        "hideFailed": "The steps couldn't be hidden. Try again.",
+        "done": "Ready",
+        "open": "Not yet",
+        "optional": "Optional",
+        "steps": {
+          "team": {
+            "title": "Invite your team",
+            "none": "Send each person on your team their own link to join.",
+            "waiting": "{count, plural, one {One person invited, not joined yet} other {# people invited, none joined yet}}",
+            "expired": "{count, plural, one {The invite ran out before they joined} other {# invites ran out before anyone joined}}. Send a new link from the team screen.",
+            "done": "{count, plural, one {One person joined} other {# people joined}}",
+            "doneWaiting": "{count, plural, one {One person joined} other {# people joined}}, {waiting, plural, one {one more invited} other {# more invited}}"
+          },
+          "shifts": {
+            "title": "Job roles and shifts",
+            "todo": "{missing, select, positions {No job roles yet.} shifts {No regular shifts yet. Every week starts from them.} other {What people do here and when they work. Every week starts from it.}}",
+            "done": "{positions, plural, one {One job role} other {# job roles}}, {shifts, plural, one {one regular shift} other {# regular shifts}}"
+          },
+          "departments": {
+            "title": "People in departments",
+            "todo": "{count, plural, one {One department has nobody in it yet} other {# departments have nobody in them yet}}. A list sent to a department reaches only the people in it.",
+            "done": "{count, plural, one {The department has people in it} other {All # departments have people in them}}"
+          },
+          "publish": {
+            "title": "Publish the first schedule",
+            "todo": "Build a week from the shifts and publish it to the team.",
+            "done": "The team can see the schedule."
+          },
+          "details": {
+            "title": "Business details",
+            "todo": "{missing, select, address {The address is missing.} city {The city for Shabbat times is missing.} other {The address and the city for Shabbat times are missing.}}",
+            "done": "{address}"
+          },
+          "clockCode": {
+            "title": "A code for the time clock",
+            "todo": "Without a code, anyone clocks in from their own phone, from anywhere. With one, they clock in by a code shown at the business, on the phone of whoever approves hours or on a tablet.",
+            "done": "Clocking in and out with a code."
+          }
+        }
       },
       "accountant": {
         "title": "{month} hours",

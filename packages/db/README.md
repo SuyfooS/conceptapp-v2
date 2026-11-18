@@ -402,7 +402,8 @@ the others' too, under RLS); `getListTemplatesForTeam` and
 console with the secret key. `getSentLists` reads what a person sent in a
 window (RLS lets a sender read their own), and `@db/schedule`
 `getPublishedShifts` the published shifts of some days with their people, the
-shifts `send_list` takes. The app binds the template and send writes to the
+shifts `send_list` takes; `hasPublishedWeek` whether the business ever
+published a week, for the owner's first steps (a publish is never taken back). The app binds the template and send writes to the
 business the screen was drawn for (payroll P3b), so a save from a tab left
 open never lands in another business.
 
