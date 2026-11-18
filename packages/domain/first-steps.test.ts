@@ -9,6 +9,7 @@ import {
   firstStepHref,
   firstSteps,
   firstStepsHidden,
+  firstStepsHideRefusal,
   isOptionalStep,
   nextStep,
   stepsCounted,
@@ -312,5 +313,27 @@ describe("hiding the first steps", () => {
     expect(kept).toHaveLength(FIRST_STEPS_HIDDEN_MOST);
     expect(kept[0]).toBe("01");
     expect(kept.at(-1)).toBe(A);
+  });
+
+  it("is the owner's alone, as themselves", () => {
+    const as = (role: Role) => ({ membership: { role } });
+    expect(firstStepsHideRefusal({ viewing: null, ...as("owner") })).toBe(null);
+    expect(firstStepsHideRefusal(null)).toBe("signedOut");
+    // The team viewing as the owner reads the steps and changes nothing.
+    expect(
+      firstStepsHideRefusal({
+        viewing: { role: "owner", namedRole: null, businessSlug: "cafe" },
+        ...as("owner"),
+      }),
+    ).toBe("viewing");
+    for (const role of ["manager", "worker", "accountant"] as const) {
+      expect(firstStepsHideRefusal({ viewing: null, ...as(role) })).toBe(
+        "notOwner",
+      );
+    }
+    // Signed in before anyone added them to a business.
+    expect(firstStepsHideRefusal({ viewing: null, membership: null })).toBe(
+      "notOwner",
+    );
   });
 });

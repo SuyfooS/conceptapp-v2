@@ -105,7 +105,8 @@ with lists once there are departments, the clock's code with the time clock):
 does it, and the clock's code is optional (`OPTIONAL_STEPS`), shown and never
 counted (`stepsLeft`), so it never keeps the card open. Hiding it is kept on
 the device, in `FIRST_STEPS_HIDDEN_COOKIE` (`firstStepsHidden`,
-`withFirstStepsHidden`: the businesses' ids, the latest last).
+`withFirstStepsHidden`: the businesses' ids, the latest last), by its owner
+alone, as themselves (`firstStepsHideRefusal`).
 
 `manage-access.ts` is who manages the business on /manage (the roles plan's
 R7): `manageReach` (edit at `manage.edit`, view at `manage.view`, else

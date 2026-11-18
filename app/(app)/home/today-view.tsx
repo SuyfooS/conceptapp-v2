@@ -85,7 +85,6 @@ import type {
   TeamAvailabilityWeek,
 } from "../schedule/week";
 import { type AppWording, type Translator, translator } from "../wording";
-import { hideFirstStepsAction } from "./actions";
 import { FirstStepsCard } from "./first-steps-card";
 import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
@@ -273,7 +272,7 @@ export async function TodayView({
   wording,
   businesses,
   base = "",
-  hideFirstSteps = hideFirstStepsAction,
+  hideFirstStepsUrl,
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
@@ -281,8 +280,11 @@ export async function TodayView({
   /** The businesses to switch between, for someone in more than one. */
   businesses?: Businesses | null;
   base?: string;
-  /** Hides the first steps: `hideFirstStepsAction`, or the demo's stand-in. */
-  hideFirstSteps?: () => Promise<void>;
+  /**
+   * Where hiding the first steps is sent: /home/first-steps, or the demo's
+   * stand-in, which keeps nothing.
+   */
+  hideFirstStepsUrl: string;
 }) {
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -478,7 +480,7 @@ export async function TodayView({
             data={data.firstSteps}
             t={t}
             path={path}
-            hide={hideFirstSteps}
+            hideUrl={hideFirstStepsUrl}
           />
         ) : null}
 

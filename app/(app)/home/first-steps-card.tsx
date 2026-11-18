@@ -33,14 +33,14 @@ export function FirstStepsCard({
   data,
   t,
   path,
-  hide,
+  hideUrl,
 }: {
   data: FirstStepsData;
   t: T;
   /** A route in the app, or in the demo under /design/shell. */
   path: (to: string) => string;
-  /** `hideFirstStepsAction`, or the demo's stand-in. */
-  hide: () => Promise<void>;
+  /** Where "הסתרה" is sent: /home/first-steps, or the demo's stand-in. */
+  hideUrl: string;
 }) {
   const { steps } = data;
   const counted = stepsCounted(steps);
@@ -51,7 +51,7 @@ export function FirstStepsCard({
 
   return (
     <FirstStepsHides
-      hide={data.hides ? hide : null}
+      url={data.hides ? hideUrl : null}
       hidden={t("home.firstSteps.hidden")}
       failed={t("home.firstSteps.hideFailed")}
     >

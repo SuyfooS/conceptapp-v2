@@ -88,6 +88,7 @@ export default async function HomePage() {
     <TodayView
       wording={wording}
       businesses={businesses}
+      hideFirstStepsUrl="/home/first-steps"
       data={{
         now: new Date().toISOString(),
         timeZone: published?.timeZone ?? membership.business.place.timeZone,

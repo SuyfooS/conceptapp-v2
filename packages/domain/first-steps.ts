@@ -1,7 +1,8 @@
-import type { ModuleKey } from "./modules";
+import type { ModuleKey, Role } from "./modules";
 import { BUILDER_PATH } from "./running-week";
 import { isSetupStaff } from "./setup";
 import type { Team } from "./team";
+import { canWrite, type ViewSession } from "./view-as";
 
 /**
  * The owner's first steps on Today: what to do first in a business the team
@@ -232,4 +233,27 @@ export function withFirstStepsHidden(
   return [...hiddenIn(cookie).filter((id) => id !== businessId), businessId]
     .slice(-FIRST_STEPS_HIDDEN_MOST)
     .join(",");
+}
+
+/**
+ * Why hiding the first steps is refused: nobody signed in, someone viewing
+ * as the owner, who changes nothing, or anyone but an owner of the business
+ * open now. None of them has "הסתרה".
+ */
+export type FirstStepsHideRefusal = "signedOut" | "viewing" | "notOwner";
+
+/**
+ * Whether the person asking hides the first steps of the business open now
+ * (`membership`, null before they are in one), or why not: only its owner
+ * does, as themselves.
+ */
+export function firstStepsHideRefusal(
+  asking: {
+    viewing: ViewSession | null;
+    membership: { role: Role } | null;
+  } | null,
+): FirstStepsHideRefusal | null {
+  if (!asking) return "signedOut";
+  if (!canWrite(asking.viewing)) return "viewing";
+  return asking.membership?.role === "owner" ? null : "notOwner";
 }
