@@ -204,6 +204,26 @@ test("viewing as a manager shows the team but saves nothing", async ({
       .first(),
   ).toBeVisible();
   await expectCleanPage(page);
+
+  // Viewing speaks for nobody: no reminder to the team, nor a schedule
+  // shared with it.
+  await page.goto("/schedule/availability/team");
+  await expect(
+    page.getByRole("heading", {
+      level: 1,
+      name: he.app.availability.team.title,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: he.app.availability.team.remind.action }),
+  ).toHaveCount(0);
+  await page.goto("/schedule/build");
+  await expect(
+    page.getByRole("heading", { level: 1, name: he.app.build.title }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: he.app.shifts.share.action }),
+  ).toHaveCount(0);
 });
 
 // The one view that reads pay (payroll P3): as an accountant, the business

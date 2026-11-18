@@ -59,6 +59,7 @@ import {
   useState,
 } from "react";
 import { HOLD_MS, useHeldWrite } from "../../use-held-write";
+import { type ShareWeek, ShareWeekButton } from "../share-week";
 import type { AvailabilityWeek } from "../week";
 import type { MovedShifts, ScheduleState } from "./actions";
 import { type BuilderSend, publishWaits, sendOf } from "./publish-hold";
@@ -163,6 +164,11 @@ export type ScheduleBuilderProps = {
    * line that says why. True unless said otherwise.
    */
   publishes?: boolean;
+  /**
+   * Sharing the week with the team once it is published, with nothing new
+   * on the screen; null while viewing as a role, which speaks for nobody.
+   */
+  share?: ShareWeek | null;
 };
 
 /** What the builder starts from: one reading of the week, kept together. */
@@ -257,7 +263,10 @@ function focusLeftBySheet(back?: Element | null): boolean {
  * (`builderKey`): the form's state, the chosen day and the toast stay here,
  * and the dock stays busy until the new reading is on the screen, so a second
  * press never sends the same new shifts twice. Another week is another
- * builder altogether (the view keys it by the week).
+ * builder altogether (the view keys it by the week). Once the week is
+ * published with nothing new on the screen, the dock offers sharing it with
+ * the team instead (`ShareWeekButton`), saying "עודכן" after this screen's
+ * own "פרסום השינויים".
  *
  * Publishing changes to a week already published, in either week, waits
  * `HOLD_MS` for "ביטול" before anything reaches the server (Orel's answer 3
@@ -334,6 +343,10 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
   const leaveTo = useRef<string | null>(null);
   /** The shifts the form sent last, as the screen had them. */
   const sent = useRef<ScheduledShift[]>([]);
+  /** The publish pressed last was of changes to a week already out. */
+  const changesPressed = useRef(false);
+  /** What sharing says of the last publish that went out from here. */
+  const [shareKind, setShareKind] = useState<"changes" | "other">("other");
   // The running week opens on today; any other on its first day.
   const [day, setDay] = useState(() => {
     const today = ticking ? dateIn(ticking, props.week.timeZone) : null;
@@ -358,6 +371,11 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         const target = leaveTo.current;
         leaveTo.current = null;
         if (result.savedAt && target) router.push(target);
+        // Only a publish that went out says what it was: one let go unsent
+        // for "ביטול" never got here.
+        if (result.published) {
+          setShareKind(changesPressed.current ? "changes" : "other");
+        }
         // Publishing was taken from the person while the screen was open: it
         // draws again without "פרסום", as a draft to save or a week to read.
         if (result.failure === "noPublish") router.refresh();
@@ -520,6 +538,8 @@ export function ScheduleBuilder(props: ScheduleBuilderProps) {
         dropHeld={dropHeld}
         leaveTo={leaveTo}
         sent={sent}
+        changesPressed={changesPressed}
+        shareKind={shareKind}
       />
       <StatusToast
         message={toast?.text ?? null}
@@ -561,6 +581,7 @@ function WeekBuilder({
   positions,
   running,
   publishes = true,
+  share = null,
   day,
   onDay,
   now,
@@ -576,6 +597,8 @@ function WeekBuilder({
   dropHeld,
   leaveTo,
   sent,
+  changesPressed,
+  shareKind,
 }: Omit<ScheduleBuilderProps, "save"> & {
   /** The phone's chosen day, kept as the builder starts again. */
   day: string;
@@ -603,6 +626,10 @@ function WeekBuilder({
   leaveTo: RefObject<string | null>;
   /** Where the form's submit puts the shifts it sends. */
   sent: RefObject<ScheduledShift[]>;
+  /** Where the form's submit says whether a publish is of changes. */
+  changesPressed: RefObject<boolean>;
+  /** What sharing the week says of the last publish from this screen. */
+  shareKind: "changes" | "other";
 }) {
   const t = useTranslations();
   const router = useRouter();
@@ -1239,6 +1266,9 @@ function WeekBuilder({
       : failed || weekOver
         ? failureWords(state)
         : null;
+  // Published, with nothing new to send and nothing wrong (a week that is
+  // over says so): the team sees what is on the screen.
+  const atRest = publishedMoment !== null && !unsaved && !busy && !problem;
   const warningId = useId();
   const leaveWarningId = useId();
   const soonId = useId();
@@ -1406,6 +1436,9 @@ function WeekBuilder({
           const submitter = (event.nativeEvent as SubmitEvent).submitter;
           const pressed =
             submitter?.getAttribute("value") === "save" ? "save" : "publish";
+          if (pressed === "publish") {
+            changesPressed.current = publishedMoment !== null;
+          }
           // What the press clears, for "ביטול" to bring back.
           const before = { dirty, lockedBack, intent };
           setIntent(pressed);
@@ -1446,7 +1479,7 @@ function WeekBuilder({
         {/* Once published and with nothing new, there is nothing to send:
             only what went wrong, should something have. A publish held for
             its undo keeps the dock, busy, until it has gone. */}
-        {publishedMoment && !unsaved && !busy && !problem ? null : (
+        {atRest ? null : (
           <FloatingDock
             notice={
               problem || warning || soon || draftOnly ? (
@@ -1515,6 +1548,16 @@ function WeekBuilder({
           </FloatingDock>
         )}
       </form>
+      {/* Out of the form: sharing sends nothing to the server. */}
+      {atRest && share ? (
+        <ShareWeekButton
+          shape="dock"
+          {...share}
+          start={week.start}
+          dates={week.dates}
+          kind={shareKind}
+        />
+      ) : null}
 
       <ShiftSheet
         open={sheetOpen}

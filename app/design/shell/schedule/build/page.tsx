@@ -21,6 +21,7 @@ import {
 import { demoPublishMeanwhile, demoSaveSchedule } from "./actions";
 import {
   demoBuildShifts,
+  demoShare,
   MEANWHILE_PUBLISHED_AT,
   meanwhileBasis,
   meanwhileShifts,
@@ -60,6 +61,11 @@ const HREF = "/design/shell/schedule/build";
 // publishing it (the roles plan's R3). A draft saves, with no "פרסום" and the
 // line that says who publishes it; a published week (?state=meanwhile) is
 // only read, with the line that says why.
+//
+// Once a week is published with nothing new on the screen (after the
+// stand-in's publish, and at rest on ?state=meanwhile and
+// ?week=2026-11-01, &publishes=no included), the dock offers sharing it on
+// WhatsApp, with a link to the schedule tab's twin.
 export default function ShellScheduleBuild(props: Props) {
   return (
     <Suspense>
@@ -96,6 +102,7 @@ async function Demo({ searchParams }: Props) {
         save={demoSaveSchedule}
         backHref="/design/shell/schedule"
         publishes={publishes}
+        share={demoShare}
         wording={baseWording}
         running={{
           which: "this",
@@ -145,6 +152,7 @@ async function Demo({ searchParams }: Props) {
         save={demoPublishMeanwhile}
         backHref="/design/shell/schedule"
         publishes={publishes}
+        share={demoShare}
         wording={baseWording}
       />
     );
@@ -165,6 +173,7 @@ async function Demo({ searchParams }: Props) {
       save={demoSaveSchedule}
       backHref="/design/shell/schedule"
       publishes={publishes}
+      share={demoShare}
       wording={baseWording}
     />
   );

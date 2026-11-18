@@ -35,6 +35,10 @@ describe("security headers", () => {
     expect(policy.get("fullscreen")).toBe("(self)");
   });
 
+  it("allows the device's share sheet on the app's own pages", () => {
+    expect(policy.get("web-share")).toBe("(self)");
+  });
+
   it("turns off what the app never asks for", () => {
     for (const feature of ["microphone", "geolocation", "payment", "usb"]) {
       expect(policy.get(feature), feature).toBe("()");

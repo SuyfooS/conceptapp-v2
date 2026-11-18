@@ -1,5 +1,7 @@
 import { manageReach } from "@domain/manage-access";
 import { builderHref, builderWeekOf, gapsAhead } from "@domain/running-week";
+import { SCHEDULE_PATH } from "@domain/share";
+import { canWrite } from "@domain/view-as";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
@@ -43,8 +45,10 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
 // managers by default, the roles plan's R3): next week, or with
 // `?week=<its first day>` the week running now (the running-week plan's R3a).
 // Any other week opens next week, and one already over says so. Someone who
-// builds without publishing saves drafts and reads a published week. Anyone
-// else gets the not-found screen, as on the team availability screen.
+// builds without publishing saves drafts and reads a published week. Once it
+// is published, whoever builds it may share it with the team, unless viewing
+// as a role. Anyone else gets the not-found screen, as on the team
+// availability screen.
 export default async function ScheduleBuildPage(props: Props) {
   const { weeks, which } = await askedWeek(props);
   if (!weeks) notFound();
@@ -86,6 +90,11 @@ export default async function ScheduleBuildPage(props: Props) {
       save={saveScheduleAction}
       manageHref={manageHref}
       publishes={weeks.publishes}
+      share={
+        member && membership && canWrite(member.viewing)
+          ? { business: membership.business.name, base: SCHEDULE_PATH }
+          : null
+      }
       wording={wording}
       running={{
         which,

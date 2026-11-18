@@ -183,6 +183,7 @@ describe("Permissions-Policy", () => {
     { api: /\bgetUserMedia\b/, feature: "camera" },
     { api: /\bwakeLock\.request\b/, feature: "screen-wake-lock" },
     { api: /\brequestFullscreen\b/, feature: "fullscreen" },
+    { api: /\bnavigator\.share\b/, feature: "web-share" },
     { api: /\bnavigator\.geolocation\b/, feature: "geolocation" },
     { api: /\bPaymentRequest\b/, feature: "payment" },
     { api: /\bnavigator\.usb\b/, feature: "usb" },
@@ -209,6 +210,14 @@ describe("Permissions-Policy", () => {
     expect(using(/\brequestFullscreen\b/)).toContain(
       "app/(app)/clock/code/code-card.tsx",
     );
+  });
+
+  it("finds the device's share sheet where the schedule and the reminder share", () => {
+    expect(
+      code
+        .filter((f) => /\bnavigator\.share\b/.test(f.source))
+        .map((f) => f.file),
+    ).toContain("packages/ui/share-sheet.tsx");
   });
 
   it("asks the camera for video only, as the microphone is off", () => {
