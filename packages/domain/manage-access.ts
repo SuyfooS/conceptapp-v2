@@ -58,7 +58,7 @@ export function settingsPermission(module: ModuleKey): PermissionKey | null {
  * The permissions the activity log reads its rows with besides
  * `manage.view`, each row by its own area (the database's
  * `private.log_perm`; `tooling/log-families.test.ts` keeps the two equal):
- * the four modules' edit, and the team's view.
+ * the modules' edit, and the team's view.
  */
 export const LOG_AREA_PERMISSIONS: readonly PermissionKey[] = [
   ...MODULE_AREAS.map((area) => AREA_EDIT[area]),

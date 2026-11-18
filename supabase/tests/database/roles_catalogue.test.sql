@@ -189,8 +189,9 @@ select set_eq(
     ('team.view', null, 'team', null, true, '{manager}'::text[], false),
     ('team.edit', null, 'team', 'team.view', true, '{manager}'::text[], false),
     ('manage.view', null, 'manage', null, true, '{manager}'::text[], false),
-    ('manage.edit', null, 'manage', 'manage.view', true, '{manager}'::text[], false)$$,
-  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them, and fixing a closed list requiring nothing since L6b-2), on the team (R6) and on the management page (R7)'
+    ('manage.edit', null, 'manage', 'manage.view', true, '{manager}'::text[], false),
+    ('order_taking.edit', 'order_taking', 'order_taking', null, true, '{manager}'::text[], false)$$,
+  'every permission has its module''s area, or the team''s or the management page''s, what it requires, and a switch per role only in scheduling (R3), the time clock (R4), lists (R5, sending requiring running them, and fixing a closed list requiring nothing since L6b-2), on the team (R6), on the management page (R7) and in taking orders (waiter mode P1)'
 );
 
 select throws_ok(
@@ -303,7 +304,7 @@ select ok(
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000012');
 select is(
   public.my_permissions('92000000-0000-4000-b000-000000000002'),
-  '{clock.edit,clock.payroll,lists.fix,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
+  '{clock.edit,clock.payroll,lists.fix,lists.manage,lists.send,manage.edit,manage.view,order_taking.edit,reservations.edit,storefront.edit}'::text[],
   'the screens are told what the manager holds, pay by the role''s row, the denials and what they require counted'
 );
 -- Still them (request.jwt.claims), as the policies ask.
@@ -317,7 +318,7 @@ select ok(
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000016');
 select is(
   public.my_permissions('92000000-0000-4000-b000-000000000002'),
-  '{clock.edit,lists.fix,lists.manage,lists.send,manage.edit,manage.view,reservations.edit,storefront.edit}'::text[],
+  '{clock.edit,lists.fix,lists.manage,lists.send,manage.edit,manage.view,order_taking.edit,reservations.edit,storefront.edit}'::text[],
   'a view as a manager holds the same but pay: the business''s rows for the role count for it too, while a key an owner gives the role by a row never reaches a view'
 );
 select pg_temp.sign_in('92000000-0000-4000-a000-000000000017');

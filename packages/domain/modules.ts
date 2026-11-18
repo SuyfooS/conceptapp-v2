@@ -16,6 +16,7 @@ export const MODULE_KEYS = [
   "notifications",
   "lists",
   "chat",
+  "order_taking",
 ] as const;
 
 export type ModuleKey = (typeof MODULE_KEYS)[number];
@@ -73,6 +74,9 @@ export const MODULE_ICONS = [
   "list",
   "chat",
   "documents",
+  // Taking orders: the pad it replaces, not a restaurant's picture, since the
+  // list is every business's.
+  "pad",
 ] as const;
 
 export type ModuleIcon = (typeof MODULE_ICONS)[number];
@@ -89,6 +93,7 @@ export const PERMISSION_AREAS = [
   "time_clock",
   "lists",
   "chat",
+  "order_taking",
   "team",
   "manage",
   "reservations",

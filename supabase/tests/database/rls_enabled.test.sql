@@ -38,7 +38,8 @@ select set_eq(
     'employment_periods', 'payroll_months', 'chat_conversations', 'chat_messages',
     'chat_reads', 'chat_acks', 'chat_notices', 'documents', 'document_recipients',
     'document_notices',
-    'notification_preferences'
+    'notification_preferences',
+    'order_places', 'menu_categories', 'menu_items'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );

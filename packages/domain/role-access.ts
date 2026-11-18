@@ -20,12 +20,18 @@ export const ACCESS_LEVELS = ["none", "view", "edit"] as const;
 
 export type AccessLevel = (typeof ACCESS_LEVELS)[number];
 
-/** The modules' areas: the least there is view, so each is edit or not. */
+/**
+ * The modules' areas: the least there is view, so each is edit or not.
+ * Taking orders (P1 of waiter mode) is one from the start: at view the staff
+ * read the menu and mark sold out what their department prepares; edit is
+ * running the menu.
+ */
 export const MODULE_AREAS = [
   "scheduling",
   "time_clock",
   "lists",
   "chat",
+  "order_taking",
 ] as const;
 
 export type ModuleArea = (typeof MODULE_AREAS)[number];
@@ -46,6 +52,7 @@ export const AREA_MODULE: Record<AccessArea, ModuleKey | null> = {
   time_clock: "time_clock",
   lists: "lists",
   chat: "chat",
+  order_taking: "order_taking",
   team: null,
   manage: null,
 };
@@ -70,6 +77,7 @@ export const ACCESS_FLOOR: Record<AccessArea, AccessLevel> = {
   time_clock: "view",
   lists: "view",
   chat: "view",
+  order_taking: "view",
   team: "none",
   manage: "none",
 };
@@ -86,6 +94,7 @@ export const ACCESS_EXTRAS = {
   time_clock: [],
   lists: ["lists.send", "lists.fix"],
   chat: ["chat.announce", "chat.send_documents"],
+  order_taking: [],
   team: [],
   manage: [],
 } as const satisfies Record<AccessArea, readonly `${string}.${string}`[]>;
@@ -193,6 +202,7 @@ export function defaultAccess(base: BaseRole): RoleAccess {
         time_clock: "edit",
         lists: "edit",
         chat: "edit",
+        order_taking: "edit",
         team: "edit",
         manage: "edit",
       },
@@ -487,7 +497,8 @@ export function changesAnything(change: AreaChange): boolean {
 /**
  * The permission behind each area's edit (`public.permission_keys`; the
  * roles plan's R1): building the schedule, correcting hours, running the
- * lists, moderating chat, editing the team and the management page. Pay
+ * lists, moderating chat, running the menu, editing the team and the
+ * management page. Pay
  * (`clock.payroll`) is none of an area's: it keeps its own switch.
  */
 export const AREA_EDIT: Record<AccessArea, PermissionKey> = {
@@ -495,6 +506,7 @@ export const AREA_EDIT: Record<AccessArea, PermissionKey> = {
   time_clock: "clock.edit",
   lists: "lists.manage",
   chat: "chat.moderate",
+  order_taking: "order_taking.edit",
   team: "team.edit",
   manage: "manage.edit",
 };

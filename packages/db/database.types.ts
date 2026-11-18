@@ -1944,6 +1944,160 @@ export type Database = {
           },
         ];
       };
+      menu_categories: {
+        Row: {
+          archived_at: string | null;
+          business_id: string;
+          created_at: string;
+          department_id: string;
+          id: string;
+          name: string;
+          position: number;
+        };
+        Insert: {
+          archived_at?: string | null;
+          business_id: string;
+          created_at?: string;
+          department_id: string;
+          id?: string;
+          name: string;
+          position?: number;
+        };
+        Update: {
+          archived_at?: string | null;
+          business_id?: string;
+          created_at?: string;
+          department_id?: string;
+          id?: string;
+          name?: string;
+          position?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "menu_categories_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "menu_categories_department_id_business_id_fkey";
+            columns: ["department_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
+      menu_items: {
+        Row: {
+          archived_at: string | null;
+          available: boolean;
+          available_by: string | null;
+          available_changed_at: string | null;
+          available_station: string | null;
+          business_id: string;
+          category_id: string;
+          created_at: string;
+          created_by: string | null;
+          department_id: string | null;
+          description: string | null;
+          id: string;
+          name: string;
+          option_groups: NonNullable<Json>;
+          position: number;
+          price_agorot: number;
+          updated_at: string;
+          updated_by: string | null;
+          version: number;
+        };
+        Insert: {
+          archived_at?: string | null;
+          available?: boolean;
+          available_by?: string | null;
+          available_changed_at?: string | null;
+          available_station?: string | null;
+          business_id: string;
+          category_id: string;
+          created_at?: string;
+          created_by?: string | null;
+          department_id?: string | null;
+          description?: string | null;
+          id?: string;
+          name: string;
+          option_groups?: NonNullable<Json>;
+          position?: number;
+          price_agorot: number;
+          updated_at?: string;
+          updated_by?: string | null;
+          version?: number;
+        };
+        Update: {
+          archived_at?: string | null;
+          available?: boolean;
+          available_by?: string | null;
+          available_changed_at?: string | null;
+          available_station?: string | null;
+          business_id?: string;
+          category_id?: string;
+          created_at?: string;
+          created_by?: string | null;
+          department_id?: string | null;
+          description?: string | null;
+          id?: string;
+          name?: string;
+          option_groups?: NonNullable<Json>;
+          position?: number;
+          price_agorot?: number;
+          updated_at?: string;
+          updated_by?: string | null;
+          version?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "menu_items_available_by_fkey";
+            columns: ["available_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "menu_items_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "menu_items_category_id_business_id_fkey";
+            columns: ["category_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "menu_categories";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "menu_items_created_by_fkey";
+            columns: ["created_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "menu_items_department_id_business_id_fkey";
+            columns: ["department_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "menu_items_updated_by_fkey";
+            columns: ["updated_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       minimum_wages: {
         Row: {
           age16_hourly_agorot: number;
@@ -2112,6 +2266,41 @@ export type Database = {
             columns: ["user_id"];
             isOneToOne: false;
             referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      order_places: {
+        Row: {
+          archived_at: string | null;
+          business_id: string;
+          created_at: string;
+          id: string;
+          name: string;
+          position: number;
+        };
+        Insert: {
+          archived_at?: string | null;
+          business_id: string;
+          created_at?: string;
+          id?: string;
+          name: string;
+          position?: number;
+        };
+        Update: {
+          archived_at?: string | null;
+          business_id?: string;
+          created_at?: string;
+          id?: string;
+          name?: string;
+          position?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_places_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
             referencedColumns: ["id"];
           },
         ];
@@ -3113,6 +3302,15 @@ export type Database = {
         Args: { actor: string; template: string };
         Returns: undefined;
       };
+      archive_menu_item: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          item: string;
+        };
+        Returns: undefined;
+      };
       cancel_list: {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
@@ -3380,6 +3578,10 @@ export type Database = {
         Args: { at_time?: string; paths: string[] };
         Returns: number;
       };
+      import_menu: {
+        Args: { actor: string; at_time?: string; business: string; rows: Json };
+        Returns: Json;
+      };
       invite_by_token: { Args: { token_hash: string }; Returns: Json };
       issue_invite_link: {
         Args: { actor: string; invite: string; new_token_hash: string };
@@ -3464,6 +3666,10 @@ export type Database = {
       open_schedule_week: {
         Args: { business: string; due_at: string; week_start: string };
         Returns: string;
+      };
+      order_menu: {
+        Args: { business: string; known_version?: number };
+        Returns: Json;
       };
       own_departures: {
         Args: Record<PropertyKey, never>;
@@ -3637,6 +3843,15 @@ export type Database = {
         Args: { actor: string; template: string };
         Returns: undefined;
       };
+      restore_menu_item: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          item: string;
+        };
+        Returns: undefined;
+      };
       restore_time_break: {
         Args: { actor: string; at_time?: string; time_break: string };
         Returns: undefined;
@@ -3668,6 +3883,16 @@ export type Database = {
           business: string;
           seen_version?: number;
           template: Json;
+        };
+        Returns: Json;
+      };
+      save_menu_item: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          item: Json;
+          known_version?: number;
         };
         Returns: Json;
       };
@@ -3837,6 +4062,25 @@ export type Database = {
         };
         Returns: Json;
       };
+      set_menu_categories: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          categories: Json;
+        };
+        Returns: Json;
+      };
+      set_menu_item_available: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          is_available: boolean;
+          item: string;
+        };
+        Returns: undefined;
+      };
       set_module_enabled: {
         Args: {
           actor: string;
@@ -3873,6 +4117,15 @@ export type Database = {
           shows_previews: boolean;
           zone_name: string;
         }[];
+      };
+      set_order_places: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          places: Json;
+        };
+        Returns: Json;
       };
       set_own_profile: {
         Args: { actor: string; patch: Json };
@@ -4000,7 +4253,8 @@ export type Database = {
         | "storefront"
         | "notifications"
         | "lists"
-        | "chat";
+        | "chat"
+        | "order_taking";
       platform_role: "platform_admin" | "onboarder";
       swap_status: "open" | "taken" | "approved" | "declined" | "cancelled";
       time_entry_source: "punch" | "manager";
@@ -4143,6 +4397,7 @@ export const Constants = {
         "notifications",
         "lists",
         "chat",
+        "order_taking",
       ],
       platform_role: ["platform_admin", "onboarder"],
       swap_status: ["open", "taken", "approved", "declined", "cancelled"],
