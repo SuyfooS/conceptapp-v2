@@ -487,6 +487,11 @@ const demoRow = (
 const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
 
 export const demoActivityRows: ActivityRow[] = [
+  // A name fixed on the person's page, as set_member_name logs it: the
+  // person only, never a name.
+  demoRow(142, "2026-11-04T15:40:00+02:00", "shiran", "member.name", {
+    person: "noa",
+  }),
   // The entrance's tablet locked into the clock station from the code
   // screen, and the kitchen's stopped from the team's hours (#78 phase 5),
   // as approve_station_pairing and set_clock_station_stopped log them.

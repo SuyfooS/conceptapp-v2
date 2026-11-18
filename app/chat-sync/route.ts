@@ -187,6 +187,7 @@ export async function GET(request: Request): Promise<Response> {
         ? chatSeen(conversationId)
         : null,
       getChatAuthors(
+        businessId,
         [
           ...oldestFirst,
           ...(again?.recent ?? []),

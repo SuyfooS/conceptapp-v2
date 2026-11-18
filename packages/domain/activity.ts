@@ -363,6 +363,11 @@ export type ActivityLine =
       swaps: number;
       reopened: number;
     }
+  /**
+   * Someone who edits the team fixed the name the business shows for
+   * someone (`public.set_member_name`); never the name, old or new.
+   */
+  | { action: "member.name"; person: ActivityPerson }
   | {
       action: "view_as.start" | "view_as.end";
       role: Role | null;
@@ -863,6 +868,8 @@ const schemas = {
     swaps: z.array(z.unknown()).optional().catch(undefined),
     reopened: z.array(z.unknown()).optional().catch(undefined),
   }),
+  // 20261117000700_member_names.sql: the person alone, never a name.
+  "member.name": z.object({ person: id }),
   role: z.object({
     role: z.unknown().optional(),
     role_name: z.string().optional().catch(undefined),
@@ -1379,6 +1386,12 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
             swaps: details.swaps?.length ?? 0,
             reopened: details.reopened?.length ?? 0,
           }
+        : other;
+    }
+    case "member.name": {
+      const details = read(schemas["member.name"]);
+      return details
+        ? { action: row.action, person: personOf(details.person, lookups) }
         : other;
     }
     case "invite.claim": {

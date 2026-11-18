@@ -34,7 +34,8 @@ export default async function BusinessesPage() {
       businesses={businesses}
       canCreate={platformCan(role, "businesses.create")}
       basePath="/admin"
-      account={{ name: member?.name ?? phone, role: t(role) }}
+      // Their own name, as the console's frame shows it, never a business's.
+      account={{ name: member?.ownName ?? phone, role: t(role) }}
       signOut={signOut}
       storage={storage}
     />

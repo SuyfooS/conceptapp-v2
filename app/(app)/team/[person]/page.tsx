@@ -29,6 +29,7 @@ import { baseWording, translator } from "../../wording";
 import {
   clearBioAction,
   removeMemberAction,
+  renameMemberAction,
   setMemberRoleAction,
 } from "../actions";
 import { FormerView } from "./former-view";
@@ -78,9 +79,10 @@ export default async function TeamPersonPage({
     chat && !chat.viewing && isStaff(data.role)
       ? chatPaths.withPerson(data.userId)
       : null;
-  // Whoever may invite to their role changes it and takes them off the team
-  // (Orel, 14 November 2026): someone who edits the team, by the rank rule;
-  // never while viewing, never in a demo.
+  // Whoever may invite to their role changes it, fixes the name the business
+  // shows for them and takes them off the team (Orel, 14 November 2026):
+  // someone who edits the team, by the rank rule; never while viewing, never
+  // in a demo.
   const mayChange =
     open &&
     canWrite(member.viewing) &&
@@ -146,6 +148,7 @@ export default async function TeamPersonPage({
       actions: {
         remove: removeMemberAction.bind(null, businessId),
         setRole: setMemberRoleAction.bind(null, businessId),
+        rename: renameMemberAction.bind(null, businessId),
       },
     };
   }

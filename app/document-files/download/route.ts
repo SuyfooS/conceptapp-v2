@@ -122,6 +122,7 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const people = await namesOf(
+    access.businessId,
     documents.flatMap((document) => [
       ...(document.personId ? [document.personId] : []),
       ...(document.authorId ? [document.authorId] : []),
@@ -207,16 +208,21 @@ async function downloadAsked(
   return documentsDownloadOf(new URLSearchParams(body));
 }
 
-/** The names of the people a download names, a hundred to a read. */
+/**
+ * The names of the people a download names, a hundred to a read, as the
+ * business it is for calls them.
+ */
 async function namesOf(
+  businessId: string,
   ids: readonly string[],
 ): Promise<Map<string, string | null>> {
   const wanted = [...new Set(ids.map((id) => id.toLowerCase()))];
   const names = new Map<string, string | null>();
   for (let at = 0; at < wanted.length; at += 100) {
-    const found = await getChatAuthors(wanted.slice(at, at + 100)).catch(
-      () => [],
-    );
+    const found = await getChatAuthors(
+      businessId,
+      wanted.slice(at, at + 100),
+    ).catch(() => []);
     for (const person of found) names.set(person.id, person.name);
   }
   return names;

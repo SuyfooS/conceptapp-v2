@@ -109,6 +109,8 @@ const PAGES = [
   "/design/shell/team/maya",
   "/design/shell/team/noa?state=clocked",
   "/design/shell/team/noa?state=former",
+  // Someone nobody named: the title and the name row read "בלי שם".
+  "/design/shell/team/noa?state=nameless",
   "/design/shell/team/uri?as=manager",
   "/design/shell/team/noa?as=viewer",
   // A worker raised to edit the team, who doesn't read the hours, and a
@@ -1106,6 +1108,70 @@ test("the team demo deletes an invite, changes a role and takes someone off the 
   ).toHaveCount(0);
 });
 
+// Fixing a name on the demo (ROADMAP "תיקון שם"): the owner fixes Noa's,
+// shown at once in the title, with the fix back as its undo; someone nobody
+// named reads "בלי שם"; whoever may not change the person gets no row.
+// Nothing is stored.
+test("the person demo fixes a name, with the change back as its undo", async ({
+  page,
+}) => {
+  const tt = he.app.team;
+  const tc = tt.changes;
+  const main = page.getByRole("main");
+  const nameRow = main
+    .getByRole("button")
+    .filter({ has: page.getByText(tc.name, { exact: true }) });
+  const heading = (name: string) =>
+    main.getByRole("heading", { level: 1, name, exact: true });
+
+  await page.goto("/design/shell/team/noa");
+  await expect(nameRow).toContainText("נועה כהן");
+  await nameRow.click();
+  const sheet = page.getByRole("dialog");
+  await expect(
+    sheet.getByRole("heading", { name: tc.nameSheet }),
+  ).toBeVisible();
+  await expectCleanPage(page, "", true);
+  const field = sheet.getByLabel(tt.invite.name, { exact: true });
+  await field.fill(" ");
+  await sheet.getByRole("button", { name: tc.nameSubmit }).click();
+  await expect(sheet).toContainText(tt.invite.errors.name.required);
+  await field.fill("נועה  כהן-לוי");
+  await sheet.getByRole("button", { name: tc.nameSubmit }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(heading("נועה כהן-לוי")).toBeVisible();
+  await expect(nameRow).toContainText("נועה כהן-לוי");
+  // The role row stays, in the same group.
+  await expect(
+    main.getByRole("button", { name: new RegExp(`^${tc.role}`) }),
+  ).toBeVisible();
+  await main
+    .getByRole("status")
+    .filter({
+      hasText: heT("app.team.changes.nameChanged", { name: "נועה כהן-לוי" }),
+    })
+    .getByRole("button", { name: he.app.manage.undo })
+    .click();
+  await expect(heading("נועה כהן")).toBeVisible();
+  await expect(
+    page.getByText(heT("app.team.changes.nameBack", { name: "נועה כהן" })),
+  ).toBeVisible();
+  await expectCleanPage(page);
+
+  // Someone nobody named.
+  await page.goto("/design/shell/team/noa?state=nameless");
+  await expect(heading(tt.noName)).toBeVisible();
+  await expect(nameRow).toContainText(tt.noName);
+
+  // Not on an owner for a manager, nor for whoever only sees the team.
+  await page.goto("/design/shell/team/uri?as=manager");
+  await expect(main.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(nameRow).toHaveCount(0);
+  await page.goto("/design/shell/team/noa?as=viewer");
+  await expect(main.getByRole("heading", { level: 1 })).toBeVisible();
+  await expect(nameRow).toHaveCount(0);
+});
+
 // Each person's page in the clock demo shows their own shifts, not Noa's.
 test("a person's hours in the demo match their row in the team list", async ({
   page,
@@ -1514,6 +1580,20 @@ test("the activity demo says which permission a role gained or lost", async ({
       page.getByText(line).filter({ visible: true }).first(),
     ).toBeVisible();
   }
+});
+
+// The activity demo says whose name was fixed, by who they are now, never the
+// name it had or was given.
+test("the activity demo says whose name was fixed", async ({ page }) => {
+  await page.goto("/design/shell/manage/activity");
+  await expect(
+    page
+      .getByText(
+        heT("app.manage.activity.actions.member.name", { person: "נועה כהן" }),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
 });
 
 // The lists demo sends and takes a sending back, keeps its five minutes to

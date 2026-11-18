@@ -85,7 +85,7 @@ async function peopleFor(
     }
   }
   if (wanted.size > 0) {
-    for (const author of await getChatAuthors([...wanted])) {
+    for (const author of await getChatAuthors(businessId, [...wanted])) {
       people[author.id] = {
         name: author.name,
         photo: author.photo,

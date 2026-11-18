@@ -24,6 +24,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.is_viewing_staff(business)` | is on the ConceptApp team viewing the business as a staff role (read policies only) |
 | `private.viewing_payroll(business)` | is on the ConceptApp team viewing the business as an accountant: the one view that reads pay |
 | `private.reads_pay_of(person)` | holds `clock.payroll`, or views as an accountant, in a business that person is or was in |
+| `private.reads_member_name(business, person)` | may read the business's name for that person (`public.member_names`): as their profile is read, in that business: its members and the team viewing it while the person is active in it, and its pay holders (and a view as an accountant) also once they left |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
 | `private.order_taking_on(business)` | (any user) taking orders is switched on for the business (the menu's policies) |
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only; a view as a role the business named ranks as its base) |
@@ -92,8 +93,8 @@ swaps opened again (`reopened`).
 `team_invite_link`'s rule, and the row stays for the log: `claimed_at` closes
 it for every reader of open invites, `invites.cancelled_at` says why, and a
 fresh hash of no token ends its link. The log rows are `member.remove`,
-`member.role` and `invite.cancel`, with ids, roles, counts and the shifts'
-days and times, never a name. `public.own_departures()` (granted to
+`member.role`, `member.name` and `invite.cancel`, with ids, roles, counts
+and the shifts' days and times, never a name. `public.own_departures()` (granted to
 `authenticated` alone, for `auth.uid()`) names the businesses someone was
 taken off, since the policies show them nothing else of those. `@db/team`
 (`removeMember`, `setMemberRole`, `cancelTeamInvite`, `ownDepartures`,
@@ -112,6 +113,30 @@ under way while someone leaves is either seen and settled by the removal or
 refused after it (42501), never left behind on a shift they are off.
 `team_changes.test.sql` and `team-changes.db.test.ts` (the rule against
 @domain/team) cover it.
+
+Fixing a name (`20261117000700_member_names.sql`; ROADMAP "תיקון שם") goes
+by the same rule: `public.set_member_name(actor, business, person, new_name,
+seen_name, at_time)`, with the secret key, keeps the name the business shows
+for someone in `public.member_names`, its own for them, in that business only;
+their own name (`profiles.full_name`, one per login across every business they
+are in) is never touched. Team.edit and `private.gives_role` (42501), never
+oneself (22023), only an active member (P0002), never in a demo closed to
+invites (55000, hint `demo`). The name is one line, its spaces collapsed, of 1
+to 80 characters (22023, hint `name`); their own name, or none, keeps no row,
+so the business shows theirs again; `seen_name` is the name the screen showed
+(null for none), 40001 when it moved; the same name writes nothing (`changed`
+false). It locks the business, then the membership, then the name, as a role
+change does. The log row is `member.name` with the person only, which tells
+nobody. Rows go with the membership (`on delete cascade`), so a demo's reset
+takes them; taking someone off the team keeps theirs, for the pay holders who
+still read them. `public.admin_business` lists members by it. `@db/team`'s
+`setMemberName` calls it; `@db/member-names`' `memberNames` reads the names
+under the caller's client (empty before the migration), and `nameIn` puts each
+over the profile's (`shownName` in @domain/people): the team, colleagues, a
+person and a former member, activity, notifications, chat's directory and
+authors, departments for the console, pay people and access, roles, the
+clock's people and the session's own name all read it. `member_names.test.sql`
+and `team-changes.db.test.ts` cover it.
 
 A week is written shift by shift (`20261115000100_week_in_place.sql`; Orel's
 answers of 15 November 2026). `public.week_shifts(week)` reads a week's shifts

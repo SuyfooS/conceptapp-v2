@@ -22,6 +22,7 @@ import type { GivableNamedRole } from "@domain/team";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { Database } from "./database.types";
+import { memberNames, nameIn } from "./member-names";
 import { isMissingColumn, isMissingFunction } from "./missing";
 import { getPayRolesForTeam } from "./payroll";
 import { createAdminClient } from "./supabase/admin";
@@ -236,9 +237,9 @@ const RolePersonRow = z.object({
 /**
  * The business's active people with their roles and named roles, read with
  * `supabase`: with their photos for the owner, whose browser may load their
- * colleagues' (Storage), and without for the team, who may not. Before
- * 20261115001500_named_roles.sql there is no named role to read, and nobody
- * holds one.
+ * colleagues' (Storage), and without for the team, who may not. Each by the
+ * business's name for them. Before 20261115001500_named_roles.sql there is
+ * no named role to read, and nobody holds one.
  */
 async function readRolePeople(
   supabase: SupabaseClient<Database>,
@@ -255,7 +256,11 @@ async function readRolePeople(
       )
       .eq("business_id", businessId)
       .eq("active", true);
-  let { data, error } = await people(true);
+  const [first, names] = await Promise.all([
+    people(true),
+    memberNames(supabase, businessId),
+  ]);
+  let { data, error } = first;
   if (isMissingColumn(error)) ({ data, error } = await people(false));
   if (error) throw error;
   return z
@@ -263,7 +268,7 @@ async function readRolePeople(
     .parse(data ?? [])
     .map((row) => ({
       userId: row.user_id,
-      name: row.profiles?.full_name?.trim() || null,
+      name: nameIn(names, row.user_id, row.profiles?.full_name),
       photo: photos ? profilePhotoSrc(row.profiles?.avatar_path) : null,
       role: row.role,
       namedRole: row.named_role ?? null,

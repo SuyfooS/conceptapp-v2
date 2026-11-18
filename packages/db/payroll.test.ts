@@ -11,7 +11,8 @@ vi.mock("server-only", () => ({}));
  * the access screen lists (`getAccessPeople`, `getPayAccessForTeam`): the
  * business's members with the role the business named that each holds, by
  * its names (the roles plan's R11e), and before that migration nobody holds
- * one.
+ * one; each by the name the business gave them (`public.member_names`), else
+ * their own.
  */
 type Row = { role: string; perm: string; allowed: boolean };
 
@@ -46,7 +47,30 @@ const db = vi.hoisted(() => ({
   noNamed: false,
   /** What each read of `memberships` selected, in order. */
   selects: [] as string[],
+  /** The names the business gave its people (`public.member_names`). */
+  names: [] as { user_id: string; name: string }[],
+  /** The project has no `member_names` yet (before its migration). */
+  noNames: false,
 }));
+
+/** The names the business gave its people; no such table before their migration. */
+function namesQuery() {
+  const answer = () =>
+    db.noNames
+      ? { data: null, error: { code: "PGRST205", message: "no table" } }
+      : { data: db.names, error: null };
+  const query = {
+    select: () => query,
+    eq: () => query,
+    in: () => query,
+    // biome-ignore lint/suspicious/noThenProperty: a stand-in for the query builder, which is awaited.
+    then: (
+      resolve: (value: ReturnType<typeof answer>) => unknown,
+      reject?: (reason: unknown) => unknown,
+    ) => Promise.resolve(answer()).then(resolve, reject),
+  };
+  return query;
+}
 
 /** The business's members, as a select of `columns` gets them. */
 function membersQuery() {
@@ -101,6 +125,7 @@ function client() {
     from: (table: string) => {
       if (table === "memberships") return membersQuery();
       if (table === "business_roles") return rolesQuery();
+      if (table === "member_names") return namesQuery();
       if (table !== "role_permissions") throw new Error(table);
       const filters: [string, unknown][] = [];
       const answer = () => {
@@ -193,6 +218,8 @@ beforeEach(() => {
   ];
   db.noNamed = false;
   db.selects = [];
+  db.names = [];
+  db.noNames = false;
 });
 
 describe("pay by role", () => {
@@ -267,5 +294,17 @@ describe("who the access screen lists", () => {
       "user_id, role, named_role, perms, profiles (full_name, avatar_path)",
       "user_id, role, perms, profiles (full_name, avatar_path)",
     ]);
+  });
+
+  it("names each by the business's name for them, else their own", async () => {
+    db.names = [{ user_id: "manager", name: "Meir Levi" }];
+    expect(await getAccessPeople(BUSINESS)).toEqual([
+      owner,
+      { ...manager, name: "Meir Levi" },
+      lead,
+    ]);
+    // Before its migration, by their own names.
+    db.noNames = true;
+    expect(await getAccessPeople(BUSINESS)).toEqual([owner, manager, lead]);
   });
 });
