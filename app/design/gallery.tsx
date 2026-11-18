@@ -85,6 +85,7 @@ import enMessages from "@/messages/en.json";
 import heMessages from "@/messages/he.json";
 import { GalleryChat } from "./gallery-chat";
 import { GalleryFileField } from "./gallery-documents";
+import { GalleryOrderTaking } from "./gallery-order-taking";
 import { listPhotos } from "./list-photos";
 import { portraits } from "./portraits";
 
@@ -622,6 +623,15 @@ function GalleryBody({
 
         <Section title={t("fileField")}>
           <GalleryFileField />
+        </Section>
+
+        {/* Waiter mode (S0): its parts, and its mock screens. */}
+        <Section title={t("orderTakingTitle")}>
+          <p className="text-ink-2">{t("orderTakingText")}</p>
+          <GalleryOrderTaking />
+          <Button asChild variant="secondary" className="w-full">
+            <Link href="/design/order-taking">{t("orderTakingDemo")}</Link>
+          </Button>
         </Section>
 
         <Section title={t("switcher")}>

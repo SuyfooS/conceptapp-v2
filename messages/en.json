@@ -394,7 +394,473 @@
     "fileFieldText": "A document's file: a photo taken now, one from the phone, or a PDF, with its preview and how far it got.",
     "fileFieldPhoto": "With a photo",
     "fileFieldPdf": "With a PDF on its way",
-    "fileFieldPdfName": "November payslip.pdf"
+    "fileFieldPdfName": "November payslip.pdf",
+    "orderTaking": {
+      "metaTitle": "Waiter mode demo",
+      "mode": "Waiter mode",
+      "leave": "Back to the app",
+      "nav": {
+        "places": "Tables",
+        "mine": "My orders",
+        "prep": "Preparing",
+        "menu": "Menu"
+      },
+      "place": {
+        "table": "Table {name}",
+        "takeaway": "Takeaway {number}",
+        "newTakeaway": "Takeaway · new order",
+        "tableWord": "Table",
+        "takeawayWord": "Takeaway",
+        "newShort": "New"
+      },
+      "age": {
+        "ago": "{count, plural, =0 {Just now} one {1 min ago} other {# min ago}}"
+      },
+      "sheet": {
+        "close": "Close"
+      },
+      "index": {
+        "back": "Design system",
+        "eyebrow": "Sample screens, with sample data",
+        "title": "Waiter mode",
+        "subtitle": "Taking orders on a phone and sending them to the kitchen and the bar. What is pressed here stays on this page only, and a reload starts the evening again.",
+        "test": {
+          "label": "The test against the pad",
+          "title": "Six items, two with a choice, one note and one allergy",
+          "body": "The least technical waiter on the floor takes the same order here and on the pad, without help, and each is timed.",
+          "action": "Open the tables"
+        },
+        "sections": {
+          "waiter": "The waiter",
+          "prep": "Preparing and the till",
+          "menu": "The menu"
+        },
+        "screens": {
+          "floor": {
+            "title": "The tables",
+            "text": "Two ready to serve, one waiting 20 min, and a takeaway"
+          },
+          "quiet": {
+            "title": "The start of the evening",
+            "text": "Every table free. The test starts here"
+          },
+          "free": {
+            "title": "A free table",
+            "text": "One tap adds an item, and search finds any item"
+          },
+          "draft": {
+            "title": "A draft with a note, an allergy and a hold",
+            "text": "A salad with an allergy, and a schnitzel with a note held for the mains"
+          },
+          "choice": {
+            "title": "The choices sheet",
+            "text": "Burger: a doneness to choose, and extras"
+          },
+          "sent": {
+            "title": "After sending",
+            "text": "Take back within 2 minutes, while the kitchen and the bar already see it"
+          },
+          "open": {
+            "title": "An open table",
+            "text": "A round sent, mains waiting to be called, and \"Served\""
+          },
+          "tillItem": {
+            "title": "For the till, by item",
+            "text": "Table 4: each item with how many and its price, no total"
+          },
+          "tillRound": {
+            "title": "For the till, by round",
+            "text": "Who sent what and when, to split between diners"
+          },
+          "tillClosed": {
+            "title": "A table closed today",
+            "text": "Table 3, to open again"
+          },
+          "mine": {
+            "title": "My orders",
+            "text": "What Shiran sent, ready first"
+          },
+          "mineEmpty": {
+            "title": "My orders, before sending",
+            "text": "What the screen says when nothing was sent yet"
+          },
+          "prep": {
+            "title": "Preparing on a phone",
+            "text": "The kitchen and the bar, and \"Ready\" in one tap"
+          },
+          "prepEmpty": {
+            "title": "Preparing with nothing open",
+            "text": "What the screen says when everything is out"
+          },
+          "kitchen": {
+            "title": "The kitchen screen",
+            "text": "A locked tablet, opened with a tap that turns the sound on"
+          },
+          "kitchenOpen": {
+            "title": "The kitchen screen, open",
+            "text": "Orders in columns, oldest first, with a large \"Ready\""
+          },
+          "kitchenOffline": {
+            "title": "The kitchen screen offline",
+            "text": "What the screen says when the connection drops"
+          },
+          "kitchenEmpty": {
+            "title": "The kitchen screen with no orders",
+            "text": "What the screen says when there is nothing to make"
+          },
+          "counter": {
+            "title": "The till screen",
+            "text": "The open tables and those closed today, by item and by round"
+          },
+          "menu": {
+            "title": "The menu",
+            "text": "A price, a new item, and \"Sold out\" for the fish"
+          },
+          "noMenu": {
+            "title": "A business with no menu",
+            "text": "What the screen says before there are items"
+          },
+          "import": {
+            "title": "Copying a menu",
+            "text": "A café's menu pasted, with two sizes, extras and lines to check"
+          }
+        },
+        "note": "Every price here is a sample. No bill, no receipt and no payment: what shows \"for the till\" is keyed into the business's own register."
+      },
+      "floor": {
+        "title": "Tables",
+        "takeaway": "Start a takeaway order",
+        "tables": "The tables",
+        "takeaways": "Takeaway",
+        "status": {
+          "ready": "{count, plural, one {1 table ready to serve} other {# ready to serve}}",
+          "late": "{count, plural, one {1 waiting} other {# waiting}}",
+          "open": "{count, plural, one {1 open} other {# open}}",
+          "free": "Every table is free"
+        },
+        "state": {
+          "free": "Free",
+          "draft": "{count, plural, one {1 item in the draft} other {# items in the draft}}",
+          "open": "{count, plural, =0 {Sent just now} one {Sent 1 min ago} other {Sent # min ago}}",
+          "ready": "Ready to serve",
+          "late": "Waiting {count} min"
+        },
+        "readyTitle": "Ready to serve",
+        "readyEmpty": "Nothing to serve right now. What the kitchen or the bar marks ready shows here.",
+        "readyCard": "{place} · {department}",
+        "closedTitle": "Closed today",
+        "closedEmpty": "No table closed yet today.",
+        "closedRow": "Closed at <ltr>{time}</ltr> · {name}",
+        "table": {
+          "title": "Open orders",
+          "place": "Place",
+          "by": "Opened by",
+          "lastSent": "Last sent",
+          "state": "State",
+          "last": "<ltr>{time}</ltr> · {ago}",
+          "open": "Open",
+          "hint": "Open the order"
+        }
+      },
+      "order": {
+        "free": "Free · choose items and send",
+        "opened": "Opened at <ltr>{time}</ltr> · {name}",
+        "serve": "Served",
+        "floorList": "The tables",
+        "label": "To call the customer",
+        "labelHint": "Such as a first name or the colour of a shirt. Erased two days after closing.",
+        "view": {
+          "label": "What shows",
+          "add": "Add items",
+          "order": "The order",
+          "unsent": "{count, plural, one {1 item not sent yet} other {# items not sent yet}}"
+        },
+        "noPlace": {
+          "title": "This place wasn't found",
+          "body": "Its order may have closed. Go back to the tables and choose from there.",
+          "back": "Back to the tables"
+        }
+      },
+      "picker": {
+        "title": "Add items",
+        "search": "Search the menu",
+        "searchPlaceholder": "Search for an item",
+        "found": "What was found",
+        "nothingFound": "No item starts with {query}",
+        "most": "Ordered most",
+        "categories": "Categories",
+        "withChoices": "with choices",
+        "soldOut": "Sold out",
+        "inDraft": "in the draft",
+        "added": "{count, plural, one {Added to the draft: {name}} other {Added to the draft: {name}, # in the draft}}",
+        "noMenu": {
+          "title": "No menu yet",
+          "body": "Add items, or copy a menu that exists by pasting it.",
+          "import": "Copy a menu"
+        }
+      },
+      "draft": {
+        "title": "To send",
+        "empty": "No items chosen yet. What is chosen from the menu shows here, and goes in one tap.",
+        "goes": "Where it goes: {routes}",
+        "qty": "How many: {name}",
+        "less": "One less: {name}",
+        "more": "One more: {name}",
+        "note": "Note",
+        "allergy": "Allergy",
+        "hold": "Hold this",
+        "forItem": ", {name}",
+        "heldBadge": "Will wait to be called",
+        "remove": "Remove from the draft: {name}"
+      },
+      "send": {
+        "label": "Send the order",
+        "count": "{count, plural, one {1 item} other {# items}}",
+        "route": "{department} · {count}"
+      },
+      "line": {
+        "qtyName": "<ltr>{qty}</ltr> × {name}",
+        "note": "Note: {note}",
+        "allergy": "Allergy: {allergy}",
+        "takenBack": "Cancelled"
+      },
+      "note": {
+        "noteTitle": "Note · {name}",
+        "allergyTitle": "Allergy · {name}",
+        "noteLabel": "Note for the kitchen",
+        "notePlaceholder": "Such as: no onion. No customers' names",
+        "noteHint": "It shows on the order, in a highlighted box.",
+        "allergyLabel": "What to avoid",
+        "allergyPlaceholder": "Such as: peanuts",
+        "allergyHint": "The kitchen sees it in red, with the word allergy.",
+        "allergyMissing": "Write what to avoid, so the kitchen knows.",
+        "saveNote": "Save the note",
+        "saveAllergy": "Save the allergy",
+        "removeNote": "Remove the note",
+        "removeAllergy": "Remove the allergy"
+      },
+      "choice": {
+        "required": "Required",
+        "optional": "Optional",
+        "extra": "<ltr>+{price}</ltr>",
+        "qty": "How many",
+        "missing": "To add it, choose: {groups}",
+        "add": "{count, plural, one {Add it} other {Add #}}"
+      },
+      "rounds": {
+        "title": "What was sent",
+        "round": "Round {n} · <ltr>{time}</ltr> · {name}",
+        "till": "For the till",
+        "takeBack": "Take back",
+        "fire": "Fire"
+      },
+      "ticketState": {
+        "held": "Waiting to be called",
+        "sent": "Sent",
+        "onScreen": "On the screen · {department}",
+        "ready": "Ready · {department}",
+        "served": "Served"
+      },
+      "ticket": {
+        "label": "{place} · {department}",
+        "from": "{name} · {department}",
+        "ready": "Ready"
+      },
+      "till": {
+        "title": "For the till · {place}",
+        "byItem": "By item",
+        "byRound": "By round",
+        "view": "How to show it",
+        "note": "Prices as on the menu. Not a receipt or an invoice; payment is recorded on the business's own till.",
+        "round": "Round {n} · <ltr>{time}</ltr> · {name}",
+        "roundLabel": "Round {n}",
+        "roundEmpty": "What was sent in this round was taken back.",
+        "empty": "Nothing to key in here yet.",
+        "qty": "Quantity",
+        "unit": "Unit price",
+        "closeTable": "Close the table",
+        "closeOrder": "Close the order",
+        "reopen": "Open again",
+        "refusedHeld": "Some items are waiting to be called. Fire or cancel them, then close.",
+        "taken": "The place is taken now. Open this again once it is free.",
+        "closedAt": "Closed at <ltr>{time}</ltr> · {name}",
+        "noOrder": {
+          "title": "This order wasn't found",
+          "body": "Go back to the tables and choose it from there."
+        }
+      },
+      "mine": {
+        "title": "My orders",
+        "status": "{ready, plural, =0 {Nothing to serve} one {1 ready to serve} other {# ready to serve}} · {making, plural, =0 {nothing being made} other {# being made}}",
+        "ready": "Ready to serve",
+        "making": "Being made",
+        "readyEmpty": "What was sent and is ready shows here.",
+        "makingEmpty": "Nothing being made right now.",
+        "served": "Served",
+        "cardTitle": "{place} · {department}",
+        "sentAt": "Sent at <ltr>{time}</ltr> · {ago}",
+        "tableTitle": "Still to serve",
+        "columns": {
+          "place": "Place",
+          "department": "Department",
+          "items": "What",
+          "sent": "Sent",
+          "state": "State",
+          "serve": "Serving"
+        },
+        "empty": {
+          "title": "No orders sent yet",
+          "body": "What is sent from the tables shows here, ready first.",
+          "action": "Go to the tables"
+        }
+      },
+      "prep": {
+        "title": "Preparing",
+        "department": "Department",
+        "status": "{count, plural, one {1 open} other {# open}} · the oldest waiting {minutes} min",
+        "nothingOpen": "No open orders",
+        "openCount": "{count, plural, one {1 open} other {# open}}",
+        "listLabel": "Orders · {department}",
+        "empty": {
+          "title": "No open orders",
+          "body": "A new order shows here as soon as it is sent."
+        },
+        "recent": "Ready lately",
+        "readyAt": "Marked ready at <ltr>{time}</ltr> · {name}",
+        "putBack": "Back to preparing",
+        "devices": "A screen in the kitchen or at the till",
+        "lockKitchen": "Lock this device as the kitchen screen",
+        "lockKitchenHint": "The tablet shows the kitchen's orders, with nobody's account on it. In the demo this opens the screen.",
+        "lockTill": "Lock this device as the till",
+        "lockTillHint": "The tablet at the counter shows what to key into the register, with nobody's account on it. In the demo this opens the screen."
+      },
+      "station": {
+        "kitchenEyebrow": "{business} · kitchen screen",
+        "openKitchen": "Open the kitchen",
+        "openHint": "The tap turns the sound on and keeps the screen awake. From then on every new order chimes.",
+        "online": "Connected",
+        "offlineBadge": "No connection",
+        "offline": "No connection. New orders don't reach this screen. Pass them on by word of mouth until it's back.",
+        "soundOn": "Sound on",
+        "soundLocked": "Tap to turn the sound on",
+        "empty": {
+          "title": "No open orders",
+          "body": "A new order will show here with a chime."
+        },
+        "readyAt": "Marked ready at <ltr>{time}</ltr>",
+        "screen": "The kitchen screen",
+        "demoNote": "In the demo the screen isn't locked.",
+        "backToPhone": "Back to Shiran's phone",
+        "tillEyebrow": "{business} · till",
+        "tillTitle": "Till",
+        "tillStatus": "{open, plural, =0 {No open tables} one {1 open} other {# open}} · {closed, plural, =0 {none closed yet} one {1 closed today} other {# closed today}}",
+        "openTitle": "Open",
+        "openEmpty": "No open tables right now.",
+        "chooseTitle": "Choose a table",
+        "chooseBody": "What to key into the till shows here, by item or by round, with no total.",
+        "backToPlaces": "All the tables",
+        "newOrder": "New order: {place}"
+      },
+      "menu": {
+        "title": "Menu",
+        "status": "{soldOut, plural, =0 {Everything available} one {1 item sold out} other {# items sold out}} · {items, plural, one {1 item on the menu} other {# items on the menu}}",
+        "add": "Add an item",
+        "import": "Copy a menu",
+        "categories": "Categories",
+        "categoryLine": "{department} · {count, plural, one {1 item} other {# items}}",
+        "choices": "{count, plural, one {1 choice} other {# choices}}",
+        "soldOutFor": "Sold out: {name}",
+        "priceFor": "Price: {name}",
+        "priceUnclear": "The price isn't clear. Write a number, such as 62 or 42.50.",
+        "columns": {
+          "name": "Item",
+          "category": "Category",
+          "department": "Department",
+          "price": "Price",
+          "soldOut": "Sold out"
+        },
+        "sheet": {
+          "newTitle": "New item",
+          "name": "Item name",
+          "nameMissing": "Write the item's name, up to 60 characters.",
+          "price": "Price",
+          "priceHint": "The price as on the menu, VAT included",
+          "category": "Category",
+          "choices": "Choices: {groups}",
+          "add": "Add the item",
+          "save": "Save the item"
+        }
+      },
+      "import": {
+        "title": "Copy a menu",
+        "subtitle": "Paste the menu as it is: from the website, a PDF, WhatsApp or the register.",
+        "paste": "The menu",
+        "hint": "A line ending in a price is an item. A line with no price heads the lines after it. Two prices with / are two sizes, and a line starting with + is an extra for the item above.",
+        "preview": "What goes in",
+        "counts": "{items, plural, one {1 item} other {# items}} · {categories, plural, one {1 category} other {# categories}} · {problems, plural, =0 {all clear} one {1 line to check} other {# lines to check}}",
+        "unreverse": "Turn the lines around",
+        "department": "Department · {category}",
+        "action": "{count, plural, one {Import 1 item} other {Import # items}}",
+        "done": "{count, plural, one {1 item added to the menu} other {# items added to the menu}}",
+        "toMenu": "To the menu",
+        "line": {
+          "category": "Category",
+          "item": "Item · <ltr>{price}</ltr>",
+          "sizes": "Two prices: check the sizes' names · regular <ltr>{regular}</ltr> · large <ltr>{large}</ltr>",
+          "extra": "Extra for the item above · <ltr>+{price}</ltr>"
+        },
+        "problem": {
+          "noPrice": "No price",
+          "unclear": "Price not clear",
+          "long": "Name too long",
+          "duplicate": "Repeated",
+          "reversed": "Line turned around",
+          "noItem": "Extra with no item above",
+          "noCategory": "No category above it"
+        }
+      },
+      "toast": {
+        "undo": "Undo",
+        "sent": "The order for {place} was sent",
+        "served": "{place} · {department}: served",
+        "ready": "{place} · {department}: ready",
+        "removed": "Removed from the draft: {name}",
+        "noteRemoved": "Note removed: {name}",
+        "allergyRemoved": "Allergy removed: {name}",
+        "fired": "Fired · {department}",
+        "takenBack": "Taken back: {name}",
+        "closed": "{place} closed",
+        "reopened": "{place} open again",
+        "putBack": "Back to preparing: {place}",
+        "soldOut": "Marked sold out: {name}",
+        "available": "Back on the menu: {name}",
+        "price": "Price changed: {name}",
+        "itemAdded": "Added to the menu: {name}",
+        "itemSaved": "Saved: {name}"
+      }
+    },
+    "orderTakingTitle": "Waiter mode",
+    "orderTakingText": "Taking orders on a phone and sending them to the kitchen and the bar: the tables, the order, the kitchen screen and the till, with sample data.",
+    "orderTakingDemo": "To the waiter mode demo",
+    "orderParts": {
+      "text": "A table in each of its states, an order on the prep screen with its choices, note and allergy, what to key in at the till, and items added with one tap.",
+      "tiles": "Tables",
+      "tickets": "Orders to prepare",
+      "till": "For the till",
+      "items": "Items to add",
+      "waiter": "Yoav",
+      "kitchen": "Kitchen",
+      "burger": "Burger",
+      "medium": "Medium",
+      "cheese": "Cheese",
+      "sesame": "Sesame",
+      "hummus": "Hummus",
+      "noGarlic": "No garlic",
+      "fish": "Fish of the day",
+      "schnitzel": "Schnitzel",
+      "mash": "Mash",
+      "lemonade": "Lemonade"
+    }
   },
   "shell": {
     "metaTitle": "Layout demo",
