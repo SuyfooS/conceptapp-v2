@@ -104,7 +104,10 @@ Only `app/` imports app code (`@/…`).
   ChatGroupMark, ChatHeader (with what stays under it), AnnouncementCard, NewBelow and
   ImmersiveScreen (hides the phone's tab bar; mock screens at `/design/chat`), and the
   documents' FileField (a form's file: the camera, the photos or a PDF, shown once picked, with
-  its progress and stop; mock screens at `/design/chat/documents`).
+  its progress and stop; mock screens at `/design/chat/documents`), and waiter mode's PlaceTile
+  (a table's one state), TicketCard and OrderLine (a sent line with its choices, note and
+  allergy), TillList (what to ring up, no total) and MenuItemRow/MenuItemList (one tap adds;
+  mock screens at `/design/order-taking`).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a

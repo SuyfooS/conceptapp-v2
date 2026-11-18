@@ -37,6 +37,8 @@ export const ALLOWED: Record<string, string> = {
     "mock rows for the documents' demo (titles, notes, departments); stands in for database data, not UI copy",
   "app/design/console/data.ts":
     "mock rows for the console demo; stands in for database data, not UI copy",
+  "app/design/order-taking/data.ts":
+    "mock rows for the waiter mode demo (dishes, choices, departments, people, a pasted menu); stands in for database data, not UI copy",
   "app/global-error-copy.ts":
     "global-error has no provider, and importing the message file there loads it on every page; messages.test.ts keeps the words equal to errors in he.json",
 };
