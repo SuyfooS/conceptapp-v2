@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-18 · nightly · two stale lines in the docs
+
+- Guessed: Orel left no work (no open `orel`, `question` or `urgent` issue, no new word from him on #1). What merged since the last run (#186 to #194) was reviewed and tested in its day sessions with green CI, and the clock station's pure rules all have tests; the three open day PRs (#193, #195, #196) hold the swaps, the team's names and the menu, so tonight stays away from them.
+- `docs/ROADMAP.md`, known issue 9: Today no longer misses Saturday night's shift after midnight. On the week's first day it reads the day before's shifts still on (`overnightDay` in `@domain/today`, used by `app/(app)/schedule/week.ts`, with its tests); the line still said it did.
+- `docs/AGENT.md`, "Holes in what exists": the stuck business (expired invites, no owner) is unstuck from the console (`addPersonAction`, renewing an invite), as ROADMAP's known issue 3 says; the backlog still listed it as open.
+- Docs only, no code. Restore point: branch `backup/before-night-2026-11-18` at `7cfc14d` (the tag push was cut off).
+- Next: Orel's open day PRs; waiter mode P2 waits for his decision 1 in #191.
+- Defaults applied: none.
+
 ## 2026-11-17 · chat · waiter mode: the screens first, clickable, no database (S0, #191)
 
 - On chat/order-screens from main (e5c2ab8). S0 of the waiter-mode design: mock screens at `/design/order-taking`, for Orel to judge at 390, 820 and 1440 and for a real waiter to time the §3.4 order (six items, two with a required choice, a note, an allergy) against the pad. No database, no route under `app/(app)`, no manifest.
