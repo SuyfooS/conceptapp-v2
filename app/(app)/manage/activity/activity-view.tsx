@@ -1214,6 +1214,99 @@ export function ActivityView({
         };
       case "document.restore":
         return plain(t("actions.document.restore"));
+      // The menu (waiter mode P1): an item added or saved, with its price
+      // and each option's price before and after in LTR spans, what else
+      // changed, an item removed or back, an import's counts, and the
+      // categories or places saved whole.
+      case "menu.item.save": {
+        const price = line.price;
+        const amount = (agorot: number) => (
+          <span dir="ltr">{shekels(agorot)}</span>
+        );
+        return {
+          what: line.created
+            ? t("actions.menu.itemCreate", { name: line.name })
+            : t("actions.menu.itemSave", { name: line.name }),
+          notes:
+            line.fields.length > 0
+              ? [
+                  t("actions.menu.changed", {
+                    fields: names(
+                      line.fields.map((field) =>
+                        t(`actions.menu.fields.${field}`),
+                      ),
+                    ),
+                  }),
+                ]
+              : [],
+          changes: [
+            ...(price
+              ? [
+                  {
+                    key: "price",
+                    label: t("actions.menu.price"),
+                    values:
+                      price.before === null
+                        ? { to: amount(price.after) }
+                        : {
+                            from: amount(price.before),
+                            to: amount(price.after),
+                          },
+                  },
+                ]
+              : []),
+            ...line.options.map((move, index) => ({
+              key: `option:${index}`,
+              label: t("actions.menu.option", {
+                group: move.group,
+                option: move.option,
+              }),
+              values:
+                move.after === null
+                  ? {
+                      ...(move.before === null
+                        ? {}
+                        : { from: amount(move.before) }),
+                      to: t("actions.menu.optionRemoved"),
+                    }
+                  : move.before === null
+                    ? { to: amount(move.after) }
+                    : { from: amount(move.before), to: amount(move.after) },
+            })),
+          ],
+        };
+      }
+      case "menu.item.archive":
+        return plain(t("actions.menu.itemArchive", { name: line.name }));
+      case "menu.item.restore":
+        return plain(t("actions.menu.itemRestore", { name: line.name }));
+      case "menu.import":
+        return {
+          what: t("actions.menu.import", { count: line.items }),
+          notes:
+            line.categories > 0
+              ? [
+                  t("actions.menu.importCategories", {
+                    count: line.categories,
+                  }),
+                ]
+              : [],
+          changes: [],
+        };
+      case "menu.categories":
+      case "menu.places": {
+        const kind =
+          line.action === "menu.categories" ? "categories" : "places";
+        return {
+          what: t(`actions.menu.${kind}.title`),
+          notes: (["added", "archived", "restored", "changed"] as const)
+            .filter((count) => line[count] > 0)
+            .map((count) =>
+              t(`actions.menu.${kind}.${count}`, { count: line[count] }),
+            ),
+          changes: [],
+        };
+      }
       case "other":
         return plain(t("actions.other"));
       default: {

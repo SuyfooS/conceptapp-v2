@@ -1806,6 +1806,128 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads an item added to the menu or saved, with its prices before and after (waiter mode P1)", () => {
+    // As public.save_menu_item writes them: the item as it was then, what
+    // changed, its price's agorot, and each option whose price moved.
+    expect(
+      lineOf(
+        row("menu.item.save", {
+          item: GONE,
+          name: "שניצל",
+          created: false,
+          changed: ["price", "options", "colour"],
+          price: { before: 6200, after: 6800 },
+          options: [
+            { group: "תוספות", option: "גבינה", before: 600, after: 700 },
+            { group: "תוספות", option: "ביצה", before: null, after: 600 },
+            { group: "גודל", option: "גדול", before: 400, after: null },
+          ],
+        }),
+      ),
+    ).toEqual({
+      action: "menu.item.save",
+      name: "שניצל",
+      created: false,
+      // A field it doesn't know is left out; the rest in the screen's order.
+      fields: ["price", "options"],
+      price: { before: 6200, after: 6800 },
+      options: [
+        { group: "תוספות", option: "גבינה", before: 600, after: 700 },
+        { group: "תוספות", option: "ביצה", before: null, after: 600 },
+        { group: "גודל", option: "גדול", before: 400, after: null },
+      ],
+    });
+    expect(
+      lineOf(
+        row("menu.item.save", {
+          item: GONE,
+          name: "פסטה",
+          created: true,
+          changed: [],
+          price: { before: null, after: 5800 },
+        }),
+      ),
+    ).toEqual({
+      action: "menu.item.save",
+      name: "פסטה",
+      created: true,
+      fields: [],
+      price: { before: null, after: 5800 },
+      options: [],
+    });
+    // A name alone changed: no price to show.
+    expect(
+      lineOf(
+        row("menu.item.save", {
+          item: GONE,
+          name: "שניצל עוף",
+          changed: ["name"],
+        }),
+      ),
+    ).toMatchObject({ fields: ["name"], price: null, options: [] });
+    // A price that isn't agorot is no price, never shown as written.
+    expect(
+      lineOf(
+        row("menu.item.save", {
+          item: GONE,
+          name: "שניצל",
+          changed: ["price"],
+          price: { before: 62, after: 68.5 },
+        }),
+      ),
+    ).toMatchObject({ price: null });
+    expect(
+      lineOf(row("menu.item.save", { name: "שניצל", changed: [] })),
+    ).toEqual({ action: "other" });
+  });
+
+  it("reads an item removed and brought back, an import and the categories and places saved", () => {
+    expect(
+      lineOf(row("menu.item.archive", { item: GONE, name: "דג היום" })),
+    ).toEqual({ action: "menu.item.archive", name: "דג היום" });
+    expect(
+      lineOf(row("menu.item.restore", { item: GONE, name: "דג היום" })),
+    ).toEqual({ action: "menu.item.restore", name: "דג היום" });
+    expect(lineOf(row("menu.import", { categories: 2, items: 38 }))).toEqual({
+      action: "menu.import",
+      categories: 2,
+      items: 38,
+    });
+    expect(
+      lineOf(
+        row("menu.categories", {
+          added: 1,
+          restored: 0,
+          archived: 2,
+          changed: 3,
+          total: 4,
+        }),
+      ),
+    ).toEqual({
+      action: "menu.categories",
+      added: 1,
+      archived: 2,
+      restored: 0,
+      changed: 3,
+    });
+    expect(
+      lineOf(row("menu.places", { added: 12, total: 12, changed: "x" })),
+    ).toEqual({
+      action: "menu.places",
+      added: 12,
+      archived: 0,
+      restored: 0,
+      changed: 0,
+    });
+    for (const [action, details] of [
+      ["menu.item.archive", { name: "x" }],
+      ["menu.item.restore", { item: GONE }],
+      ["menu.import", { categories: -1, items: 2 }],
+    ] as const) {
+      expect(lineOf(row(action, details)), action).toEqual({ action: "other" });
+    }
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),

@@ -624,7 +624,62 @@ export type ActivityLine =
     }
   /** A removed document's file was put back by whoever removed it. */
   | { action: "document.restore" }
+  | {
+      /**
+       * Someone who runs the menu added an item or saved one (waiter mode
+       * P1, 20261117000500_order_taking_menu.sql): what changed, and the
+       * agorot before and after for its price and each option whose price
+       * moved. The row stands on its own: it names the item as it was then.
+       */
+      action: "menu.item.save";
+      name: string;
+      created: boolean;
+      /** What changed, in `MENU_ITEM_FIELDS`' order; none for a new one. */
+      fields: MenuItemField[];
+      /** Its price before (null for a new one) and after, when it moved. */
+      price: { before: number | null; after: number } | null;
+      options: MenuOptionMove[];
+    }
+  | { action: "menu.item.archive" | "menu.item.restore"; name: string }
+  | {
+      /** A pasted menu written in one go: how many items and new categories. */
+      action: "menu.import";
+      categories: number;
+      items: number;
+    }
+  | {
+      /** The menu's categories, or the business's places, saved whole. */
+      action: "menu.categories" | "menu.places";
+      added: number;
+      archived: number;
+      restored: number;
+      /** Renamed, moved, or sent to another department. */
+      changed: number;
+    }
   | { action: "other" };
+
+/** What an item's save changed, as the log names it, in order. */
+export const MENU_ITEM_FIELDS = [
+  "name",
+  "description",
+  "price",
+  "category",
+  "department",
+  "options",
+  "position",
+] as const;
+export type MenuItemField = (typeof MENU_ITEM_FIELDS)[number];
+
+/**
+ * An option whose price moved, by its group's name and its own: none before
+ * for one added, none after for one removed.
+ */
+export type MenuOptionMove = {
+  group: string;
+  option: string;
+  before: number | null;
+  after: number | null;
+};
 
 /** The fields of a list item a fix names (lists L6b-1), in order. */
 export const LIST_FIX_FIELDS = [
@@ -958,6 +1013,39 @@ const schemas = {
     reason: z.enum(DOCUMENT_REMOVE_REASONS).nullable().catch(null),
   }),
   "document.restore": z.object({ document: id }),
+  // The menu (20261117000500_order_taking_menu.sql): prices in agorot.
+  "menu.item.save": z.object({
+    item: id,
+    name: z.string(),
+    created: z.boolean().default(false),
+    changed: z.array(z.unknown()).catch([]),
+    price: z
+      .object({ before: z.int().min(0).nullable(), after: z.int().min(0) })
+      .optional()
+      .catch(undefined),
+    options: z
+      .array(
+        z.object({
+          group: z.string(),
+          option: z.string(),
+          before: z.int().min(0).nullable(),
+          after: z.int().min(0).nullable(),
+        }),
+      )
+      .optional()
+      .catch(undefined),
+  }),
+  "menu.item": z.object({ item: id, name: z.string() }),
+  "menu.import": z.object({
+    categories: z.int().min(0),
+    items: z.int().min(0),
+  }),
+  "menu.list": z.object({
+    added: z.int().min(0).catch(0),
+    archived: z.int().min(0).catch(0),
+    restored: z.int().min(0).catch(0),
+    changed: z.int().min(0).catch(0),
+  }),
 };
 
 const DETAIL_COLUMNS: Record<string, DetailKey> = {
@@ -1642,6 +1730,39 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
     }
     case "document.restore":
       return read(schemas["document.restore"]) ? { action: row.action } : other;
+    case "menu.item.save": {
+      const details = read(schemas["menu.item.save"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        name: details.name,
+        created: details.created,
+        fields: details.created
+          ? []
+          : knownFields(details.changed, MENU_ITEM_FIELDS),
+        price:
+          details.price && details.price.before !== details.price.after
+            ? details.price
+            : null,
+        options: (details.options ?? []).filter(
+          (move) => move.before !== move.after,
+        ),
+      };
+    }
+    case "menu.item.archive":
+    case "menu.item.restore": {
+      const details = read(schemas["menu.item"]);
+      return details ? { action: row.action, name: details.name } : other;
+    }
+    case "menu.import": {
+      const details = read(schemas["menu.import"]);
+      return details ? { action: row.action, ...details } : other;
+    }
+    case "menu.categories":
+    case "menu.places": {
+      const details = read(schemas["menu.list"]);
+      return details ? { action: row.action, ...details } : other;
+    }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);
       return details

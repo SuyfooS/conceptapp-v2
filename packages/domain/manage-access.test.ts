@@ -21,6 +21,7 @@ const MANAGER = [
   "lists.send",
   "manage.edit",
   "manage.view",
+  "order_taking.edit",
   "reservations.edit",
   "schedule.edit",
   "schedule.publish",
@@ -117,11 +118,12 @@ describe("manageReadOnly", () => {
 });
 
 describe("readsEveryLogArea", () => {
-  it("is each area's own permission of the log: the four modules' edit and the team's view", () => {
+  it("is each area's own permission of the log: the modules' edit and the team's view", () => {
     expect([...LOG_AREA_PERMISSIONS].sort()).toEqual([
       "chat.moderate",
       "clock.edit",
       "lists.manage",
+      "order_taking.edit",
       "schedule.edit",
       "team.view",
     ]);

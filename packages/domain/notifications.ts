@@ -610,6 +610,9 @@ export const AREA_HREF: Record<AccessArea, `/${string}`> = {
   time_clock: "/clock",
   lists: "/lists",
   chat: "/chat",
+  // Taking orders has no screen of its own until its mode (P4 of waiter
+  // mode): Home until then.
+  order_taking: "/home",
   team: "/team",
   manage: "/manage",
 };
