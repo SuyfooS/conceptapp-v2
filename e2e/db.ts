@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import type { TestInfo } from "@playwright/test";
 import { sql } from "./pg";
 
 export type OpenedBusiness = {
@@ -757,6 +758,8 @@ export async function scheduleDemoSunday(
  * Always the week's first publish (callers clear the schedule first): a week
  * never published is free, while a published one under way keeps what has
  * begun and takes no new shift that has (20261115000300_running_week.sql).
+ * Today is the restaurant's when this runs: a test that needs it to stay so
+ * waits out midnight first (`waitOutDemoMidnight`).
  */
 export async function scheduleDemoToday(
   people: [phone: string, position: string | null][],
@@ -796,6 +799,33 @@ export async function scheduleDemoToday(
   const manager = "00000000-0000-4000-a000-000000000002";
   await sql`select public.publish_week_schedule(${manager}, ${week.id},
     ${sql.json(shifts)})`;
+}
+
+/**
+ * Waits out midnight at the demo restaurant, on its own clock, when it is
+ * closer than the test's own time and two minutes more, and adds the wait to
+ * that time. A test that puts a shift on today (`scheduleDemoToday`) and then
+ * reads it on the screens keeps one day from start to end, and a shift to
+ * 23:59 is still on at its end. Never a skip: near midnight only, a wait of
+ * at most the test's time and two minutes.
+ */
+export async function waitOutDemoMidnight(testInfo: TestInfo): Promise<void> {
+  const [row] = await sql<{ ms: number }[]>`
+    with business as (
+      select now() at time zone b.timezone as local
+      from public.businesses b
+      where b.id = ${DEMO_RESTAURANT}
+    )
+    select floor(extract(epoch from
+        (date_trunc('day', local) + interval '1 day') - local) * 1000)::int
+      as ms
+    from business`;
+  if (!row) throw new Error("No demo restaurant");
+  if (row.ms >= testInfo.timeout + 2 * 60_000) return;
+  const wait = row.ms + 1_000;
+  // A timeout of 0 is none.
+  if (testInfo.timeout > 0) testInfo.setTimeout(testInfo.timeout + wait);
+  await new Promise((resolve) => setTimeout(resolve, wait));
 }
 
 export type RunningWeekClock = {

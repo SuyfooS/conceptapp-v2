@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-20 · chat · the clock's shift today, clear of midnight
+
+- On chat/clock-last-minute, from main `05cd369`. `clock.spec.ts` "the clock knows the person's own shift today, and nobody else's" failed in CI on 17 November at 23:59:10 Israel time: its all-day shift (00:00–23:59) had just ended, so /clock said "אין לך עוד משמרת היום". Over midnight, today can also turn between putting the shift on and reading the screen. `shift-swaps.spec.ts` "a shift that has begun today offers no giving away" has the same all-day shift and that second risk (its screen lists shifts from today on); no other spec has one.
+- `waitOutDemoMidnight(testInfo)` in `e2e/db.ts`: when midnight at the demo restaurant, on its own clock in the database, is closer than the test's own time and two minutes, it waits until midnight has passed and adds the wait to the test's time. Both tests call it before `scheduleDemoToday` and keep their all-day shift and their checks (the person's own hours, the manager with none and not Noa's; the begun shift with no giving away). Never a skip: near midnight only, a wait of at most about two and a half minutes.
+- Not a shift around now: the swaps screen would still lose it over midnight, so it needed the wait anyway, and the all-day shift reads the same and takes the same path on every run.
+- Checked here: `pnpm check`. Not run: Playwright (no Docker here); CI runs both tests at 390, 820 and 1440.
+- Next: nothing from this. Defaults applied: none.
+
 ## 2026-11-19 · night 34 · the week's dates under the title read left to right (guessed)
 
 - Guessed: Orel left no work and no question is open. Yesterday's day session filed "the builder's week range reading reversed in RTL" as a task chip, not built. Under the title of `/schedule/build`, `/schedule/availability` and `/schedule/availability/team`, "השבוע של {from}–{to}" drew as "7.11–1.11" in the RTL line (the dash between two numbers takes the line's direction). Both now wrap the range in `<ltr>` through `t.rich`, as `app.shifts.week.publishedAt` and `notPublished` already did, so it reads "1.11–7.11" like the hours on the same screens. Words unchanged; he and en.
