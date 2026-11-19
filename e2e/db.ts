@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import type { TestInfo } from "@playwright/test";
+import { type TestInfo, test } from "@playwright/test";
 import { sql } from "./pg";
 
 export type OpenedBusiness = {
@@ -751,6 +751,9 @@ export async function scheduleDemoSunday(
   }
 }
 
+/** The tests that waited out midnight, the ones `scheduleDemoToday` serves. */
+const clearOfMidnight = new WeakSet<TestInfo>();
+
 /**
  * Put people on a morning shift today at the demo restaurant, in this week's
  * schedule published to the team, through the database functions the app
@@ -758,13 +761,20 @@ export async function scheduleDemoSunday(
  * Always the week's first publish (callers clear the schedule first): a week
  * never published is free, while a published one under way keeps what has
  * begun and takes no new shift that has (20261115000300_running_week.sql).
- * Today is the restaurant's when this runs: a test that needs it to stay so
- * waits out midnight first (`waitOutDemoMidnight`).
+ * Today is the restaurant's when this runs, and every test that puts a shift
+ * on it then reads it on a screen, where over midnight it is yesterday's: so
+ * the test waits out midnight first (`waitOutDemoMidnight`), and one that
+ * forgot fails here on every run, not only on the night it crosses midnight.
  */
 export async function scheduleDemoToday(
   people: [phone: string, position: string | null][],
   times: { start: string; end: string } = { start: "09:00", end: "16:00" },
 ): Promise<void> {
+  if (!clearOfMidnight.has(test.info())) {
+    throw new Error(
+      "scheduleDemoToday: await waitOutDemoMidnight(testInfo) at the test's start first, so today stays today until it ends",
+    );
+  }
   const ids = await sql<{ phone: string; id: string }[]>`
     select phone, id::text from public.profiles
     where phone in ${sql(people.map(([phone]) => phone))}`;
@@ -807,9 +817,12 @@ export async function scheduleDemoToday(
  * that time. A test that puts a shift on today (`scheduleDemoToday`) and then
  * reads it on the screens keeps one day from start to end, and a shift to
  * 23:59 is still on at its end. Never a skip: near midnight only, a wait of
- * at most the test's time and two minutes.
+ * at most the test's time and two minutes. Called at the test's start (after
+ * `test.slow()` or `test.setTimeout`, which it counts), before anything that
+ * reads the day.
  */
 export async function waitOutDemoMidnight(testInfo: TestInfo): Promise<void> {
+  clearOfMidnight.add(testInfo);
   const [row] = await sql<{ ms: number }[]>`
     with business as (
       select now() at time zone b.timezone as local

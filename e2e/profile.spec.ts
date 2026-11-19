@@ -13,6 +13,7 @@ import {
   setDemoAddressForm,
   setDemoBio,
   takenDemoSwap,
+  waitOutDemoMidnight,
 } from "./db";
 import { cameraPhoto, hasExif } from "./photo";
 import { secondPage, signIn } from "./session";
@@ -103,6 +104,9 @@ test("a person sets a photo from Today, and colleagues see it", async ({
 }, testInfo) => {
   // Three sign-ins and an upload.
   test.slow();
+  // Noa's shift today is still today's when her manager reads who works
+  // today on /home, tens of seconds on: never across midnight.
+  await waitOutDemoMidnight(testInfo);
   // This week's first publish, whatever a run before left.
   await clearSchedule();
   await scheduleDemoToday([[NOA.e164, null]]);

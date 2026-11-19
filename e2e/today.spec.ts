@@ -9,6 +9,7 @@ import {
   scheduleDemoToday,
   sendDemoAvailability,
   takenDemoSwap,
+  waitOutDemoMidnight,
 } from "./db";
 import { signIn } from "./session";
 
@@ -16,7 +17,8 @@ import { signIn } from "./session";
 // workers. The restaurant template's positions include waiter ("מלצר/ית") and
 // bartender ("ברמן/ית"). The clock is the real one, so nothing here depends on
 // the hour or the day: next week's shifts always lie ahead, and a shift today
-// is listed under who works today whether or not it ended.
+// is listed under who works today whether or not it ended (a test that puts
+// one on today waits out midnight when it is close, so today stays today).
 const NOA = { name: "נועה כהן", local: "050-000-0003", e164: "+972500000003" };
 const YOAV = { name: "יואב לוי", local: "050-000-0004", e164: "+972500000004" };
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
@@ -199,6 +201,7 @@ test("before anything is published, a manager is sent to build the week", async 
 });
 
 test("everyone reads who works today", async ({ page }, testInfo) => {
+  await waitOutDemoMidnight(testInfo);
   await scheduleDemoToday([
     [YOAV.e164, "bartender"],
     [NOA.e164, "waiter"],

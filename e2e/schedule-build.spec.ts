@@ -20,6 +20,7 @@ import {
   scheduleShifts,
   sendDemoAvailability,
   takenDemoSwap,
+  waitOutDemoMidnight,
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
@@ -402,6 +403,9 @@ test("a manager shares the published week, and its link opens that week", async 
   page,
   browser,
 }, testInfo) => {
+  // Noa's shift today, put on later, is still today's on the schedule tab,
+  // and next week is still next week: never across midnight.
+  await waitOutDemoMidnight(testInfo);
   await scheduleDemoSunday({ morning: [[NOA.e164, null]], evening: [] }, true);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const share = page.getByRole("button", { name: ts.action });
