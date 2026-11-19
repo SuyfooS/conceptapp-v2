@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-19 · night 34 · the week's dates under the title read left to right (guessed)
+
+- Guessed: Orel left no work and no question is open. Yesterday's day session filed "the builder's week range reading reversed in RTL" as a task chip, not built. Under the title of `/schedule/build` and `/schedule/availability`, "השבוע של {from}–{to}" drew as "7.11–1.11" in the RTL line (the dash between two numbers takes the line's direction). Both now wrap the range in `<ltr>` through `t.rich`, as `app.shifts.week.publishedAt` and `notPublished` already did, so it reads "1.11–7.11" like the hours on the same screens. Words unchanged; he and en.
+- Test: `design.spec.ts` "the week's dates read left to right" on both twins, at 390, 820 and 1440, checks the first date is drawn left of the last (it fails on the old line, checked in a plain RTL page). axe and no horizontal scroll still clean on both, light and dark.
+- Restore point: branch `backup/before-night-2026-11-19` at `8de186a` (the tag push was refused).
+- Next: the defaults in #192, #195, #196, #198 and #199 and the nine decisions in #191 §16 wait for Orel; `/me` H4 onward (#82).
+- Defaults applied: none.
+
 ## 2026-11-18 · night 33's PR (#97) · the lists' limits, held to the database's (guessed on 10 November)
 
 - Guessed: Orel left no work, and open PR #96 held the files of the newest screens. Tests only, in `packages/domain/lists.test.ts`: an item's label, hint and unit, a list's name and note, and the 60 typed items a sent list takes, each at the database's limit and one past it, plus an editor item's id. Planting a looser limit in `@domain/lists` turns them red.

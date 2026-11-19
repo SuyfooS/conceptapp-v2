@@ -8,6 +8,7 @@ import { CalendarCheck } from "lucide-react";
 import Link from "next/link";
 import { type AppWording, translator } from "../../wording";
 import type { ShareWeek } from "../share-week";
+import { ltr } from "../shifts/shift-text";
 import type { ScheduleBuildWeek } from "../week";
 import type { ScheduleState } from "./actions";
 import { type BuilderWeeks, ScheduleBuilder } from "./schedule-builder";
@@ -64,9 +65,10 @@ export function ScheduleBuildView({
     <PageBody>
       <PageHeader
         title={t(running?.which === "this" ? "titleRunning" : "title")}
-        eyebrow={t("subtitle", {
+        eyebrow={t.rich("subtitle", {
           from: dayMonth(week.start),
           to: dayMonth(week.dates.at(-1) ?? week.start),
+          ltr,
         })}
         back={{ href: backHref, label: tm("name") }}
       />

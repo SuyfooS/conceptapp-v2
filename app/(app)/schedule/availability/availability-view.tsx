@@ -2,6 +2,7 @@ import { dayMonth } from "@domain/availability-form";
 import { PageBody, PageHeader } from "@ui/page";
 import type { PushAskOffer } from "../../notifications/push-ask";
 import { type AppWording, translator } from "../../wording";
+import { ltr } from "../shifts/shift-text";
 import type { AvailabilityWeek } from "../week";
 import {
   AvailabilityForm,
@@ -36,9 +37,10 @@ export function AvailabilityView({
     <PageBody>
       <PageHeader
         back={{ href: backHref, label: tm("name") }}
-        eyebrow={t("subtitle", {
+        eyebrow={t.rich("subtitle", {
           from: dayMonth(week.start),
           to: dayMonth(week.dates.at(-1) ?? week.start),
+          ltr,
         })}
         title={t("title")}
       />

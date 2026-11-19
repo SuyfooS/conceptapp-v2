@@ -3937,3 +3937,35 @@ test("the waiter mode demo's desktop table shows each line's allergy", async ({
     table.getByText(heT("design.orderTaking.line.note", { note: "בלי שום" })),
   ).toBeVisible();
 });
+
+// A week's dates under the title read left to right, as everywhere else, so
+// the first day stands on the left: "1.11–7.11", never "7.11–1.11".
+for (const path of [
+  "/design/shell/schedule/build",
+  "/design/shell/schedule/availability",
+]) {
+  test(`the week's dates read left to right on ${path}`, async ({ page }) => {
+    await page.goto(path);
+    const range = page
+      .getByRole("main")
+      .locator("p")
+      .filter({ hasText: he.app.build.subtitle.split("<")[0] ?? "" })
+      .locator('span[dir="ltr"]')
+      .first();
+    await expect(range).toHaveText(/^\d{1,2}\.\d{1,2}–\d{1,2}\.\d{1,2}$/);
+    // The first date is drawn to the left of the last one.
+    const [first, last] = await range.evaluate((span) => {
+      const text = span.firstChild;
+      if (!text) return [0, 0];
+      const dash = (span.textContent ?? "").indexOf("–");
+      const at = (start: number, end: number) => {
+        const r = document.createRange();
+        r.setStart(text, start);
+        r.setEnd(text, end);
+        return r.getBoundingClientRect().left;
+      };
+      return [at(0, 1), at(dash + 1, dash + 2)];
+    });
+    expect(first).toBeLessThan(last);
+  });
+}
