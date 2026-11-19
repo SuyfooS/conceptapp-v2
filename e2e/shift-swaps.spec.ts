@@ -10,6 +10,7 @@ import {
   scheduleDemoSunday,
   scheduleDemoToday,
   takenDemoSwap,
+  waitOutDemoMidnight,
 } from "./db";
 import { type Person, signIn } from "./session";
 import { heT } from "./t";
@@ -340,8 +341,13 @@ test("a request the schedule ended says why", async ({ page }) => {
 
 // A shift that has begun is no longer given away: the database refuses it
 // from its start on, and the screen no longer offers it, though the day is
-// still today. All day, so nothing here depends on the hour.
-test("a shift that has begun today offers no giving away", async ({ page }) => {
+// still today. All day, so it has begun whatever the hour, and never in the
+// day's last minutes: over midnight it would be yesterday's, which the screen
+// no longer lists.
+test("a shift that has begun today offers no giving away", async ({
+  page,
+}, testInfo) => {
+  await waitOutDemoMidnight(testInfo);
   await scheduleDemoToday([[YOAV.e164, "bartender"]], {
     start: "00:00",
     end: "23:59",
