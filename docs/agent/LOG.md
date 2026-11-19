@@ -11,6 +11,13 @@ what is next, defaults applied.
 - "ההחלפה לא אושרה" on the week board, as on the sheet, card and Home. The station's link home reads "למסך היום".
 - Restore point: tag `before-night/2026-11-19-chat` at `05cd369`.
 - Defaults applied: "מי שמאשר שעות" as the one term for those who show and lock the clock code.
+## 2026-11-20 · chat · CI: the local stack's port taken on a fresh runner
+
+- On chat/ci-supabase-port from main (`05cd369`), under the night protocol (no questions). Nine jobs from 9 to 18 November failed at the stack's very first start, seconds after its images were pulled, on "failed to bind host port 0.0.0.0:54322/tcp: address already in use" (the database job three times, e2e six, five of them the phone job, on different runners and regions). #152's retry 15 seconds later failed the same way all four times it ran; every rerun on another runner passed. Not the stack's own containers: there were none before, and the CLI removes them on a failed start ("Stopping containers..." before its error). Nothing outside holds 54322 every time, so `supabase/config.toml` keeps its ports. Likeliest cause: 54320 to 54329 lie inside Linux's ephemeral range, so an outgoing connection (the pull's, most likely) can have 54322 as its own, open or for 60 seconds in TIME_WAIT.
+- `.github/scripts/supabase-start.sh`, called by both jobs. `reserve`, a new step right after checkout, puts the config's ports in `net.ipv4.ip_local_reserved_ports`, so no later connection takes one. The start (`db start`, or `start -x …`) on a taken port prints `sudo ss -ltnp` and every socket on the port, `docker ps -a` and the networks, removes this project's containers and network, ends a docker-proxy left on the port, drops its TIME_WAIT sockets, waits up to 90 s until it is free, and tries again after 5, 10 and 20 s, four attempts in all, then `::error::`. Any other failure still fails at once.
+- Checked: the script against stubs of pnpm, docker, ss, sysctl and sudo (taken twice then free, busy past 90 s, kong's port on the second attempt, not a port, taken every time), its parsing against the real log of run 44188825889, and `pnpm check`. Not run here: CI itself (no Docker).
+- Next: CI shows the reserve step and a clean start; if a port is taken again, the printout says by whom.
+- Defaults applied: the ports kept from outgoing connections in a step of their own, beyond the retry asked for.
 
 ## 2026-11-19 · night 34 · the week's dates under the title read left to right (guessed)
 
