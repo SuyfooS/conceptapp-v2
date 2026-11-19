@@ -74,9 +74,10 @@ export function TeamAvailabilityView({
     <PageBody>
       <PageHeader
         back={{ href: backHref, label: tm("name") }}
-        eyebrow={t("availability.subtitle", {
+        eyebrow={t.rich("availability.subtitle", {
           from: dayMonth(week.start),
           to: dayMonth(week.dates.at(-1) ?? week.start),
+          ltr,
         })}
         title={t("availability.team.title")}
         actions={

@@ -3940,16 +3940,17 @@ test("the waiter mode demo's desktop table shows each line's allergy", async ({
 
 // A week's dates under the title read left to right, as everywhere else, so
 // the first day stands on the left: "1.11–7.11", never "7.11–1.11".
-for (const path of [
-  "/design/shell/schedule/build",
-  "/design/shell/schedule/availability",
-]) {
+for (const [path, sentence] of [
+  ["/design/shell/schedule/build", he.app.build.subtitle],
+  ["/design/shell/schedule/availability", he.app.availability.subtitle],
+  ["/design/shell/schedule/availability/team", he.app.availability.subtitle],
+] as const) {
   test(`the week's dates read left to right on ${path}`, async ({ page }) => {
     await page.goto(path);
     const range = page
       .getByRole("main")
       .locator("p")
-      .filter({ hasText: he.app.build.subtitle.split("<")[0] ?? "" })
+      .filter({ hasText: sentence.split("<")[0] ?? "" })
       .locator('span[dir="ltr"]')
       .first();
     await expect(range).toHaveText(/^\d{1,2}\.\d{1,2}–\d{1,2}\.\d{1,2}$/);
