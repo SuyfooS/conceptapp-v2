@@ -43,6 +43,23 @@ export const ROUTINE_ACTIONS = [
   "payroll.view",
 ] as const;
 
+/**
+ * What the app writes to the log on its own, with no actor: a scheduled list
+ * opening, its reminder, late, still late to its owners, and closed with
+ * nobody doing it (`private.lists_tick_business`). A row of one of these
+ * without an actor is the app's; a row of any other action without one was
+ * someone's whose account has since gone (`audit_log.actor_id` is `on delete
+ * set null`). tooling/log-families.test.ts holds this to every insert in the
+ * migrations that writes no actor.
+ */
+export const APP_ACTIONS = [
+  "lists.open",
+  "lists.due",
+  "lists.late",
+  "lists.late_owner",
+  "lists.missed",
+] as const;
+
 /** Rows a page of the log reads. */
 export const ACTIVITY_PAGE_SIZE = 40;
 
@@ -59,6 +76,12 @@ export type ActivityPerson =
   | { kind: "team" }
   /** No longer in the app, or nothing says who. */
   | { kind: "unknown" };
+
+/**
+ * Who did what a line says: someone, or the app itself, for what it writes
+ * on its own (`APP_ACTIONS`), as the inbox names it (`NotificationActor`).
+ */
+export type ActivityActor = ActivityPerson | { kind: "app" };
 
 /** An audit log row, as the database gives it. */
 export type ActivityRow = {
@@ -741,7 +764,7 @@ export type ActivityEntry = {
   id: number;
   /** When, as an ISO instant. */
   at: string;
-  actor: ActivityPerson;
+  actor: ActivityActor;
   line: ActivityLine;
 };
 
@@ -1053,10 +1076,18 @@ function roleOf(value: unknown): Role | null {
   return role.success ? role.data : null;
 }
 
-/** Who did it: a member now or before, or else the ConceptApp team, the only
- * other writer of a business's log. */
-function actorOf(actorId: string | null, lookups: ActivityLookups) {
-  if (actorId === null) return { kind: "unknown" } as const;
+const APP_WRITES: ReadonlySet<string> = new Set(APP_ACTIONS);
+
+/**
+ * Who did it: a member now or before, or else the ConceptApp team, the only
+ * other writer of a business's log. Nobody, on what the app writes on its own,
+ * is the app; on anything else, someone whose account has gone.
+ */
+function actorOf(row: ActivityRow, lookups: ActivityLookups): ActivityActor {
+  const { actorId } = row;
+  if (actorId === null) {
+    return APP_WRITES.has(row.action) ? { kind: "app" } : { kind: "unknown" };
+  }
   const member = lookups.members.get(actorId);
   if (!member) return { kind: "team" } as const;
   return member.active
@@ -2035,7 +2066,7 @@ export function buildActivity(
     const entry: Parsed = {
       id: row.id,
       at: row.createdAt,
-      actor: actorOf(row.actorId, lookups),
+      actor: actorOf(row, lookups),
       line: lineOf(row, lookups),
       actorId: row.actorId,
       since: row.createdAt,

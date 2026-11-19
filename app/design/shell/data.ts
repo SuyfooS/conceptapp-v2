@@ -436,8 +436,9 @@ export const demoExtraShift = {
 };
 
 // The demo business's activity log, as rows from its audit log and what they
-// point at: three days around the demo's Wednesday, newest first. Two edits to
-// the availability time a moment apart read as one change.
+// point at: the demo's week up to its Wednesday, newest first. Two edits to
+// the availability time a moment apart read as one change, and one line is
+// the app's own.
 const demoPerson = (id: string) => ({
   active: true,
   name: byId[id]?.name ?? null,
@@ -757,15 +758,22 @@ export const demoActivityRows: ActivityRow[] = [
     from: { unpaidBreaks: false },
     to: { unpaidBreaks: true },
   }),
-  demoRow(105, "2026-11-01T10:00:00+02:00", "shiran", "business.details", {
+  // The app's own line (no actor): Sunday's floor opening, which nobody did,
+  // closed by the lists' job on Monday morning, as the lists demo has it
+  // (private.lists_tick_business logs `lists.missed`).
+  demoRow(105, "2026-11-02T08:00:00+02:00", null, "lists.missed", {
+    list: "list-floor-opening-sun",
+    name: "פתיחת אולם",
+  }),
+  demoRow(104, "2026-11-01T10:00:00+02:00", "shiran", "business.details", {
     from: { accent: "#7c3aed" },
     to: { accent: "#2563eb" },
   }),
-  demoRow(104, "2026-11-01T09:30:00+02:00", "team", "module.enabled", {
+  demoRow(103, "2026-11-01T09:30:00+02:00", "team", "module.enabled", {
     module: "time_clock",
     enabled: true,
   }),
-  demoRow(103, "2026-11-01T09:00:00+02:00", "team", "business.create", {
+  demoRow(102, "2026-11-01T09:00:00+02:00", "team", "business.create", {
     template: "restaurant",
     slug: "demo-restaurant",
     invites: 6,

@@ -3136,6 +3136,7 @@
         },
         "who": {
           "team": "ConceptApp team",
+          "app": "The app",
           "former": "Someone no longer on the team",
           "unknown": "Someone no longer in the app",
           "noName": "No name"
@@ -3296,7 +3297,7 @@
             },
             "fixOtherOf": "{label}: {what}",
             "late": "{name} was late",
-            "missed": "{name} was not done",
+            "missed": "Closed the list {name}, which was not done",
             "outOfRange": "A reading out of range in {name}: {label}, <ltr>{reading}</ltr>",
             "range": {
               "between": "The range: between <ltr>{range}</ltr>",

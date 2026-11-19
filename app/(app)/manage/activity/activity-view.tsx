@@ -1,8 +1,8 @@
 import {
+  type ActivityActor,
   type ActivityDay,
   type ActivityEntry,
   type ActivityListFix,
-  type ActivityPerson,
   type ActivityRecipient,
   type ActivityShift,
   breakFitKind,
@@ -32,7 +32,7 @@ import { ListGroup, ListRow } from "@ui/list-row";
 import { PageBody, PageHeader, PageSection } from "@ui/page";
 import { pageGlowClass } from "@ui/page-glow";
 import { PersonAvatar } from "@ui/person-row";
-import { History, ShieldCheck } from "lucide-react";
+import { History, ShieldCheck, Smartphone } from "lucide-react";
 import Link from "next/link";
 import { useFormatter } from "next-intl";
 import type { ReactNode } from "react";
@@ -102,14 +102,18 @@ function Swatch({ hex, label }: { hex: string; label: string }) {
   );
 }
 
-function ActorAvatar({ actor }: { actor: ActivityPerson }) {
-  if (actor.kind === "team") {
+/**
+ * Who did it, beside their name: their avatar (a neutral face for nobody
+ * known), the ConceptApp team's mark, or a phone for the app itself.
+ */
+function ActorAvatar({ actor }: { actor: ActivityActor }) {
+  if (actor.kind === "team" || actor.kind === "app") {
     return (
       <span
         aria-hidden="true"
         className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5"
       >
-        <ShieldCheck />
+        {actor.kind === "team" ? <ShieldCheck /> : <Smartphone />}
       </span>
     );
   }
@@ -182,7 +186,8 @@ export function ActivityView({
       month: "numeric",
       timeZone: "UTC",
     });
-  const who = (person: ActivityPerson) =>
+  /** Someone a line names, or who did it: the app itself among them. */
+  const who = (person: ActivityActor) =>
     person.kind === "member"
       ? (person.name ?? t("who.noName"))
       : t(`who.${person.kind}`);
