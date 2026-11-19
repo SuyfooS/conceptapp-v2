@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-20 · chat (night) · the words a check of 17–18.11 found
+
+- On chat/night-words from main `05cd369`. A read-only audit of #192–#199, with each claim checked by a skeptic, confirmed seven word findings.
+- The week range "22–28 בנובמבר" drew its first day on the right in the schedule tab, the ShareSheet preview, the WhatsApp share and the availability reminder (the same bug #200 fixed in the builder). `weekRange` now isolates a same-month digit run (U+2066…U+2069) through `daysLeftToRight`; cross-month and cross-year ranges are unchanged. #200's left-of check covers `/design/shell/schedule` too.
+- The station's and the clock's words name whoever approves hours ("מי שמאשר שעות") rather than "בעלים או מנהל", since the lock goes to whoever edits the clock by role; the punch-code hint, the first step and the station's lines say the same thing about where the code shows.
+- "ההחלפה לא אושרה" on the week board, as on the sheet, card and Home. The station's link home reads "למסך היום".
+- Restore point: tag `before-night/2026-11-19-chat` at `05cd369`.
+- Defaults applied: "מי שמאשר שעות" as the one term for those who show and lock the clock code.
+
 ## 2026-11-19 · night 34 · the week's dates under the title read left to right (guessed)
 
 - Guessed: Orel left no work and no question is open. Yesterday's day session filed "the builder's week range reading reversed in RTL" as a task chip, not built. Under the title of `/schedule/build`, `/schedule/availability` and `/schedule/availability/team`, "השבוע של {from}–{to}" drew as "7.11–1.11" in the RTL line (the dash between two numbers takes the line's direction). Both now wrap the range in `<ltr>` through `t.rich`, as `app.shifts.week.publishedAt` and `notPublished` already did, so it reads "1.11–7.11" like the hours on the same screens. Words unchanged; he and en.
