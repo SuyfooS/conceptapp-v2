@@ -4,6 +4,7 @@ import he from "../messages/he.json" with { type: "json" };
 import { before } from "./build-screen";
 import {
   addShopNamedRole,
+  clearAvailability,
   clearSchedule,
   endViewSessions,
   invitesBySlug,
@@ -26,11 +27,20 @@ const SHOP = "חנות הדגמה";
 /** The seeded Noa, a worker of the demo restaurant. */
 const NOA_ID = "00000000-0000-4000-a000-000000000003";
 const NOA_PHONE = "+972500000003";
+/** The seeded Yoav, a worker of the demo restaurant who hasn't sent next week. */
+const YOAV_PHONE = "+972500000004";
 
 const a = he.admin.setup.viewAs;
 const v = he.app.viewAs;
 const tt = he.app.team;
 const m = he.modules;
+// "חסרה תשובה אחת" or "חסרות # תשובות" on the team's availability, in any
+// form of the plural, with # as a number.
+const missingCount = new RegExp(
+  [...he.app.availability.team.missing.count.matchAll(/\{([^{}]+)\}/g)]
+    .map((match) => (match[1] ?? "").replace("#", "\\d+"))
+    .join("|"),
+);
 
 test.afterEach(async () => {
   await endViewSessions(ADMIN.e164);
@@ -210,13 +220,20 @@ test("viewing as a manager shows the team but saves nothing", async ({
   await expectCleanPage(page);
 
   // Viewing speaks for nobody: no reminder to the team, nor a schedule
-  // shared with it.
+  // shared with it. Yoav hasn't sent next week's availability and next week
+  // isn't published, so the manager would be offered the reminder: the
+  // screen says someone is missing, and offers none while viewing.
+  await clearAvailability(YOAV_PHONE);
+  await clearSchedule();
   await page.goto("/schedule/availability/team");
   await expect(
     page.getByRole("heading", {
       level: 1,
       name: he.app.availability.team.title,
     }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(missingCount).filter({ visible: true }).first(),
   ).toBeVisible();
   await expect(
     page.getByRole("button", { name: he.app.availability.team.remind.action }),
