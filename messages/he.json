@@ -1464,7 +1464,7 @@
     },
     "availability": {
       "title": "זמינות לשבוע הבא",
-      "subtitle": "השבוע של {from}–{to}",
+      "subtitle": "השבוע של <ltr>{from}–{to}</ltr>",
       "intro": "סמנו לכל יום מתי אפשר לשבץ אתכם.",
       "weekdays": {
         "sun": "ראשון",
@@ -1587,7 +1587,7 @@
     "build": {
       "title": "סידור לשבוע הבא",
       "titleRunning": "הסידור של השבוע",
-      "subtitle": "השבוע של {from}–{to}",
+      "subtitle": "השבוע של <ltr>{from}–{to}</ltr>",
       "gaps": "{count, plural, one {משמרת אחת חסרה עובד} other {# משמרות חסרות עובד}}",
       "openPlaces": "{count, plural, one {מקום פנוי אחד} other {# מקומות פנויים}}",
       "full": "כל המשמרות מאוישות",

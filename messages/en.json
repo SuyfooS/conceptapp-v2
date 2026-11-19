@@ -1464,7 +1464,7 @@
     },
     "availability": {
       "title": "Availability for next week",
-      "subtitle": "The week of {from}–{to}",
+      "subtitle": "The week of <ltr>{from}–{to}</ltr>",
       "intro": "Mark when you can be scheduled each day.",
       "weekdays": {
         "sun": "Sunday",
@@ -1587,7 +1587,7 @@
     "build": {
       "title": "Next week's schedule",
       "titleRunning": "This week's schedule",
-      "subtitle": "The week of {from}–{to}",
+      "subtitle": "The week of <ltr>{from}–{to}</ltr>",
       "gaps": "{count, plural, one {One shift is short of people} other {# shifts are short of people}}",
       "openPlaces": "{count, plural, one {One open place} other {# open places}}",
       "full": "Every shift is staffed",
