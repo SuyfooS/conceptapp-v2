@@ -1,10 +1,12 @@
 "use client";
 
+import { weekDates } from "@domain/availability";
 import { WEEKDAY_KEYS } from "@domain/availability-form";
 import { accentTokens } from "@domain/color";
 import { avatarHue } from "@domain/people";
 import { COVER_PRESETS, type CoverPreset } from "@domain/profile";
 import { punchPayload, spokenDigits } from "@domain/punch-code-format";
+import { weekRange } from "@domain/share";
 import { type DateParts, EMPTY_DATE, parseTypedDate } from "@domain/typed-date";
 import { accentProps } from "@ui/accent";
 import { AccentPicker, AccentPreview } from "@ui/accent-picker";
@@ -1582,7 +1584,9 @@ function GalleryBody({
             open={shareOpen}
             onOpenChange={setShareOpen}
             title={t("shareTitle")}
-            message={t("shareSample")}
+            message={t("shareSample", {
+              range: weekRange(lang, weekDates("2026-11-22")),
+            })}
             path="/schedule?week=2026-11-22"
           />
         </Section>

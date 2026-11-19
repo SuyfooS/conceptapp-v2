@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { daysLeftToRight } from "../packages/domain/share";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
@@ -1010,15 +1011,18 @@ test("the builder demo offers sharing once published", async ({ page }) => {
   await expect(page.getByRole("button", { name: tb.publish })).toHaveCount(0);
   await share.click();
   await expect(sheet).toBeVisible();
-  // The demo week, 1 to 7 November, in the browser's own words.
-  const range = await page.evaluate(() =>
-    new Intl.DateTimeFormat("he", {
-      day: "numeric",
-      month: "long",
-      timeZone: "UTC",
-    }).formatRange(
-      new Date("2026-11-01T00:00:00Z"),
-      new Date("2026-11-07T00:00:00Z"),
+  // The demo week, 1 to 7 November, in the browser's own words, its days
+  // held left to right as the share holds them.
+  const range = daysLeftToRight(
+    await page.evaluate(() =>
+      new Intl.DateTimeFormat("he", {
+        day: "numeric",
+        month: "long",
+        timeZone: "UTC",
+      }).formatRange(
+        new Date("2026-11-01T00:00:00Z"),
+        new Date("2026-11-07T00:00:00Z"),
+      ),
     ),
   );
   expect(await sharedText(sheet)).toBe(
@@ -1088,15 +1092,18 @@ test("the team availability demo sends a reminder, and says it is late when it i
   const remind = page.getByRole("button", { name: tt.remind.action });
   const sheet = page.getByRole("dialog", { name: tt.remind.title });
   // The demo week, 1 to 7 November, due on Wednesday 28 October at 18:00.
-  const range = () =>
-    page.evaluate(() =>
-      new Intl.DateTimeFormat("he", {
-        day: "numeric",
-        month: "long",
-        timeZone: "UTC",
-      }).formatRange(
-        new Date("2026-11-01T00:00:00Z"),
-        new Date("2026-11-07T00:00:00Z"),
+  // Its days held left to right, as the reminder holds them.
+  const range = async () =>
+    daysLeftToRight(
+      await page.evaluate(() =>
+        new Intl.DateTimeFormat("he", {
+          day: "numeric",
+          month: "long",
+          timeZone: "UTC",
+        }).formatRange(
+          new Date("2026-11-01T00:00:00Z"),
+          new Date("2026-11-07T00:00:00Z"),
+        ),
       ),
     );
   const words = async () => ({
@@ -3939,33 +3946,55 @@ test("the waiter mode demo's desktop table shows each line's allergy", async ({
 });
 
 // A week's dates under the title read left to right, as everywhere else, so
-// the first day stands on the left: "1.11–7.11", never "7.11–1.11".
-for (const [path, sentence] of [
-  ["/design/shell/schedule/build", he.app.build.subtitle],
-  ["/design/shell/schedule/availability", he.app.availability.subtitle],
-  ["/design/shell/schedule/availability/team", he.app.availability.subtitle],
+// the first day stands on the left: "1.11–7.11", never "7.11–1.11". The
+// schedule tab names its week in words, "1–7 בנובמבר", with the days in an
+// isolate (`weekRange`), as in the message its share sends.
+const subtitleRange = (sentence: string) => (main: Locator) =>
+  main
+    .locator("p")
+    .filter({ hasText: sentence.split("<")[0] ?? "" })
+    .locator('span[dir="ltr"]')
+    .first();
+const DAY_MONTHS = /^\d{1,2}\.\d{1,2}–\d{1,2}\.\d{1,2}$/;
+for (const [path, rangeOn, shape] of [
+  [
+    "/design/shell/schedule",
+    (main: Locator) =>
+      main.locator("header p").filter({ hasText: /\d–\d/ }).first(),
+    /^\u2066\d{1,2}–\d{1,2}\u2069 \S+$/,
+  ],
+  [
+    "/design/shell/schedule/build",
+    subtitleRange(he.app.build.subtitle),
+    DAY_MONTHS,
+  ],
+  [
+    "/design/shell/schedule/availability",
+    subtitleRange(he.app.availability.subtitle),
+    DAY_MONTHS,
+  ],
+  [
+    "/design/shell/schedule/availability/team",
+    subtitleRange(he.app.availability.subtitle),
+    DAY_MONTHS,
+  ],
 ] as const) {
   test(`the week's dates read left to right on ${path}`, async ({ page }) => {
     await page.goto(path);
-    const range = page
-      .getByRole("main")
-      .locator("p")
-      .filter({ hasText: sentence.split("<")[0] ?? "" })
-      .locator('span[dir="ltr"]')
-      .first();
-    await expect(range).toHaveText(/^\d{1,2}\.\d{1,2}–\d{1,2}\.\d{1,2}$/);
+    const range = rangeOn(page.getByRole("main"));
+    await expect(range).toHaveText(shape);
     // The first date is drawn to the left of the last one.
-    const [first, last] = await range.evaluate((span) => {
-      const text = span.firstChild;
+    const [first, last] = await range.evaluate((element) => {
+      const text = element.firstChild;
       if (!text) return [0, 0];
-      const dash = (span.textContent ?? "").indexOf("–");
-      const at = (start: number, end: number) => {
+      const words = element.textContent ?? "";
+      const at = (start: number) => {
         const r = document.createRange();
         r.setStart(text, start);
-        r.setEnd(text, end);
+        r.setEnd(text, start + 1);
         return r.getBoundingClientRect().left;
       };
-      return [at(0, 1), at(dash + 1, dash + 2)];
+      return [at(words.search(/\d/)), at(words.indexOf("–") + 1)];
     });
     expect(first).toBeLessThan(last);
   });

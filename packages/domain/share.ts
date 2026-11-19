@@ -58,7 +58,9 @@ export function whatsappHref(text: string): string {
 
 /**
  * A week's dates in words, as the schedule tab names its weeks: "22–28
- * בנובמבר", or "29 בנובמבר–5 בדצמבר" across two months.
+ * בנובמבר", or "29 בנובמבר–5 בדצמבר" across two months. The days of one
+ * month read left to right (`daysLeftToRight`), on the tab and in the
+ * message a share sends alike.
  */
 export function weekRange(locale: string, dates: readonly string[]): string {
   const first = dates[0];
@@ -66,11 +68,33 @@ export function weekRange(locale: string, dates: readonly string[]): string {
   if (first === undefined || last === undefined) {
     throw new Error("A week has days");
   }
-  return new Intl.DateTimeFormat(locale, {
-    day: "numeric",
-    month: "long",
-    timeZone: "UTC",
-  }).formatRange(new Date(`${first}T00:00:00Z`), new Date(`${last}T00:00:00Z`));
+  return daysLeftToRight(
+    new Intl.DateTimeFormat(locale, {
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    }).formatRange(
+      new Date(`${first}T00:00:00Z`),
+      new Date(`${last}T00:00:00Z`),
+    ),
+  );
+}
+
+/** LEFT-TO-RIGHT ISOLATE and POP DIRECTIONAL ISOLATE. */
+const LRI = "\u2066";
+const PDI = "\u2069";
+
+/**
+ * Each run of digits, a dash and digits ("22–28") held in a left-to-right
+ * isolate, so the first day stands on the left in a right-to-left line, as
+ * `<ltr>` holds "1.11–7.11" on the screens. Left alone, the dash between two
+ * numbers takes the line's direction and draws "28–22". Plain text, since a
+ * WhatsApp message takes no markup (a push line's isolates do the same).
+ * Only that run: "29 בנובמבר–5 בדצמבר" already reads right, and would
+ * scramble held whole.
+ */
+export function daysLeftToRight(text: string): string {
+  return text.replace(/(\d+)–(\d+)/g, `${LRI}$1–$2${PDI}`);
 }
 
 /**

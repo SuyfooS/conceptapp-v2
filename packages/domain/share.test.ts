@@ -3,6 +3,7 @@ import { weekDates } from "./availability";
 import {
   AVAILABILITY_PATH,
   availabilityLate,
+  daysLeftToRight,
   SCHEDULE_PATH,
   scheduleWeekHref,
   scheduleWeekOf,
@@ -46,25 +47,90 @@ describe("shareText", () => {
   });
 });
 
+/** A text's code points in hex, to tell apart what looks the same. */
+const codePoints = (text: string) =>
+  [...text].map((c) => (c.codePointAt(0) ?? 0).toString(16));
+
+/** Bidi marks, embeddings, overrides and isolates. */
+const BIDI = /[\u200e\u200f\u061c\u202a-\u202e\u2066-\u2069]/;
+
+/** A week's range as Intl writes it, before anything is held. */
+const intlRange = (locale: string, first: string, last: string) =>
+  new Intl.DateTimeFormat(locale, {
+    day: "numeric",
+    month: "long",
+    timeZone: "UTC",
+  }).formatRange(new Date(`${first}T00:00:00Z`), new Date(`${last}T00:00:00Z`));
+
 describe("weekRange", () => {
-  it("names a week as the schedule tab does", () => {
-    expect(weekRange("he", weekDates("2026-11-22"))).toBe("22–28 בנובמבר");
+  it("names a week as the schedule tab does, its days left to right", () => {
+    // LRI, "22", the en dash, "28", PDI, then " בנובמבר" as Intl writes it:
+    // the first day stands on the left in a right-to-left line.
+    expect(codePoints(weekRange("he", weekDates("2026-11-22")))).toEqual([
+      "2066",
+      "32",
+      "32",
+      "2013",
+      "32",
+      "38",
+      "2069",
+      ...codePoints(" בנובמבר"),
+    ]);
   });
 
-  it("names both months of a week across two", () => {
-    expect(weekRange("he", weekDates("2026-11-29"))).toBe(
-      "29 בנובמבר–5 בדצמבר",
-    );
+  it("holds the days of a week early in the month too", () => {
+    expect(codePoints(weekRange("he", weekDates("2026-11-01")))).toEqual([
+      "2066",
+      "31",
+      "2013",
+      "37",
+      "2069",
+      ...codePoints(" בנובמבר"),
+    ]);
+  });
+
+  it("names both months of a week across two, as Intl writes it", () => {
+    const range = weekRange("he", weekDates("2026-11-29"));
+    expect(range).toBe("29 בנובמבר–5 בדצמבר");
+    expect(range).toBe(intlRange("he", "2026-11-29", "2026-12-05"));
+    expect(range).not.toMatch(BIDI);
+  });
+
+  it("leaves a week across two years as Intl writes it", () => {
+    // "27 דצמבר 2026 – 2 ינואר 2027": the spaced dash reads right as it is.
+    const range = weekRange("he", weekDates("2026-12-27"));
+    expect(range).toBe(intlRange("he", "2026-12-27", "2027-01-02"));
+    expect(range).not.toMatch(BIDI);
   });
 
   it("follows the locale", () => {
-    expect(weekRange("en", weekDates("2026-11-22"))).toMatch(
-      /^November 22\s–\s28$/,
-    );
+    const range = weekRange("en", weekDates("2026-11-22"));
+    expect(range).toMatch(/^November 22\s–\s28$/);
+    expect(range).not.toMatch(BIDI);
   });
 
   it("needs a day", () => {
     expect(() => weekRange("he", [])).toThrow();
+  });
+
+  it("keeps its isolates in the message WhatsApp gets", () => {
+    const text = shareText(
+      `לשבוע ${weekRange("he", weekDates("2026-11-22"))} פורסם.`,
+      "https://example.test/schedule?week=2026-11-22",
+    );
+    const href = whatsappHref(text);
+    expect(textOf(href)).toBe(text);
+    // LRI and PDI in UTF-8, around the days.
+    expect(href).toContain("%E2%81%A622%E2%80%9328%E2%81%A9");
+  });
+});
+
+describe("daysLeftToRight", () => {
+  it("holds only a run of digits, a dash and digits", () => {
+    expect(daysLeftToRight("22–28 בנובמבר")).toBe("\u206622–28\u2069 בנובמבר");
+    expect(daysLeftToRight("29 בנובמבר–5 בדצמבר")).toBe("29 בנובמבר–5 בדצמבר");
+    expect(daysLeftToRight("2026 – 2")).toBe("2026 – 2");
+    expect(daysLeftToRight("הסידור פורסם")).toBe("הסידור פורסם");
   });
 });
 
