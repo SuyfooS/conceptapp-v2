@@ -6,6 +6,11 @@
  * app/(app)/clock/station/lock-station.tsx) can clear it without loading the
  * mode. Every access is in a try: a private window or blocked storage keeps
  * the drafts in memory alone.
+ *
+ * Each entry has one writer: the mode that read it last (`claim`). A mode
+ * Next dropped from its cache still hears the answers of the sends it
+ * started, and keeps them in its own memory only once a newer mode has read
+ * the entry, so an older copy never takes the place of what the tab holds.
  */
 
 export const STORE_PREFIX = "orders:";
@@ -16,6 +21,14 @@ export const storeKeyOf = (user: string, business: string) =>
 
 /** Cleared for the next person: nothing more is written in this page. */
 let closed = false;
+
+/** Who writes each entry: the mode that read it last. */
+const writers = new Map<string, object>();
+
+/** `writer` read the entry under `key`: from now on it alone writes it. */
+export function claim(key: string, writer: object): void {
+  writers.set(key, writer);
+}
 
 /**
  * What the tab kept under `key`, parsed, or null for nothing. Another
@@ -39,9 +52,12 @@ export function readKept(key: string, user: string): unknown {
   }
 }
 
-/** Keeps `json` under `key`, or removes the entry for null. */
-export function keep(key: string, json: string | null): void {
-  if (closed) return;
+/**
+ * Keeps `json` under `key`, or removes the entry for null, while `writer` is
+ * the one that read it last; else nothing.
+ */
+export function keep(key: string, json: string | null, writer: object): void {
+  if (closed || writers.get(key) !== writer) return;
   try {
     if (json === null) sessionStorage.removeItem(key);
     else sessionStorage.setItem(key, json);

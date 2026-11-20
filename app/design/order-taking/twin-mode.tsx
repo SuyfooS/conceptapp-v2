@@ -238,6 +238,8 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
         const { [draft]: _, ...rest } = d.refusals;
         return { ...d, refusals: rest };
       }),
+    // The twin's send answers at once, to the screen that sent it.
+    landed: null,
   };
 
   const value = {

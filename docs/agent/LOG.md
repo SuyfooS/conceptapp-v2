@@ -23,6 +23,11 @@ what is next, defaults applied.
   - Leaving a screen: a take-back sent then (its time, the page hidden, the screen left) takes its "ביטול" off the mode's toast (`say` returns its withdrawal); a send's answer that comes after its screen was left says the toast and moves nobody; what was added to a new takeaway while its first round was on its way is that order's draft once it lands.
   - The clock and the news: the mode's clock never goes back to an older server time (`laterServerTime`); the ready news leaves out tickets marked ready on this phone (`readyNews markedHere`, until put back here); an order is held with the version it was read at (a place's page: the floor's) and the sync asks from the oldest, so one changed while its screen was left is read again.
   - Shared tablets: signing out and locking a station clear every `orders:` entry of the tab first (`clearOrdersStorage`, app/(app)/orders/orders-storage.ts), and nothing is written after; every access is in a try.
+- After the re-review of those fixes (each finding confirmed):
+  - A new takeaway's first round: its send waits while that round is on its way, whichever send it was (`sendWaits`), so a screen shown again, mounted afresh or reloaded opens no second takeaway; a round that went again with no screen waiting says "נשלחה" with "פתיחה" once it lands (never over a way back), and the screen that showed it on its way goes to its order (`sender.landed`); a send answered after its screen was left gets "פתיחה" too.
+  - The tab's entry has one writer, the mode that read it last (`claim`/`keep` in orders-storage.ts): one Next dropped from its cache settles a late answer in its own memory only.
+  - A ticket put back here stays out of the ready news until a sync started after the put-back answered has come (`readyMarks`, ready-marks.ts), so a slower sync from before it says nothing.
+  - The mode's toast is a pure controller now (`modeToast`, mode-toast.ts): a withdrawal takes away its own toast alone and tells the gate at once, an older toast seen going after a newer one was said lets no news out, and the tests hold it (a newer serve's "ביטול" kept, the withdrawn take-back's write unheard); the news-gate test that only repeated the gate's path is gone.
 
 ## 2026-11-20 · chat · taking orders: the orders in the database, module off (waiter mode P3)
 

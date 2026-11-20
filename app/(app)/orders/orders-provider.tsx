@@ -3,6 +3,7 @@
 import {
   type DraftLine,
   draftCount,
+  draftKey,
   type ReadyNews,
   readyNews,
   roundLinesOf,
@@ -14,6 +15,7 @@ import type {
   OrderFloor,
   OrderPrep,
   RoundTarget,
+  SentRound,
 } from "@domain/orders";
 import {
   laterServerTime,
@@ -46,7 +48,7 @@ import { newId } from "./new-id";
 import { OrdersModeContext, useModeToast } from "./orders-mode";
 import { usePlaceWords } from "./orders-parts";
 import { appOrdersPaths } from "./orders-paths";
-import { keep, readKept, storeKeyOf } from "./orders-storage";
+import { claim, keep, readKept, storeKeyOf } from "./orders-storage";
 import type {
   OrdersActions,
   OrdersFrame,
@@ -55,6 +57,7 @@ import type {
   SendOutcome,
   SendRefusal,
 } from "./orders-types";
+import { readyMarks } from "./ready-marks";
 import {
   emptySendStore,
   type PendingRound,
@@ -195,8 +198,10 @@ export function useOrdersRead(
 const readStored = (key: string, user: string): SendStore =>
   storedFrom(readKept(key, user));
 
-const writeStored = (key: string, stored: SendStore) =>
-  keep(key, storeEmpty(stored) ? null : JSON.stringify(stored));
+const writeStored = (key: string, stored: SendStore, writer: object) =>
+  keep(key, storeEmpty(stored) ? null : JSON.stringify(stored), writer);
+
+const NEW_TAKEAWAY = draftKey({ takeaway: null });
 
 const wait = (ms: number) => new Promise((done) => setTimeout(done, ms));
 
@@ -270,21 +275,24 @@ const stillReady = (mine: MyOrders | null, ticket: string) =>
  * 1, 2, 5, 10 and 30 seconds while nothing comes back or the server failed
  * on its way, each round kept by its own key, and tried again whenever the
  * mode is on screen again, the page visible or the phone online while one
- * waits with no try going; the sync, /orders-sync every 15 seconds while
- * visible, from the moment the mode opens (the menu inside it too, for the
- * items' counts), at once when the page comes back, the phone comes online
- * and after each of its own writes; the mode's one toast, which says what
- * of one's own turned ready, whichever screen is on, never what was marked
- * ready on this phone, and never in the place of a way back still offered;
- * and the counts on its items. A taker off a shift finds their screens
- * waiting and their draft kept, until a sync hears the shift began (at the
- * clock station too); someone who runs orders reads and serves, and only
- * their send waits for one.
+ * waits with no try going (a round sent so, with no screen waiting for its
+ * answer, says on the toast where it went once it lands); the sync,
+ * /orders-sync every 15 seconds while visible, from the moment the mode
+ * opens (the menu inside it too, for the items' counts), at once when the
+ * page comes back, the phone comes online and after each of its own writes;
+ * the mode's one toast, which says what of one's own turned ready, whichever
+ * screen is on, never what was marked ready on this phone nor what was put
+ * back here before the read (ready-marks.ts), and never in the place of a
+ * way back still offered; and the counts on its items. A taker off a shift
+ * finds their screens waiting and their draft kept, until a sync hears the
+ * shift began (at the clock station too); someone who runs orders reads and
+ * serves, and only their send waits for one.
  *
  * Next keeps the mode in a hidden <Activity> while another part of the app
  * is on screen: its effects go and come back, its state and refs stay. So
  * the tab's store is read once for each person and business, and written as
- * it changes, shown or hidden.
+ * it changes, shown or hidden, until a newer mode has read it (one Next
+ * dropped from its cache still hears the answers of its sends).
  */
 export function OrdersModeProvider({
   frame,
@@ -302,6 +310,8 @@ export function OrdersModeProvider({
   const { placeTitle } = usePlaceWords();
   const { say, tell, toast } = useModeToast();
   const storeKey = storeKeyOf(frame.userId, frame.business);
+  /** This mode, as the writer of the tab's entry it read (orders-storage.ts). */
+  const [writer] = useState(() => ({}));
   const [stored, setStoredState] = useState<SendStore>(emptySendStore);
   /** The store as it is now, which every change starts from. */
   const storedRef = useRef(stored);
@@ -309,6 +319,13 @@ export function OrdersModeProvider({
   const readFrom = useRef<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [refusals, setRefusals] = useState<Record<string, SendRefusal>>({});
+  /**
+   * The latest round of a new takeaway that landed, and the order it opened:
+   * the screen that showed it on its way goes to that order.
+   */
+  const [landed, setLanded] = useState<{ key: string; order: string } | null>(
+    null,
+  );
   // Rounds of which an attempt failed, by key, and whether the phone is
   // online: until either, a round on its way is simply being sent.
   const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
@@ -343,8 +360,11 @@ export function OrdersModeProvider({
   const heardMine = useRef<MyOrders | null>(null);
   /** What turned ready and wasn't told yet: a way back was on screen. */
   const untold = useRef<ReadyNews[]>([]);
-  /** Tickets marked ready on this phone: their "מוכן" was its own toast. */
-  const markedReady = useRef(new Set<string>());
+  /**
+   * Tickets marked ready on this phone (their "מוכן" was its own toast), and
+   * those put back here, until a read made after the put-back.
+   */
+  const [marks] = useState(readyMarks);
   /** The latest server time heard, which the clock never goes back from. */
   const heardAt = useRef<number | null>(null);
   /** Each round with a send trying it, by its key: never two for one. */
@@ -411,10 +431,12 @@ export function OrdersModeProvider({
   // What turned ready of one's own: one toast for the mode, whichever
   // screen. While a way back is on screen it waits, and everything that
   // turned ready meanwhile is told together once it has gone. What was
-  // marked ready on this phone, and not put back, is no news.
+  // marked ready on this phone, and not put back, is no news; nor is what
+  // was put back here, in the read of a sync that started before the
+  // put-back answered (`read`, the sync's number).
   const tellReady = useCallback(
-    (before: MyOrders | null, after: MyOrders) => {
-      const news = readyNews(before, after, markedReady.current);
+    (before: MyOrders | null, after: MyOrders, read: number) => {
+      const news = readyNews(before, after, marks.quietFor(read));
       if (news.length === 0) return;
       const fresh = new Set(news.map((item) => item.ticket));
       untold.current = [
@@ -425,7 +447,7 @@ export function OrdersModeProvider({
         const due = untold.current.filter(
           (item) =>
             stillReady(heardMine.current, item.ticket) &&
-            !markedReady.current.has(item.ticket),
+            !marks.quiet(item.ticket),
         );
         untold.current = [];
         const first = due[0];
@@ -443,7 +465,7 @@ export function OrdersModeProvider({
         );
       });
     },
-    [frame.departments, placeTitle, say, t, tell],
+    [frame.departments, marks, placeTitle, say, t, tell],
   );
 
   const syncOnce = useCallback(async () => {
@@ -453,6 +475,7 @@ export function OrdersModeProvider({
       return;
     }
     state.running = true;
+    const read = marks.started();
     if (timer.current) clearTimeout(timer.current);
     const held = readsRef.current;
     const wasOff = offRef.current !== null;
@@ -486,7 +509,7 @@ export function OrdersModeProvider({
         );
         if (answer.mine) {
           heardMine.current = newest(heardMine.current, answer.mine);
-          tellReady(readsRef.current.mine, answer.mine);
+          tellReady(readsRef.current.mine, answer.mine, read);
         }
         const order = query.order;
         setReads((was) => ({
@@ -543,7 +566,7 @@ export function OrdersModeProvider({
         }
       }
     }
-  }, [frame, heard, tellReady]);
+  }, [frame, heard, marks, tellReady]);
   // The latest sync, for timers and listeners set before the screen drew again.
   const again = useRef(syncOnce);
   again.current = syncOnce;
@@ -569,31 +592,69 @@ export function OrdersModeProvider({
   /**
    * Changes the store from what it is now, and keeps it in the tab at once:
    * a mode hidden in an <Activity> runs no effects, and the tab may close
-   * from another part of the app.
+   * from another part of the app. Once a newer mode has read the tab's
+   * entry (this one was dropped from Next's cache with a send on its way),
+   * the change stays in this one's memory.
    */
-  const change = useCallback((next: (was: SendStore) => SendStore) => {
-    const was = storedRef.current;
-    const value = next(was);
-    if (value === was) return;
-    storedRef.current = value;
-    setStoredState(value);
-    if (readFrom.current !== null) writeStored(readFrom.current, value);
-  }, []);
+  const change = useCallback(
+    (next: (was: SendStore) => SendStore) => {
+      const was = storedRef.current;
+      const value = next(was);
+      if (value === was) return;
+      storedRef.current = value;
+      setStoredState(value);
+      if (readFrom.current !== null) {
+        writeStored(readFrom.current, value, writer);
+      }
+    },
+    [writer],
+  );
 
   // The drafts this tab kept, and any send still on its way: read once for
-  // each person and business. The mode shown again holds what is newer.
+  // each person and business, and from then on written by this mode alone.
+  // The mode shown again holds what is newer.
   useEffect(() => {
     if (readFrom.current === storeKey) return;
+    claim(storeKey, writer);
     const kept = readStored(storeKey, frame.userId);
     readFrom.current = storeKey;
     storedRef.current = kept;
     setStoredState(kept);
     setLoaded(true);
-  }, [storeKey, frame.userId]);
+  }, [storeKey, frame.userId, writer]);
 
-  /** Sends one round, trying again while nothing comes back, and settles it. */
+  /**
+   * A round sent again with no screen waiting for its answer (`resume`: the
+   * mode was left, or the tab read again, while it was on its way) landed:
+   * the toast says where it went, with the way there, and never in the place
+   * of a way back still offered.
+   */
+  const tellSent = useCallback(
+    (sent: SentRound) => {
+      const name =
+        sent.place === null
+          ? null
+          : (readsRef.current.menu?.places.find((p) => p.id === sent.place)
+              ?.name ?? null);
+      // A place no longer on the menu: its order says it.
+      if (sent.place !== null && name === null) return;
+      const place = placeTitle({ placeName: name, takeaway: sent.takeaway });
+      const open =
+        sent.place === null
+          ? appOrdersPaths.takeaway(sent.order)
+          : appOrdersPaths.place(sent.place);
+      tell(() => say(t("sent", { place }), { open }));
+    },
+    [placeTitle, say, t, tell],
+  );
+
+  /**
+   * Sends one round, trying again while nothing comes back, and settles it.
+   * `awaited`: a screen waits for its answer (the send), or none does (the
+   * round goes again, `resume`).
+   */
   const deliverOnce = useCallback(
-    async (round: PendingRound): Promise<SendOutcome> => {
+    async (round: PendingRound, awaited: boolean): Promise<SendOutcome> => {
       const { draft, body } = round;
       const text = JSON.stringify(body);
       const settled = () =>
@@ -656,7 +717,14 @@ export function OrdersModeProvider({
               ),
             );
             settled();
-            if (!outcome.ok) {
+            if (outcome.ok) {
+              // A new takeaway's first round opened its order: the screen
+              // that showed it on its way goes there.
+              if (round.draft === NEW_TAKEAWAY) {
+                setLanded({ key: body.key, order: outcome.round.order });
+              }
+              if (!awaited) tellSent(outcome.round);
+            } else {
               setRefusals((was) => ({
                 ...was,
                 [draft]: { ...outcome, target: body.target },
@@ -690,15 +758,15 @@ export function OrdersModeProvider({
         delivering.current.delete(body.key);
       }
     },
-    [change, syncNow],
+    [change, syncNow, tellSent],
   );
 
   /** A round's send: the one trying it already, or a new one. */
   const deliver = useCallback(
-    (round: PendingRound): Promise<SendOutcome> => {
+    (round: PendingRound, awaited: boolean): Promise<SendOutcome> => {
       const running = delivering.current.get(round.body.key);
       if (running) return running;
-      const trying = deliverOnce(round);
+      const trying = deliverOnce(round, awaited);
       delivering.current.set(round.body.key, trying);
       return trying;
     },
@@ -720,16 +788,19 @@ export function OrdersModeProvider({
       setRefusals(({ [draft]: _, ...rest }) => rest);
       // Only the lines sent leave the draft: any past a round's 40 stay.
       change((was) => storeSent(was, round));
-      return deliver(round);
+      return deliver(round, true);
     },
     [change, deliver, frame.business],
   );
 
-  /** Every round on its way with no send trying it goes again, with its key. */
+  /**
+   * Every round on its way with no send trying it goes again, with its key:
+   * no screen waits for its answer now.
+   */
   const resume = useCallback(() => {
     if (readFrom.current === null) return;
     for (const round of Object.values(storedRef.current.pending)) {
-      void deliver(round);
+      void deliver(round, false);
     }
   }, [deliver]);
 
@@ -809,25 +880,23 @@ export function OrdersModeProvider({
       refusal: (draft: string) => refusals[draft] ?? null,
       clearRefusal: (draft: string) =>
         setRefusals(({ [draft]: _, ...rest }) => rest),
+      landed,
     }),
-    [send, stored.pending, refusals, online, retrying],
+    [send, stored.pending, refusals, online, retrying, landed],
   );
 
   // A ticket marked ready here is no news to this phone, until it is put
-  // back here.
+  // back here and a read made after that has come.
   const modeActions = useMemo<OrdersActions>(
     () => ({
       ...actions,
       setReady: async (ticket, ready) => {
         const result = await actions.setReady(ticket, ready);
-        if (result.ok) {
-          if (ready) markedReady.current.add(ticket);
-          else markedReady.current.delete(ticket);
-        }
+        if (result.ok) marks.said(ticket, ready);
         return result;
       },
     }),
-    [actions],
+    [actions, marks],
   );
 
   // The items' counts, as the sync hears them.

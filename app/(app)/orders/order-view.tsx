@@ -52,6 +52,7 @@ import {
 import type { SendRefusal } from "./orders-types";
 import { Picker } from "./picker";
 import { Rounds } from "./rounds";
+import { sendWaits } from "./send-store";
 
 /** Where the screen is: a place, an open takeaway, or a new one. */
 export type OrderWhere =
@@ -122,14 +123,25 @@ export function OrderView({
   const heldBack = useRef(new Set<string>());
   /** The take-back's toast, to take away once its way back is gone. */
   const backToast = useRef<(() => void) | null>(null);
+  /**
+   * A new takeaway's rounds this screen showed on their way while on show,
+   * by key: once one lands, the screen goes to the order it opened.
+   */
+  const onWay = useRef(new Set<string>());
+  /** The order this screen went to, so it goes there once. */
+  const movedTo = useRef<string | null>(null);
   // Whether this screen is the one on show: Next keeps a screen left inside
   // the mode in a hidden <Activity>, where its effects go and its awaits
-  // still finish.
+  // still finish. Left, it forgets the rounds it showed on their way: whoever
+  // comes back to a new takeaway starts one, and the toast said where the
+  // last one went.
   const onScreen = useRef(false);
   useEffect(() => {
     onScreen.current = true;
+    const shown = onWay.current;
     return () => {
       onScreen.current = false;
+      shown.clear();
     };
   }, []);
 
@@ -152,6 +164,27 @@ export function OrderView({
 
   const refusal = sender.refusal(key);
   const pending = sender.pending(key);
+  // A new takeaway's first round on its way gives it its order: until it
+  // lands, a second send would open a second takeaway, whichever send it
+  // was (this screen's, or one that went again after the mode was left or
+  // the tab read again). What is added meanwhile waits, and is that order's.
+  const busy = sending || sendWaits(key, pending.length);
+  const newTakeaway = where.kind === "takeaway" && where.order === null;
+  const onWayKeys = newTakeaway ? pending.map((p) => p.key).join(" ") : "";
+  useEffect(() => {
+    for (const shown of onWayKeys.split(" ")) {
+      if (shown) onWay.current.add(shown);
+    }
+  }, [onWayKeys]);
+  // One of them landed, whichever send it was: the screen goes to its order.
+  const landed = sender.landed;
+  useEffect(() => {
+    if (!landed || !onWay.current.has(landed.key)) return;
+    onWay.current.clear();
+    if (movedTo.current === landed.order) return;
+    movedTo.current = landed.order;
+    router.replace(paths.takeaway(landed.order));
+  }, [landed, router, paths]);
   // What one send takes: a round's 40 lines at most, the rest after it.
   const round = roundOf(draft);
   const routes = draftRoutes(menu?.items ?? [], round, frame.departmentOrder)
@@ -214,7 +247,7 @@ export function OrderView({
     }),
   ) {
     const lines = roundOf(drafts.get(key));
-    if (lines.length === 0 || sending || frame.viewing) return;
+    if (lines.length === 0 || busy || frame.viewing) return;
     setSending(true);
     setView("order");
     const outcome = await sender.send(key, target, lines);
@@ -224,14 +257,25 @@ export function OrderView({
       placeName: place?.name ?? null,
       takeaway: outcome.round.takeaway,
     });
-    say(t("toast.sent", { place: sentAs }));
     // Left meanwhile (the answer came after a while, offline): the toast
-    // says it wherever the person is, and nothing moves them.
-    if (!onScreen.current) return;
+    // says it wherever the person is, with the way to it, and nothing moves
+    // them.
+    if (!onScreen.current) {
+      say(t("toast.sent", { place: sentAs }), {
+        open: place
+          ? paths.place(place.id)
+          : paths.takeaway(outcome.round.order),
+      });
+      return;
+    }
+    say(t("toast.sent", { place: sentAs }));
     roundsHeading.current?.focus({ preventScroll: true });
     // A new takeaway's first send gives it its number, and its own page.
-    if (where.kind === "takeaway" && where.order === null) {
-      router.replace(paths.takeaway(outcome.round.order));
+    const order = outcome.round.order;
+    if (newTakeaway && movedTo.current !== order) {
+      onWay.current.clear();
+      movedTo.current = order;
+      router.replace(paths.takeaway(order));
     }
   }
 
@@ -338,7 +382,7 @@ export function OrderView({
         onClick={() => void send()}
         floating={floating}
         disabled={frame.viewing}
-        loading={sending}
+        loading={busy}
       />
     );
 

@@ -117,6 +117,12 @@ export type OrdersSender = {
   pending: (draft: string) => PendingSend[];
   refusal: (draft: string) => SendRefusal | null;
   clearRefusal: (draft: string) => void;
+  /**
+   * The latest round of a new takeaway that landed, by its key, and the
+   * order it opened, whichever send it was: the screen that showed it on its
+   * way goes to that order.
+   */
+  landed: { key: string; order: string } | null;
 };
 
 /** The drafts on the phone, by `draftKey`. */

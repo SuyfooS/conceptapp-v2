@@ -56,29 +56,61 @@ describe("what waiter mode keeps in the tab", () => {
   });
 
   it("clears everyone's entries as a session ends here, and writes nothing after", async () => {
-    const { clearOrdersStorage, keep } = await load();
+    const { claim, clearOrdersStorage, keep } = await load();
+    const mode = {};
+    claim(NOA, mode);
     clearOrdersStorage();
     expect(sessionStorage.getItem(NOA)).toBeNull();
     expect(sessionStorage.getItem(SHIRAN)).toBeNull();
     expect(sessionStorage.getItem("chat:draft")).toBe("kept");
     // A send that settles on its way to the door puts nothing back.
-    keep(NOA, JSON.stringify({ drafts: { a: [] }, pending: {} }));
+    keep(NOA, JSON.stringify({ drafts: { a: [] }, pending: {} }), mode);
     expect(sessionStorage.getItem(NOA)).toBeNull();
   });
 
-  it("keeps and removes an entry", async () => {
-    const { keep } = await load();
-    keep(NOA, "{}");
+  it("keeps and removes an entry for the mode that read it", async () => {
+    const { claim, keep } = await load();
+    const mode = {};
+    // Not read yet: nothing is written over what the tab holds.
+    keep(NOA, "{}", mode);
+    expect(sessionStorage.getItem(NOA)).toBe(
+      JSON.stringify({ drafts: {}, pending: {} }),
+    );
+    claim(NOA, mode);
+    keep(NOA, "{}", mode);
     expect(sessionStorage.getItem(NOA)).toBe("{}");
-    keep(NOA, null);
+    keep(NOA, null, mode);
     expect(sessionStorage.getItem(NOA)).toBeNull();
+  });
+
+  it("lets only the mode that read an entry last write it", async () => {
+    const { claim, keep } = await load();
+    // The mode Next dropped from its cache, with a send still on its way.
+    const dropped = {};
+    claim(NOA, dropped);
+    keep(NOA, JSON.stringify({ pending: { r: {} } }), dropped);
+    // The mode opened again reads the entry, sends it and takes a new draft.
+    const reopened = {};
+    claim(NOA, reopened);
+    const draft = JSON.stringify({ drafts: { "place:6": [{}] }, pending: {} });
+    keep(NOA, draft, reopened);
+    // The dropped one hears its old answer last: it settles in its memory.
+    keep(NOA, null, dropped);
+    keep(NOA, JSON.stringify({ drafts: {}, pending: {} }), dropped);
+    expect(sessionStorage.getItem(NOA)).toBe(draft);
+    // Another entry is its own: whoever read it writes it.
+    claim(SHIRAN, dropped);
+    keep(SHIRAN, "{}", dropped);
+    expect(sessionStorage.getItem(SHIRAN)).toBe("{}");
   });
 
   it("lives in memory alone where storage is blocked", async () => {
     vi.stubGlobal("sessionStorage", blocked);
-    const { clearOrdersStorage, keep, readKept } = await load();
+    const { claim, clearOrdersStorage, keep, readKept } = await load();
+    const mode = {};
+    claim(NOA, mode);
     expect(readKept(NOA, "noa")).toBeNull();
-    expect(() => keep(NOA, "{}")).not.toThrow();
+    expect(() => keep(NOA, "{}", mode)).not.toThrow();
     expect(() => clearOrdersStorage()).not.toThrow();
   });
 

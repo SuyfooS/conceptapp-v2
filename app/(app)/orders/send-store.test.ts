@@ -5,6 +5,7 @@ import {
   type PendingRound,
   pendingOfDraft,
   type SendStore,
+  sendWaits,
   storeDraftChanged,
   storedFrom,
   storeEmpty,
@@ -140,6 +141,26 @@ describe("the sends kept in the tab", () => {
     expect(storeSettled(both, atPlace, sent).drafts[NEW_TAKEAWAY]).toEqual(
       added,
     );
+  });
+
+  it("holds a new takeaway's send while its first round is on its way, whichever send it was", () => {
+    // Its first round went offline; the mode was left or the tab read
+    // again, so no send of the screen waits for it now. A second send would
+    // open a second takeaway: the lines added meanwhile wait for the first.
+    const first = round(A, [line()], NEW_TAKEAWAY);
+    const store = reloaded(
+      storeSent(
+        { ...emptySendStore, drafts: { [NEW_TAKEAWAY]: first.lines } },
+        first,
+      ),
+    );
+    const onItsWay = pendingOfDraft(store.pending, NEW_TAKEAWAY).length;
+    expect(sendWaits(NEW_TAKEAWAY, onItsWay)).toBe(true);
+    // Landed or refused, nothing is on its way: the send goes.
+    expect(sendWaits(NEW_TAKEAWAY, 0)).toBe(false);
+    // A place's round, or an order's, joins its order: a second goes too.
+    expect(sendWaits(DRAFT, 1)).toBe(false);
+    expect(sendWaits(`takeaway:${ORDER}`, 1)).toBe(false);
   });
 
   it("takes only the lines a round sends out of the draft", () => {

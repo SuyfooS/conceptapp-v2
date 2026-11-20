@@ -106,6 +106,18 @@ export function storeDraftChanged(
   };
 }
 
+/**
+ * Whether a draft's send waits for its own round still on its way: a new
+ * takeaway's first round gives it its order, and a send before that lands
+ * would open a second takeaway (a place's or an order's joins its order).
+ * What is added meanwhile stays in the draft, and is that order's once the
+ * round lands (`storeSettled`), whichever send it was: the screen's own, or
+ * one that went again after the mode was left or the tab read again.
+ */
+export function sendWaits(draft: string, onItsWay: number): boolean {
+  return draft === NEW_TAKEAWAY && onItsWay > 0;
+}
+
 /** A draft's rounds on their way, in the order they went. */
 export function pendingOfDraft(
   pending: SendStore["pending"],

@@ -11,7 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { newsGate } from "./news-gate";
+import { modeToast, type ShownToast } from "./mode-toast";
 import type {
   DraftStore,
   OrdersActions,
@@ -60,8 +60,6 @@ export function useOrdersMode(): OrdersModeValue {
 }
 
 type Toast = {
-  /** Which toast this is, for its withdrawal. */
-  id: number;
   text: string;
   stamp: number;
   undo: (() => void) | null;
@@ -83,7 +81,7 @@ type Toast = {
  * the toast stays over the mode's other screens). `tell` is for news nobody
  * pressed for (a ticket turned ready): it never takes the place of a way
  * back still offered, and waits until that toast has gone; the newest news
- * waiting is told then, once.
+ * waiting is told then, once. The rules are mode-toast.ts's, with its tests.
  */
 export function useModeToast(): {
   say: Say;
@@ -92,28 +90,14 @@ export function useModeToast(): {
 } {
   const t = useTranslations("app.orders.toast");
   const router = useRouter();
-  const [toast, setToast] = useState<Toast | null>(null);
-  const shown = useRef<Toast | null>(null);
-  shown.current = toast;
+  const [toast, setToast] = useState<ShownToast<Toast> | null>(null);
+  const [slot] = useState(() => modeToast<Toast>(setToast));
   const after = useRef<(() => HTMLElement | null | undefined) | null>(null);
-  /** News waits while a way back is offered on screen. */
-  const [gate] = useState(newsGate);
-  /** The toast that last heard it stopped counting, and whether it still is. */
-  const told = useRef<{ toast: Toast; waiting: boolean } | null>(null);
-  const said = useRef(0);
 
   const say = useCallback<Say>(
     (text, options = {}) => {
-      // A toast that waited for the person hears it goes on, as it goes: what
-      // its way back holds (a take-back) lands then, never stays held.
-      if (told.current?.waiting) told.current.toast.onWaitingChange?.(false);
-      told.current = null;
       after.current = options.after ?? null;
-      gate.said(Boolean(options.undo));
-      said.current += 1;
-      const id = said.current;
-      setToast({
-        id,
+      return slot.say({
         text,
         stamp: Date.now(),
         undo: options.undo ?? null,
@@ -121,41 +105,22 @@ export function useModeToast(): {
         focus: Boolean((options.undo || options.open) && options.focus),
         onWaitingChange: options.onWaitingChange ?? null,
       });
-      // Only this toast, while it still shows: a newer one stays. It goes at
-      // once (StatusToast), and the news it held back is told then.
-      return () => {
-        if (told.current?.toast.id === id) told.current = null;
-        setToast((was) => (was?.id === id ? null : was));
-      };
     },
-    [gate],
+    [slot],
   );
-  const onWaitingChange = useCallback((waiting: boolean) => {
-    const current = shown.current;
-    if (!current?.onWaitingChange) return;
-    told.current = { toast: current, waiting };
-    current.onWaitingChange(waiting);
-  }, []);
 
   const action = toast?.undo
-    ? {
-        label: t("undo"),
-        onClick: () => {
-          // The way back lets go of what it held: nothing to go on with.
-          told.current = null;
-          toast.undo?.();
-          setToast(null);
-        },
-      }
+    ? { label: t("undo"), onClick: slot.undo }
     : toast?.open
       ? {
           label: t("open"),
           onClick: () => {
             if (toast.open) router.push(toast.open);
-            setToast(null);
+            slot.close();
           },
         }
       : null;
+  const shownId = toast?.id ?? null;
   const element = (
     <StatusToast
       message={toast?.text ?? null}
@@ -164,9 +129,9 @@ export function useModeToast(): {
       action={action}
       focusAction={toast?.focus ?? false}
       onFocusLeave={() => after.current?.()?.focus({ preventScroll: true })}
-      onWaitingChange={toast?.onWaitingChange ? onWaitingChange : undefined}
-      onHidden={gate.hidden}
+      onWaitingChange={toast?.onWaitingChange ? slot.waiting : undefined}
+      onHidden={() => slot.hidden(shownId)}
     />
   );
-  return { say, tell: gate.tell, toast: element };
+  return { say, tell: slot.tell, toast: element };
 }
