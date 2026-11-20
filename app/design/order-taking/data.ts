@@ -701,7 +701,7 @@ export const restaurantMenuWording: Readonly<Record<string, string>> = {
   "app.orders.import.done":
     "{items, plural, one {נוספה לתפריט מנה אחת} other {נוספו לתפריט # מנות}}{categories, plural, =0 {} one { וקטגוריה חדשה אחת} other { ו-# קטגוריות חדשות}}",
   "app.manage.roles.editHint.order_taking":
-    'בלי עריכה רואים את התפריט, ומסמנים "נגמר" למנות שהמחלקה שלהם מכינה. עם עריכה גם עורכים את התפריט, את המחירים ואת השולחנות, ומסמנים "נגמר" לכל מנה.',
+    'בלי עריכה רואים את התפריט, מקבלים הזמנות אם הם במחלקה שמקבלת הזמנות, מבטלים מנה שעוד לא מוכנה ומסמנים "מוכן" ו"נגמר" למה שהמחלקה שלהם מכינה. עם עריכה גם מקבלים הזמנות מכל מחלקה, מבטלים מנה מוכנה, נותנים על חשבון הבית ועורכים את התפריט, המחירים והשולחנות.',
   "app.manage.activity.actions.menu.itemCreate": "הוספת המנה {name} לתפריט",
   "app.manage.activity.actions.menu.itemSave": "שינוי במנה {name}",
   "app.manage.activity.actions.menu.itemArchive": "הסרת המנה {name} מהתפריט",
