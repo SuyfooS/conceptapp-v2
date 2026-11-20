@@ -3136,6 +3136,7 @@
         },
         "who": {
           "team": "צוות ConceptApp",
+          "app": "האפליקציה",
           "former": "מי שכבר לא בצוות",
           "unknown": "מי שכבר לא באפליקציה",
           "noName": "בלי שם"
@@ -3296,7 +3297,7 @@
             },
             "fixOtherOf": "{label}: {what}",
             "late": "הרשימה {name} באיחור",
-            "missed": "הרשימה {name} לא נעשתה",
+            "missed": "סגירת הרשימה {name}, שלא נעשתה",
             "outOfRange": "קריאה מחוץ לטווח ב{name}: {label}, <ltr>{reading}</ltr>",
             "range": {
               "between": "הטווח: בין <ltr>{range}</ltr>",
