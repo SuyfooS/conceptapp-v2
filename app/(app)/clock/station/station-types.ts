@@ -20,3 +20,12 @@ export type LockOffer = {
 
 /** Locks the device, signs out on it, and says where it goes. The demo passes a stand-in. */
 export type LockAction = (input: { name: string }) => Promise<LockResult>;
+
+/**
+ * What Home says on a device that is one of the business's running stations
+ * (`currentStationHome`): whoever may lock it locks it again, as the station
+ * it is; anyone else signs out when done.
+ */
+export type StationHome =
+  | { kind: "lock"; offer: LockOffer & { current: { name: string } } }
+  | { kind: "signOut" };

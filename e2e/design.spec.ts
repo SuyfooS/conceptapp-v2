@@ -29,8 +29,10 @@ const PAGES = [
   "/design/shell/today/first-steps",
   "/design/shell/today/first-steps?state=new",
   "/design/shell/today/first-steps?state=viewing",
-  // Signed in again on the business's clock station: the reminder to lock it.
+  // Signed in again on the business's clock station: the reminder to lock it,
+  // and a worker's card to sign out when done.
   "/design/shell/today/station",
+  "/design/shell/today/station?state=worker",
   "/design/shell/schedule",
   // Next week, as the link in a shared schedule opens it.
   "/design/shell/schedule?week=2026-11-08",
@@ -116,6 +118,8 @@ const PAGES = [
   "/design/shell/today/accountant?state=checked",
   "/design/shell/today/accountant?state=empty",
   "/design/shell/today/accountant?state=off",
+  // The accountant signed in on the business's clock station: sign out when done.
+  "/design/shell/today/accountant?state=station",
   "/design/shell/today/businesses",
   "/design/shell/today/businesses?state=left",
   "/design/shell/team",
@@ -897,14 +901,15 @@ test("the Today demo's first steps lead into the demo and hide with a way back",
 
 // Signed in again on the business's clock station (#78 phase 5): Today says
 // the device is the station, and "נעילת המכשיר" locks it again as that same
-// station, with no new name, to the station's twin. Anywhere else, Today
-// says nothing of a station.
+// station, with no new name, to the station's twin. Whoever may lock it isn't
+// told to sign out instead. Anywhere else, Today says nothing of a station.
 test("the Today demo on the clock station locks it again as the same station", async ({
   page,
 }) => {
   const reminder = he.app.clock.station.reminder;
   const lock = he.app.clock.station.lock;
   const body = page.getByText(reminder.body);
+  const signOutBody = page.getByText(reminder.signOutBody);
   const again = page.getByRole("button", { name: reminder.lock, exact: true });
 
   await page.goto("/design/shell");
@@ -912,10 +917,15 @@ test("the Today demo on the clock station locks it again as the same station", a
     page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
   ).toBeVisible();
   await expect(body).toHaveCount(0);
+  await expect(signOutBody).toHaveCount(0);
   await expect(again).toHaveCount(0);
 
   await page.goto("/design/shell/today/station");
   await expect(body).toBeVisible();
+  await expect(signOutBody).toHaveCount(0);
+  await expect(page.getByRole("button", { name: he.app.signOut })).toHaveCount(
+    0,
+  );
   await again.click();
   const sheet = page.getByRole("dialog", { name: lock.title });
   await expect(
@@ -929,6 +939,42 @@ test("the Today demo on the clock station locks it again as the same station", a
   await expect(
     page.getByRole("img", { name: he.app.clock.code.qrLabel }),
   ).toBeVisible();
+});
+
+// Signed in on the business's clock station by someone who doesn't lock it
+// (Orel, 20 November 2026): Today says the device is the business's tablet,
+// with no lock, and "יציאה מהחשבון" goes to the station's twin, as the device
+// goes back to its code. The accountant's Home says the same.
+test("the Today demo on the clock station tells whoever doesn't lock it to sign out, and goes to the station", async ({
+  page,
+}) => {
+  const reminder = he.app.clock.station.reminder;
+  const body = page.getByText(reminder.signOutBody);
+  const again = page.getByRole("button", { name: reminder.lock, exact: true });
+  const signOut = page.getByRole("button", { name: he.app.signOut });
+  const qr = page.getByRole("img", { name: he.app.clock.code.qrLabel });
+
+  await page.goto("/design/shell/today/station?state=worker");
+  await expect(body).toBeVisible();
+  await expect(page.getByText(reminder.body)).toHaveCount(0);
+  await expect(again).toHaveCount(0);
+  await signOut.click();
+  await expect(page).toHaveURL(/\/design\/shell\/station$/);
+  await expect(qr).toBeVisible();
+
+  await page.goto("/design/shell/today/accountant?state=station");
+  await expect(body).toBeVisible();
+  await expect(again).toHaveCount(0);
+  await signOut.click();
+  await expect(page).toHaveURL(/\/design\/shell\/station$/);
+  await expect(qr).toBeVisible();
+
+  // Her Home anywhere else says nothing of a station.
+  await page.goto("/design/shell/today/accountant");
+  await expect(
+    page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(body).toHaveCount(0);
 });
 
 // A stale screen on the builder's demo (R1b), at every size: Omer gives his
