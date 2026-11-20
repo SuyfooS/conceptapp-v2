@@ -679,26 +679,32 @@ reset role;
 ------------------------------------------------------------------------------
 -- Nobody reads the tables
 
+-- The code alone: Postgres adds its own hint to a missing privilege ("Grant
+-- the required privileges…"), which says nothing about these tables.
 select pg_temp.sign_in(pg_temp.p(1));
 select is(
   concat_ws('|',
-    pg_temp.refusal('select count(*) from public.orders'),
-    pg_temp.refusal('select count(*) from public.order_rounds'),
-    pg_temp.refusal('select count(*) from public.order_tickets'),
-    pg_temp.refusal('select count(*) from public.order_lines')),
+    split_part(pg_temp.refusal('select count(*) from public.orders'), ' ', 1),
+    split_part(pg_temp.refusal('select count(*) from public.order_rounds'), ' ', 1),
+    split_part(pg_temp.refusal('select count(*) from public.order_tickets'), ' ', 1),
+    split_part(pg_temp.refusal('select count(*) from public.order_lines'), ' ', 1)),
   '42501|42501|42501|42501',
   'not even the owner reads the orders directly'
 );
 reset role;
 set local role anon;
-select is(pg_temp.refusal('select count(*) from public.orders'), '42501', 'nor a visitor');
+select is(
+  split_part(pg_temp.refusal('select count(*) from public.orders'), ' ', 1),
+  '42501',
+  'nor a visitor'
+);
 reset role;
 set local role service_role;
 select is(
-  pg_temp.refusal(format(
+  split_part(pg_temp.refusal(format(
     'insert into public.orders (business_id, place_id, day, opened_at) values (%L, %L, current_date, now())',
-    pg_temp.a(), pg_temp.pl(9)))
-  || '|' || pg_temp.refusal('delete from public.orders'),
+    pg_temp.a(), pg_temp.pl(9))), ' ', 1)
+  || '|' || split_part(pg_temp.refusal('delete from public.orders'), ' ', 1),
   '42501|42501',
   'and the server role writes and deletes none: only the functions do'
 );
