@@ -357,3 +357,136 @@ export const itemInput = z.strictObject({
 });
 
 export type ItemInput = z.infer<typeof itemInput>;
+
+/*
+ * The menu on screen (P2): what the screens work out from the menu they
+ * read, so every shape of a screen says the same.
+ */
+
+/** What a save of an item changes; the rest is sent as the item has it. */
+export type ItemChange = Partial<
+  Pick<
+    ItemInput,
+    "category" | "name" | "description" | "priceAgorot" | "department"
+  >
+>;
+
+/**
+ * An item as `public.save_menu_item` saves it: whole, since it replaces
+ * every field, so what isn't changed goes as the item has it, its choices,
+ * its description and its own department too. A blank description is none.
+ * No place is sent: one moved to another category goes last there, and one
+ * that stays keeps its place.
+ */
+export function itemSaveInput(
+  item: MenuItem,
+  change: ItemChange = {},
+): ItemInput {
+  const description =
+    "description" in change ? change.description : item.description;
+  return {
+    id: item.id,
+    category: change.category ?? item.category,
+    name: change.name ?? item.name,
+    description: description?.trim() ? description.trim() : null,
+    priceAgorot: change.priceAgorot ?? item.priceAgorot,
+    department:
+      "department" in change ? (change.department ?? null) : item.department,
+    optionGroups: [...item.optionGroups],
+  };
+}
+
+/** What the menu's title says first: its items, those sold out, and those that reach no one. */
+export function menuStatus(menu: Pick<Menu, "items">): {
+  items: number;
+  soldOut: number;
+  noRoute: number;
+} {
+  return {
+    items: menu.items.length,
+    soldOut: menu.items.filter((item) => !item.available).length,
+    noRoute: menu.items.filter((item) => item.route === null).length,
+  };
+}
+
+/** How many items each department prepares, by where their lines go now. */
+export function itemsByDepartment(
+  menu: Pick<Menu, "items">,
+): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const item of menu.items) {
+    if (item.route === null) continue;
+    counts.set(item.route, (counts.get(item.route) ?? 0) + 1);
+  }
+  return counts;
+}
+
+/**
+ * Whether the person marks this item sold out, as
+ * `public.set_menu_item_available` allows: they run the menu, or its lines go
+ * to one of their live departments. One that goes nowhere is only theirs who
+ * run the menu.
+ */
+export function marksSoldOut(
+  item: Pick<MenuItem, "route">,
+  person: { runsMenu: boolean; myDepartments: readonly string[] },
+): boolean {
+  return (
+    person.runsMenu ||
+    (item.route !== null && person.myDepartments.includes(item.route))
+  );
+}
+
+/**
+ * Places named "1" to "count", for a business that has none yet: names
+ * already taken (case aside) are skipped and counting goes on, and the
+ * places it has come after them, so no more than the menu's 60 in all.
+ */
+export function quickPlaces(
+  count: number,
+  existing: readonly PlaceInput[] = [],
+): PlaceInput[] {
+  const taken = new Set(existing.map((place) => nameKey(place.name)));
+  const wanted = Math.max(
+    0,
+    Math.min(Math.floor(count), MENU_CAPS.places - existing.length),
+  );
+  const made: PlaceInput[] = [];
+  for (let n = 1; made.length < wanted; n++) {
+    if (!taken.has(String(n))) made.push({ name: String(n) });
+  }
+  return [...made, ...existing];
+}
+
+/**
+ * How many places the quick start makes for its typed count: a whole number
+ * from 1 to the menu's 60, the part after a point dropped, and `fallback`
+ * while the field is empty or holds no number. Its button names this number
+ * and makes exactly it, and the field takes it back once left, so the three
+ * never say different things.
+ */
+export function quickCount(typed: string, fallback: number): number {
+  const text = typed.trim();
+  const read = Number(text);
+  const whole = text === "" || !Number.isFinite(read) ? fallback : read;
+  return Math.min(MENU_CAPS.places, Math.max(1, Math.floor(whole)));
+}
+
+/** Agorot as typed back into a price field: "62", or "14.50" with agorot. */
+export function typedAgorot(agorot: number): string {
+  return agorot % 100 === 0 ? String(agorot / 100) : (agorot / 100).toFixed(2);
+}
+
+/**
+ * How a group of choices is picked, for its words: exactly one, up to some,
+ * from some to some, or any of them.
+ */
+export function choiceRule(
+  group: Pick<OptionGroup, "min" | "max" | "options">,
+): "one" | "upTo" | "between" | "any" {
+  if (group.min === 1 && group.max === 1) return "one";
+  if (group.min === 0) {
+    return group.max >= group.options.length ? "any" : "upTo";
+  }
+  return "between";
+}

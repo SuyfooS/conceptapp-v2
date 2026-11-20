@@ -7,25 +7,30 @@ import { z } from "zod";
  * Taking orders (waiter mode, Orel, 17 November 2026, issue #191): the people
  * a business chooses take orders on their phones and send each item to the
  * department that prepares it. The key is internal; its name is one string
- * (`modules.order_taking.name`), "קבלת הזמנות" until Orel names it.
+ * (`modules.order_taking.name`): "קבלת הזמנות", and "מצב מלצרות" in the
+ * restaurant's and the café's templates (their wording; Orel, 20 November
+ * 2026).
  *
- * P1 is the menu and the places in the database alone
+ * P1 is the menu and the places in the database
  * (supabase/migrations/20261117000500_order_taking_menu.sql): categories that
  * each route to a department, items with VAT-inclusive prices in agorot and
- * their choices (@domain/order-taking), "sold out", and the places. P3 is the
- * orders, in the database alone too (20261120000200_order_taking_takers.sql
- * to 20261120000400_order_taking_orders_demo.sql, @domain/orders): who takes
+ * their choices (@domain/order-taking), "sold out", and the places. P2 puts
+ * them on screen: /orders/menu, from the management page's row "התפריט", and
+ * the console's import and places. P3 is the orders, in the database alone
+ * (20261120000200_order_taking_takers.sql to
+ * 20261120000400_order_taking_orders_demo.sql, @domain/orders): who takes
  * orders and when (Orel's decisions 3 and 4 of 20 November 2026), the send
  * split by department with its prices frozen, taking back and cancelling
  * (decision 5), and no total anywhere (decision 7). Off in every template and
- * business, so nothing reads it until P4 switches it on; the demo restaurant
- * has a sample menu and three orders waiting. No tab: the shell's bar is
- * full, and the mode draws its own items later.
+ * business, and on for the local seed's demo restaurant, which has a sample
+ * menu and three orders waiting. No tab: the shell's bar is full, and the mode
+ * draws its own items later (P4); its own icon for its rows meanwhile.
  */
 export const manifest = defineManifest({
   key: "order_taking",
   requires: [],
   nav: null,
+  icon: "pad",
   homeWidget: null,
   // Running the menu: its categories, items, prices and choices, the places,
   // the import, and "sold out" for any item (private.runs_orders). With P3 it

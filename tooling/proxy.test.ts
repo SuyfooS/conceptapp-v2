@@ -25,6 +25,13 @@ describe("proxy", () => {
     expect(source).toContain('"/notifications/:path*"');
   });
 
+  it("guards the orders screens, which have no tab", () => {
+    // Taking orders' menu (waiter mode P2), reached from the management
+    // page until the mode has its own items (P4).
+    expect(source).toContain('"/orders",');
+    expect(source).toContain('"/orders/:path*"');
+  });
+
   it("guards the profile", () => {
     expect(source).toContain('"/me",');
     expect(source).toContain('"/me/:path*"');

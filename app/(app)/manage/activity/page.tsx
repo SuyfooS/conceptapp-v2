@@ -11,8 +11,9 @@ import { notFound } from "next/navigation";
 import { currentWording } from "../../current-wording";
 import { baseWording, translator } from "../../wording";
 import {
-  listsOn,
+  departmentsOn,
   manageAccess,
+  menuOn,
   modulesToManage,
   settingDefaults,
 } from "../manage";
@@ -62,7 +63,7 @@ export default async function ManageActivityPage({
       earlier={before !== null}
       manageable={modulesToManage(access.rows, access.level)}
       clockOn={clockOn}
-      listsOn={listsOn(access.rows)}
+      departmentsOn={departmentsOn(access.rows)}
       everyArea={access.readsEveryArea}
       paths={{
         manage: "/manage",
@@ -70,6 +71,13 @@ export default async function ManageActivityPage({
         business: "/manage/business",
         clockTeam: clockOn ? "/clock/team" : undefined,
         departments: "/manage/departments",
+        menu: menuOn(access.rows)
+          ? {
+              items: "/orders/menu",
+              categories: "/orders/menu/categories",
+              places: "/orders/menu/places",
+            }
+          : undefined,
         access: access.grantsPay ? "/manage/access" : undefined,
         roles: access.changesRoles ? "/manage/roles" : undefined,
         pay: "/clock/pay",

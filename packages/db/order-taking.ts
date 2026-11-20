@@ -14,6 +14,7 @@ import { z } from "zod";
 import type { Json } from "./database.types";
 import { type MenuFailure, menuFailureOf } from "./menu-failures";
 import { isMissingFunction } from "./missing";
+import { isMissingTable } from "./notifications";
 import { createAdminClient } from "./supabase/admin";
 import { createClient } from "./supabase/server";
 
@@ -235,4 +236,96 @@ export async function setOrderPlaces(
   if (error) return refused(menuFailureOf(error, "saving the places"));
   const ids = idsSchema.safeParse(data);
   return ids.success ? { ok: true, value: ids.data } : refused("failed");
+}
+
+const teamMenuSchema = menuSchema.omit({ version: true });
+
+/**
+ * The business's menu and places for the console (P2): the team is no
+ * member, so `public.order_menu` answers it P0002, and this reads with the
+ * secret key instead. Callers check the person is on the team first. As
+ * `public.order_menu` gives it, without its version: live categories in
+ * order, the live items of live categories in their order, each with where
+ * its lines go (its own department, else its category's, while that one is
+ * live: `private.line_route`), and live places. "notYet" before the
+ * migration reaches the project.
+ */
+export async function getMenuForTeam(
+  businessId: string,
+): Promise<Omit<Menu, "version"> | "notYet"> {
+  const admin = createAdminClient();
+  const [categories, items, departments, places] = await Promise.all([
+    admin
+      .from("menu_categories")
+      .select("id, name, department_id")
+      .eq("business_id", businessId)
+      .is("archived_at", null)
+      .order("position")
+      .order("created_at")
+      .order("id"),
+    admin
+      .from("menu_items")
+      .select(
+        "id, category_id, name, description, price_agorot, department_id, available, option_groups, version",
+      )
+      .eq("business_id", businessId)
+      .is("archived_at", null)
+      .order("position")
+      .order("created_at")
+      .order("id"),
+    admin
+      .from("departments")
+      .select("id")
+      .eq("business_id", businessId)
+      .is("archived_at", null),
+    admin
+      .from("order_places")
+      .select("id, name")
+      .eq("business_id", businessId)
+      .is("archived_at", null)
+      .order("position")
+      .order("created_at")
+      .order("id"),
+  ]);
+  for (const { error } of [categories, items, departments, places]) {
+    if (error) {
+      if (isMissingTable(error)) return "notYet";
+      throw error;
+    }
+  }
+  const live = new Set((departments.data ?? []).map((row) => row.id));
+  const shown = (categories.data ?? []).map((row) => ({
+    id: row.id,
+    name: row.name,
+    department: row.department_id,
+  }));
+  const menu = teamMenuSchema.safeParse({
+    categories: shown,
+    // In their categories' order, then their own, as the phones read them.
+    items: shown.flatMap((category) =>
+      (items.data ?? [])
+        .filter((row) => row.category_id === category.id)
+        .map((row) => {
+          const goes = row.department_id ?? category.department;
+          return {
+            id: row.id,
+            category: row.category_id,
+            name: row.name,
+            description: row.description,
+            priceAgorot: row.price_agorot,
+            department: row.department_id,
+            route: live.has(goes) ? goes : null,
+            available: row.available,
+            optionGroups: row.option_groups,
+            version: row.version,
+          };
+        }),
+    ),
+    places: places.data ?? [],
+  });
+  if (!menu.success) {
+    console.error("reading the menu for the team failed", menu.error.message);
+    throw new Error("The menu came back in a shape the app doesn't read");
+  }
+  return menu.data;
 }

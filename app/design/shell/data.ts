@@ -422,6 +422,9 @@ export const demoModuleRows: ModuleRow[] = [
   { key: "storefront", enabled: false, settings: {} },
   { key: "notifications", enabled: true, settings: {} },
   { key: "lists", enabled: true, settings: {} },
+  // Taking orders, on as the local seed's restaurant has it (waiter mode
+  // P2): its menu on /design/order-taking.
+  { key: "order_taking", enabled: true, settings: {} },
 ];
 
 // A shift a manager added by hand on the demo week's Sunday, overlapping both

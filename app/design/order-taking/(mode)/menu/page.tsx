@@ -1,12 +1,14 @@
 import { DemoScreen } from "../../demo-store";
-import { MenuScreen } from "./menu-screen";
+import { MenuTwin } from "./menu-twin";
 
-// The demo restaurant's menu, with the fish sold out. `?state=noMenu` is a
-// business whose menu is still to be added.
+// The demo restaurant's menu on the real screen, with the fish sold out.
+// `?state=noMenu` is a business whose menu is still to be added,
+// `?state=worker` Yoav in the bar, `?state=noRoute` the desserts with their
+// department removed, `?state=viewing` a view as a manager.
 export default function OrderMenuPage() {
   return (
     <DemoScreen>
-      <MenuScreen />
+      <MenuTwin />
     </DemoScreen>
   );
 }

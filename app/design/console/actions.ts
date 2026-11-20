@@ -1,13 +1,15 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { NEW_BUSINESS_FIELDS, parseNewBusiness } from "@domain/business";
 import { inviteLink } from "@domain/invites";
 import { type ModuleManifest, moduleKeyOf } from "@domain/modules";
+import { MENU_CAPS } from "@domain/order-taking";
 import { checkSettingsChange } from "@domain/settings-form";
 import { checkSentence, type MessageTree, sentenceFits } from "@domain/wording";
 import { manifestFor } from "@modules/registry";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { requestOrigin } from "@/app/origin";
 import he from "@/messages/he.json";
 import type { InviteLinkState } from "../../(admin)/admin/businesses/[slug]/actions";
@@ -15,6 +17,7 @@ import { formatsCleanly } from "../../(admin)/admin/businesses/[slug]/wording/fo
 import type { WordingSaveResult } from "../../(admin)/admin/businesses/[slug]/wording/wording-types";
 import type { NewBusinessState } from "../../(admin)/admin/new/actions";
 import type { SettingsResult } from "../../(app)/manage/settings-types";
+import type { MenuActionResult } from "../../(app)/orders/menu/menu-types";
 import { demoWording } from "./data";
 
 // Stand-ins for the console's actions on the design demo: the same checks, a
@@ -101,5 +104,47 @@ export async function demoSaveWording(
     ok: true,
     sentence: checked.sentence === below ? null : checked.sentence,
     previous,
+  };
+}
+
+/**
+ * The menu's import on the console's demo: what it would add, nothing
+ * stored. The twin's departments are named, not ids, so only the rows'
+ * kinds are read.
+ */
+export async function demoImportMenu(
+  rows: unknown,
+): Promise<MenuActionResult<{ categories: number; items: number }>> {
+  const parsed = demoRows.safeParse(rows);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  return {
+    ok: true,
+    value: {
+      categories: parsed.data.filter((row) => "category" in row).length,
+      items: parsed.data.filter((row) => "item" in row).length,
+    },
+  };
+}
+
+const demoRows = z.array(
+  z.union([
+    z.object({ category: z.object({ name: z.string() }) }),
+    z.object({ item: z.object({ name: z.string() }) }),
+  ]),
+);
+
+/** The places on the console's demo: saved as sent, nothing stored. */
+export async function demoSavePlaces(
+  places: unknown,
+): Promise<MenuActionResult<string[]>> {
+  // The twin's tables are named "table-1", not by an id the database gives.
+  const parsed = z
+    .array(z.object({ id: z.string().optional(), name: z.string().min(1) }))
+    .max(MENU_CAPS.places)
+    .safeParse(places);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  return {
+    ok: true,
+    value: parsed.data.map((place) => place.id ?? randomUUID()),
   };
 }

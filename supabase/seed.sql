@@ -130,6 +130,10 @@ values
 -- demo's own conversations (private.seed_demo_chat,
 -- 20261111000300_chat_on.sql), written by the first owner, manager and two
 -- workers each names, as the hosted ones are (tooling/demo-chat.test.ts).
+-- The restaurant also opens with taking orders on ("orderTaking": true;
+-- 20261120000100_order_taking_screens.sql), for the browser tests of the
+-- menu's screens; the hosted one keeps it off until Orel approves them
+-- (tooling/demo-order-taking.test.ts).
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
@@ -138,6 +142,7 @@ values
     "address": "רחוב הדגמה 1, תל אביב", "shabbat_city": "telAviv",
     "template": "restaurant", "renews": false, "invites": true, "profiles": true, "photos": true,
     "chatFiles": true,
+    "orderTaking": true,
     "settings": { "time_clock": { "payEstimate": true } },
     "hours": { "fridays": false, "cases": [
       { "user_id": "00000000-0000-4000-a000-000000000004", "case": "night" }

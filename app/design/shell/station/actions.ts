@@ -11,3 +11,9 @@ export async function demoLockDevice(input: {
     ? { ok: true, to: "/design/shell/station" }
     : { ok: false, failure: "name" };
 }
+
+// The demo's stand-in for signing out on the station's card: nobody signed
+// out, and on to the station's twin, as the device goes back to its code.
+export async function demoSignOutOfStation(): Promise<string> {
+  return "/design/shell/station";
+}

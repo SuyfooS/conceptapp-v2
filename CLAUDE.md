@@ -22,9 +22,9 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
    roles with different permissions. Reservations and storefront wait until after it.
    Notifications are back in (Orel, 8 and 9 November 2026, issue #1): in the app, then
    on the phone through Web Push, then each person's choices and reminders, before
-   lists and chat. Nothing from the deferred list gets built before its trigger.
-   Waiter mode (`order_taking`, #191) is built in every phase, by Orel's decision of
-   20 November 2026; it is off in every template until a business switches it on.
+   lists and chat. Waiter mode is in too (Orel, 20 November 2026, #191): every phase,
+   with the hosted demo's module off until he approves the screens. Nothing from the
+   deferred list gets built before its trigger.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.
@@ -111,8 +111,9 @@ Only `app/` imports app code (`@/…`).
   documents' FileField (a form's file: the camera, the photos or a PDF, shown once picked, with
   its progress and stop; mock screens at `/design/chat/documents`), and waiter mode's PlaceTile
   (a table's one state), TicketCard and OrderLine (a sent line with its choices, note and
-  allergy), TillList (what to ring up, no total) and MenuItemRow/MenuItemList (one tap adds;
-  mock screens at `/design/order-taking`).
+  allergy), TillList (what to ring up, no total), MenuItemRow/MenuItemList (one tap adds;
+  mock screens at `/design/order-taking`) and the menu editor's MenuEditRow (its name opens
+  it, "נגמר" switched or said, a warning when it reaches no department).
 - ConceptApp's logo (`@ui/logo`, files in `docs/brand`) appears only where
   ConceptApp itself speaks: sign-in, the console, marketing.
 - A business accent is applied with `{...accentProps(accentTokens(hex))}` on a

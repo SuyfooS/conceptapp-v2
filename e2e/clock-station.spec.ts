@@ -13,6 +13,7 @@ import {
   demoStations,
   pairingsSince,
   setDemoRequirePunchCode,
+  stopDemoStations,
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
@@ -22,10 +23,12 @@ import { heT } from "./t";
 // and it signs out there, showing only the code, with nobody's account on it.
 // The team clocks in by it, the team's hours list it and stop it, with an
 // undo, and signing in on it again takes the SMS code to one's own phone.
-// Seeded in supabase/seed.sql: the demo restaurant's owner, manager and a
-// worker. The flows run on the phone only (CI minutes); the three widths are
-// checked on the design twins (design.spec.ts). This file leaves no station
-// and the code switched off, whatever happens.
+// Everyone signed in on it is told on Home that it is the business's tablet,
+// and signing out there brings its code back, not the door (Orel, 20
+// November 2026). Seeded in supabase/seed.sql: the demo restaurant's owner,
+// manager and a worker. The flows run on the phone only (CI minutes); the
+// three widths are checked on the design twins (design.spec.ts). This file
+// leaves no station and the code switched off, whatever happens.
 const OWNER = {
   name: "אורי הדגמה",
   local: "050-000-0001",
@@ -431,9 +434,14 @@ test("signing in on the station unlocks it, and Home locks it again as the same 
   await expect(page).toHaveURL(/\/enter$/);
   await signIn(page, MANAGER);
 
-  // Home says this device is the station, and locks it again.
+  // Home says this device is the station, and locks it again: whoever may
+  // lock it isn't told to sign out instead.
   const reminder = page.getByText(c.station.reminder.body);
   await expect(reminder).toBeVisible();
+  await expect(page.getByText(c.station.reminder.signOutBody)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: he.app.signOut })).toHaveCount(
+    0,
+  );
   await expectCleanPage(page);
   await page.screenshot({ path: testInfo.outputPath("station-home.png") });
   await page.getByRole("button", { name: c.station.reminder.lock }).click();
@@ -451,6 +459,69 @@ test("signing in on the station unlocks it, and Home locks it again as the same 
     "עמדת הכניסה",
   ]);
   await page.goto("/home");
+  await expect(page).toHaveURL(/\/enter$/);
+});
+
+test("anyone signed in on the station is told to sign out, and signing out shows the code again", async ({
+  page,
+}, testInfo) => {
+  // Three sign-ins (the last waits out the SMS cooldown), an axe run and a
+  // screenshot.
+  test.setTimeout(90_000);
+  await signIn(page, OWNER);
+  await lockDevice(page, "עמדת הכניסה");
+
+  await page.getByRole("link", { name: s.signIn }).click();
+  await expect(page).toHaveURL(/\/enter$/);
+  await signIn(page, NOA);
+
+  // Home says this device is the business's tablet, to sign out when done,
+  // and offers no lock: a worker doesn't edit the clock.
+  const told = page.getByText(c.station.reminder.signOutBody);
+  const signOut = page.getByRole("button", { name: he.app.signOut });
+  await expect(told).toBeVisible();
+  await expect(page.getByText(c.station.reminder.body)).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: c.station.reminder.lock }),
+  ).toHaveCount(0);
+  await expectCleanPage(page);
+  await page.screenshot({
+    path: testInfo.outputPath("station-home-worker.png"),
+  });
+
+  // Signing out brings the code back, not the door.
+  await signOut.click();
+  await expect(page).toHaveURL(/\/station$/);
+  await expect(page.getByRole("img", { name: c.code.qrLabel })).toBeVisible();
+  await digitsOn(page);
+
+  // Signed out for real: no piece of the session is left, the station's
+  // cookie stays, and Home leads to the door.
+  const cookies = await page.context().cookies();
+  expect(
+    cookies.filter(
+      (one) => /-auth-token(\.\d+)?$/.test(one.name) && one.value !== "",
+    ),
+  ).toEqual([]);
+  expect(cookies.some((one) => one.name === "ca_station")).toBe(true);
+  await page.goto("/home");
+  await expect(page).toHaveURL(/\/enter$/);
+  expect((await demoStations()).map((one) => one.name)).toEqual([
+    "עמדת הכניסה",
+  ]);
+
+  // Once the station is stopped, Home says nothing of it, and signing out,
+  // here from the profile, goes to the door.
+  await signIn(page, NOA);
+  await expect(told).toBeVisible();
+  await stopDemoStations();
+  await page.reload();
+  await expect(
+    page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(told).toHaveCount(0);
+  await page.goto("/me");
+  await signOut.click();
   await expect(page).toHaveURL(/\/enter$/);
 });
 

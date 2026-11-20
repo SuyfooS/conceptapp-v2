@@ -17,6 +17,7 @@ import {
   isStaff,
   MODULE_KEYS,
   type ModuleManifest,
+  moduleIcon,
   moduleNav,
   PERMISSION_AREAS,
   ROLES,
@@ -326,6 +327,13 @@ describe("module registry", () => {
     expect(manifest.nav).toBeNull();
     expect(manifest.homeWidget).toBeNull();
     expect(he.modules.order_taking.name).toBe("קבלת הזמנות");
+    // Its own icon where it has no tab (P2): the pad on the roles screen,
+    // not the management page's sliders.
+    expect(moduleIcon(manifest)).toBe("pad");
+    expect(moduleIcon(manifestFor("scheduling"))).toBe("calendar");
+    expect(moduleIcon(manifestFor("notifications"))).toBe(
+      manifestFor("notifications").nav?.icon ?? null,
+    );
   });
 
   it("gives taking orders the settings its SQL readers default to, the owner's fields kept to owners and the team", () => {

@@ -1,11 +1,13 @@
 import { getDepartments } from "@db/departments";
+import { getMenu } from "@db/order-taking";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { currentWording } from "../current-wording";
 import { baseWording, translator } from "../wording";
 import {
-  listsOn,
+  departmentsOn,
   manageAccess,
+  menuOn,
   modulesToManage,
   shabbatCityState,
 } from "./manage";
@@ -19,10 +21,13 @@ export async function generateMetadata(): Promise<Metadata> {
 export default async function ManagePage() {
   const access = await manageAccess();
   if (!access) notFound();
-  // Departments show while lists are on: lists are what reads them today.
-  const departments = listsOn(access.rows)
-    ? await getDepartments(access.businessId)
-    : null;
+  // Departments show while lists or taking orders are on, which read them;
+  // the menu while taking orders is (waiter mode P2: its way in until the
+  // mode has its own).
+  const [departments, menu] = await Promise.all([
+    departmentsOn(access.rows) ? getDepartments(access.businessId) : null,
+    menuOn(access.rows) ? getMenu(access.businessId) : null,
+  ]);
   return (
     <ManageView
       modules={modulesToManage(access.rows, access.level)}
@@ -40,6 +45,16 @@ export default async function ManagePage() {
             : departments
                 .filter((d) => d.archivedAt === null)
                 .map((d) => d.name)
+      }
+      menu={
+        menu === null
+          ? null
+          : {
+              href: "/orders/menu",
+              // A menu not read (not ready, or not theirs) says there is none yet.
+              items: typeof menu === "object" ? menu.items.length : 0,
+              places: typeof menu === "object" ? menu.places.length : 0,
+            }
       }
       wording={await currentWording()}
     />

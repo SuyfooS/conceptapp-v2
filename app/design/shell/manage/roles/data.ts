@@ -4,6 +4,7 @@
 // database data, so their Hebrew stays here; tooling/hebrew-literals.ts
 // allows this file.
 
+import { moduleIcon } from "@domain/modules";
 import {
   ACCESS_AREAS,
   AREA_MODULE,
@@ -93,15 +94,15 @@ export const demoSenior: EditableRole = {
 
 export const demoRoles: RolesData = {
   // Every area: the demo restaurant has each of these modules on, chat
-  // included (/design/chat), but taking orders, which is off until its
-  // screens (waiter mode).
+  // included (/design/chat), and taking orders since its screens (waiter
+  // mode P2), as the local seed's restaurant does.
   // Each open for changes, as the screen will be once every area's phase
   // has moved it (the roles plan's R3 to R8).
-  areas: ACCESS_AREAS.filter((key) => key !== "order_taking").map((key) => {
+  areas: ACCESS_AREAS.map((key) => {
     const module = AREA_MODULE[key];
     return {
       key,
-      icon: module ? (manifestFor(module).nav?.icon ?? null) : null,
+      icon: module ? moduleIcon(manifestFor(module)) : null,
       open: true,
       // Every switch, as the database knows each once its migration is in.
       extras: [...extrasOf(key)],

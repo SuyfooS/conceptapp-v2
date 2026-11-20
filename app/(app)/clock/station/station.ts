@@ -5,20 +5,21 @@ import {
   stationByToken,
 } from "@db/clock-stations";
 import {
+  afterSignOutPath,
+  runsFor,
   STATION_COOKIE,
   stationCookieOptions,
   stationToken,
 } from "@domain/clock-station";
+import { signInPath } from "@domain/passive-sign-in";
 import { editsClock } from "@domain/time-clock";
 import { cookies } from "next/headers";
 import { cache } from "react";
 import { requestOrigin } from "@/app/origin";
+import { currentMember } from "../../member";
 import { currentModuleSettings } from "../../modules";
 import { clockAccess } from "../clock";
-import type { LockOffer } from "./station-types";
-
-/** Where a locked device goes, and stays. */
-export const STATION_PATH = "/station";
+import type { LockOffer, StationHome } from "./station-types";
 
 /**
  * The station this device holds the secret of, stopped or not, with the
@@ -43,6 +44,23 @@ export async function rememberStation(token: string): Promise<void> {
 }
 
 /**
+ * Where this device goes once signed out (`afterSignOutPath`): its running
+ * station's code, or the door. A failed read is the door: it never stops the
+ * sign-out, which is done before this is asked.
+ */
+export async function signedOutPath(): Promise<string> {
+  try {
+    return afterSignOutPath((await deviceStation())?.station ?? null);
+  } catch (error) {
+    console.error(
+      "reading this device's station failed",
+      (error as Error).message,
+    );
+    return signInPath;
+  }
+}
+
+/**
  * Who may lock the device they are on: whoever edits the clock (`editsClock`),
  * as themselves, where codes may show on a station (`codeDisplay` isn't
  * "manager"). Their business, or null.
@@ -64,10 +82,8 @@ async function currentOn(businessId: string): Promise<{ name: string } | null> {
     console.error("reading this device's station failed", error.message);
     return null;
   });
-  const held = device?.station;
-  return held && !held.stopped && held.businessId === businessId
-    ? { name: held.name }
-    : null;
+  const held = device?.station ?? null;
+  return held && runsFor(held, businessId) ? { name: held.name } : null;
 }
 
 /**
@@ -86,12 +102,18 @@ export async function currentLockOffer(): Promise<LockOffer | null> {
 }
 
 /**
- * Home's reminder: the offer, only on a device that is one of the business's
- * running stations, unlocked by someone who may lock it again. Reads no list.
+ * Home's card on the business's clock station: whoever may lock it again gets
+ * the lock (`lockerBusiness`), and anyone else signed in is told to sign out
+ * when done (Orel, 20 November 2026). Null on any other device, a stopped
+ * station's, or another business's station. The device is read first, so a
+ * Home on a device with no station's cookie reads nothing more. Reads no list.
  */
-export async function currentStationReminder(): Promise<LockOffer | null> {
-  const businessId = await lockerBusiness();
+export async function currentStationHome(): Promise<StationHome | null> {
+  const businessId = (await currentMember())?.membership?.business.id;
   if (!businessId) return null;
   const current = await currentOn(businessId);
-  return current ? { current, running: [] } : null;
+  if (!current) return null;
+  return (await lockerBusiness()) === businessId
+    ? { kind: "lock", offer: { current, running: [] } }
+    : { kind: "signOut" };
 }

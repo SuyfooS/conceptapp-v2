@@ -3,8 +3,9 @@
 import type { ReactNode } from "react";
 
 /**
- * Signs out, and says where the next person starts (the sign-in door), or
- * null where nothing is signed in (the design demo's stand-in).
+ * Signs out, and says where the device goes next (the sign-in door, or the
+ * clock station's code on a device that is one), or null where nothing is
+ * signed in (the design demo's stand-in).
  */
 export type SignOutAction = () => Promise<string | null>;
 
