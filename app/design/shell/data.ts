@@ -849,3 +849,18 @@ export const demoBusinesses: {
 
 /** Where the demo's accountant is now. */
 export const demoBusinessHere = "restaurant";
+
+/**
+ * Waiter mode's way in, as Shiran finds it on a shift (P4): one of her
+ * tickets ready to serve and two being made, leading to the twin's floor.
+ * Words of the restaurant's template, as the app's mode rows say them.
+ */
+export const demoOrdersMode = {
+  key: "order_taking",
+  href: "/design/order-taking/floor?state=service",
+  icon: "pad",
+  title: "מצב מלצרות",
+  subtitle: "אחד מוכן להגשה · 2 בהכנה",
+  open: true,
+  action: "פתיחת מצב מלצרות",
+} as const;

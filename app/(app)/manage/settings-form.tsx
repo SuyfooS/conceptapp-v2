@@ -6,6 +6,7 @@ import type { ModuleKey } from "@domain/modules";
 import type { SettingField } from "@domain/settings-form";
 import type { Position, ShiftPattern } from "@domain/staffing";
 import { Badge } from "@ui/badge";
+import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { FieldGroup, GroupedField } from "@ui/field-group";
@@ -14,6 +15,7 @@ import { StatusToast } from "@ui/status-toast";
 import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
 import { ltrInputClass } from "@ui/text-field";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useId, useRef, useState } from "react";
 import { PositionsEditor } from "./positions-editor";
@@ -37,11 +39,20 @@ export function SettingsForm({
   values,
   save,
   readOnly,
+  departments = [],
+  departmentsHref = null,
 }: {
   module: ModuleKey;
   fields: SettingField[];
   values: Record<string, unknown>;
   save: SaveSettings;
+  /**
+   * The business's live departments, in their order, for a field chosen
+   * from them (who takes orders, P4), by their keys.
+   */
+  departments?: readonly { key: string; name: string }[];
+  /** Where the departments are added, for a business that has none. */
+  departmentsHref?: string | null;
   /**
    * Why nothing here saves, said in one line over the fields: a view
    * session, the person at view on the management page, or without the
@@ -96,7 +107,9 @@ export function SettingsForm({
   const plain = fields.filter(
     (field) =>
       field.kind !== "editor" ||
-      (field.editor !== "positions" && field.editor !== "shifts"),
+      (field.editor !== "positions" &&
+        field.editor !== "shifts" &&
+        field.editor !== "departments"),
   );
   const nameOf = (field: SettingField): ReactNode => (
     <>
@@ -170,6 +183,20 @@ export function SettingsForm({
                 title={tm(words(field.key, "label"))}
                 hint={hintOf(field)}
                 positions={currentOf(field.key) as Position[]}
+                disabled={viewOnly}
+                onChange={(next) => change(field.key, next)}
+              />
+            );
+          }
+          if (field.editor === "departments") {
+            return (
+              <DepartmentsField
+                key={field.key}
+                name={nameOf(field)}
+                hint={hintOf(field)}
+                departments={departments}
+                href={departmentsHref}
+                value={currentOf(field.key)}
                 disabled={viewOnly}
                 onChange={(next) => change(field.key, next)}
               />
@@ -457,5 +484,98 @@ function TextField({
         if (event.key === "Enter") event.currentTarget.blur();
       }}
     />
+  );
+}
+
+/**
+ * A setting chosen from the business's departments, by their keys (who takes
+ * orders, P4): a switch for each live one, in their order, saving itself as
+ * the others do. A key kept for a department removed since stays as it is.
+ * A business with none is sent to add them.
+ */
+function DepartmentsField({
+  name,
+  hint,
+  departments,
+  href,
+  value,
+  disabled,
+  onChange,
+}: {
+  name: ReactNode;
+  hint: string | undefined;
+  departments: readonly { key: string; name: string }[];
+  href: string | null;
+  value: unknown;
+  disabled: boolean;
+  onChange: (keys: string[]) => unknown;
+}) {
+  const t = useTranslations("app.manage.departmentsSetting");
+  const id = useId();
+  const keys = Array.isArray(value)
+    ? value.filter((key): key is string => typeof key === "string")
+    : [];
+  function toggle(key: string, on: boolean) {
+    const others = keys.filter((k) => k !== key);
+    // In the business's order, then what no live department has any more.
+    const live = departments
+      .map((d) => d.key)
+      .filter((k) => (k === key ? on : others.includes(k)));
+    const gone = others.filter((k) => !departments.some((d) => d.key === k));
+    onChange([...live, ...gone]);
+  }
+  return (
+    <section aria-labelledby={id} className="flex flex-col gap-2">
+      <h3 id={id} className="px-1 font-semibold">
+        {name}
+      </h3>
+      {hint ? <p className="px-1 text-ink-2 text-sm">{hint}</p> : null}
+      {departments.length === 0 ? (
+        <Card padding="lg" className="flex flex-col items-start gap-3">
+          <p className="text-ink-2">{t("none")}</p>
+          {href ? (
+            <Button asChild variant="secondary">
+              <Link href={href}>{t("add")}</Link>
+            </Button>
+          ) : null}
+        </Card>
+      ) : (
+        <FieldGroup>
+          {departments.map((department) => (
+            <DepartmentSwitch
+              key={department.key}
+              label={department.name}
+              checked={keys.includes(department.key)}
+              disabled={disabled}
+              onChange={(on) => toggle(department.key, on)}
+            />
+          ))}
+        </FieldGroup>
+      )}
+    </section>
+  );
+}
+
+function DepartmentSwitch({
+  label,
+  checked,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  disabled: boolean;
+  onChange: (on: boolean) => void;
+}) {
+  const id = useId();
+  return (
+    <FieldRow label={label} htmlFor={id}>
+      <Switch
+        id={id}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+      />
+    </FieldRow>
   );
 }

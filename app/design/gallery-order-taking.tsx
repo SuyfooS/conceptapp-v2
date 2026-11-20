@@ -2,6 +2,7 @@
 
 import { formatShekels, moneyLocale } from "@domain/money";
 import { MenuEditRow, MenuItemList, MenuItemRow } from "@ui/menu-item-row";
+import { DraftLineRow, SendOrderButton } from "@ui/order-draft";
 import { PlaceTile } from "@ui/place-tile";
 import { OrderLine, TicketCard } from "@ui/ticket-card";
 import { TillList } from "@ui/till-list";
@@ -18,8 +19,10 @@ const FLOOR = "/design/order-taking/floor?state=service";
  * states, a ticket on a prep screen with its lines (choices, a note, an
  * allergy, one taken back) and a held block, what to ring up at the till,
  * the items an order adds with one tap, and the menu's rows to edit (P2):
- * one switched sold out, one that reaches no department, and two read only. The words are the twin's; the
- * dishes and people only stand in.
+ * one switched sold out, one that reaches no department, and two read only.
+ * P4 adds the draft's line with its note, allergy and hold, the send, and
+ * "מוכן" while the server hears it. The words are the twin's and the
+ * app's; the dishes and people only stand in.
  */
 export function GalleryOrderTaking() {
   const t = useTranslations("design.orderParts");
@@ -35,6 +38,10 @@ export function GalleryOrderTaking() {
   // The editor's schnitzel switches sold out and back.
   const [schnitzelOut, setSchnitzelOut] = useState(false);
   const m = useTranslations("app.orders.menu");
+  const a = useTranslations("app.orders");
+  // The draft's hummus counts up and down, and holds for later.
+  const [hummus, setHummus] = useState(2);
+  const [held, setHeld] = useState(true);
   const kitchen = t("kitchen");
   const table = (name: string) => o("place.table", { name });
 
@@ -122,6 +129,94 @@ export function GalleryOrderTaking() {
               ltr,
             })}
             choices={[t("mash")]}
+          />
+        </TicketCard>
+      </div>
+
+      <h3 className="font-semibold text-base">{t("draft")}</h3>
+      <p className="text-ink-2 text-sm">{t("draftText")}</p>
+      <div className="grid gap-4 md:grid-cols-2 md:items-start">
+        <div className="flex flex-col gap-3">
+          <ul className="overflow-hidden rounded-card bg-surface shadow-card">
+            {(
+              [
+                {
+                  key: "burger",
+                  name: t("burger"),
+                  choices: [t("medium"), t("cheese")],
+                  agorot: 7400,
+                  quantity: 1,
+                  allergy: t("peanuts"),
+                  held: false,
+                },
+                {
+                  key: "hummus",
+                  name: t("hummus"),
+                  choices: [],
+                  agorot: 3200,
+                  quantity: hummus,
+                  allergy: null,
+                  held,
+                },
+              ] as const
+            ).map((row) => (
+              <DraftLineRow
+                key={row.key}
+                name={row.name}
+                choices={row.choices}
+                price={price(row.agorot)}
+                quantity={row.quantity}
+                onQuantity={row.key === "hummus" ? setHummus : () => {}}
+                quantityLabels={{
+                  label: a("draft.qty", { name: row.name }),
+                  less: a("draft.less", { name: row.name }),
+                  more: a("draft.more", { name: row.name }),
+                }}
+                allergy={
+                  row.allergy ? a("line.allergy", { note: row.allergy }) : null
+                }
+                held={row.held ? a("draft.heldBadge") : null}
+                noteButton={{
+                  label: a("draft.note"),
+                  forItem: a("draft.forItem", { name: row.name }),
+                  onClick: () => {},
+                }}
+                allergyButton={{
+                  label: a("draft.allergy"),
+                  forItem: a("draft.forItem", { name: row.name }),
+                  onClick: () => {},
+                }}
+                holdButton={{
+                  label: a("draft.hold"),
+                  forItem: a("draft.forItem", { name: row.name }),
+                  pressed: row.held,
+                  onClick: () => {
+                    if (row.key === "hummus") setHeld((h) => !h);
+                  },
+                }}
+                remove={{
+                  label: a("draft.remove", { name: row.name }),
+                  onClick: () => {},
+                }}
+              />
+            ))}
+          </ul>
+          <SendOrderButton
+            label={a("send.label")}
+            count={a("send.count", { count: hummus + 1 })}
+            routes={a("send.route", { department: kitchen, count: hummus + 1 })}
+            onClick={() => {}}
+          />
+        </div>
+        <TicketCard
+          title={table("9")}
+          label={o("ticket.label", { place: table("9"), department: t("bar") })}
+          from={o("ticket.from", { name: t("waiter"), department: t("bar") })}
+          age={{ text: o("age.ago", { count: 1 }), tone: "calm" }}
+          ready={{ label: o("ticket.ready"), onClick: () => {}, loading: true }}
+        >
+          <OrderLine
+            title={o.rich("line.qtyName", { qty: 2, name: t("lemonade"), ltr })}
           />
         </TicketCard>
       </div>

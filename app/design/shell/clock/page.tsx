@@ -1,7 +1,9 @@
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { ClockView } from "../../../(app)/clock/clock-view";
+import { ModeRows } from "../../../(app)/mode-rows";
 import { baseWording } from "../../../(app)/wording";
+import { demoOrdersMode } from "../data";
 import {
   demoClockIn,
   demoClockOut,
@@ -37,6 +39,8 @@ async function Demo({ searchParams }: Props) {
   return (
     <ClockView
       data={demoClock(state, new Date(), code === "on")}
+      // On a shift: waiter mode's way in, to the twin (P4).
+      modes={<ModeRows rows={[{ ...demoOrdersMode }]} />}
       ownPay={demoOwnPay(
         demoRecords,
         "2026-11",

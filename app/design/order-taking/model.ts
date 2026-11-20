@@ -1,7 +1,9 @@
 // The order-taking demo's shapes and the rules it draws by (S0 of waiter
 // mode, issue #191). Nothing here is stored: the demo keeps its rows in
 // memory (demo-store.tsx), and P1 and P3 bring the real ones to the
-// database, with `@domain/order-taking` in place of these helpers.
+// database, with `@domain/order-taking` in place of these helpers. Since P4
+// the mode's screens are the app's, drawn from these rows by
+// real-orders.ts; the till and the stations still draw them as S0 did.
 
 export type DepartmentKey = "kitchen" | "bar";
 
@@ -41,19 +43,6 @@ export type Place = {
   name: string | null;
   /** A takeaway's few words to call the customer by. */
   label?: string | null;
-};
-
-/** A line as the waiter builds it on the phone, before anything is sent. */
-export type DraftLine = {
-  id: string;
-  itemId: string;
-  qty: number;
-  /** The chosen options' ids. */
-  choices: string[];
-  note: string | null;
-  allergy: string | null;
-  /** "לחכות עם אלה": it goes in the held block, for a later course. */
-  held: boolean;
 };
 
 /** A line as sent: the send copies its name, choices and price. */
@@ -184,24 +173,6 @@ export function missingGroups(
   );
 }
 
-/** Where a draft's items go, and how many of each: "מטבח · 3   בר · 1". */
-export function routeCounts(
-  menu: Menu,
-  lines: readonly DraftLine[],
-): { department: DepartmentKey; count: number }[] {
-  const counts = new Map<DepartmentKey, number>();
-  for (const line of lines) {
-    const item = itemById(menu, line.itemId);
-    if (!item) continue;
-    const department = departmentOf(menu, item);
-    counts.set(department, (counts.get(department) ?? 0) + line.qty);
-  }
-  return [...counts].map(([department, count]) => ({ department, count }));
-}
-
-export const draftCount = (lines: readonly DraftLine[]) =>
-  lines.reduce((sum, line) => sum + line.qty, 0);
-
 export const liveLines = (ticket: Ticket) =>
   ticket.lines.filter((line) => !line.takenBack);
 
@@ -249,40 +220,16 @@ export function placeStatus(
 }
 
 /**
- * Whether the sender may still take a line back (§3.3): within the window,
- * while nothing was marked ready on its ticket, even if it went back since,
- * and never from a department the sender works in, where one person could
- * send, make and take back with nobody else seeing.
- */
-export function takeBackOpen(
-  round: Round,
-  ticket: Ticket,
-  now: number,
-  viewer: { id: string; departments: readonly DepartmentKey[] },
-): boolean {
-  return (
-    round.by === viewer.id &&
-    !viewer.departments.includes(ticket.department) &&
-    ticket.state === "new" &&
-    ticket.readyAt === null &&
-    minutesSince(round.at, now) < TAKE_BACK_MINUTES
-  );
-}
-
-/**
- * The takeaways the floor shows: each with an open order, and a new one
- * while its draft has something in it. A closed one leaves the floor, so
- * its number is never taken again; its list stays under today's closed.
+ * The takeaways the floor shows: each with an open order. A closed one
+ * leaves the floor, so its number is never taken again; its list stays under
+ * today's closed. A new one waits as a draft on the phone (P4).
  */
 export function takeawaysOnFloor(
   takeaways: readonly Place[],
   orders: readonly Order[],
-  drafts: Readonly<Record<string, readonly DraftLine[]>>,
 ): Place[] {
-  return takeaways.filter(
-    (place) =>
-      orders.some((order) => order.placeId === place.id) ||
-      (place.name === null && (drafts[place.id]?.length ?? 0) > 0),
+  return takeaways.filter((place) =>
+    orders.some((order) => order.placeId === place.id),
   );
 }
 
@@ -329,23 +276,3 @@ export function tillByItem(order: Order): TillItem[] {
 /** A round's lines for the till, whatever department made them. */
 export const roundLines = (round: Round) =>
   round.tickets.flatMap((ticket) => liveLines(ticket));
-
-/** Hebrew written loosely: no niqqud, final letters as the others. */
-export function looseHebrew(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[֑-ׇ]/g, "")
-    .replace(/[ךםןףץ]/g, (letter) =>
-      String.fromCharCode(letter.charCodeAt(0) + 1),
-    );
-}
-
-/** Between words: spaces, dashes, quotes and the geresh and gershayim. */
-const BETWEEN_WORDS = /[\s'"\-׳״]+/;
-
-/** Whether every word typed starts a word of the name. */
-export function nameMatches(name: string, query: string): boolean {
-  const words = looseHebrew(name).split(BETWEEN_WORDS);
-  const typed = looseHebrew(query).split(/\s+/).filter(Boolean);
-  return typed.every((part) => words.some((word) => word.startsWith(part)));
-}

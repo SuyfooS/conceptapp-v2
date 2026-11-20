@@ -21,10 +21,27 @@ const SECTIONS = [
     screens: [
       { key: "floor", href: `${BASE}/floor?state=service` },
       { key: "quiet", href: `${BASE}/floor?state=quiet` },
+      { key: "readyNow", href: `${BASE}/floor?state=readyNow` },
+      { key: "offClock", href: `${BASE}/floor?state=offClock` },
+      { key: "staleShift", href: `${BASE}/floor?state=staleShift` },
+      { key: "floorNoPlaces", href: `${BASE}/floor?state=noPlaces` },
+      { key: "viewing", href: `${BASE}/floor?state=viewing` },
       { key: "free", href: `${BASE}/floor/order?place=table-6&state=service` },
       { key: "draft", href: `${BASE}/floor/order?place=table-6&state=draft` },
-      { key: "choice", href: `${BASE}/floor/order?place=table-6&state=choice` },
       { key: "sent", href: `${BASE}/floor/order?place=table-6&state=sent` },
+      {
+        key: "pending",
+        href: `${BASE}/floor/order?place=table-6&state=pending`,
+      },
+      {
+        key: "soldOut",
+        href: `${BASE}/floor/order?place=table-6&state=soldOut`,
+      },
+      { key: "taken", href: `${BASE}/floor/order?place=table-6&state=taken` },
+      {
+        key: "takeaway",
+        href: `${BASE}/floor/order?place=takeaway-new&state=service`,
+      },
       { key: "open", href: `${BASE}/floor/order?place=table-4&state=service` },
       {
         key: "tillItem",
@@ -47,6 +64,7 @@ const SECTIONS = [
     screens: [
       { key: "prep", href: `${BASE}/prep?state=service` },
       { key: "prepEmpty", href: `${BASE}/prep?state=nothingOpen` },
+      { key: "prepKitchen", href: `${BASE}/prep?state=kitchen` },
       { key: "kitchen", href: `${BASE}/station/prep?state=service` },
       { key: "kitchenOpen", href: `${BASE}/station/prep?state=open` },
       { key: "kitchenOffline", href: `${BASE}/station/prep?state=offline` },
@@ -76,7 +94,9 @@ const SECTIONS = [
 // The order-taking demo's list of screens (S0 of waiter mode, issue #191),
 // for Orel to tap through, and the order a real waiter times against the
 // pad (§3.4). Each link opens the demo afresh in that state. The menu's rows
-// are the real screens since P2, on the twin's rows.
+// are the real screens since P2, and the floor's, the order's, "ההזמנות
+// שלי" and preparing since P4, on the twin's rows; the till and the
+// stations are still S0's.
 export default function OrderTakingDemoIndex() {
   const t = useTranslations("design.orderTaking.index");
   return (

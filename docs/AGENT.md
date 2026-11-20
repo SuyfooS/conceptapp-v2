@@ -369,9 +369,16 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   by department with their prices frozen, taking back and cancelling with a reason, "on
   the house", and no total anywhere; `@domain/orders` and `@db/orders`. The module is on
   locally and in tests, off in the hosted demo until Orel approves the screens; the demo
-  restaurant has a sample menu and three orders waiting. P4 onward (sending and
-  preparing on screen, the fixes and the till, choices, offline, the kitchen) is built
-  by day, a phase per PR; a nightly run doesn't start a phase.
+  restaurant has a sample menu and three orders waiting. P4 is built
+  (`20261121000100_order_taking_mode.sql`): the mode's items in the same shell under
+  `/orders` (the places, one's own orders, preparing, the menu), its ways in from Home,
+  the clock's live shift and the profile (`public.order_mode`), the floor, the order
+  with its draft (one note a line with its allergy, held lines and "להוציא"), the send
+  through `/orders-send` with the phone's key and the sync through `/orders-sync`,
+  ready and served, taking back held for its undo, and who takes orders chosen from the
+  departments; the twins draw the same views. P5 onward (the fixes and the till,
+  choices, offline, the kitchen) is built by day, a phase per PR; a nightly run doesn't
+  start a phase.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

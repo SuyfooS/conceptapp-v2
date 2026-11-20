@@ -22,6 +22,7 @@ import { currentWording } from "./current-wording";
 import { DepartureNotice } from "./departure-notice";
 import { currentDeparture } from "./departures";
 import { currentMember } from "./member";
+import { currentModes } from "./modes";
 import { moduleIcons } from "./module-icons";
 import { currentModules } from "./modules";
 import { NoBusinessScreen } from "./no-business";
@@ -65,7 +66,7 @@ async function Shell({ children }: { children: ReactNode }) {
 
   const { business, role, perms, namedRole } = member.membership;
   const on = enabledModules(manifests, business.modules);
-  const [enabled, wording, businesses, openLists, chats, left] =
+  const [enabled, wording, businesses, openLists, chats, left, modes] =
     await Promise.all([
       currentModules(),
       currentWording(),
@@ -97,6 +98,10 @@ async function Shell({ children }: { children: ReactNode }) {
       // Taken off the team of a business, and still in this one: said above
       // the screen until they say they saw it, whichever was open then.
       currentDeparture(member),
+      // The modes this person is in (waiter mode, P4): their items under
+      // their own paths, with what needs action counted. One more read while
+      // a module with a mode is on, and none for someone off the staff.
+      isStaff(role) && on.includes("order_taking") ? currentModes() : [],
     ]);
   // The business's words: its tab names and role names may be its own.
   const t = translator(wording, "app");
@@ -131,6 +136,22 @@ async function Shell({ children }: { children: ReactNode }) {
             : undefined,
     })),
   ];
+  // Each mode's own items, labelled in the business's words; the same
+  // on every device, as the app's.
+  const modeNav = modes.map((mode) => ({
+    href: mode.href,
+    name: tm(`${mode.key}.name`),
+    nav: mode.items.map(
+      (item): NavItem => ({
+        href: item.href,
+        label: tm(`${mode.key}.mode.${item.key}` as never),
+        icon: moduleIcons[item.icon],
+        exact: item.exact,
+        also: item.also,
+        count: mode.counts[item.key] || undefined,
+      }),
+    ),
+  }));
   const name =
     member.name ?? (member.phone ? displayIsraeliMobile(member.phone) : "");
   // Notifications on the phone, where this browser has them on already: none
@@ -152,6 +173,7 @@ async function Shell({ children }: { children: ReactNode }) {
           }}
           nav={nav}
           businesses={businesses}
+          modes={modeNav}
         >
           {member.viewing ? (
             <ViewAsBanner

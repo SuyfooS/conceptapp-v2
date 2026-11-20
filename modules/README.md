@@ -43,3 +43,16 @@ Rules:
    businesses get. Never per-business code.
 5. A module's own tables add `private.module_enabled(business_id, '<key>')`
    to their RLS policies, so switching a module off also closes its data.
+
+## Modes
+
+A module may have a `mode` (waiter mode, P4): its own items in the same shell
+while the path is the mode's `href` or under it, at most five
+(`MAX_MODE_NAV`), the same on every device, each labelled
+`modules.<key>.mode.<item>` in both languages (`modules/registry.test.ts`).
+`entries` says where its ways in show: Home's card (`"home"`, with a
+`homeWidget`), the clock's live shift (`"clockIn"`) and the profile (`"me"`).
+Which items a person gets, where the ways in lead and what they say is the
+module's own read (`app/(app)/modes.ts`, a table by module key); no page
+checks a mode by hand. Every top screen of a mode leads back to the app
+(`app.mode.leave`), and `proxy.ts` guards its `href` as it does a tab's.

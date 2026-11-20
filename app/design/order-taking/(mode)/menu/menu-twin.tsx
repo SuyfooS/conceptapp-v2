@@ -17,6 +17,7 @@ import {
   fromItemInput,
   twinDepartments,
   twinMenu,
+  twinPlaces,
   withoutDepartment,
 } from "../../real-menu";
 
@@ -46,7 +47,11 @@ export function useTwinMenu(): {
       version: seen.version + 1,
     });
   }
-  return { menu: twinMenu(data, seen.version), data, update };
+  return {
+    menu: twinMenu(data, seen.version, twinPlaces(data.tables)),
+    data,
+    update,
+  };
 }
 
 /** Shiran, who runs the menu. */

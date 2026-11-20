@@ -417,7 +417,6 @@
       "leave": "Back to the app",
       "nav": {
         "places": "Tables",
-        "mine": "My orders",
         "prep": "Preparing",
         "menu": "Menu"
       },
@@ -426,7 +425,6 @@
         "takeaway": "Takeaway {number}",
         "newTakeaway": "Takeaway · new order",
         "tableWord": "Table",
-        "takeawayWord": "Takeaway",
         "newShort": "New"
       },
       "age": {
@@ -467,10 +465,6 @@
           "draft": {
             "title": "A draft with a note, an allergy and a hold",
             "text": "A salad with an allergy, and a schnitzel with a note held for the mains"
-          },
-          "choice": {
-            "title": "The choices sheet",
-            "text": "Burger: a doneness to choose, and extras"
           },
           "sent": {
             "title": "After sending",
@@ -563,6 +557,46 @@
           "importProblems": {
             "title": "A paste with lines to fix",
             "text": "A line with no price and one turned around: nothing is added until they're fixed"
+          },
+          "readyNow": {
+            "title": "Ready while looking",
+            "text": "After three seconds the kitchen marks table 4, and the message comes with \"Open\""
+          },
+          "offClock": {
+            "title": "Off a shift",
+            "text": "Yoav clocked out: clock in, and the draft is kept"
+          },
+          "staleShift": {
+            "title": "A shift from yesterday",
+            "text": "A manager fixes it, then carry on"
+          },
+          "floorNoPlaces": {
+            "title": "No tables yet, in the mode",
+            "text": "What the tables say before there are any"
+          },
+          "viewing": {
+            "title": "Viewing as a manager",
+            "text": "The team sees everything, and sends and changes nothing"
+          },
+          "pending": {
+            "title": "A send not through yet",
+            "text": "No connection: \"Not sent yet\", sent again with the same key"
+          },
+          "soldOut": {
+            "title": "Sold out meanwhile",
+            "text": "The fish ran out after it was chosen: the send says which, and the draft stays"
+          },
+          "taken": {
+            "title": "A table opened meanwhile",
+            "text": "Yoav opened table 6 a moment before: add to the open order"
+          },
+          "takeaway": {
+            "title": "A new takeaway",
+            "text": "Its number comes with the first send, with words to call the customer"
+          },
+          "prepKitchen": {
+            "title": "Preparing, for whoever only prepares",
+            "text": "Noa in the kitchen: preparing and the menu only"
           }
         },
         "note": "Every price here is a sample. No bill, no receipt and no payment: what shows \"for the till\" is keyed into the business's own register."
@@ -570,7 +604,6 @@
       "floor": {
         "title": "Tables",
         "takeaway": "Start a takeaway order",
-        "tables": "The tables",
         "takeaways": "Takeaway",
         "status": {
           "ready": "{count, plural, one {1 table ready to serve} other {# ready to serve}}",
@@ -663,29 +696,6 @@
         "note": "Note: {note}",
         "allergy": "Allergy: {allergy}",
         "takenBack": "Cancelled"
-      },
-      "note": {
-        "noteTitle": "Note · {name}",
-        "allergyTitle": "Allergy · {name}",
-        "noteLabel": "Note for the kitchen",
-        "notePlaceholder": "Such as: no onion. No customers' names",
-        "noteHint": "It shows on the order, in a highlighted box.",
-        "allergyLabel": "What to avoid",
-        "allergyPlaceholder": "Such as: peanuts",
-        "allergyHint": "The kitchen sees it in red, with the word allergy.",
-        "allergyMissing": "Write what to avoid, so the kitchen knows.",
-        "saveNote": "Save the note",
-        "saveAllergy": "Save the allergy",
-        "removeNote": "Remove the note",
-        "removeAllergy": "Remove the allergy"
-      },
-      "choice": {
-        "required": "Required",
-        "optional": "Optional",
-        "extra": "<ltr>+{price}</ltr>",
-        "qty": "How many",
-        "missing": "To add it, choose: {groups}",
-        "add": "{count, plural, one {Add it} other {Add #}}"
       },
       "rounds": {
         "title": "What was sent",
@@ -788,7 +798,6 @@
           "body": "A new order will show here with a chime."
         },
         "readyAt": "Marked ready at <ltr>{time}</ltr>",
-        "screen": "The kitchen screen",
         "demoNote": "In the demo the screen isn't locked.",
         "backToPhone": "Back to Shiran's phone",
         "tillEyebrow": "{business} · till",
@@ -808,7 +817,6 @@
         "ready": "{place} · {department}: ready",
         "removed": "Removed from the draft: {name}",
         "noteRemoved": "Note removed: {name}",
-        "allergyRemoved": "Allergy removed: {name}",
         "fired": "Fired · {department}",
         "takenBack": "Taken back: {name}",
         "closed": "{place} closed",
@@ -841,7 +849,11 @@
         "title": "Menu items, to edit",
         "text": "Whoever runs the menu opens an item by its name and marks it sold out with the switch. Someone preparing in a department sees only the switch, and an item with no department says so.",
         "cola": "Cola"
-      }
+      },
+      "draft": "The draft and the send",
+      "draftText": "A line with an allergy, a line held to be called, and the send with how many and where they go. On the second ticket, \"Ready\" waits for the server.",
+      "peanuts": "Peanuts",
+      "bar": "Bar"
     }
   },
   "shell": {
@@ -3679,6 +3691,10 @@
         "hintMenu": "Each menu category goes to one department to prepare; you pick it on the categories screen.",
         "menuItems": "{count, plural, one {Prepares 1 menu item} other {Prepares # menu items}}",
         "removedMenu": "{count, plural, one {{name} was removed. 1 menu item goes to no one until it gets a department.} other {{name} was removed. # menu items go to no one until they get a department.}}"
+      },
+      "departmentsSetting": {
+        "none": "The business has no departments yet. Add them on the departments screen.",
+        "add": "Go to the departments"
       }
     },
     "me": {
@@ -5563,6 +5579,261 @@
         "action": "{count, plural, one {Add 1 item to the menu} other {Add # items to the menu}}",
         "done": "{items, plural, one {Added 1 item to the menu} other {Added # items to the menu}}{categories, plural, =0 {} one { and 1 new category} other { and # new categories}}",
         "toMenu": "To the menu"
+      },
+      "place": {
+        "numbered": "Place {name}",
+        "named": "{name}",
+        "kind": "Place",
+        "takeaway": "Order {number}",
+        "takeawayKind": "No place",
+        "newTakeaway": "New order · no place",
+        "newShort": "New"
+      },
+      "age": {
+        "ago": "{count, plural, =0 {Just now} one {1 min ago} other {# min ago}}"
+      },
+      "floor": {
+        "metaTitle": "Taking orders",
+        "title": "Places",
+        "takeaway": "Start an order with no place",
+        "places": "The places",
+        "takeaways": "No place",
+        "status": {
+          "ready": "{count, plural, one {1 ready to serve} other {# ready to serve}}",
+          "late": "{count, plural, one {1 waiting} other {# waiting}}",
+          "open": "{count, plural, one {1 open} other {# open}}",
+          "free": "Every place is free"
+        },
+        "state": {
+          "free": "Free",
+          "draft": "{count, plural, one {1 item in the draft} other {# items in the draft}}",
+          "open": "{count, plural, =0 {Sent just now} one {Sent 1 min ago} other {Sent # min ago}}",
+          "ready": "Ready to serve",
+          "late": "Waiting {count} min"
+        },
+        "readyTitle": "Ready to serve",
+        "readyEmpty": "Nothing to serve right now. What is marked ready shows here.",
+        "readyCard": "{place} · {department}",
+        "table": {
+          "title": "Open orders",
+          "place": "Place",
+          "by": "Opened by",
+          "lastSent": "Last sent",
+          "state": "State",
+          "open": "Open",
+          "hint": "Open the order",
+          "last": "<ltr>{time}</ltr> · {ago}"
+        },
+        "empty": {
+          "title": "No places yet",
+          "body": "Add the places: numbers or names, such as Bar 3.",
+          "action": "Add places",
+          "waiter": "Whoever runs the menu hasn't added places yet. Meanwhile start an order with no place."
+        }
+      },
+      "order": {
+        "metaTitle": "Order",
+        "free": "Free · choose items and send",
+        "opened": "Opened at <ltr>{time}</ltr> · {name}",
+        "openedAt": "Opened at <ltr>{time}</ltr>",
+        "serve": "Served",
+        "floorList": "The places",
+        "label": "To call the customer",
+        "labelHint": "Such as a first name or a shirt's colour. Erased two days after closing.",
+        "labelSaved": "Saved",
+        "view": {
+          "label": "What shows",
+          "add": "Add items",
+          "order": "The order",
+          "unsent": "{count, plural, one {1 item not sent yet} other {# items not sent yet}}"
+        },
+        "noPlace": {
+          "title": "This place wasn't found",
+          "body": "It may have been removed, or its order closed. Go back and choose from the list.",
+          "back": "Back to the places"
+        }
+      },
+      "picker": {
+        "title": "Add items",
+        "search": "Search the menu",
+        "searchPlaceholder": "Search for an item",
+        "found": "What was found",
+        "nothingFound": "No item starts with {query}",
+        "most": "Ordered most",
+        "categories": "Categories",
+        "soldOut": "Sold out",
+        "inDraft": "in the draft",
+        "needsChoice": "It has choices. Pass it on by word of mouth for now.",
+        "noRoute": "No department prepares it",
+        "added": "{count, plural, one {Added to the draft: {name}} other {Added to the draft: {name}, # in the draft}}",
+        "noMenu": {
+          "title": "No menu yet",
+          "body": "Add items, or copy a menu that exists by pasting it.",
+          "waiter": "Whoever runs the menu hasn't added it yet.",
+          "import": "Copy a menu"
+        }
+      },
+      "draft": {
+        "title": "To send",
+        "empty": "No items chosen yet. What is chosen from the menu shows here, and goes in one tap.",
+        "goes": "Where it goes: {routes}",
+        "qty": "How many: {name}",
+        "less": "One less: {name}",
+        "more": "One more: {name}",
+        "note": "Note",
+        "allergy": "Allergy",
+        "hold": "Hold this",
+        "forItem": ", {name}",
+        "heldBadge": "Will wait to be called",
+        "remove": "Remove from the draft: {name}"
+      },
+      "note": {
+        "title": "Note · {name}",
+        "label": "Note for preparing",
+        "placeholder": "Such as: no onion. No customers' names",
+        "hint": "It shows on the order, in a highlighted box.",
+        "allergySwitch": "Allergy",
+        "allergyLabel": "What to avoid",
+        "allergyPlaceholder": "Such as: peanuts",
+        "allergyHint": "Whoever prepares it sees this in red, with the word allergy.",
+        "allergyMissing": "Write what to avoid, so whoever prepares it knows.",
+        "save": "Save the note",
+        "remove": "Remove the note",
+        "close": "Close"
+      },
+      "send": {
+        "label": "Send the order",
+        "count": "{count, plural, one {1 item} other {# items}}",
+        "route": "{department} · {count}",
+        "clockIn": "Clock in"
+      },
+      "rounds": {
+        "title": "What was sent",
+        "round": "Round {n} · <ltr>{time}</ltr> · {name}",
+        "roundAt": "Round {n} · <ltr>{time}</ltr>",
+        "takeBack": "Take back",
+        "fire": "Fire",
+        "till": "For the till"
+      },
+      "line": {
+        "qtyName": "<ltr>{qty}</ltr> × {name}",
+        "note": "Note: {note}",
+        "allergy": "Allergy: {note}",
+        "takenBack": "Taken back",
+        "cancelled": "Cancelled"
+      },
+      "ticketState": {
+        "held": "Waiting to be called",
+        "notSent": "Not sent yet. It goes when there is a connection",
+        "sent": "Sent",
+        "onScreen": "On the screen · {department}",
+        "ready": "Ready · {department}",
+        "served": "Served"
+      },
+      "toast": {
+        "undo": "Undo",
+        "open": "Open",
+        "sent": "The order for {place} was sent",
+        "served": "{place} · {department}: served",
+        "ready": "{place} · {department}: ready",
+        "readyMany": "{count, plural, one {1 ready to serve} other {# ready to serve}}",
+        "removed": "Removed from the draft: {name}",
+        "noteRemoved": "Note removed: {name}",
+        "fired": "Fired · {department}",
+        "takenBack": "Taken back: {name}",
+        "putBack": "Back to preparing: {place}"
+      },
+      "mine": {
+        "metaTitle": "My orders",
+        "title": "My orders",
+        "status": "{ready, plural, =0 {Nothing to serve} one {1 ready to serve} other {# ready to serve}} · {making, plural, =0 {nothing being made} other {# being made}}",
+        "ready": "Ready to serve",
+        "making": "Being made",
+        "readyEmpty": "What was sent and is ready shows here.",
+        "makingEmpty": "Nothing being made right now.",
+        "held": "Waiting to be called",
+        "served": "Served",
+        "cardTitle": "{place} · {department}",
+        "sentAt": "Sent at <ltr>{time}</ltr> · {ago}",
+        "tableTitle": "Still to serve",
+        "columns": {
+          "place": "Place",
+          "department": "Department",
+          "items": "What",
+          "sent": "Sent",
+          "state": "State",
+          "serve": "Serving"
+        },
+        "empty": {
+          "title": "No orders sent yet",
+          "body": "What is sent from the places shows here, ready first.",
+          "action": "Go to the places"
+        }
+      },
+      "prep": {
+        "metaTitle": "Preparing",
+        "title": "Preparing",
+        "department": "Department",
+        "status": "{count, plural, one {1 open} other {# open}} · the oldest waiting {minutes} min",
+        "nothingOpen": "No open orders",
+        "openCount": "{count, plural, one {1 open} other {# open}}",
+        "listLabel": "Orders · {department}",
+        "empty": {
+          "title": "No open orders",
+          "body": "A new order shows here a few seconds after it is sent."
+        },
+        "recent": "Ready lately",
+        "readyAt": "Marked ready at <ltr>{time}</ltr>",
+        "putBack": "Back to preparing",
+        "from": "{name} · {department}",
+        "fromNobody": "{department}",
+        "ready": "Ready",
+        "label": "{place} · {department}"
+      },
+      "offClock": {
+        "title": "Taking orders opens during a shift",
+        "body": "Clock in, then carry on. What was already chosen is kept here.",
+        "action": "Clock in"
+      },
+      "staleShift": {
+        "title": "A shift from yesterday is still open",
+        "body": "A manager fixes it, then carry on.",
+        "action": "Go to the clock"
+      },
+      "failed": {
+        "unavailable": "Sold out meanwhile: {items}. Remove it and send again.",
+        "route": "No department prepares: {items}. Remove it and send; whoever runs the menu fixes it.",
+        "taken": "{place}: there is an open order already. Add to it?",
+        "takenAdd": "Add to the open order",
+        "closed": "The order closed meanwhile.",
+        "closedAgain": "Send as a new order",
+        "moved": "The order moved meanwhile. Choose again from the list.",
+        "window": "The time to take it back has passed.",
+        "prepared": "It was already marked ready, so it can't be taken back.",
+        "held": "It waits to be called. Fire it first.",
+        "tooMany": "Too much at once. Send it in two goes.",
+        "off": "Taking orders is off for this business.",
+        "noAccess": "Only those who take orders send.",
+        "viewOnly": "Nothing is sent or changed while viewing.",
+        "signedOut": "Sign in again. What was chosen is kept here.",
+        "gone": "The order no longer exists.",
+        "businessChanged": "You switched to another business meanwhile. Open the screen again.",
+        "served": "It was served already.",
+        "sender": "Only whoever sent it takes it back.",
+        "ownDepartment": "It went to your own department, so it is cancelled with a reason.",
+        "cancelled": "It was cancelled already.",
+        "takenBack": "It was taken back already.",
+        "notYet": "Taking orders isn't ready here yet.",
+        "failed": "Not sent. Trying again."
+      },
+      "home": {
+        "open": "Open the orders",
+        "idle": "Choose a place and send it to be prepared",
+        "ready": "{count, plural, one {1 ready to serve} other {# ready to serve}}",
+        "making": "{count, plural, one {1 being made} other {# being made}}",
+        "offClock": "Opens during a shift",
+        "waiting": "{department} · {count, plural, one {1 being made} other {# being made}}",
+        "nothingWaiting": "Nothing to prepare right now"
       }
     },
     "departure": {
@@ -5570,6 +5841,9 @@
       "title": "No longer on the team of {business}",
       "body": "The business now: {current}. If this is a mistake, ask {business} for a new invite.",
       "seen": "Got it"
+    },
+    "mode": {
+      "leave": "Back to the app"
     }
   },
   "modules": {
@@ -5911,6 +6185,12 @@
         "large": "Large",
         "extras": "Extras",
         "general": "General"
+      },
+      "mode": {
+        "places": "Places",
+        "mine": "My orders",
+        "prep": "Preparing",
+        "menu": "Menu"
       }
     }
   },

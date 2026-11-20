@@ -10,10 +10,12 @@ import {
   type OrderCancelReason,
   type OrderDetail,
   type OrderFloor,
+  type OrderMode,
   type OrderPrep,
   type OrderTill,
   orderDetailSchema,
   orderFloorSchema,
+  orderModeSchema,
   orderPrepSchema,
   orderTillSchema,
   type RoundInput,
@@ -21,8 +23,10 @@ import {
   type SentRound,
   sentRoundSchema,
 } from "@domain/orders";
+import { shortNames } from "@domain/people";
 import { z } from "zod";
 import type { Json } from "./database.types";
+import { memberNames, nameIn } from "./member-names";
 import { isMissingFunction } from "./missing";
 import {
   type DatabaseRefusal,
@@ -42,8 +46,9 @@ import { createClient } from "./supabase/server";
  * staff). Writes run with the secret key for `actorId`; the database checks
  * who may do what, and callers check the actor is the signed-in person and
  * not viewing as someone else. Every input is parsed here with the rules the
- * database checks, and every answer is parsed before it reaches a screen. No
- * screen calls these before P4.
+ * database checks, and every answer is parsed before it reaches a screen.
+ * The mode's screens (P4) read them, and so does its sync (/orders-sync);
+ * the send goes through /orders-send.
  */
 
 /** Why a write was refused, for the screens' words (@db/order-failures). */
@@ -227,6 +232,64 @@ export async function getOrderFavourites(
   }
   const favourites = answerOf(favouritesSchema, data, "the favourites");
   return favourites === "same" ? { items: [] } : favourites;
+}
+
+/**
+ * Where the signed-in person stands in the mode (`public.order_mode`, P4),
+ * for the frame, Home and the clock: null while the module is off and for
+ * anyone it isn't for, never an error of its own; "notYet" before the
+ * migration reaches the project, which the app reads as no mode.
+ */
+export async function getOrderMode(
+  businessId: string,
+): Promise<OrderMode | null | "notYet"> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("order_mode", {
+    business: businessId,
+  });
+  if (error) {
+    if (isMissingFunction(error)) return "notYet";
+    throw error;
+  }
+  if (data === null) return null;
+  const parsed = orderModeSchema.safeParse(data);
+  if (!parsed.success) {
+    console.error("reading the mode failed", parsed.error.message);
+    throw new Error("The mode came back in a shape the app doesn't read");
+  }
+  return parsed.data;
+}
+
+/**
+ * The people the orders' screens name (who opened, who sent), by id, as the
+ * signed-in person reads them under RLS: everyone in a business reads its
+ * team, those who left included, whose names old orders still carry. Each
+ * by the business's name for them, short (`shortNames`: first names, full
+ * where two share one). Nothing about any order. The departments' names
+ * come from @db/departments, with who is in each.
+ */
+export async function getOrderPeople(
+  businessId: string,
+): Promise<Map<string, string>> {
+  const supabase = await createClient();
+  const [members, names] = await Promise.all([
+    supabase
+      .from("memberships")
+      .select("user_id, profiles (full_name)")
+      .eq("business_id", businessId),
+    memberNames(supabase, businessId),
+  ]);
+  if (members.error) throw members.error;
+  const people = (members.data ?? []).map((row) => ({
+    id: row.user_id.toLowerCase(),
+    name: nameIn(names, row.user_id, row.profiles?.full_name) ?? "",
+  }));
+  const short = shortNames(people.map((person) => person.name));
+  return new Map(
+    people.flatMap((person, at): [string, string][] =>
+      person.name ? [[person.id, short[at] ?? person.name]] : [],
+    ),
+  );
 }
 
 // Writing

@@ -12,6 +12,7 @@ import {
   MAX_MODULE_NAV,
   type ModuleManifest,
   type ModuleRow,
+  moduleModes,
   moduleNav,
   moduleWidgets,
   permissionInUse,
@@ -283,6 +284,64 @@ describe("moduleWidgets", () => {
     expect(moduleWidgets(all, on, as("accountant", ["clock.payroll"]))).toEqual(
       [],
     );
+  });
+});
+
+describe("a mode (P4)", () => {
+  const orders = defineManifest({
+    key: "order_taking",
+    requires: [],
+    nav: null,
+    icon: "pad",
+    homeWidget: { minRole: "worker" },
+    mode: {
+      href: "/orders",
+      icon: "pad",
+      entries: ["home", "clockIn", "me"],
+      items: [{ key: "places", href: "/orders", icon: "grid", exact: true }],
+    },
+    permissions: [],
+    settings: z.object({}),
+  });
+  const withMode: ModuleManifest[] = [schedule, orders];
+
+  it("is listed while its module is on, in the registry's order", () => {
+    expect(moduleModes(withMode, ["order_taking"]).map((m) => m.key)).toEqual([
+      "order_taking",
+    ]);
+    expect(moduleModes(withMode, ["scheduling"])).toEqual([]);
+  });
+
+  it("shows on Home by its own path and icon, and to nobody off the staff", () => {
+    const on = enabledModules(withMode, rows("scheduling", "order_taking"));
+    expect(moduleWidgets(withMode, on, as("worker"))).toEqual([
+      {
+        key: "scheduling",
+        href: "/schedule",
+        icon: "calendar",
+        outside: false,
+      },
+      {
+        key: "order_taking",
+        href: "/orders",
+        icon: "pad",
+        outside: false,
+        mode: true,
+      },
+    ]);
+    expect(moduleWidgets(withMode, on, as("accountant"))).toEqual([]);
+    // Without "home" among its ways in, nothing on Home.
+    const quiet = defineManifest({
+      ...orders,
+      mode: { ...orders.mode, entries: ["me"] } as NonNullable<
+        typeof orders.mode
+      >,
+    });
+    expect(moduleWidgets([quiet], ["order_taking"], as("owner"))).toEqual([]);
+  });
+
+  it("opens no module screen by itself: the mode's screens check their own", () => {
+    expect(canOpenModule(orders, ["order_taking"], as("owner"))).toBe(false);
   });
 });
 

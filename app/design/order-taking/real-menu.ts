@@ -12,6 +12,7 @@ import type {
   ChoiceGroup,
   DepartmentKey,
   MenuItem,
+  Place,
   Menu as TwinMenuRows,
 } from "./model";
 import type { DemoData } from "./scenario";
@@ -66,8 +67,10 @@ const choiceGroupOf = (group: OptionGroup): ChoiceGroup => ({
 });
 
 /** The twin's tables, as places. */
-export const twinPlaces = (): OrderPlace[] =>
-  orderDemoTables.map((table) => ({
+export const twinPlaces = (
+  tables: readonly Place[] = orderDemoTables,
+): OrderPlace[] =>
+  tables.map((table) => ({
     id: table.id,
     name: table.name ?? "",
   }));

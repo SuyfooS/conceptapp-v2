@@ -1,12 +1,13 @@
 import { DemoScreen } from "../../demo-store";
-import { PrepScreen } from "./prep-screen";
+import { PrepTwin } from "../twins";
 
-// "הכנה" on Shiran's phone: the kitchen's tickets and the bar's, each marked
-// ready with one tap. `?state=nothingOpen` is a kitchen with everything out.
+// Preparing on a phone, on the app's own screen (P4): the kitchen's and the
+// bar's for Shiran, a manager. `?state=kitchen` is Noa, who only prepares in
+// the kitchen; `?state=nothingOpen` a kitchen with every ticket out.
 export default function OrderPrepPage() {
   return (
     <DemoScreen>
-      <PrepScreen />
+      <PrepTwin />
     </DemoScreen>
   );
 }

@@ -75,6 +75,7 @@ import { TodayChat } from "../chat/today-chat";
 import type { LockAction, StationHome } from "../clock/station/station-types";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
+import type { ModeRow } from "../mode-rows";
 import { moduleIcons } from "../module-icons";
 import type {
   AvailabilityWeek,
@@ -169,6 +170,13 @@ export type TodayData = {
    * else.
    */
   firstSteps?: FirstStepsData | null;
+  /**
+   * The modes the person is in (waiter mode, P4: `currentModeRows`): a card
+   * near the top while it is open to them (on a shift, taking orders), a
+   * quiet row otherwise. A module with a mode shows nothing on Home for
+   * anyone it has none for.
+   */
+  modes?: ModeRow[];
 };
 
 type T = Translator<"app">;
@@ -324,12 +332,20 @@ export async function TodayView({
   const documentsWaiting =
     documents !== null &&
     (documents.toConfirm.length > 0 || documents.waiting.length > 0);
-  // Modules with a part of their own aren't quiet rows.
+  // A mode open to the person is a card; one waiting for their shift, or
+  // only preparing, a quiet row in its place.
+  const modes = data.modes ?? [];
+  const modeCards = modes.filter((mode) => mode.open);
+  const modeRow = (key: string) =>
+    modes.find((mode) => mode.key === key && !mode.open);
+  // Modules with a part of their own aren't quiet rows, and a mode's row
+  // stands for its module, or nothing does.
   const quiet = data.widgets.filter(
     (w) =>
       w.key !== "scheduling" &&
       !(w.key === "lists" && lists) &&
-      !(w.key === "chat" && chat),
+      !(w.key === "chat" && chat) &&
+      (!w.mode || modeRow(w.key) !== undefined),
   );
   const view = schedule ? { t, path, clock, role: data.role, schedule } : null;
   // Chat's part, then lists', one under the other where lists' part was:
@@ -358,36 +374,47 @@ export async function TodayView({
         {quiet.length > 0 ? (
           <PageSection title={t("home.modulesTitle")}>
             <ListGroup>
-              {quiet.map((widget) => (
-                <ListRow
-                  key={widget.key}
-                  href={
-                    // Hours waiting for approval are approved on the team's hours.
-                    widget.key === "time_clock" &&
-                    data.clockLine?.kind === "confirm"
-                      ? path("/clock/team")
-                      : path(widget.href)
-                  }
-                  leading={moduleIcons[widget.icon]}
-                  title={tm(`${widget.key}.name`)}
-                  subtitle={
-                    widget.key === "time_clock" && data.clockLine
-                      ? data.clockLine.kind === "overdue"
-                        ? t("clock.team.overdue.title", {
-                            count: data.clockLine.count,
-                          })
-                        : data.clockLine.kind === "confirm"
-                          ? t("clock.team.confirm.title", {
+              {quiet.map((widget) => {
+                const row = modeRow(widget.key);
+                return row ? (
+                  <ListRow
+                    key={widget.key}
+                    href={row.href}
+                    leading={moduleIcons[row.icon]}
+                    title={row.title}
+                    subtitle={row.subtitle}
+                  />
+                ) : (
+                  <ListRow
+                    key={widget.key}
+                    href={
+                      // Hours waiting for approval are approved on the team's hours.
+                      widget.key === "time_clock" &&
+                      data.clockLine?.kind === "confirm"
+                        ? path("/clock/team")
+                        : path(widget.href)
+                    }
+                    leading={moduleIcons[widget.icon]}
+                    title={tm(`${widget.key}.name`)}
+                    subtitle={
+                      widget.key === "time_clock" && data.clockLine
+                        ? data.clockLine.kind === "overdue"
+                          ? t("clock.team.overdue.title", {
                               count: data.clockLine.count,
                             })
-                          : t.rich(`clock.todayLine.${data.clockLine.kind}`, {
-                              time: data.clockLine.at,
-                              ltr,
-                            })
-                      : tm(`${widget.key}.description`)
-                  }
-                />
-              ))}
+                          : data.clockLine.kind === "confirm"
+                            ? t("clock.team.confirm.title", {
+                                count: data.clockLine.count,
+                              })
+                            : t.rich(`clock.todayLine.${data.clockLine.kind}`, {
+                                time: data.clockLine.at,
+                                ltr,
+                              })
+                        : tm(`${widget.key}.description`)
+                    }
+                  />
+                );
+              })}
             </ListGroup>
           </PageSection>
         ) : null}
@@ -501,6 +528,15 @@ export async function TodayView({
             hideUrl={hideFirstStepsUrl}
           />
         ) : null}
+
+        {modeCards.map((mode) => (
+          <ModeCard
+            key={mode.key}
+            mode={mode}
+            // One accent a screen: the owner's first steps keep it (default 8).
+            tone={data.firstSteps ? "flat" : "accent"}
+          />
+        ))}
 
         {view ? (
           <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] xl:gap-x-8">
@@ -1165,5 +1201,38 @@ function WhoWorksToday({
         </div>
       )}
     </PageSection>
+  );
+}
+
+/**
+ * A mode open to the person (waiter mode, P4): on a shift and taking orders,
+ * near the top of Today, before the schedule, with what is ready and being
+ * made and its one action. The screen's one accent card, unless the owner's
+ * first steps have it.
+ */
+function ModeCard({ mode, tone }: { mode: ModeRow; tone: "accent" | "flat" }) {
+  return (
+    <Card
+      tone={tone}
+      padding="lg"
+      className="flex flex-col gap-4 md:max-w-2xl md:flex-row md:items-center"
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        <span
+          aria-hidden="true"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-surface text-ink [&_svg]:size-5"
+        >
+          {moduleIcons[mode.icon]}
+        </span>
+        <span className="flex min-w-0 flex-col">
+          <CardTitle as="h2">{mode.title}</CardTitle>
+          <CardText>{mode.subtitle}</CardText>
+        </span>
+      </div>
+      <Button asChild size="lg" className="md:shrink-0">
+        {/* Its own path: the demo's leads to the twin, outside its base. */}
+        <Link href={mode.href}>{mode.action}</Link>
+      </Button>
+    </Card>
   );
 }

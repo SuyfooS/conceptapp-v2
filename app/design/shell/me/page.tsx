@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 import { MyDocumentsSection } from "../../../(app)/chat/documents/my-documents";
 import { MeView } from "../../../(app)/me/me-view";
+import { ModeRows } from "../../../(app)/mode-rows";
 import { NotificationSettingsLink } from "../../../(app)/notifications/settings-link";
 import { baseWording } from "../../../(app)/wording";
 import { demoSignOut } from "../actions";
-import { business, teamMembers, teamProfiles } from "../data";
+import { business, demoOrdersMode, teamMembers, teamProfiles } from "../data";
 import {
   demoRemovePhotoAction,
   demoSaveProfileAction,
@@ -36,6 +37,8 @@ async function Demo({ searchParams }: Props) {
   return (
     <MeView
       wording={baseWording}
+      // Waiter mode's way in, to the twin (P4).
+      modes={<ModeRows rows={[{ ...demoOrdersMode, open: false }]} />}
       signOut={demoSignOut}
       actions={{
         setPhoto: demoSetPhotoAction,

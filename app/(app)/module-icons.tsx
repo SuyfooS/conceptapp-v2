@@ -1,12 +1,16 @@
 import type { ModuleIcon } from "@domain/modules";
 import {
   Bell,
+  BookOpen,
   CalendarDays,
   Clock,
   FileText,
+  LayoutGrid,
   ListChecks,
+  ListTodo,
   MessageCircle,
   NotebookPen,
+  Send,
   Store,
   UtensilsCrossed,
 } from "lucide-react";
@@ -23,4 +27,8 @@ export const moduleIcons: Record<ModuleIcon, ReactNode> = {
   chat: <MessageCircle />,
   documents: <FileText />,
   pad: <NotebookPen />,
+  grid: <LayoutGrid />,
+  send: <Send />,
+  prep: <ListTodo />,
+  book: <BookOpen />,
 };

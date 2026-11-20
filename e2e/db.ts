@@ -4404,20 +4404,105 @@ export async function joinFirstStepsDepartment(name: string): Promise<void> {
  * items, categories and places deleted (the orders first: their lines point
  * at the items, and go with their orders), the sample menu written again
  * (private.seed_demo_order_taking, which only writes a menu that has no
- * category) and its sample orders after it (private.seed_demo_orders, P3,
- * which only writes them where there are none), and taking orders on, as the
- * local seed has it.
+ * category), taking orders on, as the local seed has it, and its sample
+ * orders after it (private.seed_demo_orders, P3, which only writes them where
+ * there are none). The orders go with the day's takeaway numbers
+ * (`deleteDemoOrders`): a counter left behind would make the sample's own
+ * insert of it fail, and the demo would open with no orders.
  */
 export async function resetDemoMenu(): Promise<void> {
-  await sql`delete from public.orders where business_id = ${DEMO_RESTAURANT}`;
+  await deleteDemoOrders();
   await sql`delete from public.menu_items where business_id = ${DEMO_RESTAURANT}`;
   await sql`delete from public.menu_categories where business_id = ${DEMO_RESTAURANT}`;
   await sql`delete from public.order_places where business_id = ${DEMO_RESTAURANT}`;
   await sql`select private.seed_demo_order_taking(${DEMO_RESTAURANT}::uuid)`;
-  await sql`select private.seed_demo_orders(${DEMO_RESTAURANT}::uuid)`;
   await sql`
     update public.business_modules set enabled = true
     where business_id = ${DEMO_RESTAURANT} and module_key = 'order_taking'`;
+  await sql`select private.seed_demo_orders(${DEMO_RESTAURANT}::uuid)`;
+}
+
+/** The demo restaurant's orders and takeaway numbers gone (cascading to their rounds). */
+async function deleteDemoOrders(): Promise<void> {
+  await sql`delete from public.orders where business_id = ${DEMO_RESTAURANT}`;
+  await sql`delete from private.order_day_counters where business_id = ${DEMO_RESTAURANT}`;
+}
+
+/**
+ * The demo restaurant's orders as a reset leaves them (waiter mode P3's
+ * sample: table 4 at the kitchen, table 7 ready at the bar, a takeaway),
+ * whatever a test sent. The orders' version moves, so every phone reads
+ * them again.
+ */
+export async function resetDemoOrders(): Promise<void> {
+  await deleteDemoOrders();
+  await sql`select private.seed_demo_orders(${DEMO_RESTAURANT}::uuid)`;
+  await sql`select private.bump_order_version(${DEMO_RESTAURANT}::uuid)`;
+}
+
+/** How many rounds the open order at the demo restaurant's place of that name has. */
+export async function demoRounds(placeName: string): Promise<number> {
+  const [row] = await sql<{ rounds: number }[]>`
+    select count(r.*)::int as rounds
+    from public.orders o
+    join public.order_places p on p.id = o.place_id
+    left join public.order_rounds r on r.order_id = o.id
+    where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+      and p.name = ${placeName}`;
+  return row?.rounds ?? 0;
+}
+
+/**
+ * The newest ticket's status at the open order of the place of that name, for
+ * the department of that key, or null when it has none.
+ */
+export async function demoTicketStatus(
+  placeName: string,
+  departmentKey: string,
+): Promise<string | null> {
+  const [row] = await sql<{ status: string }[]>`
+    select t.status
+    from public.order_tickets t
+    join public.orders o on o.id = t.order_id
+    join public.order_places p on p.id = o.place_id
+    join public.departments d on d.id = t.department_id
+    join public.order_rounds r on r.id = t.round_id
+    where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+      and p.name = ${placeName} and d.key = ${departmentKey}
+    order by r.sent_at desc, t.position desc
+    limit 1`;
+  return row?.status ?? null;
+}
+
+/** Whether the line of that item at the open order of that place was taken back. */
+export async function demoLineTakenBack(
+  placeName: string,
+  itemName: string,
+): Promise<boolean | null> {
+  const [row] = await sql<{ taken: boolean }[]>`
+    select l.taken_back_at is not null as taken
+    from public.order_lines l
+    join public.order_tickets t on t.id = l.ticket_id
+    join public.orders o on o.id = t.order_id
+    join public.order_places p on p.id = o.place_id
+    where o.business_id = ${DEMO_RESTAURANT} and o.status = 'open'
+      and p.name = ${placeName} and l.name = ${itemName}
+    order by l.position desc
+    limit 1`;
+  return row?.taken ?? null;
+}
+
+/** Someone's open shift at the demo restaurant ended that many minutes ago. */
+export async function endDemoEntry(
+  phone: string,
+  minutesAgo: number,
+): Promise<void> {
+  await sql`
+    update public.time_entries e
+    set clock_out = ${new Date(Date.now() - minutesAgo * 60_000)}::timestamptz
+    from public.profiles p
+    where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
+      and p.phone = ${phone} and e.clock_out is null`;
 }
 
 export type DemoMenuItem = {

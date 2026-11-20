@@ -117,8 +117,12 @@ export type TicketCardProps = {
   held?: string | null;
   /** A station's size: the lines larger, "מוכן" at least 64px tall. */
   large?: boolean;
-  /** "מוכן", full width at its foot: one on every ticket, so not in the accent. */
-  ready?: { label: string; onClick: () => void } | null;
+  /**
+   * "מוכן", full width at its foot: one on every ticket, so not in the
+   * accent. `loading` while the server hears it (the button says so and
+   * waits).
+   */
+  ready?: { label: string; onClick: () => void; loading?: boolean } | null;
   /** The ticket's lines, each an `OrderLine`. */
   children: ReactNode;
 };
@@ -180,6 +184,7 @@ export function TicketCard({
           size="lg"
           variant="secondary"
           onClick={ready.onClick}
+          loading={ready.loading}
           className={cn("w-full", large && "min-h-16 text-lg")}
         >
           <Check aria-hidden="true" />

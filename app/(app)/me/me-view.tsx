@@ -55,6 +55,7 @@ export async function MeView({
   notifications,
   businesses,
   documents,
+  modes,
   home = "/home",
 }: {
   data: MeData;
@@ -69,6 +70,8 @@ export async function MeView({
   businesses?: ReactNode;
   /** "המסמכים שלי" (chat C7), where documents are the person's. */
   documents?: ReactNode;
+  /** The ways into the modes the person is in (waiter mode, P4). */
+  modes?: ReactNode;
   home?: string;
 }) {
   const t = translator(wording, "app");
@@ -101,6 +104,7 @@ export async function MeView({
       notifications={notifications}
       businesses={businesses}
       documents={documents}
+      modes={modes}
     />
   );
 }

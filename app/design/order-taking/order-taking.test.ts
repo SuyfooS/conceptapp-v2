@@ -1,23 +1,28 @@
 import { importRows, parseMenu, reverseLine } from "@domain/menu-import";
+import { addToDraft, draftKey, placeState } from "@domain/order-screens";
 import { itemSaveInput } from "@domain/order-taking";
+import {
+  myOrdersSchema,
+  orderDetailSchema,
+  orderPrepSchema,
+  takeBackState,
+} from "@domain/orders";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import he from "@/messages/he.json";
 import {
-  addLine,
   closeOrder,
   importMenu,
-  newTakeaway,
   reopenOrder,
   saveCategories,
-  send,
+  sendRound,
 } from "./changes";
 import {
   DEMO_START,
+  demoDraft,
   demoJustSent,
   demoPastedMenu,
   demoProblemPaste,
   demoReversedPaste,
-  orderDemoDepartments,
   READER,
   READER_DEPARTMENTS,
 } from "./data";
@@ -26,7 +31,6 @@ import {
   type ChoiceGroup,
   singleChoice,
   takeawaysOnFloor,
-  takeBackOpen,
   toggleChoice,
 } from "./model";
 import {
@@ -35,10 +39,20 @@ import {
   twinMenu,
   withoutDepartment,
 } from "./real-menu";
+import {
+  soldOutIn,
+  twinDetail,
+  twinFloor,
+  twinFrame,
+  twinMine,
+  twinPrep,
+  twinSentRound,
+} from "./real-orders";
 import { scenario } from "./scenario";
 
 // The order-taking twin's rules that a screen only draws (S0 of waiter
-// mode, #191): what the reviewers caught, kept caught.
+// mode, #191): what the reviewers caught, kept caught. Since P4 the mode's
+// screens are the app's, reading the twin's rows through real-orders.ts.
 
 const MINUTE = 60_000;
 const UUID =
@@ -65,9 +79,18 @@ describe("newId", () => {
     vi.stubGlobal("crypto", {
       getRandomValues: real.getRandomValues.bind(real),
     });
-    const added = addLine(scenario("quiet"), "table-6", "lemonade", [], 1);
-    const sent = send(added, "table-6", READER, DEMO_START);
-    expect(sent.orders.find((o) => o.placeId === "table-6")?.id).toMatch(UUID);
+    const lines = addToDraft([], "lemonade", newId);
+    const sent = sendRound(
+      scenario("quiet"),
+      { orderId: null, placeId: "table-6" },
+      lines,
+      READER,
+      DEMO_START,
+    );
+    expect(sent.order.id).toMatch(UUID);
+    expect(sent.data.orders.find((o) => o.placeId === "table-6")).toBe(
+      sent.order,
+    );
   });
 });
 
@@ -82,60 +105,150 @@ describe("the demo's evenings", () => {
       expect(scenario(state).takeaways).toEqual([]);
       expect(scenario(state).nextTakeaway).toBe(1);
     }
-    const quiet = newTakeaway(scenario("quiet"), "takeaway-new");
-    const sent = send(
-      addLine(quiet, "takeaway-new", "lemonade", [], 1),
-      "takeaway-new",
+    const sent = sendRound(
+      scenario("quiet"),
+      { orderId: null, placeId: null, label: " דנה " },
+      addToDraft([], "lemonade", newId),
       READER,
       DEMO_START,
     );
-    expect(sent.takeaways.find((p) => p.id === "takeaway-new")?.name).toBe("1");
+    const place = sent.data.takeaways.find((p) => p.id === sent.order.placeId);
+    expect(place).toMatchObject({ name: "1", label: "דנה" });
+    expect(twinSentRound(sent.data, sent.order, sent.round)).toMatchObject({
+      first: true,
+      place: null,
+      takeaway: 1,
+    });
     // The evening as it opens already has takeaway 1.
     expect(scenario(null).nextTakeaway).toBe(2);
   });
 });
 
-describe("taking a line back (§3.3)", () => {
-  const viewer = { id: READER, departments: READER_DEPARTMENTS };
-  const order = demoJustSent();
-  const round = order.rounds[0];
-  const ticketOf = (department: string) =>
-    round?.tickets.find((t) => t.department === department);
+describe("the twin's rows as the app's screens read them (P4)", () => {
+  const evening = scenario(null);
+  const at = DEMO_START + MINUTE;
 
-  it("is offered to the sender outside the ticket's department", () => {
-    const kitchen = ticketOf("kitchen");
-    if (!round || !kitchen)
-      throw new Error("the sent order has a kitchen part");
-    expect(takeBackOpen(round, kitchen, DEMO_START + MINUTE, viewer)).toBe(
+  it("reads the floor as public.order_floor gives it, with what is ready", () => {
+    const floor = twinFloor(evening, at);
+    expect(floor.orders.map((o) => o.placeName ?? o.takeaway)).toEqual([
+      "2",
+      "4",
+      "7",
+      "9",
+      "11",
+      1,
+    ]);
+    const table9 = floor.orders.find((o) => o.placeName === "9");
+    // Waiting since 20:22: past the late mark by 20:43.
+    expect(table9 && placeState(table9, at, 15)).toEqual({
+      kind: "late",
+      minutes: 21,
+    });
+    expect(floor.ready.map((r) => r.ticket)).toEqual([
+      "t-7a-bar",
+      "t-11b-kitchen",
+    ]);
+    const table4 = floor.orders.find((o) => o.placeName === "4");
+    expect(table4?.tickets).toEqual({ held: 1, new: 1, ready: 0, served: 1 });
+  });
+
+  it("reads an order whole, its held block held and its allergy in its note", () => {
+    const detail = twinDetail(evening, "order-4", at);
+    const tickets = detail?.rounds[0]?.tickets ?? [];
+    expect(tickets.map((t) => t.status)).toEqual(["new", "held", "served"]);
+    expect(tickets[1]?.lines[1]).toMatchObject({
+      note: "שומשום",
+      allergy: true,
+    });
+    expect(twinDetail(evening, "none", at)).toBeNull();
+    // Shaped as the server's, only with the twin's ids.
+    expect(Object.keys(detail ?? {}).sort()).toEqual(
+      Object.keys(orderDetailSchema.shape).sort(),
+    );
+  });
+
+  it("reads Shiran's own rounds, ready first, and the kitchen's tickets", () => {
+    const mine = twinMine(evening, at);
+    expect(Object.keys(mine).sort()).toEqual(
+      Object.keys(myOrdersSchema.shape).sort(),
+    );
+    expect(mine.rounds[0]?.tickets.some((t) => t.status === "ready")).toBe(
       true,
     );
+    const own = new Set(
+      [...evening.orders, ...evening.closed].flatMap((o) =>
+        o.rounds.filter((r) => r.by === READER).map((r) => r.id),
+      ),
+    );
+    expect(mine.rounds.every((round) => own.has(round.id))).toBe(true);
+    const prep = twinPrep(evening, ["kitchen"], at);
+    expect(Object.keys(prep).sort()).toEqual(
+      Object.keys(orderPrepSchema.shape).sort(),
+    );
+    expect(prep.tickets.every((t) => t.department === "kitchen")).toBe(true);
+    expect(prep.tickets.some((t) => t.status === "held")).toBe(true);
   });
 
-  it("is not offered in a department the sender works in", () => {
-    const bar = ticketOf("bar");
-    if (!round || !bar) throw new Error("the sent order has a bar part");
-    expect(READER_DEPARTMENTS).toContain("bar");
-    expect(takeBackOpen(round, bar, DEMO_START + MINUTE, viewer)).toBe(false);
-  });
-
-  it("closes after two minutes, and for anyone but the sender", () => {
-    const kitchen = ticketOf("kitchen");
-    if (!round || !kitchen)
-      throw new Error("the sent order has a kitchen part");
-    expect(takeBackOpen(round, kitchen, DEMO_START + 2 * MINUTE, viewer)).toBe(
-      false,
+  it("splits a send by department and its held block, as the database does", () => {
+    const sent = sendRound(
+      evening,
+      { orderId: null, placeId: "table-6" },
+      demoDraft(),
+      READER,
+      at,
     );
     expect(
-      takeBackOpen(round, kitchen, DEMO_START, {
-        id: "yoav",
-        departments: [],
-      }),
-    ).toBe(false);
+      sent.round.tickets.map((t) => [t.department, t.held, t.lines.length]),
+    ).toEqual([
+      ["kitchen", false, 1],
+      ["bar", false, 1],
+      ["kitchen", true, 1],
+    ]);
+    expect(sent.round.tickets[2]?.lines[0]).toMatchObject({
+      name: "שניצל",
+      choices: ["פירה"],
+      note: "בלי מלח",
+    });
+    expect(sent.round.tickets[0]?.lines[0]).toMatchObject({
+      note: null,
+      allergy: "אגוזים",
+    });
   });
 
-  it("knows the reader's departments", () => {
-    const keys = orderDemoDepartments.map((d) => d.key);
-    for (const key of READER_DEPARTMENTS) expect(keys).toContain(key);
+  it("refuses the fish, sold out meanwhile, by its id", () => {
+    expect(soldOutIn(evening, ["fish", "water", "fish"])).toEqual(["fish"]);
+  });
+
+  it("offers a take-back to the sender outside the ticket's department only", () => {
+    const round = demoJustSent().rounds[0];
+    const frame = twinFrame("shiran");
+    const state = (department: string) =>
+      takeBackState({
+        sentAt: new Date(round?.at ?? 0),
+        now: new Date((round?.at ?? 0) + MINUTE),
+        minutes: 2,
+        ticket: { status: "new", prepared: false },
+        isSender: round?.by === frame.userId,
+        senderInDepartment: frame.own.includes(department),
+        line: "live",
+      });
+    expect(READER_DEPARTMENTS).toContain("bar");
+    expect(state("kitchen")).toBe("open");
+    expect(state("bar")).toBe("ownDepartment");
+  });
+
+  it("frames who looks: Noa prepares in the kitchen, Yoav waits for his shift", () => {
+    expect(twinFrame("noa")).toMatchObject({
+      takes: false,
+      prepares: ["kitchen"],
+    });
+    expect(twinFrame("offClock")).toMatchObject({
+      runs: false,
+      clock: "clock",
+    });
+    expect(twinFrame("viewing").viewing).toBe(true);
+    expect(draftKey({ place: "table-6" })).toBe("place:table-6");
+    expect(scenario("draft").drafts["place:table-6"]).toHaveLength(3);
   });
 });
 
@@ -189,7 +302,7 @@ describe("an item's choices", () => {
 
 describe("the floor's takeaways", () => {
   const onFloor = (data: ReturnType<typeof scenario>) =>
-    takeawaysOnFloor(data.takeaways, data.orders, data.drafts).map((p) => p.id);
+    takeawaysOnFloor(data.takeaways, data.orders).map((p) => p.id);
 
   it("leaves the floor once closed, and comes back when reopened", () => {
     const evening = scenario(null);
@@ -199,13 +312,6 @@ describe("the floor's takeaways", () => {
     expect(closed.closed[0]?.placeId).toBe("takeaway-1");
     const id = closed.closed[0]?.id ?? "";
     expect(onFloor(reopenOrder(closed, id))).toEqual(["takeaway-1"]);
-  });
-
-  it("shows a new one while its draft has something in it", () => {
-    const started = newTakeaway(scenario("quiet"), "takeaway-new");
-    expect(onFloor(started)).toEqual([]);
-    const drafted = addLine(started, "takeaway-new", "water", [], 1);
-    expect(onFloor(drafted)).toEqual(["takeaway-new"]);
   });
 });
 

@@ -2363,6 +2363,19 @@ input and answer parsed with `@domain/orders`. Covered by
 `order_taking_retention.test.sql`, `isolation`, `demo_reset`, `templates`,
 `activity_log`, `rls_enabled`, and `modules/order_taking/settings.db.test.ts`.
 
+P4 (`20261121000100_order_taking_mode.sql`): `public.order_mode`, where the
+signed-in person stands in the mode (takes, runs, the clock's refusal, the
+departments they prepare for, their own ready and being made, what waits,
+sold out), never refused and never written, for the frame, Home and the
+clock (`getOrderMode`, "notYet" before the migration); `order_mine`'s
+tickets carry their lines (`items`, no price) and `order_floor` what is
+ready to serve (`ready`, with its lines, no price), each read with a
+default of none before the migration. `getOrderPeople` names the people
+the screens show, short. The send goes through `POST /orders-send`
+(app/orders-send/route.ts, the body's business, never the cookie's) and the
+reads through `GET /orders-sync` (app/orders-sync/route.ts, the kitchen's
+read first), both outside the proxy's matcher.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

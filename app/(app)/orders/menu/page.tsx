@@ -21,8 +21,9 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // The menu (waiter mode P2), for the staff while taking orders is on: whoever
 // runs it edits it, someone in a department marks sold out what it prepares,
-// and the rest read it. Reached from the management page's row "התפריט" until
-// the mode has its own way in (P4).
+// and the rest read it. Reached from the management page's row "התפריט" and
+// from the mode's own item (P4), whose way out it has: back to the app
+// (default 9).
 export default async function OrdersMenuPage() {
   const access = await menuAccess();
   if (!access) notFound();
@@ -33,8 +34,7 @@ export default async function OrdersMenuPage() {
   ]);
   if (menu === "closed") notFound();
   const all = departments === "notYet" ? [] : departments;
-  const t = translator(wording, "app.orders.menu");
-  const tm = translator(wording, "app.manage");
+  const tMode = translator(wording, "app.mode");
   const bound = access.businessId;
   return (
     <MenuView
@@ -53,9 +53,7 @@ export default async function OrdersMenuPage() {
         setAvailable: setAvailableAction.bind(null, bound),
       }}
       paths={{
-        back: access.seesManage
-          ? { href: "/manage", label: t("back") }
-          : { href: "/home", label: tm("home") },
+        back: { href: "/home", label: tMode("leave") },
         menu: "/orders/menu",
         categories: "/orders/menu/categories",
         places: "/orders/menu/places",

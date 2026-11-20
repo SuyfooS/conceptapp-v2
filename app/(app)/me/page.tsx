@@ -11,6 +11,7 @@ import { MyDocumentsSection } from "../chat/documents/my-documents";
 import { currentWording } from "../current-wording";
 import { SwitchBusinessSection } from "../home/my-businesses";
 import { currentMember } from "../member";
+import { currentModeRows, ModeRows } from "../mode-rows";
 import { currentModules } from "../modules";
 import { NotificationSettingsLink } from "../notifications/settings-link";
 import { baseWording, translator } from "../wording";
@@ -29,15 +30,24 @@ export async function generateMetadata(): Promise<Metadata> {
 
 // The signed-in person's own profile, for everyone in a business.
 export default async function MePage() {
-  const [member, wording, enabled, businesses, documents, documentsHome] =
-    await Promise.all([
-      currentMember(),
-      currentWording(),
-      currentModules(),
-      currentBusinesses(),
-      documentsAccess(),
-      currentDocumentsHome(),
-    ]);
+  const [
+    member,
+    wording,
+    enabled,
+    businesses,
+    documents,
+    documentsHome,
+    modes,
+  ] = await Promise.all([
+    currentMember(),
+    currentWording(),
+    currentModules(),
+    currentBusinesses(),
+    documentsAccess(),
+    currentDocumentsHome(),
+    // The ways into the modes the person is in (waiter mode, P4).
+    currentWording().then((words) => currentModeRows("me", words)),
+  ]);
   const membership = member?.membership;
   // The layout has already sent these people elsewhere.
   if (!member || !membership) return null;
@@ -81,6 +91,7 @@ export default async function MePage() {
       businesses={
         <SwitchBusinessSection businesses={businesses} wording={wording} />
       }
+      modes={modes.length > 0 ? <ModeRows rows={modes} /> : null}
       documents={
         documents ? (
           <MyDocumentsSection

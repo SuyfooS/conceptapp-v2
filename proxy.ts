@@ -5,11 +5,13 @@ import { type NextRequest, NextResponse } from "next/server";
 /**
  * Screens for signed-in people: home, each module's screens (the `nav`
  * hrefs in `modules/<key>/manifest.ts`), the notifications and taking
- * orders' menu (/orders), which have no tab, the profile, the photos it
+ * orders' mode (/orders, its `mode.href`), which have no tab, the profile, the photos it
  * shows, the photos on lists, the files sent in chat, the official
  * documents' files and the admin console
  * (tooling/proxy.test.ts keeps both lists in step).
- * Everything else is public; chat's sync (/chat-sync) stays out on purpose.
+ * Everything else is public; chat's sync (/chat-sync) and the orders' sync
+ * and send (/orders-sync, /orders-send) stay out on purpose: each renews the
+ * session itself and answers a signed-out caller 401.
  * The clock station (/station) is public too, and in the matcher only.
  */
 const HOME = "/home";
