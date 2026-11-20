@@ -4,16 +4,20 @@
 -- closed or was cancelled, and two days after the last round of an order
 -- nobody closed, and then makes its rounds' body hashes from their ids
 -- alone, marking the order so no later hour reads it, until a round or a
--- label is added to it while open; forgets who sent a round, and who did
--- anything else to an order, its tickets and its lines, 30 days after;
--- deletes a demo business's orders two days after they opened; and never
--- deletes an order of a real business. Its job is on the hour's 23rd
--- minute, off here (supabase/seed.sql). Orders are written straight into
--- the tables, at times relative to the transaction's now(), and the job
--- runs at now(), an hour on and three days on. Fixed ids (e5…) and numbers
--- (050-065-xxxx).
+-- label is added to it while open; leaves a round sent within those two
+-- days, and its order unmarked, until the round's own two days pass;
+-- forgets who sent a round, and who did anything else to an order, its
+-- tickets and its lines, 30 days after; deletes a demo business's orders
+-- two days after they opened; and never deletes an order of a real
+-- business. Its job is on the hour's 23rd minute, off here
+-- (supabase/seed.sql). Orders are written straight into the tables, at
+-- times relative to the transaction's now(), and the job runs at now(), an
+-- hour on and three days on; then a table's rounds are sent four days on,
+-- one after its order's close by the moments, and the job runs half a
+-- minute before that round's two days pass and an hour after. Fixed ids
+-- (e5…) and numbers (050-065-xxxx).
 begin;
-select plan(23);
+select plan(25);
 
 -- R, a real business, its owner 1; D, a demo one, its owner 2.
 insert into auth.users (id, aud, role, phone)
@@ -32,7 +36,8 @@ create function pg_temp.d_biz() returns uuid language sql as $$
 $$;
 -- Orders 1 to 9 are R's, 11 and 12 D's; each with a round of the same
 -- number, and most with a ticket and a line too (6 and 7 with lines 16, 17,
--- 26 and 27 as well). Round 13 is sent to order 3 later.
+-- 26 and 27 as well). Round 13 is sent to order 3 later, and rounds 14 and
+-- 15 to table 8 at the end.
 create function pg_temp.o(n integer) returns uuid language sql as $$
   select ('e5000000-0000-4000-f000-' || lpad(n::text, 12, '0'))::uuid
 $$;
@@ -329,7 +334,7 @@ select is(
   || ':' || (pg_temp.second_round(now() + interval '1 hour')
      = private.order_round_answer(pg_temp.r(13)))::text,
   'בלי מלח:true:true',
-  'an hour on, the open order with an old round and a new one keeps the new one''s note and its hash, so its retry still goes through'
+  'an hour on, the later round keeps its note and its hash, its order''s last round not two days old, and its retry still gets its answer'
 );
 select is(
   (select string_agg((o.notes_erased_at = now())::text, ' ' order by o.id)
@@ -356,6 +361,70 @@ select is(
      from public.orders o where o.id = pg_temp.o(3)),
   'true:true:true',
   'two days after the later round, its note and its hash go in turn, and its order is marked again'
+);
+
+------------------------------------------------------------------------------
+-- A round sent after its order's close, by the moments
+
+-- Four days on, 1 opens table 8 with a round, and ten minutes later sends
+-- it another. A close that began a minute before that send, and waited on
+-- its lock, closes the order at its own moment, so the order closed before
+-- its last round was sent. Every moment is passed to the functions.
+insert into public.order_places (id, business_id, name)
+values (pg_temp.pl(8), pg_temp.r_biz(), '8');
+select public.send_order_round(
+  pg_temp.p(1), pg_temp.r_biz(), pg_temp.r(14), jsonb_build_object('place', pg_temp.pl(8)),
+  jsonb_build_array(jsonb_build_object(
+    'item', pg_temp.item(pg_temp.r_biz()), 'quantity', 1, 'note', 'בלי בצל'
+  )),
+  now() + interval '4 days' - interval '10 minutes'
+);
+select public.send_order_round(
+  pg_temp.p(1), pg_temp.r_biz(), pg_temp.r(15),
+  jsonb_build_object(
+    'order', (select r.order_id from public.order_rounds r where r.id = pg_temp.r(14)),
+    'place', pg_temp.pl(8)
+  ),
+  jsonb_build_array(jsonb_build_object(
+    'item', pg_temp.item(pg_temp.r_biz()), 'quantity', 1, 'note', 'בלי חריף'
+  )),
+  now() + interval '4 days'
+);
+select public.close_order(
+  pg_temp.p(1), (select r.order_id from public.order_rounds r where r.id = pg_temp.r(14)),
+  now() + interval '4 days' - interval '1 minute'
+);
+-- A round as the job leaves it: its line's note ('-' once erased), whether
+-- its hash is made from its id alone, and whether its order is marked at
+-- `moment` ('-' for no mark).
+create function pg_temp.kept(round_no integer, moment timestamptz) returns text language sql as $$
+  select coalesce(l.note, '-')
+    || ':' || (r.body_hash = encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex'))::text
+    || ':' || coalesce((o.notes_erased_at = moment)::text, '-')
+  from public.order_rounds r
+  join public.orders o on o.id = r.order_id and o.business_id = r.business_id
+  join public.order_tickets t on t.round_id = r.id and t.business_id = r.business_id
+  join public.order_lines l on l.ticket_id = t.id and l.business_id = t.business_id
+  where r.id = pg_temp.r(round_no)
+$$;
+
+-- Half a minute before the last round's two days pass: the order's have.
+select private.order_taking_tick(now() + interval '6 days' - interval '30 seconds');
+select is(
+  (select (o.closed_at < r.sent_at)::text
+   from public.order_rounds r
+   join public.orders o on o.id = r.order_id and o.business_id = r.business_id
+   where r.id = pg_temp.r(15))
+  || ' ' || pg_temp.kept(14, now() + interval '6 days' - interval '30 seconds')
+  || ' ' || pg_temp.kept(15, now() + interval '6 days' - interval '30 seconds'),
+  'true -:true:- בלי חריף:false:-',
+  'an order closed before its last round was sent loses its first round''s note and hash, keeps the last one''s within that round''s two days, and is left unmarked'
+);
+select private.order_taking_tick(now() + interval '6 days' - interval '30 seconds' + interval '1 hour');
+select is(
+  pg_temp.kept(15, now() + interval '6 days' - interval '30 seconds' + interval '1 hour'),
+  '-:true:true',
+  'an hour later the last round''s note and its hash go, and the order is marked'
 );
 
 ------------------------------------------------------------------------------

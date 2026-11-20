@@ -499,8 +499,11 @@ $$;
 -- body (hint 'body'), sender or business (hint 'key') is refused (23505).
 -- Two first sends to one place within 60 seconds join one order; a later
 -- one is refused 23505 hint 'taken', the open order's id as the detail.
--- Someone who takes no orders is refused 42501 before any lock; off a shift
--- (hint 'clock' or 'stale_shift'), only after the same round is looked up.
+-- Someone who takes no orders is refused 42501 before any lock, unless it is
+-- their own round that went through, the same lines again (looked up with
+-- no lock: a sender moved out of the departments that take orders since);
+-- off a shift (hint 'clock' or 'stale_shift'), only after the same round is
+-- looked up.
 -- A round added to an open order the hourly job marked takes the mark away,
 -- so its notes go two days after it. Returns {round, order, sentAt, first,
 -- place, takeaway, tickets: [{id, department, held}]}. No log row.
@@ -559,14 +562,6 @@ begin
     raise exception 'Taking orders is off for this business'
       using errcode = '42501', hint = 'off';
   end if;
-  -- Who takes no orders, and doesn't run them (private.order_taker_refusal
-  -- counts whoever runs orders as taking them), is refused before any lock.
-  -- The clock's part waits for the same round to be looked up, below.
-  refusal := private.order_taker_refusal(business, actor, at_time);
-  if refusal = 'not_taker' then
-    raise exception 'Those who take orders only' using errcode = '42501';
-  end if;
-
   -- The target, in its canonical form.
   if jsonb_typeof(target) is distinct from 'object' then
     raise exception 'A send names its order, its place or a takeaway' using errcode = '22023';
@@ -684,6 +679,27 @@ begin
   end loop;
   body := private.order_round_hash(canonical_target, canonical_lines);
 
+  -- Who takes no orders, and doesn't run them (private.order_taker_refusal
+  -- counts whoever runs orders as taking them), is refused before any lock.
+  -- Only their own round that went through, sent again with the same lines,
+  -- gets its answer, read as it was committed with no lock: a sender moved
+  -- out of the departments that take orders since, whose phone retries.
+  -- Any other key is refused alike, so nothing of anyone else's shows. The
+  -- clock's part waits for the same round to be looked up, below.
+  refusal := private.order_taker_refusal(business, actor, at_time);
+  if refusal = 'not_taker' then
+    if exists (
+      select 1 from public.order_rounds r
+      where r.id = round_key
+        and r.business_id = business
+        and r.sent_by = actor
+        and r.body_hash = body
+    ) then
+      return private.order_round_answer(round_key);
+    end if;
+    raise exception 'Those who take orders only' using errcode = '42501';
+  end if;
+
   -- All sends of a business one after another: two first sends to one place,
   -- a takeaway number and the demo's cap never race.
   perform 1 from public.businesses b where b.id = business for no key update;
@@ -694,7 +710,8 @@ begin
   end if;
 
   -- The same round again: its answer as it is, before the clock is asked, so
-  -- a retry of a round that went through is never refused.
+  -- a retry of a round that went through is never refused for the clock
+  -- (one by someone who takes no orders now was answered above, or refused).
   select r.* into stored from public.order_rounds r where r.id = round_key;
   if found then
     if stored.business_id <> business or stored.sent_by is distinct from actor then

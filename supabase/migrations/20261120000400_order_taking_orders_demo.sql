@@ -8,7 +8,9 @@
 --               nobody closed (default 2 to ask Orel), its rounds' body
 --               hashes then made from their ids alone, and the order marked
 --               so no later hour reads it again (until a round or a label
---               is added to it while open); who sent a round,
+--               is added to it while open); a round sent within those two
+--               days keeps its notes and hash, and its order no mark, until
+--               its own two days pass; who sent a round,
 --               and who did anything else to an order, its tickets or its
 --               lines, is forgotten 30 days after; a demo business's orders
 --               go two days after they opened, with their rounds, tickets
@@ -88,16 +90,18 @@ begin
   from due;
   touched := touched + cardinality(erased);
 
-  -- A round sent to one of those open orders while this waited on its lock
-  -- shows only now, and none comes after: this holds them until it commits.
-  -- Its order loses the mark again, to be marked two days after that round,
-  -- and the two steps below leave the round's lines and its hash alone, so
-  -- its notes reach the kitchen and its retry still goes through. What was
-  -- due when this looked goes all the same.
+  -- One of those orders may have a round sent within the two days: an open
+  -- one, sent while this waited on its lock (it shows only now, and none
+  -- comes after: this holds them until it commits), or a closed or cancelled
+  -- one, closed at a moment before its last round's (the close began first
+  -- and waited on the send's lock, or the server's clocks are a little
+  -- apart). Its order loses the mark again, to be marked once that round's
+  -- two days pass, and the two steps below leave the round's lines and its
+  -- hash alone, so its notes reach the kitchen and its retry still goes
+  -- through until then. What was due when this looked goes all the same.
   update public.orders o
   set notes_erased_at = null
   where o.id = any (erased)
-    and o.status = 'open'
     and exists (
       select 1 from public.order_rounds r
       where r.order_id = o.id

@@ -2,8 +2,10 @@
 -- (20261120000200_order_taking_takers.sql and
 -- 20261120000300_order_taking_orders.sql; waiter mode P3). Decision 3: an
 -- owner, someone on the staff in a department that takes orders, or someone
--- who holds order_taking.edit; never an accountant, nor someone who left.
--- Decision 4: with the time clock on, only during a shift (until 30 minutes
+-- who holds order_taking.edit; never an accountant, nor someone who left;
+-- a sender moved out of those departments since only has a round of theirs
+-- that went through answered again. Decision 4: with the time clock on,
+-- only during a shift (until 30 minutes
 -- after clocking out, never on one left open more than 16 hours, never a
 -- cancelled one or one in another business), owners always, and running
 -- orders isn't the clock's, nor a retry's of a round that went through. The
@@ -16,7 +18,7 @@
 -- business day turning twelve hours away from it. Fixed ids (e4…) and
 -- numbers (050-064-xxxx).
 begin;
-select plan(57);
+select plan(58);
 
 -- A: 1 owner, in no department; 2 a manager on the floor and at the bar; 3
 -- a worker in the kitchen; 4 a worker at the bar; 5 a worker on the floor;
@@ -784,6 +786,30 @@ select is(
   )::text,
   '42501 clock|true',
   'a round sent again after its sender clocked out gives its answer, while a new one is refused'
+);
+
+------------------------------------------------------------------------------
+-- A round sent again after its sender left the departments that take orders
+
+-- 4, on a shift, sent table 2's lemonade above and is then taken out of the
+-- bar, so takes no orders. The phone's retry of that round gets its answer,
+-- looked up before any lock, while a new round is refused as from someone
+-- who takes no orders.
+delete from public.department_members
+where business_id = pg_temp.a() and user_id = pg_temp.p(4) and department_id = pg_temp.d(2);
+select is(
+  (
+    public.send_order_round(pg_temp.p(4), pg_temp.a(), pg_temp.k(2), pg_temp.place(2),
+      jsonb_build_array(pg_temp.li(4, 1)), now())
+    = private.order_round_answer(pg_temp.k(2))
+  )::text
+  || '|' || pg_temp.refusal(format(
+    'select public.send_order_round(%L, %L, %L, %L, %L, %L)',
+    pg_temp.p(4), pg_temp.a(), pg_temp.k(8), pg_temp.place(8),
+    jsonb_build_array(pg_temp.li(4, 1)), now()
+  )),
+  'true|42501',
+  'a sender moved out of the departments that take orders gets their round''s answer again, while a new round is refused'
 );
 
 ------------------------------------------------------------------------------

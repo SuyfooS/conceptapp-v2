@@ -552,7 +552,7 @@ select is(
     jsonb_build_array(pg_temp.li(1, 2) || '{"note": "בלי שום", "allergy": true}', pg_temp.li(3, 1)),
     pg_temp.at(30))$c$),
   '42501',
-  'one who takes no orders is refused before the key is looked up, as before the business is locked'
+  'one who takes no orders, with another''s key and its very lines, is refused as taking none, never told whose key it is'
 );
 
 ------------------------------------------------------------------------------

@@ -2291,8 +2291,11 @@ sent, a note erased later, taken back, cancelled or on the house), with
 `private.order_versions`. RLS is on with no policy and no grant, not even to
 the server role: nobody reads the tables, and only the functions write them.
 The send, `public.send_order_round(actor, business, round_key, target,
-lines)`, refuses someone who takes no orders (42501) before any lock, takes
-the business's lock, gives a stored round's answer back as it is (23505 hint
+lines)`, refuses someone who takes no orders (42501) before any lock (only
+their own round that went through, the same lines again, is answered then,
+looked up with no lock: a sender moved out of the departments that take
+orders since), takes the business's lock, gives a stored round's answer
+back as it is (23505 hint
 `key` or `body` for another sender, business or body), then asks the clock,
 refuses every item it can't take at once with their ids
 (22023 hint `unavailable` or `route`), joins a first send within 60 seconds
@@ -2317,11 +2320,13 @@ order of another business refused word for word as one that doesn't exist.
 `20261120000400_order_taking_orders_demo.sql`: the hourly job `order-taking`
 (`private.order_taking_tick`, pure SQL, off in `seed.sql`) erases notes and
 labels two days after an order closes (or after its last round, open), and
-makes its rounds' body hashes from their ids alone then, leaving alone a
-round sent while it waited on a lock; it marks each order then
-(`notes_erased_at`, read through `orders_unerased_idx`), so no later hour
-reads it again until a round or a label added while it is open takes the
-mark away (`send_order_round`, `set_order_label`); forgets, 30 days
+makes its rounds' body hashes from their ids alone then; it marks each
+order then (`notes_erased_at`, read through `orders_unerased_idx`), so no
+later hour reads it again until a round or a label added while it is open
+takes the mark away (`send_order_round`, `set_order_label`). A round sent
+within those two days (to an open order while the job waited on its lock,
+or to one closed at a moment before the round's) is left alone, its order
+unmarked, until its own two days pass. It forgets, 30 days
 after, who sent a round and who did anything else to an order, its tickets
 and its lines; and deletes a demo business's orders after two days.
 `private.seed_demo_orders`, last in `public.reset_demo_business`, writes
