@@ -27,6 +27,7 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.reads_member_name(business, person)` | may read the business's name for that person (`public.member_names`): as their profile is read, in that business: its members and the team viewing it while the person is active in it, and its pay holders (and a view as an accountant) also once they left |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
 | `private.order_taking_on(business)` | (any user) taking orders is switched on for the business (the menu's policies) |
+| `private.runs_orders(business, person)` | (that person) runs the business's menu: holds `order_taking.edit` (`private.holds_perm`), or is on the ConceptApp team (P2, for the console) |
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only; a view as a role the business named ranks as its base) |
 | `private.can_manage_lists(business, person)` | (that person) holds `lists.manage` (`private.holds_perm`: an owner always, managers by default, a role an owner raised, or one given it; since R5) |
 | `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or holds `lists.manage` |
@@ -2261,6 +2262,24 @@ an accountant). Those who run the menu hold `order_taking.edit`
 Covered by `order_taking_menu.test.sql`, `isolation`, `demo_reset`,
 `rls_enabled`, `roles_catalogue`, `activity_log`, and
 `modules/order_taking/unit-price.db.test.ts`.
+
+On screen (waiter mode P2, `20261120000100_order_taking_screens.sql`): the
+ConceptApp team runs the menu too (`private.runs_orders`, as
+`private.can_edit_settings` lets it save settings), so the console imports
+and saves places for a business it is no member of; "sold out" asks for an
+active membership first and stays the business's own. `set_menu_categories`
+saves a category sent with its id and the department it has already, even one
+removed since, so a rename or a move still saves while its items go nowhere;
+a new category, or one moved, goes to a live department (22023 'route'). The
+demo restaurant opens with the module on where its definition says
+`"orderTaking": true` (`private.seed_demo_order_taking`, last in every
+reset): the local seed's does, the hosted demo's doesn't. The restaurant's
+and café's templates have their own words for it (`template_wording`,
+"מצב מלצרות", "מנה", "שולחן"; `tooling/template-wording.test.ts` keeps each
+row's `base_sentence` he.json's). `getMenuForTeam` reads a business's menu
+with the secret key, as `order_menu` gives it without its version, for the
+console only (the team is no member, so `order_menu` answers it P0002).
+Covered by `order_taking_screens.test.sql` and `wording.test.sql`.
 
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.

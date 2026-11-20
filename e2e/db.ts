@@ -4389,3 +4389,117 @@ export async function joinFirstStepsDepartment(name: string): Promise<void> {
     from public.departments d
     where d.business_id = ${FIRST_STEPS_BUSINESS.id} and d.name = ${name}`;
 }
+
+/**
+ * The demo restaurant's menu as it starts (waiter mode P2): its items,
+ * categories and places deleted, the sample written again
+ * (private.seed_demo_order_taking, which only writes a menu that has no
+ * category), and taking orders on, as the local seed has it.
+ */
+export async function resetDemoMenu(): Promise<void> {
+  await sql`delete from public.menu_items where business_id = ${DEMO_RESTAURANT}`;
+  await sql`delete from public.menu_categories where business_id = ${DEMO_RESTAURANT}`;
+  await sql`delete from public.order_places where business_id = ${DEMO_RESTAURANT}`;
+  await sql`select private.seed_demo_order_taking(${DEMO_RESTAURANT}::uuid)`;
+  await sql`
+    update public.business_modules set enabled = true
+    where business_id = ${DEMO_RESTAURANT} and module_key = 'order_taking'`;
+}
+
+export type DemoMenuItem = {
+  priceAgorot: number;
+  available: boolean;
+  version: number;
+  archived: boolean;
+  category: string;
+  department: string | null;
+  groups: {
+    id: string;
+    min: number;
+    max: number;
+    options: { name: string; priceAgorot: number }[];
+  }[];
+};
+
+/** The demo restaurant's live item by its name, or null. */
+export async function demoMenuItem(name: string): Promise<DemoMenuItem | null> {
+  const rows = await sql<DemoMenuItem[]>`
+    select i.price_agorot as "priceAgorot", i.available, i.version,
+      i.archived_at is not null as archived, c.name as category,
+      d.key as department, i.option_groups as groups
+    from public.menu_items i
+    join public.menu_categories c on c.id = i.category_id
+    left join public.departments d on d.id = i.department_id
+    where i.business_id = ${DEMO_RESTAURANT} and i.name = ${name}
+    order by i.archived_at nulls first, i.created_at desc
+    limit 1`;
+  return rows[0] ?? null;
+}
+
+/** How many live items of the demo restaurant go by this name. */
+export async function demoMenuItemCount(name: string): Promise<number> {
+  const [row] = await sql<{ count: number }[]>`
+    select count(*)::int as count from public.menu_items
+    where business_id = ${DEMO_RESTAURANT} and name = ${name}
+      and archived_at is null`;
+  return row?.count ?? 0;
+}
+
+/** The demo restaurant's live categories, in order, each with its department's key. */
+export async function demoMenuCategories(): Promise<
+  { name: string; department: string }[]
+> {
+  return await sql<{ name: string; department: string }[]>`
+    select c.name, d.key as department
+    from public.menu_categories c
+    join public.departments d on d.id = c.department_id
+    where c.business_id = ${DEMO_RESTAURANT} and c.archived_at is null
+    order by c.position, c.created_at`;
+}
+
+/** The demo restaurant's live places' names, in order. */
+export async function demoOrderPlaces(): Promise<string[]> {
+  const rows = await sql<{ name: string }[]>`
+    select name from public.order_places
+    where business_id = ${DEMO_RESTAURANT} and archived_at is null
+    order by position, created_at`;
+  return rows.map((row) => row.name);
+}
+
+/** The menu's rows of the demo restaurant's log since `since`, oldest first. */
+export async function demoMenuLog(
+  since: Date,
+): Promise<{ action: string; actor: string | null; details: unknown }[]> {
+  return await sql<
+    { action: string; actor: string | null; details: unknown }[]
+  >`
+    select action, actor_id as actor, details from public.audit_log
+    where business_id = ${DEMO_RESTAURANT} and action like 'menu.%'
+      and created_at >= ${since}
+    order by created_at, id`;
+}
+
+/** A template's own sentences, by key (20261120000100_order_taking_screens.sql). */
+export async function templateWording(
+  template: string,
+): Promise<Record<string, string>> {
+  const rows = await sql<{ key: string; sentence: string }[]>`
+    select key, sentence from public.template_wording
+    where template_key = ${template}`;
+  return Object.fromEntries(rows.map((row) => [row.key, row.sentence]));
+}
+
+/** The user id of a seeded person by phone (E.164). */
+export async function userIdOf(e164: string): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`
+    select id from auth.users where phone = ${e164.replace(/^\+/, "")}`;
+  if (!row) throw new Error(`No user for ${e164}`);
+  return row.id;
+}
+
+/** The demo restaurant's roles back on their defaults for running the menu. */
+export async function clearDemoMenuRules(): Promise<void> {
+  await sql`
+    delete from public.role_permissions
+    where business_id = ${DEMO_RESTAURANT} and perm = 'order_taking.edit'`;
+}

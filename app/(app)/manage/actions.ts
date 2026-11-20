@@ -11,7 +11,12 @@ import { checkSettingsChange } from "@domain/settings-form";
 import { manifestFor } from "@modules/registry";
 import { refresh } from "next/cache";
 import { z } from "zod";
-import { listsOn, manageAccess, modulesToManage, readOnlyFor } from "./manage";
+import {
+  departmentsOn,
+  manageAccess,
+  modulesToManage,
+  readOnlyFor,
+} from "./manage";
 import type { SettingsFailure, SettingsResult } from "./settings-types";
 
 /**
@@ -78,13 +83,13 @@ export async function saveBusinessDetailsAction(
 /**
  * Someone who edits the management page saves the business's departments,
  * in order: a name typed over, one added, one removed or brought back. Only
- * while lists are on.
+ * while lists or taking orders are on, which read them.
  */
 export async function saveDepartmentsAction(
   departments: unknown,
 ): Promise<SettingsResult> {
   const access = await manageAccess();
-  if (!access || !listsOn(access.rows)) {
+  if (!access || !departmentsOn(access.rows)) {
     return { ok: false, failure: "noAccess" };
   }
   const refused = refusal(access.readOnly);
@@ -106,7 +111,7 @@ export async function saveDepartmentMembersAction(
   members: unknown,
 ): Promise<SettingsResult> {
   const access = await manageAccess();
-  if (!access || !listsOn(access.rows)) {
+  if (!access || !departmentsOn(access.rows)) {
     return { ok: false, failure: "noAccess" };
   }
   const refused = refusal(access.readOnly);

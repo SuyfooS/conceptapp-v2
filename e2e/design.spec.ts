@@ -1,8 +1,11 @@
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { createTranslator } from "next-intl";
+import { restaurantMenuWording } from "../app/design/order-taking/data";
 import he from "../messages/he.json" with { type: "json" };
 import { daysLeftToRight } from "../packages/domain/share";
+import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
 import { minimalPdf } from "./pdf";
 import { cameraPhoto } from "./photo";
@@ -323,6 +326,19 @@ const PAGES = [
   "/design/order-taking/menu",
   "/design/order-taking/menu?state=noMenu",
   "/design/order-taking/menu/import",
+  // The real menu screens on the twin (P2): Yoav in the bar, a category whose
+  // department went, a view as a manager, the categories, the places and a
+  // business with none, and pastes with lines to fix and with items there
+  // already; and the departments saying what each prepares.
+  "/design/order-taking/menu?state=worker",
+  "/design/order-taking/menu?state=noRoute",
+  "/design/order-taking/menu?state=viewing",
+  "/design/order-taking/menu/categories",
+  "/design/order-taking/menu/places",
+  "/design/order-taking/menu/places?state=noPlaces",
+  "/design/order-taking/menu/import?state=problems",
+  "/design/order-taking/menu/import?state=known",
+  "/design/shell/manage/departments?state=menu",
 ];
 
 // The chat demo's states that open with a sheet (who confirmed, a message's
@@ -3986,6 +4002,115 @@ test("the waiter mode demo's list opens each row in its own state", async ({
         place: heT("design.orderTaking.place.table", { name: "4" }),
       }),
     }),
+  ).toBeVisible();
+});
+
+// The real menu screens on the twin (waiter mode P2), in the restaurant's
+// words: sold out with its undo, an item's choices shown as they are, and a
+// café's paste added to the twin's menu, which the menu then shows.
+/** The twin's restaurant's words: the app's, with its template's sentences. */
+const rt = createTranslator({
+  locale: "he",
+  messages: mergeWording(he as MessageTree, restaurantMenuWording) as typeof he,
+}) as typeof heT;
+
+test("the waiter mode demo's menu marks sold out, shows choices and takes a paste", async ({
+  page,
+}, testInfo) => {
+  const main = page.getByRole("main");
+  const tablet = testInfo.project.name === "tablet";
+  await page.goto("/design/order-taking/menu?state=service");
+  if (tablet) {
+    await main
+      .getByRole("button", { name: /^עיקריות/ })
+      .filter({ visible: true })
+      .click();
+  }
+  const pasta = main
+    .getByRole("switch", {
+      name: rt("app.orders.menu.soldOutFor", { name: "פסטה" }),
+    })
+    .filter({ visible: true });
+  await pasta.click();
+  await expect(pasta).toHaveAttribute("aria-checked", "true");
+  await page
+    .getByRole("status")
+    .filter({ hasText: rt("app.orders.menu.toast.soldOut", { name: "פסטה" }) })
+    .getByRole("button", { name: he.app.orders.menu.toast.undo })
+    .click();
+  await expect(pasta).toHaveAttribute("aria-checked", "false");
+
+  await main
+    .getByRole("button", { name: /^המבורגר/ })
+    .filter({ visible: true })
+    .first()
+    .click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByText("מידת עשייה")).toBeVisible();
+  await expect(
+    sheet.getByText(rt("app.orders.menu.sheet.rule.one")),
+  ).toBeVisible();
+  await expectCleanPage(page, "", true);
+  await page.keyboard.press("Escape");
+
+  await page.goto("/design/order-taking/menu/import?state=service");
+  await page
+    .getByRole("button", { name: rt("app.orders.import.action", { count: 5 }) })
+    .click();
+  await expect(
+    page.getByText(rt("app.orders.import.done", { items: 5, categories: 2 })),
+  ).toBeVisible();
+  await main
+    .getByRole("link", { name: he.design.orderTaking.nav.menu, exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/design\/order-taking\/menu$/);
+  await expect(
+    page.getByText("ארוחות בוקר").filter({ visible: true }).first(),
+  ).toBeVisible();
+});
+
+// The twin's places made at once for a business with none, and the app
+// demo's departments saying what each prepares, and what goes nowhere once
+// one is removed.
+test("the waiter mode demo makes its tables at once, and its departments count the menu", async ({
+  page,
+}) => {
+  await page.goto("/design/order-taking/menu/places?state=noPlaces");
+  await page
+    .getByRole("button", {
+      name: rt("app.orders.places.quick.action", { count: 10 }),
+    })
+    .click();
+  await expect(
+    page.getByLabel(rt("app.orders.places.nameOf", { name: "10" })),
+  ).toHaveValue("10");
+
+  await page.goto("/design/shell/manage/departments?state=menu");
+  await expect(
+    page
+      .getByText(heT("app.manage.departments.menuItems", { count: 9 }))
+      .filter({ visible: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("button", {
+      name: heT("app.manage.departments.remove", { name: "מטבח" }),
+    })
+    .click();
+  const undo = page
+    .getByRole("status")
+    .filter({
+      hasText: heT("app.manage.departments.removedMenu", {
+        name: "מטבח",
+        count: 9,
+      }),
+    })
+    .getByRole("button", { name: he.app.manage.undo });
+  await expect(undo).toBeFocused();
+  await undo.click();
+  await expect(
+    page
+      .getByText(heT("app.manage.departments.menuItems", { count: 9 }))
+      .filter({ visible: true }),
   ).toBeVisible();
 });
 

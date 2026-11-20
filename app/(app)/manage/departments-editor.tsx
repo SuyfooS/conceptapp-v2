@@ -20,15 +20,11 @@ import { Switch } from "@ui/switch";
 import { ArrowDown, ArrowUp, Plus, Trash2, Users } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useState } from "react";
+import { hairlineClass, inputClass, rowClass } from "./list-rows";
 import type { SettingsFailure, SettingsResult } from "./settings-types";
 import { UndoRow } from "./undo-row";
 
 const NAME_MAX = 40;
-
-const rowClass =
-  "relative flex min-h-[3.75rem] items-center gap-1 ps-4 pe-1.5 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']";
-const inputClass =
-  "min-h-11 w-full min-w-0 rounded-[10px] bg-transparent text-md text-ink placeholder:text-ink-3 focus-visible:outline-2 focus-visible:outline-accent";
 
 /** A department as the editor shows it: saved ones have their id. */
 export type EditedDepartment = {
@@ -57,8 +53,9 @@ export type SaveDepartmentMembers = (
  * its people. Adding is the row at the end; removing has an undo, which
  * brings the department back with its people. Who is in a department saves at
  * once, from a sheet on a phone and beside the list from a tablet up, as a
- * grid on a computer. Used on /manage/departments and by the team in the
- * console.
+ * grid on a computer. While taking orders is on, each says how many of the
+ * menu's items it prepares, before it is removed and in its undo (waiter
+ * mode P2). Used on /manage/departments and by the team in the console.
  */
 export function DepartmentsEditor({
   departments,
@@ -66,12 +63,21 @@ export function DepartmentsEditor({
   disabled,
   save,
   saveMembers,
+  itemsByDepartment,
+  on = { lists: true, menu: false },
 }: {
   departments: EditedDepartment[];
   people: DepartmentPeople;
   disabled: boolean;
   save: SaveDepartments;
   saveMembers: SaveDepartmentMembers;
+  /**
+   * How many of the menu's items each department prepares, by its id, while
+   * taking orders is on; none otherwise.
+   */
+  itemsByDepartment?: ReadonlyMap<string, number>;
+  /** What reads the departments, for the hints under them: lists, the menu. */
+  on?: { lists: boolean; menu: boolean };
 }) {
   const t = useTranslations("app.manage.departments");
   const tm = useTranslations("app.manage");
@@ -85,6 +91,8 @@ export function DepartmentsEditor({
   const [removed, setRemoved] = useState<{
     department: DepartmentInput;
     index: number;
+    /** The menu's items it prepared, which go nowhere now. */
+    items: number;
   } | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
@@ -106,6 +114,8 @@ export function DepartmentsEditor({
   });
   const current = shown.find((d) => d.key === selected) ?? shown[0] ?? null;
   const personOf = (userId: string) => people.find((p) => p.userId === userId);
+  const prepares = (id: string | null) =>
+    id ? (itemsByDepartment?.get(id) ?? 0) : 0;
 
   const named = (text: string, except?: string) =>
     shown.some(
@@ -171,7 +181,11 @@ export function DepartmentsEditor({
     const department = all[index];
     if (!department) return;
     const before = removed;
-    setRemoved({ department, index });
+    setRemoved({
+      department,
+      index,
+      items: prepares(shown[index]?.id ?? null),
+    });
     if (!(await change(all.filter((_, at) => at !== index)))) {
       setRemoved(before);
     }
@@ -185,7 +199,7 @@ export function DepartmentsEditor({
     if (all.some((d) => d.key === department.key)) return;
     const next = [...all];
     next.splice(index, 0, department);
-    if (!(await change(next))) setRemoved({ department, index });
+    if (!(await change(next))) setRemoved(removed);
   }
 
   function move(key: string, by: -1 | 1) {
@@ -326,68 +340,78 @@ export function DepartmentsEditor({
                   ? [{ name: person.name ?? t("noName"), photo: person.photo }]
                   : [];
               });
+              const items = prepares(department.id);
               return (
                 <div
                   key={department.key}
                   className={cn(
-                    rowClass,
+                    hairlineClass,
+                    "ps-4 pe-1.5",
                     current?.key === department.key && "md:bg-surface-2/60",
                   )}
                 >
-                  <input
-                    // Back to the stored name after a failed save.
-                    key={department.name}
-                    aria-label={t("nameOf", { name: department.name })}
-                    defaultValue={department.name}
-                    maxLength={NAME_MAX}
-                    disabled={disabled}
-                    className={inputClass}
-                    onBlur={(event) => {
-                      if (
-                        !rename(
-                          department.key,
-                          department.name,
-                          event.target.value,
-                        )
-                      ) {
-                        event.target.value = department.name;
-                      }
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") event.currentTarget.blur();
-                    }}
-                  />
-                  {/*
-                   * Named by what it shows, then the department, for a
-                   * screen reader only ("3 אנשים במטבח"). The faces are
-                   * pictures, hidden, so their initials stay out of the name.
-                   */}
-                  <button
-                    type="button"
-                    onClick={() => openPeople(department.key)}
-                    className="pressable relative flex min-h-11 shrink-0 items-center gap-2 rounded-full px-2.5 text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
-                  >
-                    {faces.length > 0 ? (
-                      <AvatarStack people={faces} size="sm" max={3} />
-                    ) : (
-                      <Users aria-hidden="true" className="size-5" />
-                    )}
-                    <span className="whitespace-nowrap">
-                      {t("people", { count: department.members.length })}
-                    </span>
-                    <span className="sr-only">
-                      {" "}
-                      {t("peopleWhere", { name: department.name })}
-                    </span>
-                  </button>
-                  {disabled ? null : (
-                    <IconButton
-                      label={t("remove", { name: department.name })}
-                      icon={<Trash2 />}
-                      className="text-ink-2"
-                      onClick={() => remove(index)}
+                  <div className="flex min-h-[3.75rem] items-center gap-1">
+                    <input
+                      // Back to the stored name after a failed save.
+                      key={department.name}
+                      aria-label={t("nameOf", { name: department.name })}
+                      defaultValue={department.name}
+                      maxLength={NAME_MAX}
+                      disabled={disabled}
+                      className={inputClass}
+                      onBlur={(event) => {
+                        if (
+                          !rename(
+                            department.key,
+                            department.name,
+                            event.target.value,
+                          )
+                        ) {
+                          event.target.value = department.name;
+                        }
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") event.currentTarget.blur();
+                      }}
                     />
-                  )}
+                    {/*
+                     * Named by what it shows, then the department, for a
+                     * screen reader only ("3 אנשים במטבח"). The faces are
+                     * pictures, hidden, so their initials stay out of the name.
+                     */}
+                    <button
+                      type="button"
+                      onClick={() => openPeople(department.key)}
+                      className="pressable relative flex min-h-11 shrink-0 items-center gap-2 rounded-full px-2.5 text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent"
+                    >
+                      {faces.length > 0 ? (
+                        <AvatarStack people={faces} size="sm" max={3} />
+                      ) : (
+                        <Users aria-hidden="true" className="size-5" />
+                      )}
+                      <span className="whitespace-nowrap">
+                        {t("people", { count: department.members.length })}
+                      </span>
+                      <span className="sr-only">
+                        {" "}
+                        {t("peopleWhere", { name: department.name })}
+                      </span>
+                    </button>
+                    {disabled ? null : (
+                      <IconButton
+                        label={t("remove", { name: department.name })}
+                        icon={<Trash2 />}
+                        className="text-ink-2"
+                        onClick={() => remove(index)}
+                      />
+                    )}
+                  </div>
+                  {/* Said before it is removed: what it prepares goes nowhere then. */}
+                  {items > 0 ? (
+                    <p className="-mt-1.5 pb-2.5 text-ink-2 text-sm">
+                      {t("menuItems", { count: items })}
+                    </p>
+                  ) : null}
                 </div>
               );
             })}
@@ -422,11 +446,25 @@ export function DepartmentsEditor({
           ) : null}
           {removed ? (
             <UndoRow
-              message={t("removed", { name: removed.department.name })}
+              message={
+                removed.items > 0
+                  ? t("removedMenu", {
+                      name: removed.department.name,
+                      count: removed.items,
+                    })
+                  : t("removed", { name: removed.department.name })
+              }
               onUndo={undo}
+              // The row went with the button pressed.
+              autoFocus
             />
           ) : null}
-          <p className="px-1 text-ink-2 text-sm">{t("hint")}</p>
+          {on.lists ? (
+            <p className="px-1 text-ink-2 text-sm">{t("hint")}</p>
+          ) : null}
+          {on.menu ? (
+            <p className="px-1 text-ink-2 text-sm">{t("hintMenu")}</p>
+          ) : null}
         </PageSection>
 
         {current ? (

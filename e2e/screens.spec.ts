@@ -20,6 +20,9 @@ const PAGES = [
   "/design/console/businesses/bar-hayam",
   "/design/console/businesses/bar-hayam/people/new",
   "/design/console/businesses/demo-restaurant/wording",
+  // The menu set up by the team (waiter mode P2): the paste and the places.
+  "/design/console/businesses/demo-restaurant/menu",
+  "/design/console/businesses/demo-restaurant/menu/places",
   "/design/shell/team/invite",
   "/design/shell/view-as",
   // As a role the business named (roles R11c): the banner names it.

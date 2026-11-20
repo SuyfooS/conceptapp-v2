@@ -1,3 +1,5 @@
+import type { MenuImportRow } from "@domain/menu-import";
+import type { CategoryInput } from "@domain/order-taking";
 import { newId as id } from "./ids";
 import {
   chosenOptions,
@@ -11,7 +13,7 @@ import {
   type Ticket,
   unitPrice,
 } from "./model";
-import type { Imported } from "./paste";
+import { importedRows, savedCategories } from "./real-menu";
 import type { DemoData } from "./scenario";
 
 // What the demo's screens change, each as data in and data out, so a
@@ -340,22 +342,30 @@ export function saveItem(data: DemoData, item: MenuItem): DemoData {
   };
 }
 
-/** The pasted menu, added in one go: new categories after the business's own. */
-export function importMenu(data: DemoData, paste: Imported): DemoData {
-  const categories = [...data.menu.categories];
-  for (const category of paste.categories) {
-    if (!categories.some((c) => c.name === category.name)) {
-      categories.push({ id: id(), ...category });
-    }
-  }
-  const items = paste.items.map((item, index) => ({
-    ...item,
-    id: id(),
-    categoryId:
-      categories.find((c) => c.name === paste.itemCategories[index])?.id ?? "",
-  }));
+/**
+ * A checked paste, added in one go as the real import writes it: new
+ * categories after the business's own, an existing one taking its items.
+ */
+export function importMenu(
+  data: DemoData,
+  rows: readonly MenuImportRow[],
+): { data: DemoData; categories: number; items: number } {
+  const done = importedRows(data.menu, rows, id);
   return {
-    ...data,
-    menu: { categories, items: [...data.menu.items, ...items] },
+    data: { ...data, menu: done.menu },
+    categories: done.categories,
+    items: done.items,
   };
+}
+
+/**
+ * The categories saved whole from the real categories screen: renamed,
+ * moved, added or removed, their items following them.
+ */
+export function saveCategories(
+  data: DemoData,
+  list: readonly CategoryInput[],
+): { data: DemoData; ids: string[] } {
+  const saved = savedCategories(data.menu, list, id);
+  return { data: { ...data, menu: saved.menu }, ids: saved.ids };
 }

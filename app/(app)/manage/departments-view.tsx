@@ -12,7 +12,9 @@ import {
 
 /**
  * The business's departments, for its owner and managers: the groups lists go
- * to, such as the kitchen or the checkout. Also on the design demo.
+ * to, such as the kitchen or the checkout, and that prepare what is ordered
+ * while taking orders is on (waiter mode P2), each saying then how many of the
+ * menu's items it prepares. Also on the design demo.
  */
 export function DepartmentsView({
   departments,
@@ -21,6 +23,8 @@ export function DepartmentsView({
   saveMembers,
   readOnly,
   backHref,
+  on = { lists: true, menu: false },
+  itemsByDepartment,
   wording,
 }: {
   departments: EditedDepartment[];
@@ -33,6 +37,10 @@ export function DepartmentsView({
    */
   readOnly: ManageReadOnly;
   backHref: string;
+  /** What reads the departments: lists, taking orders' menu, or both. */
+  on?: { lists: boolean; menu: boolean };
+  /** How many of the menu's items each prepares, by its id, while taking orders is on. */
+  itemsByDepartment?: ReadonlyMap<string, number>;
   /** The business's words. */
   wording: AppWording;
 }) {
@@ -42,7 +50,11 @@ export function DepartmentsView({
       <PageHeader
         back={{ href: backHref, label: t("title") }}
         title={t("departments.title")}
-        subtitle={t("departments.subtitle")}
+        subtitle={t(
+          on.menu && !on.lists
+            ? "departments.subtitleMenu"
+            : "departments.subtitle",
+        )}
       />
       {readOnly ? (
         <p className="text-ink-2">
@@ -55,6 +67,8 @@ export function DepartmentsView({
         disabled={readOnly !== null}
         save={save}
         saveMembers={saveMembers}
+        on={on}
+        itemsByDepartment={itemsByDepartment}
       />
     </PageBody>
   );

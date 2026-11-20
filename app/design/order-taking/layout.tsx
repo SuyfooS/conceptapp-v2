@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 import { OrderDemo } from "./demo-store";
+import { RestaurantWords } from "./restaurant-words";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("design.orderTaking");
@@ -15,13 +16,16 @@ export async function generateMetadata(): Promise<Metadata> {
 // phone, with one store in memory above them all (OrderDemo), so what is
 // sent reaches the prep screens and comes back ready. It reads `?state=`
 // from the address, which is known only when the page is asked for, so it
-// waits inside Suspense, as the other demos' states do.
+// waits inside Suspense, as the other demos' states do. The real menu screens
+// it draws (P2) read the restaurant template's words.
 export default function OrderTakingDemoLayout({
   children,
 }: LayoutProps<"/design/order-taking">) {
   return (
     <Suspense>
-      <OrderDemo>{children}</OrderDemo>
+      <OrderDemo>
+        <RestaurantWords>{children}</RestaurantWords>
+      </OrderDemo>
     </Suspense>
   );
 }

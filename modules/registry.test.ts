@@ -17,6 +17,7 @@ import {
   isStaff,
   MODULE_KEYS,
   type ModuleManifest,
+  moduleIcon,
   moduleNav,
   PERMISSION_AREAS,
   ROLES,
@@ -327,6 +328,13 @@ describe("module registry", () => {
     expect(manifest.homeWidget).toBeNull();
     expect(manifest.settings.parse({})).toEqual({});
     expect(he.modules.order_taking.name).toBe("קבלת הזמנות");
+    // Its own icon where it has no tab (P2): the pad on the roles screen,
+    // not the management page's sliders.
+    expect(moduleIcon(manifest)).toBe("pad");
+    expect(moduleIcon(manifestFor("scheduling"))).toBe("calendar");
+    expect(moduleIcon(manifestFor("notifications"))).toBe(
+      manifestFor("notifications").nav?.icon ?? null,
+    );
   });
 
   it("gives chat the default roles its SQL helpers hold", () => {

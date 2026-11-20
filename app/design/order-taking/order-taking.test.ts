@@ -1,5 +1,15 @@
+import { importRows, parseMenu } from "@domain/menu-import";
+import { itemSaveInput } from "@domain/order-taking";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { addLine, closeOrder, newTakeaway, reopenOrder, send } from "./changes";
+import {
+  addLine,
+  closeOrder,
+  importMenu,
+  newTakeaway,
+  reopenOrder,
+  saveCategories,
+  send,
+} from "./changes";
 import {
   DEMO_START,
   demoJustSent,
@@ -15,7 +25,12 @@ import {
   takeBackOpen,
   toggleChoice,
 } from "./model";
-import { importCount, imported, readPaste } from "./paste";
+import {
+  fromItemInput,
+  twinDepartments,
+  twinMenu,
+  withoutDepartment,
+} from "./real-menu";
 import { scenario } from "./scenario";
 
 // The order-taking twin's rules that a screen only draws (S0 of waiter
@@ -136,11 +151,19 @@ describe("an item's choices", () => {
   });
 
   it("lets an optional extra of one option be picked and unpicked", () => {
-    // The paste's own "+ גבינה בולגרית" under its shakshuka.
-    const item = imported(
-      readPaste("ארוחות\nשקשוקה 54\n+ גבינה 6"),
-      () => "kitchen",
-    ).items[0];
+    // The paste's own "+ גבינה בולגרית" under its shakshuka, as the real
+    // import reads it.
+    const pasted = parseMenu("ארוחות\nשקשוקה 54\n+ גבינה 6", {
+      size: "גודל",
+      regular: "רגיל",
+      large: "גדול",
+      extras: "תוספות",
+      general: "כללי",
+    });
+    const item = importMenu(
+      scenario("service"),
+      importRows(pasted.categories, ["kitchen"]),
+    ).data.menu.items.at(-1);
     const group = item?.groups[0];
     if (!group) throw new Error("the shakshuka has its extras");
     expect(group).toMatchObject({ min: 0, max: 1 });
@@ -182,25 +205,118 @@ describe("the floor's takeaways", () => {
   });
 });
 
-describe("the paste's preview", () => {
-  it("counts only what the import keeps", () => {
-    // No line without a price above them: nothing to put them under.
-    const lines = readPaste("שקשוקה 54\nטוסט 42");
-    expect(lines.map((line) => line.problem)).toEqual([
-      "noCategory",
-      "noCategory",
-    ]);
-    expect(importCount(lines)).toBe(0);
-    expect(imported(lines, () => "kitchen").items).toEqual([]);
+// The real menu screens on the twin's rows (waiter mode P2): the twin's
+// store stays the one store, read and written as the app reads and writes.
+describe("the twin's menu as the real screens read it", () => {
+  it("reads the menu in its categories' order, sold out as the store says", () => {
+    const data = scenario("service");
+    const menu = twinMenu(data, 3);
+    expect(menu.version).toBe(3);
+    expect(menu.categories.map((c) => c.id)).toEqual(
+      data.menu.categories.map((c) => c.id),
+    );
+    expect(menu.items).toHaveLength(data.menu.items.length);
+    const fish = menu.items.find((item) => item.id === "fish");
+    expect(fish?.available).toBe(false);
+    expect(fish?.route).toBe("kitchen");
+    const burger = menu.items.find((item) => item.id === "burger");
+    expect(burger?.optionGroups[1]?.options[0]?.priceAgorot).toBe(600);
+    expect(menu.places).toHaveLength(12);
   });
 
-  it("agrees with the import on the demo's paste", () => {
-    const lines = readPaste(
-      "ארוחות בוקר\nשקשוקה 54\n+ גבינה 6\nטוסט 42\nטוסט 42\nשתייה\nקפה 14/17",
+  it("saves an item back as it was read, its choices kept", () => {
+    const data = scenario("service");
+    const burger = twinMenu(data, 1).items.find((item) => item.id === "burger");
+    if (!burger) throw new Error("the burger");
+    const saved = fromItemInput(
+      itemSaveInput(burger, { priceAgorot: 7200 }),
+      burger.id,
     );
-    expect(importCount(lines)).toBe(
-      imported(lines, () => "kitchen").items.length,
+    const before = data.menu.items.find((item) => item.id === "burger");
+    expect(saved).toEqual({ ...before, price: 7200 });
+  });
+
+  it("removes a department from one category, whose items then go nowhere", () => {
+    const menu = withoutDepartment(
+      twinMenu(scenario("service"), 1),
+      "desserts",
+      "pastry",
     );
-    expect(importCount(lines)).toBe(3);
+    expect(menu.categories.find((c) => c.id === "desserts")?.department).toBe(
+      "pastry",
+    );
+    expect(
+      menu.items.filter((item) => item.route === null).map((item) => item.id),
+    ).toEqual(["malabi", "cake"]);
+    expect(
+      twinDepartments([{ id: "pastry", name: "x", live: false }]),
+    ).toHaveLength(3);
+  });
+
+  it("saves the categories whole: renamed, moved, added and removed, with an undo", () => {
+    const data = scenario("service");
+    const [starters, mains, desserts, drinks] = data.menu.categories;
+    if (!starters || !mains || !desserts || !drinks) throw new Error("four");
+    const renamed = saveCategories(data, [
+      { id: drinks.id, name: "משקאות", department: "bar" },
+      { id: mains.id, name: mains.name, department: "kitchen" },
+      { id: starters.id, name: starters.name, department: "kitchen" },
+      { name: "  בדיקות ", department: "bar" },
+    ]);
+    expect(renamed.data.menu.categories.map((c) => c.name)).toEqual([
+      "משקאות",
+      "עיקריות",
+      "ראשונות",
+      "בדיקות",
+    ]);
+    expect(renamed.ids.slice(0, 3)).toEqual([drinks.id, mains.id, starters.id]);
+    // The desserts are gone from the menu, their items kept for the undo.
+    expect(
+      twinMenu(renamed.data, 2).items.some((item) => item.id === "malabi"),
+    ).toBe(false);
+    const undone = saveCategories(renamed.data, [
+      ...renamed.data.menu.categories,
+      desserts,
+    ]);
+    expect(
+      twinMenu(undone.data, 3).items.some((item) => item.id === "malabi"),
+    ).toBe(true);
+  });
+
+  it("imports a checked paste: an existing category takes its items, a new one goes last", () => {
+    const data = scenario("service");
+    const done = importMenu(data, [
+      { category: { name: "עיקריות", department: "bar" } },
+      { item: { name: "פרגית", priceAgorot: 7200 } },
+      { category: { name: "בראנץ'", department: "bar" } },
+      {
+        item: {
+          name: "קפה הפוך",
+          priceAgorot: 1400,
+          optionGroups: [
+            {
+              id: "size",
+              name: "גודל",
+              min: 1,
+              max: 1,
+              options: [
+                { id: "regular", name: "רגיל", priceAgorot: 0 },
+                { id: "large", name: "גדול", priceAgorot: 300 },
+              ],
+            },
+          ],
+        },
+      },
+    ]);
+    expect([done.categories, done.items]).toEqual([1, 2]);
+    const menu = twinMenu(done.data, 2);
+    const mains = menu.categories.find((c) => c.name === "עיקריות");
+    expect(mains?.department).toBe("kitchen");
+    expect(menu.categories.at(-1)).toMatchObject({
+      name: "בראנץ'",
+      department: "bar",
+    });
+    const coffee = menu.items.find((item) => item.name === "קפה הפוך");
+    expect(coffee?.optionGroups[0]?.options[1]?.priceAgorot).toBe(300);
   });
 });

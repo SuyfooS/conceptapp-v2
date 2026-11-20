@@ -47,6 +47,13 @@ export const orderDemoDepartments: Department[] = [
   { key: "bar", name: "בר" },
 ];
 
+/** A department removed since its category went to it: the menu twin's `?state=noRoute`. */
+export const demoRemovedDepartment = {
+  id: "pastry",
+  name: "קונדיטוריה",
+  live: false,
+};
+
 const categories: Category[] = [
   { id: "starters", name: "ראשונות", department: "kitchen" },
   { id: "mains", name: "עיקריות", department: "kitchen" },
@@ -566,9 +573,9 @@ export function demoJustSent(): Order {
 }
 
 /**
- * A café's menu as it would be pasted from a website or a WhatsApp message:
- * categories, prices with and without ₪, two sizes, extras, a repeated
- * line, a price that isn't clear and a line reversed by a PDF.
+ * A café's menu as it would be pasted from a website or a WhatsApp message
+ * (waiter mode P2's import twin): categories, prices with and without ₪,
+ * two sizes and extras, clean enough to add as it is.
  */
 export const demoPastedMenu = [
   "ארוחות בוקר",
@@ -576,19 +583,140 @@ export const demoPastedMenu = [
   "שקשוקה ₪54",
   "+ גבינה בולגרית 6",
   "טוסט גבינות 42.50",
-  "טוסט גבינות 42.50",
   "שתייה חמה",
   "קפה הפוך 14/17",
   "+ חלב שקדים 3",
   "תה נענע 12",
-  "םח וקוש 15",
-  "עוגת גבינה 3O",
 ].join("\n");
 
-/** What an imported size group and extras group are called. */
-export const importWords = {
-  sizes: "גודל",
-  regular: "רגיל",
-  large: "גדול",
-  extras: "תוספות",
+/** The same with a line a PDF turned around (`?state=reversed`). */
+export const demoReversedPaste = [demoPastedMenu, "םח וקוש 15"].join("\n");
+
+/**
+ * The same with lines to fix (`?state=problems`): a line repeated, a price
+ * that isn't clear, a line turned around and a line with no price.
+ */
+export const demoProblemPaste = [
+  demoPastedMenu,
+  "טוסט גבינות 42.50",
+  "םח וקוש 15",
+  "עוגת גבינה 3O",
+  "מאפה היום, שואלים את המלצר על הטעמים של היום ועל המחיר שלהם",
+].join("\n");
+
+/**
+ * A paste onto the menu already there (`?state=known`): the mains, which the
+ * menu has, take a new dish, and the schnitzel already there is left out.
+ */
+export const demoKnownPaste = [
+  "עיקריות",
+  "שניצל 62",
+  "+ צ'יפס 12",
+  "פרגית על האש 72",
+  "קינוחים",
+  "סורבה לימון 28",
+].join("\n");
+
+/**
+ * The restaurant's and the café's own sentences for taking orders, as
+ * supabase/migrations/20261120000100_order_taking_screens.sql writes them
+ * (tooling/template-wording.test.ts holds the two the same): the twin's
+ * restaurant reads its menu screens in them, as the demo restaurant does.
+ */
+export const restaurantMenuWording: Readonly<Record<string, string>> = {
+  "modules.order_taking.name": "מצב מלצרות",
+  "modules.order_taking.description": "קבלת הזמנות ושליחה למטבח ולבר",
+  "app.orders.menu.status.items":
+    "{count, plural, one {מנה אחת} other {# מנות}}",
+  "app.orders.menu.status.soldOut":
+    "{count, plural, one {אחת נגמרה} other {# נגמרו}}",
+  "app.orders.menu.status.noRoute":
+    "{count, plural, one {מנה אחת בלי מחלקה} other {# מנות בלי מחלקה}}",
+  "app.orders.menu.add": "הוספת מנה",
+  "app.orders.menu.readOnly.department":
+    'את התפריט משנה מי שמנהל אותו. מסמנים "נגמר" למנות שמכינים במחלקה שלך.',
+  "app.orders.menu.empty.body":
+    "מוסיפים מנות אחת אחת, או מעתיקים תפריט קיים מהאתר, מקובץ PDF או מהקופה.",
+  "app.orders.menu.emptyCategory": "עוד אין כאן מנות.",
+  "app.orders.menu.categoryLine":
+    "{department} · {count, plural, =0 {אין מנות} one {מנה אחת} other {# מנות}}",
+  "app.orders.menu.placesRow": "השולחנות",
+  "app.orders.menu.placesCount":
+    "{count, plural, =0 {עוד אין שולחנות} one {שולחן אחד} other {# שולחנות}}",
+  "app.orders.menu.columns.name": "מנה",
+  "app.orders.menu.sheet.newTitle": "מנה חדשה",
+  "app.orders.menu.sheet.name": "שם המנה",
+  "app.orders.menu.sheet.nameMissing": "כותבים את שם המנה, עד 60 תווים.",
+  "app.orders.menu.toast.soldOut": "סומנה שנגמרה: {name}",
+  "app.orders.menu.toast.available": "חזרה לתפריט: {name}",
+  "app.orders.menu.toast.added": "נוספה לתפריט: {name}",
+  "app.orders.menu.toast.saved": "נשמרה: {name}",
+  "app.orders.menu.toast.removed": "הוסרה מהתפריט: {name}",
+  "app.orders.menu.failed.off": "מצב מלצרות כבוי בעסק הזה.",
+  "app.orders.menu.failed.gone": "המנה כבר לא בתפריט.",
+  "app.orders.menu.failed.choices": "הבחירות של המנה לא נשמרו כמו שהן.",
+  "app.orders.menu.failed.changed":
+    "מישהו שינה את המנה בינתיים. זה מה שיש בה עכשיו.",
+  "app.orders.menu.failed.tooMany":
+    "בתפריט כבר יש כמה שאפשר: עד 300 מנות ו-30 קטגוריות.",
+  "app.orders.menu.failed.archived": "המנה הוסרה מהתפריט. מחזירים אותה קודם.",
+  "app.orders.menu.failed.categoryRemoved":
+    "הקטגוריה של המנה הוסרה. מחזירים אותה קודם.",
+  "app.orders.categories.count":
+    "{count, plural, =0 {אין מנות} one {מנה אחת} other {# מנות}}",
+  "app.orders.categories.removed":
+    "{count, plural, =0 {הקטגוריה {name} הוסרה} one {הקטגוריה {name} הוסרה, עם מנה אחת} other {הקטגוריה {name} הוסרה, עם # מנות}}",
+  "app.orders.categories.itemsEmpty":
+    "עוד אין כאן מנות. מוסיפים אותן במסך התפריט.",
+  "app.orders.places.title": "השולחנות",
+  "app.orders.places.subtitle":
+    'השולחנות שמקבלים אליהם הזמנות. אפשר לקרוא להם בשם, כמו "בר 3" או "מרפסת 2". הסדר כאן הוא הסדר במסך.',
+  "app.orders.places.quick.title": "כמה שולחנות יש",
+  "app.orders.places.quick.action":
+    "{count, plural, one {יצירת שולחן אחד} other {יצירת # שולחנות}}",
+  "app.orders.places.nameOf": "שם השולחן {name}",
+  "app.orders.places.newName": "שולחן חדש",
+  "app.orders.places.add": "הוספת שולחן",
+  "app.orders.places.removed": "השולחן {name} הוסר",
+  "app.orders.places.taken": "כבר יש שולחן בשם {name}.",
+  "app.orders.places.max": "אפשר עד 60 שולחנות.",
+  "app.orders.places.empty": "עוד אין שולחנות.",
+  "app.orders.import.existing":
+    "בתפריט כבר יש {items, plural, one {מנה אחת} other {# מנות}} ב{categories, plural, one {קטגוריה אחת} other {-# קטגוריות}}. מה שמדביקים נוסף אליהן.",
+  "app.orders.import.hint":
+    "שורה עם מחיר בסוף היא מנה. שורה בלי מחיר היא קטגוריה לשורות שאחריה. שני מחירים עם / הם שני גדלים, ושורה שמתחילה ב-+ היא תוספת למנה שמעליה.",
+  "app.orders.import.counts":
+    "{items, plural, one {מנה אחת} other {# מנות}} · {categories, plural, one {קטגוריה אחת} other {# קטגוריות}} · {problems, plural, =0 {אין שורות לתיקון} one {שורה אחת לתיקון} other {# שורות לתיקון}}",
+  "app.orders.import.line.item": "מנה · <ltr>{price}</ltr>",
+  "app.orders.import.line.extra": "תוספת למנה שמעליה · <ltr>+{price}</ltr>",
+  "app.orders.import.line.known": "כבר בתפריט, לא נכנסת שוב",
+  "app.orders.import.problem.noItem": "תוספת בלי מנה מעליה",
+  "app.orders.import.problem.tooManyExtras": "יותר מדי תוספות למנה אחת",
+  "app.orders.import.tooMany":
+    "עם ההדבקה הזאת יהיו בתפריט יותר מ-300 מנות או 30 קטגוריות. מקצרים אותה.",
+  "app.orders.import.action":
+    "{count, plural, one {הוספת מנה אחת לתפריט} other {הוספת # מנות לתפריט}}",
+  "app.orders.import.done":
+    "{items, plural, one {נוספה לתפריט מנה אחת} other {נוספו לתפריט # מנות}}{categories, plural, =0 {} one { וקטגוריה חדשה אחת} other { ו-# קטגוריות חדשות}}",
+  "app.manage.roles.editHint.order_taking":
+    'בלי עריכה רואים את התפריט, ומסמנים "נגמר" למנות שהמחלקה שלהם מכינה. עם עריכה גם עורכים את התפריט, את המחירים ואת השולחנות, ומסמנים "נגמר" לכל מנה.',
+  "app.manage.activity.actions.menu.itemCreate": "הוספת המנה {name} לתפריט",
+  "app.manage.activity.actions.menu.itemSave": "שינוי במנה {name}",
+  "app.manage.activity.actions.menu.itemArchive": "הסרת המנה {name} מהתפריט",
+  "app.manage.activity.actions.menu.itemRestore": "החזרת המנה {name} לתפריט",
+  "app.manage.activity.actions.menu.import":
+    "{count, plural, one {יבוא מנה אחת לתפריט} other {יבוא # מנות לתפריט}}",
+  "app.manage.activity.actions.menu.places.title": "שינוי בשולחנות",
+  "app.manage.activity.actions.menu.places.added":
+    "{count, plural, one {שולחן אחד נוסף} other {# שולחנות נוספו}}",
+  "app.manage.activity.actions.menu.places.archived":
+    "{count, plural, one {שולחן אחד הוסר} other {# שולחנות הוסרו}}",
+  "app.manage.activity.actions.menu.places.restored":
+    "{count, plural, one {שולחן אחד חזר} other {# שולחנות חזרו}}",
+  "app.manage.activity.actions.menu.places.changed":
+    "{count, plural, one {שולחן אחד שונה} other {# שולחנות שונו}}",
+  "app.manage.departments.menuItems":
+    "{count, plural, one {מכינים כאן מנה אחת מהתפריט} other {מכינים כאן # מנות מהתפריט}}",
+  "app.manage.departments.removedMenu":
+    "{count, plural, one {המחלקה {name} הוסרה. מנה אחת מהתפריט לא מגיעה עכשיו להכנה, עד שבוחרים לה מחלקה.} other {המחלקה {name} הוסרה. # מנות מהתפריט לא מגיעות עכשיו להכנה, עד שבוחרים להן מחלקה.}}",
 };

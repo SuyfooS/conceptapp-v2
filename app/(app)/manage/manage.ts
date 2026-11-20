@@ -157,11 +157,17 @@ export function payAccessInUse(rows: readonly ModuleRow[]): boolean {
 }
 
 /**
- * Whether lists are on, which is when the business's departments matter:
- * lists are what reads them today.
+ * Whether the business's departments matter: lists are on, which go to them,
+ * or taking orders, whose menu sends each item to one (waiter mode P2).
  */
-export function listsOn(rows: readonly ModuleRow[]): boolean {
-  return enabledModules(manifests, rows).includes("lists");
+export function departmentsOn(rows: readonly ModuleRow[]): boolean {
+  const enabled = enabledModules(manifests, rows);
+  return enabled.includes("lists") || enabled.includes("order_taking");
+}
+
+/** Whether taking orders is on, so the business has a menu to lead to. */
+export function menuOn(rows: readonly ModuleRow[]): boolean {
+  return enabledModules(manifests, rows).includes("order_taking");
 }
 
 /** Each module's settings as a business that never set them has them. */

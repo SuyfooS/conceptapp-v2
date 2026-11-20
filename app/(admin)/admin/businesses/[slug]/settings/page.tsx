@@ -2,12 +2,15 @@ import { getBusinessSetup } from "@db/admin";
 import { getBusinessDetailsForTeam } from "@db/business-details";
 import { getDepartmentsForTeam } from "@db/departments";
 import { getBusinessModulesForTeam } from "@db/module-settings";
+import { getMenuForTeam } from "@db/order-taking";
 import { enabledModules } from "@domain/modules";
+import { itemsByDepartment } from "@domain/order-taking";
 import { platformCan } from "@domain/platform";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getTranslations } from "next-intl/server";
+import { departmentsOn, menuOn } from "@/app/(app)/manage/manage";
 import { shabbatByCity } from "@/app/(app)/manage/shabbat-by-city";
 import { currentPlatformRole } from "../../../../staff";
 import {
@@ -38,10 +41,16 @@ export default async function BusinessSettingsPage({
     getBusinessDetailsForTeam(business.id),
   ]);
   if (!own) notFound();
-  // Departments and the list templates while lists are on, as on the
-  // business's own /manage and /lists.
+  // Departments while lists or taking orders are on, and the list templates
+  // while lists are, as on the business's own /manage and /lists; the menu's
+  // import and places while taking orders is on (waiter mode P2).
   const lists = enabledModules(manifests, rows).includes("lists");
-  const departments = lists ? await getDepartmentsForTeam(business.id) : null;
+  const orders = menuOn(rows);
+  const [departments, menu] = await Promise.all([
+    departmentsOn(rows) ? getDepartmentsForTeam(business.id) : null,
+    orders ? getMenuForTeam(business.id) : null,
+  ]);
+  const read = menu !== null && menu !== "notYet" ? menu : null;
   return (
     <BusinessSettingsView
       name={business.name}
@@ -62,10 +71,21 @@ export default async function BusinessSettingsPage({
                 null,
                 business.id,
               ),
+              on: { lists, menu: orders },
+              itemsByDepartment: read ? itemsByDepartment(read) : undefined,
             }
           : null
       }
       listsHref={lists ? `/admin/businesses/${slug}/lists` : null}
+      menu={
+        orders
+          ? {
+              importHref: `/admin/businesses/${slug}/menu`,
+              placesHref: `/admin/businesses/${slug}/menu/places`,
+              places: read?.places.length ?? 0,
+            }
+          : null
+      }
     />
   );
 }
