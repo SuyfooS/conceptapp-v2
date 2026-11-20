@@ -361,6 +361,15 @@ export async function clearDemoStations(): Promise<void> {
     where business_id = ${DEMO_RESTAURANT}`;
 }
 
+/**
+ * The demo restaurant's running stations stopped, as the team's hours stop
+ * one, by nobody in particular: the devices keep their cookies.
+ */
+export async function stopDemoStations(): Promise<void> {
+  await sql`update public.clock_stations set stopped_at = now()
+    where business_id = ${DEMO_RESTAURANT} and stopped_at is null`;
+}
+
 export type DemoStation = {
   name: string;
   stopped: boolean;

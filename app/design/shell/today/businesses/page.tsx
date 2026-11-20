@@ -6,6 +6,7 @@ import { demoSeenDeparture } from "../../actions";
 import { demoSwitcher } from "../../businesses";
 import { demoAccountantName, demoPayHome } from "../../clock/pay/data";
 import { business, leftBusiness } from "../../data";
+import { demoSignOutOfStation } from "../../station/actions";
 
 type Props = { searchParams: Promise<{ state?: string }> };
 
@@ -40,6 +41,7 @@ async function Demo({ searchParams }: Props) {
         wording={baseWording}
         base="/design/shell"
         businesses={demoSwitcher()}
+        signOut={demoSignOutOfStation}
         data={{
           now: "2026-11-04T08:30:00.000Z",
           timeZone: "Asia/Jerusalem",

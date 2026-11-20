@@ -22,6 +22,7 @@ import Link from "next/link";
 import { useFormatter } from "next-intl";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { SignOutAction } from "@/app/sign-out-form";
 import type { Businesses } from "../businesses";
 import { confirmDocumentAction } from "../chat/documents/actions";
 import type { DocumentsTodayData } from "../chat/documents/document-screen-types";
@@ -33,9 +34,11 @@ import {
   useMonthName,
   useShekels,
 } from "../clock/pay/pay-parts";
+import type { StationHome } from "../clock/station/station-types";
 import { type AppWording, translator } from "../wording";
 import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
+import { StationCard } from "./station-card";
 
 export type AccountantHomeData = {
   /** ISO timestamp of the moment the screen is read. */
@@ -50,6 +53,11 @@ export type AccountantHomeData = {
   documents?: DocumentsTodayData | null;
   /** The bell and how many lines are unread; null when there is none. */
   bell: { unread: number } | null;
+  /**
+   * This device is one of the business's running clock stations
+   * (`currentStationHome`): sign out when done. Null anywhere else.
+   */
+  station?: StationHome | null;
 };
 
 const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
@@ -64,20 +72,27 @@ const ltr = (chunks: ReactNode) => <span dir="ltr">{chunks}</span>;
  * month's estimate before tax while the business shows amounts, and the card
  * how many things the hours engine asks to check. Someone who keeps the books
  * of several businesses (payroll P3b) has them listed last, on phones and
- * tablets, to switch between. `base` keeps the links inside the demo on
- * /design/shell.
+ * tablets, to switch between. On the business's clock station, the card that
+ * says to sign out when done comes under the greeting, as on Today. `base`
+ * keeps the links inside the demo on /design/shell.
  */
 export async function AccountantHome({
   data,
   wording,
   businesses,
   base = "",
+  signOut,
 }: {
   data: AccountantHomeData;
   wording: AppWording;
   /** The businesses to switch between, for someone in more than one. */
   businesses?: Businesses | null;
   base?: string;
+  /**
+   * Signing out from the station's card (`data.station`): `signOut`, or the
+   * demo's stand-in, which goes to the station's twin.
+   */
+  signOut: SignOutAction;
 }) {
   const t = translator(wording, "app");
   const format = await getFormatter();
@@ -147,6 +162,11 @@ export async function AccountantHome({
             />
           ) : null}
         </div>
+
+        {/* No lock here: an accountant holds clock.payroll alone, never clock.edit. */}
+        {data.station ? (
+          <StationCard station={data.station} signOut={signOut} t={t} />
+        ) : null}
 
         {pay ? (
           <div className="grid items-start gap-6 md:grid-cols-2 xl:grid-cols-[minmax(0,5fr)_minmax(0,4fr)_minmax(0,3fr)] xl:gap-8">

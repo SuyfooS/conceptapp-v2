@@ -9,6 +9,7 @@ import {
   demoPayHomeNoAmounts,
 } from "../../clock/pay/data";
 import { business } from "../../data";
+import { demoSignOutOfStation } from "../../station/actions";
 
 type Props = { searchParams: Promise<{ state?: string; estimate?: string }> };
 
@@ -17,7 +18,9 @@ type Props = { searchParams: Promise<{ state?: string; estimate?: string }> };
 // ?state=empty is a month with no hours yet, ?state=off a business with the
 // clock off, ?state=checked a month with every shift approved and closed and
 // the hours engine's remarks still to check, ?estimate=off one whose amounts
-// the team hasn't turned on.
+// the team hasn't turned on. ?state=station is the default month, signed in
+// on the business's clock station: the card says the device is the
+// business's tablet, and signing out goes to the station's twin.
 export default function ShellTodayAccountant({ searchParams }: Props) {
   return (
     <Suspense>
@@ -32,6 +35,7 @@ async function Demo({ searchParams }: Props) {
     <AccountantHome
       wording={baseWording}
       base="/design/shell"
+      signOut={demoSignOutOfStation}
       data={{
         now: "2026-11-04T08:30:00.000Z",
         timeZone: "Asia/Jerusalem",
@@ -49,6 +53,7 @@ async function Demo({ searchParams }: Props) {
                   ? demoPayHomeNoAmounts
                   : demoPayHome,
         bell: { unread: 1 },
+        station: state === "station" ? { kind: "signOut" } : null,
       }}
     />
   );

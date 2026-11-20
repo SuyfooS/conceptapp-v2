@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  afterSignOutPath,
   defaultStationName,
   lockFailureOf,
   lockOpen,
   MAX_STATIONS,
+  runsFor,
   STATION_COOKIE_MAX_AGE,
+  STATION_PATH,
   STATION_SHOWING_MS,
   stationCodeFailureOf,
   stationCodeResponse,
@@ -14,8 +17,11 @@ import {
   stationStopFailureOf,
   stationToken,
 } from "./clock-station";
+import { signInPath } from "./passive-sign-in";
 
 const CODE = "Ab3-_9xYz0Ab3-_9xYz0Ab";
+const BUSINESS = "10000000-0000-4000-b000-000000000001";
+const OTHER = "10000000-0000-4000-b000-000000000002";
 const NOW = "2026-11-17T10:00:00.000Z";
 
 describe("the station's cookie", () => {
@@ -92,6 +98,33 @@ describe("locking a device", () => {
       lockOpen({ current: { name: "Station 3" }, running: names(10) }),
     ).toBe(true);
     expect(lockOpen({ current: { name: "Entrance" }, running: [] })).toBe(true);
+  });
+});
+
+describe("a device that is a station", () => {
+  it("is a running one of the business only when it runs, and is the business's", () => {
+    expect(runsFor(null, BUSINESS)).toBe(false);
+    expect(runsFor({ businessId: BUSINESS, stopped: true }, BUSINESS)).toBe(
+      false,
+    );
+    expect(runsFor({ businessId: OTHER, stopped: false }, BUSINESS)).toBe(
+      false,
+    );
+    expect(runsFor({ businessId: BUSINESS, stopped: false }, BUSINESS)).toBe(
+      true,
+    );
+  });
+
+  it("shows the code again once someone signs out on it, while it runs", () => {
+    // The station's manifest (its start_url and scope) and the browser tests
+    // name it too.
+    expect(STATION_PATH).toBe("/station");
+    expect(afterSignOutPath({ stopped: false })).toBe(STATION_PATH);
+  });
+
+  it("goes to the door when it is none, or a stopped one", () => {
+    expect(afterSignOutPath(null)).toBe(signInPath);
+    expect(afterSignOutPath({ stopped: true })).toBe(signInPath);
   });
 });
 

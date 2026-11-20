@@ -2292,7 +2292,8 @@
         },
         "reminder": {
           "body": "This device is the business's clock station. When you're done, lock it again.",
-          "lock": "Lock the device"
+          "lock": "Lock the device",
+          "signOutBody": "This device is the business's tablet. When you're done, sign out."
         }
       },
       "ownWage": {
