@@ -297,7 +297,7 @@
     "share": "Sharing",
     "shareOpen": "Open sharing",
     "shareTitle": "Share the schedule",
-    "shareSample": "The schedule at the business for November 22 – 28 has been published. You can see it in the app.",
+    "shareSample": "The schedule at the business for {range} has been published. You can see it in the app.",
     "groupedForm": "Grouped form",
     "startTime": "Start",
     "peopleNeeded": "People needed",
@@ -1055,16 +1055,16 @@
     "awakeOff": "The screen may turn off. To keep the code showing, lengthen the screen timeout in the device's settings.",
     "refused": {
       "clockOff": "The clock isn't on at this business right now, so there's no code.",
-      "managerOnly": "This business shows the code on a manager's phone only."
+      "managerOnly": "This business shows the code only on the phone of whoever approves hours."
     },
     "notStation": {
       "title": "This device isn't a clock station yet",
-      "body": "To leave it at the business as a clock station: sign in on it as an owner or a manager, open “Clock code” and press “Lock this device on the code”.",
+      "body": "To leave it at the business as a clock station: sign in on it with the account of someone who approves hours, open “Clock code” and press “Lock this device on the code”.",
       "signIn": "Sign in"
     },
     "stopped": {
       "title": "This device no longer shows the clock code",
-      "body": "An owner or a manager can lock it again from the clock code.",
+      "body": "Whoever approves hours can lock it again from the clock code.",
       "signIn": "Sign in"
     },
     "signedIn": {
@@ -1073,7 +1073,7 @@
       "lockAgain": "When you're done, lock it again, and it shows the code again.",
       "lockNew": "You can leave it now as the business's clock station.",
       "lock": "Lock the device",
-      "home": "Go home"
+      "home": "Go to Today"
     },
     "manifest": {
       "name": "ConceptApp · Clock station",
@@ -1229,7 +1229,7 @@
           },
           "clockCode": {
             "title": "A code for the time clock",
-            "todo": "Without a code, anyone clocks in from their own phone, from anywhere. With one, they clock in by a code shown at the business, on the phone of whoever approves hours or on a tablet.",
+            "todo": "Without a code, anyone clocks in from their own phone, from anywhere. With one, they clock in by a code shown on the phone of whoever approves hours or on the business's tablet.",
             "done": "Clocking in and out with a code."
           }
         }
@@ -2226,7 +2226,7 @@
           "restarted": "The station “{name}” shows the code again",
           "undo": "Undo",
           "howTo": "To leave a tablet at the business as a clock station: sign in on it, open “Clock code” and press “Lock this device on the code”.",
-          "noneManagerOnly": "No clock stations are running. This business shows the code on a manager's phone only, so no stations are added.",
+          "noneManagerOnly": "No clock stations are running. This business shows the code only on the phone of whoever approves hours, so no stations are added.",
           "failure": {
             "gone": "This station no longer exists.",
             "tooLate": "More than two minutes passed, so the station stays stopped. To bring it back, lock the device again from the clock code.",
@@ -2316,7 +2316,7 @@
           "full": "The business already runs {count, plural, one {one clock station} other {# clock stations}}, the most it can. To add one, stop one of them in the team's hours.",
           "failure": {
             "tooManyStations": "The business already runs {count, plural, one {one clock station} other {# clock stations}}. To add one, stop one of them in the team's hours.",
-            "managerOnly": "This business shows the code on a manager's phone only, so it has no clock stations.",
+            "managerOnly": "This business shows the code only on the phone of whoever approves hours, so it has no clock stations.",
             "name": "The station needs a name, up to 40 characters.",
             "busy": "We couldn't lock the device just now. You can try again in a few minutes.",
             "noAccess": "Locking a device on the code is no longer yours to do.",
@@ -3136,6 +3136,7 @@
         },
         "who": {
           "team": "ConceptApp team",
+          "app": "The app",
           "former": "Someone no longer on the team",
           "unknown": "Someone no longer in the app",
           "noName": "No name"
@@ -3296,7 +3297,7 @@
             },
             "fixOtherOf": "{label}: {what}",
             "late": "{name} was late",
-            "missed": "{name} was not done",
+            "missed": "Closed the list {name}, which was not done",
             "outOfRange": "A reading out of range in {name}: {label}, <ltr>{reading}</ltr>",
             "range": {
               "between": "The range: between <ltr>{range}</ltr>",
@@ -5438,7 +5439,7 @@
         },
         "requirePunchCode": {
           "label": "Clock in and out with a code",
-          "hint": "To clock in and out, people scan a code shown on the phone of someone who approves hours, or type the digits under it. Anyone who can't goes ahead without a code, and someone who approves hours approves it. Each shift keeps how it was recorded. Owners need no code."
+          "hint": "To clock in and out, people scan a code shown on the phone of whoever approves hours or on the business's tablet, or type the digits under it. Anyone who can't goes ahead without a code, and someone who approves hours approves it. Each shift keeps how it was recorded. Owners need no code."
         },
         "workWeek": {
           "label": "Work week",

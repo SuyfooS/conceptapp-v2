@@ -50,17 +50,19 @@ export const manifest = defineManifest({
       .default(0)
       .meta({ level: "team" }),
     /**
-     * Clocking in and out needs the code a manager shows on their phone
-     * (/clock/code): its digits typed, and its QR scanned once that is built
-     * (Orel, 8 November 2026; issue #78). Breaks never need it, owners never
-     * do, and someone who can't clocks in "without a code" for a manager to
-     * confirm. For owners only: the database refuses it from a manager
-     * (set_module_settings). Stations at the business come later.
+     * Clocking in and out needs the code shown on the phone of whoever
+     * approves hours (clock.edit, /clock/code) or on a clock station at the
+     * business (/station), as `codeDisplay` says: its QR scanned or its
+     * digits typed (Orel, 8 November 2026; issue #78). Breaks never need it,
+     * owners never do, and someone who can't clocks in "without a code" for
+     * whoever approves hours to confirm. For owners only: the database
+     * refuses it from a manager (set_module_settings).
      */
     requirePunchCode: z.boolean().default(false).meta({ level: "owner" }),
     /**
-     * Where the code is shown: a clock station left at the business, a
-     * manager's phone, or both. The database refuses codes from the other.
+     * Where the code is shown: a clock station left at the business, the
+     * phone of whoever approves hours ("manager"), or both. The database
+     * refuses codes from the other.
      * Hidden: stations exist now (/station), but "station only" would block
      * every business that hasn't locked a tablet yet, so the team sets it.
      */

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   type ActivityLookups,
   type ActivityRow,
+  APP_ACTIONS,
   activityByDay,
   activityRefs,
   activityShiftOf,
@@ -1962,6 +1963,81 @@ describe("buildActivity: who did it", () => {
       { kind: "team" },
       { kind: "unknown" },
     ]);
+  });
+
+  // The lists' job (private.lists_tick_business) writes these with no actor:
+  // the one family with rows the app writes on its own.
+  it("names the app for each line of the lists it writes on its own", () => {
+    const rows = [
+      row("lists.late", { list: LIST, name: "Opening", due_at: "x" }, null),
+      row("lists.missed", { list: LIST, name: "Opening" }, null),
+      // Routine, so a page never reads them, but the app's all the same.
+      row("lists.open", { list: LIST, name: "Opening" }, null),
+      row("lists.due", { list: LIST, name: "Opening", due_at: "x" }, null),
+      row("lists.late_owner", { list: LIST, name: "Opening" }, null),
+    ];
+    expect(rows.map((r) => r.action).sort()).toEqual([...APP_ACTIONS].sort());
+    const entries = buildActivity(rows, lookups);
+    expect(entries.map((entry) => entry.actor)).toEqual(
+      rows.map(() => ({ kind: "app" })),
+    );
+    expect(entries.slice(0, 2).map((entry) => entry.line)).toEqual([
+      { action: "lists.late", name: "Opening" },
+      { action: "lists.missed", name: "Opening" },
+    ]);
+  });
+
+  it("keeps who wrote one of the app's actions when the row names someone", () => {
+    const actors = buildActivity(
+      [
+        row("lists.missed", { list: LIST, name: "Opening" }, NOA),
+        row("lists.late", { list: LIST, name: "Opening" }, STAFF),
+      ],
+      lookups,
+    ).map((entry) => entry.actor);
+    expect(actors).toEqual([{ kind: "member", name: "Noa" }, { kind: "team" }]);
+  });
+
+  // Any other row with no actor was someone's whose account has gone
+  // (audit_log.actor_id is `on delete set null`), never the app's: a line of
+  // each family people write, the lists' own among them.
+  it("says someone no longer in the app for any other row with no actor", () => {
+    const rows = [
+      row("business.details", { from: null, to: { name: "New" } }, null),
+      row("module.enabled", { module: "time_clock", enabled: true }, null),
+      row("clock.confirm", { person: YOAV }, null),
+      row("invite.create", { invite: INVITE, role: "worker" }, null),
+      row("member.name", { person: YOAV }, null),
+      row("view_as.start", { role: "manager" }, null),
+      row("swap.request", { swap: SWAP, shift: SHIFT }, null),
+      row(
+        "schedule.publish",
+        { starts_on: "2026-11-08", shifts: 3, first: true, swaps_removed: 0 },
+        null,
+      ),
+      row("wording.change", { key: "app.title", to: "New" }, null),
+      row("profile.bio_cleared", { person: YOAV }, null),
+      row("departments.members", { department: KITCHEN, added: [YOAV] }, null),
+      row("lists.finish", { list: LIST, name: "Opening" }, null),
+      row("lists.cancel", { list: LIST, name: "Opening" }, null),
+      row("role.rename", { from: "Host", to: "Head host" }, null),
+      row("permission.grant", { perm: "clock.payroll", person: YOAV }, null),
+      row(
+        "wage.set",
+        { person: YOAV, to_agorot: 3800, effective_from: "2026-11-01" },
+        null,
+      ),
+      row("payroll.close", { month: "2026-10" }, null),
+      row("chat.remove", { conversation: LIST, message: LIST }, null),
+      row("document.restore", { document: LIST }, null),
+      row("menu.item.archive", { item: LIST, name: "Salad" }, null),
+    ];
+    const entries = buildActivity(rows, lookups);
+    expect(entries).toHaveLength(rows.length);
+    expect(entries.map((entry) => entry.line.action)).not.toContain("other");
+    expect(entries.map((entry) => entry.actor)).toEqual(
+      rows.map(() => ({ kind: "unknown" })),
+    );
   });
 
   it("holds no ids", () => {

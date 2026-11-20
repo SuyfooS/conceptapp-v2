@@ -9,12 +9,14 @@ import {
   scheduleDemoToday,
   setDemoRequirePunchCode,
   setDemoUnpaidBreaks,
+  waitOutDemoMidnight,
 } from "./db";
 import { signIn } from "./session";
 
 // Seeded in supabase/seed.sql: the demo restaurant, its manager and a worker.
-// The clock is the real one, so nothing here depends on the hour; each test
-// starts with no hours on the clock.
+// The clock is the real one, so nothing here depends on the hour (a shift put
+// on today waits out midnight when it is close); each test starts with no
+// hours on the clock.
 const MANAGER = { local: "050-000-0002", e164: "+972500000002" };
 const NOA = { local: "050-000-0003", e164: "+972500000003" };
 
@@ -162,8 +164,11 @@ test("the month's hours and the history count what was worked", async ({
 
 test("the clock knows the person's own shift today, and nobody else's", async ({
   page,
-}) => {
-  // All day, so nothing here depends on the hour.
+}, testInfo) => {
+  // All day, so the shift is on whatever the hour, and never in the day's
+  // last minutes: at 23:59 it has ended, and over midnight today is no longer
+  // the day it was put on (CI, 23:59:10 on 17 November 2026).
+  await waitOutDemoMidnight(testInfo);
   await clearSchedule();
   await scheduleDemoToday([[NOA.e164, null]], { start: "00:00", end: "23:59" });
   try {

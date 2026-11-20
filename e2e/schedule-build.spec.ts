@@ -1,6 +1,7 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
 import he from "../messages/he.json" with { type: "json" };
+import { daysLeftToRight } from "../packages/domain/share";
 import { before, buildScreen, HOLD_MS } from "./build-screen";
 import {
   clearAvailability,
@@ -20,6 +21,7 @@ import {
   scheduleShifts,
   sendDemoAvailability,
   takenDemoSwap,
+  waitOutDemoMidnight,
 } from "./db";
 import { secondPage, signIn } from "./session";
 import { heT } from "./t";
@@ -51,17 +53,20 @@ const ts = he.app.shifts.share;
 const us = he.ui.share;
 /**
  * A week's dates in words, as the page's own browser writes them (the share
- * reads them on the device): seven days from `start`.
+ * reads them on the device): seven days from `start`, the days of one month
+ * held left to right as the share holds them.
  */
-const rangeIn = (page: Page, start: string) =>
-  page.evaluate((first) => {
-    const day = new Date(`${first}T00:00:00Z`);
-    return new Intl.DateTimeFormat("he", {
-      day: "numeric",
-      month: "long",
-      timeZone: "UTC",
-    }).formatRange(day, new Date(day.getTime() + 6 * 86_400_000));
-  }, start);
+const rangeIn = async (page: Page, start: string) =>
+  daysLeftToRight(
+    await page.evaluate((first) => {
+      const day = new Date(`${first}T00:00:00Z`);
+      return new Intl.DateTimeFormat("he", {
+        day: "numeric",
+        month: "long",
+        timeZone: "UTC",
+      }).formatRange(day, new Date(day.getTime() + 6 * 86_400_000));
+    }, start),
+  );
 /** The text a WhatsApp link writes. */
 const whatsappText = (href: string | null) =>
   new URL(href ?? "").searchParams.get("text");
@@ -402,6 +407,9 @@ test("a manager shares the published week, and its link opens that week", async 
   page,
   browser,
 }, testInfo) => {
+  // Noa's shift today, put on later, is still today's on the schedule tab,
+  // and next week is still next week: never across midnight.
+  await waitOutDemoMidnight(testInfo);
   await scheduleDemoSunday({ morning: [[NOA.e164, null]], evening: [] }, true);
   await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
   const share = page.getByRole("button", { name: ts.action });
