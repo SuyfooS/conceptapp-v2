@@ -551,6 +551,7 @@ declare
   line_place integer := 0;
   ticket_place integer := 0;
   refusal text;
+  replay jsonb;
 begin
   if not exists (
     select 1 from public.memberships m
@@ -685,17 +686,19 @@ begin
   -- gets its answer, read as it was committed with no lock: a sender moved
   -- out of the departments that take orders since, whose phone retries.
   -- Any other key is refused alike, so nothing of anyone else's shows. The
-  -- clock's part waits for the same round to be looked up, below.
+  -- check and the answer are one statement, one snapshot: a demo reset
+  -- committing between two reads can't turn a found round into no answer.
+  -- The clock's part waits for the same round to be looked up, below.
   refusal := private.order_taker_refusal(business, actor, at_time);
   if refusal = 'not_taker' then
-    if exists (
-      select 1 from public.order_rounds r
-      where r.id = round_key
-        and r.business_id = business
-        and r.sent_by = actor
-        and r.body_hash = body
-    ) then
-      return private.order_round_answer(round_key);
+    select private.order_round_answer(r.id) into replay
+    from public.order_rounds r
+    where r.id = round_key
+      and r.business_id = business
+      and r.sent_by = actor
+      and r.body_hash = body;
+    if replay is not null then
+      return replay;
     end if;
     raise exception 'Those who take orders only' using errcode = '42501';
   end if;
