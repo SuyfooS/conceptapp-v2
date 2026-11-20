@@ -83,6 +83,8 @@ create table public.orders (
   -- The business day it opened on (private.order_business_day).
   day date not null,
   status text not null default 'open' check (status in ('open', 'closed', 'cancelled')),
+  -- Who did each, cleared by the job 30 days after they did it, as a round's
+  -- sender; the same for a ticket's and a line's.
   opened_by uuid references public.profiles (id) on delete set null,
   opened_at timestamptz not null,
   closed_by uuid references public.profiles (id) on delete set null,
@@ -145,7 +147,9 @@ create table public.order_rounds (
   id uuid primary key,
   business_id uuid not null references public.businesses (id) on delete cascade,
   order_id uuid not null,
-  -- The send's body as the server read it (private.order_round_hash).
+  -- The send's body as the server read it (private.order_round_hash), for a
+  -- retry; made from the round's id alone once the job erases its order's
+  -- notes and label, so nothing erased is read back from it.
   body_hash text not null check (body_hash ~ '^[0-9a-f]{64}$'),
   -- Cleared after 30 days by the job.
   sent_by uuid references public.profiles (id) on delete set null,
@@ -204,6 +208,9 @@ create table public.order_tickets (
   check (served_by is null or served_at is not null)
 );
 
+-- As every table that goes with its business: a business going (a demo's
+-- reset) finds its tickets and lines by it, never by reading them all.
+create index order_tickets_business_idx on public.order_tickets (business_id);
 create index order_tickets_order_idx on public.order_tickets (order_id, business_id);
 create index order_tickets_round_idx on public.order_tickets (round_id, business_id);
 create index order_tickets_department_idx on public.order_tickets (department_id, business_id);
@@ -256,6 +263,7 @@ create table public.order_lines (
   check (comped_by is null or comped_at is not null)
 );
 
+create index order_lines_business_idx on public.order_lines (business_id);
 create index order_lines_ticket_idx on public.order_lines (ticket_id, business_id, position);
 create index order_lines_item_idx on public.order_lines (item_id, business_id);
 create index order_lines_noted_idx on public.order_lines (ticket_id) where note is not null;
@@ -288,7 +296,7 @@ revoke all on private.order_day_counters, private.order_versions
 comment on table public.orders is
   'An order: at a place, or a takeaway with its number of the business day. Nobody reads it directly: written by public.send_order_round and the other order functions, read through public.order_floor, order_detail, order_till, order_mine and order_prep. Never deleted for a real business.';
 comment on table public.order_rounds is
-  'What one phone sent at once, keyed by the phone (the send is idempotent), with its body''s hash and its sender (cleared after 30 days). Read and written only through the order functions.';
+  'What one phone sent at once, keyed by the phone (the send is idempotent), with its body''s hash (made from its id alone once its order''s notes are erased) and its sender (cleared after 30 days). Read and written only through the order functions.';
 comment on table public.order_tickets is
   'A round''s lines for one department, held or not: held, new, ready, served. Read and written only through the order functions.';
 comment on table public.order_lines is
@@ -396,7 +404,9 @@ $$;
 -- Refuses a write on an order of `row_business` by `actor`: P0002 unless
 -- they are an active member of it (an order of another business, or none, is
 -- unknown), then 42501 hint 'off' while the module is off. Every write that
--- names a line, a ticket or an order calls it before any lock.
+-- names a line, a ticket or an order calls it before any lock, and is refused
+-- P0002 as well when a row it then locks is gone (a demo's order the job or
+-- a reset deleted after it was read), never going on with empty rows.
 create function private.order_writer(row_business uuid, actor uuid)
 returns void
 language plpgsql
@@ -661,6 +671,11 @@ begin
   -- All sends of a business one after another: two first sends to one place,
   -- a takeaway number and the demo's cap never race.
   perform 1 from public.businesses b where b.id = business for no key update;
+  -- Gone since it was read (a demo's reset deletes it and writes it again):
+  -- the phone sends again.
+  if not found then
+    raise exception 'Unknown business' using errcode = 'P0002';
+  end if;
 
   -- The same round again: its answer as it is, before the clock is asked, so
   -- a retry of a round that went through is never refused.
@@ -891,9 +906,21 @@ begin
   perform private.require_taker(row_business, actor, at_time);
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select t.* into the_ticket from public.order_tickets t where t.id = ticket_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select l.* into the_line from public.order_lines l where l.id = line for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select r.* into the_round from public.order_rounds r where r.id = the_ticket.round_id;
 
   if the_order.status <> 'open' then
@@ -976,26 +1003,37 @@ begin
   join public.order_tickets t on t.id = l.ticket_id and t.business_id = l.business_id
   where l.id = line;
   perform private.order_writer(row_business, actor);
+  -- Who, before any lock: someone who takes orders now or runs them. Whether
+  -- its ticket is ready yet is asked once it is locked, below.
+  perform private.require_taker_or_runs(row_business, actor, at_time);
   if cancelled is null then
     raise exception 'Cancelled or not' using errcode = '22023';
   end if;
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select t.* into the_ticket from public.order_tickets t where t.id = ticket_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select l.* into the_line from public.order_lines l where l.id = line for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
 
   if the_order.status <> 'open' then
     raise exception 'The order is no longer open' using errcode = '55000', hint = 'closed';
   end if;
-  -- Who, by where its ticket is now.
-  if the_ticket.status in ('ready', 'served') then
-    if not private.runs_orders(row_business, actor) then
-      raise exception 'A line already ready is cancelled by those who run orders'
-        using errcode = '42501', hint = 'ready';
-    end if;
-  else
-    perform private.require_taker_or_runs(row_business, actor, at_time);
+  -- A line whose ticket is ready or served now: those who run orders only.
+  if the_ticket.status in ('ready', 'served') and not private.runs_orders(row_business, actor) then
+    raise exception 'A line already ready is cancelled by those who run orders'
+      using errcode = '42501', hint = 'ready';
   end if;
 
   if cancelled then
@@ -1077,9 +1115,21 @@ begin
   end if;
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   perform 1 from public.order_tickets t where t.id = ticket_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select l.* into the_line from public.order_lines l where l.id = line for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
 
   if the_order.status <> 'open' then
     raise exception 'The order is no longer open' using errcode = '55000', hint = 'closed';
@@ -1156,7 +1206,13 @@ begin
   end if;
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   if the_order.status = 'cancelled' then
     return;
   end if;
@@ -1260,8 +1316,17 @@ begin
   end if;
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select t.* into the_ticket from public.order_tickets t where t.id = ticket for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
 
   if the_order.status <> 'open' then
     raise exception 'The order is no longer open' using errcode = '55000', hint = 'closed';
@@ -1329,8 +1394,17 @@ begin
   end if;
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select t.* into the_ticket from public.order_tickets t where t.id = ticket for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
 
   if the_order.status <> 'open' then
     raise exception 'The order is no longer open' using errcode = '55000', hint = 'closed';
@@ -1390,7 +1464,13 @@ begin
   perform private.require_taker_or_runs(row_business, actor, at_time);
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   if the_order.status <> 'open' then
     raise exception 'The order is no longer open' using errcode = '55000', hint = 'closed';
   end if;
@@ -1441,7 +1521,13 @@ begin
   perform private.require_taker_or_runs(row_business, actor, at_time);
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   if the_order.status <> 'open' then
     raise exception 'The order is no longer open' using errcode = '55000', hint = 'closed';
   end if;
@@ -1501,7 +1587,13 @@ begin
   perform private.require_taker_or_runs(row_business, actor, at_time);
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   if the_order.status = 'closed' then
     return;
   end if;
@@ -1560,7 +1652,13 @@ begin
   perform private.require_taker_or_runs(row_business, actor, at_time);
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   if the_order.status = 'open' then
     return;
   end if;
@@ -1617,7 +1715,13 @@ begin
   end if;
 
   perform 1 from public.businesses b where b.id = row_business for no key update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   select o.* into the_order from public.orders o where o.id = order_ref for update;
+  if not found then
+    raise exception 'Unknown order' using errcode = 'P0002';
+  end if;
   if the_order.status <> 'open' then
     raise exception 'The order is no longer open' using errcode = '55000', hint = 'closed';
   end if;
@@ -1836,14 +1940,16 @@ declare
   access text;
   is_today boolean;
 begin
+  -- No order, and another business's, answer word for word alike
+  -- (private.order_access's words), so no id is told from none.
   select o.* into the_order from public.orders o where o.id = order_ref;
   if not found then
-    raise exception 'Unknown order' using errcode = 'P0002';
+    raise exception 'Unknown orders' using errcode = 'P0002';
   end if;
   access := private.order_access(the_order.business_id);
   is_today := the_order.day = private.order_business_day(the_order.business_id, now());
   if the_order.status <> 'open' and not is_today and access not in ('runs', 'view_runs') then
-    raise exception 'Unknown order' using errcode = 'P0002';
+    raise exception 'Unknown orders' using errcode = 'P0002';
   end if;
 
   return jsonb_build_object(
@@ -1961,14 +2067,16 @@ declare
   access text;
   is_today boolean;
 begin
+  -- No order, and another business's, answer word for word alike
+  -- (private.order_access's words), so no id is told from none.
   select o.* into the_order from public.orders o where o.id = order_ref;
   if not found then
-    raise exception 'Unknown order' using errcode = 'P0002';
+    raise exception 'Unknown orders' using errcode = 'P0002';
   end if;
   access := private.order_access(the_order.business_id);
   is_today := the_order.day = private.order_business_day(the_order.business_id, now());
   if the_order.status <> 'open' and not is_today and access not in ('runs', 'view_runs') then
-    raise exception 'Unknown order' using errcode = 'P0002';
+    raise exception 'Unknown orders' using errcode = 'P0002';
   end if;
 
   return jsonb_build_object(

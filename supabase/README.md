@@ -131,9 +131,18 @@ upload and never sent among them). From `20261111000700_documents.sql` it also l
 file of an official document someone removed, once its 10 minutes of undo are over (the row
 stays, saying its file is gone), and the `documents` bucket's own unused places and
 orphans; documents are never listed for days or space. The app removes them through Storage and marks them;
-without the secrets it calls nothing and the files wait. `seed.sql` switches all six off locally
-and in CI, and only a demo definition that says `"scheduledLists": true` (the hosted ones)
-opens today's lists when it is reset; the tests call what the jobs run, at times they choose.
+without the secrets it calls nothing and the files wait.
+`20261120000400_order_taking_orders_demo.sql` adds a seventh, `order-taking`, hourly at 23
+minutes past: pure SQL (`private.order_taking_tick`), with no pg_net and no Vault secret. Two
+days after an order closes or is cancelled, or after its last round while nobody closes it, it
+erases its lines' notes and its takeaway's label, and makes its rounds' body hashes from their
+ids alone; 30 days after someone sent a round, opened, moved, reopened, closed or cancelled an
+order, called, made ready or served a ticket, or took back, cancelled or gave a line on the
+house, it forgets who; and it deletes a demo business's orders two days after they opened,
+leaving alone one a reset holds. It never deletes an order of a real business and writes no log
+row. `seed.sql` switches all seven off locally and in CI, and only a demo definition that says
+`"scheduledLists": true` (the hosted ones) opens today's lists when it is reset; the tests call
+what the jobs run, at times they choose.
 
 Once the migration has gone through the Migrate workflow and `CRON_SECRET` is in Vercel
 (`README.md`), add the two secrets in the dashboard, Project Settings, Vault (not the SQL

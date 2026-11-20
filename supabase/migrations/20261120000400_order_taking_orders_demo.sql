@@ -5,11 +5,13 @@
 --               (private.order_taking_tick): a line's note and a takeaway's
 --               label are erased two days after the order closes or is
 --               cancelled, and two days after the last round of an order
---               nobody closed (default 2 to ask Orel); who sent a round is
---               forgotten after 30 days; a demo business's orders go two
---               days after they opened, with their rounds, tickets and
---               lines. Nothing of a real business is ever deleted (decision
---               7). It writes no log row. Kept off locally and in CI
+--               nobody closed (default 2 to ask Orel), its rounds' body
+--               hashes then made from their ids alone; who sent a round,
+--               and who did anything else to an order, its tickets or its
+--               lines, is forgotten 30 days after; a demo business's orders
+--               go two days after they opened, with their rounds, tickets
+--               and lines. Nothing of a real business is ever deleted
+--               (decision 7). It writes no log row. Kept off locally and in CI
 --               (supabase/seed.sql), where the tests call it themselves.
 --   the demo    the demo restaurant has three orders waiting, written once
 --               now and again with every reset (private.seed_demo_orders):
@@ -44,9 +46,12 @@ declare
   erased uuid[];
   changed uuid[];
   demo uuid;
+  kept_since timestamptz := at_time - interval '30 days';
 begin
   -- Notes and labels, of real businesses: a demo's orders go whole below.
-  -- The orders first, then their lines, as every write locks them.
+  -- The orders first, then their lines, as every write locks them. A
+  -- takeaway comes here once even with no label left: its first round may
+  -- have named one that was cleared since.
   with due as (
     update public.orders o
     set takeaway_label = null,
@@ -66,6 +71,7 @@ begin
       )
       and (
         o.takeaway_label is not null
+        or (o.takeaway_no is not null and o.notes_erased_at is null)
         or exists (
           select 1
           from public.order_tickets t
@@ -91,12 +97,92 @@ begin
   get diagnostics step = row_count;
   touched := touched + step;
 
+  -- Their rounds' body hashes were made with those notes and that label in
+  -- them: from now on each is made from its round's id alone, so no erased
+  -- note or name can be confirmed by hashing a guess. A phone's retry comes
+  -- within minutes, never two days on.
+  update public.order_rounds r
+  set body_hash = encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex')
+  where r.order_id = any (erased)
+    and r.body_hash <> encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex');
+  get diagnostics step = row_count;
+  touched := touched + step;
+
   -- Who sent a round, after 30 days.
   with forgotten as (
     update public.order_rounds r
     set sent_by = null
-    where r.sent_by is not null and r.sent_at < at_time - interval '30 days'
+    where r.sent_by is not null and r.sent_at < kept_since
     returning r.business_id
+  )
+  select changed || coalesce(array_agg(distinct forgotten.business_id), '{}'::uuid[]),
+    touched + count(*)::integer
+  into changed, touched
+  from forgotten;
+
+  -- And whoever did anything else to an order, 30 days after they did it:
+  -- opened, moved, opened again, closed or cancelled it, called, made ready
+  -- or served a ticket, took back, cancelled or gave a line on the house. So
+  -- nothing kept builds a person's sales over time. Of real businesses, as
+  -- the notes; the orders, then their tickets, then their lines.
+  with forgotten as (
+    update public.orders o
+    set opened_by = case when o.opened_at < kept_since then null else o.opened_by end,
+      closed_by = case when o.closed_at < kept_since then null else o.closed_by end,
+      reopened_by = case when o.reopened_at < kept_since then null else o.reopened_by end,
+      moved_by = case when o.moved_at < kept_since then null else o.moved_by end,
+      cancelled_by = case when o.cancelled_at < kept_since then null else o.cancelled_by end
+    where not exists (
+        select 1 from private.demo_businesses d where d.business_id = o.business_id
+      )
+      and (
+        (o.opened_by is not null and o.opened_at < kept_since)
+        or (o.closed_by is not null and o.closed_at < kept_since)
+        or (o.reopened_by is not null and o.reopened_at < kept_since)
+        or (o.moved_by is not null and o.moved_at < kept_since)
+        or (o.cancelled_by is not null and o.cancelled_at < kept_since)
+      )
+    returning o.business_id
+  )
+  select changed || coalesce(array_agg(distinct forgotten.business_id), '{}'::uuid[]),
+    touched + count(*)::integer
+  into changed, touched
+  from forgotten;
+
+  with forgotten as (
+    update public.order_tickets t
+    set fired_by = case when t.fired_at < kept_since then null else t.fired_by end,
+      ready_by = case when t.ready_at < kept_since then null else t.ready_by end,
+      served_by = case when t.served_at < kept_since then null else t.served_by end
+    where not exists (
+        select 1 from private.demo_businesses d where d.business_id = t.business_id
+      )
+      and (
+        (t.fired_by is not null and t.fired_at < kept_since)
+        or (t.ready_by is not null and t.ready_at < kept_since)
+        or (t.served_by is not null and t.served_at < kept_since)
+      )
+    returning t.business_id
+  )
+  select changed || coalesce(array_agg(distinct forgotten.business_id), '{}'::uuid[]),
+    touched + count(*)::integer
+  into changed, touched
+  from forgotten;
+
+  with forgotten as (
+    update public.order_lines l
+    set taken_back_by = case when l.taken_back_at < kept_since then null else l.taken_back_by end,
+      cancelled_by = case when l.cancelled_at < kept_since then null else l.cancelled_by end,
+      comped_by = case when l.comped_at < kept_since then null else l.comped_by end
+    where not exists (
+        select 1 from private.demo_businesses d where d.business_id = l.business_id
+      )
+      and (
+        (l.taken_back_by is not null and l.taken_back_at < kept_since)
+        or (l.cancelled_by is not null and l.cancelled_at < kept_since)
+        or (l.comped_by is not null and l.comped_at < kept_since)
+      )
+    returning l.business_id
   )
   select changed || coalesce(array_agg(distinct forgotten.business_id), '{}'::uuid[]),
     touched + count(*)::integer

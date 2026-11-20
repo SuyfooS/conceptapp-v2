@@ -6,28 +6,30 @@
 -- Decision 4: with the time clock on, only during a shift (until 30 minutes
 -- after clocking out, never on one left open more than 16 hours, never a
 -- cancelled one or one in another business), owners always, and running
--- orders isn't the clock's. The reads: the floor, an order, its till, one's
--- own rounds and the kitchen's tickets, each for those it is for, with no
--- price in the kitchen's and no total anywhere, person ids only on today's
--- orders, and nothing read from the tables directly. The settings' owner
--- fields and their shapes, and the demo's cap. Times are relative to the
--- transaction's now(), the business day turning twelve hours away from it.
--- Fixed ids (e4…) and numbers (050-064-xxxx).
+-- orders isn't the clock's, nor a retry's of a round that went through. The
+-- reads: the floor, an order, its till, one's own rounds, the kitchen's
+-- tickets and the most ordered, each for those it is for, with no price in
+-- the kitchen's and no total anywhere, person ids only on today's orders,
+-- another business's order refused as no order at all, and nothing read
+-- from the tables directly. The settings' owner fields and their shapes, and
+-- the demo's cap. Times are relative to the transaction's now(), the
+-- business day turning twelve hours away from it. Fixed ids (e4…) and
+-- numbers (050-064-xxxx).
 begin;
-select plan(52);
+select plan(57);
 
 -- A: 1 owner, in no department; 2 a manager on the floor and at the bar; 3
 -- a worker in the kitchen; 4 a worker at the bar; 5 a worker on the floor;
 -- 6 put on the floor, then made the accountant; 7 a manager in no
--- department, on a shift; 8 and 9 on the ConceptApp team, viewing A as a
--- worker and as an accountant; 10 a worker on the floor who left; 12 a
--- manager in no department, off the clock; 21 to 26 workers on the floor,
--- each with a shift of their own (none, open 17 hours, out 29 and 31
--- minutes ago, cancelled, in another business). B: 11, its owner.
+-- department, on a shift; 8, 9 and 13 on the ConceptApp team, viewing A as
+-- a worker, as an accountant and as a manager; 10 a worker on the floor who
+-- left; 12 a manager in no department, off the clock; 21 to 26 workers on
+-- the floor, each with a shift of their own (none, open 17 hours, out 29
+-- and 31 minutes ago, cancelled, in another business). B: 11, its owner.
 insert into auth.users (id, aud, role, phone)
 select ('e4000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
   'authenticated', 'authenticated', '97250064' || lpad(n::text, 4, '0')
-from unnest('{1,2,3,4,5,6,7,8,9,10,11,12,21,22,23,24,25,26}'::int[]) as n;
+from unnest('{1,2,3,4,5,6,7,8,9,10,11,12,13,21,22,23,24,25,26}'::int[]) as n;
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
   select ('e4000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
@@ -91,6 +93,22 @@ begin
 exception when others then
   get stacked diagnostics got_code = returned_sqlstate, got_hint = pg_exception_hint;
   return concat_ws(' ', got_code, nullif(got_hint, ''));
+end;
+$$;
+-- The same word for word: its code, message, detail and hint.
+create function pg_temp.said(call text) returns text language plpgsql as $$
+declare
+  got_code text;
+  got_message text;
+  got_detail text;
+  got_hint text;
+begin
+  execute call;
+  return 'none';
+exception when others then
+  get stacked diagnostics got_code = returned_sqlstate, got_message = message_text,
+    got_detail = pg_exception_detail, got_hint = pg_exception_hint;
+  return concat_ws(' | ', got_code, got_message, got_detail, got_hint);
 end;
 $$;
 -- Whether a call goes through, undone after: 'lives', or what it is refused
@@ -185,9 +203,12 @@ update public.memberships set active = false
 where business_id = pg_temp.a() and user_id = pg_temp.p(10);
 
 insert into public.platform_staff (user_id, role)
-values (pg_temp.p(8), 'onboarder'), (pg_temp.p(9), 'onboarder');
+values (pg_temp.p(8), 'onboarder'), (pg_temp.p(9), 'onboarder'), (pg_temp.p(13), 'onboarder');
 insert into public.view_sessions (staff_id, business_id, role)
-values (pg_temp.p(8), pg_temp.a(), 'worker'), (pg_temp.p(9), pg_temp.a(), 'accountant');
+values
+  (pg_temp.p(8), pg_temp.a(), 'worker'),
+  (pg_temp.p(9), pg_temp.a(), 'accountant'),
+  (pg_temp.p(13), pg_temp.a(), 'manager');
 
 insert into public.menu_categories (id, business_id, name, department_id, position)
 values
@@ -513,6 +534,28 @@ select is(
   'P0002',
   'a waiter doesn''t read a closed order of another day'
 );
+select pg_temp.sign_in(pg_temp.p(8));
+select is(
+  pg_temp.refusal($c$select public.order_detail(pg_temp.h())$c$),
+  'P0002',
+  'nor does a view as a worker'
+);
+select pg_temp.sign_in(pg_temp.p(13));
+select ok(
+  (select (d.answer ->> 'id')::uuid = pg_temp.h()
+     and d.answer -> 'openedBy' = 'null'::jsonb
+     and d.answer -> 'rounds' -> 0 -> 'sentBy' = 'null'::jsonb
+   from (select public.order_detail(pg_temp.h()) as answer) d),
+  'a view as a manager, whose role runs orders, does, with nobody named on it'
+);
+select pg_temp.sign_in(pg_temp.p(11));
+select is(
+  pg_temp.said($c$select public.order_detail(pg_temp.h())$c$)
+    || ' / ' || pg_temp.said($c$select public.order_till(pg_temp.h())$c$),
+  pg_temp.said($c$select public.order_detail('e4000000-0000-4000-f000-000000000099')$c$)
+    || ' / ' || pg_temp.said($c$select public.order_till('e4000000-0000-4000-f000-000000000099')$c$),
+  'another business''s owner is refused A''s order word for word as an order that doesn''t exist'
+);
 select pg_temp.sign_in(pg_temp.p(2));
 select ok(
   (select (d.answer ->> 'id')::uuid = pg_temp.h()
@@ -562,6 +605,72 @@ select ok(
      and not jsonb_path_exists(t.answer, '$.**.total')
    from (select public.order_till(pg_temp.id('order1')) as answer) t),
   'and by round, taken back and cancelled lines left out, with no total'
+);
+reset role;
+
+------------------------------------------------------------------------------
+-- The most ordered
+
+-- B's menu of thirteen herbs, one each of 10.00, written straight into the
+-- tables: Oregano sold out, Pepper removed, Rosemary in a removed category.
+-- One order at its table, with a round of yesterday's and one of 15 days
+-- ago (Dill's twenty). Cumin's nine more were cancelled.
+insert into public.departments (id, business_id, key, name)
+values (pg_temp.d(11), pg_temp.b(), 'kitchen', 'Kitchen');
+insert into public.menu_categories (id, business_id, name, department_id, position, archived_at)
+values
+  (pg_temp.c(11), pg_temp.b(), 'Herbs', pg_temp.d(11), 0, null),
+  (pg_temp.c(12), pg_temp.b(), 'Old', pg_temp.d(11), 1, now() - interval '1 day');
+insert into public.menu_items (id, business_id, category_id, name, price_agorot, available, archived_at)
+select pg_temp.i(10 + h.n::integer), pg_temp.b(),
+  case when h.name = 'Rosemary' then pg_temp.c(12) else pg_temp.c(11) end,
+  h.name, 1000, h.name <> 'Oregano',
+  case when h.name = 'Pepper' then now() - interval '1 day' end
+from unnest(array[
+  'Anise', 'Basil', 'Cumin', 'Dill', 'Fennel', 'Ginger', 'Mint', 'Nutmeg', 'Oregano', 'Pepper',
+  'Rosemary', 'Sage', 'Thyme'
+]) with ordinality as h (name, n);
+insert into public.order_places (id, business_id, name) values (pg_temp.pl(21), pg_temp.b(), '1');
+insert into public.orders (id, business_id, place_id, day, opened_by, opened_at)
+values (
+  'e4000000-0000-4000-f000-000000000002', pg_temp.b(), pg_temp.pl(21), current_date - 15,
+  pg_temp.p(11), now() - interval '15 days'
+);
+insert into public.order_rounds (id, business_id, order_id, body_hash, sent_by, sent_at)
+values
+  (pg_temp.k(81), pg_temp.b(), 'e4000000-0000-4000-f000-000000000002', repeat('0', 64),
+   pg_temp.p(11), now() - interval '15 days'),
+  (pg_temp.k(82), pg_temp.b(), 'e4000000-0000-4000-f000-000000000002', repeat('0', 64),
+   pg_temp.p(11), now() - interval '1 day');
+insert into public.order_tickets (business_id, order_id, round_id, department_id, status)
+values
+  (pg_temp.b(), 'e4000000-0000-4000-f000-000000000002', pg_temp.k(81), pg_temp.d(11), 'new'),
+  (pg_temp.b(), 'e4000000-0000-4000-f000-000000000002', pg_temp.k(82), pg_temp.d(11), 'new');
+insert into public.order_lines (
+  business_id, ticket_id, item_id, name, unit_agorot, quantity, cancelled_at, cancelled_by,
+  cancel_reason
+)
+select pg_temp.b(), pg_temp.ticket(case when h.name = 'Dill' then 81 else 82 end, 0), i.id, i.name,
+  1000, h.how_many,
+  case when h.cancelled then now() - interval '1 day' end,
+  case when h.cancelled then pg_temp.p(11) end,
+  case when h.cancelled then 'guest' end
+from (
+  values
+    ('Anise', 2, false), ('Basil', 2, false), ('Cumin', 2, false), ('Cumin', 9, true),
+    ('Dill', 20, false), ('Fennel', 4, false), ('Ginger', 5, false), ('Mint', 6, false),
+    ('Nutmeg', 7, false), ('Oregano', 10, false), ('Pepper', 10, false),
+    ('Rosemary', 10, false), ('Sage', 8, false), ('Thyme', 9, false)
+) as h (name, how_many, cancelled)
+join public.menu_items i on i.business_id = pg_temp.b() and i.name = h.name;
+select pg_temp.sign_in(pg_temp.p(11));
+select is(
+  public.order_favourites(pg_temp.b()) -> 'items',
+  jsonb_build_array(
+    pg_temp.i(23), pg_temp.i(22), pg_temp.i(18), pg_temp.i(17), pg_temp.i(16), pg_temp.i(15),
+    pg_temp.i(11), pg_temp.i(12)
+  ),
+  'the most ordered: eight live, available items by their live lines of the last 14 days, Anise and Basil before Cumin by name'
 );
 reset role;
 
@@ -655,14 +764,37 @@ select is(
 );
 
 ------------------------------------------------------------------------------
+-- A round sent again after its sender clocked out
+
+-- 23, out 29 minutes ago, sends to table 6 now. Two minutes on, off the
+-- clock, a new round is refused, and the phone's retry of this one gets its
+-- answer: the stored round is looked up before the clock is asked.
+select public.send_order_round(pg_temp.p(23), pg_temp.a(), pg_temp.k(6), pg_temp.place(6),
+  jsonb_build_array(pg_temp.li(1, 1)), now());
+select is(
+  pg_temp.refusal(format(
+    'select public.send_order_round(%L, %L, %L, %L, %L, %L)',
+    pg_temp.p(23), pg_temp.a(), pg_temp.k(7), pg_temp.place(7),
+    jsonb_build_array(pg_temp.li(1, 1)), now() + interval '2 minutes'
+  ))
+  || '|' || (
+    public.send_order_round(pg_temp.p(23), pg_temp.a(), pg_temp.k(6), pg_temp.place(6),
+      jsonb_build_array(pg_temp.li(1, 1)), now() + interval '2 minutes')
+    = private.order_round_answer(pg_temp.k(6))
+  )::text,
+  '42501 clock|true',
+  'a round sent again after its sender clocked out gives its answer, while a new one is refused'
+);
+
+------------------------------------------------------------------------------
 -- The demo's cap
 
 insert into private.demo_businesses (business_id, definition) values (pg_temp.a(), '{}');
--- With the five rounds sent here, a hundred in the last hour.
+-- With the six rounds sent here, a hundred in the last hour.
 insert into public.order_rounds (id, business_id, order_id, body_hash, sent_by, sent_at)
 select gen_random_uuid(), pg_temp.a(), pg_temp.order_of(1), repeat('0', 64), pg_temp.p(5),
   now() - interval '30 minutes'
-from generate_series(1, 95);
+from generate_series(1, 94);
 select is(pg_temp.tried(pg_temp.send(5)), '54000', 'a demo business takes a hundred rounds an hour');
 
 select * from finish();

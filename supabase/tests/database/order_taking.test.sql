@@ -15,7 +15,7 @@
 -- today's date. Fixed ids (e3…) and numbers (050-063-xxxx), so nothing here
 -- meets the seed or another test.
 begin;
-select plan(84);
+select plan(88);
 
 -- A: 1 owner; 2 a manager in the floor and the bar; 3 a worker in the
 -- kitchen; 4 a worker in the bar; 5 a worker on the floor; 6 put on the
@@ -282,6 +282,24 @@ select is(
   25,
   'each that reads a table runs as its owner with an empty search path'
 );
+select is(
+  (select coalesce(string_agg(c.conrelid::regclass::text || ' ' || c.conname, ', ' order by c.conname), '')
+   from pg_constraint c
+   where c.contype = 'f'
+     and c.conrelid in (
+       'public.orders'::regclass, 'public.order_rounds'::regclass,
+       'public.order_tickets'::regclass, 'public.order_lines'::regclass,
+       'private.order_day_counters'::regclass, 'private.order_versions'::regclass
+     )
+     and not exists (
+       select 1 from pg_index i
+       where i.indrelid = c.conrelid
+         and i.indpred is null
+         and (string_to_array(i.indkey::text, ' ')::smallint[])[1:cardinality(c.conkey)] @> c.conkey
+     )),
+  '',
+  'every foreign key of the orders leads an index, so a business going (a demo''s reset) never reads them whole'
+);
 
 ------------------------------------------------------------------------------
 -- The send
@@ -453,6 +471,13 @@ select is(
     pg_temp.place(13), jsonb_build_array(pg_temp.li(1, 1)), pg_temp.at(0))$c$),
   '22023 place',
   'a removed place is refused'
+);
+select is(
+  pg_temp.refusal($c$select public.send_order_round(pg_temp.p(5), pg_temp.a(), pg_temp.k(117),
+    jsonb_build_object('place', pg_temp.pl(21)), jsonb_build_array(pg_temp.li(1, 1)),
+    pg_temp.at(0))$c$),
+  'P0002',
+  'and another business''s place is unknown'
 );
 update public.business_modules set enabled = false
 where business_id = pg_temp.b() and module_key = 'order_taking';
@@ -824,9 +849,11 @@ select is(
 );
 select is(
   pg_temp.refusal($c$select public.cancel_order_line(pg_temp.p(6), pg_temp.line(17, 0), 'guest',
-    true, pg_temp.at(420))$c$),
-  '42501',
-  'an accountant cancels nothing'
+    true, pg_temp.at(420))$c$)
+  || '|' || pg_temp.refusal($c$select public.cancel_order_line(pg_temp.p(6), pg_temp.line(17, 1),
+    'guest', true, pg_temp.at(420))$c$),
+  '42501|42501',
+  'an accountant cancels nothing, refused before anything is locked, so never told a line is ready'
 );
 select is(
   pg_temp.refusal($c$select public.cancel_order_line(pg_temp.p(5), pg_temp.line(13, 0), 'guest',
@@ -984,6 +1011,12 @@ select is(
 );
 select public.set_order_ticket_ready(pg_temp.p(4), pg_temp.ticket(19, 1), true, pg_temp.at(60));
 select public.serve_order_ticket(pg_temp.p(5), pg_temp.ticket(19, 1), true, pg_temp.at(120));
+select is(
+  pg_temp.refusal($c$select public.set_order_ticket_ready(pg_temp.p(4), pg_temp.ticket(19, 1),
+    false, pg_temp.at(150))$c$),
+  '55000 served',
+  'its department doesn''t put a served ticket back to new, though it was ready a minute and a half before'
+);
 select public.serve_order_ticket(pg_temp.p(5), pg_temp.ticket(19, 1), false, pg_temp.at(180));
 select is(
   (select t.status || ':' || (t.ready_at = pg_temp.at(60))
@@ -1052,6 +1085,12 @@ select is(
     pg_temp.at(600))$c$),
   '55000 takeaway',
   'and a takeaway stays one'
+);
+select is(
+  pg_temp.refusal($c$select public.move_order(pg_temp.p(5), pg_temp.order_of(5), pg_temp.pl(21),
+    pg_temp.at(600))$c$),
+  'P0002',
+  'nor does an order move to another business''s place, which is unknown'
 );
 
 ------------------------------------------------------------------------------

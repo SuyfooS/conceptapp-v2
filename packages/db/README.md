@@ -2298,7 +2298,8 @@ asks the clock, refuses every item it can't take at once with their ids
 and refuses a later one (23505 hint `taken`, the order's id as the detail),
 and writes no log row. The writes, the server's for `actor`, each after
 `private.order_writer` (P0002 for anyone not in the business, 42501 hint
-`off`) and in the lock order business, order, ticket, line:
+`off`) and in the lock order business, order, ticket, line (P0002 too when a
+row is gone by the time it is locked):
 `take_back_order_line`, `cancel_order_line` (and its undo),
 `comp_order_line` (and its undo), `cancel_order` (for good),
 `set_order_ticket_ready`, `serve_order_ticket`, `fire_order_tickets`,
@@ -2310,12 +2311,15 @@ never a sum (`private.order_line_facts`), read with `order_taking.edit`. The
 reads, with the person's own session (`private.order_access`): `order_floor`,
 `order_detail`, `order_till` (by item and by round, no total), `order_mine`,
 `order_prep` (no price at all; it marks what the reader's department saw)
-and `order_favourites`, person ids only on today's business day.
+and `order_favourites`, person ids only on today's business day, and an
+order of another business refused word for word as one that doesn't exist.
 `20261120000400_order_taking_orders_demo.sql`: the hourly job `order-taking`
 (`private.order_taking_tick`, pure SQL, off in `seed.sql`) erases notes and
-labels two days after an order closes (or after its last round, open),
-forgets senders after 30 days and deletes a demo business's orders after two
-days; `private.seed_demo_orders`, last in `public.reset_demo_business`, writes
+labels two days after an order closes (or after its last round, open), and
+makes its rounds' body hashes from their ids alone then; forgets, 30 days
+after, who sent a round and who did anything else to an order, its tickets
+and its lines; and deletes a demo business's orders after two days.
+`private.seed_demo_orders`, last in `public.reset_demo_business`, writes
 the demo restaurant's three sample orders. `@db/orders` wraps each, every
 input and answer parsed with `@domain/orders`. Covered by
 `order_taking.test.sql`, `order_taking_access.test.sql`,
