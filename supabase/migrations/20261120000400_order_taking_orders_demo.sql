@@ -6,7 +6,9 @@
 --               label are erased two days after the order closes or is
 --               cancelled, and two days after the last round of an order
 --               nobody closed (default 2 to ask Orel), its rounds' body
---               hashes then made from their ids alone; who sent a round,
+--               hashes then made from their ids alone, and the order marked
+--               so no later hour reads it again (until a round or a label
+--               is added to it while open); who sent a round,
 --               and who did anything else to an order, its tickets or its
 --               lines, is forgotten 30 days after; a demo business's orders
 --               go two days after they opened, with their rounds, tickets
@@ -49,34 +51,33 @@ declare
   kept_since timestamptz := at_time - interval '30 days';
 begin
   -- Notes and labels, of real businesses: a demo's orders go whole below.
-  -- The orders first, then their lines, as every write locks them. A
-  -- takeaway comes here once even with no label left: its first round may
-  -- have named one that was cleared since.
+  -- Each order is marked once its two days pass (notes_erased_at), whatever
+  -- it had (a takeaway whose label was cleared still has the round that
+  -- named it), so an hour reads only the orders not marked yet
+  -- (orders_unerased_idx; the open ones as their own branch,
+  -- orders_open_idx), never every order ever kept. A round or a label added
+  -- to an open order takes its mark away (public.send_order_round,
+  -- public.set_order_label), so they go in turn. The orders first, then
+  -- their lines, as every write locks them.
   with due as (
     update public.orders o
-    set takeaway_label = null,
-      notes_erased_at = coalesce(o.notes_erased_at, at_time)
+    set takeaway_label = null, notes_erased_at = at_time
     where not exists (
         select 1 from private.demo_businesses d where d.business_id = o.business_id
       )
       and (
-        (o.status <> 'open' and coalesce(o.closed_at, o.cancelled_at) < at_time - interval '2 days')
+        (
+          o.notes_erased_at is null
+          and o.status <> 'open'
+          and coalesce(o.closed_at, o.cancelled_at) < at_time - interval '2 days'
+        )
         or (
           o.status = 'open'
+          and o.notes_erased_at is null
           and (
             select max(r.sent_at) from public.order_rounds r
             where r.order_id = o.id and r.business_id = o.business_id
           ) < at_time - interval '2 days'
-        )
-      )
-      and (
-        o.takeaway_label is not null
-        or (o.takeaway_no is not null and o.notes_erased_at is null)
-        or exists (
-          select 1
-          from public.order_tickets t
-          join public.order_lines l on l.ticket_id = t.id and l.business_id = t.business_id
-          where t.order_id = o.id and t.business_id = o.business_id and l.note is not null
         )
       )
     returning o.id, o.business_id
@@ -87,12 +88,31 @@ begin
   from due;
   touched := touched + cardinality(erased);
 
+  -- A round sent to one of those open orders while this waited on its lock
+  -- shows only now, and none comes after: this holds them until it commits.
+  -- Its order loses the mark again, to be marked two days after that round,
+  -- and the two steps below leave the round's lines and its hash alone, so
+  -- its notes reach the kitchen and its retry still goes through. What was
+  -- due when this looked goes all the same.
+  update public.orders o
+  set notes_erased_at = null
+  where o.id = any (erased)
+    and o.status = 'open'
+    and exists (
+      select 1 from public.order_rounds r
+      where r.order_id = o.id
+        and r.business_id = o.business_id
+        and r.sent_at >= at_time - interval '2 days'
+    );
+
   update public.order_lines l
   set note = null, note_erased_at = at_time
   from public.order_tickets t
+  join public.order_rounds r on r.id = t.round_id and r.business_id = t.business_id
   where t.id = l.ticket_id
     and t.business_id = l.business_id
     and t.order_id = any (erased)
+    and r.sent_at < at_time - interval '2 days'
     and l.note is not null;
   get diagnostics step = row_count;
   touched := touched + step;
@@ -104,6 +124,7 @@ begin
   update public.order_rounds r
   set body_hash = encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex')
   where r.order_id = any (erased)
+    and r.sent_at < at_time - interval '2 days'
     and r.body_hash <> encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex');
   get diagnostics step = row_count;
   touched := touched + step;

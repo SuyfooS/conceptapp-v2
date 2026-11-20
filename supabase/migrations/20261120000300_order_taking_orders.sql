@@ -19,12 +19,12 @@
 --               order total, in a read or a log row. A line's unit price is
 --               shown, and its quantity.
 --   the send    public.send_order_round, by someone who takes orders now
---               (private.require_taker, 20261120000200_order_taking_takers
---               .sql), keyed by the phone: the same key and body again gives
---               the same answer and writes nothing, so a phone may retry; the
---               key with another body, sender or business is refused
---               (23505). Two first sends to one place within a minute join
---               one order; a later one is told the place is taken.
+--               (private.order_taker_refusal, the file before), keyed by
+--               the phone: the same key and body again gives the same
+--               answer and writes nothing, so a phone may retry; the key
+--               with another body, sender or business is refused (23505).
+--               Two first sends to one place within a minute join one
+--               order; a later one is told the place is taken.
 --   fixing      decision 5: the sender takes a line back within
 --               takeBackMinutes while nobody prepared it (unless they are on
 --               the staff of the department it went to: they cancel it with a
@@ -97,7 +97,9 @@ create table public.orders (
   cancelled_by uuid references public.profiles (id) on delete set null,
   cancelled_at timestamptz,
   cancel_reason text check (cancel_reason in ('guest', 'mistake', 'other')),
-  -- When the job first erased its label and its lines' notes.
+  -- When the hourly job marked it, its two days passed: its label and its
+  -- lines' notes erased, whether it had any. Taken away when a round or a
+  -- label is added to it while it is open, so those go in turn.
   notes_erased_at timestamptz,
   unique (id, business_id),
   -- A place is archived, never deleted: checked at commit, as the menu's
@@ -131,7 +133,10 @@ create index orders_closed_by_idx on public.orders (closed_by);
 create index orders_reopened_by_idx on public.orders (reopened_by);
 create index orders_moved_by_idx on public.orders (moved_by);
 create index orders_cancelled_by_idx on public.orders (cancelled_by);
-create index orders_labelled_idx on public.orders (business_id) where takeaway_label is not null;
+-- The orders the hourly job has not marked yet: open ones, and those closed
+-- or cancelled in the last two days, so its hour never reads every order
+-- ever kept.
+create index orders_unerased_idx on public.orders (business_id) where notes_erased_at is null;
 
 -- The last takeaway number of each business day.
 create table private.order_day_counters (
@@ -494,8 +499,11 @@ $$;
 -- body (hint 'body'), sender or business (hint 'key') is refused (23505).
 -- Two first sends to one place within 60 seconds join one order; a later
 -- one is refused 23505 hint 'taken', the open order's id as the detail.
--- Returns {round, order, sentAt, first, place, takeaway, tickets: [{id,
--- department, held}]}. No log row.
+-- Someone who takes no orders is refused 42501 before any lock; off a shift
+-- (hint 'clock' or 'stale_shift'), only after the same round is looked up.
+-- A round added to an open order the hourly job marked takes the mark away,
+-- so its notes go two days after it. Returns {round, order, sentAt, first,
+-- place, takeaway, tickets: [{id, department, held}]}. No log row.
 create function public.send_order_round(
   actor uuid,
   business uuid,
@@ -539,6 +547,7 @@ declare
   ticket_ref uuid;
   line_place integer := 0;
   ticket_place integer := 0;
+  refusal text;
 begin
   if not exists (
     select 1 from public.memberships m
@@ -549,6 +558,13 @@ begin
   if not private.order_taking_on(business) then
     raise exception 'Taking orders is off for this business'
       using errcode = '42501', hint = 'off';
+  end if;
+  -- Who takes no orders, and doesn't run them (private.order_taker_refusal
+  -- counts whoever runs orders as taking them), is refused before any lock.
+  -- The clock's part waits for the same round to be looked up, below.
+  refusal := private.order_taker_refusal(business, actor, at_time);
+  if refusal = 'not_taker' then
+    raise exception 'Those who take orders only' using errcode = '42501';
   end if;
 
   -- The target, in its canonical form.
@@ -690,7 +706,10 @@ begin
     return private.order_round_answer(stored.id);
   end if;
 
-  perform private.require_taker(business, actor, at_time);
+  -- Off a shift, as private.require_taker says it.
+  if refusal is not null then
+    raise exception 'Orders are taken during a shift' using errcode = '42501', hint = refusal;
+  end if;
 
   if exists (select 1 from private.demo_businesses d where d.business_id = business)
     and (
@@ -825,6 +844,14 @@ begin
     )
     values (business, takeaway_number, takeaway_label_given, order_day, actor, at_time)
     returning id into order_ref;
+  end if;
+
+  -- An open order the hourly job marked, its last round two days old: this
+  -- round takes the mark away, so the job erases its notes in turn.
+  if the_order.notes_erased_at is not null then
+    update public.orders o
+    set notes_erased_at = null
+    where o.id = order_ref;
   end if;
 
   insert into public.order_rounds (id, business_id, order_id, body_hash, sent_by, sent_at)
@@ -1690,7 +1717,8 @@ $$;
 -- Names an open takeaway ("חולצה אדומה"), or clears its name (`label` null
 -- or blank), by whoever takes orders now or runs orders: one line of up to
 -- 20 characters (22023). 55000 hint 'takeaway' for an order at a place,
--- 'closed' for one no longer open.
+-- 'closed' for one no longer open. Naming one the hourly job marked takes
+-- the mark away.
 create function public.set_order_label(
   actor uuid,
   order_ref uuid,
@@ -1732,8 +1760,11 @@ begin
     return;
   end if;
 
+  -- Naming it takes away a mark the hourly job left, so the job erases this
+  -- label in turn.
   update public.orders o
-  set takeaway_label = new_label
+  set takeaway_label = new_label,
+    notes_erased_at = case when new_label is null then o.notes_erased_at end
   where o.id = the_order.id;
   perform private.bump_order_version(row_business);
 end;

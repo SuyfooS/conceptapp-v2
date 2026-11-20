@@ -15,7 +15,7 @@
 -- today's date. Fixed ids (e3…) and numbers (050-063-xxxx), so nothing here
 -- meets the seed or another test.
 begin;
-select plan(88);
+select plan(89);
 
 -- A: 1 owner; 2 a manager in the floor and the bar; 3 a worker in the
 -- kitchen; 4 a worker in the bar; 5 a worker on the floor; 6 put on the
@@ -545,6 +545,14 @@ select is(
     jsonb_build_array(pg_temp.li(11, 1)), pg_temp.at(30))$c$),
   '23505 key|23505 key',
   'and the key is no one else''s, in this business or another'
+);
+select is(
+  pg_temp.refusal($c$select public.send_order_round(pg_temp.p(3), pg_temp.a(), pg_temp.k(1),
+    pg_temp.place(1),
+    jsonb_build_array(pg_temp.li(1, 2) || '{"note": "בלי שום", "allergy": true}', pg_temp.li(3, 1)),
+    pg_temp.at(30))$c$),
+  '42501',
+  'one who takes no orders is refused before the key is looked up, as before the business is locked'
 );
 
 ------------------------------------------------------------------------------

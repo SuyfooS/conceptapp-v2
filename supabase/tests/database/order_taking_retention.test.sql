@@ -3,15 +3,17 @@
 -- job erases a line's note and a takeaway's label two days after the order
 -- closed or was cancelled, and two days after the last round of an order
 -- nobody closed, and then makes its rounds' body hashes from their ids
--- alone; forgets who sent a round, and who did anything else to an order,
--- its tickets and its lines, 30 days after; deletes a demo business's orders
--- two days after they opened; and never deletes an order of a real
--- business. Its job is on the hour's 23rd minute, off here
--- (supabase/seed.sql). Orders are written straight into the tables, at times
--- relative to the transaction's now(). Fixed ids (e5…) and numbers
+-- alone, marking the order so no later hour reads it, until a round or a
+-- label is added to it while open; forgets who sent a round, and who did
+-- anything else to an order, its tickets and its lines, 30 days after;
+-- deletes a demo business's orders two days after they opened; and never
+-- deletes an order of a real business. Its job is on the hour's 23rd
+-- minute, off here (supabase/seed.sql). Orders are written straight into
+-- the tables, at times relative to the transaction's now(), and the job
+-- runs at now(), an hour on and three days on. Fixed ids (e5…) and numbers
 -- (050-065-xxxx).
 begin;
-select plan(17);
+select plan(23);
 
 -- R, a real business, its owner 1; D, a demo one, its owner 2.
 insert into auth.users (id, aud, role, phone)
@@ -28,9 +30,9 @@ $$;
 create function pg_temp.d_biz() returns uuid language sql as $$
   select 'e5000000-0000-4000-b000-000000000002'::uuid
 $$;
--- Orders 1 to 8 are R's, 11 and 12 D's; each with a round of the same
+-- Orders 1 to 9 are R's, 11 and 12 D's; each with a round of the same
 -- number, and most with a ticket and a line too (6 and 7 with lines 16, 17,
--- 26 and 27 as well).
+-- 26 and 27 as well). Round 13 is sent to order 3 later.
 create function pg_temp.o(n integer) returns uuid language sql as $$
   select ('e5000000-0000-4000-f000-' || lpad(n::text, 12, '0'))::uuid
 $$;
@@ -83,8 +85,9 @@ select pg_temp.pl(n), pg_temp.d_biz(), n::text from generate_series(11, 12) as n
 -- allergy; 2 closed a day ago; 3 open, its last round three days ago; 4
 -- open, its round a day ago; 5 cancelled three days ago; 6 and 7 closed,
 -- sent 31 and 29 days ago, with nothing noted; 8 a takeaway cancelled 31
--- days ago, whose label was cleared before the job came. D: 11 opened three
--- days ago, 12 a day ago.
+-- days ago, whose label was cleared before the job came; 9 a takeaway left
+-- open, its round three days ago, with no label and no line. D: 11 opened
+-- three days ago, 12 a day ago.
 insert into public.orders (
   id, business_id, place_id, takeaway_no, takeaway_label, day, status, opened_by, opened_at,
   closed_by, closed_at, cancelled_by, cancelled_at, cancel_reason
@@ -106,6 +109,8 @@ values
    now() - interval '29 days', pg_temp.p(1), now() - interval '29 days' + interval '1 hour', null, null, null),
   (pg_temp.o(8), pg_temp.r_biz(), null, 1, null, current_date - 31, 'cancelled', pg_temp.p(1),
    now() - interval '31 days 1 hour', null, null, pg_temp.p(1), now() - interval '31 days', 'guest'),
+  (pg_temp.o(9), pg_temp.r_biz(), null, 2, null, current_date - 3, 'open', pg_temp.p(1),
+   now() - interval '3 days', null, null, null, null, null),
   (pg_temp.o(11), pg_temp.d_biz(), pg_temp.pl(11), null, null, current_date - 3, 'closed', pg_temp.p(2),
    now() - interval '3 days', pg_temp.p(2), now() - interval '3 days' + interval '1 hour', null, null, null),
   (pg_temp.o(12), pg_temp.d_biz(), pg_temp.pl(12), null, null, current_date - 1, 'open', pg_temp.p(2),
@@ -119,7 +124,7 @@ where o.id in (pg_temp.o(6), pg_temp.o(7));
 -- Each round's body hash stands for the body's, with its notes and label.
 insert into public.order_rounds (id, business_id, order_id, body_hash, sent_by, sent_at)
 select pg_temp.r(n), o.business_id, o.id, repeat('0', 64), o.opened_by, o.opened_at
-from unnest('{1,2,3,4,5,6,7,8,11,12}'::int[]) as n
+from unnest('{1,2,3,4,5,6,7,8,9,11,12}'::int[]) as n
 join public.orders o on o.id = pg_temp.o(n);
 insert into public.order_tickets (id, business_id, order_id, round_id, department_id, status)
 select pg_temp.t(n), o.business_id, o.id, pg_temp.r(n), pg_temp.dep(o.business_id), 'new'
@@ -213,6 +218,13 @@ select is(
   'id,body,id,id,id',
   'and their rounds'' body hashes are made from the round alone, so no erased note or name is confirmed from one; a takeaway''s whose label was cleared before too'
 );
+select is(
+  (select string_agg(n::text || ':' || coalesce((o.notes_erased_at = now())::text, '-'), ' ' order by n)
+   from unnest('{2,4,6,7,8,9}'::int[]) as n
+   join public.orders o on o.id = pg_temp.o(n)),
+  '2:- 4:- 6:true 7:true 8:true 9:true',
+  'each order is marked once its two days pass, even with nothing to erase, and one within them is not'
+);
 
 ------------------------------------------------------------------------------
 -- Senders, and what is never deleted
@@ -247,7 +259,7 @@ select is(
 );
 select is(
   (select count(*)::integer from public.orders o where o.business_id = pg_temp.r_biz()),
-  8,
+  9,
   'a real business keeps every order'
 );
 
@@ -281,6 +293,69 @@ select ok(
   (select count(*) from private.order_versions v
    where v.business_id in (pg_temp.r_biz(), pg_temp.d_biz()) and v.version > 0) = 2,
   'and each business it changed has its orders version moved'
+);
+
+------------------------------------------------------------------------------
+-- A later round and a later label, and the hours after
+
+-- 1 sends a second round to table 3, whose first lost its note above, and
+-- names takeaway 9, marked above with nothing on it.
+create function pg_temp.second_round(at_time timestamptz) returns jsonb language sql as $$
+  select public.send_order_round(
+    pg_temp.p(1), pg_temp.r_biz(), pg_temp.r(13), jsonb_build_object('order', pg_temp.o(3)),
+    jsonb_build_array(jsonb_build_object(
+      'item', pg_temp.item(pg_temp.r_biz()), 'quantity', 1, 'note', 'בלי מלח'
+    )),
+    at_time
+  )
+$$;
+select pg_temp.second_round(now());
+select public.set_order_label(pg_temp.p(1), pg_temp.o(9), 'כובע', now());
+select is(
+  (select string_agg(coalesce(o.notes_erased_at::text, '-'), ' ' order by o.id)
+   from public.orders o where o.id in (pg_temp.o(3), pg_temp.o(9))),
+  '- -',
+  'a round or a label added to an open order the job marked takes the mark away'
+);
+
+select private.order_taking_tick(now() + interval '1 hour');
+select is(
+  (select l.note
+   from public.order_lines l
+   join public.order_tickets t on t.id = l.ticket_id and t.business_id = l.business_id
+   where t.round_id = pg_temp.r(13))
+  || ':' || (select (r.body_hash <> encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex'))::text
+     from public.order_rounds r where r.id = pg_temp.r(13))
+  || ':' || (pg_temp.second_round(now() + interval '1 hour')
+     = private.order_round_answer(pg_temp.r(13)))::text,
+  'בלי מלח:true:true',
+  'an hour on, the open order with an old round and a new one keeps the new one''s note and its hash, so its retry still goes through'
+);
+select is(
+  (select string_agg((o.notes_erased_at = now())::text, ' ' order by o.id)
+   from public.orders o where o.id in (pg_temp.o(1), pg_temp.o(5), pg_temp.o(6))),
+  'true true true',
+  'an order marked is read no more: its mark keeps the hour it was made'
+);
+select is(
+  (select coalesce(o.takeaway_label, '-') || ':' || (o.notes_erased_at = now() + interval '1 hour')::text
+   from public.orders o where o.id = pg_temp.o(9)),
+  '-:true',
+  'and the label named on a takeaway whose last round is two days old goes that hour'
+);
+
+select private.order_taking_tick(now() + interval '3 days');
+select is(
+  (select (l.note is null)::text
+   from public.order_lines l
+   join public.order_tickets t on t.id = l.ticket_id and t.business_id = l.business_id
+   where t.round_id = pg_temp.r(13))
+  || ':' || (select (r.body_hash = encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex'))::text
+     from public.order_rounds r where r.id = pg_temp.r(13))
+  || ':' || (select (o.notes_erased_at = now() + interval '3 days')::text
+     from public.orders o where o.id = pg_temp.o(3)),
+  'true:true:true',
+  'two days after the later round, its note and its hash go in turn, and its order is marked again'
 );
 
 ------------------------------------------------------------------------------
