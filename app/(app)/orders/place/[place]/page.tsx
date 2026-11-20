@@ -41,12 +41,14 @@ export default async function OrderPlacePage({
       ? { id: open.place, name: open.placeName }
       : null);
   if (!place) return <NoPlaceScreen />;
+  // Read after the floor: at least as new as the floor's version.
   const detail = open ? readOf(await getOrderDetail(open.id)) : null;
   return (
     <OrderScreen
       place={place}
       takeaway={null}
       order={detail}
+      orderVersion={floor?.version ?? null}
       menu={menu}
       favourites={favouriteItems(favourites)}
       floor={floor}

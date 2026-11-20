@@ -1,5 +1,6 @@
 import {
   type DraftLine,
+  draftKey,
   putRefusedBack,
   withoutSent,
 } from "@domain/order-screens";
@@ -9,8 +10,8 @@ import type { SendBody } from "@domain/orders-sync";
  * What the mode keeps in the tab for its sends (waiter mode P4): the drafts
  * by where they wait, and the rounds on their way, each by its own key. Pure,
  * so the provider's state and sessionStorage follow one set of rules, which
- * the tests hold: two sends of one draft never share a place, and a round
- * settles only itself.
+ * the tests hold: two sends of one draft never share a place, a round
+ * settles only itself, and a line on its way never comes back into a draft.
  */
 
 /** A round on its way: the draft it left, what goes, and its lines as drafted. */
@@ -28,6 +29,8 @@ export type SendStore = {
 
 export const emptySendStore: SendStore = { drafts: {}, pending: {} };
 
+const NEW_TAKEAWAY = draftKey({ takeaway: null });
+
 /** A round goes: only its lines leave the draft, and it waits by its key. */
 export function storeSent(store: SendStore, round: PendingRound): SendStore {
   return {
@@ -41,15 +44,35 @@ export function storeSent(store: SendStore, round: PendingRound): SendStore {
 
 /**
  * A round's answer came: it alone leaves the rounds on their way, and when
- * refused its lines go back to the front of their draft.
+ * refused its lines go back to the front of their draft. A new takeaway's
+ * first round, sent, gives it its order: what was added to the new
+ * takeaway's draft while the round was on its way is that order's now, as
+ * the screen showed it, below the round. A round no longer on its way (the
+ * tab's store was read again for another person or business) changes
+ * nothing.
  */
 export function storeSettled(
   store: SendStore,
   round: PendingRound,
-  sent: boolean,
+  answer: { sent: true; order: string } | { sent: false },
 ): SendStore {
+  if (!store.pending[round.body.key]) return store;
   const { [round.body.key]: _, ...pending } = store.pending;
-  if (sent) return { ...store, pending };
+  if (answer.sent) {
+    const added = store.drafts[NEW_TAKEAWAY] ?? [];
+    if (round.draft !== NEW_TAKEAWAY || added.length === 0) {
+      return { ...store, pending };
+    }
+    const order = draftKey({ takeaway: answer.order });
+    return {
+      pending,
+      drafts: {
+        ...store.drafts,
+        [NEW_TAKEAWAY]: [],
+        [order]: [...(store.drafts[order] ?? []), ...added],
+      },
+    };
+  }
   return {
     pending,
     drafts: {
@@ -58,6 +81,27 @@ export function storeSettled(
         store.drafts[round.draft] ?? [],
         round.lines,
       ),
+    },
+  };
+}
+
+/**
+ * A draft changed from what it holds now, never from a copy taken earlier
+ * (an undo kept for 8 seconds, a tap while the screen draws): what was added
+ * or sent meanwhile stays as it is. A line on its way in a round never comes
+ * back into a draft, so nothing is sent twice.
+ */
+export function storeDraftChanged(
+  store: SendStore,
+  draft: string,
+  change: (lines: DraftLine[]) => DraftLine[],
+): SendStore {
+  const sent = Object.values(store.pending).flatMap((round) => round.lines);
+  return {
+    ...store,
+    drafts: {
+      ...store.drafts,
+      [draft]: withoutSent(change(store.drafts[draft] ?? []), sent),
     },
   };
 }

@@ -337,10 +337,13 @@ export type ReadyNews = {
  * What turned ready since the last answer of "ההזמנות שלי", newest first:
  * none on the first answer (what was ready before the screen opened is on
  * it already), and only tickets with a live line that weren't ready before.
+ * Never what was marked ready on this phone (`markedHere`): someone who
+ * takes orders and prepares too said "מוכן" themselves, and was told so.
  */
 export function readyNews(
   before: MyOrders | null,
   after: MyOrders,
+  markedHere: ReadonlySet<string> = new Set(),
 ): ReadyNews[] {
   if (!before) return [];
   const wasReady = new Set(
@@ -350,6 +353,7 @@ export function readyNews(
         .map((ticket) => ticket.id),
     ),
   );
+  for (const ticket of markedHere) wasReady.add(ticket);
   return after.rounds
     .flatMap((round) =>
       round.tickets

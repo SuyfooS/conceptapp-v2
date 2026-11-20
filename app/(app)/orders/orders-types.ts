@@ -121,13 +121,23 @@ export type OrdersSender = {
 
 /** The drafts on the phone, by `draftKey`. */
 export type DraftStore = {
+  /** A draft as this drawing of the screen has it. */
   get: (draft: string) => DraftLine[];
-  set: (draft: string, lines: DraftLine[]) => void;
+  /**
+   * Changes a draft from what it holds when the change lands, never from a
+   * copy taken earlier: an undo kept for 8 seconds, a tap, a quantity. A line
+   * on its way in a round never comes back into it.
+   */
+  update: (draft: string, change: (lines: DraftLine[]) => DraftLine[]) => void;
   /** How many items each draft holds, for the floor's tiles. */
   counts: Record<string, number>;
 };
 
-/** What the mode's one toast says: with its undo, or a way to what it names. */
+/**
+ * What the mode's one toast says: with its undo, or a way to what it names.
+ * Returns its withdrawal: the toast goes at once if it still says this (what
+ * its undo held went meanwhile, so the way back is no longer one).
+ */
 export type Say = (
   text: string,
   options?: {
@@ -140,4 +150,4 @@ export type Say = (
     /** The toast stops counting while the way back is reached. */
     onWaitingChange?: (waiting: boolean) => void;
   },
-) => void;
+) => () => void;

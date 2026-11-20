@@ -134,11 +134,17 @@ const tile = (page: Page, name: string) =>
     new RegExp(`^${literal(rt("app.orders.place.kind"))}\\s*${name}(\\D|$)`),
   );
 
-/** On a phone the items and the order show one at a time. */
+/**
+ * On a phone the items and the order show one at a time, switched by a
+ * Segmented: buttons with aria-pressed. The order's own "הוספת מנות" comes
+ * after it, and switches the same way.
+ */
 async function showItems(page: Page, project: string) {
   if (project !== "phone") return;
   await page
-    .getByRole("radio", { name: rt("app.orders.order.view.add") })
+    .getByRole("button", {
+      name: new RegExp(`^${literal(rt("app.orders.order.view.add"))}`),
+    })
     .filter({ visible: true })
     .first()
     .click();
@@ -147,7 +153,7 @@ async function showItems(page: Page, project: string) {
 async function showOrder(page: Page, project: string) {
   if (project !== "phone") return;
   await page
-    .getByRole("radio", {
+    .getByRole("button", {
       name: new RegExp(`^${literal(rt("app.orders.order.view.order"))}`),
     })
     .filter({ visible: true })

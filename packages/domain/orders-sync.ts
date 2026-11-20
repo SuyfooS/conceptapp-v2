@@ -142,10 +142,14 @@ export type OrdersSyncWant = {
  * answer once it has), so it asks for them whole, with no version. The
  * kitchen's tickets for a screen that wants them, from someone who prepares
  * or runs orders. The version is the oldest of the reads it holds of what it
- * asks, so nothing newer is skipped; none when it holds nothing of one, or
- * when an order it wants isn't held yet (the first send at a free place
- * opens one, and the route reads an order only when something moved: with
- * no version, everything has). The menu always, by its own version.
+ * asks, the order it wants among them, by the version it was read whole at
+ * (it is read again only when something moved: an order held from before a
+ * screen was left, and changed while it was, is read again), so nothing
+ * newer is skipped; none when it holds nothing of one, or when an order it
+ * wants isn't held yet or was read at a version it doesn't know (the first
+ * send at a free place opens one; the server drew a takeaway's page with
+ * it): with no version, everything has moved. The menu always, by its own
+ * version.
  */
 export function nextOrdersSyncQuery(input: {
   business: string;
@@ -161,8 +165,11 @@ export function nextOrdersSyncQuery(input: {
     mine: { version: number } | null;
     prep: { version: number } | null;
     menu: { version: number } | null;
-    /** The orders read whole, by id: none yet for one never read. */
-    orders: Readonly<Record<string, unknown>>;
+    /**
+     * The version each order held whole was read at, by id: null when that
+     * isn't known, none for one never read.
+     */
+    orders: Readonly<Record<string, number | null>>;
   };
 }): OrdersSyncQuery {
   const { held, off } = input;
@@ -175,11 +182,15 @@ export function nextOrdersSyncQuery(input: {
     ...(mine ? [held.mine] : []),
     ...(prep ? [held.prep] : []),
   ];
-  const unread = order !== null && held.orders[order] === undefined;
+  const orderAt = order === null ? undefined : held.orders[order];
+  const unread = order !== null && typeof orderAt !== "number";
   const version =
     off || unread || asking.length === 0 || asking.some((r) => r === null)
       ? null
-      : Math.min(...asking.map((r) => r?.version ?? 0));
+      : Math.min(
+          ...asking.map((r) => r?.version ?? 0),
+          ...(typeof orderAt === "number" ? [orderAt] : []),
+        );
   return {
     business: input.business,
     version,
@@ -201,6 +212,23 @@ export function syncedVersion(
 ): number | null {
   const known = versions.filter((v): v is number => typeof v === "number");
   return known.length === 0 ? null : Math.min(...known);
+}
+
+/**
+ * The server's time a read says (its `now`), in milliseconds, when it is
+ * later than the latest the mode heard; else null, and the mode's clock
+ * stays. A screen drawn again with the data it had (going back, a screen
+ * shown again) says an older time, which would set the clock back by as
+ * long as the screen was left.
+ */
+export function laterServerTime(
+  latest: number | null,
+  serverNow: string | null | undefined,
+): number | null {
+  if (!serverNow) return null;
+  const at = Date.parse(serverNow);
+  if (Number.isNaN(at)) return null;
+  return latest === null || at > latest ? at : null;
 }
 
 /** A sync's answer: what moved since the screen's versions, each read whole. */

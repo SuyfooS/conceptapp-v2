@@ -792,6 +792,7 @@ export const restaurantWording: Readonly<Record<string, string>> = {
     "{count, plural, one {מנה אחת} two {שתי מנות} other {# מנות}}",
   "app.orders.mine.empty.body": "מה ששולחים מהשולחנות מופיע כאן, והמוכן קודם.",
   "app.orders.mine.empty.action": "מעבר לשולחנות",
+  "app.orders.mine.columns.place": "שולחן",
   "app.orders.offClock.title": "מצב מלצרות נפתח בזמן משמרת",
   "app.orders.failed.moved":
     "ההזמנה עברה לשולחן אחר בינתיים. בוחרים שוב מהרשימה.",

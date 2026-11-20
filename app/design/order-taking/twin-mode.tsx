@@ -1,7 +1,7 @@
 "use client";
 
 import type { DraftLine } from "@domain/order-screens";
-import { draftCount } from "@domain/order-screens";
+import { draftCount, withoutSent } from "@domain/order-screens";
 import type { RoundTarget } from "@domain/orders";
 import { useTranslations } from "next-intl";
 import {
@@ -248,8 +248,19 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
     off: frame.runs ? null : frame.clock,
     drafts: {
       get: (draft: string) => data.drafts[draft] ?? [],
-      set: (draft: string, lines: DraftLine[]) =>
-        update((d) => ({ ...d, drafts: { ...d.drafts, [draft]: lines } })),
+      // From the draft as it is when the change lands, as the app's: a line
+      // on its way (the twin's `?state=pending`) never comes back into it.
+      update: (draft: string, change: (lines: DraftLine[]) => DraftLine[]) =>
+        update((d) => ({
+          ...d,
+          drafts: {
+            ...d.drafts,
+            [draft]: withoutSent(
+              change(d.drafts[draft] ?? []),
+              d.pending[draft]?.lines ?? [],
+            ),
+          },
+        })),
       counts: Object.fromEntries(
         Object.entries(data.drafts).map(([key, lines]) => [
           key,

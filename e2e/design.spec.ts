@@ -4048,8 +4048,10 @@ test("the waiter mode demo sends to the prep screen and comes back ready", async
   const tile = shown(page.getByRole("link", { name: tile6 }));
   await expect(tile).toContainText(rt("app.orders.floor.state.ready"));
   await tile.click();
+  // The phone's switch between the items and the order: a Segmented, whose
+  // options are buttons with aria-pressed.
   await shown(
-    page.getByRole("radio", {
+    page.getByRole("button", {
       name: new RegExp(`^${rt("app.orders.order.view.order")}`),
     }),
   )
@@ -4110,7 +4112,7 @@ test("the waiter mode demo refuses a dish sold out meanwhile and keeps the draft
   );
   if (testInfo.project.name === "phone") {
     await page
-      .getByRole("radio", {
+      .getByRole("button", {
         name: new RegExp(`^${rt("app.orders.order.view.order")}`),
       })
       .filter({ visible: true })

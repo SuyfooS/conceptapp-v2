@@ -89,8 +89,10 @@ export function DraftPanel({
   } | null>(null);
   const nameOf = (line: DraftLine) =>
     menu?.items.find((item) => item.id === line.item)?.name ?? "";
+  // From what the draft holds when the change lands: a note saved from the
+  // sheet after the line's quantity changed keeps both.
   const change = (id: string, patch: Parameters<typeof changeDraftLine>[2]) =>
-    drafts.set(draft, changeDraftLine(drafts.get(draft), id, patch));
+    drafts.update(draft, (now) => changeDraftLine(now, id, patch));
 
   return (
     <PageSection title={t("draft.title")} headingRef={headingRef}>

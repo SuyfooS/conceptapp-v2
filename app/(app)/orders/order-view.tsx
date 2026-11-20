@@ -120,10 +120,26 @@ export function OrderView({
   const draftHeading = useRef<HTMLHeadingElement>(null);
   const roundsHeading = useRef<HTMLHeadingElement>(null);
   const heldBack = useRef(new Set<string>());
+  /** The take-back's toast, to take away once its way back is gone. */
+  const backToast = useRef<(() => void) | null>(null);
+  // Whether this screen is the one on show: Next keeps a screen left inside
+  // the mode in a hidden <Activity>, where its effects go and its awaits
+  // still finish.
+  const onScreen = useRef(false);
+  useEffect(() => {
+    onScreen.current = true;
+    return () => {
+      onScreen.current = false;
+    };
+  }, []);
 
-  // A take-back waits 8 seconds for its "ביטול", and goes on leaving.
+  // A take-back waits 8 seconds for its "ביטול", and goes on leaving. Once
+  // it went, by its time, the page hidden or the screen left (the mode's
+  // toast stays over its other screens), its "ביטול" goes with it.
   const back = useHeldWrite<{ line: string; name: string }>(
     async ({ line }) => {
+      backToast.current?.();
+      backToast.current = null;
       heldBack.current.delete(line);
       const result = await actions.takeBack(line).catch(() => null);
       if (!result?.ok) {
@@ -148,10 +164,12 @@ export function OrderView({
   const needsShift = clock !== null;
   const mark = refusal ? refusalMark(refusal.failure) : null;
 
+  // Every change to the draft starts from what it holds when it lands
+  // (`drafts.update`): an undo kept for 8 seconds never puts back an old copy.
   function pick(item: MenuItem) {
-    const lines = addToDraft(drafts.get(key), item.id, newId);
-    drafts.set(key, lines);
-    const n = lines
+    drafts.update(key, (lines) => addToDraft(lines, item.id, newId));
+    // What it now holds of the item, for screen readers: as drawn, plus one.
+    const n = addToDraft(draft, item.id, () => "")
       .filter((line) => line.item === item.id)
       .reduce((sum, line) => sum + line.quantity, 0);
     setAdded((was) => ({
@@ -162,11 +180,11 @@ export function OrderView({
 
   function remove(line: DraftLine, index: number) {
     const name = menu?.items.find((i) => i.id === line.item)?.name ?? "";
-    drafts.set(key, removeDraftLine(drafts.get(key), line.id).lines);
+    drafts.update(key, (lines) => removeDraftLine(lines, line.id).lines);
     // The row goes with its button: the way back takes the focus.
     say(t("toast.removed", { name }), {
       undo: () =>
-        drafts.set(key, putDraftLineBack(drafts.get(key), line, index)),
+        drafts.update(key, (lines) => putDraftLineBack(lines, line, index)),
       focus: true,
       after: () => draftHeading.current,
     });
@@ -176,15 +194,12 @@ export function OrderView({
     const name = menu?.items.find((i) => i.id === line.item)?.name ?? "";
     say(t("toast.noteRemoved", { name }), {
       undo: () =>
-        drafts.set(
-          key,
-          drafts
-            .get(key)
-            .map((l) =>
-              l.id === line.id
-                ? { ...l, note: line.note, allergy: line.allergy }
-                : l,
-            ),
+        drafts.update(key, (lines) =>
+          lines.map((l) =>
+            l.id === line.id
+              ? { ...l, note: line.note, allergy: line.allergy }
+              : l,
+          ),
         ),
       focus: true,
       after: () => draftHeading.current,
@@ -210,6 +225,9 @@ export function OrderView({
       takeaway: outcome.round.takeaway,
     });
     say(t("toast.sent", { place: sentAs }));
+    // Left meanwhile (the answer came after a while, offline): the toast
+    // says it wherever the person is, and nothing moves them.
+    if (!onScreen.current) return;
     roundsHeading.current?.focus({ preventScroll: true });
     // A new takeaway's first send gives it its number, and its own page.
     if (where.kind === "takeaway" && where.order === null) {
@@ -258,8 +276,9 @@ export function OrderView({
     heldBack.current.add(line.id);
     setTakenBack((was) => [...was, line.id]);
     back.hold({ line: line.id, name: line.name });
-    say(t("toast.takenBack", { name: line.name }), {
+    backToast.current = say(t("toast.takenBack", { name: line.name }), {
       undo: () => {
+        backToast.current = null;
         const was = back.release();
         if (was) heldBack.current.delete(was.line);
         setTakenBack((ids) => ids.filter((id) => id !== line.id));

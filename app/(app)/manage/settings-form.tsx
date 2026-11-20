@@ -11,6 +11,7 @@ import { Card } from "@ui/card";
 import { ChoiceMenu } from "@ui/choice-menu";
 import { FieldGroup, GroupedField } from "@ui/field-group";
 import { FieldRow, rowPillInputClass } from "@ui/field-row";
+import { PageSection } from "@ui/page";
 import { StatusToast } from "@ui/status-toast";
 import { Stepper } from "@ui/stepper";
 import { Switch } from "@ui/switch";
@@ -511,7 +512,6 @@ function DepartmentsField({
   onChange: (keys: string[]) => unknown;
 }) {
   const t = useTranslations("app.manage.departmentsSetting");
-  const id = useId();
   const keys = Array.isArray(value)
     ? value.filter((key): key is string => typeof key === "string")
     : [];
@@ -524,12 +524,12 @@ function DepartmentsField({
     const gone = others.filter((k) => !departments.some((d) => d.key === k));
     onChange([...live, ...gone]);
   }
+  // A section of the page, as the positions and the shifts are: its title
+  // comes after the page's h1 on /manage/<module>, and beside the other
+  // editors inside the module's h2 in the console.
   return (
-    <section aria-labelledby={id} className="flex flex-col gap-2">
-      <h3 id={id} className="px-1 font-semibold">
-        {name}
-      </h3>
-      {hint ? <p className="px-1 text-ink-2 text-sm">{hint}</p> : null}
+    <PageSection title={name}>
+      {hint ? <p className="-mt-1 px-1 text-ink-2 text-sm">{hint}</p> : null}
       {departments.length === 0 ? (
         <Card padding="lg" className="flex flex-col items-start gap-3">
           <p className="text-ink-2">{t("none")}</p>
@@ -552,7 +552,7 @@ function DepartmentsField({
           ))}
         </FieldGroup>
       )}
-    </section>
+    </PageSection>
   );
 }
 

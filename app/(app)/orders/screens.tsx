@@ -38,6 +38,7 @@ export function OrderScreen({
   place,
   takeaway,
   order,
+  orderVersion = null,
   menu,
   favourites,
   floor,
@@ -48,6 +49,11 @@ export function OrderScreen({
   takeaway: string | null;
   /** Its open order as the server read it, if it has one. */
   order: OrderDetail | null;
+  /**
+   * The version `order` is at least as new as, when known: a place's page
+   * reads it after the floor, so the floor's. The sync asks from it.
+   */
+  orderVersion?: number | null;
   menu: Menu | null;
   favourites: string[];
   floor: OrderFloor | null;
@@ -59,7 +65,15 @@ export function OrderScreen({
     ? (held.floor?.orders.find((o) => o.place === place.id)?.id ?? null)
     : takeaway;
   const read = useOrdersRead(
-    { order: id ? { id, detail: order?.id === id ? order : undefined } : null },
+    {
+      order: id
+        ? {
+            id,
+            detail: order?.id === id ? order : undefined,
+            version: orderVersion,
+          }
+        : null,
+    },
     {},
   );
   const where: OrderWhere = place

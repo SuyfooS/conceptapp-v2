@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  laterServerTime,
   nextOrdersSyncDelay,
   nextOrdersSyncQuery,
   ORDERS_SYNC_MS,
@@ -82,7 +83,7 @@ describe("what a sync asks", () => {
       mine: { version: 5 },
       prep: { version: 9 },
       menu: { version: 2 },
-      orders: {} as Record<string, unknown>,
+      orders: {} as Record<string, number | null>,
     };
     const ask = (
       extra: Partial<Parameters<typeof nextOrdersSyncQuery>[0]> = {},
@@ -122,15 +123,45 @@ describe("what a sync asks", () => {
         ],
       });
       expect(first).toMatchObject({ order: ORDER, version: null });
-      // Once it is (an order no longer to read is held as none), by version.
-      for (const order of [{ id: ORDER }, null]) {
-        expect(
-          ask({
-            wants: [{ floor: true, prep: false, order: ORDER }],
-            held: { ...held, orders: { [ORDER]: order } },
-          }),
-        ).toMatchObject({ order: ORDER, version: 5 });
-      }
+      // Once it is, at a version it knows (an order no longer to read is
+      // held as none, at the version that said so), by version.
+      expect(
+        ask({
+          wants: [{ floor: true, prep: false, order: ORDER }],
+          held: { ...held, orders: { [ORDER]: 6 } },
+        }),
+      ).toMatchObject({ order: ORDER, version: 5 });
+      // Drawn by the server at a version it doesn't know: whole again.
+      expect(
+        ask({
+          wants: [{ floor: true, prep: false, order: ORDER }],
+          held: { ...held, orders: { [ORDER]: null } },
+        }),
+      ).toMatchObject({ order: ORDER, version: null });
+    });
+
+    it("asks from the version an order was read at, when it is older than the rest", () => {
+      // Table 4 was read at 3 and left for the floor, whose sync moved the
+      // floor and mine on to 7 and 5 while another waiter added a round to
+      // table 4. Back at table 4 (the phone's back), the order is asked from
+      // 3: what moved since is read, the order whole with it.
+      expect(
+        ask({
+          wants: [
+            { floor: true, prep: false, order: null },
+            { floor: false, prep: false, order: ORDER },
+          ],
+          held: { ...held, orders: { [ORDER]: 3 } },
+        }),
+      ).toMatchObject({ order: ORDER, version: 3 });
+      // An order alone, with nothing else asked, is read whole each time.
+      expect(
+        ask({
+          takes: false,
+          wants: [{ floor: false, prep: false, order: ORDER }],
+          held: { ...held, orders: { [ORDER]: 3 } },
+        }),
+      ).toMatchObject({ order: ORDER, version: null });
     });
 
     it("asks a taker off a shift for their own rounds whole, and nothing of the floor", () => {
@@ -177,6 +208,18 @@ describe("what a sync asks", () => {
   it("answers with the smallest version of the reads it made, so nothing is missed", () => {
     expect(syncedVersion([5, undefined, 3])).toBe(3);
     expect(syncedVersion([undefined, null])).toBeNull();
+  });
+
+  it("keeps the mode's clock from the latest server time it heard, never an older one", () => {
+    const t0 = "2026-11-20T18:00:00Z";
+    const later = "2026-11-20T18:10:00Z";
+    expect(laterServerTime(null, t0)).toBe(Date.parse(t0));
+    expect(laterServerTime(Date.parse(t0), later)).toBe(Date.parse(later));
+    // The floor drawn again with what the server said ten minutes ago.
+    expect(laterServerTime(Date.parse(later), t0)).toBeNull();
+    expect(laterServerTime(Date.parse(t0), t0)).toBeNull();
+    expect(laterServerTime(null, undefined)).toBeNull();
+    expect(laterServerTime(null, "nope")).toBeNull();
   });
 
   it("reads its answer as the routes write it", () => {

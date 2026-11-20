@@ -45,6 +45,21 @@ describe("news on the mode's one toast", () => {
     expect(show).toHaveBeenCalledTimes(1);
   });
 
+  it("tells what waited once a way back is withdrawn, as when it goes by itself", () => {
+    // The take-back went as its screen was left: its toast is taken away
+    // (StatusToast hides a null message at once and says it went).
+    const gate = newsGate();
+    const show = vi.fn();
+    gate.said(true);
+    gate.tell(show);
+    gate.hidden();
+    expect(show).toHaveBeenCalledTimes(1);
+    // Nothing offers a way back now: the next news is told at once.
+    const next = vi.fn();
+    gate.tell(next);
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
   it("tells newer news in place of what waited, never both", () => {
     const gate = newsGate();
     const older = vi.fn();

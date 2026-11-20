@@ -369,6 +369,26 @@ describe("what turned ready", () => {
     ]);
     expect(readyNews(after, mine([{ id: "a", status: "served" }]))).toEqual([]);
   });
+
+  it("leaves out what was marked ready on this phone: its own toast said it", () => {
+    // A barista who takes orders sent to the bar, then pressed "מוכן" on
+    // its ticket: the sync's answer is no news to them.
+    const before = mine([
+      { id: "a", status: "new" },
+      { id: "d", status: "new" },
+    ]);
+    const after = mine([
+      { id: "a", status: "ready", readyAt: minutesAgo(0) },
+      { id: "d", status: "ready", readyAt: minutesAgo(2) },
+    ]);
+    expect(
+      readyNews(before, after, new Set(["a"])).map((news) => news.ticket),
+    ).toEqual(["d"]);
+    // Put back on this phone, and made ready again elsewhere: news again.
+    expect(
+      readyNews(before, after, new Set()).map((news) => news.ticket),
+    ).toEqual(["a", "d"]);
+  });
 });
 
 describe("the mode's items", () => {
