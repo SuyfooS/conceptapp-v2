@@ -1,13 +1,18 @@
 "use server";
 
 import { lockStation } from "@db/clock-stations";
-import { type LockResult, stationName } from "@domain/clock-station";
+import {
+  type LockResult,
+  runsFor,
+  STATION_PATH,
+  stationName,
+} from "@domain/clock-station";
 import { editsClock } from "@domain/time-clock";
 import { z } from "zod";
-import { signOut } from "../../../(auth)/actions";
+import { endSessionHere } from "../../../(auth)/end-session";
 import { currentModuleSettings } from "../../modules";
 import { clockAccess } from "../clock";
-import { deviceStation, rememberStation, STATION_PATH } from "./station";
+import { deviceStation, rememberStation } from "./station";
 
 const lockInput = z.object({ name: z.string() });
 
@@ -17,10 +22,10 @@ const lockInput = z.object({ name: z.string() });
  * account. Whoever edits the clock, as themselves, where codes may show on a
  * station; the database checks the actor again. A device that is one of the
  * business's running stations already stays that one, so locking again never
- * piles stations up. Then it signs out here only, as signing out does (its
- * device, its business, its session; the person's own phone stays signed
- * in), and answers /station, which the screen opens as a whole new page, so
- * nothing of the person's screens stays on the device.
+ * piles stations up. Then it ends the session here only, as signing out does
+ * (`endSessionHere`: its device, its business, its session; the person's own
+ * phone stays signed in), and answers /station, which the screen opens as a
+ * whole new page, so nothing of the person's screens stays on the device.
  */
 export async function lockDeviceAction(input: unknown): Promise<LockResult> {
   const parsed = lockInput.safeParse(input);
@@ -44,11 +49,7 @@ export async function lockDeviceAction(input: unknown): Promise<LockResult> {
     );
   }
   let token: string;
-  if (
-    device &&
-    !device.station.stopped &&
-    device.station.businessId === access.businessId
-  ) {
+  if (device && runsFor(device.station, access.businessId)) {
     token = device.token;
   } else {
     const name = stationName.safeParse(parsed.data.name);
@@ -60,6 +61,8 @@ export async function lockDeviceAction(input: unknown): Promise<LockResult> {
 
   // Kept for 400 days from now, also when it was the same station.
   await rememberStation(token);
-  await signOut();
+  // Its own answer, not signing out's: the station was just kept, so it is
+  // read no second time.
+  await endSessionHere();
   return { ok: true, to: STATION_PATH };
 }

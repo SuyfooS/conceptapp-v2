@@ -1,11 +1,9 @@
 "use server";
 
-import { createClient } from "@db/supabase/server";
 import { normalizeOtpCode } from "@domain/otp";
-import { signInPath } from "@domain/passive-sign-in";
 import { normalizeIsraeliMobile } from "@domain/phone";
-import { forgetBusiness } from "../(app)/business-cookie";
-import { forgetThisDevice } from "../push/server";
+import { signedOutPath } from "../(app)/clock/station/station";
+import { endSessionHere } from "./end-session";
 import { type SignInError, sendCode, verifyCode } from "./otp";
 
 export type SignInState =
@@ -64,18 +62,16 @@ export async function signIn(
 }
 
 /**
- * Sign out, forgetting this browser's device first, so a shared phone stops
- * getting the last person's notifications, and which business it was in, so
- * the next person starts in their own. Only this device's session ends
- * (`scope: "local"`, #80): signing out of a shared tablet doesn't sign the
- * person out of their own phone. Returns the door, which SignOutForm opens
- * as a whole new page, so nothing the last person's screens held stays in
- * the browser for the next one.
+ * Sign out on this device only (`endSessionHere`: its device, its business,
+ * its session; the person's own phone stays signed in). Returns where the
+ * device goes next, which SignOutForm opens as a whole new page, so nothing
+ * the last person's screens held stays in the browser for the next one: the
+ * clock station's code on a device that is one of a business's running
+ * stations (Orel, 20 November 2026), and the door anywhere else, a stopped
+ * station included. The session is gone before that is read, so a failed
+ * read can't keep anyone signed in.
  */
 export async function signOut(): Promise<string> {
-  await forgetThisDevice();
-  await forgetBusiness();
-  const supabase = await createClient();
-  await supabase.auth.signOut({ scope: "local" });
-  return signInPath;
+  await endSessionHere();
+  return await signedOutPath();
 }

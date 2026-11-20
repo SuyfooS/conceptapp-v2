@@ -250,9 +250,20 @@ describe("the session cookies", () => {
 
 describe("signing out", () => {
   it("ends this device's session only", () => {
-    expect(read("app/(auth)/actions.ts")).toContain(
+    expect(read("app/(auth)/end-session.ts")).toContain(
       'supabase.auth.signOut({ scope: "local" })',
     );
+  });
+
+  it("ends it in that one place, also when a station is locked", () => {
+    for (const file of [
+      "app/(auth)/actions.ts",
+      "app/(app)/clock/station/actions.ts",
+    ]) {
+      const source = read(file);
+      expect(source, file).toContain("await endSessionHere()");
+      expect(source, file).not.toMatch(/\bauth\.signOut\(/);
+    }
   });
 });
 

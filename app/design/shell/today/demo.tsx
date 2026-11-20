@@ -1,10 +1,10 @@
 import { type TodayData, TodayView } from "../../../(app)/home/today-view";
 import { baseWording } from "../../../(app)/wording";
-import { demoLockDevice } from "../station/actions";
+import { demoLockDevice, demoSignOutOfStation } from "../station/actions";
 
 /**
  * The real Today screen on the demo: its links stay in the demo, and locking
- * the station again from its reminder leads to the station's twin.
+ * the station again or signing out from its card leads to the station's twin.
  */
 export function TodayDemo({ data }: { data: TodayData }) {
   return (
@@ -14,6 +14,7 @@ export function TodayDemo({ data }: { data: TodayData }) {
       base="/design/shell"
       hideFirstStepsUrl="/design/shell/home/first-steps"
       lockStation={demoLockDevice}
+      signOut={demoSignOutOfStation}
     />
   );
 }

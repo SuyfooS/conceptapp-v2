@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { signInPath } from "./passive-sign-in";
 import { issuedCode } from "./punch-code";
 
 /*
@@ -14,6 +15,30 @@ import { issuedCode } from "./punch-code";
 
 /** The cookie that makes this device a station: the station's secret. */
 export const STATION_COOKIE = "ca_station";
+
+/** Where a locked device goes, and stays: the station's code. */
+export const STATION_PATH = "/station";
+
+/** The device's station, as its secret finds it, for the rules below. */
+type HeldStation = { businessId: string; stopped: boolean };
+
+/**
+ * Whether the device is a running station of `businessId`: Home's card, and
+ * the lock that keeps the same station.
+ */
+export function runsFor(held: HeldStation | null, businessId: string): boolean {
+  return held !== null && !held.stopped && held.businessId === businessId;
+}
+
+/**
+ * Where a device goes once someone signs out on it (Orel, 20 November 2026):
+ * back to the code when it is a running station, of any business, since the
+ * device is the station whoever signed out; the door when it is none, or a
+ * stopped one.
+ */
+export function afterSignOutPath(held: { stopped: boolean } | null): string {
+  return held !== null && !held.stopped ? STATION_PATH : signInPath;
+}
 
 /** How long it is kept: 400 days, the longest a browser keeps a cookie. */
 export const STATION_COOKIE_MAX_AGE = 400 * 24 * 60 * 60;

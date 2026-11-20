@@ -4,13 +4,14 @@ import { profilePhotoSrc } from "@domain/profile-photos";
 import { buildsSchedule, publishesSchedule } from "@domain/schedule";
 import { manifests } from "@modules/registry";
 import type { Metadata } from "next";
+import { signOut } from "../../(auth)/actions";
 import { currentBusinesses } from "../businesses";
 import { currentChatHome } from "../chat/chat";
 import { currentDocumentsHome } from "../chat/documents/documents";
 import { currentClockLine } from "../clock/clock";
 import { currentPayHome } from "../clock/pay/pay";
 import { lockDeviceAction } from "../clock/station/actions";
-import { currentStationReminder } from "../clock/station/station";
+import { currentStationHome } from "../clock/station/station";
 import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
 import { currentListsHome } from "../lists/lists";
@@ -61,7 +62,7 @@ export default async function HomePage() {
     documents,
     wording,
     businesses,
-    lock,
+    station,
     firstSteps,
   ] = await Promise.all([
     currentMember(),
@@ -78,7 +79,7 @@ export default async function HomePage() {
     currentDocumentsHome(),
     currentWording(),
     currentBusinesses(),
-    currentStationReminder(),
+    currentStationHome(),
     currentFirstSteps(),
   ]);
   const membership = member?.membership;
@@ -91,6 +92,7 @@ export default async function HomePage() {
       businesses={businesses}
       hideFirstStepsUrl="/home/first-steps"
       lockStation={lockDeviceAction}
+      signOut={signOut}
       data={{
         now: new Date().toISOString(),
         timeZone: published?.timeZone ?? membership.business.place.timeZone,
@@ -123,8 +125,9 @@ export default async function HomePage() {
         lists,
         chat,
         documents,
-        // This device is the business's clock station, unlocked: lock it again.
-        station: lock,
+        // This device is the business's clock station: lock it again, or
+        // sign out when done.
+        station,
         // An owner's business still being set up: what to do first.
         firstSteps,
       }}
@@ -138,7 +141,7 @@ export default async function HomePage() {
  * about modules, which other modules being on would make untrue.
  */
 async function OutsideStaffHome() {
-  const [member, enabled, pay, documents, wording, businesses] =
+  const [member, enabled, pay, documents, wording, businesses, station] =
     await Promise.all([
       currentMember(),
       currentModules(),
@@ -146,6 +149,7 @@ async function OutsideStaffHome() {
       currentDocumentsHome(),
       currentWording(),
       currentBusinesses(),
+      currentStationHome(),
     ]);
   const membership = member?.membership;
   if (!member || !membership) return null;
@@ -153,6 +157,7 @@ async function OutsideStaffHome() {
     <AccountantHome
       wording={wording}
       businesses={businesses}
+      signOut={signOut}
       data={{
         now: new Date().toISOString(),
         timeZone: membership.business.place.timeZone,
@@ -165,6 +170,8 @@ async function OutsideStaffHome() {
           enabled.includes("notifications") && !member.viewing
             ? { unread: member.unread.all }
             : null,
+        // This device is the business's clock station: sign out when done.
+        station,
       }}
     />
   );

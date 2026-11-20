@@ -430,20 +430,36 @@ export const todayScenarios = {
   /**
    * Shiran signed in again on the entrance's clock station (#78 phase 5),
    * where the clock is on: Today says the device is the business's station,
-   * to lock again when she is done, as that same station.
+   * to lock again when she is done, as that same station. `worker` is Noa
+   * signed in on it instead: Today says the device is the business's tablet,
+   * and to sign out when she is done (Orel, 20 November 2026).
    */
-  station: (): TodayData => ({
-    ...today(
-      "shiran",
-      "manager",
-      scheduleFor("manager", published("shiran", SWAPS), true, true),
-      { modules: [...DEMO_MODULES, "time_clock"] },
-    ),
-    station: {
-      current: { name: demoStations.rows[0]?.name ?? "" },
-      running: [],
-    },
-  }),
+  station: (who?: "worker"): TodayData =>
+    who === "worker"
+      ? {
+          ...today(
+            "noa",
+            "worker",
+            scheduleFor("worker", published("noa", NOA_SWAPS), false, false),
+            { modules: [...DEMO_MODULES, "time_clock"] },
+          ),
+          station: { kind: "signOut" },
+        }
+      : {
+          ...today(
+            "shiran",
+            "manager",
+            scheduleFor("manager", published("shiran", SWAPS), true, true),
+            { modules: [...DEMO_MODULES, "time_clock"] },
+          ),
+          station: {
+            kind: "lock",
+            offer: {
+              current: { name: demoStations.rows[0]?.name ?? "" },
+              running: [],
+            },
+          },
+        },
   /** The owner's first steps (`firstSteps` above). */
   firstSteps,
 };

@@ -60,20 +60,19 @@ import {
   ChevronRight,
   Repeat,
   SlidersHorizontal,
-  Tablet,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { getFormatter } from "next-intl/server";
 import type { ReactNode } from "react";
+import type { SignOutAction } from "@/app/sign-out-form";
 import type { Businesses } from "../businesses";
 import type { ChatHomeData } from "../chat/chat";
 import { confirmDocumentAction } from "../chat/documents/actions";
 import type { DocumentsTodayData } from "../chat/documents/document-screen-types";
 import { TodayDocuments } from "../chat/documents/today-documents";
 import { TodayChat } from "../chat/today-chat";
-import { LockStation } from "../clock/station/lock-station";
-import type { LockAction, LockOffer } from "../clock/station/station-types";
+import type { LockAction, StationHome } from "../clock/station/station-types";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
 import { moduleIcons } from "../module-icons";
@@ -87,6 +86,7 @@ import { type AppWording, type Translator, translator } from "../wording";
 import { FirstStepsCard } from "./first-steps-card";
 import { MyBusinesses } from "./my-businesses";
 import { RefreshOnReturn } from "./refresh-on-return";
+import { StationCard } from "./station-card";
 
 /** What the schedule module brings to Today; null when it is off. */
 export type TodaySchedule = {
@@ -157,11 +157,11 @@ export type TodayData = {
    */
   documents?: DocumentsTodayData | null;
   /**
-   * This device is the business's clock station, unlocked by someone who
-   * edits the clock: the reminder to lock it again (`currentStationReminder`).
-   * Null anywhere else.
+   * This device is one of the business's running clock stations, and someone
+   * is signed in on it (`currentStationHome`): whoever edits the clock locks
+   * it again, anyone else signs out when done. Null anywhere else.
    */
-  station?: LockOffer | null;
+  station?: StationHome | null;
   /**
    * The owner's first steps (`currentFirstSteps`): only an owner of a real
    * business has them, until every step counted is done or they hid them on
@@ -259,7 +259,9 @@ function runningOf(schedule: TodaySchedule, now: string) {
  * row that scrolls. Tablet: the hero beside the tiles, each list across the
  * width in two columns. Desktop: the same with the lists under the tiles, and
  * today's shifts side by side. The avatar by the greeting leads to the
- * person's profile, where signing out is. Someone in more than one business
+ * person's profile, where signing out is; on the business's clock station a
+ * small card under the greeting says the device is the business's, with its
+ * lock or a sign-out (`StationCard`). Someone in more than one business
  * (payroll P3b) has them listed last, on phones and tablets, to switch
  * between. An owner of a business still being set up has its first steps
  * under the greeting, the screen's one accent card, on the same columns as
@@ -273,6 +275,7 @@ export async function TodayView({
   base = "",
   hideFirstStepsUrl,
   lockStation,
+  signOut,
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
@@ -286,10 +289,15 @@ export async function TodayView({
    */
   hideFirstStepsUrl: string;
   /**
-   * Locking the station again from its reminder (`data.station`):
+   * Locking the station again from its card (`data.station`):
    * `lockDeviceAction`, or the demo's stand-in, which signs nobody out.
    */
   lockStation: LockAction;
+  /**
+   * Signing out from the station's card (`data.station`): `signOut`, or the
+   * demo's stand-in, which goes to the station's twin.
+   */
+  signOut: SignOutAction;
 }) {
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -476,8 +484,13 @@ export async function TodayView({
           ) : null}
         </div>
 
-        {data.station?.current ? (
-          <StationReminder offer={data.station} lock={lockStation} t={t} />
+        {data.station ? (
+          <StationCard
+            station={data.station}
+            lock={lockStation}
+            signOut={signOut}
+            t={t}
+          />
         ) : null}
 
         {data.firstSteps ? (
@@ -530,42 +543,6 @@ export async function TodayView({
         />
       </PageBody>
     </div>
-  );
-}
-
-/**
- * On the business's clock station, unlocked: it is the station, and is locked
- * again when they are done, with the same sheet as the code screen's. Small,
- * since it is not what Today is for.
- */
-function StationReminder({
-  offer,
-  lock,
-  t,
-}: {
-  offer: LockOffer;
-  lock: LockAction;
-  t: T;
-}) {
-  return (
-    <Card className="flex flex-col gap-3 md:max-w-2xl md:flex-row md:items-center">
-      <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span
-          aria-hidden="true"
-          className="flex size-10 shrink-0 items-center justify-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5"
-        >
-          <Tablet />
-        </span>
-        <p className="text-ink">{t("clock.station.reminder.body")}</p>
-      </div>
-      <div className="ps-[52px] md:ps-0">
-        <LockStation
-          offer={offer}
-          lock={lock}
-          label={t("clock.station.reminder.lock")}
-        />
-      </div>
-    </Card>
   );
 }
 
