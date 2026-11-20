@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-20 · night 35 · the CI start script's check, kept as a test (guessed)
+
+- Guessed: Orel left no work and no question is open. Of what merged since the last run, #201's `.github/scripts/supabase-start.sh` was checked only by hand, against stubs, and nothing kept that check; #202 is tests already. The open `chat/*` PRs (#203, #204, #205) hold the newest screens' files, so tonight stays out of them.
+- `tooling/supabase-start.test.ts` (runs in `pnpm check`): the script in a copy of the repo's layout with the real `supabase/config.toml`, and pnpm, sudo, sysctl, ss, docker, pgrep and sleep as stubs that record their calls. It checks `reserve` (the config's seven ports after what was kept, no leading comma), a clean start once, a taken port retried with the pause doubling (5, 10, 20) and cleaned up, waiting for a busy port and going on after 90 s, the port read from each of Docker's three messages, IPv6 and two ports, every config port when none is named, any other failure at once, four attempts then `::error::`, and the usage. Planting three attempts or dropping the fallback to the config's ports turns seven of them red. It doesn't run on Windows, where there is no bash for it; the script is CI only.
+- No change to the script, CI or the app.
+- Restore point: branch `backup/before-night-2026-11-20` at `ca5c532` (the tag push was cut off).
+- Next: the defaults in #192, #195, #196, #198 and #199 and the nine decisions in #191 §16 wait for Orel; `/me` H4 onward (#82).
+- Defaults applied: none.
+
 ## 2026-11-20 · night 35 · what merged on 17 and 18 November, checked: a twin, route tests, checks that can fail, stale lines
 
 - Work: the twelve findings a read-only audit of #192 to #199 confirmed, each claim checked by a skeptic. On chat/night-tests-docs, from main `05cd369`. No migration, no new words, no change to how a screen looks.
