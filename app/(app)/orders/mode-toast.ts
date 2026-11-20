@@ -18,11 +18,14 @@ export type ShownToast<T extends ToastSaid> = T & {
  * (`useModeToast`, orders-mode.tsx), so its rules are held by tests. `say`
  * takes the toast's place and returns its withdrawal, which takes that toast
  * away while it still shows, and only that one: a newer toast stays. News
- * (`tell`) waits while a way back is offered (news-gate.ts), and is told as
- * the toast goes: by its time, its way back pressed or its withdrawal. A
- * toast that stopped counting for the person hears it goes on as a newer one
- * takes its place, unless it was withdrawn or its way back pressed: what it
- * held went or was let go then.
+ * (`tell`) waits while a way back is offered or other news waits
+ * (news-gate.ts), and is told as the toast goes: by its time, its way back
+ * pressed or its withdrawal. A withdrawal lets the news out only once what
+ * runs with it is done: a toast said in the same turn (the next take-back,
+ * whose hold sent the one withdrawn) keeps it waiting. A toast that stopped
+ * counting for the person hears it goes on as a newer one takes its place,
+ * unless it was withdrawn or its way back pressed: what it held went or was
+ * let go then.
  */
 export function modeToast<T extends ToastSaid>(
   show: (toast: ShownToast<T> | null) => void,
@@ -56,7 +59,11 @@ export function modeToast<T extends ToastSaid>(
         if (shown?.id !== id) return;
         if (told?.id === id) told = null;
         put(null);
-        gate.hidden();
+        // Once what withdrew it is done: with nothing said in its place,
+        // what waited is told; a toast said meanwhile keeps it waiting.
+        queueMicrotask(() => {
+          if (shown === null) gate.hidden();
+        });
       };
     },
     /** The shown toast stopped counting for the person, or goes on. */
@@ -90,9 +97,16 @@ export function modeToast<T extends ToastSaid>(
       if ((shown?.id ?? null) !== id) return;
       gate.hidden();
     },
-    /** News nobody pressed for: now, or once the way back on screen has gone. */
-    tell(news: () => void): void {
-      gate.tell(news);
+    /**
+     * News nobody pressed for, about `about` (news-gate.ts): now, or once the
+     * way back on screen and the news before it have gone.
+     */
+    tell(about: string, news: () => void): void {
+      gate.tell(about, () => {
+        const before = count;
+        news();
+        return count !== before;
+      });
     },
   };
 }

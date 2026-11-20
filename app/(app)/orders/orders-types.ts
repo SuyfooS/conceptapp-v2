@@ -157,3 +157,12 @@ export type Say = (
     onWaitingChange?: (waiting: boolean) => void;
   },
 ) => () => void;
+
+/**
+ * News nobody pressed for, on the mode's one toast (news-gate.ts): `news`
+ * says it, now or in its turn, never in the place of a way back. `about`
+ * names what it is about, "ready" for what turned ready or `sent:<round>`
+ * for a round that landed with no screen waiting: the same again keeps its
+ * place in the line, and its newest is told.
+ */
+export type Tell = (about: string, news: () => void) => void;

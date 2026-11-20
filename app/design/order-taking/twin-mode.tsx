@@ -97,7 +97,7 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
         readyIn: null,
       }));
       // News, as the app's sync tells it: never in a way back's place.
-      tell(() =>
+      tell("ready", () =>
         say(
           t("ready", {
             place: placeTitle({ placeName: "4", takeaway: null }),
@@ -273,6 +273,7 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
     sender,
     actions,
     say,
+    tell,
     syncNow: () => {},
     newId,
   };

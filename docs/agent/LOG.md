@@ -28,6 +28,11 @@ what is next, defaults applied.
   - The tab's entry has one writer, the mode that read it last (`claim`/`keep` in orders-storage.ts): one Next dropped from its cache settles a late answer in its own memory only.
   - A ticket put back here stays out of the ready news until a sync started after the put-back answered has come (`readyMarks`, ready-marks.ts), so a slower sync from before it says nothing.
   - The mode's toast is a pure controller now (`modeToast`, mode-toast.ts): a withdrawal takes away its own toast alone and tells the gate at once, an older toast seen going after a newer one was said lets no news out, and the tests hold it (a newer serve's "ביטול" kept, the withdrawn take-back's write unheard); the news-gate test that only repeated the gate's path is gone.
+- After the re-review of a898aab (each finding confirmed):
+  - A send answered after its screen was left says "נשלחה" through the news gate (`tell` on the mode's value), so it never takes the place of a take-back's or a serve's "ביטול" on the screen now shown.
+  - A withdrawn toast lets the news out only once what withdrew it is done (a microtask): the next take-back's toast, said in the same turn, keeps the ready news waiting instead of hiding it.
+  - The gate keeps what waits by what it is about ("ready", `sent:<round>`) and tells each in turn, the next once the toast before it has gone, so a round that landed and the ready news no longer drop each other.
+  - A ticket marked ready here is news again once a read made after the mark sees it not ready (`readyMarks.seen`): put back and made ready again on another phone, its owner is told.
 
 ## 2026-11-20 · chat · taking orders: the orders in the database, module off (waiter mode P3)
 

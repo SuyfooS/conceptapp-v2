@@ -19,6 +19,7 @@ import type {
   OrdersPaths,
   OrdersSender,
   Say,
+  Tell,
 } from "./orders-types";
 
 /**
@@ -44,6 +45,11 @@ export type OrdersModeValue = {
   sender: OrdersSender;
   actions: OrdersActions;
   say: Say;
+  /**
+   * News nobody pressed for (a send answered after its screen was left):
+   * never in the place of a way back still offered.
+   */
+  tell: Tell;
   /** Asks the server again now, after one's own write. */
   syncNow: () => void;
   /** A new id for a draft line. */
@@ -79,13 +85,15 @@ type Toast = {
  * it returns takes that toast away again while it still shows, for a way
  * back that no longer is one (a take-back sent on leaving its screen, while
  * the toast stays over the mode's other screens). `tell` is for news nobody
- * pressed for (a ticket turned ready): it never takes the place of a way
- * back still offered, and waits until that toast has gone; the newest news
- * waiting is told then, once. The rules are mode-toast.ts's, with its tests.
+ * pressed for (a ticket turned ready, a round that landed with no screen
+ * waiting for it): it never takes the place of a way back still offered,
+ * and waits until that toast has gone; then what waited is told in turn,
+ * each once, the newest of each. The rules are mode-toast.ts's, with its
+ * tests.
  */
 export function useModeToast(): {
   say: Say;
-  tell: (show: () => void) => void;
+  tell: Tell;
   toast: ReactNode;
 } {
   const t = useTranslations("app.orders.toast");

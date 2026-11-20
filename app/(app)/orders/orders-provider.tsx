@@ -431,11 +431,13 @@ export function OrdersModeProvider({
   // What turned ready of one's own: one toast for the mode, whichever
   // screen. While a way back is on screen it waits, and everything that
   // turned ready meanwhile is told together once it has gone. What was
-  // marked ready on this phone, and not put back, is no news; nor is what
-  // was put back here, in the read of a sync that started before the
-  // put-back answered (`read`, the sync's number).
+  // marked ready on this phone, and not put back, is no news, until a read
+  // made after the mark sees it not ready (put back on another phone); nor
+  // is what was put back here, in the read of a sync that started before
+  // the put-back answered (`read`, the sync's number).
   const tellReady = useCallback(
     (before: MyOrders | null, after: MyOrders, read: number) => {
+      marks.seen(read, after);
       const news = readyNews(before, after, marks.quietFor(read));
       if (news.length === 0) return;
       const fresh = new Set(news.map((item) => item.ticket));
@@ -443,7 +445,7 @@ export function OrdersModeProvider({
         ...news,
         ...untold.current.filter((item) => !fresh.has(item.ticket)),
       ];
-      tell(() => {
+      tell("ready", () => {
         const due = untold.current.filter(
           (item) =>
             stillReady(heardMine.current, item.ticket) &&
@@ -626,8 +628,8 @@ export function OrdersModeProvider({
   /**
    * A round sent again with no screen waiting for its answer (`resume`: the
    * mode was left, or the tab read again, while it was on its way) landed:
-   * the toast says where it went, with the way there, and never in the place
-   * of a way back still offered.
+   * the toast says where it went, with the way there, never in the place of
+   * a way back still offered, and in its own turn beside the ready news.
    */
   const tellSent = useCallback(
     (sent: SentRound) => {
@@ -643,7 +645,7 @@ export function OrdersModeProvider({
         sent.place === null
           ? appOrdersPaths.takeaway(sent.order)
           : appOrdersPaths.place(sent.place);
-      tell(() => say(t("sent", { place }), { open }));
+      tell(`sent:${sent.round}`, () => say(t("sent", { place }), { open }));
     },
     [placeTitle, say, t, tell],
   );
@@ -925,10 +927,11 @@ export function OrdersModeProvider({
       sender,
       actions: modeActions,
       say,
+      tell,
       syncNow,
       newId,
     }),
-    [frame, now, clock, off, drafts, sender, modeActions, say, syncNow],
+    [frame, now, clock, off, drafts, sender, modeActions, say, tell, syncNow],
   );
 
   return (

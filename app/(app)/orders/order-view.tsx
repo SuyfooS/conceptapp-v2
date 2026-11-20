@@ -87,8 +87,18 @@ export function OrderView({
   const { t, placeTitle, time, person, department } = useOrderWords();
   const heading = useModeHeading();
   const mode = useOrdersMode();
-  const { frame, paths, drafts, sender, actions, say, off, clock, newId } =
-    mode;
+  const {
+    frame,
+    paths,
+    drafts,
+    sender,
+    actions,
+    say,
+    tell,
+    off,
+    clock,
+    newId,
+  } = mode;
   const router = useRouter();
   const place = where.kind === "place" ? where.place : null;
   const known = order ?? null;
@@ -258,14 +268,15 @@ export function OrderView({
       takeaway: outcome.round.takeaway,
     });
     // Left meanwhile (the answer came after a while, offline): the toast
-    // says it wherever the person is, with the way to it, and nothing moves
-    // them.
+    // says it wherever the person is, with the way to it, as news, so never
+    // in the place of a way back on the screen now shown; nothing moves them.
     if (!onScreen.current) {
-      say(t("toast.sent", { place: sentAs }), {
-        open: place
-          ? paths.place(place.id)
-          : paths.takeaway(outcome.round.order),
-      });
+      const open = place
+        ? paths.place(place.id)
+        : paths.takeaway(outcome.round.order);
+      tell(`sent:${outcome.round.round}`, () =>
+        say(t("toast.sent", { place: sentAs }), { open }),
+      );
       return;
     }
     say(t("toast.sent", { place: sentAs }));
