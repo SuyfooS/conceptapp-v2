@@ -198,6 +198,49 @@ describe("validateTemplate", () => {
     ).toThrow();
   });
 
+  it("refuses a department taking orders that the template doesn't have", () => {
+    // Waiter mode P3: the restaurant names its floor and bar
+    // (20261120000200_order_taking_takers.sql).
+    const takers = manifests.map((m) =>
+      m.key === "order_taking"
+        ? defineManifest({
+            key: "order_taking",
+            requires: [],
+            nav: null,
+            homeWidget: null,
+            permissions: [],
+            settings: z.object({
+              takerDepartments: z.array(z.string()).default([]),
+            }),
+          })
+        : m,
+    );
+    const restaurant = (takerDepartments?: string[]) => {
+      const input = template({
+        departments: [
+          { key: "kitchen", name: "Kitchen" },
+          { key: "floor", name: "Floor" },
+          { key: "bar", name: "Bar" },
+        ],
+      });
+      input.modules.order_taking = {
+        enabled: false,
+        settings: takerDepartments ? { takerDepartments } : {},
+      };
+      return input;
+    };
+    expect(
+      validateTemplate(takers, restaurant(["floor", "bar"])).modules
+        .order_taking.settings,
+    ).toEqual({ takerDepartments: ["floor", "bar"] });
+    expect(() =>
+      validateTemplate(takers, restaurant(["floor", "kitchen-2"])),
+    ).toThrow(/doesn't have: kitchen-2/);
+    expect(
+      validateTemplate(takers, restaurant()).modules.order_taking.settings,
+    ).toEqual({ takerDepartments: [] });
+  });
+
   it("refuses unknown modules, unknown fields and bad hours", () => {
     const extraModule = template();
     extraModule.modules.payroll = { enabled: true, settings: {} };

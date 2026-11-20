@@ -356,17 +356,22 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   is refused (see "Never").
 - **Taking orders (waiter mode, issue #191).** Orel asked for it on 17 November 2026
   and decided on 20 November to build every phase now, with §16's recommendations (#1,
-  #191). P1 is built, in the
-  database alone (`20261117000400_order_taking_module.sql`,
-  `20261117000500_order_taking_menu.sql`): the menu's categories, each to a department,
-  items with prices in agorot, choices and "sold out", the places, the key
-  `order_taking.edit`, `@domain/order-taking`, `@domain/menu-import` and
-  `@db/order-taking`, with the module off everywhere and a sample menu waiting in the
-  demo restaurant. P2 is built: `/orders/menu` (categories, items, places, the paste
-  import), the console's menu, departments for the module; on locally and in tests, off
-  in the hosted demo until Orel approves the screens. P3 onward (orders, sending and
-  preparing, the kitchen) is built by day, a phase per PR; a nightly run doesn't start a
-  phase.
+  #191), each phase its own PR in the design's order. P1 is built, in the database
+  (`20261117000400_order_taking_module.sql`, `20261117000500_order_taking_menu.sql`):
+  the menu's categories, each to a department, items with prices in agorot, choices and
+  "sold out", the places, the key `order_taking.edit`, `@domain/order-taking`,
+  `@domain/menu-import` and `@db/order-taking`. P2 is built: `/orders/menu`
+  (categories, items, places, the paste import), the console's menu, departments for
+  the module. P3 is built, in the database alone
+  (`20261120000200_order_taking_takers.sql` to
+  `20261120000400_order_taking_orders_demo.sql`): who takes orders (the template's
+  departments, those who run the menu, owners) and only on a shift; the orders, split
+  by department with their prices frozen, taking back and cancelling with a reason, "on
+  the house", and no total anywhere; `@domain/orders` and `@db/orders`. The module is on
+  locally and in tests, off in the hosted demo until Orel approves the screens; the demo
+  restaurant has a sample menu and three orders waiting. P4 onward (sending and
+  preparing on screen, the fixes and the till, choices, offline, the kitchen) is built
+  by day, a phase per PR; a nightly run doesn't start a phase.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

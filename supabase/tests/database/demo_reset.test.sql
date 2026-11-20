@@ -4,7 +4,7 @@
 -- that renews has this week's schedule published from its own shifts, and only
 -- the server can do either.
 begin;
-select plan(45);
+select plan(51);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -336,10 +336,13 @@ select is(
 -- four categories to the kitchen and the bar, thirteen items, the fish of
 -- the day sold out, and twelve tables, with the module off and nothing in
 -- the log; a shop gets none. Its own ids (e2…) and numbers (050-062-xxxx).
+-- And its sample orders (20261120000400_order_taking_orders_demo.sql), sent
+-- by its manager and by its bartender, who works in a department that takes
+-- orders.
 insert into auth.users (id, aud, role, phone)
 select ('e2000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
   'authenticated', 'authenticated', '97250062' || lpad(n::text, 4, '0')
-from generate_series(1, 3) as n;
+from generate_series(1, 4) as n;
 insert into private.demo_businesses (business_id, definition)
 values ('e2000000-0000-4000-b000-000000000001', $json$
   {
@@ -349,7 +352,8 @@ values ('e2000000-0000-4000-b000-000000000001', $json$
     "people": [
       { "user_id": "e2000000-0000-4000-a000-000000000001", "role": "owner", "name": "Owner M" },
       { "user_id": "e2000000-0000-4000-a000-000000000002", "role": "manager", "name": "Manager M", "departments": ["floor", "bar"] },
-      { "user_id": "e2000000-0000-4000-a000-000000000003", "role": "worker", "name": "Cook M", "departments": ["kitchen"] }
+      { "user_id": "e2000000-0000-4000-a000-000000000003", "role": "worker", "name": "Cook M", "departments": ["kitchen"] },
+      { "user_id": "e2000000-0000-4000-a000-000000000004", "role": "worker", "name": "Bartender M", "departments": ["bar"] }
     ]
   }
   $json$);
@@ -383,12 +387,87 @@ select is(
   'false 0 true 0',
   'with taking orders off, nothing of it in the log and its version set; and the shop has no menu'
 );
+select is(
+  (select string_agg(
+     p.name || ':' || o.status || ':' || d.key || ':' || t.status || ':'
+       || (extract(epoch from now() - r.sent_at) / 60)::integer || ':' || r.sent_by::text,
+     ',' order by p.name)
+   from public.orders o
+   join public.order_places p on p.id = o.place_id
+   join public.order_rounds r on r.order_id = o.id
+   join public.order_tickets t on t.round_id = r.id
+   join public.departments d on d.id = t.department_id
+   where o.business_id = 'e2000000-0000-4000-b000-000000000001'),
+  '4:open:kitchen:new:6:e2000000-0000-4000-a000-000000000004,'
+    || '7:open:bar:ready:14:e2000000-0000-4000-a000-000000000002',
+  'a demo restaurant starts with table 4 waiting for the kitchen, sent by its bartender six minutes before, and table 7''s round, the manager''s, ready at the bar'
+);
+select is(
+  (select string_agg(
+     l.name || ':' || l.quantity || ':' || l.unit_agorot || ':' || l.allergy || ':' || coalesce(l.note, '-'),
+     ',' order by l.position)
+   from public.order_lines l
+   join public.order_tickets t on t.id = l.ticket_id
+   join public.orders o on o.id = t.order_id
+   join public.order_places p on p.id = o.place_id
+   where o.business_id = 'e2000000-0000-4000-b000-000000000001' and p.name = '4'),
+  'חומוס:1:3200:true:בלי שום,פוקאצ''ה:1:2800:false:-',
+  'table 4''s hummus with its allergy noted, and a focaccia, each at its price when sent'
+);
+select is(
+  (select string_agg(l.name || ':' || l.quantity || ':' || l.unit_agorot, ',' order by l.position)
+   from public.order_lines l
+   join public.order_tickets t on t.id = l.ticket_id
+   join public.orders o on o.id = t.order_id
+   join public.order_places p on p.id = o.place_id
+   where o.business_id = 'e2000000-0000-4000-b000-000000000001' and p.name = '7')
+  || ' | ' || (select (extract(epoch from now() - t.ready_at) / 60)::integer || ':'
+       || (t.prepared_at = t.ready_at)::text || ':' || t.ready_by::text
+     from public.order_tickets t
+     join public.orders o on o.id = t.order_id
+     join public.order_places p on p.id = o.place_id
+     where o.business_id = 'e2000000-0000-4000-b000-000000000001' and p.name = '7'),
+  'בירה מהחבית:2:2800,לימונדה:1:1600 | 3:true:e2000000-0000-4000-a000-000000000004',
+  'table 7''s drinks were made ready by the bartender three minutes before'
+);
+select is(
+  (select o.takeaway_no || ':' || o.takeaway_label || ':' || o.status || ':' || d.key || ':'
+       || t.status || ':' || l.name || ':' || l.quantity
+       || ':' || (extract(epoch from now() - r.sent_at) / 60)::integer
+       || ':' || (select c.last_no from private.order_day_counters c
+                  where c.business_id = o.business_id and c.day = o.day)
+   from public.orders o
+   join public.order_rounds r on r.order_id = o.id
+   join public.order_tickets t on t.round_id = r.id
+   join public.departments d on d.id = t.department_id
+   join public.order_lines l on l.ticket_id = t.id
+   where o.business_id = 'e2000000-0000-4000-b000-000000000001' and o.takeaway_no is not null),
+  '1:חולצה אדומה:open:bar:new:קפה:2:2:1',
+  'and takeaway 1, the red shirt''s two coffees two minutes before, its day''s counter at 1'
+);
+select is(
+  (select count(*)::text from public.audit_log a
+   where a.business_id = 'e2000000-0000-4000-b000-000000000001' and a.action like 'order.%')
+  || ' ' || ((select v.version from private.order_versions v
+   where v.business_id = 'e2000000-0000-4000-b000-000000000001') > 0)::text
+  || ' ' || (select count(*)::text from public.orders o
+   where o.business_id = '6d000000-0000-4000-b000-000000000001'),
+  '0 true 0',
+  'nothing of them in the log and the orders version set; and the shop has no orders'
+);
 select private.seed_demo_order_taking('e2000000-0000-4000-b000-000000000001');
+select private.seed_demo_orders('e2000000-0000-4000-b000-000000000001');
 select is(
   (select count(*)::integer from public.menu_items i
    where i.business_id = 'e2000000-0000-4000-b000-000000000001'),
   13,
   'the sample is written once: a business that has a menu keeps it'
+);
+select is(
+  (select count(*)::integer from public.orders o
+   where o.business_id = 'e2000000-0000-4000-b000-000000000001'),
+  3,
+  'and so are the orders: a business that has orders keeps them'
 );
 -- A visitor changes a price, removes a category and adds a table.
 update public.menu_items set price_agorot = 100

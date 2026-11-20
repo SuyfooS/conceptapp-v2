@@ -3,6 +3,149 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-20 · chat · taking orders: the orders in the database, module off (waiter mode P3)
+
+- On chat/order-orders-db from main (879f5db). Orel decided on 20 November to build every phase, with decisions 3, 4, 5 and 7 as the design recommends (#1, #191). P3 is the database half of §14 P3: no new screen.
+- Migrations `20261120000200_order_taking_takers.sql` (the five settings and their SQL readers, `set_module_settings` from roles_manage's body plus an `order_taking` branch, diffed; the restaurant's `floor`/`bar` and the café's `coffee`/`bar` as `takerDepartments`, a version up each, and the same for businesses already on them; who takes orders and the clock rule; who prepares), `20261120000300_order_taking_orders.sql` (`orders`, `order_rounds`, `order_tickets` with a `position`, `order_lines`, the takeaway counters and the orders version, RLS on with no policy and no grant; the idempotent send, eleven writes, six reads, the log rows) and `20261120000400_order_taking_orders_demo.sql` (the hourly job `order-taking`, off in `seed.sql`; the demo restaurant's table 4, table 7 and takeaway 1, written now and with each reset; `reset_demo_business` from P1's body plus one line, diffed).
+- `@domain/orders` (caps, rules, reasons, statuses, the send's inputs, `orderDay`, `takeBackState`, `ticketWait`, a schema per read), `@db/orders` and `@db/order-failures`; the manifest's settings (who takes orders hidden until P4 draws departments; the clock rule and the take-back time at owner level); `validateTemplate` refuses a taker department the template doesn't have; the activity log's six order lines (quantity and unit price in an LTR span, the department after a separator, the reason, the sender), with their words; the roles screen's hint for the area; two order rows in the activity twin.
+- Tests: unit `orders.test.ts`, `order-failures.test.ts`, activity's order lines and refs, templates, the registry's settings case, `tooling/demo-orders.test.ts`. pgTAP (first run in CI): `order_taking.test.sql` (89), `order_taking_access.test.sql` (58), `order_taking_retention.test.sql` (25); isolation 44, demo_reset 51 (a bartender added to its restaurant), templates 42 (restaurant@8), activity_log 34, rls_enabled, create_business (cafe-bar 7). `modules/order_taking/settings.db.test.ts`; e2e `orders.spec.ts` (the console's settings) and a design.spec check of the activity twin. `database.types.ts` by hand (no local Docker).
+- After the review (database, security, tests and fit; each finding confirmed by a skeptic): `order_tickets` and `order_lines` get an index on `business_id`, so a demo reset no longer reads them whole (pgTAP: every foreign key of the orders leads an index); every write checks that each row it locks is still there and is refused P0002 if not, never going on with empty rows (the send too, after its business lock); `cancel_order_line` asks who before any lock, and whether the ticket is ready after; `order_detail` and `order_till` refuse an order of another business word for word as one that doesn't exist; the job makes an erased order's rounds' body hashes from their ids alone (a takeaway's whose label was cleared before too), so no erased note or name can be confirmed by hashing a guess, and forgets after 30 days who opened, moved, reopened, closed or cancelled an order, called, made ready or served a ticket, and took back, cancelled or gave a line on the house; new pgTAP for a retry after the sender clocked out, the most ordered, a served ticket not put back to new, a view as a manager reading another day's order, and another business's place in a send and a move. `supabase/README.md` lists the seventh job.
+- After the second review (database and security, each finding confirmed by a skeptic; the team's runner powers through `runs_orders` are settled on P2's branch, so P3 keeps calling it):
+  - The job's note and hash steps touch only rounds sent more than two days before its moment, and any order it marks that has a round from the last two days loses its mark again: an open one that got a round while the job waited on its lock, or one closed or cancelled at a moment before its last round's (the close waited on the send's lock, or the server's clocks are a little apart). That round keeps its notes for the kitchen and its retry, and they go once its own two days pass (pgTAP, two new cases in one transaction, every moment passed to the functions: an order closed a minute before its last round was sent loses its first round's note and hash and keeps the last one's, unmarked, half a minute before that round's two days pass, and an hour later loses them and is marked; 25). The open order's race needs two sessions, so no pgTAP case shows it.
+  - The job marks each order once its two days pass (`notes_erased_at`), even with nothing to erase, so an hour reads only the orders not marked yet through a new partial `orders_unerased_idx` (in place of `orders_labelled_idx`, which nothing reads now), the open ones as their own branch (`orders_open_idx`); `send_order_round` and `set_order_label` take the mark away from an open order, so a later round's notes and a later label go in turn (pgTAP: six new cases in `order_taking_retention.test.sql`, among them the later round keeping its note and hash an hour on, its order's last round not two days old, and its retry its answer).
+  - `send_order_round` refuses someone who takes no orders (42501) before the business lock. On that path it first looks, with no lock, for their own committed round with the key, the business and the same body hash, and gives its answer when there is one (a sender moved out of the departments that take orders since, whose phone retries); any other key is refused alike, so nothing of anyone else's shows. Only the clock's part (`clock`, `stale_shift`) waits for the stored round's lookup under the lock (pgTAP: a kitchen worker with another's round key and its lines is refused 42501, not 23505 `key`, 89; a bar worker taken out of the bar gets their round's answer again and is refused 42501 for a new key, `order_taking_access.test.sql`, 58).
+- Checked here: `pnpm check` (Biome, typegen, typecheck, unit tests). Not run here: pgTAP, `pnpm test:db`, `pnpm db:types`, `supabase db lint`, Playwright: first in CI; nor the demo walkthrough below.
+- The demo walkthrough of §14 P3, not run here (no Docker): for the next session, after `pnpm db:start`, in psql as postgres against the local seed. It rolls back. Each comment says what the plan expects, not what was seen.
+
+  ```sql
+  begin;
+
+  create function pg_temp.b() returns uuid language sql as $$ select '00000000-0000-4000-b000-000000000001'::uuid $$;
+  create function pg_temp.ori() returns uuid language sql as $$ select '00000000-0000-4000-a000-000000000001'::uuid $$;
+  create function pg_temp.shiran() returns uuid language sql as $$ select '00000000-0000-4000-a000-000000000002'::uuid $$;
+  create function pg_temp.noa() returns uuid language sql as $$ select '00000000-0000-4000-a000-000000000003'::uuid $$;
+  create function pg_temp.yoav() returns uuid language sql as $$ select '00000000-0000-4000-a000-000000000004'::uuid $$;
+  create function pg_temp.item(item_name text) returns uuid language sql as $$
+    select i.id from public.menu_items i
+    where i.business_id = pg_temp.b() and i.name = item_name and i.archived_at is null
+  $$;
+  create function pg_temp.place(place_name text) returns uuid language sql as $$
+    select p.id from public.order_places p
+    where p.business_id = pg_temp.b() and p.name = place_name and p.archived_at is null
+  $$;
+  create function pg_temp.refusal(call text) returns text language plpgsql as $$
+  declare got_code text; got_hint text;
+  begin
+    execute call;
+    return 'none';
+  exception when others then
+    get stacked diagnostics got_code = returned_sqlstate, got_hint = pg_exception_hint;
+    return concat_ws(' ', got_code, nullif(got_hint, ''));
+  end;
+  $$;
+
+  -- Taking orders on, as the team would switch it in the console; Shiran and Yoav on the clock.
+  update public.business_modules set enabled = true
+  where business_id = pg_temp.b() and module_key = 'order_taking';
+  select private.order_taking_settings(pg_temp.b()) -> 'takerDepartments' as takers;  -- ["floor", "bar"]
+  insert into public.time_entries (business_id, user_id, clock_in)
+  values (pg_temp.b(), pg_temp.yoav(), now() - interval '2 hours'),
+         (pg_temp.b(), pg_temp.shiran(), now() - interval '3 hours');
+
+  -- 1. A send split into the kitchen and the bar.
+  select public.send_order_round(pg_temp.yoav(), pg_temp.b(), 'a3000000-0000-4000-8000-000000000001',
+    jsonb_build_object('place', pg_temp.place('2')),
+    jsonb_build_array(
+      jsonb_build_object('item', pg_temp.item('חומוס'), 'quantity', 2, 'note', 'בלי שום', 'allergy', true),
+      jsonb_build_object('item', pg_temp.item('בירה מהחבית'), 'quantity', 1)));
+  select d.key as department, t.status, l.name, l.quantity, l.unit_agorot, l.allergy
+  from public.order_lines l
+  join public.order_tickets t on t.id = l.ticket_id
+  join public.departments d on d.id = t.department_id
+  where t.round_id = 'a3000000-0000-4000-8000-000000000001'
+  order by d.key;  -- bar: בירה מהחבית 1 × 2800; kitchen: חומוס 2 × 3200, allergy
+
+  -- 2. The same key twice: the same answer, one round; another body: refused.
+  select public.send_order_round(pg_temp.yoav(), pg_temp.b(), 'a3000000-0000-4000-8000-000000000001',
+    jsonb_build_object('place', pg_temp.place('2')),
+    jsonb_build_array(
+      jsonb_build_object('item', pg_temp.item('חומוס'), 'quantity', 2, 'note', 'בלי שום', 'allergy', true),
+      jsonb_build_object('item', pg_temp.item('בירה מהחבית'), 'quantity', 1)));
+  select count(*) as rounds from public.order_rounds where id = 'a3000000-0000-4000-8000-000000000001';  -- 1
+  select pg_temp.refusal(format(
+    $q$select public.send_order_round(%L, %L, 'a3000000-0000-4000-8000-000000000001',
+       jsonb_build_object('place', %L::uuid), jsonb_build_array(jsonb_build_object('item', %L::uuid, 'quantity', 3)))$q$,
+    pg_temp.yoav(), pg_temp.b(), pg_temp.place('2'), pg_temp.item('חומוס')));  -- 23505 body
+
+  -- 3. Yoav takes back the beer he sent to his own bar: refused, he cancels with a reason instead.
+  select pg_temp.refusal(format('select public.take_back_order_line(%L, %L)', pg_temp.yoav(),
+    (select l.id from public.order_lines l join public.order_tickets t on t.id = l.ticket_id
+     where t.round_id = 'a3000000-0000-4000-8000-000000000001' and l.name = 'בירה מהחבית')));  -- 42501 own_department
+
+  -- 4. A taker's cancel, in the log with its price.
+  select public.cancel_order_line(pg_temp.shiran(),
+    (select l.id from public.order_lines l join public.order_tickets t on t.id = l.ticket_id
+     where t.round_id = 'a3000000-0000-4000-8000-000000000001' and l.name = 'בירה מהחבית'), 'guest');
+  select a.details from public.audit_log a
+  where a.business_id = pg_temp.b() and a.action = 'order.line.cancel'
+  order by a.created_at desc limit 1;  -- name, quantity 1, unitAgorot 2800, where {"place": "2"}, reason guest, sender Yoav
+
+  -- 5. A close settles the kitchen's new ticket as served; a late round is then refused as closed.
+  select public.close_order(pg_temp.yoav(),
+    (select r.order_id from public.order_rounds r where r.id = 'a3000000-0000-4000-8000-000000000001'));
+  select t.status, t.served_new from public.order_tickets t
+  where t.round_id = 'a3000000-0000-4000-8000-000000000001' order by t.status;  -- served, true (both)
+  select pg_temp.refusal(format(
+    $q$select public.send_order_round(%L, %L, 'a3000000-0000-4000-8000-000000000002',
+       jsonb_build_object('order', %L::uuid, 'place', %L::uuid),
+       jsonb_build_array(jsonb_build_object('item', %L::uuid, 'quantity', 1)))$q$,
+    pg_temp.yoav(), pg_temp.b(),
+    (select r.order_id from public.order_rounds r where r.id = 'a3000000-0000-4000-8000-000000000001'),
+    pg_temp.place('2'), pg_temp.item('מים')));  -- 55000 closed
+
+  -- 6. Two first sends to table 3 twenty seconds apart join one order; a third two minutes on is told it's taken.
+  select public.send_order_round(pg_temp.shiran(), pg_temp.b(), 'a3000000-0000-4000-8000-000000000003',
+    jsonb_build_object('place', pg_temp.place('3')),
+    jsonb_build_array(jsonb_build_object('item', pg_temp.item('לימונדה'), 'quantity', 1)), now());
+  select public.send_order_round(pg_temp.yoav(), pg_temp.b(), 'a3000000-0000-4000-8000-000000000004',
+    jsonb_build_object('place', pg_temp.place('3')),
+    jsonb_build_array(jsonb_build_object('item', pg_temp.item('פוקאצ''ה'), 'quantity', 1)),
+    now() + interval '20 seconds');
+  select count(distinct r.order_id) as orders from public.order_rounds r
+  where r.id in ('a3000000-0000-4000-8000-000000000003', 'a3000000-0000-4000-8000-000000000004');  -- 1
+  select pg_temp.refusal(format(
+    $q$select public.send_order_round(%L, %L, 'a3000000-0000-4000-8000-000000000005',
+       jsonb_build_object('place', %L::uuid), jsonb_build_array(jsonb_build_object('item', %L::uuid, 'quantity', 1)),
+       now() + interval '2 minutes')$q$,
+    pg_temp.ori(), pg_temp.b(), pg_temp.place('3'), pg_temp.item('מים')));  -- 23505 taken
+
+  -- 7. Yoav clocked out 31 minutes ago: refused; 29 minutes after his clock-out he still could.
+  update public.time_entries set clock_out = now() - interval '31 minutes'
+  where business_id = pg_temp.b() and user_id = pg_temp.yoav() and clock_out is null;
+  select pg_temp.refusal(format(
+    $q$select public.send_order_round(%L, %L, 'a3000000-0000-4000-8000-000000000006',
+       jsonb_build_object('place', %L::uuid), jsonb_build_array(jsonb_build_object('item', %L::uuid, 'quantity', 1)))$q$,
+    pg_temp.yoav(), pg_temp.b(), pg_temp.place('9'), pg_temp.item('מים')));  -- 42501 clock
+  select pg_temp.refusal(format(
+    $q$select public.send_order_round(%L, %L, 'a3000000-0000-4000-8000-000000000007',
+       jsonb_build_object('place', %L::uuid), jsonb_build_array(jsonb_build_object('item', %L::uuid, 'quantity', 1)),
+       now() - interval '2 minutes')$q$,
+    pg_temp.yoav(), pg_temp.b(), pg_temp.place('9'), pg_temp.item('מים')));  -- none
+
+  -- 8. Noa, signed in: no direct read of the lines; her prep view has her kitchen's tickets and no price.
+  select set_config('request.jwt.claims', json_build_object('sub', pg_temp.noa(), 'role', 'authenticated')::text, true);
+  set local role authenticated;
+  select pg_temp.refusal('select count(*) from public.order_lines');  -- 42501
+  select public.order_prep(pg_temp.b()) -> 'tickets';  -- table 4's kitchen ticket and table 3's focaccia; no "unitAgorot"
+  reset role;
+
+  rollback;
+  ```
+
+  The items מים, לימונדה and פוקאצ'ה and tables 2, 3 and 9 come from P1's sample; the sample orders hold tables 4 and 7, which it leaves alone.
+- Next: database-reviewer, security-reviewer and business-reviewer on the PR; then P4, the send and the kitchen's screens.
+- Defaults applied (to ask Orel): a manager off a shift still fixes orders (only sending needs one); notes of an order nobody closed go two days after its last round; the log keeps a line's quantity and unit price, no sums; taker departments come from the template now, an editor with P4; businesses already on the restaurant and café templates get them too; a cancelled order stays cancelled; a takeaway doesn't move to a table; "seen" is someone of the department opening the kitchen's screen; a cancel and "on the house" are undone while the order is open, each logged.
+- With P2 (#208) merged in: `20261120000500_order_taking_roles_hint.sql` writes the restaurant's and café's own sentence for the roles screen's hint again, with P3's base (taking orders, cancelling, "ready", on the house), only where the team hasn't changed P2's; the menu twin's copy of the restaurant's words follows (`tooling/template-wording.test.ts`). P3's `reset_demo_business` is P1's newest body plus the one seed line, checked by a diff.
 ## 2026-11-20 · chat · taking orders: the menu on screen (waiter mode P2, #191)
 
 - On chat/order-menu-screens from main `879f5db`. Orel decided on 20.11 to build every phase of waiter mode with the §16 recommendations; this is P2, built from the planner's plan.

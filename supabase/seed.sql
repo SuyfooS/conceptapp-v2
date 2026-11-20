@@ -241,11 +241,14 @@ grant execute on function dev.send_sms(jsonb) to supabase_auth_admin;
 -- 20261110001300_list_schedules.sql and their photos' clean-up of
 -- 20261110001500_list_photos.sql) and chat's every 10 minutes
 -- (20261111000200_chat.sql, with its files' clean-up from
--- 20261111000500_chat_files.sql) stay off here, or they would send, clean, remind
--- and open lists at real time under the tests, which call what the jobs run
--- themselves, at times they choose. A hosted project keeps them.
+-- 20261111000500_chat_files.sql), and taking orders' every hour
+-- (20261120000400_order_taking_orders_demo.sql), stay off here, or they would
+-- send, clean, remind, open lists and erase notes at real time under the tests,
+-- which call what the jobs run themselves, at times they choose. A hosted
+-- project keeps them.
 select cron.alter_job(j.jobid, active => false)
 from cron.job j
 where j.jobname in (
-  'notifications', 'notifications-clean', 'payroll', 'lists', 'list-photos', 'chat'
+  'notifications', 'notifications-clean', 'payroll', 'lists', 'list-photos', 'chat',
+  'order-taking'
 );

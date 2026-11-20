@@ -4400,16 +4400,21 @@ export async function joinFirstStepsDepartment(name: string): Promise<void> {
 }
 
 /**
- * The demo restaurant's menu as it starts (waiter mode P2): its items,
- * categories and places deleted, the sample written again
+ * The demo restaurant's menu as it starts (waiter mode P2): its orders,
+ * items, categories and places deleted (the orders first: their lines point
+ * at the items, and go with their orders), the sample menu written again
  * (private.seed_demo_order_taking, which only writes a menu that has no
- * category), and taking orders on, as the local seed has it.
+ * category) and its sample orders after it (private.seed_demo_orders, P3,
+ * which only writes them where there are none), and taking orders on, as the
+ * local seed has it.
  */
 export async function resetDemoMenu(): Promise<void> {
+  await sql`delete from public.orders where business_id = ${DEMO_RESTAURANT}`;
   await sql`delete from public.menu_items where business_id = ${DEMO_RESTAURANT}`;
   await sql`delete from public.menu_categories where business_id = ${DEMO_RESTAURANT}`;
   await sql`delete from public.order_places where business_id = ${DEMO_RESTAURANT}`;
   await sql`select private.seed_demo_order_taking(${DEMO_RESTAURANT}::uuid)`;
+  await sql`select private.seed_demo_orders(${DEMO_RESTAURANT}::uuid)`;
   await sql`
     update public.business_modules set enabled = true
     where business_id = ${DEMO_RESTAURANT} and module_key = 'order_taking'`;

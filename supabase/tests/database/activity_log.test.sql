@@ -4,7 +4,7 @@
 -- viewing it as a manager or owner, but not as a worker, not after the session
 -- ends, and never another business's.
 begin;
-select plan(30);
+select plan(34);
 
 insert into auth.users (id, aud, role, phone)
 values
@@ -307,6 +307,36 @@ select public.start_view_session('6c000000-0000-4000-a000-00000000000f',
 reset role;
 select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000f');
 select is(pg_temp.menu_rows(), 2, 'and a view as a manager reads them as a manager would');
+reset role;
+
+-- The orders' rows (20261120000300_order_taking_orders.sql), in the same
+-- family's arm of private.log_perm: a cancelled line, with its quantity and
+-- unit price, read by those who run orders, never a worker nor a view as one.
+insert into public.audit_log (business_id, actor_id, action, details)
+values (
+  '6c000000-0000-4000-b000-000000000001', '6c000000-0000-4000-a000-00000000000b', 'order.line.cancel',
+  '{"line": "6c000000-0000-4000-c000-000000000002", "name": "Schnitzel", "choices": [],
+    "quantity": 2, "unitAgorot": 6200, "where": {"place": "12"}, "ticket": "ready",
+    "reason": "guest", "sender": "6c000000-0000-4000-a000-00000000000c"}'
+);
+create function pg_temp.order_rows() returns int language sql as $$
+  select count(*)::int from public.audit_log
+  where business_id = '6c000000-0000-4000-b000-000000000001' and action like 'order.%'
+$$;
+
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000a');
+select is(pg_temp.order_rows(), 1, 'the owner reads a cancelled line of an order');
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000b');
+select is(pg_temp.order_rows(), 1, 'and so does a manager, who runs orders by default');
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000c');
+select is(pg_temp.order_rows(), 0, 'not the worker who sent it');
+reset role;
+set local role service_role;
+select public.start_view_session('6c000000-0000-4000-a000-00000000000f',
+  '6c000000-0000-4000-b000-000000000001', 'worker');
+reset role;
+select pg_temp.sign_in('6c000000-0000-4000-a000-00000000000f');
+select is(pg_temp.order_rows(), 0, 'nor a view as a worker');
 reset role;
 
 select * from finish();

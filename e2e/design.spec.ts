@@ -2018,6 +2018,61 @@ test("the activity demo says whose name was fixed", async ({ page }) => {
   ).toBeVisible();
 });
 
+// The activity demo says what was cancelled at table 12 (waiter mode P3): the
+// line's quantity and unit price, the price in an LTR span, the department
+// after a separator, why and who sent it, and never a total.
+test("the activity demo says what was cancelled, with its price", async ({
+  page,
+}) => {
+  const o = he.app.manage.activity.actions.order;
+  await page.goto("/design/shell/manage/activity");
+  await expect(
+    page
+      .getByText(
+        heT("app.manage.activity.actions.order.cancel", { name: "שניצל" }),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .getByText(
+        heT.markup("app.manage.activity.actions.order.quantity", {
+          ltr: (chunks: string) => chunks,
+          quantity: 2,
+          price: "62.00 ₪",
+        }),
+      )
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  await expect(
+    page
+      .locator('span[dir="ltr"]')
+      .filter({ hasText: "62.00 ₪" })
+      .filter({ visible: true })
+      .first(),
+  ).toBeVisible();
+  for (const note of [
+    heT("app.manage.activity.actions.order.place", { name: "12" }),
+    heT("app.manage.activity.actions.order.department", {
+      department: "מטבח",
+    }),
+    heT("app.manage.activity.actions.order.reason", {
+      reason: o.reasons.guest,
+    }),
+    heT("app.manage.activity.actions.order.sender", { person: "יואב לוי" }),
+  ]) {
+    await expect(
+      page.getByText(note).filter({ visible: true }).first(),
+    ).toBeVisible();
+  }
+  // Two at 62.00 ₪ are never added up.
+  await expect(page.getByText("124.00").filter({ visible: true })).toHaveCount(
+    0,
+  );
+});
+
 // The activity demo names the app for what it did on its own: Sunday's floor
 // opening, which nobody did, closed by the lists' job. On a computer the "who"
 // cell is the app; on a phone or a tablet, the row's title over that line.

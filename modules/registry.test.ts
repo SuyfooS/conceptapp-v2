@@ -326,7 +326,6 @@ describe("module registry", () => {
     ]);
     expect(manifest.nav).toBeNull();
     expect(manifest.homeWidget).toBeNull();
-    expect(manifest.settings.parse({})).toEqual({});
     expect(he.modules.order_taking.name).toBe("קבלת הזמנות");
     // Its own icon where it has no tab (P2): the pad on the roles screen,
     // not the management page's sliders.
@@ -335,6 +334,69 @@ describe("module registry", () => {
     expect(moduleIcon(manifestFor("notifications"))).toBe(
       manifestFor("notifications").nav?.icon ?? null,
     );
+  });
+
+  it("gives taking orders the settings its SQL readers default to, the owner's fields kept to owners and the team", () => {
+    // Waiter mode P3 (20261120000200_order_taking_takers.sql):
+    // private.order_taking_settings holds the same defaults
+    // (modules/order_taking/settings.db.test.ts), and set_module_settings
+    // keeps who takes orders, the clock rule and the take-back time to
+    // owners and the team.
+    const manifest = manifestFor("order_taking");
+    expect(manifest.settings.parse({})).toEqual({
+      takerDepartments: [],
+      onlyOnTheClock: true,
+      takeBackMinutes: 2,
+      lateAfterMinutes: 15,
+      dayEndsAt: "05:00",
+    });
+    // Who takes orders is on no screen until P4 draws its departments.
+    const fields = describeSettings(manifest.settings);
+    expect(fields.map((f) => f.key)).toEqual([
+      "onlyOnTheClock",
+      "takeBackMinutes",
+      "lateAfterMinutes",
+      "dayEndsAt",
+    ]);
+    expect(Object.fromEntries(fields.map((f) => [f.key, f.level]))).toEqual({
+      onlyOnTheClock: "owner",
+      takeBackMinutes: "owner",
+      lateAfterMinutes: "business",
+      dayEndsAt: "business",
+    });
+    // A manager sees the two of the business's level; owners and the team all four.
+    expect(fieldsFor(manifest.settings, "business").map((f) => f.key)).toEqual([
+      "lateAfterMinutes",
+      "dayEndsAt",
+    ]);
+    expect(fieldsFor(manifest.settings, "owner")).toHaveLength(4);
+    const takeBack = fields.find((f) => f.key === "takeBackMinutes");
+    expect(takeBack?.kind === "choice" ? takeBack.options : null).toEqual([
+      0, 2, 5,
+    ]);
+    expect(fields.find((f) => f.key === "dayEndsAt")).toMatchObject({
+      kind: "editor",
+      editor: "time",
+    });
+    // A value not offered reads as the default, field by field.
+    expect(
+      readModuleSettings(manifest, {
+        takeBackMinutes: 3,
+        lateAfterMinutes: 30,
+        takerDepartments: ["floor", "floor"],
+        dayEndsAt: "24:00",
+      }),
+    ).toEqual({
+      takerDepartments: [],
+      onlyOnTheClock: true,
+      takeBackMinutes: 2,
+      lateAfterMinutes: 30,
+      dayEndsAt: "05:00",
+    });
+    expect(
+      readModuleSettings(manifest, { takerDepartments: ["floor", "bar"] })
+        .takerDepartments,
+    ).toEqual(["floor", "bar"]);
   });
 
   it("gives chat the default roles its SQL helpers hold", () => {

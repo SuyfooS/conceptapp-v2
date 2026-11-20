@@ -1,0 +1,564 @@
+-- Taking orders, P3 of waiter mode (issue #191), part 3 of 3: the hourly job
+-- and the demo's sample orders.
+--
+--   the job     every hour, pure SQL with no app and no secret
+--               (private.order_taking_tick): a line's note and a takeaway's
+--               label are erased two days after the order closes or is
+--               cancelled, and two days after the last round of an order
+--               nobody closed (default 2 to ask Orel), its rounds' body
+--               hashes then made from their ids alone, and the order marked
+--               so no later hour reads it again (until a round or a label
+--               is added to it while open); a round sent within those two
+--               days keeps its notes and hash, and its order no mark, until
+--               its own two days pass; who sent a round,
+--               and who did anything else to an order, its tickets or its
+--               lines, is forgotten 30 days after; a demo business's orders
+--               go two days after they opened, with their rounds, tickets
+--               and lines. Nothing of a real business is ever deleted
+--               (decision 7). It writes no log row. Kept off locally and in CI
+--               (supabase/seed.sql), where the tests call it themselves.
+--   the demo    the demo restaurant has three orders waiting, written once
+--               now and again with every reset (private.seed_demo_orders):
+--               table 4, sent by the first worker of a department that takes
+--               orders six minutes before, its kitchen ticket new and a
+--               hummus with an allergy noted; table 7, sent by the first
+--               manager fourteen minutes before, its bar ticket ready three
+--               minutes before; and takeaway 1, the manager's coffees two
+--               minutes before, labelled "חולצה אדומה". The module stays
+--               off, so none of it shows until P4 switches it on.
+--
+-- It replaces public.reset_demo_business
+-- (20261117000500_order_taking_menu.sql's) with the sample orders last, the
+-- same signature; revoked and granted again all the same. Nothing is reset
+-- here.
+
+------------------------------------------------------------------------------
+-- 1. The job
+
+-- Erases what is kept only for a while, and returns how many rows it
+-- touched. A demo business is left alone while a reset holds it (skip
+-- locked), so the two never wait on each other.
+create function private.order_taking_tick(at_time timestamptz default now())
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  touched integer := 0;
+  step integer;
+  erased uuid[];
+  changed uuid[];
+  demo uuid;
+  kept_since timestamptz := at_time - interval '30 days';
+begin
+  -- Notes and labels, of real businesses: a demo's orders go whole below.
+  -- Each order is marked once its two days pass (notes_erased_at), whatever
+  -- it had (a takeaway whose label was cleared still has the round that
+  -- named it), so an hour reads only the orders not marked yet
+  -- (orders_unerased_idx; the open ones as their own branch,
+  -- orders_open_idx), never every order ever kept. A round or a label added
+  -- to an open order takes its mark away (public.send_order_round,
+  -- public.set_order_label), so they go in turn. The orders first, then
+  -- their lines, as every write locks them.
+  with due as (
+    update public.orders o
+    set takeaway_label = null, notes_erased_at = at_time
+    where not exists (
+        select 1 from private.demo_businesses d where d.business_id = o.business_id
+      )
+      and (
+        (
+          o.notes_erased_at is null
+          and o.status <> 'open'
+          and coalesce(o.closed_at, o.cancelled_at) < at_time - interval '2 days'
+        )
+        or (
+          o.status = 'open'
+          and o.notes_erased_at is null
+          and (
+            select max(r.sent_at) from public.order_rounds r
+            where r.order_id = o.id and r.business_id = o.business_id
+          ) < at_time - interval '2 days'
+        )
+      )
+    returning o.id, o.business_id
+  )
+  select coalesce(array_agg(due.id), '{}'::uuid[]),
+    coalesce(array_agg(distinct due.business_id), '{}'::uuid[])
+  into erased, changed
+  from due;
+  touched := touched + cardinality(erased);
+
+  -- One of those orders may have a round sent within the two days: an open
+  -- one, sent while this waited on its lock (it shows only now, and none
+  -- comes after: this holds them until it commits), or a closed or cancelled
+  -- one, closed at a moment before its last round's (the close began first
+  -- and waited on the send's lock, or the server's clocks are a little
+  -- apart). Its order loses the mark again, to be marked once that round's
+  -- two days pass, and the two steps below leave the round's lines and its
+  -- hash alone, so its notes reach the kitchen and its retry still goes
+  -- through until then. What was due when this looked goes all the same.
+  update public.orders o
+  set notes_erased_at = null
+  where o.id = any (erased)
+    and exists (
+      select 1 from public.order_rounds r
+      where r.order_id = o.id
+        and r.business_id = o.business_id
+        and r.sent_at >= at_time - interval '2 days'
+    );
+
+  update public.order_lines l
+  set note = null, note_erased_at = at_time
+  from public.order_tickets t
+  join public.order_rounds r on r.id = t.round_id and r.business_id = t.business_id
+  where t.id = l.ticket_id
+    and t.business_id = l.business_id
+    and t.order_id = any (erased)
+    and r.sent_at < at_time - interval '2 days'
+    and l.note is not null;
+  get diagnostics step = row_count;
+  touched := touched + step;
+
+  -- Their rounds' body hashes were made with those notes and that label in
+  -- them: from now on each is made from its round's id alone, so no erased
+  -- note or name can be confirmed by hashing a guess. A phone's retry comes
+  -- within minutes, never two days on.
+  update public.order_rounds r
+  set body_hash = encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex')
+  where r.order_id = any (erased)
+    and r.sent_at < at_time - interval '2 days'
+    and r.body_hash <> encode(sha256(convert_to(r.id::text, 'UTF8')), 'hex');
+  get diagnostics step = row_count;
+  touched := touched + step;
+
+  -- Who sent a round, after 30 days.
+  with forgotten as (
+    update public.order_rounds r
+    set sent_by = null
+    where r.sent_by is not null and r.sent_at < kept_since
+    returning r.business_id
+  )
+  select changed || coalesce(array_agg(distinct forgotten.business_id), '{}'::uuid[]),
+    touched + count(*)::integer
+  into changed, touched
+  from forgotten;
+
+  -- And whoever did anything else to an order, 30 days after they did it:
+  -- opened, moved, opened again, closed or cancelled it, called, made ready
+  -- or served a ticket, took back, cancelled or gave a line on the house. So
+  -- nothing kept builds a person's sales over time. Of real businesses, as
+  -- the notes; the orders, then their tickets, then their lines.
+  with forgotten as (
+    update public.orders o
+    set opened_by = case when o.opened_at < kept_since then null else o.opened_by end,
+      closed_by = case when o.closed_at < kept_since then null else o.closed_by end,
+      reopened_by = case when o.reopened_at < kept_since then null else o.reopened_by end,
+      moved_by = case when o.moved_at < kept_since then null else o.moved_by end,
+      cancelled_by = case when o.cancelled_at < kept_since then null else o.cancelled_by end
+    where not exists (
+        select 1 from private.demo_businesses d where d.business_id = o.business_id
+      )
+      and (
+        (o.opened_by is not null and o.opened_at < kept_since)
+        or (o.closed_by is not null and o.closed_at < kept_since)
+        or (o.reopened_by is not null and o.reopened_at < kept_since)
+        or (o.moved_by is not null and o.moved_at < kept_since)
+        or (o.cancelled_by is not null and o.cancelled_at < kept_since)
+      )
+    returning o.business_id
+  )
+  select changed || coalesce(array_agg(distinct forgotten.business_id), '{}'::uuid[]),
+    touched + count(*)::integer
+  into changed, touched
+  from forgotten;
+
+  with forgotten as (
+    update public.order_tickets t
+    set fired_by = case when t.fired_at < kept_since then null else t.fired_by end,
+      ready_by = case when t.ready_at < kept_since then null else t.ready_by end,
+      served_by = case when t.served_at < kept_since then null else t.served_by end
+    where not exists (
+        select 1 from private.demo_businesses d where d.business_id = t.business_id
+      )
+      and (
+        (t.fired_by is not null and t.fired_at < kept_since)
+        or (t.ready_by is not null and t.ready_at < kept_since)
+        or (t.served_by is not null and t.served_at < kept_since)
+      )
+    returning t.business_id
+  )
+  select changed || coalesce(array_agg(distinct forgotten.business_id), '{}'::uuid[]),
+    touched + count(*)::integer
+  into changed, touched
+  from forgotten;
+
+  with forgotten as (
+    update public.order_lines l
+    set taken_back_by = case when l.taken_back_at < kept_since then null else l.taken_back_by end,
+      cancelled_by = case when l.cancelled_at < kept_since then null else l.cancelled_by end,
+      comped_by = case when l.comped_at < kept_since then null else l.comped_by end
+    where not exists (
+        select 1 from private.demo_businesses d where d.business_id = l.business_id
+      )
+      and (
+        (l.taken_back_by is not null and l.taken_back_at < kept_since)
+        or (l.cancelled_by is not null and l.cancelled_at < kept_since)
+        or (l.comped_by is not null and l.comped_at < kept_since)
+      )
+    returning l.business_id
+  )
+  select changed || coalesce(array_agg(distinct forgotten.business_id), '{}'::uuid[]),
+    touched + count(*)::integer
+  into changed, touched
+  from forgotten;
+
+  -- A demo business's orders, two days after they opened.
+  for demo in select d.business_id from private.demo_businesses d order by d.business_id
+  loop
+    perform 1 from public.businesses b where b.id = demo for no key update skip locked;
+    if found then
+      delete from public.orders o
+      where o.business_id = demo and o.opened_at < at_time - interval '2 days';
+      get diagnostics step = row_count;
+      if step > 0 then
+        touched := touched + step;
+        changed := changed || demo;
+      end if;
+    end if;
+  end loop;
+
+  delete from private.order_day_counters c
+  where c.day < (at_time at time zone 'UTC')::date - 2;
+  get diagnostics step = row_count;
+  touched := touched + step;
+
+  perform private.bump_order_version(x.business_id)
+  from (select distinct unnest(changed) as business_id) x;
+  return touched;
+end;
+$$;
+
+select cron.schedule('order-taking', '23 * * * *', $$select private.order_taking_tick()$$);
+
+------------------------------------------------------------------------------
+-- 2. The demo's sample orders
+
+-- What the demo restaurant starts with on its floor: table 4 waiting for the
+-- kitchen, table 7's drinks ready at the bar, and a takeaway's coffees, from
+-- the sample menu and tables (private.seed_demo_order_taking), at times
+-- relative to now. Sent by the first manager the definition names and the
+-- first worker in a department that takes orders, in the order the
+-- definition names them (tooling/demo-orders.test.ts keeps both definitions
+-- holding them). Only a demo business opened from the restaurant template,
+-- and only once: a business that has orders keeps them. Straight into the
+-- tables, as a seed, so the log starts empty of it, and whatever goes wrong
+-- the reset still stands.
+create function private.seed_demo_orders(business uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  people jsonb;
+  kitchen uuid;
+  bar uuid;
+  table_four uuid;
+  table_seven uuid;
+  manager_person uuid;
+  worker_person uuid;
+  hummus public.menu_items%rowtype;
+  focaccia public.menu_items%rowtype;
+  beer public.menu_items%rowtype;
+  lemonade public.menu_items%rowtype;
+  coffee public.menu_items%rowtype;
+  sent_at_time timestamptz;
+  order_ref uuid;
+  round_ref uuid;
+  ticket_ref uuid;
+  order_day date;
+begin
+  if not exists (
+      select 1
+      from public.businesses b
+      join private.demo_businesses d on d.business_id = b.id
+      where b.id = business and b.template_key = 'restaurant'
+    )
+    or exists (select 1 from public.orders o where o.business_id = business)
+  then
+    return;
+  end if;
+
+  begin
+    select case
+        when jsonb_typeof(d.definition -> 'people') = 'array' then d.definition -> 'people'
+        else '[]'::jsonb
+      end
+    into people
+    from private.demo_businesses d
+    where d.business_id = business;
+
+    select dep.id into kitchen
+    from public.departments dep
+    where dep.business_id = business and dep.key = 'kitchen' and dep.archived_at is null;
+    select dep.id into bar
+    from public.departments dep
+    where dep.business_id = business and dep.key = 'bar' and dep.archived_at is null;
+    select p.id into table_four
+    from public.order_places p
+    where p.business_id = business and p.name = '4' and p.archived_at is null;
+    select p.id into table_seven
+    from public.order_places p
+    where p.business_id = business and p.name = '7' and p.archived_at is null;
+    select i.* into hummus from public.menu_items i
+    where i.business_id = business and i.name = 'חומוס' and i.archived_at is null;
+    select i.* into focaccia from public.menu_items i
+    where i.business_id = business and i.name = 'פוקאצ''ה' and i.archived_at is null;
+    select i.* into beer from public.menu_items i
+    where i.business_id = business and i.name = 'בירה מהחבית' and i.archived_at is null;
+    select i.* into lemonade from public.menu_items i
+    where i.business_id = business and i.name = 'לימונדה' and i.archived_at is null;
+    select i.* into coffee from public.menu_items i
+    where i.business_id = business and i.name = 'קפה' and i.archived_at is null;
+
+    -- Who: by role, in the order the definition names them.
+    select m.user_id into manager_person
+    from jsonb_array_elements(people) with ordinality as person (value, ordinality)
+    join public.memberships m
+      on m.business_id = business
+      and m.user_id::text = person.value ->> 'user_id'
+      and m.active
+    where m.role = 'manager'::public.member_role
+    order by person.ordinality
+    limit 1;
+    select m.user_id into worker_person
+    from jsonb_array_elements(people) with ordinality as person (value, ordinality)
+    join public.memberships m
+      on m.business_id = business
+      and m.user_id::text = person.value ->> 'user_id'
+      and m.active
+    where m.role = 'worker'::public.member_role
+      and private.in_taker_department(business, m.user_id)
+    order by person.ordinality
+    limit 1;
+
+    if kitchen is null or bar is null or table_four is null or table_seven is null
+      or hummus.id is null or focaccia.id is null or beer.id is null
+      or lemonade.id is null or coffee.id is null
+      or manager_person is null or worker_person is null
+    then
+      return;
+    end if;
+
+    -- Table 4: the worker's, six minutes ago, the kitchen's still to make.
+    sent_at_time := now() - interval '6 minutes';
+    order_day := private.order_business_day(business, sent_at_time);
+    insert into public.orders (business_id, place_id, day, opened_by, opened_at)
+    values (business, table_four, order_day, worker_person, sent_at_time)
+    returning id into order_ref;
+    round_ref := gen_random_uuid();
+    insert into public.order_rounds (id, business_id, order_id, body_hash, sent_by, sent_at)
+    values (
+      round_ref, business, order_ref,
+      private.order_round_hash(
+        jsonb_build_object('place', table_four),
+        jsonb_build_array(
+          jsonb_build_object(
+            'item', hummus.id, 'quantity', 1, 'note', 'בלי שום'::text, 'allergy', true,
+            'held', false, 'choices', '[]'::jsonb
+          ),
+          jsonb_build_object(
+            'item', focaccia.id, 'quantity', 1, 'note', null::text, 'allergy', false,
+            'held', false, 'choices', '[]'::jsonb
+          )
+        )
+      ),
+      worker_person, sent_at_time
+    );
+    insert into public.order_tickets (business_id, order_id, round_id, department_id, status)
+    values (business, order_ref, round_ref, kitchen, 'new')
+    returning id into ticket_ref;
+    insert into public.order_lines (
+      business_id, ticket_id, item_id, name, unit_agorot, quantity, note, allergy, position
+    )
+    values
+      (business, ticket_ref, hummus.id, hummus.name, hummus.price_agorot, 1, 'בלי שום', true, 0),
+      (business, ticket_ref, focaccia.id, focaccia.name, focaccia.price_agorot, 1, null, false, 1);
+
+    -- Table 7: the manager's, fourteen minutes ago, ready at the bar three
+    -- minutes ago, by the worker who prepares there.
+    sent_at_time := now() - interval '14 minutes';
+    order_day := private.order_business_day(business, sent_at_time);
+    insert into public.orders (business_id, place_id, day, opened_by, opened_at)
+    values (business, table_seven, order_day, manager_person, sent_at_time)
+    returning id into order_ref;
+    round_ref := gen_random_uuid();
+    insert into public.order_rounds (id, business_id, order_id, body_hash, sent_by, sent_at)
+    values (
+      round_ref, business, order_ref,
+      private.order_round_hash(
+        jsonb_build_object('place', table_seven),
+        jsonb_build_array(
+          jsonb_build_object(
+            'item', beer.id, 'quantity', 2, 'note', null::text, 'allergy', false,
+            'held', false, 'choices', '[]'::jsonb
+          ),
+          jsonb_build_object(
+            'item', lemonade.id, 'quantity', 1, 'note', null::text, 'allergy', false,
+            'held', false, 'choices', '[]'::jsonb
+          )
+        )
+      ),
+      manager_person, sent_at_time
+    );
+    insert into public.order_tickets (
+      business_id, order_id, round_id, department_id, status, ready_at, ready_by, prepared_at
+    )
+    values (
+      business, order_ref, round_ref, bar, 'ready',
+      now() - interval '3 minutes', worker_person, now() - interval '3 minutes'
+    )
+    returning id into ticket_ref;
+    insert into public.order_lines (
+      business_id, ticket_id, item_id, name, unit_agorot, quantity, position
+    )
+    values
+      (business, ticket_ref, beer.id, beer.name, beer.price_agorot, 2, 0),
+      (business, ticket_ref, lemonade.id, lemonade.name, lemonade.price_agorot, 1, 1);
+
+    -- Takeaway 1: the manager's coffees, two minutes ago, for the red shirt.
+    sent_at_time := now() - interval '2 minutes';
+    order_day := private.order_business_day(business, sent_at_time);
+    insert into private.order_day_counters (business_id, day, last_no)
+    values (business, order_day, 1);
+    insert into public.orders (
+      business_id, takeaway_no, takeaway_label, day, opened_by, opened_at
+    )
+    values (business, 1, 'חולצה אדומה', order_day, manager_person, sent_at_time)
+    returning id into order_ref;
+    round_ref := gen_random_uuid();
+    insert into public.order_rounds (id, business_id, order_id, body_hash, sent_by, sent_at)
+    values (
+      round_ref, business, order_ref,
+      private.order_round_hash(
+        jsonb_build_object('takeaway', true, 'label', 'חולצה אדומה'::text),
+        jsonb_build_array(
+          jsonb_build_object(
+            'item', coffee.id, 'quantity', 2, 'note', null::text, 'allergy', false,
+            'held', false, 'choices', '[]'::jsonb
+          )
+        )
+      ),
+      manager_person, sent_at_time
+    );
+    insert into public.order_tickets (business_id, order_id, round_id, department_id, status)
+    values (business, order_ref, round_ref, bar, 'new')
+    returning id into ticket_ref;
+    insert into public.order_lines (
+      business_id, ticket_id, item_id, name, unit_agorot, quantity, position
+    )
+    values (business, ticket_ref, coffee.id, coffee.name, coffee.price_agorot, 2, 0);
+
+    perform private.bump_order_version(business);
+  exception when others then
+    raise warning 'The demo''s sample orders were not written: %', sqlstate;
+  end;
+end;
+$$;
+
+-- The reset: 20261117000500_order_taking_menu.sql's, with the sample orders
+-- last. The business's orders, rounds, tickets, lines, counters and orders
+-- version go with it by cascade.
+create or replace function public.reset_demo_business(business uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  def jsonb;
+begin
+  select d.definition into def
+  from private.demo_businesses d
+  where d.business_id = business
+  for update;
+  if not found then
+    raise exception 'Not a demo business: %', business using errcode = 'P0002';
+  end if;
+
+  -- Lock the business before the purge: a write already under way for it (a
+  -- visitor's clock-in, anything that logs) finishes first, so the purge sees
+  -- its rows, and a new one waits for the reset. The restrict keys then never
+  -- meet a row the purge missed.
+  perform 1 from public.businesses b where b.id = business for update;
+
+  perform private.purge_business_records(business);
+  delete from public.businesses b where b.id = business;
+
+  insert into public.businesses (id, slug, name, accent, address, shabbat_city)
+  values (
+    business, def ->> 'slug', def ->> 'name', def ->> 'accent',
+    def ->> 'address', def ->> 'shabbat_city'
+  );
+  perform public.apply_template(business, def ->> 'template');
+
+  insert into public.memberships (business_id, user_id, role)
+  select business, person.user_id, person.role
+  from jsonb_to_recordset(def -> 'people')
+    as person (user_id uuid, role public.member_role, name text)
+  join public.profiles p on p.id = person.user_id;
+
+  insert into public.department_members (department_id, business_id, user_id)
+  select distinct dep.id, business, person.user_id
+  from jsonb_to_recordset(def -> 'people')
+    as person (user_id uuid, role public.member_role, name text, departments text[])
+  join public.memberships m on m.business_id = business and m.user_id = person.user_id
+  cross join lateral unnest(coalesce(person.departments, '{}'::text[])) as wanted (key)
+  join public.departments dep
+    on dep.business_id = business and dep.key = wanted.key and dep.archived_at is null;
+
+  update public.profiles p
+  set full_name = person.name, locale = 'he', avatar_path = null,
+    bio = null, cover = null, address_form = null
+  from jsonb_to_recordset(def -> 'people')
+    as person (user_id uuid, role public.member_role, name text)
+  where p.id = person.user_id;
+
+  update private.demo_businesses d
+  set reset_at = now()
+  where d.business_id = business;
+
+  if coalesce((def ->> 'renews')::boolean, false) then
+    perform private.renew_demo_schedule(business);
+  end if;
+
+  perform private.seed_demo_lists(business);
+  perform private.seed_demo_pay(business);
+  perform private.seed_demo_chat(business);
+  perform private.seed_demo_order_taking(business);
+  perform private.seed_demo_orders(business);
+end;
+$$;
+
+-- The demo restaurants that exist get their sample orders now, with nothing
+-- reset: the seed leaves a business that has orders as it is, and every
+-- other business than the restaurant's template.
+select private.seed_demo_orders(d.business_id) from private.demo_businesses d;
+
+------------------------------------------------------------------------------
+-- Who may call what
+
+-- The job's, as chat's: run by the scheduler as the owner, and by the tests.
+revoke execute on function private.order_taking_tick(timestamptz)
+  from public, anon, authenticated;
+-- It runs inside the reset, as its owner, for nobody else.
+revoke execute on function private.seed_demo_orders(uuid)
+  from public, anon, authenticated, service_role;
+
+-- Replaced in place, the same signature: its grants stay as its first
+-- migration set them; revoked and granted again all the same.
+revoke execute on function public.reset_demo_business(uuid)
+  from public, anon, authenticated;
+grant execute on function public.reset_demo_business(uuid) to service_role;

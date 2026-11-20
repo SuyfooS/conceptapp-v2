@@ -39,7 +39,8 @@ select set_eq(
     'chat_reads', 'chat_acks', 'chat_notices', 'documents', 'document_recipients',
     'document_notices',
     'notification_preferences',
-    'order_places', 'menu_categories', 'menu_items'
+    'order_places', 'menu_categories', 'menu_items',
+    'orders', 'order_rounds', 'order_tickets', 'order_lines'
   ],
   'the tenancy tables exist (update this list with each new table)'
 );
