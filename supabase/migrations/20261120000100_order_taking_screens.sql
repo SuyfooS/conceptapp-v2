@@ -5,11 +5,15 @@
 --
 --   the team       the ConceptApp team sets a business's menu up from the
 --                  console (its import and its places), as it sets up its
---                  departments and lists: private.runs_orders holds for
---                  someone on the team too, as private.can_edit_settings
---                  does. "Sold out" stays the business's own: its function
---                  asks for an active membership first, so the team still
---                  gets P0002 there.
+--                  departments and lists: the six writes that set the menu
+--                  and the places up ask private.sets_up_menu, new, which
+--                  holds for whoever runs the menu and for someone on the
+--                  team, as private.can_edit_settings does.
+--                  private.runs_orders stays P1's, the members' alone, and
+--                  "sold out" still asks it after an active membership: it
+--                  stays the business's own, so the team gets P0002 there,
+--                  and someone on the team who is also on a business's staff
+--                  marks only what their own department prepares.
 --   a category     public.set_menu_categories saves a category sent with
 --   kept           its id and the department it has already, even when that
 --                  department was removed since. Before, after a department
@@ -42,51 +46,511 @@
 --                  them the same), and a sentence the team wrote already is
 --                  kept. A seed, as the demo's menu is: not logged.
 --
--- It replaces, from their latest versions (all four
+-- It adds private.sets_up_menu and replaces, from their latest versions (all
 -- 20261117000500_order_taking_menu.sql's) and with only these changes:
--- private.runs_orders, public.set_menu_categories, public.save_menu_item and
+-- public.set_menu_categories and public.save_menu_item, which ask
+-- private.sets_up_menu and keep a removed department as above;
+-- public.archive_menu_item, public.restore_menu_item, public.import_menu and
+-- public.set_order_places, which only ask private.sets_up_menu; and
 -- private.seed_demo_order_taking. Each keeps its signature, so its grants
 -- stay; revoked and granted again all the same.
 
 ------------------------------------------------------------------------------
--- 1. The team runs the menu from the console
+-- 1. The team sets the menu up from the console
 
--- 20261117000500_order_taking_menu.sql's, with the team: `person` runs the
--- business's menu when they hold order_taking.edit (private.holds_perm: an
--- active owner always; on the staff, by their role's rule for it or by a
--- grant of their own), or are on the ConceptApp team, which sets a business
--- up. Its callers, unchanged, are every write to the menu and the places:
--- public.set_menu_categories and public.save_menu_item (replaced below),
--- public.archive_menu_item, public.restore_menu_item, public.import_menu,
--- public.set_order_places, and public.set_menu_item_available, which asks
--- for an active member first. The orders to come (P3) take a helper of their
--- own: the team takes no orders.
-create or replace function private.runs_orders(business uuid, person uuid)
+-- `person` sets the business's menu up: they run it (private.runs_orders,
+-- 20261117000500_order_taking_menu.sql's and unchanged: order_taking.edit,
+-- held as an active member), or are on the ConceptApp team, which sets a
+-- business up, as private.can_edit_settings lets it save settings. Asked by
+-- the six writes that set the menu and the places up:
+-- public.set_menu_categories and public.save_menu_item (sections 2 and 3),
+-- and public.archive_menu_item, public.restore_menu_item,
+-- public.import_menu and public.set_order_places (below). Not by
+-- public.set_menu_item_available, which still asks private.runs_orders
+-- after an active membership: "sold out" stays the business's own, so the
+-- team gets P0002 there, and someone on the team who is also on a
+-- business's staff marks only what their own department prepares. The
+-- orders to come (P3) ask private.runs_orders too, so the team's right to
+-- set the menu up gives no one a right to the orders.
+create function private.sets_up_menu(business uuid, person uuid)
 returns boolean
 language sql
 stable
 security definer
 set search_path = ''
 as $$
-  select private.holds_perm(business, person, 'order_taking.edit'::text)
+  select private.runs_orders(business, person)
     or exists (
       select 1 from public.platform_staff s where s.user_id = person
     )
 $$;
 
+-- 20261117000500_order_taking_menu.sql's, with only its first check changed:
+-- it asks private.sets_up_menu where it asked private.runs_orders.
+--
+-- Removes an item from the menu (archived; the undo is
+-- public.restore_menu_item). 42501 for anyone who doesn't set the menu up, and
+-- while the module is off (hint 'off'); P0002 for an id that isn't the
+-- business's. One already removed is left as it is. Logged as
+-- menu.item.archive with its id and name.
+create or replace function public.archive_menu_item(
+  actor uuid,
+  business uuid,
+  item uuid,
+  at_time timestamptz default now()
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  was public.menu_items%rowtype;
+begin
+  if not private.sets_up_menu(business, actor) then
+    raise exception 'Those who run the menu only' using errcode = '42501';
+  end if;
+  perform 1 from public.businesses b where b.id = business for no key update;
+  if not private.order_taking_on(business) then
+    raise exception 'Taking orders is off for this business'
+      using errcode = '42501', hint = 'off';
+  end if;
+  select i.* into was
+  from public.menu_items i
+  where i.id = item and i.business_id = business
+  for update;
+  if not found then
+    raise exception 'Unknown item' using errcode = 'P0002';
+  end if;
+  if was.archived_at is not null then
+    return;
+  end if;
+
+  update public.menu_items i
+  set archived_at = at_time, version = was.version + 1, updated_by = actor, updated_at = at_time
+  where i.id = was.id;
+  perform private.bump_menu_version(business);
+  insert into public.audit_log (business_id, actor_id, action, details, created_at)
+  values (
+    business, actor, 'menu.item.archive',
+    jsonb_build_object('item', was.id, 'name', was.name),
+    at_time
+  );
+end;
+$$;
+
+-- 20261117000500_order_taking_menu.sql's, with only its first check changed:
+-- it asks private.sets_up_menu where it asked private.runs_orders.
+--
+-- Brings a removed item back: the undo. As public.archive_menu_item, and
+-- 55000 while its category is removed (hint 'category'), 54000 for a 301st
+-- live item. One that is live is left as it is. Logged as menu.item.restore.
+create or replace function public.restore_menu_item(
+  actor uuid,
+  business uuid,
+  item uuid,
+  at_time timestamptz default now()
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  was public.menu_items%rowtype;
+begin
+  if not private.sets_up_menu(business, actor) then
+    raise exception 'Those who run the menu only' using errcode = '42501';
+  end if;
+  perform 1 from public.businesses b where b.id = business for no key update;
+  if not private.order_taking_on(business) then
+    raise exception 'Taking orders is off for this business'
+      using errcode = '42501', hint = 'off';
+  end if;
+  select i.* into was
+  from public.menu_items i
+  where i.id = item and i.business_id = business
+  for update;
+  if not found then
+    raise exception 'Unknown item' using errcode = 'P0002';
+  end if;
+  if was.archived_at is null then
+    return;
+  end if;
+  if not exists (
+    select 1 from public.menu_categories c
+    where c.id = was.category_id and c.business_id = business and c.archived_at is null
+  ) then
+    raise exception 'Its category is removed' using errcode = '55000', hint = 'category';
+  end if;
+  if (
+    select count(*) from public.menu_items i
+    where i.business_id = business and i.archived_at is null
+  ) >= 300 then
+    raise exception 'A menu has at most 300 items' using errcode = '54000';
+  end if;
+
+  update public.menu_items i
+  set archived_at = null, version = was.version + 1, updated_by = actor, updated_at = at_time
+  where i.id = was.id;
+  perform private.bump_menu_version(business);
+  insert into public.audit_log (business_id, actor_id, action, details, created_at)
+  values (
+    business, actor, 'menu.item.restore',
+    jsonb_build_object('item', was.id, 'name', was.name),
+    at_time
+  );
+end;
+$$;
+
+-- 20261117000500_order_taking_menu.sql's, with only its first check changed:
+-- it asks private.sets_up_menu where it asked private.runs_orders.
+--
+-- Writes a pasted menu in one go (@domain/menu-import): `rows` is a list, in
+-- order, of {category: {name, department}} and {item: {name, priceAgorot,
+-- description?, optionGroups?}}, each item in the category above it. A
+-- category the business has by that name (case aside) takes the items after
+-- it, wherever it goes; a new one goes last, to its department. Every row is
+-- checked as its own save checks it, and any one refused refuses them all:
+-- nothing is written. 42501 for anyone who doesn't set the menu up, and
+-- while the module is off (hint 'off'); 22023 for a department that isn't live
+-- (hint 'route'), choices that don't hold (hint 'choices') or any other
+-- shape; 54000 past 30 categories or 300 items. Logged as menu.import with
+-- the counts. Returns {categories, items}: how many it added.
+create or replace function public.import_menu(
+  actor uuid,
+  business uuid,
+  rows jsonb,
+  at_time timestamptz default now()
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  entry jsonb;
+  body jsonb;
+  current_category uuid;
+  category_name text;
+  category_department uuid;
+  category_place integer;
+  item_place integer;
+  item_groups jsonb;
+  item_price integer;
+  item_name text;
+  new_categories integer := 0;
+  new_items integer := 0;
+begin
+  if not private.sets_up_menu(business, actor) then
+    raise exception 'Those who run the menu only' using errcode = '42501';
+  end if;
+  perform 1 from public.businesses b where b.id = business for no key update;
+  if not private.order_taking_on(business) then
+    raise exception 'Taking orders is off for this business'
+      using errcode = '42501', hint = 'off';
+  end if;
+
+  if jsonb_typeof(rows) is distinct from 'array' then
+    raise exception 'An import must be a list' using errcode = '22023';
+  end if;
+  if jsonb_array_length(rows) > 330 then
+    raise exception 'A menu has at most 30 categories and 300 items' using errcode = '54000';
+  end if;
+
+  select coalesce(max(c.position) + 1, 0) into category_place
+  from public.menu_categories c
+  where c.business_id = business and c.archived_at is null;
+
+  for entry in select e.value from jsonb_array_elements(rows) as e (value)
+  loop
+    if jsonb_typeof(entry) <> 'object' then
+      raise exception 'A row must be an object' using errcode = '22023';
+    end if;
+    if (select count(*) from jsonb_object_keys(entry) as k (field)) <> 1 then
+      raise exception 'A row is a category or an item' using errcode = '22023';
+    end if;
+
+    if entry ? 'category' then
+      body := entry -> 'category';
+      if jsonb_typeof(body) <> 'object' then
+        raise exception 'A category must be an object' using errcode = '22023';
+      end if;
+      if exists (
+        select 1 from jsonb_object_keys(body) as k (field)
+        where k.field not in ('name', 'department')
+      ) then
+        raise exception 'A category has a name and a department' using errcode = '22023';
+      end if;
+      category_name := private.json_text(body -> 'name', 40, 'A category''s name');
+      if category_name is null then
+        raise exception 'A category needs a name' using errcode = '22023';
+      end if;
+      current_category := null;
+      select c.id into current_category
+      from public.menu_categories c
+      where c.business_id = business
+        and c.archived_at is null
+        and lower(c.name) = lower(category_name);
+      if current_category is null then
+        category_department := private.json_uuid(body -> 'department', 'A category''s department');
+        if category_department is null or not exists (
+          select 1 from public.departments d
+          where d.id = category_department and d.business_id = business and d.archived_at is null
+        ) then
+          raise exception 'A category goes to a department of the business'
+            using errcode = '22023', hint = 'route';
+        end if;
+        insert into public.menu_categories (business_id, name, department_id, position, created_at)
+        values (business, category_name, category_department, category_place::smallint, at_time)
+        returning id into current_category;
+        category_place := category_place + 1;
+        new_categories := new_categories + 1;
+      end if;
+      select coalesce(max(i.position) + 1, 0) into item_place
+      from public.menu_items i
+      where i.category_id = current_category and i.archived_at is null;
+
+    elsif entry ? 'item' then
+      if current_category is null then
+        raise exception 'An item comes after its category' using errcode = '22023';
+      end if;
+      body := entry -> 'item';
+      if jsonb_typeof(body) <> 'object' then
+        raise exception 'An item must be an object' using errcode = '22023';
+      end if;
+      if exists (
+        select 1 from jsonb_object_keys(body) as k (field)
+        where k.field not in ('name', 'priceAgorot', 'description', 'optionGroups')
+      ) then
+        raise exception 'An item has a name, a price, a description and choices' using errcode = '22023';
+      end if;
+      item_name := private.json_text(body -> 'name', 60, 'The name');
+      if item_name is null then
+        raise exception 'An item needs a name' using errcode = '22023';
+      end if;
+      item_price := private.json_int(body -> 'priceAgorot', 0, 1000000, 'The price');
+      if item_price is null then
+        raise exception 'An item needs a price' using errcode = '22023';
+      end if;
+      item_groups := coalesce(body -> 'optionGroups', '[]'::jsonb);
+      if jsonb_typeof(item_groups) = 'null' then
+        item_groups := '[]'::jsonb;
+      end if;
+      if not private.valid_option_groups(item_groups) then
+        raise exception 'Not choices the menu keeps' using errcode = '22023', hint = 'choices';
+      end if;
+      insert into public.menu_items (
+        business_id, category_id, name, description, price_agorot, option_groups, position,
+        created_by, created_at, updated_by, updated_at
+      )
+      values (
+        business, current_category, item_name,
+        private.json_text(body -> 'description', 200, 'The description'),
+        item_price, item_groups, item_place::smallint, actor, at_time, actor, at_time
+      );
+      item_place := item_place + 1;
+      new_items := new_items + 1;
+
+    else
+      raise exception 'A row is a category or an item' using errcode = '22023';
+    end if;
+  end loop;
+
+  if (
+    select count(*) from public.menu_categories c
+    where c.business_id = business and c.archived_at is null
+  ) > 30 then
+    raise exception 'A menu has at most 30 categories' using errcode = '54000';
+  end if;
+  if (
+    select count(*) from public.menu_items i
+    where i.business_id = business and i.archived_at is null
+  ) > 300 then
+    raise exception 'A menu has at most 300 items' using errcode = '54000';
+  end if;
+
+  if new_categories + new_items > 0 then
+    perform private.bump_menu_version(business);
+    insert into public.audit_log (business_id, actor_id, action, details, created_at)
+    values (
+      business, actor, 'menu.import',
+      jsonb_build_object('categories', new_categories, 'items', new_items),
+      at_time
+    );
+  end if;
+  return jsonb_build_object('categories', new_categories, 'items', new_items);
+end;
+$$;
+
+-- 20261117000500_order_taking_menu.sql's, with only its first check changed:
+-- it asks private.sets_up_menu where it asked private.runs_orders.
+--
+-- Saves the business's places, in order (`places`: a list of {id?, name}),
+-- as the categories are saved: one left out is removed (archived), a removed
+-- one that comes back by its id is restored, one with no id is added. 42501
+-- for anyone who doesn't set the menu up, and while the module is off (hint
+-- 'off'); 54000 past 60; 23505 for a name twice; 22023 for any other shape;
+-- P0002 for an id that isn't the business's. Logged as menu.places with
+-- counts, when anything changed. Returns the places' ids, in order.
+create or replace function public.set_order_places(
+  actor uuid,
+  business uuid,
+  places jsonb,
+  at_time timestamptz default now()
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  entry jsonb;
+  entry_id uuid;
+  entry_name text;
+  place integer := 0;
+  ids uuid[] := '{}'::uuid[];
+  before_live jsonb;
+  added integer := 0;
+  restored integer;
+  archived integer;
+  changed integer;
+begin
+  if not private.sets_up_menu(business, actor) then
+    raise exception 'Those who run the menu only' using errcode = '42501';
+  end if;
+  perform 1 from public.businesses b where b.id = business for no key update;
+  if not private.order_taking_on(business) then
+    raise exception 'Taking orders is off for this business'
+      using errcode = '42501', hint = 'off';
+  end if;
+
+  if jsonb_typeof(places) is distinct from 'array' then
+    raise exception 'Places must be a list' using errcode = '22023';
+  end if;
+  if jsonb_array_length(places) > 60 then
+    raise exception 'A business has at most 60 places' using errcode = '54000';
+  end if;
+  for entry in select e.value from jsonb_array_elements(places) as e (value)
+  loop
+    if jsonb_typeof(entry) <> 'object' then
+      raise exception 'A place must be an object' using errcode = '22023';
+    end if;
+    if exists (
+      select 1 from jsonb_object_keys(entry) as k (field)
+      where k.field not in ('id', 'name')
+    ) then
+      raise exception 'A place has an id and a name' using errcode = '22023';
+    end if;
+    if private.json_text(entry -> 'name', 20, 'A place''s name') is null then
+      raise exception 'A place needs a name' using errcode = '22023';
+    end if;
+    entry_id := private.json_uuid(entry -> 'id', 'A place');
+    if entry_id is not null and not exists (
+      select 1 from public.order_places p
+      where p.id = entry_id and p.business_id = business
+    ) then
+      raise exception 'Unknown place' using errcode = 'P0002';
+    end if;
+  end loop;
+  if (
+    select count(distinct e.value ->> 'id')
+    from jsonb_array_elements(places) as e (value)
+    where e.value ? 'id' and jsonb_typeof(e.value -> 'id') <> 'null'
+  ) <> (
+    select count(*)
+    from jsonb_array_elements(places) as e (value)
+    where e.value ? 'id' and jsonb_typeof(e.value -> 'id') <> 'null'
+  ) then
+    raise exception 'Each place once' using errcode = '22023';
+  end if;
+  if (
+    select count(distinct lower(btrim(e.value ->> 'name')))
+    from jsonb_array_elements(places) as e (value)
+  ) <> jsonb_array_length(places) then
+    raise exception 'Each place''s name once' using errcode = '23505';
+  end if;
+
+  select coalesce(jsonb_object_agg(
+      live.id::text, jsonb_build_object('name', live.name, 'position', live.ordinal)
+    ), '{}'::jsonb)
+  into before_live
+  from (
+    select p.id, p.name,
+      (row_number() over (order by p.position, p.created_at, p.id) - 1)::integer as ordinal
+    from public.order_places p
+    where p.business_id = business and p.archived_at is null
+  ) live;
+
+  -- Everything live is archived first, so names can move between places in
+  -- one save; what stays is restored with its new name and place.
+  update public.order_places p
+  set archived_at = at_time
+  where p.business_id = business and p.archived_at is null;
+
+  for entry in select e.value from jsonb_array_elements(places) as e (value)
+  loop
+    entry_id := private.json_uuid(entry -> 'id', 'A place');
+    entry_name := private.json_text(entry -> 'name', 20, 'A place''s name');
+    if entry_id is null then
+      insert into public.order_places (business_id, name, position, created_at)
+      values (business, entry_name, place::smallint, at_time)
+      returning id into entry_id;
+      added := added + 1;
+    else
+      update public.order_places p
+      set name = entry_name, position = place::smallint, archived_at = null
+      where p.id = entry_id and p.business_id = business;
+    end if;
+    ids := ids || entry_id;
+    place := place + 1;
+  end loop;
+
+  select count(*)::integer into restored
+  from unnest(ids) as kept (id)
+  where not (before_live ? kept.id::text);
+  restored := restored - added;
+  select count(*)::integer into archived
+  from jsonb_object_keys(before_live) as was (id)
+  where not (was.id::uuid = any (ids));
+  select count(*)::integer into changed
+  from public.order_places p
+  where p.id = any (ids)
+    and before_live ? p.id::text
+    and (before_live -> p.id::text) is distinct from jsonb_build_object(
+      'name', p.name, 'position', p.position::integer
+    );
+
+  if added + restored + archived + changed > 0 then
+    perform private.bump_menu_version(business);
+    insert into public.audit_log (business_id, actor_id, action, details, created_at)
+    values (
+      business, actor, 'menu.places',
+      jsonb_build_object(
+        'added', added, 'restored', restored, 'archived', archived, 'changed', changed,
+        'total', cardinality(ids)
+      ),
+      at_time
+    );
+  end if;
+  return to_jsonb(ids);
+end;
+$$;
+
 ------------------------------------------------------------------------------
 -- 2. A category kept keeps its department
 
--- 20261117000500_order_taking_menu.sql's, with only its department check
--- changed, after the id's: a category sent with its id and the department it
--- has already passes, even when that department was removed since, so a
--- rename or a move saves while its items wait for a department.
+-- 20261117000500_order_taking_menu.sql's, with only two changes: it asks
+-- private.sets_up_menu where it asked private.runs_orders (section 1), and
+-- its department check, after the id's, passes a category sent with its id
+-- and the department it has already, even when that department was removed
+-- since, so a rename or a move saves while its items wait for a department.
 --
 -- Saves the business's categories, in order (`categories`: a list of
 -- {id?, name, department}), as the departments are saved: one left out is
 -- removed (archived), a removed one that comes back by its id is restored
--- (the undo), one with no id is added. 42501 for anyone who doesn't run the
--- menu, and while the module is off (hint 'off'); 54000 past 30; 22023 for a
+-- (the undo), one with no id is added. 42501 for anyone who doesn't set the
+-- menu up, and while the module is off (hint 'off'); 54000 past 30; 22023 for a
 -- department that isn't live in the business and isn't the category's own
 -- (hint 'route') or any other shape; 23505 for a name twice; P0002 for an id
 -- that isn't the business's. Logged as menu.categories with counts, when
@@ -115,7 +579,7 @@ declare
   archived integer;
   changed integer;
 begin
-  if not private.runs_orders(business, actor) then
+  if not private.sets_up_menu(business, actor) then
     raise exception 'Those who run the menu only' using errcode = '42501';
   end if;
   perform 1 from public.businesses b where b.id = business for no key update;
@@ -261,8 +725,9 @@ $$;
 ------------------------------------------------------------------------------
 -- 3. An item kept keeps its department
 
--- 20261117000500_order_taking_menu.sql's, with only its department check
--- changed, as the categories' above: an item sent with its id and the
+-- 20261117000500_order_taking_menu.sql's, with only two changes, as the
+-- categories' above: it asks private.sets_up_menu where it asked
+-- private.runs_orders (section 1), and an item sent with its id and the
 -- department of its own it has already passes, even when that department
 -- was removed since (public.set_departments archives a department and
 -- leaves the items that name it). Before, every later save of such an item
@@ -274,7 +739,7 @@ $$;
 -- Adds an item (`item` with no id) or saves one (`item` with its id, and the
 -- version the screen read, `known_version`): {id?, category, name,
 -- description?, priceAgorot, department?, optionGroups?, position?}. 42501
--- for anyone who doesn't run the menu, and while the module is off (hint
+-- for anyone who doesn't set the menu up, and while the module is off (hint
 -- 'off'); 22023 for a category that isn't live in the business (hint
 -- 'category'), a department that isn't live in the business and isn't the
 -- item's own (hint 'route'), choices that don't hold (hint 'choices'), or
@@ -310,7 +775,7 @@ declare
   fields text[];
   option_moves jsonb;
 begin
-  if not private.runs_orders(business, actor) then
+  if not private.sets_up_menu(business, actor) then
     raise exception 'Those who run the menu only' using errcode = '42501';
   end if;
   perform 1 from public.businesses b where b.id = business for no key update;
@@ -841,10 +1306,13 @@ on conflict (template_key, key) do nothing;
 ------------------------------------------------------------------------------
 -- Who may call what
 
+-- The new helper runs inside the menu's writes, as their owner, for nobody
+-- else.
+revoke execute on function private.sets_up_menu(uuid, uuid)
+  from public, anon, authenticated, service_role;
+
 -- Replaced in place, the same signatures: their grants stay as their first
 -- migration set them; revoked and granted again all the same.
-revoke execute on function private.runs_orders(uuid, uuid)
-  from public, anon, authenticated, service_role;
 revoke execute on function private.seed_demo_order_taking(uuid)
   from public, anon, authenticated, service_role;
 revoke execute on function public.set_menu_categories(uuid, uuid, jsonb, timestamptz)
@@ -854,4 +1322,20 @@ grant execute on function public.set_menu_categories(uuid, uuid, jsonb, timestam
 revoke execute on function public.save_menu_item(uuid, uuid, jsonb, integer, timestamptz)
   from public, anon, authenticated;
 grant execute on function public.save_menu_item(uuid, uuid, jsonb, integer, timestamptz)
+  to service_role;
+revoke execute on function public.archive_menu_item(uuid, uuid, uuid, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.archive_menu_item(uuid, uuid, uuid, timestamptz)
+  to service_role;
+revoke execute on function public.restore_menu_item(uuid, uuid, uuid, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.restore_menu_item(uuid, uuid, uuid, timestamptz)
+  to service_role;
+revoke execute on function public.import_menu(uuid, uuid, jsonb, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.import_menu(uuid, uuid, jsonb, timestamptz)
+  to service_role;
+revoke execute on function public.set_order_places(uuid, uuid, jsonb, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.set_order_places(uuid, uuid, jsonb, timestamptz)
   to service_role;

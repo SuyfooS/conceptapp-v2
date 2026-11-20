@@ -3,8 +3,11 @@
 -- up from the console: it imports, saves the places, the categories and an
 -- item, each logged with its own id, and is refused while the module is off;
 -- "sold out" stays the business's own (P0002 for the team), and someone
--- neither a member nor on the team writes nothing. A worker without the key
--- and the accountant still don't run the menu. A category kept with a
+-- neither a member nor on the team writes nothing. Someone on the team who
+-- is also a worker there, without the key, sets the menu up as the team
+-- does but doesn't run it (private.runs_orders stays the members' alone):
+-- they mark nothing sold out outside their own department. A worker without
+-- the key and the accountant still don't run the menu. A category kept with a
 -- department removed since saves, renamed and moved; sent to another removed
 -- department, or new to one, it is refused. So does an item with a
 -- department of its own removed since: a new price saves, and another
@@ -13,34 +16,35 @@
 -- doesn't with it off. The restaurant and the café have their own words for
 -- the module, read by their members under RLS and by no one else's. Every
 -- write passes its moment, so nothing depends on today's date. Fixed ids
--- (e3…) and numbers (050-063-xxxx), so nothing here meets the seed or
--- another test.
+-- (e6…) and numbers (050-066-xxxx), so nothing here meets the seed or
+-- another test (P3's take e3… to e5… and 050-063 to 050-065).
 begin;
-select plan(18);
+select plan(20);
 
 -- A (a restaurant): 1 owner; 2 a manager; 3 a worker in the kitchen; 4 made
 -- the accountant. B (a shop): 5, its owner. 6 on the ConceptApp team, a
--- member of nothing; 8 signed up, in no business and on no team. 11 and 12
--- the people of the two demo businesses.
+-- member of nothing; 7 on the team and a worker in A's bar, without the key;
+-- 8 signed up, in no business and on no team. 11 and 12 the people of the
+-- two demo businesses.
 insert into auth.users (id, aud, role, phone)
-select ('e3000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
-  'authenticated', 'authenticated', '97250063' || lpad(n::text, 4, '0')
-from unnest('{1,2,3,4,5,6,8,11,12}'::int[]) as n;
+select ('e6000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid,
+  'authenticated', 'authenticated', '97250066' || lpad(n::text, 4, '0')
+from unnest('{1,2,3,4,5,6,7,8,11,12}'::int[]) as n;
 
 create function pg_temp.p(n integer) returns uuid language sql as $$
-  select ('e3000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
+  select ('e6000000-0000-4000-a000-' || lpad(n::text, 12, '0'))::uuid
 $$;
 create function pg_temp.a() returns uuid language sql as $$
-  select 'e3000000-0000-4000-b000-000000000001'::uuid
+  select 'e6000000-0000-4000-b000-000000000001'::uuid
 $$;
 create function pg_temp.b() returns uuid language sql as $$
-  select 'e3000000-0000-4000-b000-000000000002'::uuid
+  select 'e6000000-0000-4000-b000-000000000002'::uuid
 $$;
 -- A's departments: 1 the kitchen, 2 the bar, 3 the pastry (removed below),
 -- 4 the storeroom (removed from the start), 5 the bakery (an item's own,
 -- removed below).
 create function pg_temp.d(n integer) returns uuid language sql as $$
-  select ('e3000000-0000-4000-c000-' || lpad(n::text, 12, '0'))::uuid
+  select ('e6000000-0000-4000-c000-' || lpad(n::text, 12, '0'))::uuid
 $$;
 
 create function pg_temp.sign_in(uid uuid) returns void language sql as $$
@@ -87,6 +91,7 @@ values
   (pg_temp.a(), pg_temp.p(2), 'manager'),
   (pg_temp.a(), pg_temp.p(3), 'worker'),
   (pg_temp.a(), pg_temp.p(4), 'worker'),
+  (pg_temp.a(), pg_temp.p(7), 'worker'),
   (pg_temp.b(), pg_temp.p(5), 'owner');
 update public.memberships set role = 'accountant'
 where business_id = pg_temp.a() and user_id = pg_temp.p(4);
@@ -102,9 +107,10 @@ values
   (pg_temp.d(4), pg_temp.a(), 'storeroom', 'Storeroom', '2026-11-01 10:00+00'),
   (pg_temp.d(5), pg_temp.a(), 'bakery', 'Bakery', null);
 insert into public.department_members (department_id, business_id, user_id)
-values (pg_temp.d(1), pg_temp.a(), pg_temp.p(3));
+values (pg_temp.d(1), pg_temp.a(), pg_temp.p(3)), (pg_temp.d(2), pg_temp.a(), pg_temp.p(7));
 
-insert into public.platform_staff (user_id, role) values (pg_temp.p(6), 'onboarder');
+insert into public.platform_staff (user_id, role)
+values (pg_temp.p(6), 'onboarder'), (pg_temp.p(7), 'onboarder');
 
 ------------------------------------------------------------------------------
 -- Who may call what
@@ -113,17 +119,35 @@ select ok(
   not has_function_privilege('authenticated', 'public.set_menu_categories(uuid, uuid, jsonb, timestamptz)', 'execute')
   and not has_function_privilege('anon', 'public.set_menu_categories(uuid, uuid, jsonb, timestamptz)', 'execute')
   and has_function_privilege('service_role', 'public.set_menu_categories(uuid, uuid, jsonb, timestamptz)', 'execute')
+  and not has_function_privilege('authenticated', 'private.sets_up_menu(uuid, uuid)', 'execute')
+  and not has_function_privilege('anon', 'private.sets_up_menu(uuid, uuid)', 'execute')
+  and not has_function_privilege('service_role', 'private.sets_up_menu(uuid, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'private.runs_orders(uuid, uuid)', 'execute')
   and not has_function_privilege('service_role', 'private.runs_orders(uuid, uuid)', 'execute')
   and not has_function_privilege('authenticated', 'private.seed_demo_order_taking(uuid)', 'execute')
-  and not has_function_privilege('service_role', 'private.seed_demo_order_taking(uuid)', 'execute'),
-  'the categories'' save is the server''s alone, and the two helpers run only inside'
+  and not has_function_privilege('service_role', 'private.seed_demo_order_taking(uuid)', 'execute')
+  and (
+    select bool_and(
+      not has_function_privilege('authenticated', f.sig, 'execute')
+      and not has_function_privilege('anon', f.sig, 'execute')
+      and has_function_privilege('service_role', f.sig, 'execute')
+    )
+    from unnest(array[
+      'public.save_menu_item(uuid, uuid, jsonb, integer, timestamptz)',
+      'public.archive_menu_item(uuid, uuid, uuid, timestamptz)',
+      'public.restore_menu_item(uuid, uuid, uuid, timestamptz)',
+      'public.import_menu(uuid, uuid, jsonb, timestamptz)',
+      'public.set_order_places(uuid, uuid, jsonb, timestamptz)'
+    ]) as f (sig)
+  ),
+  'the menu''s writes replaced here are the server''s alone, and the three helpers run only inside'
 );
 select is(
-  (select string_agg(n::text || ':' || private.runs_orders(pg_temp.a(), pg_temp.p(n))::text, ',' order by n)
-   from unnest('{1,2,3,4,5,6,8}'::int[]) as n),
-  '1:true,2:true,3:false,4:false,5:false,6:true,8:false',
-  'the owner, a manager and the team run the menu; a worker without the key, the accountant, another business''s owner and a stranger don''t'
+  (select string_agg(n::text || ':' || private.runs_orders(pg_temp.a(), pg_temp.p(n))::text
+       || ':' || private.sets_up_menu(pg_temp.a(), pg_temp.p(n))::text, ',' order by n)
+   from unnest('{1,2,3,4,5,6,7,8}'::int[]) as n),
+  '1:true:true,2:true:true,3:false:false,4:false:false,5:false:false,6:false:true,7:false:true,8:false:false',
+  'the owner and a manager run the menu and set it up; the team sets it up and doesn''t run it, a worker on the team included; a worker without the key, the accountant, another business''s owner and a stranger do neither'
 );
 
 ------------------------------------------------------------------------------
@@ -131,7 +155,7 @@ select is(
 
 select is(
   public.import_menu(pg_temp.p(6), pg_temp.a(),
-    '[{"category": {"name": "Mains", "department": "e3000000-0000-4000-c000-000000000001"}},
+    '[{"category": {"name": "Mains", "department": "e6000000-0000-4000-c000-000000000001"}},
       {"item": {"name": "Schnitzel", "priceAgorot": 6200}},
       {"item": {"name": "Pasta", "priceAgorot": 5800}}]',
     '2026-12-01 09:00+00'),
@@ -171,6 +195,24 @@ select is(
   || '|' || (select i.available::text from public.menu_items i where i.id = pg_temp.id('cake')),
   'P0002|true',
   '"sold out" stays the business''s own: the team is no member'
+);
+-- 7, on the team and a worker in the bar without the key: the cake goes to
+-- the pastry department.
+select is(
+  pg_temp.refusal($c$select public.set_menu_item_available(pg_temp.p(7), pg_temp.a(),
+    pg_temp.id('cake'), false, '2026-12-01 09:04+00')$c$)
+  || '|' || pg_temp.refusal($c$select public.save_menu_item(pg_temp.p(7), pg_temp.a(),
+    jsonb_build_object('category', pg_temp.id('cat1'), 'name', 'Salad', 'priceAgorot', 2800),
+    null, '2026-12-01 09:04+00')$c$),
+  '42501|none',
+  'someone on the team who is also a worker there, without the key, marks nothing sold out outside their department, and still sets the menu up'
+);
+select is(
+  (select i.available::text from public.menu_items i where i.id = pg_temp.id('cake'))
+  || '|' || (select string_agg(a.action || ':' || (a.details ->> 'name'), ',') from public.audit_log a
+     where a.business_id = pg_temp.a() and a.actor_id = pg_temp.p(7) and a.action like 'menu.%'),
+  'true|menu.item.save:Salad',
+  'so the cake is not sold out, and the salad is logged with their own id'
 );
 select is(
   pg_temp.refusal($c$select public.import_menu(pg_temp.p(8), pg_temp.a(), '[]',
@@ -301,35 +343,35 @@ select is(
 
 insert into private.demo_businesses (business_id, definition)
 values
-  ('e3000000-0000-4000-b000-000000000011', $json$
+  ('e6000000-0000-4000-b000-000000000011', $json$
   {
     "slug": "order-screens-on", "name": "Demo restaurant O", "accent": "#2563eb",
     "address": "Demo street 4", "shabbat_city": "telAviv",
     "template": "restaurant", "renews": false, "orderTaking": true,
     "people": [
-      { "user_id": "e3000000-0000-4000-a000-000000000011", "role": "owner", "name": "Owner O" }
+      { "user_id": "e6000000-0000-4000-a000-000000000011", "role": "owner", "name": "Owner O" }
     ]
   }
   $json$),
-  ('e3000000-0000-4000-b000-000000000012', $json$
+  ('e6000000-0000-4000-b000-000000000012', $json$
   {
     "slug": "order-screens-off", "name": "Demo restaurant F", "accent": "#2563eb",
     "address": "Demo street 5", "shabbat_city": "telAviv",
     "template": "restaurant", "renews": false,
     "people": [
-      { "user_id": "e3000000-0000-4000-a000-000000000012", "role": "owner", "name": "Owner F" }
+      { "user_id": "e6000000-0000-4000-a000-000000000012", "role": "owner", "name": "Owner F" }
     ]
   }
   $json$);
 set local role service_role;
-select public.reset_demo_business('e3000000-0000-4000-b000-000000000011');
-select public.reset_demo_business('e3000000-0000-4000-b000-000000000012');
+select public.reset_demo_business('e6000000-0000-4000-b000-000000000011');
+select public.reset_demo_business('e6000000-0000-4000-b000-000000000012');
 reset role;
 -- A visitor switches it off; the next reset puts it back as the definition says.
 update public.business_modules set enabled = false
-where business_id = 'e3000000-0000-4000-b000-000000000011' and module_key = 'order_taking';
+where business_id = 'e6000000-0000-4000-b000-000000000011' and module_key = 'order_taking';
 set local role service_role;
-select public.reset_demo_business('e3000000-0000-4000-b000-000000000011');
+select public.reset_demo_business('e6000000-0000-4000-b000-000000000011');
 reset role;
 select is(
   (select string_agg(b.slug || ':' || bm.enabled::text || ':' || (
@@ -337,7 +379,7 @@ select is(
     ), ',' order by b.slug)
    from public.businesses b
    join public.business_modules bm on bm.business_id = b.id and bm.module_key = 'order_taking'
-   where b.id in ('e3000000-0000-4000-b000-000000000011', 'e3000000-0000-4000-b000-000000000012')),
+   where b.id in ('e6000000-0000-4000-b000-000000000011', 'e6000000-0000-4000-b000-000000000012')),
   'order-screens-off:false:13,order-screens-on:true:13',
   'a demo whose definition says "orderTaking" opens with taking orders on at every reset, and one that doesn''t with it off, both with the sample menu'
 );

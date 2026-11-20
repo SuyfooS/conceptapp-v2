@@ -6,6 +6,7 @@ import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import {
   archiveDemoDepartment,
   clearDemoMenuRules,
+  demoDepartmentNames,
   demoMenuCategories,
   demoMenuItem,
   demoMenuItemCount,
@@ -579,6 +580,9 @@ test("a department that prepares items says so before it goes, and its undo brin
   await expect(
     page.getByLabel(heT("app.manage.departments.nameOf", { name: PREPARING })),
   ).toHaveValue(PREPARING);
+  // The field shows before the save lands: the categories' page reads the
+  // departments from the database.
+  await expect.poll(demoDepartmentNames).toContain(PREPARING);
 
   // A category of its own, with one item, which names it as its own too.
   await page.goto("/orders/menu/categories");
@@ -626,6 +630,7 @@ test("a department that prepares items says so before it goes, and its undo brin
   await expect(
     shown(page, rt("app.manage.departments.menuItems", { count: 1 })),
   ).toBeVisible();
+  await expect.poll(demoDepartmentNames).toContain(PREPARING);
   await expectCleanPage(page);
 
   // Gone for good: its item reaches no one, and the category still saves.
@@ -638,6 +643,9 @@ test("a department that prepares items says so before it goes, and its undo brin
       }),
     }),
   ).toBeVisible();
+  // The undo line shows before the save lands: the menu reads where its
+  // items go from the database.
+  await expect.poll(demoDepartmentNames).not.toContain(PREPARING);
   await page.goto("/orders/menu");
   await expect(
     shown(

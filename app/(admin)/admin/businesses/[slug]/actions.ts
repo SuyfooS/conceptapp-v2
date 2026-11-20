@@ -364,7 +364,7 @@ function teamResult(result: { ok: true } | { ok: false; code?: string }) {
  * Someone on the team copies a business's menu in, as they set it up
  * (waiter mode P2): the rows the import screen checked. The database checks
  * they are on the team and that taking orders is on there
- * (`private.runs_orders`, 20261120000100_order_taking_screens.sql); before
+ * (`private.sets_up_menu`, 20261120000100_order_taking_screens.sql); before
  * that migration reaches a project it answers "noAccess", which the screen
  * says.
  */

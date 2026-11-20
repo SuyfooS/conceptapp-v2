@@ -161,20 +161,25 @@ export function MenuView({
    * Sold out, or back. From a row or the table its undo is on the toast. From
    * the item's sheet the toast says it with no undo: the sheet is modal, so
    * pressing the toast under it would close the sheet and lose what was
-   * typed there, and the switch in the sheet is the way back.
+   * typed there, and the switch in the sheet is the way back. For the same
+   * reason a failure there is said in the sheet, not on the page's line
+   * under it.
    */
   async function markSoldOut(
     item: MenuItem,
     on: boolean,
     undo: "offer" | "none" | "undoing" = "offer",
   ) {
+    const fromSheet = undo === "none";
     change(item.id, { available: !on });
     const result = await tried(() => actions.setAvailable(item.id, !on));
     if (!result.ok) {
       change(item.id, { available: item.available });
-      setFailure(result.failure);
+      if (fromSheet) setSheetFailure(result.failure);
+      else setFailure(result.failure);
       return;
     }
+    if (fromSheet) setSheetFailure(null);
     setFailure(null);
     if (undo === "undoing") return;
     const words = on

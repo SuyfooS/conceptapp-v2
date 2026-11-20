@@ -27,7 +27,8 @@ through helpers in the `private` schema (not exposed by the Data API):
 | `private.reads_member_name(business, person)` | may read the business's name for that person (`public.member_names`): as their profile is read, in that business: its members and the team viewing it while the person is active in it, and its pay holders (and a view as an accountant) also once they left |
 | `private.module_enabled(business, key)` | (any user) the module is switched on for the business |
 | `private.order_taking_on(business)` | (any user) taking orders is switched on for the business (the menu's policies) |
-| `private.runs_orders(business, person)` | (that person) runs the business's menu: holds `order_taking.edit` (`private.holds_perm`), or is on the ConceptApp team (P2, for the console) |
+| `private.runs_orders(business, person)` | (that person) runs the business's menu: holds `order_taking.edit` (`private.holds_perm`), so an active member only; "sold out" for any item, and the orders to come (P3) |
+| `private.sets_up_menu(business, person)` | (that person) sets the business's menu and places up: `private.runs_orders`, or is on the ConceptApp team (P2, for the console); the six writes that set the menu up ask it |
 | `private.is_viewing(business, min_role)` | is on the ConceptApp team with an open "view as" session in the business, at that role or above (read policies only; a view as a role the business named ranks as its base) |
 | `private.can_manage_lists(business, person)` | (that person) holds `lists.manage` (`private.holds_perm`: an owner always, managers by default, a role an owner raised, or one given it; since R5) |
 | `private.sees_list(list, person)` | (that person) is an active member of the list's business who holds it, sent it, was given it, is in the department that asked for it or one it passed through, or holds `lists.manage` |
@@ -2264,10 +2265,15 @@ Covered by `order_taking_menu.test.sql`, `isolation`, `demo_reset`,
 `modules/order_taking/unit-price.db.test.ts`.
 
 On screen (waiter mode P2, `20261120000100_order_taking_screens.sql`): the
-ConceptApp team runs the menu too (`private.runs_orders`, as
+ConceptApp team sets the menu up too (`private.sets_up_menu`, asked by
+`set_menu_categories`, `save_menu_item`, `archive_menu_item`,
+`restore_menu_item`, `import_menu` and `set_order_places`, as
 `private.can_edit_settings` lets it save settings), so the console imports
-and saves places for a business it is no member of; "sold out" asks for an
-active membership first and stays the business's own. `set_menu_categories`
+and saves places for a business it is no member of. `private.runs_orders`
+stays P1's, the members' alone: "sold out" asks for an active membership
+first and then for it, so it stays the business's own, and someone on the
+team who is also on a business's staff marks only what their own department
+prepares; the orders to come ask it too. `set_menu_categories`
 saves a category sent with its id and the department it has already, even one
 removed since, so a rename or a move still saves while its items go nowhere;
 a new category, or one moved, goes to a live department (22023 'route').
