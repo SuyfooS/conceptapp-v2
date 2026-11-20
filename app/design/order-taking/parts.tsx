@@ -59,6 +59,10 @@ export const paths = {
   prep: `${BASE}/prep`,
   menu: `${BASE}/menu`,
   import: `${BASE}/menu/import`,
+  categories: `${BASE}/menu/categories`,
+  places: `${BASE}/menu/places`,
+  /** The app demo's departments, saying what each prepares. */
+  departments: "/design/shell/manage/departments?state=menu",
   kitchen: `${BASE}/station/prep`,
   counter: `${BASE}/station/till`,
   /** Out of the mode: the app's own demo. */

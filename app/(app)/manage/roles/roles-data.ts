@@ -1,4 +1,4 @@
-import type { ModuleKey, Role } from "@domain/modules";
+import { type ModuleKey, moduleIcon, type Role } from "@domain/modules";
 import { PAY_PERMISSION } from "@domain/payroll-access";
 import {
   ACCESS_AREAS,
@@ -98,7 +98,7 @@ export function rolesData({
       return [
         {
           key,
-          icon: module ? (manifestFor(module).nav?.icon ?? null) : null,
+          icon: module ? moduleIcon(manifestFor(module)) : null,
           open: areaOpen(key, matrix.keys),
           extras: knownExtras(key, matrix.keys),
         },

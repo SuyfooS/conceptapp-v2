@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  againstMenu,
   importRows,
   menuImportRows,
   parseMenu,
@@ -610,5 +611,121 @@ describe("what the import writes", () => {
       menuImportRows.safeParse([{ item: { name: "קפה", priceAgorot: 1200 } }])
         .success,
     ).toBe(false);
+  });
+});
+
+// The paste against the menu already there (P2): what the import screen adds.
+describe("a paste against the menu", () => {
+  const KITCHEN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const BAR = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const MAINS = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const menu = {
+    categories: [{ id: MAINS, name: "עיקריות", department: KITCHEN }],
+    items: [
+      { category: MAINS, name: "שניצל" },
+      { category: MAINS, name: "Pasta" },
+    ],
+  };
+
+  it("adds to a category the menu has, which keeps its department", () => {
+    const check = againstMenu(
+      parse("עיקריות\nהמבורגר 68\nקינוחים\nמלבי 26"),
+      menu,
+    );
+    expect(check.categories).toEqual([
+      {
+        name: "עיקריות",
+        existing: { id: MAINS, department: KITCHEN },
+        items: [{ name: "המבורגר", priceAgorot: 6800, optionGroups: [] }],
+      },
+      {
+        name: "קינוחים",
+        existing: null,
+        items: [{ name: "מלבי", priceAgorot: 2600, optionGroups: [] }],
+      },
+    ]);
+    expect([check.newItems, check.newCategories, check.tooMany]).toEqual([
+      2,
+      1,
+      false,
+    ]);
+    // The new category's department is the one chosen; the menu's keeps its own.
+    expect(
+      importRows(
+        check.categories,
+        check.categories.map((c) => c.existing?.department ?? BAR),
+      ),
+    ).toEqual([
+      { category: { name: "עיקריות", department: KITCHEN } },
+      { item: { name: "המבורגר", priceAgorot: 6800 } },
+      { category: { name: "קינוחים", department: BAR } },
+      { item: { name: "מלבי", priceAgorot: 2600 } },
+    ]);
+  });
+
+  it("leaves out an item already in that category, with its extras, case aside", () => {
+    const pasted = parse(
+      [
+        "עיקריות",
+        "שניצל 62",
+        "+ צ׳יפס 12",
+        "pasta 58",
+        "פסטה 58",
+        "שתייה",
+        "שניצל 62",
+      ].join("\n"),
+    );
+    const check = againstMenu(pasted, menu);
+    expect([...check.known].sort((a, b) => a - b)).toEqual([2, 3, 4]);
+    expect(
+      check.categories.map((c) => [c.name, c.items.map((i) => i.name)]),
+    ).toEqual([
+      ["עיקריות", ["פסטה"]],
+      // Another category: not the same item, so it goes in.
+      ["שתייה", ["שניצל"]],
+    ]);
+    expect(check.newItems).toBe(2);
+  });
+
+  it("leaves out a category whose every item is there already", () => {
+    const check = againstMenu(parse("עיקריות\nשניצל 62"), menu);
+    expect(check.categories).toEqual([]);
+    expect([check.newItems, check.newCategories]).toEqual([0, 0]);
+  });
+
+  it("is too many when the menu and the paste pass 300 items or 30 categories", () => {
+    const full = {
+      categories: menu.categories,
+      items: Array.from({ length: MENU_CAPS.items - 1 }, (_, n) => ({
+        category: MAINS,
+        name: `פריט ${n}`,
+      })),
+    };
+    expect(againstMenu(parse("עיקריות\nאחד 10"), full).tooMany).toBe(false);
+    expect(againstMenu(parse("עיקריות\nאחד 10\nשניים 10"), full).tooMany).toBe(
+      true,
+    );
+    const many = {
+      categories: Array.from({ length: MENU_CAPS.categories - 1 }, (_, n) => ({
+        id: `c${n}`,
+        name: `קטגוריה ${n}`,
+        department: KITCHEN,
+      })),
+      items: [],
+    };
+    expect(againstMenu(parse("חדשה\nאחד 10"), many).tooMany).toBe(false);
+    expect(
+      againstMenu(parse("חדשה\nאחד 10\nעוד אחת\nשניים 10"), many).tooMany,
+    ).toBe(true);
+  });
+
+  it("knows nothing on an empty menu", () => {
+    const check = againstMenu(parse("עיקריות\nשניצל 62"), {
+      categories: [],
+      items: [],
+    });
+    expect(check.known.size).toBe(0);
+    expect(check.newItems).toBe(1);
+    expect(check.newCategories).toBe(1);
   });
 });

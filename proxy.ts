@@ -4,9 +4,10 @@ import { type NextRequest, NextResponse } from "next/server";
 
 /**
  * Screens for signed-in people: home, each module's screens (the `nav`
- * hrefs in `modules/<key>/manifest.ts`), the notifications, which have no
- * tab, the profile, the photos it shows, the photos on lists, the files sent in
- * chat, the official documents' files and the admin console
+ * hrefs in `modules/<key>/manifest.ts`), the notifications and taking
+ * orders' menu (/orders), which have no tab, the profile, the photos it
+ * shows, the photos on lists, the files sent in chat, the official
+ * documents' files and the admin console
  * (tooling/proxy.test.ts keeps both lists in step).
  * Everything else is public; chat's sync (/chat-sync) stays out on purpose.
  * The clock station (/station) is public too, and in the matcher only.
@@ -20,6 +21,7 @@ export const PRIVATE = [
   "/storefront",
   "/lists",
   "/chat",
+  "/orders",
   "/team",
   "/manage",
   "/notifications",
@@ -69,6 +71,7 @@ export const config = {
     "/storefront/:path*",
     "/lists/:path*",
     "/chat/:path*",
+    "/orders/:path*",
     "/team/:path*",
     "/manage/:path*",
     "/notifications/:path*",

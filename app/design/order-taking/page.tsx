@@ -58,15 +58,25 @@ const SECTIONS = [
     key: "menu",
     screens: [
       { key: "menu", href: `${BASE}/menu?state=service` },
+      { key: "menuWorker", href: `${BASE}/menu?state=worker` },
+      { key: "menuNoRoute", href: `${BASE}/menu?state=noRoute` },
       { key: "noMenu", href: `${BASE}/menu?state=noMenu` },
+      { key: "categories", href: `${BASE}/menu/categories?state=service` },
+      { key: "places", href: `${BASE}/menu/places?state=service` },
+      { key: "noPlaces", href: `${BASE}/menu/places?state=noPlaces` },
       { key: "import", href: `${BASE}/menu/import?state=service` },
+      {
+        key: "importProblems",
+        href: `${BASE}/menu/import?state=problems`,
+      },
     ],
   },
 ] as const;
 
 // The order-taking demo's list of screens (S0 of waiter mode, issue #191),
 // for Orel to tap through, and the order a real waiter times against the
-// pad (§3.4). Each link opens the demo afresh in that state.
+// pad (§3.4). Each link opens the demo afresh in that state. The menu's rows
+// are the real screens since P2, on the twin's rows.
 export default function OrderTakingDemoIndex() {
   const t = useTranslations("design.orderTaking.index");
   return (

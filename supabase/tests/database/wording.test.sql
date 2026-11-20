@@ -131,9 +131,12 @@ select results_eq(
 );
 reset role;
 select pg_temp.sign_in('6f000000-0000-4000-a000-00000000000c');
+-- The restaurant's template has sentences of its own from a migration
+-- (20261120000100_order_taking_screens.sql): only the keys written here.
 select set_eq(
   $$select sentence from public.business_wording
-    union all select sentence from public.template_wording$$,
+    union all select sentence from public.template_wording
+    where key in ('app.nav.home', 'app.team.title')$$,
   $$values ('המסעדה היום'::text), ('הצוות של המסעדה'::text)$$,
   'a manager elsewhere reads only their own'
 );

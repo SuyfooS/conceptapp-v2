@@ -19,18 +19,21 @@ import {
   setModuleEnabled,
   setModuleSettings,
 } from "@db/module-settings";
+import { importMenu, setOrderPlaces } from "@db/order-taking";
 import { getViewableNamedRoles, startViewing } from "@db/view-as";
 import { getTemplateSentence, setBusinessWording } from "@db/wording";
 import { checkBusinessDetailsChange } from "@domain/business-details";
 import { departments as departmentsSchema } from "@domain/departments";
 import { inviteLink } from "@domain/invites";
 import { listTemplateInput, type SavedTemplate } from "@domain/lists";
+import { menuImportRows } from "@domain/menu-import";
 import {
   enabledModules,
   fitsTabBar,
   type ModuleManifest,
   moduleKeyOf,
 } from "@domain/modules";
+import { placesInput } from "@domain/order-taking";
 import { platformCan } from "@domain/platform";
 import { checkSettingsChange } from "@domain/settings-form";
 import { parseTeamInvite } from "@domain/team";
@@ -52,6 +55,7 @@ import { notFound, redirect } from "next/navigation";
 import { z } from "zod";
 import type { ListActionResult } from "@/app/(app)/lists/list-types";
 import type { SettingsResult } from "@/app/(app)/manage/settings-types";
+import type { MenuActionResult } from "@/app/(app)/orders/menu/menu-types";
 import type { InviteState } from "@/app/(app)/team/actions";
 import { requestOrigin } from "@/app/origin";
 import he from "@/messages/he.json";
@@ -354,6 +358,45 @@ function teamResult(result: { ok: true } | { ok: false; code?: string }) {
     failure:
       result.code === "22023" || result.code === "23514" ? "invalid" : "failed",
   } as const;
+}
+
+/**
+ * Someone on the team copies a business's menu in, as they set it up
+ * (waiter mode P2): the rows the import screen checked. The database checks
+ * they are on the team and that taking orders is on there
+ * (`private.sets_up_menu`, 20261120000100_order_taking_screens.sql); before
+ * that migration reaches a project it answers "noAccess", which the screen
+ * says.
+ */
+export async function importTeamMenuAction(
+  businessId: string,
+  rows: unknown,
+): Promise<MenuActionResult<{ categories: number; items: number }>> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const parsed = menuImportRows.safeParse(rows);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const result = await importMenu(staff.userId, businessId, parsed.data);
+  refresh();
+  return result;
+}
+
+/** Someone on the team saves a business's places, in order, as they set it up. */
+export async function saveTeamPlacesAction(
+  businessId: string,
+  places: unknown,
+): Promise<MenuActionResult<string[]>> {
+  const staff = await getPlatformStaff();
+  if (!staff || !platformCan(staff.role, "businesses.edit")) {
+    return { ok: false, failure: "noAccess" };
+  }
+  const parsed = placesInput.safeParse(places);
+  if (!parsed.success) return { ok: false, failure: "invalid" };
+  const result = await setOrderPlaces(staff.userId, businessId, parsed.data);
+  refresh();
+  return result;
 }
 
 /**

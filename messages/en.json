@@ -538,7 +538,31 @@
           },
           "import": {
             "title": "Copying a menu",
-            "text": "A café's menu pasted, with two sizes, extras and lines to check"
+            "text": "A café's menu pasted, with two sizes and extras, added to the menu already there"
+          },
+          "menuWorker": {
+            "title": "The menu for someone preparing",
+            "text": "Yoav in the bar: sees the menu and marks \"sold out\" only what the bar makes"
+          },
+          "menuNoRoute": {
+            "title": "A category with no department",
+            "text": "The desserts' department was removed: their items reach no one"
+          },
+          "categories": {
+            "title": "Categories",
+            "text": "A name, a department and an order for each category, removed with an undo"
+          },
+          "places": {
+            "title": "Editing the tables",
+            "text": "Twelve tables, a new name, the order and a removal with an undo"
+          },
+          "noPlaces": {
+            "title": "A business with no tables",
+            "text": "How many tables there are, and all of them made in one press"
+          },
+          "importProblems": {
+            "title": "A paste with lines to fix",
+            "text": "A line with no price and one turned around: nothing is added until they're fixed"
           }
         },
         "note": "Every price here is a sample. No bill, no receipt and no payment: what shows \"for the till\" is keyed into the business's own register."
@@ -777,64 +801,6 @@
         "backToPlaces": "All the tables",
         "newOrder": "New order: {place}"
       },
-      "menu": {
-        "title": "Menu",
-        "status": "{soldOut, plural, =0 {Everything available} one {1 item sold out} other {# items sold out}} · {items, plural, one {1 item on the menu} other {# items on the menu}}",
-        "add": "Add an item",
-        "import": "Copy a menu",
-        "categories": "Categories",
-        "categoryLine": "{department} · {count, plural, one {1 item} other {# items}}",
-        "choices": "{count, plural, one {1 choice} other {# choices}}",
-        "soldOutFor": "Sold out: {name}",
-        "priceFor": "Price: {name}",
-        "priceUnclear": "The price isn't clear. Write a number, such as 62 or 42.50.",
-        "columns": {
-          "name": "Item",
-          "category": "Category",
-          "department": "Department",
-          "price": "Price",
-          "soldOut": "Sold out"
-        },
-        "sheet": {
-          "newTitle": "New item",
-          "name": "Item name",
-          "nameMissing": "Write the item's name, up to 60 characters.",
-          "price": "Price",
-          "priceHint": "The price as on the menu, VAT included",
-          "category": "Category",
-          "choices": "Choices: {groups}",
-          "add": "Add the item",
-          "save": "Save the item"
-        }
-      },
-      "import": {
-        "title": "Copy a menu",
-        "subtitle": "Paste the menu as it is: from the website, a PDF, WhatsApp or the register.",
-        "paste": "The menu",
-        "hint": "A line ending in a price is an item. A line with no price heads the lines after it. Two prices with / are two sizes, and a line starting with + is an extra for the item above.",
-        "preview": "What goes in",
-        "counts": "{items, plural, one {1 item} other {# items}} · {categories, plural, one {1 category} other {# categories}} · {problems, plural, =0 {all clear} one {1 line to check} other {# lines to check}}",
-        "unreverse": "Turn the lines around",
-        "department": "Department · {category}",
-        "action": "{count, plural, one {Import 1 item} other {Import # items}}",
-        "done": "{count, plural, one {1 item added to the menu} other {# items added to the menu}}",
-        "toMenu": "To the menu",
-        "line": {
-          "category": "Category",
-          "item": "Item · <ltr>{price}</ltr>",
-          "sizes": "Two prices: check the sizes' names · regular <ltr>{regular}</ltr> · large <ltr>{large}</ltr>",
-          "extra": "Extra for the item above · <ltr>+{price}</ltr>"
-        },
-        "problem": {
-          "noPrice": "No price",
-          "unclear": "Price not clear",
-          "long": "Name too long",
-          "duplicate": "Repeated",
-          "reversed": "Line turned around",
-          "noItem": "Extra with no item above",
-          "noCategory": "No category above it"
-        }
-      },
       "toast": {
         "undo": "Undo",
         "sent": "The order for {place} was sent",
@@ -847,12 +813,7 @@
         "takenBack": "Taken back: {name}",
         "closed": "{place} closed",
         "reopened": "{place} open again",
-        "putBack": "Back to preparing: {place}",
-        "soldOut": "Marked sold out: {name}",
-        "available": "Back on the menu: {name}",
-        "price": "Price changed: {name}",
-        "itemAdded": "Added to the menu: {name}",
-        "itemSaved": "Saved: {name}"
+        "putBack": "Back to preparing: {place}"
       }
     },
     "orderTakingTitle": "Waiter mode",
@@ -875,7 +836,12 @@
       "fish": "Fish of the day",
       "schnitzel": "Schnitzel",
       "mash": "Mash",
-      "lemonade": "Lemonade"
+      "lemonade": "Lemonade",
+      "edit": {
+        "title": "Menu items, to edit",
+        "text": "Whoever runs the menu opens an item by its name and marks it sold out with the switch. Someone preparing in a department sees only the switch, and an item with no department says so.",
+        "cola": "Cola"
+      }
     }
   },
   "shell": {
@@ -3659,6 +3625,7 @@
         "listTitle": "The departments",
         "rowEmpty": "No departments yet",
         "empty": "No departments yet. A department is a group of people a list can go to, such as the kitchen or the checkout. Add the first one in the row below.",
+        "emptyMenu": "No departments yet. A department is a group of people that prepares what's ordered, such as the kitchen or the bar. Add the first one in the row below.",
         "emptyViewOnly": "No departments yet.",
         "nameOf": "Name of the department {name}",
         "newName": "New department",
@@ -3676,7 +3643,11 @@
         "up": "Move up",
         "down": "Move down",
         "close": "Close",
-        "hint": "A list sent to a department reaches everyone in it, and any of them can fill it."
+        "hint": "A list sent to a department reaches everyone in it, and any of them can fill it.",
+        "subtitleMenu": "The groups in the business that prepare what's ordered, such as the kitchen or the bar. A person can be in several.",
+        "hintMenu": "Each menu category goes to one department to prepare; you pick it on the categories screen.",
+        "menuItems": "{count, plural, one {Prepares 1 menu item} other {Prepares # menu items}}",
+        "removedMenu": "{count, plural, one {{name} was removed. 1 menu item goes to no one until it gets a department.} other {{name} was removed. # menu items go to no one until they get a department.}}"
       }
     },
     "me": {
@@ -5379,6 +5350,190 @@
         }
       }
     },
+    "orders": {
+      "menu": {
+        "title": "The menu",
+        "back": "Manage",
+        "status": {
+          "items": "{count, plural, one {1 item} other {# items}}",
+          "soldOut": "{count, plural, one {1 sold out} other {# sold out}}",
+          "noRoute": "{count, plural, one {1 item with no department} other {# items with no department}}"
+        },
+        "add": "Add an item",
+        "import": "Copy in a menu",
+        "addCategory": "Add a category",
+        "readOnly": {
+          "viewing": "While viewing you see the menu without changing it.",
+          "menu": "Those who run the menu change it.",
+          "department": "Those who run the menu change it. You can mark \"sold out\" what your department prepares."
+        },
+        "empty": {
+          "title": "No menu yet",
+          "body": "Add items one by one, or copy in a menu from the website, a PDF or the till.",
+          "bodyView": "Whoever runs the menu adds it, and then it shows here."
+        },
+        "emptyCategory": "No items here yet.",
+        "categoryLine": "{department} · {count, plural, =0 {no items} one {1 item} other {# items}}",
+        "noRoute": "No department",
+        "categoriesRow": "Categories",
+        "categoriesCount": "{count, plural, =0 {No categories yet} one {1 category} other {# categories}}",
+        "placesRow": "Places",
+        "placesCount": "{count, plural, =0 {No places yet} one {1 place} other {# places}}",
+        "choices": "{count, plural, one {1 choice} other {# choices}}",
+        "soldOut": "Sold out",
+        "soldOutFor": "Sold out: {name}",
+        "priceFor": "Price: {name}",
+        "priceUnclear": "The price isn't clear. Write a number, such as 62 or 14.50.",
+        "columns": {
+          "name": "Item",
+          "category": "Category",
+          "department": "Department",
+          "price": "Price",
+          "soldOut": "Sold out"
+        },
+        "sheet": {
+          "newTitle": "New item",
+          "name": "Item name",
+          "nameMissing": "Write the item's name, up to 60 characters.",
+          "price": "Price",
+          "priceHint": "The price as on the menu, VAT included",
+          "description": "Description",
+          "descriptionHint": "Optional. Up to 200 characters.",
+          "category": "Category",
+          "department": "Prepared by",
+          "departmentSame": "As its category · {department}",
+          "choices": "Choices",
+          "rule": {
+            "one": "Pick one",
+            "upTo": "Up to {max}",
+            "between": "Pick {min} to {max}",
+            "any": "Optional"
+          },
+          "option": "{name} · <ltr>+{price}</ltr>",
+          "add": "Add to the menu",
+          "save": "Save the changes",
+          "remove": "Remove from the menu",
+          "close": "Close"
+        },
+        "toast": {
+          "soldOut": "Marked sold out: {name}",
+          "available": "Back on the menu: {name}",
+          "price": "Price saved: {name}",
+          "added": "Added to the menu: {name}",
+          "saved": "Saved: {name}",
+          "removed": "Removed from the menu: {name}",
+          "undo": "Undo"
+        },
+        "failed": {
+          "noAccess": "Only those who run the menu change it.",
+          "viewOnly": "Nothing changes while viewing.",
+          "businessChanged": "The business changed meanwhile. Open the screen again.",
+          "off": "Taking orders is off for this business.",
+          "gone": "That item is no longer on the menu.",
+          "invalid": "That didn't save. Check the name and the price.",
+          "route": "The department you chose was removed. Pick another.",
+          "category": "That category was removed. Pick another.",
+          "choices": "The item's choices didn't save as they are.",
+          "taken": "That name is taken. Pick another.",
+          "changed": "Someone changed this item meanwhile. This is it now.",
+          "tooMany": "The menu is full: up to 300 items and 30 categories.",
+          "archived": "That item was removed. Bring it back first.",
+          "categoryRemoved": "The item's category was removed. Bring it back first.",
+          "notYet": "The menu isn't ready for this business yet.",
+          "failed": "That didn't save. Try again."
+        }
+      },
+      "categories": {
+        "title": "Categories",
+        "subtitle": "Each category goes to one department to prepare. The order here is the menu's.",
+        "listTitle": "The menu's categories",
+        "nameOf": "Name of the category {name}",
+        "newName": "New category",
+        "add": "Add a category",
+        "remove": "Remove {name}",
+        "department": "Department of {name}",
+        "newDepartment": "Department of the new category",
+        "count": "{count, plural, =0 {No items} one {1 item} other {# items}}",
+        "removed": "{count, plural, =0 {{name} was removed} one {{name} was removed, with 1 item} other {{name} was removed, with # items}}",
+        "taken": "There's already a category called {name}.",
+        "max": "Up to 30 categories.",
+        "empty": "No categories yet. Add the first in the row below.",
+        "emptyView": "No categories yet.",
+        "itemsOf": "In {name}",
+        "itemsWhere": "in {name}",
+        "itemsEmpty": "No items here yet. Add them on the menu screen.",
+        "noDepartments": "No departments yet. Each category needs one to prepare it.",
+        "toDepartments": "To the departments",
+        "up": "Move up",
+        "down": "Move down",
+        "upFor": "Move up: {name}",
+        "downFor": "Move down: {name}",
+        "saved": "Saved"
+      },
+      "places": {
+        "title": "Places",
+        "subtitle": "The places orders are taken for: tables, seats at the bar or rooms. The order here is the screen's.",
+        "listTitle": "In order",
+        "quick": {
+          "title": "How many places are there",
+          "count": "The number",
+          "fewer": "Fewer",
+          "more": "More",
+          "hint": "They'll be named 1, 2, 3 and so on. You can rename any of them later.",
+          "action": "{count, plural, one {Create 1 place} other {Create # places}}"
+        },
+        "nameOf": "Name of the place {name}",
+        "newName": "New place",
+        "add": "Add a place",
+        "remove": "Remove {name}",
+        "removed": "{name} was removed",
+        "taken": "There's already a place called {name}.",
+        "max": "Up to 60 places.",
+        "empty": "No places yet.",
+        "upFor": "Move up: {name}",
+        "downFor": "Move down: {name}",
+        "saved": "Saved"
+      },
+      "import": {
+        "title": "Copy in a menu",
+        "subtitle": "Paste the menu as it is: from the website, a PDF, WhatsApp or the till. See what each line became, then add it.",
+        "existing": "The menu already has {items, plural, one {1 item} other {# items}} in {categories, plural, one {1 category} other {# categories}}. What you paste is added to them.",
+        "paste": "The menu to paste",
+        "hint": "A line ending in a price is an item. A line with no price is a category for the lines after it. Two prices with a / are two sizes, and a line starting with + is an extra for the item above.",
+        "preview": "What goes on the menu",
+        "previewEmpty": "What you paste shows here, line by line.",
+        "counts": "{items, plural, one {1 item} other {# items}} · {categories, plural, one {1 category} other {# categories}} · {problems, plural, =0 {no lines to fix} one {1 line to fix} other {# lines to fix}}",
+        "unreverse": "Turn the lines around",
+        "department": "Department of {category}",
+        "line": {
+          "category": "New category",
+          "categoryKnown": "Already on the menu · {department}",
+          "item": "Item · <ltr>{price}</ltr>",
+          "sizes": "Two prices: check the sizes' names · regular <ltr>{regular}</ltr> · large <ltr>{large}</ltr>",
+          "extra": "Extra for the item above · <ltr>+{price}</ltr>",
+          "header": "A header row, left out",
+          "known": "Already on the menu, not added again"
+        },
+        "problem": {
+          "noPrice": "No price",
+          "unclearPrice": "Price not clear",
+          "noName": "No name before the price",
+          "nameTooLong": "Name too long",
+          "duplicate": "Repeated",
+          "reversed": "Line turned around",
+          "noItem": "Extra with no item above",
+          "tooManyExtras": "Too many extras on one item"
+        },
+        "blocked": "{count, plural, one {1 line to fix. Fix or delete it in the paste, then add.} other {# lines to fix. Fix or delete them in the paste, then add.}}",
+        "tooMany": "With this paste the menu would have more than 300 items or 30 categories. Shorten it.",
+        "nothingNew": "Everything pasted is on the menu already.",
+        "noDepartments": "The business has no departments yet. Add one that prepares, then come back here.",
+        "toDepartments": "To the departments",
+        "action": "{count, plural, one {Add 1 item to the menu} other {Add # items to the menu}}",
+        "done": "{items, plural, one {Added 1 item to the menu} other {Added # items to the menu}}{categories, plural, =0 {} one { and 1 new category} other { and # new categories}}",
+        "toMenu": "To the menu"
+      }
+    },
     "departure": {
       "label": "No longer on the team",
       "title": "No longer on the team of {business}",
@@ -5958,6 +6113,12 @@
       "lists": {
         "title": "Lists",
         "row": "What's in each of the business's lists, and who it goes to"
+      },
+      "menu": {
+        "title": "The menu",
+        "import": "Copy in a menu",
+        "importRow": "Paste the business's menu and check each line before adding",
+        "places": "Places"
       }
     },
     "addPerson": {

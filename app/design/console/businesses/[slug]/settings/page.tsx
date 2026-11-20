@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { BusinessSettingsView } from "../../../../../(admin)/admin/businesses/[slug]/settings/business-settings-view";
 import { teamModuleSettings } from "../../../../../(admin)/admin/businesses/[slug]/settings/module-settings";
 import { shabbatByCity } from "../../../../../(app)/manage/shabbat-by-city";
+import { orderDemoTables } from "../../../../order-taking/data";
 import { demoModuleRows, demoNow } from "../../../../shell/data";
 import {
   demoSaveDepartmentMembers,
@@ -13,6 +14,7 @@ import {
   demoDepartments,
 } from "../../../../shell/lists/data";
 import { demoSaveBusinessDetails } from "../../../../shell/manage/actions";
+import { menuItemsByDepartment } from "../../../../shell/manage/departments/menu-counts";
 import {
   demoSaveBusinessSettings,
   demoSetBusinessModule,
@@ -52,8 +54,15 @@ export default async function ConsoleSettingsDemo({
         people: demoDepartmentPeople,
         save: demoSaveDepartments,
         saveMembers: demoSaveDepartmentMembers,
+        on: { lists: true, menu: true },
+        itemsByDepartment: menuItemsByDepartment(),
       }}
       listsHref={`/design/console/businesses/${slug}/lists`}
+      menu={{
+        importHref: `/design/console/businesses/${slug}/menu`,
+        placesHref: `/design/console/businesses/${slug}/menu/places`,
+        places: orderDemoTables.length,
+      }}
     />
   );
 }

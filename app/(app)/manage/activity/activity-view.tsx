@@ -52,6 +52,11 @@ export type ActivityPaths = {
   clockTeam?: string;
   /** The business's departments, where their lines lead. */
   departments: string;
+  /**
+   * The menu's screens, where its lines lead while taking orders is on
+   * (waiter mode P2): the menu, its categories and its places.
+   */
+  menu?: { items: string; categories: string; places: string };
   /** Who sees pay, where its lines lead: the owner's alone. */
   access?: string;
   /**
@@ -133,7 +138,7 @@ export function ActivityView({
   earlier,
   manageable,
   clockOn,
-  listsOn,
+  departmentsOn,
   everyArea,
   paths,
   wording,
@@ -148,8 +153,11 @@ export function ActivityView({
   manageable: readonly ModuleKey[];
   /** The time clock is on, so its punches, left out here, exist somewhere. */
   clockOn: boolean;
-  /** Lists are on, so the departments have their screen to link to. */
-  listsOn: boolean;
+  /**
+   * Lists or taking orders are on, so the departments have their screen to
+   * link to.
+   */
+  departmentsOn: boolean;
   /**
    * The reader reads every area's rows (`readsEveryLogArea`), so the words
    * may promise the settings', the team's and the schedule's changes; else
@@ -851,7 +859,7 @@ export function ActivityView({
             ...(line.reordered ? [t("actions.departments.reordered")] : []),
           ],
           changes: [],
-          href: listsOn ? paths.departments : undefined,
+          href: departmentsOn ? paths.departments : undefined,
         };
       case "departments.members":
         return {
@@ -877,7 +885,7 @@ export function ActivityView({
               : []),
           ],
           changes: [],
-          href: listsOn ? paths.departments : undefined,
+          href: departmentsOn ? paths.departments : undefined,
         };
       case "lists.template.save":
         return plain(
@@ -1222,7 +1230,8 @@ export function ActivityView({
       // The menu (waiter mode P1): an item added or saved, with its price
       // and each option's price before and after in LTR spans, what else
       // changed, an item removed or back, an import's counts, and the
-      // categories or places saved whole.
+      // categories or places saved whole. Each leads to its screen while
+      // taking orders is on (P2).
       case "menu.item.save": {
         const price = line.price;
         const amount = (agorot: number) => (
@@ -1279,12 +1288,19 @@ export function ActivityView({
                     : { from: amount(move.before), to: amount(move.after) },
             })),
           ],
+          href: paths.menu?.items,
         };
       }
       case "menu.item.archive":
-        return plain(t("actions.menu.itemArchive", { name: line.name }));
+        return plain(
+          t("actions.menu.itemArchive", { name: line.name }),
+          paths.menu?.items,
+        );
       case "menu.item.restore":
-        return plain(t("actions.menu.itemRestore", { name: line.name }));
+        return plain(
+          t("actions.menu.itemRestore", { name: line.name }),
+          paths.menu?.items,
+        );
       case "menu.import":
         return {
           what: t("actions.menu.import", { count: line.items }),
@@ -1297,6 +1313,7 @@ export function ActivityView({
                 ]
               : [],
           changes: [],
+          href: paths.menu?.items,
         };
       case "menu.categories":
       case "menu.places": {
@@ -1310,6 +1327,7 @@ export function ActivityView({
               t(`actions.menu.${kind}.${count}`, { count: line[count] }),
             ),
           changes: [],
+          href: paths.menu?.[kind],
         };
       }
       case "other":

@@ -2,17 +2,26 @@ import { describe, expect, it } from "vitest";
 import {
   categoriesInput,
   checkPicks,
+  choiceRule,
   itemInput,
+  itemSaveInput,
+  itemsByDepartment,
   MAX_EXTRAS_AGOROT,
   MAX_ITEM_AGOROT,
   MAX_OPTION_AGOROT,
   MAX_UNIT_AGOROT,
   MENU_CAPS,
+  type MenuItem,
+  marksSoldOut,
   maxUnitAgorot,
   menuSchema,
+  menuStatus,
   type OptionGroup,
   optionGroups,
   placesInput,
+  quickCount,
+  quickPlaces,
+  typedAgorot,
   unitAgorot,
 } from "./order-taking";
 
@@ -364,5 +373,169 @@ describe("the menu as the database gives it", () => {
         items: [{ ...menu.items[0], optionGroups: [{ id: "x" }] }],
       }).success,
     ).toBe(false);
+  });
+});
+
+// The menu on screen (P2): what its screens work out from the menu they read.
+describe("the menu on screen", () => {
+  const KITCHEN = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  const BAR = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const MAINS = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+  const DRINKS = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+  const item = (fields: Partial<MenuItem> = {}): MenuItem => ({
+    id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    category: MAINS,
+    name: "המבורגר",
+    description: "קציצה של 220 גרם",
+    priceAgorot: 6800,
+    department: BAR,
+    route: BAR,
+    available: true,
+    optionGroups: [doneness, extras],
+    version: 3,
+    ...fields,
+  });
+
+  it("sends an item whole, so a price change keeps its choices, description and department", () => {
+    // public.save_menu_item replaces every field: one left out is erased.
+    const saved = itemSaveInput(item(), { priceAgorot: 7200 });
+    expect(saved).toEqual({
+      id: item().id,
+      category: MAINS,
+      name: "המבורגר",
+      description: "קציצה של 220 גרם",
+      priceAgorot: 7200,
+      department: BAR,
+      optionGroups: [doneness, extras],
+    });
+    expect(itemInput.safeParse(saved).success).toBe(true);
+  });
+
+  it("clears a description and a department only when asked", () => {
+    expect(itemSaveInput(item(), { description: "  " }).description).toBe(null);
+    expect(itemSaveInput(item(), { description: null }).description).toBe(null);
+    expect(itemSaveInput(item(), { department: null }).department).toBe(null);
+    expect(itemSaveInput(item(), { name: "צ׳יזבורגר" }).department).toBe(BAR);
+  });
+
+  it("never sends a place: one moved to another category goes last there", () => {
+    const moved = itemSaveInput(item(), { category: DRINKS });
+    expect(moved.category).toBe(DRINKS);
+    expect("position" in moved).toBe(false);
+  });
+
+  it("counts the items, those sold out and those that reach no one", () => {
+    const items = [
+      item(),
+      item({ available: false }),
+      item({ route: null }),
+      item({ route: null, available: false }),
+    ];
+    expect(menuStatus({ items })).toEqual({
+      items: 4,
+      soldOut: 2,
+      noRoute: 2,
+    });
+    expect(menuStatus({ items: [] })).toEqual({
+      items: 0,
+      soldOut: 0,
+      noRoute: 0,
+    });
+  });
+
+  it("counts the items each department prepares, none for one that goes nowhere", () => {
+    const counts = itemsByDepartment({
+      items: [
+        item(),
+        item({ route: KITCHEN }),
+        item({ route: KITCHEN }),
+        item({ route: null }),
+      ],
+    });
+    expect([...counts]).toEqual([
+      [BAR, 1],
+      [KITCHEN, 2],
+    ]);
+  });
+
+  it("lets those who run the menu mark anything sold out, and a department what it prepares", () => {
+    const kitchenWorker = { runsMenu: false, myDepartments: [KITCHEN] };
+    expect(
+      marksSoldOut(item({ route: KITCHEN }), {
+        runsMenu: true,
+        myDepartments: [],
+      }),
+    ).toBe(true);
+    expect(marksSoldOut(item({ route: KITCHEN }), kitchenWorker)).toBe(true);
+    expect(marksSoldOut(item({ route: BAR }), kitchenWorker)).toBe(false);
+    // Its department was removed: only those who run the menu.
+    expect(marksSoldOut(item({ route: null }), kitchenWorker)).toBe(false);
+    expect(
+      marksSoldOut(item({ route: null }), {
+        runsMenu: true,
+        myDepartments: [],
+      }),
+    ).toBe(true);
+  });
+
+  it("makes places 1 to N, at most the menu's 60, skipping names taken", () => {
+    expect(quickPlaces(1)).toEqual([{ name: "1" }]);
+    expect(quickPlaces(10).map((place) => place.name)).toEqual([
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7",
+      "8",
+      "9",
+      "10",
+    ]);
+    expect(quickPlaces(60)).toHaveLength(MENU_CAPS.places);
+    expect(quickPlaces(75)).toHaveLength(MENU_CAPS.places);
+    expect(quickPlaces(0)).toEqual([]);
+    const kept = { id: "ffffffff-ffff-4fff-8fff-ffffffffffff", name: "2" };
+    expect(quickPlaces(3, [kept])).toEqual([
+      { name: "1" },
+      { name: "3" },
+      { name: "4" },
+      kept,
+    ]);
+    expect(placesInput.safeParse(quickPlaces(60)).success).toBe(true);
+    expect(quickPlaces(60, [kept])).toHaveLength(MENU_CAPS.places);
+  });
+
+  it("reads the quick start's typed count as the one number its button names and makes", () => {
+    expect(quickCount("12", 10)).toBe(12);
+    expect(quickCount(" 7 ", 10)).toBe(7);
+    // Cleared, or no number: the start, which the button then makes.
+    expect(quickCount("", 10)).toBe(10);
+    expect(quickCount("abc", 10)).toBe(10);
+    // Out of 1 to 60, or not whole: the nearest it can make.
+    expect(quickCount("0", 10)).toBe(1);
+    expect(quickCount("-3", 10)).toBe(1);
+    expect(quickCount("75", 10)).toBe(MENU_CAPS.places);
+    expect(quickCount("2.5", 10)).toBe(2);
+    // What the button says is what it makes.
+    for (const typed of ["", "0", "2.5", "75", "12"]) {
+      expect(quickPlaces(quickCount(typed, 10))).toHaveLength(
+        quickCount(typed, 10),
+      );
+    }
+  });
+
+  it("types agorot back as shekels, with agorot only when there are some", () => {
+    expect(typedAgorot(6200)).toBe("62");
+    expect(typedAgorot(1450)).toBe("14.50");
+    expect(typedAgorot(5)).toBe("0.05");
+    expect(typedAgorot(0)).toBe("0");
+  });
+
+  it("names how a group of choices is picked", () => {
+    expect(choiceRule(doneness)).toBe("one");
+    expect(choiceRule(extras)).toBe("upTo");
+    expect(choiceRule({ ...extras, max: extras.options.length })).toBe("any");
+    expect(choiceRule({ ...extras, min: 1 })).toBe("between");
   });
 });

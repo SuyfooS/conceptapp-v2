@@ -1,4 +1,4 @@
-import type { ModuleKey } from "@domain/modules";
+import { type ModuleKey, moduleIcon } from "@domain/modules";
 import { manifestFor } from "@modules/registry";
 import { Badge } from "@ui/badge";
 import { ListGroup, ListRow } from "@ui/list-row";
@@ -31,6 +31,7 @@ export function ManageView({
   team,
   shabbatCity,
   departments,
+  menu = null,
   payAccess = false,
   roles = false,
   readOnly = false,
@@ -43,8 +44,16 @@ export function ManageView({
   team: string | null;
   /** Whether the details ask for a Shabbat city, and whether it's missing. */
   shabbatCity: "missing" | "chosen" | "notAsked";
-  /** The business's live departments' names, or null while lists are off. */
+  /**
+   * The business's live departments' names, or null while neither lists nor
+   * taking orders is on.
+   */
   departments: readonly string[] | null;
+  /**
+   * The menu, while taking orders is on (waiter mode P2): its row leads to
+   * it with its counts, until the mode has its own way in.
+   */
+  menu?: { href: string; items: number; places: number } | null;
   /** The owner decides who sees pay: the row to it. */
   payAccess?: boolean;
   /** The owner decides what each role does (roles plan R9): the row to it. */
@@ -60,6 +69,7 @@ export function ManageView({
 }) {
   const t = translator(wording, "app.manage");
   const tm = translator(wording, "modules");
+  const to = translator(wording, "app.orders.menu");
   const format = useFormatter();
   return (
     <PageBody className={pageGlowClass}>
@@ -101,13 +111,28 @@ export function ManageView({
             }
           />
         ) : null}
+        {menu ? (
+          <ListRow
+            href={menu.href}
+            leading={moduleIcons.pad}
+            title={to("title")}
+            subtitle={
+              menu.items > 0
+                ? [
+                    to("status.items", { count: menu.items }),
+                    to("placesCount", { count: menu.places }),
+                  ].join(" · ")
+                : to("empty.title")
+            }
+          />
+        ) : null}
         {modules.map((key) => {
-          const nav = manifestFor(key).nav;
+          const icon = moduleIcon(manifestFor(key));
           return (
             <ListRow
               key={key}
               href={`${base}/manage/${key}`}
-              leading={nav ? moduleIcons[nav.icon] : <SlidersHorizontal />}
+              leading={icon ? moduleIcons[icon] : <SlidersHorizontal />}
               title={tm(`${key}.name`)}
               subtitle={t(`summary.${key}`)}
             />

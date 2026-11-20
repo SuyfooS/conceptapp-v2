@@ -1,7 +1,7 @@
 "use client";
 
 import { formatShekels, moneyLocale } from "@domain/money";
-import { MenuItemList, MenuItemRow } from "@ui/menu-item-row";
+import { MenuEditRow, MenuItemList, MenuItemRow } from "@ui/menu-item-row";
 import { PlaceTile } from "@ui/place-tile";
 import { OrderLine, TicketCard } from "@ui/ticket-card";
 import { TillList } from "@ui/till-list";
@@ -17,7 +17,8 @@ const FLOOR = "/design/order-taking/floor?state=service";
  * Waiter mode's parts (S0, #191): a place on the floor in each of its
  * states, a ticket on a prep screen with its lines (choices, a note, an
  * allergy, one taken back) and a held block, what to ring up at the till,
- * and the items an order adds with one tap. The words are the twin's; the
+ * the items an order adds with one tap, and the menu's rows to edit (P2):
+ * one switched sold out, one that reaches no department, and two read only. The words are the twin's; the
  * dishes and people only stand in.
  */
 export function GalleryOrderTaking() {
@@ -31,6 +32,9 @@ export function GalleryOrderTaking() {
   );
   // One tap adds a lemonade, and the till's list counts it.
   const [lemonades, setLemonades] = useState(2);
+  // The editor's schnitzel switches sold out and back.
+  const [schnitzelOut, setSchnitzelOut] = useState(false);
+  const m = useTranslations("app.orders.menu");
   const kitchen = t("kitchen");
   const table = (name: string) => o("place.table", { name });
 
@@ -173,6 +177,56 @@ export function GalleryOrderTaking() {
           countLabel={o("picker.inDraft")}
           soldOut={o("picker.soldOut")}
           onPick={() => {}}
+        />
+      </MenuItemList>
+
+      <h3 className="font-semibold text-base">{t("edit.title")}</h3>
+      <p className="text-ink-2 text-sm">{t("edit.text")}</p>
+      <MenuItemList aria-label={t("edit.title")}>
+        <MenuEditRow
+          name={t("schnitzel")}
+          detail={price(6200)}
+          onEdit={() => {}}
+          soldOut={{
+            checked: schnitzelOut,
+            label: m("soldOutFor", { name: t("schnitzel") }),
+            word: m("soldOut"),
+            onChange: setSchnitzelOut,
+          }}
+        />
+        <MenuEditRow
+          name={t("burger")}
+          detail={
+            <>
+              {price(6800)} · {m("choices", { count: 2 })}
+            </>
+          }
+          flag={m("noRoute")}
+          onEdit={() => {}}
+          soldOut={{
+            checked: false,
+            label: m("soldOutFor", { name: t("burger") }),
+            word: m("soldOut"),
+            onChange: () => {},
+          }}
+        />
+        <MenuEditRow
+          name={t("fish")}
+          detail={price(8400)}
+          soldOut={{
+            checked: true,
+            label: m("soldOutFor", { name: t("fish") }),
+            word: m("soldOut"),
+          }}
+        />
+        <MenuEditRow
+          name={t("edit.cola")}
+          detail={price(1200)}
+          soldOut={{
+            checked: false,
+            label: m("soldOutFor", { name: t("edit.cola") }),
+            word: m("soldOut"),
+          }}
         />
       </MenuItemList>
     </div>

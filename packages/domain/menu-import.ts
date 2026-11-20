@@ -496,3 +496,124 @@ export function importRows(
     })),
   ]);
 }
+
+/** A category of the paste, checked against the menu already there. */
+export type CheckedCategory = {
+  name: string;
+  /**
+   * The menu's category by this name (case aside), which takes the pasted
+   * items and keeps its own department; null for a new one.
+   */
+  existing: { id: string; department: string } | null;
+  /** Its items that aren't on the menu yet: what the import writes. */
+  items: ImportItem[];
+};
+
+/** A paste as it would land on the menu already there. */
+export type MenuCheck = {
+  /**
+   * Every category of the paste with items, in its order: the new ones and
+   * those the menu has, and only those that still get an item.
+   */
+  categories: CheckedCategory[];
+  /**
+   * The lines of items the menu has already in that category, and of their
+   * extras: left out of the import, since `public.import_menu` would add
+   * them again.
+   */
+  known: ReadonlySet<number>;
+  newItems: number;
+  newCategories: number;
+  /** The menu and the paste together pass the menu's caps. */
+  tooMany: boolean;
+};
+
+/**
+ * The paste checked against the menu already there (P2): a category the
+ * menu has by that name takes the pasted items and keeps its department, as
+ * `public.import_menu` does; an item already in it is marked and left out,
+ * which the database doesn't do; and the two together must fit the menu's
+ * caps.
+ */
+export function againstMenu(
+  parsed: Pick<ParsedMenu, "rows" | "categories">,
+  menu: {
+    categories: readonly { id: string; name: string; department: string }[];
+    items: readonly { category: string; name: string }[];
+  },
+): MenuCheck {
+  const byName = new Map(
+    menu.categories.map((category) => [nameKey(category.name), category]),
+  );
+  const itemsOf = (categoryId: string) =>
+    new Set(
+      menu.items
+        .filter((item) => item.category === categoryId)
+        .map((item) => nameKey(item.name)),
+    );
+  const knownIn = new Map<string, Set<string>>();
+  const isKnown = (category: string, item: string) => {
+    const existing = byName.get(nameKey(category));
+    if (!existing) return false;
+    let names = knownIn.get(existing.id);
+    if (!names) {
+      names = itemsOf(existing.id);
+      knownIn.set(existing.id, names);
+    }
+    return names.has(nameKey(item));
+  };
+
+  // An extra follows its item, with nothing between: it goes where it goes.
+  const known = new Set<number>();
+  let itemKnown = false;
+  for (const row of parsed.rows) {
+    if (!row.ok) {
+      itemKnown = false;
+      continue;
+    }
+    const { became } = row;
+    if (became.kind === "item" || became.kind === "sizes") {
+      itemKnown = isKnown(became.category, became.name);
+      if (itemKnown) known.add(row.line);
+    } else if (became.kind === "extra") {
+      if (itemKnown) known.add(row.line);
+    } else {
+      itemKnown = false;
+    }
+  }
+
+  const categories = parsed.categories.flatMap(
+    (category): CheckedCategory[] => {
+      const existing = byName.get(nameKey(category.name)) ?? null;
+      const items = category.items.filter(
+        (item) => !isKnown(category.name, item.name),
+      );
+      if (items.length === 0) return [];
+      return [
+        {
+          name: existing?.name ?? category.name,
+          existing: existing
+            ? { id: existing.id, department: existing.department }
+            : null,
+          items,
+        },
+      ];
+    },
+  );
+  const newItems = categories.reduce(
+    (sum, category) => sum + category.items.length,
+    0,
+  );
+  const newCategories = categories.filter(
+    (category) => category.existing === null,
+  ).length;
+  return {
+    categories,
+    known,
+    newItems,
+    newCategories,
+    tooMany:
+      menu.items.length + newItems > MENU_CAPS.items ||
+      menu.categories.length + newCategories > MENU_CAPS.categories,
+  };
+}

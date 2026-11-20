@@ -177,6 +177,12 @@ export type ModuleManifest<
     };
   } | null;
   /**
+   * Its own icon where it has no tab (`nav: null`), for its row on the roles
+   * screen and on the management page, which otherwise fall back on the
+   * management page's (`moduleIcon`).
+   */
+  icon?: ModuleIcon;
+  /**
    * The module's part of the Today screen. Until it has one of its own, one
    * row linking to `nav.href`.
    */
@@ -196,6 +202,13 @@ export function defineManifest<
   Key extends ModuleKey,
 >(manifest: ModuleManifest<Settings, Key>): ModuleManifest<Settings, Key> {
   return manifest;
+}
+
+/** A module's icon: its tab's, else its own, else none (the screen's fallback). */
+export function moduleIcon(
+  manifest: Pick<ModuleManifest, "nav" | "icon">,
+): ModuleIcon | null {
+  return manifest.nav?.icon ?? manifest.icon ?? null;
 }
 
 /** A `business_modules` row as the app reads it. */

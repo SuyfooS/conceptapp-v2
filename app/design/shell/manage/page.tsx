@@ -5,6 +5,7 @@ import {
 } from "../../../(app)/manage/manage";
 import { ManageView } from "../../../(app)/manage/manage-view";
 import { baseWording } from "../../../(app)/wording";
+import { orderDemoMenu, orderDemoTables } from "../../order-taking/data";
 import { demoBusinessDetails, demoModuleRows } from "../data";
 import { demoDepartments } from "../lists/data";
 
@@ -12,7 +13,7 @@ type Props = { searchParams: Promise<{ state?: string }> };
 
 // The real management page, with the demo's modules, and the owner's row to
 // the roles screen's twin (roles plan R0), beside who sees pay, as the app
-// has it since R9.
+// has it since R9, and the row to the menu (waiter mode P2), on its twin.
 // `?state=view` is someone at view here (R7): a worker raised to see the
 // management page without changing it, with the line that says so, and no
 // rows to the team, the roles or pay, which aren't theirs. `?state=noTeam`
@@ -39,6 +40,11 @@ async function Demo({ searchParams }: Props) {
       team={readOnly || state === "noTeam" ? null : "/design/shell/team"}
       shabbatCity={shabbatCityState(demoModuleRows, demoBusinessDetails)}
       departments={demoDepartments.map((d) => d.name)}
+      menu={{
+        href: "/design/order-taking/menu?state=service",
+        items: orderDemoMenu.items.length,
+        places: orderDemoTables.length,
+      }}
       payAccess={owner}
       roles={owner}
       readOnly={readOnly}
