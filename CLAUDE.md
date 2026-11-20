@@ -23,6 +23,8 @@ ConceptApp project, `claude/v2-rebuild-plan.md`).
    Notifications are back in (Orel, 8 and 9 November 2026, issue #1): in the app, then
    on the phone through Web Push, then each person's choices and reminders, before
    lists and chat. Nothing from the deferred list gets built before its trigger.
+   Waiter mode (`order_taking`, #191) is built in every phase, by Orel's decision of
+   20 November 2026; it is off in every template until a business switches it on.
 2. Types everywhere. TypeScript strict, Zod at every boundary, generated DB types.
 3. Postgres with row-level security. Tenant isolation lives in the database
    and is covered by tests.

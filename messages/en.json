@@ -3416,6 +3416,37 @@
               "restored": "{count, plural, one {One place brought back} other {# places brought back}}",
               "changed": "{count, plural, one {One place changed} other {# places changed}}"
             }
+          },
+          "order": {
+            "takeBack": "Taken back after sending · {name}",
+            "cancel": "Cancelled · {name}",
+            "restore": "Cancelled item restored · {name}",
+            "comp": "On the house · {name}",
+            "uncomp": "No longer on the house · {name}",
+            "cancelOrder": "Order cancelled · {where}",
+            "cancelOrderSomewhere": "Order cancelled",
+            "place": "Place {name}",
+            "takeaway": "Takeaway {number}",
+            "quantity": "<ltr>{quantity} × {price}</ltr> each",
+            "choices": "With {choices}",
+            "department": "Department · {department}",
+            "sender": "Sent by {person}",
+            "wasHeld": "It was waiting to be called",
+            "wasReady": "It was already ready",
+            "wasServed": "It was already served",
+            "reason": "Reason: {reason}",
+            "reasons": {
+              "guest": "The customer cancelled",
+              "mistake": "Sent by mistake",
+              "sold_out": "Sold out",
+              "other": "Other"
+            },
+            "compReasons": {
+              "make_good": "To make it up to a customer",
+              "staff": "Staff meal",
+              "other": "Other"
+            },
+            "line": "{name} · <ltr>{quantity} × {price}</ltr>"
           }
         }
       },
@@ -3510,7 +3541,7 @@
           "time_clock": "Without edit they clock in and out and see their own hours. With edit they also see and correct everyone's hours, confirm them and show the punch code.",
           "lists": "Without edit they fill the lists sent to them or their department. With edit they also build templates, set when they open, see every list and fix lists after they closed.",
           "chat": "Without edit they write in their own chats and groups. With edit they are also in every department's group and read everything written in the groups, from before they joined too, remove others' messages in groups, pin messages from management and see who confirmed reading them.",
-          "order_taking": "Without edit they see the menu, and mark \"sold out\" what their own department prepares. With edit they also edit the menu, its prices and the places, and mark anything sold out."
+          "order_taking": "Without edit they see the menu, take orders if they're in a department that takes them, cancel an item that isn't ready, and mark \"ready\" and \"sold out\" what their own department prepares. With edit they also take orders from any department, cancel an item that's ready, give one on the house, and edit the menu, its prices and the places."
         },
         "levelHint": {
           "team": {
@@ -5685,6 +5716,39 @@
     "order_taking": {
       "name": "Taking orders",
       "description": "Take orders and send them to be prepared",
+      "settings": {
+        "takerDepartments": {
+          "label": "Departments that take orders",
+          "hint": "People in these departments take orders. Those who run the menu and owners do too."
+        },
+        "onlyOnTheClock": {
+          "label": "Take orders only during a shift",
+          "hint": "Orders can be sent from clocking in until half an hour after clocking out. A shift open for more than 16 hours doesn't count. Owners always can."
+        },
+        "takeBackMinutes": {
+          "label": "How long the sender can take an item back",
+          "hint": "After that it's cancelled with a reason, and the cancel shows in the activity log.",
+          "options": {
+            "0": "No taking back",
+            "2": "2 minutes",
+            "5": "5 minutes"
+          }
+        },
+        "lateAfterMinutes": {
+          "label": "When an order has waited too long",
+          "hint": "An order not ready this long after it was sent is marked as waiting.",
+          "options": {
+            "10": "10 minutes",
+            "15": "15 minutes",
+            "20": "20 minutes",
+            "30": "30 minutes"
+          }
+        },
+        "dayEndsAt": {
+          "label": "When the business day ends",
+          "hint": "Orders after midnight up to this time belong to the day before, takeaway numbers included."
+        }
+      },
       "importWords": {
         "size": "Size",
         "regular": "Regular",

@@ -2262,6 +2262,66 @@ Covered by `order_taking_menu.test.sql`, `isolation`, `demo_reset`,
 `rls_enabled`, `roles_catalogue`, `activity_log`, and
 `modules/order_taking/unit-price.db.test.ts`.
 
+Taking orders, the orders (waiter mode P3, issue #191; Orel's decisions of 20
+November 2026), in the database alone, the module still off.
+`20261120000200_order_taking_takers.sql`: the module's settings
+(`private.order_taking_settings`, with the manifest's defaults, and a reader
+per field that takes a value the manifest wouldn't as its default, as
+`readModuleSettings` does: `private.order_taker_keys`, `order_clock_rule`,
+`order_take_back`, `order_day_ends`, and `private.order_business_day`, the
+business day by the wall clock, `orderDay` in `@domain/orders` its twin);
+`public.set_module_settings` keeps who takes orders, the clock rule and the
+take-back time to owners and the team, and checks each field's shape through
+the same `private.valid_taker_keys`. Who takes orders
+(`private.order_taker_refusal`, `takes_orders`, `require_taker`): an owner,
+or someone active on the staff in one of `takerDepartments` (the templates
+name the restaurant's floor and bar, the café's coffee bar and bar) or holding
+`order_taking.edit`; with the time clock on and `onlyOnTheClock`, only during
+a shift (`private.on_the_clock`: an open one under 16 hours, or until 30
+minutes after clocking out, never a cancelled one), refused 42501 with hint
+`clock` or `stale_shift`. Who prepares (`private.prepares_in`): the ticket's
+department's staff, or `order_taking.edit`; never an accountant.
+`20261120000300_order_taking_orders.sql`: `orders` (at a place, or a takeaway
+with its number of the business day from `private.order_day_counters`),
+`order_rounds` (keyed by the phone, with the body's hash), `order_tickets`
+(per department and held block: held, new, ready, served; `prepared_at` kept
+once a preparer marked it ready, `served_new` for one served before it was
+ready) and `order_lines` (name, unit price in agorot and choices frozen when
+sent, a note erased later, taken back, cancelled or on the house), with
+`private.order_versions`. RLS is on with no policy and no grant, not even to
+the server role: nobody reads the tables, and only the functions write them.
+The send, `public.send_order_round(actor, business, round_key, target,
+lines)`, takes the business's lock, gives a stored round's answer back as it
+is (23505 hint `key` or `body` for another sender, business or body), then
+asks the clock, refuses every item it can't take at once with their ids
+(22023 hint `unavailable` or `route`), joins a first send within 60 seconds
+and refuses a later one (23505 hint `taken`, the order's id as the detail),
+and writes no log row. The writes, the server's for `actor`, each after
+`private.order_writer` (P0002 for anyone not in the business, 42501 hint
+`off`) and in the lock order business, order, ticket, line:
+`take_back_order_line`, `cancel_order_line` (and its undo),
+`comp_order_line` (and its undo), `cancel_order` (for good),
+`set_order_ticket_ready`, `serve_order_ticket`, `fire_order_tickets`,
+`move_order`, `close_order`, `reopen_order` and `set_order_label`; their
+refusals are in the migration's header and `@db/order-failures`. The log
+rows `order.line.take_back` (once the kitchen saw it), `cancel`, `restore`,
+`comp`, `uncomp` and `order.cancel` keep a line's quantity and unit price,
+never a sum (`private.order_line_facts`), read with `order_taking.edit`. The
+reads, with the person's own session (`private.order_access`): `order_floor`,
+`order_detail`, `order_till` (by item and by round, no total), `order_mine`,
+`order_prep` (no price at all; it marks what the reader's department saw)
+and `order_favourites`, person ids only on today's business day.
+`20261120000400_order_taking_orders_demo.sql`: the hourly job `order-taking`
+(`private.order_taking_tick`, pure SQL, off in `seed.sql`) erases notes and
+labels two days after an order closes (or after its last round, open),
+forgets senders after 30 days and deletes a demo business's orders after two
+days; `private.seed_demo_orders`, last in `public.reset_demo_business`, writes
+the demo restaurant's three sample orders. `@db/orders` wraps each, every
+input and answer parsed with `@domain/orders`. Covered by
+`order_taking.test.sql`, `order_taking_access.test.sql`,
+`order_taking_retention.test.sql`, `isolation`, `demo_reset`, `templates`,
+`activity_log`, `rls_enabled`, and `modules/order_taking/settings.db.test.ts`.
+
 The tests that must always pass: a member of business A cannot read
 business B; anonymous visitors read nothing; every table in `public` has RLS.
 

@@ -351,14 +351,19 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   for owners, managers, the team or a view session, anywhere: a change that adds one
   is refused (see "Never").
 - **Taking orders (waiter mode, issue #191), database first.** Orel asked for it on 17
-  November 2026; when to build it is his decision 1 in the design. P1 is built, in the
-  database alone (`20261117000400_order_taking_module.sql`,
-  `20261117000500_order_taking_menu.sql`): the menu's categories, each to a department,
-  items with prices in agorot, choices and "sold out", the places, the key
-  `order_taking.edit`, `@domain/order-taking`, `@domain/menu-import` and
-  `@db/order-taking`, with the module off everywhere and a sample menu waiting in the
-  demo restaurant. P2 onward (the screens, orders, the kitchen) waits for Orel's
-  decision 1: a nightly run doesn't start it.
+  November 2026, and on 20 November decided to build every phase (decisions 3, 4, 5 and
+  7 as the design recommends, on #1 and #191), each phase its own PR in the design's
+  order. P1 and P3 are built, in the database alone
+  (`20261117000400_order_taking_module.sql`, `20261117000500_order_taking_menu.sql`;
+  `20261120000200_order_taking_takers.sql` to
+  `20261120000400_order_taking_orders_demo.sql`): the menu, its places and the key
+  `order_taking.edit`; who takes orders (the template's departments, those who run the
+  menu, owners) and only on a shift; the orders, split by department with their prices
+  frozen, taking back and cancelling with a reason, "on the house", and no total
+  anywhere; `@domain/order-taking`, `@domain/menu-import`, `@domain/orders`,
+  `@db/order-taking` and `@db/orders`. The module is off everywhere, and the demo
+  restaurant has a sample menu and three orders waiting. P2 and P4 onward are the
+  screens.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live

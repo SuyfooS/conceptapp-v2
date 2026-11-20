@@ -3,6 +3,7 @@ import {
   type ActivityDay,
   type ActivityEntry,
   type ActivityListFix,
+  type ActivityOrderWhere,
   type ActivityRecipient,
   type ActivityShift,
   breakFitKind,
@@ -20,6 +21,7 @@ import {
   type Role,
   readModuleSettings,
 } from "@domain/modules";
+import type { CompReason, LineCancelReason } from "@domain/orders";
 import { editOrView } from "@domain/role-access";
 import { describeSettings } from "@domain/settings-form";
 import { shabbatCityOf, timeIn } from "@domain/shabbat";
@@ -202,6 +204,11 @@ export function ActivityView({
       : tRoles(role);
   const names = (list: readonly string[]) =>
     format.list(list, { type: "conjunction" });
+  /** Where an order was: a place by its name then, or a takeaway by its number. */
+  const orderWhere = (where: ActivityOrderWhere) =>
+    where.kind === "place"
+      ? t("actions.order.place", { name: where.name })
+      : t("actions.order.takeaway", { number: where.number });
   /** Who a list went to: "to the kitchen", "to Noa", "to the workers". */
   const sentTo = (to: ActivityRecipient) => {
     switch (to.kind) {
@@ -1312,6 +1319,92 @@ export function ActivityView({
           changes: [],
         };
       }
+      // The orders (waiter mode P3): a line fixed, with where it was, its
+      // quantity and unit price in an LTR span (never a total), its choices,
+      // its department after a separator, why, who sent it, and, for a
+      // cancel, where its ticket was; a cancelled order with each line it
+      // took with it.
+      case "order.line.take_back":
+      case "order.line.cancel":
+      case "order.line.restore":
+      case "order.line.comp":
+      case "order.line.uncomp": {
+        const headline = {
+          "order.line.take_back": "takeBack",
+          "order.line.cancel": "cancel",
+          "order.line.restore": "restore",
+          "order.line.comp": "comp",
+          "order.line.uncomp": "uncomp",
+        } as const;
+        const reason = line.reason
+          ? line.action === "order.line.comp"
+            ? t(`actions.order.compReasons.${line.reason as CompReason}`)
+            : t(`actions.order.reasons.${line.reason as LineCancelReason}`)
+          : null;
+        const wasAt = {
+          held: "wasHeld",
+          new: null,
+          ready: "wasReady",
+          served: "wasServed",
+        } as const;
+        const ticket =
+          line.action === "order.line.cancel" && line.ticket
+            ? wasAt[line.ticket]
+            : null;
+        return {
+          what: t(`actions.order.${headline[line.action]}`, {
+            name: line.name,
+          }),
+          notes: [
+            ...(line.where ? [orderWhere(line.where)] : []),
+            t.rich("actions.order.quantity", {
+              ltr,
+              quantity: line.quantity,
+              price: shekels(line.unitAgorot),
+            }),
+            ...(line.choices.length > 0
+              ? [t("actions.order.choices", { choices: names(line.choices) })]
+              : []),
+            ...(line.department
+              ? [
+                  t("actions.order.department", {
+                    department: line.department,
+                  }),
+                ]
+              : []),
+            ...(reason ? [t("actions.order.reason", { reason })] : []),
+            ...(line.sender
+              ? [t("actions.order.sender", { person: who(line.sender) })]
+              : []),
+            ...(ticket ? [t(`actions.order.${ticket}`)] : []),
+          ],
+          changes: [],
+        };
+      }
+      case "order.cancel":
+        return {
+          what: line.where
+            ? t("actions.order.cancelOrder", { where: orderWhere(line.where) })
+            : t("actions.order.cancelOrderSomewhere"),
+          notes: [
+            ...(line.reason
+              ? [
+                  t("actions.order.reason", {
+                    reason: t(`actions.order.reasons.${line.reason}`),
+                  }),
+                ]
+              : []),
+            ...line.lines.map((one) =>
+              t.rich("actions.order.line", {
+                ltr,
+                name: one.name,
+                quantity: one.quantity,
+                price: shekels(one.unitAgorot),
+              }),
+            ),
+          ],
+          changes: [],
+        };
       case "other":
         return plain(t("actions.other"));
       default: {

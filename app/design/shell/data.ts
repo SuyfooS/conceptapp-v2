@@ -469,7 +469,10 @@ export const demoActivityLookups: ActivityLookups = {
       },
     ],
   ]),
-  departments: new Map([["dep-kitchen", "מטבח"]]),
+  departments: new Map([
+    ["dep-kitchen", "מטבח"],
+    ["dep-bar", "בר"],
+  ]),
   stations: new Map([
     ["station-entrance", "עמדת הכניסה"],
     ["station-kitchen", "טאבלט המטבח"],
@@ -488,6 +491,39 @@ const demoRow = (
 const DEMO_FIXED_LIST = "00000000-0000-4000-8000-00000000f1a1";
 
 export const demoActivityRows: ActivityRow[] = [
+  // Two lines of table 12 fixed (waiter mode P3), as cancel_order_line and
+  // comp_order_line log them: the line as it was sent, its quantity and unit
+  // price in agorot and never a total, where it went, why, and who sent it.
+  demoRow(144, "2026-11-04T15:55:00+02:00", "shiran", "order.line.comp", {
+    line: "line-lemonade",
+    order: "order-12",
+    item: "item-lemonade",
+    name: "לימונדה",
+    choices: [],
+    quantity: 1,
+    unitAgorot: 1600,
+    where: { place: "12" },
+    day: "2026-11-04",
+    department: "dep-bar",
+    ticket: "served",
+    sender: "yoav",
+    reason: "staff",
+  }),
+  demoRow(143, "2026-11-04T15:50:00+02:00", "shiran", "order.line.cancel", {
+    line: "line-schnitzel",
+    order: "order-12",
+    item: "item-schnitzel",
+    name: "שניצל",
+    choices: [],
+    quantity: 2,
+    unitAgorot: 6200,
+    where: { place: "12" },
+    day: "2026-11-04",
+    department: "dep-kitchen",
+    ticket: "new",
+    sender: "yoav",
+    reason: "guest",
+  }),
   // A name fixed on the person's page, as set_member_name logs it: the
   // person only, never a name.
   demoRow(142, "2026-11-04T15:40:00+02:00", "shiran", "member.name", {

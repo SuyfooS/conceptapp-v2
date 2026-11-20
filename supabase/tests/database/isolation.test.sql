@@ -1,7 +1,7 @@
 -- Tenant isolation: a member of business A never sees business B, and each
 -- role sees only what it should inside its own business.
 begin;
-select plan(40);
+select plan(44);
 
 -- Fixtures: business A (owner, manager, worker) and business B (owner).
 insert into auth.users (id, aud, role, phone)
@@ -371,6 +371,44 @@ select is(
 );
 select pg_temp.sign_in('20000000-0000-4000-a000-00000000000e');
 select is(pg_temp.menu_businesses(), '', 'an inactive member reads no menu');
+
+-- The orders (20261120000300_order_taking_orders.sql): an open order at
+-- table 1 of each, inserted directly. Nobody reads the tables, and each
+-- read answers for its own business only.
+reset role;
+insert into public.orders (id, business_id, place_id, day, opened_at)
+select ('20000000-0000-4000-f000-0000000000' || right(p.business_id::text, 2))::uuid,
+  p.business_id, p.id, current_date, now()
+from public.order_places p
+where p.business_id in ('20000000-0000-4000-b000-00000000000a', '20000000-0000-4000-b000-00000000000b');
+
+select pg_temp.sign_in('20000000-0000-4000-a000-00000000000b');
+select is(
+  (select string_agg(o.value ->> 'id', ',')
+   from jsonb_array_elements(
+     public.order_floor('20000000-0000-4000-b000-00000000000a') -> 'orders'
+   ) as o (value)),
+  '20000000-0000-4000-f000-00000000000a',
+  'the manager of A, who runs orders, has A''s open order on the floor'
+);
+select throws_ok(
+  $$select public.order_floor('20000000-0000-4000-b000-00000000000b')$$,
+  'P0002',
+  null,
+  'and never B''s floor'
+);
+select throws_ok(
+  $$select public.order_detail('20000000-0000-4000-f000-00000000000b')$$,
+  'P0002',
+  null,
+  'nor B''s order'
+);
+select throws_ok(
+  $$select count(*) from public.orders$$,
+  '42501',
+  null,
+  'and nobody signed in reads the orders directly'
+);
 
 select * from finish();
 rollback;

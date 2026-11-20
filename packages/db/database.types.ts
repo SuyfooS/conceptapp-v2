@@ -2299,6 +2299,118 @@ export type Database = {
           },
         ];
       };
+      order_lines: {
+        Row: {
+          allergy: boolean;
+          business_id: string;
+          cancel_reason: string | null;
+          cancelled_at: string | null;
+          cancelled_by: string | null;
+          choices: NonNullable<Json>;
+          comp_reason: string | null;
+          comped_at: string | null;
+          comped_by: string | null;
+          id: string;
+          item_id: string;
+          name: string;
+          note: string | null;
+          note_erased_at: string | null;
+          position: number;
+          quantity: number;
+          taken_back_at: string | null;
+          taken_back_by: string | null;
+          ticket_id: string;
+          unit_agorot: number;
+        };
+        Insert: {
+          allergy?: boolean;
+          business_id: string;
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          choices?: NonNullable<Json>;
+          comp_reason?: string | null;
+          comped_at?: string | null;
+          comped_by?: string | null;
+          id?: string;
+          item_id: string;
+          name: string;
+          note?: string | null;
+          note_erased_at?: string | null;
+          position?: number;
+          quantity: number;
+          taken_back_at?: string | null;
+          taken_back_by?: string | null;
+          ticket_id: string;
+          unit_agorot: number;
+        };
+        Update: {
+          allergy?: boolean;
+          business_id?: string;
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          choices?: NonNullable<Json>;
+          comp_reason?: string | null;
+          comped_at?: string | null;
+          comped_by?: string | null;
+          id?: string;
+          item_id?: string;
+          name?: string;
+          note?: string | null;
+          note_erased_at?: string | null;
+          position?: number;
+          quantity?: number;
+          taken_back_at?: string | null;
+          taken_back_by?: string | null;
+          ticket_id?: string;
+          unit_agorot?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_lines_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_lines_cancelled_by_fkey";
+            columns: ["cancelled_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_lines_comped_by_fkey";
+            columns: ["comped_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_lines_item_id_business_id_fkey";
+            columns: ["item_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "menu_items";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "order_lines_taken_back_by_fkey";
+            columns: ["taken_back_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_lines_ticket_id_business_id_fkey";
+            columns: ["ticket_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "order_tickets";
+            referencedColumns: ["id", "business_id"];
+          },
+        ];
+      };
       order_places: {
         Row: {
           archived_at: string | null;
@@ -2330,6 +2442,291 @@ export type Database = {
             columns: ["business_id"];
             isOneToOne: false;
             referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      order_rounds: {
+        Row: {
+          body_hash: string;
+          business_id: string;
+          id: string;
+          order_id: string;
+          sent_at: string;
+          sent_by: string | null;
+        };
+        Insert: {
+          body_hash: string;
+          business_id: string;
+          id: string;
+          order_id: string;
+          sent_at: string;
+          sent_by?: string | null;
+        };
+        Update: {
+          body_hash?: string;
+          business_id?: string;
+          id?: string;
+          order_id?: string;
+          sent_at?: string;
+          sent_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_rounds_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_rounds_order_id_business_id_fkey";
+            columns: ["order_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "order_rounds_sent_by_fkey";
+            columns: ["sent_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      order_tickets: {
+        Row: {
+          business_id: string;
+          department_id: string;
+          fired_at: string | null;
+          fired_by: string | null;
+          held: boolean;
+          id: string;
+          kitchen_seen_at: string | null;
+          order_id: string;
+          position: number;
+          prepared_at: string | null;
+          ready_at: string | null;
+          ready_by: string | null;
+          round_id: string;
+          served_at: string | null;
+          served_by: string | null;
+          served_new: boolean;
+          status: string;
+        };
+        Insert: {
+          business_id: string;
+          department_id: string;
+          fired_at?: string | null;
+          fired_by?: string | null;
+          held?: boolean;
+          id?: string;
+          kitchen_seen_at?: string | null;
+          order_id: string;
+          position?: number;
+          prepared_at?: string | null;
+          ready_at?: string | null;
+          ready_by?: string | null;
+          round_id: string;
+          served_at?: string | null;
+          served_by?: string | null;
+          served_new?: boolean;
+          status: string;
+        };
+        Update: {
+          business_id?: string;
+          department_id?: string;
+          fired_at?: string | null;
+          fired_by?: string | null;
+          held?: boolean;
+          id?: string;
+          kitchen_seen_at?: string | null;
+          order_id?: string;
+          position?: number;
+          prepared_at?: string | null;
+          ready_at?: string | null;
+          ready_by?: string | null;
+          round_id?: string;
+          served_at?: string | null;
+          served_by?: string | null;
+          served_new?: boolean;
+          status?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "order_tickets_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_tickets_department_id_business_id_fkey";
+            columns: ["department_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "departments";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "order_tickets_fired_by_fkey";
+            columns: ["fired_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_tickets_order_id_business_id_fkey";
+            columns: ["order_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "orders";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "order_tickets_ready_by_fkey";
+            columns: ["ready_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "order_tickets_round_id_business_id_fkey";
+            columns: ["round_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "order_rounds";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "order_tickets_served_by_fkey";
+            columns: ["served_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      orders: {
+        Row: {
+          business_id: string;
+          cancel_reason: string | null;
+          cancelled_at: string | null;
+          cancelled_by: string | null;
+          closed_at: string | null;
+          closed_by: string | null;
+          day: string;
+          id: string;
+          moved_at: string | null;
+          moved_by: string | null;
+          moved_from: string | null;
+          notes_erased_at: string | null;
+          opened_at: string;
+          opened_by: string | null;
+          place_id: string | null;
+          reopened_at: string | null;
+          reopened_by: string | null;
+          status: string;
+          takeaway_label: string | null;
+          takeaway_no: number | null;
+        };
+        Insert: {
+          business_id: string;
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          closed_at?: string | null;
+          closed_by?: string | null;
+          day: string;
+          id?: string;
+          moved_at?: string | null;
+          moved_by?: string | null;
+          moved_from?: string | null;
+          notes_erased_at?: string | null;
+          opened_at: string;
+          opened_by?: string | null;
+          place_id?: string | null;
+          reopened_at?: string | null;
+          reopened_by?: string | null;
+          status?: string;
+          takeaway_label?: string | null;
+          takeaway_no?: number | null;
+        };
+        Update: {
+          business_id?: string;
+          cancel_reason?: string | null;
+          cancelled_at?: string | null;
+          cancelled_by?: string | null;
+          closed_at?: string | null;
+          closed_by?: string | null;
+          day?: string;
+          id?: string;
+          moved_at?: string | null;
+          moved_by?: string | null;
+          moved_from?: string | null;
+          notes_erased_at?: string | null;
+          opened_at?: string;
+          opened_by?: string | null;
+          place_id?: string | null;
+          reopened_at?: string | null;
+          reopened_by?: string | null;
+          status?: string;
+          takeaway_label?: string | null;
+          takeaway_no?: number | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "orders_business_id_fkey";
+            columns: ["business_id"];
+            isOneToOne: false;
+            referencedRelation: "businesses";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_cancelled_by_fkey";
+            columns: ["cancelled_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_closed_by_fkey";
+            columns: ["closed_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_moved_by_fkey";
+            columns: ["moved_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_moved_from_business_id_fkey";
+            columns: ["moved_from", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "order_places";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "orders_opened_by_fkey";
+            columns: ["opened_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "orders_place_id_business_id_fkey";
+            columns: ["place_id", "business_id"];
+            isOneToOne: false;
+            referencedRelation: "order_places";
+            referencedColumns: ["id", "business_id"];
+          },
+          {
+            foreignKeyName: "orders_reopened_by_fkey";
+            columns: ["reopened_by"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
             referencedColumns: ["id"];
           },
         ];
@@ -3344,6 +3741,25 @@ export type Database = {
         Args: { actor: string; at_time?: string; list: string };
         Returns: undefined;
       };
+      cancel_order: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          order_ref: string;
+          reason: string;
+        };
+        Returns: undefined;
+      };
+      cancel_order_line: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          cancelled?: boolean;
+          line: string;
+          reason?: string;
+        };
+        Returns: undefined;
+      };
       cancel_shift_swap: {
         Args: { actor: string; swap: string };
         Returns: undefined;
@@ -3477,6 +3893,10 @@ export type Database = {
         };
         Returns: string;
       };
+      close_order: {
+        Args: { actor: string; at_time?: string; order_ref: string };
+        Returns: undefined;
+      };
       close_payroll_month: {
         Args: {
           actor: string;
@@ -3489,6 +3909,16 @@ export type Database = {
         Returns: undefined;
       };
       closed_to_invites: { Args: { business: string }; Returns: boolean };
+      comp_order_line: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          comped?: boolean;
+          line: string;
+          reason?: string;
+        };
+        Returns: undefined;
+      };
       confirm_announcement: {
         Args: { actor: string; at_time?: string; message: string };
         Returns: undefined;
@@ -3582,6 +4012,10 @@ export type Database = {
         Args: { at_time?: string; outcomes: Json };
         Returns: undefined;
       };
+      fire_order_tickets: {
+        Args: { actor: string; at_time?: string; order_ref: string };
+        Returns: number;
+      };
       fix_list_item: {
         Args: { actor: string; at_time?: string; item: string; result: Json };
         Returns: Json;
@@ -3637,6 +4071,15 @@ export type Database = {
       };
       keeps_demo_profile: { Args: { person: string }; Returns: boolean };
       list_photos_closed: { Args: { business: string }; Returns: boolean };
+      move_order: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          order_ref: string;
+          place: string;
+        };
+        Returns: undefined;
+      };
       mute_chat: {
         Args: { actor: string; conversation: string; mute: boolean };
         Returns: undefined;
@@ -3696,10 +4139,25 @@ export type Database = {
         Args: { business: string; due_at: string; week_start: string };
         Returns: string;
       };
+      order_detail: { Args: { order_ref: string }; Returns: Json };
+      order_favourites: { Args: { business: string }; Returns: Json };
+      order_floor: {
+        Args: { business: string; known_version?: number };
+        Returns: Json;
+      };
       order_menu: {
         Args: { business: string; known_version?: number };
         Returns: Json;
       };
+      order_mine: {
+        Args: { business: string; known_version?: number };
+        Returns: Json;
+      };
+      order_prep: {
+        Args: { business: string; known_version?: number };
+        Returns: Json;
+      };
+      order_till: { Args: { order_ref: string }; Returns: Json };
       own_departures: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -3808,6 +4266,10 @@ export type Database = {
       };
       reopen_list: {
         Args: { actor: string; at_time?: string; list: string };
+        Returns: undefined;
+      };
+      reopen_order: {
+        Args: { actor: string; at_time?: string; order_ref: string };
         Returns: undefined;
       };
       reopen_payroll_month: {
@@ -3990,9 +4452,29 @@ export type Database = {
         Args: { actor: string; at_time?: string; business: string; list: Json };
         Returns: string;
       };
+      send_order_round: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          business: string;
+          lines: Json;
+          round_key: string;
+          target: Json;
+        };
+        Returns: Json;
+      };
       send_test_push: {
         Args: { actor: string; at_time?: string; business?: string };
         Returns: boolean;
+      };
+      serve_order_ticket: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          served?: boolean;
+          ticket: string;
+        };
+        Returns: undefined;
       };
       set_business_details: {
         Args: { actor: string; business: string; patch: Json };
@@ -4158,6 +4640,15 @@ export type Database = {
           zone_name: string;
         }[];
       };
+      set_order_label: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          label?: string;
+          order_ref: string;
+        };
+        Returns: undefined;
+      };
       set_order_places: {
         Args: {
           actor: string;
@@ -4166,6 +4657,15 @@ export type Database = {
           places: Json;
         };
         Returns: Json;
+      };
+      set_order_ticket_ready: {
+        Args: {
+          actor: string;
+          at_time?: string;
+          ready?: boolean;
+          ticket: string;
+        };
+        Returns: undefined;
       };
       set_own_profile: {
         Args: { actor: string; patch: Json };
@@ -4239,6 +4739,10 @@ export type Database = {
       submit_availability: {
         Args: { actor: string; note?: string; ranges: Json; week: string };
         Returns: string;
+      };
+      take_back_order_line: {
+        Args: { actor: string; at_time?: string; line: string };
+        Returns: undefined;
       };
       take_shift_swap: {
         Args: { actor: string; at_time?: string; swap: string };

@@ -2,7 +2,7 @@
 -- its departments and lists, refuses anything else without changing it, and is
 -- server-only.
 begin;
-select plan(40);
+select plan(42);
 
 insert into public.businesses (id, slug, name)
 values
@@ -40,6 +40,25 @@ select is(
    where (t.definition #>> '{modules,notifications,enabled}')::boolean),
   array['cafe-bar', 'general', 'restaurant', 'retail'],
   'every template switches notifications on'
+);
+-- Taking orders (20261120000200_order_taking_takers.sql): off in every
+-- template, the restaurant's and the café's naming the departments whose
+-- staff take orders.
+select is(
+  (select string_agg(
+     t.key || ':' || (t.definition #>> '{modules,order_taking,enabled}')
+       || ':' || (t.definition #> '{modules,order_taking,settings,takerDepartments}')::text,
+     ',' order by t.key)
+   from public.templates t
+   where t.key in ('restaurant', 'cafe-bar')),
+  'cafe-bar:false:["coffee", "bar"],restaurant:false:["floor", "bar"]',
+  'the restaurant takes orders on its floor and bar, the café at its coffee bar and bar, both off'
+);
+select is(
+  (select count(*)::integer from public.templates t
+   where t.key in ('retail', 'general') and t.definition #> '{modules,order_taking}' is not null),
+  0,
+  'a shop and the general template name none'
 );
 
 -- Server only: no execute grant for browser roles, and a call fails.
@@ -105,7 +124,7 @@ select is(
 select is(
   (select template_key || '@' || template_version from public.businesses
    where id = '40000000-0000-4000-b000-00000000000a'),
-  'restaurant@7',
+  'restaurant@8',
   'the business records the template and its version'
 );
 

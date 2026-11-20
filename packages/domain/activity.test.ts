@@ -1929,6 +1929,159 @@ describe("buildActivity: each action", () => {
     }
   });
 
+  it("reads a line of an order fixed, its quantity and unit price and never a total", () => {
+    // As private.order_line_facts writes it
+    // (20261120000300_order_taking_orders.sql).
+    const facts = {
+      line: LIST,
+      order: SHIFT,
+      item: GONE,
+      name: "שניצל",
+      choices: ["סלט"],
+      quantity: 2,
+      unitAgorot: 6700,
+      where: { place: "12" },
+      day: "2026-11-20",
+      department: KITCHEN.toUpperCase(),
+      ticket: "ready",
+      sender: YOAV,
+    };
+    expect(
+      lineOf(row("order.line.cancel", { ...facts, reason: "guest" })),
+    ).toEqual({
+      action: "order.line.cancel",
+      name: "שניצל",
+      choices: ["סלט"],
+      quantity: 2,
+      unitAgorot: 6700,
+      where: { kind: "place", name: "12" },
+      department: "Kitchen",
+      ticket: "ready",
+      reason: "guest",
+      sender: { kind: "member", name: "Yoav" },
+    });
+    expect(
+      lineOf(row("order.line.comp", { ...facts, reason: "staff" })),
+    ).toMatchObject({ action: "order.line.comp", reason: "staff" });
+    // A take-back, a restore and an uncomp keep no sender and no reason.
+    const { sender: _sender, ...unsent } = facts;
+    for (const action of [
+      "order.line.take_back",
+      "order.line.restore",
+      "order.line.uncomp",
+    ] as const) {
+      expect(
+        lineOf(
+          row(action, { ...unsent, where: { takeaway: 3 }, ticket: "new" }),
+        ),
+        action,
+      ).toEqual({
+        action,
+        name: "שניצל",
+        choices: ["סלט"],
+        quantity: 2,
+        unitAgorot: 6700,
+        where: { kind: "takeaway", number: 3 },
+        department: "Kitchen",
+        ticket: "new",
+        reason: null,
+        sender: null,
+      });
+    }
+    // A reason it doesn't know, or one of the other kind, a department the
+    // reader can't read, and a ticket of no known status read as nothing.
+    expect(
+      lineOf(
+        row("order.line.cancel", {
+          ...facts,
+          reason: "staff",
+          department: GONE,
+          ticket: "lost",
+          where: "nowhere",
+        }),
+      ),
+    ).toMatchObject({
+      reason: null,
+      department: null,
+      ticket: null,
+      where: null,
+    });
+    expect(
+      lineOf(row("order.line.comp", { ...facts, reason: "guest" })),
+    ).toMatchObject({ reason: null });
+    // A row of the wrong shape is a plain line.
+    for (const details of [
+      { ...facts, quantity: 0 },
+      { ...facts, unitAgorot: "62" },
+      { ...facts, name: undefined },
+    ]) {
+      expect(lineOf(row("order.line.cancel", details))).toEqual({
+        action: "other",
+      });
+    }
+  });
+
+  it("reads a whole order cancelled, each line it took with it, and no sum", () => {
+    expect(
+      lineOf(
+        row("order.cancel", {
+          order: SHIFT,
+          where: { place: "4" },
+          day: "2026-11-20",
+          reason: "mistake",
+          lines: [
+            {
+              line: LIST,
+              name: "חומוס",
+              choices: [],
+              quantity: 1,
+              unitAgorot: 3200,
+              department: KITCHEN,
+              ticket: "new",
+            },
+            {
+              line: GONE,
+              name: "בירה מהחבית",
+              choices: [],
+              quantity: 2,
+              unitAgorot: 2800,
+              department: GONE,
+              ticket: "ready",
+            },
+          ],
+        }),
+      ),
+    ).toEqual({
+      action: "order.cancel",
+      where: { kind: "place", name: "4" },
+      reason: "mistake",
+      lines: [
+        {
+          name: "חומוס",
+          choices: [],
+          quantity: 1,
+          unitAgorot: 3200,
+          department: "Kitchen",
+        },
+        {
+          name: "בירה מהחבית",
+          choices: [],
+          quantity: 2,
+          unitAgorot: 2800,
+          department: null,
+        },
+      ],
+    });
+    expect(
+      lineOf(row("order.cancel", { where: { takeaway: 1 }, reason: "later" })),
+    ).toEqual({
+      action: "order.cancel",
+      where: { kind: "takeaway", number: 1 },
+      reason: null,
+      lines: [],
+    });
+  });
+
   it("turns anything it can't read into a plain line", () => {
     for (const r of [
       row("something.new", { anything: 1 }),
@@ -2450,6 +2603,34 @@ describe("activityRefs", () => {
       shifts: [],
       swaps: [],
       departments: [],
+      stations: [],
+    });
+  });
+
+  it("looks up the department and the sender an order's line names, and each cancelled line's department", () => {
+    expect(
+      activityRefs([
+        row("order.line.cancel", {
+          name: "שניצל",
+          quantity: 1,
+          unitAgorot: 6200,
+          department: KITCHEN,
+          sender: YOAV,
+        }),
+        row("order.cancel", {
+          where: { place: "4" },
+          lines: [
+            { name: "a", quantity: 1, unitAgorot: 1, department: GONE },
+            "not a line",
+          ],
+        }),
+      ]),
+    ).toEqual({
+      people: [NOA, YOAV],
+      invites: [],
+      shifts: [],
+      swaps: [],
+      departments: [KITCHEN, GONE],
       stations: [],
     });
   });

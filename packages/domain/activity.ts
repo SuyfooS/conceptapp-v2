@@ -8,6 +8,16 @@ import {
 } from "./documents";
 import { ROLES, type Role } from "./modules";
 import {
+  COMP_REASONS,
+  type CompReason,
+  LINE_CANCEL_REASONS,
+  type LineCancelReason,
+  ORDER_CANCEL_REASONS,
+  type OrderCancelReason,
+  TICKET_STATUSES,
+  type TicketStatus,
+} from "./orders";
+import {
   ACCESS_AREAS,
   ACCESS_EXTRA_KEYS,
   type AccessArea,
@@ -672,7 +682,65 @@ export type ActivityLine =
       /** Renamed, moved, or sent to another department. */
       changed: number;
     }
+  | {
+      /**
+       * A line of an order fixed (waiter mode P3,
+       * 20261120000300_order_taking_orders.sql): taken back by its sender
+       * once the kitchen had it, cancelled with a reason and brought back,
+       * or given on the house and taken off it. The line as it was sent: its
+       * quantity and unit price, never a total (decision 7). The row stands
+       * on its own: it names the item and the place as they were then.
+       */
+      action: OrderLineAction;
+      name: string;
+      choices: string[];
+      quantity: number;
+      unitAgorot: number;
+      where: ActivityOrderWhere | null;
+      /** The department it went to, by its name; null when the reader can't tell. */
+      department: string | null;
+      /** Where its ticket was: held, at its department, ready, served. */
+      ticket: TicketStatus | null;
+      /** Why it was cancelled or given on the house. */
+      reason: LineCancelReason | CompReason | null;
+      /** Who sent it, on a cancel and on the house. */
+      sender: ActivityPerson | null;
+    }
+  | {
+      /**
+       * A whole order cancelled, for good, with each line it cancelled: its
+       * quantity and unit price, never a sum.
+       */
+      action: "order.cancel";
+      where: ActivityOrderWhere | null;
+      reason: OrderCancelReason | null;
+      lines: ActivityOrderLine[];
+    }
   | { action: "other" };
+
+/** The fixes of a line the log keeps (waiter mode P3). */
+export const ORDER_LINE_ACTIONS = [
+  "order.line.take_back",
+  "order.line.cancel",
+  "order.line.restore",
+  "order.line.comp",
+  "order.line.uncomp",
+] as const;
+export type OrderLineAction = (typeof ORDER_LINE_ACTIONS)[number];
+
+/** Where an order was: a place by its name then, or a takeaway by its number. */
+export type ActivityOrderWhere =
+  | { kind: "place"; name: string }
+  | { kind: "takeaway"; number: number };
+
+/** A line a cancelled order took with it. */
+export type ActivityOrderLine = {
+  name: string;
+  choices: string[];
+  quantity: number;
+  unitAgorot: number;
+  department: string | null;
+};
 
 /** What an item's save changed, as the log names it, in order. */
 export const MENU_ITEM_FIELDS = [
@@ -798,6 +866,28 @@ const fixValuesOf = (
         reading: values.reading,
       }
     : noValues;
+/** Where an order was, as the log froze it: a place's name or a takeaway's number. */
+const orderWhere = z
+  .union([
+    z
+      .object({ place: z.string() })
+      .transform((where) => ({ kind: "place", name: where.place }) as const),
+    z
+      .object({ takeaway: z.int().min(1) })
+      .transform(
+        (where) => ({ kind: "takeaway", number: where.takeaway }) as const,
+      ),
+  ])
+  .nullable()
+  .catch(null);
+/** A line as the log froze it: its quantity and unit price, never a total. */
+const orderLineFields = {
+  name: z.string(),
+  choices: z.array(z.string()).catch([]),
+  quantity: z.int().min(1),
+  unitAgorot: z.int().min(0),
+  department: id.nullable().optional(),
+};
 
 const schemas = {
   "business.create": z.object({ invites: z.int().min(0).optional() }),
@@ -1062,6 +1152,20 @@ const schemas = {
     restored: z.int().min(0).catch(0),
     changed: z.int().min(0).catch(0),
   }),
+  // The orders (20261120000300_order_taking_orders.sql): a line's quantity
+  // and unit price in agorot, never a total.
+  "order.line": z.object({
+    ...orderLineFields,
+    where: orderWhere,
+    ticket: z.enum(TICKET_STATUSES).nullable().catch(null),
+    reason: z.unknown().optional(),
+    sender: id.nullable().optional(),
+  }),
+  "order.cancel": z.object({
+    where: orderWhere,
+    reason: z.enum(ORDER_CANCEL_REASONS).nullable().catch(null),
+    lines: z.array(z.object(orderLineFields)).catch([]),
+  }),
 };
 
 const DETAIL_COLUMNS: Record<string, DetailKey> = {
@@ -1174,6 +1278,10 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
   // to read, the shift the row names, while it is there.
   const swapShift = (swapId: string, shiftId: string | null | undefined) =>
     lookups.swaps.get(swapId)?.shift ?? shiftOf(shiftId);
+  /** A department a row names, by its name as the reader may read it. */
+  const departmentOf = (departmentId: string | null | undefined) =>
+    (departmentId && lookups.departments.get(departmentId.toLowerCase())) ??
+    null;
 
   switch (row.action) {
     case "business.create": {
@@ -1787,6 +1895,52 @@ function lineOf(row: ActivityRow, lookups: ActivityLookups): ActivityLine {
       const details = read(schemas["menu.list"]);
       return details ? { action: row.action, ...details } : other;
     }
+    case "order.line.take_back":
+    case "order.line.cancel":
+    case "order.line.restore":
+    case "order.line.comp":
+    case "order.line.uncomp": {
+      const details = read(schemas["order.line"]);
+      if (!details) return other;
+      const reasons: readonly string[] =
+        row.action === "order.line.cancel"
+          ? LINE_CANCEL_REASONS
+          : row.action === "order.line.comp"
+            ? COMP_REASONS
+            : [];
+      const reason =
+        typeof details.reason === "string" && reasons.includes(details.reason)
+          ? (details.reason as LineCancelReason | CompReason)
+          : null;
+      return {
+        action: row.action,
+        name: details.name,
+        choices: details.choices,
+        quantity: details.quantity,
+        unitAgorot: details.unitAgorot,
+        where: details.where,
+        department: departmentOf(details.department),
+        ticket: details.ticket,
+        reason,
+        sender: details.sender ? personOf(details.sender, lookups) : null,
+      };
+    }
+    case "order.cancel": {
+      const details = read(schemas["order.cancel"]);
+      if (!details) return other;
+      return {
+        action: row.action,
+        where: details.where,
+        reason: details.reason,
+        lines: details.lines.map((line) => ({
+          name: line.name,
+          choices: line.choices,
+          quantity: line.quantity,
+          unitAgorot: line.unitAgorot,
+          department: departmentOf(line.department),
+        })),
+      };
+    }
     case "schedule.publish": {
       const details = read(schemas["schedule.publish"]);
       return details
@@ -1842,6 +1996,19 @@ export function activityRefs(rows: readonly ActivityRow[]) {
     if (row.action === "chat.remove" || row.action === "chat.restore") {
       add(people, details.data.author);
       add(departments, details.data.department);
+    }
+    // An order's line names the department it went to and who sent it; a
+    // cancelled order, each line's department.
+    if (row.action.startsWith("order.")) {
+      add(people, details.data.sender);
+      add(departments, details.data.department);
+      const lines = details.data.lines;
+      if (Array.isArray(lines)) {
+        for (const line of lines) {
+          const one = fields.safeParse(line);
+          if (one.success) add(departments, one.data.department);
+        }
+      }
     }
     if (
       row.action === "clock.station.stop" ||

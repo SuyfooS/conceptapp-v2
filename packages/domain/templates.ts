@@ -122,12 +122,33 @@ export function validateTemplate(
   );
   if (problem) throw new Error(`Invalid template: ${problem}`);
 
+  // The departments whose staff take orders (waiter mode P3) are the
+  // template's own, as its lists' are: a key it doesn't have would leave
+  // nobody taking orders there, without a word.
+  const keys = departments.map((d) => d.key);
+  const strange = takerKeysOf(result.order_taking?.settings).find(
+    (key) => !keys.includes(key),
+  );
+  if (strange !== undefined) {
+    throw new Error(
+      `Invalid template: taking orders names a department the template doesn't have: ${strange}`,
+    );
+  }
+
   return {
     modules: result,
     openingHours: parsed.data.openingHours,
     departments,
     listTemplates,
   };
+}
+
+/** The departments taking orders' settings name, whatever they hold. */
+function takerKeysOf(settings: unknown): string[] {
+  const parsed = z
+    .object({ takerDepartments: z.array(z.string()) })
+    .safeParse(settings);
+  return parsed.success ? parsed.data.takerDepartments : [];
 }
 
 /** The keys of a scheduling settings' shift pattern, whatever it holds. */
