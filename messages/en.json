@@ -428,7 +428,7 @@
         "newShort": "New"
       },
       "age": {
-        "ago": "{count, plural, =0 {Just now} one {1 min ago} other {# min ago}}"
+        "ago": "{count, plural, =0 {Just now} one {1 min ago} other {# min ago}}"
       },
       "sheet": {
         "close": "Close"
@@ -614,9 +614,9 @@
         "state": {
           "free": "Free",
           "draft": "{count, plural, one {1 item in the draft} other {# items in the draft}}",
-          "open": "{count, plural, =0 {Sent just now} one {Sent 1 min ago} other {Sent # min ago}}",
+          "open": "{count, plural, =0 {Sent just now} one {Sent 1 min ago} other {Sent # min ago}}",
           "ready": "Ready to serve",
-          "late": "Waiting {count} min"
+          "late": "Waiting {count} min"
         },
         "readyTitle": "Ready to serve",
         "readyEmpty": "Nothing to serve right now. What the kitchen or the bar marks ready shows here.",
@@ -767,7 +767,7 @@
       "prep": {
         "title": "Preparing",
         "department": "Department",
-        "status": "{count, plural, one {1 open} other {# open}} · the oldest waiting {minutes} min",
+        "status": "{count, plural, one {1 open} other {# open}} · the oldest waiting {minutes} min",
         "nothingOpen": "No open orders",
         "openCount": "{count, plural, one {1 open} other {# open}}",
         "listLabel": "Orders · {department}",
@@ -5590,7 +5590,7 @@
         "newShort": "New"
       },
       "age": {
-        "ago": "{count, plural, =0 {Just now} one {1 min ago} other {# min ago}}"
+        "ago": "{count, plural, =0 {Just now} one {1 min ago} other {# min ago}}"
       },
       "floor": {
         "metaTitle": "Taking orders",
@@ -5607,9 +5607,9 @@
         "state": {
           "free": "Free",
           "draft": "{count, plural, one {1 item in the draft} other {# items in the draft}}",
-          "open": "{count, plural, =0 {Sent just now} one {Sent 1 min ago} other {Sent # min ago}}",
+          "open": "{count, plural, =0 {Sent just now} one {Sent 1 min ago} other {Sent # min ago}}",
           "ready": "Ready to serve",
-          "late": "Waiting {count} min"
+          "late": "Waiting {count} min"
         },
         "readyTitle": "Ready to serve",
         "readyEmpty": "Nothing to serve right now. What is marked ready shows here.",
@@ -5775,7 +5775,7 @@
         "metaTitle": "Preparing",
         "title": "Preparing",
         "department": "Department",
-        "status": "{count, plural, one {1 open} other {# open}} · the oldest waiting {minutes} min",
+        "status": "{count, plural, one {1 open} other {# open}} · the oldest waiting {minutes} min",
         "nothingOpen": "No open orders",
         "openCount": "{count, plural, one {1 open} other {# open}}",
         "listLabel": "Orders · {department}",

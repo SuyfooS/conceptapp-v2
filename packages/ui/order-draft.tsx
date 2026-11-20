@@ -100,6 +100,13 @@ export function DraftLineRow({
           decreaseLabel={quantityLabels.less}
           increaseLabel={quantityLabels.more}
         />
+        <IconButton
+          label={remove.label}
+          icon={<Trash2 />}
+          className="-me-2"
+          disabled={disabled}
+          onClick={remove.onClick}
+        />
       </div>
       {allergy ? (
         <p className="flex items-start gap-1.5 font-semibold text-danger">
@@ -141,13 +148,6 @@ export function DraftLineRow({
           {holdButton.label}
           <span className="sr-only">{holdButton.forItem}</span>
         </Button>
-        <IconButton
-          label={remove.label}
-          icon={<Trash2 />}
-          className="ms-auto"
-          disabled={disabled}
-          onClick={remove.onClick}
-        />
       </div>
     </li>
   );

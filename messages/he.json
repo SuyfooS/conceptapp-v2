@@ -428,7 +428,7 @@
         "newShort": "חדשה"
       },
       "age": {
-        "ago": "{count, plural, =0 {עכשיו} one {לפני דקה} other {לפני # דק׳}}"
+        "ago": "{count, plural, =0 {עכשיו} one {לפני דקה} other {לפני # דק׳}}"
       },
       "sheet": {
         "close": "סגירה"
@@ -614,9 +614,9 @@
         "state": {
           "free": "פנוי",
           "draft": "{count, plural, one {פריט אחד בטיוטה} other {# פריטים בטיוטה}}",
-          "open": "{count, plural, =0 {נשלח עכשיו} one {נשלח לפני דקה} other {נשלח לפני # דק׳}}",
+          "open": "{count, plural, =0 {נשלח עכשיו} one {נשלח לפני דקה} other {נשלח לפני # דק׳}}",
           "ready": "מוכן להגשה",
-          "late": "מחכה {count} דק׳"
+          "late": "מחכה {count} דק׳"
         },
         "readyTitle": "מוכן להגשה",
         "readyEmpty": "אין כרגע מה להגיש. מה שהמטבח או הבר מסמנים כמוכן מופיע כאן.",
@@ -767,7 +767,7 @@
       "prep": {
         "title": "הכנה",
         "department": "מחלקה",
-        "status": "{count, plural, one {אחת פתוחה} other {# פתוחות}} · הוותיקה מחכה {minutes} דק׳",
+        "status": "{count, plural, one {אחת פתוחה} other {# פתוחות}} · הוותיקה מחכה {minutes} דק׳",
         "nothingOpen": "אין הזמנות פתוחות",
         "openCount": "{count, plural, one {אחת פתוחה} other {# פתוחות}}",
         "listLabel": "הזמנות · {department}",
@@ -5590,7 +5590,7 @@
         "newShort": "חדשה"
       },
       "age": {
-        "ago": "{count, plural, =0 {עכשיו} one {לפני דקה} other {לפני # דק׳}}"
+        "ago": "{count, plural, =0 {עכשיו} one {לפני דקה} other {לפני # דק׳}}"
       },
       "floor": {
         "metaTitle": "קבלת הזמנות",
@@ -5607,9 +5607,9 @@
         "state": {
           "free": "פנוי",
           "draft": "{count, plural, one {פריט אחד בטיוטה} other {# פריטים בטיוטה}}",
-          "open": "{count, plural, =0 {נשלח עכשיו} one {נשלח לפני דקה} other {נשלח לפני # דק׳}}",
+          "open": "{count, plural, =0 {נשלח עכשיו} one {נשלח לפני דקה} other {נשלח לפני # דק׳}}",
           "ready": "מוכן להגשה",
-          "late": "מחכה {count} דק׳"
+          "late": "מחכה {count} דק׳"
         },
         "readyTitle": "מוכן להגשה",
         "readyEmpty": "אין כרגע מה להגיש. מה שמסומן כמוכן מופיע כאן.",
@@ -5775,7 +5775,7 @@
         "metaTitle": "הכנה",
         "title": "הכנה",
         "department": "מחלקה",
-        "status": "{count, plural, one {אחת פתוחה} other {# פתוחות}} · הוותיקה מחכה {minutes} דק׳",
+        "status": "{count, plural, one {אחת פתוחה} other {# פתוחות}} · הוותיקה מחכה {minutes} דק׳",
         "nothingOpen": "אין הזמנות פתוחות",
         "openCount": "{count, plural, one {אחת פתוחה} other {# פתוחות}}",
         "listLabel": "הזמנות · {department}",
