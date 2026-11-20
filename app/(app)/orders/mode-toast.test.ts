@@ -85,9 +85,31 @@ describe("the mode's one toast", () => {
     expect(last()?.text).toBe("sent: 4");
     toast.hidden(toast.shown()?.id ?? null);
     expect(last()?.text).toBe("ready: bar 3");
-    // Nothing more waited.
+    // Nothing more waited: the toast is gone, and drawn again it stays gone.
     toast.hidden(toast.shown()?.id ?? null);
-    expect(last()?.text).toBe("ready: bar 3");
+    expect(last()).toBeNull();
+    expect(toast.shown()).toBeNull();
+  });
+
+  it("forgets a toast whose time is up, so its way back never comes again", () => {
+    const { toast, last } = setUp();
+    // "הוגש" with "ביטול" at table 4: its 8 s are up, the person goes home.
+    const served = withUndo("served");
+    const withdrawServed = toast.say(served);
+    const id = toast.shown()?.id ?? null;
+    toast.hidden(id);
+    expect(last()).toBeNull();
+    // Back in the mode: nothing to press, and nothing un-served.
+    toast.undo();
+    expect(served.undo).not.toHaveBeenCalled();
+    // Seen going again (drawn null) changes nothing; nor do its late
+    // withdrawal and its time seen up again once a newer toast was said.
+    toast.hidden(null);
+    expect(last()).toBeNull();
+    toast.say(withUndo("takenBack"));
+    withdrawServed();
+    toast.hidden(id);
+    expect(last()?.text).toBe("takenBack");
   });
 
   it("tells the next news at once when the first has nothing left to say", () => {

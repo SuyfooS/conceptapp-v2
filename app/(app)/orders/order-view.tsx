@@ -267,19 +267,21 @@ export function OrderView({
       placeName: place?.name ?? null,
       takeaway: outcome.round.takeaway,
     });
+    // The answer may come seconds after the press (retried on a slow link),
+    // while a way back said meanwhile (a take-back, a serve) is on the
+    // toast: it is told as news, so never in that way back's place, and at
+    // once when none is offered.
+    const sent = `sent:${outcome.round.round}`;
     // Left meanwhile (the answer came after a while, offline): the toast
-    // says it wherever the person is, with the way to it, as news, so never
-    // in the place of a way back on the screen now shown; nothing moves them.
+    // says it wherever the person is, with the way to it; nothing moves them.
     if (!onScreen.current) {
       const open = place
         ? paths.place(place.id)
         : paths.takeaway(outcome.round.order);
-      tell(`sent:${outcome.round.round}`, () =>
-        say(t("toast.sent", { place: sentAs }), { open }),
-      );
+      tell(sent, () => say(t("toast.sent", { place: sentAs }), { open }));
       return;
     }
-    say(t("toast.sent", { place: sentAs }));
+    tell(sent, () => say(t("toast.sent", { place: sentAs })));
     roundsHeading.current?.focus({ preventScroll: true });
     // A new takeaway's first send gives it its number, and its own page.
     const order = outcome.round.order;

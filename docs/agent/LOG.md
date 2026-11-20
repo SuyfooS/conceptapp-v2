@@ -33,6 +33,7 @@ what is next, defaults applied.
   - A withdrawn toast lets the news out only once what withdrew it is done (a microtask): the next take-back's toast, said in the same turn, keeps the ready news waiting instead of hiding it.
   - The gate keeps what waits by what it is about ("ready", `sent:<round>`) and tells each in turn, the next once the toast before it has gone, so a round that landed and the ready news no longer drop each other.
   - A ticket marked ready here is news again once a read made after the mark sees it not ready (`readyMarks.seen`): put back and made ready again on another phone, its owner is told.
+- After the re-review of 8731add (each finding confirmed): a serve's "ביטול" is no ready news (`readyNews` leaves out a ticket served before and ready again with the time it was ready at; one served new and marked ready since still is); a toast whose time is up is forgotten (`modeToast.hidden` puts null), and a `StatusToast` drawn again with the same message (its screen shown again from a hidden `<Activity>`) goes on with the time it had left and never takes the focus again, so no finished "מוכן" or stale "ביטול" comes back on returning to the mode; the send's "נשלחה" on its own screen goes through the news gate too, so a take-back's or a serve's "ביטול" said while the round was on its way stays until it goes.
 
 ## 2026-11-20 · chat · taking orders: the orders in the database, module off (waiter mode P3)
 

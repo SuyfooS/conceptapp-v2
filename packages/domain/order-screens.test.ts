@@ -389,6 +389,26 @@ describe("what turned ready", () => {
       readyNews(before, after, new Set()).map((news) => news.ticket),
     ).toEqual(["a", "d"]);
   });
+
+  it("is no news when a serve's ביטול makes it ready again, but is when it was served new", () => {
+    // Bar ticket "a" was ready at 3 minutes ago and served: its "ביטול"
+    // puts it back to ready, with the time it was ready at.
+    const readyAt = minutesAgo(3);
+    expect(
+      readyNews(
+        mine([{ id: "a", status: "served", readyAt }]),
+        mine([{ id: "a", status: "ready", readyAt }]),
+      ),
+    ).toEqual([]);
+    // "b" was served before anyone marked it ready (its time the serve's),
+    // its "ביטול" put it back to new, and the bar has marked it ready since.
+    expect(
+      readyNews(
+        mine([{ id: "b", status: "served", readyAt: minutesAgo(3) }]),
+        mine([{ id: "b", status: "ready", readyAt: minutesAgo(1) }]),
+      ).map((news) => news.ticket),
+    ).toEqual(["b"]);
+  });
 });
 
 describe("the mode's items", () => {

@@ -339,6 +339,10 @@ export type ReadyNews = {
  * it already), and only tickets with a live line that weren't ready before.
  * Never what was marked ready on this phone (`markedHere`): someone who
  * takes orders and prepares too said "מוכן" themselves, and was told so.
+ * Nor a serve's "ביטול": a ticket served once it was ready is ready again
+ * with the time it was ready at, which the person knew. One served before
+ * anyone marked it ready goes back to new, and its "מוכן" since has a time
+ * of its own: news.
  */
 export function readyNews(
   before: MyOrders | null,
@@ -346,14 +350,19 @@ export function readyNews(
   markedHere: ReadonlySet<string> = new Set(),
 ): ReadyNews[] {
   if (!before) return [];
-  const wasReady = new Set(
-    before.rounds.flatMap((round) =>
-      round.tickets
-        .filter((ticket) => ticket.status === "ready")
-        .map((ticket) => ticket.id),
-    ),
-  );
-  for (const ticket of markedHere) wasReady.add(ticket);
+  const wasReady = new Set(markedHere);
+  /** Served before, by the time it was ready at (its serve's, served new). */
+  const servedReady = new Map<string, number>();
+  for (const round of before.rounds) {
+    for (const ticket of round.tickets) {
+      if (ticket.status === "ready") wasReady.add(ticket.id);
+      if (ticket.status === "served" && ticket.readyAt !== null) {
+        servedReady.set(ticket.id, Date.parse(ticket.readyAt));
+      }
+    }
+  }
+  const unServed = (id: string, readyAt: string) =>
+    servedReady.get(id) === Date.parse(readyAt);
   return after.rounds
     .flatMap((round) =>
       round.tickets
@@ -362,7 +371,8 @@ export function readyNews(
             ticket.status === "ready" &&
             ticket.lines > 0 &&
             ticket.readyAt !== null &&
-            !wasReady.has(ticket.id),
+            !wasReady.has(ticket.id) &&
+            !unServed(ticket.id, ticket.readyAt),
         )
         .map((ticket) => ({
           ticket: ticket.id,

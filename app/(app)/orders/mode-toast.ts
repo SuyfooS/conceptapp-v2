@@ -91,10 +91,13 @@ export function modeToast<T extends ToastSaid>(
     },
     /**
      * The toast drawn with `id` went from sight (its time up, or nothing to
-     * say): what waited is told, unless a newer toast was said since.
+     * say): it is no longer shown, so a screen drawn again (the mode left in
+     * a hidden <Activity> and come back to) never shows it or its way back
+     * again, and what waited is told, unless a newer toast was said since.
      */
     hidden(id: number | null): void {
       if ((shown?.id ?? null) !== id) return;
+      put(null);
       gate.hidden();
     },
     /**
