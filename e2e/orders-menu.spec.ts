@@ -626,6 +626,9 @@ test("a department that prepares items says so before it goes, and its undo brin
     })
     .getByRole("button", { name: he.app.manage.undo });
   await expect(undo).toBeFocused();
+  // Each save in turn: the removal lands before the undo is pressed, so the
+  // poll after the undo can only pass on the undo's own save.
+  await expect.poll(demoDepartmentNames).not.toContain(PREPARING);
   await undo.click();
   await expect(
     shown(page, rt("app.manage.departments.menuItems", { count: 1 })),

@@ -22,7 +22,7 @@ import { Switch } from "@ui/switch";
 import { BookOpen, ClipboardPaste, LayoutGrid, Plus, Tags } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { type Editing, ItemSheet } from "./item-sheet";
 import { FailureLine, type MenuPaths, Price, useUndoToast } from "./menu-parts";
 import type {
@@ -152,9 +152,28 @@ export function MenuView({
       now ? { ...now, items: now.items.filter((i) => i.id !== id) } : now,
     );
 
+  /** The sheet open now, for an answer that arrives after it may have closed. */
+  const openSheet = useRef<string | "new" | null>(null);
+  useEffect(() => {
+    openSheet.current = editingId;
+  }, [editingId]);
+  /** Whether the sheet's line holds a sold-out failure (not a save's). */
+  const sheetSoldOut = useRef(false);
+
+  function sheetSays(failure: MenuActionFailure | null, soldOut = false) {
+    sheetSoldOut.current = failure !== null && soldOut;
+    setSheetFailure(failure);
+  }
+
+  /** A sheet opens clean: nothing an earlier one was told. */
+  function editItem(id: string | "new") {
+    sheetSays(null);
+    setEditingId(id);
+  }
+
   function closeSheet() {
     setEditingId(null);
-    setSheetFailure(null);
+    sheetSays(null);
   }
 
   /**
@@ -173,13 +192,16 @@ export function MenuView({
     const fromSheet = undo === "none";
     change(item.id, { available: !on });
     const result = await tried(() => actions.setAvailable(item.id, !on));
+    // Where to say it is decided when the answer comes: the sheet may have
+    // closed meanwhile, and then the page's line says it.
+    const sheetOpen = fromSheet && openSheet.current === item.id;
     if (!result.ok) {
       change(item.id, { available: item.available });
-      if (fromSheet) setSheetFailure(result.failure);
+      if (sheetOpen) sheetSays(result.failure, true);
       else setFailure(result.failure);
       return;
     }
-    if (fromSheet) setSheetFailure(null);
+    if (sheetOpen && sheetSoldOut.current) sheetSays(null);
     setFailure(null);
     if (undo === "undoing") return;
     const words = on
@@ -235,7 +257,7 @@ export function MenuView({
       const result = await tried(() => actions.saveItem(input, null));
       setSaving(false);
       if (!result.ok) {
-        setSheetFailure(result.failure);
+        sheetSays(result.failure);
         return;
       }
       put({
@@ -275,7 +297,7 @@ export function MenuView({
         }
         put(current);
       }
-      setSheetFailure(result.failure);
+      sheetSays(result.failure);
       return;
     }
     put({
@@ -377,7 +399,7 @@ export function MenuView({
             name={item.name}
             detail={detail(item)}
             flag={item.route === null ? t("noRoute") : null}
-            onEdit={reach.edits ? () => setEditingId(item.id) : undefined}
+            onEdit={reach.edits ? () => editItem(item.id) : undefined}
             soldOut={{
               checked: !item.available,
               label: t("soldOutFor", { name: item.name }),
@@ -411,7 +433,7 @@ export function MenuView({
   const actionsShown =
     reach.edits && categories.length > 0 ? (
       <>
-        <Button size="lg" onClick={() => setEditingId("new")}>
+        <Button size="lg" onClick={() => editItem("new")}>
           <Plus aria-hidden="true" />
           {t("add")}
         </Button>
@@ -559,7 +581,7 @@ export function MenuView({
                         name: reach.edits ? (
                           <button
                             type="button"
-                            onClick={() => setEditingId(item.id)}
+                            onClick={() => editItem(item.id)}
                             className="flex min-h-11 flex-col items-start justify-center rounded-control text-start underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-accent"
                           >
                             {name}
