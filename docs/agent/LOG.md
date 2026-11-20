@@ -3,6 +3,15 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-20 · chat · the activity log names the app for what it did on its own
+
+- On chat/log-app-words, from main `05cd369`. A line the app wrote with no actor showed as "מי שכבר לא באפליקציה". In the migrations only the lists' job (`private.lists_tick_business`) writes the log with no actor: `lists.open`, `lists.due`, `lists.late`, `lists.late_owner` and `lists.missed`, of which the page shows the late and the missed (the rest are routine). A row of anything else with no actor is someone's whose account went (`audit_log.actor_id` is `on delete set null`), so it keeps "מי שכבר לא באפליקציה".
+- `@domain/activity`: `APP_ACTIONS` and `ActivityActor` (`{ kind: "app" }`); `actorOf` goes by the row's action, as `@domain/notifications` does with `byApp`. The screen says "האפליקציה" / "The app" (`app.manage.activity.who.app`, the inbox's word), with a phone in the team's round mark. `lists.missed` now says what the app did, "סגירת הרשימה {name}, שלא נעשתה" / "Closed the list {name}, which was not done"; `lists.late` stays "הרשימה {name} באיחור". The log's Hebrew lines are nouns of action ("סיום", "ביטול"), never a verb whose subject is the actor, so none had to agree with האפליקציה and no select was needed.
+- Guard: `tooling/log-families.test.ts` reads every insert into the log whose actor is null or left out and holds their actions equal to `APP_ACTIONS`, so a new job's line can't fall back to "someone no longer in the app".
+- Twin: `/design/shell/manage/activity` has Sunday's floor opening, which nobody did, closed by the app on Monday (the lists demo's missed list); the three Sunday rows moved down one id.
+- Tests: unit (each of the app's actions with no actor, one with an actor, a row of every other family with none; the guard's reading); e2e (first run in CI) `design.spec.ts` "the activity demo names the app for a list it closed". Checked here: `pnpm check`. Not run: Playwright, `pnpm build`, screenshots at 390, 820 and 1440, the reviewers.
+- Found, left: the demo shop's weekly renewal (`private.renew_demo_schedule`) publishes in its owner's name, so its log line names the owner; it has an actor, so it is out of this change.
+- Defaults applied: none.
 ## 2026-11-20 · chat · the clock's shift today, clear of midnight
 
 - On chat/clock-last-minute, from main `05cd369`. `clock.spec.ts` "the clock knows the person's own shift today, and nobody else's" failed in CI on 17 November at 23:59:10 Israel time: its all-day shift (00:00–23:59) had just ended, so /clock said "אין לך עוד משמרת היום". Over midnight, today can also turn between putting the shift on and reading the screen. `shift-swaps.spec.ts` "a shift that has begun today offers no giving away" has the same all-day shift and that second risk (its screen lists shifts from today on); no other spec has one.

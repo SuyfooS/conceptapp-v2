@@ -1891,6 +1891,35 @@ test("the activity demo says whose name was fixed", async ({ page }) => {
   ).toBeVisible();
 });
 
+// The activity demo names the app for what it did on its own: Sunday's floor
+// opening, which nobody did, closed by the lists' job. On a computer the "who"
+// cell is the app; on a phone or a tablet, the row's title over that line.
+// Never "someone no longer in the app".
+test("the activity demo names the app for a list it closed", async ({
+  page,
+}, testInfo) => {
+  const a = he.app.manage.activity;
+  const line = heT("app.manage.activity.actions.lists.missed", {
+    name: "פתיחת אולם",
+  });
+  await page.goto("/design/shell/manage/activity");
+  if (testInfo.project.name === "desktop") {
+    await expect(
+      page.getByRole("row").filter({ hasText: line }).getByRole("rowheader"),
+    ).toHaveText(a.who.app);
+  } else {
+    await expect(
+      page
+        .getByText(a.who.app, { exact: true })
+        .filter({ visible: true })
+        .locator(".."),
+    ).toContainText(line);
+  }
+  await expect(
+    page.getByText(a.who.unknown).filter({ visible: true }),
+  ).toHaveCount(0);
+});
+
 // The lists demo sends and takes a sending back, keeps its five minutes to
 // take a finish back after it hydrates, and reads a freezer below zero.
 test("the lists demo sends, takes back, and keeps a finished list as it was", async ({

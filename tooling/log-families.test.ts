@@ -1,6 +1,9 @@
+import { APP_ACTIONS } from "@domain/activity";
 import { LOG_AREA_PERMISSIONS, MANAGE_VIEW } from "@domain/manage-access";
 import { describe, expect, it } from "vitest";
 import {
+  actorlessActions,
+  actorlessInMigrations,
   familiesInMigrations,
   familiesWritten,
   logPermArms,
@@ -87,5 +90,40 @@ describe("the log's families in the migrations", () => {
     expect(areas.has(MANAGE_VIEW)).toBe(true);
     areas.delete(MANAGE_VIEW);
     expect([...areas].sort()).toEqual([...LOG_AREA_PERMISSIONS].sort());
+  });
+});
+
+// A row with no actor is the app's only for an action the activity log knows
+// the app writes on its own (APP_ACTIONS); any other reads as someone no
+// longer in the app. So each action a migration writes with no actor is one
+// of them, and each of them is still written so.
+describe("the actions a migration writes to the log with no actor", () => {
+  it("are read from a null actor, cast or not, or none, never from a variable or a comment", () => {
+    const sql = [
+      "-- insert into public.audit_log (business_id, actor_id, action) values (b, null, 'ghost.fixture');",
+      "insert into public.audit_log (business_id, actor_id, action, details)",
+      "values (business, null::uuid, 'lists.missed', jsonb_build_object('name', 'a, b'));",
+      "insert into public.audit_log (business_id, actor_id, action, details)",
+      "values (business, actor, 'lists.finish', '{}'::jsonb);",
+      "insert into public.audit_log (business_id, action, details)",
+      "values (business, case when late then 'lists.late' else 'lists.due' end, '{}');",
+      "insert into public.audit_log (business_id, actor_id, action)",
+      "values (business, actor, 'swap.take'), (business, NULL, 'swap.cancel');",
+      "insert into public.audit_log (business_id, actor_id, action, details)",
+      "select l.business_id, null, 'lists.open', jsonb_build_object('list', l.id)",
+      "from public.lists l, public.businesses b where l.business_id = b.id;",
+      "insert into public.notifications (actor_id, kind) values (null, 'swap.waiting');",
+    ].join("\n");
+    expect(actorlessActions(sql)).toEqual([
+      "lists.due",
+      "lists.late",
+      "lists.missed",
+      "lists.open",
+      "swap.cancel",
+    ]);
+  });
+
+  it("are the app's own, as the activity log names them", () => {
+    expect(actorlessInMigrations()).toEqual([...APP_ACTIONS].sort());
   });
 });
