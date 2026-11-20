@@ -72,9 +72,8 @@ import { confirmDocumentAction } from "../chat/documents/actions";
 import type { DocumentsTodayData } from "../chat/documents/document-screen-types";
 import { TodayDocuments } from "../chat/documents/today-documents";
 import { TodayChat } from "../chat/today-chat";
-import { lockDeviceAction } from "../clock/station/actions";
 import { LockStation } from "../clock/station/lock-station";
-import type { LockOffer } from "../clock/station/station-types";
+import type { LockAction, LockOffer } from "../clock/station/station-types";
 import type { ListsHomeData } from "../lists/list-types";
 import { TodayLists } from "../lists/today-lists";
 import { moduleIcons } from "../module-icons";
@@ -273,6 +272,7 @@ export async function TodayView({
   businesses,
   base = "",
   hideFirstStepsUrl,
+  lockStation,
 }: {
   data: TodayData;
   /** The business's words; the app's own on the demo. */
@@ -285,6 +285,11 @@ export async function TodayView({
    * stand-in, which keeps nothing.
    */
   hideFirstStepsUrl: string;
+  /**
+   * Locking the station again from its reminder (`data.station`):
+   * `lockDeviceAction`, or the demo's stand-in, which signs nobody out.
+   */
+  lockStation: LockAction;
 }) {
   const t = translator(wording, "app");
   const tm = translator(wording, "modules");
@@ -472,7 +477,7 @@ export async function TodayView({
         </div>
 
         {data.station?.current ? (
-          <StationReminder offer={data.station} t={t} />
+          <StationReminder offer={data.station} lock={lockStation} t={t} />
         ) : null}
 
         {data.firstSteps ? (
@@ -533,7 +538,15 @@ export async function TodayView({
  * again when they are done, with the same sheet as the code screen's. Small,
  * since it is not what Today is for.
  */
-function StationReminder({ offer, t }: { offer: LockOffer; t: T }) {
+function StationReminder({
+  offer,
+  lock,
+  t,
+}: {
+  offer: LockOffer;
+  lock: LockAction;
+  t: T;
+}) {
   return (
     <Card className="flex flex-col gap-3 md:max-w-2xl md:flex-row md:items-center">
       <div className="flex min-w-0 flex-1 items-center gap-3">
@@ -548,7 +561,7 @@ function StationReminder({ offer, t }: { offer: LockOffer; t: T }) {
       <div className="ps-[52px] md:ps-0">
         <LockStation
           offer={offer}
-          lock={lockDeviceAction}
+          lock={lock}
           label={t("clock.station.reminder.lock")}
         />
       </div>

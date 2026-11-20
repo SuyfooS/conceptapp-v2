@@ -16,6 +16,7 @@ import type {
   PublishedSchedule,
   ScheduleBuildWeek,
 } from "../../../(app)/schedule/week";
+import { demoStations } from "../clock/team/data";
 import {
   business,
   demoBusinessDetails,
@@ -426,6 +427,23 @@ export const todayScenarios = {
   /** A business with scheduling off: its part of Today disappears. */
   schedulingOff: () =>
     today("shiran", "manager", null, { modules: ["reservations"] }),
+  /**
+   * Shiran signed in again on the entrance's clock station (#78 phase 5),
+   * where the clock is on: Today says the device is the business's station,
+   * to lock again when she is done, as that same station.
+   */
+  station: (): TodayData => ({
+    ...today(
+      "shiran",
+      "manager",
+      scheduleFor("manager", published("shiran", SWAPS), true, true),
+      { modules: [...DEMO_MODULES, "time_clock"] },
+    ),
+    station: {
+      current: { name: demoStations.rows[0]?.name ?? "" },
+      running: [],
+    },
+  }),
   /** The owner's first steps (`firstSteps` above). */
   firstSteps,
 };

@@ -29,6 +29,8 @@ const PAGES = [
   "/design/shell/today/first-steps",
   "/design/shell/today/first-steps?state=new",
   "/design/shell/today/first-steps?state=viewing",
+  // Signed in again on the business's clock station: the reminder to lock it.
+  "/design/shell/today/station",
   "/design/shell/schedule",
   // Next week, as the link in a shared schedule opens it.
   "/design/shell/schedule?week=2026-11-08",
@@ -36,11 +38,12 @@ const PAGES = [
   "/design/shell/schedule/swaps",
   "/design/shell/schedule/availability",
   // The team's answers, with the reminder before and after the due moment,
-  // nobody sent yet, and everyone sent (no reminder).
+  // nobody sent yet, everyone sent (no reminder), and a team of no one.
   "/design/shell/schedule/availability/team",
   "/design/shell/schedule/availability/team?state=late",
   "/design/shell/schedule/availability/team?state=none",
   "/design/shell/schedule/availability/team?state=all",
+  "/design/shell/schedule/availability/team?state=empty",
   "/design/shell/schedule/build",
   "/design/shell/schedule/build?state=meanwhile",
   "/design/shell/schedule/build?week=2026-11-01",
@@ -892,6 +895,42 @@ test("the Today demo's first steps lead into the demo and hide with a way back",
   await expect(card.getByRole("button", { name: f.hide })).toHaveCount(0);
 });
 
+// Signed in again on the business's clock station (#78 phase 5): Today says
+// the device is the station, and "נעילת המכשיר" locks it again as that same
+// station, with no new name, to the station's twin. Anywhere else, Today
+// says nothing of a station.
+test("the Today demo on the clock station locks it again as the same station", async ({
+  page,
+}) => {
+  const reminder = he.app.clock.station.reminder;
+  const lock = he.app.clock.station.lock;
+  const body = page.getByText(reminder.body);
+  const again = page.getByRole("button", { name: reminder.lock, exact: true });
+
+  await page.goto("/design/shell");
+  await expect(
+    page.getByRole("heading", { level: 1 }).filter({ visible: true }).first(),
+  ).toBeVisible();
+  await expect(body).toHaveCount(0);
+  await expect(again).toHaveCount(0);
+
+  await page.goto("/design/shell/today/station");
+  await expect(body).toBeVisible();
+  await again.click();
+  const sheet = page.getByRole("dialog", { name: lock.title });
+  await expect(
+    sheet.getByText(
+      heT("app.clock.station.lock.same", { name: "עמדת הכניסה" }),
+    ),
+  ).toBeVisible();
+  await expect(sheet.getByLabel(lock.name)).toHaveCount(0);
+  await sheet.getByRole("button", { name: lock.submit }).click();
+  await expect(page).toHaveURL(/\/design\/shell\/station$/);
+  await expect(
+    page.getByRole("img", { name: he.app.clock.code.qrLabel }),
+  ).toBeVisible();
+});
+
 // A stale screen on the builder's demo (R1b), at every size: Omer gives his
 // Sunday evening away, and Maya took Noa's Sunday morning. Taking Itay off the
 // morning ends no request, so nothing is said; taking Omer off the evening
@@ -1553,7 +1592,8 @@ test("the clock demo lists a cancelled shift with who, when and why", async ({
 
 // The clock station (#78 phase 5) on its twins: the code screen locks the
 // device into a station, which shows the code with nobody's name and no
-// frame, and the team's hours stop a station at once with "ביטול".
+// frame, or says in words why there is none, and the team's hours stop a
+// station at once with "ביטול".
 test("the station demo locks the device on the code, and the team's hours stop a station with a way back", async ({
   page,
 }) => {
@@ -1578,6 +1618,22 @@ test("the station demo locks the device on the code, and the team's hours stop a
   await expect(
     page.getByRole("navigation", { name: he.ui.appShell.mainNav }),
   ).toHaveCount(0);
+
+  // Running with a code, it says no refusal. Refused one while running (the
+  // clock switched off, or codes on a manager's phone only), it says why in
+  // words and shows no code: the twin's stand-in refuses as /station/code.
+  const qr = page.getByRole("img", { name: he.app.clock.code.qrLabel });
+  const digits = page.getByText(/^\d{3} \d{3}$/);
+  const refused = he.station.refused;
+  for (const words of [refused.clockOff, refused.managerOnly]) {
+    await expect(page.getByText(words)).toHaveCount(0);
+  }
+  for (const state of ["clockOff", "managerOnly"] as const) {
+    await page.goto(`/design/shell/station?state=${state}`);
+    await expect(page.getByText(refused[state])).toBeVisible();
+    await expect(qr).toHaveCount(0);
+    await expect(digits).toHaveCount(0);
+  }
 
   // Signed in on a device that is no station, with ten running: it says why
   // it can't be one, offers nothing it can't do, and home is the way on.

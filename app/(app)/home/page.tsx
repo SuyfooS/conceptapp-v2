@@ -9,6 +9,7 @@ import { currentChatHome } from "../chat/chat";
 import { currentDocumentsHome } from "../chat/documents/documents";
 import { currentClockLine } from "../clock/clock";
 import { currentPayHome } from "../clock/pay/pay";
+import { lockDeviceAction } from "../clock/station/actions";
 import { currentStationReminder } from "../clock/station/station";
 import { currentWording } from "../current-wording";
 import { renewDemoWeek } from "../demo";
@@ -89,6 +90,7 @@ export default async function HomePage() {
       wording={wording}
       businesses={businesses}
       hideFirstStepsUrl="/home/first-steps"
+      lockStation={lockDeviceAction}
       data={{
         now: new Date().toISOString(),
         timeZone: published?.timeZone ?? membership.business.place.timeZone,

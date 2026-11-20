@@ -9,6 +9,7 @@ import {
   clearTimeEntries,
   demoActivityActions,
   demoEntryProofs,
+  demoStationAdds,
   demoStations,
   pairingsSince,
   setDemoRequirePunchCode,
@@ -111,6 +112,8 @@ test("an owner locks the business's tablet on the code, and it shows only the co
   // Two sign-ins of one person (the second waits out the SMS cooldown), two
   // axe runs and two screenshots.
   test.setTimeout(60_000);
+  // The log keeps earlier runs' lines on the same local database.
+  const since = new Date(Date.now() - 2000);
   // The owner's own phone, signed in too: it stays so.
   const phone = await secondPage(browser, testInfo);
   try {
@@ -194,10 +197,11 @@ test("an owner locks the business's tablet on the code, and it shows only the co
     await phone.context().close();
   }
 
-  // The log says who left which device.
+  // The log says who left which device: one line, this test's, the owner's.
+  // The refused try without a name left none.
   await expect
-    .poll(() => demoActivityActions("clock.station.add", new Date(0)))
-    .toBeGreaterThan(0);
+    .poll(() => demoStationAdds(since))
+    .toEqual([{ name: "עמדת הכניסה", by: OWNER.e164 }]);
 });
 
 test("with ten stations running a lock is refused before it pairs, and leaves nothing pairing", async ({

@@ -404,6 +404,23 @@ export async function demoStations(): Promise<DemoStation[]> {
     order by s.created_at`;
 }
 
+/**
+ * The demo restaurant's log lines of a device left as a station
+ * (`clock.station.add`) since `since`, oldest first: the station's name as
+ * logged, and who locked it, by phone.
+ */
+export async function demoStationAdds(
+  since: Date,
+): Promise<{ name: string | null; by: string | null }[]> {
+  return await sql<{ name: string | null; by: string | null }[]>`
+    select a.details ->> 'name' as name, p.phone as by
+    from public.audit_log a
+    left join public.profiles p on p.id = a.actor_id
+    where a.business_id = ${DEMO_RESTAURANT}
+      and a.action = 'clock.station.add' and a.created_at >= ${since}
+    order by a.created_at, a.id`;
+}
+
 /** How many typed codes the person has had counted at the demo restaurant. */
 export async function demoPunchAttempts(phone: string): Promise<number> {
   const [row] = await sql<{ count: number }[]>`
