@@ -22,6 +22,10 @@ it knows is this repo and its GitHub issues.
   be off; never depend on it.
 - The app is for every kind of business, through global templates, with minimal work per business (Orel, 7 November 2026). Don't write anything new that assumes a restaurant: roles, shifts, departments and defaults are data from a template or a setting. The templates are a shop (`retail`), a restaurant, a café and bar, and `general` for any other kind, which fills in its own positions and shifts. A template switches on only what is built, and no more modules with a tab than the tab bar holds (`fitsTabBar`).
 - Everything is dynamic (Orel, 7 November 2026): what differs between businesses can be changed without touching code, and every new setting can be edited from a screen. A little new code for one business is fine, as a module in the same system switched on for it. Owners, managers and the ConceptApp team can all edit a business's settings, the team also has advanced ones, and a few (the punch code) are for owners and the team only. Nothing gets rebuilt. The order of this work is in `docs/ROADMAP.md`, and its first steps wait for a day session with Orel: a nightly run does not start them on a guess.
+- Waiter mode (Orel, 20 November 2026, #191): build every phase now; the takers are the
+  staff of the departments that take orders plus managers and owners; only on shift; no
+  total and no deletion until the accountant answers; the hosted demo's module stays off
+  until he approves the screens.
 - The pilot needs scheduling, time clock, lists, a management page, and roles with
   different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
   old app, that is an assumption until Orel confirms it.
@@ -350,15 +354,19 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   A private chat has no branch
   for owners, managers, the team or a view session, anywhere: a change that adds one
   is refused (see "Never").
-- **Taking orders (waiter mode, issue #191), database first.** Orel asked for it on 17
-  November 2026; when to build it is his decision 1 in the design. P1 is built, in the
+- **Taking orders (waiter mode, issue #191).** Orel asked for it on 17 November 2026
+  and decided on 20 November to build every phase now, with §16's recommendations (#1,
+  #191). P1 is built, in the
   database alone (`20261117000400_order_taking_module.sql`,
   `20261117000500_order_taking_menu.sql`): the menu's categories, each to a department,
   items with prices in agorot, choices and "sold out", the places, the key
   `order_taking.edit`, `@domain/order-taking`, `@domain/menu-import` and
   `@db/order-taking`, with the module off everywhere and a sample menu waiting in the
-  demo restaurant. P2 onward (the screens, orders, the kitchen) waits for Orel's
-  decision 1: a nightly run doesn't start it.
+  demo restaurant. P2 is built: `/orders/menu` (categories, items, places, the paste
+  import), the console's menu, departments for the module; on locally and in tests, off
+  in the hosted demo until Orel approves the screens. P3 onward (orders, sending and
+  preparing, the kitchen) is built by day, a phase per PR; a nightly run doesn't start a
+  phase.
 - **Not in the pilot, do not start:** reservations, storefront, the public page.
 
 ## Where things live
