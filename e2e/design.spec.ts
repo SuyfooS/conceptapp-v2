@@ -334,11 +334,13 @@ const PAGES = [
   "/design/order-taking/menu?state=noRoute",
   "/design/order-taking/menu?state=viewing",
   "/design/order-taking/menu/categories",
+  "/design/order-taking/menu/categories?state=noDepartments",
   "/design/order-taking/menu/places",
   "/design/order-taking/menu/places?state=noPlaces",
   "/design/order-taking/menu/import?state=problems",
   "/design/order-taking/menu/import?state=known",
   "/design/shell/manage/departments?state=menu",
+  "/design/shell/manage/departments?state=menuEmpty",
 ];
 
 // The chat demo's states that open with a sheet (who confirmed, a message's
@@ -4006,43 +4008,72 @@ test("the waiter mode demo's list opens each row in its own state", async ({
 });
 
 // The real menu screens on the twin (waiter mode P2), in the restaurant's
-// words: sold out with its undo, an item's choices shown as they are, and a
-// café's paste added to the twin's menu, which the menu then shows.
+// words, on S0's routes and its one store: sold out with its undo, and once
+// marked the floor's picker greys the item; a price changed in place on a
+// computer; a new item in the category chosen for it, which the picker then
+// offers; an item's choices shown as they are.
 /** The twin's restaurant's words: the app's, with its template's sentences. */
 const rt = createTranslator({
   locale: "he",
   messages: mergeWording(he as MessageTree, restaurantMenuWording) as typeof he,
 }) as typeof heT;
 
-test("the waiter mode demo's menu marks sold out, shows choices and takes a paste", async ({
+test("the waiter mode demo's menu marks sold out for the floor's picker, and adds and edits items", async ({
   page,
 }, testInfo) => {
   const main = page.getByRole("main");
-  const tablet = testInfo.project.name === "tablet";
+  const project = testInfo.project.name;
+  const o = he.design.orderTaking;
+  const m = he.app.orders.menu;
+  const shown = (locator: Locator) => locator.filter({ visible: true });
+  const toast = (text: string) =>
+    page.getByRole("status").filter({ hasText: text });
+  /** A category's own section: on a phone each one, on a tablet the chosen one. */
+  const section = (name: string) =>
+    shown(
+      main.locator("section").filter({
+        has: page.getByRole("heading", { name, exact: true }),
+      }),
+    );
+  const choose = async (category: string) => {
+    if (project === "tablet") {
+      await shown(
+        main.getByRole("button", { name: new RegExp(`^${asIs(category)}`) }),
+      ).click();
+    }
+  };
+
   await page.goto("/design/order-taking/menu?state=service");
-  if (tablet) {
-    await main
-      .getByRole("button", { name: /^עיקריות/ })
-      .filter({ visible: true })
-      .click();
-  }
-  const pasta = main
-    .getByRole("switch", {
+  await choose("עיקריות");
+  const pasta = shown(
+    main.getByRole("switch", {
       name: rt("app.orders.menu.soldOutFor", { name: "פסטה" }),
-    })
-    .filter({ visible: true });
+    }),
+  );
   await pasta.click();
   await expect(pasta).toHaveAttribute("aria-checked", "true");
-  await page
-    .getByRole("status")
-    .filter({ hasText: rt("app.orders.menu.toast.soldOut", { name: "פסטה" }) })
-    .getByRole("button", { name: he.app.orders.menu.toast.undo })
+  await toast(rt("app.orders.menu.toast.soldOut", { name: "פסטה" }))
+    .getByRole("button", { name: m.toast.undo })
     .click();
   await expect(pasta).toHaveAttribute("aria-checked", "false");
+  // Marked again, for the floor to see.
+  await pasta.click();
+  await expect(pasta).toHaveAttribute("aria-checked", "true");
 
-  await main
-    .getByRole("button", { name: /^המבורגר/ })
-    .filter({ visible: true })
+  if (project === "desktop") {
+    // In place, on the table.
+    const price = main.getByLabel(
+      rt("app.orders.menu.priceFor", { name: "שניצל" }),
+    );
+    await price.fill("64");
+    await price.press("Enter");
+    await expect(
+      toast(rt("app.orders.menu.toast.price", { name: "שניצל" })),
+    ).toBeVisible();
+    await expect(price).toHaveValue("64");
+  }
+
+  await shown(main.getByRole("button", { name: /^המבורגר/ }))
     .first()
     .click();
   const sheet = page.getByRole("dialog");
@@ -4052,21 +4083,165 @@ test("the waiter mode demo's menu marks sold out, shows choices and takes a past
   ).toBeVisible();
   await expectCleanPage(page, "", true);
   await page.keyboard.press("Escape");
+  await expect(sheet).toHaveCount(0);
+
+  // A new item, in the category chosen for it.
+  await shown(
+    page.getByRole("button", { name: rt("app.orders.menu.add") }),
+  ).click();
+  await sheet.getByLabel(rt("app.orders.menu.sheet.name")).fill("סורבה");
+  await sheet.getByLabel(m.sheet.price, { exact: true }).fill("28");
+  await sheet
+    .getByRole("button", { name: new RegExp(`^${asIs(m.sheet.category)}:`) })
+    .click();
+  await page.getByRole("menuitemradio", { name: /^קינוחים/ }).click();
+  await sheet.getByRole("button", { name: m.sheet.add }).click();
+  await expect(
+    toast(rt("app.orders.menu.toast.added", { name: "סורבה" })),
+  ).toBeVisible();
+  await choose("קינוחים");
+  if (project === "desktop") {
+    await expect(
+      main.getByRole("row").filter({ hasText: "סורבה" }),
+    ).toContainText("קינוחים");
+  } else {
+    await expect(
+      section("קינוחים").getByRole("button", { name: /^סורבה/ }),
+    ).toBeVisible();
+  }
+
+  // On the floor the twin's one store has both: the pasta greyed in the
+  // picker, which can't add it, and the new item there to add.
+  await throughTabBar(page, o.nav.places);
+  await expect(page).toHaveURL(/\/design\/order-taking\/floor$/);
+  await shown(
+    page.getByRole("link", {
+      name: new RegExp(`^${o.place.tableWord}\\s*6(?!\\d)`),
+    }),
+  )
+    .first()
+    .click();
+  await expect(page).toHaveURL(/place=table-6$/);
+  const search = page.getByLabel(o.picker.search);
+  const found = page.getByRole("list", { name: o.picker.found });
+  await search.fill("פסטה");
+  const pastaRow = found.getByRole("button", { name: /^פסטה/ });
+  await expect(pastaRow).toBeDisabled();
+  await expect(pastaRow).toContainText(o.picker.soldOut);
+  await search.fill("סורבה");
+  await expect(found.getByRole("button", { name: /^סורבה/ })).toBeEnabled();
+});
+
+// The real import screen on the twin: a line a PDF turned around turned
+// back; lines to fix hold the import and say how many; and a café's paste
+// added with each new category's department chosen, which the menu and the
+// categories then show.
+test("the waiter mode demo's paste turns lines back, holds what needs fixing, and adds each category where it is prepared", async ({
+  page,
+}) => {
+  const main = page.getByRole("main");
+  const i = he.app.orders.import;
+  const shownText = (text: string) =>
+    page.getByText(text, { exact: true }).filter({ visible: true });
+  // The import's button, whatever it counts.
+  const anyImport = new RegExp(
+    asIs(rt("app.orders.import.action", { count: 7 })).replace("7", "\\d+"),
+  );
+
+  await page.goto("/design/order-taking/menu/import?state=reversed");
+  const paste = page.getByLabel(i.paste);
+  await expect(shownText(i.problem.reversed)).toBeVisible();
+  await expect(page.getByRole("button", { name: anyImport })).toHaveCount(0);
+  await page.getByRole("button", { name: i.unreverse }).click();
+  await expect(paste).toHaveValue(/15 שוקו חם/);
+  await expect(shownText(i.problem.reversed)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: anyImport })).toHaveCount(1);
+
+  await page.goto("/design/order-taking/menu/import?state=problems");
+  await expect(
+    shownText(rt("app.orders.import.blocked", { count: 2 })),
+  ).toBeVisible();
+  await expect(shownText(i.problem.noPrice)).toBeVisible();
+  await expect(page.getByRole("button", { name: anyImport })).toHaveCount(0);
 
   await page.goto("/design/order-taking/menu/import?state=service");
+  await page
+    .getByRole("button", {
+      name: new RegExp(
+        `^${asIs(heT("app.orders.import.department", { category: "ארוחות בוקר" }))}`,
+      ),
+    })
+    .filter({ visible: true })
+    .click();
+  await page.getByRole("menuitemradio", { name: /^בר/ }).click();
   await page
     .getByRole("button", { name: rt("app.orders.import.action", { count: 5 }) })
     .click();
   await expect(
     page.getByText(rt("app.orders.import.done", { items: 5, categories: 2 })),
   ).toBeVisible();
-  await main
-    .getByRole("link", { name: he.design.orderTaking.nav.menu, exact: true })
-    .click();
+  // The done card's way on: the app's words, apart from the back link's.
+  await main.getByRole("link", { name: i.toMenu, exact: true }).click();
   await expect(page).toHaveURL(/\/design\/order-taking\/menu$/);
   await expect(
     page.getByText("ארוחות בוקר").filter({ visible: true }).first(),
   ).toBeVisible();
+  await main
+    .getByRole("link", {
+      name: new RegExp(`^${asIs(rt("app.orders.menu.categoriesRow"))}`),
+    })
+    .filter({ visible: true })
+    .first()
+    .click();
+  await expect(page).toHaveURL(/\/design\/order-taking\/menu\/categories$/);
+  await expect(
+    main.getByRole("button", {
+      name: `${heT("app.orders.categories.department", { name: "ארוחות בוקר" })}: בר`,
+    }),
+  ).toBeVisible();
+});
+
+// The categories on the twin: on a tablet the count chooses the category
+// whose items show beside the list, apart from typing its name; with no
+// department yet the screen says only what it can do, and leads to the
+// departments; and the departments of a business that takes orders without
+// lists say what a department is for there.
+test("the waiter mode demo's categories show the chosen one's items, and send a business with no department to its departments", async ({
+  page,
+}, testInfo) => {
+  const main = page.getByRole("main");
+  const c = he.app.orders.categories;
+  const d = he.app.manage.departments;
+  const shownText = (text: string) =>
+    page.getByText(text, { exact: true }).filter({ visible: true });
+
+  await page.goto("/design/order-taking/menu/categories?state=service");
+  if (testInfo.project.name === "tablet") {
+    const desserts = main.getByRole("button", {
+      name: new RegExp(
+        `${asIs(heT("app.orders.categories.itemsWhere", { name: "קינוחים" }))}$`,
+      ),
+    });
+    await desserts.click();
+    await expect(desserts).toHaveAttribute("aria-current", "true");
+    await expect(
+      main.getByRole("heading", {
+        name: heT("app.orders.categories.itemsOf", { name: "קינוחים" }),
+      }),
+    ).toBeVisible();
+    await expect(shownText("עוגת שוקולד")).toBeVisible();
+  }
+
+  await page.goto("/design/order-taking/menu/categories?state=noDepartments");
+  await expect(shownText(c.emptyView)).toBeVisible();
+  await expect(page.getByText(c.empty, { exact: true })).toHaveCount(0);
+  await expect(shownText(c.noDepartments)).toBeVisible();
+  await expect(main.getByRole("link", { name: c.toDepartments })).toBeVisible();
+
+  await page.goto("/design/shell/manage/departments?state=menuEmpty");
+  await expect(shownText(d.subtitleMenu)).toBeVisible();
+  await expect(shownText(d.emptyMenu)).toBeVisible();
+  await expect(page.getByText(d.empty, { exact: true })).toHaveCount(0);
 });
 
 // The twin's places made at once for a business with none, and the app
@@ -4076,6 +4251,16 @@ test("the waiter mode demo makes its tables at once, and its departments count t
   page,
 }) => {
   await page.goto("/design/order-taking/menu/places?state=noPlaces");
+  // Whatever is typed, the button names what it makes: 0 makes one, and a
+  // cleared field the 10 it started with.
+  const count = page.getByLabel(he.app.orders.places.quick.count);
+  await count.fill("0");
+  await expect(
+    page.getByRole("button", {
+      name: rt("app.orders.places.quick.action", { count: 1 }),
+    }),
+  ).toBeVisible();
+  await count.fill("");
   await page
     .getByRole("button", {
       name: rt("app.orders.places.quick.action", { count: 10 }),
@@ -4084,6 +4269,9 @@ test("the waiter mode demo makes its tables at once, and its departments count t
   await expect(
     page.getByLabel(rt("app.orders.places.nameOf", { name: "10" })),
   ).toHaveValue("10");
+  await expect(
+    page.getByLabel(rt("app.orders.places.nameOf", { name: "11" })),
+  ).toHaveCount(0);
 
   await page.goto("/design/shell/manage/departments?state=menu");
   await expect(

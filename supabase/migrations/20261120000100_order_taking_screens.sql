@@ -1,6 +1,6 @@
 -- Taking orders: the menu on screen (P2 of waiter mode, issue #191; Orel's
 -- decision of 20 November 2026 to build every phase). The screens and the
--- console's pages are in the app; the database needs four changes for them,
+-- console's pages are in the app; the database needs five changes for them,
 -- each one short, and nothing else moves:
 --
 --   the team       the ConceptApp team sets a business's menu up from the
@@ -18,7 +18,13 @@
 --                  until all of them had a live department in one save. A
 --                  new category, or one moved to another department, still
 --                  goes to a live one (22023, hint 'route').
---   the demo       private.seed_demo_order_taking switches the module on
+--   an item kept   public.save_menu_item does the same for an item's own
+--                  department: an item saved with the one it has already
+--                  passes, even removed since. Before, an item given a
+--                  department of its own was refused every later save once
+--                  that department was removed, its price changed on the
+--                  table included, until another department was chosen.
+--   the demo      private.seed_demo_order_taking switches the module on
 --                  when the demo business's definition says
 --                  "orderTaking": true. The local seed's restaurant says so,
 --                  for the browser tests; the hosted demo's doesn't, so it
@@ -36,9 +42,9 @@
 --                  them the same), and a sentence the team wrote already is
 --                  kept. A seed, as the demo's menu is: not logged.
 --
--- It replaces, from their latest versions (all three
+-- It replaces, from their latest versions (all four
 -- 20261117000500_order_taking_menu.sql's) and with only these changes:
--- private.runs_orders, public.set_menu_categories and
+-- private.runs_orders, public.set_menu_categories, public.save_menu_item and
 -- private.seed_demo_order_taking. Each keeps its signature, so its grants
 -- stay; revoked and granted again all the same.
 
@@ -50,7 +56,7 @@
 -- active owner always; on the staff, by their role's rule for it or by a
 -- grant of their own), or are on the ConceptApp team, which sets a business
 -- up. Its callers, unchanged, are every write to the menu and the places:
--- public.set_menu_categories (replaced below), public.save_menu_item,
+-- public.set_menu_categories and public.save_menu_item (replaced below),
 -- public.archive_menu_item, public.restore_menu_item, public.import_menu,
 -- public.set_order_places, and public.set_menu_item_available, which asks
 -- for an active member first. The orders to come (P3) take a helper of their
@@ -253,7 +259,274 @@ end;
 $$;
 
 ------------------------------------------------------------------------------
--- 3. The demo restaurant opens with taking orders on, where it says so
+-- 3. An item kept keeps its department
+
+-- 20261117000500_order_taking_menu.sql's, with only its department check
+-- changed, as the categories' above: an item sent with its id and the
+-- department of its own it has already passes, even when that department
+-- was removed since (public.set_departments archives a department and
+-- leaves the items that name it). Before, every later save of such an item
+-- was refused 'route', a price changed on the table included, though nobody
+-- chose a department there. A new item, or a department changed, still goes
+-- to a live one. Its callers are the menu's sheet and price, through
+-- packages/db's saveMenuItem; the twin's are stand-ins.
+--
+-- Adds an item (`item` with no id) or saves one (`item` with its id, and the
+-- version the screen read, `known_version`): {id?, category, name,
+-- description?, priceAgorot, department?, optionGroups?, position?}. 42501
+-- for anyone who doesn't run the menu, and while the module is off (hint
+-- 'off'); 22023 for a category that isn't live in the business (hint
+-- 'category'), a department that isn't live in the business and isn't the
+-- item's own (hint 'route'), choices that don't hold (hint 'choices'), or
+-- any other shape; 54000 for a 301st live item; P0002 for an id that isn't
+-- the business's; 55000 for a removed one (hint 'archived'); 40001 when it
+-- changed since `known_version`. A new item goes last in its category, and
+-- so does one moved to another. The same values again change nothing.
+-- Logged as menu.item.save with what changed, the price before and after
+-- when it moved, and each option whose price moved. Returns {id, version}.
+create or replace function public.save_menu_item(
+  actor uuid,
+  business uuid,
+  item jsonb,
+  known_version integer default null,
+  at_time timestamptz default now()
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  was public.menu_items%rowtype;
+  saved public.menu_items%rowtype;
+  item_id uuid;
+  new_category uuid;
+  new_name text;
+  new_description text;
+  new_price integer;
+  new_department uuid;
+  new_groups jsonb;
+  new_place integer;
+  fields text[];
+  option_moves jsonb;
+begin
+  if not private.runs_orders(business, actor) then
+    raise exception 'Those who run the menu only' using errcode = '42501';
+  end if;
+  perform 1 from public.businesses b where b.id = business for no key update;
+  if not private.order_taking_on(business) then
+    raise exception 'Taking orders is off for this business'
+      using errcode = '42501', hint = 'off';
+  end if;
+
+  if jsonb_typeof(item) is distinct from 'object' then
+    raise exception 'An item must be an object' using errcode = '22023';
+  end if;
+  if exists (
+    select 1 from jsonb_object_keys(item) as k (field)
+    where k.field not in (
+      'id', 'category', 'name', 'description', 'priceAgorot', 'department', 'optionGroups',
+      'position'
+    )
+  ) then
+    raise exception 'An item has a category, a name, a description, a price, a department, choices and a place'
+      using errcode = '22023';
+  end if;
+  item_id := private.json_uuid(item -> 'id', 'The item');
+  new_name := private.json_text(item -> 'name', 60, 'The name');
+  if new_name is null then
+    raise exception 'An item needs a name' using errcode = '22023';
+  end if;
+  new_description := private.json_text(item -> 'description', 200, 'The description');
+  new_price := private.json_int(item -> 'priceAgorot', 0, 1000000, 'The price');
+  if new_price is null then
+    raise exception 'An item needs a price' using errcode = '22023';
+  end if;
+  new_category := private.json_uuid(item -> 'category', 'The category');
+  if new_category is null or not exists (
+    select 1 from public.menu_categories c
+    where c.id = new_category and c.business_id = business and c.archived_at is null
+  ) then
+    raise exception 'An item goes in a category of the menu'
+      using errcode = '22023', hint = 'category';
+  end if;
+  -- A live department, or the one the item has already, even removed since:
+  -- an item saved as it was keeps going where it went.
+  new_department := private.json_uuid(item -> 'department', 'The department');
+  if new_department is not null
+    and not exists (
+      select 1 from public.departments d
+      where d.id = new_department and d.business_id = business and d.archived_at is null
+    )
+    and not exists (
+      select 1 from public.menu_items i
+      where i.id = item_id and i.business_id = business and i.department_id = new_department
+    )
+  then
+    raise exception 'An item goes to a department of the business'
+      using errcode = '22023', hint = 'route';
+  end if;
+  new_groups := coalesce(item -> 'optionGroups', '[]'::jsonb);
+  if jsonb_typeof(new_groups) = 'null' then
+    new_groups := '[]'::jsonb;
+  end if;
+  if not private.valid_option_groups(new_groups) then
+    raise exception 'Not choices the menu keeps' using errcode = '22023', hint = 'choices';
+  end if;
+  new_place := private.json_int(item -> 'position', 0, 999, 'The place');
+
+  if item_id is null then
+    if (
+      select count(*) from public.menu_items i
+      where i.business_id = business and i.archived_at is null
+    ) >= 300 then
+      raise exception 'A menu has at most 300 items' using errcode = '54000';
+    end if;
+    insert into public.menu_items (
+      business_id, category_id, name, description, price_agorot, department_id,
+      option_groups, position, created_by, created_at, updated_by, updated_at
+    )
+    values (
+      business, new_category, new_name, new_description, new_price, new_department,
+      new_groups,
+      coalesce(new_place, (
+        select coalesce(max(i.position) + 1, 0) from public.menu_items i
+        where i.category_id = new_category and i.archived_at is null
+      ))::smallint,
+      actor, at_time, actor, at_time
+    )
+    returning * into saved;
+
+    insert into public.audit_log (business_id, actor_id, action, details, created_at)
+    values (
+      business, actor, 'menu.item.save',
+      jsonb_build_object(
+        'item', saved.id,
+        'name', saved.name,
+        'created', true,
+        'changed', '[]'::jsonb,
+        'price', jsonb_build_object('before', null, 'after', saved.price_agorot)
+      ),
+      at_time
+    );
+  else
+    select i.* into was
+    from public.menu_items i
+    where i.id = item_id and i.business_id = business
+    for update;
+    if not found then
+      raise exception 'Unknown item' using errcode = 'P0002';
+    end if;
+    if was.archived_at is not null then
+      raise exception 'A removed item is restored first' using errcode = '55000', hint = 'archived';
+    end if;
+    if known_version is null then
+      raise exception 'A save names the version it read' using errcode = '22023';
+    end if;
+    if was.version <> known_version then
+      raise exception 'The item changed since it was read' using errcode = '40001';
+    end if;
+
+    fields := array_remove(array[
+      case when new_name is distinct from was.name then 'name' end,
+      case when new_description is distinct from was.description then 'description' end,
+      case when new_price is distinct from was.price_agorot then 'price' end,
+      case when new_category is distinct from was.category_id then 'category' end,
+      case when new_department is distinct from was.department_id then 'department' end,
+      case when new_groups is distinct from was.option_groups then 'options' end,
+      case when new_place is not null and new_place is distinct from was.position::integer
+        then 'position' end
+    ]::text[], null);
+    -- The same values again: nothing to save, and the version stays.
+    if cardinality(fields) = 0 then
+      return jsonb_build_object('id', was.id, 'version', was.version);
+    end if;
+
+    update public.menu_items i
+    set name = new_name,
+      description = new_description,
+      price_agorot = new_price,
+      category_id = new_category,
+      department_id = new_department,
+      option_groups = new_groups,
+      position = case
+        when new_place is not null then new_place::smallint
+        when new_category is distinct from was.category_id then (
+          select coalesce(max(o.position) + 1, 0) from public.menu_items o
+          where o.category_id = new_category and o.archived_at is null
+        )::smallint
+        else was.position
+      end,
+      version = was.version + 1,
+      updated_by = actor,
+      updated_at = at_time
+    where i.id = was.id
+    returning i.* into saved;
+
+    -- Each option whose price moved, by its group's and its own ids, named
+    -- as it is now (or was, for one removed): none before is null, none
+    -- after is null.
+    select coalesce(jsonb_agg(
+        jsonb_build_object(
+          'group', coalesce(n.group_name, o.group_name),
+          'option', coalesce(n.option_name, o.option_name),
+          'before', o.agorot,
+          'after', n.agorot
+        )
+        order by coalesce(n.group_place, o.group_place), coalesce(n.option_place, o.option_place)
+      ), '[]'::jsonb)
+    into option_moves
+    from (
+      select g.value ->> 'id' as group_id, g.value ->> 'name' as group_name, g.ordinality as group_place,
+        x.value ->> 'id' as option_id, x.value ->> 'name' as option_name, x.ordinality as option_place,
+        (x.value ->> 'priceAgorot')::numeric::integer as agorot
+      from jsonb_array_elements(was.option_groups) with ordinality as g (value, ordinality)
+      cross join lateral jsonb_array_elements(g.value -> 'options') with ordinality as x (value, ordinality)
+    ) o
+    full join (
+      select g.value ->> 'id' as group_id, g.value ->> 'name' as group_name, g.ordinality as group_place,
+        x.value ->> 'id' as option_id, x.value ->> 'name' as option_name, x.ordinality as option_place,
+        (x.value ->> 'priceAgorot')::numeric::integer as agorot
+      from jsonb_array_elements(saved.option_groups) with ordinality as g (value, ordinality)
+      cross join lateral jsonb_array_elements(g.value -> 'options') with ordinality as x (value, ordinality)
+    ) n on n.group_id = o.group_id and n.option_id = o.option_id
+    where o.agorot is distinct from n.agorot;
+
+    insert into public.audit_log (business_id, actor_id, action, details, created_at)
+    values (
+      business, actor, 'menu.item.save',
+      jsonb_build_object(
+        'item', saved.id,
+        'name', saved.name,
+        'created', false,
+        'changed', to_jsonb(fields)
+      )
+      || (
+        case
+          when saved.price_agorot is distinct from was.price_agorot then jsonb_build_object(
+            'price', jsonb_build_object('before', was.price_agorot, 'after', saved.price_agorot)
+          )
+          else '{}'::jsonb
+        end
+      )
+      || (
+        case
+          when jsonb_array_length(option_moves) > 0 then jsonb_build_object('options', option_moves)
+          else '{}'::jsonb
+        end
+      ),
+      at_time
+    );
+  end if;
+
+  perform private.bump_menu_version(business);
+  return jsonb_build_object('id', saved.id, 'version', saved.version);
+end;
+$$;
+
+
+------------------------------------------------------------------------------
+-- 4. The demo restaurant opens with taking orders on, where it says so
 
 -- 20261117000500_order_taking_menu.sql's, with the module switched on first
 -- when the business's definition says "orderTaking": true (supabase/seed.sql's
@@ -354,7 +627,7 @@ end;
 $$;
 
 ------------------------------------------------------------------------------
--- 4. The restaurant's and the café's words
+-- 5. The restaurant's and the café's words
 
 -- Both templates the same sentences: "מנה" for anything on the menu, drinks
 -- too, and "שולחן" for a place (Orel, 20 November 2026, the design's §16).
@@ -577,4 +850,8 @@ revoke execute on function private.seed_demo_order_taking(uuid)
 revoke execute on function public.set_menu_categories(uuid, uuid, jsonb, timestamptz)
   from public, anon, authenticated;
 grant execute on function public.set_menu_categories(uuid, uuid, jsonb, timestamptz)
+  to service_role;
+revoke execute on function public.save_menu_item(uuid, uuid, jsonb, integer, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.save_menu_item(uuid, uuid, jsonb, integer, timestamptz)
   to service_role;

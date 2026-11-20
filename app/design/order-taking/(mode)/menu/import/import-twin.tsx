@@ -1,5 +1,6 @@
 "use client";
 
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 import { MenuImportView } from "../../../../../(app)/orders/menu/import/import-view";
 import { importMenu } from "../../../changes";
@@ -30,6 +31,7 @@ const PASTES: Record<string, string> = {
  */
 export function ImportTwin() {
   const { t } = useOrderWords();
+  const ti = useTranslations("app.orders.import");
   const opened = useOpenedWith();
   const [paste] = useState(
     (opened ? PASTES[opened] : undefined) ?? demoPastedMenu,
@@ -49,7 +51,8 @@ export function ImportTwin() {
       }}
       paths={{
         back: { href: paths.menu, label: t("nav.menu") },
-        done: { href: paths.menu, label: t("nav.menu") },
+        // The app's words for it, as /orders/menu/import says it.
+        done: { href: paths.menu, label: ti("toMenu") },
         departments: paths.departments,
       }}
       eyebrow={t("mode")}

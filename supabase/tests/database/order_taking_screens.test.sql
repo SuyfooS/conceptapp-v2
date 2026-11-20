@@ -6,7 +6,9 @@
 -- neither a member nor on the team writes nothing. A worker without the key
 -- and the accountant still don't run the menu. A category kept with a
 -- department removed since saves, renamed and moved; sent to another removed
--- department, or new to one, it is refused. A demo whose definition says
+-- department, or new to one, it is refused. So does an item with a
+-- department of its own removed since: a new price saves, and another
+-- removed department, or a new item to one, is refused. A demo whose definition says
 -- "orderTaking": true opens with the module on at every reset, and one that
 -- doesn't with it off. The restaurant and the café have their own words for
 -- the module, read by their members under RLS and by no one else's. Every
@@ -14,7 +16,7 @@
 -- (e3…) and numbers (050-063-xxxx), so nothing here meets the seed or
 -- another test.
 begin;
-select plan(16);
+select plan(18);
 
 -- A (a restaurant): 1 owner; 2 a manager; 3 a worker in the kitchen; 4 made
 -- the accountant. B (a shop): 5, its owner. 6 on the ConceptApp team, a
@@ -35,7 +37,8 @@ create function pg_temp.b() returns uuid language sql as $$
   select 'e3000000-0000-4000-b000-000000000002'::uuid
 $$;
 -- A's departments: 1 the kitchen, 2 the bar, 3 the pastry (removed below),
--- 4 the storeroom (removed from the start).
+-- 4 the storeroom (removed from the start), 5 the bakery (an item's own,
+-- removed below).
 create function pg_temp.d(n integer) returns uuid language sql as $$
   select ('e3000000-0000-4000-c000-' || lpad(n::text, 12, '0'))::uuid
 $$;
@@ -96,7 +99,8 @@ values
   (pg_temp.d(1), pg_temp.a(), 'kitchen', 'Kitchen', null),
   (pg_temp.d(2), pg_temp.a(), 'bar', 'Bar', null),
   (pg_temp.d(3), pg_temp.a(), 'pastry', 'Pastry', null),
-  (pg_temp.d(4), pg_temp.a(), 'storeroom', 'Storeroom', '2026-11-01 10:00+00');
+  (pg_temp.d(4), pg_temp.a(), 'storeroom', 'Storeroom', '2026-11-01 10:00+00'),
+  (pg_temp.d(5), pg_temp.a(), 'bakery', 'Bakery', null);
 insert into public.department_members (department_id, business_id, user_id)
 values (pg_temp.d(1), pg_temp.a(), pg_temp.p(3));
 
@@ -249,6 +253,47 @@ select is(
    where c.business_id = pg_temp.a() and c.archived_at is null),
   'Cakes,Main courses',
   'and nothing of a refused save is kept'
+);
+
+------------------------------------------------------------------------------
+-- An item kept keeps its department
+
+-- The pasta goes to the bakery, a department of its own; then the bakery goes.
+select public.save_menu_item(pg_temp.p(2), pg_temp.a(),
+  jsonb_build_object('id', i.id, 'category', i.category_id, 'name', i.name,
+    'priceAgorot', i.price_agorot, 'department', pg_temp.d(5)),
+  i.version, '2026-12-01 10:03+00')
+from public.menu_items i
+where i.business_id = pg_temp.a() and i.name = 'Pasta';
+update public.departments set archived_at = '2026-12-01 10:04+00' where id = pg_temp.d(5);
+
+-- Its price changed, sent whole as the screens send it: its own department too.
+select public.save_menu_item(pg_temp.p(2), pg_temp.a(),
+  jsonb_build_object('id', i.id, 'category', i.category_id, 'name', i.name,
+    'priceAgorot', 6000, 'department', i.department_id),
+  i.version, '2026-12-01 10:05+00')
+from public.menu_items i
+where i.business_id = pg_temp.a() and i.name = 'Pasta';
+select is(
+  (select i.price_agorot::text || ':' || d.key
+   from public.menu_items i join public.departments d on d.id = i.department_id
+   where i.business_id = pg_temp.a() and i.name = 'Pasta'),
+  '6000:bakery',
+  'an item whose own department was removed since saves a new price, keeping that department'
+);
+select is(
+  pg_temp.refusal($c$select public.save_menu_item(pg_temp.p(2), pg_temp.a(),
+    jsonb_build_object('id', i.id, 'category', i.category_id, 'name', i.name,
+      'priceAgorot', i.price_agorot, 'department', pg_temp.d(4)),
+    i.version, '2026-12-01 10:06+00')
+    from public.menu_items i
+    where i.business_id = pg_temp.a() and i.name = 'Pasta'$c$)
+  || '|' || pg_temp.refusal($c$select public.save_menu_item(pg_temp.p(2), pg_temp.a(),
+    jsonb_build_object('category', pg_temp.id('cat1'), 'name', 'Ravioli',
+      'priceAgorot', 6400, 'department', pg_temp.d(5)),
+    null, '2026-12-01 10:06+00')$c$),
+  '22023 route|22023 route',
+  'but sent to another removed department, or new to a removed one, it is refused'
 );
 
 ------------------------------------------------------------------------------

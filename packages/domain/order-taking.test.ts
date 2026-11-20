@@ -19,6 +19,7 @@ import {
   type OptionGroup,
   optionGroups,
   placesInput,
+  quickCount,
   quickPlaces,
   typedAgorot,
   unitAgorot,
@@ -503,6 +504,25 @@ describe("the menu on screen", () => {
     ]);
     expect(placesInput.safeParse(quickPlaces(60)).success).toBe(true);
     expect(quickPlaces(60, [kept])).toHaveLength(MENU_CAPS.places);
+  });
+
+  it("reads the quick start's typed count as the one number its button names and makes", () => {
+    expect(quickCount("12", 10)).toBe(12);
+    expect(quickCount(" 7 ", 10)).toBe(7);
+    // Cleared, or no number: the start, which the button then makes.
+    expect(quickCount("", 10)).toBe(10);
+    expect(quickCount("abc", 10)).toBe(10);
+    // Out of 1 to 60, or not whole: the nearest it can make.
+    expect(quickCount("0", 10)).toBe(1);
+    expect(quickCount("-3", 10)).toBe(1);
+    expect(quickCount("75", 10)).toBe(MENU_CAPS.places);
+    expect(quickCount("2.5", 10)).toBe(2);
+    // What the button says is what it makes.
+    for (const typed of ["", "0", "2.5", "75", "12"]) {
+      expect(quickPlaces(quickCount(typed, 10))).toHaveLength(
+        quickCount(typed, 10),
+      );
+    }
   });
 
   it("types agorot back as shekels, with agorot only when there are some", () => {

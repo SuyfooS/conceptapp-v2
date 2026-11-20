@@ -5,6 +5,7 @@ import {
   MENU_TEXT_MAX,
   type OrderPlace,
   type PlaceInput,
+  quickCount,
   quickPlaces,
 } from "@domain/order-taking";
 import { Button } from "@ui/button";
@@ -91,11 +92,13 @@ export function PlacesEditor({
     return false;
   }
 
+  // The one number the button names, makes, and puts back in the field.
+  const quick = quickCount(count, QUICK_START);
+
   async function makeAll() {
-    const wanted = Number(count);
-    if (!Number.isInteger(wanted) || wanted < 1) return;
+    setCount(String(quick));
     setMaking(true);
-    await change(quickPlaces(wanted, shown));
+    await change(quickPlaces(quick, shown));
     setMaking(false);
   }
 
@@ -161,11 +164,6 @@ export function PlacesEditor({
     if (!(await change(next))) setRemoved(removed);
   }
 
-  const quick = Math.min(
-    MENU_CAPS.places,
-    Math.max(1, Number(count) || QUICK_START),
-  );
-
   return (
     <>
       <StatusToast
@@ -189,6 +187,7 @@ export function PlacesEditor({
               id={quickId}
               value={count}
               onValueChange={setCount}
+              onBlur={() => setCount(String(quick))}
               min={1}
               max={MENU_CAPS.places}
               decreaseLabel={t("quick.fewer")}

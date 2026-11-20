@@ -1,6 +1,7 @@
-import { importRows, parseMenu } from "@domain/menu-import";
+import { importRows, parseMenu, reverseLine } from "@domain/menu-import";
 import { itemSaveInput } from "@domain/order-taking";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import he from "@/messages/he.json";
 import {
   addLine,
   closeOrder,
@@ -13,6 +14,9 @@ import {
 import {
   DEMO_START,
   demoJustSent,
+  demoPastedMenu,
+  demoProblemPaste,
+  demoReversedPaste,
   orderDemoDepartments,
   READER,
   READER_DEPARTMENTS,
@@ -281,6 +285,35 @@ describe("the twin's menu as the real screens read it", () => {
     expect(
       twinMenu(undone.data, 3).items.some((item) => item.id === "malabi"),
     ).toBe(true);
+  });
+
+  it("opens the import on pastes whose lines read as the walks expect", () => {
+    const words = he.modules.order_taking.importWords;
+    const problems = (paste: string) =>
+      parseMenu(paste, words).rows.flatMap((row) =>
+        row.ok ? [] : [row.problem],
+      );
+    // Clean: five items in two categories, nothing held.
+    expect(problems(demoPastedMenu)).toEqual([]);
+    expect(
+      parseMenu(demoPastedMenu, words).categories.map((c) => [
+        c.name,
+        c.items.length,
+      ]),
+    ).toEqual([
+      ["ארוחות בוקר", 3],
+      ["שתייה חמה", 2],
+    ]);
+    // One line a PDF turned around, which "היפוך השורות" turns back.
+    expect(parseMenu(demoReversedPaste, words).reversed).toBe(true);
+    expect(problems(demoReversedPaste)).toEqual(["reversed"]);
+    expect(
+      problems(
+        demoReversedPaste.replace("םח וקוש 15", reverseLine("םח וקוש 15")),
+      ),
+    ).toEqual([]);
+    // Lines to fix, which hold the import.
+    expect(problems(demoProblemPaste)).toEqual(["reversed", "noPrice"]);
   });
 
   it("imports a checked paste: an existing category takes its items, a new one goes last", () => {

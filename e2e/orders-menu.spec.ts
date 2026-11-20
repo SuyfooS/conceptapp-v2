@@ -10,6 +10,8 @@ import {
   demoMenuItem,
   demoMenuItemCount,
   demoMenuLog,
+  demoMenuRule,
+  demoModuleEnabled,
   demoOrderPlaces,
   resetDemoMenu,
   templateWording,
@@ -272,8 +274,14 @@ test("a manager reaches the menu from the management page and changes a price", 
     await expect
       .poll(async () => (await demoMenuItem("שניצל"))?.priceAgorot)
       .toBe(6200);
+    // The undo's answer, with the item's new version, can still be on its
+    // way once the database has it: a fresh page reads that version, so the
+    // next price saves on it.
+    await page.reload();
+    await expect(price).toHaveValue("62");
     await price.fill("64");
     await price.press("Enter");
+    await expect(saved).toBeVisible();
   } else {
     await button(page, "שניצל").click();
     const sheet = page.getByRole("dialog");
@@ -325,6 +333,43 @@ test("the menu's manager and the kitchen mark sold out, each what is theirs", as
     await expect
       .poll(async () => (await demoMenuItem("פסטה"))?.available)
       .toBe(false);
+
+    // In the item's sheet its own switch is the way back: the toast under the
+    // sheet, which pressing would close the sheet, offers no undo, and what
+    // was typed in the sheet stays.
+    await button(page, "שניצל").click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet).toBeVisible();
+    const typed = sheet.getByLabel(o.menu.sheet.price, { exact: true });
+    await typed.fill("64");
+    const inSheet = sheet.getByRole("switch", {
+      name: o.menu.soldOut,
+      exact: true,
+    });
+    await inSheet.click();
+    // Under the sheet, so out of the accessibility tree while it is open.
+    const said = page.getByRole("status", { includeHidden: true }).filter({
+      hasText: rt("app.orders.menu.toast.soldOut", { name: "שניצל" }),
+    });
+    await expect(said).toBeVisible();
+    await expect(
+      said.getByRole("button", {
+        name: o.menu.toast.undo,
+        includeHidden: true,
+      }),
+    ).toHaveCount(0);
+    await expect
+      .poll(async () => (await demoMenuItem("שניצל"))?.available)
+      .toBe(false);
+    await inSheet.click();
+    await expect
+      .poll(async () => (await demoMenuItem("שניצל"))?.available)
+      .toBe(true);
+    await expect(sheet).toBeVisible();
+    await expect(typed).toHaveValue("64");
+    await page.keyboard.press("Escape");
+    await expect(sheet).toHaveCount(0);
+    expect((await demoMenuItem("שניצל"))?.priceAgorot).toBe(6200);
 
     // Noa, in the kitchen: the kitchen's items are hers to mark, nothing else is.
     await signIn(noa, NOA);
@@ -523,8 +568,9 @@ test("a manager edits the categories and the places, each removal with its undo"
 
 test("a department that prepares items says so before it goes, and its undo brings them back", async ({
   page,
-}) => {
+}, testInfo) => {
   test.setTimeout(150_000);
+  const project = testInfo.project.name;
   const d = he.app.manage.departments;
   await signIn(page, MANAGER);
   await page.goto("/manage/departments");
@@ -534,7 +580,7 @@ test("a department that prepares items says so before it goes, and its undo brin
     page.getByLabel(heT("app.manage.departments.nameOf", { name: PREPARING })),
   ).toHaveValue(PREPARING);
 
-  // A category of its own, with one item.
+  // A category of its own, with one item, which names it as its own too.
   await page.goto("/orders/menu/categories");
   await page.getByLabel(o.categories.newName).fill("קטגוריית הכנה");
   await choose(page, o.categories.newDepartment, PREPARING);
@@ -551,8 +597,11 @@ test("a department that prepares items says so before it goes, and its undo brin
   await sheet.getByLabel(rt("app.orders.menu.sheet.name")).fill("מנת הכנה");
   await sheet.getByLabel(o.menu.sheet.price, { exact: true }).fill("20");
   await choose(page, o.menu.sheet.category, "קטגוריית הכנה");
+  await choose(page, o.menu.sheet.department, PREPARING);
   await sheet.getByRole("button", { name: o.menu.sheet.add }).click();
-  await expect.poll(() => demoMenuItem("מנת הכנה")).not.toBeNull();
+  await expect
+    .poll(async () => (await demoMenuItem("מנת הכנה"))?.department)
+    .toBeTruthy();
 
   await page.goto("/manage/departments");
   await expect(
@@ -605,6 +654,26 @@ test("a department that prepares items says so before it goes, and its undo brin
   await expect
     .poll(async () => (await demoMenuCategories()).map((row) => row.name))
     .toContain("קטגוריית הכנה ישנה");
+
+  // And its item, sent whole with the department it still names, takes a
+  // new price, though nobody chose a department there.
+  await page.goto("/orders/menu");
+  await showCategory(page, "קטגוריית הכנה ישנה", project);
+  if (project === "desktop") {
+    const price = main(page).getByLabel(
+      rt("app.orders.menu.priceFor", { name: "מנת הכנה" }),
+    );
+    await price.fill("21");
+    await price.press("Enter");
+  } else {
+    await button(page, "מנת הכנה").click();
+    const again = page.getByRole("dialog");
+    await again.getByLabel(o.menu.sheet.price, { exact: true }).fill("21");
+    await again.getByRole("button", { name: o.menu.sheet.save }).click();
+  }
+  await expect
+    .poll(async () => (await demoMenuItem("מנת הכנה"))?.priceAgorot)
+    .toBe(2100);
 });
 
 test("departments open for taking orders alone, and close with it", async ({
@@ -638,6 +707,8 @@ test("the team's switch opens and closes the menu for the business", async ({
     await expect(toggle).toHaveAttribute("aria-checked", "true");
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-checked", "false");
+    // The switch moves at once; the save follows.
+    await expect.poll(() => demoModuleEnabled("order_taking")).toBe(false);
 
     await signIn(shiran, MANAGER);
     await shiran.goto("/manage");
@@ -662,6 +733,8 @@ test("the team's switch opens and closes the menu for the business", async ({
       "aria-checked",
       "true",
     );
+    // Saved before the reload, which would otherwise race it.
+    await expect.poll(() => demoModuleEnabled("order_taking")).toBe(true);
     await page.reload();
     await expect(
       page.getByRole("heading", {
@@ -706,6 +779,8 @@ test("the owner takes the menu from managers on the roles screen, and gives it b
     await expect(edit(page)).toHaveAttribute("aria-checked", "true");
     await edit(page).click();
     await expect(edit(page)).toHaveAttribute("aria-checked", "false");
+    // The switch moves at once; Shiran's screens read the saved rule.
+    await expect.poll(() => demoMenuRule("manager")).toBe(false);
 
     await signIn(shiran, MANAGER);
     await shiran.goto("/orders/menu");
@@ -720,6 +795,8 @@ test("the owner takes the menu from managers on the roles screen, and gives it b
 
     await edit(page).click();
     await expect(edit(page)).toHaveAttribute("aria-checked", "true");
+    // Back on the managers' default: no rule of the business's own.
+    await expect.poll(() => demoMenuRule("manager")).toBeNull();
     await shiran.goto("/orders/menu");
     await expect(
       shiran

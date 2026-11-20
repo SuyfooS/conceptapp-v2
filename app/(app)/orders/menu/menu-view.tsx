@@ -157,7 +157,17 @@ export function MenuView({
     setSheetFailure(null);
   }
 
-  async function markSoldOut(item: MenuItem, on: boolean, undoing = false) {
+  /**
+   * Sold out, or back. From a row or the table its undo is on the toast. From
+   * the item's sheet the toast says it with no undo: the sheet is modal, so
+   * pressing the toast under it would close the sheet and lose what was
+   * typed there, and the switch in the sheet is the way back.
+   */
+  async function markSoldOut(
+    item: MenuItem,
+    on: boolean,
+    undo: "offer" | "none" | "undoing" = "offer",
+  ) {
     change(item.id, { available: !on });
     const result = await tried(() => actions.setAvailable(item.id, !on));
     if (!result.ok) {
@@ -166,12 +176,15 @@ export function MenuView({
       return;
     }
     setFailure(null);
-    if (undoing) return;
+    if (undo === "undoing") return;
+    const words = on
+      ? t("toast.soldOut", { name: item.name })
+      : t("toast.available", { name: item.name });
     say(
-      on
-        ? t("toast.soldOut", { name: item.name })
-        : t("toast.available", { name: item.name }),
-      () => void markSoldOut({ ...item, available: !on }, !on, true),
+      words,
+      undo === "offer"
+        ? () => void markSoldOut({ ...item, available: !on }, !on, "undoing")
+        : undefined,
     );
   }
 
@@ -594,7 +607,7 @@ export function MenuView({
         saving={saving}
         onClose={closeSheet}
         onSave={(fields) => void saveSheet(fields)}
-        onSoldOut={(item, on) => void markSoldOut(item, on)}
+        onSoldOut={(item, on) => void markSoldOut(item, on, "none")}
         onRemove={(item) => void remove(item)}
       />
       {toast}

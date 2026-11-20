@@ -458,6 +458,20 @@ export function quickPlaces(
   return [...made, ...existing];
 }
 
+/**
+ * How many places the quick start makes for its typed count: a whole number
+ * from 1 to the menu's 60, the part after a point dropped, and `fallback`
+ * while the field is empty or holds no number. Its button names this number
+ * and makes exactly it, and the field takes it back once left, so the three
+ * never say different things.
+ */
+export function quickCount(typed: string, fallback: number): number {
+  const text = typed.trim();
+  const read = Number(text);
+  const whole = text === "" || !Number.isFinite(read) ? fallback : read;
+  return Math.min(MENU_CAPS.places, Math.max(1, Math.floor(whole)));
+}
+
 /** Agorot as typed back into a price field: "62", or "14.50" with agorot. */
 export function typedAgorot(agorot: number): string {
   return agorot % 100 === 0 ? String(agorot / 100) : (agorot / 100).toFixed(2);

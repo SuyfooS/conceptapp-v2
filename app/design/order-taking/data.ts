@@ -593,8 +593,10 @@ export const demoPastedMenu = [
 export const demoReversedPaste = [demoPastedMenu, "םח וקוש 15"].join("\n");
 
 /**
- * The same with lines to fix (`?state=problems`): a line repeated, a price
- * that isn't clear, a line turned around and a line with no price.
+ * The same with lines to fix (`?state=problems`): a line turned around and
+ * a line with no price, which hold the import. Around them, lines the
+ * preview shows as read: the toast again, an item of the hot drinks this
+ * time, and a cake whose price has a letter for a digit, a category then.
  */
 export const demoProblemPaste = [
   demoPastedMenu,

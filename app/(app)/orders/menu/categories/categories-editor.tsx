@@ -36,8 +36,9 @@ const rowClass =
  * menu, saved whole with each change, as the departments are. Removing one
  * has an undo, which brings it back with its items. One whose department was
  * removed says so until another is chosen, and still saves as it is.
- * Phone: one list. Tablet: the list beside the chosen category's items.
- * Computer: the list with the department and the count as columns.
+ * Phone: one list. Tablet: the list beside the items of the category whose
+ * count was pressed. Computer: the list with the department and the count as
+ * columns.
  */
 export function CategoriesEditor({
   categories,
@@ -209,7 +210,12 @@ export function CategoriesEditor({
           <ListGroup>
             {shown.length === 0 ? (
               <p className="px-4 py-3.5 text-ink-2">
-                {t(disabled ? "emptyView" : "empty")}
+                {/* The row below is there only with a department to choose. */}
+                {t(
+                  disabled || liveDepartments.length === 0
+                    ? "emptyView"
+                    : "empty",
+                )}
               </p>
             ) : null}
             {shown.map((category, index) => {
@@ -236,7 +242,6 @@ export function CategoriesEditor({
                     maxLength={MENU_TEXT_MAX.category}
                     disabled={disabled}
                     className={cn(inputClass, "min-w-40 flex-1 basis-40")}
-                    onFocus={() => setSelected(category.id ?? null)}
                     onBlur={(event) => {
                       if (!rename(index, event.target.value)) {
                         event.target.value = category.name;
@@ -274,9 +279,28 @@ export function CategoriesEditor({
                         />
                       )}
                     </div>
-                    <span className="shrink-0 whitespace-nowrap px-2 text-ink-2 text-sm xl:w-24">
+                    {/* Phone and computer: how many items it has. */}
+                    <span className="shrink-0 whitespace-nowrap px-2 text-ink-2 text-sm md:hidden xl:block xl:w-24">
                       {t("count", { count: countOf(category.id) })}
                     </span>
+                    {/*
+                     * Tablet: the same count chooses the category whose
+                     * items show beside the list, for anyone, a view too,
+                     * and apart from typing its name. Named with the
+                     * category for a screen reader ("4 פריטים בעיקריות").
+                     */}
+                    <button
+                      type="button"
+                      aria-current={current === category ? "true" : undefined}
+                      onClick={() => setSelected(category.id ?? null)}
+                      className="pressable hidden min-h-11 shrink-0 items-center whitespace-nowrap rounded-full px-2.5 text-ink-2 text-sm hover:bg-surface-2 focus-visible:outline-2 focus-visible:outline-accent aria-[current=true]:font-semibold aria-[current=true]:text-ink md:inline-flex xl:hidden"
+                    >
+                      {t("count", { count: countOf(category.id) })}
+                      <span className="sr-only">
+                        {" "}
+                        {t("itemsWhere", { name: category.name })}
+                      </span>
+                    </button>
                     {disabled ? null : (
                       <>
                         <IconButton

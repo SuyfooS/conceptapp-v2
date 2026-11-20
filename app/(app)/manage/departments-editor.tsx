@@ -330,7 +330,14 @@ export function DepartmentsEditor({
           <ListGroup>
             {shown.length === 0 ? (
               <p className="px-4 py-3.5 text-ink-2">
-                {t(disabled ? "emptyViewOnly" : "empty")}
+                {/* What a department is for, as the subtitle says it. */}
+                {t(
+                  disabled
+                    ? "emptyViewOnly"
+                    : on.menu && !on.lists
+                      ? "emptyMenu"
+                      : "empty",
+                )}
               </p>
             ) : null}
             {shown.map((department, index) => {

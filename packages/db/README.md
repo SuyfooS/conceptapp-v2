@@ -2270,8 +2270,10 @@ and saves places for a business it is no member of; "sold out" asks for an
 active membership first and stays the business's own. `set_menu_categories`
 saves a category sent with its id and the department it has already, even one
 removed since, so a rename or a move still saves while its items go nowhere;
-a new category, or one moved, goes to a live department (22023 'route'). The
-demo restaurant opens with the module on where its definition says
+a new category, or one moved, goes to a live department (22023 'route').
+`save_menu_item` keeps an item's own department the same way, so its price or
+name still saves after that department went. The demo restaurant opens with
+the module on where its definition says
 `"orderTaking": true` (`private.seed_demo_order_taking`, last in every
 reset): the local seed's does, the hosted demo's doesn't. The restaurant's
 and café's templates have their own words for it (`template_wording`,

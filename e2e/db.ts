@@ -4497,9 +4497,30 @@ export async function userIdOf(e164: string): Promise<string> {
   return row.id;
 }
 
-/** The demo restaurant's roles back on their defaults for running the menu. */
+/**
+ * The demo restaurant's roles back on their defaults for running the menu,
+ * and the lines that told their people it changed gone with them (a change
+ * undone while its line is unread takes it away; one left half way doesn't).
+ */
 export async function clearDemoMenuRules(): Promise<void> {
   await sql`
     delete from public.role_permissions
     where business_id = ${DEMO_RESTAURANT} and perm = 'order_taking.edit'`;
+  await sql`
+    delete from public.notifications
+    where business_id = ${DEMO_RESTAURANT} and kind = 'role.changed'
+      and source_module = 'order_taking'`;
+}
+
+/**
+ * The demo restaurant's own rule for a built-in role running the menu
+ * (`order_taking.edit`), or null while the role is on its default, which
+ * keeps no row.
+ */
+export async function demoMenuRule(role: string): Promise<boolean | null> {
+  const rows = await sql<{ allowed: boolean }[]>`
+    select allowed from public.role_permissions
+    where business_id = ${DEMO_RESTAURANT} and role::text = ${role}
+      and named_role is null and perm = 'order_taking.edit'`;
+  return rows[0]?.allowed ?? null;
 }
