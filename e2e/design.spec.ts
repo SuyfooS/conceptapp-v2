@@ -4007,8 +4007,12 @@ test("the waiter mode demo's list opens each row in its own state", async ({
   page,
 }) => {
   const o = he.design.orderTaking;
+  // A row is the link whose title reads exactly so: "השולחנות" and the
+  // places' row share a start.
   const row = (title: string) =>
-    page.getByRole("link", { name: new RegExp(`^${asIs(title)}`) });
+    page
+      .getByRole("link")
+      .filter({ has: page.getByText(title, { exact: true }) });
   const shownText = (text: string) =>
     page.getByText(text, { exact: true }).filter({ visible: true });
 
