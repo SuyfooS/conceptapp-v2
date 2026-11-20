@@ -3,6 +3,14 @@
 Newest entry on top. One entry per run: date, chunk, what changed, commit,
 what is next, defaults applied.
 
+## 2026-11-20 · chat (night) · the words a check of 17–18.11 found
+
+- On chat/night-words from main `05cd369`. A read-only audit of #192–#199, with each claim checked by a skeptic, confirmed seven word findings.
+- The week range "22–28 בנובמבר" drew its first day on the right in the schedule tab, the ShareSheet preview, the WhatsApp share and the availability reminder (the same bug #200 fixed in the builder). `weekRange` now isolates a same-month digit run (U+2066…U+2069) through `daysLeftToRight`; cross-month and cross-year ranges are unchanged. #200's left-of check covers `/design/shell/schedule` too.
+- The station's and the clock's words name whoever approves hours ("מי שמאשר שעות") rather than "בעלים או מנהל", since the lock goes to whoever edits the clock by role; the punch-code hint, the first step and the station's lines say the same thing about where the code shows.
+- "ההחלפה לא אושרה" on the week board, as on the sheet, card and Home. The station's link home reads "למסך היום".
+- Restore point: tag `before-night/2026-11-19-chat` at `05cd369`.
+- Defaults applied: "מי שמאשר שעות" as the one term for those who show and lock the clock code.
 ## 2026-11-20 · chat · the activity log names the app for what it did on its own
 
 - On chat/log-app-words, from main `05cd369`. A line the app wrote with no actor showed as "מי שכבר לא באפליקציה". In the migrations only the lists' job (`private.lists_tick_business`) writes the log with no actor: `lists.open`, `lists.due`, `lists.late`, `lists.late_owner` and `lists.missed`, of which the page shows the late and the missed (the rest are routine). A row of anything else with no actor is someone's whose account went (`audit_log.actor_id` is `on delete set null`), so it keeps "מי שכבר לא באפליקציה".

@@ -9,6 +9,7 @@ import {
 } from "../packages/domain/availability";
 import { WEEKDAY_KEYS } from "../packages/domain/availability-form";
 import { ISRAEL_TIME_ZONE, timeIn } from "../packages/domain/shabbat";
+import { daysLeftToRight } from "../packages/domain/share";
 import {
   clearAvailability,
   clearSchedule,
@@ -89,14 +90,17 @@ async function expectedReminder(page: Page): Promise<string> {
     },
     zone,
   );
-  const range = await page.evaluate((first) => {
-    const day = new Date(`${first}T00:00:00Z`);
-    return new Intl.DateTimeFormat("he", {
-      day: "numeric",
-      month: "long",
-      timeZone: "UTC",
-    }).formatRange(day, new Date(day.getTime() + 6 * 86_400_000));
-  }, start);
+  // The days of one month held left to right, as the reminder holds them.
+  const range = daysLeftToRight(
+    await page.evaluate((first) => {
+      const day = new Date(`${first}T00:00:00Z`);
+      return new Intl.DateTimeFormat("he", {
+        day: "numeric",
+        month: "long",
+        timeZone: "UTC",
+      }).formatRange(day, new Date(day.getTime() + 6 * 86_400_000));
+    }, start),
+  );
   const words = {
     business: BUSINESS,
     range,
