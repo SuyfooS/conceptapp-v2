@@ -2,9 +2,10 @@ import { getDepartments } from "@db/departments";
 import type { ModeEntry, ModuleIcon, ModuleKey } from "@domain/modules";
 import { ListGroup, ListRow } from "@ui/list-row";
 import { currentMember } from "./member";
-import { currentModes, type ModeReach, type ModeStatus } from "./modes";
+import { modeLine } from "./mode-line";
+import { currentModes, type ModeReach } from "./modes";
 import { moduleIcons } from "./module-icons";
-import type { AppWording, Translator } from "./wording";
+import type { AppWording } from "./wording";
 import { translator } from "./wording";
 
 /** A mode's way in, in words: where it leads, its name and its line. */
@@ -19,34 +20,6 @@ export type ModeRow = {
   /** The card's one action, a verb that says where it goes. */
   action: string;
 };
-
-/**
- * What a mode's way in says (`app.orders.home`): off a shift, that it opens
- * on one; taking orders, what is ready and being made, or how to start;
- * only preparing, what waits in each department ("מטבח · 2 בהכנה"). Names a
- * department after its separator only.
- */
-export function modeLine(
-  t: Translator<"app.orders.home">,
-  status: ModeStatus,
-  departmentName: (id: string) => string,
-): string {
-  if (status.takes && status.clock) return t("offClock");
-  if (status.takes) {
-    const parts = [
-      status.ready > 0 ? t("ready", { count: status.ready }) : null,
-      status.making > 0 ? t("making", { count: status.making }) : null,
-    ].filter((part): part is string => part !== null);
-    return parts.length > 0 ? parts.join(" · ") : t("idle");
-  }
-  return status.waiting.length > 0
-    ? status.waiting
-        .map(({ department, count }) =>
-          t("waiting", { department: departmentName(department), count }),
-        )
-        .join(", ")
-    : t("nothingWaiting");
-}
 
 /**
  * The modes' ways in for `where` (the clock's live shift, the profile, Home),

@@ -64,6 +64,8 @@ export function Picker({
               ? t("picker.noRoute")
               : null
         }
+        // Viewing, nothing is added: the row is greyed as every action is.
+        disabled={frame.viewing}
         onPick={() => {
           if (!frame.viewing) onPick(item);
         }}

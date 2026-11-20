@@ -307,6 +307,7 @@ const SAID = new Set<string>([
   "route",
   "closed",
   "moved",
+  "place",
   "window",
   "prepared",
   "held",
@@ -326,7 +327,11 @@ const SAID = new Set<string>([
   "failed",
 ]);
 
-/** Why a write was refused, in the screen's words; "failed" for the rest. */
+/**
+ * Why a write was refused, in the screen's words. Nothing tries a write
+ * again by itself, so the rest say it wasn't saved and that pressing again
+ * tries again.
+ */
 export function failureWords(
   t: OrdersT,
   failure: OrdersActionFailure | SendFailure,
@@ -334,6 +339,23 @@ export function failureWords(
 ): string {
   const key = SAID.has(failure) ? failure : "failed";
   return t(`failed.${key}` as "failed.failed", { items });
+}
+
+/**
+ * Why a send was refused, its lines back in the draft: off a shift, or a
+ * shift left open, for someone who runs orders (a taker's screen says it
+ * whole); else as any write, the rest saying the draft is back to send again.
+ */
+export function sendFailureWords(
+  t: OrdersT,
+  failure: SendFailure,
+  items = "",
+): string {
+  if (failure === "clock") return t("failed.clock");
+  if (failure === "staleShift") return t("failed.staleShift");
+  return SAID.has(failure) && failure !== "failed"
+    ? failureWords(t, failure, items)
+    : t("failed.notSent");
 }
 
 /** A refusal over what it is about, in danger, read out at once. */

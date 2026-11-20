@@ -126,6 +126,71 @@ export function readOrdersSyncQuery(
   return query;
 }
 
+/** What a screen of the mode asks the sync for while it is on. */
+export type OrdersSyncWant = {
+  floor: boolean;
+  prep: boolean;
+  order: string | null;
+};
+
+/**
+ * The mode's next question (P4), from who asks, what the screens on want
+ * and what the mode holds. The floor and one order only for a taker on a
+ * shift; one's own rounds for any taker who isn't viewing, off a shift too:
+ * that light read is how a phone left on the off-shift card hears the shift
+ * began at the clock station or on another phone (409 while it hasn't, an
+ * answer once it has), so it asks for them whole, with no version. The
+ * kitchen's tickets for a screen that wants them, from someone who prepares
+ * or runs orders. The version is the oldest of the reads it holds of what it
+ * asks, so nothing newer is skipped; none when it holds nothing of one, or
+ * when an order it wants isn't held yet (the first send at a free place
+ * opens one, and the route reads an order only when something moved: with
+ * no version, everything has). The menu always, by its own version.
+ */
+export function nextOrdersSyncQuery(input: {
+  business: string;
+  takes: boolean;
+  viewing: boolean;
+  /** Prepares for a department, or runs orders. */
+  prepares: boolean;
+  /** A taker off a shift, or with a shift left open: their screens wait. */
+  off: boolean;
+  wants: readonly OrdersSyncWant[];
+  held: {
+    floor: { version: number } | null;
+    mine: { version: number } | null;
+    prep: { version: number } | null;
+    menu: { version: number } | null;
+    /** The orders read whole, by id: none yet for one never read. */
+    orders: Readonly<Record<string, unknown>>;
+  };
+}): OrdersSyncQuery {
+  const { held, off } = input;
+  const floor = !off && input.takes && input.wants.some((w) => w.floor);
+  const mine = input.takes && !input.viewing;
+  const prep = input.prepares && input.wants.some((w) => w.prep);
+  const order = off ? null : (input.wants.find((w) => w.order)?.order ?? null);
+  const asking = [
+    ...(floor ? [held.floor] : []),
+    ...(mine ? [held.mine] : []),
+    ...(prep ? [held.prep] : []),
+  ];
+  const unread = order !== null && held.orders[order] === undefined;
+  const version =
+    off || unread || asking.length === 0 || asking.some((r) => r === null)
+      ? null
+      : Math.min(...asking.map((r) => r?.version ?? 0));
+  return {
+    business: input.business,
+    version,
+    menu: held.menu ? held.menu.version : "new",
+    floor,
+    mine,
+    prep,
+    order,
+  };
+}
+
 /**
  * The version a sync answers with: the smallest of the orders' reads it
  * made, so a write that landed between two of them is read again next time,

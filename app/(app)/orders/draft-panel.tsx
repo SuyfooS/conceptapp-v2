@@ -60,7 +60,7 @@ export function DraftPanel({
   headingRef,
   onRemove,
   onNoteRemoved,
-  marked = [],
+  marked = null,
   send,
 }: {
   draft: string;
@@ -71,8 +71,12 @@ export function DraftPanel({
   onRemove: (line: DraftLine, index: number) => void;
   /** A note taken off, for its undo. */
   onNoteRemoved: (line: DraftLine) => void;
-  /** Lines a refusal names (sold out, going nowhere), marked. */
-  marked?: readonly string[];
+  /**
+   * The items a refusal names, by id, and the word it marks their lines
+   * with: "נגמר" for what sold out meanwhile, "אין מחלקה שמכינה" for what no
+   * department prepares.
+   */
+  marked?: { items: readonly string[]; word: string } | null;
   /** The send, where it sits from tablet up. */
   send: ReactNode;
 }) {
@@ -121,10 +125,9 @@ export function DraftPanel({
                   note={
                     line.note && !line.allergy
                       ? t("line.note", { note: line.note })
-                      : marked.includes(line.item)
-                        ? t("picker.soldOut")
-                        : null
+                      : null
                   }
+                  mark={marked?.items.includes(line.item) ? marked.word : null}
                   allergy={
                     line.note && line.allergy
                       ? t("line.allergy", { note: line.note })

@@ -11,6 +11,7 @@ import {
 import { Button } from "@ui/button";
 import { Card } from "@ui/card";
 import { PageSection } from "@ui/page";
+import { Spinner } from "@ui/spinner";
 import { Check, CloudOff, Flame, Receipt, Undo2 } from "lucide-react";
 import Link from "next/link";
 import type { Ref } from "react";
@@ -46,7 +47,9 @@ const liveCount = (ticket: OrderTicket) =>
  * any ticket not held, even one still new; "להוציא" on a held block (default
  * 4); "החזרה מהשליחה" on a line its sender may still take back, held for 8
  * seconds with "ביטול" and offered only while that fits in the window
- * (default 13). A round still on its way says so. No sum of money.
+ * (default 13). A round still on its way says so: being sent, and only once
+ * an attempt failed or the phone is offline that it goes when there is a
+ * connection. No sum of money.
  */
 export function Rounds({
   order,
@@ -60,8 +63,8 @@ export function Rounds({
   onTakeBack,
 }: {
   order: OrderDetail | null;
-  /** A send on its way, not answered yet. */
-  pending: PendingSend | null;
+  /** The sends on their way, not answered yet, in the order they went. */
+  pending: readonly PendingSend[];
   menu: Menu | null;
   headingRef: Ref<HTMLHeadingElement>;
   /** Tickets served here, until the order's next read. */
@@ -74,7 +77,7 @@ export function Rounds({
 }) {
   const { t, time, person, department } = useOrderWords();
   const { now, frame, paths } = useOrdersMode();
-  if (!order && !pending) return null;
+  if (!order && pending.length === 0) return null;
   const nameOf = (item: string) =>
     menu?.items.find((i) => i.id === item)?.name ?? "";
   return (
@@ -93,15 +96,24 @@ export function Rounds({
       }
     >
       <ol className="flex flex-col gap-3">
-        {pending ? (
-          <li>
+        {pending.map((round) => (
+          <li key={round.key}>
             <Card className="flex flex-col gap-3">
-              <p className="flex items-center gap-2 font-semibold text-warning">
-                <CloudOff aria-hidden="true" className="size-5 shrink-0" />
-                {t("ticketState.notSent")}
-              </p>
+              {/* Being sent, in calm words; a warning only once an attempt
+                  failed or the phone is offline. */}
+              {round.waiting ? (
+                <p className="flex items-center gap-2 font-semibold text-warning">
+                  <CloudOff aria-hidden="true" className="size-5 shrink-0" />
+                  {t("ticketState.notSent")}
+                </p>
+              ) : (
+                <p className="flex items-center gap-2 font-semibold text-ink-2">
+                  <Spinner className="shrink-0" />
+                  {t("ticketState.sending")}
+                </p>
+              )}
               <ul className="flex flex-col divide-y divide-line">
-                {pending.lines.map((line) => (
+                {round.lines.map((line) => (
                   <SentLineView
                     key={line.id}
                     line={{
@@ -117,7 +129,7 @@ export function Rounds({
               </ul>
             </Card>
           </li>
-        ) : null}
+        ))}
         {order?.rounds.map((round, index) => {
           const by = person(round.sentBy);
           return (

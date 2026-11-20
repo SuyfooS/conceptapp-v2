@@ -32,6 +32,11 @@ export type DraftLineRowProps = {
   allergy?: ReactNode;
   /** Held for a later course: these words ("יחכה לקריאה"). */
   held?: string | null;
+  /**
+   * Why a send just refused it, in danger beside its name ("נגמר", "אין
+   * מחלקה שמכינה אותה"), whatever its note says.
+   */
+  mark?: string | null;
   noteButton: LineButton;
   allergyButton: LineButton;
   /** "לחכות עם זה", pressed while held. */
@@ -58,6 +63,7 @@ export function DraftLineRow({
   note,
   allergy,
   held = null,
+  mark = null,
   noteButton,
   allergyButton,
   holdButton,
@@ -67,8 +73,13 @@ export function DraftLineRow({
   return (
     <li className="relative flex flex-col gap-2 px-4 py-3 not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']">
       <div className="flex items-center gap-3">
-        <span className="flex min-w-0 flex-1 flex-col">
+        <span className="flex min-w-0 flex-1 flex-col items-start">
           <span className="font-semibold">{name}</span>
+          {mark ? (
+            <Badge tone="danger" className="my-0.5">
+              {mark}
+            </Badge>
+          ) : null}
           {choices.length > 0 ? (
             <span className="text-ink-2 text-sm">{choices.join(" · ")}</span>
           ) : null}

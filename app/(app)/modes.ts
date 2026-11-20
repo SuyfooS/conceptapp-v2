@@ -36,6 +36,8 @@ export type ModeReach = {
 /** What waiter mode's ways in say (`app.orders.home.*`). */
 export type ModeStatus = {
   takes: boolean;
+  /** Runs orders: reads and serves off a shift, and only the send waits. */
+  runs: boolean;
   clock: OrderMode["clock"];
   ready: number;
   making: number;
@@ -62,6 +64,7 @@ const READS: Partial<Record<ModuleKey, ModeRead>> = {
       counts: { mine: mode.ready, menu: mode.soldOut },
       status: {
         takes: mode.takes,
+        runs: mode.runs,
         clock: mode.clock,
         ready: mode.ready,
         making: mode.making,

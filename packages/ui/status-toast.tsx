@@ -38,6 +38,12 @@ export type StatusToastProps = {
    * way back is still offered.
    */
   onWaitingChange?: (waiting: boolean) => void;
+  /**
+   * Hears when the toast has gone from sight: its time up, or nothing left
+   * to say. Not for one replaced by a newer message. What waited for it
+   * (news that must never take a way back's place) may say its own then.
+   */
+  onHidden?: () => void;
 };
 
 /** Whether an element shows its focus: the keyboard, not a tap, put it there. */
@@ -66,7 +72,10 @@ export function StatusToast({
   focusAction = false,
   onFocusLeave,
   onWaitingChange,
+  onHidden,
 }: StatusToastProps) {
+  const hidden = useRef(onHidden);
+  hidden.current = onHidden;
   const [text, setText] = useState<string | null>(null);
   const [shown, setShown] = useState(false);
   const [offer, setOffer] = useState<StatusToastProps["action"]>(null);
@@ -103,7 +112,10 @@ export function StatusToast({
     if (waiting && message) return;
     const started = Date.now();
     const stay = left.current;
-    const hide = setTimeout(() => setShown(false), stay);
+    const hide = setTimeout(() => {
+      setShown(false);
+      hidden.current?.();
+    }, stay);
     const clear = setTimeout(() => {
       setText(null);
       setOffer(null);

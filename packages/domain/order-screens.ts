@@ -116,6 +116,48 @@ export function putDraftLineBack(
 }
 
 /**
+ * What one send takes of a draft: its first 40 lines, as a round holds
+ * them. A draft holds more only after a refusal put a round's lines back in
+ * front of what was added meanwhile (`putRefusedBack`); the rest wait for
+ * the next send.
+ */
+export function roundOf(lines: readonly DraftLine[]): DraftLine[] {
+  return lines.slice(0, ORDER_CAPS.linesPerRound);
+}
+
+/** The draft once a round of it went: only the lines it sent leave. */
+export function withoutSent(
+  lines: readonly DraftLine[],
+  sent: readonly DraftLine[],
+): DraftLine[] {
+  const gone = new Set(sent.map((line) => line.id));
+  return lines.filter((line) => !gone.has(line.id));
+}
+
+/**
+ * A refused round's lines back at the front of their draft, before what was
+ * added while it was on its way; a line already there is not put twice.
+ */
+export function putRefusedBack(
+  lines: readonly DraftLine[],
+  refused: readonly DraftLine[],
+): DraftLine[] {
+  const back = new Set(refused.map((line) => line.id));
+  return [...refused, ...lines.filter((line) => !back.has(line.id))];
+}
+
+/**
+ * How a refused send marks the draft's lines it names: "soldOut" for what
+ * sold out meanwhile, "noRoute" for what no department prepares; nothing
+ * for any other refusal.
+ */
+export function refusalMark(failure: string): "soldOut" | "noRoute" | null {
+  if (failure === "unavailable") return "soldOut";
+  if (failure === "route") return "noRoute";
+  return null;
+}
+
+/**
  * Where a draft's items go, and how many to each ("מטבח · 3, בר · 1"): by
  * each item's route, in the order `departments` lists them, those it
  * doesn't after. An item with no route, or gone from the menu, counts

@@ -20,9 +20,10 @@ const FLOOR = "/design/order-taking/floor?state=service";
  * allergy, one taken back) and a held block, what to ring up at the till,
  * the items an order adds with one tap, and the menu's rows to edit (P2):
  * one switched sold out, one that reaches no department, and two read only.
- * P4 adds the draft's line with its note, allergy and hold, the send, and
- * "מוכן" while the server hears it. The words are the twin's and the
- * app's; the dishes and people only stand in.
+ * P4 adds the draft's line with its note, allergy and hold (and the mark of
+ * a send that refused it), the send, "מוכן" while the server hears it, and
+ * an item that can't be added while viewing. The words are the twin's and
+ * the app's; the dishes and people only stand in.
  */
 export function GalleryOrderTaking() {
   const t = useTranslations("design.orderParts");
@@ -148,6 +149,7 @@ export function GalleryOrderTaking() {
                   quantity: 1,
                   allergy: t("peanuts"),
                   held: false,
+                  mark: null,
                 },
                 {
                   key: "hummus",
@@ -157,6 +159,18 @@ export function GalleryOrderTaking() {
                   quantity: hummus,
                   allergy: null,
                   held,
+                  mark: null,
+                },
+                // A send refused it: it sold out meanwhile.
+                {
+                  key: "fish",
+                  name: t("fish"),
+                  choices: [],
+                  agorot: 8400,
+                  quantity: 1,
+                  allergy: null,
+                  held: false,
+                  mark: a("picker.soldOut"),
                 },
               ] as const
             ).map((row) => (
@@ -176,6 +190,7 @@ export function GalleryOrderTaking() {
                   row.allergy ? a("line.allergy", { note: row.allergy }) : null
                 }
                 held={row.held ? a("draft.heldBadge") : null}
+                mark={row.mark}
                 noteButton={{
                   label: a("draft.note"),
                   forItem: a("draft.forItem", { name: row.name }),
@@ -203,8 +218,8 @@ export function GalleryOrderTaking() {
           </ul>
           <SendOrderButton
             label={a("send.label")}
-            count={a("send.count", { count: hummus + 1 })}
-            routes={a("send.route", { department: kitchen, count: hummus + 1 })}
+            count={a("send.count", { count: hummus + 2 })}
+            routes={a("send.route", { department: kitchen, count: hummus + 2 })}
             onClick={() => {}}
           />
         </div>
@@ -271,6 +286,15 @@ export function GalleryOrderTaking() {
           count={0}
           countLabel={o("picker.inDraft")}
           soldOut={o("picker.soldOut")}
+          onPick={() => {}}
+        />
+        {/* Viewing: nothing is added, and the row says so by its grey. */}
+        <MenuItemRow
+          name={t("hummus")}
+          detail={price(3200)}
+          count={0}
+          countLabel={o("picker.inDraft")}
+          disabled
           onPick={() => {}}
         />
       </MenuItemList>

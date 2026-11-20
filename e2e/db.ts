@@ -181,6 +181,37 @@ export async function clearTimeEntries(phone: string): Promise<void> {
   });
 }
 
+/** The database's own clock now: what a test writes after it is newer. */
+export async function databaseNow(): Promise<Date> {
+  const [row] = await sql<{ now: Date }[]>`select now() as now`;
+  if (!row) throw new Error("the database said no time");
+  return row.now;
+}
+
+/**
+ * Only the hours a test wrote at the demo restaurant (entries written since
+ * `since`, with their breaks), as `clearTimeEntries` deletes them: the seeded
+ * month of someone no clock spec clears (Yoav's usual days and his night,
+ * supabase/seed.sql) stays for the payroll specs that run after.
+ */
+export async function clearTimeEntriesSince(
+  phone: string,
+  since: Date,
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    await tx`select set_config('ca.records_purge', ${DEMO_RESTAURANT}, true)`;
+    await tx`delete from public.time_breaks b
+      using public.time_entries e, public.profiles p
+      where b.entry_id = e.id and e.business_id = ${DEMO_RESTAURANT}
+        and e.user_id = p.id and p.phone = ${phone}
+        and e.created_at >= ${since}::timestamptz`;
+    await tx`delete from public.time_entries e
+      using public.profiles p
+      where e.business_id = ${DEMO_RESTAURANT} and e.user_id = p.id
+        and p.phone = ${phone} and e.created_at >= ${since}::timestamptz`;
+  });
+}
+
 /**
  * A shift already worked, at 06:00 UTC: on the 1st of this month, or the 10th
  * of an earlier one (or its `day`, for a second one in the month). Returns its

@@ -3,6 +3,7 @@
 import {
   type DraftLine,
   draftCount,
+  type ReadyNews,
   readyNews,
   roundLinesOf,
 } from "@domain/order-screens";
@@ -16,13 +17,14 @@ import type {
 } from "@domain/orders";
 import {
   nextOrdersSyncDelay,
+  nextOrdersSyncQuery,
   ORDERS_SEND_PATH,
+  type OrdersSyncWant,
   offShiftAnswer,
   ordersSyncAnswer,
   ordersSyncHref,
   retriesSend,
   SEND_BODY_MAX,
-  type SendBody,
   sendAnswer,
   sendRetryDelay,
 } from "@domain/orders-sync";
@@ -51,6 +53,16 @@ import type {
   SendOutcome,
   SendRefusal,
 } from "./orders-types";
+import {
+  emptySendStore,
+  type PendingRound,
+  pendingOfDraft,
+  type SendStore,
+  storedFrom,
+  storeEmpty,
+  storeSent,
+  storeSettled,
+} from "./send-store";
 
 /** The reads the mode holds, each the newest it saw. */
 export type OrdersReads = {
@@ -62,8 +74,6 @@ export type OrdersReads = {
   orders: Record<string, OrderDetail | null>;
 };
 
-type Wants = { floor: boolean; prep: boolean; order: string | null };
-
 type OrdersData = {
   reads: OrdersReads;
   /** A screen's first reads, from the server: kept where newer. */
@@ -73,7 +83,7 @@ type OrdersData = {
     },
   ) => void;
   /** What a screen asks the sync for while it is on. */
-  want: (wants: Partial<Wants>) => () => void;
+  want: (wants: Partial<OrdersSyncWant>) => () => void;
 };
 
 const OrdersDataContext = createContext<OrdersData | null>(null);
@@ -108,7 +118,7 @@ export function useOrdersRead(
   first: Partial<Omit<OrdersReads, "orders">> & {
     order?: { id: string; detail: OrderDetail | null | undefined } | null;
   },
-  wants: Partial<Wants> = {},
+  wants: Partial<OrdersSyncWant> = {},
 ): OrdersReads & { order: OrderDetail | null | undefined } {
   const data = useContext(OrdersDataContext);
   if (!data) throw new Error("useOrdersRead outside the mode");
@@ -141,16 +151,11 @@ export function useOrdersRead(
   };
 }
 
-type Stored = {
-  drafts: Record<string, DraftLine[]>;
-  pending: Record<string, { body: SendBody; lines: DraftLine[] }>;
-};
-
 const STORE_PREFIX = "orders:";
 
 /** What this tab keeps for the person in the business, if anything. */
-function readStored(key: string, user: string): Stored {
-  const empty: Stored = { drafts: {}, pending: {} };
+function readStored(key: string, user: string): SendStore {
+  const empty = emptySendStore;
   try {
     // Another person's drafts in this tab go when the next opens the mode.
     for (let i = sessionStorage.length - 1; i >= 0; i -= 1) {
@@ -164,26 +169,15 @@ function readStored(key: string, user: string): Stored {
     }
     const raw = sessionStorage.getItem(key);
     if (!raw) return empty;
-    const parsed = JSON.parse(raw) as Partial<Stored>;
-    return {
-      drafts:
-        parsed.drafts && typeof parsed.drafts === "object" ? parsed.drafts : {},
-      pending:
-        parsed.pending && typeof parsed.pending === "object"
-          ? parsed.pending
-          : {},
-    };
+    return storedFrom(JSON.parse(raw));
   } catch {
     return empty;
   }
 }
 
-function writeStored(key: string, stored: Stored) {
+function writeStored(key: string, stored: SendStore) {
   try {
-    const empty =
-      Object.values(stored.drafts).every((lines) => lines.length === 0) &&
-      Object.keys(stored.pending).length === 0;
-    if (empty) sessionStorage.removeItem(key);
+    if (storeEmpty(stored)) sessionStorage.removeItem(key);
     else sessionStorage.setItem(key, JSON.stringify(stored));
   } catch {
     // A private window or blocked storage: the drafts live in memory alone.
@@ -239,18 +233,36 @@ const SEND_FAILURES = new Set<string>([
   "viewOnly",
 ]);
 
+const shiftRefusal = (failure: SendFailure) =>
+  failure === "clock" || failure === "staleShift";
+
+/** Whether a ticket of one's own is still ready to serve in this read. */
+const stillReady = (mine: MyOrders | null, ticket: string) =>
+  !mine ||
+  mine.rounds.some(
+    (round) =>
+      round.orderStatus === "open" &&
+      round.tickets.some(
+        (t) => t.id === ticket && t.status === "ready" && t.lines > 0,
+      ),
+  );
+
 /**
  * Waiter mode in the app (P4), above every screen of it: the drafts on the
  * phone, kept in this tab (sessionStorage, until the outbox of P7) and gone
  * with it, another person's removed when the next opens the mode; the send,
  * through /orders-send with the phone's key, retried with the same key and
  * body at 1, 2, 5, 10 and 30 seconds while nothing comes back or the server
- * failed on its way, and on coming back to the mode while one waits; the
- * sync, /orders-sync every 15 seconds while visible and at once when the page
- * comes back, the phone comes online and after each of its own writes; the
- * mode's one toast, which says what of one's own turned ready, whichever
- * screen is on; and the counts on its items. A taker off a shift finds their
- * screens waiting and their draft kept.
+ * failed on its way, and on coming back to the mode while one waits, each
+ * round kept by its own key; the sync, /orders-sync every 15 seconds while
+ * visible, from the moment the mode opens (the menu inside it too, for the
+ * items' counts), at once when the page comes back, the phone comes online
+ * and after each of its own writes; the mode's one toast, which says what
+ * of one's own turned ready, whichever screen is on, and never in the place
+ * of a way back still offered; and the counts on its items. A taker off a
+ * shift finds their screens waiting and their draft kept, until a sync hears
+ * the shift began (at the clock station too); someone who runs orders reads
+ * and serves, and only their send waits for one.
  */
 export function OrdersModeProvider({
   frame,
@@ -262,17 +274,24 @@ export function OrdersModeProvider({
   children: ReactNode;
 }) {
   const router = useRouter();
+  const routerRef = useRef(router);
+  routerRef.current = router;
   const t = useTranslations("app.orders.toast");
   const { placeTitle } = usePlaceWords();
-  const { say, toast } = useModeToast();
+  const { say, tell, toast } = useModeToast();
   const storeKey = `${STORE_PREFIX}${frame.userId}:${frame.business}`;
-  const [stored, setStored] = useState<Stored>({ drafts: {}, pending: {} });
+  const [stored, setStored] = useState<SendStore>(emptySendStore);
   const [loaded, setLoaded] = useState(false);
   const [refusals, setRefusals] = useState<Record<string, SendRefusal>>({});
-  // A taker off a shift reads nothing of the floor; one who runs orders
-  // reads all of it, and only the send waits for a shift.
-  const offOf = (f: OrdersFrame) => (f.runs ? null : f.clock);
-  const [off, setOff] = useState<"clock" | "staleShift" | null>(offOf(frame));
+  // Rounds of which an attempt failed, by key, and whether the phone is
+  // online: until either, a round on its way is simply being sent.
+  const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
+  const [online, setOnline] = useState(true);
+  // Why a send waits for a shift: the frame's, then what was heard since. A
+  // taker off a shift reads nothing of the floor; one who runs orders reads
+  // all of it, and only the send waits for a shift.
+  const [clock, setClock] = useState(frame.clock);
+  const off = frame.runs ? null : clock;
   const [reads, setReads] = useState<OrdersReads>({
     floor: null,
     mine: null,
@@ -285,16 +304,34 @@ export function OrdersModeProvider({
   const readsRef = useRef(reads);
   readsRef.current = reads;
   const alive = useRef(true);
-  const wants = useRef(new Map<number, Wants>());
+  const wants = useRef(new Map<number, OrdersSyncWant>());
   const wantId = useRef(0);
   const sync = useRef({ running: false, again: false, failures: 0 });
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const offRef = useRef(off);
   offRef.current = off;
+  const clockRef = useRef(clock);
+  clockRef.current = clock;
+  /** The newest of one's own rounds the sync heard, for news told later. */
+  const heardMine = useRef<MyOrders | null>(null);
+  /** What turned ready and wasn't told yet: a way back was on screen. */
+  const untold = useRef<ReadyNews[]>([]);
 
   useEffect(() => {
-    setOff(frame.runs ? null : frame.clock);
-  }, [frame.clock, frame.runs]);
+    setClock(frame.clock);
+  }, [frame.clock]);
+  // On a shift again: a refusal that asked for one says nothing more.
+  useEffect(() => {
+    if (clock !== null) return;
+    setRefusals((was) => {
+      const kept = Object.entries(was).filter(
+        ([, refusal]) => !shiftRefusal(refusal.failure),
+      );
+      return kept.length === Object.keys(was).length
+        ? was
+        : Object.fromEntries(kept);
+    });
+  }, [clock]);
 
   // The server's clock, from the newest read that says it.
   const heard = useCallback((serverNow: string | undefined) => {
@@ -340,25 +377,39 @@ export function OrdersModeProvider({
     [heard],
   );
 
-  // What turned ready of one's own: one toast for the mode, whichever screen.
+  // What turned ready of one's own: one toast for the mode, whichever
+  // screen. While a way back is on screen it waits, and everything that
+  // turned ready meanwhile is told together once it has gone.
   const tellReady = useCallback(
     (before: MyOrders | null, after: MyOrders) => {
       const news = readyNews(before, after);
-      const first = news[0];
-      if (!first) return;
-      const place = placeTitle({
-        placeName: first.placeName,
-        takeaway: first.takeaway,
+      if (news.length === 0) return;
+      const fresh = new Set(news.map((item) => item.ticket));
+      untold.current = [
+        ...news,
+        ...untold.current.filter((item) => !fresh.has(item.ticket)),
+      ];
+      tell(() => {
+        const due = untold.current.filter((item) =>
+          stillReady(heardMine.current, item.ticket),
+        );
+        untold.current = [];
+        const first = due[0];
+        if (!first) return;
+        const place = placeTitle({
+          placeName: first.placeName,
+          takeaway: first.takeaway,
+        });
+        const department = frame.departments[first.department] ?? "";
+        say(
+          due.length === 1
+            ? t("ready", { place, department })
+            : t("readyMany", { count: due.length }),
+          { open: appOrdersPaths.takeaway(first.order) },
+        );
       });
-      const department = frame.departments[first.department] ?? "";
-      say(
-        news.length === 1
-          ? t("ready", { place, department })
-          : t("readyMany", { count: news.length }),
-        { open: appOrdersPaths.takeaway(first.order) },
-      );
     },
-    [frame.departments, placeTitle, say, t],
+    [frame.departments, placeTitle, say, t, tell],
   );
 
   const syncOnce = useCallback(async () => {
@@ -369,41 +420,22 @@ export function OrdersModeProvider({
     }
     state.running = true;
     if (timer.current) clearTimeout(timer.current);
-    const asked = [...wants.current.values()];
     const held = readsRef.current;
-    const isOff = offRef.current !== null;
-    const takes = frame.takes && !frame.viewing && !isOff;
-    const ask = {
-      floor: !isOff && frame.takes && asked.some((w) => w.floor),
-      mine: takes,
-      prep:
-        asked.some((w) => w.prep) &&
-        frame.prepares.length + Number(frame.runs) > 0,
-      order: isOff ? null : (asked.find((w) => w.order)?.order ?? null),
-    };
-    // What the screen holds of what it asks: the oldest of them, so nothing
-    // newer is skipped; none when it holds nothing of one.
-    const asking: ({ version: number } | null)[] = [];
-    if (ask.floor) asking.push(held.floor);
-    if (ask.mine) asking.push(held.mine);
-    if (ask.prep) asking.push(held.prep);
-    const version =
-      asking.length === 0 || asking.some((read) => read === null)
-        ? null
-        : Math.min(...asking.map((read) => read?.version ?? 0));
+    const wasOff = offRef.current !== null;
+    const query = nextOrdersSyncQuery({
+      business: frame.business,
+      takes: frame.takes,
+      viewing: frame.viewing,
+      prepares: frame.prepares.length > 0 || frame.runs,
+      off: wasOff,
+      wants: [...wants.current.values()],
+      held,
+    });
     try {
-      const response = await fetch(
-        ordersSyncHref({
-          business: frame.business,
-          version,
-          menu: held.menu ? held.menu.version : "new",
-          floor: ask.floor,
-          mine: ask.mine,
-          prep: ask.prep,
-          order: ask.order,
-        }),
-        { cache: "no-store", credentials: "same-origin" },
-      );
+      const response = await fetch(ordersSyncHref(query), {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
       if (response.status === 200) {
         const answer = ordersSyncAnswer.parse(await response.json());
         heard(
@@ -412,31 +444,46 @@ export function OrdersModeProvider({
             answer.prep?.now ??
             answer.order?.now,
         );
-        if (answer.mine) tellReady(readsRef.current.mine, answer.mine);
+        if (answer.mine) {
+          heardMine.current = newest(heardMine.current, answer.mine);
+          tellReady(readsRef.current.mine, answer.mine);
+        }
         setReads((was) => ({
           floor: newest(was.floor, answer.floor),
           mine: newest(was.mine, answer.mine),
           prep: newest(was.prep, answer.prep),
           menu: newest(was.menu, answer.menu),
           orders:
-            ask.order && answer.order !== undefined
+            query.order && answer.order !== undefined
               ? {
                   ...was.orders,
-                  [ask.order]:
-                    later(was.orders[ask.order], answer.order) ?? null,
+                  [query.order]:
+                    later(was.orders[query.order], answer.order) ?? null,
                 }
               : was.orders,
         }));
+        // Off a shift, one's own rounds came back: the shift began, at the
+        // clock station or on another phone. The floor and the order now.
+        if (wasOff && answer.mine) {
+          offRef.current = null;
+          clockRef.current = null;
+          setClock(null);
+          state.again = true;
+        }
         state.failures = 0;
       } else if (response.status === 204) {
         state.failures = 0;
       } else if (response.status === 409) {
         const answer = offShiftAnswer.safeParse(await response.json());
-        if (answer.success) setOff(answer.data.off);
+        if (answer.success) {
+          clockRef.current = answer.data.off;
+          offRef.current = frame.runs ? null : answer.data.off;
+          setClock(answer.data.off);
+        }
         state.failures = 0;
       } else if (response.status === 401 || response.status === 404) {
         // Signed out, or the mode is no longer theirs: the server says where.
-        router.refresh();
+        routerRef.current.refresh();
         state.failures += 1;
       } else {
         state.failures += 1;
@@ -458,7 +505,7 @@ export function OrdersModeProvider({
         }
       }
     }
-  }, [frame, heard, router, tellReady]);
+  }, [frame, heard, tellReady]);
   // The latest sync, for timers and listeners set before the screen drew again.
   const again = useRef(syncOnce);
   again.current = syncOnce;
@@ -481,19 +528,36 @@ export function OrdersModeProvider({
     [syncNow],
   );
 
-  // Visible again, online again: at once.
+  // From the moment the mode opens, whatever its screen (the menu's too,
+  // which wants nothing of its own: the items' counts still move); again at
+  // once when the page is visible again or the phone online. Waiting for a
+  // shift, the frame is read again then too: the person may have clocked in
+  // at the station or on another phone.
   useEffect(() => {
     alive.current = true;
+    setOnline(navigator.onLine);
     const again = () => {
-      if (document.visibilityState === "visible") syncNow();
+      if (document.visibilityState !== "visible") return;
+      syncNow();
+      if (clockRef.current !== null) routerRef.current.refresh();
+    };
+    const offline = () => setOnline(false);
+    const backOnline = () => {
+      setOnline(true);
+      again();
     };
     document.addEventListener("visibilitychange", again);
-    window.addEventListener("online", again);
+    window.addEventListener("online", backOnline);
+    window.addEventListener("offline", offline);
+    // A screen that wants something started the first sync already (its
+    // effects run before these).
+    if (wants.current.size === 0) syncNow();
     return () => {
       alive.current = false;
       if (timer.current) clearTimeout(timer.current);
       document.removeEventListener("visibilitychange", again);
-      window.removeEventListener("online", again);
+      window.removeEventListener("online", backOnline);
+      window.removeEventListener("offline", offline);
     };
   }, [syncNow]);
 
@@ -512,12 +576,16 @@ export function OrdersModeProvider({
 
   /** Sends one round, trying again while nothing comes back, and settles it. */
   const deliver = useCallback(
-    async (
-      draft: string,
-      body: SendBody,
-      lines: DraftLine[],
-    ): Promise<SendOutcome> => {
+    async (round: PendingRound): Promise<SendOutcome> => {
+      const { draft, body } = round;
       const text = JSON.stringify(body);
+      const settled = () =>
+        setRetrying((was) => {
+          if (!was.has(body.key)) return was;
+          const next = new Set(was);
+          next.delete(body.key);
+          return next;
+        });
       for (let attempt = 0; ; attempt += 1) {
         let status: number | null = null;
         let json: unknown = null;
@@ -554,28 +622,21 @@ export function OrdersModeProvider({
                       ? parsed.data.order
                       : null,
                 };
-          setStored((was) => {
-            const { [draft]: _, ...pending } = was.pending;
-            if (outcome.ok) return { ...was, pending };
-            // Refused: the lines go back to the front of their draft.
-            return {
-              pending,
-              drafts: {
-                ...was.drafts,
-                [draft]: [...lines, ...(was.drafts[draft] ?? [])],
-              },
-            };
-          });
+          // Only this round settles: another of the same draft keeps its
+          // place. Refused, its lines go back to the front of their draft.
+          setStored((was) => storeSettled(was, round, outcome.ok));
+          settled();
           if (!outcome.ok) {
             setRefusals((was) => ({
               ...was,
               [draft]: { ...outcome, target: body.target },
             }));
-            if (
-              !frame.runs &&
-              (outcome.failure === "clock" || outcome.failure === "staleShift")
-            ) {
-              setOff(outcome.failure);
+            // Off a shift: a taker's screens wait, and anyone's send asks
+            // for one now.
+            if (shiftRefusal(outcome.failure)) {
+              const failure = outcome.failure as "clock" | "staleShift";
+              clockRef.current = failure;
+              setClock(failure);
             }
           }
           syncNow();
@@ -583,28 +644,35 @@ export function OrdersModeProvider({
         }
         // Left the mode: the send waits in this tab for the next time.
         if (!alive.current) {
+          settled();
           return { ok: false, failure: "failed", items: [], order: null };
         }
+        // It didn't go: it says so, and waits for its next try.
+        setRetrying((was) =>
+          was.has(body.key) ? was : new Set(was).add(body.key),
+        );
         await wait(sendRetryDelay(attempt));
       }
     },
-    [syncNow, frame.runs],
+    [syncNow],
   );
 
   const send = useCallback(
     (draft: string, target: RoundTarget, lines: DraftLine[]) => {
-      const body: SendBody = {
-        business: frame.business,
-        key: newId(),
-        target,
-        lines: roundLinesOf(lines),
+      const round: PendingRound = {
+        draft,
+        body: {
+          business: frame.business,
+          key: newId(),
+          target,
+          lines: roundLinesOf(lines),
+        },
+        lines,
       };
       setRefusals(({ [draft]: _, ...rest }) => rest);
-      setStored((was) => ({
-        drafts: { ...was.drafts, [draft]: [] },
-        pending: { ...was.pending, [draft]: { body, lines } },
-      }));
-      return deliver(draft, body, lines);
+      // Only the lines sent leave the draft: any past a round's 40 stay.
+      setStored((was) => storeSent(was, round));
+      return deliver(round);
     },
     [deliver, frame.business],
   );
@@ -614,8 +682,8 @@ export function OrdersModeProvider({
   useEffect(() => {
     if (!loaded || resumed.current) return;
     resumed.current = true;
-    for (const [draft, entry] of Object.entries(stored.pending)) {
-      void deliver(draft, entry.body, entry.lines);
+    for (const round of Object.values(stored.pending)) {
+      void deliver(round);
     }
   }, [loaded, stored.pending, deliver]);
 
@@ -636,15 +704,18 @@ export function OrdersModeProvider({
   const sender = useMemo(
     () => ({
       send,
-      pending: (draft: string): PendingSend | null => {
-        const entry = stored.pending[draft];
-        return entry ? { target: entry.body.target, lines: entry.lines } : null;
-      },
+      pending: (draft: string): PendingSend[] =>
+        pendingOfDraft(stored.pending, draft).map((round) => ({
+          key: round.body.key,
+          target: round.body.target,
+          lines: round.lines,
+          waiting: !online || retrying.has(round.body.key),
+        })),
       refusal: (draft: string) => refusals[draft] ?? null,
       clearRefusal: (draft: string) =>
         setRefusals(({ [draft]: _, ...rest }) => rest),
     }),
-    [send, stored.pending, refusals],
+    [send, stored.pending, refusals, online, retrying],
   );
 
   // The items' counts, as the sync hears them.
@@ -667,6 +738,7 @@ export function OrdersModeProvider({
       frame,
       paths: appOrdersPaths,
       now,
+      clock,
       off,
       drafts,
       sender,
@@ -675,7 +747,7 @@ export function OrdersModeProvider({
       syncNow,
       newId,
     }),
-    [frame, now, off, drafts, sender, actions, say, syncNow],
+    [frame, now, clock, off, drafts, sender, actions, say, syncNow],
   );
 
   return (

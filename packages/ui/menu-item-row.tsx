@@ -19,6 +19,8 @@ export type MenuItemRowProps = {
    * its detail: greyed, and it can't be added.
    */
   reason?: string | null;
+  /** Nothing adds it here (a view session): greyed, as the screen's other actions. */
+  disabled?: boolean;
   /** One tap adds it, or opens its choices. */
   onPick: () => void;
 };
@@ -35,9 +37,10 @@ export function MenuItemRow({
   countLabel,
   soldOut = null,
   reason = null,
+  disabled = false,
   onPick,
 }: MenuItemRowProps) {
-  const out = soldOut !== null || reason !== null;
+  const out = soldOut !== null || reason !== null || disabled;
   return (
     <li className="relative not-first:before:absolute not-first:before:start-4 not-first:before:end-0 not-first:before:top-0 not-first:before:h-px not-first:before:bg-line not-first:before:content-['']">
       <button

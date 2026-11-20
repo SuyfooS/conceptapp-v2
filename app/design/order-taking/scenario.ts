@@ -142,8 +142,11 @@ export function scenario(state: string | null): DemoData {
         ...base,
         pending: {
           [TABLE_6]: {
+            key: "pending-table-6",
             target: { place: "table-6" },
             lines: demoDraft().slice(0, 2),
+            // Tried, and it didn't go: it waits for a connection.
+            waiting: true,
           },
         },
       };

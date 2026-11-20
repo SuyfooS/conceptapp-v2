@@ -74,15 +74,25 @@ export function FloorView({
     setServed({ version: floor.version, ids: [] });
   }
 
-  const header = (subtitle?: string) => (
+  // "פתיחת הזמנה בלי מקום": the screen's one main action, unless the empty
+  // floor's "הוספת מקומות" is (then quieter). None off a shift, where the
+  // card's way to the clock is, and none while viewing, where nothing opens.
+  const header = (
+    subtitle?: string,
+    takeaway: "primary" | "secondary" | null = null,
+  ) => (
     <PageHeader
       back={heading.back}
       eyebrow={heading.eyebrow}
       title={t("floor.title")}
       subtitle={subtitle}
       actions={
-        floor ? (
-          <Button asChild size="lg">
+        takeaway ? (
+          <Button
+            asChild
+            size="lg"
+            variant={takeaway === "primary" ? "primary" : "secondary"}
+          >
             <Link href={paths.takeaway(null)}>
               <ShoppingBag aria-hidden="true" />
               {t("floor.takeaway")}
@@ -217,9 +227,15 @@ export function FloorView({
     </ul>
   );
 
+  // With no places, whoever runs orders is offered to add them: that is the
+  // screen's main action then.
+  const addsPlaces = placeTiles.length === 0 && frame.runs && !frame.viewing;
   return (
     <PageBody className={pageGlowClass}>
-      {header(line.length ? line.join(" · ") : t("floor.status.free"))}
+      {header(
+        line.length ? line.join(" · ") : t("floor.status.free"),
+        frame.viewing ? null : addsPlaces ? "secondary" : "primary",
+      )}
       <div className="grid gap-6 md:grid-cols-[minmax(0,1fr)_17rem] md:items-start md:gap-6 xl:grid-cols-[minmax(0,1fr)_20rem] xl:gap-8">
         <div className="flex min-w-0 flex-col gap-6">
           {placeTiles.length === 0 ? (
@@ -231,7 +247,7 @@ export function FloorView({
                 frame.runs ? t("floor.empty.body") : t("floor.empty.waiter")
               }
             >
-              {frame.runs && !frame.viewing ? (
+              {addsPlaces ? (
                 <Button asChild>
                   <Link href={paths.menuPlaces}>{t("floor.empty.action")}</Link>
                 </Button>
@@ -309,15 +325,15 @@ export function FloorView({
               <ul className="flex flex-col gap-3">
                 {ready.map((ticket) => {
                   const place = placeTitle(ticket);
+                  // A table's kitchen and bar tickets: each by both.
+                  const card = t("floor.readyCard", {
+                    place,
+                    department: department(ticket.department),
+                  });
                   return (
                     <li key={ticket.ticket}>
                       <Card className="flex flex-col gap-3">
-                        <p className="font-semibold">
-                          {t("floor.readyCard", {
-                            place,
-                            department: department(ticket.department),
-                          })}
-                        </p>
+                        <p className="font-semibold">{card}</p>
                         <ul className="flex flex-col divide-y divide-line">
                           {ticket.lines.map((line) => (
                             <SentLineView key={line.id} line={line} />
@@ -330,7 +346,7 @@ export function FloorView({
                         >
                           {t("order.serve")}
                           <span className="sr-only">
-                            {t("draft.forItem", { name: place })}
+                            {t("draft.forItem", { name: card })}
                           </span>
                         </Button>
                       </Card>

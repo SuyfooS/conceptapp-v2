@@ -77,7 +77,7 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
   const { data, now, update } = useOrderDemo();
   const t = useTranslations("app.orders.toast");
   const { placeTitle } = usePlaceWords();
-  const { say, toast } = useModeToast();
+  const { say, tell, toast } = useModeToast();
   const frame = useMemo(() => twinFrame(data.viewer), [data.viewer]);
   // A version that moves with every change to the rows, as the server's does.
   const [seen, setSeen] = useState({ data, version: 1 });
@@ -96,16 +96,19 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
         }),
         readyIn: null,
       }));
-      say(
-        t("ready", {
-          place: placeTitle({ placeName: "4", takeaway: null }),
-          department: frame.departments.kitchen ?? "",
-        }),
-        { open: twinPaths.takeaway("order-4") },
+      // News, as the app's sync tells it: never in a way back's place.
+      tell(() =>
+        say(
+          t("ready", {
+            place: placeTitle({ placeName: "4", takeaway: null }),
+            department: frame.departments.kitchen ?? "",
+          }),
+          { open: twinPaths.takeaway("order-4") },
+        ),
       );
     }, readyIn);
     return () => clearTimeout(timer);
-  }, [readyIn, update, say, t, placeTitle, frame.departments]);
+  }, [readyIn, update, say, tell, t, placeTitle, frame.departments]);
 
   const actions: OrdersActions = useMemo(
     () => ({
@@ -225,7 +228,10 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
         round: twinSentRound(sent.data, sent.order, sent.round),
       });
     },
-    pending: (draft) => data.pending[draft] ?? null,
+    pending: (draft) => {
+      const round = data.pending[draft];
+      return round ? [round] : [];
+    },
     refusal: (draft) => data.refusals[draft] ?? null,
     clearRefusal: (draft) =>
       update((d) => {
@@ -238,6 +244,7 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
     frame,
     paths: twinPaths,
     now,
+    clock: frame.clock,
     off: frame.runs ? null : frame.clock,
     drafts: {
       get: (draft: string) => data.drafts[draft] ?? [],

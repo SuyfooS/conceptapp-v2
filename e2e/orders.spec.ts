@@ -6,6 +6,8 @@ import { type MessageTree, mergeWording } from "../packages/domain/wording";
 import {
   addOpenDemoEntry,
   clearTimeEntries,
+  clearTimeEntriesSince,
+  databaseNow,
   demoLineTakenBack,
   demoModuleSettings,
   demoRounds,
@@ -26,10 +28,13 @@ import { heT } from "./t";
 // to the kitchen and the bar, the kitchen marking ready on a phone, serving,
 // the same send twice as one round, the draft waiting while the waiter
 // clocks in, taking a line back, holding a dish and firing it, and who gets
-// the mode at all. The restaurant reads its template's words ("שולחן",
-// "מנה", "מצב מלצרות"), read here from the database as it does. Each test
-// puts the orders and the clock back. Seeded in supabase/seed.sql: Yoav in
-// the bar, who signs in by SMS, and the team in no business.
+// the mode at all, and the owner choosing who takes orders. The restaurant
+// reads its template's words ("שולחן", "מנה", "מצב מלצרות"), read here from
+// the database as it does. Each test puts the orders and the clock back:
+// Yoav's own hours only (his seeded month is the payroll specs', which run
+// after these), the others' as the clock specs clear them. Seeded in
+// supabase/seed.sql: Yoav in the bar, who signs in by SMS, and the team in
+// no business.
 const YOAV = { local: "050-000-0004", e164: "+972500000004" };
 const OWNER = "+972500000001";
 const SHIRAN = "+972500000002";
@@ -53,9 +58,17 @@ test.beforeAll(async () => {
   }) as typeof heT;
 });
 
+/** When the test began, by the database's clock: what it wrote is newer. */
+let began = new Date(0);
+
+test.beforeEach(async () => {
+  began = await databaseNow();
+});
+
 test.afterEach(async () => {
   await resetDemoOrders();
-  for (const phone of [YOAV.e164, SHIRAN, NOA, OWNER]) {
+  await clearTimeEntriesSince(YOAV.e164, began);
+  for (const phone of [SHIRAN, NOA, OWNER]) {
     await clearTimeEntries(phone);
   }
   await setDemoRequirePunchCode(false);
@@ -263,6 +276,12 @@ test("Yoav sends a drink and a starter, the kitchen marks the starter ready, and
   expect(await demoTicketStatus("5", "kitchen")).toBe("new");
   expect(await demoTicketStatus("5", "bar")).toBe("new");
 
+  // He goes back to the floor, where table 5 waits on its tickets.
+  await navItem(page, rt("modules.order_taking.mode.places")).click();
+  await expect(page).toHaveURL(/\/orders$/);
+  const ready = rt("app.orders.floor.state.ready");
+  await expect(tile(page, "5")).not.toContainText(ready);
+
   // Noa prepares in the kitchen: the mode opens on preparing for her.
   const noa = await secondPage(browser, testInfo);
   await enterAs(noa, "worker");
@@ -290,12 +309,37 @@ test("Yoav sends a drink and a starter, the kitchen marks the starter ready, and
   await expect(shown(noa, rt("app.orders.prep.recent"))).toBeVisible();
   await noa.context().close();
 
-  // Yoav's floor says so, and his orders carry it to serve.
-  await page.goto("/orders");
-  await expect(shown(page, rt("app.orders.floor.state.ready"))).toBeVisible();
-  await page.goto("/orders/mine");
-  await button(page, rt("app.orders.order.serve")).click();
+  // Yoav's phone hears it by itself, within one of its checks: the mode's
+  // toast, and the tile turned ready to serve, with no reload.
+  await page.bringToFront();
+  const table5 = rt("app.orders.place.numbered", { name: "5" });
+  const told = toast(
+    page,
+    rt("app.orders.toast.ready", { place: table5, department: "מטבח" }),
+  );
+  await expect(told).toBeVisible({ timeout: 20_000 });
+  await expect(tile(page, "5")).toContainText(ready);
+  // The toast's "פתיחה" leads to the table's order.
+  await told.getByRole("button", { name: rt("app.orders.toast.open") }).click();
+  await expect(page).toHaveURL(/\/orders\/place\//);
+  await showOrder(page, project);
+
+  // The kitchen's ticket served, put back with the toast's undo, served.
+  const serveAt = (department: string) =>
+    button(
+      page,
+      new RegExp(`^${literal(rt("app.orders.order.serve"))}.*${department}`),
+    );
+  await serveAt("מטבח").click();
   await expect.poll(() => demoTicketStatus("5", "kitchen")).toBe("served");
+  await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
+  await expect.poll(() => demoTicketStatus("5", "kitchen")).toBe("ready");
+  await serveAt("מטבח").click();
+  await expect.poll(() => demoTicketStatus("5", "kitchen")).toBe("served");
+  // The bar's drink goes out while its ticket is still new.
+  expect(await demoTicketStatus("5", "bar")).toBe("new");
+  await serveAt("בר").click();
+  await expect.poll(() => demoTicketStatus("5", "bar")).toBe("served");
   await expectCleanPage(page);
 });
 
@@ -305,6 +349,8 @@ test("the same round sent twice is one round, and only from the app's own pages"
 }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop", "one run is enough");
   await enterAs(page, "manager");
+  // A manager reads off a shift, and sends on one only (the rule's default).
+  await addOpenDemoEntry(SHIRAN, 1);
   await page.goto("/orders");
   const ids = await page.evaluate(async (business) => {
     const answer = await fetch(`/orders-sync?b=${business}&m=`);
@@ -397,34 +443,64 @@ test("off a shift the draft waits while the waiter clocks in", async ({
   await expect.poll(() => demoRounds("8")).toBe(1);
 });
 
+/** A ticket on Noa's prep screen, by its place and department. */
+const prepTicket = (page: Page, name: string) =>
+  page
+    .getByRole("article", {
+      name: rt("app.orders.prep.label", {
+        place: rt("app.orders.place.numbered", { name }),
+        department: "מטבח",
+      }),
+    })
+    .filter({ visible: true });
+
 test("Shiran takes a line back in time, with the toast's undo first", async ({
   page,
+  browser,
 }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
   const project = testInfo.project.name;
   await enterAs(page, "manager");
   await addOpenDemoEntry(SHIRAN, 1);
   await page.goto("/orders");
   await tile(page, "9").click();
   await showItems(page, project);
+  // Two starters, so the kitchen's ticket still has one to make.
   await button(page, "חומוס").click();
+  await button(page, "פוקאצ'ה").click();
   await showOrder(page, project);
   await send(page);
   await expect.poll(() => demoRounds("9")).toBe(1);
+  // What was sent shows at once, though the table was free a moment ago.
+  const takeBack = button(
+    page,
+    new RegExp(`^${literal(rt("app.orders.rounds.takeBack"))}.*חומוס`),
+  );
   // Taken back, then kept with the toast's undo.
-  await button(page, rt("app.orders.rounds.takeBack")).click();
+  await takeBack.click();
   await page.getByRole("button", { name: rt("app.orders.toast.undo") }).click();
   expect(await demoLineTakenBack("9", "חומוס")).toBe(false);
   // Again, and leaving the screen sends it.
-  await button(page, rt("app.orders.rounds.takeBack")).click();
+  await takeBack.click();
   await navItem(page, rt("modules.order_taking.mode.mine")).click();
   await expect.poll(() => demoLineTakenBack("9", "חומוס")).toBe(true);
+
+  // The kitchen sees it struck, and still makes the focaccia.
+  const noa = await secondPage(browser, testInfo);
+  await enterAs(noa, "worker");
+  await noa.goto("/orders/prep");
+  const ticket = prepTicket(noa, "9");
+  await expect(ticket).toContainText(rt("app.orders.line.takenBack"));
+  await expect(ticket).toContainText("פוקאצ'ה");
+  await expectCleanPage(noa);
+  await noa.context().close();
 });
 
 test("Shiran holds a dish for later, and fires it", async ({
   page,
+  browser,
 }, testInfo) => {
-  test.setTimeout(120_000);
+  test.setTimeout(150_000);
   const project = testInfo.project.name;
   await enterAs(page, "manager");
   await addOpenDemoEntry(SHIRAN, 1);
@@ -440,11 +516,32 @@ test("Shiran holds a dish for later, and fires it", async ({
   ).click();
   await send(page);
   await expect.poll(() => demoTicketStatus("10", "kitchen")).toBe("held");
+
+  // In the kitchen it waits greyed, to be called, with no "מוכן".
+  const noa = await secondPage(browser, testInfo);
+  await enterAs(noa, "worker");
+  await noa.goto("/orders/prep");
+  const ticket = prepTicket(noa, "10");
+  await expect(ticket).toContainText(rt("app.orders.ticketState.held"));
+  await expect(
+    ticket.getByRole("button", { name: rt("app.orders.prep.ready") }),
+  ).toHaveCount(0);
+
+  await page.bringToFront();
   await button(page, rt("app.orders.rounds.fire")).click();
   await expect(
     toast(page, rt("app.orders.toast.fired", { department: "מטבח" })),
   ).toBeVisible();
   await expect.poll(() => demoTicketStatus("10", "kitchen")).toBe("new");
+
+  // Called: the kitchen makes it now.
+  await noa.reload();
+  await expect(
+    prepTicket(noa, "10").getByRole("button", {
+      name: rt("app.orders.prep.ready"),
+    }),
+  ).toBeVisible();
+  await noa.context().close();
 });
 
 test("the mode is for whoever takes or prepares, and nobody else", async ({
@@ -458,6 +555,8 @@ test("the mode is for whoever takes or prepares, and nobody else", async ({
     page.getByRole("heading", { level: 1, name: he.app.notFound.title }),
   ).toBeVisible();
   // The owner, with no shift: Home's card, the floor, and back to the app.
+  // Signed out first: the door sends whoever is signed in to Home.
+  await page.context().clearCookies();
   await enterAs(page, "owner");
   await expect(heading(page, 2, rt("modules.order_taking.name"))).toBeVisible();
   await page.goto("/orders");
@@ -474,4 +573,51 @@ test("the mode is for whoever takes or prepares, and nobody else", async ({
   await expect(heading(page, 2, rt("modules.order_taking.name"))).toHaveCount(
     0,
   );
+});
+
+test("the owner chooses on the management page who takes orders", async ({
+  page,
+  browser,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "phone", "one run is enough");
+  const stored = await demoModuleSettings("order_taking");
+  try {
+    await enterAs(page, "owner");
+    await page.goto("/manage/order_taking");
+    await expect(
+      page
+        .getByText(o.takerDepartments.label)
+        .filter({ visible: true })
+        .first(),
+    ).toBeVisible();
+    // The kitchen takes orders too.
+    await page
+      .getByRole("switch", { name: "מטבח", exact: true })
+      .filter({ visible: true })
+      .first()
+      .click();
+    await expect
+      .poll(
+        async () =>
+          (await demoModuleSettings("order_taking"))
+            .takerDepartments as string[],
+      )
+      .toContain("kitchen");
+    await expectCleanPage(page);
+
+    // Noa, in the kitchen and on a shift, gets the floor now, not only
+    // preparing.
+    await addOpenDemoEntry(NOA, 1);
+    const noa = await secondPage(browser, testInfo);
+    await enterAs(noa, "worker");
+    await noa.goto("/orders");
+    await expect(noa).toHaveURL(/\/orders$/);
+    await expect(heading(noa, 1, rt("app.orders.floor.title"))).toBeVisible();
+    await expect(
+      navItem(noa, rt("modules.order_taking.mode.places")),
+    ).toBeVisible();
+    await noa.context().close();
+  } finally {
+    await setDemoModuleSettings("order_taking", stored);
+  }
 });

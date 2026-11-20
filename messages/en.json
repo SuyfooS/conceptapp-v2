@@ -5724,6 +5724,7 @@
       },
       "ticketState": {
         "held": "Waiting to be called",
+        "sending": "Sending",
         "notSent": "Not sent yet. It goes when there is a connection",
         "sent": "Sent",
         "onScreen": "On the screen · {department}",
@@ -5808,6 +5809,7 @@
         "closed": "The order closed meanwhile.",
         "closedAgain": "Send as a new order",
         "moved": "The order moved meanwhile. Choose again from the list.",
+        "place": "The place was removed meanwhile. Choose again from the list.",
         "window": "The time to take it back has passed.",
         "prepared": "It was already marked ready, so it can't be taken back.",
         "held": "It waits to be called. Fire it first.",
@@ -5824,7 +5826,10 @@
         "cancelled": "It was cancelled already.",
         "takenBack": "It was taken back already.",
         "notYet": "Taking orders isn't ready here yet.",
-        "failed": "Not sent. Trying again."
+        "clock": "Not sent. Orders go during a shift: clock in, and what was chosen is kept here.",
+        "staleShift": "Not sent. A shift from yesterday is still open: fix it on the clock, then send.",
+        "notSent": "Not sent. What was chosen is back in the draft: send it again with a tap.",
+        "failed": "Not saved. Tap again to try again."
       },
       "home": {
         "open": "Open the orders",
@@ -5832,6 +5837,7 @@
         "ready": "{count, plural, one {1 ready to serve} other {# ready to serve}}",
         "making": "{count, plural, one {1 being made} other {# being made}}",
         "offClock": "Opens during a shift",
+        "sendWaits": "Orders are sent during a shift",
         "waiting": "{department} · {count, plural, one {1 being made} other {# being made}}",
         "nothingWaiting": "Nothing to prepare right now"
       }

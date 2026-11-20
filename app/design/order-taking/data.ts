@@ -795,6 +795,7 @@ export const restaurantWording: Readonly<Record<string, string>> = {
   "app.orders.offClock.title": "מצב מלצרות נפתח בזמן משמרת",
   "app.orders.failed.moved":
     "ההזמנה עברה לשולחן אחר בינתיים. בוחרים שוב מהרשימה.",
+  "app.orders.failed.place": "השולחן הוסר בינתיים. בוחרים שוב מהרשימה.",
   "app.orders.failed.off": "מצב מלצרות כבוי בעסק הזה.",
   "app.orders.home.open": "פתיחת מצב מלצרות",
   "app.orders.home.idle": "בוחרים שולחן ושולחים להכנה",

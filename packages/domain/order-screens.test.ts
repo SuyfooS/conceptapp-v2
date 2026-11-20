@@ -14,12 +14,16 @@ import {
   placeState,
   placeTitleKind,
   putDraftLineBack,
+  putRefusedBack,
   readyNews,
+  refusalMark,
   removeDraftLine,
   roundLinesOf,
+  roundOf,
   sendTarget,
   ticketAge,
   ticketBadge,
+  withoutSent,
 } from "./order-screens";
 import type { MyOrders } from "./orders";
 
@@ -96,6 +100,41 @@ describe("the draft", () => {
       : [];
     expect(back).toEqual(lines);
     expect(removeDraftLine(lines, "none").removed).toBeNull();
+  });
+
+  it("sends 40 lines at most and keeps the rest of the draft for the next send", () => {
+    // A 30-line round refused while 15 lines were added: 45 in the draft.
+    const refused = Array.from({ length: 30 }, () => line({ held: true }));
+    const added = Array.from({ length: 15 }, () => line({ item: LEMONADE }));
+    const draft = putRefusedBack(added, refused);
+    expect(draft).toHaveLength(45);
+    expect(draft.slice(0, 30)).toEqual(refused);
+    const round = roundOf(draft);
+    expect(round).toHaveLength(40);
+    const left = withoutSent(draft, round);
+    expect(left).toEqual(added.slice(10));
+    // The next send takes what was left, and nothing is lost on the way.
+    expect(withoutSent(left, roundOf(left))).toEqual([]);
+  });
+
+  it("puts a refused round back in front, never a line twice", () => {
+    const sent = [line(), line({ item: LEMONADE })];
+    const meanwhile = [line()];
+    expect(putRefusedBack(meanwhile, sent)).toEqual([...sent, ...meanwhile]);
+    expect(putRefusedBack([...sent, ...meanwhile], sent)).toEqual([
+      ...sent,
+      ...meanwhile,
+    ]);
+    // Only what was sent leaves: a line added while it went stays.
+    expect(withoutSent([...sent, ...meanwhile], sent)).toEqual(meanwhile);
+  });
+
+  it("marks a refused line by why: sold out, or no department, else nothing", () => {
+    expect(refusalMark("unavailable")).toBe("soldOut");
+    expect(refusalMark("route")).toBe("noRoute");
+    for (const other of ["taken", "closed", "clock", "failed", "place"]) {
+      expect(refusalMark(other)).toBeNull();
+    }
   });
 
   it("says where its items go, in the business's order of departments", () => {

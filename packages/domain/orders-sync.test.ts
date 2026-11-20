@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   nextOrdersSyncDelay,
+  nextOrdersSyncQuery,
   ORDERS_SYNC_MS,
   ordersSyncAnswer,
   ordersSyncHref,
@@ -72,6 +73,104 @@ describe("what a sync asks", () => {
     expect(read(`/orders-sync?b=${BUSINESS}&f=1&o=x`)).toBeNull();
     expect(read(`/orders-sync?b=${BUSINESS}&p=1`)).toMatchObject({
       prep: true,
+    });
+  });
+
+  describe("the mode's next question", () => {
+    const held = {
+      floor: { version: 7 },
+      mine: { version: 5 },
+      prep: { version: 9 },
+      menu: { version: 2 },
+      orders: {} as Record<string, unknown>,
+    };
+    const ask = (
+      extra: Partial<Parameters<typeof nextOrdersSyncQuery>[0]> = {},
+    ) =>
+      nextOrdersSyncQuery({
+        business: BUSINESS,
+        takes: true,
+        viewing: false,
+        prepares: false,
+        off: false,
+        wants: [{ floor: true, prep: false, order: null }],
+        held,
+        ...extra,
+      });
+
+    it("asks from the oldest read it holds of what the screens want", () => {
+      expect(ask()).toEqual({
+        business: BUSINESS,
+        version: 5,
+        menu: 2,
+        floor: true,
+        mine: true,
+        prep: false,
+        order: null,
+      });
+      expect(ask({ held: { ...held, mine: null } }).version).toBeNull();
+      expect(ask({ held: { ...held, menu: null } }).menu).toBe("new");
+    });
+
+    it("reads an order it wants whole once, whatever moved: the first send at a free place", () => {
+      // The send's own sync brought the floor and mine at the new version,
+      // and the floor named the order: it isn't held yet.
+      const first = ask({
+        wants: [
+          { floor: true, prep: false, order: null },
+          { floor: false, prep: false, order: ORDER },
+        ],
+      });
+      expect(first).toMatchObject({ order: ORDER, version: null });
+      // Once it is (an order no longer to read is held as none), by version.
+      for (const order of [{ id: ORDER }, null]) {
+        expect(
+          ask({
+            wants: [{ floor: true, prep: false, order: ORDER }],
+            held: { ...held, orders: { [ORDER]: order } },
+          }),
+        ).toMatchObject({ order: ORDER, version: 5 });
+      }
+    });
+
+    it("asks a taker off a shift for their own rounds whole, and nothing of the floor", () => {
+      expect(
+        ask({
+          off: true,
+          wants: [{ floor: true, prep: false, order: ORDER }],
+        }),
+      ).toMatchObject({
+        version: null,
+        floor: false,
+        mine: true,
+        order: null,
+      });
+    });
+
+    it("asks the kitchen's tickets for whoever prepares, and nobody's own rounds while viewing", () => {
+      const prep = [{ floor: false, prep: true, order: null }];
+      expect(ask({ wants: prep, prepares: true })).toMatchObject({
+        prep: true,
+        floor: false,
+        version: 5,
+      });
+      expect(ask({ wants: prep })).toMatchObject({ prep: false });
+      expect(
+        ask({ wants: prep, prepares: true, takes: false, viewing: true }),
+      ).toMatchObject({ mine: false, prep: true, version: 9 });
+    });
+
+    it("asks only the menu where no screen wants anything, and that is a question", () => {
+      const menuOnly = ask({ takes: false, wants: [] });
+      expect(menuOnly).toMatchObject({
+        floor: false,
+        mine: false,
+        prep: false,
+        order: null,
+        version: null,
+        menu: 2,
+      });
+      expect(read(ordersSyncHref(menuOnly))).toEqual(menuOnly);
     });
   });
 

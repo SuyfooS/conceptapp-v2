@@ -82,10 +82,17 @@ export type SendOutcome =
       order: string | null;
     };
 
-/** A round on its way: sent, or waiting to be tried again. */
+/** A round on its way: being sent, or waiting to be tried again. */
 export type PendingSend = {
+  /** The round's own key: two rounds of one draft never share a place. */
+  key: string;
   target: RoundTarget;
   lines: DraftLine[];
+  /**
+   * Waits for a connection: an attempt of it failed and it is tried again,
+   * or the phone is offline. Until then it is simply being sent.
+   */
+  waiting: boolean;
 };
 
 /** Why the last send of a draft was refused, until it is sent again. */
@@ -96,16 +103,18 @@ export type SendRefusal = Extract<SendOutcome, { ok: false }> & {
 /** Sends a draft, and says what is on its way and what was refused. */
 export type OrdersSender = {
   /**
-   * Sends `lines` as one round to `target`: they leave the draft at once,
-   * and come back to its front with the reason when refused. Resolves with
-   * the answer, after any retries.
+   * Sends `lines` (at most a round's 40, `roundOf`) as one round to
+   * `target`: they leave the draft at once, the rest of it stays, and they
+   * come back to its front with the reason when refused. Resolves with the
+   * answer, after any retries.
    */
   send: (
     draft: string,
     target: RoundTarget,
     lines: DraftLine[],
   ) => Promise<SendOutcome>;
-  pending: (draft: string) => PendingSend | null;
+  /** The draft's rounds on their way, in the order they were sent. */
+  pending: (draft: string) => PendingSend[];
   refusal: (draft: string) => SendRefusal | null;
   clearRefusal: (draft: string) => void;
 };

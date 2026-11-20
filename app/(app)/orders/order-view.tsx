@@ -8,7 +8,9 @@ import {
   draftRoutes,
   placeState,
   putDraftLineBack,
+  refusalMark,
   removeDraftLine,
+  roundOf,
   sendTarget,
 } from "@domain/order-screens";
 import type { Menu, MenuItem, OrderPlace } from "@domain/order-taking";
@@ -43,6 +45,7 @@ import {
   ltr,
   OffShiftCard,
   placeStateWords,
+  sendFailureWords,
   useModeHeading,
   useOrderWords,
 } from "./orders-parts";
@@ -83,7 +86,8 @@ export function OrderView({
   const { t, placeTitle, time, person, department } = useOrderWords();
   const heading = useModeHeading();
   const mode = useOrdersMode();
-  const { frame, paths, drafts, sender, actions, say, off, newId } = mode;
+  const { frame, paths, drafts, sender, actions, say, off, clock, newId } =
+    mode;
   const router = useRouter();
   const place = where.kind === "place" ? where.place : null;
   const known = order ?? null;
@@ -132,13 +136,17 @@ export function OrderView({
 
   const refusal = sender.refusal(key);
   const pending = sender.pending(key);
-  const routes = draftRoutes(menu?.items ?? [], draft, frame.departmentOrder)
+  // What one send takes: a round's 40 lines at most, the rest after it.
+  const round = roundOf(draft);
+  const routes = draftRoutes(menu?.items ?? [], round, frame.departmentOrder)
     .map(({ department: id, count: n }) =>
       t("send.route", { department: department(id), count: n }),
     )
     .join(", ");
-  // Someone who runs orders reads off a shift; the send waits for one.
-  const needsShift = frame.clock !== null;
+  // Someone who runs orders reads off a shift; the send waits for one, as
+  // the frame said it or a refused send heard it since.
+  const needsShift = clock !== null;
+  const mark = refusal ? refusalMark(refusal.failure) : null;
 
   function pick(item: MenuItem) {
     const lines = addToDraft(drafts.get(key), item.id, newId);
@@ -190,7 +198,7 @@ export function OrderView({
       label,
     }),
   ) {
-    const lines = drafts.get(key).slice(0, ORDER_CAPS.linesPerRound);
+    const lines = roundOf(drafts.get(key));
     if (lines.length === 0 || sending || frame.viewing) return;
     setSending(true);
     setView("order");
@@ -300,13 +308,13 @@ export function OrderView({
       <Button asChild size="lg" className="w-full">
         <Link href={paths.clock}>
           <Clock3 aria-hidden="true" />
-          {t("send.clockIn")}
+          {clock === "staleShift" ? t("staleShift.action") : t("send.clockIn")}
         </Link>
       </Button>
     ) : (
       <SendOrderButton
         label={t("send.label")}
-        count={t("send.count", { count })}
+        count={t("send.count", { count: draftCount(round) })}
         routes={routes}
         onClick={() => void send()}
         floating={floating}
@@ -350,14 +358,19 @@ export function OrderView({
             if (!known || frame.viewing) return;
             const words = label.trim() || null;
             if (words === (known.takeaway?.label ?? null)) return;
-            void actions.setLabel(known.id, words).then((result) => {
-              say(
-                result.ok
-                  ? t("order.labelSaved")
-                  : failureWords(t, result.failure),
-              );
-              mode.syncNow();
-            });
+            // Offline, or the server failed: it says so, and the next blur
+            // saves it again.
+            void actions
+              .setLabel(known.id, words)
+              .catch(() => null)
+              .then((result) => {
+                say(
+                  result?.ok
+                    ? t("order.labelSaved")
+                    : failureWords(t, result ? result.failure : "failed"),
+                );
+                mode.syncNow();
+              });
           }}
         />
       ) : null}
@@ -371,7 +384,17 @@ export function OrderView({
           headingRef={draftHeading}
           onRemove={remove}
           onNoteRemoved={noteRemoved}
-          marked={refusal?.items ?? []}
+          marked={
+            refusal && mark
+              ? {
+                  items: refusal.items,
+                  word:
+                    mark === "soldOut"
+                      ? t("picker.soldOut")
+                      : t("picker.noRoute"),
+                }
+              : null
+          }
           send={<div className="hidden md:block">{sendButton(false)}</div>}
         />
       </div>
@@ -494,11 +517,12 @@ function RefusalLine({
       </FailureLine>
     );
   }
-  if (failure.failure === "clock" || failure.failure === "staleShift") {
-    // Off a shift: the screen says it in place of the draft.
-    return null;
-  }
-  return <FailureLine>{failureWords(t, failure.failure, items)}</FailureLine>;
+  // Off a shift: a taker's screen says it in place of the draft; someone who
+  // runs orders keeps the screen, and reads why here, with the clock as the
+  // send's place.
+  return (
+    <FailureLine>{sendFailureWords(t, failure.failure, items)}</FailureLine>
+  );
 }
 
 /** The desktop's first column: every place and its state, to move between them. */
@@ -512,9 +536,12 @@ function FloorList({
   current: string;
 }) {
   const { t, placeTitle } = useOrderWords();
-  const { frame, paths, now } = useOrdersMode();
+  const { frame, paths, now, drafts } = useOrdersMode();
   if (!floor) return <div className="hidden xl:block" />;
   const places = menu?.places ?? [];
+  // A new takeaway is a row while it is being taken or has a draft, as its
+  // tile on the floor is.
+  const newTakeaway = draftKey({ takeaway: null });
   const rows = [
     ...places.map((place) => ({
       key: draftKey({ place: place.id }),
@@ -530,6 +557,16 @@ function FloorList({
         order: o,
         href: paths.takeaway(o.id),
       })),
+    ...(current === newTakeaway || (drafts.counts[newTakeaway] ?? 0) > 0
+      ? [
+          {
+            key: newTakeaway,
+            title: placeTitle({ placeName: null, takeaway: null }),
+            order: null,
+            href: paths.takeaway(null),
+          },
+        ]
+      : []),
   ];
   return (
     <nav
@@ -546,6 +583,7 @@ function FloorList({
             subtitle={placeStateWords(
               t,
               placeState(row.order, now, frame.lateAfterMinutes),
+              drafts.counts[row.key] ?? 0,
             )}
           />
         ))}

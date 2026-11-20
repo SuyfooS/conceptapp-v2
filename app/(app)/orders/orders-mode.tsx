@@ -11,6 +11,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { newsGate } from "./news-gate";
 import type {
   DraftStore,
   OrdersActions,
@@ -32,6 +33,11 @@ export type OrdersModeValue = {
   paths: OrdersPaths;
   /** The server's clock, in milliseconds, moving every 10 seconds. */
   now: number;
+  /**
+   * Why a send waits for a shift now: off one, or a shift left open. The
+   * frame's, then what the sync and a refused send heard since.
+   */
+  clock: "clock" | "staleShift" | null;
   /** A taker off a shift, or with a shift left open: their screens wait. */
   off: "clock" | "staleShift" | null;
   drafts: DraftStore;
@@ -68,27 +74,60 @@ type Toast = {
  * sure", or "פתיחה" to what it names (a ticket ready, from another screen).
  * When what was pressed went away with the change, the keyboard's focus goes
  * to the way back, and after it to `after`.
+ *
+ * `say` is for what the person just did, and takes the toast's place.
+ * `tell` is for news nobody pressed for (a ticket turned ready): it never
+ * takes the place of a way back still offered, and waits until that toast
+ * has gone; the newest news waiting is told then, once.
  */
-export function useModeToast(): { say: Say; toast: ReactNode } {
+export function useModeToast(): {
+  say: Say;
+  tell: (show: () => void) => void;
+  toast: ReactNode;
+} {
   const t = useTranslations("app.orders.toast");
   const router = useRouter();
   const [toast, setToast] = useState<Toast | null>(null);
+  const shown = useRef<Toast | null>(null);
+  shown.current = toast;
   const after = useRef<(() => HTMLElement | null | undefined) | null>(null);
-  const say = useCallback<Say>((text, options = {}) => {
-    after.current = options.after ?? null;
-    setToast({
-      text,
-      stamp: Date.now(),
-      undo: options.undo ?? null,
-      open: options.open ?? null,
-      focus: Boolean((options.undo || options.open) && options.focus),
-      onWaitingChange: options.onWaitingChange ?? null,
-    });
+  /** News waits while a way back is offered on screen. */
+  const [gate] = useState(newsGate);
+  /** The toast that last heard it stopped counting, and whether it still is. */
+  const told = useRef<{ toast: Toast; waiting: boolean } | null>(null);
+
+  const say = useCallback<Say>(
+    (text, options = {}) => {
+      // A toast that waited for the person hears it goes on, as it goes: what
+      // its way back holds (a take-back) lands then, never stays held.
+      if (told.current?.waiting) told.current.toast.onWaitingChange?.(false);
+      told.current = null;
+      after.current = options.after ?? null;
+      gate.said(Boolean(options.undo));
+      setToast({
+        text,
+        stamp: Date.now(),
+        undo: options.undo ?? null,
+        open: options.open ?? null,
+        focus: Boolean((options.undo || options.open) && options.focus),
+        onWaitingChange: options.onWaitingChange ?? null,
+      });
+    },
+    [gate],
+  );
+  const onWaitingChange = useCallback((waiting: boolean) => {
+    const current = shown.current;
+    if (!current?.onWaitingChange) return;
+    told.current = { toast: current, waiting };
+    current.onWaitingChange(waiting);
   }, []);
+
   const action = toast?.undo
     ? {
         label: t("undo"),
         onClick: () => {
+          // The way back lets go of what it held: nothing to go on with.
+          told.current = null;
           toast.undo?.();
           setToast(null);
         },
@@ -110,8 +149,9 @@ export function useModeToast(): { say: Say; toast: ReactNode } {
       action={action}
       focusAction={toast?.focus ?? false}
       onFocusLeave={() => after.current?.()?.focus({ preventScroll: true })}
-      onWaitingChange={toast?.onWaitingChange ?? undefined}
+      onWaitingChange={toast?.onWaitingChange ? onWaitingChange : undefined}
+      onHidden={gate.hidden}
     />
   );
-  return { say, toast: element };
+  return { say, tell: gate.tell, toast: element };
 }

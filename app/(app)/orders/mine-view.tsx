@@ -144,7 +144,15 @@ export function MineView({ mine }: { mine: MyOrders | null }) {
       >
         <Check aria-hidden="true" />
         {t("order.serve")}
-        <span className="sr-only">{t("draft.forItem", { name: s.place })}</span>
+        {/* A table's kitchen and bar tickets: each by both. */}
+        <span className="sr-only">
+          {t("draft.forItem", {
+            name: t("mine.cardTitle", {
+              place: s.place,
+              department: s.department,
+            }),
+          })}
+        </span>
       </Button>
     );
 
