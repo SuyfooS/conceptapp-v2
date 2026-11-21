@@ -10,6 +10,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import { newId } from "../../(app)/orders/new-id";
@@ -24,9 +25,15 @@ import type {
   OrdersPaths,
   OrdersSender,
   SendOutcome,
+  SendRefusal,
   WholeWrite,
 } from "../../(app)/orders/orders-types";
-import { refusalMoved, storeDraftMoved } from "../../(app)/orders/send-store";
+import {
+  type OwnLine,
+  refusalMoved,
+  storeDraftMoved,
+  storeMovedBack,
+} from "../../(app)/orders/send-store";
 import { wholeWaits } from "../../(app)/orders/whole-on-way";
 import {
   cancelLine,
@@ -104,6 +111,11 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
   // A version that moves with every change to the rows, as the server's does.
   const [seen, setSeen] = useState({ data, version: 1 });
   if (seen.data !== data) setSeen({ data, version: seen.version + 1 });
+  // What a table held of its own as an order moved there, and its refusal,
+  // by its draft, for the move's "ביטול" (as the app's store and provider).
+  const own = useRef<Record<string, OwnLine[]>>({});
+  const ownRefusals = useRef(new Map<string, SendRefusal | null>());
+  const onItsWay = (draft: string) => (data.pending[draft] ? 1 : 0);
 
   // Shiran's table 4 starters, made in the kitchen while she looks.
   const readyIn = data.readyIn;
@@ -256,6 +268,16 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
 
   const sender: OrdersSender = {
     send: (draft: string, target: RoundTarget, lines: DraftLine[]) => {
+      // A table's own line that goes out with the order moved there is the
+      // order's from then on, sent or refused, as the app's (`storeSent`).
+      const ownThere = own.current[draft];
+      if (ownThere) {
+        const sent = new Set(lines.map((line) => line.id));
+        own.current = {
+          ...own.current,
+          [draft]: ownThere.filter((line) => !sent.has(line.id)),
+        };
+      }
       const refuse = (outcome: Extract<SendOutcome, { ok: false }>) => {
         update((d) => ({
           ...d,
@@ -347,21 +369,48 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
           },
         })),
       // An order moved: its table's draft goes with it, its refusal too, as
-      // the app's, and what the new table held stays there on its undo.
-      move: (from: string, to: string, staying?: readonly string[]) => {
-        const before = (data.drafts[to] ?? []).map((line) => line.id);
+      // the app's, and what the new table held, and its refusal, stay there
+      // on its undo, but what went out in one of the order's rounds.
+      move: (from: string, to: string) => {
+        if (from === to) return;
+        const moved = storeDraftMoved(
+          { drafts: data.drafts, pending: {}, own: own.current },
+          from,
+          to,
+        );
+        own.current = moved.own ?? {};
+        ownRefusals.current.delete(from);
+        ownRefusals.current.set(to, data.refusals[to] ?? null);
         update((d) => {
           const was = { drafts: d.drafts, pending: {} };
-          const moved = storeDraftMoved(was, from, to, staying);
-          return moved === was
+          const next = storeDraftMoved(was, from, to);
+          return next.drafts === was.drafts
             ? d
             : {
                 ...d,
-                drafts: moved.drafts,
+                drafts: next.drafts,
                 refusals: refusalMoved(d.refusals, from, to),
               };
         });
-        return before;
+      },
+      moveBack: (from: string, to: string) => {
+        const lines = own.current[from];
+        const refusal = ownRefusals.current.get(from) ?? null;
+        const { [from]: _, ...others } = own.current;
+        own.current = others;
+        ownRefusals.current.delete(from);
+        if (lines === undefined) return;
+        update((d) => {
+          const was = { drafts: d.drafts, pending: {}, own: { [from]: lines } };
+          const next = storeMovedBack(was, from, to, newId);
+          return next.drafts === was.drafts
+            ? d
+            : {
+                ...d,
+                drafts: next.drafts,
+                refusals: refusalMoved(d.refusals, from, to, refusal),
+              };
+        });
       },
       counts: Object.fromEntries(
         Object.entries(data.drafts).map(([key, lines]) => [
@@ -375,9 +424,11 @@ export function TwinOrdersMode({ children }: { children: ReactNode }) {
     // The twin's writes land at once, so none is ever on its way; one still
     // waits for a round its store shows on its way (`?state=pending`).
     whole: (on: WholeWrite, write: () => Promise<OrdersActionResult>) =>
-      wholeWaits(on, (draft) => (data.pending[draft] ? 1 : 0))
+      wholeWaits(on, onItsWay)
         ? Promise.resolve({ ok: false as const, failure: "sending" as const })
         : write(),
+    wholeRefusal: (on: WholeWrite) =>
+      wholeWaits(on, onItsWay) ? ("sending" as const) : null,
     wholeOnWay: () => false,
     say,
     tell,

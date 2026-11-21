@@ -11,6 +11,8 @@ import {
   storeDraftMoved,
   storedFrom,
   storeEmpty,
+  storeKept,
+  storeMovedBack,
   storeSent,
   storeSettled,
 } from "./send-store";
@@ -248,8 +250,17 @@ describe("a draft changed from what it holds now", () => {
 });
 
 describe("a draft when its order moves (P5)", () => {
+  const there = "place:00000000-0000-4000-8000-0000000000c2";
+  /** New ids for what goes back as a line of its own. */
+  const ids = () => {
+    let n = 0;
+    return () => {
+      n += 1;
+      return `back-${n}`;
+    };
+  };
+
   it("goes with the order after what the new place holds, and back again", () => {
-    const there = "place:00000000-0000-4000-8000-0000000000c2";
     const waiting = line();
     const already = line({ quantity: 2 });
     const store: SendStore = {
@@ -259,28 +270,35 @@ describe("a draft when its order moves (P5)", () => {
     const moved = storeDraftMoved(store, DRAFT, there);
     expect(moved.drafts[DRAFT]).toEqual([]);
     expect(moved.drafts[there]).toEqual([already, waiting]);
-    // Its undo takes back all but what the new place held before.
-    const back = storeDraftMoved(moved, there, DRAFT, [already.id]);
+    expect(moved.own).toEqual({ [there]: [{ id: already.id, quantity: 2 }] });
+    // Its undo takes back all but what the new place held of its own.
+    const back = storeMovedBack(moved, there, DRAFT, ids());
     expect(back.drafts[DRAFT]).toEqual([waiting]);
     expect(back.drafts[there]).toEqual([already]);
-    // Nothing waiting, nothing but the place's own, or the same place:
-    // nothing changes.
-    expect(storeDraftMoved(emptySendStore, DRAFT, there)).toBe(emptySendStore);
+    expect(back.own).toEqual({});
+    // The same place: nothing changes. Nothing waiting: only what the new
+    // place holds is kept, the drafts as they were.
     expect(storeDraftMoved(store, DRAFT, DRAFT)).toBe(store);
-    expect(storeDraftMoved(store, there, DRAFT, [already.id])).toBe(store);
+    const empty = storeDraftMoved(
+      { ...emptySendStore, drafts: { [there]: [already] } },
+      DRAFT,
+      there,
+    );
+    expect(empty.drafts).toEqual({ [there]: [already] });
+    expect(empty.own).toEqual({ [there]: [{ id: already.id, quantity: 2 }] });
+    // Nothing known of what the place held (no move there in this tab's
+    // memory): nothing moves back.
+    expect(storeMovedBack(store, there, DRAFT, ids())).toBe(store);
   });
 
   it("takes back on its undo what was added there and what a refused round put back", () => {
-    const there = "place:00000000-0000-4000-8000-0000000000c2";
     const went = line();
     const own = line({ quantity: 2 });
     const store: SendStore = {
       ...emptySendStore,
       drafts: { [DRAFT]: [went], [there]: [own] },
     };
-    // The order moved: what the new place held before stays there on undo.
     const moved = storeDraftMoved(store, DRAFT, there);
-    const staying = [own.id];
     // At the new place a round goes with what went and is refused there, its
     // line back at the front of the draft; and a line is added meanwhile.
     const roundThere = round(A, [went], there);
@@ -295,13 +313,110 @@ describe("a draft when its order moves (P5)", () => {
     );
     expect(afterRefusal.drafts[there]).toEqual([went, own, added]);
     // The undo: everything but the place's own goes back with the order.
-    const back = storeDraftMoved(afterRefusal, there, DRAFT, staying);
+    const back = storeMovedBack(afterRefusal, there, DRAFT, ids());
     expect(back.drafts[DRAFT]).toEqual([went, added]);
     expect(back.drafts[there]).toEqual([own]);
   });
 
+  it("takes back more of the place's own line than it held, as a line of its own", () => {
+    // Table 5 holds a coffee; table 3's order moves there, and a coffee is
+    // added for it: one tap makes 5's own plain line two.
+    const coffee = line();
+    const beer = line();
+    const moved = storeDraftMoved(
+      {
+        ...emptySendStore,
+        drafts: { [DRAFT]: [beer], [there]: [coffee] },
+      },
+      DRAFT,
+      there,
+    );
+    const tapped = storeDraftChanged(moved, there, (lines) =>
+      lines.map((l) => (l.id === coffee.id ? { ...l, quantity: 2 } : l)),
+    );
+    const back = storeMovedBack(tapped, there, DRAFT, ids());
+    // Table 5 keeps its one coffee; table 3's order has the coffee added for
+    // it and its beer, in the order table 5's draft held them.
+    expect(back.drafts[there]).toEqual([coffee]);
+    expect(back.drafts[DRAFT]).toEqual([
+      { ...coffee, id: "back-1", quantity: 1 },
+      beer,
+    ]);
+    // One fewer than it held: the place keeps what is left of it.
+    const fewer = storeDraftChanged(
+      storeDraftMoved(
+        {
+          ...emptySendStore,
+          drafts: { [DRAFT]: [beer], [there]: [{ ...coffee, quantity: 3 }] },
+        },
+        DRAFT,
+        there,
+      ),
+      there,
+      (lines) =>
+        lines.map((l) => (l.id === coffee.id ? { ...l, quantity: 2 } : l)),
+    );
+    const kept = storeMovedBack(fewer, there, DRAFT, ids());
+    expect(kept.drafts[there]).toEqual([{ ...coffee, quantity: 2 }]);
+    expect(kept.drafts[DRAFT]).toEqual([beer]);
+  });
+
+  it("takes back the place's own line that went out in one of the order's rounds", () => {
+    // Table 5's own coffee goes in the order's round with the moved beer,
+    // refused as the beer sold out: both come back to 5. Had it gone, the
+    // coffee would have been the order's, so it goes back with the order.
+    const coffee = line();
+    const beer = line();
+    const moved = storeDraftMoved(
+      {
+        ...emptySendStore,
+        drafts: { [DRAFT]: [beer], [there]: [coffee] },
+      },
+      DRAFT,
+      there,
+    );
+    const roundThere = round(A, [coffee, beer], there);
+    const sent = storeSent(moved, roundThere);
+    expect(sent.own).toEqual({ [there]: [] });
+    const refusedThere = storeSettled(sent, roundThere, refused);
+    expect(refusedThere.own).toEqual({ [there]: [] });
+    expect(refusedThere.drafts[there]).toEqual([coffee, beer]);
+    const back = storeMovedBack(refusedThere, there, DRAFT, ids());
+    expect(back.drafts[DRAFT]).toEqual([coffee, beer]);
+    expect(back.drafts[there]).toEqual([]);
+    // A round from another draft leaves what the place holds of its own.
+    const elsewhere = storeSent(moved, round(B, [line()], NEW_TAKEAWAY));
+    expect(elsewhere.own).toBe(moved.own);
+  });
+
+  it("forgets what the old place held of its own once the order moves on", () => {
+    const coffee = line();
+    const onTo = "place:00000000-0000-4000-8000-0000000000c3";
+    const moved = storeDraftMoved(
+      { ...emptySendStore, drafts: { [there]: [coffee] } },
+      DRAFT,
+      there,
+    );
+    const onward = storeDraftMoved(moved, there, onTo);
+    expect(onward.own).toEqual({ [onTo]: [] });
+    expect(onward.drafts[onTo]).toEqual([coffee]);
+  });
+
+  it("keeps in the tab the drafts and the rounds, never what a place held", () => {
+    const coffee = line();
+    const moved = storeDraftMoved(
+      { ...emptySendStore, drafts: { [there]: [coffee] } },
+      DRAFT,
+      there,
+    );
+    expect(JSON.parse(storeKept(moved))).toEqual({
+      drafts: moved.drafts,
+      pending: moved.pending,
+    });
+    expect(storedFrom(JSON.parse(storeKept(moved))).own).toBeUndefined();
+  });
+
   it("takes the refusal of its last send along, unless the draft it joins has one", () => {
-    const there = "place:00000000-0000-4000-8000-0000000000c2";
     const soldOut = { failure: "unavailable", items: [HUMMUS] };
     const moved = refusalMoved({ [there]: soldOut }, there, DRAFT);
     expect(moved).toEqual({ [DRAFT]: soldOut });
@@ -312,5 +427,19 @@ describe("a draft when its order moves (P5)", () => {
     const none = { [DRAFT]: soldOut };
     expect(refusalMoved(none, there, DRAFT)).toBe(none);
     expect(refusalMoved(none, DRAFT, DRAFT)).toBe(none);
+  });
+
+  it("leaves on the undo the refusal the new place held of its own", () => {
+    // Table 5's fish was refused as sold out before table 3's order, with
+    // its beer, moved there. The undo takes the beer back, and 5's refusal
+    // stays with its fish.
+    const fish = { failure: "unavailable", items: [HUMMUS] };
+    const refusals = { [there]: fish };
+    expect(refusalMoved(refusals, there, DRAFT, fish)).toBe(refusals);
+    // A refusal at 5 since the move is about the order's round: it goes.
+    const since = { failure: "unavailable", items: [HUMMUS] };
+    expect(refusalMoved({ [there]: since }, there, DRAFT, fish)).toEqual({
+      [DRAFT]: since,
+    });
   });
 });

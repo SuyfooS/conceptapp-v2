@@ -219,6 +219,7 @@ export function OrderView({
     sender,
     actions,
     whole,
+    wholeRefusal,
     wholeOnWay,
     say,
     tell,
@@ -699,7 +700,8 @@ export function OrderView({
 
   /**
    * A write to the order whole, at once: a held line fix goes first, and
-   * it is on its way for every screen of the mode (`whole`).
+   * it is on its way for every screen of the mode (`whole`), which asks the
+   * server again once it answers.
    */
   async function orderWrite(
     on: WholeWrite,
@@ -709,8 +711,25 @@ export function OrderView({
     await fix.commit();
     const result = await whole(on, write).catch(() => null);
     setBusy(false);
-    mode.syncNow();
     return result;
+  }
+
+  /**
+   * Whether a way back pressed on the toast waits, decided as it is pressed
+   * (`wholeRefusal`), before the toast lets go of the news behind it: for a
+   * round on its way it is offered again (`offer`), for another write of
+   * the order on its way it says so; true when it waits.
+   */
+  function undoWaits(
+    on: WholeWrite,
+    offer: (text: string) => void,
+    what: "move" | "undoClose",
+    place = "",
+  ): boolean {
+    const waits = wholeRefusal(on);
+    if (waits === "sending") offer(t("toast.undoWaits"));
+    else if (waits !== null) say(fixFailureWords(t, waits, what, place));
+    return waits !== null;
   }
 
   async function close() {
@@ -736,13 +755,11 @@ export function OrderView({
         after: () => titleRef.current,
       });
     function undoClose() {
+      if (undoWaits(on, offer, "undoClose")) return;
       void whole(on, () => actions.undoClose(id))
         .catch(() => null)
         .then((back) => {
-          mode.syncNow();
-          if (back && !back.ok && back.failure === "sending") {
-            offer(t("toast.undoWaits"));
-          } else if (!back?.ok) {
+          if (!back?.ok) {
             say(
               fixFailureWords(t, back ? back.failure : "failed", "undoClose"),
             );
@@ -772,8 +789,8 @@ export function OrderView({
       return;
     }
     // The draft goes with the order (default 7), and back with its undo:
-    // all the new place's draft holds then but what it held before.
-    const stayed = drafts.move(fromKey, toKey);
+    // all the new place's draft holds then but its own.
+    drafts.move(fromKey, toKey);
     router.replace(paths.place(to.id));
     // The row pressed went with the screen: the way back takes the focus,
     // and after it the title of the place on show.
@@ -786,18 +803,14 @@ export function OrderView({
     // The way back waits while a round sent at the new place is on its way,
     // and is offered again: moved back first, it would be refused there, its
     // lines in a draft no screen shows. Meanwhile nothing is sent at either
-    // place (`whole`).
+    // place (`whole`). Behind another write of the order on its way (a move
+    // on, the till's close) it would undo that in part: it says so instead.
     function undoMove() {
-      void whole({ order: id, drafts: [toKey, fromKey] }, () =>
-        actions.move(id, from.id),
-      )
+      const on: WholeWrite = { order: id, drafts: [toKey, fromKey] };
+      if (undoWaits(on, offer, "move", back)) return;
+      void whole(on, () => actions.move(id, from.id))
         .catch(() => null)
         .then((again) => {
-          mode.syncNow();
-          if (again && !again.ok && again.failure === "sending") {
-            offer(t("toast.undoWaits"));
-            return;
-          }
           if (!again?.ok) {
             say(
               fixFailureWords(
@@ -810,8 +823,9 @@ export function OrderView({
             return;
           }
           // What went, what was added there since and what a refused round
-          // put back there: all the order's, so all go back with it.
-          drafts.move(toKey, fromKey, stayed);
+          // of the order put back there: all the order's, so all go back
+          // with it.
+          drafts.moveBack(toKey, fromKey);
           // This screen, hidden meanwhile, takes the focus once on show.
           if (!onScreen.current) backHere.current = true;
           router.replace(paths.place(from.id));

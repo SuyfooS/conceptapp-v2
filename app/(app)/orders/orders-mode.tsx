@@ -21,6 +21,7 @@ import type {
   OrdersSender,
   Say,
   Tell,
+  WholeRefusal,
   WholeWrite,
 } from "./orders-types";
 
@@ -48,15 +49,23 @@ export type OrdersModeValue = {
   actions: OrdersActions;
   /**
    * Writes an order whole (P5: a close, a move, the "ביטול" of either, a
-   * reopen) with `write`, kept on its way until it answers, whichever screen
-   * sent it (`wholeOnWay`). It never goes while a round of a draft it names
-   * is on its way, read as the tab has it now: it answers "sending" then, and
-   * nothing was written.
+   * reopen) with `write`, kept on its way until it answers, and once written
+   * until a read made after it has landed, whichever screen sent it
+   * (`wholeOnWay`); and asks the server again. It never goes while a round
+   * of a draft it names is on its way, nor while another write of its order
+   * has not answered, read as the tab has it now: it answers why then
+   * (`wholeRefusal`), and nothing was written.
    */
   whole: (
     on: WholeWrite,
     write: () => Promise<OrdersActionResult>,
   ) => Promise<OrdersActionResult>;
+  /**
+   * Why `whole` would hold `on` back now, or null, decided at once: a way
+   * back pressed on the toast is offered again, or says why, before the
+   * toast lets go of the news waiting behind it.
+   */
+  wholeRefusal: (on: WholeWrite) => WholeRefusal | null;
   /**
    * Whether a write of the order whole is on its way for `order` or touching
    * `draft`: meanwhile no send goes there, and nothing sent is fixed, served

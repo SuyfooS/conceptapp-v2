@@ -58,14 +58,20 @@ export type OrdersPaths = {
 
 /**
  * Why an action was refused: the database's reasons, the server's own, and
- * the mode's "sending" (P5): a write of the order whole never goes while a
- * round of a draft it names is on its way, and nothing was written.
+ * the mode's own (P5, `WholeRefusal`), with nothing written.
  */
 export type OrdersActionFailure =
   | OrderFailure
   | "viewOnly"
   | "businessChanged"
-  | "sending";
+  | WholeRefusal;
+
+/**
+ * Why the mode holds back a write of the order whole (P5): a round of a
+ * draft it names is on its way ("sending"), or another write of the same
+ * order, or of a draft it names, has not answered yet ("writing").
+ */
+export type WholeRefusal = "sending" | "writing";
 
 export type OrdersActionResult<T = null> =
   | { ok: true; value: T }
@@ -183,14 +189,21 @@ export type DraftStore = {
    */
   update: (draft: string, change: (lines: DraftLine[]) => DraftLine[]) => void;
   /**
-   * An order moved: its old place's draft joins the new place's (P5), all
-   * but the lines named in `staying`, and the refusal of its last send goes
-   * with them. Returns the lines the new place's draft held before, which
-   * stay there on the move's undo: everything else it holds then is the
-   * order's (moved with it, added there meanwhile, or back from a refused
-   * round) and goes back with it.
+   * An order moved (P5): its old place's draft joins the new place's, and
+   * the refusal of its last send goes with it. What the new place's draft
+   * held then, and its refusal, are the place's own: they stay there on the
+   * move's "ביטול" (`moveBack`).
    */
-  move: (from: string, to: string, staying?: readonly string[]) => string[];
+  move: (from: string, to: string) => void;
+  /**
+   * The move's "ביטול", from the place the order moved to back to `to`:
+   * everything its draft holds but its own goes back with the order (what
+   * moved, what was added there meanwhile, more of one of its own lines
+   * than it held, and what went out in one of the order's rounds and came
+   * back refused), and the refusal of the last send there goes too, unless
+   * it is the place's own.
+   */
+  moveBack: (from: string, to: string) => void;
   /** How many items each draft holds, for the floor's tiles. */
   counts: Record<string, number>;
 };

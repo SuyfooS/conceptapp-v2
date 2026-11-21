@@ -204,6 +204,32 @@ describe("the mode's one toast", () => {
     expect(news).toHaveBeenCalledTimes(1);
   });
 
+  it("keeps the news waiting when a way back pressed is offered again at once", () => {
+    const { toast, last } = setUp();
+    // "ההזמנה הועברה אל 5" with "ביטול"; table 8's ticket turns ready.
+    const again = withUndo("undoWaits");
+    toast.say({
+      text: "moved",
+      undo: () => {
+        // A round sent at table 5 is on its way: the way back waits, said
+        // again as it is pressed, never a few microtasks later.
+        toast.say(again);
+      },
+      onWaitingChange: null,
+    });
+    const news = vi.fn(() => {
+      toast.say(plain("ready: 8"));
+    });
+    toast.tell("ready", news);
+    toast.undo();
+    expect(news).not.toHaveBeenCalled();
+    expect(last()?.text).toBe("undoWaits");
+    // Its time is up: the news, once.
+    toast.hidden(toast.shown()?.id ?? null);
+    expect(news).toHaveBeenCalledTimes(1);
+    expect(last()?.text).toBe("ready: 8");
+  });
+
   it("goes as its way to what it names is pressed, and tells what waited", () => {
     const { toast, last } = setUp();
     toast.say(withUndo("removed"));

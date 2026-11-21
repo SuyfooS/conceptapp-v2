@@ -25,7 +25,7 @@ import {
   useModeHeading,
   useOrderWords,
 } from "./orders-parts";
-import type { OrdersActionResult } from "./orders-types";
+import type { OrdersActionResult, WholeWrite } from "./orders-types";
 
 /**
  * "לקופה" for an order (waiter mode P5, the design's §3.2 step 10): what the
@@ -128,23 +128,23 @@ function Till({
   // the writes on their way (`inTurn`).
   const sendOnWay = open && mode.sender.pending(draft).length > 0;
   // A write of the order whole on its way from another screen (its close or
-  // its move, a toast's "ביטול"): this one waits for it.
+  // its move, a toast's "ביטול"), or written and not read again yet: this
+  // one waits for it.
   const writing = busy || mode.wholeOnWay(order.id, draft);
+  const on: WholeWrite = { order: order.id, drafts: [draft] };
 
   /**
    * A write of the order whole, on its way for every screen of the mode
-   * (`whole`): the order's own screen sends nothing to it meanwhile, and it
-   * never goes while a round of the order is on its way.
+   * (`whole`, which asks the server again once it answers): the order's own
+   * screen sends nothing to it meanwhile, and it never goes while a round
+   * of the order is on its way.
    */
   async function write(
     run: () => Promise<OrdersActionResult>,
   ): Promise<OrdersActionResult | null> {
     setBusy(true);
-    const result = await whole({ order: order.id, drafts: [draft] }, run).catch(
-      () => null,
-    );
+    const result = await whole(on, run).catch(() => null);
     setBusy(false);
-    mode.syncNow();
     return result;
   }
 
@@ -176,12 +176,19 @@ function Till({
   }
 
   async function undoClose() {
-    const result = await write(() => actions.undoClose(order.id));
-    if (result && !result.ok && result.failure === "sending") {
+    // Decided as it is pressed, before the toast lets go of the news behind
+    // it: for a round on its way it is offered again, for another write of
+    // the order on its way it says so, and the button never flickers.
+    const waits = mode.wholeRefusal(on);
+    if (waits === "sending") {
       offerUndo(t("toast.undoWaits"));
       return;
     }
-    went(result, "undoClose");
+    if (waits !== null) {
+      went({ ok: false, failure: waits }, "undoClose");
+      return;
+    }
+    went(await write(() => actions.undoClose(order.id)), "undoClose");
   }
 
   async function reopenNow() {

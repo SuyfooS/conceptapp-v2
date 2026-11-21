@@ -5706,7 +5706,8 @@
           "noFree": "No place is free right now.",
           "cancel": "Cancel the order",
           "cancelHint": "Cancels everything sent, with a reason",
-          "waitSend": "Waiting for what was just sent to arrive."
+          "waitSend": "Waiting for what was just sent to arrive.",
+          "waitWrite": "Another change to the order is still on its way. Wait for it to arrive."
         },
         "closed": {
           "title": "This order was closed",

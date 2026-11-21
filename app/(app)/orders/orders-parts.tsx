@@ -377,8 +377,8 @@ export type FixWrite =
  * back); a place taken names it for a move and says to wait for a reopen or
  * a close's undo; a close's undo too late, or of another's close, says where
  * it opens again; a held block says what to do before a close; a round on
- * its way says it lands first; a shift that ended says so; anything else as
- * any write.
+ * its way says it lands first, and another write of the order on its way
+ * says so; a shift that ended says so; anything else as any write.
  */
 export function fixFailureWords(
   t: OrdersT,
@@ -402,8 +402,10 @@ export function fixFailureWords(
     return t("failed.undoClose");
   }
   if (failure === "held" && what === "close") return t("close.held");
-  // A write of the order whole waits for a round on its way to land first.
+  // A write of the order whole waits for a round on its way to land first,
+  // and never goes behind another of the order not answered yet.
   if (failure === "sending") return t("order.actions.waitSend");
+  if (failure === "writing") return t("order.actions.waitWrite");
   // A shift that ended while the screen was on.
   if (failure === "clock") return t("offClock.title");
   if (failure === "staleShift") return t("staleShift.title");

@@ -58,7 +58,15 @@ const MEETS: Record<FixWrite, OrdersActionFailure[]> = {
     "off",
     "viewOnly",
   ],
-  order: ["closed", "noAccess", "gone", "off", "viewOnly", "sending"],
+  order: [
+    "closed",
+    "noAccess",
+    "gone",
+    "off",
+    "viewOnly",
+    "sending",
+    "writing",
+  ],
   move: [
     "taken",
     "takeaway",
@@ -68,11 +76,22 @@ const MEETS: Record<FixWrite, OrdersActionFailure[]> = {
     "viewOnly",
     "clock",
     "sending",
+    "writing",
   ],
-  close: ["held", "closed", "gone", "viewOnly", "clock", "sending"],
-  reopen: ["day", "notClosed", "taken", "gone", "viewOnly", "clock", "sending"],
+  close: ["held", "closed", "gone", "viewOnly", "clock", "sending", "writing"],
+  reopen: [
+    "day",
+    "notClosed",
+    "taken",
+    "gone",
+    "viewOnly",
+    "clock",
+    "sending",
+    "writing",
+  ],
   undoClose: [
     "sending",
+    "writing",
     "window",
     "day",
     "notClosed",
@@ -130,6 +149,10 @@ describe("a refused fix", () => {
     ] as const) {
       expect(fixFailureWords(t, "sending", what)).toBe(
         he.app.orders.order.actions.waitSend,
+      );
+      // Nor does it go behind another write of the order not answered yet.
+      expect(fixFailureWords(t, "writing", what)).toBe(
+        he.app.orders.order.actions.waitWrite,
       );
     }
     // A line ready: who cancels it, and who puts it back, each in its words.

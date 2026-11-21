@@ -70,6 +70,8 @@ import {
   storeDraftMoved,
   storedFrom,
   storeEmpty,
+  storeKept,
+  storeMovedBack,
   storeSent,
   storeSettled,
 } from "./send-store";
@@ -204,7 +206,7 @@ const readStored = (key: string, user: string): SendStore =>
   storedFrom(readKept(key, user));
 
 const writeStored = (key: string, stored: SendStore, writer: object) =>
-  keep(key, storeEmpty(stored) ? null : JSON.stringify(stored), writer);
+  keep(key, storeEmpty(stored) ? null : storeKept(stored), writer);
 
 const NEW_TAKEAWAY = draftKey({ takeaway: null });
 
@@ -323,7 +325,32 @@ export function OrdersModeProvider({
   /** The key whose kept store this holds: null until it is read. */
   const readFrom = useRef<string | null>(null);
   const [loaded, setLoaded] = useState(false);
-  const [refusals, setRefusals] = useState<Record<string, SendRefusal>>({});
+  const [refusals, setRefusalsState] = useState<Record<string, SendRefusal>>(
+    {},
+  );
+  /**
+   * The refusals as they are now, which every change starts from (as the
+   * store's): a move reads what the new place held at once.
+   */
+  const refusalsRef = useRef(refusals);
+  const setRefusals = useCallback(
+    (
+      next: (was: Record<string, SendRefusal>) => Record<string, SendRefusal>,
+    ) => {
+      const was = refusalsRef.current;
+      const value = next(was);
+      if (value === was) return;
+      refusalsRef.current = value;
+      setRefusalsState(value);
+    },
+    [],
+  );
+  /**
+   * The refusal each place held of its own as an order moved there, by its
+   * draft, until the move's "ביטול" or the order moves on (as the store's
+   * `own`): it stays there with the place's own lines.
+   */
+  const ownRefusals = useRef(new Map<string, SendRefusal | null>());
   /**
    * The latest round of a new takeaway that landed, and the order it opened:
    * the screen that showed it on its way goes to that order.
@@ -355,7 +382,18 @@ export function OrdersModeProvider({
   const alive = useRef(true);
   const wants = useRef(new Map<number, OrdersSyncWant>());
   const wantId = useRef(0);
-  const sync = useRef({ running: false, again: false, failures: 0 });
+  /** The sync's state, and how many of its reads have started. */
+  const sync = useRef({
+    running: false,
+    again: false,
+    failures: 0,
+    started: 0,
+  });
+  /**
+   * Who waits for a read that started after they asked (`readAfter`), by
+   * how many reads had started then.
+   */
+  const readsAfter = useRef<{ after: number; landed: () => void }[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const offRef = useRef(off);
   offRef.current = off;
@@ -372,19 +410,6 @@ export function OrdersModeProvider({
   const [marks] = useState(readyMarks);
   /** The writes on their way, for a close or a move to wait its turn. */
   const [onWay] = useState(writesOnWay);
-  /**
-   * The writes of an order whole on their way, whichever screen sent them:
-   * a send to them waits on every screen, not only on the one that wrote.
-   * None goes while a round of a draft it names is on its way, read as the
-   * tab has it now (a way back pressed seconds after its screen drew).
-   */
-  const [wholeGoing, setWholeGoing] = useState<readonly WholeWrite[]>([]);
-  const [wholeWriter] = useState(() =>
-    wholeWrites(
-      (draft) => pendingOfDraft(storedRef.current.pending, draft).length,
-      setWholeGoing,
-    ),
-  );
   /** The latest server time heard, which the clock never goes back from. */
   const heardAt = useRef<number | null>(null);
   /** Each round with a send trying it, by its key: never two for one. */
@@ -404,7 +429,7 @@ export function OrdersModeProvider({
         ? was
         : Object.fromEntries(kept);
     });
-  }, [clock]);
+  }, [clock, setRefusals]);
 
   // The server's clock, from the latest read that says it: a screen drawn
   // again with older data never sets it back.
@@ -497,6 +522,11 @@ export function OrdersModeProvider({
       return;
     }
     state.running = true;
+    state.started += 1;
+    const run = state.started;
+    // Whether the server answered what it holds now (nothing newer is an
+    // answer too, and so is off a shift): who waited for a read lands.
+    let landed = false;
     const read = marks.started();
     if (timer.current) clearTimeout(timer.current);
     const held = readsRef.current;
@@ -554,8 +584,10 @@ export function OrdersModeProvider({
           state.again = true;
         }
         state.failures = 0;
+        landed = true;
       } else if (response.status === 204) {
         state.failures = 0;
+        landed = true;
       } else if (response.status === 409) {
         const answer = offShiftAnswer.safeParse(await response.json());
         if (answer.success) {
@@ -564,6 +596,7 @@ export function OrdersModeProvider({
           setClock(answer.data.off);
         }
         state.failures = 0;
+        landed = true;
       } else if (response.status === 401 || response.status === 404) {
         // Signed out, or the mode is no longer theirs: the server says where.
         routerRef.current.refresh();
@@ -575,6 +608,12 @@ export function OrdersModeProvider({
       state.failures += 1;
     } finally {
       state.running = false;
+      // Those who asked before this read started have it now, its reads set.
+      if (landed) {
+        const waiting = readsAfter.current;
+        readsAfter.current = waiting.filter((one) => one.after >= run);
+        for (const one of waiting) if (one.after < run) one.landed();
+      }
       if (state.again) {
         state.again = false;
         void again.current();
@@ -593,6 +632,36 @@ export function OrdersModeProvider({
   const again = useRef(syncOnce);
   again.current = syncOnce;
   const syncNow = useCallback(() => void again.current(), []);
+  /**
+   * Asks the server again now, and resolves once a read that started after
+   * the call has landed: one going already read too early, so the next.
+   */
+  const readAfter = useCallback(
+    () =>
+      new Promise<void>((landed) => {
+        readsAfter.current.push({ after: sync.current.started, landed });
+        syncNow();
+      }),
+    [syncNow],
+  );
+
+  /**
+   * The writes of an order whole on their way, whichever screen sent them:
+   * a send to them waits on every screen, not only on the one that wrote,
+   * and each stays on its way once written until a read made after it has
+   * landed, as the screens show the order as it was until then. None goes
+   * while a round of a draft it names is on its way, read as the tab has it
+   * now (a way back pressed seconds after its screen drew), nor while
+   * another of its order has not answered.
+   */
+  const [wholeGoing, setWholeGoing] = useState<readonly WholeWrite[]>([]);
+  const [wholeWriter] = useState(() =>
+    wholeWrites(
+      (draft) => pendingOfDraft(storedRef.current.pending, draft).length,
+      setWholeGoing,
+      readAfter,
+    ),
+  );
 
   const want = useCallback<OrdersData["want"]>(
     (what) => {
@@ -780,7 +849,7 @@ export function OrdersModeProvider({
         delivering.current.delete(body.key);
       }
     },
-    [change, syncNow, tellSent],
+    [change, setRefusals, syncNow, tellSent],
   );
 
   /** A round's send: the one trying it already, or a new one. */
@@ -812,7 +881,7 @@ export function OrdersModeProvider({
       change((was) => storeSent(was, round));
       return deliver(round, true);
     },
-    [change, deliver, frame.business],
+    [change, deliver, frame.business, setRefusals],
   );
 
   /**
@@ -875,19 +944,36 @@ export function OrdersModeProvider({
     [change],
   );
 
-  // What the new place's draft held before, read as the tab has it now: the
-  // lines its undo leaves there. A refusal goes with the lines it is about.
+  // What the new place's draft and its refusal held as the order came, read
+  // as the tab has them now, are its own: they stay there on the move's
+  // undo. A refusal goes with the lines it is about.
   const move = useCallback(
-    (from: string, to: string, staying?: readonly string[]) => {
-      const was = storedRef.current;
-      const before = (was.drafts[to] ?? []).map((line) => line.id);
-      change((now) => storeDraftMoved(now, from, to, staying));
-      if (storedRef.current !== was) {
+    (from: string, to: string) => {
+      if (from === to) return;
+      ownRefusals.current.delete(from);
+      ownRefusals.current.set(to, refusalsRef.current[to] ?? null);
+      const was = storedRef.current.drafts;
+      change((now) => storeDraftMoved(now, from, to));
+      if (storedRef.current.drafts !== was) {
         setRefusals((refusals) => refusalMoved(refusals, from, to));
       }
-      return before;
     },
-    [change],
+    [change, setRefusals],
+  );
+
+  // The move's undo: all but the place's own goes back, its refusal too
+  // unless it is the place's own.
+  const moveBack = useCallback(
+    (from: string, to: string) => {
+      const own = ownRefusals.current.get(from) ?? null;
+      ownRefusals.current.delete(from);
+      const was = storedRef.current.drafts;
+      change((now) => storeMovedBack(now, from, to, newId));
+      if (storedRef.current.drafts !== was) {
+        setRefusals((refusals) => refusalMoved(refusals, from, to, own));
+      }
+    },
+    [change, setRefusals],
   );
 
   const wholeOnWay = useCallback(
@@ -901,6 +987,7 @@ export function OrdersModeProvider({
       get: (draft: string) => stored.drafts[draft] ?? [],
       update,
       move,
+      moveBack,
       counts: Object.fromEntries(
         Object.entries(stored.drafts).map(([key, lines]) => [
           key,
@@ -908,7 +995,7 @@ export function OrdersModeProvider({
         ]),
       ),
     }),
-    [stored.drafts, update, move],
+    [stored.drafts, update, move, moveBack],
   );
 
   const sender = useMemo(
@@ -926,7 +1013,7 @@ export function OrdersModeProvider({
         setRefusals(({ [draft]: _, ...rest }) => rest),
       landed,
     }),
-    [send, stored.pending, refusals, online, retrying, landed],
+    [send, stored.pending, refusals, setRefusals, online, retrying, landed],
   );
 
   // A ticket marked ready here is no news to this phone, until it is put
@@ -976,6 +1063,7 @@ export function OrdersModeProvider({
       sender,
       actions: modeActions,
       whole: wholeWriter.run,
+      wholeRefusal: wholeWriter.refusal,
       wholeOnWay,
       say,
       tell,
