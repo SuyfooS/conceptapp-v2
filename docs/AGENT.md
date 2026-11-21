@@ -24,8 +24,8 @@ it knows is this repo and its GitHub issues.
 - Everything is dynamic (Orel, 7 November 2026): what differs between businesses can be changed without touching code, and every new setting can be edited from a screen. A little new code for one business is fine, as a module in the same system switched on for it. Owners, managers and the ConceptApp team can all edit a business's settings, the team also has advanced ones, and a few (the punch code) are for owners and the team only. Nothing gets rebuilt. The order of this work is in `docs/ROADMAP.md`, and its first steps wait for a day session with Orel: a nightly run does not start them on a guess.
 - Waiter mode (Orel, 20 November 2026, #191): build every phase now; the takers are the
   staff of the departments that take orders plus managers and owners; only on shift; no
-  total and no deletion until the accountant answers; the hosted demo's module stays off
-  until he approves the screens.
+  total and no deletion until the accountant answers. He approved the screens on 21
+  November 2026: the module is on in the hosted demo restaurant, the shop keeps it off.
 - The pilot needs scheduling, time clock, lists, a management page, and roles with
   different permissions (`docs/ROADMAP.md`). Where the roadmap reads them from the
   old app, that is an assumption until Orel confirms it.
@@ -373,7 +373,8 @@ The design rework is under way in day sessions with Orel, toward `docs/design/ta
   departments, those who run the menu, owners) and only on a shift; the orders, split
   by department with their prices frozen, taking back and cancelling with a reason, "on
   the house", and no total anywhere; `@domain/orders` and `@db/orders`. The module is on
-  locally and in tests, off in the hosted demo until Orel approves the screens; the demo
+  locally and in tests, and in the hosted demo restaurant since Orel approved the
+  screens on 21.11 (`supabase/hosted-demo.sql`); the demo
   restaurant has a sample menu and three orders waiting. P4 is built
   (`20261121000100_order_taking_mode.sql`): the mode's items in the same shell under
   `/orders` (the places, one's own orders, preparing, the menu), its ways in from Home,

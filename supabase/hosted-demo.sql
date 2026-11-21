@@ -72,6 +72,7 @@ begin
       "template": "restaurant", "renews": false,
       "settings": { "time_clock": { "payEstimate": true } },
       "scheduledLists": true,
+      "orderTaking": true,
       "hours": { "fridays": false, "cases": [
         { "user_id": "10000000-0000-4000-a000-000000000105", "case": "night" }
       ] },
@@ -156,6 +157,20 @@ begin
       where not exists (
         select 1 from public.memberships m
         where m.business_id = d.business_id and m.user_id = person.user_id
+      )
+    )
+    -- Taking orders, switched on for the restaurant on 21.11.2026 once Orel
+    -- approved the screens (issue #191, decision 9): a business whose
+    -- definition asks for it and has it off starts again, as the door's reset
+    -- would, which switches it on with the menu, the places and the sample
+    -- orders. After that it is on, and a later run leaves it alone.
+    or (
+      d.definition -> 'orderTaking' = 'true'::jsonb
+      and not exists (
+        select 1 from public.business_modules bm
+        where bm.business_id = d.business_id
+          and bm.module_key = 'order_taking'::public.module_key
+          and bm.enabled
       )
     );
 end;

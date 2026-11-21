@@ -132,13 +132,13 @@ values
 -- workers each names, as the hosted ones are (tooling/demo-chat.test.ts).
 -- The restaurant also opens with taking orders on ("orderTaking": true;
 -- 20261120000100_order_taking_screens.sql), for the browser tests of the
--- menu's screens; the hosted one keeps it off until Orel approves them
--- (tooling/demo-order-taking.test.ts). And both start with made-up hiring files
--- ("files", 20261126000200_employee_files.sql), the module off and their writes
--- closed: in the restaurant, Noa with an emergency contact and Yoav without an
--- account or this year's 101; in the shop, Tamar's new account for a holder,
--- Itai's passport and his 101 returned, Roni's 101 due again and his contact,
--- and Liya's pension handed directly (tooling/demo-files.test.ts).
+-- menu's screens; the hosted one has it on too since Orel approved the screens
+-- on 21.11.2026 (tooling/demo-order-taking.test.ts). And both start with made-up
+-- hiring files ("files", 20261126000200_employee_files.sql), the module off and
+-- their writes closed: in the restaurant, Noa with an emergency contact and Yoav
+-- without an account or this year's 101; in the shop, Tamar's new account for a
+-- holder, Itai's passport and his 101 returned, Roni's 101 due again and his
+-- contact, and Liya's pension handed directly (tooling/demo-files.test.ts).
 insert into private.demo_businesses (business_id, definition)
 values
   ('00000000-0000-4000-b000-000000000001', $json$
